@@ -40,7 +40,6 @@
 #  > "shiny",
 #  > "shinycssloaders",
 #  > "shinydashboard",
-#  > "shinyFiles",
 #  > "shinyjs",
 #  >      "shinymanager",
 #  > "shinyWidgets",
@@ -101,7 +100,6 @@ let
       shiny
       shinycssloaders
       shinydashboard
-      shinyFiles
       shinyjs
       shinymanager
       shinytest2

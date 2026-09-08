@@ -62,13 +62,6 @@ source(
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],
-    "/viewer/trajectory/projection_export.R"
-  ),
-  local = TRUE
-)
-source(
-  paste0(
-    Cerebro.options[["cerebro_root"]],
     "/viewer/trajectory/selected_cells_table.R"
   ),
   local = TRUE

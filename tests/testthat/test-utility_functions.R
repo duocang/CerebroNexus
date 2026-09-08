@@ -10,21 +10,19 @@
 ## grouping column) plus the caching contract of the cachePlot() wrapper. See
 ## the git history of utility_functions.R for context.
 
-## Prefer the installed copy (mirrors how test-app-inst.R locates the app),
-## falling back to the source tree when running against an uninstalled
-## checkout (e.g. devtools::load_all()).
-utils_file <- system.file(
-  "viewer",
-  "utility_functions.R",
-  package = "CerebroNexus"
+## Prefer the source tree so devtools::test() exercises the current checkout;
+## use the installed copy only when the source tree is unavailable.
+source_candidates <- c(
+  file.path(getwd(), "inst", "viewer", "utility_functions.R"),
+  file.path(getwd(), "..", "..", "inst", "viewer", "utility_functions.R"),
+  testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R")
 )
-if (!nzchar(utils_file) || !file.exists(utils_file)) {
-  utils_file <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+utils_file <- source_candidates[file.exists(source_candidates)][1L]
+if (is.na(utils_file)) {
+  utils_file <- system.file(
     "viewer",
-    "utility_functions.R"
+    "utility_functions.R",
+    package = "CerebroNexus"
   )
 }
 skip_if_not(file.exists(utils_file), "utility_functions.R not found")
@@ -71,6 +69,253 @@ test_that("spreadsheet formulas are neutralized in cells and column names", {
   )
   expect_identical(result[[1L]], c("'=1+1", "safe"))
   expect_identical(result[[2L]], c("text", "'@SUM(A1)"))
+})
+
+test_that("ordinary Viewer tables escape HTML by default", {
+  table <- data.frame(label = "<script>alert(1)</script>")
+
+  populated <- prettifyTable(table, filter = "none", dom = "t")
+  empty <- utils_env$prepareEmptyTable(table[0, , drop = FALSE])
+
+  expect_identical(attr(populated$x$options, "escapeIdx"), "true")
+  expect_identical(attr(empty$x$options, "escapeIdx"), "true")
+})
+
+test_that("Viewer tables can explicitly opt out of HTML escaping", {
+  table <- data.frame(label = "<strong>trusted</strong>")
+
+  populated <- prettifyTable(
+    table,
+    filter = "none",
+    dom = "t",
+    escape = FALSE
+  )
+
+  expect_identical(attr(populated$x$options, "escapeIdx"), "false")
+})
+
+test_that("embedded Extra material escapes CRB-controlled HTML", {
+  content_file <- file.path(
+    dirname(utils_file),
+    "extra_material",
+    "content.R"
+  )
+  find_calls <- function(node) {
+    if (!is.call(node) && !is.expression(node)) {
+      return(list())
+    }
+    found <- if (
+      is.call(node) && identical(node[[1L]], as.name("prettifyTable"))
+    ) {
+      list(node)
+    } else {
+      list()
+    }
+    c(found, unlist(lapply(as.list(node), find_calls), recursive = FALSE))
+  }
+  calls <- find_calls(parse(content_file))
+  expect_length(calls, 1L)
+
+  selection <- list(
+    group = list(key = "embedded", label = "Embedded"),
+    sheet = list(label = "Unsafe")
+  )
+  input <- list(
+    extra_material_table_number_formatting = FALSE,
+    extra_material_table_color_highlighting = FALSE
+  )
+  evaluation <- list2env(list(
+    results_df = data.frame(value = '<img src=x onerror="alert(1)">'),
+    selection = selection,
+    input = input,
+    extra_material_table_filter = function(...) "none",
+    prettifyTable = prettifyTable
+  ))
+
+  widget <- eval(calls[[1L]], envir = evaluation)
+
+  expect_identical(attr(widget$x$options, "escapeIdx"), "true")
+})
+
+test_that("MSigDB helpers retain only compact process-level results", {
+  cache <- utils_env$.msigdbCache()
+  cache[["catalogue"]] <- data.frame(
+    gs_name = c("SET_B", "SET_A"),
+    collection = c("C2", "H"),
+    stringsAsFactors = FALSE
+  )
+  gene_key <- utils_env$.msigdbGeneCacheKey("Mus musculus", "SET_B")
+  cache[[gene_key]] <- c("GeneA", "GeneB")
+
+  names <- utils_env$getGeneSetNames()
+
+  expect_identical(names, c("SET_A", "SET_B"))
+  expect_identical(
+    utils_env$getMsigdbGenes("Mus musculus", "SET_B"),
+    c("GeneA", "GeneB")
+  )
+  expect_false(exists("Homo sapiens", envir = cache, inherits = FALSE))
+})
+
+test_that("MSigDB catalogue retries failures and malformed responses", {
+  cache <- utils_env$.msigdbCache()
+  original_query <- utils_env$.msigdbFunction
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  on.exit(
+    {
+      utils_env$.msigdbFunction <- original_query
+      rm(list = ls(cache, all.names = TRUE), envir = cache)
+    },
+    add = TRUE
+  )
+
+  calls <- 0L
+  utils_env$.msigdbFunction <- function() {
+    function(species) {
+      calls <<- calls + 1L
+      if (calls == 1L) {
+        stop("temporary catalogue failure")
+      }
+      if (calls == 2L) {
+        return(data.frame(gs_name = "SET_A"))
+      }
+      data.frame(
+        gs_name = "SET_A",
+        gs_collection = "H",
+        gene_symbol = "GENE_A"
+      )
+    }
+  }
+
+  expect_warning(
+    first <- utils_env$getMsigdbCatalogue(),
+    "temporary catalogue failure"
+  )
+  expect_equal(nrow(first), 0L)
+  expect_false(exists("catalogue", envir = cache, inherits = FALSE))
+
+  expect_warning(
+    second <- utils_env$getMsigdbCatalogue(),
+    "unexpected columns"
+  )
+  expect_equal(nrow(second), 0L)
+  expect_false(exists("catalogue", envir = cache, inherits = FALSE))
+
+  third <- utils_env$getMsigdbCatalogue()
+  expect_identical(third$gs_name, "SET_A")
+  expect_true(exists("catalogue", envir = cache, inherits = FALSE))
+  expect_identical(calls, 3L)
+})
+
+test_that("MSigDB catalogue rejects empty and invalid results", {
+  cache <- utils_env$.msigdbCache()
+  original_query <- utils_env$.msigdbFunction
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  on.exit(
+    {
+      utils_env$.msigdbFunction <- original_query
+      rm(list = ls(cache, all.names = TRUE), envir = cache)
+    },
+    add = TRUE
+  )
+
+  calls <- 0L
+  utils_env$.msigdbFunction <- function() {
+    function(species, collection = NULL) {
+      if (!is.null(collection)) {
+        return(data.frame(
+          gs_name = c(" SET_A ", "SET_A", "SET_B"),
+          gene_symbol = c(" GENE_B ", "GENE_A", "OTHER")
+        ))
+      }
+      calls <<- calls + 1L
+      if (calls == 1L) {
+        return(data.frame(
+          gs_name = character(),
+          gs_collection = character()
+        ))
+      }
+      data.frame(
+        gs_name = c("", " ", NA, " SET_A ", "SET_A", "AMBIG", "AMBIG"),
+        gs_collection = c("H", "H", "H", " H ", "H", " C2 ", "C5")
+      )
+    }
+  }
+
+  expect_warning(
+    first <- utils_env$getMsigdbCatalogue(),
+    "empty catalogue"
+  )
+  expect_equal(nrow(first), 0L)
+  expect_false(exists("catalogue", envir = cache, inherits = FALSE))
+
+  second <- utils_env$getMsigdbCatalogue()
+  expect_identical(second, data.frame(
+    gs_name = "SET_A",
+    collection = "H",
+    stringsAsFactors = FALSE
+  ))
+  expect_true(exists("catalogue", envir = cache, inherits = FALSE))
+  expect_identical(calls, 2L)
+  expect_identical(
+    utils_env$getMsigdbGenes("Homo sapiens", "SET_A"),
+    c("GENE_A", "GENE_B")
+  )
+})
+
+test_that("MSigDB gene queries retry failures and ignore invalid names", {
+  cache <- utils_env$.msigdbCache()
+  original_query <- utils_env$.msigdbFunction
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  on.exit(
+    {
+      utils_env$.msigdbFunction <- original_query
+      rm(list = ls(cache, all.names = TRUE), envir = cache)
+    },
+    add = TRUE
+  )
+  cache[["catalogue"]] <- data.frame(
+    gs_name = "SET_A",
+    collection = "H",
+    stringsAsFactors = FALSE
+  )
+
+  calls <- 0L
+  utils_env$.msigdbFunction <- function() {
+    function(species, collection = NULL) {
+      calls <<- calls + 1L
+      if (calls == 1L) {
+        stop("temporary gene failure")
+      }
+      data.frame(
+        gs_name = c("SET_A", "SET_A"),
+        gene_symbol = c("GENE_B", "GENE_A")
+      )
+    }
+  }
+
+  key <- utils_env$.msigdbGeneCacheKey("Homo sapiens", "SET_A")
+  expect_warning(
+    first <- utils_env$getMsigdbGenes("Homo sapiens", "SET_A"),
+    "temporary gene failure"
+  )
+  expect_identical(first, character())
+  expect_false(exists(key, envir = cache, inherits = FALSE))
+
+  second <- utils_env$getMsigdbGenes("Homo sapiens", "SET_A")
+  expect_identical(second, c("GENE_A", "GENE_B"))
+  expect_true(exists(key, envir = cache, inherits = FALSE))
+
+  invalid_key <- utils_env$.msigdbGeneCacheKey(
+    "Homo sapiens",
+    "NOT_A_SET"
+  )
+  expect_identical(
+    utils_env$getMsigdbGenes("Homo sapiens", "NOT_A_SET"),
+    character()
+  )
+  expect_false(exists(invalid_key, envir = cache, inherits = FALSE))
+  expect_identical(calls, 2L)
 })
 
 test_that("conditional initial routing is consumed by the first dataset", {

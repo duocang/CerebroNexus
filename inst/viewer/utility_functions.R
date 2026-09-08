@@ -782,7 +782,7 @@ prettifyTable <- function(
   table,
   filter,
   dom,
-  escape = FALSE,
+  escape = TRUE,
   show_buttons = FALSE,
   number_formatting = FALSE,
   color_highlighting = FALSE,
@@ -808,7 +808,7 @@ prettifyTable <- function(
   color_highlighting <- as_toggle(color_highlighting, FALSE)
   show_buttons <- as_toggle(show_buttons, FALSE)
   hide_long_columns <- as_toggle(hide_long_columns, FALSE)
-  escape <- as_toggle(escape, FALSE)
+  escape <- as_toggle(escape, TRUE)
 
   ## replace Inf and -Inf values in numeric columns with 999 or -999,
   ## respectively, because other the columns will be converted to characters
@@ -1231,7 +1231,7 @@ prepareEmptyTable <- function(table) {
     table,
     autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
-    escape = FALSE,
+    escape = TRUE,
     filter = "none",
     rownames = FALSE,
     selection = "none",
@@ -1516,6 +1516,143 @@ getXYranges <- function(table) {
 ##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
+if (!exists(".msigdb_process_cache", inherits = TRUE)) {
+  .msigdb_process_cache <- new.env(parent = emptyenv())
+}
+
+.emptyMsigdbCatalogue <- function() {
+  data.frame(
+    gs_name = character(),
+    collection = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+.msigdbCache <- function() {
+  get(".msigdb_process_cache", inherits = TRUE)
+}
+
+.msigdbGeneCacheKey <- function(species, gene_set) {
+  paste("genes", species, gene_set, sep = "\r")
+}
+
+.msigdbFunction <- function() {
+  msigdbr::msigdbr
+}
+
+getMsigdbCatalogue <- function() {
+  cache <- .msigdbCache()
+  if (exists("catalogue", envir = cache, inherits = FALSE)) {
+    return(cache[["catalogue"]])
+  }
+  if (!requireNamespace("msigdbr", quietly = TRUE)) {
+    warning("The 'msigdbr' package is required to resolve gene sets.")
+    return(.emptyMsigdbCatalogue())
+  }
+  table <- tryCatch(
+    do.call(.msigdbFunction(), list(species = "Homo sapiens")),
+    error = function(error_condition) {
+      warning("MSigDB query failed: ", conditionMessage(error_condition))
+      NULL
+    }
+  )
+  collection_column <- if (
+    !is.null(table) && "gs_collection" %in% colnames(table)
+  ) {
+    "gs_collection"
+  } else if (!is.null(table) && "gs_cat" %in% colnames(table)) {
+    "gs_cat"
+  } else {
+    NULL
+  }
+  if (
+    is.null(collection_column) ||
+      !is.data.frame(table) ||
+      !"gs_name" %in% colnames(table)
+  ) {
+    if (!is.null(table)) {
+      warning("MSigDB query returned unexpected columns.")
+    }
+    return(.emptyMsigdbCatalogue())
+  }
+  catalogue <- unique(data.frame(
+    gs_name = trimws(as.character(table[["gs_name"]])),
+    collection = trimws(as.character(table[[collection_column]])),
+    stringsAsFactors = FALSE
+  ))
+  catalogue <- catalogue[
+    !is.na(catalogue$gs_name) &
+      nzchar(catalogue$gs_name) &
+      !is.na(catalogue$collection) &
+      nzchar(catalogue$collection),
+    ,
+    drop = FALSE
+  ]
+  ambiguous <- duplicated(catalogue$gs_name) |
+    duplicated(catalogue$gs_name, fromLast = TRUE)
+  catalogue <- catalogue[!ambiguous, , drop = FALSE]
+  row.names(catalogue) <- NULL
+  if (nrow(catalogue) == 0L) {
+    warning("MSigDB query returned an empty catalogue.")
+    return(.emptyMsigdbCatalogue())
+  }
+  cache[["catalogue"]] <- catalogue
+  rm(table)
+  invisible(gc(FALSE))
+  catalogue
+}
+
+getGeneSetNames <- function() {
+  sort(unique(getMsigdbCatalogue()$gs_name))
+}
+
+getMsigdbGenes <- function(species, gene_set) {
+  cache <- .msigdbCache()
+  key <- .msigdbGeneCacheKey(species, gene_set)
+  if (exists(key, envir = cache, inherits = FALSE)) {
+    return(cache[[key]])
+  }
+  catalogue <- getMsigdbCatalogue()
+  collection <- catalogue$collection[match(gene_set, catalogue$gs_name)]
+  if (length(collection) != 1L || is.na(collection) || !nzchar(collection)) {
+    return(character())
+  }
+  arguments <- list(species = species)
+  query <- .msigdbFunction()
+  if ("collection" %in% names(formals(query))) {
+    arguments[["collection"]] <- collection
+  } else {
+    arguments[["category"]] <- collection
+  }
+  table <- tryCatch(
+    do.call(query, arguments),
+    error = function(error_condition) {
+      warning("MSigDB query failed: ", conditionMessage(error_condition))
+      NULL
+    }
+  )
+  if (is.null(table)) {
+    return(character())
+  }
+  if (
+    !is.data.frame(table) ||
+      !all(c("gs_name", "gene_symbol") %in% colnames(table))
+  ) {
+    warning("MSigDB gene query returned unexpected columns.")
+    return(character())
+  }
+  returned_names <- trimws(as.character(table[["gs_name"]]))
+  matches <- !is.na(returned_names) & returned_names == gene_set
+  genes <- trimws(as.character(table[["gene_symbol"]][matches]))
+  genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
+  if (length(genes) > 0L) {
+    cache[[key]] <- genes
+  }
+  rm(table)
+  invisible(gc(FALSE))
+  genes
+}
+
 getGenesForGeneSet <- function(gene_set) {
   if (
     !is.null(getExperiment()$organism) &&
@@ -1531,30 +1668,7 @@ getGenesForGeneSet <- function(gene_set) {
     species <- "Mus musculus"
   }
 
-  ## - get list of gene set names
-  ## - filter for selected gene set
-  ## - extract genes that belong to the gene set
-  ## - get orthologs for the genes
-  ## - convert gene symbols to vector
-  ## - only keep unique gene symbols
-  ## - sort genes
-  msigdbr:::msigdbr_genesets[, 1:2] %>%
-    dplyr::filter(.data$gs_name == gene_set) %>%
-    dplyr::inner_join(
-      .,
-      msigdbr:::msigdbr_genes,
-      by = "gs_id"
-    ) %>%
-    dplyr::inner_join(
-      .,
-      msigdbr:::msigdbr_orthologs %>%
-        dplyr::filter(.data$species_name == species) %>%
-        dplyr::select(human_entrez_gene, gene_symbol),
-      by = "human_entrez_gene"
-    ) %>%
-    dplyr::pull(gene_symbol) %>%
-    unique() %>%
-    sort()
+  getMsigdbGenes(species, gene_set)
 }
 
 ##----------------------------------------------------------------------------##

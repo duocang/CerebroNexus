@@ -56,26 +56,6 @@ cerebro_plotly_hoverlabel <- function() {
   )
 }
 
-## ggplot theme for the static PDF/SVG *exports* (the "export to PDF" buttons).
-## Submission-grade defaults: a clean sans base family, hairline warm-neutral
-## panel border and gridlines matching the on-screen Viewer palette, so the
-## exported figure reads as the same design system as the interactive plot.
-## `base_family = ""` lets the device pick its default sans (Helvetica/Arial on
-## the common PDF/SVG devices), which keeps exported text editable in Illustrator
-## and avoids a hard font dependency.
-cerebro_export_theme <- function(base_size = 12) {
-  th <- cerebro_plotly_theme()
-  ggplot2::theme_bw(base_size = base_size, base_family = "") +
-    ggplot2::theme(
-      panel.border = ggplot2::element_rect(colour = th$axis, fill = NA),
-      panel.grid.major = ggplot2::element_line(colour = th$grid),
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.text = ggplot2::element_text(colour = th$tick),
-      axis.title = ggplot2::element_text(colour = th$title),
-      legend.key = ggplot2::element_blank()
-    )
-}
-
 ##----------------------------------------------------------------------------##
 ## Violin plots with plotly, e.g. for expression metrics.
 ##----------------------------------------------------------------------------##

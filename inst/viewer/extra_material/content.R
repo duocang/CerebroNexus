@@ -98,7 +98,6 @@ output[["extra_material_table"]] <- DT::renderDataTable({
       results_df,
       filter = extra_material_table_filter(nrow(results_df), ncol(results_df)),
       dom = "Bfrtlip",
-      escape = !identical(selection$group$key, "embedded"),
       show_buttons = TRUE,
       number_formatting = input[["extra_material_table_number_formatting"]],
       color_highlighting = input[["extra_material_table_color_highlighting"]],

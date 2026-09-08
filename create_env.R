@@ -88,7 +88,6 @@ rix(
     "shiny",
     "shinycssloaders",
     "shinydashboard",
-    "shinyFiles",
     "shinyjs",
     "shinymanager",
     "shinyWidgets",

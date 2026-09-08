@@ -26,6 +26,10 @@ source(
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
 
+## Keep only the compact MSigDB catalogue and resolved gene vectors across
+## sessions. The complete msigdbr table is discarded after each public query.
+.msigdb_process_cache <- new.env(parent = emptyenv())
+
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.
@@ -127,12 +131,6 @@ server <- function(input, output, session) {
       once = TRUE
     )
   }
-
-  ## paths for storing plots
-  available_storage_volumes <- c(
-    Home = "~",
-    shinyFiles::getVolumes()()
-  )
 
   ##--------------------------------------------------------------------------##
   ## Load data set.

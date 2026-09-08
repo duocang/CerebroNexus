@@ -1,18 +1,75 @@
 viewer_source <- function(...) {
-  viewer_root <- system.file("viewer", package = "CerebroNexus")
-  if (!nzchar(viewer_root)) {
-    viewer_root <- testthat::test_path("../../inst/viewer")
+  source_root <- testthat::test_path("../../inst/viewer")
+  viewer_root <- if (file.exists(file.path(source_root, "shiny_UI.R"))) {
+    source_root
+  } else {
+    system.file("viewer", package = "CerebroNexus")
   }
   paste(readLines(file.path(viewer_root, ...), warn = FALSE), collapse = "\n")
 }
 
 viewer_path <- function(...) {
-  viewer_root <- system.file("viewer", package = "CerebroNexus")
-  if (!nzchar(viewer_root)) {
-    viewer_root <- testthat::test_path("../../inst/viewer")
+  source_root <- testthat::test_path("../../inst/viewer")
+  viewer_root <- if (file.exists(file.path(source_root, "shiny_UI.R"))) {
+    source_root
+  } else {
+    system.file("viewer", package = "CerebroNexus")
   }
   file.path(viewer_root, ...)
 }
+
+test_that("gene conversion table escapes cell content", {
+  source <- viewer_source("gene_id_conversion", "server.R")
+
+  expect_match(source, "escape = TRUE", fixed = TRUE)
+  expect_no_match(source, "escape = FALSE", fixed = TRUE)
+})
+
+test_that("Viewer gene sets use the public msigdbr API", {
+  utility <- viewer_source("utility_functions.R")
+  server <- viewer_source("shiny_server.R")
+  input <- viewer_source("gene_expression", "UI_projection_input_type.R")
+
+  expect_no_match(paste(utility, input), "msigdbr:::", fixed = TRUE)
+  expect_match(utility, "msigdbr::msigdbr", fixed = TRUE)
+  expect_match(server, ".msigdb_process_cache", fixed = TRUE)
+  expect_no_match(utility, ".msigdb_table_cache", fixed = TRUE)
+  expect_no_match(utility, "getMsigdbTable", fixed = TRUE)
+  expect_match(input, "getGeneSetNames()", fixed = TRUE)
+})
+
+test_that("Viewer omits server-side PDF exports", {
+  ui <- viewer_source("trajectory", "projection.R")
+  server <- viewer_source("trajectory", "server.R")
+
+  expect_no_match(ui, "Export PDF", fixed = TRUE)
+  expect_no_match(ui, "trajectory_projection_export", fixed = TRUE)
+  expect_no_match(server, "projection_export.R", fixed = TRUE)
+  expect_false(any(file.exists(c(
+    viewer_path("overview", "event_projection_export_plot.R"),
+    viewer_path("gene_expression", "event_projection_export_plot.R"),
+    viewer_path("gene_expression", "func_pltExpProj2DMultPanExp.R"),
+    viewer_path("gene_expression", "func_pltExpProj2DSglPanExp.R"),
+    viewer_path("gene_expression", "func_pltExpTrj2DSglPanExp.R"),
+    viewer_path("spatial", "event_projection_export_plot.R"),
+    viewer_path("trajectory", "projection_export.R")
+  ))))
+})
+
+test_that("Viewer no longer depends on shinyFiles", {
+  source_root <- normalizePath(testthat::test_path("../.."), mustWork = FALSE)
+  if (file.exists(file.path(source_root, "DESCRIPTION"))) {
+    description <- read.dcf(file.path(source_root, "DESCRIPTION"))[1L, ]
+    expect_false(grepl("shinyFiles", description[["Imports"]], fixed = TRUE))
+    for (path in c("NAMESPACE", "create_env.R", "R/launchCerebro.R")) {
+      text <- paste(readLines(file.path(source_root, path)), collapse = "\n")
+      expect_no_match(text, "shinyFiles", fixed = TRUE)
+    }
+  } else {
+    imports <- packageDescription("CerebroNexus")[["Imports"]]
+    expect_false(grepl("shinyFiles", imports, fixed = TRUE))
+  }
+})
 
 test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
@@ -118,7 +175,6 @@ test_that("Cell-view More settings expose only effective appearance controls", {
   )
   expression <- viewer_source("gene_expression", "UI_projection.R")
   trajectory <- viewer_source("trajectory", "projection.R")
-  trajectory_export <- viewer_source("trajectory", "projection_export.R")
   repertoire <- viewer_source("immune_repertoire", "settings.R")
   repertoire_spec <- viewer_source("immune_repertoire", "param_spec.R")
   hla <- viewer_source("hla_tcr_motifs", "settings.R")
@@ -152,26 +208,7 @@ test_that("Cell-view More settings expose only effective appearance controls", {
     "trajectory_projection_pdf_group_labels",
     fixed = TRUE
   )
-  expect_no_match(
-    trajectory_export,
-    "trajectory_projection_pdf_group_labels",
-    fixed = TRUE
-  )
-  expect_match(
-    trajectory_export,
-    'input[["trajectory_projection_group_labels"]]',
-    fixed = TRUE
-  )
-  expect_match(
-    trajectory_export,
-    'categorical <- identical(color_variable, "state") ||',
-    fixed = TRUE
-  )
-  expect_match(
-    trajectory_export,
-    'cells_df[[color_variable]] <- factor(cells_df[[color_variable]])',
-    fixed = TRUE
-  )
+  expect_no_match(trajectory, "Export PDF", fixed = TRUE)
   for (id in c(
     "ir_clonalUMAP_group_labels",
     "ir_clonalUMAP_point_border",
