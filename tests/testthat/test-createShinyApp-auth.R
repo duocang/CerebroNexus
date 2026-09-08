@@ -538,11 +538,14 @@ test_that("a real encrypted multi-user database survives app generation", {
   fixture <- auth_test_build_fixture()
   database <- file.path(fixture$root, "real-credentials.sqlite")
   passphrase <- "independent database passphrase"
+  nonce <- paste(sample(c(letters, LETTERS, 0:9), 24L, TRUE), collapse = "")
+  alice_password <- paste0("alice-login-password-", nonce)
+  bob_password <- paste0("bob-login-password-", nonce)
   withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
   shinymanager::create_db(
     credentials_data = data.frame(
       user = c("alice", "bob"),
-      password = c("alice-login-password", "bob-login-password"),
+      password = c(alice_password, bob_password),
       stringsAsFactors = FALSE
     ),
     sqlite_path = database,
@@ -571,14 +574,14 @@ test_that("a real encrypted multi-user database survives app generation", {
     db = bundled,
     passphrase = passphrase
   )
-  expect_true(checker("alice", "alice-login-password")$result)
-  expect_true(checker("bob", "bob-login-password")$result)
+  expect_true(checker("alice", alice_password)$result)
+  expect_true(checker("bob", bob_password)$result)
   expect_false(checker("alice", "wrong-password")$result)
   artifacts <- list.files(app, recursive = TRUE, full.names = TRUE)
   for (secret in c(
     passphrase,
-    "alice-login-password",
-    "bob-login-password"
+    alice_password,
+    bob_password
   )) {
     expect_false(any(vapply(
       artifacts,
