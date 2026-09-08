@@ -2082,3 +2082,66 @@ test_that("brush gestures start from visualization pane whitespace", {
     fixed = TRUE
   )
 })
+
+test_that("dedicated cell views do not request the Linked Views bundle", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    js,
+    "Shiny.setInputValue('coordviews_visible', linkedVis);",
+    fixed = TRUE
+  )
+  expect_no_match(js, "var vis = linkedVis || !!singleId;", fixed = TRUE)
+  expect_match(js, "function singlePayloadCells(payload)", fixed = TRUE)
+  expect_match(js, "window.cerebroSavedViewDataset || {}", fixed = TRUE)
+  expect_match(js, "identity.cell_fingerprint", fixed = TRUE)
+  expect_match(js, "_singleOnly: true", fixed = TRUE)
+  expect_no_match(js, "dataset_id: 'single-view'", fixed = TRUE)
+})
+
+test_that("continuous panel calculations cache every field for the current data", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(js, "var _ordD = null, _ordCache = new Map();", fixed = TRUE)
+  expect_match(js, "_ordCache.has(key)", fixed = TRUE)
+  expect_match(js, "_ordCache.set(key, ord)", fixed = TRUE)
+  expect_match(js, "var _clipD = null, _clipCache = new Map();", fixed = TRUE)
+  expect_match(js, "_clipCache.has(key)", fixed = TRUE)
+  expect_match(js, "_clipCache.set(key, r)", fixed = TRUE)
+  expect_no_match(js, "_ordKey", fixed = TRUE)
+  expect_no_match(js, "_clipKey", fixed = TRUE)
+})
+
+test_that("pointer drags coalesce frames and flush the final event", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  start <- regexpr("function wireBrush(p)", js, fixed = TRUE)[[1]]
+  finish <- regexpr(
+    "// ---- build panels from DOM",
+    substring(js, start),
+    fixed = TRUE
+  )[[1]]
+  brush <- substring(js, start, start + finish - 2L)
+
+  expect_match(brush, "var dragFrame = null, dragEvent = null;", fixed = TRUE)
+  expect_match(brush, "function applyDragMove(e)", fixed = TRUE)
+  expect_match(brush, "dragFrame = requestAnimationFrame", fixed = TRUE)
+  expect_match(brush, "cancelAnimationFrame(dragFrame)", fixed = TRUE)
+  expect_match(
+    brush,
+    "window.addEventListener('mouseup', function (e) {\n      flushDragMove(e);",
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(
+      brush,
+      gregexpr("requestAnimationFrame", brush, fixed = TRUE)
+    )),
+    1L
+  )
+})

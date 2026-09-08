@@ -517,15 +517,17 @@
   //
   // Cached per (data set, colouring, gene): the sort is over every cell and the
   // answer only changes when one of those does.
-  var _ordD = null, _ordKey = null, _ordVal = null;
+  var _ordD = null, _ordCache = new Map();
   function panelColorMode(p) {
     return p && p.colorBy ? p.colorBy : colorBy;
   }
   function paintOrder(p) {
     if (!D) return null;
+    if (_ordD !== D) { _ordD = D; _ordCache = new Map(); }
     var mode = panelColorMode(p);
-    var key = mode + '|' + (D.gene ? D.gene.gene : '');
-    if (_ordD === D && _ordKey === key) return _ordVal;
+    var key = mode === GENE_MODE
+      ? mode + '|' + (D.gene ? D.gene.gene : '') : mode;
+    if (_ordCache.has(key)) return _ordCache.get(key);
     var vals = null;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
@@ -546,7 +548,7 @@
         return va - vb;
       });
     }
-    _ordD = D; _ordKey = key; _ordVal = ord;
+    _ordCache.set(key, ord);
     return ord;
   }
 
@@ -558,9 +560,10 @@
   // that matter are differences nobody can see. The trimmed values are not
   // hidden -- they saturate at the ends, and the colourbar says so.
   var colorClip = 0.01;
-  var _clipD = null, _clipKey = null, _clipVal = null;
+  var _clipD = null, _clipCache = new Map();
   function clipRange(p) {
     if (!D) return null;
+    if (_clipD !== D) { _clipD = D; _clipCache = new Map(); }
     var mode = panelColorMode(p);
     var vals = null, span = 255, field = null;
     if (mode === GENE_MODE && D.gene) { vals = D.gene.v; span = 255; }
@@ -570,8 +573,9 @@
     }
     if (!vals) return null;
     if (field && field.unclipped) return { lo: 0, hi: span };
-    var key = mode + '|' + (D.gene ? D.gene.gene : '') + '|' + colorClip;
-    if (_clipD === D && _clipKey === key) return _clipVal;
+    var key = (mode === GENE_MODE
+      ? mode + '|' + (D.gene ? D.gene.gene : '') : mode) + '|' + colorClip;
+    if (_clipCache.has(key)) return _clipCache.get(key);
     var r;
     if (colorClip <= 0) {
       r = { lo: 0, hi: span };
@@ -585,7 +589,11 @@
         if (v == null || isNaN(v)) continue;
         bins[Math.max(0, Math.min(span, v | 0))]++; k++;
       }
-      if (!k) return (_clipD = D, _clipKey = key, _clipVal = { lo: 0, hi: span });
+      if (!k) {
+        r = { lo: 0, hi: span };
+        _clipCache.set(key, r);
+        return r;
+      }
       var want = colorClip * k, acc = 0, lo = 0, hi = span;
       for (i = 0; i <= span; i++) { acc += bins[i]; if (acc >= want) { lo = i; break; } }
       acc = 0;
@@ -593,12 +601,12 @@
       if (hi <= lo) { lo = 0; hi = span; }   // degenerate (constant) -- show it all
       r = { lo: lo, hi: hi };
     }
-    _clipD = D; _clipKey = key; _clipVal = r;
+    _clipCache.set(key, r);
     return r;
   }
   // Quantised value -> 0..1 across the active colour range.
   function clipT(v, span, range) {
-    var r = range || _clipVal;
+    var r = range;
     if (!r) return v / span;
     if (r.hi <= r.lo) return 0;
     return Math.max(0, Math.min(1, (v - r.lo) / (r.hi - r.lo)));
@@ -3200,6 +3208,56 @@
       var r = p.canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     };
+    var dragFrame = null, dragEvent = null;
+    function applyDragMove(e) {
+      if (p.orbiting) {
+        var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
+        p.rot = {
+          ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
+          // Pitch stops short of ±90°: past vertical the cloud reads as
+          // upside-down and the drag direction appears to invert.
+          rx: Math.max(-1.4, Math.min(1.4,
+            p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
+        };
+        project(p); draw(p);
+        return;
+      }
+      if (p.panning) {
+        var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
+        // screen delta -> view units; y is inverted (canvas y grows downward).
+        // Clamped, so dragging on past the edge simply stops instead of sailing
+        // off into blank canvas.
+        p.view = clampView(p, CBGeom.panView(
+          v,
+          (pq[0] - p.panFrom[0]) / SX,
+          (pq[1] - p.panFrom[1]) / SY
+        ));
+        project(p); draw(p);
+        return;
+      }
+      if (!p.drag) return;
+      var q = pos(e);
+      if (selectMode === 'box') {
+        // rectangle from the drag origin to the cursor; inPoly treats it as a
+        // 4-point polygon, so mouseup selection is unchanged.
+        var a = p.start;
+        if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
+          p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
+          p.moved = true; draw(p);
+        }
+      } else {
+        var last = p.lasso[p.lasso.length - 1];
+        if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
+          p.lasso.push(q); p.moved = true; draw(p);
+        }
+      }
+    }
+    function flushDragMove(e) {
+      if (!p.orbiting && !p.panning && !p.drag && dragFrame === null) return;
+      if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+      dragFrame = null; dragEvent = null;
+      applyDragMove(e);
+    }
     brushTarget.addEventListener('mousedown', function (e) {
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
@@ -3249,53 +3307,21 @@
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
     });
     window.addEventListener('mousemove', function (e) {
-      if (p.orbiting) {
-        var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
-        p.rot = {
-          ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
-          // Pitch stops short of ±90°: past vertical the cloud reads as
-          // upside-down and the drag direction appears to invert.
-          rx: Math.max(-1.4, Math.min(1.4,
-            p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
-        };
-        project(p); draw(p);
-        return;
-      }
-      if (p.panning) {
-        var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
-        // screen delta -> view units; y is inverted (canvas y grows downward).
-        // Clamped, so dragging on past the edge simply stops instead of sailing
-        // off into blank canvas.
-        p.view = clampView(p, CBGeom.panView(
-          v,
-          (pq[0] - p.panFrom[0]) / SX,
-          (pq[1] - p.panFrom[1]) / SY
-        ));
-        project(p); draw(p);
-        return;
-      }
-      if (!p.drag) return;
-      var q = pos(e);
-      if (selectMode === 'box') {
-        // rectangle from the drag origin to the cursor; inPoly treats it as a
-        // 4-point polygon, so mouseup selection is unchanged.
-        var a = p.start;
-        if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
-          p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
-          p.moved = true; draw(p);
-        }
-      } else {
-        var last = p.lasso[p.lasso.length - 1];
-        if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
-          p.lasso.push(q); p.moved = true; draw(p);
-        }
-      }
+      if (!p.orbiting && !p.panning && !p.drag) return;
+      dragEvent = { clientX: e.clientX, clientY: e.clientY };
+      if (dragFrame !== null) return;
+      dragFrame = requestAnimationFrame(function () {
+        var latest = dragEvent;
+        dragFrame = null; dragEvent = null;
+        if (latest) applyDragMove(latest);
+      });
     });
     // Zooming is a toolbar action only. Wheel-zoom made the panels hostile to
     // scroll past: a page scroll that happened to cross a panel silently rescaled
     // it instead, and on a trackpad the two gestures are the same one. The wheel
     // is therefore left to the page.
     window.addEventListener('mouseup', function (e) {
+      flushDragMove(e);
       if (p.orbiting) {
         p.orbiting = false;
         p.canvas.classList.remove('cv-grabbing');
@@ -5188,6 +5214,87 @@
     }
     return true;
   }
+  function singlePayloadCells(payload) {
+    var data = payload && payload.data || {}, cells = [], seen = new Set();
+    var add = function (values) {
+      if (!Array.isArray(values)) return;
+      values.forEach(function (value) {
+        if (Array.isArray(value)) add(value);
+        else if (value != null && !seen.has(String(value))) {
+          seen.add(String(value)); cells.push(String(value));
+        }
+      });
+    };
+    add(data.selection_key);
+    (data.panels || []).forEach(function (panel) {
+      add(panel && panel.selection_key);
+    });
+    return cells;
+  }
+  function singleDatasetIdentity(cells) {
+    var identity = window.cerebroSavedViewDataset || {};
+    var savedFingerprint = typeof identity.cell_fingerprint === 'string'
+      ? identity.cell_fingerprint : '';
+    var fingerprint = savedFingerprint || fingerprintCells(cells);
+    var count = Number(identity.cell_count);
+    if (!isFinite(count) || count < 0) count = cells.length;
+    var savedId = typeof identity.dataset_id === 'string' ? identity.dataset_id : '';
+    var datasetId = savedId || 'cells:' + fingerprint;
+    return {
+      fingerprint: fingerprint,
+      savedFingerprint: savedFingerprint,
+      savedId: savedId,
+      datasetId: datasetId,
+      token: datasetId + '\u0000' + count + '\u0000' + fingerprint
+    };
+  }
+  function bundleFingerprint(bundle) {
+    if (!bundle) return '';
+    return String(bundle.dataset_fingerprint || bundle.cell_fingerprint || '');
+  }
+  function singleBaseStale() {
+    var identity = window.cerebroSavedViewDataset || {};
+    var fingerprint = typeof identity.cell_fingerprint === 'string'
+      ? identity.cell_fingerprint : '';
+    return !!(linkedBundle && fingerprint &&
+      bundleFingerprint(linkedBundle) !== fingerprint);
+  }
+  function ensureSingleBase(payload) {
+    var incoming = singlePayloadCells(payload);
+    var identity = singleDatasetIdentity(incoming);
+    if (linkedBundle && !linkedBundle._singleOnly) {
+      var sameFingerprint = !identity.savedFingerprint ||
+        bundleFingerprint(linkedBundle) === identity.savedFingerprint;
+      var sameId = !identity.savedId || linkedBundle.dataset_id === identity.savedId;
+      if (sameFingerprint && sameId) return;
+      linkedBundle = null; D = null; resetSingleViews();
+    }
+    if (linkedBundle && identity.savedFingerprint &&
+      linkedBundle._singleIdentity !== identity.token) {
+      linkedBundle = null; D = null; resetSingleViews();
+    }
+    var cells = linkedBundle && linkedBundle._singleOnly
+      ? linkedBundle.cells.slice() : [];
+    var seen = new Set(cells.map(String));
+    incoming.forEach(function (cell) {
+      if (!seen.has(cell)) { seen.add(cell); cells.push(cell); }
+    });
+    if (!cells.length) return;
+    linkedBundle = {
+      _singleOnly: true,
+      _singleIdentity: identity.token,
+      dataset_id: identity.datasetId,
+      dataset_fingerprint: identity.fingerprint,
+      cell_fingerprint: identity.fingerprint,
+      cells: cells,
+      n: cells.length,
+      groups: {}, cat_extra: {}, cat_skipped: {}, fields: {},
+      genes: [], projections: {}, trajectories: {}, spaces: [],
+      default_group: null
+    };
+    D = linkedBundle;
+    singleIndexCells = null; singleIndexMap = null;
+  }
   function singleIndex() {
     var cells = linkedBundle && linkedBundle.cells;
     if (cells === singleIndexCells && singleIndexMap) return singleIndexMap;
@@ -5648,14 +5755,16 @@
   }
 
   function renderSingle(id, meta, data, hover, extra) {
-    var previous = registerSingle(id); if (!previous) return;
+    if (!id) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
+    var incoming = {
+      id: id, meta: meta, data: data, hover: hover || {}, extra: extra || {}
+    };
+    ensureSingleBase(incoming);
+    var previous = registerSingle(id); if (!previous) return;
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
-    singleViews[id] = Object.assign(previous, {
-      id: id, meta: meta || {}, data: data || {}, hover: hover || {},
-      extra: extra || {}
-    });
+    singleViews[id] = Object.assign(previous, incoming);
     if (changedGroup) singleViews[id].hiddenGroups = [];
     if (data.reset_axes) singleViews[id].lenses = [];
     var pending = singleViews[id].pendingSavedState;
@@ -5964,6 +6073,17 @@
   // ---- portable local workspace ------------------------------------------
   // The JSON contains identities and interaction state only; no expression,
   // coordinates, images, receptor sequences or other source data leave D.
+  function fingerprintCells(cells) {
+    var a = 2166136261, b = 2246822519;
+    cells.forEach(function (cell) {
+      var text = String(cell) + '\u0000';
+      for (var i = 0; i < text.length; i++) {
+        a = Math.imul(a ^ text.charCodeAt(i), 16777619) >>> 0;
+        b = Math.imul(b ^ text.charCodeAt(i), 3266489917) >>> 0;
+      }
+    });
+    return cells.length + ':' + a.toString(16) + ':' + b.toString(16);
+  }
   function configFingerprint() {
     if (!D || !Array.isArray(D.cells)) return '';
     if (typeof D.dataset_fingerprint === 'string' && D.dataset_fingerprint) {
@@ -5972,15 +6092,7 @@
     if (typeof D.cell_fingerprint === 'string' && D.cell_fingerprint) {
       return D.cell_fingerprint;
     }
-    var a = 2166136261, b = 2246822519;
-    D.cells.forEach(function (cell) {
-      var text = String(cell) + '\u0000';
-      for (var i = 0; i < text.length; i++) {
-        a = Math.imul(a ^ text.charCodeAt(i), 16777619) >>> 0;
-        b = Math.imul(b ^ text.charCodeAt(i), 3266489917) >>> 0;
-      }
-    });
-    return D.cells.length + ':' + a.toString(16) + ':' + b.toString(16);
+    return fingerprintCells(D.cells);
   }
 
   function selectedCellIds() {
@@ -6394,6 +6506,7 @@
         genes: colourData.genes
       };
     } else if (D && colourData && colourData.mode === GENE_PANELS_MODE) {
+      _ordD = null;
       D.genePanelMax = Number(colourData.max) || 1;
       D.genePanels = colourData.genes.map(function (gene, index) {
         return { gene: gene, v: colourData.values[index] || [] };
@@ -6497,6 +6610,7 @@
       if (genes.length === 1 && (!values.length || typeof values[0] === 'number')) {
         values = [values];
       }
+      _ordD = null;
       D.genePanelMax = Number(m.max) || 1;
       D.genePanels = genes.map(function (gene, index) {
         return { gene: gene, v: values[index] || [] };
@@ -6566,7 +6680,9 @@
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
       var singleId = visibleSingleId();
-      var vis = linkedVis || !!singleId;
+      if (singleId && singleBaseStale()) {
+        linkedBundle = null; D = null; resetSingleViews();
+      }
       var key = linkedVis ? 'linked' : (singleId || 'hidden');
       var host = singleId && singleHost(singleId);
       var surface = host && host.querySelector('.cerebro-cell-view-surface');
@@ -6586,7 +6702,7 @@
         activateLinked();
       }
       if (Shiny.setInputValue) {
-        Shiny.setInputValue('coordviews_visible', vis);
+        Shiny.setInputValue('coordviews_visible', linkedVis);
       }
     }
     setInterval(reportVisibility, 250);
