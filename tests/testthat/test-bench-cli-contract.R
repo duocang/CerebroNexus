@@ -295,6 +295,27 @@ test_that("run provenance quotes Git magic pathspecs", {
   expect_true(file.exists(result))
 })
 
+test_that("empty Git status remains clean in run provenance", {
+  script <- parse(file.path(bench_root, "src", "02_record_environment.R"))
+  status_assignment <- Filter(
+    function(expression) {
+      is.call(expression) &&
+        identical(expression[[1L]], quote(`<-`)) &&
+        identical(expression[[2L]], quote(status))
+    },
+    as.list(script)
+  )
+  expect_length(status_assignment, 1L)
+
+  environment <- list2env(list(
+    tracked_status = "",
+    untracked_status = ""
+  ))
+  eval(status_assignment[[1L]], envir = environment)
+
+  expect_false(any(nzchar(environment$status)))
+})
+
 test_that("schedule CLI emits a complete quick-profile grid", {
   skip_unless_bench_cli()
   result <- tempfile(fileext = ".csv")

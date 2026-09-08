@@ -83,7 +83,7 @@ untracked_status <- git_value(
   ".",
   ":(exclude,glob)tests/bench/result/**"
 )
-status <- paste(tracked_status, untracked_status)
+status <- paste0(tracked_status, untracked_status)
 scratch <- Sys.getenv("BENCH_SCRATCH")
 scratch_df <- if (nzchar(scratch) && dir.exists(scratch)) {
   capture_command("df", c("-P", scratch))
