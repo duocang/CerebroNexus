@@ -2174,6 +2174,67 @@ test_that("specialist payload replaces an unidentifiable full bundle", {
   expect_identical(tail(output, 1L), "new|0")
 })
 
+test_that("hidden specialist payload leaves the active specialist intact", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:2, cell_fingerprint:'same'};",
+      "    linkedBundle = {_singleOnly:true,",
+      "      _singleIdentity:'cells:same\\u00002\\u0000same',",
+      "      dataset_id:'cells:same', dataset_fingerprint:'same',",
+      "      cell_fingerprint:'same', cells:['a'], n:1, groups:{},",
+      "      cat_extra:{}, cat_skipped:{}, fields:{}, genes:[],",
+      "      projections:{}, trajectories:{}, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle, {fields:{active:{v:[1]}}});",
+      "    singleViews.active = {id:'active'}; singleActive = 'active';",
+      "  },",
+      "  renderHidden: function () {",
+      "    renderSingle('hidden', {}, {selection_key:['b']}, {}, {});",
+      "  },",
+      "  state: function () { return [singleViews.hidden ? 'hidden-payload' : 'missing',",
+      "    D.fields.active ? 'active' : 'blank', linkedBundle.cells.join(',')]; }",
+      "};"
+    ),
+    c(
+      "__cellViewsTest.seed();",
+      "__cellViewsTest.renderHidden();",
+      "console.log(__cellViewsTest.state().join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "hidden-payload|active|a")
+})
+
+test_that("specialist identity reset retains the payload being activated", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:1, cell_fingerprint:'old'};",
+      "    linkedBundle = {_singleOnly:true,",
+      "      _singleIdentity:'cells:old\\u00001\\u0000old',",
+      "      cells:['old'], n:1}; D = {marker:'active'};",
+      "    singleViews.old = {id:'old'}; singleActive = 'old';",
+      "  },",
+      "  replace: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:1, cell_fingerprint:'new'};",
+      "    var payload = {id:'new', data:{selection_key:['new']}};",
+      "    singleViews.new = payload; ensureSingleBase(payload);",
+      "    return [linkedBundle.cells.join(','), Object.keys(singleViews).join(','),",
+      "      D === null ? 'null' : 'active'];",
+      "  }",
+      "};"
+    ),
+    c(
+      "__cellViewsTest.seed();",
+      "console.log(__cellViewsTest.replace().join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|new|null")
+})
+
 test_that("continuous caches follow replaced value arrays", {
   output <- run_cell_views_node(
     c(
@@ -2217,6 +2278,49 @@ test_that("continuous caches follow replaced value arrays", {
     tail(output, 1L),
     "0,2,3,1|10:40|0,2,3,1|10:40|true|true|true"
   )
+})
+
+test_that("gene caches retain only the current value array", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () { D = {n:2, fields:{}}; },",
+      "  setGene: function (index, values) {",
+      "    D.gene = {gene:'G' + index, v:values}; colorClip = (index % 4) / 100;",
+      "  },",
+      "  order: function () { return paintOrder({colorBy:GENE_MODE}); },",
+      "  range: function () { return clipRange({colorBy:GENE_MODE}); },",
+      "  clearGene: function () {",
+      "    D.gene = null; clipRange({colorBy:GENE_MODE});",
+      "    return _clipCache.has(GENE_MODE);",
+      "  },",
+      "  stats: function (values, order, range) {",
+      "    var orders = Array.from(_ordCache.entries()).filter(function (entry) {",
+      "      return entry[0] === GENE_MODE || entry[0].indexOf(GENE_MODE + '|') === 0;",
+      "    });",
+      "    var clips = Array.from(_clipCache.entries()).filter(function (entry) {",
+      "      return entry[0] === GENE_MODE || entry[0].indexOf(GENE_MODE + '|') === 0;",
+      "    });",
+      "    return [orders.length, clips.length,",
+      "      orders.filter(function (entry) { return entry[1].values !== values; }).length,",
+      "      clips.filter(function (entry) { return entry[1].values !== values; }).length,",
+      "      order === paintOrder({colorBy:GENE_MODE}),",
+      "      range === clipRange({colorBy:GENE_MODE})];",
+      "  }",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest; t.seed(); let values;",
+      "for (let i = 0; i < 100; i++) {",
+      "  values = [i, i + 1]; t.setGene(i, values); t.order(); t.range();",
+      "}",
+      "const order = t.order(), range = t.range();",
+      "const stats = t.stats(values, order, range);",
+      "console.log(stats.concat(t.clearGene()).join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "1|1|0|0|true|true|false")
 })
 
 test_that("freehand drag queues every point and flushes mouseup", {
@@ -2284,6 +2388,12 @@ test_that("dedicated cell views do not request the Linked Views bundle", {
   expect_match(js, "window.cerebroSavedViewDataset || {}", fixed = TRUE)
   expect_match(js, "identity.cell_fingerprint", fixed = TRUE)
   expect_match(js, "_singleOnly: true", fixed = TRUE)
+  expect_match(js, "if (singleId && singleViews[singleId])", fixed = TRUE)
+  expect_no_match(
+    js,
+    "singleId && linkedBundle && singleViews[singleId]",
+    fixed = TRUE
+  )
   expect_no_match(js, "dataset_id: 'single-view'", fixed = TRUE)
 })
 
@@ -2302,7 +2412,7 @@ test_that("continuous panel calculations cache every field for the current data"
   expect_match(js, "var _clipD = null, _clipCache = new Map();", fixed = TRUE)
   expect_match(
     js,
-    "_clipCache.set(key, { values: vals, range: r });",
+    "_clipCache.set(key, { values: vals, clip: colorClip, range: r });",
     fixed = TRUE
   )
   expect_no_match(js, "_ordKey", fixed = TRUE)

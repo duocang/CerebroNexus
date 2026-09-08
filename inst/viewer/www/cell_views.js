@@ -515,8 +515,8 @@
   // they paint over it, and a real signal reads as absent. Categorical
   // colourings have no such order and keep the natural one.
   //
-  // Cached per (data set, colouring, gene): the sort is over every cell and the
-  // answer only changes when one of those does.
+  // Cached per (data set, colouring, values): the sort is over every cell and
+  // the answer only changes when one of those does.
   var _ordD = null, _ordCache = new Map();
   function panelColorMode(p) {
     return p && p.colorBy ? p.colorBy : colorBy;
@@ -525,8 +525,9 @@
     if (!D) return null;
     if (_ordD !== D) { _ordD = D; _ordCache = new Map(); }
     var mode = panelColorMode(p);
-    var key = mode === GENE_MODE
-      ? mode + '|' + (D.gene ? D.gene.gene : '') : mode;
+    // The current gene owns one slot. Its values identity invalidates the slot,
+    // so browsing many genes cannot retain every old expression vector.
+    var key = mode === GENE_MODE ? GENE_MODE : mode;
     var vals = null;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
@@ -572,12 +573,18 @@
       field = fieldForMode(mode);
       if (field) { vals = field.v; span = field.scale || 255; }
     }
-    if (!vals) return null;
+    if (!vals) {
+      if (mode === GENE_MODE) _clipCache.delete(GENE_MODE);
+      return null;
+    }
     if (field && field.unclipped) return { lo: 0, hi: span };
-    var key = (mode === GENE_MODE
-      ? mode + '|' + (D.gene ? D.gene.gene : '') : mode) + '|' + colorClip;
+    // As above, a gene has one replaceable slot. Field modes remain multi-slot
+    // because gene panels and other continuous fields are drawn together.
+    var key = mode === GENE_MODE ? GENE_MODE : mode + '|' + colorClip;
     var cached = _clipCache.get(key);
-    if (cached && cached.values === vals) return cached.range;
+    if (cached && cached.values === vals && cached.clip === colorClip) {
+      return cached.range;
+    }
     var r;
     if (colorClip <= 0) {
       r = { lo: 0, hi: span };
@@ -593,7 +600,7 @@
       }
       if (!k) {
         r = { lo: 0, hi: span };
-        _clipCache.set(key, { values: vals, range: r });
+        _clipCache.set(key, { values: vals, clip: colorClip, range: r });
         return r;
       }
       var want = colorClip * k, acc = 0, lo = 0, hi = span;
@@ -603,7 +610,7 @@
       if (hi <= lo) { lo = 0; hi = span; }   // degenerate (constant) -- show it all
       r = { lo: lo, hi: hi };
     }
-    _clipCache.set(key, { values: vals, range: r });
+    _clipCache.set(key, { values: vals, clip: colorClip, range: r });
     return r;
   }
   // Quantised value -> 0..1 across the active colour range.
@@ -5202,9 +5209,11 @@
       surfaceHome.insightsNext
     );
   }
-  function resetSingleViews() {
+  function resetSingleViews(preserve) {
     restoreLinkedSurface();
-    singleViews = {}; singleActive = null;
+    singleViews = {};
+    if (preserve && preserve.id) singleViews[preserve.id] = preserve;
+    singleActive = null;
     singleRequests.clear();
     singleSpaceIds = []; singleSpaceModes = {};
     singleIndexCells = null; singleIndexMap = null;
@@ -5279,12 +5288,12 @@
       var sameFingerprint = !!identity.savedFingerprint &&
         bundleFingerprint(linkedBundle) === identity.savedFingerprint;
       var sameId = !identity.savedId || linkedBundle.dataset_id === identity.savedId;
-      if (sameFingerprint && sameId) return;
-      linkedBundle = null; D = null; resetSingleViews();
+      if (sameFingerprint && sameId) return true;
+      linkedBundle = null; D = null; resetSingleViews(payload);
     }
     if (linkedBundle && linkedBundle._singleOnly &&
       (!identity.savedFingerprint || linkedBundle._singleIdentity !== identity.token)) {
-      linkedBundle = null; D = null; resetSingleViews();
+      linkedBundle = null; D = null; resetSingleViews(payload);
     }
     var cells = linkedBundle && linkedBundle._singleOnly
       ? linkedBundle.cells.slice() : [];
@@ -5292,7 +5301,7 @@
     incoming.forEach(function (cell) {
       if (!seen.has(cell)) { seen.add(cell); cells.push(cell); }
     });
-    if (!cells.length) return;
+    if (!cells.length) return false;
     linkedBundle = {
       _singleOnly: true,
       _singleIdentity: identity.token,
@@ -5305,8 +5314,8 @@
       genes: [], projections: {}, trajectories: {}, spaces: [],
       default_group: null
     };
-    D = linkedBundle;
     singleIndexCells = null; singleIndexMap = null;
+    return true;
   }
   function singleIndex() {
     var cells = linkedBundle && linkedBundle.cells;
@@ -5654,8 +5663,13 @@
   }
   function activateSingle(id, resetAxes, preserveTargetState) {
     var payload = singleViews[id];
-    if (!payload || !linkedBundle || rebuildingBase) return false;
-    if (!singleActive && !linkedState) linkedState = exportWorkspace();
+    if (!payload || rebuildingBase) return false;
+    if (!singleActive && !linkedState && linkedBundle && !linkedBundle._singleOnly) {
+      linkedState = exportWorkspace();
+    }
+    if (!ensureSingleBase(payload)) return false;
+    payload = singleViews[id];
+    if (!payload || !linkedBundle) return false;
     if (CBViewState.shouldStashSingleState(
       singleActive,
       id,
@@ -5774,7 +5788,6 @@
     var incoming = {
       id: id, meta: meta, data: data, hover: hover || {}, extra: extra || {}
     };
-    ensureSingleBase(incoming);
     var previous = registerSingle(id); if (!previous) return;
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
     singleViews[id] = Object.assign(previous, incoming);
@@ -6709,7 +6722,7 @@
           priority: 'event'
         });
       }
-      if (singleId && linkedBundle && singleViews[singleId]) {
+      if (singleId && singleViews[singleId]) {
         activateSingle(singleId);
       } else if (linkedVis && singleActive) {
         activateLinked();
