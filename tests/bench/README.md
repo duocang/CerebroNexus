@@ -1,155 +1,109 @@
 # Real-data expression-backend benchmark
 
-This directory compares the `embedded`, `bpcells`, and `h5` backends on public single-cell matrices. This page explains how to run it. Read [METHODOLOGY.md](METHODOLOGY.md) for the experimental design and [RESULTS.md](RESULTS.md) before interpreting any number.
+This directory compares Cerebro's `embedded`, `bpcells`, and `h5` expression
+backends on two public single-cell matrices. The publication workflow is one
+complete study: A/B, C1, and C2 are acquired on the same machine, filesystem,
+code revision, dependency set, source files, and thread count.
 
-> **Current status:** Panel A/B is published as immutable run
-> `20260907T172844Z-9c6ab101e4a5-publication`. Panel C runs incrementally and
-> never rewrites that evidence.
+> **Current status:** historical evidence has been removed. No publication
+> result is current until `run_publication_full.sh` completes and publishes a
+> new immutable study.
 
-## Quick start
+Read [METHODOLOGY.md](METHODOLOGY.md) for the design and
+[RESULTS.md](RESULTS.md) before interpreting generated values.
 
-```bash
-# Smallest correctness and harness check
-BENCH_PROFILE=quick tests/bench/run_sweep.sh
+## Publication run
 
-# Repeated local review
-BENCH_PROFILE=standard tests/bench/run_sweep.sh
-
-# Repeated evidence plus staged figures
-BENCH_PROFILE=publication tests/bench/run_sweep.sh
-
-# Explicit memory-boundary experiment; normally rejected on a 32 GiB host
-BENCH_PROFILE=stress tests/bench/run_sweep.sh
-
-# C1 (400k/300k) followed by C2 (both complete sources)
-BENCH_SOURCE_CACHE="/shared/cerebro-benchmark-sources" \
-  tests/bench/run_panel_c.sh
-```
-
-Set `BENCH_RESULT_ROOT` for exploratory runs so generated evidence does not
-dirty the checkout that will later produce publication evidence. Set
-`BENCH_SOURCE_CACHE` to reuse the two checksum-verified source downloads.
+Use a clean checkout, the pinned Nix environment, an exclusive high-memory
+node, persistent checksum-verified source cache, and local scratch storage.
 
 ```bash
-BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
-  BENCH_SOURCE_CACHE="/shared/cerebro-benchmark-sources" \
-  BENCH_SOURCES_ONLY=mouse_brain_e18 \
-  BENCH_PROFILE=quick tests/bench/run_sweep.sh
-```
-
-## HPC publication run
-
-Use the pinned Nix environment and an exclusive node. `BENCH_THREADS` defaults
-to one and is propagated to the common BLAS/OpenMP thread controls; keep the
-same value for every compared backend.
-
-```bash
-git clone --filter=blob:none --single-branch \
-  --branch paper/real-data-benchmark \
-  https://github.com/duocang/CerebroNexus.git
-cd CerebroNexus
-
 nix-shell default.nix -A shell
 
-git status --short                 # must print nothing
-git rev-parse HEAD                 # record the exact code under test
+git status --short       # must print nothing
+git rev-parse HEAD       # record the code under test
 
 BENCH_THREADS=1 \
-  BENCH_SOURCE_CACHE="/shared/cerebro-benchmark-sources" \
-  BENCH_SCRATCH_PARENT="${SLURM_TMPDIR:-/fast/local/scratch/$USER}" \
-  BENCH_PROFILE=publication tests/bench/run_sweep.sh
+  BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
+  BENCH_SCRATCH_PARENT=/fast/local/scratch \
+  BENCH_STORAGE_DESCRIPTION="local NVMe; ext4; model=<model>" \
+  tests/bench/run_publication_full.sh
 ```
 
-After validation, `tests/bench/result/CURRENT` names the immutable result. Add
-only that pointer and its run directory when returning evidence to Git.
+The wrapper owns the exact study design and rejects source-selection overrides.
+It runs:
 
-```bash
-run_id=$(< tests/bench/result/CURRENT)
-git add tests/bench/result/CURRENT "tests/bench/result/runs/$run_id"
-git commit -m "docs(bench): publish real-data evidence"
-git push origin paper/real-data-benchmark
-```
+| phase | cells | backends | builds | access processes |
+|---|---|---|---:|---:|
+| A/B | 50k and 150k from mouse and human | embedded, bpcells, h5 | 36 | 72 |
+| C1 | mouse 400k; human 300k | embedded, bpcells, h5 | 18 | 36 |
+| C2 | complete mouse and human sources | bpcells, h5 | 12 | 24 |
 
-Limit a run to one source when developing the harness:
+For every source/tier, a deterministic query plan is prepared in a separate
+process before any timed build; the exact 12-gene panel is retained as CSV.
+Each phase publishes into private study work;
+only after all phases, provenance checks, correctness checks, tables, and the
+combined figure succeed is the complete bundle copied to
+`result/publication-full/runs/<study-id>/`. `CURRENT` is updated last.
 
-```bash
-BENCH_SOURCES_ONLY=mouse_brain_e18 \
-  BENCH_PROFILE=quick tests/bench/run_sweep.sh
-```
-
-## Incremental Panel C
-
-`run_panel_c.sh` reuses checksum-verified files in `BENCH_SOURCE_CACHE`. C1
-publishes 18 builds and 36 access processes under `result/panel-c1/`. C2
-publishes 12 streamed builds and 24 access processes under `result/panel-c2/`.
-Running one part does not rerun A/B or the other part:
-
-```bash
-BENCH_PANEL_C_PART=c1 tests/bench/run_panel_c.sh
-BENCH_PANEL_C_PART=c2 tests/bench/run_panel_c.sh
-```
-
-After both parts validate, an unqualified run also writes the derived combined
-summary, manifest, and figure under `result/panel-c/`.
+Set `BENCH_STUDY_ID` to resume a stopped study with the same code and settings.
+Completed phases are reused and derived output is rebuilt. Set
+`BENCH_KEEP_STUDY_WORK=1` to retain the private phase directories after a
+successful publication.
 
 For a disconnect-safe remote run:
 
 ```bash
-mkdir -p /home/xuesong/benchmark-logs
-tmux new-session -d \
-  -s cerebro-panel-c \
-  -c /home/xuesong/Projects/CerebroNexus \
-  'BENCH_THREADS=1 BENCH_SOURCE_CACHE=/home/xuesong/.cache/cerebro-benchmark-sources BENCH_SCRATCH_PARENT=/tmp nix-shell default.nix -A shell --run "tests/bench/run_panel_c.sh" 2>&1 | tee /home/xuesong/benchmark-logs/panel-c.log; exec zsh'
-
-tail -f /home/xuesong/benchmark-logs/panel-c.log
+tmux new-session -d -s cerebro-benchmark \
+  -c /path/to/CerebroNexus \
+  'nix-shell default.nix -A shell --run "BENCH_THREADS=1 BENCH_SOURCE_CACHE=/persistent/cache BENCH_SCRATCH_PARENT=/local/scratch BENCH_STORAGE_DESCRIPTION=local-nvme-ext4 tests/bench/run_publication_full.sh" 2>&1 | tee /path/to/benchmark.log'
 ```
 
-`BENCH_ALLOW_UNSAFE=1` bypasses the resource gate. Use it only for an intentional stress run. Normal runs must not silently skip unsafe tiers.
+## Harness development
 
-## What happens before a download
+These profiles are for correctness and harness development, not the final
+article evidence:
 
-The command first:
+```bash
+BENCH_PROFILE=quick tests/bench/run_sweep.sh
+BENCH_PROFILE=standard tests/bench/run_sweep.sh
+BENCH_PROFILE=stress tests/bench/run_sweep.sh
+```
 
-1. inspects source dimensions;
-2. records the machine and Git revision;
-3. creates the requested run plan; and
-4. checks estimated memory, sparse-index, and free-disk limits.
+Use external result and source-cache directories during development:
 
-If the plan is unsafe, it stops with the source, cell tier, estimated memory, safe budget, and reason. No complete source file or backend export has started at that point.
+```bash
+BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
+  BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
+  BENCH_SOURCES_ONLY=mouse_brain_e18 \
+  BENCH_PROFILE=quick tests/bench/run_sweep.sh
+```
 
-## Profiles
+`BENCH_ALLOW_UNSAFE=1` is only for an intentional stress experiment. Normal
+runs stop rather than silently omit unsafe tiers.
 
-| profile | purpose | large boundary tiers |
-|---|---|:---:|
-| `quick` | verify the harness and correctness gate | no |
-| `standard` | repeated local comparison | no |
-| `publication` | repeated article evidence and figures | no |
-| `stress` | opt-in host memory-boundary experiment | yes |
+## Script map
 
-## Outputs
-
-Validated runs are immutable under `result/runs/<run-id>/`. `result/CURRENT` contains the run used by report and plotting tools. A failed or interrupted run leaves the previous pointer unchanged.
-
-The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-30/`; it is superseded and cannot support current performance claims.
-
-## Plain-language script map
-
-| script | meaning |
+| script | purpose |
 |---|---|
-| `01_inspect_data.R` | find out how large the sources are |
-| `02_record_environment.R` | record the code and machine under test |
-| `03_plan_runs.R` | list the requested backend runs |
-| `04_check_resources.R` | stop before running a plan that will not fit |
-| `04_check_full_resources.R` | check the out-of-core full-source plan |
-| `10_export_backend.R` | export one backend in a fresh process |
-| `11_build_full_backend.R` | stream one complete source into BPCells or H5 |
-| `20_measure_backend.R` | measure and correctness-check one backend |
-| `30_check_measurements.R` | reject incomplete or incorrect measurements |
-| `40_write_report.R` | generate the Markdown result report |
-| `41_draw_figures.R` | generate publication figures |
-| `42_write_panel_c_report.R` | combine immutable A/B, C1, and C2 runs |
-| `43_draw_panel_c_figure.R` | draw the combined Panel C figure |
-| `50_check_outputs.R` | ensure the report package is complete |
+| `run_publication_full.sh` | acquire and publish the complete study |
+| `run_sweep.sh` | run one internal phase or development profile |
+| `01_inspect_data.R` | inspect source dimensions and sparsity |
+| `02_record_environment.R` | record code, machine, storage, and dependencies |
+| `03_plan_runs.R` | write the deterministic schedule |
+| `04_check_resources.R` | gate sampled in-memory tiers |
+| `04_check_full_resources.R` | gate full-source out-of-core tiers |
+| `05_prepare_query_plan.R` | prepare and freeze the untimed query plan |
+| `10_export_backend.R` | build one sampled backend in a fresh process |
+| `11_build_full_backend.R` | build one full-source backend in a fresh process |
+| `20_measure_backend.R` | measure and correctness-check one fresh access process |
+| `30_check_measurements.R` | reject incomplete, failed, or inconsistent rows |
+| `40_write_report.R` / `41_draw_figures.R` | write internal phase outputs |
+| `42_write_panel_c_report.R` / `43_draw_panel_c_figure.R` | validate and combine the complete study |
+| `50_check_outputs.R` | validate an internal phase package |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 
-The two default public sources are 10x mouse brain E18 (4.2 GB) and the HBCC human prefrontal-cortex atlas (14.2 GB). Publication comparisons use 50k and 150k cells from both sources; the resource preflight therefore requires a high-memory host. The MSSM cohort is opt-in through `BENCH_SOURCES_EXTRA=human_pfc_mssm`.
+The default sources are the 10x 1.3-million-cell mouse brain E18 dataset and
+the 1.49-million-cell PsychAD HBCC human prefrontal-cortex dataset. Stable
+identifiers, landing pages, byte sizes, and acquired SHA-256 values are stored
+with every final study.

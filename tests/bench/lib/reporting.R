@@ -88,67 +88,94 @@ bench_current_result_dir <- function(result_root) {
   normalizePath(run_dir)
 }
 
-bench_validate_panel_c_baseline <- function(
-  result_dir,
-  manifest = NULL,
-  sources = NULL,
-  access = NULL
+bench_result_run_dir <- function(result_root, run_id) {
+  if (!grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", run_id)) {
+    stop("unsafe run id", call. = FALSE)
+  }
+  run_dir <- file.path(result_root, "runs", run_id)
+  if (!dir.exists(run_dir)) {
+    stop("benchmark run directory does not exist", call. = FALSE)
+  }
+  normalizePath(run_dir)
+}
+
+bench_manifest_values <- function(manifest) {
+  if (
+    !identical(names(manifest), c("key", "value")) ||
+      anyDuplicated(manifest$key)
+  ) {
+    stop("run manifest must contain unique key/value rows", call. = FALSE)
+  }
+  stats::setNames(as.character(manifest$value), manifest$key)
+}
+
+bench_compare_environments <- function(
+  left,
+  right,
+  keys = c(
+    "r_version",
+    "r_platform",
+    "os",
+    "cpu",
+    "memory_mb",
+    "r_vector_limit_mb",
+    "benchmark_threads",
+    "storage_description",
+    "package_version",
+    "package_Matrix",
+    "package_rhdf5",
+    "package_Seurat",
+    "package_SeuratObject",
+    "package_BPCells",
+    "package_HDF5Array"
+  )
 ) {
-  expected_run <- "20260907T172844Z-9c6ab101e4a5-publication"
-  expected_sha <- "9c6ab101e4a5a2ae79ada5d5fab99bf05952a0f4"
-  expected_sources <- c(
-    mouse_brain_e18 = "255a36ee92de25cb3568faa2c27d31fe6d0db30f285c5c977be8d6245de14044",
-    human_pfc_hbcc = "aeca0480ab8941a7e4cf6b0ff6dc8c5f9d0de376466d65ca8198dc873f1cb16f"
+  left_values <- left[keys]
+  right_values <- right[keys]
+  missing <- keys[
+    is.na(left_values) |
+      !nzchar(left_values) |
+      is.na(right_values) |
+      !nzchar(right_values)
+  ]
+  different <- keys[
+    !is.na(left_values) &
+      nzchar(left_values) &
+      !is.na(right_values) &
+      nzchar(right_values) &
+      left_values != right_values
+  ]
+  list(
+    comparable = !length(missing) && !length(different),
+    missing = unname(missing),
+    different = unname(different)
   )
-  if (is.null(manifest)) {
-    manifest <- utils::read.csv(
-      file.path(result_dir, "run_manifest.csv"),
-      stringsAsFactors = FALSE
-    )
+}
+
+bench_backend_ratios <- function(summary, metric, reference) {
+  required <- c("source", "n_cells", "backend", metric)
+  missing <- setdiff(required, names(summary))
+  if (length(missing)) {
+    stop("missing ratio columns: ", paste(missing, collapse = ", "))
   }
-  values <- stats::setNames(as.character(manifest$value), manifest$key)
-  if (!identical(values[["run_id"]], expected_run)) {
-    stop("Panel C baseline run ID changed", call. = FALSE)
+  keys <- c("source", "n_cells")
+  references <- summary[summary$backend == reference, c(keys, metric)]
+  names(references)[ncol(references)] <- "reference_value"
+  compared <- merge(summary, references, by = keys, all = FALSE)
+  compared <- compared[compared$backend != reference, , drop = FALSE]
+  compared <- compared[
+    is.finite(compared[[metric]]) &
+      is.finite(compared$reference_value) &
+      compared$reference_value != 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(compared)) {
+    compared$reference_backend <- character()
+    compared$ratio <- numeric()
+    return(compared)
   }
-  if (!identical(values[["git_sha"]], expected_sha)) {
-    stop("Panel C baseline Git SHA changed", call. = FALSE)
-  }
-  if (is.null(sources)) {
-    sources <- utils::read.csv(
-      file.path(result_dir, "source_manifest.csv"),
-      stringsAsFactors = FALSE
-    )
-  }
-  observed <- stats::setNames(as.character(sources$sha256), sources$source)
-  if (!identical(observed[names(expected_sources)], expected_sources)) {
-    stop("Panel C baseline source hash changed", call. = FALSE)
-  }
-  if (is.null(access)) {
-    access <- utils::read.csv(
-      file.path(result_dir, "20_access.csv"),
-      stringsAsFactors = FALSE
-    )
-  }
-  required <- c(
-    "source",
-    "n_cells",
-    "backend",
-    "status",
-    "hot_p50_secs",
-    "block_secs",
-    "n_hot",
-    "query_plan_fingerprint"
-  )
-  if (!all(required %in% names(access))) {
-    stop("Panel C baseline metric schema changed", call. = FALSE)
-  }
-  if (any(access$status != "OK") || any(access$n_hot != 33L)) {
-    stop("Panel C baseline query-panel size changed", call. = FALSE)
-  }
-  groups <- interaction(access$source, access$n_cells, drop = TRUE)
-  fingerprints <- tapply(access$query_plan_fingerprint, groups, unique)
-  if (any(lengths(fingerprints) != 1L)) {
-    stop("Panel C baseline query-plan fingerprint drifted", call. = FALSE)
-  }
-  TRUE
+  compared$reference_backend <- reference
+  compared$ratio <- compared[[metric]] / compared$reference_value
+  compared
 }

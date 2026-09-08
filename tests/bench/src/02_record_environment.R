@@ -69,8 +69,24 @@ package_version_or_na <- function(package) {
 }
 
 description <- read.dcf(file.path(repo, "DESCRIPTION"))
-status <- git_value("status", "--porcelain")
+tracked_status <- git_value("status", "--porcelain", "--untracked-files=no")
+untracked_status <- git_value(
+  "ls-files",
+  "--others",
+  "--exclude-standard",
+  "--",
+  ".",
+  ":(exclude,glob)tests/bench/result/**"
+)
+status <- paste(tracked_status, untracked_status)
+scratch <- Sys.getenv("BENCH_SCRATCH")
+scratch_df <- if (nzchar(scratch) && dir.exists(scratch)) {
+  capture_command("df", c("-P", scratch))
+} else {
+  ""
+}
 manifest <- c(
+  study_id = Sys.getenv("BENCH_STUDY_ID"),
   run_id = Sys.getenv("BENCH_RUN_ID"),
   profile = Sys.getenv("BENCH_PROFILE", "quick"),
   generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
@@ -88,6 +104,8 @@ manifest <- c(
   slurm_node_list = Sys.getenv("SLURM_NODELIST"),
   slurm_cpus_per_task = Sys.getenv("SLURM_CPUS_PER_TASK"),
   slurm_memory_per_node = Sys.getenv("SLURM_MEM_PER_NODE"),
+  scratch_df = scratch_df,
+  storage_description = Sys.getenv("BENCH_STORAGE_DESCRIPTION"),
   memory_mb = format(memory_mb(), scientific = FALSE, trim = TRUE),
   r_vector_limit_mb = format(mem.maxVSize(), scientific = FALSE, trim = TRUE)
 )

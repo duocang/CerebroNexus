@@ -2,109 +2,147 @@
 
 ## Research question
 
-For the same Cerebro expression matrix and the same public source cells, how do the `embedded`, `bpcells`, and `h5` backends differ in export cost, stored size, fresh-process startup, process memory, single-gene access, and a 12-gene block read? A separate exploratory sweep asks where the current in-memory Seurat export path stops working as the non-zero count grows.
+For the same public expression matrices and deterministic query workloads, how
+do Cerebro's `embedded`, `bpcells`, and `h5` backends trade build time, stored
+size, process memory, fresh-process startup, warmed single-gene latency, and a
+12-gene block read as cell count grows?
 
-The benchmark does not compare biological methods, remote-network throughput, or true cold-disk behaviour.
+The study is descriptive engineering evidence. It does not compare biological
+methods, test statistical significance, control the operating-system page
+cache, or claim cross-machine generality.
 
-## Experimental unit and replication
+## One complete publication study
 
-An export process is the experimental unit for export time, disk size, peak R heap, and peak process RSS. A fresh access process is the experimental unit for startup, resident memory, peak process RSS, and query timings. Repeated getter calls inside one access process estimate its warmed-query distribution; they are not counted as independent replicates.
+`run_publication_full.sh` acquires three phases under one study ID:
 
-The backend order rotates deterministically across three export repeats:
+| phase | source tiers | backends |
+|---|---|---|
+| A/B | mouse and human at 50k and 150k cells | embedded, bpcells, h5 |
+| C1 | mouse 400k and human 300k | embedded, bpcells, h5 |
+| C2 | complete mouse and human sources | bpcells, h5 |
 
-1. `embedded`, `bpcells`, `h5`;
-2. `bpcells`, `h5`, `embedded`;
-3. `h5`, `embedded`, `bpcells`.
+All phases must share the same Git SHA, clean worktree, R and dependency
+versions, CPU, OS, thread count, storage description, and acquired source
+SHA-256 values. Any drift aborts the combined report. `embedded` is omitted
+from C2 because both full matrices exceed the 32-bit non-zero index limit of
+`Matrix::dgCMatrix`; the report labels it `not representable` rather than zero
+or failed.
 
-Each backend therefore occupies every order position once on a repeated tier. The schedule is written to `05_schedule.csv` before data transfer begins. The resource checker then evaluates every distinct source/tier against the recorded host memory, R vector limit, free disk, and sparse-index limit.
+## Sources and sampling
 
-## Run profiles
+The sources are the 10x 1.3-million-cell mouse brain E18 dataset (`GSE93421`,
+`SRP096558`) and the CELLxGENE PsychAD HBCC human prefrontal-cortex dataset
+(dataset `d27fb144-f105-46c2-b36f-f51421f74e4e`, collection
+`84ce6837-548d-4a1f-919f-0bc0d9a3952f`, DOI
+`10.1038/s41597-025-04687-5`). Downloads live outside Git in a persistent
+cache and are reused only after byte-size and SHA-256 verification.
 
-| profile | comparison-tier exports | accesses per export | use |
-|---|---:|---:|---|
-| `quick` | 1 | 1 | smoke-check the harness |
-| `standard` | 3 | 1 | local review and debugging |
-| `publication` | 3 | 2 | evidence for the pkgdown article |
-| `panel_c1` | 3 | 2 | 400k mouse / 300k human, all three backends |
-| `panel_c2` | 3 | 2 | complete sources, BPCells and H5 only |
-| `stress` | 1 | 1 | explicit host memory-boundary experiment |
+Sampled tiers contain four evenly spaced contiguous cell runs. This limits HDF5
+hyperslabs while avoiding a prefix-only sample. The samples support storage and
+runtime measurement, not biological inference. C2 opens the complete sources
+lazily and streams expression to BPCells or TENx HDF5 without constructing a
+full `dgCMatrix`.
 
-The `quick` profile runs only the smallest comparison tier for each selected source. Normal profiles exclude large tiers that exist only to locate a pass/fail boundary. Those tiers belong to `stress`, and resource preflight rejects them unless the recorded host has a safe budget or the operator uses an explicit unsafe override. Only `publication` results may regenerate the article figures.
+## Experimental units and order
 
-## Resource preflight
+Each backend build runs in a fresh process and is an independent observation
+for build time, stored size, R heap, and process peak RSS. Each access repeat
+runs in a fresh process and is an independent observation for load, attach,
+resident memory, peak RSS, and query timing. Calls repeated inside one access
+process describe that process's warmed-query distribution and are not treated
+as independent replicates.
 
-The scheduling guard estimates peak R heap as 64 bytes per expected non-zero plus 1 GiB fixed overhead. It permits at most 70% of the smaller of physical RAM and R's vector-memory limit, and at most 80% of currently free disk for a source download. The constants are conservative operational limits, not fitted scientific results. A plan also fails when its expected non-zero count exceeds the 32-bit sparse-index limit.
+Every tier has three builds and two access processes per build. Backend order
+rotates deterministically across the three builds, so every backend occupies
+each order position once when three backends are compared. Processes run
+sequentially with a fixed thread count on an exclusive node.
 
-Unsafe tiers are never silently removed. The run stops before bulk transfer and prints an actionable reason. `BENCH_ALLOW_UNSAFE=1` is reserved for an intentional `stress` run.
+## Query plan and cache semantics
 
-## Data and sampling
+For each source/tier, a separate process reads or lazily opens the source,
+selects 12 expressed genes across the observed density range, computes source
+fingerprints, and atomically freezes one query plan. Its preparation time and
+peak RSS are stored in `query_plan_manifest.csv` but excluded from all timed
+backend builds. `query_panel.csv` retains the exact gene order, roles, density,
+and reference fingerprints used by every process.
 
-The default sources are a 10x mouse-brain H5 matrix and a CELLxGENE human-PFC H5AD matrix. Both are downloaded once per run, read locally, hashed with SHA-256, and deleted with the scratch tree. The source URL, byte size, and hash are stored in `source_manifest.csv`.
-
-Each tier contains four evenly spaced contiguous cell runs. Contiguity keeps each source read to a small number of HDF5 hyperslabs; spacing avoids measuring only the first donors in a donor-ordered file. The subsets are suitable for storage and access measurements, not biological inference.
-
-Panel C1 uses the same path at 400,000 mouse cells and 300,000 human cells.
-Panel C2 is different: BPCells opens the complete cached 10x/H5AD source lazily,
-streams it into BPCells or TENx HDF5 storage, and never creates a full
-`dgCMatrix`. Its `.crb` contains deterministic full-cell metadata and a
-synthetic projection, while expression remains in the relative sibling
-backend.
-
-## Query panel and cache semantics
-
-The export process counts non-zero entries per gene and deterministically picks 12 expressed genes spanning the observed density range. The gene nearest the median density is reserved for the first query; the rest form the warmed-query and block-read panel.
-
-The plan and its reference fingerprints are written before the CRB is loaded in an access process. Consequently, the first backend getter call is the timed first query. It is called a **fresh-process first query**, not a cold-disk query: the benchmark cannot evict the operating-system page cache without privileged, platform-specific operations. After the first query, every hot-panel gene is warmed once and then measured in deterministic repeated passes. Publication runs make three observations per warmed gene (33 warmed observations per process). The independent process, not each within-process query, is the statistical unit.
-
-## Correctness gate
-
-Speed is not accepted without value equality. The source matrix supplies an XDR serialized fingerprint for the first row and for the full 12-gene block. Every access process recomputes both fingerprints outside the timed expressions. A mismatch marks the process as failed, and validation refuses to publish the run.
+Every build and access process reads this exact plan. Validation requires one
+matching fingerprint across preparation, all builds, and all access processes.
+The first getter call is a fresh-process first query, not a cold-disk query:
+source preparation and earlier runs may warm the operating-system cache. The
+remaining genes are warmed once, then queried in deterministic repeated passes.
+Publication access rows contain 33 warmed observations per process.
 
 ## Metrics
 
-| metric | experimental meaning |
+| metric | interpretation |
 |---|---|
-| `read_secs` | construct the sampled source `dgCMatrix` |
-| `seurat_secs` | wrap that matrix in the minimum exportable Seurat object |
-| `export_secs` | call `exportFromSeurat()` for one backend |
-| `crb_mb`, `sibling_mb`, `total_mb` | stored bytes after export |
-| `r_peak_mb` | maximum R heap observed across read, Seurat construction, and export |
+| `source_prepare_secs`, `query_plan_secs` | untimed study preparation, reported separately |
+| `read_secs` | sampled source construction or lazy full-source open |
+| `seurat_secs` | sampled Seurat shell construction; zero for C2 |
+| `export_secs` | backend build only |
+| `crb_mb`, `sibling_mb`, `total_mb` | stored artifact size |
+| `r_peak_mb`, `peak_rss_mb` | R heap and whole-process peak during the build process |
 | `load_secs`, `attach_secs` | fresh-process CRB load and backend attachment |
-| `rss_mb` | process RSS immediately after load and attach |
-| `peak_rss_mb` | Linux process high-water RSS, including native allocations |
-| `first_query_secs` | first backend getter call in that R process |
+| `rss_mb`, `peak_rss_mb` | attached-process resident and peak memory |
+| `first_query_secs` | first getter call in that process |
 | `hot_p50_secs`, `hot_p95_secs` | within-process warmed single-gene distribution |
-| `block_secs` | one 12-gene by all-cell block request |
+| `block_secs` | one deterministic 12-gene by all-cell read |
 
-Reports show median, minimum, maximum, and the number of independent processes. They retain raw per-process rows in the CSVs rather than treating within-process queries as independent samples.
+For C2, build peak RSS includes lazy source opening, backend writing, and shell
+serialization, but excludes query-plan preparation. Reports retain raw rows and
+show median, observed minimum/maximum, and independent-process `n`. Matched
+backend ratios are computed only within the same source, tier, phase, and
+metric.
 
-## Provenance and publication
+## Correctness and provenance gates
 
-`run_manifest.csv` records the run ID, profile, Git SHA and dirty state, package version, R and dependency versions, operating system, CPU, logical cores, fixed benchmark thread count, Slurm job/node allocation when present, RAM, and R vector-memory limit. A publication-profile run is rejected when the Git worktree is dirty.
+Each access process recomputes deterministic fingerprints for the first gene
+and 12-gene block outside timed expressions. Any failed status, value mismatch,
+missing scheduled row, duplicate tier plan, source-hash drift, protocol drift,
+or environment drift invalidates publication.
 
-All files are written to scratch. Measurements are validated before report and figure generation; the complete staged package is checked again before it is copied into `result/runs/<run-id>/`. `result/CURRENT` is replaced last. A crash before that pointer update leaves the previous evidence current and keeps every older immutable run available.
+`run_manifest.csv` records the study/run IDs, clean Git SHA, package version,
+R platform, key dependency versions, OS, CPU, allocated threads, scheduler
+metadata, RAM and vector limits, scratch filesystem, and operator-supplied
+storage description. Stable source identifiers and hashes are preserved in the
+final `source_provenance.csv`.
+
+## Resource and publication safety
+
+Sampled phases are rejected when their conservative memory, sparse-index, or
+disk estimates exceed the recorded host budget. C2 has a separate out-of-core
+resource gate. Unsafe tiers are never silently removed.
+
+Each phase first publishes immutably inside marked study work. The final bundle
+freezes all three raw phase directories, validates them together, creates the
+tables and figure, and is then copied atomically to
+`result/publication-full/runs/<study-id>/`; `CURRENT` changes last. A failed or
+interrupted study cannot replace previous evidence. A stopped study can resume
+by reusing the same explicit `BENCH_STUDY_ID`.
 
 ## Interpretation boundaries
 
-- Runtime comparisons apply to the recorded host, dependencies, data hashes, cell tiers, and query panel. They are not cross-platform confidence intervals.
-- Timed backend processes run sequentially with one fixed thread count; use an exclusive node for publication evidence.
-- `peak_rss_mb` is available on Linux through `/proc`; other platforms report it as missing rather than substituting a different metric.
-- The first-query metric does not control the operating-system disk cache.
-- The current scale estimate is descriptive: it reports the number and range of distinct source/tier points. It is not a universal bytes-per-non-zero law.
-- A full source exceeding the `Matrix::dgCMatrix` 32-bit non-zero limit cannot enter the current Seurat exporter, but that statement does not apply to every sparse representation available in R.
-- A profile named `publication` is an internal evidence gate, not a claim of academic peer review.
+- Results apply to the recorded host, filesystem, code, dependencies, sources,
+  cell tiers, query plan, and fixed thread count.
+- First-query results are warm-cache-compatible, not controlled cold-disk I/O.
+- Median and range describe observed process variation; they are not confidence
+  intervals and no significance test is performed.
+- Synthetic metadata and projection in C2 exercise the expression backend and
+  portable Cerebro shell, not end-to-end biological analysis or Viewer UX.
+- A second host is required before claiming cross-machine generality; browser
+  experiments are required before claiming million-cell interactive usability.
 
 ## Reproduction
 
 ```bash
-BENCH_PROFILE=quick tests/bench/run_sweep.sh
-BENCH_PROFILE=standard tests/bench/run_sweep.sh
-BENCH_PROFILE=publication tests/bench/run_sweep.sh
-BENCH_PROFILE=stress tests/bench/run_sweep.sh
-BENCH_SOURCE_CACHE=/persistent/cache tests/bench/run_panel_c.sh
-
-# Regenerate tracked figures only from the validated current publication run.
-Rscript tests/bench/src/41_draw_figures.R
+BENCH_THREADS=1 \
+  BENCH_SOURCE_CACHE=/persistent/cache \
+  BENCH_SCRATCH_PARENT=/local/scratch \
+  BENCH_STORAGE_DESCRIPTION="local NVMe; ext4; model=<model>" \
+  tests/bench/run_publication_full.sh
 ```
 
-Set `BENCH_KEEP=1` to retain the unique scratch directory for diagnosis. Set `BENCH_SOURCES_EXTRA=human_pfc_mssm` to include the opt-in 4.1-million-cell source, or `BENCH_SOURCES_ONLY=mouse_brain_e18` to limit a diagnostic run to one configured source. `BENCH_SCRATCH_PARENT` selects a parent directory; the harness always creates and deletes its own marked child rather than deleting a caller-provided path.
+Use `BENCH_KEEP=1` only to retain a failed phase scratch directory for diagnosis.
+Use `BENCH_KEEP_STUDY_WORK=1` to retain the completed study work after final
+publication.

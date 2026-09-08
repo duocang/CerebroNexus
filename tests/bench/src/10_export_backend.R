@@ -108,38 +108,14 @@ row$n_genes <- nrow(m)
 row$nnz <- length(m@x)
 bench_msg("read done: %d x %d, nnz %.3e", nrow(m), ncol(m), length(m@x))
 
-candidate_plan <- tryCatch(
-  bench_build_query_plan(
-    m,
-    n_genes = bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))$query_genes
-  ),
+query_plan <- tryCatch(
+  readRDS(query_plan_path),
   error = function(e) fail("query plan", e)
 )
-if (file.exists(query_plan_path)) {
-  query_plan <- readRDS(query_plan_path)
-  if (
-    !identical(
-      candidate_plan$query_plan_fingerprint,
-      query_plan$query_plan_fingerprint
-    )
-  ) {
-    fail(
-      "query plan",
-      simpleError("source values changed between export cells")
-    )
-  }
-} else {
-  dir.create(dirname(query_plan_path), recursive = TRUE, showWarnings = FALSE)
-  staged_plan <- tempfile("query-plan-", tmpdir = dirname(query_plan_path))
-  saveRDS(candidate_plan, staged_plan, version = 3)
-  if (!file.rename(staged_plan, query_plan_path)) {
-    unlink(staged_plan)
-    fail("query plan", simpleError("could not publish query plan"))
-  }
-  query_plan <- candidate_plan
+if (query_plan$n_cells != ncol(m) || query_plan$n_genes != nrow(m)) {
+  fail("query plan", simpleError("frozen query-plan dimensions changed"))
 }
 row$query_plan_fingerprint <- query_plan$query_plan_fingerprint
-rm(candidate_plan)
 
 obj <- NULL
 row$seurat_secs <- tryCatch(

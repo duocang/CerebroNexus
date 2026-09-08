@@ -191,6 +191,7 @@ test_that("result validation rejects missing and incorrect measurements", {
         backend = schedule$backend[i],
         export_repeat = schedule$export_repeat[i],
         access_repeat = 1L,
+        status = "OK",
         correctness = "OK",
         row_fingerprint = "same-row",
         reference_row_fingerprint = "same-row",
@@ -218,6 +219,19 @@ test_that("result validation rejects missing and incorrect measurements", {
       profile = bench_profile("quick")
     ),
     "missing export outcome"
+  )
+
+  broken <- access
+  broken$status[1] <- "FAILED(query)"
+  expect_error(
+    bench_validate_results(
+      schedule,
+      exports,
+      broken,
+      crashes = data.frame(),
+      profile = bench_profile("quick")
+    ),
+    "access process failed"
   )
 
   broken <- access
@@ -258,6 +272,7 @@ test_that("access crashes do not masquerade as duplicate export outcomes", {
     backend = schedule$backend[-1],
     export_repeat = schedule$export_repeat[-1],
     access_repeat = 1L,
+    status = "OK",
     correctness = "OK",
     row_fingerprint = "row",
     reference_row_fingerprint = "row",

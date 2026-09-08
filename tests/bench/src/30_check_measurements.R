@@ -27,6 +27,8 @@ crashes <- read_required("crashes.csv")
 manifest <- read_required("run_manifest.csv")
 source_manifest <- read_required("source_manifest.csv")
 resource_check <- read_required("resource_check.csv")
+preparation <- read_required("query_plan_manifest.csv")
+query_panel <- read_required("query_panel.csv")
 profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
 
 resource_keys <- paste(
@@ -84,9 +86,93 @@ run_id <- manifest_values[["run_id"]]
 if (
   any(exports$run_id != run_id) ||
     any(access$run_id != run_id) ||
-    any(source_manifest$run_id != run_id)
+    any(source_manifest$run_id != run_id) ||
+    any(preparation$run_id != run_id)
 ) {
   stop("result rows do not share the manifest run id", call. = FALSE)
+}
+
+plan_keys <- paste(schedule$source, schedule$n_cells, sep = "\r")
+preparation_keys <- paste(preparation$source, preparation$n_cells, sep = "\r")
+if (
+  !setequal(unique(plan_keys), preparation_keys) ||
+    anyDuplicated(preparation_keys) ||
+    any(preparation$status != "OK") ||
+    any(preparation$profile != profile$name)
+) {
+  stop("query-plan preparation does not cover the schedule", call. = FALSE)
+}
+required_panel_columns <- c(
+  "run_id",
+  "profile",
+  "source",
+  "n_cells",
+  "panel_index",
+  "gene",
+  "nnz",
+  "role",
+  "query_plan_fingerprint",
+  "reference_row_fingerprint",
+  "reference_block_fingerprint"
+)
+if (!all(required_panel_columns %in% names(query_panel))) {
+  stop("query panel is missing required columns", call. = FALSE)
+}
+panel_keys <- paste(query_panel$source, query_panel$n_cells, sep = "\r")
+panel_groups <- split(query_panel, panel_keys)
+if (
+  any(query_panel$run_id != run_id) ||
+    any(query_panel$profile != profile$name) ||
+    !setequal(names(panel_groups), unique(plan_keys)) ||
+    any(vapply(panel_groups, nrow, integer(1)) != profile$query_genes) ||
+    any(vapply(
+      panel_groups,
+      function(rows) {
+        !identical(rows$panel_index, seq_len(nrow(rows))) ||
+          anyDuplicated(rows$gene) ||
+          any(is.na(rows$gene) | !nzchar(rows$gene)) ||
+          sum(rows$role == "first") != 1L ||
+          any(!rows$role %in% c("first", "hot")) ||
+          any(!is.finite(rows$nnz) | rows$nnz <= 0) ||
+          any(
+            is.na(rows$query_plan_fingerprint) |
+              !nzchar(rows$query_plan_fingerprint)
+          ) ||
+          any(
+            is.na(rows$reference_row_fingerprint) |
+              !nzchar(rows$reference_row_fingerprint)
+          ) ||
+          any(
+            is.na(rows$reference_block_fingerprint) |
+              !nzchar(rows$reference_block_fingerprint)
+          ) ||
+          length(unique(rows$query_plan_fingerprint)) != 1L ||
+          length(unique(rows$reference_row_fingerprint)) != 1L ||
+          length(unique(rows$reference_block_fingerprint)) != 1L
+      },
+      logical(1)
+    ))
+) {
+  stop("query panel does not match the fixed study protocol", call. = FALSE)
+}
+fingerprint_for <- function(data) {
+  keys <- paste(data$source, data$n_cells, sep = "\r")
+  observed <- split(as.character(data$query_plan_fingerprint), keys)
+  if (any(lengths(lapply(observed, unique)) != 1L)) {
+    stop("query-plan fingerprint drifted within a tier", call. = FALSE)
+  }
+  sort(vapply(observed, function(x) unique(x)[1L], character(1)))
+}
+prepared_fingerprints <- fingerprint_for(preparation)
+if (
+  !identical(prepared_fingerprints, fingerprint_for(query_panel)) ||
+    !identical(prepared_fingerprints, fingerprint_for(exports)) ||
+    !identical(prepared_fingerprints, fingerprint_for(access))
+) {
+  stop(
+    "query-plan fingerprint differs across preparation/build/access",
+    call. = FALSE
+  )
 }
 
 bench_validate_results(schedule, exports, access, crashes, profile)

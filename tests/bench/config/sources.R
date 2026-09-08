@@ -13,6 +13,11 @@ BENCH_SOURCES <- list(
   # 1,306,127 cells x 27,998 genes, nnz 2,624,828,308, 3.93 GB remote.
   mouse_brain_e18 = list(
     label = "10x mouse brain E18",
+    accession = "GSE93421; SRP096558",
+    landing_page = paste0(
+      "https://www.10xgenomics.com/datasets/",
+      "1-3-million-brain-cells-from-e-18-mice-2-standard-1-3-0"
+    ),
     kind = "tenx",
     url = paste0(
       "https://cf.10xgenomics.com/samples/cell-exp/1.3.0/1M_neurons/",
@@ -22,6 +27,10 @@ BENCH_SOURCES <- list(
     organism = "mm10",
     slot = "counts",
     expected_bytes = 4216018749,
+    expected_sha256 = paste0(
+      "255a36ee92de25cb3568faa2c27d31fe",
+      "6d0db30f285c5c977be8d6245de14044"
+    ),
     full_cells = 1306127,
     panel_c1_cells = 400e3,
     # 2010 nnz/cell. A dgCMatrix costs 12 B per non-zero and assembling one
@@ -37,6 +46,13 @@ BENCH_SOURCES <- list(
   # 1,486,324 cells x 34,176 genes, nnz 6,111,732,728, 14.15 GB remote.
   human_pfc_hbcc = list(
     label = "human PFC cross-disorder (HBCC)",
+    dataset_id = "d27fb144-f105-46c2-b36f-f51421f74e4e",
+    collection_id = "84ce6837-548d-4a1f-919f-0bc0d9a3952f",
+    doi = "10.1038/s41597-025-04687-5",
+    landing_page = paste0(
+      "https://cellxgene.cziscience.com/collections/",
+      "84ce6837-548d-4a1f-919f-0bc0d9a3952f"
+    ),
     kind = "h5ad",
     url = paste0(
       "https://datasets.cellxgene.cziscience.com/",
@@ -45,6 +61,10 @@ BENCH_SOURCES <- list(
     organism = "hg38",
     slot = "data",
     expected_bytes = 14150526668,
+    expected_sha256 = paste0(
+      "aeca0480ab8941a7e4cf6b0ff6dc8c",
+      "5f9d0de376466d65ca8198dc873f1cb16f"
+    ),
     full_cells = 1486324,
     panel_c1_cells = 300e3,
     # 4112 nnz/cell, so ~98 kB of peak RAM per cell: this source hits the same

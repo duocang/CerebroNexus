@@ -39,6 +39,7 @@ mkdir -p "$SCRATCH_PARENT"
 SCRATCH="$(mktemp -d "$SCRATCH_PARENT/cerebro-bench.XXXXXX")" || exit 1
 SCRATCH_MARKER="$SCRATCH/.cerebro-benchmark-scratch"
 : > "$SCRATCH_MARKER"
+export BENCH_SCRATCH="$SCRATCH"
 export BENCH_LIB="$SCRATCH/rlib"
 # Publication evidence must not load packages or startup hooks from the caller's
 # personal R installation. Nix-provided site libraries remain available.
@@ -55,6 +56,8 @@ EXPORT_CSV="$STAGE/10_export.csv"
 ACCESS_CSV="$STAGE/20_access.csv"
 CRASH_CSV="$STAGE/crashes.csv"
 SOURCE_MANIFEST="$STAGE/source_manifest.csv"
+QUERY_PLAN_MANIFEST="$STAGE/query_plan_manifest.csv"
+QUERY_PANEL="$STAGE/query_panel.csv"
 
 cleanup() {
   local code=$?
@@ -114,9 +117,11 @@ SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sour
 for src in $SOURCES; do
   url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$url)")
   expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
+  expected_sha=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
 
   echo "==> [$src] fetching $(basename "${url%%\?*}")"
-  if ! bench_fetch_source "$url" "$expected_bytes" "$SCRATCH/sources"; then
+  if ! bench_fetch_source \
+    "$url" "$expected_bytes" "$SCRATCH/sources" "$expected_sha"; then
     echo "!! download failed for $src; validation will preserve the previous run"
     continue
   fi
@@ -126,6 +131,20 @@ for src in $SOURCES; do
   printf '"%s","%s","%s",%s,"%s"\n' \
     "$BENCH_RUN_ID" "$src" "$url" "$bytes" "$sha256" >> "$SOURCE_MANIFEST"
   echo "    local copy: $bytes bytes, sha256 ${sha256:0:12}..."
+
+  tiers=$(awk -F '\t' -v source="$src" '$2 == source {print $3}' \
+    "$SCHEDULE_TSV" | sort -n -u)
+  for tier in $tiers; do
+    query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
+    echo "==> [$src / $tier] preparing frozen query plan"
+    Rscript "$BENCH_ROOT/src/05_prepare_query_plan.R" \
+      "$src" "$tier" "$SCRATCH" "$query_plan" "$QUERY_PLAN_MANIFEST" \
+      "$QUERY_PANEL" \
+      > "$LOG_DIR/query_plan_${src}_${tier}.log" 2>&1 || {
+      tail -20 "$LOG_DIR/query_plan_${src}_${tier}.log"
+      exit 1
+    }
+  done
 
   while IFS=$'\t' read -r profile row_source tier comparison export_repeat order_position backend access_repeats; do
     [ "$row_source" = "$src" ] || continue

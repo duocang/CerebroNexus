@@ -18,6 +18,7 @@ bench_fetch_source() {
   local url=$1
   local expected_bytes=$2
   local scratch_dir=$3
+  local expected_sha=${4:-}
   local name
   local file
   local part
@@ -44,6 +45,10 @@ bench_fetch_source() {
         echo "cached source failed checksum or size validation: $file" >&2
         return 1
       fi
+      if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+        echo "cached source differs from the pinned SHA-256: $file" >&2
+        return 1
+      fi
     else
       part="$file.part"
       curl -fL --retry 3 --retry-delay 5 --continue-at - \
@@ -54,6 +59,10 @@ bench_fetch_source() {
         return 1
       fi
       sha=$(bench_sha256_file "$part") || return 1
+      if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+        echo "downloaded source differs from the pinned SHA-256" >&2
+        return 1
+      fi
       mv "$part" "$file"
       printf '%s\n' "$sha" > "$file.sha256.tmp"
       mv "$file.sha256.tmp" "$file.sha256"
@@ -71,6 +80,10 @@ bench_fetch_source() {
       return 1
     fi
     sha=$(bench_sha256_file "$part") || return 1
+    if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+      echo "downloaded source differs from the pinned SHA-256" >&2
+      return 1
+    fi
     mv "$part" "$BENCH_FETCHED_FILE"
   fi
 

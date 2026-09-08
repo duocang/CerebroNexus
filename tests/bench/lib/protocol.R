@@ -283,6 +283,9 @@ bench_validate_results <- function(
   }
 
   if (nrow(access)) {
+    if (!"status" %in% names(access) || any(access$status != "OK")) {
+      stop("access process failed", call. = FALSE)
+    }
     mismatch <-
       access$correctness != "OK" |
       access$row_fingerprint != access$reference_row_fingerprint |
