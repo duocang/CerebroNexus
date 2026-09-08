@@ -58,7 +58,6 @@ run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
   scope <- new.env(parent = globalenv())
   scope$reactive <- sync_perf_reactive
   scope$req <- shiny::req
-  scope$`%>%` <- magrittr::`%>%`
   scope$input <- c(
     stats::setNames(
       list(percentage),
