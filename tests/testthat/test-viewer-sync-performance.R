@@ -331,6 +331,15 @@ test_that("RGB and linked expression use batched reads", {
   expect_match(linked, "viewerExpressionValues", fixed = TRUE)
 })
 
+test_that("separate gene panels do not transpose the expression matrix", {
+  gene_expression <- read_sync_perf_viewer(
+    "gene_expression",
+    "obj_projection_expression_levels.R"
+  )
+
+  expect_no_match(gene_expression, "Matrix::t", fixed = TRUE)
+})
+
 test_that("Spatial full extents are memoized by a session reactive", {
   spatial <- read_sync_perf_viewer(
     "spatial",

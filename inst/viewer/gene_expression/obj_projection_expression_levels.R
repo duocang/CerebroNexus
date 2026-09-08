@@ -55,14 +55,6 @@ expression_projection_expression_levels <- reactive({
       }
     } else {
       req(expression_projection_coordinates())
-      ## All branches below go through data_set()$getExpressionMatrix(cells, genes)
-      ## with character barcodes (cells_to_show_bc) instead of subscripting
-      ## data_set()$expression directly. The helper materialises only the
-      ## requested gene x cell slice, avoiding the previous pattern of
-      ## extracting a full row (all cells) and subsetting afterwards. Using
-      ## barcodes lets the helper dispatch correctly across dgCMatrix (named
-      ## [ ] subset), RleMatrix (match() against colnames), and IterableMatrix,
-      ## so the former IterableMatrix special case is no longer needed.
       if (
         identical(
           input[["expression_projection_genes_in_separate_panels"]],
@@ -95,18 +87,12 @@ expression_projection_expression_levels <- reactive({
           length(genes_present) >= 2 &&
           length(genes_present) <= 9
       ) {
-        incProgress(0.3, detail = "Extracting matrix for multiple panels...")
-        expression_matrix <- data_set()$getExpressionMatrix(
-          cells = cells_to_show_bc,
-          genes = genes_present
+        incProgress(0.3, detail = "Extracting multiple gene panels...")
+        expression_levels <- viewerExpressionValues(
+          data_set(),
+          cells_to_show_bc,
+          genes_present
         )
-        expression_matrix <- Matrix::t(expression_matrix)
-        expression_levels <- list()
-        for (i in seq_len(ncol(expression_matrix))) {
-          expression_levels[[colnames(expression_matrix)[
-            i
-          ]]] <- as.vector(expression_matrix[, i])
-        }
       } else if (length(genes_present) == 1) {
         incProgress(0.3, detail = "Extracting single gene expression...")
         expression_levels <- unname(viewerExpressionRow(

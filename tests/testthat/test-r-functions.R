@@ -227,6 +227,8 @@ expect_zero_column_cell_means <- function(mat) {
   obj <- Cerebro$new()
   obj$setExpression(mat)
 
+  block <- obj$getExpressionBlock(genes = "g1")
+  expect_identical(dim(block), c(1L, 0L))
   expect_identical(obj$getMeanExpressionForCells(), numeric())
   expect_error(
     obj$getMeanExpressionForCells(genes = "missing"),

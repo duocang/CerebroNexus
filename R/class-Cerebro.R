@@ -510,24 +510,6 @@ Cerebro <- R6::R6Class(
         return(Matrix::colMeans(mat))
       }
 
-      if (is.null(cells) && ncol(self$expression) == 0L) {
-        if (!is.character(genes) || anyNA(genes)) {
-          stop(
-            "`genes` must be a character vector of non-NA gene names.",
-            call. = FALSE
-          )
-        }
-        missing_genes <- genes[is.na(match(genes, rownames(self$expression)))]
-        if (length(missing_genes) > 0L) {
-          stop(
-            "Gene(s) not found in expression matrix: ",
-            paste(utils::head(missing_genes, 5), collapse = ", "),
-            if (length(missing_genes) > 5L) " ..." else "",
-            call. = FALSE
-          )
-        }
-        return(numeric())
-      }
       mat <- self$getExpressionBlock(genes = genes, cells = cells)
       if (ncol(mat) == 0L) {
         return(numeric())
@@ -660,8 +642,12 @@ Cerebro <- R6::R6Class(
           call. = FALSE
         )
       }
+
       if (is.null(cells)) {
         cells <- colnames(self$expression)
+        if (is.null(cells) && ncol(self$expression) == 0L) {
+          cells <- character()
+        }
       }
       if (!is.character(cells) || anyNA(cells)) {
         stop(
@@ -680,6 +666,7 @@ Cerebro <- R6::R6Class(
           call. = FALSE
         )
       }
+
       cell_idx <- match(cells, colnames(self$expression))
       missing_cells <- cells[is.na(cell_idx)]
       if (length(missing_cells) > 0L) {
@@ -694,7 +681,8 @@ Cerebro <- R6::R6Class(
       ## DelayedArray subsetting by integer indices preserves laziness and
       ## avoids relying on every delayed backend supporting character subscripts.
       if (
-        inherits(self$expression, "DelayedArray") ||
+        length(cell_idx) == 0L ||
+          inherits(self$expression, "DelayedArray") ||
           inherits(self$expression, "DelayedMatrix") ||
           inherits(self$expression, "RleMatrix")
       ) {
