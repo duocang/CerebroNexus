@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Create a self-contained Shiny app from a Cerebro data file</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Create a self-contained Shiny app from a
+Cerebro data file</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#quick-start" id="toc-quick-start">Quick start</a></li>
+<li><a href="#common-parameters" id="toc-common-parameters">Common
+parameters</a></li>
+<li><a href="#bundling-multiple-datasets-available-since-2.0.0"
+id="toc-bundling-multiple-datasets-available-since-2.0.0">Bundling
+multiple datasets (available since 2.0.0)</a></li>
+<li><a href="#initial-page" id="toc-initial-page">Initial page</a></li>
+<li><a href="#external-extra-material-tables"
+id="toc-external-extra-material-tables">External Extra material
+tables</a></li>
+<li><a href="#sibling-files-.bpcells-and-.h5"
+id="toc-sibling-files-.bpcells-and-.h5">Sibling files:
+<code>.bpcells/</code> and <code>.h5</code></a>
+<ul>
+<li><a href="#private-data-and-spatial-assets"
+id="toc-private-data-and-spatial-assets">Private data and spatial
+assets</a></li>
+<li><a href="#host-managed-matrix-overrides"
+id="toc-host-managed-matrix-overrides">Host-managed matrix
+overrides</a></li>
+<li><a href="#single-writer-publication-and-recovery"
+id="toc-single-writer-publication-and-recovery">Single-writer
+publication and recovery</a></li>
+</ul></li>
+<li><a href="#forwarding-extra-cerebro-options"
+id="toc-forwarding-extra-cerebro-options">Forwarding extra Cerebro
+options</a></li>
+<li><a href="#deploying-the-bundle"
+id="toc-deploying-the-bundle">Deploying the bundle</a></li>
+<li><a href="#reference" id="toc-reference">Reference</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p><code>createShinyApp()</code> bundles a CerebroNexus Shiny app into a
+single output directory. It copies the Shiny sources shipped under
+<code>inst/viewer/</code>, the requested <code>.crb</code> (or
+<code>.rds</code>) data file(s), and the <code>inst/extdata/</code>
+reference files, and writes an <code>app.R</code> that wires everything
+together with a pre-built <code>Cerebro.options</code> list. The result
+is a directory you can serve directly with <code>shiny-server</code>,
+drop behind <code>rsconnect</code>/Posit Connect, or launch locally with
+<code>shiny::runApp()</code> — no further calls into
+<code>CerebroNexus</code> are required at runtime.</p>
+<p>The default descriptor-based workflow is self-contained: sibling H5
+or BPCells matrices are copied with the <code>.crb</code>. A runtime
+matrix override is an explicit host-managed exception. It is not copied,
+so an app using one still requires that absolute host path after
+deployment.</p>
+<p>This is the recommended path when you want to hand a colleague a
+runnable copy of Cerebro pre-loaded with a specific data set without
+making them install the package themselves, pin the Shiny sources at a
+known revision alongside the data, or deploy to a host that doesn’t run
+R interactively (<code>shinyapps.io</code>, Docker images, etc.).</p>
+</div>
+<div id="setup" class="section level1">
+<h1>Setup</h1>
+<p>The package ships an example <code>.crb</code> in
+<code>inst/extdata/examples/</code>, which we use throughout this
+vignette.</p>
+<pre class="r"><code>library(CerebroNexus)
+
+crb &lt;- system.file(&quot;extdata/examples/example.crb&quot;, package = &quot;CerebroNexus&quot;)
+file.exists(crb)
+#&gt; [1] TRUE</code></pre>
+</div>
+<div id="quick-start" class="section level1">
+<h1>Quick start</h1>
+<p><code>cerebro_data</code> must be a <strong>named</strong> character
+vector (or list). Names must be non-missing and unique because they
+become the dataset labels shown in the Load Data tab; the values are
+paths to <code>.crb</code> (or <code>.rds</code>) files.</p>
+<pre class="r"><code>out_dir &lt;- file.path(tempdir(), &quot;cerebro_app&quot;)
+
+createShinyApp(
+  cerebro_data = c(&quot;PBMC example&quot; = crb),
+  result_dir   = out_dir,
+  launch_browser = FALSE
+)</code></pre>
+<p>After this call, <code>out_dir</code> contains the generated
+<code>app.R</code>, a copy of the Shiny sources under
+<code>shiny/</code>, the <code>inst/extdata/</code> reference files, the
+data file(s) under <code>private-data/</code>, and a
+<code>cerebro_config.rds</code> holding the serialized
+<code>Cerebro.options</code>. The <code>private-data/</code> directory
+is private to the R process: the generated app does not register it as
+an HTTP resource.</p>
+<p>Launch it locally:</p>
+<pre class="r"><code>shiny::runApp(out_dir)</code></pre>
+</div>
+<div id="common-parameters" class="section level1">
+<h1>Common parameters</h1>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>argument</th>
+<th>purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cerebro_data</code></td>
+<td>named vector/list of <code>.crb</code> (or <code>.rds</code>) paths;
+labels and resolved source files must both be unique</td>
+</tr>
+<tr class="even">
+<td><code>result_dir</code></td>
+<td>output directory (required; portable basename outside the reserved
+lock namespace)</td>
+</tr>
+<tr class="odd">
+<td><code>overwrite</code></td>
+<td>replace <code>result_dir</code> after a complete staged build; with
+<code>FALSE</code>, the destination must be absent or empty</td>
+</tr>
+<tr class="even">
+<td><code>max_request_size</code></td>
+<td>finite positive numeric request cap in MB; defaults to
+<code>8000</code>; closed Viewers use at most 6 MiB</td>
+</tr>
+<tr class="odd">
+<td><code>port</code>, <code>host</code></td>
+<td>whole-number port <code>1</code>-<code>65535</code> and a non-empty
+host string; defaults to <code>8080</code> / <code>127.0.0.1</code></td>
+</tr>
+<tr class="even">
+<td><code>launch_browser</code>, <code>quiet</code>,
+<code>display_mode</code></td>
+<td>non-missing logical flags and exactly <code>auto</code>,
+<code>normal</code>, or <code>showcase</code> for
+<code>shiny::runApp()</code></td>
+</tr>
+<tr class="odd">
+<td><code>welcome_message</code></td>
+<td>text shown in the Load Data tab</td>
+</tr>
+<tr class="even">
+<td><code>colors</code></td>
+<td>optional
+<code>dataset -&gt; variable -&gt; named level colours</code> list</td>
+</tr>
+<tr class="odd">
+<td><code>cerebro_options</code></td>
+<td>extra entries merged into <code>Cerebro.options</code>; matrix
+overrides must be absolute host paths (native paths must resolve outside
+<code>result_dir</code>)</td>
+</tr>
+<tr class="even">
+<td><code>crb_pick_smallest_file</code></td>
+<td>forwarded into <code>Cerebro.options</code></td>
+</tr>
+<tr class="odd">
+<td><code>show_upload_ui</code></td>
+<td>allow users to upload their own data; defaults to <code>FALSE</code>
+for generated apps</td>
+</tr>
+<tr class="even">
+<td><code>initial_page</code></td>
+<td>stable Viewer page ID used once when the first dataset loads</td>
+</tr>
+<tr class="odd">
+<td><code>point_size</code>, <code>point_opacity</code>,
+<code>percentage_cells_to_show</code></td>
+<td>scalar or named per-dataset scatter defaults</td>
+</tr>
+<tr class="even">
+<td><code>variable_to_compare</code></td>
+<td>forwarded into <code>Cerebro.options</code></td>
+</tr>
+<tr class="odd">
+<td><code>extra_tables</code>, <code>extra_tables_sheets</code></td>
+<td>external delimited files or Excel workbooks, plus optional displayed
+sheet names</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>show_upload_ui = FALSE</code>, the generated Viewer limits
+the effective request size to the smaller of
+<code>max_request_size</code> and 6 MiB. This keeps a closed deployment
+from accepting large request bodies even though no upload control is
+displayed. Open Viewers use the supplied
+<code>max_request_size</code>.</p>
+</div>
+<div id="bundling-multiple-datasets-available-since-2.0.0"
+class="section level1">
+<h1>Bundling multiple datasets (available since 2.0.0)</h1>
+<p>The names of <code>cerebro_data</code> are what the user picks from
+inside Cerebro. You can also supply matching <code>colors</code> so each
+dataset gets a deterministic palette.</p>
+<pre class="r"><code>crb_pbmc &lt;- system.file(&quot;extdata/examples/example.crb&quot;, package = &quot;CerebroNexus&quot;)
+# crb_other &lt;- &quot;/path/to/another_dataset.crb&quot;
+
+createShinyApp(
+  cerebro_data = c(
+    &quot;PBMC example&quot;   = crb_pbmc
+    # , &quot;My dataset&quot; = crb_other
+  ),
+  result_dir = file.path(tempdir(), &quot;cerebro_app_multi&quot;),
+  colors = list(
+    &quot;PBMC example&quot; = list(sample = c(pbmc_1 = &quot;#1f77b4&quot;))
+  ),
+  point_size = c(&quot;PBMC example&quot; = 4),
+  point_opacity = c(&quot;PBMC example&quot; = 0.8),
+  percentage_cells_to_show = c(&quot;PBMC example&quot; = 75),
+  welcome_message = &quot;Welcome to my Cerebro deployment.&quot;,
+  launch_browser = FALSE
+)</code></pre>
+<p>Each <code>colors</code> dataset entry maps metadata variables to
+named level colours. The three scatter options may be one value shared
+by all datasets or a named numeric vector/list whose names exactly match
+<code>cerebro_data</code>.</p>
+</div>
+<div id="initial-page" class="section level1">
+<h1>Initial page</h1>
+<p>Use <code>initial_page</code> with a stable page ID such as
+<code>"linked_views"</code>, <code>"extra_material"</code>, or
+<code>"spatial"</code>:</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;PBMC example&quot; = crb),
+  result_dir = file.path(tempdir(), &quot;cerebro_app_spatial&quot;),
+  initial_page = &quot;spatial&quot;,
+  launch_browser = FALSE
+)</code></pre>
+<p>Initial routing is a one-time decision for the first loaded dataset.
+If that dataset does not support a conditional page, the Viewer stays on
+its normal page; switching later to a compatible dataset does not
+redirect the user after manual navigation. Restored shared links take
+precedence over this default.</p>
+</div>
+<div id="external-extra-material-tables" class="section level1">
+<h1>External Extra material tables</h1>
+<p><code>extra_tables</code> accepts a named collection of CSV, TSV,
+TXT, XLS, XLSX, or XLSM files. Excel workbooks expose each non-empty
+sheet separately. Use <code>extra_tables_sheets</code> to rename
+selected sheets while retaining unmapped sheet names:</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;PBMC example&quot; = crb),
+  result_dir = file.path(tempdir(), &quot;cerebro_app_tables&quot;),
+  extra_tables = list(
+    &quot;QC summary&quot; = &quot;results/qc.csv&quot;,
+    &quot;Annotations&quot; = &quot;results/annotations.xlsx&quot;
+  ),
+  extra_tables_sheets = list(
+    &quot;Annotations&quot; = list(&quot;Cell labels&quot; = &quot;Sheet1&quot;)
+  ),
+  launch_browser = FALSE
+)</code></pre>
+<p>The build converts non-empty tables to private RDS assets without
+recording their source paths. The Viewer first presents the file and
+sheet choices, then loads only the selected sheet. Formula-like text is
+neutralized and external table cells are HTML-escaped in the Viewer;
+downloads use the same neutralized data.</p>
+</div>
+<div id="sibling-files-.bpcells-and-.h5" class="section level1">
+<h1>Sibling files: <code>.bpcells/</code> and <code>.h5</code></h1>
+<p>If your <code>.crb</code> was exported with an external expression
+backend (<code>expression_matrix_mode = "bpcells"</code> or
+<code>"h5"</code> in <code>exportFromSeurat()</code>), its descriptor
+records the matrix location relative to the <code>.crb</code>. Fresh
+exports normally use a sibling <code>&lt;stem&gt;.bpcells/</code>
+directory or <code>&lt;stem&gt;.h5</code> file, but the descriptor
+remains authoritative if the <code>.crb</code> is renamed.</p>
+<p><code>createShinyApp()</code> copies the tagged file or directory to
+the same relative location under <code>result_dir/private-data/</code>.
+The location must be a portable relative path; missing backends and
+conflicting bundle targets are errors rather than silent overwrites.
+Before copying, the function resolves every descriptor and sidecar and
+plans all data and spatial-image targets together. Exact, parent/child,
+case-folded and symbolic-link collisions fail during preflight.</p>
+<p>Preflight reads the ordinary <code>expression_backend</code> field
+without invoking its serialized getter. It combines that field with any
+deployment override and writes a versioned, per-CRB attachment plan into
+<code>cerebro_config.rds</code>. Configured CRBs consume that exact plan
+at runtime instead of interpreting the serialized object a second time.
+Direct launches and uploads also avoid the getter: they validate the
+ordinary field at load time. A historical CRB may omit both the field
+and getter; an object containing only one of them is an unsupported
+mixed format and fails closed.</p>
+<div id="private-data-and-spatial-assets" class="section level2">
+<h2>Private data and spatial assets</h2>
+<p>Files explicitly passed through <code>spatial_images</code> are
+copied under <code>spatial-assets/</code>. The server-side renderer
+reads them from disk and embeds them as data URIs when drawing the plot;
+the directory is not registered as an HTTP resource. Raw
+<code>.crb</code>, H5 and BPCells artifacts stay under
+<code>private-data/</code>, which is likewise never registered with
+<code>addResourcePath()</code>. The historical <code>data/</code>
+directory name is deliberately not reused: a still-running older
+generated app can retain its former <code>/data</code> resource mapping
+while the bundle directory is replaced.</p>
+<p>This boundary prevents ordinary HTTP download through the generated
+Shiny app; it is not encryption or an operating-system access-control
+boundary. Anyone with filesystem access to the deployment account can
+still read the files. Missing optional spatial images are omitted with a
+warning.</p>
+<p>Generated bundles follow the standard Shiny deployment model of one
+app per R process. They use process-global <code>Cerebro.options</code>
+and do not claim isolation between separately sourced apps in the same
+process.</p>
+</div>
+<div id="host-managed-matrix-overrides" class="section level2">
+<h2>Host-managed matrix overrides</h2>
+<p>The global <code>expression_matrix_h5</code> and
+<code>expression_matrix_BPCells</code> overrides retain precedence over
+a <code>.crb</code> descriptor. An override must be an absolute path. A
+path native to the build host is canonicalized and rejected if it
+resolves inside <code>result_dir</code>. Existing native components are
+resolved before an unresolved suffix, so aliases cannot hide a future
+path inside the app. Unresolved filesystem entries fail closed, as do
+Windows device or extended-length namespaces and Windows-incompatible
+segments. A truly absent ordinary target is still allowed because the
+deployment host may provision it later.</p>
+<p>A non-native absolute path intended for a different host is preserved
+lexically; the build cannot compare it with the destination host’s app
+tree, so the deployer must verify that relationship. Native Windows
+paths use link-aware physical resolution, including mapped-drive and UNC
+aliases. The descriptor sidecar is not copied. The deployed app
+therefore depends on that exact host path and is not self-contained.
+Because an override is global, it may serve only one effective CRB
+consumer in a multi-dataset app.</p>
+</div>
+<div id="single-writer-publication-and-recovery" class="section level2">
+<h2>Single-writer publication and recovery</h2>
+<p>Each target has one atomic sibling lock named
+<code>.&lt;result-basename&gt;-build.lock</code>. A second build for the
+same canonical target stops immediately; builds for other targets
+continue independently. The lock contains PID, host, start time and
+target metadata for diagnosis. It covers target inspection, preflight,
+stage construction, publication and stage cleanup. Target ancestors are
+first resolved to a physical path; the final target cannot be a symbolic
+link, junction, unresolved filesystem entry, or reserved-lock alias. The
+stage and lock are created beside that frozen target.</p>
+<p>The function does not guess whether an existing lock is stale. If no
+build is running after a process crash, inspect the lock metadata and
+remove that exact lock directory manually before retrying. Do not remove
+a lock owned by a live build.</p>
+<p>The complete app is assembled in a private sibling stage. Preflight,
+copy and configuration-write failures occur before the old deployment
+moves, so it remains untouched. During publication, the old app is first
+renamed to a unique backup and the completed stage is then renamed into
+place. If that final rename fails, restoration is attempted. If
+restoration also fails, the backup is kept and the error reports its
+exact path; the function does not claim that the old deployment remained
+in place. An unexpected destination created by another actor is never
+deleted. <code>overwrite = FALSE</code> remains conservative: a
+non-empty or unreadable destination is rejected rather than merged.</p>
+<p>An abrupt process death, host restart or <code>SIGKILL</code> between
+the two publication renames cannot run the restoration code. In that
+case <code>result_dir</code> may be temporarily absent while the old app
+remains in a sibling backup and the new app remains in its sibling
+stage. First confirm that the recorded lock owner is no longer running.
+Then inspect the candidates and restore the verified old backup to
+<code>result_dir</code> before removing any leftover stage and, last,
+the exact lock. Do not guess from the newest backup name when older
+cleanup backups may exist.</p>
+<p>On POSIX systems, the staging directory is mode <code>0700</code>
+while data is copied. Replacing an existing app retains its root
+permission bits; platform-specific ACLs, ownership changes and security
+labels remain the deployment system’s responsibility. Inputs are
+validated and then copied without immutable snapshots. Every CRB,
+descriptor sidecar, spatial image and source-path ancestor must remain
+trusted and unchanged for the complete build. The target build lock does
+not protect these input paths; concurrent producers should finish an
+immutable release directory before <code>createShinyApp()</code>
+consumes it.</p>
+<p>Launch settings are validated before target preparation and stored in
+a typed internal manifest. The generated <code>app.R</code> reads this
+frozen configuration rather than interpolating values into R source, and
+the staged source is parsed before publication.
+<code>max_request_size</code> is converted from MB and applied through
+<code>shiny.maxRequestSize</code> for the app lifetime; the previous
+process option is restored when the app stops.</p>
+<p>Finally, <code>.crb</code> and <code>.rds</code> files are serialized
+R objects. Supply only trusted inputs. The structural checks require a
+minimum stable runtime API and avoid invoking serialized methods or
+getter bindings during preflight, but they do not perform semantic
+validation or turn <code>readRDS()</code> into a sandbox for hostile
+files.</p>
+</div>
+</div>
+<div id="forwarding-extra-cerebro-options" class="section level1">
+<h1>Forwarding extra Cerebro options</h1>
+<p>Anything you want to surface in <code>Cerebro.options</code> that
+isn’t already a top-level argument can go through
+<code>cerebro_options</code>.</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;PBMC example&quot; = crb),
+  result_dir   = file.path(tempdir(), &quot;cerebro_app_opts&quot;),
+  cerebro_options = list(
+    exclude_trivial_metadata = TRUE
+  ),
+  launch_browser = FALSE
+)</code></pre>
+<p><code>mode</code>, <code>cerebro_version</code>,
+<code>crb_file_to_load</code>, <code>cerebro_root</code>, and the
+internal <code>.bundle_backend_plan</code> and
+<code>.bundle_run_options</code> are filled in by the function itself.
+Duplicate entries for either internal key are removed, and anything you
+supply for those keys is overwritten.</p>
+</div>
+<div id="deploying-the-bundle" class="section level1">
+<h1>Deploying the bundle</h1>
+<p>With descriptor-backed sidecars (the default), the output directory
+is self-contained: shipping the folder is all that is required. If you
+configured a host-managed matrix override, provision that absolute path
+separately on the deployment host. Three common targets:</p>
+<pre class="r"><code># 1. Local
+shiny::runApp(out_dir)
+
+# 2. shiny-server / Posit Connect
+# Drop the directory under the server&#39;s app root (e.g. /srv/shiny-server/),
+# or use the Posit Connect publishing UI pointing at `app.R`.
+
+# 3. shinyapps.io
+rsconnect::deployApp(appDir = out_dir)</code></pre>
+</div>
+<div id="reference" class="section level1">
+<h1>Reference</h1>
+<ul>
+<li><code>?createShinyApp</code></li>
+<li><code>vignette("cerebronexus_workflow_seurat")</code> for end-to-end
+Seurat → <code>.crb</code> → app</li>
+<li><code>vignette("host_cerebro_on_shinyapps")</code> for shinyapps.io
+specifics</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

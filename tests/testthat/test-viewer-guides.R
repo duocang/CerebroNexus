@@ -50,6 +50,19 @@ if (file.exists(helpers_file)) {
     expect_true(all(file.exists(repo_file("vignettes", image_refs))))
   })
 
+  test_that("catalogued guides are bundled with the Viewer", {
+    catalogue <- guide_env$viewerGuideCatalogue()
+    guide_files <- repo_file(
+      "inst",
+      "viewer",
+      "www",
+      "guides",
+      paste0(catalogue$slug, ".html")
+    )
+
+    expect_true(all(file.exists(guide_files)))
+  })
+
   test_that("guide links prefer bundled HTML and fall back online", {
     root <- withr::local_tempdir()
     dir.create(
@@ -83,26 +96,50 @@ if (file.exists(helpers_file)) {
 }
 
 test_that("Viewer navigation registers the Guides tab", {
-  ui <- paste(readLines(repo_file(
-    "inst",
-    "viewer",
-    "shiny_UI.R"
-  ), warn = FALSE), collapse = "\n")
-  about <- paste(readLines(repo_file(
-    "inst",
-    "viewer",
-    "about",
-    "server.R"
-  ), warn = FALSE), collapse = "\n")
-  runtime <- paste(readLines(repo_file(
-    "inst",
-    "viewer",
-    "shiny_server.R"
-  ), warn = FALSE), collapse = "\n")
-  builder <- paste(readLines(repo_file(
-    "R",
-    "createShinyApp.R"
-  ), warn = FALSE), collapse = "\n")
+  ui <- paste(
+    readLines(
+      repo_file(
+        "inst",
+        "viewer",
+        "shiny_UI.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  about <- paste(
+    readLines(
+      repo_file(
+        "inst",
+        "viewer",
+        "about",
+        "server.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  runtime <- paste(
+    readLines(
+      repo_file(
+        "inst",
+        "viewer",
+        "shiny_server.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  builder <- paste(
+    readLines(
+      repo_file(
+        "R",
+        "createShinyApp.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
   expect_match(ui, "/viewer/guides/UI.R", fixed = TRUE)
   expect_match(ui, 'menuItem("Guides", tabName = "guides"', fixed = TRUE)
@@ -130,6 +167,8 @@ if (file.exists(renderer_file)) {
     output <- file.path(root, "guides")
     dir.create(vignettes)
     dir.create(file.path(vignettes, "img"))
+    dir.create(output)
+    writeLines("stale", file.path(output, "stale.html"))
     writeLines(
       '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
       file.path(vignettes, "img", "example.svg")
@@ -157,6 +196,7 @@ if (file.exists(renderer_file)) {
     )
 
     expect_identical(rendered, "safe")
+    expect_false(file.exists(file.path(output, "stale.html")))
     expect_true(file.exists(file.path(output, "safe.html")))
     expect_true(file.exists(file.path(output, "img", "example.svg")))
 
@@ -165,19 +205,9 @@ if (file.exists(renderer_file)) {
       collapse = "\n"
     )
     expect_false(grepl("mathjax.rstudio.com", html, fixed = TRUE))
+    expect_false(grepl("bootstrap", html, fixed = TRUE))
+    expect_false(grepl("highlightjs", html, fixed = TRUE))
     expect_false(grepl(normalizePath(vignettes), html, fixed = TRUE))
     expect_match(html, 'src="img/example.svg"', fixed = TRUE)
   })
 }
-
-test_that("generated guides are ignored and rendered in CI", {
-  ignore <- paste(readLines(repo_file(".gitignore"), warn = FALSE), collapse = "\n")
-  workflow <- paste(readLines(repo_file(
-    ".github",
-    "workflows",
-    "R-cmd-check.yaml"
-  ), warn = FALSE), collapse = "\n")
-
-  expect_match(ignore, "inst/viewer/www/guides/", fixed = TRUE)
-  expect_match(workflow, "Rscript scripts/render-viewer-guides.R", fixed = TRUE)
-})

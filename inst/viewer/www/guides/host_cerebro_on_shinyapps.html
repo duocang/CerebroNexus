@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Roman Hillje" />
+
+
+<title>Host Cerebro on shinyapps.io</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Host Cerebro on shinyapps.io</h1>
+<h4 class="author">Roman Hillje</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#build-the-application"
+id="toc-build-the-application">Build the application</a></li>
+<li><a href="#deploy-app" id="toc-deploy-app">Deploy app</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>In this vignette, I explain how one can host Cerebro on <a
+href="https://www.shinyapps.io">shinyapps.io</a>. For a more detailed
+tutorial on how to host Shiny apps on shinyapps.io, take a look here: <a
+href="https://shiny.rstudio.com/articles/shinyapps.html"
+class="uri">https://shiny.rstudio.com/articles/shinyapps.html</a></p>
+<p><a href="https://www.shinyapps.io">shinyapps.io</a> is a great place
+to host Shiny apps and make them accessible for other users. You will
+need an account on the website. The free account comes with a limit on
+(1) the number of applications that can be hosted in parallel and (2)
+the number of active hours, but it is enough to get some experience and
+figure out if this service fits your purpose.</p>
+</div>
+<div id="setup" class="section level1">
+<h1>Setup</h1>
+<p>To upload CerebroNexus to shinyapps.io, install
+<code>rsconnect</code> and CerebroNexus.</p>
+<pre class="r"><code>install.packages(c(&quot;remotes&quot;, &quot;rsconnect&quot;))
+remotes::install_github(&quot;mihem/CerebroNexus&quot;)
+
+library(CerebroNexus)</code></pre>
+<p>Then, you need to provide <code>rsconnect</code> with your
+shinyapps.io account info. On the shinyapps.io website, in the left
+navigation bar, go to “Account” and then “Tokens”. A token should have
+already been generated for you. Take the token and secret, your account
+name, and run the command below.</p>
+<pre class="r"><code>rsconnect::setAccountInfo(name=&quot;&lt;ACCOUNT&gt;&quot;, token=&quot;&lt;TOKEN&gt;&quot;, secret=&quot;&lt;SECRET&gt;&quot;)</code></pre>
+</div>
+<div id="build-the-application" class="section level1">
+<h1>Build the application</h1>
+<p>Use <code>createShinyApp()</code> to build a deployable application
+directory. The example below uses the data bundled with CerebroNexus;
+replace <code>crb</code> with your own <code>.crb</code> path and choose
+a label that users will see in the application.</p>
+<pre class="r"><code>app_directory &lt;- &quot;~/test_cerebro_shinyapps&quot;
+crb &lt;- system.file(
+  &quot;extdata/examples/example.crb&quot;,
+  package = &quot;CerebroNexus&quot;
+)
+
+createShinyApp(
+  cerebro_data = c(&quot;PBMC example&quot; = crb),
+  result_dir = app_directory,
+  launch_browser = FALSE
+)</code></pre>
+<p>The generated directory contains <code>app.R</code>, the Viewer
+runtime, and the private data files needed by the deployed application.
+See <code>vignette("create_a_self_contained_shiny_app")</code> for
+deployment options and external expression-backend requirements.</p>
+</div>
+<div id="deploy-app" class="section level1">
+<h1>Deploy app</h1>
+<p>Upload the generated application directory with
+<code>rsconnect</code>:</p>
+<pre class="r"><code>rsconnect::deployApp(app_directory, appName = &quot;Cerebro&quot;)</code></pre>
+<p>Uploading and preparing the app might take a few minutes, but once it
+finishes successfully, Cerebro should open in your browser. Using the
+shinyapps.io dashboard, you can manage the app, check usage metrics and
+logs, etc. An important parameter is the “Instance size”, which controls
+the available memory and can be controled in the “Settings” tab of the
+dashboard. The larger the data set you want to upload to Cerebro, the
+more memory will be necessary.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><a href="launch_cerebro_with_pre-loaded_data_set.html">Launch
+Cerebro with pre-loaded data set</a></li>
+<li><a href="control_access_to_cerebro_with_a_login_page.html">Control
+access to Cerebro with a login page</a></li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

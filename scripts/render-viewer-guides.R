@@ -21,6 +21,9 @@ render_viewer_guides <- function(
   if (length(missing)) {
     stop("Missing guide source(s): ", paste(missing, collapse = ", "))
   }
+  if (dir.exists(output_dir)) {
+    unlink(output_dir, recursive = TRUE, force = TRUE)
+  }
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   output_dir <- normalizePath(output_dir, mustWork = TRUE)
 
@@ -64,6 +67,8 @@ render_viewer_guides <- function(
             self_contained = FALSE,
             lib_dir = file.path(output_dir, "site_libs"),
             mathjax = NULL,
+            theme = NULL,
+            highlight = NULL,
             toc = TRUE,
             toc_depth = 3
           ),
@@ -80,6 +85,7 @@ render_viewer_guides <- function(
           html,
           fixed = TRUE
         )
+        html <- sub("[[:blank:]]+$", "", html)
         writeLines(html, output_file, useBytes = TRUE)
         NULL
       },

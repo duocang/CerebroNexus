@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Roman Hillje and Xuesong Wang" />
+
+
+<title>Store the expression matrix in H5 format</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Store the expression matrix in H5
+format</h1>
+<h4 class="author">Roman Hillje and Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#recommended-export-directly-from-seurat"
+id="toc-recommended-export-directly-from-seurat">Recommended: export
+directly from Seurat</a></li>
+<li><a href="#launch-or-bundle-the-result"
+id="toc-launch-or-bundle-the-result">Launch or bundle the
+result</a></li>
+<li><a href="#legacy-alternative-convert-an-existing-embedded-.crb"
+id="toc-legacy-alternative-convert-an-existing-embedded-.crb">Legacy
+alternative: convert an existing embedded <code>.crb</code></a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>CerebroNexus can store a data set’s expression matrix in a sibling H5
+file instead of embedding it in the <code>.crb</code>. The app then
+reads individual genes from disk without loading the complete matrix
+into memory. This usually reduces startup time and memory use for large
+data sets, although disk access can be slower than reading an already
+loaded in-memory matrix.</p>
+<p>The recommended workflow is a single call to
+<code>exportFromSeurat()</code> with
+<code>expression_matrix_mode = "h5"</code>. The Seurat object does
+<strong>not</strong> need to contain an H5-backed matrix:
+<code>h5</code> describes the export format, not the source storage used
+by Seurat.</p>
+<p>The exporter writes two files:</p>
+<pre class="text"><code>pbmc.crb
+pbmc.h5</code></pre>
+<p>The <code>.crb</code> records the H5 filename in its
+expression-backend descriptor. Keep both files together when moving,
+sharing, or deploying the data set.</p>
+</div>
+<div id="setup" class="section level1">
+<h1>Setup</h1>
+<p>Install CerebroNexus and the Bioconductor package
+<code>HDF5Array</code>. The latter provides the TENx HDF5 writer and the
+lazy matrix reader used at runtime.</p>
+<pre class="r"><code>if (!requireNamespace(&quot;BiocManager&quot;, quietly = TRUE)) {
+  install.packages(&quot;BiocManager&quot;)
+}
+BiocManager::install(&quot;HDF5Array&quot;)
+
+library(CerebroNexus)</code></pre>
+</div>
+<div id="recommended-export-directly-from-seurat"
+class="section level1">
+<h1>Recommended: export directly from Seurat</h1>
+<p>Choose the assay and layer (called <code>slot</code> for
+compatibility with older Seurat versions) exactly as you would for an
+embedded export. Adding <code>expression_matrix_mode = "h5"</code> makes
+CerebroNexus write the selected matrix to a sibling H5 file and store
+only its relative location in the <code>.crb</code>.</p>
+<pre class="r"><code>seurat &lt;- readRDS(
+  system.file(
+    &quot;extdata/examples/pbmc_seurat.rds&quot;,
+    package = &quot;CerebroNexus&quot;
+  )
+)
+
+output_dir &lt;- file.path(tempdir(), &quot;cerebro-h5-example&quot;)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+crb_output &lt;- file.path(output_dir, &quot;pbmc.crb&quot;)
+
+exportFromSeurat(
+  object = seurat,
+  assay = &quot;RNA&quot;,
+  slot = &quot;data&quot;,
+  file = crb_output,
+  experiment_name = &quot;PBMC&quot;,
+  organism = &quot;hg&quot;,
+  groups = c(&quot;sample&quot;, &quot;seurat_clusters&quot;),
+  nUMI = &quot;nCount_RNA&quot;,
+  nGene = &quot;nFeature_RNA&quot;,
+  expression_matrix_mode = &quot;h5&quot;,
+  verbose = TRUE
+)</code></pre>
+<p>The H5 filename uses the same stem as the <code>.crb</code>:</p>
+<pre class="r"><code>h5_output &lt;- file.path(output_dir, &quot;pbmc.h5&quot;)
+file.exists(crb_output)
+file.exists(h5_output)
+
+crb &lt;- readRDS(crb_output)
+crb$getExpressionBackend()
+#&gt; $type
+#&gt; [1] &quot;h5&quot;
+#&gt;
+#&gt; $location
+#&gt; [1] &quot;pbmc.h5&quot;</code></pre>
+<p><code>HDF5Array::writeTENxMatrix()</code> stores the on-disk matrix
+as cells by genes in the <code>/expression</code> group. CerebroNexus
+reconnects it lazily and exposes the usual genes-by-cells matrix to the
+application.</p>
+</div>
+<div id="launch-or-bundle-the-result" class="section level1">
+<h1>Launch or bundle the result</h1>
+<p>For normal interactive use, keep the <code>.crb</code> and
+<code>.h5</code> together and launch the <code>.crb</code>. Its
+descriptor tells CerebroNexus where to find the matrix, so no separate
+H5 argument is needed.</p>
+<pre class="r"><code>launchCerebro(
+  crb_file_to_load = crb_output
+)</code></pre>
+<p>For deployment, pass the <code>.crb</code> to
+<code>createShinyApp()</code>. It reads the same descriptor and copies
+the referenced H5 sidecar into the self-contained app bundle. The H5
+file is stored under the app’s private <code>private-data/</code> tree
+and is not registered as a browser-downloadable HTTP resource.</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;PBMC&quot; = crb_output),
+  result_dir = file.path(output_dir, &quot;pbmc_app&quot;),
+  launch_browser = FALSE
+)</code></pre>
+<p>If the <code>.crb</code> is renamed, do not guess a new H5 name. The
+descriptor remains authoritative. Use
+<code>crb$getExpressionBackend()</code> to see the sidecar that belongs
+to the file.</p>
+</div>
+<div id="legacy-alternative-convert-an-existing-embedded-.crb"
+class="section level1">
+<h1>Legacy alternative: convert an existing embedded
+<code>.crb</code></h1>
+<p>The direct export above is preferred for new Seurat exports. The
+manual workflow remains useful when only an older embedded
+<code>.crb</code> is available, for example after an
+<code>exportFromSCE()</code> workflow, and the source object cannot be
+exported again.</p>
+<p>Load the existing <code>.crb</code>, transpose its conventional
+genes-by-cells expression matrix, and write it to the
+<code>/expression</code> group:</p>
+<pre class="r"><code>crb_input &lt;- system.file(
+  &quot;extdata/examples/example.crb&quot;,
+  package = &quot;CerebroNexus&quot;
+)
+crb &lt;- readRDS(crb_input)
+
+legacy_dir &lt;- file.path(tempdir(), &quot;cerebro-legacy-h5&quot;)
+dir.create(legacy_dir, recursive = TRUE, showWarnings = FALSE)
+h5_output &lt;- file.path(legacy_dir, &quot;example.h5&quot;)
+
+HDF5Array::writeTENxMatrix(
+  Matrix::t(crb$expression),
+  h5_output,
+  group = &quot;expression&quot;
+)</code></pre>
+<p>Remove the embedded matrix and record the sibling filename before
+saving the smaller <code>.crb</code>; otherwise the original matrix will
+still be loaded into memory, or the saved object will not know where its
+external matrix lives.</p>
+<pre class="r"><code>crb$expression &lt;- NULL
+crb$setExpressionBackend(
+  type = &quot;h5&quot;,
+  location = basename(h5_output)
+)
+crb_output &lt;- file.path(legacy_dir, &quot;example.crb&quot;)
+saveRDS(crb, crb_output)</code></pre>
+<p>The converted <code>.crb</code> is now self-describing. Keep it
+beside <code>example.h5</code> and launch it without a host-specific
+override:</p>
+<pre class="r"><code>launchCerebro(
+  crb_file_to_load = crb_output
+)</code></pre>
+<p>If an older serialized object does not provide
+<code>setExpressionBackend()</code>, do not clear and resave it with no
+descriptor. Re-export it with a current CerebroNexus version instead.
+When the original Seurat object is available,
+<code>exportFromSeurat(..., expression_matrix_mode = "h5")</code>
+remains the preferred, less error-prone route.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><a href="create_a_self_contained_shiny_app.html">Create a
+self-contained Shiny app</a></li>
+<li><a href="cerebronexus_workflow_seurat.html">Seurat workflow</a></li>
+<li><code>?exportFromSeurat</code></li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>HLA Associations on bulk TCRβ with real donor HLA</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">HLA Associations on bulk TCRβ with real
+donor HLA</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#what-this-guide-does" id="toc-what-this-guide-does">What
+this guide does</a>
+<ul>
+<li><a href="#how-bulk-data-is-different"
+id="toc-how-bulk-data-is-different">How bulk data is different</a></li>
+</ul></li>
+<li><a href="#the-workflow-in-miniature"
+id="toc-the-workflow-in-miniature">The workflow in miniature</a></li>
+<li><a href="#two-ways-to-get-bulk-data-into-a-.crb"
+id="toc-two-ways-to-get-bulk-data-into-a-.crb">Two ways to get bulk data
+into a <code>.crb</code></a>
+<ul>
+<li><a href="#option-a-the-real-public-cohort-pubtcrs-emerson-2017"
+id="toc-option-a-the-real-public-cohort-pubtcrs-emerson-2017">Option A —
+the real public cohort (pubtcrs / Emerson 2017)</a>
+<ul>
+<li><a href="#what-the-raw-data-looks-like"
+id="toc-what-the-raw-data-looks-like">What the raw data looks
+like</a></li>
+</ul></li>
+<li><a href="#option-b-a-small-synthetic-bulk-.crb-you-can-run-now"
+id="toc-option-b-a-small-synthetic-bulk-.crb-you-can-run-now">Option B —
+a small synthetic bulk <code>.crb</code> you can run now</a>
+<ul>
+<li><a href="#setup-and-donors" id="toc-setup-and-donors">Setup and
+donors</a></li>
+<li><a href="#real-shaped-hla-typing-the-canonical-long-table"
+id="toc-real-shaped-hla-typing-the-canonical-long-table">Real-shaped HLA
+typing (the canonical long table)</a></li>
+<li><a
+href="#clonotypes-association-conditioned-receptors-over-a-background"
+id="toc-clonotypes-association-conditioned-receptors-over-a-background">Clonotypes:
+association-conditioned receptors over a background</a></li>
+<li><a href="#assemble-and-save-the-object"
+id="toc-assemble-and-save-the-object">Assemble and save the
+object</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#launch-and-open-the-associations-tab"
+id="toc-launch-and-open-the-associations-tab">Launch and open the
+Associations tab</a></li>
+<li><a href="#the-three-bulk-contracts-in-one-place"
+id="toc-the-three-bulk-contracts-in-one-place">The three bulk contracts,
+in one place</a></li>
+<li><a href="#bringing-your-own-bulk-cohort"
+id="toc-bringing-your-own-bulk-cohort">Bringing your own bulk cohort</a>
+<ul>
+<li><a href="#receptors-from-immunoseq-mixcr"
+id="toc-receptors-from-immunoseq-mixcr">Receptors from immunoSEQ /
+MiXCR</a></li>
+<li><a href="#genotypes-from-your-hla-report"
+id="toc-genotypes-from-your-hla-report">Genotypes from your HLA
+report</a></li>
+<li><a href="#the-one-contract-that-is-yours-to-set-honestly"
+id="toc-the-one-contract-that-is-yours-to-set-honestly">The one contract
+that is yours to set honestly</a></li>
+</ul></li>
+<li><a href="#common-questions" id="toc-common-questions">Common
+questions</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+<li><a href="#getting-help" id="toc-getting-help">Getting help</a></li>
+<li><a href="#session-info" id="toc-session-info">Session info</a></li>
+</ul>
+</div>
+
+<div id="what-this-guide-does" class="section level1">
+<h1>What this guide does</h1>
+<p>CerebroNexus is a single-cell application, and the demo it ships is
+single-cell: real cells, real paired TCR, real donor genotypes. But the
+<strong>HLA Associations</strong> tab also accepts an input that has no
+cells at all — <strong>bulk TCRβ immunosequencing paired with real donor
+HLA genotypes</strong> — and this guide is how you bring your own.</p>
+<p>Nothing here is shipped with the package: there is no bundled bulk
+demo to open. Instead this guide shows you how to build one, either from
+a real public cohort (<a
+href="#option-a-the-real-public-cohort-pubtcrs-emerson-2017">Option
+A</a>) or as a small synthetic object you can run in the next five
+minutes (<a
+href="#option-b-a-small-synthetic-bulk-crb-you-can-run-now">Option
+B</a>).</p>
+<p>If you have not read the main guide, skim its “two ideas” section
+first — this one assumes you know what a CDR3, a motif, and an HLA
+allele are. As before, every code block runs on its own (base R +
+<code>Matrix</code> + <code>CerebroNexus</code>, no downloads), and we
+print each object as we build it.</p>
+<div id="how-bulk-data-is-different" class="section level2">
+<h2>How bulk data is different</h2>
+<p>Bulk immunosequencing does not sequence single cells; it sequences
+<em>receptors</em> out of a pool. That changes three things, and the
+<code>.crb</code> states each one openly rather than letting the app
+guess:</p>
+<ul>
+<li><strong>There are no cells.</strong> Each row is a <em>(donor,
+receptor clonotype)</em> <strong>analysis unit</strong>. The data set
+carries a real <strong>0-gene</strong> expression matrix (bulk measures
+no transcriptome) and no projection, so the Projection and Gene
+expression tabs simply have nothing to draw.</li>
+<li><strong>There is no lineage.</strong> Bulk TCRβ cannot tell a CD4
+cell from a CD8 cell, so the MHC-class context is <em>Unknown by
+design</em> — the page must not invent one.</li>
+<li><strong>Counting is per donor.</strong> One donor is one sample, and
+we write <code>donor_id</code> explicitly, so carrier counts are
+donor-level.</li>
+</ul>
+<p>The payoff: the HLA genotypes are <strong>real</strong>, so the
+Associations tab runs on genuine biology instead of an invented
+genotype.</p>
+<div
+style="border-left: 4px solid #e69500; background: #fff6e6; padding: 0.6em 1em; margin: 1em 0;">
+<p><strong>“Association-conditioned” means positive control, not
+evidence.</strong> The public cohort’s receptors were chosen
+<em>using</em> a published HLA association, and donors were then kept
+only if they carry one of those receptors. So any carrier / non-carrier
+difference you see was <strong>built in by that selection</strong>, and
+re-checking it on the very cohort the association came from is not
+independent replication. Treat it as a positive control that proves the
+workflow runs — nothing more. The <code>.crb</code> says so
+(<code>technical_info$tcr_selection = "association-conditioned"</code>)
+and the app shows an orange warning wherever the contrast appears.</p>
+</div>
+</div>
+</div>
+<div id="the-workflow-in-miniature" class="section level1">
+<h1>The workflow in miniature</h1>
+<p>Bulk data has no Seurat object, so you assemble the Cerebro object by
+hand. The essence is short: <strong>declare the contracts, store a
+0-gene matrix, then add the receptors and the real HLA</strong>.</p>
+<pre class="r"><code># ... build `meta` (one row per analysis unit), `ir` (receptors), `hla_long` (genotypes)
+
+crb &lt;- Cerebro$new()
+crb$technical_info &lt;- list(observation_unit = &quot;analysis unit&quot;,   # a row is NOT a cell
+                           receptor_key     = &quot;v_gene+cdr3&quot;,
+                           tcr_selection    = &quot;association-conditioned&quot;)
+crb$expression &lt;- Matrix::Matrix(0, nrow = 0, ncol = nrow(meta), sparse = TRUE)  # no transcriptome
+crb$meta_data  &lt;- meta
+crb$addImmuneRepertoire(ir)                                # real receptors
+crb$addHLATyping(hla_long, source_type = &quot;genotyped&quot;)      # real genotypes
+saveRDS(crb, &quot;demo_hla_tcr_bulk_toy.crb&quot;)
+
+launchCerebro(crb_file_to_load = &quot;demo_hla_tcr_bulk_toy.crb&quot;)</code></pre>
+<p>The rest of this guide fills in <code>meta</code>, <code>ir</code>,
+and <code>hla_long</code>, and shows each one.</p>
+</div>
+<div id="two-ways-to-get-bulk-data-into-a-.crb" class="section level1">
+<h1>Two ways to get bulk data into a <code>.crb</code></h1>
+<div id="option-a-the-real-public-cohort-pubtcrs-emerson-2017"
+class="section level2">
+<h2>Option A — the real public cohort (pubtcrs / Emerson 2017)</h2>
+<p>The best public source is the Emerson et al. (<em>Nat Genet</em>
+2017) cohort as cleaned by DeWitt et al. (<em>eLife</em> 2018),
+distributed as <code>pubtcrs_data_v1.tgz</code> on Zenodo record <a
+href="https://zenodo.org/records/1248193">1248193</a>. It holds 630
+donors’ real HLA typing, roughly 11 million public TCRβ chains, and the
+paper’s own table of HLA-associated receptors.
+<code>data-raw/build_hla_tcr_bulk_demo.R</code> in the repository
+downloads and assembles all of it into a <code>.crb</code> — it is kept
+as a working, runnable pipeline even though the resulting object is no
+longer shipped:</p>
+<pre class="r"><code># ~349 MB download; see data-raw/build_hla_tcr_bulk_demo.R for the full pipeline
+mkdir -p data-raw/pubtcrs
+curl -fL -o data-raw/pubtcrs/pubtcrs_data_v1.tgz \
+  &quot;https://zenodo.org/api/records/1248193/files/pubtcrs_data_v1.tgz/content&quot;
+tar xzf data-raw/pubtcrs/pubtcrs_data_v1.tgz -C data-raw/pubtcrs
+# then: Rscript data-raw/build_hla_tcr_bulk_demo.R</code></pre>
+<div id="what-the-raw-data-looks-like" class="section level3">
+<h3>What the raw data looks like</h3>
+<p>The build (<code>data-raw/build_hla_tcr_bulk_demo.R</code>) reads
+three plain-text files out of <code>pubtcrs_data/</code>. Seeing their
+shape makes clear where each field of the <code>.crb</code> comes
+from.</p>
+<p><code>HLA_features.txt</code> — one line per allele, listing the
+<em>indices</em> of the donors who carry it. The build inverts this into
+donor → alleles, so a donor’s genotype is the set of alleles whose lists
+contain that donor’s index:</p>
+<pre><code>feature: HLA-A*02:01 num_positives: 311 positives: 0 2 5 6 9 12 ... num_negatives: 319 negatives: 1 3 4 7 8 ...
+feature: HLA-DRB1*15:01 num_positives: 176 positives: 3 8 11 ... num_negatives: 454 negatives: 0 1 2 ...</code></pre>
+<p><code>HLA_associated_TCRs.tsv</code> — the paper’s own table of
+receptors that show a significant donor-level HLA association. The demo
+restricts to these, both to stay inside the graph-size guards and
+because this is the table you can check the page’s descriptive overlap
+against:</p>
+<pre><code>tcr                    hla_allele      pvalue
+TRBV19,CASSIRSSYEQYF   HLA-A*02:01     1.2e-14
+TRBV27,CASSLGQAYEQYF   HLA-B*07:02     3.4e-11</code></pre>
+<p><code>pubtcrs_info.tsv</code> holds the ~11 million public TCRβ
+chains as <strong>V family + CDR3 amino acids only</strong> — Adaptive’s
+immunoSEQ assay does not report a J gene. That single fact is why a
+<code>.crb</code> built from it declares
+<code>receptor_key = "v_gene+cdr3"</code>: a receptor is a V family plus
+its CDR3, not the CDR3 alone.</p>
+<p>Each row of the built <code>.crb</code> is therefore a <em>(donor,
+associated-TCR)</em> pair: the TCR’s V + CDR3 from
+<code>pubtcrs_info.tsv</code>, the donor’s real genotype from
+<code>HLA_features.txt</code>, and the real observed fact that this
+donor’s repertoire contains this TCR.</p>
+<p>That needs a large download, so the rest of this guide uses a small
+<strong>synthetic</strong> stand-in that produces a structurally
+identical <code>.crb</code> you can run right now. The provenance
+differs (synthetic vs. real), but the object layout, the contracts, and
+the Associations tab behave the same.</p>
+</div>
+</div>
+<div id="option-b-a-small-synthetic-bulk-.crb-you-can-run-now"
+class="section level2">
+<h2>Option B — a small synthetic bulk <code>.crb</code> you can run
+now</h2>
+<p>There is no Seurat object here (no cells), so we build the
+<code>Cerebro</code> object <strong>by hand</strong>.</p>
+<div id="setup-and-donors" class="section level3">
+<h3>Setup and donors</h3>
+<pre class="r"><code>library(Matrix)
+library(CerebroNexus)
+
+set.seed(7)
+donors &lt;- sprintf(&quot;donor_%03d&quot;, 1:30)
+AA &lt;- strsplit(&quot;ACDEFGHIKLMNPQRSTVWY&quot;, &quot;&quot;)[[1]]
+rand_cdr3 &lt;- function() paste0(&quot;CASS&quot;, paste(sample(AA, sample(6:11, 1), TRUE), collapse = &quot;&quot;), &quot;F&quot;)</code></pre>
+</div>
+<div id="real-shaped-hla-typing-the-canonical-long-table"
+class="section level3">
+<h3>Real-shaped HLA typing (the canonical long table)</h3>
+<p>For bulk we write the <strong>canonical long table</strong> directly
+— one row per donor × gene × copy — so <code>donor_id</code> is explicit
+and counting stays at the donor level. The first fifteen donors carry
+the anchor <code>HLA-A*02:01</code>.</p>
+<pre class="r"><code>a02_carriers &lt;- donors[1:15]
+hla_long &lt;- do.call(rbind, lapply(donors, function(d) {
+  a1 &lt;- if (d %in% a02_carriers) &quot;A*02:01&quot; else sample(c(&quot;A*01:01&quot;, &quot;A*03:01&quot;, &quot;A*11:01&quot;), 1)
+  a2 &lt;- sample(c(&quot;A*01:01&quot;, &quot;A*03:01&quot;, &quot;A*24:02&quot;, &quot;A*11:01&quot;), 1)
+  data.frame(
+    sample = d, donor_id = d,
+    locus = c(&quot;HLA-A&quot;, &quot;HLA-A&quot;, &quot;HLA-B&quot;, &quot;HLA-B&quot;),
+    copy  = c(1L, 2L, 1L, 2L),
+    allele = c(a1, a2, sample(c(&quot;B*07:02&quot;, &quot;B*08:01&quot;), 1), sample(c(&quot;B*44:02&quot;, &quot;B*35:01&quot;), 1)),
+    stringsAsFactors = FALSE
+  )
+}))</code></pre>
+<p><strong>Look at what you built</strong> — four rows per donor (two
+<code>HLA-A</code> copies, two <code>HLA-B</code>):</p>
+<pre class="r"><code>head(hla_long, 6)</code></pre>
+<pre><code>#&gt;     sample  donor_id locus copy  allele
+#&gt;  donor_001 donor_001 HLA-A    1 A*02:01
+#&gt;  donor_001 donor_001 HLA-A    2 A*03:01
+#&gt;  donor_001 donor_001 HLA-B    1 B*07:02
+#&gt;  donor_001 donor_001 HLA-B    2 B*44:02
+#&gt;  donor_002 donor_002 HLA-A    1 A*02:01
+#&gt;  donor_002 donor_002 HLA-A    2 A*11:01</code></pre>
+</div>
+<div id="clonotypes-association-conditioned-receptors-over-a-background"
+class="section level3">
+<h3>Clonotypes: association-conditioned receptors over a background</h3>
+<p>Six “public” receptors are placed in most carriers and almost no
+non-carrier — the designed-in contrast the positive-control warning is
+about. Everyone also gets a handful of private background
+clonotypes.</p>
+<pre class="r"><code>assoc_tcrs &lt;- replicate(6, list(v = paste0(&quot;TRBV&quot;, sample(2:29, 1)), cdr3 = rand_cdr3()), simplify = FALSE)
+
+ir &lt;- list(); meta_rows &lt;- list()
+for (d in donors) {
+  clones &lt;- replicate(sample(8:15, 1),
+                      list(v = paste0(&quot;TRBV&quot;, sample(2:29, 1)), cdr3 = rand_cdr3()),
+                      simplify = FALSE)
+  for (a in assoc_tcrs) {                       # associated receptors: ~85% of carriers, ~8% of others
+    p &lt;- if (d %in% a02_carriers) 0.85 else 0.08
+    if (runif(1) &lt; p) clones[[length(clones) + 1]] &lt;- a
+  }
+  v &lt;- vapply(clones, `[[`, character(1), &quot;v&quot;)
+  cdr3 &lt;- vapply(clones, `[[`, character(1), &quot;cdr3&quot;)
+  bc &lt;- sprintf(&quot;%s_%04d&quot;, d, seq_along(clones))
+  ir[[d]] &lt;- data.frame(
+    barcode = bc, CTgene = v, CTnt = NA_character_,   # V family only; bulk has no J gene
+    CTaa = cdr3, CTstrict = NA_character_, stringsAsFactors = FALSE
+  )
+  meta_rows[[d]] &lt;- data.frame(
+    cell_barcode = bc, sample = d, donor_id = d,
+    cell_type = &quot;T cell (bulk TCRb)&quot;,                 # a single level: no CD4/CD8 split
+    stringsAsFactors = FALSE
+  )
+}
+meta &lt;- do.call(rbind, meta_rows)</code></pre>
+<p><strong>Look at what you built</strong> — one donor’s receptor table.
+Note <code>CTgene</code> holds only the V family (<code>TRBV27</code>),
+and <code>CTnt</code> / <code>CTstrict</code> are <code>NA</code>:</p>
+<pre class="r"><code>head(ir[[&quot;donor_001&quot;]], 4)</code></pre>
+<pre><code>#&gt;         barcode CTgene CTnt            CTaa CTstrict
+#&gt;  donor_001_0001 TRBV27 &lt;NA&gt;   CASSKIAMLVNDF     &lt;NA&gt;
+#&gt;  donor_001_0002 TRBV25 &lt;NA&gt; CASSVCAMHCAGQIF     &lt;NA&gt;
+#&gt;  donor_001_0003 TRBV16 &lt;NA&gt;    CASSRMEDCDVF     &lt;NA&gt;
+#&gt;  donor_001_0004 TRBV26 &lt;NA&gt;     CASSIPVSGIF     &lt;NA&gt;</code></pre>
+<p>There is no J gene because bulk immunoSEQ does not report one — the
+parser simply leaves <code>j_gene</code> as <code>NA</code>. This is why
+the <code>.crb</code> will declare
+<code>receptor_key = "v_gene+cdr3"</code>: a receptor is identified by
+its V family <em>plus</em> CDR3, not by CDR3 alone.</p>
+</div>
+<div id="assemble-and-save-the-object" class="section level3">
+<h3>Assemble and save the object</h3>
+<p>Now set the object’s slots directly, including the declared contracts
+under <code>technical_info</code>:</p>
+<pre class="r"><code>crb &lt;- Cerebro$new()
+crb$experiment &lt;- list(
+  experiment_name = &quot;Toy bulk TCRb cohort - synthetic HLA associations&quot;,
+  organism = &quot;hg&quot;, date_of_export = format(Sys.Date())
+)
+crb$parameters &lt;- list()
+
+# the declared contracts the HLA page reads
+crb$technical_info &lt;- list(
+  note = &quot;Bulk TCR-beta immunosequencing; no transcriptome, no single cells.&quot;,
+  observation_unit = &quot;analysis unit&quot;,      # a row is a (donor, clonotype), not a cell
+  receptor_key     = &quot;v_gene+cdr3&quot;,         # split by V gene; CDR3 alone would fuse receptors
+  tcr_selection    = &quot;association-conditioned&quot;,
+  tcr_selection_detail = paste(
+    &quot;Toy positive control: six public receptors were placed preferentially in&quot;,
+    &quot;HLA-A*02:01 carriers, so any carrier/non-carrier contrast is built in.&quot;
+  )
+)
+
+# a real 0-gene x N-unit matrix: bulk measures no transcriptome
+crb$expression &lt;- Matrix::Matrix(0, nrow = 0, ncol = nrow(meta), sparse = TRUE)
+colnames(crb$expression) &lt;- meta$cell_barcode
+crb$meta_data &lt;- meta
+
+crb$addImmuneRepertoire(ir)
+crb$addHLATyping(hla_long, source_type = &quot;genotyped&quot;,
+                 typing_method = &quot;synthetic demo&quot;, source_reference = &quot;vignette toy&quot;)
+crb$addGroup(&quot;sample&quot;, unique(meta$sample))
+crb$addGroup(&quot;cell_type&quot;, unique(meta$cell_type))
+
+saveRDS(crb, &quot;demo_hla_tcr_bulk_toy.crb&quot;)</code></pre>
+<p><strong>Confirm the contracts round-trip</strong> — reload and read
+them back:</p>
+<pre class="r"><code>x &lt;- readRDS(&quot;demo_hla_tcr_bulk_toy.crb&quot;)
+x$technical_info$observation_unit      # what a &quot;row&quot; is
+x$technical_info$tcr_selection         # the positive-control flag
+nrow(x$expression)                     # number of genes
+unique(x$getHLATyping()$source_type)   # provenance of the genotypes</code></pre>
+<pre><code>#&gt; [1] &quot;analysis unit&quot;
+#&gt; [1] &quot;association-conditioned&quot;
+#&gt; [1] 0
+#&gt; [1] &quot;genotyped&quot;</code></pre>
+<p>Zero genes, a declared analysis unit, a positive-control flag, and
+real (“genotyped”) HLA — the whole bulk story in four lines.</p>
+</div>
+</div>
+</div>
+<div id="launch-and-open-the-associations-tab" class="section level1">
+<h1>Launch and open the Associations tab</h1>
+<pre class="r"><code>launchCerebro(crb_file_to_load = &quot;demo_hla_tcr_bulk_toy.crb&quot;)</code></pre>
+<p>Because a TRB chain is present, the <strong>HLA &amp; TCR
+Motifs</strong> item appears in the sidebar; open it and switch to
+<strong>HLA Associations</strong>. Built from the real cohort (Option
+A), the tab looks like this:</p>
+<div class="float">
+<img src="img/hla_bulk_positive_control.png"
+alt="HLA Associations on the real bulk cohort. The orange banner declares the positive control; the allele picker shows real carrier / non-carrier counts (51 vs 49); the overlap table is donor-level." />
+<div class="figcaption">HLA Associations on the real bulk cohort. The
+orange banner declares the positive control; the allele picker shows
+real carrier / non-carrier counts (51 vs 49); the overlap table is
+donor-level.</div>
+</div>
+<p>What to read here:</p>
+<ul>
+<li>The <strong>orange banner</strong> is the
+<code>association-conditioned</code> disclosure. It is stronger than the
+synthetic demo’s warning in a specific way: here the sequences and
+genotypes are <em>real</em>, and only their <em>selection</em> is
+circular.</li>
+<li>The <strong>allele picker</strong> reports real carrier /
+non-carrier counts (here 51 vs 49 for <code>HLA-A*02:01</code>) —
+genuine genotypes, not a designed split.</li>
+<li>The <strong>overlap table</strong> is donor-level
+(<code>unit_type = donor</code>), because we wrote <code>donor_id</code>
+into the typing table. Had we passed a named list instead, that column
+would be empty and the table would quietly drop to sample level.</li>
+</ul>
+<p>The Motif Network tab still works on bulk data, but remember its
+“cells” are analysis units and there is no lineage colouring — MHC
+context is Unknown by design.</p>
+</div>
+<div id="the-three-bulk-contracts-in-one-place" class="section level1">
+<h1>The three bulk contracts, in one place</h1>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>technical_info</code> field</th>
+<th>value</th>
+<th>why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>observation_unit</code></td>
+<td><code>"analysis unit"</code></td>
+<td>the app calls rows “analysis units”, never “cells”, so it never
+claims a measurement bulk did not make</td>
+</tr>
+<tr class="even">
+<td><code>receptor_key</code></td>
+<td><code>"v_gene+cdr3"</code></td>
+<td>split-by-V is the default, so two receptors that share a CDR3 on
+different V families are not fused (and a donor not double-counted)</td>
+</tr>
+<tr class="odd">
+<td><code>tcr_selection</code></td>
+<td><code>"association-conditioned"</code></td>
+<td>raises the positive-control warning above every contrast</td>
+</tr>
+</tbody>
+</table>
+<p>Provenance is separate from selection:
+<code>addHLATyping(..., source_type = "genotyped")</code> records that
+the <em>genotypes</em> are real, independent of how the
+<em>receptors</em> were chosen.</p>
+</div>
+<div id="bringing-your-own-bulk-cohort" class="section level1">
+<h1>Bringing your own bulk cohort</h1>
+<p>Option B built <code>ir</code> and <code>hla_long</code> from random
+generators. With your own data you build the <em>same two objects</em>
+from real files, then run Option B’s assembly block unchanged — there is
+no Seurat object (bulk has no cells), so you set the
+<code>Cerebro</code> slots by hand exactly as shown above.</p>
+<div id="receptors-from-immunoseq-mixcr" class="section level2">
+<h2>Receptors from immunoSEQ / MiXCR</h2>
+<p>Bulk TCRβ usually arrives as one table per donor — Adaptive immunoSEQ
+sample exports, or MiXCR / other clonotype tables. You need only two
+fields per clonotype, the V family and the CDR3 amino-acid string, one
+row per <em>(donor, clonotype)</em>. Map them into the same five-column
+frame Cerebro stores, leaving <code>CTnt</code> / <code>CTstrict</code>
+as <code>NA</code> (bulk reports neither reliably):</p>
+<pre class="r"><code>read_donor &lt;- function(path, donor) {
+  x &lt;- read.delim(path) # one immunoSEQ / MiXCR export
+  data.frame(
+    barcode  = sprintf(&quot;%s_%05d&quot;, donor, seq_len(nrow(x))),
+    CTgene   = x$vGeneName, # V family, e.g. &quot;TRBV19&quot;
+    CTnt     = NA_character_,
+    CTaa     = x$aminoAcid, # the CDR3, e.g. &quot;CASSIRSSYEQYF&quot;
+    CTstrict = NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+ir &lt;- Map(read_donor, sample_files, donor_ids) # a list named by donor</code></pre>
+<p>Column names differ by vendor (<code>aminoAcid</code> /
+<code>cdr3aa</code> / <code>CDR3.aa</code>; <code>vGeneName</code> /
+<code>bestVGene</code>); rename to <code>CTgene</code> /
+<code>CTaa</code> and the rest follows. Keep only productive, in-frame
+CDR3s — filter upstream as your assay recommends.</p>
+</div>
+<div id="genotypes-from-your-hla-report" class="section level2">
+<h2>Genotypes from your HLA report</h2>
+<p>A typing lab returns each donor’s alleles. Reshape into the wide
+<code>sample</code> + <code>HLA-*_1/_2</code> table (or the long table
+Option B wrote) and attach with an honest <code>source_type</code>:</p>
+<pre class="r"><code>hla_wide &lt;- read.csv(&quot;cohort_hla.csv&quot;, check.names = FALSE) # sample, HLA-A_1, HLA-A_2, ...
+crb$addHLATyping(hla_wide,
+  source_type = &quot;genotyped&quot;,
+  typing_method = &quot;NGS typing&quot;, source_reference = &quot;MyLab 2025&quot;
+)</code></pre>
+</div>
+<div id="the-one-contract-that-is-yours-to-set-honestly"
+class="section level2">
+<h2>The one contract that is yours to set honestly</h2>
+<p>Option B declared
+<code>tcr_selection = "association-conditioned"</code> because its
+receptors were chosen <em>using</em> an HLA association — a positive
+control. <strong>If your receptors were collected independently of any
+HLA hypothesis, do not copy that flag.</strong> Set it to describe how
+you actually chose the receptors
+(e.g. <code>"unbiased repertoire"</code>) so the page does not raise a
+positive-control warning where none is warranted. Provenance
+(<code>source_type</code>) and selection (<code>tcr_selection</code>)
+are independent: real genotypes on <em>independently</em> collected
+receptors is exactly the case where the Associations tab carries real
+weight.</p>
+</div>
+</div>
+<div id="common-questions" class="section level1">
+<h1>Common questions</h1>
+<p><strong>Why is there no Projection or Gene expression tab?</strong>
+Bulk sequencing measures no transcriptome, so the data set has zero
+genes and no embedding by design; those tabs have nothing to draw.</p>
+<p><strong>Why is the carrier contrast “not evidence”?</strong> The
+demo’s receptors were selected <em>using</em> the very HLA association
+being examined, so the contrast is a built-in positive control. On your
+own, independently collected receptors it would carry real weight.</p>
+<p><strong>Wide or long HLA table — which should I write?</strong>
+Either is accepted, but write the <strong>long</strong> table (with
+<code>donor_id</code>) whenever you need donor-level counts; a named
+list has no donor column and silently drops to sample level.</p>
+<p><strong>Do I need a J gene?</strong> No. Bulk immunoSEQ reports only
+the V family and the CDR3; the parser leaves <code>j_gene</code> as
+<code>NA</code>, which is why the receptor key is
+<code>v_gene+cdr3</code> rather than CDR3 alone.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><strong>HLA &amp; TCR Motifs: from synthetic data to an interactive
+app</strong> — the single-cell workflow (Seurat → <code>.crb</code> →
+app) and a full tour of the page.</li>
+<li><code>data-raw/build_hla_tcr_bulk_demo.R</code> — the real pubtcrs →
+<code>.crb</code> pipeline.</li>
+<li><code>data-raw/DATASETS.md</code> — provenance for the shipped HLA
+demo, and for the two demos this package no longer ships.</li>
+</ul>
+</div>
+<div id="getting-help" class="section level1">
+<h1>Getting help</h1>
+<ul>
+<li>Questions and bug reports: <a
+href="https://github.com/mihem/CerebroNexus/issues"
+class="uri">https://github.com/mihem/CerebroNexus/issues</a>.</li>
+<li>Function reference and other articles: <a
+href="https://mihem.github.io/CerebroNexus/"
+class="uri">https://mihem.github.io/CerebroNexus/</a>.</li>
+<li>Provenance of every shipped demo data set:
+<code>data-raw/DATASETS.md</code>.</li>
+</ul>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session info</h1>
+<pre class="r"><code>sessionInfo()</code></pre>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

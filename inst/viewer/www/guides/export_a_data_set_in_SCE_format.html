@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Roman Hillje" />
+
+
+<title>Export a data set in SCE format</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Export a data set in SCE format</h1>
+<h4 class="author">Roman Hillje</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#installation" id="toc-installation">Installation</a></li>
+<li><a href="#load-packages" id="toc-load-packages">Load
+packages</a></li>
+<li><a href="#load-count-data" id="toc-load-count-data">Load count
+data</a></li>
+<li><a href="#pre-processing-with-scran-and-scater"
+id="toc-pre-processing-with-scran-and-scater">Pre-processing with
+<code>scran</code> and <code>scater</code></a></li>
+<li><a href="#clustering" id="toc-clustering">Clustering</a></li>
+<li><a href="#dimensional-reduction"
+id="toc-dimensional-reduction">Dimensional reduction</a></li>
+<li><a href="#curate-meta-data" id="toc-curate-meta-data">Curate meta
+data</a></li>
+<li><a href="#assign-cell-types" id="toc-assign-cell-types">Assign cell
+types</a>
+<ul>
+<li><a href="#clusters" id="toc-clusters">Clusters</a></li>
+<li><a href="#cell-types" id="toc-cell-types">Cell types</a></li>
+</ul></li>
+<li><a href="#export-to-cerebro-format"
+id="toc-export-to-cerebro-format">Export to Cerebro format</a></li>
+<li><a href="#session-info" id="toc-session-info">Session info</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>Here, I explain how one can export a data set stored in the <a
+href="https://bioconductor.org/packages/release/bioc/html/SingleCellExperiment.html"><code>SingleCellExperiment</code>/<code>SCE</code></a>
+format to visualize it in Cerebro.</p>
+<p>The workflow used here is loosely put together from the <a
+href="https://bioconductor.org/packages/release/bioc/vignettes/scran/inst/doc/scran.html"><code>scran</code></a>
+and <a
+href="https://bioconductor.org/packages/3.11/bioc/vignettes/scater/inst/doc/overview.html"><code>scater</code></a>
+examples. Do not use this workflow as a reference for how to properly
+process your data.</p>
+</div>
+<div id="installation" class="section level1">
+<h1>Installation</h1>
+<p>Before starting the workflow, install <code>CerebroNexus</code>, as
+well as the <a
+href="https://bioconductor.org/packages/release/bioc/html/scran.html"><code>scran</code></a>,
+<a
+href="https://bioconductor.org/packages/3.11/bioc/html/scater.html"><code>scater</code></a>
+and <a
+href="https://www.bioconductor.org/packages/release/bioc/html/SingleR.html"><code>SingleR</code></a>
+packages. The latter packages are only needed for pre-processing
+scRNA-seq data. If you just want to launch the Cerebro user interface,
+e.g. because you already have the pre-processed data, you don’t need
+those packages.</p>
+<pre class="r"><code>if ( &#39;BiocManager&#39; %in% installed.packages() == FALSE ) install.packages(&#39;BiocManager&#39;)
+
+library(BiocManager)
+
+if ( !&#39;CerebroNexus&#39; %in% rownames(installed.packages()) ) remotes::install_github(&#39;mihem/CerebroNexus&#39;)
+if ( &#39;scran&#39; %in% installed.packages() == FALSE ) install(&#39;scran&#39;)
+if ( &#39;scater&#39; %in% installed.packages() == FALSE ) install(&#39;scater&#39;)
+if ( &#39;SingleR&#39; %in% installed.packages() == FALSE ) install(&#39;SingleR&#39;)
+if ( &#39;monocle&#39; %in% installed.packages() == FALSE ) install(&#39;monocle&#39;)</code></pre>
+</div>
+<div id="load-packages" class="section level1">
+<h1>Load packages</h1>
+<p>Apart from the packages we just installed, we will also load the
+<code>dplyr</code> package and set a seed to make our analysis
+reproducible.</p>
+<pre class="r"><code>library(dplyr)
+library(scran)
+library(scater)
+library(SingleR)
+library(CerebroNexus)
+
+options(width = 100)
+set.seed(1234567)</code></pre>
+</div>
+<div id="load-count-data" class="section level1">
+<h1>Load count data</h1>
+<p>In this example workflow, we will load a small transcript count table
+from the <a href="https://satijalab.org/seurat/"><code>Seurat</code></a>
+package containing 80 cells and 230 genes. If you want to try the
+workflow with a real data set, you can find some transcript count
+matrices on the <a
+href="https://github.com/romanhaa/Cerebro/tree/master/examples">Cerebro
+GitHub repo</a>.</p>
+<pre class="r"><code>pbmc_counts &lt;- read.table(
+    file = system.file(&#39;extdata&#39;, &#39;pbmc_raw.txt&#39;, package = &#39;Seurat&#39;),
+    as.is = TRUE
+  ) %&gt;% as.matrix()</code></pre>
+</div>
+<div id="pre-processing-with-scran-and-scater" class="section level1">
+<h1>Pre-processing with <code>scran</code> and <code>scater</code></h1>
+<p>Now, we create a <code>SingleCellExperiment</code> object and filter
+out cells with less than <code>50</code> transcripts or fewer than
+<code>10</code> expressed genes. Those cut-offs are only reasonable for
+this example data set and will likely need to be adjusted in a real data
+set. Then, we…</p>
+<ul>
+<li>remove genes expressed in less than 5 cells,</li>
+<li>log-normalize transcript counts,</li>
+<li>identify highly variably genes,</li>
+<li>perform principal component analysis (PCA).</li>
+</ul>
+<pre class="r"><code>sce &lt;- SingleCellExperiment::SingleCellExperiment(
+  assays = list(counts = pbmc_counts)
+)
+
+qc_metrics &lt;- perCellQCMetrics(sce)
+colData(sce) &lt;- cbind(colData(sce), qc_metrics)
+
+cells_to_keep &lt;- sce$sum &gt;= 50 &amp; sce$detected &gt;= 10
+sce &lt;- sce[,cells_to_keep]
+
+genes_to_keep &lt;- nexprs(sce, byrow=TRUE) &gt;= 5
+sce &lt;- sce[genes_to_keep,]
+
+sce &lt;- logNormCounts(sce)
+
+variable_genes &lt;- modelGeneVar(sce)
+highly_variable_genes &lt;- getTopHVGs(variable_genes, n = 50)
+
+sce &lt;- runPCA(sce)</code></pre>
+</div>
+<div id="clustering" class="section level1">
+<h1>Clustering</h1>
+<p>Then, we identify clusters using a graph-based approach.</p>
+<pre class="r"><code>graph &lt;- buildSNNGraph(sce, use.dimred = &quot;PCA&quot;)
+cluster &lt;- igraph::cluster_walktrap(graph)$membership
+sce$cluster &lt;- factor(cluster)</code></pre>
+</div>
+<div id="dimensional-reduction" class="section level1">
+<h1>Dimensional reduction</h1>
+<p>Next, we use the UMAP technique to generate two- and
+three-dimensional projections.</p>
+<pre class="r"><code>sce &lt;- runUMAP(
+  sce,
+  name = &#39;UMAP&#39;,
+  ncomponents = 2,
+)
+
+sce &lt;- runUMAP(
+  sce,
+  name = &#39;UMAP_3D&#39;,
+  ncomponents = 3,
+)</code></pre>
+</div>
+<div id="curate-meta-data" class="section level1">
+<h1>Curate meta data</h1>
+<p>This example data set consists of a single sample so we just add that
+name to the meta data. Moreover, in order to be able to understand how
+we did the analysis later, we add some meta data to the
+<code>misc</code> slot of our <code>SCE</code> object, e.g. an
+experiment name and the species. The info we store there will later be
+collected for visualization in Cerebro.</p>
+<pre class="r"><code>sce$sample &lt;- factor(&#39;pbmc&#39;, levels = &#39;pbmc&#39;)
+
+sce@metadata$experiment &lt;- list(
+  experiment_name = &#39;pbmc&#39;,
+  organism = &#39;hg&#39;,
+  date_of_analysis = Sys.Date()
+)
+
+sce@metadata$parameters &lt;- list(
+  gene_nomenclature = &#39;gene_name&#39;,
+  discard_genes_expressed_in_fewer_cells_than = 10,
+  keep_mitochondrial_genes = TRUE,
+  variables_to_regress_out = &#39;nUMI&#39;
+)
+
+sce@metadata$parameters$filtering &lt;- list(
+  UMI_min = 50,
+  UMI_max = Inf,
+  genes_min = 10,
+  genes_max = Inf
+)
+
+sce@metadata$technical_info$CerebroNexus_version &lt;- utils::packageVersion(&#39;CerebroNexus&#39;)
+sce@metadata$technical_info$scran &lt;- utils::packageVersion(&#39;scran&#39;)
+sce@metadata$technical_info$scater &lt;- utils::packageVersion(&#39;scater&#39;)
+sce@metadata$technical_info &lt;- list(
+  &#39;R&#39; = capture.output(devtools::session_info())
+)</code></pre>
+</div>
+<div id="assign-cell-types" class="section level1">
+<h1>Assign cell types</h1>
+<p>Using the <a
+href="https://www.bioconductor.org/packages/release/bioc/html/SingleR.html"><code>SingleR</code></a>
+package, we can get a suggestion of cell type for each cell. Apart from
+the suggested cell type, we also extract the score that might help us to
+understand how confident the assignment was.</p>
+<pre class="r"><code>singler_ref &lt;- BlueprintEncodeData()
+
+singler_results_blueprintencode_main &lt;- SingleR(
+  test = logcounts(sce),
+  ref = singler_ref,
+  labels = singler_ref@colData@listData$label.main
+)
+
+sce$cell_type_singler_blueprintencode_main &lt;- singler_results_blueprintencode_main@listData$labels
+
+singler_scores &lt;- singler_results_blueprintencode_main@listData$scores %&gt;%
+  as_tibble() %&gt;%
+  dplyr::mutate(assigned_score = NA)
+
+for ( i in seq_len(nrow(singler_scores)) ) {
+  singler_scores$assigned_score[i] &lt;- singler_scores[[singler_results_blueprintencode_main@listData$labels[i]]][i]
+}
+
+sce$cell_type_singler_blueprintencode_main_score &lt;- singler_scores$assigned_score</code></pre>
+<p>##Identify marker genes</p>
+<p>Marker genes are genes which are particularly strongly or weakly
+expressed in a given cell population, e.g. a cluster. This information
+can help to distinguish the role of different cell groups in the data
+set. Here, marker genes are identified for clusters and cell types using
+the <code>findMarkers()</code> function from the <code>scran</code>
+package. The results are separate tables for the respective subgroups,
+which we merge together in order to make them compatible with
+Cerebro.</p>
+<div id="clusters" class="section level2">
+<h2>Clusters</h2>
+<pre class="r"><code>sce@metadata$marker_genes &lt;- list()
+sce@metadata$marker_genes$scran &lt;- list()
+
+marker_genes_cluster &lt;- findMarkers(sce, sce$cluster)
+
+for ( i in seq_along(marker_genes_cluster) ) {
+  marker_genes_cluster[[i]] &lt;- as.data.frame(marker_genes_cluster[[i]]) %&gt;%
+    mutate(
+      cluster = names(marker_genes_cluster)[i],
+      gene = rownames(.)
+    )
+  marker_genes_cluster[[i]][[paste0(&#39;logFC.&#39;, names(marker_genes_cluster)[i])]] &lt;- 0
+}
+
+marker_genes_cluster &lt;- do.call(bind_rows, marker_genes_cluster) %&gt;%
+  select(cluster, gene, Top, p.value, FDR, everything()) %&gt;%
+  mutate(cluster = factor(cluster, levels = levels(colData(sce)$cluster)))
+
+sce@metadata$marker_genes$scran$cluster &lt;- marker_genes_cluster %&gt;%
+  filter(!is.na(Top), FDR &lt;= 0.1)
+
+glimpse(marker_genes_cluster)
+
+marker_genes_cluster %&gt;% head() %&gt;% knitr::kable()</code></pre>
+</div>
+<div id="cell-types" class="section level2">
+<h2>Cell types</h2>
+<pre class="r"><code>marker_genes_cell_type &lt;- findMarkers(sce, sce$cell_type_singler_blueprintencode_main)
+
+for ( i in seq_along(marker_genes_cell_type) ) {
+  marker_genes_cell_type[[i]] &lt;- as.data.frame(marker_genes_cell_type[[i]]) %&gt;%
+    mutate(
+      cell_type_singler_blueprintencode_main = names(marker_genes_cell_type)[i],
+      gene = rownames(.)
+    )
+  marker_genes_cell_type[[i]][[paste0(&#39;logFC.&#39;, gsub(names(marker_genes_cell_type)[i], pattern = &#39; |\\-|\\+&#39;, replacement = &#39;.&#39;))]] &lt;- 0
+}
+
+marker_genes_cell_type &lt;- do.call(bind_rows, marker_genes_cell_type) %&gt;%
+  select(cell_type_singler_blueprintencode_main, gene, Top, p.value, FDR, everything()) %&gt;%
+  mutate(cell_type_singler_blueprintencode_main = factor(
+      cell_type_singler_blueprintencode_main,
+      levels = unique(cell_type_singler_blueprintencode_main)
+    )
+  )
+
+sce@metadata$marker_genes$scran$cell_type_singler_blueprintencode_main &lt;- marker_genes_cell_type %&gt;%
+  filter(!is.na(Top), FDR &lt;= 0.1)
+
+glimpse(marker_genes_cell_type)
+
+marker_genes_cell_type %&gt;% select(1:6) %&gt;% head() %&gt;% knitr::kable(booktabs = T)</code></pre>
+</div>
+</div>
+<div id="export-to-cerebro-format" class="section level1">
+<h1>Export to Cerebro format</h1>
+<p>Finally, we use CerebroNexus <code>exportFromSCE()</code> to export
+our SCE object to a <code>.crb</code> file which can be loaded into
+CerebroNexus.</p>
+<pre class="r"><code>exportFromSCE(
+  sce,
+  assay = &#39;logcounts&#39;,
+  file = paste0(&#39;cerebro_pbmc_SCE_&#39;, Sys.Date(), &#39;.crb&#39;),
+  experiment_name = &#39;pbmc&#39;,
+  organism = &#39;hg&#39;,
+  groups = c(&#39;sample&#39;,&#39;cluster&#39;,&#39;cell_type_singler_blueprintencode_main&#39;),
+  nUMI = &#39;sum&#39;,
+  nGene = &#39;detected&#39;,
+  add_all_meta_data = TRUE,
+  verbose = FALSE
+)</code></pre>
+<p>The Cerebro use interface can be launched using the
+<code>launchCerebro()</code> function.</p>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session info</h1>
+<pre class="r"><code>sessionInfo()</code></pre>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

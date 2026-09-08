@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Trekker single-cell spatial mapping: from a vendor bundle to an interactive app</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Trekker single-cell spatial mapping: from a
+vendor bundle to an interactive app</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#what-this-guide-does" id="toc-what-this-guide-does">What
+this guide does</a></li>
+<li><a href="#what-trekker-is" id="toc-what-trekker-is">What Trekker
+is</a></li>
+<li><a href="#getting-the-data-registration-required"
+id="toc-getting-the-data-registration-required">Getting the data
+(registration required)</a></li>
+<li><a href="#what-is-inside-the-bundle"
+id="toc-what-is-inside-the-bundle">What is inside the bundle</a></li>
+<li><a href="#the-three-coordinate-orientations-a-real-gotcha"
+id="toc-the-three-coordinate-orientations-a-real-gotcha">The three
+coordinate orientations (a real gotcha)</a></li>
+<li><a href="#build-the-demo-.crb" id="toc-build-the-demo-.crb">Build
+the demo .crb</a>
+<ul>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#step-1-read-the-vendor-outputs"
+id="toc-step-1-read-the-vendor-outputs">Step 1 — read the vendor
+outputs</a></li>
+<li><a href="#step-2-cell-types" id="toc-step-2-cell-types">Step 2 —
+cell types</a></li>
+<li><a href="#step-3-positioning-qc-and-upstream-morans-i"
+id="toc-step-3-positioning-qc-and-upstream-morans-i">Step 3 —
+positioning QC and upstream Moran’s I</a></li>
+<li><a href="#step-4-positioning-evidence-images"
+id="toc-step-4-positioning-evidence-images">Step 4 —
+positioning-evidence images</a></li>
+<li><a href="#step-5-sub-sample-whole-genes-force-include-evidence"
+id="toc-step-5-sub-sample-whole-genes-force-include-evidence">Step 5 —
+sub-sample (whole genes, force-include evidence)</a></li>
+<li><a
+href="#step-6-export-a-cerebro-object-and-attach-the-trekker-slot"
+id="toc-step-6-export-a-cerebro-object-and-attach-the-trekker-slot">Step
+6 — export a Cerebro object and attach the <code>trekker</code>
+slot</a></li>
+</ul></li>
+<li><a href="#load-it-in-the-app" id="toc-load-it-in-the-app">Load it in
+the app</a></li>
+<li><a href="#what-the-page-shows" id="toc-what-the-page-shows">What the
+page shows</a></li>
+<li><a href="#honest-scope" id="toc-honest-scope">Honest scope</a></li>
+</ul>
+</div>
+
+<div id="what-this-guide-does" class="section level1">
+<h1>What this guide does</h1>
+<p>This is an end-to-end, reproducible walk-through of the
+<strong>Trekker</strong> page: what the data is, where it comes from,
+what is inside the download, and exactly how the shipped demo
+<code>.crb</code> is built from it. Every code block is the real build
+recipe (it lives in <code>data-raw/build_trekker_demo.R</code>); it is
+shown with <code>eval = FALSE</code> because the raw input is a
+multi-gigabyte, access-gated vendor bundle, not something a vignette can
+fetch.</p>
+<p><strong>The Trekker demo is real measured data</strong> —
+down-sampled, but not invented. So this guide is also, unavoidably, a
+guide to reading it honestly: where the coordinates really live, what
+“confidently positioned” does and does not mean, and which numbers are
+the vendor’s rather than Cerebro’s.</p>
+</div>
+<div id="what-trekker-is" class="section level1">
+<h1>What Trekker is</h1>
+<p>Trekker (Curio Bioscience / Takara Bio, the <em>Trekker Single-Cell
+Spatial Mapping Kit</em>) tags cell <strong>nuclei</strong> with
+location barcodes carried by beads at known positions, then recovers
+each nucleus’s 2-D position from ordinary single-nucleus sequencing. It
+is built on Slide-tags foundational technology.</p>
+<p>Three ideas shape the page:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Real single cells × whole transcriptome.</strong> This is
+the cell Trekker occupies that the other platforms cannot: Visium
+measures the whole transcriptome but per 55 µm spot (not single cells);
+Xenium/MERFISH are single-cell but only over a gene panel; Trekker gives
+genuine single nuclei <em>and</em> all ~21k genes. Because every nucleus
+therefore has <strong>both</strong> a UMAP position and a physical
+position, the page shows the two side by side and lets you morph between
+them.</p></li>
+<li><p><strong>Positions are inferred, and the evidence is
+auditable.</strong> A Visium spot is simply <em>there</em>; a Trekker
+nucleus’s location is estimated from its bead barcodes. The vendor ships
+a positioning-evidence image for a sample of nuclei (the bead-barcode
+cloud plus a UMI knee plot), so “why is this nucleus here?” is a
+question you can actually answer. The page surfaces those
+images.</p></li>
+<li><p><strong>There is usually no matched histology image.</strong>
+Positions come from bead barcodes, not a tissue photo, so — unlike the
+Visium/Xenium/MERFISH demos — the Trekker <code>.crb</code> carries no
+histology raster. That is correct, not an omission.</p></li>
+</ol>
+<p>CerebroNexus only <strong>ingests and displays</strong> the vendor
+pipeline’s output; it never runs the vendor Primary Analysis Pipeline
+(that is an HPC/cloud job far larger than a Shiny session).</p>
+</div>
+<div id="getting-the-data-registration-required" class="section level1">
+<h1>Getting the data (registration required)</h1>
+<p>The Trekker example bundles are <strong>not public
+downloads</strong>. Access is gated:</p>
+<ol style="list-style-type: decimal">
+<li>Register for / sign in to a <strong>Curio Bioscience / Takara
+Bio</strong> account and request access to the Trekker example
+data.</li>
+<li>Download a per-sample bundle. This demo uses the
+<strong>smallest</strong> of the example bundles,
+<code>Mouse_Brain_TrekkerU_C_Sept2025.tar.gz</code> (~1.3 GB
+compressed).</li>
+<li>Extract it and note the <code>output/</code> directory:</li>
+</ol>
+<pre class="r"><code># in a shell
+tar -xzf Mouse_Brain_TrekkerU_C_Sept2025.tar.gz
+export TREKKER_OUTPUT_DIR=/path/to/Mouse_Brain_TrekkerU_C_Sept2025/output</code></pre>
+<p>Because the source is access-gated, the build script never phones
+home; it reads only from <code>$TREKKER_OUTPUT_DIR</code>. The raw
+bundle is git-ignored and <strong>not redistributable</strong>; only the
+derived, down-sampled <code>.crb</code> ships with the package.</p>
+</div>
+<div id="what-is-inside-the-bundle" class="section level1">
+<h1>What is inside the bundle</h1>
+<p>The single-reaction bundle’s <code>output/</code> folder holds the
+analysis object plus a set of companion tables and QC images. The build
+reads exactly five of them:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>What the build takes from it</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>&lt;S&gt;_ConfPositioned_seurat_spatial.rds</code></td>
+<td>whole-transcriptome expression, UMAP, Louvain clusters</td>
+</tr>
+<tr class="even">
+<td><code>&lt;S&gt;_Location_ConfPositionedNuclei.csv</code></td>
+<td>the <strong>canonical</strong> (x, y) coordinates, in µm</td>
+</tr>
+<tr class="odd">
+<td><code>&lt;S&gt;_summary_metrics.csv</code></td>
+<td>positioning QC (kept under the vendor’s own field names)</td>
+</tr>
+<tr class="even">
+<td><code>&lt;S&gt;_variable_features_spatial_moransi.txt</code></td>
+<td>the <strong>upstream</strong> (vendor) Moran’s I table</td>
+</tr>
+<tr class="odd">
+<td><code>cell_bc_plots/cells_{0,1,2,3}_*/</code></td>
+<td>positioning-evidence JPEGs (50 per class)</td>
+</tr>
+</tbody>
+</table>
+<p><code>&lt;S&gt;</code> is the sample id,
+<code>Mouse_Brain_TrekkerU_C</code>. The directory names
+<code>cells_0/1/2/3_coordinates_assigned</code> themselves record that
+positioning is a four-way (0 / 1 / 2 / 3+ locations) classification, not
+a binary one.</p>
+</div>
+<div id="the-three-coordinate-orientations-a-real-gotcha"
+class="section level1">
+<h1>The three coordinate orientations (a real gotcha)</h1>
+<p>The same nucleus appears in three places inside the object, in
+<strong>three different orientations</strong>. This is measured, not
+assumed:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Source</th>
+<th>Value for one example nucleus</th>
+<th>Relation to canonical</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Location CSV</strong> (<code>SPATIAL_1</code>,
+<code>SPATIAL_2</code>)</td>
+<td><code>(6647, -4916)</code></td>
+<td><strong>canonical</strong> (the authority)</td>
+</tr>
+<tr class="even">
+<td><code>SPATIAL</code> reduction</td>
+<td><code>(6647, +4916)</code></td>
+<td><strong>y-mirrored</strong></td>
+</tr>
+<tr class="odd">
+<td><code>@images$slice1</code> (<code>GetTissueCoordinates</code>)</td>
+<td><code>(-4916, 6647)</code></td>
+<td><strong>axes transposed</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The generic spatial extractor reads <code>@images</code> — and would
+therefore <strong>silently draw the tissue transposed 90°</strong>, with
+no error. So the build takes coordinates from the <strong>Location CSV
+only</strong>, and the page’s “Coordinate source” control lets you
+switch between all three so the discrepancy is visible rather than
+hidden.</p>
+</div>
+<div id="build-the-demo-.crb" class="section level1">
+<h1>Build the demo .crb</h1>
+<p>The rest of this section is
+<code>data-raw/build_trekker_demo.R</code>, narrated. It needs
+<code>Seurat</code>, <code>Matrix</code>, the <code>magick</code> and
+<code>base64enc</code> packages (build-time only), and the in-tree
+CerebroNexus (for the new <code>trekker</code> slot on
+<code>Cerebro</code>).</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(Seurat)
+library(Matrix)
+pkgload::load_all(&quot;.&quot;, quiet = TRUE)   # in-tree class with add/getTrekker()
+set.seed(42)
+
+SAMPLE &lt;- &quot;Mouse_Brain_TrekkerU_C&quot;
+BASE   &lt;- Sys.getenv(&quot;TREKKER_OUTPUT_DIR&quot;)
+f      &lt;- function(suffix) file.path(BASE, paste0(SAMPLE, suffix))
+N_CELLS &lt;- 2500L                       # down-sampled nucleus count</code></pre>
+</div>
+<div id="step-1-read-the-vendor-outputs" class="section level2">
+<h2>Step 1 — read the vendor outputs</h2>
+<p>The object carries a legacy <code>SlideSeq</code>
+<code>@images</code> entry that predates the <code>misc</code> slot, so
+any <code>subset()</code> on it errors. We never use
+<code>@images</code> (coordinates come from the CSV), so we drop it up
+front to make the object subsettable.</p>
+<pre class="r"><code>so &lt;- readRDS(f(&quot;_ConfPositioned_seurat_spatial.rds&quot;))
+DefaultAssay(so) &lt;- &quot;SCT&quot;
+so@images &lt;- list()                    # coordinates come from the CSV, not here
+bc_all &lt;- colnames(so)
+
+# canonical coordinates (µm) — the vendor Location CSV is the authority
+loc &lt;- read.csv(f(&quot;_Location_ConfPositionedNuclei.csv&quot;))
+names(loc)[1] &lt;- &quot;barcode&quot;
+loc &lt;- loc[match(bc_all, loc$barcode), ]
+cx  &lt;- loc$SPATIAL_1
+cy  &lt;- loc$SPATIAL_2
+
+um   &lt;- Embeddings(so, &quot;umap&quot;)
+clab &lt;- as.integer(as.character(so@meta.data$seurat_clusters))   # 0-based cluster id</code></pre>
+</div>
+<div id="step-2-cell-types" class="section level2">
+<h2>Step 2 — cell types</h2>
+<p>The object ships 18 unnamed Louvain clusters. They were labelled once
+by marker z-score argmax over canonical mouse-brain markers, and
+hard-coded (indexed by cluster id) so the build is deterministic.
+Clusters without a clear marker winner are honestly left
+<code>Neuron</code>, not over-called.</p>
+<pre class="r"><code># Snap25/Slc17a7 -&gt; ExN, Gad1/Gad2 -&gt; InN, Plp1/Mbp -&gt; Oligo, Aqp4/Gfap -&gt; Astro,
+# Cx3cr1/C1qa/Csf1r -&gt; Micro, Pdgfra -&gt; OPC, Prox1 -&gt; DG
+CELLTYPE_BY_CLUSTER &lt;- c(
+  &quot;ExN&quot;, &quot;InN&quot;, &quot;Oligo&quot;, &quot;ExN&quot;, &quot;Astro&quot;, &quot;InN&quot;, &quot;DG&quot;, &quot;ExN&quot;, &quot;ExN&quot;,
+  &quot;Neuron&quot;, &quot;OPC&quot;, &quot;Micro&quot;, &quot;Neuron&quot;, &quot;DG&quot;, &quot;ExN&quot;, &quot;Neuron&quot;, &quot;ExN&quot;, &quot;Neuron&quot;
+)</code></pre>
+</div>
+<div id="step-3-positioning-qc-and-upstream-morans-i"
+class="section level2">
+<h2>Step 3 — positioning QC and upstream Moran’s I</h2>
+<p>QC is parsed straight from <code>summary_metrics.csv</code>, keeping
+the vendor’s own field names; a metric that is absent stays absent
+(never replaced by 0). The Moran’s I table is the vendor’s — labelled
+“Upstream” on the page and never mixed with Cerebro’s own.</p>
+<pre class="r"><code>sm &lt;- read.csv(f(&quot;_summary_metrics.csv&quot;))
+mv &lt;- setNames(as.character(sm$Value), sm$Metrics)
+# qc &lt;- list(sample_id = mv[[&quot;Sample_ID&quot;]], tile_id = mv[[&quot;Tile_ID&quot;]],
+#            total_nuclei = ..., conf = ..., pct_2plus = ...,
+#            o_1 = ..., salv_2 = ..., salv_3 = ..., n_0 = ..., ...)   # see the script
+
+mi &lt;- read.table(f(&quot;_variable_features_spatial_moransi.txt&quot;),
+                 header = TRUE, sep = &quot;\t&quot;)
+mi &lt;- mi[order(-mi$MoransI_observed), ]                 # top spatially variable genes</code></pre>
+</div>
+<div id="step-4-positioning-evidence-images" class="section level2">
+<h2>Step 4 — positioning-evidence images</h2>
+<p><code>cells_1_coordinates_assigned/&lt;BC16&gt;.jpeg</code> is a
+confidently-positioned nucleus’s evidence image; the file stem is the
+16-character nucleus barcode, so <code>&lt;BC16&gt;-1</code> is the
+object barcode. Each image is down-scaled and base64-embedded so the
+whole demo — expression <em>and</em> evidence — stays in the one
+self-contained <code>.crb</code>.</p>
+<pre class="r"><code>ev_dir  &lt;- file.path(BASE, &quot;cell_bc_plots&quot;)
+ev_file &lt;- list.files(file.path(ev_dir, &quot;cells_1_coordinates_assigned&quot;),
+                      pattern = &quot;\\.jpe?g$&quot;, full.names = TRUE)
+ev_bc   &lt;- paste0(sub(&quot;\\.jpe?g$&quot;, &quot;&quot;, basename(ev_file)), &quot;-1&quot;)
+
+encode_jpeg &lt;- function(path, max_px = 620L, quality = 68L) {
+  img &lt;- magick::image_read(path)
+  img &lt;- magick::image_resize(img, paste0(max_px, &quot;x&quot;, max_px, &quot;&gt;&quot;))
+  raw &lt;- magick::image_write(img, format = &quot;jpeg&quot;, quality = quality)
+  paste0(&quot;data:image/jpeg;base64,&quot;, base64enc::base64encode(raw))
+}</code></pre>
+</div>
+<div id="step-5-sub-sample-whole-genes-force-include-evidence"
+class="section level2">
+<h2>Step 5 — sub-sample (whole genes, force-include evidence)</h2>
+<p>The object is 21,374 genes × 7,420 nuclei. Embedding
+whole-transcriptome expression for all of them blows a sensible size
+budget (measured: ~3.8 MB at 2,500 nuclei, before images). “Whole
+transcriptome” is the point, so we keep <strong>all genes</strong> and
+down-sample <strong>nuclei</strong> instead — stratified by cluster —
+and <strong>force-include the 50 nuclei that carry an evidence
+image</strong>, so the drill-down still works.</p>
+<pre class="r"><code>strat &lt;- integer(0)
+for (lv in sort(unique(clab))) {
+  w &lt;- which(clab == lv)
+  k &lt;- max(1L, round(N_CELLS * length(w) / length(clab)))
+  strat &lt;- c(strat, sample(w, min(k, length(w))))
+}
+idx    &lt;- sort(unique(c(strat, match(ev_bc, bc_all))))   # + the evidence nuclei
+sub_bc &lt;- bc_all[idx]</code></pre>
+</div>
+<div id="step-6-export-a-cerebro-object-and-attach-the-trekker-slot"
+class="section level2">
+<h2>Step 6 — export a Cerebro object and attach the <code>trekker</code>
+slot</h2>
+<p>We build an ordinary <code>Cerebro</code> object with
+<code>exportFromSeurat()</code> (whole- transcriptome expression + UMAP
++ <code>cluster</code>/<code>celltype</code> groups) — this is what
+powers gene colouring on the page. Then we attach a <code>trekker</code>
+slot with everything else the bespoke page needs.</p>
+<pre class="r"><code>sub &lt;- subset(so, cells = sub_bc)
+sub$celltype &lt;- CELLTYPE_BY_CLUSTER[as.integer(as.character(sub$seurat_clusters)) + 1L]
+sub$cluster  &lt;- factor(as.integer(as.character(sub$seurat_clusters)))
+sub$nUMI &lt;- sub$nCount_SCT; sub$nGene &lt;- sub$nFeature_SCT
+sub &lt;- DietSeurat(sub, assays = &quot;SCT&quot;, dimreducs = &quot;umap&quot;)   # drop dense scale.data
+
+exportFromSeurat(
+  sub, assay = &quot;SCT&quot;, slot = &quot;data&quot;,
+  file = &quot;inst/extdata/examples/demo_trekker.crb&quot;,
+  experiment_name = &quot;Trekker mouse brain (TrekkerU_C, demo)&quot;,
+  organism = &quot;mm&quot;,
+  groups = c(&quot;cluster&quot;, &quot;celltype&quot;), main_group = &quot;celltype&quot;,
+  nUMI = &quot;nUMI&quot;, nGene = &quot;nGene&quot;
+)</code></pre>
+<p>The <code>trekker</code> slot holds the page’s content. Every vector
+is <code>unname()</code>d — a <em>named</em> R vector serialises to a
+JSON object (barcode → value), but the client indexes these positionally
+as arrays. The <code>barcodes</code> field lets the server pull a gene’s
+expression aligned to these exact points, regardless of the expression
+matrix’s internal column order.</p>
+<pre class="r"><code>trekker &lt;- list(
+  meta       = list(n_cells = length(idx), n_cells_full = length(bc_all),
+                    n_genes_obj = nrow(so), unit = &quot;um (per manual; not declared)&quot;),
+  qc         = qc,                                  # vendor field names (Step 3)
+  barcodes   = unname(sub_bc),                      # SAME order as the arrays below
+  x = unname(round(cx[idx], 2)), y = unname(round(cy[idx], 2)),   # canonical µm
+  ux = unname(round(um[idx, 1], 3)), uy = unname(round(um[idx, 2], 3)),  # UMAP
+  clusters   = unname(clab[idx]),
+  celltype   = CELLTYPE_BY_CLUSTER,                 # cluster id -&gt; label
+  moran      = moran,                               # upstream vendor Moran&#39;s I
+  evidence   = evidence,                            # {cell, bc, img=base64}
+  qc_examples = qc_examples                         # one image per excluded class
+)
+
+crb &lt;- readRDS(&quot;inst/extdata/examples/demo_trekker.crb&quot;)
+crb$addTrekker(trekker)
+saveRDS(crb, &quot;inst/extdata/examples/demo_trekker.crb&quot;, compress = &quot;xz&quot;)</code></pre>
+<p>The whole build is one command:</p>
+<pre class="r"><code># TREKKER_OUTPUT_DIR=/path/.../output Rscript data-raw/build_trekker_demo.R
+# -&gt; inst/extdata/examples/demo_trekker.crb  (~4.7 MB, 2,532 nuclei x 21,374 genes,
+#                                         50 embedded evidence images)</code></pre>
+</div>
+</div>
+<div id="load-it-in-the-app" class="section level1">
+<h1>Load it in the app</h1>
+<p>The bundled app already lists the demo, so it is one dropdown
+click:</p>
+<pre class="r"><code>shiny::runApp(system.file(&quot;app.R&quot;, package = &quot;CerebroNexus&quot;))
+# choose &quot;Mouse brain (Trekker)&quot; in the &quot;Select dataset:&quot; switcher</code></pre>
+<p>To host your own Trekker <code>.crb</code>, pass it to
+<code>createShinyApp()</code>. The <strong>Trekker</strong> tab appears
+automatically whenever the loaded <code>.crb</code> carries a
+<code>trekker</code> slot.</p>
+</div>
+<div id="what-the-page-shows" class="section level1">
+<h1>What the page shows</h1>
+<p><strong>Physical space and transcriptome space, side by
+side.</strong> Every nucleus has both a spatial and a UMAP position, so
+the two panes are linked: lasso-select in one and the other highlights
+in sync. Colour by cell type, cluster, or any gene.</p>
+<p><img src="img/trekker_overview.png" width="100%" alt="Trekker page: dual spatial and UMAP panes coloured by cell type" /></p>
+<p><strong>Whole-transcriptome gene colouring.</strong> Pick (or type)
+any of the ~21k measured genes. Here <em>Plp1</em> — an oligodendrocyte
+marker — lights up the Oligo cluster in the UMAP and its scattered cells
+in tissue, a quick sanity check that the two coordinate systems refer to
+the same nuclei.</p>
+<p><img src="img/trekker_gene.png" width="100%" alt="Trekker page coloured by Plp1 expression" /></p>
+<p><strong>Data and QC — in the vendor’s own words.</strong> Positioning
+class distribution, the salvage caveat, provenance (including a
+<em>missing</em> pipeline version, kept missing), the
+positioning-evidence gallery, and the upstream Moran’s I table.</p>
+<p><img src="img/trekker_data_qc.png" width="100%" alt="Trekker page Data and QC, positioning evidence, and Moran's I" /></p>
+</div>
+<div id="honest-scope" class="section level1">
+<h1>Honest scope</h1>
+<ul>
+<li><strong><code>ConfPositioned</code> ≠ “exactly one
+location”.</strong> A fraction of the confidently- positioned set are
+vendor-salvaged multi-location nuclei (264 / 7,420 ≈ 3.56% here), and
+the object’s <code>number_clusters</code> is all <code>1</code> — the
+salvage trace is erased. The page labels the set
+<code>vendor_confidently_positioned</code>, not “one location”.</li>
+<li><strong>Unpositioned nuclei are <code>(0, 0)</code>
+sentinels</strong>, not <code>NA</code>; they are class 0 and excluded,
+never plotted at the origin.</li>
+<li><strong>The vendor’s own demo exceeds the vendor’s own
+guideline</strong>: the 2+-location rate (22.56%) is above the manual’s
+<code>&lt;20%</code>. The page shows “below vendor reference range” and
+does <strong>not</strong> adjudicate sample usability for you.</li>
+<li><strong>Moran’s I is the upstream value</strong>, computed
+differently from Cerebro’s own (Euclidean 6-NN); the two are labelled
+separately and are not interchangeable.</li>
+<li>The demo is a <strong>down-sampled subset</strong> of one reaction,
+shown so the page works out of the box — not a biological result to read
+off.</li>
+</ul>
+<p>See <code>data-raw/trekker.md</code> for the full design notes and
+<code>data-raw/DATASETS.md</code> for the one-line provenance entry.</p>
+<pre class="r"><code>sessionInfo()</code></pre>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

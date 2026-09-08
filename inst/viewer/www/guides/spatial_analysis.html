@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Spatial Transcriptomics Analysis</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Spatial Transcriptomics Analysis</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#quick-start" id="toc-quick-start">Quick start</a></li>
+<li><a href="#visualization-panels"
+id="toc-visualization-panels">Visualization panels</a>
+<ul>
+<li><a href="#projection" id="toc-projection">Projection</a></li>
+<li><a href="#main-parameters" id="toc-main-parameters">Main
+parameters</a></li>
+<li><a href="#additional-parameters"
+id="toc-additional-parameters">Additional parameters</a></li>
+<li><a href="#group-filters" id="toc-group-filters">Group
+filters</a></li>
+<li><a href="#selected-cells" id="toc-selected-cells">Selected
+cells</a></li>
+</ul></li>
+<li><a href="#data-preparation" id="toc-data-preparation">Data
+preparation</a>
+<ul>
+<li><a href="#placing-histological-images"
+id="toc-placing-histological-images">Placing histological
+images</a></li>
+<li><a href="#multiple-samples-with-alignment"
+id="toc-multiple-samples-with-alignment">Multiple samples with
+alignment</a></li>
+</ul></li>
+<li><a href="#spatial-parameters-reference"
+id="toc-spatial-parameters-reference">Spatial parameters
+reference</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>The <strong>Spatial</strong> tab provides interactive visualization
+of spatial transcriptomics data (e.g., Xenium, Visium). It appears
+<em>conditionally</em> — only when the loaded <code>.crb</code> file
+contains spatial coordinates. Cells are plotted at their spatial
+positions, optionally overlaid on a histological background image, with
+interactive controls for color mapping, point aesthetics, group
+filtering, and selection-based analysis.</p>
+</div>
+<div id="quick-start" class="section level1">
+<h1>Quick start</h1>
+<p>The Spatial tab surfaces automatically once a dataset carrying
+spatial data is loaded. To also show a histological image behind the
+cells, pass its path through <code>createShinyApp()</code>:</p>
+<pre class="r"><code>library(CerebroNexus)
+
+createShinyApp(
+  cerebro_data = c(&quot;My spatial sample&quot; = &quot;path/to/sample_spatial.crb&quot;),
+  result_dir = &quot;cerebro_app&quot;,
+  spatial_images = c(&quot;My spatial sample&quot; = &quot;path/to/sample_histology.png&quot;),
+  spatial_images_flip_y = c(&quot;My spatial sample&quot; = TRUE),
+  spatial_images_scale_x = c(&quot;My spatial sample&quot; = 0.9)
+)</code></pre>
+<p>The names of <code>spatial_images</code> (and every alignment
+parameter) must match the names of <code>cerebro_data</code>. When the
+app runs:</p>
+<ol style="list-style-type: decimal">
+<li>If the dataset contains spatial data, <strong>Spatial</strong>
+appears in the sidebar.</li>
+<li>The <strong>Background image</strong> dropdown lets you toggle the
+histology overlay.</li>
+<li>The <strong>Image opacity</strong> slider blends the image against
+the cells.</li>
+<li>Lasso or box-select cells to drive the selected-cells plot and
+table.</li>
+</ol>
+</div>
+<div id="visualization-panels" class="section level1">
+<h1>Visualization panels</h1>
+<div id="projection" class="section level2">
+<h2>Projection</h2>
+<p>The main spatial view shows cells positioned at their coordinates,
+optionally on a histological background. Cells are coloured by a
+user-selected metadata variable. Hover to see cell metadata; zoom and
+pan with the Canvas toolbar.</p>
+</div>
+<div id="main-parameters" class="section level2">
+<h2>Main parameters</h2>
+<ul>
+<li><strong>Spatial data</strong>: which image/FOV to plot when several
+are present.</li>
+<li><strong>Plot type</strong>: <code>ImageDimPlot</code> (categorical)
+or <code>ImageFeaturePlot</code> (gene).</li>
+<li><strong>Color cells by</strong>: metadata variable used for cell
+coloring.</li>
+<li><strong>Background image</strong>: histology overlay (only shown
+when a matching <code>spatial_images</code> entry exists for the loaded
+dataset).</li>
+<li><strong>Image opacity</strong>: blend factor for the background
+image.</li>
+</ul>
+</div>
+<div id="additional-parameters" class="section level2">
+<h2>Additional parameters</h2>
+<ul>
+<li><strong>Point size / opacity</strong>: control visual density.</li>
+<li><strong>Show % of cells</strong>: randomly downsample for
+performance.</li>
+<li><strong>Point border</strong>: toggle cell outlines.</li>
+<li><strong>Color scale</strong>: continuous or categorical color
+mapping.</li>
+<li><strong>Show group label</strong>: overlay group centroids.</li>
+</ul>
+</div>
+<div id="group-filters" class="section level2">
+<h2>Group filters</h2>
+<p>Select which metadata groups to display. Cells passing all active
+filters are shown in the projection.</p>
+</div>
+<div id="selected-cells" class="section level2">
+<h2>Selected cells</h2>
+<p>Lasso or box-select cells in the projection to view:</p>
+<ul>
+<li><strong>Plot of selected cells</strong>: bar plot of group
+composition (categorical) or violin/box plot (continuous).</li>
+<li><strong>Table of selected cells</strong>: interactive DT table with
+metadata, exportable to CSV or Excel.</li>
+</ul>
+</div>
+</div>
+<div id="data-preparation" class="section level1">
+<h1>Data preparation</h1>
+<p>Spatial data must be embedded in the <code>.crb</code> file by the
+export pipeline. <code>exportFromSeurat()</code> <strong>automatically
+detects</strong> spatial data on the Seurat object
+(<code>object@images</code>, covering Visium / Xenium / FOV) and stores
+the coordinates and expression — no special flag is required.</p>
+<pre class="r"><code>library(CerebroNexus)
+
+seurat_obj &lt;- qs::qread(&quot;path/to/seurat_object.qs&quot;)
+
+exportFromSeurat(
+  object = seurat_obj,
+  assay = &quot;SCT&quot;,
+  slot = &quot;data&quot;,
+  organism = &quot;hg&quot;,
+  experiment_name = &quot;My Spatial Dataset&quot;,
+  groups = c(&quot;sample_id&quot;, &quot;condition&quot;, &quot;cell_type&quot;),
+  file = &quot;my_spatial_data.crb&quot;
+)</code></pre>
+<p>If the Seurat object carries images, the resulting <code>.crb</code>
+gains a spatial projection and the Spatial tab becomes available when it
+is loaded.</p>
+<div id="placing-histological-images" class="section level2">
+<h2>Placing histological images</h2>
+<p>Histology images are <strong>not</strong> stored inside the
+<code>.crb</code>; they are passed to <code>createShinyApp()</code>,
+which copies them into the generated app bundle and references them by
+dataset name. Both JPG and PNG are supported.</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;My spatial sample&quot; = &quot;my_spatial_data.crb&quot;),
+  result_dir = &quot;cerebro_app&quot;,
+  spatial_images = c(&quot;My spatial sample&quot; = &quot;path/to/histology.png&quot;)
+)</code></pre>
+</div>
+<div id="multiple-samples-with-alignment" class="section level2">
+<h2>Multiple samples with alignment</h2>
+<p>When several capture areas live in one app, give each its own image
+and use the flip / scale / rotation parameters to align each image with
+its coordinate system. Every named entry must use the same names as
+<code>cerebro_data</code>:</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(
+    &quot;Ctrl sample&quot; = &quot;ctrl_spatial.crb&quot;,
+    &quot;MS sample&quot; = &quot;ms_spatial.crb&quot;
+  ),
+  result_dir = &quot;cerebro_app&quot;,
+  spatial_images = c(
+    &quot;Ctrl sample&quot; = &quot;ctrl_histology.png&quot;,
+    &quot;MS sample&quot; = &quot;ms_histology.png&quot;
+  ),
+  spatial_images_flip_y = c(&quot;Ctrl sample&quot; = TRUE, &quot;MS sample&quot; = TRUE),
+  spatial_images_scale_x = c(&quot;Ctrl sample&quot; = 0.90, &quot;MS sample&quot; = 0.95),
+  spatial_images_scale_y = c(&quot;Ctrl sample&quot; = 1.00, &quot;MS sample&quot; = 1.45),
+  spatial_plot_rotation = c(&quot;Ctrl sample&quot; = -61, &quot;MS sample&quot; = 205)
+)</code></pre>
+</div>
+</div>
+<div id="spatial-parameters-reference" class="section level1">
+<h1>Spatial parameters reference</h1>
+<table>
+<colgroup>
+<col width="28%" />
+<col width="15%" />
+<col width="23%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>spatial_images</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Maps each dataset name to a histology image path (JPG or PNG). Names
+must match <code>cerebro_data</code>.</td>
+</tr>
+<tr class="even">
+<td><code>spatial_images_flip_x</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Flip the image horizontally. <code>TRUE</code> mirrors across the
+vertical axis.</td>
+</tr>
+<tr class="odd">
+<td><code>spatial_images_flip_y</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Flip the image vertically. <code>TRUE</code> mirrors across the
+horizontal axis.</td>
+</tr>
+<tr class="even">
+<td><code>spatial_images_scale_x</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Multiplicative X-axis scale (1.0 = no scaling).</td>
+</tr>
+<tr class="odd">
+<td><code>spatial_images_scale_y</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Multiplicative Y-axis scale (1.0 = no scaling).</td>
+</tr>
+<tr class="even">
+<td><code>spatial_plot_rotation</code></td>
+<td>named vector/list</td>
+<td><code>NULL</code></td>
+<td>Rotation of cell coordinates in degrees (e.g. -90 to 270), for when
+capture-area and image orientation differ.</td>
+</tr>
+</tbody>
+</table>
+<p>Entries with no matching dataset name are ignored with a warning
+rather than raising an error, so a typo never blocks app generation.
+Missing entries default to a no-op (no flip, scale 1.0, no
+rotation).</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><code>vignette("cerebronexus_workflow_seurat")</code> for the
+complete export workflow.</li>
+<li><code>vignette("create_a_self_contained_shiny_app")</code> for app
+bundling options.</li>
+<li><code>vignette("multi_crb")</code> for hosting several datasets in
+one app.</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

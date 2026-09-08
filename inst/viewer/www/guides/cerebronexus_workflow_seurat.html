@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Roman Hillje" />
+
+
+<title>Introduction to the CerebroNexus workflow (Seurat)</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Introduction to the CerebroNexus workflow
+(Seurat)</h1>
+<h4 class="author">Roman Hillje</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#installation" id="toc-installation">Installation</a></li>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#load-count-data" id="toc-load-count-data">Load count
+data</a></li>
+<li><a href="#pre-processing-with-seurat"
+id="toc-pre-processing-with-seurat">Pre-processing with Seurat</a></li>
+<li><a href="#clustering" id="toc-clustering">Clustering</a></li>
+<li><a href="#cell-cycle-analysis" id="toc-cell-cycle-analysis">Cell
+cycle analysis</a></li>
+<li><a href="#dimensional-reduction"
+id="toc-dimensional-reduction">Dimensional reduction</a></li>
+<li><a href="#curate-meta-data" id="toc-curate-meta-data">Curate meta
+data</a></li>
+<li><a href="#assign-cell-types" id="toc-assign-cell-types">Assign cell
+types</a></li>
+<li><a href="#calculate-relationship-trees"
+id="toc-calculate-relationship-trees">Calculate relationship trees</a>
+<ul>
+<li><a href="#clusters" id="toc-clusters">Clusters</a></li>
+<li><a href="#cell-types" id="toc-cell-types">Cell types</a></li>
+</ul></li>
+<li><a href="#cerebronexus-functions"
+id="toc-cerebronexus-functions">CerebroNexus functions</a>
+<ul>
+<li><a
+href="#calculate-percentage-of-mitochondrial-and-ribosomal-transcripts"
+id="toc-calculate-percentage-of-mitochondrial-and-ribosomal-transcripts">Calculate
+percentage of mitochondrial and ribosomal transcripts</a></li>
+<li><a href="#get-most-expressed-genes"
+id="toc-get-most-expressed-genes">Get most expressed genes</a></li>
+<li><a href="#identify-marker-genes"
+id="toc-identify-marker-genes">Identify marker genes</a></li>
+<li><a href="#perform-pathway-enrichment-on-marker-genes"
+id="toc-perform-pathway-enrichment-on-marker-genes">Perform pathway
+enrichment on marker genes</a></li>
+<li><a href="#gene-set-enrichment" id="toc-gene-set-enrichment">Gene set
+enrichment</a></li>
+</ul></li>
+<li><a href="#trajectory-analysis-with-monocle-optional"
+id="toc-trajectory-analysis-with-monocle-optional">Trajectory analysis
+with Monocle (optional)</a></li>
+<li><a href="#export-to-cerebro-format"
+id="toc-export-to-cerebro-format">Export to Cerebro format</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+<li><a href="#session-info" id="toc-session-info">Session info</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>The <code>CerebroNexus</code> package has two main purposes: (1)
+provide access to the CerebroNexus user interface, and (2) provide
+functions to pre-process and export scRNA-seq data for visualization in
+CerebroNexus. The Cerebro user interface was built using the Shiny
+framework and designed to provide numerous perspectives on a given data
+set that should facilitate data interpretation. This vignette will give
+you an example of how scRNA-seq data can be processed using the <a
+href="https://satijalab.org/seurat/">Seurat</a> toolkit and then
+exported for visualization in Cerebro.</p>
+<p>Ket features that can be accessed through Cerebro:</p>
+<ul>
+<li>Interactive 2D and 3D dimensional reductions.</li>
+<li>Overview panels for all grouping variables, e.g. samples and
+clusters.</li>
+<li>Tables of most expressed genes and marker genes for subgroups of
+grouping variables.</li>
+<li>Tables of enriched pathways for subgroups of grouping
+variables.</li>
+<li>Query gene(s) and gene sets from MSigDB and show their expression in
+dimensional reductions.</li>
+<li>Visualize trajectories calculated with Monocle v2.</li>
+<li>Compatible plots can be exported to PNG from the plot toolbar.
+Portable views also offer PNG export through <strong>Share
+view</strong>.</li>
+<li>Tables can be downloaded in CSV or Excel format.</li>
+</ul>
+<p>For a direct image export, click <strong>Download PNG</strong> in the
+plot toolbar. If the current view supports portable sharing, you can
+instead open <strong>Share view</strong> and click <strong>Download
+PNG</strong> there. The Share view dialog also lets you download or open
+a portable JSON configuration containing the current display state and
+selected cell barcodes, so the same view can be restored in another
+compatible CerebroNexus session without including the source data.</p>
+</div>
+<div id="installation" class="section level1">
+<h1>Installation</h1>
+<p>Before starting the workflow, install <code>CerebroNexus</code>, as
+well as the <a
+href="https://satijalab.org/seurat/"><code>Seurat</code></a>, <a
+href="https://cole-trapnell-lab.github.io/monocle-release/"><code>monocle</code></a>
+and <a
+href="https://www.bioconductor.org/packages/release/bioc/html/SingleR.html"><code>SingleR</code></a>
+packages. The latter packages are optional because they are only needed
+for pre-processing scRNA-seq data. If you just want to launch the
+Cerebro user interface, e.g. because you already have the pre-processed
+data, you don’t need those packages.</p>
+<pre class="r"><code>if ( &#39;BiocManager&#39; %in% installed.packages() == FALSE ) install.packages(&#39;BiocManager&#39;)
+
+library(BiocManager)
+
+if ( !&#39;CerebroNexus&#39; %in% rownames(installed.packages()) ) remotes::install_github(&#39;mihem/CerebroNexus&#39;)
+if ( &#39;Seurat&#39; %in% installed.packages() == FALSE ) install(&#39;Seurat&#39;)
+if ( &#39;SingleR&#39; %in% installed.packages() == FALSE ) install(&#39;SingleR&#39;)
+if ( &#39;monocle&#39; %in% installed.packages() == FALSE ) install(&#39;monocle&#39;)</code></pre>
+</div>
+<div id="setup" class="section level1">
+<h1>Setup</h1>
+<p>Apart from the packages we just installed, we will also load the
+dplyr package and set a seed to make our analysis reproducible.</p>
+<pre class="r"><code>library(dplyr)
+library(Seurat)
+library(SingleR)
+library(monocle)
+library(CerebroNexus)
+
+options(width = 100)
+set.seed(1234567)</code></pre>
+</div>
+<div id="load-count-data" class="section level1">
+<h1>Load count data</h1>
+<p>In this example workflow, we will load a small transcript count table
+from the <a href="https://satijalab.org/seurat/">Seurat</a> package
+containing 80 cells and 230 genes. If you want to try the workflow with
+a real data set, you can find some transcript count matrices on the <a
+href="https://github.com/romanhaa/Cerebro/tree/master/examples">Cerebro
+GitHub repo</a>.</p>
+<pre class="r"><code>pbmc &lt;- read.table(
+  file = system.file(&#39;extdata&#39;, &#39;pbmc_raw.txt&#39;, package = &#39;Seurat&#39;),
+  as.is = TRUE
+)</code></pre>
+</div>
+<div id="pre-processing-with-seurat" class="section level1">
+<h1>Pre-processing with Seurat</h1>
+<p>Now, we create a <code>Seurat</code> object and filter out cells with
+less than <code>50</code> transcripts or fewer than <code>10</code>
+expressed genes. Those cut-offs are only reasonable for this example
+data set and will likely need to be adjusted in a real data set. Then,
+we follow the <a
+href="https://satijalab.org/seurat/essential_commands.html">standard
+Seurat workflow</a>, including…</p>
+<ul>
+<li>log-normalization of transcript counts,</li>
+<li>identification of highly variably genes,</li>
+<li>scaling of expression values and regression for the number of
+transcripts per cell,</li>
+<li>principal component analysis (PCA).</li>
+</ul>
+<pre class="r"><code>seurat &lt;- CreateSeuratObject(
+  project = &#39;pbmc&#39;,
+  counts = pbmc,
+  min.cells = 5
+)
+seurat &lt;- subset(seurat, subset = nCount_RNA &gt;= 50 &amp; nFeature_RNA &gt;= 10)
+seurat &lt;- NormalizeData(seurat, verbose = FALSE)
+seurat &lt;- FindVariableFeatures(seurat, verbose = FALSE)
+seurat &lt;- ScaleData(seurat, vars.to.regress = &#39;nCount_RNA&#39;, verbose = FALSE)
+seurat &lt;- RunPCA(seurat, features = seurat@assays$RNA@var.features, verbose = FALSE)</code></pre>
+</div>
+<div id="clustering" class="section level1">
+<h1>Clustering</h1>
+<p>Then, we identify clusters with a relatively low resolution, again,
+because of the small size of this data set.</p>
+<pre class="r"><code>seurat &lt;- FindNeighbors(seurat)
+seurat &lt;- FindClusters(seurat, resolution = 0.5)
+seurat@meta.data$RNA_snn_res.0.5 &lt;- NULL</code></pre>
+</div>
+<div id="cell-cycle-analysis" class="section level1">
+<h1>Cell cycle analysis</h1>
+<p>We could also perform cell cycle analysis using the
+<code>CellCycleScoring()</code> built into Seurat. However, too few of
+the cell cycle genes are present in this example data set so we will
+skip it here. The code below should work with a real data set.</p>
+<pre class="r"><code>seurat &lt;- CellCycleScoring(
+  seurat,
+  g2m.features = cc.genes$g2m.genes,
+  s.features = cc.genes$s.genes
+)
+
+seurat@misc$gene_lists$G2M_phase_genes &lt;- cc.genes$g2m.genes
+seurat@misc$gene_lists$S_phase_genes &lt;- cc.genes$s.genes</code></pre>
+</div>
+<div id="dimensional-reduction" class="section level1">
+<h1>Dimensional reduction</h1>
+<p>Next, we use the UMAP technique to generate two- and
+three-dimensional projections.</p>
+<pre class="r"><code>seurat &lt;- RunUMAP(
+  seurat,
+  reduction.name = &#39;UMAP&#39;,
+  reduction.key = &#39;UMAP_&#39;,
+  dims = 1:30,
+  n.components = 2,
+  seed.use = 100,
+  verbose = FALSE
+)
+
+seurat &lt;- RunUMAP(
+  seurat,
+  reduction.name = &#39;UMAP_3D&#39;,
+  reduction.key = &#39;UMAP3D_&#39;,
+  dims = 1:30,
+  n.components = 3,
+  seed.use = 100,
+  verbose = FALSE
+)</code></pre>
+</div>
+<div id="curate-meta-data" class="section level1">
+<h1>Curate meta data</h1>
+<p>This example data set consists of a single sample so we just add that
+name to the meta data. Moreover, in order to be able to understand how
+we did the analysis later, we add some meta data to the
+<code>misc</code> slot of our <code>Seurat</code> object, e.g. an
+experiment name and the species. The info we store there will later be
+collected for visualization in Cerebro.</p>
+<pre class="r"><code>seurat@meta.data$sample &lt;- factor(&#39;pbmc&#39;, levels = &#39;pbmc&#39;)
+
+seurat@misc$experiment &lt;- list(
+  experiment_name = &#39;pbmc&#39;,
+  organism = &#39;hg&#39;,
+  date_of_analysis = Sys.Date()
+)
+
+seurat@misc$parameters &lt;- list(
+  gene_nomenclature = &#39;gene_name&#39;,
+  discard_genes_expressed_in_fewer_cells_than = 10,
+  keep_mitochondrial_genes = TRUE,
+  variables_to_regress_out = &#39;nUMI&#39;,
+  number_PCs = 30,
+  cluster_resolution = 0.5
+)
+
+seurat@misc$parameters$filtering &lt;- list(
+  UMI_min = 50,
+  UMI_max = Inf,
+  genes_min = 10,
+  genes_max = Inf
+)
+
+seurat@misc$technical_info$CerebroNexus_version &lt;- utils::packageVersion(&#39;CerebroNexus&#39;)
+seurat@misc$technical_info$Seurat &lt;- utils::packageVersion(&#39;Seurat&#39;)
+seurat@misc$technical_info &lt;- list(
+  &#39;R&#39; = capture.output(devtools::session_info())
+)</code></pre>
+</div>
+<div id="assign-cell-types" class="section level1">
+<h1>Assign cell types</h1>
+<p>Using the <a
+href="https://www.bioconductor.org/packages/release/bioc/html/SingleR.html"><code>SingleR</code></a>
+package, we can get a suggestion of cell type for each cell. Apart from
+the suggested cell type, we also extract the score that might help us to
+understand how confident the assignment was.</p>
+<pre class="r"><code>singler_ref &lt;- BlueprintEncodeData()
+
+singler_results_blueprintencode_main &lt;- SingleR(
+  test = GetAssayData(seurat, assay = &#39;RNA&#39;, slot = &#39;data&#39;),
+  ref = singler_ref,
+  labels = singler_ref@colData@listData$label.main
+)
+
+seurat@meta.data$cell_type_singler_blueprintencode_main &lt;- singler_results_blueprintencode_main@listData$labels
+
+singler_scores &lt;- singler_results_blueprintencode_main@listData$scores %&gt;%
+  as_tibble() %&gt;%
+  dplyr::mutate(assigned_score = NA)
+
+for ( i in seq_len(nrow(singler_scores)) ) {
+  singler_scores$assigned_score[i] &lt;- singler_scores[[singler_results_blueprintencode_main@listData$labels[i]]][i]
+}
+
+seurat@meta.data$cell_type_singler_blueprintencode_main_score &lt;- singler_scores$assigned_score</code></pre>
+</div>
+<div id="calculate-relationship-trees" class="section level1">
+<h1>Calculate relationship trees</h1>
+<p>Here, we calculate phylogenetic trees that represent the similarity
+between different subgroups, in this case clusters and cell types. To do
+so, we need to set the identity in the Seurat object to the current
+grouping of interest, calculate the tree, and then copy the result to
+the <code>misc</code> slot in the Seurat object so it can be exported
+later.</p>
+<div id="clusters" class="section level2">
+<h2>Clusters</h2>
+<pre class="r"><code>Idents(seurat) &lt;- &quot;seurat_clusters&quot;
+seurat &lt;- BuildClusterTree(
+  seurat,
+  dims = 1:30,
+  reorder = FALSE,
+  reorder.numeric = FALSE
+)
+seurat@misc$trees$seurat_clusters &lt;- seurat@tools$BuildClusterTree</code></pre>
+</div>
+<div id="cell-types" class="section level2">
+<h2>Cell types</h2>
+<pre class="r"><code>Idents(seurat) &lt;- &quot;cell_type_singler_blueprintencode_main&quot;
+seurat &lt;- BuildClusterTree(
+  seurat,
+  dims = 1:30,
+  reorder = FALSE,
+  reorder.numeric = FALSE
+)
+seurat@misc$trees$cell_type_singler_blueprintencode_main &lt;- seurat@tools$BuildClusterTree</code></pre>
+</div>
+</div>
+<div id="cerebronexus-functions" class="section level1">
+<h1>CerebroNexus functions</h1>
+<p>Now we use CerebroNexus functions to obtain more information about
+the data set and its clusters and cell types.</p>
+<div
+id="calculate-percentage-of-mitochondrial-and-ribosomal-transcripts"
+class="section level2">
+<h2>Calculate percentage of mitochondrial and ribosomal transcripts</h2>
+<p>First, for every cell we calculate the percentage of mitochondrial
+and ribosomal transcripts of all transcripts using the
+<code>addPercentMtRibo()</code> function.</p>
+<pre class="r"><code>seurat &lt;- addPercentMtRibo(
+  seurat,
+  organism = &#39;hg&#39;,
+  gene_nomenclature = &#39;name&#39;
+)</code></pre>
+</div>
+<div id="get-most-expressed-genes" class="section level2">
+<h2>Get most expressed genes</h2>
+<p>Another interesting perspective is to look at the 100 most expressed
+genes across all cells and for every cluster and cell type. This can
+help in understanding the transcriptional activity of a given cell
+population.</p>
+<pre class="r"><code>seurat &lt;- getMostExpressedGenes(
+  seurat,
+  assay = &#39;RNA&#39;,
+  groups = c(&#39;sample&#39;,&#39;seurat_clusters&#39;,&#39;cell_type_singler_blueprintencode_main&#39;)
+)</code></pre>
+</div>
+<div id="identify-marker-genes" class="section level2">
+<h2>Identify marker genes</h2>
+<p>Marker genes are genes which are particularly strongly or weakly
+expressed in a given cell population, e.g. a cluster. This information
+can help to distinguish the role of different cell groups in the data
+set. We can identify marker genes using the
+<code>getMarkerGenes()</code> function which internally uses the
+<code>Seurat::FindAllMarkers()</code> function but also stores the
+results in the Seurat object under the <code>misc</code> slot.</p>
+<pre class="r"><code>seurat &lt;- getMarkerGenes(
+  seurat,
+  assay = &#39;RNA&#39;,
+  organism = &#39;hg&#39;,
+  groups = c(&#39;seurat_clusters&#39;,&#39;cell_type_singler_blueprintencode_main&#39;),
+  name = &#39;cerebro_seurat&#39;,
+  only_pos = TRUE
+)</code></pre>
+</div>
+<div id="perform-pathway-enrichment-on-marker-genes"
+class="section level2">
+<h2>Perform pathway enrichment on marker genes</h2>
+<p>Using the previously identified marker genes, we can perform a
+pathway enrichmeny analysis using the <code>getEnrichedPathways()</code>
+function. The function will internally use the <a
+href="https://amp.pharm.mssm.edu/Enrichr/">Enrichr</a> API and store the
+results in the Seurat object under the <code>misc</code> slot. All we
+have to do is provide the name that we specified in
+<code>getMarkerGenes()</code>.</p>
+<pre class="r"><code>seurat &lt;- getEnrichedPathways(
+  seurat,
+  marker_genes_input = &#39;cerebro_seurat&#39;,
+  adj_p_cutoff = 0.01,
+  max_terms = 100
+)</code></pre>
+</div>
+<div id="gene-set-enrichment" class="section level2">
+<h2>Gene set enrichment</h2>
+<p>On top of querying the databases of the <a
+href="https://amp.pharm.mssm.edu/Enrichr/">Enrichr</a> service, one can
+also perform gene set enrichment analysis on gene sets provided as a
+<code>.gmt</code> file, e.g. from the <a
+href="https://www.gsea-msigdb.org/gsea/msigdb/index.jsp">MSigDB</a>. The
+<code>performGeneSetEnrichmentAnalysis()</code> function uses the <a
+href="https://bioconductor.org/packages/release/bioc/html/GSVA.html">GSVA</a>
+method in combination with additional statistics as published by <a
+href="https://f1000research.com/articles/8-296">Diaz-Mejia et.
+al.</a>.</p>
+<pre class="r"><code>example_gene_set &lt;- system.file(&quot;extdata/example_gene_set.gmt&quot;, package = &quot;CerebroNexus&quot;)
+
+seurat &lt;- performGeneSetEnrichmentAnalysis(
+  seurat,
+  assay = &#39;RNA&#39;,
+  GMT_file = example_gene_set,
+  groups = c(&#39;seurat_clusters&#39;,&#39;cell_type_singler_blueprintencode_main&#39;)
+)</code></pre>
+</div>
+</div>
+<div id="trajectory-analysis-with-monocle-optional"
+class="section level1">
+<h1>Trajectory analysis with Monocle (optional)</h1>
+<p>Then, we perform trajectory analysis with <a
+href="https://cole-trapnell-lab.github.io/monocle-release/">Monocle
+v2</a> using the previously identified highly variable genes. We extract
+the trajectory from the generated Monocle object with the CerebroNexus
+<code>extractMonocleTrajectory()</code> function and attach it to our
+Seurat object.</p>
+<pre class="r"><code>monocle &lt;- newCellDataSet(
+  seurat@assays$RNA@counts,
+  phenoData = new(&#39;AnnotatedDataFrame&#39;, data = seurat@meta.data),
+  featureData = new(&#39;AnnotatedDataFrame&#39;, data = data.frame(
+    gene_short_name = rownames(seurat@assays$RNA@counts),
+    row.names = rownames(seurat@assays$RNA@counts))
+  )
+)
+
+monocle &lt;- estimateSizeFactors(monocle)
+monocle &lt;- setOrderingFilter(monocle, seurat@assays$RNA@var.features)
+monocle &lt;- reduceDimension(monocle, max_components = 2, method = &#39;DDRTree&#39;)
+monocle &lt;- orderCells(monocle)
+
+seurat &lt;- extractMonocleTrajectory(monocle, seurat, &#39;highly_variable_genes&#39;)</code></pre>
+</div>
+<div id="export-to-cerebro-format" class="section level1">
+<h1>Export to Cerebro format</h1>
+<p>Finally, we use CerebroNexus <code>exportFromSeurat()</code> to
+export our Seurat object to a <code>.crb</code> file which can be loaded
+into CerebroNexus.</p>
+<pre class="r"><code>exportFromSeurat(
+  seurat,
+  assay = &#39;RNA&#39;,
+  slot = &#39;data&#39;,
+  file = paste0(&#39;cerebro_pbmc_seurat_&#39;, Sys.Date(), &#39;.crb&#39;),
+  experiment_name = &#39;pbmc&#39;,
+  organism = &#39;hg&#39;,
+  groups = c(&#39;sample&#39;,&#39;seurat_clusters&#39;,&#39;cell_type_singler_blueprintencode_main&#39;),
+  nUMI = &#39;nCount_RNA&#39;,
+  nGene = &#39;nFeature_RNA&#39;,
+  add_all_meta_data = TRUE,
+  verbose = FALSE
+)</code></pre>
+<p>The Cerebro use interface can be launched using the
+<code>launchCerebro()</code> function.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<p>If your Seurat v5 assay is split into one layer per sample, see <a
+href="seurat_v5_layered_assays.html">Seurat v5 layered assays: complete
+and safe expression matrices</a> for the automatic resolution rules,
+custom-layer safeguards, and troubleshooting steps.</p>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session info</h1>
+<pre class="r"><code>sessionInfo()</code></pre>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

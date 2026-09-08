@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Data integrity from Seurat to a self-contained Cerebro app</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Data integrity from Seurat to a
+self-contained Cerebro app</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#why-this-guide-exists" id="toc-why-this-guide-exists">Why
+this guide exists</a></li>
+<li><a href="#contract-1-one-complete-expression-matrix"
+id="toc-contract-1-one-complete-expression-matrix">Contract 1: one
+complete expression matrix</a></li>
+<li><a href="#contract-2-one-repertoire-row-per-cell"
+id="toc-contract-2-one-repertoire-row-per-cell">Contract 2: one
+repertoire row per cell</a>
+<ul>
+<li><a href="#barcode-overlap-with-the-seurat-object"
+id="toc-barcode-overlap-with-the-seurat-object">Barcode overlap with the
+Seurat object</a></li>
+<li><a href="#unified-and-legacy-data"
+id="toc-unified-and-legacy-data">Unified and legacy data</a></li>
+</ul></li>
+<li><a href="#contract-3-stage-crb-and-sidecar-replacement"
+id="toc-contract-3-stage-crb-and-sidecar-replacement">Contract 3: stage
+CRB and sidecar replacement</a></li>
+<li><a href="#what-errors-versus-warnings-mean"
+id="toc-what-errors-versus-warnings-mean">What errors versus warnings
+mean</a></li>
+<li><a href="#recommended-workflow"
+id="toc-recommended-workflow">Recommended workflow</a></li>
+<li><a href="#further-reading" id="toc-further-reading">Further
+reading</a></li>
+</ul>
+</div>
+
+<div id="why-this-guide-exists" class="section level1">
+<h1>Why this guide exists</h1>
+<p>A Cerebro app is the end of a chain:</p>
+<pre class="text"><code>Seurat assay -&gt; complete expression matrix -&gt; .crb (+ optional sidecar)
+             -&gt; self-contained app bundle -&gt; interactive analyses</code></pre>
+<p>Each arrow changes representation. A plausible name is not enough to
+prove that the correct data crossed the boundary:</p>
+<ul>
+<li><code>data.sample_a</code> may be only one part of a Seurat v5
+matrix;</li>
+<li>two repertoire rows with barcode <code>AAAC-1</code> may count one
+cell twice;</li>
+<li>a <code>.crb</code> and its sidecar may be left disagreeing by an
+error late in the export.</li>
+</ul>
+<p>CerebroNexus therefore uses one rule throughout the chain:</p>
+<blockquote>
+<p>Resolve identity, validate completeness and uniqueness, stage the
+result, and only then begin replacing published files.</p>
+</blockquote>
+<p>This overview explains how the three contracts fit together. Follow
+the linked topic guides for commands and troubleshooting.</p>
+</div>
+<div id="contract-1-one-complete-expression-matrix"
+class="section level1">
+<h1>Contract 1: one complete expression matrix</h1>
+<p>Seurat v5 can represent one logical layer as several physical
+layers:</p>
+<pre class="text"><code>RNA
+├── data.donor_a
+└── data.donor_b</code></pre>
+<p>CerebroNexus does not choose a layer because its name merely starts
+with <code>data</code>. It proves that candidate cell memberships form
+one unique, disjoint partition of all assay cells and then joins that
+partition on a local object.</p>
+<p>An unrelated custom matrix such as <code>data.imputed</code> is
+protected from <code>JoinLayers()</code>. A deeper complete split such
+as <code>data.imputed.donor_a/donor_b</code>, requested as
+<code>data</code>, is semantically ambiguous and stops with an
+explanation instead of silently becoming normalized data.</p>
+<p>Every operation that describes the complete object applies the same
+final check:</p>
+<pre class="text"><code>unique matrix cells == unique Seurat object cells</code></pre>
+<p>If the sets match but order differs, CerebroNexus reorders the matrix
+once. Missing or unexpected cells are an error.</p>
+<p>For the complete algorithm, diagrams, performance limits, and
+troubleshooting, see <a href="seurat_v5_layered_assays.html">Seurat v5
+layered assays</a>.</p>
+</div>
+<div id="contract-2-one-repertoire-row-per-cell" class="section level1">
+<h1>Contract 2: one repertoire row per cell</h1>
+<p>The immune-repertoire module treats a row as one cell carrying one
+clonotype. That only works if barcode identity is unique.</p>
+<p>The canonical structure is:</p>
+<pre class="r"><code>repertoire &lt;- list(
+  donorA = data.frame(
+    barcode = c(&quot;donorA_AAAC-1&quot;, &quot;donorA_TTGC-1&quot;),
+    CTgene = c(&quot;TRAV1.TRAJ1&quot;, &quot;IGHV1.IGHJ1&quot;),
+    CTnt = c(&quot;TGT...&quot;, &quot;TGC...&quot;),
+    CTaa = c(&quot;CAV...&quot;, &quot;CAR...&quot;),
+    CTstrict = c(&quot;TRAV1;CAV...&quot;, &quot;IGHV1;CAR...&quot;)
+  )
+)</code></pre>
+<p>The contract requires:</p>
+<ul>
+<li>one named data frame per sample;</li>
+<li>all five standard identity/clone-call columns;</li>
+<li>each required column is a one-dimensional vector with one value per
+row;</li>
+<li>a non-empty barcode in every row;</li>
+<li>no duplicate barcode in a sample;</li>
+<li>no barcode reused by another sample;</li>
+<li>no cell present in both TCR and BCR inputs.</li>
+</ul>
+<p>TCR and BCR tables for the same sample are row-bound only after the
+overlap check. Zero-row sample tables are treated as absence.</p>
+<div id="barcode-overlap-with-the-seurat-object" class="section level2">
+<h2>Barcode overlap with the Seurat object</h2>
+<p>No overlap is an error: the app could not attach any receptor to any
+cell. A common cause is <code>combineTCR(samples = ...)</code> adding
+sample prefixes while the Seurat cell names were not changed with
+<code>RenameCells()</code>.</p>
+<p>Partial overlap is ordinary after cells have been filtered, but
+orphan rows must not remain analysis units. They are removed with a
+warning before storage. A whole unmatched sample is therefore removed;
+if every sample is unmatched, the operation stops.</p>
+</div>
+<div id="unified-and-legacy-data" class="section level2">
+<h2>Unified and legacy data</h2>
+<p>A valid <code>@misc$immune_repertoire</code> is authoritative. Stale
+legacy <code>tcr_data</code>/<code>bcr_data</code> does not block
+it.</p>
+<p>When only legacy slots exist, new exports validate and merge them
+into the unified field while retaining the originals. Existing CRBs need
+re-exporting because R6 methods are serialized into the file.</p>
+<p>See <a href="immune_repertoire_analysis.html">Immune repertoire
+analysis</a> for Cell Ranger inputs, metadata extraction, scRepertoire
+integration, and module use.</p>
+</div>
+</div>
+<div id="contract-3-stage-crb-and-sidecar-replacement"
+class="section level1">
+<h1>Contract 3: stage CRB and sidecar replacement</h1>
+<p>An export can produce:</p>
+<pre class="text"><code>embedded -&gt; dataset.crb
+h5       -&gt; dataset.crb + dataset.h5
+bpcells  -&gt; dataset.crb + dataset.bpcells/</code></pre>
+<p>Both artifacts are written in a private sibling stage. On POSIX
+systems the stage is mode <code>0700</code>, new H5/CRB files are
+<code>0600</code>, and new BPCells directories are <code>0700</code>; an
+existing CRB keeps its previous mode. Only those POSIX mode bits are set
+or preserved. Ownership, ACLs, extended attributes, and security labels
+remain the deployment system’s responsibility on every platform. Later
+validation of repertoire, HLA, markers, projections, and spatial data
+happens before publication.</p>
+<p>Before replacing an existing sidecar, the exporter reads the current
+CRB’s plain backend field without calling a serialized getter.
+Replacement proceeds only when that descriptor claims the exact sidecar
+path and type; an unrelated same-name file is a collision and remains
+untouched. For BPCells, the new matrix is reopened at its final location
+before serialization. If publication fails, the previous CRB and sidecar
+are restored on a best-effort basis. A successful backend switch removes
+the previous sidecar only after the new CRB is committed.</p>
+<p>This is not an atomic transaction across two paths. Stop every app or
+other reader using the export before replacing it: a live reader can
+otherwise load the old CRB during the sidecar swap. Process termination
+and concurrent writers are also outside the guarantee. A failed
+restoration is reported rather than hidden.</p>
+<p>External modes require a portable <code>.crb</code> filename. Empty
+stems, Windows reserved names, and filesystem-invalid punctuation are
+rejected before any artifact is written.</p>
+</div>
+<div id="what-errors-versus-warnings-mean" class="section level1">
+<h1>What errors versus warnings mean</h1>
+<p>Errors mean that continuing would reinterpret identity or publish an
+unusable artifact:</p>
+<ul>
+<li>ambiguous/incomplete expression partition;</li>
+<li>matrix/object cell mismatch;</li>
+<li>target-path collision;</li>
+<li>missing or escaping bundle input;</li>
+<li>malformed or duplicate repertoire identity;</li>
+<li>zero repertoire/cell overlap.</li>
+</ul>
+<p>Warnings mean that the result remains interpretable:</p>
+<ul>
+<li>an explicitly allowed expression fallback, such as <code>data</code>
+to <code>counts</code>;</li>
+<li>repertoire rows or samples absent from the object were removed;</li>
+<li>publication succeeded but an old backup could not be removed.</li>
+</ul>
+</div>
+<div id="recommended-workflow" class="section level1">
+<h1>Recommended workflow</h1>
+<ol style="list-style-type: decimal">
+<li>Keep source Seurat layers in memory for export, or materialize every
+intended split layer first.</li>
+<li>Export to a <code>.crb</code> path and choose <code>embedded</code>,
+<code>h5</code>, or <code>bpcells</code>.</li>
+<li>Add repertoire data through <code>addImmuneRepertoire()</code>
+rather than assigning an unchecked shape.</li>
+<li>Keep each external matrix beside its CRB under the serialized
+backend name.</li>
+<li>Build the app with <code>createShinyApp()</code> and treat any error
+it raises as a request to fix identity, not as a file-copy
+inconvenience.</li>
+<li>Move or deploy the resulting app directory as one unit.</li>
+</ol>
+</div>
+<div id="further-reading" class="section level1">
+<h1>Further reading</h1>
+<ul>
+<li><a href="seurat_v5_layered_assays.html">Seurat v5 layered
+assays</a></li>
+<li><a href="create_a_self_contained_shiny_app.html">Create a
+self-contained Shiny app</a></li>
+<li><a href="immune_repertoire_analysis.html">Immune repertoire
+analysis</a></li>
+<li><a href="create_expression_matrix_in_h5_format.html">Create an H5
+expression matrix</a></li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

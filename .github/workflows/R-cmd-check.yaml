@@ -43,8 +43,11 @@ jobs:
       - name: Install R package dependencies
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
-      - name: Render Viewer guides
-        run: nix-shell default.nix --run "Rscript scripts/render-viewer-guides.R"
+      - name: Verify Viewer guides
+        run: |
+          nix-shell default.nix --run "Rscript scripts/render-viewer-guides.R"
+          git diff --exit-code -- inst/viewer/www/guides
+          test -z "$(git status --short --untracked-files=all -- inst/viewer/www/guides)"
 
       # Run R CMD check via devtools::check()
       - name: Run R-CMD-check

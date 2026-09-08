@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>A real antigen-selected single-cell TCR demo, end to end</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">A real antigen-selected single-cell TCR
+demo, end to end</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#what-this-guide-does" id="toc-what-this-guide-does">What
+this guide does</a>
+<ul>
+<li><a href="#why-this-demo" id="toc-why-this-demo">Why this
+demo</a></li>
+<li><a href="#the-answer-as-a-measurement"
+id="toc-the-answer-as-a-measurement">The answer, as a
+measurement</a></li>
+</ul></li>
+<li><a href="#the-source" id="toc-the-source">The source</a></li>
+<li><a href="#download" id="toc-download">Download</a></li>
+<li><a href="#the-tcr-step-by-step" id="toc-the-tcr-step-by-step">The
+TCR, step by step</a>
+<ul>
+<li><a href="#what-arrives" id="toc-what-arrives">What arrives</a></li>
+<li><a href="#step-1-keep-only-productive-%CE%B1%CE%B2-contigs"
+id="toc-step-1-keep-only-productive-αβ-contigs">Step 1 — keep only
+productive αβ contigs</a></li>
+<li><a href="#step-2-contigs-one-clonotype-per-cell"
+id="toc-step-2-contigs-one-clonotype-per-cell">Step 2 — contigs → one
+clonotype per cell</a></li>
+<li><a href="#why-this-exact-shape" id="toc-why-this-exact-shape">Why
+this exact shape</a></li>
+</ul></li>
+<li><a href="#the-hla-step-by-step" id="toc-the-hla-step-by-step">The
+HLA, step by step</a>
+<ul>
+<li><a href="#what-is-genuinely-real-here"
+id="toc-what-is-genuinely-real-here">What is genuinely real here</a>
+<ul>
+<li><a href="#what-that-triple-is-not"
+id="toc-what-that-triple-is-not">What that triple is
+<em>not</em></a></li>
+</ul></li>
+<li><a href="#step-3-one-binder-call-per-cell-or-none"
+id="toc-step-3-one-binder-call-per-cell-or-none">Step 3 — one binder
+call per cell, or none</a></li>
+<li><a href="#step-4-donor-genotype-from-the-published-table"
+id="toc-step-4-donor-genotype-from-the-published-table">Step 4 — donor
+genotype, from the published table</a></li>
+<li><a href="#why-the-genotypes-are-not-inferred-from-binding"
+id="toc-why-the-genotypes-are-not-inferred-from-binding">Why the
+genotypes are not inferred from binding</a></li>
+</ul></li>
+<li><a href="#cell-selection-the-step-that-makes-the-network-legible"
+id="toc-cell-selection-the-step-that-makes-the-network-legible">Cell
+selection — the step that makes the network legible</a></li>
+<li><a href="#expression-and-projection"
+id="toc-expression-and-projection">Expression and projection</a></li>
+<li><a href="#assembling-the-.crb"
+id="toc-assembling-the-.crb">Assembling the <code>.crb</code></a>
+<ul>
+<li><a href="#the-declared-contracts-and-why-each-one"
+id="toc-the-declared-contracts-and-why-each-one">The declared contracts,
+and why each one</a></li>
+</ul></li>
+<li><a href="#verification-a-gate-not-a-report"
+id="toc-verification-a-gate-not-a-report">Verification: a gate, not a
+report</a></li>
+<li><a href="#what-you-see-in-the-app"
+id="toc-what-you-see-in-the-app">What you see in the app</a></li>
+</ul>
+</div>
+
+<div id="what-this-guide-does" class="section level1">
+<h1>What this guide does</h1>
+<p>It records, step by step, how <code>demo_hla_tcr_dextramer.crb</code>
+is built from public 10x Genomics data: what is downloaded, what each
+processing step changes, and what the object finally declares. Every
+code chunk is the real pipeline, taken from
+<code>data-raw/build_hla_tcr_dextramer_demo.R</code>; the chunks are not
+evaluated when the vignette builds, because the raw inputs are ~1.6
+GB.</p>
+<p>The emphasis is on the two parts that decide whether the HLA &amp;
+TCR Motifs page says anything true: <strong>how the TCR is
+transformed</strong>, and <strong>where the HLA comes from</strong>.</p>
+<div id="why-this-demo" class="section level2">
+<h2>Why this demo</h2>
+<p>One HLA demo ships, and everything in it is measured:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th><code>demo_hla_tcr_dextramer.crb</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>cells</td>
+<td><strong>real</strong> — 12,000 sequenced CD8+ T cells</td>
+</tr>
+<tr class="even">
+<td>TCR</td>
+<td><strong>real</strong> — paired αβ contigs, V gene + CDR3</td>
+</tr>
+<tr class="odd">
+<td>HLA</td>
+<td><strong>real</strong> — the donors’ published genotypes (table S1),
+measured independently of these cells</td>
+</tr>
+</tbody>
+</table>
+<p>Earlier iterations shipped two others — a fully fabricated fixture
+and a real bulk TCRβ cohort. Both are gone: CerebroNexus is a
+single-cell application, and a demo that is neither real nor single-cell
+earns its place only if nothing better exists. This one is both, so it
+replaces them. Their build pipelines remain in <code>data-raw/</code>
+(see <code>data-raw/hla.md</code>) if you want to reproduce them, and
+the bulk workflow now lives in its own guide as <em>bring your own
+cohort</em>.</p>
+<p>Replacing them required answering a fair objection first: <em>if the
+motif network is only legible on synthetic data, what is the feature
+for?</em></p>
+</div>
+<div id="the-answer-as-a-measurement" class="section level2">
+<h2>The answer, as a measurement</h2>
+<p>A CDR3 Hamming-1 network needs an <strong>antigen-selected</strong>
+repertoire. An unselected polyclonal repertoire is sparse in CDR3 space:
+neighbours at distance 1 are rare, and adding cells does not fix it. A
+selected repertoire converges — different donors independently arrive at
+near-identical CDR3s against the same epitope (public / convergent
+recombination), which is exactly what the network draws.</p>
+<p>Measured on this source with the package’s own motif core:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>subset of the same donor</th>
+<th>unique CDR3β</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>all cells, unselected</td>
+<td>26,449</td>
+<td>trips the size guard — nothing to draw</td>
+</tr>
+<tr class="even">
+<td>cells called a binder of any reagent</td>
+<td>2,910</td>
+<td><strong>308 nodes in 75 motifs</strong></td>
+</tr>
+<tr class="odd">
+<td>cells called a binder of one reagent
+(<code>A0201_GILGFVFTL_Flu-MP</code>)</td>
+<td>267</td>
+<td><strong>121 nodes in 7 motifs</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The last row is the point, stated carefully: within the subset
+<strong>labelled by a single reagent</strong>, 45% of the observed CDR3s
+collapse into seven families. The convergence is measured and real — but
+the label on that subset is a raw binder call, so this is convergence
+within a reagent-labelled subset, <em>not</em> a demonstration of
+measured peptide-level specificity. Attributing it to the influenza
+epitope itself would assume exactly what the next section shows is
+unsupported.</p>
+<p>Which, if anything, makes the structure more striking rather than
+less: a noisy label should blur families together, not sharpen them. But
+“more striking” is not “established”, and the page does not need it to
+be.</p>
+</div>
+</div>
+<div id="the-source" class="section level1">
+<h1>The source</h1>
+<p>10x Genomics, <em>CD8+ T cells of Healthy Donor 1–4</em> (2019) — the
+dextramer / Immune Map experiment published as Zhang <em>et al.</em>,
+<strong>Sci Adv</strong> 7:eabf5835 (2021). CD8+ T cells from four
+HLA-haplotyped healthy donors were stained with a pooled dCODE dextramer
+panel, sorted, and run on 10x 5′ immune profiling: paired αβ TCR
+<strong>and</strong> transcriptome <strong>and</strong> surface protein
+<strong>and</strong> per-cell dextramer counts. Licence: <strong>CC BY
+4.0</strong>.</p>
+<p>Three files per donor are used:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>file</th>
+<th>~size</th>
+<th>what it carries</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>..._all_contig_annotations.csv</code></td>
+<td>34 MB</td>
+<td>TCR contigs: barcode, chain, V/J gene, CDR3</td>
+</tr>
+<tr class="even">
+<td><code>..._binarized_matrix.csv</code></td>
+<td>19–53 MB</td>
+<td>per-cell dextramer calls, surface protein, donor</td>
+</tr>
+<tr class="odd">
+<td><code>..._filtered_feature_bc_matrix.tar.gz</code></td>
+<td>296 MB</td>
+<td>the gene-expression matrix</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="download" class="section level1">
+<h1>Download</h1>
+<pre class="r"><code># All four donors. The build script does this on demand and caches in
+# data-raw/vdj_10x_dextramer/ (gitignored) -- use that exact directory, or the
+# script will not find what you downloaded and will fetch it all again.
+base &lt;- &quot;https://cf.10xgenomics.com/samples/cell-vdj/3.0.2&quot;
+cache &lt;- &quot;data-raw/vdj_10x_dextramer&quot; # = CACHE in the build script
+dir.create(cache, recursive = TRUE, showWarnings = FALSE)
+
+for (d in 1:4) {
+  stem &lt;- sprintf(&quot;vdj_v1_hs_aggregated_donor%d&quot;, d)
+  for (suffix in c(
+    &quot;_all_contig_annotations.csv&quot;,
+    &quot;_binarized_matrix.csv&quot;,
+    &quot;_filtered_feature_bc_matrix.tar.gz&quot;
+  )) {
+    download.file(
+      sprintf(&quot;%s/%s/%s%s&quot;, base, stem, stem, suffix),
+      file.path(cache, paste0(stem, suffix)),
+      mode = &quot;wb&quot;
+    )
+  }
+}</code></pre>
+<p>Or in one line:</p>
+<pre class="bash"><code>Rscript data-raw/build_hla_tcr_dextramer_demo.R</code></pre>
+</div>
+<div id="the-tcr-step-by-step" class="section level1">
+<h1>The TCR, step by step</h1>
+<p>This is the half that decides what the network draws.</p>
+<div id="what-arrives" class="section level2">
+<h2>What arrives</h2>
+<p><code>all_contig_annotations.csv</code> is <strong>one row per
+contig</strong>, not per cell. A cell with a paired receptor appears at
+least twice — once for TRA, once for TRB:</p>
+<pre><code>barcode              is_cell  chain  v_gene      j_gene     cdr3            productive
+AAACCTGAGAAACCTA-1   True     TRA    TRAV12-2    TRAJ33     CAVNVAGKSTF     True
+AAACCTGAGAAACCTA-1   True     TRB    TRBV19      TRBJ2-7    CASSIRSSYEQYF   True</code></pre>
+</div>
+<div id="step-1-keep-only-productive-αβ-contigs" class="section level2">
+<h2>Step 1 — keep only productive αβ contigs</h2>
+<p>A non-productive contig carries a CDR3 that was never expressed;
+keeping it would put a sequence in the network that the cell does not
+display.</p>
+<pre class="r"><code>contigs &lt;- read.csv(f$contigs, stringsAsFactors = FALSE)
+contigs &lt;- contigs[
+  contigs$productive %in% c(&quot;True&quot;, &quot;TRUE&quot;, TRUE) &amp;
+    contigs$chain %in% c(&quot;TRA&quot;, &quot;TRB&quot;),
+  ,
+  drop = FALSE
+]</code></pre>
+</div>
+<div id="step-2-contigs-one-clonotype-per-cell" class="section level2">
+<h2>Step 2 — contigs → one clonotype per cell</h2>
+<p><code>scRepertoire::combineTCR()</code> collapses the contigs of a
+barcode into the single row per cell that the app’s parser expects. This
+is the <strong>shape change</strong> that matters:</p>
+<pre class="r"><code>out &lt;- scRepertoire::combineTCR(
+  list(contigs),
+  samples = sprintf(&quot;donor%d&quot;, d),
+  filterMulti = TRUE
+)[[1]]</code></pre>
+<p>After it, one cell is one row and the chains live in
+underscore-joined strings:</p>
+<pre><code>barcode                      CTgene                                              CTaa
+donor1_AAACCTGAGAAACCTA-1    TRAV12-2.TRAJ33.TRAC_TRBV19.TRBJ2-7.TRBC2           CAVNVAGKSTF_CASSIRSSYEQYF</code></pre>
+<p><code>filterMulti = TRUE</code> keeps the dominant chain when a
+barcode reports more than one — an ambiguous cell would otherwise
+contribute a CDR3 it may not carry.</p>
+</div>
+<div id="why-this-exact-shape" class="section level2">
+<h2>Why this exact shape</h2>
+<p>The app reads receptors through <code>hla_parse_ir_segments()</code>,
+whose contract is <code>barcode</code> + <code>CTgene</code> +
+<code>CTaa</code>. For the requested chain it takes the matching
+underscore slot, pulls the <code>TRBV…</code> / <code>TRBJ…</code>
+tokens out of <code>CTgene</code>, and the CDR3 out of the same slot of
+<code>CTaa</code>.</p>
+<p><strong>The V gene is required.</strong> That is why the pipeline
+starts from the contigs and not from the binarized matrix: the binarized
+matrix has the CDR3 amino acids but no V/J gene at all, and this source
+identifies a receptor by <em>(V gene, CDR3)</em> — declared as
+<code>receptor_key = "v_gene+cdr3"</code>, which makes split-by-V the
+app’s default so a node means what the source means.</p>
+</div>
+</div>
+<div id="the-hla-step-by-step" class="section level1">
+<h1>The HLA, step by step</h1>
+<p>This is the half that decides what the page may claim.</p>
+<div id="what-is-genuinely-real-here" class="section level2">
+<h2>What is genuinely real here</h2>
+<p>Each dextramer column is named
+<code>&lt;allele&gt;_&lt;peptide&gt;_&lt;antigen&gt;_binder</code>:</p>
+<pre><code>A0201_GILGFVFTL_Flu-MP_Influenza_binder
+A0301_KLGGALQAK_IE-1_CMV_binder
+A1101_AVFDRKSDAK_EBNA-3B_EBV_binder</code></pre>
+<p>The allele prefix is the <strong>reagent’s own HLA
+restriction</strong> — a published property of the dextramer,
+independent of these cells. So for every binding event the pipeline
+recovers a real triple: <em>peptide, antigen, and the allele that
+reagent is restricted by</em>.</p>
+<pre class="r"><code>allele_of &lt;- function(col) {
+  paste0(&quot;HLA-&quot;, sub(&quot;^([ABC])([0-9]{2})([0-9]{2})_.*&quot;, &quot;\\1*\\2:\\3&quot;, col))
+}
+# A0201_GILGFVFTL_Flu-MP_Influenza_binder -&gt; &quot;HLA-A*02:01&quot;</code></pre>
+<div id="what-that-triple-is-not" class="section level3">
+<h3>What that triple is <em>not</em></h3>
+<p>It is a property of the <strong>reagent</strong>, not a verified
+property of the cell. A binder call does not establish that the cell is
+specific for that peptide, nor that the reagent’s allele is what
+presents it in that donor. Dextramer staining is heavily cross-reactive
+in this experiment, and the size of the effect is easy to state: only
+<strong>5,271 of the 12,000 shipped cells (44 %)</strong> bound a
+reagent whose restriction their donor actually carries. 6,654 bound one
+their donor demonstrably does not, and 75 more cannot be decided at all
+(per donor, yes / no / unknown of 3,000: 2,046 / 879 / 75 · 2,532 / 468
+/ 0 · 3 / 2,997 / 0 · 690 / 2,310 / 0 — donor 3 is the extreme case)
+(see §<em>Why the genotypes are not inferred from binding</em>, where
+the same fact sinks the inference).</p>
+<p>That is why the per-cell columns ship as
+<code>dextramer_antigen</code>, <code>dextramer_peptide</code> and
+<code>dextramer_allele</code> — a reagent label, deliberately not named
+<code>antigen</code> or <code>restricting_allele</code> — and why a
+fourth column, <code>restriction_in_genotype</code>, ships beside them.
+Colour the projection by it and the noise is visible in one look rather
+than buried in a methods note.</p>
+<p>It has <strong>three</strong> states, not two, and the third one
+matters:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>value</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>yes</code></td>
+<td>the reagent’s restriction is one of the donor’s published
+alleles</td>
+</tr>
+<tr class="even">
+<td><code>no</code></td>
+<td>it is not, <strong>and that locus was called completely</strong>
+(two copies), so absence is real</td>
+</tr>
+<tr class="odd">
+<td><code>unknown</code></td>
+<td>it is not listed, but the locus was called at one copy only — the
+second copy could be it</td>
+</tr>
+</tbody>
+</table>
+<p>Table S1 reports a single HLA-B allele for donors 1 and 2, so every
+B-restricted binder call in those donors is undecidable rather than
+off-genotype. Collapsing that into <code>no</code> would manufacture a
+confirmed negative out of missing data — the same false-negative bias
+<code>hla_allele_status_by_unit()</code> refuses to take when it builds
+carrier / non-carrier groups. The build applies the package’s own rule
+(<code>hla_locus_call_state()</code>: a locus is complete at two
+copies).</p>
+<p>The carrier contrasts on the HLA Associations tab use the
+<strong>published genotypes</strong>, which were measured independently
+of these cells — so they are not circular. That is a narrower claim than
+it may sound, and the page now says so above the tables: independent
+genotypes remove circularity, they do not remove
+<strong>ascertainment</strong>. The repertoire being compared was itself
+captured by the reagent panel; the panel’s reagents are restricted by
+particular alleles; and there are four donors. Donor and panel stay
+confounded with genotype, so a contrast here is suggestive, not a
+test.</p>
+</div>
+</div>
+<div id="step-3-one-binder-call-per-cell-or-none"
+class="section level2">
+<h2>Step 3 — one binder call per cell, or none</h2>
+<p>10x’s binarized calls mark each cell against each dextramer. Cells
+binding several are <strong>dropped, not guessed at</strong>: an
+ambiguous call would place a cell in the wrong HLA context, which is the
+one error this page must not make. Columns containing <code>NR(</code>
+are the negative controls and are never evidence.</p>
+<pre class="r"><code>hits &lt;- as.matrix(b[, dex, drop = FALSE]) == &quot;True&quot;
+hits[is.na(hits)] &lt;- FALSE
+keep &lt;- rowSums(hits) == 1L                 # exactly one dextramer bound
+idx &lt;- max.col(hits, ties.method = &quot;first&quot;)</code></pre>
+<p>Note what this filter does and does not buy: it removes
+<em>ambiguity</em>, not <em>cross-reactivity</em>. A cell binding
+exactly one reagent is unambiguous, which is not the same as being
+specific for it.</p>
+</div>
+<div id="step-4-donor-genotype-from-the-published-table"
+class="section level2">
+<h2>Step 4 — donor genotype, from the published table</h2>
+<p>The donors’ HLA haplotypes are published in <strong>table S1</strong>
+of the paper’s supplementary material. The link printed inside the paper
+is dead (the <code>advances.sciencemag.org</code> domain was retired),
+but the file is served from science.org:</p>
+<pre><code>https://www.science.org/doi/suppl/10.1126/sciadv.abf5835/suppl_file/abf5835_sm.pdf</code></pre>
+<p>Open it in a browser — science.org is behind Cloudflare and refuses
+command-line clients. Nothing depends on that, though: the table is
+transcribed inline in the build script, so it is self-contained — 14
+rows, and a separate file would only be one more thing to keep in
+step:</p>
+<pre class="r"><code>DONOR_HLA &lt;- read.csv(text = &quot;donor,copy,allele
+donor1,1,HLA-A*02:01
+donor1,2,HLA-A*11:01
+donor1,1,HLA-B*35:01
+donor2,1,HLA-A*02:01
+donor2,2,HLA-A*01:01
+donor2,1,HLA-B*08:01
+donor3,1,HLA-A*24:02
+donor3,2,HLA-A*29:02
+donor3,1,HLA-B*35:02
+donor3,2,HLA-B*44:03
+donor4,1,HLA-A*03:01
+donor4,2,HLA-A*03:01
+donor4,1,HLA-B*07:02
+donor4,2,HLA-B*57:01&quot;, stringsAsFactors = FALSE)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th>donor</th>
+<th>HLA-A</th>
+<th>HLA-B</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Donor 1</td>
+<td>A*02:01, A*11:01</td>
+<td>B*35:01</td>
+</tr>
+<tr class="even">
+<td>Donor 2</td>
+<td>A*02:01, A*01:01</td>
+<td>B*08:01</td>
+</tr>
+<tr class="odd">
+<td>Donor 3</td>
+<td>A*24:02, A*29:02</td>
+<td>B*35:02, B*44:03</td>
+</tr>
+<tr class="even">
+<td>Donor 4</td>
+<td>A*03:01, A*03:01</td>
+<td>B*07:02, B*57:01</td>
+</tr>
+</tbody>
+</table>
+<p>Because these were measured independently of the cells in this data
+set, a carrier / non-carrier contrast on this demo is a real
+comparison.</p>
+</div>
+<div id="why-the-genotypes-are-not-inferred-from-binding"
+class="section level2">
+<h2>Why the genotypes are not inferred from binding</h2>
+<p>It is tempting to read the genotype off the data: a cell can only
+bind a dextramer restricted by an allele its donor carries, so the
+binding profile should reveal the haplotype. An earlier version of this
+build did exactly that, requiring an allele to account for at least 200
+cells <strong>and</strong> 10 % of a donor’s antigen-specific cells.</p>
+<p>It was wrong. Against table S1:</p>
+<table>
+<thead>
+<tr class="header">
+<th>donor</th>
+<th>inferred from binding</th>
+<th>published</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3</td>
+<td>A*03:01</td>
+<td>A*24:02, A*29:02 — <strong>carries no A*03:01</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Donor 3 has <strong>25,674 cells, 92.8 % of its antigen-specific
+cells</strong>, binding A*03:01-restricted dextramers while carrying no
+A*03:01 at all. Cross-reactivity at that scale is not something a
+threshold separates, and the inference would also have been circular: a
+donor would be a carrier <em>because</em> their cells bound that
+allele’s reagent, and the motifs come from those same cells.</p>
+<p>What the object still declares is the <strong>selection</strong>, not
+the genotype:</p>
+<pre class="r"><code>crb$technical_info$tcr_selection &lt;- &quot;antigen-selected&quot;
+# &quot;... which receptors are present was decided by the panel. The donor HLA
+#  genotypes are the published ones (table S1), measured independently of these
+#  cells, so they are not circular with the selection.&quot;
+crb$addHLATyping(donor_typing, source_type = &quot;genotyped&quot;, ...)</code></pre>
+</div>
+</div>
+<div id="cell-selection-the-step-that-makes-the-network-legible"
+class="section level1">
+<h1>Cell selection — the step that makes the network legible</h1>
+<p>Only cells that (a) carry a clonotype with <strong>both</strong>
+chains and (b) bound <strong>exactly one</strong> dextramer are kept.
+The dextramer sort is not a convenience; it <em>is</em> the data set’s
+defining property, and the reason the network draws at all (see the
+table in §1).</p>
+<p>The paired requirement is stricter than “has a <code>CTaa</code>”,
+and deliberately so. <code>combineTCR()</code> writes <code>CTaa</code>
+as <code>&lt;alpha&gt;_&lt;beta&gt;</code> and puts the literal string
+<code>NA</code> on a side it could not resolve, so a non-empty
+<code>CTaa</code> may still be a single chain. This demo is documented
+as paired αβ, so it has to actually be:</p>
+<pre class="r"><code>sel &lt;- merge(tcr_all, dex_all[dex_all$single_binder, ],
+             by = c(&quot;barcode_raw&quot;, &quot;donor&quot;))
+
+is_paired &lt;- function(ctaa) {
+  parts &lt;- strsplit(ifelse(is.na(ctaa), &quot;&quot;, ctaa), &quot;_&quot;, fixed = TRUE)
+  vapply(parts, function(p) {
+    length(p) == 2L &amp;&amp; all(nzchar(p)) &amp;&amp; !any(p %in% c(&quot;NA&quot;, &quot;None&quot;))
+  }, logical(1))
+}
+sel &lt;- sel[is_paired(sel$CTaa), ]
+# the deterministic per-donor subsample comes later, after the expression join,
+# so the shipped object is exactly 3,000 cells per donor</code></pre>
+</div>
+<div id="expression-and-projection" class="section level1">
+<h1>Expression and projection</h1>
+<p>Real measured transcriptomes, for exactly the cells that survived
+selection. The matrix is subset <strong>first</strong>, so nothing is
+computed on cells that are thrown away, and only the variable genes are
+shipped.</p>
+<pre class="r"><code>m &lt;- Seurat::Read10X(gex_dir)[[&quot;Gene Expression&quot;]]
+m &lt;- m[, intersect(colnames(m), kept_barcodes), drop = FALSE]
+
+so &lt;- Seurat::CreateSeuratObject(counts = expr)
+so &lt;- Seurat::NormalizeData(so)
+so &lt;- Seurat::FindVariableFeatures(so, nfeatures = 2000)
+so &lt;- Seurat::ScaleData(so)
+so &lt;- Seurat::RunPCA(so, npcs = 30)
+so &lt;- Seurat::RunUMAP(so, dims = 1:30)
+
+# Keep the shipped block SPARSE. Normalized single-cell expression is ~90%
+# zeros; densifying this one cost 184 MiB of session memory and 4.5 MiB of
+# installed package for nothing, and every other demo here is a dgCMatrix.
+expression &lt;- Seurat::GetAssayData(so, layer = &quot;data&quot;)[hv, , drop = FALSE]
+expression &lt;- methods::as(expression, &quot;CsparseMatrix&quot;)</code></pre>
+</div>
+<div id="assembling-the-.crb" class="section level1">
+<h1>Assembling the <code>.crb</code></h1>
+<pre class="r"><code>crb &lt;- Cerebro$new()
+crb$expression &lt;- expression
+crb$setMetaData(meta)          # cell_barcode, sample, cell_type,
+                               # dextramer_antigen, dextramer_peptide,
+                               # dextramer_allele, restriction_in_genotype
+crb$projections &lt;- list(umap = umap)
+crb$immune_repertoire &lt;- immune_repertoire   # split by donor
+crb$technical_info &lt;- list(
+  observation_unit = &quot;cell&quot;,
+  receptor_key = &quot;v_gene+cdr3&quot;,
+  tcr_selection = &quot;antigen-selected&quot;,
+  tcr_selection_detail = &quot;...&quot;,
+  lineage_column = &quot;cell_type&quot;   # declared, so the app never has to guess
+)
+crb$addHLATyping(donor_typing, source_type = &quot;genotyped&quot;, ...)
+saveRDS(crb, &quot;inst/extdata/examples/demo_hla_tcr_dextramer.crb&quot;, compress = &quot;xz&quot;)</code></pre>
+<div id="the-declared-contracts-and-why-each-one"
+class="section level2">
+<h2>The declared contracts, and why each one</h2>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>contract</th>
+<th>value</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>observation_unit</code></td>
+<td><code>cell</code></td>
+<td>these really are sequenced cells, unlike the bulk demo</td>
+</tr>
+<tr class="even">
+<td><code>receptor_key</code></td>
+<td><code>v_gene+cdr3</code></td>
+<td>the source identifies a receptor by V <strong>and</strong> CDR3</td>
+</tr>
+<tr class="odd">
+<td><code>tcr_selection</code></td>
+<td><code>antigen-selected</code></td>
+<td>the repertoire was sorted for binding; the page must say so</td>
+</tr>
+<tr class="even">
+<td><code>tcr_selection_detail</code></td>
+<td>see §6</td>
+<td>spells out the inferred-genotype circularity</td>
+</tr>
+<tr class="odd">
+<td><code>lineage_column</code></td>
+<td><code>cell_type</code></td>
+<td><strong>declared</strong>, so the app never infers it — every cell
+here is a sorted CD8 T cell</td>
+</tr>
+</tbody>
+</table>
+<p>Declaring <code>lineage_column</code> matters beyond tidiness: when
+it is absent the app must guess which column holds the CD4/CD8 label,
+and a guess can land on a treatment or study-arm column. Declaring it
+removes the guess.</p>
+</div>
+</div>
+<div id="verification-a-gate-not-a-report" class="section level1">
+<h1>Verification: a gate, not a report</h1>
+<p>The build writes to a <strong>staging</strong> path first. It then
+re-reads that file and re-derives the network with the package’s own
+core, and every number it measures is an <strong>assertion</strong>.
+Only if all of them hold does the staged file replace the shipped
+<code>.crb</code>:</p>
+<pre class="r"><code>saveRDS(crb, staged, compress = &quot;xz&quot;)
+check &lt;- readRDS(staged)
+
+stopifnot(
+  &quot;donors are not balanced&quot;            = all(table(m$sample) == CELLS_PER_DONOR),
+  &quot;expression block is not sparse&quot;     = inherits(check$expression, &quot;CsparseMatrix&quot;),
+  &quot;not every observation is paired&quot;    = all(is_paired(ctaa)),
+  &quot;TRB network has collapsed&quot;          = n_nodes &gt; 100 &amp;&amp; n_motifs &gt;= 20,
+  &quot;HLA alleles drifted from table S1&quot;  = setequal(paste(ht$sample, ht$allele), genotype_key)
+  # ... plus provenance, projection alignment, and the honesty columns
+)
+
+file.rename(staged, OUT) # only reached if nothing above stopped the script</code></pre>
+<p>This is the difference between a build that <em>tells</em> you it
+broke and one that <em>refuses to ship</em> broken: an earlier version
+printed these same numbers <strong>after</strong> saving, so drifted
+inputs still replaced a good demo and still exited 0. The thresholds are
+set well below the measured values — they detect drift, they are not a
+transcript of one run.</p>
+<p>One assertion is worth calling out because it looks backwards: the
+gate requires that some cells still be <strong>off-genotype</strong>. If
+dextramer cross-reactivity ever vanished from this data, the binder
+calls would have stopped being raw 10x calls and every caveat in this
+vignette would need rewriting — so the caveat is asserted rather than
+assumed.</p>
+<p>On the shipped object the gate prints:</p>
+<pre><code>   cells: 12000 in 4 donors, balanced
+   expression: dgCMatrix 2000x12000, 40.2 MiB in memory
+   repertoire: 12000 observations, all paired; chains TRA, TRB
+   TRB: 3270 unique CDR3 -&gt; 169 nodes in 39 motifs
+   TRA: 3189 unique CDR3 -&gt; 396 nodes in 141 motifs
+   HLA: 4 donors, 12 alleles, source_type=genotyped
+   binder calls vs genotype: 6654 off-genotype, 75 undecidable, of 12000 cells
+   PUBLISHED inst/extdata/examples/demo_hla_tcr_dextramer.crb (5.2 MB)</code></pre>
+<p>12,000 dextramer-selected cells (3,000 per donor, every one paired
+αβ), 2,000 variable genes, <strong>5.2 MB</strong> — it was 7.9 MB while
+the expression block was stored dense.</p>
+</div>
+<div id="what-you-see-in-the-app" class="section level1">
+<h1>What you see in the app</h1>
+<p>Open the data set and go to <strong>HLA &amp; TCR
+Motifs</strong>:</p>
+<ul>
+<li><strong>Motif Network</strong> — families of real CDR3β sequences at
+Hamming distance 1. Colour by <em>Sample of origin</em> to see the same
+motif reached independently by more than one donor: that is convergence,
+and it is the whole argument.</li>
+<li><strong>Network data</strong> — the rows behind the picture. Besides
+the structural columns it carries whatever the data set declares as a
+grouping, so here that includes each node’s
+<code>dextramer_antigen</code>, <code>dextramer_allele</code> and
+<code>restriction_in_genotype</code> — the reagent it bound, and whether
+that reagent’s restriction is an allele the donor actually carries.</li>
+<li><strong>HLA Associations</strong> — real donor genotypes, so the
+carrier contrasts are not circular. The note above the tables states
+what the selection still costs: the receptors available to compare were
+chosen by the reagent panel, so ascertainment and donor/panel
+confounding remain. These contrasts do <strong>not</strong> use the
+dextramer binder calls.</li>
+<li><strong>Data &amp; QC</strong> — the published genotypes and their
+coverage.</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>HLA &amp; TCR Motifs: from synthetic data to an interactive app</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">HLA &amp; TCR Motifs: from synthetic data
+to an interactive app</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#what-this-guide-does" id="toc-what-this-guide-does">What
+this guide does</a>
+<ul>
+<li><a href="#the-two-ideas-the-page-is-built-on"
+id="toc-the-two-ideas-the-page-is-built-on">The two ideas the page is
+built on</a></li>
+<li><a href="#why-the-demo-data-is-invented"
+id="toc-why-the-demo-data-is-invented">Why the demo data is
+invented</a></li>
+</ul></li>
+<li><a href="#the-workflow-in-miniature"
+id="toc-the-workflow-in-miniature">The workflow in miniature</a></li>
+<li><a href="#the-three-things-the-page-reads"
+id="toc-the-three-things-the-page-reads">The three things the page
+reads</a></li>
+<li><a href="#build-a-synthetic-seurat-object"
+id="toc-build-a-synthetic-seurat-object">Build a synthetic Seurat
+object</a>
+<ul>
+<li><a href="#setup" id="toc-setup">Setup</a></li>
+<li><a href="#step-1-donors-and-their-hla-genotypes"
+id="toc-step-1-donors-and-their-hla-genotypes">Step 1 — donors and their
+HLA genotypes</a></li>
+<li><a href="#step-2-one-row-per-cell"
+id="toc-step-2-one-row-per-cell">Step 2 — one row per cell</a></li>
+<li><a href="#step-3-a-minimal-expression-matrix-and-seurat-object"
+id="toc-step-3-a-minimal-expression-matrix-and-seurat-object">Step 3 — a
+minimal expression matrix and Seurat object</a></li>
+<li><a href="#step-4-the-receptors-with-motif-families-designed-in"
+id="toc-step-4-the-receptors-with-motif-families-designed-in">Step 4 —
+the receptors, with motif families designed in</a></li>
+<li><a href="#step-5-attach-the-contracts-and-export"
+id="toc-step-5-attach-the-contracts-and-export">Step 5 — attach the
+contracts and export</a></li>
+</ul></li>
+<li><a href="#launch-a-shiny-app-on-the-data-set"
+id="toc-launch-a-shiny-app-on-the-data-set">Launch a Shiny app on the
+data set</a></li>
+<li><a href="#using-the-page" id="toc-using-the-page">Using the page</a>
+<ul>
+<li><a href="#motif-network" id="toc-motif-network">Motif
+Network</a></li>
+<li><a href="#hla-associations" id="toc-hla-associations">HLA
+Associations</a></li>
+<li><a href="#data-qc" id="toc-data-qc">Data &amp; QC</a></li>
+</ul></li>
+<li><a href="#parameters-reference"
+id="toc-parameters-reference">Parameters reference</a></li>
+<li><a href="#bringing-your-own-single-cell-data"
+id="toc-bringing-your-own-single-cell-data">Bringing your own
+single-cell data</a>
+<ul>
+<li><a href="#your-seurat-object" id="toc-your-seurat-object">1 — your
+Seurat object</a></li>
+<li><a href="#receptors-from-cell-ranger-screpertoire"
+id="toc-receptors-from-cell-ranger-screpertoire">2 — receptors from Cell
+Ranger + scRepertoire</a></li>
+<li><a href="#hla-typing-genotyped-or-imputed"
+id="toc-hla-typing-genotyped-or-imputed">3 — HLA typing: genotyped or
+imputed</a></li>
+<li><a href="#export" id="toc-export">4 — export</a></li>
+</ul></li>
+<li><a href="#common-questions" id="toc-common-questions">Common
+questions</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+<li><a href="#getting-help" id="toc-getting-help">Getting help</a></li>
+<li><a href="#session-info" id="toc-session-info">Session info</a></li>
+</ul>
+</div>
+
+<div id="what-this-guide-does" class="section level1">
+<h1>What this guide does</h1>
+<p>CerebroNexus ships a standalone <strong>HLA &amp; TCR Motifs</strong>
+page. This guide takes you all the way from <em>nothing</em> to <em>a
+running app on that page</em>: we invent a small immune data set from
+scratch, save it in Cerebro’s file format, launch an app on it, and tour
+the page.</p>
+<p>You will build the data set step by step, and after each step we
+print the object you just made so you can see exactly what changed.
+Every code block runs on its own — the only packages you need are base R
+plus <code>Matrix</code>, <code>Seurat</code>, and
+<code>CerebroNexus</code>, and nothing is downloaded.</p>
+<p>If your data is <strong>bulk</strong> TCR sequencing rather than
+single cells, read the companion guide <em>“HLA Associations on bulk
+TCRβ with real donor HLA”</em> instead; it uses real genotypes and a
+slightly different object.</p>
+<div id="the-two-ideas-the-page-is-built-on" class="section level2">
+<h2>The two ideas the page is built on</h2>
+<p><strong>A motif network of T-cell receptors.</strong> Every T cell
+carries a receptor whose most variable part is a short amino-acid string
+called the <strong>CDR3</strong> — this is the piece that actually
+touches the antigen. The page draws one dot per unique CDR3 and connects
+two dots when their CDR3s are the same length and differ by exactly
+<strong>one</strong> amino acid (this one-letter difference is called
+<em>Hamming distance 1</em>). A connected clump of such dots is a
+<strong>motif</strong>: a little family of near-identical receptors.
+Motifs matter because receptors that recognise the same antigen often
+converge on very similar CDR3s.</p>
+<p><strong>HLA context.</strong> A T cell does not see an antigen
+floating free; it sees a peptide held up by an <strong>HLA
+molecule</strong> on another cell’s surface. Which HLA molecules a
+person has (their <em>genotype</em>) shapes which receptors they can
+use. So the page lets you colour each CDR3 by whether it comes from
+<strong>carriers</strong> of a chosen HLA allele, and it tabulates how a
+motif co-occurs with carriers versus non-carriers.</p>
+<div
+style="border-left: 4px solid #e69500; background: #fff6e6; padding: 0.6em 1em; margin: 1em 0;">
+<p><strong>One honesty rule, up front.</strong> Sharing an allele with a
+receptor is a <em>hint</em>, never a proof. A CD8 T cell in a donor who
+carries <code>HLA-A*02:01</code> <em>might</em> be restricted by that
+allele — but the donor has up to six class-I alleles and the cell could
+use any of them. So the page always says <strong>candidate
+co-occurrence, not confirmed restriction</strong>, and it counts
+<strong>donors, not cells</strong> (two cells from one donor are not two
+independent pieces of evidence). Proving a real restriction needs
+population statistics plus wet-lab pMHC validation, which this page does
+not do.</p>
+</div>
+</div>
+<div id="why-the-demo-data-is-invented" class="section level2">
+<h2>Why the demo data is invented</h2>
+<p>Real single-cell TCR data almost never forms a motif network, and it
+helps to know why before we fake one. There are roughly 20¹⁴ possible
+CDR3 sequences, so an ordinary repertoire is spread impossibly thin
+across that space: a few thousand cells produce only a handful of
+one-letter-apart pairs, and the network comes out nearly empty. Dense
+motif families in real life come from <strong>selection</strong> — when
+many people mount a response to the same antigen, their receptors
+<em>converge</em> — not from simply having more cells. To make the
+page’s machinery visible, we therefore <em>design</em> a few motif
+families on purpose. Nothing below is a measurement; it exists only to
+drive the buttons.</p>
+</div>
+</div>
+<div id="the-workflow-in-miniature" class="section level1">
+<h1>The workflow in miniature</h1>
+<p>Before the step-by-step, here is the whole thing at a glance. Only
+<strong>three lines are cerebro-specific</strong> — one checked
+repertoire call and two HLA fields — and everything else is ordinary
+Seurat plus a little data-faking:</p>
+<pre class="r"><code># ... build an ordinary Seurat object `seurat` with cells + a UMAP   (Steps 1-3)
+# ... build `ir_data` (receptors) and `hla_wide` (genotypes)         (Steps 1 &amp; 4)
+
+seurat &lt;- addImmuneRepertoire(seurat, tcr = ir_data) # receptors -&gt; motif network
+seurat@misc$hla_typing             &lt;- hla_wide     # genotypes  -&gt; HLA context
+seurat@misc$hla_typing_source_type &lt;- &quot;synthetic&quot;  # provenance -&gt; honest labelling
+
+exportFromSeurat(seurat, file = &quot;demo_hla_tcr_toy.crb&quot;,
+                 experiment_name = &quot;toy_hla_tcr&quot;, organism = &quot;hg&quot;,
+                 groups = c(&quot;sample&quot;, &quot;cell_type&quot;))
+
+launchCerebro(crb_file_to_load = &quot;demo_hla_tcr_toy.crb&quot;)  # the page appears in the sidebar</code></pre>
+<p>The rest of this guide fills in each piece and shows you the data at
+every step.</p>
+</div>
+<div id="the-three-things-the-page-reads" class="section level1">
+<h1>The three things the page reads</h1>
+<p>The page needs three optional pieces of information, all attached to
+a Seurat object under <code>object@misc</code>:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>@misc</code> slot</th>
+<th>what it holds</th>
+<th>what it drives</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>immune_repertoire</code></td>
+<td>one table of receptor sequences per sample</td>
+<td>the motif network</td>
+</tr>
+<tr class="even">
+<td><code>hla_typing</code></td>
+<td>each donor’s HLA genotype</td>
+<td>the HLA colouring and the Associations table</td>
+</tr>
+<tr class="odd">
+<td><code>hla_typing_source_type</code></td>
+<td>where the genotype came from (<code>genotyped</code> /
+<code>imputed</code> / <code>synthetic</code> /
+<code>unknown</code>)</td>
+<td>provenance, so a made-up genotype is never mistaken for a real
+one</td>
+</tr>
+</tbody>
+</table>
+<p><code>exportFromSeurat()</code> picks all three up automatically. We
+build them one at a time.</p>
+</div>
+<div id="build-a-synthetic-seurat-object" class="section level1">
+<h1>Build a synthetic Seurat object</h1>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(Matrix)
+library(Seurat)
+library(CerebroNexus)
+
+set.seed(1) # makes every random step below reproducible</code></pre>
+</div>
+<div id="step-1-donors-and-their-hla-genotypes" class="section level2">
+<h2>Step 1 — donors and their HLA genotypes</h2>
+<p>We invent twelve donors, <code>D01</code>–<code>D12</code>.
+<code>HLA-A*02:01</code> is our teaching <strong>anchor</strong>: we
+give it to exactly the first six donors, so later the app opens on a
+clean 6-carrier / 6-non-carrier split. <code>DRB1*15:01</code> is a
+class-II anchor carried by the first five.</p>
+<p>We store this as a <strong>wide</strong> table: one row per donor,
+two columns per gene (<code>HLA-A_1</code>, <code>HLA-A_2</code>, …),
+which is how a genotyping spreadsheet usually looks. Keeping a
+<code>donor_id</code> column is what makes the app count at the donor
+level.</p>
+<pre class="r"><code>donors &lt;- sprintf(&quot;D%02d&quot;, 1:12)
+
+a1 &lt;- c(rep(&quot;A*02:01&quot;, 6), &quot;A*01:01&quot;, &quot;A*03:01&quot;, &quot;A*01:01&quot;, &quot;A*03:01&quot;, &quot;A*11:01&quot;, &quot;A*24:02&quot;)
+a2 &lt;- c(&quot;A*01:01&quot;, &quot;A*03:01&quot;, &quot;A*11:01&quot;, &quot;A*24:02&quot;, &quot;A*01:01&quot;, &quot;A*03:01&quot;,
+        &quot;A*02:01&quot;, &quot;A*02:01&quot;, &quot;A*03:01&quot;, &quot;A*01:01&quot;, &quot;A*24:02&quot;, &quot;A*11:01&quot;)
+drb1_1 &lt;- c(rep(&quot;DRB1*15:01&quot;, 5), &quot;DRB1*03:01&quot;, &quot;DRB1*04:01&quot;, &quot;DRB1*07:01&quot;,
+            &quot;DRB1*01:01&quot;, &quot;DRB1*13:01&quot;, &quot;DRB1*11:01&quot;, &quot;DRB1*04:01&quot;)
+drb1_2 &lt;- c(&quot;DRB1*03:01&quot;, &quot;DRB1*04:01&quot;, &quot;DRB1*07:01&quot;, &quot;DRB1*01:01&quot;, &quot;DRB1*13:01&quot;,
+            &quot;DRB1*15:01&quot;, &quot;DRB1*11:01&quot;, &quot;DRB1*04:01&quot;, &quot;DRB1*03:01&quot;, &quot;DRB1*07:01&quot;,
+            &quot;DRB1*01:01&quot;, &quot;DRB1*13:01&quot;)
+
+hla_wide &lt;- data.frame(
+  sample   = donors,
+  donor_id = donors,
+  &quot;HLA-A_1&quot; = a1, &quot;HLA-A_2&quot; = a2,
+  &quot;HLA-B_1&quot; = rep(c(&quot;B*07:02&quot;, &quot;B*08:01&quot;), 6),
+  &quot;HLA-B_2&quot; = rep(c(&quot;B*44:02&quot;, &quot;B*35:01&quot;), 6),
+  &quot;HLA-C_1&quot; = rep(c(&quot;C*07:01&quot;, &quot;C*05:01&quot;), 6),
+  &quot;HLA-C_2&quot; = rep(c(&quot;C*04:01&quot;, &quot;C*06:02&quot;), 6),
+  &quot;HLA-DRB1_1&quot; = drb1_1, &quot;HLA-DRB1_2&quot; = drb1_2,
+  check.names = FALSE, stringsAsFactors = FALSE
+)</code></pre>
+<p><strong>Look at what you built</strong> — one row per donor, the
+first few columns:</p>
+<pre class="r"><code>head(hla_wide[, 1:6], 4)</code></pre>
+<pre><code>#&gt;   sample donor_id HLA-A_1 HLA-A_2 HLA-B_1 HLA-B_2
+#&gt; 1    D01      D01 A*02:01 A*01:01 B*07:02 B*44:02
+#&gt; 2    D02      D02 A*02:01 A*03:01 B*08:01 B*35:01
+#&gt; 3    D03      D03 A*02:01 A*11:01 B*07:02 B*44:02
+#&gt; 4    D04      D04 A*02:01 A*24:02 B*08:01 B*35:01
+#&gt; dim(hla_wide): 12 rows x 10 columns</code></pre>
+<p>Notice the first four donors all carry <code>A*02:01</code> in one of
+their two <code>HLA-A</code> slots — that is the anchor doing its
+job.</p>
+<p>Two things that trip people up:</p>
+<ul>
+<li><code>check.names = FALSE</code> is mandatory. R’s default would
+silently rename <code>HLA-A_1</code> to <code>HLA.A_1</code>, and the
+reader matches columns on the literal text <code>HLA-</code>, so the
+rename makes every allele “disappear”.</li>
+<li>Only the genes <code>HLA-A</code>, <code>HLA-B</code>,
+<code>HLA-C</code>, <code>HLA-DRB1</code> are offered in the app. DQ and
+DP are two-chain molecules that need extra pairing rules, so they are
+stored but not shown in the allele pickers.</li>
+</ul>
+</div>
+<div id="step-2-one-row-per-cell" class="section level2">
+<h2>Step 2 — one row per cell</h2>
+<p>Now the cells: one sample per donor, sixty cells each (720 in total),
+split into five cell types. We put the class-I story in CD8 T cells and
+the class-II story in CD4 T / Treg, which keeps the biology
+self-consistent later.</p>
+<pre class="r"><code>comp &lt;- c(`CD8 T` = 24, `CD4 T` = 20, Treg = 6, B = 6, Mono = 4) # 60 cells / donor
+meta &lt;- do.call(rbind, lapply(donors, function(d) {
+  data.frame(sample = d, cell_type = rep(names(comp), comp), stringsAsFactors = FALSE)
+}))
+meta$barcode &lt;- sprintf(&quot;%s_%04d&quot;, meta$sample, seq_len(nrow(meta)))
+rownames(meta) &lt;- meta$barcode</code></pre>
+<p><strong>Look at what you built</strong> — a plain cell table plus the
+overall composition:</p>
+<pre class="r"><code>head(meta, 3)
+table(meta$cell_type)</code></pre>
+<pre><code>#&gt;          sample cell_type  barcode
+#&gt; D01_0001    D01     CD8 T D01_0001
+#&gt; D01_0002    D01     CD8 T D01_0002
+#&gt; D01_0003    D01     CD8 T D01_0003
+#&gt;
+#&gt;     B CD4 T CD8 T  Mono  Treg
+#&gt;    72   240   288    48    72</code></pre>
+<p>Every cell has a unique <code>barcode</code>; that barcode is the key
+everything else joins on.</p>
+</div>
+<div id="step-3-a-minimal-expression-matrix-and-seurat-object"
+class="section level2">
+<h2>Step 3 — a minimal expression matrix and Seurat object</h2>
+<p>The HLA page needs no gene-expression at all, but a Cerebro data set
+expects a matrix and one 2-D projection, and the Gene expression tab is
+friendlier if a few real gene symbols are searchable. So we fake Poisson
+counts, bump each cell type’s own markers, and attach a toy UMAP by hand
+— no real clustering run is required.</p>
+<pre class="r"><code>markers &lt;- c(&quot;CD8A&quot;, &quot;CD8B&quot;, &quot;CD3D&quot;, &quot;CD4&quot;, &quot;IL7R&quot;, &quot;FOXP3&quot;, &quot;IL2RA&quot;,
+             &quot;MS4A1&quot;, &quot;CD79A&quot;, &quot;CD14&quot;, &quot;LYZ&quot;)
+genes &lt;- c(markers, sprintf(&quot;GENE%04d&quot;, seq_len(600 - length(markers))))
+counts &lt;- matrix(rpois(length(genes) * nrow(meta), lambda = 0.2),
+                 nrow = length(genes), dimnames = list(genes, meta$barcode))
+
+# lift each cell type&#39;s own markers so the types separate in the toy UMAP
+lift &lt;- list(`CD8 T` = c(&quot;CD8A&quot;, &quot;CD8B&quot;, &quot;CD3D&quot;), `CD4 T` = c(&quot;CD4&quot;, &quot;IL7R&quot;, &quot;CD3D&quot;),
+             Treg = c(&quot;FOXP3&quot;, &quot;IL2RA&quot;, &quot;CD3D&quot;), B = c(&quot;MS4A1&quot;, &quot;CD79A&quot;),
+             Mono = c(&quot;CD14&quot;, &quot;LYZ&quot;))
+for (ct in names(lift)) {
+  cols &lt;- which(meta$cell_type == ct)
+  counts[lift[[ct]], cols] &lt;- counts[lift[[ct]], cols] +
+    rpois(length(lift[[ct]]) * length(cols), lambda = 8)
+}
+counts &lt;- as(counts, &quot;CsparseMatrix&quot;)
+
+seurat &lt;- CreateSeuratObject(counts = counts, meta.data = meta)
+seurat &lt;- NormalizeData(seurat, verbose = FALSE)
+
+# a toy 2-D embedding: one Gaussian blob per cell type
+centres &lt;- rbind(`CD8 T` = c(-5, 4), `CD4 T` = c(5, 4), Treg = c(6, -3),
+                 B = c(-6, -4), Mono = c(0, -6))
+emb &lt;- centres[meta$cell_type, ] + matrix(rnorm(nrow(meta) * 2, sd = 0.8), ncol = 2)
+colnames(emb) &lt;- c(&quot;UMAP_1&quot;, &quot;UMAP_2&quot;); rownames(emb) &lt;- meta$barcode
+seurat[[&quot;umap&quot;]] &lt;- CreateDimReducObject(embeddings = emb, key = &quot;UMAP_&quot;, assay = &quot;RNA&quot;)
+
+# exportFromSeurat reads nUMI / nGene columns by default; provide them
+seurat$nUMI  &lt;- seurat$nCount_RNA
+seurat$nGene &lt;- seurat$nFeature_RNA</code></pre>
+<p>At this point <code>seurat</code> is an ordinary Seurat object with
+600 genes, 720 cells, a <code>umap</code> reduction, and our
+<code>sample</code> / <code>cell_type</code> labels — nothing
+HLA-specific yet.</p>
+</div>
+<div id="step-4-the-receptors-with-motif-families-designed-in"
+class="section level2">
+<h2>Step 4 — the receptors, with motif families designed in</h2>
+<p>This is the heart of the demo, so we go slowly.</p>
+<p>A <strong>motif family</strong> is a set of CDR3s that are all one
+edit apart. We grow one with a <em>branching walk</em>: start from a
+random CDR3, then repeatedly pick an existing member and change a single
+interior letter. Because each new member is one edit from its parent,
+the whole family is automatically Hamming-1 connected.</p>
+<pre class="r"><code>AA &lt;- strsplit(&quot;ACDEFGHIKLMNPQRSTVWY&quot;, &quot;&quot;)[[1]]         # the 20 amino acids
+rand_cdr3 &lt;- function(len) paste0(&quot;CASS&quot;, paste(sample(AA, len - 5, TRUE), collapse = &quot;&quot;), &quot;F&quot;)
+
+make_family &lt;- function(n, len = 15) {
+  members &lt;- rand_cdr3(len)
+  while (length(members) &lt; n) {
+    base &lt;- members[sample.int(length(members), 1)]     # pick an existing member
+    chars &lt;- strsplit(base, &quot;&quot;)[[1]]
+    pos &lt;- sample(5:(len - 1), 1)                        # choose an interior position
+    chars[pos] &lt;- sample(setdiff(AA, chars[pos]), 1)     # mutate it
+    cand &lt;- paste(chars, collapse = &quot;&quot;)
+    if (!cand %in% members) members &lt;- c(members, cand)
+  }
+  members
+}</code></pre>
+<p><strong>See a family</strong> — one call returns a clump of
+near-identical CDR3s (each differs from an earlier one by a single amino
+acid, shown in <strong>bold</strong>):</p>
+<pre class="r"><code>make_family(6)</code></pre>
+<pre><code>#&gt; CASSQLHKRFKQF F F
+#&gt; CASSQLHKRFKQF P F   &lt;- last-but-one letter F -&gt; P
+#&gt; CASS D LHKRFKQFFF   &lt;- position 5 Q -&gt; D
+#&gt; CASSQLHKRFKQF L F   &lt;- last-but-one letter F -&gt; L
+#&gt; CASSQLH P RFKQFPF   &lt;- position 8 K -&gt; P
+#&gt; CASSQLHKRF G QFFF   &lt;- position 11 K -&gt; G</code></pre>
+<p>(The exact letters are random, so you will get different sequences —
+but they will always form a one-edit-apart family.)</p>
+<p>Now we place six such families onto cells. Families 1–4 live in the
+CD8 T cells of <code>HLA-A*02:01</code> carriers (a class-I story);
+family 5 lives in the CD4 T cells of <code>DRB1*15:01</code> carriers
+(class II); family 6 is scattered over random donors so it will come out
+“Mixed”. Each family gets its own V gene so the page’s
+<em>split-by-V</em> option keeps them apart.</p>
+<pre class="r"><code>fam_spec &lt;- list(
+  list(size = 12, v = &quot;TRBV20-1&quot;, lineage = &quot;CD8 T&quot;, donors = donors[1:6]),
+  list(size = 10, v = &quot;TRBV28&quot;,   lineage = &quot;CD8 T&quot;, donors = donors[1:6]),
+  list(size = 9,  v = &quot;TRBV19&quot;,   lineage = &quot;CD8 T&quot;, donors = donors[1:6]),
+  list(size = 8,  v = &quot;TRBV7-9&quot;,  lineage = &quot;CD8 T&quot;, donors = donors[1:6]),
+  list(size = 8,  v = &quot;TRBV5-1&quot;,  lineage = &quot;CD4 T&quot;, donors = donors[1:5]),
+  list(size = 7,  v = &quot;TRBV9&quot;,    lineage = &quot;CD4 T&quot;, donors = donors[c(3, 7, 9, 11)])
+)
+
+# eligible cells (T cells, ~90% receptor coverage), drawn from a per-(donor, lineage) pool
+t_meta &lt;- meta[meta$cell_type %in% c(&quot;CD8 T&quot;, &quot;CD4 T&quot;, &quot;Treg&quot;), ]
+t_meta &lt;- t_meta[runif(nrow(t_meta)) &lt; 0.90, ]
+pool &lt;- split(t_meta$barcode, list(t_meta$sample, t_meta$cell_type), drop = TRUE)
+take &lt;- function(donor, lineage) {                 # hand out one free cell, then remove it
+  key &lt;- paste(donor, lineage, sep = &quot;.&quot;)
+  if (is.null(pool[[key]]) || length(pool[[key]]) == 0) return(NA_character_)
+  bc &lt;- pool[[key]][1]; pool[[key]] &lt;&lt;- pool[[key]][-1]; bc
+}
+
+assign &lt;- data.frame(barcode = character(), v_gene = character(), cdr3 = character())
+for (fs in fam_spec) {
+  cdr3s &lt;- make_family(fs$size)
+  for (i in seq_along(cdr3s)) {
+    d &lt;- fs$donors[(i - 1) %% length(fs$donors) + 1]
+    bc &lt;- take(d, fs$lineage)
+    if (!is.na(bc)) assign &lt;- rbind(assign, data.frame(barcode = bc, v_gene = fs$v, cdr3 = cdr3s[i]))
+  }
+}
+# every other T cell with a receptor gets a random singleton — the polyclonal background
+bg &lt;- setdiff(t_meta$barcode, assign$barcode)
+assign &lt;- rbind(assign, data.frame(
+  barcode = bg,
+  v_gene = sample(sprintf(&quot;TRBV%d-1&quot;, 2:29), length(bg), TRUE),
+  cdr3 = vapply(sample(12:17, length(bg), TRUE), rand_cdr3, character(1))
+))</code></pre>
+<p>The last move is to pack these assignments into the shape
+<code>scRepertoire</code> (and therefore the page) expects. Each chain
+of a cell is one underscore-joined slot, and <em>within</em> a chain the
+gene names are dot-joined as <code>V.J.C</code>; the CDR3 amino acids
+live in a parallel <code>CTaa</code> string. Here every cell has a
+single TRB chain:</p>
+<pre class="r"><code>tcr &lt;- merge(assign, meta[, c(&quot;barcode&quot;, &quot;sample&quot;)], by = &quot;barcode&quot;)
+tcr$CTgene   &lt;- sprintf(&quot;%s.TRBJ2-7.TRBC2&quot;, tcr$v_gene) # V.J.C
+tcr$CTaa     &lt;- tcr$cdr3                                 # the CDR3 amino acids
+tcr$CTnt     &lt;- NA_character_
+tcr$CTstrict &lt;- sprintf(&quot;%s;%s&quot;, tcr$v_gene, tcr$cdr3)
+
+ir_cols &lt;- c(&quot;barcode&quot;, &quot;CTgene&quot;, &quot;CTnt&quot;, &quot;CTaa&quot;, &quot;CTstrict&quot;)
+ir_data &lt;- lapply(split(tcr, tcr$sample), function(df) df[, ir_cols, drop = FALSE])</code></pre>
+<p><strong>Look at what you built</strong> — a named list, one table per
+sample, holding five columns:</p>
+<pre class="r"><code>names(ir_data)          # one entry per donor
+head(ir_data[[&quot;D01&quot;]], 3)</code></pre>
+<pre><code>#&gt; [1] &quot;D01&quot; &quot;D02&quot; &quot;D03&quot; ... &quot;D12&quot;
+#&gt;
+#&gt;   barcode                 CTgene CTnt            CTaa                 CTstrict
+#&gt;  D01_0001 TRBV20-1.TRBJ2-7.TRBC2 &lt;NA&gt; CASSFIHAHWQQEVF TRBV20-1;CASSFIHAHWQQEVF
+#&gt;  D01_0003 TRBV20-1.TRBJ2-7.TRBC2 &lt;NA&gt; CASSFIFAHWQHFVF TRBV20-1;CASSFIFAHWQHFVF
+#&gt;  D01_0004   TRBV28.TRBJ2-7.TRBC2 &lt;NA&gt; CASSWMDCEPRHFWF   TRBV28;CASSWMDCEPRHFWF</code></pre>
+<p>See how the page will read this: from <code>CTgene</code> it splits
+out the V gene (<code>TRBV20-1</code>), and from <code>CTaa</code> it
+takes the CDR3. The first two rows are the same family —
+<code>CASSFIHAHWQQEVF</code> and <code>CASSFIFAHWQHFVF</code> are a
+couple of edits apart — which is exactly the structure the motif network
+will draw.</p>
+</div>
+<div id="step-5-attach-the-contracts-and-export" class="section level2">
+<h2>Step 5 — attach the contracts and export</h2>
+<p>Attach the repertoire through its checked API, add the two HLA
+fields, and export. This is the moment the plain Seurat object becomes
+an HLA-aware Cerebro file.</p>
+<pre class="r"><code>seurat &lt;- addImmuneRepertoire(seurat, tcr = ir_data)
+seurat@misc$hla_typing             &lt;- hla_wide
+seurat@misc$hla_typing_source_type &lt;- &quot;synthetic&quot;   # be honest about provenance
+
+exportFromSeurat(
+  seurat,
+  file            = &quot;demo_hla_tcr_toy.crb&quot;,
+  experiment_name = &quot;toy_hla_tcr&quot;,
+  organism        = &quot;hg&quot;,
+  groups          = c(&quot;sample&quot;, &quot;cell_type&quot;)
+)</code></pre>
+<p>That writes a ~200 KB <code>.crb</code>. You can inspect it without
+opening the app, and this is where you <em>feel</em> the transformation
+the export performed. The wide genotype table you wrote in Step 1 has
+become a tidy <strong>long</strong> table — one row per donor × gene ×
+copy — with the <code>HLA-</code> prefix normalised back on and
+provenance stamped:</p>
+<pre class="r"><code>crb &lt;- readRDS(&quot;demo_hla_tcr_toy.crb&quot;)
+head(crb$getHLATyping()[, c(&quot;sample&quot;, &quot;donor_id&quot;, &quot;locus&quot;, &quot;copy&quot;, &quot;allele&quot;, &quot;source_type&quot;)], 4)</code></pre>
+<pre><code>#&gt;  sample donor_id locus copy      allele source_type
+#&gt;     D01      D01 HLA-A    1 HLA-A*02:01   synthetic
+#&gt;     D02      D02 HLA-A    1 HLA-A*02:01   synthetic
+#&gt;     D03      D03 HLA-A    1 HLA-A*02:01   synthetic
+#&gt;     D04      D04 HLA-A    1 HLA-A*02:01   synthetic</code></pre>
+<p>Notice <code>A*02:01</code> came back as <code>HLA-A*02:01</code>:
+the app normalises whatever spelling you feed it. And the receptors
+really do form a network:</p>
+<pre class="r"><code>seg &lt;- CerebroNexus:::hla_parse_ir_segments(crb$immune_repertoire, &quot;TRB&quot;)
+g &lt;- CerebroNexus:::hla_build_motif_graph(seg, by_v = TRUE, min_nodes = 6)
+c(nodes = igraph::gorder(g), edges = igraph::gsize(g), families = igraph::components(g)$no)</code></pre>
+<pre><code>#&gt;    nodes    edges families
+#&gt;       54       49        6</code></pre>
+<p>Fifty-four CDR3s, forty-nine one-edit links, six families — the six
+we designed.</p>
+</div>
+</div>
+<div id="launch-a-shiny-app-on-the-data-set" class="section level1">
+<h1>Launch a Shiny app on the data set</h1>
+<p><code>createShinyApp()</code> wraps a self-contained app directory
+around one or more <code>.crb</code> files. Its <strong>arguments are
+how you preconfigure the app</strong> — the welcome text, colours,
+whether users may upload their own data, and so on.</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data    = &quot;demo_hla_tcr_toy.crb&quot;,
+  result_dir      = &quot;hla_app&quot;,              # the app bundle is written here
+  welcome_message = &quot;Synthetic HLA &amp; TCR demo&quot;,
+  show_upload_ui  = TRUE,                    # let users also upload their own .crb
+  launch_browser  = TRUE
+)</code></pre>
+<p>For a quick look without building a bundle, launch straight from the
+file:</p>
+<pre class="r"><code>launchCerebro(crb_file_to_load = &quot;demo_hla_tcr_toy.crb&quot;)</code></pre>
+<p>Either way, once the data set loads, an <strong>HLA &amp; TCR
+Motifs</strong> item appears in the sidebar — it shows up only because a
+TRB chain was detected.</p>
+</div>
+<div id="using-the-page" class="section level1">
+<h1>Using the page</h1>
+<p>The page has a parameter column on the left and three tabs on the
+right: <strong>Motif Network</strong>, <strong>HLA
+Associations</strong>, and <strong>Data &amp; QC</strong>.</p>
+<div id="motif-network" class="section level2">
+<h2>Motif Network</h2>
+<div class="float">
+<img src="img/hla_motif_network.png"
+alt="The motif network, coloured by motif cluster. Each dot is a unique CDR3; edges join one-edit neighbours; a connected clump is a motif family. The six families we designed stand out from the sparse background." />
+<div class="figcaption">The motif network, coloured by motif cluster.
+Each dot is a unique CDR3; edges join one-edit neighbours; a connected
+clump is a motif family. The six families we designed stand out from the
+sparse background.</div>
+</div>
+<p>The controls, top to bottom:</p>
+<ul>
+<li><strong>Chain</strong> — TRB here; TRA also appears when the data
+carries it.</li>
+<li><strong>Network scope</strong> — <em>All cells</em> builds one graph
+and the allele only re-colours it, so a colour change never rebuilds
+(and never re-arranges) the network.</li>
+<li><strong>Colour nodes by</strong> — motif cluster, cell type, MHC
+context, <strong>HLA carrier status</strong>, or sample of origin.</li>
+<li><strong>Minimum motif size</strong> — hides clumps smaller than the
+slider (default 6), which sweeps away the polyclonal singletons and
+leaves the designed families.</li>
+<li><strong>Split motifs by V gene</strong> — treats CDR3s that use
+different V genes as different receptors.</li>
+</ul>
+<p>Colouring by <strong>HLA carrier status</strong> is the view the page
+exists for. Pick the anchor allele and every dot becomes Carrier (only
+carriers of that allele have this CDR3), Non-carrier, or Mixed:</p>
+<div class="float">
+<img src="img/hla_carrier_status.png"
+alt="Carrier-status colouring on HLA-A*02:01 (15 carriers vs 15 non-carriers in the shipped fixture). The designed families light up as solid red carrier islands against a mixed background." />
+<div class="figcaption">Carrier-status colouring on HLA-A*02:01 (15
+carriers vs 15 non-carriers in the shipped fixture). The designed
+families light up as solid red carrier islands against a mixed
+background.</div>
+</div>
+<p>Because family members are mostly private to one donor, an ordinary
+background dot just inherits its single donor’s status, so the
+background is naturally a red/blue mix. The signal you read is a
+<em>solid</em> carrier island standing out from that mix — not “red
+versus grey”. “Mixed” appears only for a CDR3 shared across donors on
+both sides of the allele.</p>
+</div>
+<div id="hla-associations" class="section level2">
+<h2>HLA Associations</h2>
+<div class="float">
+<img src="img/hla_associations.png"
+alt="The HLA Associations tab. The orange banner declares the data is a fabricated fixture; the table shows how the locked feature co-occurs with carriers vs. non-carriers." />
+<div class="figcaption">The HLA Associations tab. The orange banner
+declares the data is a fabricated fixture; the table shows how the
+locked feature co-occurs with carriers vs. non-carriers.</div>
+</div>
+<p>This tab is <strong>descriptive only</strong> — no p-value, no
+restriction claim. You lock a feature (a whole <strong>motif</strong> or
+a single <strong>CDR3</strong>), pick an allele, and read how often
+carriers, non-carriers, and untyped donors show that feature. The orange
+banner is triggered by
+<code>hla_typing_source_type = "synthetic"</code>: because we invented
+both the sequences and the genotypes, any contrast here was placed there
+on purpose. The blue banner reminds you that counts are donor-level
+(when donor mapping is complete) and that the feature is measured on the
+global graph regardless of the network scope.</p>
+</div>
+<div id="data-qc" class="section level2">
+<h2>Data &amp; QC</h2>
+<div class="float">
+<img src="img/hla_data_qc.png"
+alt="The Data &amp; QC tab: per-donor coverage, the normalized typing table, and a session-only upload to override the stored HLA typing." />
+<div class="figcaption">The Data &amp; QC tab: per-donor coverage, the
+normalized typing table, and a session-only upload to override the
+stored HLA typing.</div>
+</div>
+<p>This tab shows what the app actually parsed: how many alleles each
+donor has, the normalized long typing table, and the sample →
+analysis-unit mapping. You can also <strong>upload your own</strong> HLA
+typing here (CSV or TSV, long or wide) to override the stored genotypes
+for the session — handy when a <code>.crb</code> shipped without typing.
+Uploads never modify the <code>.crb</code>, and “Download CSV template”
+gives you the exact expected shape.</p>
+</div>
+</div>
+<div id="parameters-reference" class="section level1">
+<h1>Parameters reference</h1>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Control</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Chain</td>
+<td>TRA / TRB — which receptor chain the network is built on</td>
+</tr>
+<tr class="even">
+<td>Network scope</td>
+<td><em>All cells</em> (one graph, allele re-colours) vs. a per-allele
+subset</td>
+</tr>
+<tr class="odd">
+<td>Colour nodes by</td>
+<td>motif cluster / cell type / MHC context / HLA carrier status /
+sample origin</td>
+</tr>
+<tr class="even">
+<td>HLA allele to colour by</td>
+<td>the allele whose carrier status colours the dots</td>
+</tr>
+<tr class="odd">
+<td>Minimum motif size</td>
+<td>hide clumps below N dots (default 6)</td>
+</tr>
+<tr class="even">
+<td>Split motifs by V gene</td>
+<td>a dot’s identity is V gene + CDR3, not CDR3 alone</td>
+</tr>
+<tr class="odd">
+<td>Show unconnected CDR3s</td>
+<td>also draw singleton dots (off by default)</td>
+</tr>
+<tr class="even">
+<td>Feature type (Associations)</td>
+<td>lock a whole motif or a single CDR3</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="bringing-your-own-single-cell-data" class="section level1">
+<h1>Bringing your own single-cell data</h1>
+<p>The walkthrough above <em>invented</em> every input so it would run
+with no downloads. In real work you already have these pieces from your
+own pipeline — you only need to reshape them into the three
+<code>@misc</code> slots and export. Nothing here is HLA-specific magic;
+it is the ordinary Cerebro export plus the checked repertoire call and
+two HLA fields.</p>
+<p>You are typically starting from:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>You have</th>
+<th>From</th>
+<th>Becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>a Seurat object (clusters, a UMAP, cell types)</td>
+<td>your scRNA-seq pipeline</td>
+<td>the <code>.crb</code> itself, via
+<code>exportFromSeurat()</code></td>
+</tr>
+<tr class="even">
+<td>paired TCR / VDJ</td>
+<td>Cell Ranger <code>filtered_contig_annotations.csv</code> →
+scRepertoire <code>combineTCR()</code></td>
+<td><code>@misc$immune_repertoire</code></td>
+</tr>
+<tr class="odd">
+<td>each donor’s HLA genotype</td>
+<td>a genotyping lab report, or HLA imputed from the same reads</td>
+<td><code>@misc$hla_typing</code></td>
+</tr>
+</tbody>
+</table>
+<div id="your-seurat-object" class="section level2">
+<h2>1 — your Seurat object</h2>
+<p>Whatever produced the object is fine. The HLA page needs only that it
+has cells with barcodes, a <code>sample</code> (donor) column in
+<code>@meta.data</code>, and ideally a <code>cell_type</code> column and
+a UMAP. If you can already export it to Cerebro today, you are set; the
+two slots below are the only additions.</p>
+<pre class="r"><code>seurat # e.g. 20,000 cells, an RNA/SCT assay, a umap reduction
+head(seurat@meta.data[, c(&quot;sample&quot;, &quot;cell_type&quot;)])</code></pre>
+<p>The column that matters for HLA counting is <code>sample</code>: it
+is the key that joins a cell to its donor’s genotype, so <strong>the
+<code>sample</code> values in <code>@meta.data</code> must match the
+<code>sample</code> values in your HLA table.</strong> If one donor
+contributed several 10x lanes, collapse them to one <code>sample</code>
+/ <code>donor_id</code> per person — otherwise carrier counts
+double-count that donor.</p>
+</div>
+<div id="receptors-from-cell-ranger-screpertoire"
+class="section level2">
+<h2>2 — receptors from Cell Ranger + scRepertoire</h2>
+<p>If you ran 10x 5’ VDJ, Cell Ranger writes one
+<code>filtered_contig_annotations.csv</code> per sample. scRepertoire’s
+<code>combineTCR()</code> turns those into exactly the per-sample list
+of <code>CTgene</code> / <code>CTaa</code> / <code>CTnt</code> /
+<code>CTstrict</code> tables Cerebro stores — so its output <em>is</em>
+the <code>immune_repertoire</code> slot, with no reshaping:</p>
+<pre class="r"><code>library(scRepertoire)
+contig_list &lt;- lapply(sample_dirs, function(d) {
+  read.csv(file.path(d, &quot;filtered_contig_annotations.csv&quot;))
+})
+combined &lt;- combineTCR(contig_list, samples = donor_ids) # a list named by donor
+
+seurat &lt;- addImmuneRepertoire(seurat, tcr = combined)</code></pre>
+<p><code>addImmuneRepertoire()</code> also takes the contig files
+directly, doing the <code>combineTCR()</code> step for you:</p>
+<pre class="r"><code>seurat &lt;- addImmuneRepertoire(
+  seurat,
+  tcr = file.path(sample_dirs, &quot;filtered_contig_annotations.csv&quot;),
+  sample_names = donor_ids
+)</code></pre>
+<p>The page reads two things out of each row: the V gene (the first
+dot-separated token of <code>CTgene</code>) and the CDR3 amino acids
+(<code>CTaa</code>). Everything else is carried through untouched. Watch
+the barcodes: if <code>combineTCR(samples =)</code> prefixes them
+(<code>donorA_AACCTGA-1</code>), the same prefix must be on the
+<code>@meta.data</code> barcodes (via <code>RenameCells</code>).
+<code>addImmuneRepertoire()</code> stops with that mismatch instead of
+storing an empty join. The companion <em>Immune Repertoire Analysis</em>
+vignette walks the full scRepertoire path.</p>
+</div>
+<div id="hla-typing-genotyped-or-imputed" class="section level2">
+<h2>3 — HLA typing: genotyped or imputed</h2>
+<p>Your genotypes come from one of two honest sources, and the app asks
+you to say which — this is what stamps <code>source_type</code> and
+keeps a prediction from being mistaken for a lab call:</p>
+<ul>
+<li><strong><code>genotyped</code></strong> — a real HLA typing assay
+(sequence-based typing, NGS typing, or an array the lab called into
+alleles). Only this source is eligible for confirmatory downstream
+claims.</li>
+<li><strong><code>imputed</code></strong> — alleles predicted from data:
+<code>arcasHLA</code> / <code>OptiType</code> / <code>HLA-HD</code> run
+on the same RNA or exome reads, or SNP-array imputation. Fine for
+exploration; the app labels it so the uncertainty travels with the
+result.</li>
+</ul>
+<p>The table can be the <strong>wide</strong> shape a spreadsheet
+exports (one row per donor, two columns per gene) …</p>
+<pre class="r"><code>hla_wide &lt;- read.csv(&quot;my_hla_typing.csv&quot;, check.names = FALSE) # check.names is mandatory
+head(hla_wide)
+#&gt;   sample HLA-A_1 HLA-A_2 HLA-B_1 HLA-B_2 HLA-C_1 HLA-C_2 HLA-DRB1_1 HLA-DRB1_2
+#&gt;   donorA A*02:01 A*01:01 B*07:02 B*44:02 C*07:01 C*05:01 DRB1*15:01 DRB1*03:01
+#&gt;   donorB A*03:01 A*24:02 B*08:01 B*35:01 C*04:01 C*06:02 DRB1*04:01 DRB1*07:01</code></pre>
+<p>… or the <strong>long</strong> shape (one row per donor × gene ×
+copy) if that is what your lab delivers. Either is accepted. Attach it
+and record where it came from:</p>
+<pre class="r"><code>seurat@misc$hla_typing             &lt;- hla_wide
+seurat@misc$hla_typing_source_type &lt;- &quot;genotyped&quot; # or &quot;imputed&quot;</code></pre>
+<p><code>check.names = FALSE</code> is mandatory: R’s default renames
+<code>HLA-A_1</code> to <code>HLA.A_1</code>, and the reader matches on
+the literal <code>HLA-</code>, so the rename makes every allele vanish
+silently. Only <code>HLA-A</code>, <code>-B</code>, <code>-C</code>,
+<code>-DRB1</code> are shown in the allele pickers (DQ / DP need
+heterodimer pairing and are stored but not interpreted). Allele spelling
+is normalised for you — <code>A*02:01</code>, <code>HLA-A*02:01</code>,
+and <code>A0201</code>-style strings all resolve to the same allele.</p>
+</div>
+<div id="export" class="section level2">
+<h2>4 — export</h2>
+<p>The same call as any Cerebro export; the three slots ride along:</p>
+<pre class="r"><code>exportFromSeurat(
+  seurat,
+  file            = &quot;my_study.crb&quot;,
+  experiment_name = &quot;my_study&quot;,
+  organism        = &quot;hg&quot;,
+  groups          = c(&quot;sample&quot;, &quot;cell_type&quot;)
+)</code></pre>
+<p>Then <code>launchCerebro(crb_file_to_load = "my_study.crb")</code>,
+or wrap a shareable bundle with <code>createShinyApp()</code>. The
+<strong>HLA &amp; TCR Motifs</strong> item appears whenever the object
+carries a TRA/TRB chain; HLA typing is optional.</p>
+<div
+style="border-left: 4px solid #2b7bb9; background: #eef5fb; padding: 0.6em 1em; margin: 1em 0;">
+<p><strong>No genotypes yet?</strong> Ship the <code>.crb</code> with
+just the receptors. The page still draws the motif network, and a
+collaborator can upload an HLA CSV/TSV in the <strong>Data &amp;
+QC</strong> tab for their session — no rebuild, and the
+<code>.crb</code> is never modified.</p>
+</div>
+</div>
+</div>
+<div id="common-questions" class="section level1">
+<h1>Common questions</h1>
+<p><strong>My motif network is almost empty on real data — is that a
+bug?</strong> No — that is the expected result, and it is exactly why
+this demo’s families are invented. A real repertoire is spread thinly
+across ~20¹⁴ possible CDR3s, so genuine one-edit pairs are rare. Dense
+motifs come from antigen-driven <em>selection</em>, not from having more
+cells.</p>
+<p><strong>Can I use my own HLA genotypes?</strong> Yes.
+<code>addHLATyping()</code> (or <code>object@misc$hla_typing</code>)
+accepts a wide table (<code>sample</code> + <code>HLA-*_1/_2</code>), a
+canonical long table, or a named list. You can also upload a CSV/TSV in
+the <strong>Data &amp; QC</strong> tab to override the stored typing for
+one session.</p>
+<p><strong>I have TRA, not TRB.</strong> Set <strong>Chain</strong> to
+TRA in the parameter column; the page offers whichever chains it detects
+in the data.</p>
+<p><strong>Why does the page count donors instead of cells?</strong> An
+HLA association is a property of a <em>person’s</em> genotype. Cells
+from one donor share that genotype, so they are not independent
+observations — counting them as if they were would inflate any apparent
+contrast.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><strong>Introduction to the CerebroNexus workflow (Seurat)</strong>
+— the general Seurat → <code>.crb</code> export basics, if this is your
+first CerebroNexus export; the HLA slots above just ride along with
+it.</li>
+<li><strong>HLA Associations on bulk TCRβ with real donor HLA</strong> —
+the companion workflow for bulk immunosequencing: real genotypes, no
+single cells, and the positive-control caveat that comes with them.</li>
+<li><strong>Immune Repertoire Analysis in CerebroNexus</strong> — the
+scRepertoire-based module that produces the same
+<code>@misc$immune_repertoire</code> slot from real 10x data.</li>
+<li><code>?exportFromSeurat</code>, <code>?createShinyApp</code>, and
+<code>?Cerebro</code> (see <code>addHLATyping</code> /
+<code>getHLATyping</code>).</li>
+</ul>
+</div>
+<div id="getting-help" class="section level1">
+<h1>Getting help</h1>
+<ul>
+<li>Questions and bug reports: <a
+href="https://github.com/mihem/CerebroNexus/issues"
+class="uri">https://github.com/mihem/CerebroNexus/issues</a>.</li>
+<li>Function reference and other articles: <a
+href="https://mihem.github.io/CerebroNexus/"
+class="uri">https://mihem.github.io/CerebroNexus/</a>.</li>
+<li>Provenance of every shipped demo data set:
+<code>data-raw/DATASETS.md</code>.</li>
+</ul>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session info</h1>
+<pre class="r"><code>sessionInfo()</code></pre>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

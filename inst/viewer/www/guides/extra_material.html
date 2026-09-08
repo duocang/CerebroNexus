@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Extra Material</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Extra Material</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#quick-start" id="toc-quick-start">Quick start</a></li>
+<li><a href="#content-categories" id="toc-content-categories">Content
+categories</a></li>
+<li><a href="#embedding-content-in-a-crb"
+id="toc-embedding-content-in-a-crb">Embedding content in a CRB</a></li>
+<li><a href="#supplying-external-tables-to-a-generated-app"
+id="toc-supplying-external-tables-to-a-generated-app">Supplying external
+tables to a generated app</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>The <strong>Extra material</strong> tab provides a space for custom
+tables or plots bundled alongside your single-cell data. Common use
+cases include:</p>
+<ul>
+<li>Cell type annotation results (e.g., SingleR scores)</li>
+<li>Custom QC summary tables</li>
+<li>Publication-ready figures</li>
+<li>Any additional analysis you want to share with collaborators</li>
+</ul>
+<p>The tab appears <em>conditionally</em> — when the <code>.crb</code>
+contains embedded material or a generated app includes external tables
+through <code>createShinyApp()</code>. You control what appears, so the
+interface stays clean when no extra content is available.</p>
+</div>
+<div id="quick-start" class="section level1">
+<h1>Quick start</h1>
+<pre class="r"><code>library(CerebroNexus)
+launchCerebro()</code></pre>
+<ol style="list-style-type: decimal">
+<li>Launch CerebroNexus and load a <code>.crb</code> file with extra
+material</li>
+<li>If extra material is present, <strong>Extra material</strong>
+appears in the sidebar</li>
+<li>Select a category (<code>tables</code> or <code>plots</code>)</li>
+<li>Choose a specific table or plot to view</li>
+</ol>
+</div>
+<div id="content-categories" class="section level1">
+<h1>Content categories</h1>
+<p><strong>Tables</strong>: any <code>data.frame</code>. Rendered as
+interactive DT tables with search, sort, and download.</p>
+<p><strong>Plots</strong>: any <code>ggplot2</code> object. Displayed at
+original resolution with download support.</p>
+</div>
+<div id="embedding-content-in-a-crb" class="section level1">
+<h1>Embedding content in a CRB</h1>
+<p>Use the <code>extra_material</code> parameter in
+<code>exportFromSeurat()</code>:</p>
+<pre class="r"><code>exportFromSeurat(seurat_object,
+  file = &quot;my_data.crb&quot;,
+  extra_material = list(
+    tables = list(SingleR_results = annotation_df),
+    plots  = list(umap_overview = umap_plot)
+  )
+)</code></pre>
+<p>Embedded tables and plots travel with the <code>.crb</code> and
+remain available wherever that data file is opened.</p>
+</div>
+<div id="supplying-external-tables-to-a-generated-app"
+class="section level1">
+<h1>Supplying external tables to a generated app</h1>
+<p>Use <code>extra_tables</code> in <code>createShinyApp()</code> when
+tables should belong to one generated deployment rather than to the CRB
+itself:</p>
+<pre class="r"><code>createShinyApp(
+  cerebro_data = c(&quot;PBMC&quot; = &quot;pbmc.crb&quot;),
+  result_dir = &quot;pbmc-viewer&quot;,
+  extra_tables = list(
+    &quot;QC summary&quot; = &quot;results/qc.csv&quot;,
+    &quot;Annotation workbook&quot; = &quot;results/annotations.xlsx&quot;
+  ),
+  extra_tables_sheets = list(
+    &quot;Annotation workbook&quot; = list(&quot;Cell labels&quot; = &quot;Sheet1&quot;)
+  ),
+  launch_browser = FALSE
+)</code></pre>
+<p>CSV, TSV, TXT, XLS, XLSX, and XLSM files are converted during the
+build to private RDS assets. Non-empty workbook sheets appear
+separately; mapped names replace their source sheet names, while
+unmapped names are retained. The Viewer loads a sheet only after it is
+selected. Original source paths are not written to the generated
+configuration, and formula-like text is neutralized before display or
+download.</p>
+<p>In short, <code>exportFromSeurat(extra_material = ...)</code> embeds
+content in the CRB; <code>createShinyApp(extra_tables = ...)</code> adds
+deployment-specific external tables without modifying that CRB.</p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<p><code>vignette("export_and_visualize_custom_tables_and_plots")</code>
+for a detailed walkthrough with examples.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

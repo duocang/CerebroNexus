@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Roman Hillje" />
+
+
+<title>Launch Cerebro with pre-loaded data set</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Launch Cerebro with pre-loaded data
+set</h1>
+<h4 class="author">Roman Hillje</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#how-to-do-it" id="toc-how-to-do-it">How to do it</a></li>
+<li><a href="#modify-welcome-page" id="toc-modify-welcome-page">Modify
+welcome page</a></li>
+<li><a href="#see-also" id="toc-see-also">See also</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>CerebroNexus can preload a <code>.crb</code> file and prevent users
+from uploading their own data sets. This can be useful when you want to
+share a Cerebro data set on a web server, for example alongside a
+publication, but don’t want users to upload data to that server.</p>
+</div>
+<div id="how-to-do-it" class="section level1">
+<h1>How to do it</h1>
+<p>Provide the data path and closed mode to
+<code>launchCerebro()</code>. Let’s say your data set is stored here:
+<code>~/Cerebro/data_sets/pbmc_v3.crb</code>. Then, launch Cerebro as
+shown below:</p>
+<pre class="r"><code>launchCerebro(
+  crb_file_to_load = &quot;~/Cerebro/data_sets/pbmc_v3.crb&quot;,
+  mode = &quot;closed&quot;
+)</code></pre>
+<p>That’s it.</p>
+<p><a target="_blank" href="img/landing_page.png"><img src="img/landing_page.png" alt="Load data" width="100%" height="auto" /></a></p>
+</div>
+<div id="modify-welcome-page" class="section level1">
+<h1>Modify welcome page</h1>
+<p>If you would like to modify the message on the “Load data”/welcome
+page, e.g. to link to a publication or give an introduction to the data
+set, you can use the <code>welcome_message</code> parameter of
+<code>launchCerebro()</code>. The provided string for that parameter
+can/should be written in HTML as shown below:</p>
+<pre class="r"><code>custom_welcome_message &lt;- &#39;&lt;h3 style=&quot;text-align: center; margin-top: 0px&quot;&gt;&lt;strong&gt;This is a custom welcome message to Cerebro&lt;/strong&gt;&lt;/h3&gt;
+  &lt;p style=&quot;margin-left: 10px;&quot;&gt;This data set belongs to publication XY by Max Mustermann &lt;em&gt;et al.&lt;/em&gt;.&lt;br&gt;
+  It contains the transcriptomic profiles of PBMC samples taken from mice undergoing treatment F.&lt;br&gt;
+  Please contact us at ... if you have any questions.&lt;/p&gt;&#39;
+
+launchCerebro(
+  crb_file_to_load = &quot;~/Cerebro/data_sets/pbmc_v3.crb&quot;,
+  mode = &quot;closed&quot;,
+  welcome_message = custom_welcome_message
+)</code></pre>
+<p><a target="_blank" href="img/custom_welcome_message.png"><img src="img/custom_welcome_message.png" alt="Load data" width="100%" height="auto" /></a></p>
+</div>
+<div id="see-also" class="section level1">
+<h1>See also</h1>
+<ul>
+<li><a href="host_cerebro_on_shinyapps.html">Host Cerebro on
+shinyapps.io</a></li>
+<li><a href="control_access_to_cerebro_with_a_login_page.html">Control
+access to Cerebro with a login page</a></li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>

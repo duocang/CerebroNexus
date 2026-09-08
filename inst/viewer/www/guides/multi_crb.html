@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Xuesong Wang" />
+
+
+<title>Loading multiple data sets (multi-crb) with a dataset switcher</title>
+
+<script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+      .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+
+
+
+
+
+
+
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Loading multiple data sets (multi-crb) with
+a dataset switcher</h1>
+<h4 class="author">Xuesong Wang</h4>
+<h4 class="date">08 September, 2026</h4>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a href="#quick-start" id="toc-quick-start">Quick start</a>
+<ul>
+<li><a href="#single-file-unchanged"
+id="toc-single-file-unchanged">Single file (unchanged)</a></li>
+<li><a href="#multiple-files" id="toc-multiple-files">Multiple
+files</a></li>
+</ul></li>
+<li><a href="#default-file-selection"
+id="toc-default-file-selection">Default file selection</a></li>
+<li><a href="#linking-to-a-specific-data-set-via-url"
+id="toc-linking-to-a-specific-data-set-via-url">Linking to a specific
+data set via URL</a></li>
+</ul>
+</div>
+
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>CerebroNexus can load <strong>multiple <code>.crb</code>
+files</strong> in a single app. When more than one file is supplied to
+<code>createShinyApp()</code>, a <strong>“Select dataset:”</strong>
+switcher appears in the sidebar so users can move between data sets
+without restarting the app. Each data set keeps its own expression data,
+metadata, and module-specific slots — including the immune repertoire —
+so conditional tabs (such as <em>Immune Repertoire</em>) appear or
+disappear as you switch.</p>
+</div>
+<div id="quick-start" class="section level1">
+<h1>Quick start</h1>
+<div id="single-file-unchanged" class="section level2">
+<h2>Single file (unchanged)</h2>
+<p>Passing a single path behaves exactly as before — no switcher is
+shown:</p>
+<pre class="r"><code>createShinyApp(
+  result_dir = file.path(tempdir(), &quot;cerebro_app_single&quot;),
+  cerebro_data = c(demo = system.file(
+    &quot;extdata/examples/example.crb&quot;,
+    package = &quot;CerebroNexus&quot;
+  ))
+)</code></pre>
+</div>
+<div id="multiple-files" class="section level2">
+<h2>Multiple files</h2>
+<p>Pass a <strong>named vector</strong> of <code>.crb</code> paths. The
+demo data sets shipped with the package are genuinely different samples
+— a PBMC set (TCR + BCR + a monocle2 trajectory) and four real
+spatial-transcriptomics sections spanning distinct platforms — so the
+UMAP, the cell-type mix, and the conditional tabs all change as you
+switch:</p>
+<pre class="r"><code>createShinyApp(
+  result_dir = file.path(tempdir(), &quot;cerebro_app_multi&quot;),
+  cerebro_data = c(
+    &quot;PBMC - Full (T+B)&quot;                = system.file(&quot;extdata/examples/demo_full_tcr_bcr.crb&quot;,   package = &quot;CerebroNexus&quot;),
+    &quot;Mouse brain (Visium)&quot;             = system.file(&quot;extdata/examples/demo_spatial_visium.crb&quot;,  package = &quot;CerebroNexus&quot;),
+    &quot;Mouse hippocampus (Slide-seq v2)&quot; = system.file(&quot;extdata/examples/demo_spatial_slideseq.crb&quot;, package = &quot;CerebroNexus&quot;),
+    &quot;Mouse ileum (MERFISH)&quot;            = system.file(&quot;extdata/examples/demo_spatial_merfish.crb&quot;, package = &quot;CerebroNexus&quot;),
+    &quot;Mouse brain (Xenium)&quot;             = system.file(&quot;extdata/examples/demo_spatial_xenium.crb&quot;,  package = &quot;CerebroNexus&quot;)
+  )
+)</code></pre>
+<table>
+<colgroup>
+<col width="30%" />
+<col width="18%" />
+<col width="51%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Data set</th>
+<th>Type</th>
+<th>Conditional tab</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>PBMC - Full (T+B)</td>
+<td>scRNA-seq + TCR/BCR + trajectory</td>
+<td>Immune Repertoire, Trajectory</td>
+</tr>
+<tr class="even">
+<td>Mouse brain (Visium)</td>
+<td>spatial (spots, external H&amp;E)</td>
+<td>Spatial</td>
+</tr>
+<tr class="odd">
+<td>Mouse hippocampus (Slide-seq v2)</td>
+<td>spatial (beads, no image)</td>
+<td>Spatial</td>
+</tr>
+<tr class="even">
+<td>Mouse ileum (MERFISH)</td>
+<td>spatial (imaging, embedded DAPI)</td>
+<td>Spatial</td>
+</tr>
+<tr class="odd">
+<td>Mouse brain (Xenium)</td>
+<td>spatial (imaging, external DAPI variants)</td>
+<td>Spatial</td>
+</tr>
+</tbody>
+</table>
+<p>When the app starts, the sidebar shows a dropdown with these samples.
+Switching changes the whole data set — the UMAP, the cell-type
+composition, and the conditional tabs (<em>Immune Repertoire</em> /
+<em>Trajectory</em> / <em>Spatial</em>), which appear only for the data
+sets that carry that content.</p>
+<p>The PBMC demo is derived from the public 10x Genomics
+<code>vdj_v1_hs_pbmc3</code> dataset and the spatial demos from public
+reference sections; see <code>data-raw/README.md</code> in the package
+source for the full, reproducible builds.</p>
+</div>
+</div>
+<div id="default-file-selection" class="section level1">
+<h1>Default file selection</h1>
+<p>By default the <strong>smallest <code>.crb</code> file</strong> (by
+size on disk) is loaded first. Set
+<code>crb_pick_smallest_file = FALSE</code> to load the first file in
+the vector instead:</p>
+<pre class="r"><code>createShinyApp(
+  result_dir = file.path(tempdir(), &quot;cerebro_app_order&quot;),
+  cerebro_data = c(
+    a = &quot;file_a.crb&quot;,
+    b = &quot;file_b.crb&quot;
+  ),
+  crb_pick_smallest_file = FALSE # loads file_a.crb
+)</code></pre>
+<p>Once a file is chosen from the dropdown, that selection persists
+until the user switches again.</p>
+</div>
+<div id="linking-to-a-specific-data-set-via-url" class="section level1">
+<h1>Linking to a specific data set via URL</h1>
+<p>When the app is deployed, a data set can be selected directly from
+the URL, so you can share a link that opens straight into one sample.
+Both a query string and a path segment are supported:</p>
+<pre><code>https://your-host/app/?dataset=TCR
+https://your-host/app/TCR</code></pre>
+<p>The token is the <strong>last path segment</strong> (so it works even
+when the app is mounted under a sub-path such as <code>/app/</code>), or
+the value of the <code>dataset</code> query parameter. It is matched
+against the <strong>names</strong> you gave in <code>cerebro_data</code>
+first, then against the file basename (with or without the
+<code>.crb</code> extension). If no match is found, the smallest-file
+default applies.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+
+</body>
+</html>
