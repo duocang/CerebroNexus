@@ -215,22 +215,30 @@ test_that("Cerebro: per-cell means preserve dense and sparse semantics", {
   }
 })
 
-test_that("Cerebro: zero-column matrices preserve empty-cell semantics", {
-  dense <- matrix(
+zero_column_expression_test_matrix <- function() {
+  matrix(
     numeric(),
     nrow = 2L,
     dimnames = list(c("g1", "g2"), NULL)
   )
+}
+
+expect_zero_column_cell_means <- function(mat) {
+  obj <- Cerebro$new()
+  obj$setExpression(mat)
+
+  expect_identical(obj$getMeanExpressionForCells(), numeric())
+  expect_error(
+    obj$getMeanExpressionForCells(genes = "missing"),
+    "Gene\\(s\\) not found"
+  )
+}
+
+test_that("Cerebro: zero-column matrices preserve empty-cell semantics", {
+  dense <- zero_column_expression_test_matrix()
 
   for (mat in list(dense, Matrix::Matrix(dense, sparse = TRUE))) {
-    obj <- Cerebro$new()
-    obj$setExpression(mat)
-
-    expect_identical(obj$getMeanExpressionForCells(), numeric())
-    expect_error(
-      obj$getMeanExpressionForCells(genes = "missing"),
-      "Gene\\(s\\) not found"
-    )
+    expect_zero_column_cell_means(mat)
   }
 })
 
@@ -312,6 +320,9 @@ test_that("Cerebro: DelayedArray means stay native", {
   for (mat in backends) {
     expect_native_cell_means(mat, "DelayedArray", "DelayedArray")
   }
+  expect_zero_column_cell_means(
+    DelayedArray::DelayedArray(zero_column_expression_test_matrix())
+  )
 })
 
 test_that("Cerebro: HDF5Array means stay native", {
@@ -325,6 +336,15 @@ test_that("Cerebro: HDF5Array means stay native", {
     with.dimnames = TRUE
   )
   expect_native_cell_means(mat, "DelayedArray", "DelayedArray")
+
+  zero_path <- withr::local_tempfile(fileext = ".h5")
+  zero_mat <- HDF5Array::writeHDF5Array(
+    zero_column_expression_test_matrix(),
+    filepath = zero_path,
+    name = "expression",
+    with.dimnames = TRUE
+  )
+  expect_zero_column_cell_means(zero_mat)
 })
 
 test_that("Cerebro: BPCells means stay native", {
@@ -337,6 +357,15 @@ test_that("Cerebro: BPCells means stay native", {
     "IterableMatrix"
   )
   expect_native_cell_means(mat, "BPCells", "IterableMatrix")
+
+  zero_mat <- methods::as(
+    methods::as(
+      Matrix::Matrix(zero_column_expression_test_matrix(), sparse = TRUE),
+      "CsparseMatrix"
+    ),
+    "IterableMatrix"
+  )
+  expect_zero_column_cell_means(zero_mat)
 })
 
 test_that("Cerebro: addGeneList / getGeneLists round-trip", {

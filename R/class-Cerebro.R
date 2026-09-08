@@ -511,7 +511,22 @@ Cerebro <- R6::R6Class(
       }
 
       if (is.null(cells) && ncol(self$expression) == 0L) {
-        cells <- character()
+        if (!is.character(genes) || anyNA(genes)) {
+          stop(
+            "`genes` must be a character vector of non-NA gene names.",
+            call. = FALSE
+          )
+        }
+        missing_genes <- genes[is.na(match(genes, rownames(self$expression)))]
+        if (length(missing_genes) > 0L) {
+          stop(
+            "Gene(s) not found in expression matrix: ",
+            paste(utils::head(missing_genes, 5), collapse = ", "),
+            if (length(missing_genes) > 5L) " ..." else "",
+            call. = FALSE
+          )
+        }
+        return(numeric())
       }
       mat <- self$getExpressionBlock(genes = genes, cells = cells)
       if (ncol(mat) == 0L) {
