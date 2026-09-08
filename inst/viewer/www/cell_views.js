@@ -593,7 +593,7 @@
       }
       if (!k) {
         r = { lo: 0, hi: span };
-        _clipCache.set(key, r);
+        _clipCache.set(key, { values: vals, range: r });
         return r;
       }
       var want = colorClip * k, acc = 0, lo = 0, hi = span;
@@ -5276,7 +5276,7 @@
     var incoming = singlePayloadCells(payload);
     var identity = singleDatasetIdentity(incoming);
     if (linkedBundle && !linkedBundle._singleOnly) {
-      var sameFingerprint = !identity.savedFingerprint ||
+      var sameFingerprint = !!identity.savedFingerprint &&
         bundleFingerprint(linkedBundle) === identity.savedFingerprint;
       var sameId = !identity.savedId || linkedBundle.dataset_id === identity.savedId;
       if (sameFingerprint && sameId) return;

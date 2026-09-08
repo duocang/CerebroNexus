@@ -2149,6 +2149,31 @@ test_that("specialist bases do not reuse cells without a dataset fingerprint", {
   expect_identical(tail(output, 1L), "new|0")
 })
 
+test_that("specialist payload replaces an unidentifiable full bundle", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  ensure: ensureSingleBase,",
+      "  seedFull: function () {",
+      "    linkedBundle = {dataset_id:'old', cells:['old'], n:1};",
+      "    D = linkedBundle; singleViews.old = {id:'old'};",
+      "  },",
+      "  base: function () { return linkedBundle; },",
+      "  viewCount: function () { return Object.keys(singleViews).length; }",
+      "};"
+    ),
+    c(
+      "window.cerebroSavedViewDataset = {};",
+      "__cellViewsTest.seedFull();",
+      "__cellViewsTest.ensure({data:{selection_key:['new']}});",
+      "console.log(__cellViewsTest.base().cells.join(',') + '|' +",
+      "  __cellViewsTest.viewCount());"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|0")
+})
+
 test_that("continuous caches follow replaced value arrays", {
   output <- run_cell_views_node(
     c(
@@ -2178,15 +2203,19 @@ test_that("continuous caches follow replaced value arrays", {
       "t.order(t.otherMode); t.range(t.otherMode);",
       "const fieldOrderAgain = t.order(t.fieldMode);",
       "const fieldRangeAgain = t.range(t.fieldMode);",
+      "t.setData({n:4, gene:{gene:'NA', v:[null,null,null,null]}, fields:{}});",
+      "const missingRange = t.range(t.geneMode);",
+      "const missingRangeAgain = t.range(t.geneMode);",
       "console.log([geneOrder.join(','), geneRange.lo + ':' + geneRange.hi,",
       "  fieldOrder.join(','), fieldRange.lo + ':' + fieldRange.hi,",
-      "  fieldOrder === fieldOrderAgain, fieldRange === fieldRangeAgain].join('|'));"
+      "  fieldOrder === fieldOrderAgain, fieldRange === fieldRangeAgain,",
+      "  missingRange === missingRangeAgain].join('|'));"
     )
   )
 
   expect_identical(
     tail(output, 1L),
-    "0,2,3,1|10:40|0,2,3,1|10:40|true|true"
+    "0,2,3,1|10:40|0,2,3,1|10:40|true|true|true"
   )
 })
 
