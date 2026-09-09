@@ -1866,8 +1866,88 @@ body .shiny-progress-container .progress-text {
 body .shiny-progress-container .progress-message { color: var(--c-text) !important; }
 body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !important; }
 
-body .js-plotly-plot .modebar-btn.active path,
-body .js-plotly-plot .modebar-btn:hover path { fill: var(--c-amber) !important; }
+/* Native Plotly charts use the same compact tool language as Linked views. */
+body .js-plotly-plot {
+  container-type: inline-size;
+}
+body .js-plotly-plot .plotly .modebar {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 3px !important;
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+}
+body .js-plotly-plot .plotly .modebar-group {
+  display: flex;
+  gap: 4px;
+  padding-left: 0 !important;
+}
+body .js-plotly-plot .plotly .modebar-btn {
+  float: none !important;
+  box-sizing: border-box;
+  width: 26px;
+  height: 22px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-2) !important;
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border);
+  border-radius: 5px;
+}
+body .js-plotly-plot .plotly .modebar-btn svg {
+  width: 12px;
+  height: 12px;
+}
+body .js-plotly-plot .plotly .modebar-btn path { fill: currentColor !important; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Box Select"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Lasso Select"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Pan"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom in"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom out"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Reset axes"] svg,
+body .js-plotly-plot .plotly .modebar-btn[data-title="Download plot as a png"] svg {
+  display: none;
+}
+body .js-plotly-plot .plotly .modebar-btn::before {
+  display: inline-block;
+  font-family: "Font Awesome 6 Free";
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+body .js-plotly-plot .plotly .modebar-btn[data-title="Box Select"]::before { content: "\f5cb"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Lasso Select"]::before { content: "\f5ee"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Pan"]::before { content: "\f0b2"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom in"]::before { content: "\f00e"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom out"]::before { content: "\f010"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Reset axes"]::before { content: "\f015"; }
+body .js-plotly-plot .plotly .modebar-btn[data-title="Download plot as a png"]::before { content: "\f019"; }
+body .js-plotly-plot .plotly .modebar-btn:hover {
+  color: var(--c-amber-700) !important;
+  background: var(--c-amber-50) !important;
+  border-color: var(--c-amber-200);
+}
+body .js-plotly-plot .plotly .modebar-btn.active {
+  color: var(--c-amber-700) !important;
+  background: var(--c-amber-50) !important;
+  border-color: var(--c-amber-200);
+}
+body .js-plotly-plot .plotly .modebar-btn[aria-disabled="true"],
+body .js-plotly-plot .plotly .modebar-btn.disabled {
+  opacity: .35;
+  pointer-events: none;
+}
+
+@container (max-width: 420px) {
+  body .js-plotly-plot .plotly .modebar,
+  body .js-plotly-plot .plotly .modebar-group {
+    flex-direction: column;
+  }
+}
 
 body .shiny-bound-output.recalculating::before,
 body .loading-spinner,

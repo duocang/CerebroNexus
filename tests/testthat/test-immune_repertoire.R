@@ -628,6 +628,7 @@ compare_env <- local({
     return(NULL)
   }
   e <- new.env(parent = globalenv())
+  sys.source(file.path(shiny_root, "plotting_functions.R"), envir = e)
   sys.source(helper, envir = e)
   e
 })

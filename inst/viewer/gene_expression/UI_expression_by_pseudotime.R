@@ -184,7 +184,7 @@ output[["expression_by_pseudotime"]] <- plotly::renderPlotly({
   }
   ## scatter_type already respects preferences$use_webgl, so no toWebGL()
   ## post-processing is needed.
-  plot
+  cerebro_plotly_toolbar(plot)
 })
 
 ##----------------------------------------------------------------------------##

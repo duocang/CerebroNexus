@@ -265,7 +265,7 @@ ir_render_ggplotly <- function(expr, plot_name, tooltip = NULL) {
       }
       # Match the projection tabs' modebar (theme "a"): no Plotly logo, curated
       # tools. Clonal UMAP already gets this via the shared scatter engine.
-      ir_apply_theme_a_modebar(fig)
+      cerebro_plotly_toolbar(fig)
     },
     error = function(e) {
       ir_empty_plotly(paste("Plot conversion error:", conditionMessage(e)))

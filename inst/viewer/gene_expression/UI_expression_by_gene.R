@@ -91,9 +91,10 @@ output[["expression_by_gene"]] <- plotly::renderPlotly({
         mirror = TRUE,
         showline = TRUE
       ),
-      dragmode = "select",
+      dragmode = "lasso",
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })
 
 ##----------------------------------------------------------------------------##
