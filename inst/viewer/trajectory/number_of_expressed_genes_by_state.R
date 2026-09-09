@@ -77,7 +77,8 @@ output[["states_nGene_plot"]] <- plotly::renderPlotly({
       paper_bgcolor = cerebro_plotly_theme()$transparent,
       dragmode = "select",
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })
 
 ##----------------------------------------------------------------------------##

@@ -1870,7 +1870,7 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 body .js-plotly-plot {
   container-type: inline-size;
 }
-body .js-plotly-plot .modebar {
+body .js-plotly-plot .plotly .modebar {
   display: flex;
   flex-direction: row;
   gap: 4px;
@@ -1879,12 +1879,12 @@ body .js-plotly-plot .modebar {
   border: 1px solid var(--c-border);
   border-radius: 6px;
 }
-body .js-plotly-plot .modebar-group {
+body .js-plotly-plot .plotly .modebar-group {
   display: flex;
   gap: 4px;
   padding-left: 0 !important;
 }
-body .js-plotly-plot .modebar-btn {
+body .js-plotly-plot .plotly .modebar-btn {
   float: none !important;
   box-sizing: border-box;
   width: 26px;
@@ -1898,33 +1898,33 @@ body .js-plotly-plot .modebar-btn {
   border: 1px solid var(--c-border);
   border-radius: 5px;
 }
-body .js-plotly-plot .modebar-btn svg {
+body .js-plotly-plot .plotly .modebar-btn svg {
   position: static !important;
   width: 14px;
   height: 14px;
 }
-body .js-plotly-plot .modebar-btn path {
+body .js-plotly-plot .plotly .modebar-btn path {
   fill: currentColor !important;
 }
-body .js-plotly-plot .modebar-btn:hover {
+body .js-plotly-plot .plotly .modebar-btn:hover {
   color: var(--c-amber-700) !important;
   background: var(--c-amber-50) !important;
   border-color: var(--c-amber-200);
 }
-body .js-plotly-plot .modebar-btn.active {
+body .js-plotly-plot .plotly .modebar-btn.active {
   color: var(--c-amber-700) !important;
   background: var(--c-amber-50) !important;
   border-color: var(--c-amber-200);
 }
-body .js-plotly-plot .modebar-btn[aria-disabled="true"],
-body .js-plotly-plot .modebar-btn.disabled {
+body .js-plotly-plot .plotly .modebar-btn[aria-disabled="true"],
+body .js-plotly-plot .plotly .modebar-btn.disabled {
   opacity: .35;
   pointer-events: none;
 }
 
 @container (max-width: 420px) {
-  body .js-plotly-plot .modebar,
-  body .js-plotly-plot .modebar-group {
+  body .js-plotly-plot .plotly .modebar,
+  body .js-plotly-plot .plotly .modebar-group {
     flex-direction: column;
   }
 }

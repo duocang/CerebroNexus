@@ -110,7 +110,8 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
       ),
       dragmode = "select",
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })
 
 ##----------------------------------------------------------------------------##

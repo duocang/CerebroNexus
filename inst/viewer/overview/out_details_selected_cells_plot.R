@@ -150,5 +150,6 @@ output[["overview_details_selected_cells_plot"]] <- plotly::renderPlotly({
       ),
       dragmode = "select",
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })
