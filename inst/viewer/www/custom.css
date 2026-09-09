@@ -1771,6 +1771,13 @@ body .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
   color: var(--c-white) !important;
   border-color: var(--c-amber) !important;
 }
+body .dataTables_wrapper .pagination > .active > a,
+body .dataTables_wrapper .pagination > .active > a:hover,
+body .dataTables_wrapper .pagination > .active > a:focus {
+  background: var(--c-amber) !important;
+  color: var(--c-white) !important;
+  border-color: var(--c-amber) !important;
+}
 body .dataTables_wrapper .dataTables_info { color: var(--c-text-2) !important; font-size: 12px !important; }
 
 body div.dt-buttons .dt-button {
