@@ -31,6 +31,7 @@ hlaMotifModebar <- function() {
     button("pan", "Pan", "up-down-left-right"),
     button("zoomin", "Zoom in", "search-plus"),
     button("zoomout", "Zoom out", "search-minus"),
+    button("zsel", "Zoom to selection", "crop-simple"),
     button("reset", "Reset view", "house"),
     button("download", "Download PNG", "download")
   )
@@ -75,6 +76,11 @@ tab_hla_tcr_motifs <- tabItem(
             ),
             cerebroInfoButton("hla_status_info")
           )
+        ),
+        cerebroSelectionStatus(
+          "hla_motif_network",
+          "hla_selected_count",
+          client_actions = FALSE
         )
       )
     ),
@@ -82,11 +88,6 @@ tab_hla_tcr_motifs <- tabItem(
       width = 12,
       offset = 0,
       class = "cerebro-viz-col",
-      cerebroSelectionStatus(
-        "hla_motif_network",
-        "hla_selected_count",
-        client_actions = FALSE
-      ),
       cerebroBox(
         title = NULL,
         collapsible = FALSE,
@@ -105,7 +106,7 @@ tab_hla_tcr_motifs <- tabItem(
             tags$div(
               class = "hla-motif-tab",
               hlaMotifModebar(),
-              uiOutput("hla_legend_ui"),
+              uiOutput("hla_legend_ui", class = "hla-legend-row"),
               # Fill the viewport instead of a hardcoded 640px: the wrapper is
               # sized to (viewport - its live top - a bottom gap) by
               # fill_height.js, and the network renders at height:100% inside it.

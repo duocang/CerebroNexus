@@ -51,6 +51,7 @@ output[["spatial_projection_UI"]] <- renderUI({
               "Background image",
               div(
                 class = "spatial-image-controls",
+                uiOutput("spatial_projection_background_selector_UI"),
                 uiOutput("spatial_projection_background_parameters_UI")
               )
             ),
@@ -59,6 +60,10 @@ output[["spatial_projection_UI"]] <- renderUI({
               uiOutput("spatial_projection_group_filters_UI"),
               cerebroInfoButton("spatial_projection_group_filters_info")
             )
+          ),
+          cerebroSelectionStatus(
+            "spatial_projection",
+            "spatial_number_of_selected_cells"
           )
         )
       ),
@@ -66,31 +71,26 @@ output[["spatial_projection_UI"]] <- renderUI({
         width = 12,
         offset = 0,
         class = "cerebro-viz-col",
-        cerebroSelectionStatus(
-          "spatial_projection",
-          "spatial_number_of_selected_cells"
-        ),
-        ## Spatial autocorrelation (Moran's I) of the displayed gene,
-        ## placed between the legend and the scatter.
-        conditionalPanel(
-          condition = "input.spatial_projection_plot_type == 'ImageFeaturePlot'",
-          tags$div(
-            style = paste0(
-              "font-size: 12px; color: #555; margin: 0 0 4px 2px; ",
-              "display: flex; align-items: center; gap: 4px;"
-            ),
-            tags$strong("Moran's I:"),
-            textOutput("spatial_projection_morans_i", inline = TRUE),
-            actionLink(
-              "spatial_projection_morans_i_info",
-              label = NULL,
-              icon = icon("circle-info"),
-              title = "What is Moran's I?",
-              style = "color: #999;"
+        div(
+          class = "spatial-viz-surface",
+          ## Spatial autocorrelation stays visible without consuming plot height.
+          conditionalPanel(
+            condition = "input.spatial_projection_plot_type == 'ImageFeaturePlot'",
+            tags$div(
+              class = "spatial-moran-overlay",
+              tags$strong("Moran's I:"),
+              textOutput("spatial_projection_morans_i", inline = TRUE),
+              actionLink(
+                "spatial_projection_morans_i_info",
+                label = NULL,
+                icon = icon("circle-info"),
+                title = "What is Moran's I?",
+                style = "color: #999;"
+              )
             )
-          )
-        ),
-        cerebroCellViewOutput("spatial_projection")
+          ),
+          cerebroCellViewOutput("spatial_projection")
+        )
       )
     )
   )

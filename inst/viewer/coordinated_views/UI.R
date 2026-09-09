@@ -159,19 +159,11 @@ tab_coordinated_views <- tabItem(
   tabName = "coordinated_views",
   div(
     class = "coordviews-page linked-views-page",
-    ## ---- header + info -------------------------------------------------- ##
-    div(
-      style = "display:flex;align-items:baseline;gap:10px;margin-bottom:2px;",
-      tags$h3(
-        style = "font-size:18px;font-weight:650;margin:0;",
-        "Linked views"
-      ),
-      cerebroInfoButton("coordinated_views_info")
-    ),
-    div(
-      class = "cv-meta",
-      id = "cv-meta",
-      "Load a single-cell data set to explore its modalities together."
+    cerebroVizPageHeader(
+      "Linked views",
+      "coordinated_views_info",
+      "Load a single-cell data set to explore its modalities together.",
+      meta_id = "cv-meta"
     ),
     ## ---- horizontal control bar (the layout fix) ------------------------ ##
     div(
@@ -308,6 +300,23 @@ tab_coordinated_views <- tabItem(
       cerebroSettingsButton(
         "cv-more-btn",
         "cv-more"
+      ),
+      tags$button(
+        type = "button",
+        id = "cv-config-open",
+        class = paste(
+          "cv-config-open cv-share-open cerebro-toolbar-share",
+          "cv-collapse"
+        ),
+        style = "display:none",
+        `data-view-id` = "linked_views",
+        disabled = "disabled",
+        `aria-disabled` = "true",
+        `aria-haspopup` = "dialog",
+        `aria-controls` = "cv-config-dialog",
+        title = "The linked workspace is waiting for its plots",
+        icon("share-alt"),
+        tags$span("Share")
       ),
       ## Right-aligned global filter/subsample readout. Cohort actions belong to
       ## the Active cohort bar below, not to this settings row.
@@ -458,126 +467,91 @@ tab_coordinated_views <- tabItem(
             )
           )
         )
-      )
-    ),
-
-    ## ---- linked-workspace guide / active cohort -------------------------- ##
-    ## The quiet opening guide makes the two defining interactions discoverable.
-    ## The guide stays visible; the active cohort appears beneath it.
-    div(
-      class = "cv-status-slot",
-      div(
-        class = "cv-workspace-guide cv-collapse",
-        id = "cv-workspace-guide",
-        tags$span(
-          class = "cv-workspace-kicker",
-          icon("link"),
-          "Linked workspace"
-        ),
-        tags$span(
-          class = "cv-workspace-guide-text",
-          id = "cv-workspace-guide-text",
-          "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
-        ),
-        div(
-          class = "cv-workspace-actions",
-          tags$button(
-            type = "button",
-            class = "cv-workspace-overview",
-            id = "cv-workspace-overview",
-            style = "display:none",
-            icon("table-cells-large"),
-            "Back to overview"
-          ),
-          tags$button(
-            type = "button",
-            id = "cv-config-open",
-            class = "cv-config-open",
-            `data-view-id` = "linked_views",
-            disabled = "disabled",
-            `aria-disabled` = "true",
-            `aria-haspopup` = "dialog",
-            `aria-controls` = "cv-config-dialog",
-            title = "The linked workspace is waiting for its plots",
-            icon("share-alt"),
-            tags$span("Share view")
-          )
-        )
       ),
 
-      ## Active cohort: the shared state all lenses are describing.
+      ## ---- linked-workspace guide / active cohort -------------------------- ##
+      ## The quiet opening guide makes the two defining interactions discoverable.
+      ## The guide stays visible; the active cohort appears beneath it.
       div(
-        class = paste(
-          "cv-selbar cv-collapse",
-          "cerebro-selection-status-active"
-        ),
-        id = "cv-selbar",
+        class = "cv-status-slot",
         div(
-          class = "cv-selcopy",
+          class = "cv-workspace-guide cv-collapse",
+          id = "cv-workspace-guide",
           tags$span(
-            class = "cerebro-selection-status-kicker",
-            id = "cv-sel-kicker",
-            "Active cohort"
+            class = "cv-workspace-kicker",
+            icon("link"),
+            "Linked workspace"
           ),
           tags$span(
-            class = "cerebro-selection-status-count",
-            id = "cv-seltext",
-            "—"
-          ),
-          tags$span(
-            class = "cerebro-selection-status-profile",
-            id = "cv-selprofile",
-            ""
-          ),
-          tags$span(
-            class = "cerebro-selection-status-origin",
-            id = "cv-selorigin",
-            ""
-          ),
-          tags$span(
-            class = "cerebro-selection-status-origin",
-            id = "cv-selcoverage",
-            ""
-          )
-        ),
-        ## Actions sit with the cohort they affect, rather than in the unrelated
-        ## global-control row. They remain hidden until a selection/niche exists.
-        div(
-          class = paste(
-            "cv-selactions cv-collapse",
-            "cerebro-selection-actions"
-          ),
-          id = "cv-selactions",
-          style = "display:none",
-          tags$button(
-            type = "button",
-            class = "cerebro-config-open",
-            `data-view-id` = "linked_views",
-            disabled = "disabled",
-            `aria-disabled` = "true",
-            `aria-haspopup` = "dialog",
-            `aria-controls` = "cv-config-dialog",
-            title = "The linked workspace is waiting for its plots",
-            icon("share-alt"),
-            tags$span("Share view")
+            class = "cv-workspace-guide-text",
+            id = "cv-workspace-guide-text",
+            "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
           ),
           div(
-            class = "cv-sel-action-row",
+            class = "cv-workspace-actions",
             tags$button(
-              id = "cv-zoom",
-              class = paste(
-                "btn btn-xs btn-default",
-                "cerebro-selection-action-zoom"
-              ),
-              "Zoom to selection"
+              type = "button",
+              class = "cv-workspace-overview",
+              id = "cv-workspace-overview",
+              style = "display:none",
+              icon("table-cells-large"),
+              "Back to overview"
+            )
+          )
+        ),
+
+        ## Active cohort: the shared state all lenses are describing.
+        div(
+          class = paste(
+            "cv-selbar cv-collapse",
+            "cerebro-selection-status-active"
+          ),
+          id = "cv-selbar",
+          div(
+            class = "cv-selcopy",
+            tags$span(
+              class = "cerebro-selection-status-kicker",
+              id = "cv-sel-kicker",
+              "Active cohort"
             ),
+            tags$span(
+              class = "cerebro-selection-status-count",
+              id = "cv-seltext",
+              "—"
+            ),
+            tags$span(
+              class = "cerebro-selection-status-profile",
+              id = "cv-selprofile",
+              ""
+            ),
+            tags$span(
+              class = "cerebro-selection-status-origin",
+              id = "cv-selorigin",
+              ""
+            ),
+            tags$span(
+              class = "cerebro-selection-status-origin",
+              id = "cv-selcoverage",
+              ""
+            )
+          ),
+          ## Clearing affects the whole cohort, so it remains a single compact
+          ## action beside the shared status rather than repeating in every pane.
+          div(
+            class = paste(
+              "cv-selactions cv-collapse",
+              "cerebro-selection-actions"
+            ),
+            id = "cv-selactions",
+            style = "display:none",
             tags$button(
               id = "cv-clear",
               class = paste(
                 "btn btn-xs btn-default",
                 "cerebro-selection-action-clear"
               ),
-              "Clear selection"
+              icon("eraser"),
+              tags$span("Clear")
             )
           )
         )
@@ -595,6 +569,7 @@ tab_coordinated_views <- tabItem(
       tags$span(id = "cv-cb1", "1"),
       tags$span(class = "cv-cbar-note", id = "cv-cbar-note", "expression")
     ),
+
     ## ---- panel grid ----------------------------------------------------- ##
     ## Every selected/present space gets its OWN panel: selected projections,
     ## selected Spatial sections, Trekker and Clonal. cell_views.js

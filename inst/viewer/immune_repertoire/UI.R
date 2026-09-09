@@ -26,6 +26,7 @@ tab_immune_repertoire <- tabItem(
           class = "cerebro-viz-primary",
           uiOutput("ir_main_params_UI")
         ),
+        cerebroShareButton("ir_clonalUMAP_projection"),
         cerebroSettingsButton("ir_more_button", "ir_more"),
         cerebroSettingsDrawer(
           "ir_more",
@@ -40,14 +41,14 @@ tab_immune_repertoire <- tabItem(
             uiOutput("ir_group_filters_UI"),
             cerebroInfoButton("ir_group_filters_info")
           )
-        )
+        ),
+        uiOutput("ir_selection_status_UI")
       )
     ),
     column(
       width = 12,
       offset = 0,
       class = "cerebro-viz-col",
-      uiOutput("ir_selection_status_UI"),
       uiOutput("ir_help_panel"),
       uiOutput("ir_visualizations_UI")
     )

@@ -272,17 +272,6 @@ observeEvent(
 )
 
 observeEvent(
-  input[["hla_motif_network_zoom_to_selection"]],
-  {
-    session$sendCustomMessage(
-      "hla_motif_selection_command",
-      list(action = "zoom")
-    )
-  },
-  ignoreInit = TRUE
-)
-
-observeEvent(
   input[["hla_motif_restore_cells"]],
   {
     request <- input[["hla_motif_restore_cells"]]

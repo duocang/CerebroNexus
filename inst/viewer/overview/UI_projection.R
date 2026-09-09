@@ -51,6 +51,10 @@ output[["overview_projection_UI"]] <- renderUI({
               uiOutput("overview_projection_group_filters_UI"),
               cerebroInfoButton("overview_projection_group_filters_info")
             )
+          ),
+          cerebroSelectionStatus(
+            "overview_projection",
+            "overview_number_of_selected_cells"
           )
         )
       ),
@@ -59,10 +63,6 @@ output[["overview_projection_UI"]] <- renderUI({
         width = 12,
         offset = 0,
         class = "cerebro-viz-col",
-        cerebroSelectionStatus(
-          "overview_projection",
-          "overview_number_of_selected_cells"
-        ),
         cerebroCellViewOutput("overview_projection")
       )
     )

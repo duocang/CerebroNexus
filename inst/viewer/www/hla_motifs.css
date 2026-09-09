@@ -11,6 +11,15 @@
  * plot's top-right when it is hidden. */
 .hla-motif-tab { position: relative; container-type: inline-size; }
 .hla-plot-wrap { position: relative; }
+.hla-legend-row:not(:empty) {
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 210px 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.hla-legend-row::-webkit-scrollbar { height: 4px; }
 .hla-modebar {
   position: absolute; top: 3px; right: 4px; z-index: 6;
   display: flex; align-items: center; gap: 4px; padding: 3px;
@@ -59,6 +68,7 @@
 }
 
 @container (max-width: 420px) {
+  .hla-legend-row:not(:empty) { margin-right: 44px; }
   .hla-modebar { flex-direction: column; }
   .hla-mb-btn::after {
     top: 50%; right: calc(100% + 7px);

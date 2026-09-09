@@ -66,6 +66,10 @@ output[["expression_projection_UI"]] <- renderUI({
               uiOutput("expression_projection_group_filters_UI"),
               cerebroInfoButton("expression_projection_group_filters_info")
             )
+          ),
+          cerebroSelectionStatus(
+            "expression_projection",
+            "expression_number_of_selected_cells"
           )
         )
       ),
@@ -73,13 +77,7 @@ output[["expression_projection_UI"]] <- renderUI({
         width = 12,
         offset = 0,
         class = "cerebro-viz-col",
-        cerebroSelectionStatus(
-          "expression_projection",
-          "expression_number_of_selected_cells"
-        ),
-        cerebroCellViewOutput("expression_projection"),
-        tags$br(),
-        htmlOutput("expression_genes_displayed")
+        cerebroCellViewOutput("expression_projection")
       )
     )
   )

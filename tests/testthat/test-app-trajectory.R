@@ -129,6 +129,10 @@ test_that("trajectory projection fits the viewport with selectors in the top bar
   expect_lt(geometry$statusBottom, geometry$plotTop)
   expect_lte(geometry$plotBottom, geometry$hostBottom)
   expect_lte(geometry$hostBottom, geometry$viewport)
+  expect_null(app$get_js(paste0(
+    "document.querySelector('[data-view-id=\"trajectory_projection\"]",
+    ".cerebro-toolbar-share').offsetParent"
+  )))
 
   drag <- app$get_js(paste0(
     "(() => {",
@@ -144,12 +148,26 @@ test_that("trajectory projection fits the viewport with selectors in the top bar
   app$wait_for_js(
     paste0(
       "!document.getElementById('trajectory_projection_selection_active')",
-      ".classList.contains('cerebro-selection-status-hidden')"
+      ".classList.contains('cerebro-selection-status-hidden') && ",
+      "document.querySelector('[data-view-id=\"trajectory_projection\"]",
+      ".cerebro-toolbar-share').offsetParent !== null"
     ),
     timeout = 10000
   )
+  trajectory_actions <- app$get_js(paste0(
+    "(() => {",
+    "const share=document.querySelector('[data-view-id=\"trajectory_projection\"]",
+    ".cerebro-toolbar-share').getBoundingClientRect();",
+    "const settings=document.getElementById(",
+    "'trajectory_projection_more_button').getBoundingClientRect();",
+    "return share.left < settings.left && settings.right > share.right;",
+    "})()"
+  ))
+  expect_true(trajectory_actions)
 
-  app$click(selector = "#trajectory_projection_zoom_to_selection")
+  app$run_js(
+    "document.querySelector('#trajectory_projection_cell_view_host .cv-zsel-btn').click()"
+  )
   app$wait_for_js(
     paste0(
       "document.querySelector(",

@@ -600,9 +600,8 @@ output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
       "}"
     )
   )
-  # No visLegend: it can only sit left or right, it cannot wrap, and it eats 15%
-  # of the canvas width. The legend is drawn above the plot as flowing HTML
-  # instead (output$hla_legend_ui), which wraps to as many rows as it needs.
+  # No visLegend: it can only sit left or right and eats 15% of the canvas width.
+  # The legend is drawn above the plot as a single horizontally scrolling row.
   net
 })
 
@@ -838,11 +837,10 @@ output$hla_motif_note <- renderUI({
   )
 })
 
-## ---- Legend, above the plot and wrapping ------------------------------ ##
+## ---- Legend, above the plot in one row -------------------------------- ##
 ## Drawn as flowing HTML rather than visLegend: visLegend can only sit left or
-## right, never wraps, and reserves 15% of the canvas whether it needs it or
-## not. A flex row wraps to as many lines as the levels require, so a 20-level
-## scale is readable instead of clipped, and the network keeps the full width.
+## right and reserves 15% of the canvas whether it needs it or not. The row
+## scrolls horizontally when the levels exceed the available width.
 output$hla_legend_ui <- renderUI({
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$legend) || nrow(vn$legend) == 0) {
@@ -852,7 +850,7 @@ output$hla_legend_ui <- renderUI({
     tags$span(
       style = paste0(
         "display:inline-flex;align-items:center;gap:5px;",
-        "margin:0 12px 4px 0;font-size:11px;color:#33333a;white-space:nowrap;"
+        "margin:0 12px 0 0;font-size:11px;color:#33333a;white-space:nowrap;"
       ),
       tags$span(
         style = paste0(
@@ -866,13 +864,13 @@ output$hla_legend_ui <- renderUI({
     )
   })
   tags$div(
-    style = "margin:2px 0 6px;",
+    style = "display:flex;align-items:center;min-width:max-content;margin:0;",
     tags$span(
       style = "font-size:11px;font-weight:700;color:#1c1c1e;margin-right:10px;",
       vn$legend_title
     ),
     tags$div(
-      style = "display:flex;flex-wrap:wrap;align-items:center;margin-top:4px;",
+      style = "display:flex;flex-wrap:nowrap;align-items:center;margin:0;",
       items
     )
   )

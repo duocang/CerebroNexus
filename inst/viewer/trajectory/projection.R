@@ -77,6 +77,10 @@ output[["trajectory_projection_UI"]] <- renderUI({
               uiOutput("trajectory_projection_group_filters_UI"),
               cerebroInfoButton("trajectory_projection_group_filters_info")
             )
+          ),
+          cerebroSelectionStatus(
+            "trajectory_projection",
+            "trajectory_number_of_selected_cells"
           )
         )
       ),
@@ -84,10 +88,6 @@ output[["trajectory_projection_UI"]] <- renderUI({
         width = 12,
         offset = 0,
         class = "cerebro-viz-col",
-        cerebroSelectionStatus(
-          "trajectory_projection",
-          "trajectory_number_of_selected_cells"
-        ),
         cerebroCellViewOutput("trajectory_projection")
       )
     )

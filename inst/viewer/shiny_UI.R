@@ -42,7 +42,7 @@ cerebroSettingsButton <- function(id, target) {
     `aria-controls` = target,
     `data-cerebro-drawer-target` = target,
     icon("sliders"),
-    tags$span("More settings"),
+    tags$span("Settings"),
     tags$span(class = "cerebro-more-caret")
   )
 }
@@ -55,14 +55,12 @@ conditionalSidebarItem <- function(label, tab_name, icon_name) {
   )
 }
 
-cerebroVizPageHeader <- function(title, info_id, subtitle) {
-  tagList(
-    div(
-      class = "cerebro-viz-page-heading",
-      tags$h3(title),
-      cerebroInfoButton(info_id)
-    ),
-    div(class = "cerebro-viz-page-meta", subtitle)
+cerebroVizPageHeader <- function(title, info_id, subtitle, meta_id = NULL) {
+  div(
+    class = "cerebro-viz-page-heading",
+    tags$h3(title),
+    tags$span(id = meta_id, class = "cerebro-viz-page-meta", subtitle),
+    cerebroInfoButton(info_id)
   )
 }
 
@@ -88,12 +86,12 @@ cerebroSettingsDrawer <- function(id, ...) {
     `aria-labelledby` = paste0(id, "_title"),
     div(
       class = "cerebro-settings-titlebar",
-      tags$span(id = paste0(id, "_title"), "More settings"),
+      tags$span(id = paste0(id, "_title"), "Settings"),
       tags$button(
         type = "button",
         class = "cerebro-settings-close",
         `data-cerebro-drawer-close` = "",
-        `aria-label` = "Close More settings",
+        `aria-label` = "Close Settings",
         HTML("&times;")
       )
     ),
@@ -114,38 +112,34 @@ cerebroCellViewOutput <- function(id) {
   )
 }
 
+cerebroShareButton <- function(plot_id) {
+  tags$button(
+    type = "button",
+    class = "cerebro-config-open cerebro-toolbar-share",
+    style = "display:none",
+    `data-view-id` = plot_id,
+    disabled = "disabled",
+    `aria-disabled` = "true",
+    `aria-haspopup` = "dialog",
+    `aria-controls` = "cv-config-dialog",
+    icon("share-alt"),
+    tags$span("Share")
+  )
+}
+
 cerebroSelectionStatus <- function(
   plot_id,
   count_output_id,
   client_actions = TRUE,
   portable = TRUE
 ) {
-  portable_button <- function() {
-    if (!portable) {
-      return(NULL)
-    }
-    tags$button(
-      type = "button",
-      class = "cerebro-config-open",
-      `data-view-id` = plot_id,
-      disabled = "disabled",
-      `aria-disabled` = "true",
-      `aria-haspopup` = "dialog",
-      `aria-controls` = "cv-config-dialog",
-      icon("share-alt"),
-      tags$span("Share view")
+  clear_button <- function() {
+    input_id <- paste0(plot_id, "_clear_selection")
+    contents <- tagList(icon("eraser"), tags$span("Clear"))
+    class <- paste(
+      "btn btn-xs btn-default btn-breathing",
+      "cerebro-selection-action-clear"
     )
-  }
-  action_button <- function(action, class, icon_name, label) {
-    input_id <- paste0(
-      plot_id,
-      if (identical(action, "zoom")) {
-        "_zoom_to_selection"
-      } else {
-        "_clear_selection"
-      }
-    )
-    contents <- tagList(icon(icon_name), tags$span(label))
     if (!client_actions) {
       return(actionButton(input_id, contents, class = class))
     }
@@ -154,60 +148,43 @@ cerebroSelectionStatus <- function(
       type = "button",
       class = class,
       `data-cell-view-id` = plot_id,
-      `data-cell-view-action` = action,
-      `aria-pressed` = if (identical(action, "zoom")) "false" else NULL,
+      `data-cell-view-action` = "clear",
       contents
     )
   }
-  div(
-    class = "cerebro-selection-status-slot",
+  tagList(
+    if (portable) cerebroShareButton(plot_id),
     div(
-      id = paste0(plot_id, "_selection_guide"),
-      class = "cerebro-selection-status-guide",
-      tags$span(
-        class = "cerebro-selection-status-kicker",
-        icon("arrow-pointer"),
-        "Selection workspace"
-      ),
-      tags$span(
-        class = "cerebro-selection-status-text",
-        "Drag on the plot to create an active cohort."
-      ),
-      portable_button()
-    ),
-    div(
-      id = paste0(plot_id, "_selection_active"),
-      class = paste(
-        "cerebro-selection-status-active",
-        "cerebro-selection-status-hidden"
-      ),
-      `aria-live` = "polite",
-      tags$span(class = "cerebro-selection-status-kicker", "Active cohort"),
-      shiny::tagAppendAttributes(
-        htmlOutput(count_output_id, inline = TRUE),
-        class = "cerebro-selection-status-count"
+      class = "cerebro-selection-status-slot",
+      div(
+        id = paste0(plot_id, "_selection_guide"),
+        class = "cerebro-selection-status-guide",
+        tags$span(
+          class = "cerebro-selection-status-kicker",
+          icon("arrow-pointer"),
+          "Selection workspace"
+        ),
+        tags$span(
+          class = "cerebro-selection-status-text",
+          "Drag on the plot to create an active cohort."
+        )
       ),
       tags$div(
-        class = "cerebro-selection-actions",
-        action_button(
-          "zoom",
-          paste(
-            "btn btn-xs btn-default",
-            "cerebro-selection-action-zoom"
-          ),
-          "magnifying-glass-plus",
-          "Zoom to selection"
+        id = paste0(plot_id, "_selection_active"),
+        class = paste(
+          "cerebro-selection-status-active",
+          "cerebro-selection-status-hidden"
         ),
-        action_button(
-          "clear",
-          paste(
-            "btn btn-xs btn-default btn-breathing",
-            "cerebro-selection-action-clear"
-          ),
-          "eraser",
-          "Clear selection"
+        `aria-live` = "polite",
+        tags$span(class = "cerebro-selection-status-kicker", "Active cohort"),
+        shiny::tagAppendAttributes(
+          htmlOutput(count_output_id, inline = TRUE),
+          class = "cerebro-selection-status-count"
         ),
-        portable_button()
+        tags$div(
+          class = "cerebro-selection-actions",
+          clear_button()
+        )
       )
     )
   )

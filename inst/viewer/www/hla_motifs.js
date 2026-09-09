@@ -349,7 +349,6 @@
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
       if (!request) return;
       if (request.action === 'clear') clearSelection(false);
-      if (request.action === 'zoom') zoomSelection();
     });
     Shiny.addCustomMessageHandler('hla-refresh-node-details', function (_message) {
       var network = net();
@@ -367,6 +366,7 @@
         if (['box', 'lasso', 'pan'].indexOf(action) >= 0) setMode(action);
         else if (action === 'zoomin') zoomBy(1.3);
         else if (action === 'zoomout') zoomBy(1 / 1.3);
+        else if (action === 'zsel') zoomSelection();
         else if (action === 'reset') resetView();
         else if (action === 'download') {
           window.dispatchEvent(new CustomEvent('cerebro:png-result', {
