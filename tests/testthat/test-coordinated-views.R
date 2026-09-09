@@ -2082,3 +2082,576 @@ test_that("brush gestures start from visualization pane whitespace", {
     fixed = TRUE
   )
 })
+
+run_cell_views_node <- function(hooks, body, setup = character()) {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  close_at <- tail(gregexpr("\n})();", js, fixed = TRUE)[[1]], 1L)
+  stopifnot(close_at > 0L)
+  js <- paste0(
+    substr(js, 1L, close_at - 1L),
+    "\n",
+    paste(hooks, collapse = "\n"),
+    substr(js, close_at, nchar(js))
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "'use strict';",
+      "global.window = global; window.devicePixelRatio = 1;",
+      "global.document = {readyState:'loading', addEventListener:()=>{},",
+      "  getElementById:()=>null, querySelectorAll:()=>[],",
+      "  createElement:()=>({getContext:()=>null})};",
+      "window.addEventListener = ()=>{};",
+      setup,
+      js,
+      body
+    ),
+    runner
+  )
+  output <- suppressWarnings(system2(
+    "node",
+    runner,
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  status <- attr(output, "status")
+  expect_true(
+    is.null(status) || identical(as.integer(status), 0L),
+    info = paste(output, collapse = "\n")
+  )
+  output
+}
+
+test_that("indexed hover lookup matches the linear result", {
+  output <- run_cell_views_node(
+    c(
+      "shown = function () { return true; };",
+      "window.__cellViewsTest = {",
+      "  build: buildHitGrid, nearest: nearest, linear: nearestLinear",
+      "};"
+    ),
+    c(
+      "D = {n:5000};",
+      "const p = {W:500,H:500,sx:new Float32Array(D.n),",
+      "  sy:new Float32Array(D.n),ok:new Uint8Array(D.n)};",
+      "p.sx.fill(450); p.sy.fill(450); p.ok.fill(1);",
+      "p.sx[123] = 101; p.sy[123] = 99;",
+      "p.sx[4321] = 100; p.sy[4321] = 100;",
+      "__cellViewsTest.build(p);",
+      "const indexed = __cellViewsTest.nearest(p, 100, 100);",
+      "const built = !!p._hitGrid;",
+      "const linear = __cellViewsTest.linear(p, 100, 100);",
+      "console.log([indexed, linear, built].join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "4321|4321|true")
+})
+
+test_that("hover changes redraw only the overlay layer", {
+  output <- run_cell_views_node(
+    c(
+      "var fullDraws = 0, hoverDraws = 0;",
+      "drawAll = function () { fullDraws++; };",
+      "drawHoverAll = function () { hoverDraws++; };",
+      "window.__cellViewsTest = {",
+      "  hover: setHoverCell,",
+      "  flush: function () { window.__frame(); },",
+      "  counts: function () { return [fullDraws, hoverDraws]; }",
+      "};"
+    ),
+    c(
+      "__cellViewsTest.hover(7); __cellViewsTest.flush();",
+      "console.log(__cellViewsTest.counts().join('|'));"
+    ),
+    "global.requestAnimationFrame = function (fn) { window.__frame = fn; return 1; };"
+  )
+
+  expect_identical(tail(output, 1L), "0|1")
+})
+
+test_that("specialist base retains only the active payload cells", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  render: function (cells) {",
+      "    renderSingle('view', {}, {selection_key:cells}, {}, {});",
+      "    ensureSingleBase(singleViews.view);",
+      "    return linkedBundle;",
+      "  },",
+      "  ensure: function () {",
+      "    var before = linkedBundle; ensureSingleBase(singleViews.view);",
+      "    return before === linkedBundle;",
+      "  }",
+      "};"
+    ),
+    c(
+      "window.cerebroSavedViewDataset = {cell_count:3, cell_fingerprint:'same'};",
+      "const first = __cellViewsTest.render(['a','b']).cells.join(',');",
+      "const second = __cellViewsTest.render(['b','c']).cells.join(',');",
+      "console.log([first, second, __cellViewsTest.ensure()].join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "a,b|b,c|true")
+})
+
+test_that("specialist bases do not reuse cells without a dataset fingerprint", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  ensure: ensureSingleBase,",
+      "  base: function () { return linkedBundle; },",
+      "  seedView: function () { singleViews.old = {id:'old'}; },",
+      "  viewCount: function () { return Object.keys(singleViews).length; }",
+      "};"
+    ),
+    c(
+      "window.cerebroSavedViewDataset = {};",
+      "__cellViewsTest.ensure({data:{selection_key:['old']}});",
+      "__cellViewsTest.seedView();",
+      "__cellViewsTest.ensure({data:{selection_key:['new']}});",
+      "console.log(__cellViewsTest.base().cells.join(',') + '|' +",
+      "  __cellViewsTest.viewCount());"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|0")
+})
+
+test_that("specialist payload replaces an unidentifiable full bundle", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  ensure: ensureSingleBase,",
+      "  seedFull: function () {",
+      "    linkedBundle = {dataset_id:'old', cells:['old'], n:1};",
+      "    D = linkedBundle; singleViews.old = {id:'old'};",
+      "  },",
+      "  base: function () { return linkedBundle; },",
+      "  viewCount: function () { return Object.keys(singleViews).length; }",
+      "};"
+    ),
+    c(
+      "window.cerebroSavedViewDataset = {};",
+      "__cellViewsTest.seedFull();",
+      "__cellViewsTest.ensure({data:{selection_key:['new']}});",
+      "console.log(__cellViewsTest.base().cells.join(',') + '|' +",
+      "  __cellViewsTest.viewCount());"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|0")
+})
+
+test_that("first Linked bundle preserves matching specialist state", {
+  output <- run_cell_views_node(
+    c(
+      "var visibleTestId = null, activatedTestId = null;",
+      "var noop = function () {};",
+      "sanitiseColors = syncCloneTiers = closeCard = unpinTip = noop;",
+      "rebuildProjectionInstances = rebuildSpatialInstances = rebuildPctMask = noop;",
+      "setLinkedSliderValue = closeMore = setTrekkerSettingsVisible = noop;",
+      "ensurePanelSlots = renderMeta = buildPanels = layoutPanels = noop;",
+      "updateZoomBtn = syncModeButtons = updateSelActions = updateZselButtons = noop;",
+      "updateSpaceScopedControls = setTrekkerInsightsOpen = selectTrekkerInsight = noop;",
+      "fillColorPicker = fillProjPicker = fillSpatialPicker = renderGroupFilters = noop;",
+      "activateSpatial = updateClipControl = renderLegend = resizeAll = noop;",
+      "syncPointControls = renderSelbar = renderReadout = reportSelection = noop;",
+      "reportWorkspaceReady = showUnavailable = restoreLinkedSurface = noop;",
+      "activeSpatial = function () { return null; };",
+      "spatialSamples = orderedSpaces = function () { return []; };",
+      "visibleSingleId = function () { return visibleTestId; };",
+      "activateSingle = function (id) { activatedTestId = id; return true; };",
+      "stashSingleState = function () {",
+      "  var view = singleViews[singleActive]; if (!view) return;",
+      "  view.selection = ['a']; view.hiddenGroups = ['hidden'];",
+      "  view.lenses = [{spaceId:'lens'}];",
+      "};",
+      "window.__cellViewsTest = {",
+      "  seed: function (fingerprint) {",
+      "    window.cerebroSavedViewDataset = {cell_count:2,",
+      "      cell_fingerprint:fingerprint};",
+      "    linkedBundle = {_singleOnly:true, dataset_id:'cells:' + fingerprint,",
+      "      dataset_fingerprint:fingerprint, cell_fingerprint:fingerprint,",
+      "      cells:['a','b'], n:2, groups:{}, cat_extra:{}, cat_skipped:{},",
+      "      fields:{}, genes:[], projections:{}, trajectories:{}, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle); dataShown = null; linkedState = null;",
+      "    singleViews = {view:{id:'view', meta:{},",
+      "      data:{selection_key:['a','b']}}};",
+      "    singleActive = 'view'; singleSpaceIds = []; singleSpaceModes = {};",
+      "    selectedSpatial = []; selectedProjections = []; panels = [];",
+      "    visibleTestId = null; activatedTestId = null;",
+      "  },",
+      "  full: function (fingerprint) {",
+      "    onData({dataset_id:'full', dataset_fingerprint:fingerprint,",
+      "      cell_fingerprint:fingerprint, cells:['a','b'], n:2, groups:{},",
+      "      cat_extra:{}, cat_skipped:{}, fields:{}, genes:[], projections:{},",
+      "      trajectories:{}, spaces:[{id:'direct'}]});",
+      "  },",
+      "  toLinked: activateLinked,",
+      "  show: function (id) { visibleTestId = id; },",
+      "  residual: function (fingerprint) {",
+      "    window.cerebroSavedViewDataset = {cell_count:2,",
+      "      cell_fingerprint:fingerprint};",
+      "    dataShown = 'full\\u0000' + fingerprint;",
+      "  },",
+      "  state: function () {",
+      "    var view = singleViews.view;",
+      "    return view ? [view.selection.join(','), view.lenses[0].spaceId,",
+      "      view.hiddenGroups.join(',')] : ['lost'];",
+      "  },",
+      "  activated: function () { return activatedTestId || 'none'; },",
+      "  kind: function () { return linkedBundle && linkedBundle._singleOnly",
+      "    ? 'single' : 'full'; },",
+      "  fingerprint: function () { return bundleFingerprint(linkedBundle); }",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest;",
+      "t.seed('same'); t.toLinked(); const pending = t.state();",
+      "t.show('view'); t.full('same');",
+      "const matched = t.state().concat(t.activated(), t.kind());",
+      "t.seed('same'); t.toLinked(); t.show('view'); t.full('other');",
+      "const mismatched = t.state().concat(t.activated());",
+      "t.seed('A'); t.residual('B'); t.toLinked(); t.show('view'); t.full('B');",
+      "const interleaved = t.state().concat(t.activated(), t.kind(), t.fingerprint());",
+      "console.log(pending.concat(matched, mismatched, interleaved).join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "a|lens|hidden|a|lens|hidden|view|full|lost|none|lost|none|full|B"
+  )
+})
+
+test_that("single-only Linked wait hides and disables the old canvas", {
+  output <- run_cell_views_node(
+    c(
+      "var noop = function () {};",
+      "closeCard = unpinTip = setTrekkerSettingsVisible = noop;",
+      "setTrekkerInsightsOpen = closeMore = reportSelection = noop;",
+      "restoreLinkedSurface = noop;",
+      "stashSingleState = function () {",
+      "  var view = singleViews[singleActive];",
+      "  view.selection = ['a']; view.hiddenGroups = ['hidden'];",
+      "  view.lenses = [{spaceId:'lens'}];",
+      "};",
+      "window.__cellViewsTest = {",
+      "  run: function () {",
+      "    var hidden = false, cleared = 0;",
+      "    var panel = {spaceId:'space', sx:[1], sy:[1], ok:[true],",
+      "      lasso:[[1,1]], lassoData:[[1,1]], view:{cx:1}, W:10, H:10,",
+      "      pane:{classList:{add:function (name) {",
+      "        if (name === 'cv-hidden') hidden = true;",
+      "      }}}, ctx:{clearRect:function () { cleared++; }}};",
+      "    panels = [panel];",
+      "    linkedBundle = {_singleOnly:true, dataset_fingerprint:'same',",
+      "      cell_fingerprint:'same', cells:['a'], n:1, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle);",
+      "    singleViews = {view:{id:'view'}}; singleActive = 'view';",
+      "    singleSpaceIds = ['space']; singleSpaceModes = {};",
+      "    activateLinked();",
+      "    var view = singleViews.view;",
+      "    return [hidden ? 'hidden' : 'visible',",
+      "      panel.sx === null && panel.sy === null && panel.ok === null",
+      "        ? 'inert' : 'interactive',",
+      "      cleared, view.selection.join(','), view.lenses[0].spaceId,",
+      "      view.hiddenGroups.join(','), linkedBundle._singleOnly ? 'single' : 'full'];",
+      "  }",
+      "};"
+    ),
+    c(
+      "console.log(__cellViewsTest.run().join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "hidden|inert|1|a|lens|hidden|single"
+  )
+})
+
+test_that("hidden specialist payload leaves the active specialist intact", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:2, cell_fingerprint:'same'};",
+      "    linkedBundle = {_singleOnly:true,",
+      "      _singleIdentity:'cells:same\\u00002\\u0000same',",
+      "      dataset_id:'cells:same', dataset_fingerprint:'same',",
+      "      cell_fingerprint:'same', cells:['a'], n:1, groups:{},",
+      "      cat_extra:{}, cat_skipped:{}, fields:{}, genes:[],",
+      "      projections:{}, trajectories:{}, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle, {fields:{active:{v:[1]}}});",
+      "    singleViews.active = {id:'active'}; singleActive = 'active';",
+      "  },",
+      "  renderHidden: function () {",
+      "    renderSingle('hidden', {}, {selection_key:['b']}, {}, {});",
+      "  },",
+      "  state: function () { return [singleViews.hidden ? 'hidden-payload' : 'missing',",
+      "    D.fields.active ? 'active' : 'blank', linkedBundle.cells.join(',')]; }",
+      "};"
+    ),
+    c(
+      "__cellViewsTest.seed();",
+      "__cellViewsTest.renderHidden();",
+      "console.log(__cellViewsTest.state().join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "hidden-payload|active|a")
+})
+
+test_that("specialist identity reset retains the payload being activated", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:1, cell_fingerprint:'old'};",
+      "    linkedBundle = {_singleOnly:true,",
+      "      _singleIdentity:'cells:old\\u00001\\u0000old',",
+      "      cells:['old'], n:1}; D = {marker:'active'};",
+      "    singleViews.old = {id:'old'}; singleActive = 'old';",
+      "  },",
+      "  replace: function () {",
+      "    window.cerebroSavedViewDataset = {cell_count:1, cell_fingerprint:'new'};",
+      "    var payload = {id:'new', data:{selection_key:['new']}};",
+      "    singleViews.new = payload; ensureSingleBase(payload);",
+      "    return [linkedBundle.cells.join(','), Object.keys(singleViews).join(','),",
+      "      D === null ? 'null' : 'active'];",
+      "  }",
+      "};"
+    ),
+    c(
+      "__cellViewsTest.seed();",
+      "console.log(__cellViewsTest.replace().join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|new|null")
+})
+
+test_that("continuous caches follow replaced value arrays", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  setData: function (data) { D = data; colorClip = 0.25; },",
+      "  replaceGene: function (values) { D.gene = {gene:'G', v:values}; },",
+      "  replaceField: function (values) { D.fields.score = {v:values, scale:255}; },",
+      "  order: function (mode) { return paintOrder({colorBy:mode}); },",
+      "  range: function (mode) { return clipRange({colorBy:mode}); },",
+      "  geneMode: GENE_MODE, fieldMode: FIELD_PREFIX + 'score',",
+      "  otherMode: FIELD_PREFIX + 'other'",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest;",
+      "t.setData({n:4, gene:{gene:'G', v:[0,100,50,200]}, fields:{",
+      "  score:{v:[0,0,0,255], scale:255},",
+      "  other:{v:[40,30,20,10], scale:255}}});",
+      "t.order(t.geneMode); t.range(t.geneMode);",
+      "t.replaceGene([10,40,20,30]);",
+      "const geneOrder = t.order(t.geneMode);",
+      "const geneRange = t.range(t.geneMode);",
+      "t.order(t.fieldMode); t.range(t.fieldMode);",
+      "t.replaceField([10,40,20,30]);",
+      "const fieldOrder = t.order(t.fieldMode);",
+      "const fieldRange = t.range(t.fieldMode);",
+      "t.order(t.otherMode); t.range(t.otherMode);",
+      "const fieldOrderAgain = t.order(t.fieldMode);",
+      "const fieldRangeAgain = t.range(t.fieldMode);",
+      "t.setData({n:4, gene:{gene:'NA', v:[null,null,null,null]}, fields:{}});",
+      "const missingRange = t.range(t.geneMode);",
+      "const missingRangeAgain = t.range(t.geneMode);",
+      "console.log([geneOrder.join(','), geneRange.lo + ':' + geneRange.hi,",
+      "  fieldOrder.join(','), fieldRange.lo + ':' + fieldRange.hi,",
+      "  fieldOrder === fieldOrderAgain, fieldRange === fieldRangeAgain,",
+      "  missingRange === missingRangeAgain].join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "0,2,3,1|10:40|0,2,3,1|10:40|true|true|true"
+  )
+})
+
+test_that("gene caches retain only the current value array", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  seed: function () { D = {n:2, fields:{}}; },",
+      "  setGene: function (index, values) {",
+      "    D.gene = {gene:'G' + index, v:values}; colorClip = (index % 4) / 100;",
+      "  },",
+      "  order: function () { return paintOrder({colorBy:GENE_MODE}); },",
+      "  range: function () { return clipRange({colorBy:GENE_MODE}); },",
+      "  clearGene: function () {",
+      "    D.gene = null; paintOrder({colorBy:GENE_MODE});",
+      "    clipRange({colorBy:GENE_MODE});",
+      "    return [_ordCache.has(GENE_MODE), _clipCache.has(GENE_MODE)];",
+      "  },",
+      "  stats: function (values, order, range) {",
+      "    var orders = Array.from(_ordCache.entries()).filter(function (entry) {",
+      "      return entry[0] === GENE_MODE || entry[0].indexOf(GENE_MODE + '|') === 0;",
+      "    });",
+      "    var clips = Array.from(_clipCache.entries()).filter(function (entry) {",
+      "      return entry[0] === GENE_MODE || entry[0].indexOf(GENE_MODE + '|') === 0;",
+      "    });",
+      "    return [orders.length, clips.length,",
+      "      orders.filter(function (entry) { return entry[1].values !== values; }).length,",
+      "      clips.filter(function (entry) { return entry[1].values !== values; }).length,",
+      "      order === paintOrder({colorBy:GENE_MODE}),",
+      "      range === clipRange({colorBy:GENE_MODE})];",
+      "  }",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest; t.seed(); let values;",
+      "for (let i = 0; i < 100; i++) {",
+      "  values = [i, i + 1]; t.setGene(i, values); t.order(); t.range();",
+      "}",
+      "const order = t.order(), range = t.range();",
+      "const stats = t.stats(values, order, range);",
+      "console.log(stats.concat(t.clearGene()).join('|'));"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "1|1|0|0|true|true|false|false")
+})
+
+test_that("freehand drag queues every point and flushes mouseup", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  wire: wireBrush,",
+      "  prepare: function () { D = null; selectMode = 'lasso'; },",
+      "  stubDraw: function (fn) { draw = fn; }",
+      "};"
+    ),
+    c(
+      "const listeners = window.__listeners, frames = window.__frames;",
+      "const pane = {addEventListener:()=>{}};",
+      "const canvas = {getBoundingClientRect:()=>({left:0, top:0}),",
+      "  classList:{add:()=>{}, remove:()=>{}}};",
+      "const panel = {pane:pane, canvas:canvas, drag:true, start:[0,0],",
+      "  lasso:[[0,0]], moved:false, ok:null, sx:null};",
+      "const snapshots = [];",
+      "__cellViewsTest.prepare();",
+      "__cellViewsTest.stubDraw(p=>snapshots.push(p.lasso.map(q=>q.join(',')).join(';')));",
+      "__cellViewsTest.wire(panel);",
+      "const move = listeners.mousemove[0], up = listeners.mouseup[0];",
+      "move({clientX:5, clientY:0}); move({clientX:10, clientY:0});",
+      "frames[0].fn();",
+      "move({clientX:15, clientY:0}); move({clientX:20, clientY:0});",
+      "up({clientX:25, clientY:0});",
+      "console.log([snapshots[0], snapshots[1], snapshots.length,",
+      "  window.__cancelled.length].join('|'));"
+    ),
+    c(
+      "window.__listeners = {}; window.__frames = []; window.__cancelled = [];",
+      "window.addEventListener = (name, fn) => {",
+      "  (window.__listeners[name] ||= []).push(fn);",
+      "};",
+      "global.requestAnimationFrame = fn => {",
+      "  const frame = {id:window.__frames.length + 1, fn:fn};",
+      "  window.__frames.push(frame); return frame.id;",
+      "};",
+      "global.cancelAnimationFrame = id => window.__cancelled.push(id);"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    paste0(
+      "0,0;5,0;10,0|",
+      "0,0;5,0;10,0;15,0;20,0;25,0|2|1"
+    )
+  )
+})
+
+test_that("dedicated cell views do not request the Linked Views bundle", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    js,
+    "Shiny.setInputValue('coordviews_visible', linkedVis);",
+    fixed = TRUE
+  )
+  expect_no_match(js, "var vis = linkedVis || !!singleId;", fixed = TRUE)
+  expect_match(js, "function singlePayloadCells(payload)", fixed = TRUE)
+  expect_match(js, "function alignStructuredHover(hover)", fixed = TRUE)
+  expect_match(js, "var hoverDrawFrame = null", fixed = TRUE)
+  expect_match(js, "window.cerebroSavedViewDataset || {}", fixed = TRUE)
+  expect_match(js, "identity.cell_fingerprint", fixed = TRUE)
+  expect_match(js, "_singleOnly: true", fixed = TRUE)
+  expect_match(js, "if (singleId && singleViews[singleId])", fixed = TRUE)
+  expect_no_match(
+    js,
+    "singleId && linkedBundle && singleViews[singleId]",
+    fixed = TRUE
+  )
+  expect_no_match(js, "dataset_id: 'single-view'", fixed = TRUE)
+})
+
+test_that("continuous panel calculations cache every field for the current data", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(js, "var _ordD = null, _ordCache = new Map();", fixed = TRUE)
+  expect_match(js, "cached.values === vals", fixed = TRUE)
+  expect_match(
+    js,
+    "_ordCache.set(key, { values: vals, order: ord });",
+    fixed = TRUE
+  )
+  expect_match(js, "var _clipD = null, _clipCache = new Map();", fixed = TRUE)
+  expect_match(
+    js,
+    "_clipCache.set(key, { values: vals, clip: colorClip, range: r });",
+    fixed = TRUE
+  )
+  expect_no_match(js, "_ordKey", fixed = TRUE)
+  expect_no_match(js, "_clipKey", fixed = TRUE)
+})
+
+test_that("pointer drags coalesce frames and flush the final event", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  start <- regexpr("function wireBrush(p)", js, fixed = TRUE)[[1]]
+  finish <- regexpr(
+    "// ---- build panels from DOM",
+    substring(js, start),
+    fixed = TRUE
+  )[[1]]
+  brush <- substring(js, start, start + finish - 2L)
+
+  expect_match(brush, "var dragFrame = null, dragEvents = [];", fixed = TRUE)
+  expect_match(brush, "function applyDragMoves(events)", fixed = TRUE)
+  expect_match(brush, "dragFrame = requestAnimationFrame", fixed = TRUE)
+  expect_match(brush, "cancelAnimationFrame(dragFrame)", fixed = TRUE)
+  expect_match(
+    brush,
+    "window.addEventListener('mouseup', function (e) {\n      flushDragMoves(e);",
+    fixed = TRUE
+  )
+  expect_match(js, "p.drag || p.panning || p.orbiting", fixed = TRUE)
+  expect_equal(
+    lengths(regmatches(
+      brush,
+      gregexpr("requestAnimationFrame", brush, fixed = TRUE)
+    )),
+    1L
+  )
+})

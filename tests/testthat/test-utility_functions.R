@@ -498,6 +498,42 @@ test_that("single-cell scatter payloads remain arrays on the wire", {
   expect_type(wire$hover$text[[1L]], "list")
 })
 
+test_that("categorical scatter sends one colour per trace", {
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(c(1, 2), c(3, 4)),
+    color = c("A", "A"),
+    color_variable = "cluster",
+    selection_keys = c("cell-1", "cell-2"),
+    point_size = 5,
+    point_opacity = 1,
+    color_assignments = c(A = "#123456"),
+    hover_info = c("first", "second")
+  )
+
+  expect_identical(length(payload$data$color[[1L]]), 1L)
+  expect_identical(unname(payload$data$color[[1L]]), "#123456")
+})
+
+test_that("structured hover normalization preserves its wire state", {
+  hover <- list(
+    enabled = TRUE,
+    selection_key = I("cell-1"),
+    fields = list(list(label = "Value", values = I(1)))
+  )
+
+  shown <- utils_env$cerebroCellViewStructuredHover(hover, TRUE)
+  expect_identical(shown$hoverinfo, "fields")
+  expect_identical(shown$selection_key, hover$selection_key)
+  expect_identical(
+    utils_env$cerebroCellViewStructuredHover(list(enabled = FALSE), TRUE),
+    list(enabled = FALSE, hoverinfo = "skip")
+  )
+  expect_identical(
+    utils_env$cerebroCellViewStructuredHover(hover, FALSE),
+    list(hoverinfo = "skip")
+  )
+})
+
 test_that("single-view scatter payloads carry their display label", {
   payload <- utils_env$cerebroCellViewScatterPayload(
     coordinates = list(c(1, 2), c(3, 4)),
