@@ -11,6 +11,7 @@ if (!nzchar(here)) {
 }
 source(file.path(here, "lib", "protocol.R"))
 source(file.path(here, "lib", "resource_planning.R"))
+source(file.path(here, "lib", "viewer_validation.R"))
 
 read_required <- function(name) {
   path <- file.path(result_dir, name)
@@ -176,11 +177,28 @@ if (
 }
 
 bench_validate_results(schedule, exports, access, crashes, profile)
+viewer_count <- 0L
+if (identical(profile$name, "panel_c2")) {
+  viewer <- read_required("21_viewer.csv")
+  bench_validate_viewer_results(schedule, viewer, run_id)
+  first_genes <- query_panel[
+    query_panel$role == "first",
+    c("source", "n_cells", "gene"),
+    drop = FALSE
+  ]
+  viewer_key <- paste(viewer$source, viewer$n_cells)
+  gene_key <- paste(first_genes$source, first_genes$n_cells)
+  if (any(viewer$gene != first_genes$gene[match(viewer_key, gene_key)])) {
+    stop("Viewer gene differs from the frozen first gene", call. = FALSE)
+  }
+  viewer_count <- nrow(viewer)
+}
 message(
   sprintf(
-    "validated %d exports and %d access processes for profile %s",
+    "validated %d exports, %d access processes, and %d Viewer rows for profile %s",
     nrow(exports),
     nrow(access),
+    viewer_count,
     profile$name
   )
 )

@@ -31,6 +31,8 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
   required <- c(
     "run_id",
     names(expected),
+    "gene",
+    "browser",
     "status",
     "correctness",
     timings
@@ -55,6 +57,12 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
   if (any(results$status != "OK") || any(results$correctness != "OK")) {
     stop("one or more Viewer validations failed", call. = FALSE)
   }
+  if (
+    any(is.na(results$gene) | !nzchar(results$gene)) ||
+      any(is.na(results$browser) | !nzchar(results$browser))
+  ) {
+    stop("Viewer gene or browser provenance is missing", call. = FALSE)
+  }
   values <- as.matrix(results[timings])
   storage.mode(values) <- "double"
   if (any(!is.finite(values)) || any(values < 0)) {
@@ -72,6 +80,19 @@ bench_run_viewer_validation <- function(
   now <- function() unname(proc.time()[["elapsed"]])
   stage <- "bundle"
   run <- function() {
+    chrome <- chromote::find_chrome()
+    browser <- paste(
+      suppressWarnings(system2(
+        chrome,
+        "--version",
+        stdout = TRUE,
+        stderr = TRUE
+      )),
+      collapse = " "
+    )
+    if (!nzchar(browser)) {
+      stop("Browser version is unavailable", call. = FALSE)
+    }
     started <- now()
     CerebroNexus::createShinyApp(
       cerebro_data = c(benchmark = crb),
@@ -306,6 +327,7 @@ bench_run_viewer_validation <- function(
 
     list(
       correctness = "OK",
+      browser = browser,
       bundle_secs = bundle_secs,
       launch_secs = launch_secs,
       hover_secs = hover_secs,

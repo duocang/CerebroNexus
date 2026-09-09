@@ -25,6 +25,7 @@ test_that("Viewer validation drives a standalone App end to end", {
   )
 
   expect_identical(result$correctness, "OK")
+  expect_true(is.character(result$browser) && nzchar(result$browser))
   timings <- c(
     "bundle_secs",
     "launch_secs",

@@ -198,6 +198,25 @@ test_that("C2 sweep runs one Viewer gate per source and backend", {
   }
 })
 
+test_that("C2 Viewer evidence is required through final publication", {
+  skip_unless_bench_cli()
+  output_check <- paste(
+    readLines(
+      file.path(bench_root, "src", "50_check_outputs.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  wrapper <- paste(
+    readLines(file.path(bench_root, "run_publication_full.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(output_check, 'identical(profile, "panel_c2")', fixed = TRUE)
+  expect_match(output_check, "21_viewer.csv", fixed = TRUE)
+  expect_match(wrapper, "viewer_metrics.csv", fixed = TRUE)
+})
+
 test_that("source cache reuses only checksum-verified files", {
   skip_unless_bench_cli()
   helper <- file.path(bench_root, "lib", "source_cache.sh")

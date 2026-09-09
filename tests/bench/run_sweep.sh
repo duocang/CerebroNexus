@@ -80,7 +80,7 @@ mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
   "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
-printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,status,correctness,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs' > "$VIEWER_CSV"
+printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,browser,status,correctness,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs' > "$VIEWER_CSV"
 
 echo "==> run:      $BENCH_RUN_ID"
 echo "==> profile:  $BENCH_PROFILE"

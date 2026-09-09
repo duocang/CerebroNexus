@@ -41,6 +41,8 @@ test_that("C2 viewer results must cover the successful schedule", {
   rows <- transform(
     schedule,
     run_id = "run-1",
+    gene = "gene_1",
+    browser = "Chrome fixture",
     status = "OK",
     correctness = "OK",
     bundle_secs = 1,
@@ -449,6 +451,7 @@ test_that("publication-full report and figure use one frozen study", {
   testthat::skip_if_not_installed("patchwork")
   source(bench_protocol, local = TRUE)
   source(file.path(bench_root, "config", "sources.R"), local = TRUE)
+  source(bench_viewer, local = TRUE)
 
   root <- tempfile("publication-full-root-")
   out <- tempfile("publication-full-output-")
@@ -603,6 +606,22 @@ test_that("publication-full report and figure use one frozen study", {
       exit_code = integer(),
       stringsAsFactors = FALSE
     )
+    viewer <- if (identical(phase, "c2")) {
+      transform(
+        bench_viewer_schedule(schedule),
+        run_id = run_id,
+        gene = "gene_1",
+        browser = "Chrome fixture",
+        status = "OK",
+        correctness = "OK",
+        bundle_secs = 1,
+        launch_secs = 2,
+        hover_secs = .1,
+        selection_secs = .2,
+        zoom_secs = .1,
+        gene_secs = 1
+      )
+    }
     files <- list(
       "05_schedule.csv" = schedule,
       "10_export.csv" = exports,
@@ -614,6 +633,9 @@ test_that("publication-full report and figure use one frozen study", {
       "resource_check.csv" = resource,
       "crashes.csv" = crashes
     )
+    if (identical(phase, "c2")) {
+      files[["21_viewer.csv"]] <- viewer
+    }
     for (name in names(files)) {
       utils::write.csv(
         files[[name]],
@@ -645,6 +667,7 @@ test_that("publication-full report and figure use one frozen study", {
       "combined_metrics.csv",
       "backend_ratios.csv",
       "correctness.csv",
+      "viewer_metrics.csv",
       "source_provenance.csv",
       "summary.md"
     )
@@ -660,6 +683,14 @@ test_that("publication-full report and figure use one frozen study", {
   )
   expect_equal(correctness$total, c(72L, 36L, 24L))
   expect_true(all(correctness$all_passed))
+  viewer <- utils::read.csv(
+    file.path(out, "viewer_metrics.csv"),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(nrow(viewer), 4L)
+  expect_true(all(viewer$status == "OK" & viewer$correctness == "OK"))
+  summary <- readLines(file.path(out, "summary.md"), warn = FALSE)
+  expect_true(any(grepl("single-run diagnostics", summary, fixed = TRUE)))
 
   figure <- system2(
     file.path(R.home("bin"), "Rscript"),
@@ -674,6 +705,44 @@ test_that("publication-full report and figure use one frozen study", {
     "figures",
     "expression_backend_benchmark_publication_full.png"
   )))
+
+  viewer_path <- file.path(root, "c2", "21_viewer.csv")
+  viewer <- utils::read.csv(viewer_path, stringsAsFactors = FALSE)
+  utils::write.csv(viewer[-1L, ], viewer_path, row.names = FALSE)
+  missing_viewer <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "42_write_panel_c_report.R"),
+      root,
+      tempfile()
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  ))
+  expect_false(is.null(attr(missing_viewer, "status")))
+  expect_match(paste(missing_viewer, collapse = "\n"), "does not cover")
+
+  viewer$status[1L] <- "FAILED(hover): no tooltip"
+  utils::write.csv(viewer, viewer_path, row.names = FALSE)
+  failed_viewer <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "42_write_panel_c_report.R"),
+      root,
+      tempfile()
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  ))
+  expect_false(is.null(attr(failed_viewer, "status")))
+  expect_match(
+    paste(failed_viewer, collapse = "\n"),
+    "Viewer validations failed"
+  )
+  viewer$status[1L] <- "OK"
+  utils::write.csv(viewer, viewer_path, row.names = FALSE)
 
   manifest_path <- file.path(root, "c2", "run_manifest.csv")
   manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE)

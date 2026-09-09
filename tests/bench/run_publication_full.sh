@@ -119,7 +119,7 @@ fi
 for required in \
   study_manifest.csv environment_comparison.csv source_provenance.csv \
   query_plan_metrics.csv query_panel.csv combined_metrics.csv backend_ratios.csv \
-  correctness.csv summary.md \
+  correctness.csv viewer_metrics.csv summary.md \
   figures/expression_backend_benchmark_publication_full.png; do
   test -s "$OUTPUT/$required"
 done

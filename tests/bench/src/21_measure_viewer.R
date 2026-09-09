@@ -40,6 +40,7 @@ row <- data.frame(
   backend = backend,
   export_repeat = export_repeat,
   gene = NA_character_,
+  browser = NA_character_,
   status = "OK",
   correctness = NA_character_,
   bundle_secs = NA_real_,
@@ -81,6 +82,7 @@ metrics <- tryCatch(
   }
 )
 row$correctness <- metrics$correctness
+row$browser <- metrics$browser
 timings <- grep("_secs$", names(row), value = TRUE)
 for (name in timings) {
   row[[name]] <- metrics[[name]]

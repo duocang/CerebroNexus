@@ -22,6 +22,9 @@ if (identical(profile, "publication")) {
     file.path("figures", "expression_backend_benchmark_ceiling.png")
   )
 }
+if (identical(profile, "panel_c2")) {
+  required <- c(required, "21_viewer.csv")
+}
 paths <- file.path(stage, required)
 missing <- !file.exists(paths) |
   is.na(file.info(paths)$size) |
