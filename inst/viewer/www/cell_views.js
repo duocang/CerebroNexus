@@ -114,13 +114,6 @@
     '#FF6692', '#B6E880', '#FF97FF', '#FECB52', '#2f6fd6', '#f97316',
     '#16a34a', '#9a5cd0', '#e05780', '#38b2ac', '#d97706', '#7bb0e8'];
 
-  function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === 'function') {
-      return window.CSS.escape(String(value));
-    }
-    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
-  }
-
   // RGB co-expression: cells whose max channel is <= RGB_MIN form a light-grey
   // substrate; the rest blend FROM that grey toward their full-brightness hue by
   // intensity (max/255), so weak co-expression stays faint (≈grey). Cells above
@@ -1473,11 +1466,6 @@
       c.fillStyle = 'rgba(255,112,19,.07)'; c.fill(); c.stroke();
     }
     c.globalAlpha = 1;
-  }
-  function drawHoverAll() {
-    panels.forEach(function (p) {
-      if (p.spaceId) drawInteractionOverlay(p);
-    });
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -3158,7 +3146,10 @@
     var tip = p && $(p.tipId);
     if (tip) tip.style.opacity = 0;
     cardFlyFrom(p, i);
-    // ask for the exact meta row; the card is already on screen either way
+    requestCellDetail(i);
+  }
+
+  function requestCellDetail(i) {
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
       Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
         { priority: 'event' });
@@ -3170,10 +3161,7 @@
     if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
     renderCard();
     openTrekkerInsights('cell');
-    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
-        { priority: 'event' });
-    }
+    requestCellDetail(i);
   }
 
   function closeCard() {
@@ -3276,7 +3264,9 @@
     if (hoverDrawFrame !== null) return;
     hoverDrawFrame = requestAnimationFrame(function () {
       hoverDrawFrame = null;
-      drawHoverAll();
+      panels.forEach(function (p) {
+        if (p.spaceId) drawInteractionOverlay(p);
+      });
     });
   }
 
@@ -3564,11 +3554,9 @@
       panels.push(p);
       wireHover(p); wireBrush(p);
       if (p.pane) {
+        p.pane._cvPanel = p;
         p.pane.addEventListener('mousedown', function () {
-          var pane = this, found = null;
-          panels.forEach(function (candidate) {
-            if (candidate.pane === pane) found = candidate;
-          });
+          var found = this._cvPanel;
           if (found && isSpatialSpace(spaceById[found.spaceId])) {
             activateSpatial(found.spaceId);
           }
@@ -3576,19 +3564,13 @@
         p.pane.addEventListener('click', function (e) {
           if (!e.target.closest('.cv-ptitle')) return;
           if (!canFocusPanel()) return;
-          var pane = this, found = null;
-          panels.forEach(function (candidate) {
-            if (candidate.pane === pane) found = candidate;
-          });
+          var found = this._cvPanel;
           if (found && found.spaceId) setFocusPanel(found.key);
         });
         p.pane.addEventListener('dblclick', function (e) {
           if (!e.target.closest('.cv-canvas-wrap')) return;
           if (!canFocusPanel()) return;
-          var pane = this, found = null;
-          panels.forEach(function (candidate) {
-            if (candidate.pane === pane) found = candidate;
-          });
+          var found = this._cvPanel;
           if (!found || !found.spaceId) return;
           e.preventDefault();
           setFocusPanel(found.key);
@@ -4234,6 +4216,23 @@
     var t = projDimLabel(projDims(nm));
     return nm + ' (expression' + (t ? ', ' + t : '') + ')';
   }
+  function wireMultiPicker(selEl, selected, changed) {
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+      window.jQuery(selEl).selectize({
+        plugins: ['remove_button'],
+        persist: false,
+        closeAfterSelect: false,
+        onChange: changed
+      });
+      selEl.selectize.setValue(selected, true);
+      return;
+    }
+    selEl.onchange = function () {
+      changed(Array.prototype.filter.call(selEl.options, function (option) {
+        return option.selected;
+      }).map(function (option) { return option.value; }));
+    };
+  }
   function rebuildProjectionInstances() {
     var keep = {};
     selectedProjections.forEach(function (name) { keep[projectionId(name)] = true; });
@@ -4274,22 +4273,7 @@
       values = values == null ? [] : (Array.isArray(values) ? values : [values]);
       setSelectedProjections(values);
     };
-    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
-      var $sel = window.jQuery(selEl);
-      $sel.selectize({
-        plugins: ['remove_button'],
-        persist: false,
-        closeAfterSelect: false,
-        onChange: changed
-      });
-      selEl.selectize.setValue(selectedProjections, true);
-    } else {
-      selEl.onchange = function () {
-        changed(Array.prototype.filter.call(selEl.options, function (o) {
-          return o.selected;
-        }).map(function (o) { return o.value; }));
-      };
-    }
+    wireMultiPicker(selEl, selectedProjections, changed);
   }
   function setSelectedProjections(names) {
     var available = D && D.projections ? Object.keys(D.projections) : [];
@@ -4699,23 +4683,7 @@
       values = values == null ? [] : (Array.isArray(values) ? values : [values]);
       setSelectedSpatial(values);
     };
-    var nativeChanged = function () {
-      changed(Array.prototype.filter.call(selEl.options, function (o) {
-        return o.selected;
-      }).map(function (o) { return o.value; }));
-    };
-    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
-      var $sel = window.jQuery(selEl);
-      $sel.selectize({
-        plugins: ['remove_button'],
-        persist: false,
-        closeAfterSelect: false,
-        onChange: changed
-      });
-      selEl.selectize.setValue(selectedSpatial, true);
-    } else {
-      selEl.onchange = nativeChanged;
-    }
+    wireMultiPicker(selEl, selectedSpatial, changed);
   }
   function setSelectedSpatial(names) {
     var available = spatialSamples().map(function (s) { return s.name; });
@@ -7045,7 +7013,8 @@
     });
     function updateTrekkerTransition(e) {
       var id = e.target && e.target.id;
-      if (id !== 'trekker_morph' || singleActive !== 'trekker_projection') return;
+      if (id !== 'trekker_morph') return false;
+      if (singleActive !== 'trekker_projection') return true;
       var transition = Math.max(0, Math.min(1, Number(e.target.value) || 0));
       singleSpaceIds.forEach(function (spaceId) {
         var space = spaceById[spaceId], source = space && space._transition;
@@ -7064,11 +7033,15 @@
         });
       });
       drawAll();
+      return true;
     }
     function updateLinkedSlider(target) {
-      if (!target || target._cvSyncing) return;
-      var id = target.id, value = Number(target.value);
-      if (!isFinite(value)) return;
+      if (!target || target._cvSyncing) return false;
+      var id = target.id;
+      if (id !== 'cv-ps' && id !== 'cv-opacity' && id !== 'cv-pct' &&
+        id !== 'cv-dissolve' && id !== 'cv-niche') return false;
+      var value = Number(target.value);
+      if (!isFinite(value)) return true;
       if (id === 'cv-ps') {
         psSeeded = true;
         pointSizeEdited = true;
@@ -7091,6 +7064,7 @@
         drawAll();
         if (!sel) renderReadout();
       }
+      return true;
     }
     function updateLinkedToggle(target) {
       var id = target && target.id;
@@ -7118,32 +7092,9 @@
       }
       return false;
     }
-    window.jQuery(document)
-      .off(
-        'input.cvTrekkerTransition change.cvTrekkerTransition',
-        '#trekker_morph'
-      )
-      .on(
-        'input.cvTrekkerTransition change.cvTrekkerTransition',
-        '#trekker_morph',
-        function () {
-          updateTrekkerTransition({
-            target: { id: this.id, value: this.value }
-          });
-        }
-      );
-    window.jQuery(document)
-      .off(
-        'input.cvLinkedSettings',
-        '#cv-ps, #cv-opacity, #cv-pct, #cv-dissolve, #cv-niche'
-      )
-      .on(
-        'input.cvLinkedSettings',
-        '#cv-ps, #cv-opacity, #cv-pct, #cv-dissolve, #cv-niche',
-        function () { updateLinkedSlider(this); }
-      );
     document.addEventListener('input', function (e) {
       var id = e.target && e.target.id;
+      if (updateTrekkerTransition(e) || updateLinkedSlider(e.target)) return;
       if (updateLinkedToggle(e.target)) return;
       if (id && id.slice(-7) === '-number' && id.indexOf('cv-img-') === 0) {
         var range = $(id.slice(0, -7));
@@ -7159,6 +7110,7 @@
     });
     document.addEventListener('change', function (e) {
       var id = e.target && e.target.id;
+      if (updateTrekkerTransition(e)) return;
       if (id && id.slice(-7) === '-number' && id.indexOf('cv-img-') === 0) {
         var range = $(id.slice(0, -7));
         if (!syncImgRangeValue(range, e.target.value)) {

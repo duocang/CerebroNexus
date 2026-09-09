@@ -201,21 +201,6 @@ cachePlot <- function(x, ...) {
   }
 }
 
-## Return the first complete reactive value immediately; debounce only later
-## invalidations caused by interactive controls.
-debounceAfterFirst <- function(reactive, millis) {
-  delayed <- shiny::debounce(reactive, millis)
-  delivered <- FALSE
-  shiny::reactive({
-    if (!delivered) {
-      value <- reactive()
-      delivered <<- TRUE
-      return(value)
-    }
-    delayed()
-  })
-}
-
 ## Debounce a cheap event and evaluate the expensive reactive only after the
 ## event settles. The first complete event is delivered immediately.
 debounceEventAfterFirst <- function(
@@ -410,14 +395,7 @@ viewerExpressionValues <- function(data_set, cells, genes) {
     return(list())
   }
   if (is.null(dim(expression_matrix))) {
-    if (length(genes) != 1L) {
-      return(list())
-    }
-    expression_matrix <- matrix(
-      as.numeric(expression_matrix),
-      nrow = 1L,
-      dimnames = list(genes, NULL)
-    )
+    return(list())
   }
 
   gene_names <- rownames(expression_matrix)
@@ -1976,60 +1954,6 @@ getGenesForGeneSet <- function(gene_set) {
 }
 
 ##----------------------------------------------------------------------------##
-## Function to calculate center of groups in projections/trajectories.
-##----------------------------------------------------------------------------##
-centerOfGroups <- function(coordinates, df, n_dimensions, group) {
-  ## Guard against a missing grouping column: callers occasionally pass a
-  ## group that isn't present in df (e.g. a metadata column dropped for a
-  ## selected-cells slice), which would otherwise make df[[group]] NULL and
-  ## crash the tibble construction. Return a typed empty result instead.
-  if (is.null(group) || !group %in% colnames(df)) {
-    return(tidyr::tibble(
-      group = character(),
-      x_median = numeric(),
-      y_median = numeric(),
-      z_median = numeric()
-    ))
-  }
-  ## check number of dimenions in projection
-  ## ... 2 dimensions
-  if (n_dimensions == 2) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-    ## ... 3 dimensions
-  } else if (n_dimensions == 3 && is.numeric(coordinates[, 3])) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      z = coordinates[[3]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        z_median = median(z),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-  }
-}
-
-##----------------------------------------------------------------------------##
 ## Helper: match a URL dataset token against available .crb files.
 ##
 ## Returns the matched file path or '' if no match.
@@ -2064,90 +1988,39 @@ is_cerebro_dataset <- function(object) {
     any(startsWith(class(object), "Cerebro"))
 }
 
-getExperiment <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getExperiment())
-  }
+callCerebroMethod <- function(method, ...) {
+  dataset <- data_set()
+  if (is_cerebro_dataset(dataset)) dataset[[method]](...)
 }
-getParameters <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getParameters())
-  }
-}
-getTechnicalInfo <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getTechnicalInfo())
-  }
-}
-getGeneLists <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGeneLists())
-  }
-}
-getGeneNames <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGeneNames())
-  }
-}
-getGroups <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroups())
-  }
-}
-getGroupLevels <- function(group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupLevels(group))
-  }
-}
-getCellCycle <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getCellCycle())
-  }
-}
-getMetaData <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMetaData())
-  }
-}
-availableProjections <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$availableProjections())
-  }
-}
-getProjection <- function(name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getProjection(name))
-  }
-}
+
+getExperiment <- function() callCerebroMethod("getExperiment")
+getParameters <- function() callCerebroMethod("getParameters")
+getTechnicalInfo <- function() callCerebroMethod("getTechnicalInfo")
+getGeneLists <- function() callCerebroMethod("getGeneLists")
+getGeneNames <- function() callCerebroMethod("getGeneNames")
+getGroups <- function() callCerebroMethod("getGroups")
+getGroupLevels <- function(group) callCerebroMethod("getGroupLevels", group)
+getCellCycle <- function() callCerebroMethod("getCellCycle")
+getMetaData <- function() callCerebroMethod("getMetaData")
+availableProjections <- function() callCerebroMethod("availableProjections")
+getProjection <- function(name) callCerebroMethod("getProjection", name)
 getMethodsForMarkerGenes <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForMarkerGenes())
-  }
+  callCerebroMethod("getMethodsForMarkerGenes")
 }
 getGroupsWithMarkerGenes <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithMarkerGenes(method))
-  }
+  callCerebroMethod("getGroupsWithMarkerGenes", method)
 }
 getMarkerGenes <- function(method, group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMarkerGenes(method, group))
-  }
+  callCerebroMethod("getMarkerGenes", method, group)
 }
 getMethodsForTrajectories <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForTrajectories())
-  }
+  callCerebroMethod("getMethodsForTrajectories")
 }
 getNamesOfTrajectories <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getNamesOfTrajectories(method))
-  }
+  callCerebroMethod("getNamesOfTrajectories", method)
 }
 getTrajectory <- function(method, name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getTrajectory(method, name))
-  }
+  callCerebroMethod("getTrajectory", method, name)
 }
 
 ##----------------------------------------------------------------------------##
@@ -2833,31 +2706,21 @@ getGroupsWithMeanExpression <- function() {
   tryCatch(ds$getGroupsWithMeanExpression(), error = function(e) character(0))
 }
 getGroupsWithMostExpressedGenes <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithMostExpressedGenes())
-  }
+  callCerebroMethod("getGroupsWithMostExpressedGenes")
 }
 viewerGetMostExpressedGenes <- function(group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMostExpressedGenes(group))
-  }
+  callCerebroMethod("getMostExpressedGenes", group)
 }
 
 ## Wrapper functions for enriched_pathways module.
 getMethodsForEnrichedPathways <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForEnrichedPathways())
-  }
+  callCerebroMethod("getMethodsForEnrichedPathways")
 }
 getGroupsWithEnrichedPathways <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithEnrichedPathways(method))
-  }
+  callCerebroMethod("getGroupsWithEnrichedPathways", method)
 }
 getEnrichedPathways <- function(method, group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getEnrichedPathways(method, group))
-  }
+  callCerebroMethod("getEnrichedPathways", method, group)
 }
 
 ## Wrapper functions for extra_material module. Generated external tables are
@@ -3056,8 +2919,9 @@ extra_material_table_selection <- function(
 }
 
 getExtraMaterialCategories <- function() {
-  categories <- if (is_cerebro_dataset(data_set())) {
-    data_set()$getExtraMaterialCategories()
+  dataset <- data_set()
+  categories <- if (is_cerebro_dataset(dataset)) {
+    dataset$getExtraMaterialCategories()
   } else {
     character()
   }
@@ -3070,19 +2934,13 @@ checkForExtraTables <- function() {
   length(extra_material_table_groups()) > 0L
 }
 checkForExtraPlots <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$checkForExtraPlots())
-  }
+  callCerebroMethod("checkForExtraPlots")
 }
 getNamesOfExtraPlots <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getNamesOfExtraPlots())
-  }
+  callCerebroMethod("getNamesOfExtraPlots")
 }
 getExtraPlot <- function(name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getExtraPlot(name))
-  }
+  callCerebroMethod("getExtraPlot", name)
 }
 
 ## Wrapper for immune repertoire module.
@@ -3201,6 +3059,28 @@ serverSideGeneSelector <- function(
   })
 }
 
+persistentCellSelection <- function(selection) {
+  if (
+    is.null(selection) ||
+      is.null(selection[["x"]]) ||
+      length(selection[["x"]]) == 0L
+  ) {
+    return(NULL)
+  }
+  x <- as.numeric(selection[["x"]])
+  y <- as.numeric(selection[["y"]])
+  result <- data.frame(
+    x = x,
+    y = y,
+    identifier = paste0(x, "-", y),
+    stringsAsFactors = FALSE
+  )
+  if (length(selection[["ids"]]) == nrow(result)) {
+    result[["selection_key"]] <- as.character(selection[["ids"]])
+  }
+  result
+}
+
 ##----------------------------------------------------------------------------##
 ## Filter a projection selection down to cells in still-visible groups.
 ##
@@ -3284,6 +3164,130 @@ selectedCellMask <- function(selection_key, identifier, selection) {
     character()
   }
   as.character(identifier) %in% coordinates
+}
+
+cerebroSelectedCellsTableUI <- function(id, title) {
+  fluidRow(
+    cerebroBox(
+      title = tagList(
+        boxTitle(title),
+        cerebroInfoButton(paste0(id, "_info"))
+      ),
+      tagList(
+        shinyWidgets::materialSwitch(
+          inputId = paste0(id, "_number_formatting"),
+          label = "Automatically format numbers:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
+        ),
+        shinyWidgets::materialSwitch(
+          inputId = paste0(id, "_color_highlighting"),
+          label = "Highlight values with colours:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
+        ),
+        DT::dataTableOutput(id)
+      )
+    )
+  )
+}
+
+showCerebroInfoModal <- function(info) {
+  shiny::showModal(shiny::modalDialog(
+    info[["text"]],
+    title = info[["title"]],
+    easyClose = TRUE,
+    footer = NULL,
+    size = "l"
+  ))
+}
+
+cerebroSelectedCellsTableInfo <- function(intro, state = "active") {
+  list(
+    title = "Details of selected cells",
+    text = HTML(paste0(
+      intro,
+      "<h4>Options</h4>",
+      "<b>Automatically format numbers</b><br>",
+      "When ",
+      state,
+      ", columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>",
+      "<em>This feature does not work on columns that contain 'NA' values.</em><br>",
+      "<b>Highlight values with colours</b><br>",
+      "Similar to the automatic formatting option, when ",
+      state,
+      ", CerebroNexus will look for known columns in the table (those that contain grouping variables), try to interpret column content, and use colours and other stylistic elements to facilitate quick interpretation of the values. If you prefer the table without colours and/or the identification does not work properly, you can simply deactivate this feature.<br>",
+      "<em>This feature does not work on columns that contain 'NA' values.</em><br><br>",
+      "<em>Columns can be re-ordered by dragging their respective header.</em>"
+    ))
+  )
+}
+
+selectedCellRows <- function(
+  table,
+  selection,
+  coordinate_columns = 1:2,
+  drop_coordinates = TRUE,
+  missing_key = c("index", "identifier")
+) {
+  missing_key <- match.arg(missing_key)
+  table <- as.data.frame(table)
+  coordinate_index <- if (is.character(coordinate_columns)) {
+    match(coordinate_columns, colnames(table))
+  } else {
+    coordinate_columns
+  }
+  identifier <- paste0(
+    table[[coordinate_index[1]]],
+    "-",
+    table[[coordinate_index[2]]]
+  )
+  selection_key <- if ("cell_barcode" %in% colnames(table)) {
+    as.character(table[["cell_barcode"]])
+  } else if (identical(missing_key, "identifier")) {
+    identifier
+  } else {
+    as.character(seq_len(nrow(table)))
+  }
+  table <- table[
+    selectedCellMask(selection_key, identifier, selection),
+    ,
+    drop = FALSE
+  ]
+  if (isTRUE(drop_coordinates)) {
+    table <- table[, -coordinate_index, drop = FALSE]
+  }
+  if ("cell_barcode" %in% colnames(table)) {
+    table <- table[,
+      c("cell_barcode", setdiff(colnames(table), "cell_barcode")),
+      drop = FALSE
+    ]
+  }
+  table
+}
+
+selectedCellsDataTable <- function(
+  table,
+  empty_table,
+  number_formatting,
+  color_highlighting,
+  download_file_name
+) {
+  if (is.null(table) || nrow(table) == 0) {
+    return(prepareEmptyTable(empty_table[0, , drop = FALSE]))
+  }
+  prettifyTable(
+    table,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Brtlip",
+    show_buttons = TRUE,
+    number_formatting = number_formatting,
+    color_highlighting = color_highlighting,
+    hide_long_columns = TRUE,
+    download_file_name = download_file_name
+  )
 }
 
 ##----------------------------------------------------------------------------##

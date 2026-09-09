@@ -1137,7 +1137,6 @@ exportFromSeurat <- function(
       } else {
         tmp_names <- unique(object@meta.data[[i]])
       }
-      # colData(export$expression)[[i]] <- factor(object@meta.data[[i]], levels = tmp_names)
       temp_meta_data[[i]] <- factor(object@meta.data[[i]], levels = tmp_names)
     }
     meta_data_columns <- meta_data_columns[
@@ -1159,13 +1158,11 @@ exportFromSeurat <- function(
       )
     }
     for (i in meta_data_columns) {
-      # colData(export$expression)[[i]] <- object@meta.data[[i]]
       temp_meta_data[[i]] <- object@meta.data[[i]]
     }
   }
 
   ## make column names in meta data unique (if necessary)
-  # colnames(colData(export$expression)) <- make.unique(colnames(colData(export$expression)))
   colnames(temp_meta_data) <- make.unique(colnames(temp_meta_data))
 
   ##--------------------------------------------------------------------------##
@@ -1204,7 +1201,6 @@ exportFromSeurat <- function(
       )
     )
   }
-  projections <- list()
   projections_available <- names(object@reductions)
   projections_available_pca <- projections_available[grep(
     projections_available,
@@ -1616,9 +1612,6 @@ exportFromSeurat <- function(
   ##
   ## currently, only tables can be exported
   ##--------------------------------------------------------------------------##
-
-  ## define valid categories
-  valid_categories <- c('tables')
 
   ## check of extra material exists, that it is in list format, and that the
   ## list is not empty
