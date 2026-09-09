@@ -500,11 +500,32 @@ Cerebro <- R6::R6Class(
     #' \code{vector} containing (mean) expression across all specified genes in
     #' each specified cell.
     getMeanExpressionForCells = function(cells = NULL, genes = NULL) {
-      ## extract dense matrix using helper
-      mat <- private$extractExpression(cells = cells, genes = genes)
+      if (is.null(genes)) {
+        genes <- rownames(self$expression)
+      }
 
-      ## calculate mean expression per cell (colMeans)
-      mean_expression <- Matrix::colMeans(mat)
+      ## Preserve the historical named NaN result for an empty gene set.
+      if (length(genes) == 0L) {
+        mat <- private$extractExpression(cells = cells, genes = genes)
+        return(Matrix::colMeans(mat))
+      }
+
+      mat <- self$getExpressionBlock(genes = genes, cells = cells)
+      if (ncol(mat) == 0L) {
+        return(numeric())
+      }
+
+      if (
+        inherits(mat, "DelayedArray") ||
+          inherits(mat, "DelayedMatrix") ||
+          inherits(mat, "RleMatrix")
+      ) {
+        mean_expression <- DelayedArray::colMeans(mat)
+      } else if (inherits(mat, "IterableMatrix")) {
+        mean_expression <- BPCells::colMeans(mat)
+      } else {
+        mean_expression <- Matrix::colMeans(mat)
+      }
 
       return(mean_expression)
     },
@@ -621,8 +642,12 @@ Cerebro <- R6::R6Class(
           call. = FALSE
         )
       }
+
       if (is.null(cells)) {
         cells <- colnames(self$expression)
+        if (is.null(cells) && ncol(self$expression) == 0L) {
+          cells <- character()
+        }
       }
       if (!is.character(cells) || anyNA(cells)) {
         stop(
@@ -641,6 +666,7 @@ Cerebro <- R6::R6Class(
           call. = FALSE
         )
       }
+
       cell_idx <- match(cells, colnames(self$expression))
       missing_cells <- cells[is.na(cell_idx)]
       if (length(missing_cells) > 0L) {
@@ -655,7 +681,8 @@ Cerebro <- R6::R6Class(
       ## DelayedArray subsetting by integer indices preserves laziness and
       ## avoids relying on every delayed backend supporting character subscripts.
       if (
-        inherits(self$expression, "DelayedArray") ||
+        length(cell_idx) == 0L ||
+          inherits(self$expression, "DelayedArray") ||
           inherits(self$expression, "DelayedMatrix") ||
           inherits(self$expression, "RleMatrix")
       ) {
