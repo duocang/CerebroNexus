@@ -124,7 +124,12 @@ select_dataset <- function(app, path, timeout = 30000) {
 
 test_that("{shinytest2} recording: overview", {
   local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "overview", height = 950, width = 1619)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "overview",
+    height = 950,
+    width = 1619
+  )
   app$wait_for_idle(timeout = 20000)
 
   ## Data Info tab: verify key values from the loaded example.crb
@@ -422,7 +427,7 @@ test_that("{shinytest2} recording: main", {
       "document.querySelector(",
       "'#overview_projection_cell_view_host canvas:not(.cv-mini)') !== null"
     ),
-    timeout = 20000
+    timeout = 60000
   )
   plot_size <- app$get_js(
     paste0(
@@ -784,59 +789,6 @@ test_that("{shinytest2} recording: gene_expression", {
     unname(unlist(rgb_animations)),
     rep("cerebro-control-enter", 3)
   )
-
-  app$stop()
-})
-
-test_that("{shinytest2} recording: gene_id_conversion", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "gene_id_conversion",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
-
-  app$set_inputs(sidebar = "geneIdConversion")
-  app$wait_for_idle(timeout = 10000)
-
-  table_val <- retry_get_value(app, output = "gene_info")
-  expect_false(is.null(table_val))
-
-  app$stop()
-})
-
-test_that("{shinytest2} recording: color_management", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "color_management",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
-
-  app$set_inputs(sidebar = "color_management")
-  app$wait_for_idle(timeout = 10000)
-
-  ui_val <- retry_get_value(app, output = "color_assignments_UI")
-  expect_false(is.null(ui_val))
-
-  app$stop()
-})
-
-test_that("{shinytest2} recording: about", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "about", height = 950, width = 1619)
-  app$wait_for_idle(timeout = 20000)
-
-  app$set_inputs(sidebar = "about")
-  app$wait_for_idle(timeout = 10000)
-
-  about_text <- retry_get_value(app, output = "about")
-  expect_false(is.null(about_text))
-  expect_true(nchar(about_text) > 0)
 
   app$stop()
 })

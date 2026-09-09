@@ -309,7 +309,11 @@ test_that("Spatial tab is wired into the app UI and server", {
     readLines(file.path(shiny_root, "shiny_UI.R")),
     collapse = "\n"
   )
-  expect_match(ui_src, "spatial/UI\\.R")
+  expect_match(
+    ui_src,
+    '"spatial"[\\s\\S]{0,1000}"/UI\\.R"',
+    perl = TRUE
+  )
   expect_match(ui_src, "tab_spatial")
   expect_match(ui_src, 'conditionalSidebarItem\\("Spatial", "spatial"')
 
@@ -317,7 +321,11 @@ test_that("Spatial tab is wired into the app UI and server", {
     readLines(file.path(shiny_root, "shiny_server.R")),
     collapse = "\n"
   )
-  expect_match(server_src, "spatial/server\\.R")
+  expect_match(
+    server_src,
+    '"spatial"[\\s\\S]{0,1000}"/server\\.R"',
+    perl = TRUE
+  )
   expect_match(server_src, "group_filters/group_filters_widget\\.R")
   expect_match(
     server_src,
@@ -657,7 +665,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
 
   params <- list(
     color_variable = "score",
-    background_image = spatial_background_key("external", "Atlas"),
+    background_image = "external::Atlas",
     background_descriptor = list(
       source = "external",
       label = "Atlas",
