@@ -90,7 +90,7 @@ output[["expression_by_group"]] <- plotly::renderPlotly({
         mirror = TRUE,
         showline = TRUE
       ),
-      dragmode = "select",
+      dragmode = "lasso",
       hovermode = "compare"
     ) %>%
     cerebro_plotly_toolbar()

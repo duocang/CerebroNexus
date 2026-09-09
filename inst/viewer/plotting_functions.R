@@ -129,7 +129,7 @@ plotlyViolin <- function(
       hoverlabel = cerebro_plotly_hoverlabel(),
       plot_bgcolor = cerebro_plotly_theme()$transparent,
       paper_bgcolor = cerebro_plotly_theme()$transparent,
-      dragmode = "select",
+      dragmode = "lasso",
       hovermode = "compare"
     )
 
