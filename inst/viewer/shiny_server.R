@@ -21,6 +21,11 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_config.R"),
   local = TRUE
 )
+source(
+  paste0(Cerebro.options[["cerebro_root"]], "/viewer/source_cache.R"),
+  local = TRUE
+)
+
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
@@ -30,6 +35,16 @@ source(
 .msigdb_process_cache <- new.env(parent = emptyenv())
 
 server <- function(input, output, session) {
+  ## Parse Viewer source files once, while evaluating every file separately in
+  ## this session's scope. Fall back to base::source() for uncommon call forms.
+  source <- function(file, local = FALSE, ...) {
+    dots <- list(...)
+    if (identical(local, TRUE) && !length(dots)) {
+      return(viewerSource(file, parent.frame()))
+    }
+    base::source(file, local = local, ...)
+  }
+
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.
   ##--------------------------------------------------------------------------##
@@ -79,6 +94,42 @@ server <- function(input, output, session) {
       TRUE
     )
   )
+
+  ## Outputs inside collapsed boxes must keep rendering, but only after their
+  ## owning sidebar tab has been visited. Unvisited tabs do no warmup work.
+  viewer_hidden_output_options <- list()
+  viewer_enabled_output_tabs <- character()
+  outputOptions <- function(output, x, ...) {
+    options <- list(...)
+    if (
+      identical(options$suspendWhenHidden, FALSE) &&
+        !is.na(owner <- viewerOutputTab(x)) &&
+        !owner %in% viewer_enabled_output_tabs
+    ) {
+      viewer_hidden_output_options[[x]] <<- options
+      return(invisible(NULL))
+    }
+    do.call(
+      shiny::outputOptions,
+      c(list(x = output, name = x), options)
+    )
+  }
+  observeEvent(input[["sidebar"]], {
+    tab <- input[["sidebar"]]
+    viewer_enabled_output_tabs <<- union(viewer_enabled_output_tabs, tab)
+    ids <- names(viewer_hidden_output_options)
+    ids <- ids[viewerOutputTab(ids) == tab]
+    for (id in ids) {
+      do.call(
+        shiny::outputOptions,
+        c(
+          list(x = output, name = id),
+          viewer_hidden_output_options[[id]]
+        )
+      )
+      viewer_hidden_output_options[[id]] <<- NULL
+    }
+  })
 
   viewer_initial_page_tabs <- c(
     data_info = "loadData",
@@ -424,10 +475,9 @@ server <- function(input, output, session) {
       !is.null(preferences[["show_hover_info_in_projections"]]) &&
         preferences[['show_hover_info_in_projections']] == TRUE
     ) {
-      hover_info <- buildHoverInfoForProjections(cells_df)
-      hover_info <- setNames(hover_info, cells_df$cell_barcode)
+      hover_info <- buildHoverDataForProjections(cells_df)
     } else {
-      hover_info <- 'none'
+      hover_info <- list(enabled = FALSE)
     }
     # message(str(hover_info))
     return(hover_info)

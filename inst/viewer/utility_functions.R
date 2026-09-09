@@ -201,6 +201,104 @@ cachePlot <- function(x, ...) {
   }
 }
 
+## Return the first complete reactive value immediately; debounce only later
+## invalidations caused by interactive controls.
+debounceAfterFirst <- function(reactive, millis) {
+  delayed <- shiny::debounce(reactive, millis)
+  delivered <- FALSE
+  shiny::reactive({
+    if (!delivered) {
+      value <- reactive()
+      delivered <<- TRUE
+      return(value)
+    }
+    delayed()
+  })
+}
+
+## Debounce a cheap event and evaluate the expensive reactive only after the
+## event settles. The first complete event is delivered immediately.
+debounceEventAfterFirst <- function(
+  event,
+  value,
+  millis,
+  domain = shiny::getDefaultReactiveDomain()
+) {
+  delivered <- FALSE
+  settled_event <- shiny::debounce(
+    event,
+    function() if (delivered) millis else 0,
+    domain = domain
+  )
+  shiny::reactive({
+    settled_event()
+    result <- shiny::isolate(value())
+    delivered <<- TRUE
+    result
+  })
+}
+
+## Resolve outputs that must keep rendering inside collapsed boxes to the
+## sidebar tab that owns them. Unknown IDs are intentionally left unclassified.
+viewerOutputTab <- function(ids) {
+  prefixes <- c(
+    overview_ = "overview",
+    expression_ = "geneExpression",
+    spatial_ = "spatial",
+    coordviews_ = "coordinated_views",
+    ir_ = "immune_repertoire",
+    trajectory_ = "trajectory",
+    trekker_ = "trekker",
+    hla_ = "hla_tcr_motifs"
+  )
+  vapply(
+    ids,
+    function(id) {
+      match <- which(startsWith(id, names(prefixes)))
+      if (length(match)) unname(prefixes[[match[[1L]]]]) else NA_character_
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
+## Track only lightweight page inputs so bursts settle before expensive cell,
+## expression, coordinate, and hover snapshots are rebuilt.
+viewerProjectionEvent <- function(
+  prefix,
+  tab,
+  extra = function() list(),
+  colors = FALSE
+) {
+  shiny::reactive({
+    shiny::req(identical(input[["sidebar"]], tab), data_set())
+    groups <- getGroups()
+    state <- list(
+      dataset = available_crb_files$selected,
+      projection = input[[paste0(prefix, "_to_display")]],
+      percentage = input[[paste0(prefix, "_percentage_cells_to_show")]],
+      point_color = input[[paste0(prefix, "_point_color")]],
+      point_size = input[[paste0(prefix, "_point_size")]],
+      point_opacity = input[[paste0(prefix, "_point_opacity")]],
+      point_border = input[[paste0(prefix, "_point_border")]],
+      group_labels = input[[paste0(prefix, "_group_labels")]],
+      keep_square = input[[paste0(prefix, "_keep_square")]],
+      group_filters = stats::setNames(
+        lapply(groups, function(group) {
+          input[[paste0(prefix, "_group_filter_", group)]]
+        }),
+        groups
+      ),
+      use_webgl = preferences[["use_webgl"]],
+      show_hover = preferences[["show_hover_info_in_projections"]]
+    )
+    if (colors) {
+      state$colors <- reactive_colors()
+    }
+    c(state, extra())
+  })
+}
+
 ## Apply the shared projection filters and sample original metadata row ids.
 viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
   groups <- getGroups()
@@ -422,6 +520,22 @@ cerebroCellViewMessage <- function(
       wire_array(hover$text)
     }
   }
+  if (!is.null(hover$selection_key)) {
+    hover$selection_key <- wire_array(hover$selection_key)
+  }
+  if (is.list(hover$fields)) {
+    hover$fields <- lapply(hover$fields, function(field) {
+      field$values <- wire_array(field$values)
+      field
+    })
+  }
+  if (is.list(hover$groups)) {
+    hover$groups <- lapply(hover$groups, function(group) {
+      group$levels <- wire_array(group$levels)
+      group$values <- wire_array(group$values)
+      group
+    })
+  }
   if (is.list(extra$group_hulls)) {
     for (field in intersect(c("x", "y"), names(extra$group_hulls))) {
       extra$group_hulls[[field]] <- wire_nested(extra$group_hulls[[field]])
@@ -442,6 +556,16 @@ cerebroCellViewRender <- function(
     "cell_view_render",
     cerebroCellViewMessage(id, meta, data, hover, extra)
   )
+}
+
+cerebroCellViewStructuredHover <- function(hover_info, show_hover) {
+  hover <- if (isTRUE(show_hover)) hover_info else list()
+  hover$hoverinfo <- if (isTRUE(show_hover) && isTRUE(hover_info$enabled)) {
+    "fields"
+  } else {
+    "skip"
+  }
+  hover
 }
 
 cerebroCellViewScatterPayload <- function(
@@ -511,10 +635,15 @@ cerebroCellViewScatterPayload <- function(
   }
 
   show_hover <- isTRUE(hover)
-  hover_data <- list(
-    hoverinfo = if (show_hover) "text" else "skip",
-    text = if (continuous && show_hover) I(unname(hover_info)) else list()
-  )
+  structured_hover <- is.list(hover_info) && isTRUE(hover_info$enabled)
+  hover_data <- if (show_hover && structured_hover) {
+    cerebroCellViewStructuredHover(hover_info, TRUE)
+  } else {
+    list(
+      hoverinfo = if (show_hover) "text" else "skip",
+      text = if (continuous && show_hover) I(unname(hover_info)) else list()
+    )
+  }
   if (continuous) {
     return(list(meta = meta, data = data, hover = hover_data))
   }
@@ -540,8 +669,8 @@ cerebroCellViewScatterPayload <- function(
 
   meta[["traces"]] <- list()
   cells_by_group <- split(seq_along(color), color)
-  hover_names <- names(hover_info)
-  aligned_hover <- if (!show_hover) {
+  hover_names <- if (structured_hover) NULL else names(hover_info)
+  aligned_hover <- if (!show_hover || structured_hover) {
     NULL
   } else if (
     !is.null(hover_names) &&
@@ -564,11 +693,8 @@ cerebroCellViewScatterPayload <- function(
       data[["z"]][[index]] <- I(coordinates[[3L]][cells])
     }
     data[["selection_key"]][[index]] <- I(selection_keys[cells])
-    data[["color"]][[index]] <- I(rep(
-      unname(color_assignments[[group]]),
-      length(cells)
-    ))
-    if (show_hover) {
+    data[["color"]][[index]] <- I(unname(color_assignments[[group]]))
+    if (show_hover && !structured_hover) {
       hover_data[["text"]][[index]] <- I(aligned_hover[cells])
     }
     index <- index + 1L
@@ -1568,6 +1694,38 @@ buildHoverInfoForProjections <- function(table) {
     parts <- c(parts, list("<br><b>", group, "</b>: ", table[[group]]))
   }
   do.call(paste0, parts)
+}
+
+## Compact hover fields for Canvas projection views. Values stay columnar on
+## the wire; the browser formats only the cell under the pointer.
+buildHoverDataForProjections <- function(table) {
+  groups <- lapply(intersect(getGroups(), colnames(table)), function(group) {
+    values <- as.character(table[[group]])
+    values[is.na(values)] <- "NA"
+    levels <- unique(values)
+    list(
+      label = group,
+      levels = I(levels),
+      values = I(match(values, levels) - 1L)
+    )
+  })
+  list(
+    enabled = TRUE,
+    selection_key = I(as.character(table[["cell_barcode"]])),
+    fields = list(
+      list(
+        label = "Transcripts",
+        values = I(unname(table[["nUMI"]])),
+        format = "integer"
+      ),
+      list(
+        label = "Expressed genes",
+        values = I(unname(table[["nGene"]])),
+        format = "integer"
+      )
+    ),
+    groups = unname(groups)
+  )
 }
 
 ##----------------------------------------------------------------------------##
