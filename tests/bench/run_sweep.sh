@@ -54,6 +54,7 @@ SCHEDULE="$STAGE/05_schedule.csv"
 SCHEDULE_TSV="$SCRATCH/05_schedule.tsv"
 EXPORT_CSV="$STAGE/10_export.csv"
 ACCESS_CSV="$STAGE/20_access.csv"
+VIEWER_CSV="$STAGE/21_viewer.csv"
 CRASH_CSV="$STAGE/crashes.csv"
 SOURCE_MANIFEST="$STAGE/source_manifest.csv"
 QUERY_PLAN_MANIFEST="$STAGE/query_plan_manifest.csv"
@@ -79,6 +80,7 @@ mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
   "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
+printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,status,correctness,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs' > "$VIEWER_CSV"
 
 echo "==> run:      $BENCH_RUN_ID"
 echo "==> profile:  $BENCH_PROFILE"
@@ -185,6 +187,22 @@ for src in $SOURCES; do
             "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
         fi
       done
+
+      if [ "$BENCH_PROFILE" = "panel_c2" ] && [ "$export_repeat" = "1" ]; then
+        echo "==> [$tag] Viewer interaction gate"
+        Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
+          "$src" "$tier" "$backend" "$export_repeat" "$crb" \
+          "$VIEWER_CSV" "$query_plan" \
+          > "$LOG_DIR/viewer_$tag.log" 2>&1
+        rc=$?
+        tail -3 "$LOG_DIR/viewer_$tag.log" | sed 's/^/    /'
+        if [ "$rc" -ne 0 ]; then
+          echo "    !! Viewer process died (exit $rc)"
+          printf '"%s","%s","%s",%s,"%s",%s,%s,"viewer",%s\n' \
+            "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+            "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
+        fi
+      fi
     fi
     rm -rf -- "$out_dir"
   done < "$SCHEDULE_TSV"

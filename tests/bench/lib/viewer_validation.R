@@ -300,6 +300,10 @@ bench_run_viewer_validation <- function(
       )
     }
 
+    stage <<- "shutdown"
+    app$stop()
+    app <- NULL
+
     list(
       correctness = "OK",
       bundle_secs = bundle_secs,

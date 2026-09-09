@@ -30,6 +30,7 @@ test_that("sweep stages use plain names in a safe publication order", {
     "04_check_resources.R",
     "10_export_backend.R",
     "20_measure_backend.R",
+    "21_measure_viewer.R",
     "30_check_measurements.R",
     "40_write_report.R",
     "41_draw_figures.R",
@@ -172,6 +173,29 @@ test_that("shared sweep selects the full-source build and resource paths", {
   )
   expect_match(sweep, "04_check_full_resources.R", fixed = TRUE)
   expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
+})
+
+test_that("C2 sweep runs one Viewer gate per source and backend", {
+  skip_unless_bench_cli()
+  script <- file.path(bench_root, "src", "21_measure_viewer.R")
+  expect_true(file.exists(script))
+
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, 'VIEWER_CSV="$STAGE/21_viewer.csv"', fixed = TRUE)
+  expect_match(sweep, "bundle_secs,launch_secs,hover_secs", fixed = TRUE)
+  expect_match(sweep, '[ "$BENCH_PROFILE" = "panel_c2" ]', fixed = TRUE)
+  expect_match(sweep, '[ "$export_repeat" = "1" ]', fixed = TRUE)
+  expect_match(sweep, "21_measure_viewer.R", fixed = TRUE)
+
+  if (file.exists(script)) {
+    body <- paste(readLines(script, warn = FALSE), collapse = "\n")
+    expect_match(body, "bench_run_viewer_validation", fixed = TRUE)
+    expect_match(body, "readRDS(query_plan_path)", fixed = TRUE)
+    expect_match(body, 'role == "first"', fixed = TRUE)
+  }
 })
 
 test_that("source cache reuses only checksum-verified files", {
