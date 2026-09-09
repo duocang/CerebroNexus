@@ -108,8 +108,22 @@ activate_tab <- function(app, tab_name, timeout = 20000) {
 }
 
 select_dataset <- function(app, path, timeout = 30000) {
-  app$set_inputs(crb_file_selector = path, wait_ = FALSE)
+  app$wait_for_js(
+    "document.getElementById('crb_file_selector')?.selectize !== undefined",
+    timeout = timeout
+  )
+  options <- unlist(
+    app$get_js(
+      "Object.keys(document.getElementById('crb_file_selector').selectize.options)"
+    ),
+    use.names = FALSE
+  )
   file <- basename(path)
+  path <- options[basename(options) == file]
+  if (length(path) != 1L) {
+    stop(sprintf("data set option not found: %s", file), call. = FALSE)
+  }
+  app$set_inputs(crb_file_selector = path, wait_ = FALSE)
   selected <- retry_get_value(
     app,
     input = "crb_file_selector",
