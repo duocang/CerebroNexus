@@ -157,10 +157,9 @@ output[["extra_material_plot_interactive"]] <- plotly::renderPlotly({
   plot <- plotly::ggplotly(plot)
   ## return plot either with WebGL or without, depending on setting
   if (preferences$use_webgl == TRUE) {
-    plot %>% plotly::toWebGL()
-  } else {
-    plot
+    plot <- plot %>% plotly::toWebGL()
   }
+  cerebro_plotly_toolbar(plot)
 })
 
 ##----------------------------------------------------------------------------##

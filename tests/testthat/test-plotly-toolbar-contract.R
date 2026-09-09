@@ -2,16 +2,18 @@ read_viewer_file <- function(...) {
   paste(readLines(viewer_test_path(...), warn = FALSE), collapse = "\n")
 }
 
-test_that("pseudotime plots use the shared Plotly toolbar", {
+test_that("native Plotly outputs use the shared toolbar", {
   paths <- list(
     c("trajectory", "distribution_along_pseudotime.R"),
-    c("gene_expression", "UI_expression_by_pseudotime.R")
+    c("gene_expression", "UI_expression_by_pseudotime.R"),
+    c("coordinated_views", "server.R"),
+    c("extra_material", "content.R")
   )
 
   for (path in paths) {
     expect_match(
       do.call(read_viewer_file, as.list(path)),
-      "cerebro_plotly_toolbar(plot)",
+      "cerebro_plotly_toolbar",
       fixed = TRUE
     )
   }
