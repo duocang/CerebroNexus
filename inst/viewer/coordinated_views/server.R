@@ -647,31 +647,21 @@ cv_has_expression <- function() {
   isTRUE(tryCatch(nrow(data_set()$expression) > 0, error = function(e) FALSE))
 }
 
-## Pull one gene aligned to `cells`. Returns NULL if unavailable.
-cv_gene_values <- function(gene, cells) {
-  if (is.null(gene) || !nzchar(gene)) {
-    return(NULL)
-  }
-  cells <- as.character(cells)
-  m <- tryCatch(
-    data_set()$getExpressionMatrix(cells = cells, genes = gene),
-    error = function(e) NULL
+## Pull several genes in one backend call, aligned to `cells`.
+cv_gene_values_many <- function(genes, cells) {
+  values <- tryCatch(
+    viewerExpressionValues(data_set(), cells, genes),
+    error = function(e) list()
   )
-  if (is.null(m)) {
-    return(NULL)
-  }
-  if (is.null(dim(m))) {
-    v <- as.numeric(m)
-  } else {
-    cn <- colnames(m)
-    v <- if (!is.null(cn)) {
-      as.numeric(m[1, match(cells, cn)])
-    } else {
-      as.numeric(m[1, ])
-    }
-  }
-  v[is.na(v)] <- 0
-  v
+  lapply(values, function(value) {
+    value[is.na(value)] <- 0
+    value
+  })
+}
+
+cv_gene_values <- function(gene, cells) {
+  values <- cv_gene_values_many(gene, cells)
+  if (!length(values)) NULL else values[[1L]]
 }
 
 cv_scale_gene_values <- function(v) {
@@ -683,14 +673,6 @@ cv_scale_gene_values <- function(v) {
   }
   q[is.na(q)] <- 0L
   list(v = q, max = round(mx, 3))
-}
-
-cv_gene_vector <- function(gene, cells) {
-  v <- cv_gene_values(gene, cells)
-  if (is.null(v)) {
-    return(NULL)
-  }
-  cv_scale_gene_values(v)
 }
 
 serverSideGeneSelector(
@@ -723,10 +705,9 @@ observeEvent(
       session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
       return()
     }
-    values <- lapply(genes, cv_gene_values, cells = b$cells)
-    keep <- !vapply(values, is.null, logical(1))
-    genes <- genes[keep]
-    values <- values[keep]
+    values <- cv_gene_values_many(genes, b$cells)
+    genes <- intersect(genes, names(values))
+    values <- values[genes]
     if (length(values) == 0) {
       session$sendCustomMessage(
         "coordviews_geneval",
@@ -780,12 +761,19 @@ observeEvent(
       return()
     }
     zero <- rep(0L, b$n)
+    channel_genes <- c(
+      r = input[["coordviews_gene_r"]] %||% "",
+      g = input[["coordviews_gene_g"]] %||% "",
+      b = input[["coordviews_gene_b"]] %||% ""
+    )
+    values <- cv_gene_values_many(unique(channel_genes), b$cells)
     chan <- function(id) {
       g <- input[[id]]
       if (is.null(g) || !nzchar(g)) {
         return(list(v = zero, gene = ""))
       }
-      gv <- cv_gene_vector(g, b$cells)
+      value <- values[[g]]
+      gv <- if (is.null(value)) NULL else cv_scale_gene_values(value)
       if (is.null(gv)) list(v = zero, gene = "") else list(v = gv$v, gene = g)
     }
     r <- chan("coordviews_gene_r")
