@@ -511,7 +511,7 @@ test_that("categorical scatter sends one colour per trace", {
   )
 
   expect_identical(length(payload$data$color[[1L]]), 1L)
-  expect_identical(unname(payload$data$color[[1L]]), "#123456")
+  expect_identical(as.character(payload$data$color[[1L]]), "#123456")
 })
 
 test_that("structured hover normalization preserves its wire state", {
