@@ -225,6 +225,50 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   expect_identical(toggle_default$background, "rgb(236, 235, 235)")
   expect_identical(toggle_default$color, "rgb(107, 107, 112)")
 
+  sidebar_open <- app$get_js(paste0(
+    "(() => {",
+    "const sidebar=document.querySelector('.main-sidebar').getBoundingClientRect();",
+    "const content=document.querySelector('.content-wrapper').getBoundingClientRect();",
+    "const link=document.querySelector('.sidebar-menu > li > a').getBoundingClientRect();",
+    "return {sidebarLeft:sidebar.left,sidebarRight:sidebar.right,",
+    "contentLeft:content.left,linkX:link.left+link.width/2,",
+    "linkY:link.top+link.height/2};",
+    "})()"
+  ))
+  app$get_chromote_session()$Input$dispatchMouseEvent(
+    type = "mouseMoved",
+    x = sidebar_open$linkX,
+    y = sidebar_open$linkY
+  )
+  app$wait_for_js(
+    "document.querySelector('.sidebar-menu > li:hover') !== null",
+    timeout = 5000
+  )
+  sidebar_hover <- app$get_js(paste0(
+    "(() => {",
+    "const sidebar=document.querySelector('.main-sidebar').getBoundingClientRect();",
+    "const content=document.querySelector('.content-wrapper').getBoundingClientRect();",
+    "return {overflow:getComputedStyle(document.querySelector('.sidebar-menu')).overflow,",
+    "sidebarLeft:sidebar.left,sidebarRight:sidebar.right,contentLeft:content.left};",
+    "})()"
+  ))
+  expect_identical(sidebar_hover$overflow, "hidden")
+  expect_equal(
+    sidebar_hover$sidebarLeft,
+    sidebar_open$sidebarLeft,
+    tolerance = 1
+  )
+  expect_equal(
+    sidebar_hover$sidebarRight,
+    sidebar_open$sidebarRight,
+    tolerance = 1
+  )
+  expect_equal(
+    sidebar_hover$contentLeft,
+    sidebar_open$contentLeft,
+    tolerance = 1
+  )
+
   toggle_center <- app$get_js(paste0(
     "(() => {",
     "const r = document.querySelector('.sidebar-toggle').getBoundingClientRect();",
