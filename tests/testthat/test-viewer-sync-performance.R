@@ -103,6 +103,66 @@ run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
   )
 }
 
+test_that("the first reactive value bypasses debounce", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility_env
+  )
+  expect_true(is.function(utility_env$debounceAfterFirst))
+
+  compute_count <- 0L
+  server <- function(input, output, session) {
+    raw <- shiny::reactive({
+      shiny::req(input$value)
+      compute_count <<- compute_count + 1L
+      input$value
+    })
+    ready <- utility_env$debounceAfterFirst(raw, 10000)
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(value = "first")
+    expect_identical(ready(), "first")
+    expect_identical(compute_count, 1L)
+
+    session$setInputs(value = "second")
+    expect_identical(ready(), "first")
+    expect_identical(compute_count, 2L)
+  })
+})
+
+test_that("event debounce coalesces expensive work after the first value", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility_env
+  )
+  expect_true(is.function(utility_env$debounceEventAfterFirst))
+
+  compute_count <- 0L
+  server <- function(input, output, session) {
+    event <- shiny::reactive(input$value)
+    value <- shiny::reactive({
+      compute_count <<- compute_count + 1L
+      input$value
+    })
+    ready <- utility_env$debounceEventAfterFirst(event, value, 100)
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(value = "first")
+    expect_identical(ready(), "first")
+    expect_identical(compute_count, 1L)
+
+    session$setInputs(value = "second")
+    session$setInputs(value = "third")
+    session$elapse(101)
+    expect_identical(ready(), "third")
+    expect_identical(compute_count, 2L)
+  })
+})
+
 test_that("expression rows are fetched once and aligned by cell", {
   utility_env <- new.env(parent = globalenv())
   sys.source(
@@ -196,6 +256,72 @@ test_that("already aligned expression cells skip the string match", {
   expect_false(3L %in% match_lengths)
 })
 
+test_that("Viewer hidden outputs activate on their first owning tab visit", {
+  server <- read_sync_perf_viewer("shiny_server.R")
+  group_filters <- read_sync_perf_viewer(
+    "module",
+    "group_filters",
+    "group_filters_widget.R"
+  )
+
+  expect_match(server, "viewer_hidden_output_options", fixed = TRUE)
+  expect_match(server, 'input[["sidebar"]]', fixed = TRUE)
+  expect_match(server, "viewerOutputTab", fixed = TRUE)
+  expect_no_match(server, "viewer_deferred_output_spacing_ms", fixed = TRUE)
+  expect_no_match(server, "delay = 1", fixed = TRUE)
+  expect_no_match(server, "cerebro_async", fixed = TRUE)
+  expect_match(group_filters, 'get0("outputOptions"', fixed = TRUE)
+})
+
+test_that("hidden output IDs resolve to their owning sidebar tabs", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility_env
+  )
+  expect_identical(
+    utility_env$viewerOutputTab(c(
+      "overview_projection_point_border_UI",
+      "expression_projection_data_parameters_UI",
+      "spatial_projection_main_parameters_UI",
+      "coordviews_image_ui",
+      "ir_display_panel",
+      "trajectory_projection_group_labels_UI",
+      "trekker_main_parameters_ui",
+      "hla_more_parameters_ui",
+      "unknown_output"
+    )),
+    c(
+      "overview",
+      "geneExpression",
+      "spatial",
+      "coordinated_views",
+      "immune_repertoire",
+      "trajectory",
+      "trekker",
+      "hla_tcr_motifs",
+      NA_character_
+    )
+  )
+})
+
+test_that("visible projections keep debounce after their first render", {
+  paths <- c(
+    "overview/obj_projection_data_to_plot.R",
+    "gene_expression/obj_projection_data_to_plot.R",
+    "spatial/obj_projection_data_to_plot.R"
+  )
+
+  for (path in paths) {
+    expect_match(
+      read_sync_perf_viewer(path),
+      "debounceEventAfterFirst",
+      fixed = TRUE,
+      info = path
+    )
+  }
+})
+
 test_that("RGB and linked expression use batched reads", {
   gene_expression <- read_sync_perf_viewer(
     "gene_expression",
@@ -222,6 +348,52 @@ test_that("separate gene panels do not transpose the expression matrix", {
   expect_no_match(gene_expression, "Matrix::t", fixed = TRUE)
 })
 
+test_that("Spatial full extents are memoized by a session reactive", {
+  spatial <- read_sync_perf_viewer(
+    "spatial",
+    "obj_projection_data_to_plot.R"
+  )
+
+  expect_match(
+    spatial,
+    "spatial_projection_full_extent <- cachePlot(",
+    fixed = TRUE
+  )
+  expect_match(
+    spatial,
+    "extent <- spatial_projection_full_extent()",
+    fixed = TRUE
+  )
+})
+
+test_that("session cache reuses a Spatial-style A-B-A key", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility_env
+  )
+  compute_count <- 0L
+  server <- function(input, output, session) {
+    extent <- utility_env$cachePlot(
+      shiny::reactive({
+        compute_count <<- compute_count + 1L
+        input$key
+      }),
+      input$key
+    )
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(key = "A")
+    expect_identical(extent(), "A")
+    session$setInputs(key = "B")
+    expect_identical(extent(), "B")
+    session$setInputs(key = "A")
+    expect_identical(extent(), "A")
+    expect_identical(compute_count, 2L)
+  })
+})
+
 test_that("single-gene Viewer routes prefer row extraction", {
   paths <- c(
     "gene_expression/obj_projection_expression_levels.R",
@@ -237,6 +409,28 @@ test_that("single-gene Viewer routes prefer row extraction", {
       info = path
     )
   }
+})
+
+test_that("Viewer source parsing is cached but evaluation remains per session", {
+  source_cache <- file.path(sync_perf_viewer_root, "source_cache.R")
+  expect_true(file.exists(source_cache))
+  cache_env <- new.env(parent = globalenv())
+  sys.source(source_cache, envir = cache_env)
+
+  source_file <- tempfile(fileext = ".R")
+  writeLines("value <- 1L", source_file)
+  first <- new.env(parent = baseenv())
+  second <- new.env(parent = baseenv())
+  cache_env$viewerSource(source_file, first)
+  cache_env$viewerSource(source_file, second)
+  expect_identical(first$value, 1L)
+  expect_identical(second$value, 1L)
+  expect_identical(length(cache_env$.viewer_source_cache), 1L)
+
+  writeLines("value <- 200L", source_file)
+  third <- new.env(parent = baseenv())
+  cache_env$viewerSource(source_file, third)
+  expect_identical(third$value, 200L)
 })
 
 test_that("specialist cell sampling uses one original-row index sample", {
@@ -349,7 +543,7 @@ test_that("specialist cell sampling uses one original-row index sample", {
   }
 })
 
-test_that("projection hover formats an existing metadata subset", {
+test_that("projection hover packages an existing metadata subset", {
   expressions <- parse(file.path(sync_perf_viewer_root, "shiny_server.R"))
   definition <- NULL
   for (expression in expressions) {
@@ -376,10 +570,10 @@ test_that("projection hover formats an existing metadata subset", {
     format_calls <- 0L
     scope <- list2env(list(
       preferences = list(show_hover_info_in_projections = TRUE),
-      buildHoverInfoForProjections = function(cells) {
+      buildHoverDataForProjections = function(cells) {
         format_calls <<- format_calls + 1L
         formatted <<- cells
-        paste0("hover-", cells$cell_barcode)
+        list(enabled = TRUE, selection_key = I(cells$cell_barcode))
       }
     ))
     hover <- eval(definition, envir = scope)
@@ -387,14 +581,15 @@ test_that("projection hover formats an existing metadata subset", {
     displayed <- metadata[c(4L, 2L), , drop = FALSE]
     result <- hover(displayed)
     expect_identical(formatted, displayed)
-    expect_identical(
-      result,
-      stats::setNames(c("hover-cell4", "hover-cell2"), c("cell4", "cell2"))
-    )
+    expect_true(result$enabled)
+    expect_identical(as.character(result$selection_key), c("cell4", "cell2"))
     expect_identical(format_calls, 1L)
 
     scope$preferences[["show_hover_info_in_projections"]] <- FALSE
-    expect_identical(hover(metadata[c(1L, 3L), , drop = FALSE]), "none")
+    expect_identical(
+      hover(metadata[c(1L, 3L), , drop = FALSE]),
+      list(enabled = FALSE)
+    )
     expect_identical(format_calls, 1L)
   }
 })
@@ -436,6 +631,49 @@ test_that("projection hover text is assembled in one vectorized pass", {
   source <- read_sync_perf_viewer("utility_functions.R")
   expect_match(source, "do.call(paste0, parts)", fixed = TRUE)
   expect_no_match(source, "hover_info <- glue::glue", fixed = TRUE)
+})
+
+test_that("Canvas projection hover stays columnar", {
+  utility <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility
+  )
+  utility$getGroups <- function() c("sample", "cell_type")
+  metadata <- data.frame(
+    cell_barcode = c("cell1", "cell2"),
+    nUMI = c(1200, 34567),
+    nGene = c(800, 9012),
+    sample = c("A", "B"),
+    cell_type = c("T", "B")
+  )
+
+  hover <- utility$buildHoverDataForProjections(metadata)
+  expect_true(hover$enabled)
+  expect_identical(as.character(hover$selection_key), metadata$cell_barcode)
+  expect_identical(
+    lapply(hover$fields, function(field) unclass(field$values)),
+    list(metadata$nUMI, metadata$nGene)
+  )
+  expect_identical(
+    lapply(hover$groups, `[[`, "label"),
+    c("sample", "cell_type")
+  )
+  expect_identical(unclass(hover$groups[[1L]]$values), 0:1)
+})
+
+test_that("Linked views reuses the saved-view fingerprint", {
+  server <- read_sync_perf_viewer("coordinated_views", "server.R")
+  expect_match(
+    server,
+    "cv_build_bundle(data_set(), dataset$fingerprint)",
+    fixed = TRUE
+  )
+  expect_no_match(
+    server,
+    "cv_config_cell_fingerprint(b$cells)",
+    fixed = TRUE
+  )
 })
 
 test_that("specialist hover consumers reuse their metadata subset", {
