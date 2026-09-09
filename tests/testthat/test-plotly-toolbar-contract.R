@@ -28,6 +28,36 @@ test_that("native Plotly SVG icons are not hidden globally", {
   ))
 })
 
+test_that("shared Plotly controls use the viewer icon language", {
+  css <- read_viewer_file("www", "custom.css")
+  glyphs <- c(
+    "Box Select" = "\\f5cb",
+    "Lasso Select" = "\\f5ee",
+    "Pan" = "\\f0b2",
+    "Zoom in" = "\\f00e",
+    "Zoom out" = "\\f010",
+    "Reset axes" = "\\f015",
+    "Download plot as a png" = "\\f019"
+  )
+
+  for (title in names(glyphs)) {
+    expect_match(
+      css,
+      sprintf(
+        '.modebar-btn[data-title="%s"]::before { content: "%s"; }',
+        title,
+        glyphs[[title]]
+      ),
+      fixed = TRUE
+    )
+  }
+  expect_match(
+    css,
+    '.modebar-btn[data-title="Box Select"] svg,',
+    fixed = TRUE
+  )
+})
+
 test_that("Sankey plots request a download-only toolbar", {
   plotting <- read_viewer_file("plotting_functions.R")
 
@@ -35,6 +65,26 @@ test_that("Sankey plots request a download-only toolbar", {
     plotting,
     'cerebro_plotly_toolbar(plot, "toImage")',
     fixed = TRUE
+  )
+})
+
+test_that("Cartesian toolbars default to lasso selection", {
+  skip_if_not_installed("plotly")
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("plotting_functions.R"), envir = env)
+
+  fig <- env$cerebro_plotly_toolbar(plotly::plot_ly(x = 1, y = 1))
+  expect_identical(
+    suppressMessages(plotly::plotly_build(fig))$x$layout$dragmode,
+    "lasso"
+  )
+
+  download_only <- env$cerebro_plotly_toolbar(
+    plotly::plot_ly(x = 1, y = 1),
+    "toImage"
+  )
+  expect_null(
+    suppressMessages(plotly::plotly_build(download_only))$x$layout$dragmode
   )
 })
 

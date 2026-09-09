@@ -70,6 +70,9 @@ cerebro_plotly_toolbar <- function(
     "toImage"
   )
 ) {
+  if ("lasso2d" %in% buttons) {
+    fig <- plotly::layout(fig, dragmode = "lasso")
+  }
   plotly::config(
     fig,
     displayModeBar = TRUE,
