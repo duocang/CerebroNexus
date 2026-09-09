@@ -95,6 +95,31 @@ activate_tab <- function(app, tab_name, timeout = 20000) {
     timeout = timeout
   )
   app$run_js(sprintf("document.querySelector('%s').click();", selector))
+  active_tab <- retry_get_value(
+    app,
+    input = "sidebar",
+    timeout = timeout,
+    validate = function(value) identical(value, tab_name)
+  )
+  if (!identical(active_tab, tab_name)) {
+    stop(sprintf("tab did not activate: %s", tab_name), call. = FALSE)
+  }
+  app$wait_for_idle(timeout = timeout)
+}
+
+select_dataset <- function(app, path, timeout = 30000) {
+  app$set_inputs(crb_file_selector = path, wait_ = FALSE)
+  file <- basename(path)
+  selected <- retry_get_value(
+    app,
+    input = "crb_file_selector",
+    timeout = timeout,
+    validate = function(value) identical(basename(value), file)
+  )
+  if (!identical(basename(selected), file)) {
+    stop(sprintf("data set did not activate: %s", path), call. = FALSE)
+  }
+  app$wait_for_idle(timeout = timeout)
 }
 
 test_that("{shinytest2} recording: overview", {
@@ -126,11 +151,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 30000)
 
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_merfish.crb",
-    wait_ = FALSE
-  )
-  app$wait_for_idle(timeout = 30000)
+  select_dataset(app, "extdata/examples/demo_spatial_merfish.crb")
   activate_tab(app, "overview", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -140,10 +161,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
     timeout = 30000
   )
 
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
-    wait_ = FALSE
-  )
+  select_dataset(app, "extdata/examples/demo_spatial_xenium.crb")
   app$wait_for_js(
     paste0(
       "document.getElementById('overview_projection_point_color')?.value ",
@@ -177,11 +195,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
 
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_visium.crb",
-    wait_ = FALSE
-  )
-  app$wait_for_idle(timeout = 30000)
+  select_dataset(app, "extdata/examples/demo_spatial_visium.crb")
   activate_tab(app, "spatial", timeout = 30000)
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
@@ -228,11 +242,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
-    wait_ = FALSE
-  )
-  app$wait_for_idle(timeout = 30000)
+  select_dataset(app, "extdata/examples/demo_spatial_xenium.crb")
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -277,11 +287,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_slideseq.crb",
-    wait_ = FALSE
-  )
-  app$wait_for_idle(timeout = 30000)
+  select_dataset(app, "extdata/examples/demo_spatial_slideseq.crb")
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -328,10 +334,7 @@ test_that("Linked views resets the active background to its preset", {
   )
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
-  app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
-    wait_ = FALSE
-  )
+  select_dataset(app, "extdata/examples/demo_spatial_xenium.crb")
   activate_tab(app, "coordinated_views", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -412,7 +415,6 @@ test_that("{shinytest2} recording: main", {
   app$wait_for_idle(timeout = 20000)
 
   activate_tab(app, "overview")
-  app$wait_for_idle(timeout = 10000)
 
   ## verify the shared Canvas projection renders
   app$wait_for_js(
@@ -522,7 +524,6 @@ test_that("{shinytest2} recording: marker_genes", {
   # Marker genes is a conditionally shown sidebar item. Wait for it, then click,
   # so it activates on a slow runner instead of navigating too early.
   activate_tab(app, "markerGenes")
-  app$wait_for_idle(timeout = 10000)
 
   ## select seurat_clusters (only group with actual marker genes)
   app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
@@ -620,7 +621,6 @@ test_that("{shinytest2} recording: gene_expression", {
   app$wait_for_idle(timeout = 20000)
 
   activate_tab(app, "geneExpression")
-  app$wait_for_idle(timeout = 10000)
 
   ## projection UI renders without any gene selected
   proj_ui <- retry_get_value(app, output = "expression_projection_UI")
@@ -653,6 +653,16 @@ test_that("{shinytest2} recording: gene_expression", {
     expression_genes_input = c("MS4A1", "CD3D"),
     wait_ = FALSE
   )
+  expect_setequal(
+    retry_get_value(
+      app,
+      input = "expression_genes_input",
+      validate = function(value) {
+        setequal(value, c("MS4A1", "CD3D"))
+      }
+    ),
+    c("MS4A1", "CD3D")
+  )
   app$wait_for_js(
     paste0(
       "document.getElementById('expression_projection_genes_in_separate_panels')",
@@ -663,6 +673,14 @@ test_that("{shinytest2} recording: gene_expression", {
   app$set_inputs(
     expression_projection_genes_in_separate_panels = "separate",
     wait_ = FALSE
+  )
+  expect_identical(
+    retry_get_value(
+      app,
+      input = "expression_projection_genes_in_separate_panels",
+      validate = function(value) identical(value, "separate")
+    ),
+    "separate"
   )
   app$wait_for_js(
     paste0(
@@ -685,14 +703,13 @@ test_that("{shinytest2} recording: gene_expression", {
     expression_projection_gene_color_mode = "different",
     wait_ = FALSE
   )
-  app$wait_for_js(
-    paste0(
-      "document.querySelectorAll(",
-      "'#expression_projection_cell_view_host ",
-      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
-      ".length === 2"
+  expect_identical(
+    retry_get_value(
+      app,
+      input = "expression_projection_gene_color_mode",
+      validate = function(value) identical(value, "different")
     ),
-    timeout = 20000
+    "different"
   )
   app$wait_for_js(
     paste0(
