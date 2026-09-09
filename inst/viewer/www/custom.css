@@ -233,6 +233,7 @@ body.skin-blue .main-sidebar {
   box-shadow: none !important;
 }
 body.skin-blue .sidebar { padding-top: 4px; }
+body.skin-blue .sidebar-menu:hover { overflow: hidden; }
 /* Brand block at the top of the sidebar. The inline SVG wordmark inherits the
    sidebar text colour, with an accent on "Nexus". */
 body.skin-blue .sidebar .cerebro-brand {
