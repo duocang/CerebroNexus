@@ -1,6 +1,7 @@
 test_that("gene expression summary modes keep their intended series", {
-  helper <- testthat::test_path(
-    "../../inst/viewer/gene_expression/func_expression_summary.R"
+  helper <- viewer_test_path(
+    "gene_expression",
+    "func_expression_summary.R"
   )
   expect_true(file.exists(helper))
   if (!file.exists(helper)) {
@@ -58,8 +59,9 @@ test_that("gene expression summary modes keep their intended series", {
 })
 
 test_that("RGB summaries preserve repeated channels and omit empty ones", {
-  helper <- testthat::test_path(
-    "../../inst/viewer/gene_expression/func_expression_summary.R"
+  helper <- viewer_test_path(
+    "gene_expression",
+    "func_expression_summary.R"
   )
   skip_if_not(file.exists(helper))
   source(helper, local = TRUE)
@@ -77,13 +79,11 @@ test_that("RGB summaries preserve repeated channels and omit empty ones", {
 
 test_that("RGB violin outliers use the channel color", {
   source(
-    testthat::test_path("../../inst/viewer/plotting_functions.R"),
+    viewer_test_path("plotting_functions.R"),
     local = TRUE
   )
   source(
-    testthat::test_path(
-      "../../inst/viewer/gene_expression/func_expression_summary.R"
-    ),
+    viewer_test_path("gene_expression", "func_expression_summary.R"),
     local = TRUE
   )
 
@@ -105,7 +105,7 @@ test_that("RGB violin outliers use the channel color", {
 
 test_that("gene expression panels follow gene, selection, and display mode", {
   skip_if_not_installed("shinytest2")
-  inst_dir <- testthat::test_path("../../inst")
+  inst_dir <- viewer_app_test_path()
   shinytest2::local_app_support(inst_dir)
   app <- shinytest2::AppDriver$new(
     inst_dir,
@@ -137,6 +137,13 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "document.querySelector('#expression_by_gene_UI h3') !== null"
   ))
 
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'#expression_projection_cell_view_host canvas:not(.cv-mini)') !== null"
+    ),
+    timeout = 20000
+  )
   app$run_js(paste0(
     "Shiny.setInputValue('expression_projection_persistent_selection',",
     "{x:[0],y:[0],ids:['missing-cell']},{priority:'event'});"

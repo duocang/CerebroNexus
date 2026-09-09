@@ -89,17 +89,14 @@ test_that("Cartesian toolbars default to lasso selection", {
 })
 
 test_that("the declared Shiny minimum supplies Font Awesome 6", {
-  description <- read.dcf(
-    testthat::test_path("..", "..", "DESCRIPTION"),
-    fields = "Imports"
-  )[[1]]
+  description <- packageDescription("CerebroNexus")[["Imports"]]
 
   expect_match(description, "shiny \\(>= 1[.]7[.]2[.]1\\)")
 })
 
 test_that("shared Plotly toolbars render their icons and charts", {
   skip_if_not_installed("shinytest2")
-  inst_dir <- testthat::test_path("../../inst")
+  inst_dir <- viewer_app_test_path()
   shinytest2::local_app_support(inst_dir)
   app <- shinytest2::AppDriver$new(
     inst_dir,

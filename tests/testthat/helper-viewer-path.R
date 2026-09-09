@@ -7,6 +7,15 @@ viewer_test_path <- function(...) {
   system.file("viewer", ..., package = "CerebroNexus")
 }
 
+viewer_app_test_path <- function() {
+  source_path <- testthat::test_path("..", "..", "inst")
+  if (file.exists(file.path(source_path, "app.R"))) {
+    return(source_path)
+  }
+
+  system.file(package = "CerebroNexus")
+}
+
 viewer_drag_mouse <- function(app, x1, y1, x2, y2) {
   mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
   mouse(
