@@ -1,18 +1,23 @@
 # Changelog
 
+## CerebroNexus 4.4.2
+
+### Viewer
+
+- Plotly charts use Linked views-style toolbars that switch from
+  horizontal to vertical when their panel is narrow.
+
 ## CerebroNexus 4.4.1
 
 ### Viewer
 
-- Viewer data loading now rejects malformed or impersonated Cerebro
-  objects before invoking dataset methods and reports failures without
-  crashing the session.
 - Ordinary data tables escape HTML content by default, including the
   gene ID conversion table.
-- Gene-set selection uses the public `msigdbr` API and caches species
-  data for repeated queries.
-- Trajectory PDF exports are delivered as browser downloads instead of
-  writing to user-selected paths on the Viewer host.
+- Gene-set selection uses the public `msigdbr` API and caches only
+  compact catalogues and resolved gene lists across Viewer sessions.
+- Unsafe server-side PDF export controls were removed; compatible plots
+  use browser-side PNG downloads from the plot toolbar. Portable views
+  also offer PNG download through Share view.
 
 ## CerebroNexus 4.4.0
 

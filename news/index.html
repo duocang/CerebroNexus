@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -69,17 +69,23 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/fix/viewer-runtime-hardening/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/fix/todo-viewer-ui/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.4.2" id="cerebronexus-442">CerebroNexus 4.4.2<a class="anchor" aria-label="anchor" href="#cerebronexus-442"></a></h2>
+<div class="section level3">
+<h3 id="viewer-4-4-2">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-4-2"></a></h3>
+<ul><li>Plotly charts use Linked views-style toolbars that switch from horizontal to vertical when their panel is narrow.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.4.1" id="cerebronexus-441">CerebroNexus 4.4.1<a class="anchor" aria-label="anchor" href="#cerebronexus-441"></a></h2>
 <div class="section level3">
 <h3 id="viewer-4-4-1">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-4-1"></a></h3>
-<ul><li>Viewer data loading now rejects malformed or impersonated Cerebro objects before invoking dataset methods and reports failures without crashing the session.</li>
-<li>Ordinary data tables escape HTML content by default, including the gene ID conversion table.</li>
-<li>Gene-set selection uses the public <code>msigdbr</code> API and caches species data for repeated queries.</li>
-<li>Trajectory PDF exports are delivered as browser downloads instead of writing to user-selected paths on the Viewer host.</li>
+<ul><li>Ordinary data tables escape HTML content by default, including the gene ID conversion table.</li>
+<li>Gene-set selection uses the public <code>msigdbr</code> API and caches only compact catalogues and resolved gene lists across Viewer sessions.</li>
+<li>Unsafe server-side PDF export controls were removed; compatible plots use browser-side PNG downloads from the plot toolbar. Portable views also offer PNG download through Share view.</li>
 </ul></div>
 </div>
     <div class="section level2">
