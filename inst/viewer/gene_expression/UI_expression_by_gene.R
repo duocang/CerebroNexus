@@ -6,6 +6,7 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene_UI"]] <- renderUI({
+  req(length(expression_summary_data()$genes) > 1)
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -21,34 +22,11 @@ output[["expression_by_gene_UI"]] <- renderUI({
 ## Bar plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene"]] <- plotly::renderPlotly({
-  req(expression_projection_parameters_color())
-  ## prepare expression levels, depending on genes provided by user
-  ## ... if no genes are available
-  if (length(expression_selected_genes()$genes_to_display_present) == 0) {
-    ## manually prepare empty data frame
-    expression_levels <- data.frame(
-      "gene" = character(),
-      "expression" = integer()
-    )
-    ## ... if at least 1 gene has been provided
-  } else if (
-    length(expression_selected_genes()$genes_to_display_present) >= 1
-  ) {
-    ## - calculate mean expression for every gene across all cells
-    ## - sort genes by mean expression from high to low
-    ## - show only first 50 genes if more are available
-    expression_levels <- data_set()$expression[
-      expression_selected_genes()$genes_to_display_present,
-      ,
-      drop = FALSE
-    ]
-    expression_levels <- Matrix::rowMeans(expression_levels)
-    expression_levels <- data.frame(
-      gene = expression_selected_genes()$genes_to_display_present,
-      expression = expression_levels
-    ) %>%
-      dplyr::slice_max(expression, n = 50)
-  }
+  req(expression_projection_parameters_color(), expression_summary_data())
+  expression_levels <- data_set()$getMeanExpressionForGenes(
+    expression_summary_data()$genes
+  ) %>%
+    dplyr::slice_max(expression, n = 50)
   color_settings <- expression_projection_parameters_color()
   color_scale <- expressionColorScale(color_settings[["color_scale"]])
   ## prepare plot
@@ -118,6 +96,6 @@ observeEvent(input[["expression_by_gene_info"]], {
 expression_by_gene_info <- list(
   title = "Expression levels by gene",
   text = p(
-    "Log-normalised expression of 50 highest expressed genes inserted above. Shows mean across all cells."
+    "Mean log-normalised expression across all cells for up to 50 selected genes. This comparison is shown only when at least two genes are selected."
   )
 )

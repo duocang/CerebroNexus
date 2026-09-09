@@ -8,6 +8,7 @@
 ## UI element with input selection (which group to show) and plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_group_UI"]] <- renderUI({
+  summary <- expression_summary_data()
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -21,7 +22,13 @@ output[["expression_by_group_UI"]] <- renderUI({
           choices = getGroups(),
           width = "100%"
         ),
-        plotly::plotlyOutput("expression_by_group")
+        plotly::plotlyOutput(
+          "expression_by_group",
+          height = paste0(
+            max(400, ceiling(length(summary$series) / 3) * 300),
+            "px"
+          )
+        )
       )
     )
   )
@@ -34,66 +41,16 @@ output[["expression_by_group_UI"]] <- renderUI({
 output[["expression_by_group"]] <- plotly::renderPlotly({
   req(
     expression_projection_data(),
-    expression_projection_expression_levels(),
+    expression_summary_data(),
     input[["expression_by_group_selected_group"]]
   )
-  ## check whether expression should be shown in separate panels
-  ## ... separate panels enabled and "gene" column present (which means
-  ##     expression was actually split by gene)
-  ##     don't plot anything because data is not present
-  ##     even if I merged all meta data in the data frame, it wouldn't be correct
-  ##     because cells are plotted once per gene
   cells_df <- expression_projection_data()
-  if (is.list(expression_projection_expression_levels())) {
-    cells_df$level <- do.call(
-      cbind,
-      expression_projection_expression_levels()
-    ) %>%
-      Matrix::rowMeans()
-  } else {
-    cells_df$level <- expression_projection_expression_levels()
-  }
-  ## prepare plot
-  cells_df %>%
-    plotly::plot_ly(
-      x = ~ .[[input[["expression_by_group_selected_group"]]]],
-      y = ~level,
-      type = "violin",
-      box = list(
-        visible = TRUE
-      ),
-      meanline = list(
-        visible = TRUE
-      ),
-      color = ~ .[[input[["expression_by_group_selected_group"]]]],
-      colors = reactive_colors()[[input[[
-        "expression_by_group_selected_group"
-      ]]]],
-      source = "subset",
-      showlegend = FALSE,
-      hoverinfo = "y",
-      marker = list(
-        size = 5
-      )
-    ) %>%
-    plotly::layout(
-      title = "",
-      xaxis = list(
-        title = "",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      yaxis = list(
-        title = "Expression level",
-        range = c(0, max(cells_df$level, na.rm = TRUE) * 1.2),
-        hoverformat = ".2f",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      dragmode = "lasso",
-      hovermode = "compare"
-    ) %>%
-    cerebro_plotly_toolbar()
+  selected_group <- input[["expression_by_group_selected_group"]]
+  plotExpressionSummary(
+    expression_summary_data()$series,
+    cells_df[[selected_group]],
+    reactive_colors()[[selected_group]]
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -117,6 +74,6 @@ observeEvent(input[["expression_by_group_info"]], {
 expression_by_group_info <- list(
   title = "Expression levels by group",
   text = p(
-    "Log-normalised expression of genes inserted above by group If more than 1 gene was provided, this reflects the average across all cells of each group"
+    "Log-normalised expression by group. Mean expression mode averages the selected genes for each cell; Separate panels and RGB modes retain one panel per gene or populated channel."
   )
 )
