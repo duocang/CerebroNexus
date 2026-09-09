@@ -12,6 +12,30 @@
 ## other specialist pages.
 ##----------------------------------------------------------------------------##
 
+hlaMotifModebar <- function() {
+  button <- function(action, label, icon_name, active = FALSE) {
+    tags$button(
+      type = "button",
+      class = if (active) "hla-mb-btn is-on" else "hla-mb-btn",
+      `data-act` = action,
+      `data-tip` = label,
+      `aria-label` = label,
+      icon(icon_name)
+    )
+  }
+  tags$div(
+    class = "hla-modebar",
+    id = "hla-modebar",
+    button("box", "Box select", "vector-square"),
+    button("lasso", "Lasso select", "draw-polygon", active = TRUE),
+    button("pan", "Pan", "up-down-left-right"),
+    button("zoomin", "Zoom in", "search-plus"),
+    button("zoomout", "Zoom out", "search-minus"),
+    button("reset", "Reset view", "house"),
+    button("download", "Download PNG", "download")
+  )
+}
+
 tab_hla_tcr_motifs <- tabItem(
   tabName = "hla_tcr_motifs",
   cerebroVizPageHeader(
@@ -80,7 +104,7 @@ tab_hla_tcr_motifs <- tabItem(
             # are turned off in visualizations.R for consistency).
             tags$div(
               class = "hla-motif-tab",
-              tags$div(class = "hla-modebar", id = "hla-modebar"),
+              hlaMotifModebar(),
               uiOutput("hla_legend_ui"),
               # Fill the viewport instead of a hardcoded 640px: the wrapper is
               # sized to (viewport - its live top - a bottom gap) by

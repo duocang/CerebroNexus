@@ -9,34 +9,63 @@
 /* The modebar is absolute inside .hla-motif-tab (which wraps legend + plot), so
  * it floats at the top-right of the legend row when a legend is shown and at the
  * plot's top-right when it is hidden. */
-.hla-motif-tab { position: relative; }
+.hla-motif-tab { position: relative; container-type: inline-size; }
 .hla-plot-wrap { position: relative; }
 .hla-modebar {
   position: absolute; top: 3px; right: 4px; z-index: 6;
-  display: flex; align-items: center; gap: 1px; padding: 2px 3px;
+  display: flex; align-items: center; gap: 4px; padding: 3px;
   background: var(--c-surface); border: 1px solid var(--c-border);
-  border-radius: var(--r-sm); box-shadow: 0 1px 4px rgba(0, 0, 0, .10);
+  border-radius: 6px;
   opacity: .92; transition: opacity .15s;
 }
 .hla-plot-wrap:hover .hla-modebar { opacity: 1; }
 .hla-mb-btn {
+  position: relative;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; cursor: pointer; border-radius: var(--r-xs);
-  padding: 0; border: 0; background: transparent; color: var(--c-text-3);
+  width: 26px; height: 22px; cursor: pointer; border-radius: 5px;
+  font-size: 11px;
+  padding: 0; border: 1px solid var(--c-border);
+  background: var(--c-surface); color: var(--c-text-2);
 }
 .hla-mb-btn svg { fill: currentColor; }
 .hla-mb-btn:hover { color: var(--c-text); background: var(--c-surface-2); }
 .hla-mb-btn.is-on {
   color: var(--c-amber-700);
   background: var(--c-amber-50);
-  box-shadow: inset 0 0 0 1px var(--c-amber-300);
+  border-color: var(--c-amber-200);
+}
+.hla-mb-btn::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 7px); right: 0; z-index: 30;
+  white-space: nowrap; pointer-events: none;
+  padding: 5px 8px; border-radius: 5px;
+  background: rgba(28, 28, 30, .94); color: #fff;
+  font-size: 11.5px; font-weight: 500; line-height: 1.2;
+  opacity: 0; transform: translateY(-3px);
+  transition: opacity .13s ease, transform .13s ease;
+}
+.hla-mb-btn:hover::after,
+.hla-mb-btn:focus-visible::after {
+  opacity: 1; transform: none; transition-delay: .35s;
 }
 /* At the opening fit (the minimum zoom) the zoom-out button greys out and stops
  * responding -- the network can only be zoomed IN. Toggled by visEvents'
  * afterDrawing in hla_tcr_motifs/visualizations.R. */
 .hla-mb-btn--off,
 .hla-mb-btn--off:hover {
-  opacity: .3; cursor: default; color: var(--c-text-3); background: none;
+  opacity: .35; cursor: default; pointer-events: none;
+  color: var(--c-text-3); background: var(--c-surface);
+  border-color: var(--c-border);
+}
+
+@container (max-width: 420px) {
+  .hla-modebar { flex-direction: column; }
+  .hla-mb-btn::after {
+    top: 50%; right: calc(100% + 7px);
+    transform: translateY(-50%) translateX(3px);
+  }
+  .hla-mb-btn:hover::after,
+  .hla-mb-btn:focus-visible::after { transform: translateY(-50%); }
 }
 
 .hla-selection-overlay {

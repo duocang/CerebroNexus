@@ -2,25 +2,6 @@
 (function () {
   'use strict';
 
-  var TR = 'matrix(1 0 0 -1 0 850)';
-  var ICONS = {
-    box: { vb: '0 0 875 1000', d: 'M125 125h625v625H125zM210 210v455h455V210z' },
-    lasso: { vb: '0 0 875 1000', d: 'M120 235l215-120 300 70 120 250-145 290-330 45-170-220zM205 270l-55 260 145 185 280-38 125-245-92-190-260-61z' },
-    pan: { vb: '0 0 875 1000', d: 'M375 70h125v210l80-80 88 88-230 230-230-230 88-88 79 80zM375 780V570l-79 80-88-88 230-230 230 230-88 88-80-80v210z' },
-    zoomin: { vb: '0 0 875 1000', d: 'm1 787l0-875 875 0 0 875-875 0z m687-500l-187 0 0-187-125 0 0 187-188 0 0 125 188 0 0 187 125 0 0-187 187 0 0-125z' },
-    zoomout: { vb: '0 0 875 1000', d: 'm0 788l0-876 875 0 0 876-875 0z m688-500l-500 0 0 125 500 0 0-125z' },
-    reset: { vb: '0 0 928.6 1000', d: 'm786 296v-267q0-15-11-26t-25-10h-214v214h-143v-214h-214q-15 0-25 10t-11 26v267l321 264 321-264z m124 39l-34-41q-12-12-26-3l-386 322-386-322q-13-8-25 3l-35 41q-9 13 3 25l401 334q42 30 85 0l401-334q12-12 2-25z' },
-    download: { vb: '0 0 1000 1000', d: 'm500 450c-83 0-150-67-150-150s67-150 150-150 150 67 150 150-67 150-150 150z m400 150h-120q-29 0-39 29l-31 93q-9 28-40 28h-340q-31 0-39-28l-31-94q-10-28-40-28h-120q-100 0-100-100v-450q0-100 100-100h800q100 0 100 100v450q0 100-100 100z' }
-  };
-  var BUTTONS = [
-    { act: 'box', title: 'Box select', icon: ICONS.box },
-    { act: 'lasso', title: 'Lasso select', icon: ICONS.lasso },
-    { act: 'pan', title: 'Pan', icon: ICONS.pan },
-    { act: 'zoomin', title: 'Zoom in', icon: ICONS.zoomin },
-    { act: 'zoomout', title: 'Zoom out', icon: ICONS.zoomout },
-    { act: 'reset', title: 'Reset view', icon: ICONS.reset },
-    { act: 'download', title: 'Download plot as a png', icon: ICONS.download }
-  ];
   var mode = 'lasso';
   var overlay = null;
   var overlayNet = null;
@@ -33,11 +14,6 @@
   var syncingSelection = false;
   var shinyBound = false;
 
-  function svgIcon(icon) {
-    return '<svg viewBox="' + icon.vb + '" width="15" height="15">' +
-      '<path d="' + icon.d + '" transform="' + TR +
-      '" fill="currentColor"></path></svg>';
-  }
   function net() {
     if (!window.HTMLWidgets || !window.HTMLWidgets.find) return null;
     var widget = window.HTMLWidgets.find('#hla_plot_motifNetwork');
@@ -385,11 +361,6 @@
     var bar = document.getElementById('hla-modebar');
     if (!bar || bar._built) return;
     bar._built = true;
-    bar.innerHTML = BUTTONS.map(function (button) {
-      return '<button type="button" class="hla-mb-btn" data-act="' + button.act +
-        '" title="' + button.title + '" aria-label="' + button.title + '">' +
-        svgIcon(button.icon) + '</button>';
-    }).join('');
     bar.querySelectorAll('.hla-mb-btn').forEach(function (button) {
       button.addEventListener('click', function () {
         var action = button.dataset.act;
