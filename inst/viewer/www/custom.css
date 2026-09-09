@@ -1866,8 +1866,68 @@ body .shiny-progress-container .progress-text {
 body .shiny-progress-container .progress-message { color: var(--c-text) !important; }
 body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !important; }
 
-body .js-plotly-plot .modebar-btn.active path,
-body .js-plotly-plot .modebar-btn:hover path { fill: var(--c-amber) !important; }
+/* Native Plotly charts use the same compact tool language as Linked views. */
+body .js-plotly-plot {
+  container-type: inline-size;
+}
+body .js-plotly-plot .modebar {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 3px !important;
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+}
+body .js-plotly-plot .modebar-group {
+  display: flex;
+  gap: 4px;
+  padding-left: 0 !important;
+}
+body .js-plotly-plot .modebar-btn {
+  float: none !important;
+  box-sizing: border-box;
+  width: 26px;
+  height: 22px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-2) !important;
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border);
+  border-radius: 5px;
+}
+body .js-plotly-plot .modebar-btn svg {
+  position: static !important;
+  width: 14px;
+  height: 14px;
+}
+body .js-plotly-plot .modebar-btn path {
+  fill: currentColor !important;
+}
+body .js-plotly-plot .modebar-btn:hover {
+  color: var(--c-amber-700) !important;
+  background: var(--c-amber-50) !important;
+  border-color: var(--c-amber-200);
+}
+body .js-plotly-plot .modebar-btn.active {
+  color: var(--c-amber-700) !important;
+  background: var(--c-amber-50) !important;
+  border-color: var(--c-amber-200);
+}
+body .js-plotly-plot .modebar-btn[aria-disabled="true"],
+body .js-plotly-plot .modebar-btn.disabled {
+  opacity: .35;
+  pointer-events: none;
+}
+
+@container (max-width: 420px) {
+  body .js-plotly-plot .modebar,
+  body .js-plotly-plot .modebar-group {
+    flex-direction: column;
+  }
+}
 
 body .shiny-bound-output.recalculating::before,
 body .loading-spinner,

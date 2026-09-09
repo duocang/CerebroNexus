@@ -23,28 +23,6 @@ IR_COMPARE_RECT_BORDER <- "#333333"
 ## hue circle at higher chroma, so adjacent clones get clearly different hues.
 IR_COMPARE_PALETTE <- "Dark 3"
 
-## Give a plotly figure the shared cell-view modebar look ("theme a"):
-## hide the Plotly logo and drop the clutter buttons, mirroring the REACT_CONFIG
-## in www/cell_views.js so every IR plot's toolbar matches the projection
-## tabs. The two custom selection buttons there are tied to the shared scatter
-## engine's box-select, which the bar/point IR figures don't have, so only the
-## styling is mirrored here. Defined in this helpers file (sourced before
-## visualizations.R) so both the Compare renderer and ir_render_ggplotly can use
-## it, and so it is present when compare_helpers.R is sys.source()d in tests.
-ir_apply_theme_a_modebar <- function(fig) {
-  plotly::config(
-    fig,
-    displaylogo = FALSE,
-    modeBarButtonsToRemove = c(
-      "zoom2d",
-      "autoScale2d",
-      "hoverClosestCartesian",
-      "hoverCompareCartesian",
-      "toggleSpikelines"
-    )
-  )
-}
-
 ## Turn a clonalCompare(exportTable = TRUE) table into the geometry the Plotly
 ## renderer draws. Returns a list with:
 ##   $ok        TRUE if there is anything to draw
@@ -500,5 +478,5 @@ ir_compare_alluvial_plotly <- function(
     layout_args$showlegend <- FALSE
   }
   fig <- do.call(plotly::layout, layout_args)
-  ir_apply_theme_a_modebar(fig)
+  cerebro_plotly_toolbar(fig)
 }

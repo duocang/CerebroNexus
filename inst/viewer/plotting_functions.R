@@ -56,6 +56,23 @@ cerebro_plotly_hoverlabel <- function() {
   )
 }
 
+## Shared modebar configuration for native Plotly charts. The custom cell-view
+## renderer exposes the same useful actions with its own toolbar.
+cerebro_plotly_toolbar <- function(fig) {
+  plotly::config(
+    fig,
+    displayModeBar = TRUE,
+    displaylogo = FALSE,
+    modeBarButtonsToRemove = c(
+      "zoom2d",
+      "autoScale2d",
+      "hoverClosestCartesian",
+      "hoverCompareCartesian",
+      "toggleSpikelines"
+    )
+  )
+}
+
 ##----------------------------------------------------------------------------##
 ## Violin plots with plotly, e.g. for expression metrics.
 ##----------------------------------------------------------------------------##
@@ -115,7 +132,7 @@ plotlyViolin <- function(
     )
 
   ##
-  return(plot)
+  return(cerebro_plotly_toolbar(plot))
 }
 
 ##----------------------------------------------------------------------------##
@@ -176,7 +193,7 @@ plotlyBarChart <- function(
     )
 
   ##
-  return(plot)
+  return(cerebro_plotly_toolbar(plot))
 }
 
 ##----------------------------------------------------------------------------##
@@ -237,5 +254,5 @@ plotlySankeyPlot <- function(
     )
   )
   ##
-  return(plot)
+  return(cerebro_plotly_toolbar(plot))
 }

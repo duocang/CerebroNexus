@@ -1,3 +1,10 @@
+# CerebroNexus 4.4.2
+
+## Viewer
+
+- Plotly charts use Linked views-style toolbars that switch from horizontal to
+  vertical when their panel is narrow.
+
 # CerebroNexus 4.4.1
 
 ## Viewer
