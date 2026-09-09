@@ -10,7 +10,13 @@
  * it floats at the top-right of the legend row when a legend is shown and at the
  * plot's top-right when it is hidden. */
 .hla-motif-tab { position: relative; container-type: inline-size; }
-.hla-plot-wrap { position: relative; }
+.hla-plot-wrap {
+  position: relative;
+  box-sizing: border-box;
+  padding: 8px;
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: 10px;
+}
 .hla-legend-row:not(:empty) {
   height: 30px;
   box-sizing: border-box;

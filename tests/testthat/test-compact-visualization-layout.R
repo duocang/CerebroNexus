@@ -268,6 +268,11 @@ test_that("legends use one scrolling row outside the visualization", {
   expect_match(css, "flex-wrap: nowrap", fixed = TRUE)
   expect_match(css, "overflow-x: auto", fixed = TRUE)
   expect_match(css, ".hla-legend-row:not(:empty)", fixed = TRUE)
+  expect_match(
+    css,
+    "\\.hla-plot-wrap \\{[^}]*background: var\\(--c-surface\\)",
+    perl = TRUE
+  )
   expect_false(grepl(".cv-legend-overlay", css, fixed = TRUE))
   expect_false(grepl(".hla-legend-overlay", css, fixed = TRUE))
   expect_match(css, ".spatial-moran-overlay", fixed = TRUE)
@@ -288,4 +293,26 @@ test_that("Immune repertoire keeps its status row across subtabs", {
     collapse = "\n"
   )
   expect_match(source, "Selection is available in Clonal UMAP", fixed = TRUE)
+})
+
+test_that("immune analysis pages share the compact tab strip", {
+  hla <- paste(
+    readLines(viewer_test_path("hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  repertoire <- paste(
+    readLines(
+      viewer_test_path("immune_repertoire/visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  css <- paste(
+    readLines(viewer_test_path("www/custom.css"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(hla, 'class = "cerebro-analysis-tabs"', fixed = TRUE)
+  expect_match(repertoire, 'class = "cerebro-analysis-tabs"', fixed = TRUE)
+  expect_match(css, ".cerebro-analysis-tabs > .nav-tabs", fixed = TRUE)
 })

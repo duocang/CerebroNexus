@@ -193,9 +193,12 @@ output$ir_visualizations_UI <- renderUI({
     NULL
   }
 
-  do.call(
-    tabsetPanel,
-    c(list(id = "ir_tabs", selected = selected_tab), tabs)
+  shiny::tagAppendAttributes(
+    do.call(
+      tabsetPanel,
+      c(list(id = "ir_tabs", selected = selected_tab), tabs)
+    ),
+    class = "cerebro-analysis-tabs"
   )
 })
 

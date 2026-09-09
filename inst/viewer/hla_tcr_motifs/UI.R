@@ -88,14 +88,11 @@ tab_hla_tcr_motifs <- tabItem(
       width = 12,
       offset = 0,
       class = "cerebro-viz-col",
-      cerebroBox(
-        title = NULL,
-        collapsible = FALSE,
-        content = tabsetPanel(
+      shiny::tagAppendAttributes(
+        tabsetPanel(
           id = "hla_tabs",
           tabPanel(
             "Motif Network",
-            br(),
             # The legend and the network share one positioning context so the
             # modebar can float at its top-right: it lands on the legend's row
             # when a legend is shown (reclaiming that otherwise-empty right side),
@@ -145,7 +142,6 @@ tab_hla_tcr_motifs <- tabItem(
           ),
           tabPanel(
             "Network data",
-            br(),
             # Rendered server-side: the second grain is one row per OBSERVATION
             # UNIT, which is a cell only when the data set says so. A bulk
             # repertoire's rows are analysis units, so the label has to follow
@@ -161,15 +157,14 @@ tab_hla_tcr_motifs <- tabItem(
           ),
           tabPanel(
             "HLA Associations",
-            br(),
             uiOutput("hla_associations_ui")
           ),
           tabPanel(
             "Data & QC",
-            br(),
             uiOutput("hla_data_qc_ui")
           )
-        )
+        ),
+        class = "cerebro-analysis-tabs"
       )
     )
   )

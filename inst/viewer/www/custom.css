@@ -1710,6 +1710,17 @@ body .nav-tabs > li.active > a:hover {
   font-weight: 650;
 }
 
+/* Shared analysis tabs: one compact, horizontally scrollable strip. */
+body .cerebro-analysis-tabs > .nav-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+body .cerebro-analysis-tabs > .nav-tabs > li { flex: 0 0 auto; }
+body .cerebro-analysis-tabs > .tab-content { padding-top: 6px; }
+
 /* -------------------------------------------------------------------------
    DataTables — clean data grid
    ------------------------------------------------------------------------- */
@@ -2388,7 +2399,7 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin-bottom: 6px;
+  margin: 6px 0 2px;
   padding: 6px 10px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
