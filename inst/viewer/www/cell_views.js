@@ -515,17 +515,19 @@
   // they paint over it, and a real signal reads as absent. Categorical
   // colourings have no such order and keep the natural one.
   //
-  // Cached per (data set, colouring, gene): the sort is over every cell and the
-  // answer only changes when one of those does.
-  var _ordD = null, _ordKey = null, _ordVal = null;
+  // Cached per (data set, colouring, values): the sort is over every cell and
+  // the answer only changes when one of those does.
+  var _ordD = null, _ordCache = new Map();
   function panelColorMode(p) {
     return p && p.colorBy ? p.colorBy : colorBy;
   }
   function paintOrder(p) {
     if (!D) return null;
+    if (_ordD !== D) { _ordD = D; _ordCache = new Map(); }
     var mode = panelColorMode(p);
-    var key = mode + '|' + (D.gene ? D.gene.gene : '');
-    if (_ordD === D && _ordKey === key) return _ordVal;
+    // The current gene owns one slot. Its values identity invalidates the slot,
+    // so browsing many genes cannot retain every old expression vector.
+    var key = mode === GENE_MODE ? GENE_MODE : mode;
     var vals = null;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
@@ -533,6 +535,12 @@
       var f = fieldForMode(mode);
       if (f) vals = f.v;
     }
+    if (!vals && mode === GENE_MODE) {
+      _ordCache.delete(GENE_MODE);
+      return null;
+    }
+    var cached = _ordCache.get(key);
+    if (cached && cached.values === vals) return cached.order;
     var ord = null;
     if (vals) {
       ord = new Array(D.n);
@@ -546,7 +554,7 @@
         return va - vb;
       });
     }
-    _ordD = D; _ordKey = key; _ordVal = ord;
+    _ordCache.set(key, { values: vals, order: ord });
     return ord;
   }
 
@@ -558,9 +566,10 @@
   // that matter are differences nobody can see. The trimmed values are not
   // hidden -- they saturate at the ends, and the colourbar says so.
   var colorClip = 0.01;
-  var _clipD = null, _clipKey = null, _clipVal = null;
+  var _clipD = null, _clipCache = new Map();
   function clipRange(p) {
     if (!D) return null;
+    if (_clipD !== D) { _clipD = D; _clipCache = new Map(); }
     var mode = panelColorMode(p);
     var vals = null, span = 255, field = null;
     if (mode === GENE_MODE && D.gene) { vals = D.gene.v; span = 255; }
@@ -568,10 +577,18 @@
       field = fieldForMode(mode);
       if (field) { vals = field.v; span = field.scale || 255; }
     }
-    if (!vals) return null;
+    if (!vals) {
+      if (mode === GENE_MODE) _clipCache.delete(GENE_MODE);
+      return null;
+    }
     if (field && field.unclipped) return { lo: 0, hi: span };
-    var key = mode + '|' + (D.gene ? D.gene.gene : '') + '|' + colorClip;
-    if (_clipD === D && _clipKey === key) return _clipVal;
+    // As above, a gene has one replaceable slot. Field modes remain multi-slot
+    // because gene panels and other continuous fields are drawn together.
+    var key = mode === GENE_MODE ? GENE_MODE : mode + '|' + colorClip;
+    var cached = _clipCache.get(key);
+    if (cached && cached.values === vals && cached.clip === colorClip) {
+      return cached.range;
+    }
     var r;
     if (colorClip <= 0) {
       r = { lo: 0, hi: span };
@@ -585,7 +602,11 @@
         if (v == null || isNaN(v)) continue;
         bins[Math.max(0, Math.min(span, v | 0))]++; k++;
       }
-      if (!k) return (_clipD = D, _clipKey = key, _clipVal = { lo: 0, hi: span });
+      if (!k) {
+        r = { lo: 0, hi: span };
+        _clipCache.set(key, { values: vals, clip: colorClip, range: r });
+        return r;
+      }
       var want = colorClip * k, acc = 0, lo = 0, hi = span;
       for (i = 0; i <= span; i++) { acc += bins[i]; if (acc >= want) { lo = i; break; } }
       acc = 0;
@@ -593,12 +614,12 @@
       if (hi <= lo) { lo = 0; hi = span; }   // degenerate (constant) -- show it all
       r = { lo: lo, hi: hi };
     }
-    _clipD = D; _clipKey = key; _clipVal = r;
+    _clipCache.set(key, { values: vals, clip: colorClip, range: r });
     return r;
   }
   // Quantised value -> 0..1 across the active colour range.
   function clipT(v, span, range) {
-    var r = range || _clipVal;
+    var r = range;
     if (!r) return v / span;
     if (r.hi <= r.lo) return 0;
     return Math.max(0, Math.min(1, (v - r.lo) / (r.hi - r.lo)));
@@ -709,7 +730,7 @@
   // ---- panel geometry + projection ----------------------------------------
   function project(p) {
     var sp = spaceById[p.spaceId];
-    if (!sp) { p.sx = null; p.sy = null; return; }
+    if (!sp) { p.sx = null; p.sy = null; p._hitGrid = null; return; }
     if (!sp._unit) sp._unit = unitOf(sp);
     var u = sp._unit, n = D.n;
     // Axis'd spaces (the clone panel) reserve room on the left for the y-label
@@ -787,6 +808,9 @@
         p._dmin = -0.5; p._dspan = 1;
       }
     }
+    // Screen coordinates changed; rebuild the hover index only if the pointer
+    // next asks for it. Pan/orbit frames should not pay for dormant hover work.
+    p._hitGrid = null;
   }
 
   // A committed brush is part of the data conversation, not a decoration at a
@@ -887,6 +911,10 @@
     p.canvas.style.width = width + 'px';
     p.canvas.style.height = height + 'px';
     p.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    p.overlay.width = width * dpr; p.overlay.height = height * dpr;
+    p.overlay.style.width = width + 'px';
+    p.overlay.style.height = height + 'px';
+    p.overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (p.pane) p.pane.classList.toggle('cv-narrow', width < 420);
     project(p);
   }
@@ -1286,7 +1314,7 @@
 
   function draw(p, shownMask) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
-    if (!p.sx) return;
+    if (!p.sx) { drawInteractionOverlay(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
@@ -1384,23 +1412,40 @@
     }
     drawAxes3D(p);
     drawGroupLabels(p);
+    c.globalAlpha = 1;
+    // Its own canvas — drawn last so it also settles after a view change.
+    drawMinimap(p);
+    // A pinned tooltip points at a cell, so it has to move when the cell does —
+    // a pan, a zoom, a rotation. Left where it was, it would be labelling
+    // whatever the view slid underneath it.
+    repositionPinned(p);
+    drawInteractionOverlay(p);
+  }
+
+  // Pointer-driven marks live above the expensive point cloud. Hover changes
+  // can now repaint this tiny transparent layer without rebuilding every cell.
+  function drawInteractionOverlay(p) {
+    var c = p.overlayCtx;
+    c.clearRect(0, 0, p.W, p.H);
+    if (!p.sx) return;
+    var pointSize = p._renderPointSize == null ? pointSizeOf(p) : p._renderPointSize;
     // Hovered cell, marked in EVERY panel including the one being pointed at.
     // Thinner and cooler than the pick ring so the two never read as the same
     // state: this one follows the cursor and is gone the moment it leaves.
     if (hoverCell != null && hoverCell !== pick && p.ok[hoverCell]) {
       c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 3.5, 0, 6.2832);
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], pointSize + 3.5, 0, 6.2832);
       c.stroke();
       c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 5, 0, 6.2832);
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], pointSize + 5, 0, 6.2832);
       c.stroke();
     }
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
-      c.beginPath(); c.arc(p.sx[pick], p.sy[pick], p._renderPointSize + 4, 0, 6.2832); c.stroke();
+      c.beginPath(); c.arc(p.sx[pick], p.sy[pick], pointSize + 4, 0, 6.2832); c.stroke();
     }
     // Trekker: dashed niche-radius circle around the picked nucleus (physical
     // panel). Radius µm → screen px via the same data→unit→screen scale.
@@ -1434,12 +1479,11 @@
       c.fillStyle = 'rgba(255,112,19,.07)'; c.fill(); c.stroke();
     }
     c.globalAlpha = 1;
-    // Its own canvas — drawn last so it also settles after a view change.
-    drawMinimap(p);
-    // A pinned tooltip points at a cell, so it has to move when the cell does —
-    // a pan, a zoom, a rotation. Left where it was, it would be labelling
-    // whatever the view slid underneath it.
-    repositionPinned(p);
+  }
+  function drawHoverAll() {
+    panels.forEach(function (p) {
+      if (p.spaceId) drawInteractionOverlay(p);
+    });
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -1558,12 +1602,54 @@
   }
 
   // ---- geometry helpers ----------------------------------------------------
-  // inPoly lives in the shared CBGeom module (www/cv-geom.js). `nearest` stays
-  // here: its visibility predicate (p.ok + shown) and fixed hit radius are this
-  // engine's, not shared.
+  // inPoly lives in the shared CBGeom module (www/cv-geom.js). Hit testing stays
+  // here: its visibility predicate (p.ok + shown) and radius belong to this
+  // engine. Large panels use a projection-local grid; small ones keep the
+  // simpler scan because building an index would cost more than it saves.
+  var HIT_GRID_MIN = 5000, HIT_GRID_SIZE = 16;
+  function buildHitGrid(p) {
+    if (!D || D.n < HIT_GRID_MIN || !p.sx) { p._hitGrid = null; return; }
+    var cols = Math.ceil(p.W / HIT_GRID_SIZE) + 2;
+    var rows = Math.ceil(p.H / HIT_GRID_SIZE) + 2;
+    var buckets = new Array(cols * rows);
+    for (var i = 0; i < D.n; i++) {
+      if (!p.ok[i] || !isFinite(p.sx[i]) || !isFinite(p.sy[i])) continue;
+      var bx = Math.floor(p.sx[i] / HIT_GRID_SIZE) + 1;
+      var by = Math.floor(p.sy[i] / HIT_GRID_SIZE) + 1;
+      if (bx < 0 || bx >= cols || by < 0 || by >= rows) continue;
+      var key = by * cols + bx;
+      (buckets[key] || (buckets[key] = [])).push(i);
+    }
+    p._hitGrid = { cols: cols, rows: rows, buckets: buckets };
+  }
   function nearest(p, mx, my) {
-    var best = -1, bd = 200, n = D.n, i;
-    for (i = 0; i < n; i++) {
+    if (!p._hitGrid && D.n >= HIT_GRID_MIN) buildHitGrid(p);
+    var best = -1, bd = 200, i;
+    var grid = p._hitGrid;
+    if (grid) {
+      var bx = Math.floor(mx / HIT_GRID_SIZE) + 1;
+      var by = Math.floor(my / HIT_GRID_SIZE) + 1;
+      for (var gy = Math.max(0, by - 1); gy <= Math.min(grid.rows - 1, by + 1); gy++) {
+        for (var gx = Math.max(0, bx - 1); gx <= Math.min(grid.cols - 1, bx + 1); gx++) {
+          var bucket = grid.buckets[gy * grid.cols + gx];
+          if (!bucket) continue;
+          for (var j = 0; j < bucket.length; j++) {
+            i = bucket[j];
+            if (!shown(i, p)) continue;
+            var dx = p.sx[i] - mx, dy = p.sy[i] - my, d = dx * dx + dy * dy;
+            if (d < bd || (d === bd && (best < 0 || i < best))) {
+              bd = d; best = i;
+            }
+          }
+        }
+      }
+      return best;
+    }
+    return nearestLinear(p, mx, my);
+  }
+  function nearestLinear(p, mx, my) {
+    var best = -1, bd = 200;
+    for (var i = 0; i < D.n; i++) {
       if (!p.ok[i] || !shown(i, p)) continue;
       var dx = p.sx[i] - mx, dy = p.sy[i] - my, d = dx * dx + dy * dy;
       if (d < bd) { bd = d; best = i; }
@@ -2180,6 +2266,13 @@
         canvasRect.width,
         canvasRect.height
       );
+      context.drawImage(
+        panel.overlay,
+        canvasX,
+        canvasY,
+        canvasRect.width,
+        canvasRect.height
+      );
 
       if (panel.mini) {
         var miniStyle = window.getComputedStyle(panel.mini);
@@ -2764,6 +2857,30 @@
   function hoverHtml(i, pinned) {
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
+      var fields = singleSpace && singleSpace._hoverFields;
+      if (fields) {
+        var html = '<div class="cv-tip-row"><b>Cell</b>: ' +
+          esc(D.cells[i]) + '</div>';
+        fields.fields.forEach(function (field) {
+          var value = field.values[i];
+          if (value == null) return;
+          if (field.format === 'integer') {
+            value = Math.round(Number(value)).toLocaleString('en-US');
+          } else if (field.format === 'fixed') {
+            value = Number(value).toFixed(Number(field.digits) || 0);
+          }
+          html += '<div class="cv-tip-row"><b>' + esc(field.label) +
+            '</b>: ' + esc(value) + '</div>';
+        });
+        fields.groups.forEach(function (group) {
+          var level = group.values[i];
+          var value = level == null || level < 0 ? null : group.levels[level];
+          if (value == null) return;
+          html += '<div class="cv-tip-row"><b>' + esc(group.label) +
+            '</b>: ' + esc(value) + '</div>';
+        });
+        return html;
+      }
       var raw = singleSpace && singleSpace._hover && singleSpace._hover[i];
       var text = String(raw || D.cells[i] || '')
         .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
@@ -3158,10 +3275,15 @@
   // Mark the hovered cell everywhere. Redraws only when the cell CHANGES: a
   // mousemove fires far more often than the answer to "which cell is nearest"
   // changes, and each redraw is the whole cloud in every panel.
+  var hoverDrawFrame = null;
   function setHoverCell(i) {
     if (hoverCell === i) return;
     hoverCell = i;
-    drawAll();
+    if (hoverDrawFrame !== null) return;
+    hoverDrawFrame = requestAnimationFrame(function () {
+      hoverDrawFrame = null;
+      drawHoverAll();
+    });
   }
 
   function wireHover(p) {
@@ -3176,7 +3298,7 @@
       // A pinned tooltip owns this panel's tooltip element until it is closed —
       // but the cross-panel mark still follows the cursor.
       var own = pinnedTip.panel !== p;
-      if (p.drag || p.panning) {
+      if (p.drag || p.panning || p.orbiting) {
         if (own) tip.style.opacity = 0;
         setHoverCell(null);
         return;
@@ -3206,6 +3328,67 @@
       var r = p.canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     };
+    var dragFrame = null, dragEvents = [];
+    function applyDragMove(e) {
+      if (p.orbiting) {
+        var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
+        p.rot = {
+          ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
+          // Pitch stops short of ±90°: past vertical the cloud reads as
+          // upside-down and the drag direction appears to invert.
+          rx: Math.max(-1.4, Math.min(1.4,
+            p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
+        };
+        return true;
+      }
+      if (p.panning) {
+        var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
+        // screen delta -> view units; y is inverted (canvas y grows downward).
+        // Clamped, so dragging on past the edge simply stops instead of sailing
+        // off into blank canvas.
+        p.view = clampView(p, CBGeom.panView(
+          v,
+          (pq[0] - p.panFrom[0]) / SX,
+          (pq[1] - p.panFrom[1]) / SY
+        ));
+        return true;
+      }
+      if (!p.drag) return false;
+      var q = pos(e);
+      if (selectMode === 'box') {
+        // rectangle from the drag origin to the cursor; inPoly treats it as a
+        // 4-point polygon, so mouseup selection is unchanged.
+        var a = p.start;
+        if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
+          p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
+          p.moved = true; return true;
+        }
+      } else {
+        var last = p.lasso[p.lasso.length - 1];
+        if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
+          p.lasso.push(q); p.moved = true; return true;
+        }
+      }
+      return false;
+    }
+    function applyDragMoves(events) {
+      var changed = false;
+      events.forEach(function (event) {
+        if (applyDragMove(event)) changed = true;
+      });
+      if (!changed) return;
+      if (p.orbiting || p.panning) project(p);
+      draw(p);
+    }
+    function flushDragMoves(e) {
+      if (!p.orbiting && !p.panning && !p.drag &&
+        dragFrame === null && !dragEvents.length) return;
+      if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+      if (e) dragEvents.push({ clientX: e.clientX, clientY: e.clientY });
+      var pending = dragEvents;
+      dragFrame = null; dragEvents = [];
+      applyDragMoves(pending);
+    }
     brushTarget.addEventListener('mousedown', function (e) {
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
@@ -3255,53 +3438,21 @@
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
     });
     window.addEventListener('mousemove', function (e) {
-      if (p.orbiting) {
-        var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
-        p.rot = {
-          ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
-          // Pitch stops short of ±90°: past vertical the cloud reads as
-          // upside-down and the drag direction appears to invert.
-          rx: Math.max(-1.4, Math.min(1.4,
-            p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
-        };
-        project(p); draw(p);
-        return;
-      }
-      if (p.panning) {
-        var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
-        // screen delta -> view units; y is inverted (canvas y grows downward).
-        // Clamped, so dragging on past the edge simply stops instead of sailing
-        // off into blank canvas.
-        p.view = clampView(p, CBGeom.panView(
-          v,
-          (pq[0] - p.panFrom[0]) / SX,
-          (pq[1] - p.panFrom[1]) / SY
-        ));
-        project(p); draw(p);
-        return;
-      }
-      if (!p.drag) return;
-      var q = pos(e);
-      if (selectMode === 'box') {
-        // rectangle from the drag origin to the cursor; inPoly treats it as a
-        // 4-point polygon, so mouseup selection is unchanged.
-        var a = p.start;
-        if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
-          p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
-          p.moved = true; draw(p);
-        }
-      } else {
-        var last = p.lasso[p.lasso.length - 1];
-        if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
-          p.lasso.push(q); p.moved = true; draw(p);
-        }
-      }
+      if (!p.orbiting && !p.panning && !p.drag) return;
+      dragEvents.push({ clientX: e.clientX, clientY: e.clientY });
+      if (dragFrame !== null) return;
+      dragFrame = requestAnimationFrame(function () {
+        var pending = dragEvents;
+        dragFrame = null; dragEvents = [];
+        applyDragMoves(pending);
+      });
     });
     // Zooming is a toolbar action only. Wheel-zoom made the panels hostile to
     // scroll past: a page scroll that happened to cross a panel silently rescaled
     // it instead, and on a trackpad the two gestures are the same one. The wheel
     // is therefore left to the page.
     window.addEventListener('mouseup', function (e) {
+      flushDragMoves(e);
       if (p.orbiting) {
         p.orbiting = false;
         p.canvas.classList.remove('cv-grabbing');
@@ -3398,8 +3549,13 @@
     for (var index = panels.length; index < paneEls.length; index++) {
       var key = panelKey(index), low = key.toLowerCase();
       var cv = $('cv-cv-' + low); if (!cv) continue;
+      var overlay = document.createElement('canvas');
+      overlay.className = 'cv-hover-layer';
+      overlay.setAttribute('aria-hidden', 'true');
+      cv.parentNode.insertBefore(overlay, cv.nextSibling);
       var mini = $('cv-mini-' + low);
-      var p = { key: key, canvas: cv, ctx: cv.getContext('2d'), tipId: 'cv-tip-' + low,
+      var p = { key: key, canvas: cv, ctx: cv.getContext('2d'),
+        overlay: overlay, overlayCtx: overlay.getContext('2d'), tipId: 'cv-tip-' + low,
         // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
@@ -5169,9 +5325,13 @@
       surfaceHome.insightsNext
     );
   }
-  function resetSingleViews() {
+  function resetSingleViews(preserve, preserveAll) {
+    var retained = {};
+    if (preserveAll && preserve) retained = preserve;
+    else if (preserve && preserve.id) retained[preserve.id] = preserve;
     restoreLinkedSurface();
-    singleViews = {}; singleActive = null;
+    singleViews = retained;
+    singleActive = null;
     singleRequests.clear();
     singleSpaceIds = []; singleSpaceModes = {};
     singleIndexCells = null; singleIndexMap = null;
@@ -5194,6 +5354,90 @@
     }
     return true;
   }
+  function singlePayloadCells(payload) {
+    var data = payload && payload.data || {}, cells = [], seen = new Set();
+    var add = function (values) {
+      if (!Array.isArray(values)) return;
+      values.forEach(function (value) {
+        if (Array.isArray(value)) add(value);
+        else if (value != null && !seen.has(String(value))) {
+          seen.add(String(value)); cells.push(String(value));
+        }
+      });
+    };
+    add(data.selection_key);
+    (data.panels || []).forEach(function (panel) {
+      add(panel && panel.selection_key);
+    });
+    return cells;
+  }
+  function sameSingleCells(left, right) {
+    if (!Array.isArray(left) || left.length !== right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+    return true;
+  }
+  function singleDatasetIdentity(cells) {
+    var identity = window.cerebroSavedViewDataset || {};
+    var savedFingerprint = typeof identity.cell_fingerprint === 'string'
+      ? identity.cell_fingerprint : '';
+    var fingerprint = savedFingerprint || fingerprintCells(cells);
+    var count = Number(identity.cell_count);
+    if (!isFinite(count) || count < 0) count = cells.length;
+    var savedId = typeof identity.dataset_id === 'string' ? identity.dataset_id : '';
+    var datasetId = savedId || 'cells:' + fingerprint;
+    return {
+      fingerprint: fingerprint,
+      savedFingerprint: savedFingerprint,
+      savedId: savedId,
+      datasetId: datasetId,
+      token: datasetId + '\u0000' + count + '\u0000' + fingerprint
+    };
+  }
+  function bundleFingerprint(bundle) {
+    if (!bundle) return '';
+    return String(bundle.dataset_fingerprint || bundle.cell_fingerprint || '');
+  }
+  function singleBaseStale() {
+    var identity = window.cerebroSavedViewDataset || {};
+    var fingerprint = typeof identity.cell_fingerprint === 'string'
+      ? identity.cell_fingerprint : '';
+    return !!(linkedBundle && fingerprint &&
+      bundleFingerprint(linkedBundle) !== fingerprint);
+  }
+  function ensureSingleBase(payload) {
+    var incoming = singlePayloadCells(payload);
+    var identity = singleDatasetIdentity(incoming);
+    if (linkedBundle && !linkedBundle._singleOnly) {
+      var sameFingerprint = !!identity.savedFingerprint &&
+        bundleFingerprint(linkedBundle) === identity.savedFingerprint;
+      var sameId = !identity.savedId || linkedBundle.dataset_id === identity.savedId;
+      if (sameFingerprint && sameId) return true;
+      linkedBundle = null; D = null; resetSingleViews(payload);
+    }
+    if (linkedBundle && linkedBundle._singleOnly &&
+      (!identity.savedFingerprint || linkedBundle._singleIdentity !== identity.token)) {
+      linkedBundle = null; D = null; resetSingleViews(payload);
+    }
+    if (linkedBundle && linkedBundle._singleOnly &&
+      sameSingleCells(linkedBundle.cells, incoming)) return true;
+    if (!incoming.length) return false;
+    linkedBundle = {
+      _singleOnly: true,
+      _singleIdentity: identity.token,
+      dataset_id: identity.datasetId,
+      dataset_fingerprint: identity.fingerprint,
+      cell_fingerprint: identity.fingerprint,
+      cells: incoming,
+      n: incoming.length,
+      groups: {}, cat_extra: {}, cat_skipped: {}, fields: {},
+      genes: [], projections: {}, trajectories: {}, spaces: [],
+      default_group: null
+    };
+    singleIndexCells = null; singleIndexMap = null;
+    return true;
+  }
   function singleIndex() {
     var cells = linkedBundle && linkedBundle.cells;
     if (cells === singleIndexCells && singleIndexMap) return singleIndexMap;
@@ -5207,11 +5451,35 @@
   function emptyVector(value) {
     return new Array(linkedBundle.n || (linkedBundle.cells || []).length).fill(value);
   }
+  function alignStructuredHover(hover) {
+    if (!hover || hover.hoverinfo !== 'fields' || !Array.isArray(hover.selection_key)) {
+      return null;
+    }
+    var keys = hover.selection_key;
+    return {
+      fields: (hover.fields || []).map(function (field) {
+        return {
+          label: String(field.label || ''),
+          format: String(field.format || 'text'),
+          digits: Number(field.digits) || 0,
+          values: alignFlatValues(keys, field.values || [], null)
+        };
+      }),
+      groups: (hover.groups || []).map(function (group) {
+        return {
+          label: String(group.label || ''),
+          levels: Array.isArray(group.levels) ? group.levels.map(String) : [],
+          values: alignFlatValues(keys, group.values || [], -1)
+        };
+      })
+    };
+  }
   function alignSingleCoordinates(data, nested) {
     var index = singleIndex();
     var x = emptyVector(null), y = emptyVector(null), z = emptyVector(null);
     var groups = emptyVector(-1), levels = [], colors = [];
-    var hover = emptyVector('');
+    var hoverFields = alignStructuredHover(data.hover);
+    var hover = hoverFields ? null : emptyVector('');
     var hoverEnabled = emptyVector(true);
     if (nested) {
       var traces = Array.isArray(data.meta.traces) ? data.meta.traces : [];
@@ -5229,7 +5497,8 @@
           var at = index.get(String(gk[j])); if (at == null) continue;
           x[at] = Number(gx[j]); y[at] = Number(gy[j]);
           if (gz[j] != null) z[at] = Number(gz[j]);
-          groups[at] = group; hover[at] = gh[j] || '';
+          groups[at] = group;
+          if (hover) hover[at] = gh[j] || '';
           hoverEnabled[at] = hoverMode !== 'skip';
         }
       });
@@ -5243,12 +5512,13 @@
         var pos = index.get(String(keys[k])); if (pos == null) continue;
         x[pos] = Number(hx[k]); y[pos] = Number(hy[k]);
         if (hz[k] != null) z[pos] = Number(hz[k]);
-        hover[pos] = hh[k] || '';
+        if (hover) hover[pos] = hh[k] || '';
         hoverEnabled[pos] = enabled;
       }
     }
     return { x: x, y: y, z: z, groups: groups,
-      levels: levels, colors: colors, hover: hover, hoverEnabled: hoverEnabled };
+      levels: levels, colors: colors, hover: hover, hoverFields: hoverFields,
+      hoverEnabled: hoverEnabled };
   }
   function quantisedField(label, raw, keys, data, panelScale) {
     var index = singleIndex(), values = emptyVector(null), min = Infinity, max = -Infinity;
@@ -5441,6 +5711,7 @@
       var space = { id: spaceId, label: label || id, x: aligned.x, y: aligned.y };
       space._projectionName = spaceId;
       space._hover = aligned.hover;
+      space._hoverFields = aligned.hoverFields;
       space._hoverEnabled = hasHover;
       space._hoverMask = aligned.hoverEnabled;
       if (hasZ) space.z = aligned.z;
@@ -5540,8 +5811,13 @@
   }
   function activateSingle(id, resetAxes, preserveTargetState) {
     var payload = singleViews[id];
-    if (!payload || !linkedBundle || rebuildingBase) return false;
-    if (!singleActive && !linkedState) linkedState = exportWorkspace();
+    if (!payload || rebuildingBase) return false;
+    if (!singleActive && !linkedState && linkedBundle && !linkedBundle._singleOnly) {
+      linkedState = exportWorkspace();
+    }
+    if (!ensureSingleBase(payload)) return false;
+    payload = singleViews[id];
+    if (!payload || !linkedBundle) return false;
     if (CBViewState.shouldStashSingleState(
       singleActive,
       id,
@@ -5637,6 +5913,15 @@
     var state = linkedState;
     stashSingleState(); restoreLinkedSurface();
     singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+    // A specialist-only base has no Linked spaces to render. Keep it solely as
+    // the identity bridge until coordviews_visible brings the full bundle back;
+    // feeding it to onData() would treat it as an error and erase the state that
+    // was just stashed above.
+    if (linkedBundle._singleOnly) {
+      linkedState = null;
+      showUnavailable('Loading Linked views…');
+      return;
+    }
     rebuildingBase = true;
     try {
       onData(linkedBundle);
@@ -5654,14 +5939,15 @@
   }
 
   function renderSingle(id, meta, data, hover, extra) {
-    var previous = registerSingle(id); if (!previous) return;
+    if (!id) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
+    var incoming = {
+      id: id, meta: meta, data: data, hover: hover || {}, extra: extra || {}
+    };
+    var previous = registerSingle(id); if (!previous) return;
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
-    singleViews[id] = Object.assign(previous, {
-      id: id, meta: meta || {}, data: data || {}, hover: hover || {},
-      extra: extra || {}
-    });
+    singleViews[id] = Object.assign(previous, incoming);
     if (changedGroup) singleViews[id].hiddenGroups = [];
     if (data.reset_axes) singleViews[id].lenses = [];
     var pending = singleViews[id].pendingSavedState;
@@ -5790,6 +6076,14 @@
       reportWorkspaceReady();
       return;
     }
+    var previousSingleBase = linkedBundle && linkedBundle._singleOnly
+      ? linkedBundle : null;
+    var savedIdentity = window.cerebroSavedViewDataset || {};
+    var savedFingerprint = typeof savedIdentity.cell_fingerprint === 'string'
+      ? savedIdentity.cell_fingerprint : '';
+    var preserveSingleViews = !!(previousSingleBase && savedFingerprint &&
+      bundleFingerprint(previousSingleBase) === savedFingerprint &&
+      bundleFingerprint(bundle) === savedFingerprint);
     if (singleActive) {
       stashSingleState(); restoreLinkedSurface();
       singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
@@ -5809,8 +6103,11 @@
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
+    var incompatibleSingleBase = !!(previousSingleBase && !preserveSingleViews);
+    if (dataChanged || incompatibleSingleBase) {
+      resetSingleViews(preserveSingleViews ? singleViews : null, preserveSingleViews);
+    }
     if (dataChanged) {
-      resetSingleViews();
       imgStates = {};
       imgChoice = {};
     }
@@ -5970,6 +6267,17 @@
   // ---- portable local workspace ------------------------------------------
   // The JSON contains identities and interaction state only; no expression,
   // coordinates, images, receptor sequences or other source data leave D.
+  function fingerprintCells(cells) {
+    var a = 2166136261, b = 2246822519;
+    cells.forEach(function (cell) {
+      var text = String(cell) + '\u0000';
+      for (var i = 0; i < text.length; i++) {
+        a = Math.imul(a ^ text.charCodeAt(i), 16777619) >>> 0;
+        b = Math.imul(b ^ text.charCodeAt(i), 3266489917) >>> 0;
+      }
+    });
+    return cells.length + ':' + a.toString(16) + ':' + b.toString(16);
+  }
   function configFingerprint() {
     if (!D || !Array.isArray(D.cells)) return '';
     if (typeof D.dataset_fingerprint === 'string' && D.dataset_fingerprint) {
@@ -5978,15 +6286,7 @@
     if (typeof D.cell_fingerprint === 'string' && D.cell_fingerprint) {
       return D.cell_fingerprint;
     }
-    var a = 2166136261, b = 2246822519;
-    D.cells.forEach(function (cell) {
-      var text = String(cell) + '\u0000';
-      for (var i = 0; i < text.length; i++) {
-        a = Math.imul(a ^ text.charCodeAt(i), 16777619) >>> 0;
-        b = Math.imul(b ^ text.charCodeAt(i), 3266489917) >>> 0;
-      }
-    });
-    return D.cells.length + ':' + a.toString(16) + ':' + b.toString(16);
+    return fingerprintCells(D.cells);
   }
 
   function selectedCellIds() {
@@ -6400,6 +6700,7 @@
         genes: colourData.genes
       };
     } else if (D && colourData && colourData.mode === GENE_PANELS_MODE) {
+      _ordD = null;
       D.genePanelMax = Number(colourData.max) || 1;
       D.genePanels = colourData.genes.map(function (gene, index) {
         return { gene: gene, v: colourData.values[index] || [] };
@@ -6503,6 +6804,7 @@
       if (genes.length === 1 && (!values.length || typeof values[0] === 'number')) {
         values = [values];
       }
+      _ordD = null;
       D.genePanelMax = Number(m.max) || 1;
       D.genePanels = genes.map(function (gene, index) {
         return { gene: gene, v: values[index] || [] };
@@ -6572,7 +6874,9 @@
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
       var singleId = visibleSingleId();
-      var vis = linkedVis || !!singleId;
+      if (singleId && singleBaseStale()) {
+        linkedBundle = null; D = null; resetSingleViews();
+      }
       var key = linkedVis ? 'linked' : (singleId || 'hidden');
       var host = singleId && singleHost(singleId);
       var surface = host && host.querySelector('.cerebro-cell-view-surface');
@@ -6586,13 +6890,13 @@
           priority: 'event'
         });
       }
-      if (singleId && linkedBundle && singleViews[singleId]) {
+      if (singleId && singleViews[singleId]) {
         activateSingle(singleId);
       } else if (linkedVis && singleActive) {
         activateLinked();
       }
       if (Shiny.setInputValue) {
-        Shiny.setInputValue('coordviews_visible', vis);
+        Shiny.setInputValue('coordviews_visible', linkedVis);
       }
     }
     setInterval(reportVisibility, 250);

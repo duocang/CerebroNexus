@@ -1,6 +1,79 @@
 ##----------------------------------------------------------------------------##
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
+spatial_projection_full_extent <- cachePlot(
+  reactive({
+    projection <- input[["spatial_projection_to_display"]]
+    req(projection, projection %in% availableSpatial())
+    dataset <- viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    )
+    rotation <- spatialPlotRotation(Cerebro.options, dataset, projection)
+    coordinates <- rotateSpatialCoordinates(
+      getSpatialData(projection)$coordinates,
+      rotation
+    )
+    x_range <- range(coordinates[[1]], na.rm = TRUE)
+    y_range <- range(coordinates[[2]], na.rm = TRUE)
+    x_margin <- diff(x_range) * 0.02
+    y_margin <- diff(y_range) * 0.02
+    ranges_are_finite <- all(is.finite(x_range)) && all(is.finite(y_range))
+    list(
+      rotation = rotation,
+      x_range = if (ranges_are_finite) {
+        c(x_range[[1]] - x_margin, x_range[[2]] + x_margin)
+      },
+      y_range = if (ranges_are_finite) {
+        c(y_range[[1]] - y_margin, y_range[[2]] + y_margin)
+      }
+    )
+  }),
+  viewerDatasetName(
+    available_crb_files$files,
+    available_crb_files$selected
+  ),
+  input[["spatial_projection_to_display"]],
+  spatialPlotRotation(
+    Cerebro.options,
+    viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    ),
+    input[["spatial_projection_to_display"]]
+  )
+)
+
+## Hull geometry changes with cells, groups, projection, or rotation—not with
+## point styling. Shiny retains this value until one of those inputs changes.
+spatial_projection_group_hulls <- reactive({
+  if (
+    !isTRUE(input[["spatial_projection_show_region_outlines"]]) ||
+      !identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")
+  ) {
+    return(list())
+  }
+  color_variable <- input[["spatial_projection_point_color"]]
+  metadata <- spatial_projection_metadata()
+  req(color_variable, color_variable %in% colnames(metadata))
+  color_input <- metadata[[color_variable]]
+  if (is.numeric(color_input)) {
+    return(list())
+  }
+  coordinates <- rotateSpatialCoordinates(
+    spatial_projection_coordinates(),
+    spatial_projection_full_extent()$rotation
+  )
+  if (ncol(coordinates) != 2L) {
+    return(list())
+  }
+  compute_group_hulls(
+    coordinates[[1]],
+    coordinates[[2]],
+    as.character(color_input)
+  )
+})
+
 spatial_projection_data_to_plot_raw <- reactive({
   req(
     spatial_projection_metadata(),
@@ -8,9 +81,9 @@ spatial_projection_data_to_plot_raw <- reactive({
     spatial_projection_parameters_plot(),
     reactive_colors(),
     spatial_projection_hover_info(),
-    nrow(spatial_projection_metadata()) ==
-      length(spatial_projection_hover_info()) ||
-      spatial_projection_hover_info() == "none"
+    !isTRUE(spatial_projection_hover_info()$enabled) ||
+      nrow(spatial_projection_metadata()) ==
+        length(spatial_projection_hover_info()$selection_key)
   )
   metadata <- spatial_projection_metadata()
   plot_parameters <- spatial_projection_parameters_plot()
@@ -90,15 +163,8 @@ spatial_projection_data_to_plot_raw <- reactive({
 
   ## Plot rotation belongs to one exact dataset + spatial entry. Image rotation
   ## is resolved independently from spatial_image_settings.
-  current_name <- viewerDatasetName(
-    available_crb_files$files,
-    available_crb_files$selected
-  )
-  rotation_angle <- spatialPlotRotation(
-    Cerebro.options,
-    current_name,
-    plot_parameters[["projection"]]
-  )
+  extent <- spatial_projection_full_extent()
+  rotation_angle <- extent$rotation
   ## Apply rotation to the displayed (subset) coordinates.
   coordinates <- rotateSpatialCoordinates(
     spatial_projection_coordinates(),
@@ -116,24 +182,8 @@ spatial_projection_data_to_plot_raw <- reactive({
       is.null(plot_parameters[["y_range"]]) ||
       length(plot_parameters[["y_range"]]) < 2
   ) {
-    full_coords <- rotateSpatialCoordinates(
-      getSpatialData(plot_parameters[["projection"]])$coordinates,
-      rotation_angle
-    )
-    x_full <- range(full_coords[[1]], na.rm = TRUE)
-    y_full <- range(full_coords[[2]], na.rm = TRUE)
-    x_margin <- diff(x_full) * 0.02
-    y_margin <- diff(y_full) * 0.02
-    if (all(is.finite(x_full)) && all(is.finite(y_full))) {
-      plot_parameters[["x_range"]] <- c(
-        x_full[1] - x_margin,
-        x_full[2] + x_margin
-      )
-      plot_parameters[["y_range"]] <- c(
-        y_full[1] - y_margin,
-        y_full[2] + y_margin
-      )
-    }
+    plot_parameters[["x_range"]] <- extent$x_range
+    plot_parameters[["y_range"]] <- extent$y_range
   }
 
   ## With an explicit full-extent range we must NOT let the JS autorange (which
@@ -155,13 +205,32 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    hover_info = spatial_projection_hover_info()
+    hover_info = spatial_projection_hover_info(),
+    group_hulls = spatial_projection_group_hulls()
   )
 
   return(to_return)
 })
 
-spatial_projection_data_to_plot <- debounce(
+spatial_projection_render_event <- viewerProjectionEvent(
+  "spatial_projection",
+  "spatial",
+  extra = function() {
+    list(
+      plot_type = input[["spatial_projection_plot_type"]],
+      feature = input[["spatial_projection_feature_to_display"]],
+      coexpr_r = input[["spatial_projection_coexpr_r"]],
+      coexpr_g = input[["spatial_projection_coexpr_g"]],
+      coexpr_b = input[["spatial_projection_coexpr_b"]],
+      region_outlines = input[["spatial_projection_show_region_outlines"]],
+      background_image = input[["spatial_projection_background_image"]]
+    )
+  },
+  colors = TRUE
+)
+
+spatial_projection_data_to_plot <- debounceEventAfterFirst(
+  spatial_projection_render_event,
   spatial_projection_data_to_plot_raw,
   150
 )

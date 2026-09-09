@@ -11,8 +11,8 @@ overview_projection_data_to_plot_raw <- reactive({
   hover_info <- overview_projection_hover_info()
   req(
     nrow(cells_df) == 0L ||
-      nrow(cells_df) == length(hover_info) ||
-      hover_info == "none"
+      !isTRUE(hover_info$enabled) ||
+      nrow(cells_df) == length(hover_info$selection_key)
   )
   plot_parameters <- overview_projection_parameters_plot()
   color_variable <- plot_parameters[['color_variable']]
@@ -34,7 +34,14 @@ overview_projection_data_to_plot_raw <- reactive({
   )
 })
 
-overview_projection_data_to_plot <- debounce(
+overview_projection_render_event <- viewerProjectionEvent(
+  "overview_projection",
+  "overview",
+  colors = TRUE
+)
+
+overview_projection_data_to_plot <- debounceEventAfterFirst(
+  overview_projection_render_event,
   overview_projection_data_to_plot_raw,
   150
 )
