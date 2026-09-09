@@ -21,7 +21,6 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_config.R"),
   local = TRUE
 )
-
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
@@ -419,18 +418,12 @@ server <- function(input, output, session) {
   })
 
   # hover info for projection.
-  # Cached by (dataset path, hover toggle): selecting a different gene does
-  # not re-build the per-cell hover strings because they only depend on the
-  # metadata of the current dataset, not on the active gene. Unlike the
-  # expression-level reactive, this chain has no gene dependency and no
-  # isolate(), so the cache key stays consistent across gene switches.
-  hover_info_projections <- reactive({
+  hover_info_projections <- function(cells_df) {
     # message('--> trigger "hover_info_projections"')
     if (
       !is.null(preferences[["show_hover_info_in_projections"]]) &&
         preferences[['show_hover_info_in_projections']] == TRUE
     ) {
-      cells_df <- getMetaData()
       hover_info <- buildHoverInfoForProjections(cells_df)
       hover_info <- setNames(hover_info, cells_df$cell_barcode)
     } else {
@@ -438,11 +431,7 @@ server <- function(input, output, session) {
     }
     # message(str(hover_info))
     return(hover_info)
-  }) %>%
-    cachePlot(
-      preferences[["show_hover_info_in_projections"]],
-      available_crb_files$selected
-    )
+  }
 
   ## Dynamic sidebar: conditional tabs are shown or hidden based on dataset
   ## content (see toggleConditionalTab() below).
