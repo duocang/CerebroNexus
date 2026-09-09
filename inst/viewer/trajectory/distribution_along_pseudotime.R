@@ -334,7 +334,7 @@ output[[
     }
 
     ## scatter_type already respects preferences$use_webgl, no post-processing
-    plot
+    cerebro_plotly_toolbar(plot)
   })
 })
 

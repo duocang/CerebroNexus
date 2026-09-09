@@ -567,7 +567,8 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
         showline = TRUE
       ),
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })
 
 ## Table: meta data of the selected cells (same prettifyTable options as the

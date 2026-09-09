@@ -7,6 +7,8 @@
 ## coloring) and table.
 ##----------------------------------------------------------------------------##
 output[["expression_details_selected_cells_UI"]] <- renderUI({
+  req(expression_projection_selected_cells())
+  req(expression_summary_data())
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -41,83 +43,69 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
   req(
     expression_projection_data(),
     expression_projection_coordinates(),
-    expression_projection_expression_levels()
+    expression_summary_data(),
+    expression_projection_selected_cells()
   )
   selected_cells <- expression_projection_selected_cells()
-  ## check selection
-  ## ... selection has not been made or there is no cell in it
-  if (is.null(selected_cells)) {
-    ## prepare empty table
-    getMetaData() %>%
-      dplyr::slice(0) %>%
-      prepareEmptyTable()
-    ## ... selection has been made and at least 1 cell is in it
+  summary <- expression_summary_data()
+  cells_df <- bind_cols(
+    expression_projection_coordinates(),
+    expression_projection_data()
+  )
+  if (identical(summary$kind, "mean")) {
+    expression_columns <- "expression_level"
+    cells_df[[expression_columns]] <- summary$series[[1]]$values
   } else {
-    cells_df <- bind_cols(
-      expression_projection_coordinates(),
-      expression_projection_data()
-    )
-    if (is.list(expression_projection_expression_levels())) {
-      cells_df$level <- do.call(
-        cbind,
-        expression_projection_expression_levels()
-      ) %>%
-        Matrix::rowMeans()
-    } else {
-      cells_df$level <- expression_projection_expression_levels()
-    }
-    ## filter out non-selected cells with X-Y identifier and select some meta
-    ## data
-    cells_df <- cells_df %>%
-      dplyr::rename(X1 = 1, X2 = 2) %>%
-      dplyr::mutate(identifier = paste0(X1, '-', X2))
-    cells_df[["selection_key"]] <- if ("cell_barcode" %in% colnames(cells_df)) {
-      as.character(cells_df[["cell_barcode"]])
-    } else {
-      as.character(seq_len(nrow(cells_df)))
-    }
-    cells_df <- cells_df[
-      selectedCellMask(
-        cells_df[["selection_key"]],
-        cells_df[["identifier"]],
-        selected_cells
-      ),
-      ,
-      drop = FALSE
-    ] %>%
-      dplyr::select(-c(X1, X2, identifier, selection_key)) %>%
-      dplyr::rename(expression_level = level) %>%
-      dplyr::select(
-        dplyr::any_of("cell_barcode"),
-        expression_level,
-        everything()
-      )
-    ## check how many cells are left after filtering
-    ## ... no cells are left
-    if (nrow(cells_df) == 0) {
-      ## prepare empty table
-      getMetaData() %>%
-        dplyr::slice(0) %>%
-        prepareEmptyTable()
-      ## ... at least 1 cell is left
-    } else {
-      ## prepare proper table
-      prettifyTable(
-        cells_df,
-        filter = list(position = "top", clear = TRUE),
-        dom = "Brtlip",
-        show_buttons = TRUE,
-        number_formatting = input[[
-          "expression_details_selected_cells_number_formatting"
-        ]],
-        color_highlighting = input[[
-          "expression_details_selected_cells_color_highlighting"
-        ]],
-        hide_long_columns = TRUE,
-        download_file_name = "expression_details_of_selected_cells"
-      )
+    expression_columns <- make.unique(vapply(
+      summary$series,
+      `[[`,
+      character(1),
+      "label"
+    ))
+    for (i in seq_along(summary$series)) {
+      cells_df[[expression_columns[[i]]]] <- summary$series[[i]]$values
     }
   }
+  cells_df <- cells_df %>%
+    dplyr::rename(X1 = 1, X2 = 2) %>%
+    dplyr::mutate(identifier = paste0(X1, '-', X2))
+  cells_df[["selection_key"]] <- if ("cell_barcode" %in% colnames(cells_df)) {
+    as.character(cells_df[["cell_barcode"]])
+  } else {
+    as.character(seq_len(nrow(cells_df)))
+  }
+  cells_df <- cells_df[
+    selectedCellMask(
+      cells_df[["selection_key"]],
+      cells_df[["identifier"]],
+      selected_cells
+    ),
+    ,
+    drop = FALSE
+  ] %>%
+    dplyr::select(-c(X1, X2, identifier, selection_key)) %>%
+    dplyr::select(
+      dplyr::any_of("cell_barcode"),
+      dplyr::all_of(expression_columns),
+      everything()
+    )
+  if (nrow(cells_df) == 0) {
+    return(prepareEmptyTable(dplyr::slice(getMetaData(), 0)))
+  }
+  prettifyTable(
+    cells_df,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Brtlip",
+    show_buttons = TRUE,
+    number_formatting = input[[
+      "expression_details_selected_cells_number_formatting"
+    ]],
+    color_highlighting = input[[
+      "expression_details_selected_cells_color_highlighting"
+    ]],
+    hide_long_columns = TRUE,
+    download_file_name = "expression_details_of_selected_cells"
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -142,7 +130,7 @@ expression_details_selected_cells_info <- list(
   title = "Details of selected cells",
   text = HTML(
     "
-    Table containing (average) expression values of selected genes as well as selected meta data (sample, cluster, number of transcripts, number of expressed genes) for cells selected in the plot using the box or lasso selection tool. If you want the table to contain all cells in the data set, you must select all cells in the plot. The table can be saved to disk in CSV or Excel format for further analysis.
+    Table containing expression values and meta data for cells selected with the box or lasso tool. Mean expression mode adds one averaged expression column; Separate panels and RGB modes add one column per gene or populated channel. If you want the table to contain all cells in the data set, you must select all cells in the plot. The table can be saved to disk in CSV or Excel format for further analysis.
     <h4>Options</h4>
     <b>Automatically format numbers</b><br>
     When active, columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>

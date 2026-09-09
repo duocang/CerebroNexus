@@ -148,7 +148,8 @@ output[["overview_details_selected_cells_plot"]] <- plotly::renderPlotly({
         mirror = TRUE,
         showline = TRUE
       ),
-      dragmode = "select",
+      dragmode = "lasso",
       hovermode = "compare"
-    )
+    ) %>%
+    cerebro_plotly_toolbar()
 })

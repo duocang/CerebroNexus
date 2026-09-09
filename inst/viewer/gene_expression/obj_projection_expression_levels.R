@@ -41,14 +41,14 @@ expression_projection_expression_levels <- reactive({
       genes_data$genes_to_display_present,
       getGeneNames()
     )
+    display_mode <- expressionSummaryMode(
+      input[["expression_projection_genes_in_separate_panels"]],
+      length(genes_present),
+      ncol(expression_projection_coordinates())
+    )
 
     if (length(genes_present) == 0) {
-      expression_levels <- if (
-        identical(
-          input[["expression_projection_genes_in_separate_panels"]],
-          "rgb"
-        )
-      ) {
+      expression_levels <- if (identical(display_mode, "rgb")) {
         list(r = rep(0, n_cells), g = rep(0, n_cells), b = rep(0, n_cells))
       } else {
         rep(0, n_cells)
@@ -63,12 +63,7 @@ expression_projection_expression_levels <- reactive({
       ## barcodes lets the helper dispatch correctly across dgCMatrix (named
       ## [ ] subset), RleMatrix (match() against colnames), and IterableMatrix,
       ## so the former IterableMatrix special case is no longer needed.
-      if (
-        identical(
-          input[["expression_projection_genes_in_separate_panels"]],
-          "rgb"
-        )
-      ) {
+      if (identical(display_mode, "rgb")) {
         incProgress(0.3, detail = "Calculating RGB co-expression...")
         expression_levels <- lapply(genes_data[["rgb_genes"]], function(gene) {
           if (is.null(gene) || !gene %in% genes_present) {
@@ -79,15 +74,7 @@ expression_projection_expression_levels <- reactive({
             genes = gene
           )))
         })
-      } else if (
-        ncol(expression_projection_coordinates()) == 2 &&
-          identical(
-            input[["expression_projection_genes_in_separate_panels"]],
-            "separate"
-          ) &&
-          length(genes_present) >= 2 &&
-          length(genes_present) <= 9
-      ) {
+      } else if (identical(display_mode, "separate")) {
         incProgress(0.3, detail = "Extracting matrix for multiple panels...")
         expression_matrix <- data_set()$getExpressionMatrix(
           cells = cells_to_show_bc,
@@ -120,4 +107,35 @@ expression_projection_expression_levels <- reactive({
     }
     return(expression_levels)
   })
+})
+
+expression_summary_data <- reactive({
+  req(
+    expression_projection_cells_to_show(),
+    expression_selected_genes(),
+    input[["expression_projection_genes_in_separate_panels"]]
+  )
+  genes <- unique(intersect(
+    as.character(expression_selected_genes()[["genes_to_display_present"]]),
+    getGeneNames()
+  ))
+  req(length(genes) > 0)
+
+  spec <- expressionSummarySpec(
+    input[["expression_projection_genes_in_separate_panels"]],
+    genes,
+    expression_selected_genes()[["rgb_genes"]],
+    ncol(expression_projection_coordinates())
+  )
+  expression_levels <- expression_projection_expression_levels()
+  spec$series <- lapply(spec$series, function(series) {
+    series$values <- if (identical(spec$kind, "mean")) {
+      expression_levels
+    } else {
+      expression_levels[[series$key]]
+    }
+    series
+  })
+  spec$genes <- genes
+  spec
 })
