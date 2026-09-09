@@ -38,7 +38,7 @@ single-gene latency, and a 12-gene block read as cell count grows?
 
 This is an engineering benchmark, not a comparison of biological methods. It
 does not claim controlled cold-disk behaviour, statistical significance,
-cross-machine generality, or end-to-end Viewer interaction performance.
+cross-machine generality, or replicated Viewer interaction performance.
 
 # Backends
 
@@ -66,6 +66,13 @@ processes per build. Backend order rotates across builds. Complete-source
 `embedded` results are labelled `not representable` because both matrices
 exceed `dgCMatrix`'s 32-bit non-zero index limit.
 
+C2 also has four mandatory standalone Viewer rows: build repeat 1 for each
+complete-source/backend pair runs through `createShinyApp()`, `runApp()`, the
+Shiny WebSocket, and Canvas. Canvas hover, non-empty box selection, zoom, and
+frozen-gene switching must all succeed. The recorded step timings are single-run
+diagnostics, not replicated performance evidence. Vitessce comparison is
+outside this study.
+
 # Measurement and correctness
 
 A deterministic 12-gene query plan is prepared and frozen in a separate process
@@ -88,7 +95,9 @@ same source, tier, phase, and metric. No significance test is performed.
 A final report is generated only when A/B, C1, and C2 share one study ID, clean
 acquisition Git SHA, source hashes, CPU, OS, R platform, key dependency versions,
 thread count, and storage description. All phases and derived outputs are frozen
-inside one immutable result bundle; its `CURRENT` pointer changes last.
+inside one immutable result bundle; its `CURRENT` pointer changes last. C2 is
+accepted only when all four Viewer rows pass and retain the browser version and
+frozen first gene.
 
 The combined evidence will be read from:
 
@@ -102,6 +111,7 @@ tests/bench/result/publication-full/
     ├── correctness.csv
     ├── query_plan_metrics.csv
     ├── query_panel.csv
+    ├── viewer_metrics.csv
     ├── source_provenance.csv
     ├── summary.md
     └── figures/expression_backend_benchmark_publication_full.png

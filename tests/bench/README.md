@@ -33,17 +33,23 @@ BENCH_THREADS=1 \
 The wrapper owns the exact study design and rejects source-selection overrides.
 It runs:
 
-| phase | cells | backends | builds | access processes |
-|---|---|---|---:|---:|
-| A/B | 50k and 150k from mouse and human | embedded, bpcells, h5 | 36 | 72 |
-| C1 | mouse 400k; human 300k | embedded, bpcells, h5 | 18 | 36 |
-| C2 | complete mouse and human sources | bpcells, h5 | 12 | 24 |
+| phase | cells | backends | builds | access processes | Viewer gates |
+|---|---|---|---:|---:|---:|
+| A/B | 50k and 150k from mouse and human | embedded, bpcells, h5 | 36 | 72 | -- |
+| C1 | mouse 400k; human 300k | embedded, bpcells, h5 | 18 | 36 | -- |
+| C2 | complete mouse and human sources | bpcells, h5 | 12 | 24 | 4 |
 
 For every source/tier, a deterministic query plan is prepared in a separate
 process before any timed build; the exact 12-gene panel is retained as CSV.
-Each phase publishes into private study work;
-only after all phases, provenance checks, correctness checks, tables, and the
-combined figure succeed is the complete bundle copied to
+For build repeat 1 of each C2 source/backend pair, the harness then runs
+`createShinyApp()` -> `shinytest2::AppDriver`/`runApp()` -> Shiny WebSocket ->
+Canvas. All four rows must complete Canvas hover, box selection, zoom, and
+frozen-gene switching. Their six timings are single-run diagnostics, not
+replicated browser-performance estimates; Vitessce is outside this study.
+
+Each phase publishes into private study work; only after all phases, provenance
+checks, correctness checks, tables, and the combined figure succeed is the
+complete bundle copied to
 `result/publication-full/runs/<study-id>/`. `CURRENT` is updated last.
 
 Set `BENCH_STUDY_ID` to resume a stopped study with the same code and settings.
@@ -97,6 +103,7 @@ runs stop rather than silently omit unsafe tiers.
 | `10_export_backend.R` | build one sampled backend in a fresh process |
 | `11_build_full_backend.R` | build one full-source backend in a fresh process |
 | `20_measure_backend.R` | measure and correctness-check one fresh access process |
+| `21_measure_viewer.R` | drive one C2 standalone App through the Viewer gate |
 | `30_check_measurements.R` | reject incomplete, failed, or inconsistent rows |
 | `40_write_report.R` / `41_draw_figures.R` | write internal phase outputs |
 | `42_write_panel_c_report.R` / `43_draw_panel_c_figure.R` | validate and combine the complete study |

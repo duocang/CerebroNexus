@@ -217,6 +217,31 @@ test_that("C2 Viewer evidence is required through final publication", {
   expect_match(wrapper, "viewer_metrics.csv", fixed = TRUE)
 })
 
+test_that("benchmark docs define the four-row C2 Viewer boundary", {
+  skip_unless_bench_cli()
+  repo <- normalizePath(file.path(bench_root, "..", ".."))
+  paths <- c(
+    file.path(bench_root, "README.md"),
+    file.path(bench_root, "METHODOLOGY.md"),
+    file.path(bench_root, "RESULTS.md"),
+    file.path(repo, "vignettes", "expression_backend_benchmark.Rmd"),
+    file.path(repo, "NEWS.md")
+  )
+  docs <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+
+  expect_match(docs, "createShinyApp()", fixed = TRUE)
+  expect_match(docs, "WebSocket", fixed = TRUE)
+  expect_match(docs, "Canvas hover", fixed = TRUE)
+  expect_match(docs, "box selection", fixed = TRUE)
+  expect_match(docs, "zoom", fixed = TRUE)
+  expect_match(docs, "gene switching", fixed = TRUE)
+  expect_match(docs, "four", fixed = TRUE)
+  expect_match(docs, "single-run diagnostics", fixed = TRUE)
+  expect_match(docs, "Vitessce", fixed = TRUE)
+  expect_false(grepl("not end-to-end biological analysis or Viewer UX", docs))
+  expect_false(grepl("browser experiments are required", docs))
+})
+
 test_that("source cache reuses only checksum-verified files", {
   skip_unless_bench_cli()
   helper <- file.path(bench_root, "lib", "source_cache.sh")

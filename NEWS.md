@@ -1,5 +1,13 @@
 # CerebroNexus 4.4.1
 
+## Benchmark
+
+- Publication-full C2 now requires four million-cell standalone Viewer checks,
+  one per source/backend pair. They exercise `createShinyApp()`/`runApp()`, the
+  Shiny WebSocket, Canvas hover, box selection, zoom, and frozen-gene switching;
+  their timings are retained as single-run diagnostics. Vitessce comparison is
+  outside this benchmark.
+
 ## Viewer
 
 - Ordinary data tables escape HTML content by default, including the gene ID

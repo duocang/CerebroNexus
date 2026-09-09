@@ -73,6 +73,22 @@ source preparation and earlier runs may warm the operating-system cache. The
 remaining genes are warmed once, then queried in deterministic repeated passes.
 Publication access rows contain 33 warmed observations per process.
 
+## C2 Viewer functional gate
+
+Build repeat 1 for each full-source/backend pair is also passed through the
+production standalone path: `createShinyApp()` builds the bundle,
+`shinytest2::AppDriver` launches `runApp()`, the Shiny WebSocket transfers the
+view data, and a non-mini Canvas must render. The driver then requires Canvas
+hover with a visible tooltip, a non-empty box selection with server round-trip,
+zoom with an active minimap, and frozen-gene switching with a rendered
+expression Canvas and non-empty expression vector.
+
+This produces exactly four rows: two complete sources by two backends. Each is
+one functional validation, so its bundle, launch, hover, selection, zoom, and
+gene timings are single-run diagnostics. They are not independent replicates,
+are excluded from backend ratios, and have no fixed latency threshold. The
+browser executable/version and frozen first gene are retained with every row.
+
 ## Metrics
 
 | metric | interpretation |
@@ -88,6 +104,8 @@ Publication access rows contain 33 warmed observations per process.
 | `first_query_secs` | first getter call in that process |
 | `hot_p50_secs`, `hot_p95_secs` | within-process warmed single-gene distribution |
 | `block_secs` | one deterministic 12-gene by all-cell read |
+| `bundle_secs`, `launch_secs` | standalone C2 App construction and initial Canvas readiness |
+| `hover_secs`, `selection_secs`, `zoom_secs`, `gene_secs` | C2 Viewer functional-step diagnostics |
 
 For C2, build peak RSS includes lazy source opening, backend writing, and shell
 serialization, but excludes query-plan preparation. Reports retain raw rows and
@@ -101,6 +119,11 @@ Each access process recomputes deterministic fingerprints for the first gene
 and 12-gene block outside timed expressions. Any failed status, value mismatch,
 missing scheduled row, duplicate tier plan, source-hash drift, protocol drift,
 or environment drift invalidates publication.
+
+For C2, publication additionally requires the exact four Viewer rows, matching
+frozen first genes, non-empty browser provenance, finite non-negative timings,
+and successful launch, hover, box selection, zoom, gene switching, and log
+checks. Raw rows are preserved in `21_viewer.csv` and `viewer_metrics.csv`.
 
 `run_manifest.csv` records the study/run IDs, clean Git SHA, package version,
 R platform, key dependency versions, OS, CPU, allocated threads, scheduler
@@ -128,10 +151,14 @@ by reusing the same explicit `BENCH_STUDY_ID`.
 - First-query results are warm-cache-compatible, not controlled cold-disk I/O.
 - Median and range describe observed process variation; they are not confidence
   intervals and no significance test is performed.
-- Synthetic metadata and projection in C2 exercise the expression backend and
-  portable Cerebro shell, not end-to-end biological analysis or Viewer UX.
-- A second host is required before claiming cross-machine generality; browser
-  experiments are required before claiming million-cell interactive usability.
+- Synthetic metadata and projection in C2 exercise the expression backend,
+  portable Cerebro shell, and Viewer interaction path, not end-to-end biological
+  analysis of the source studies.
+- The four Viewer rows establish functional completion on the recorded host;
+  they do not estimate a latency distribution, visual quality, concurrent-user
+  behavior, or cross-machine usability.
+- Vitessce comparison, network shaping, and visual-regression screenshots are
+  outside this study. A second host is required for cross-machine generality.
 
 ## Reproduction
 

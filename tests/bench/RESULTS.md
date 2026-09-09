@@ -19,6 +19,7 @@ Start with:
 5. `combined_metrics.csv` and `backend_ratios.csv` for quantitative analysis;
 6. `query_plan_metrics.csv` for preparation cost kept outside timed builds.
 7. `query_panel.csv` for the exact gene workload and reference fingerprints.
+8. `viewer_metrics.csv` for the four C2 standalone Viewer outcomes.
 
 ## Interpret values and ratios
 
@@ -44,11 +45,18 @@ absolute timing or memory across different study IDs or environments.
 For C2, build peak RSS includes lazy source opening, backend writing, and shell
 serialization, but not the separately measured query-plan preparation.
 
+`viewer_metrics.csv` contains one row for each complete-source/backend pair.
+All four must pass `createShinyApp()`/`runApp()`, WebSocket-backed Canvas hover,
+box selection, zoom, and frozen-gene switching. The six elapsed values are
+single-run diagnostics from the recorded browser, not medians, confidence
+intervals, or replicated browser-performance estimates.
+
 ## Correctness and exclusions
 
 Every successful access row must have `status = OK`, `correctness = OK`, and
 matching row, block, and query-plan fingerprints. The combined report is not
-created when any scheduled process is absent or failed.
+created when any scheduled process is absent or failed. The same rule applies
+to the four C2 Viewer rows and their browser, frozen-gene, and timing checks.
 
 `embedded` has no C2 observation because each complete source exceeds the
 `dgCMatrix` non-zero index limit. This is reported as `not representable`, not
@@ -68,6 +76,7 @@ At the study root:
 | `combined_metrics.csv` | median, range, and `n` for every absolute metric |
 | `backend_ratios.csv` | matched within-tier median ratios |
 | `correctness.csv` | passed/total access processes by phase |
+| `viewer_metrics.csv` | four C2 Viewer outcomes, browser provenance, and raw step timings |
 | `summary.md` | generated publication-facing narrative and tables |
 | `figures/expression_backend_benchmark_publication_full.png` | combined scaling and full-source figure |
 | `phases/<phase>/` | exact raw schedule, environment, source, build, access, and correctness evidence |
@@ -78,9 +87,13 @@ At the study root:
 - universal or cross-machine performance;
 - statistical significance from three builds;
 - biological-method quality;
-- million-cell Viewer interaction quality;
+- replicated Viewer latency, visual quality, concurrent-user behavior, or
+  cross-machine interaction quality;
+- comparison with Vitessce;
 - full-source `embedded` support.
 
 The study supports a narrower claim: on one fully recorded host and two public
 datasets, it measures the reproducible engineering trade-offs and feasibility
-of Cerebro's three expression-storage modes over the stated scale range.
+of Cerebro's three expression-storage modes over the stated scale range. A
+completed study also establishes that the four specified million-cell Viewer
+paths finished on that recorded host and browser.
