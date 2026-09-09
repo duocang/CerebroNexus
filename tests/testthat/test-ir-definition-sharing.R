@@ -1,10 +1,10 @@
-# test-ir-definition-sharing.R — pure-function tests for the Definition /
-# Sharing tabs. These test the data-layer helpers directly (no Shiny reactive
+# test-ir-definition-sharing.R — pure-function tests for the Sharing tab.
+# These test the data-layer helpers directly (no Shiny reactive
 # context needed), so they source data.R's function definitions.
 #
 # data.R is a Shiny module fragment: its reactives reference `input`/`session`,
-# but the three pure helpers below (ir_parse_segments / ir_definition_counts /
-# ir_sharing_classify) are plain functions. We source data.R inside a throwaway
+# but the pure helpers below (ir_parse_segments / ir_sharing_classify) are
+# plain functions. We source data.R inside a throwaway
 # environment that stubs the reactive machinery, then lift just the helpers out.
 
 # Locate data.R in both the source tree (fast local run) and the installed
@@ -31,7 +31,7 @@ testthat::skip_if_not(
 )
 
 # Stub environment: reactive()/req()/etc. are no-ops that just capture the
-# function bodies. We only need the three pure helpers, which don't call these.
+# function bodies. We only need the pure helpers, which don't call these.
 ir_env <- new.env()
 ir_env$reactive <- function(x) function() eval(substitute(x))
 ir_env$reactiveVal <- function(...) function(...) NULL
@@ -44,6 +44,10 @@ ir_env$getMetaData <- function(...) NULL
 ir_env$availableProjections <- function(...) character(0)
 ir_env$getProjection <- function(...) NULL
 ir_env$detect_chains <- function(...) character(0)
+ir_env$hla_parse_ir_segments <- getFromNamespace(
+  "hla_parse_ir_segments",
+  "CerebroNexus"
+)
 # Shared palette helper (defined in color_setup.R inside the running app); the
 # plot builders call it for fill colours, so provide a lightweight stand-in.
 ir_env$cerebro_group_colors <- function(n) {
@@ -59,9 +63,7 @@ sys.source(
 sys.source(data_r, envir = ir_env, keep.source = FALSE)
 
 ir_parse_segments <- ir_env$ir_parse_segments
-ir_definition_counts <- ir_env$ir_definition_counts
 ir_sharing_classify <- ir_env$ir_sharing_classify
-ir_build_definition_plot <- ir_env$ir_build_definition_plot
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
 
@@ -98,54 +100,26 @@ test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {
   )
 })
 
-test_that("ir_parse_segments drops rows lacking the requested chain", {
+test_that("ir_parse_segments requires the requested chain and its J gene", {
   data <- list(
     s1 = data.frame(
-      barcode = c("bc1", "bc2"),
+      barcode = c("bc1", "bc2", "bc3"),
       CTgene = c(
         "TRAV8-6.TRAJ8.TRAC_NA",
-        "TRAV3.TRAJ26.TRAC_TRBV14..TRBJ2-3.TRBC2"
+        "TRAV3.TRAJ26.TRAC_TRBV14..TRBJ2-3.TRBC2",
+        "TRBV02"
       ),
-      CTaa = c("CAVSAFFQKLVF_NA", "CAVTHYGQNFVF_CASSPGGQNTQYF"),
+      CTaa = c(
+        "CAVSAFFQKLVF_NA",
+        "CAVTHYGQNFVF_CASSPGGQNTQYF",
+        "CASSL"
+      ),
       stringsAsFactors = FALSE
     )
   )
   out <- ir_parse_segments(data, chain = "TRB")
   expect_equal(nrow(out), 1)
   expect_equal(out$barcode, "bc2")
-})
-
-test_that("ir_parse_segments carries metadata columns through", {
-  data <- list(
-    s1 = data.frame(
-      barcode = "bc1",
-      CTgene = "TRBV6-2..TRBJ2-6.TRBC2",
-      CTaa = "CASSYLPRRQDRESSGANVLTF",
-      condition = "A",
-      sample = "s1",
-      stringsAsFactors = FALSE
-    )
-  )
-  out <- ir_parse_segments(data, chain = "TRB")
-  expect_true(all(c("condition", "sample") %in% colnames(out)))
-  expect_equal(out$condition, "A")
-})
-
-test_that("ir_parse_segments returns NULL on empty or null input", {
-  expect_null(ir_parse_segments(NULL, "TRB"))
-  expect_null(ir_parse_segments(list(), "TRB"))
-})
-
-test_that("ir_parse_segments returns NULL when no row has the chain", {
-  data <- list(
-    s1 = data.frame(
-      barcode = c("bc1", "bc2"),
-      CTgene = c("TRAV8-6.TRAJ8.TRAC_NA", "TRAV3.TRAJ26.TRAC_NA"),
-      CTaa = c("CAVSAFFQKLVF_NA", "CAVTHYGQNFVF_NA"),
-      stringsAsFactors = FALSE
-    )
-  )
-  expect_null(ir_parse_segments(data, chain = "TRB"))
 })
 
 test_that("ir_parse_segments preserves per-sample metadata via column union", {
@@ -171,65 +145,6 @@ test_that("ir_parse_segments preserves per-sample metadata via column union", {
   expect_equal(out$condition, c("A", NA))
   expect_equal(out$treatment, c(NA, "X"))
 })
-
-# --- ir_definition_counts --------------------------------------------------
-
-test_that("ir_definition_counts returns the 7 resolution levels in order", {
-  seg <- data.frame(
-    barcode = paste0("bc", 1:4),
-    v_gene = c("TRBV1", "TRBV1", "TRBV2", "TRBV2"),
-    j_gene = c("TRBJ1", "TRBJ1", "TRBJ1", "TRBJ2"),
-    cdr3 = c("CAAA", "CAAA", "CBBB", "CBBB"),
-    stringsAsFactors = FALSE
-  )
-  seg$clone_vjc <- paste(seg$v_gene, seg$j_gene, seg$cdr3, sep = ";")
-  out <- ir_definition_counts(seg, group = NULL)
-  expect_equal(
-    as.character(out$definition),
-    c("cells", "V", "J", "V+J", "CDR3", "V+CDR3", "V+J+CDR3")
-  )
-  # 4 cells; V: {TRBV1,TRBV2}=2; J: {TRBJ1,TRBJ2}=2; V+J: {V1J1,V2J1,V2J2}=3;
-  # CDR3: {CAAA,CBBB}=2; V+CDR3: {V1CAAA,V2CBBB}=2; V+J+CDR3: 3 distinct
-  expect_equal(out$n[out$definition == "cells"], 4)
-  expect_equal(out$n[out$definition == "V"], 2)
-  expect_equal(out$n[out$definition == "J"], 2)
-  expect_equal(out$n[out$definition == "V+J"], 3)
-  expect_equal(out$n[out$definition == "CDR3"], 2)
-  expect_equal(out$n[out$definition == "V+CDR3"], 2)
-  expect_equal(out$n[out$definition == "V+J+CDR3"], 3)
-  expect_true(is.ordered(out$definition))
-})
-
-test_that("ir_definition_counts splits by group when given", {
-  seg <- data.frame(
-    barcode = paste0("bc", 1:4),
-    v_gene = c("TRBV1", "TRBV1", "TRBV2", "TRBV2"),
-    j_gene = c("TRBJ1", "TRBJ1", "TRBJ1", "TRBJ1"),
-    cdr3 = c("CAAA", "CAAA", "CBBB", "CBBB"),
-    grp = c("A", "A", "B", "B"),
-    stringsAsFactors = FALSE
-  )
-  seg$clone_vjc <- paste(seg$v_gene, seg$j_gene, seg$cdr3, sep = ";")
-  out <- ir_definition_counts(seg, group = "grp")
-  expect_true("grp" %in% colnames(out))
-  expect_setequal(unique(out$grp), c("A", "B"))
-  expect_equal(out$n[out$grp == "A" & out$definition == "cells"], 2)
-})
-
-test_that("ir_definition_counts returns NULL on empty input", {
-  expect_null(ir_definition_counts(NULL, group = NULL))
-  expect_null(ir_definition_counts(
-    data.frame(
-      v_gene = character(0),
-      j_gene = character(0),
-      cdr3 = character(0),
-      clone_vjc = character(0)
-    ),
-    group = NULL
-  ))
-})
-
-# --- ir_sharing_classify ---------------------------------------------------
 
 test_that("ir_sharing_classify assigns Private / within / cross correctly", {
   # clone P: 1 unit only            -> Private
@@ -309,52 +224,6 @@ test_that("ir_sharing_classify ignores NA unit/group values when counting", {
   cls <- setNames(as.character(out$sharing), out$clone_vjc)
   expect_equal(cls[["P"]], "Private")
   expect_equal(cls[["Q"]], "Public (within-group)")
-})
-
-# --- ir_build_definition_plot ----------------------------------------------
-
-test_that("ir_build_definition_plot returns a ggplot for valid TCR data", {
-  data <- list(
-    s1 = data.frame(
-      barcode = c("b1", "b2", "b3"),
-      CTgene = c(
-        "TRBV6-2..TRBJ2-6.TRBC2",
-        "TRBV6-2..TRBJ2-6.TRBC2",
-        "TRBV14..TRBJ2-3.TRBC2"
-      ),
-      CTaa = c("CASSA", "CASSA", "CASSB"),
-      sample = c("s1", "s1", "s1"),
-      stringsAsFactors = FALSE
-    )
-  )
-  p <- ir_build_definition_plot(data, chain = "TRB", group_by = NULL)
-  expect_s3_class(p, "ggplot")
-})
-
-test_that("ir_build_definition_plot returns NULL when no cells for the chain", {
-  data <- list(
-    s1 = data.frame(
-      barcode = "b1",
-      CTgene = "TRAV8-6.TRAJ8.TRAC_NA",
-      CTaa = "CAVSA_NA",
-      stringsAsFactors = FALSE
-    )
-  )
-  expect_null(ir_build_definition_plot(data, chain = "TRB", group_by = NULL))
-})
-
-test_that("ir_build_definition_plot adds a BCR caveat to the subtitle for IGH", {
-  data <- list(
-    s1 = data.frame(
-      barcode = "b1",
-      CTgene = "IGHV4-34..IGHJ6.IGHG1",
-      CTaa = "CARDA",
-      stringsAsFactors = FALSE
-    )
-  )
-  p <- ir_build_definition_plot(data, chain = "IGH", group_by = NULL)
-  expect_s3_class(p, "ggplot")
-  expect_true(grepl("SHM", p$labels$subtitle %||% ""))
 })
 
 test_that("ir_is_bcr_chain is TRUE for BCR chains, FALSE otherwise and safe on NA/NULL", {

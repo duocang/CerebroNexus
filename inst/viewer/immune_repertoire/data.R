@@ -136,11 +136,11 @@ ir_clone_size <- function() {
   setNames(nums, IR_CLONE_SIZE_NAMES)
 }
 
-## ---- Comparable groups for Scatter / Compare ------------------------- ##
-## clonalScatter (x.axis/y.axis) and clonalCompare (samples) operate on the
+## ---- Comparable groups for Paired Scatter / Compare ------------------ ##
+## Paired Scatter and clonalCompare operate on the
 ## *names of the groups that group.by produces*. With group.by = None the
 ## groups are the list elements (samples); with group.by = <column> they are
-## that column's levels. This reactive returns those group names so the Scatter
+## that column's levels. This reactive returns those group names so the paired
 ## X/Y and Compare selectors stay in sync with the active grouping.
 ir_compare_groups <- reactive({
   data <- ir_data()
@@ -202,42 +202,6 @@ ir_params <- reactive({
   )
 })
 
-## ---- Reactive: number of groups for faceted plots --------------------- ##
-n_groups <- reactive({
-  gb <- ir_params()$groupBy
-  if (is.null(gb)) {
-    return(1L)
-  }
-  data <- ir_data()
-  if (is.null(data)) {
-    return(1L)
-  }
-  lvls <- unique(unlist(lapply(data, function(df) {
-    if (gb %in% names(df)) unique(as.character(df[[gb]])) else character(0)
-  })))
-  max(1L, length(lvls))
-})
-
-## ---- Dynamic gene parameter for vizGenes/percentGeneUsage ------------- ##
-default_gene_family <- reactive({
-  chains <- detect_chains(ir_data())
-  tcr_chains <- intersect(chains, c("TRA", "TRB", "TRG", "TRD"))
-  bcr_chains <- intersect(chains, c("IGH", "IGK", "IGL"))
-  if (length(tcr_chains) > 0 && "TRB" %in% tcr_chains) {
-    return("TRBV")
-  }
-  if (length(tcr_chains) > 0) {
-    return(paste0(tcr_chains[1], "V"))
-  }
-  if (length(bcr_chains) > 0 && "IGH" %in% bcr_chains) {
-    return("IGHV")
-  }
-  if (length(bcr_chains) > 0) {
-    return(paste0(bcr_chains[1], "V"))
-  }
-  "TRBV"
-})
-
 ## ---- Resolve chain: for functions that don't accept "both" ------------ ##
 specific_chain <- reactive({
   ch <- input$ir_chain
@@ -253,43 +217,6 @@ specific_chain <- reactive({
   }
   ch
 })
-
-## ---- Count unique genes for dynamic plot height ----------------------- ##
-n_genes <- reactive({
-  data <- ir_data()
-  if (is.null(data)) {
-    return(0L)
-  }
-  gene_family <- default_gene_family()
-  # Gather all gene values across samples
-  all_genes <- unique(unlist(lapply(data, function(df) {
-    # CTgene has format like "TRBV1.TRBJ2" — extract the gene family portion
-    ct <- as.character(df$CTgene)
-    ct <- ct[!is.na(ct)]
-    # Split by "." and keep segments matching the gene family prefix
-    segments <- unlist(strsplit(ct, "[._]"))
-    segments[grepl(paste0("^", gene_family), segments, ignore.case = TRUE)]
-  })))
-  length(all_genes)
-})
-
-ir_plot_height <- function(facet_mode = c("none", "grid", "wrap")) {
-  facet_mode <- match.arg(facet_mode)
-  n <- n_genes()
-  ng <- n_groups()
-  base_h <- max(450, min(n * 25, 2500))
-  if (ng <= 1 || facet_mode == "none") {
-    return(base_h)
-  }
-  if (facet_mode == "grid") {
-    # facet_grid(Group ~ .): each group stacked vertically
-    return(base_h * ng)
-  }
-  # facet_wrap: ggplot default ncol = ceiling(sqrt(n))
-  ncol <- ceiling(sqrt(ng))
-  nrow <- ceiling(ng / ncol)
-  base_h * nrow
-}
 
 ##----------------------------------------------------------------------------##
 ## Clonal UMAP data layer
@@ -502,177 +429,13 @@ ir_clonal_umap_data <- function(
 }
 
 ##----------------------------------------------------------------------------##
-## Clone-segment parsing (shared by the Definition and Sharing tabs)
+## Clone-segment parsing for the Sharing tab
 ##----------------------------------------------------------------------------##
 
-## ---- Parse V / J / CDR3 for one chain out of the CT* columns ----------- ##
-## scRepertoire packs all chains of a cell into single strings:
-##   CTgene : "<chainA gene segs>_<chainB gene segs>"  (chains joined by "_")
-##            each chain's segs are V.D.J.C joined by "."  (empty D -> "..")
-##            a chain's two alleles are joined by ";"      (take the first)
-##   CTaa   : "<chainA CDR3>_<chainB CDR3>"              (chains joined by "_")
-## "NA" marks a missing chain. This returns one row per cell that HAS the
-## requested chain, with parsed v_gene / j_gene / cdr3 and a combined
-## clone_vjc = "v;j;cdr3" id, plus every metadata column already joined onto
-## the IR data (so callers can group/split by any of them).
-##
-##   data  : the metadata-annotated IR list (ir_data_annotated())
-##   chain : chain prefix, e.g. "TRB" / "TRA" / "IGH"
+## Sharing requires a J gene; the shared HLA parser otherwise
+## keeps its bulk-repertoire-compatible V + CDR3 contract.
 ir_parse_segments <- function(data, chain) {
-  if (is.null(data) || length(data) == 0 || is.null(chain) || !nzchar(chain)) {
-    return(NULL)
-  }
-  # For each cell's CT* string (chains joined by "_"), find the positional index
-  # (1-based) of the chain matching `chain`, then return that slot's value from
-  # both CTgene and CTaa in parallel so gene and CDR3 stay aligned.
-  # Returns NA when the chain is absent or its slot is "NA".
-  chain_slot_index <- function(ct_gene_vec) {
-    ct_gene_vec <- as.character(ct_gene_vec)
-    vapply(
-      strsplit(ct_gene_vec, "_", fixed = TRUE),
-      function(parts) {
-        # Take first allele of each slot to test chain membership.
-        first <- sub(";.*$", "", parts)
-        idx <- which(grepl(chain, first, fixed = TRUE) & first != "NA")
-        if (length(idx) == 0) NA_integer_ else idx[1]
-      },
-      integer(1)
-    )
-  }
-  # Given a CT* vector and a per-row slot index, pick that slot's value.
-  # strsplit the whole vector once, then index each row's slot in one mapply
-  # pass (avoids re-splitting per cell). NA slot, out-of-range slot, and a
-  # literal "NA" / empty value all collapse to NA_character_, as before.
-  pick_slot <- function(ct_vec, slot_idx) {
-    if (length(ct_vec) == 0) {
-      return(character(0))
-    }
-    split_all <- strsplit(as.character(ct_vec), "_", fixed = TRUE)
-    val <- mapply(
-      function(parts, i) {
-        if (is.na(i) || i > length(parts)) NA_character_ else parts[i]
-      },
-      split_all,
-      slot_idx,
-      SIMPLIFY = TRUE,
-      USE.NAMES = FALSE
-    )
-    val[is.na(val) | val == "NA" | !nzchar(val)] <- NA_character_
-    val
-  }
-  # Take the first allele (before ";") of a chain segment.
-  first_allele <- function(x) {
-    ifelse(is.na(x), NA_character_, sub(";.*$", "", x))
-  }
-
-  rows <- lapply(data, function(df) {
-    if (is.null(df) || !all(c("barcode", "CTgene", "CTaa") %in% colnames(df))) {
-      return(NULL)
-    }
-    slot_idx <- chain_slot_index(df$CTgene)
-    gene_seg <- first_allele(pick_slot(df$CTgene, slot_idx))
-    cdr3 <- first_allele(pick_slot(df$CTaa, slot_idx))
-    # From "TRBV6-2..TRBJ2-6.TRBC2" pull the V and J tokens (segs split on ".").
-    # NA gene_seg -> strsplit yields NA -> no token matches -> NA gene, dropped.
-    pull_token <- function(prefix) {
-      vapply(
-        strsplit(gene_seg, ".", fixed = TRUE),
-        function(toks) {
-          hit <- toks[grepl(paste0("^", chain, prefix), toks)]
-          if (length(hit) == 0) NA_character_ else hit[1]
-        },
-        character(1)
-      )
-    }
-    v_gene <- pull_token("V")
-    j_gene <- pull_token("J")
-    keep <- !is.na(v_gene) & !is.na(j_gene) & !is.na(cdr3) & nzchar(cdr3)
-    if (!any(keep)) {
-      return(NULL)
-    }
-    out <- df[keep, , drop = FALSE]
-    out$v_gene <- v_gene[keep]
-    out$j_gene <- j_gene[keep]
-    out$cdr3 <- cdr3[keep]
-    out$clone_vjc <- paste(out$v_gene, out$j_gene, out$cdr3, sep = ";")
-    out
-  })
-  rows <- rows[!vapply(rows, is.null, logical(1))]
-  if (length(rows) == 0) {
-    return(NULL)
-  }
-  # Align columns before rbind. Use the UNION of all sample columns and NA-fill
-  # any a given sample lacks, so per-cohort metadata columns are never silently
-  # dropped (intersect would lose them). Column order follows the first sample,
-  # with any extra columns from later samples appended.
-  all_cols <- unique(unlist(lapply(rows, colnames)))
-  rows <- lapply(rows, function(df) {
-    miss <- setdiff(all_cols, colnames(df))
-    for (col in miss) {
-      df[[col]] <- NA
-    }
-    df[, all_cols, drop = FALSE]
-  })
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
-  out
-}
-
-## ---- Definition-resolution level order (used by the Definition tab) ----- ##
-IR_DEFINITION_LEVELS <- c(
-  "cells",
-  "V",
-  "J",
-  "V+J",
-  "CDR3",
-  "V+CDR3",
-  "V+J+CDR3"
-)
-
-## ---- Count unique entities at each clone-definition resolution --------- ##
-## Given the per-cell segment table from ir_parse_segments(), count how many
-## distinct entities exist at each of the 7 resolution levels:
-##   cells -> V -> J -> V+J -> CDR3 -> V+CDR3 -> V+J+CDR3
-## When `group` names a column, counts are computed within each group value.
-## Returns a long data.frame: definition (factor, ordered), n, and (if grouped)
-## the group column.
-ir_definition_counts <- function(seg, group = NULL) {
-  if (is.null(seg) || nrow(seg) == 0) {
-    return(NULL)
-  }
-  count_block <- function(df) {
-    data.frame(
-      definition = factor(
-        IR_DEFINITION_LEVELS,
-        levels = IR_DEFINITION_LEVELS,
-        ordered = TRUE
-      ),
-      n = c(
-        nrow(df),
-        length(unique(df$v_gene)),
-        length(unique(df$j_gene)),
-        length(unique(paste(df$v_gene, df$j_gene, sep = ";"))),
-        length(unique(df$cdr3)),
-        length(unique(paste(df$v_gene, df$cdr3, sep = ";"))),
-        length(unique(df$clone_vjc))
-      ),
-      stringsAsFactors = FALSE
-    )
-  }
-  if (is.null(group) || !nzchar(group) || !(group %in% colnames(seg))) {
-    return(count_block(seg))
-  }
-  groups <- split(seg, seg[[group]], drop = TRUE)
-  out <- do.call(
-    rbind,
-    lapply(names(groups), function(g) {
-      blk <- count_block(groups[[g]])
-      blk[[group]] <- g
-      blk
-    })
-  )
-  rownames(out) <- NULL
-  out
+  hla_parse_ir_segments(data, chain, require_j = TRUE)
 }
 
 ## ---- Sharing-class factor levels --------------------------------------- ##
@@ -738,7 +501,7 @@ ir_sharing_classify <- function(seg, unit_col, group_col = NULL) {
 ## ---- Is the chain a BCR chain? ----------------------------------------- ##
 ## IGH/IGK/IGL undergo somatic hypermutation, so identical-CDR3 clone calling
 ## is over-strict for them (one clone can split into near-neighbour variants).
-## The Definition / Sharing plots surface this as a subtitle caveat.
+## The Sharing plot surfaces this as a subtitle caveat.
 ir_is_bcr_chain <- function(chain) {
   is.character(chain) &&
     length(chain) == 1 &&
@@ -748,56 +511,6 @@ ir_is_bcr_chain <- function(chain) {
 
 ## ---- BCR caveat line appended to plot subtitles ------------------------ ##
 IR_BCR_SHM_CAVEAT <- "BCR: CDR3 not collapsed by SHM; clones may be split."
-
-## ---- Build the Definition (resolution waterfall) ggplot ---------------- ##
-## Parses V/J/CDR3 for `chain`, counts entities at the 7 resolution levels
-## (optionally within `group_by`), and returns the bar ggplot. Returns NULL
-## when there are no cells for the chain (caller renders the empty state).
-## Shared by the live renderer and the Example-modal demo.
-ir_build_definition_plot <- function(data, chain, group_by = NULL) {
-  seg <- ir_parse_segments(data, chain)
-  if (is.null(seg) || nrow(seg) == 0) {
-    return(NULL)
-  }
-  df <- ir_definition_counts(seg, group = group_by)
-  subtitle <- "V = V gene; J = J gene; CDR3 = complementarity region 3."
-  if (ir_is_bcr_chain(chain)) {
-    subtitle <- paste(subtitle, IR_BCR_SHM_CAVEAT, sep = "\n")
-  }
-  p <- ggplot2::ggplot(
-    df,
-    ggplot2::aes(x = definition, y = n, fill = definition)
-  ) +
-    ggplot2::geom_col(width = 0.7) +
-    ggplot2::geom_text(
-      ggplot2::aes(label = scales::comma(n)),
-      vjust = -0.3,
-      size = 3
-    ) +
-    ggplot2::scale_fill_manual(
-      values = cerebro_group_colors(length(unique(df$definition)))
-    ) +
-    ggplot2::scale_y_continuous(
-      expand = ggplot2::expansion(mult = c(0, 0.15)),
-      labels = scales::comma
-    ) +
-    ggplot2::labs(
-      x = NULL,
-      y = "Unique count",
-      title = "Clone definition resolution",
-      subtitle = subtitle
-    ) +
-    ggplot2::theme_bw(base_size = 11) +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1),
-      legend.position = "none"
-    )
-  if (!is.null(group_by) && nzchar(group_by) && group_by %in% colnames(df)) {
-    p <- p +
-      ggplot2::facet_wrap(stats::as.formula(paste0("~ `", group_by, "`")))
-  }
-  p
-}
 
 ## ---- Friendly display labels for the sharing classes ------------------- ##
 ## The data layer (ir_sharing_classify) keeps immunology-standard labels
