@@ -58,20 +58,23 @@ cerebro_plotly_hoverlabel <- function() {
 
 ## Shared modebar configuration for native Plotly charts. The custom cell-view
 ## renderer exposes the same useful actions with its own toolbar.
-cerebro_plotly_toolbar <- function(fig) {
+cerebro_plotly_toolbar <- function(
+  fig,
+  buttons = c(
+    "select2d",
+    "lasso2d",
+    "pan2d",
+    "zoomIn2d",
+    "zoomOut2d",
+    "resetScale2d",
+    "toImage"
+  )
+) {
   plotly::config(
     fig,
     displayModeBar = TRUE,
     displaylogo = FALSE,
-    modeBarButtons = list(list(
-      "select2d",
-      "lasso2d",
-      "pan2d",
-      "zoomIn2d",
-      "zoomOut2d",
-      "resetScale2d",
-      "toImage"
-    ))
+    modeBarButtons = list(buttons)
   )
 }
 
@@ -256,5 +259,5 @@ plotlySankeyPlot <- function(
     )
   )
   ##
-  return(cerebro_plotly_toolbar(plot))
+  return(cerebro_plotly_toolbar(plot, "toImage"))
 }
