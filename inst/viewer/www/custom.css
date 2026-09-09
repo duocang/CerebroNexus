@@ -429,6 +429,13 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   min-width: 0;
   padding: 0 !important;
 }
+.cerebro-viz-top-layout > .cerebro-viz-toolbar-col {
+  position: relative;
+}
+.cerebro-viz-top-layout > .cerebro-viz-toolbar-col:has(.selectize-input.dropdown-active),
+.cerebro-viz-top-layout > .cerebro-viz-toolbar-col:has(.bootstrap-select.open) {
+  z-index: 20;
+}
 .cerebro-viz-top-layout > .cerebro-viz-col > .col-sm-12 > .box {
   margin-bottom: 12px;
 }
