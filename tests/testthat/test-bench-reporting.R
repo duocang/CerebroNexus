@@ -1,5 +1,6 @@
 bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
 bench_reporting <- file.path("..", "bench", "lib", "reporting.R")
+bench_viewer <- file.path("..", "bench", "lib", "viewer_validation.R")
 bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
 
 skip_unless_bench_reporting <- function() {
@@ -8,6 +9,66 @@ skip_unless_bench_reporting <- function() {
     "benchmark tree not present (expected when checking a built package)"
   )
 }
+
+test_that("C2 viewer schedule selects one build per source and backend", {
+  skip_unless_bench_reporting()
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "config", "sources.R"), local = TRUE)
+  source(bench_viewer, local = TRUE)
+
+  schedule <- bench_viewer_schedule(
+    bench_panel_c_schedule(BENCH_SOURCES, "c2")
+  )
+
+  expect_equal(nrow(schedule), 4L)
+  expect_true(all(schedule$export_repeat == 1L))
+  expect_setequal(
+    unique(schedule$source),
+    c("mouse_brain_e18", "human_pfc_hbcc")
+  )
+  expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
+})
+
+test_that("C2 viewer results must cover the successful schedule", {
+  skip_unless_bench_reporting()
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "config", "sources.R"), local = TRUE)
+  source(bench_viewer, local = TRUE)
+
+  schedule <- bench_viewer_schedule(
+    bench_panel_c_schedule(BENCH_SOURCES, "c2")
+  )
+  rows <- transform(
+    schedule,
+    run_id = "run-1",
+    status = "OK",
+    correctness = "OK",
+    bundle_secs = 1,
+    launch_secs = 2,
+    hover_secs = 0.1,
+    selection_secs = 0.2,
+    zoom_secs = 0.1,
+    gene_secs = 1
+  )
+
+  expect_silent(bench_validate_viewer_results(schedule, rows, "run-1"))
+  expect_error(
+    bench_validate_viewer_results(schedule, rows[-1L, ], "run-1"),
+    "does not cover"
+  )
+  failed <- rows
+  failed$status[1L] <- "FAILED(hover): no tooltip"
+  expect_error(
+    bench_validate_viewer_results(schedule, failed, "run-1"),
+    "failed"
+  )
+  invalid <- rows
+  invalid$gene_secs[1L] <- NA_real_
+  expect_error(
+    bench_validate_viewer_results(schedule, invalid, "run-1"),
+    "timings"
+  )
+})
 
 test_that("metric summaries retain independent-repeat uncertainty", {
   skip_unless_bench_reporting()
