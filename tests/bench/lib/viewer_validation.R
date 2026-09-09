@@ -51,6 +51,10 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
       call. = FALSE
     )
   }
+  expected_profile <- expected$profile[match(result_keys, expected_keys)]
+  if (any(is.na(results$profile) | results$profile != expected_profile)) {
+    stop("Viewer result profile does not match the schedule", call. = FALSE)
+  }
   if (!is.null(run_id) && any(results$run_id != run_id)) {
     stop("Viewer results do not share the phase run id", call. = FALSE)
   }
@@ -69,6 +73,28 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
     stop("Viewer timings must be finite and non-negative", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+bench_viewer_bad_logs <- function(logs) {
+  message <- ifelse(is.na(logs$message), "", as.character(logs$message))
+  location <- ifelse(is.na(logs$location), "", as.character(logs$location))
+  level <- tolower(ifelse(is.na(logs$level), "", as.character(logs$level)))
+  known_browser <- grepl(
+    "the fixed layout requires the slimscroll plugin",
+    message,
+    fixed = TRUE
+  )
+  bad_browser <- location %in%
+    c("browser", "chromote") &
+    level %in% c("error", "severe") &
+    !known_browser
+  bad_server <- location == "shiny" &
+    level == "stderr" &
+    grepl(
+      "(^|[[:space:]])(Warning: )?Error( in|:)|Execution halted|Unhandled",
+      message
+    )
+  bad_browser | bad_server
 }
 
 bench_run_viewer_validation <- function(
@@ -181,6 +207,7 @@ bench_run_viewer_validation <- function(
       )
     )
     hovered <- FALSE
+    hover_point <- NULL
     for (i in seq_len(nrow(points))) {
       mouse(
         type = "mouseMoved",
@@ -195,7 +222,10 @@ bench_run_viewer_validation <- function(
         "tip => Number(getComputedStyle(tip).opacity) > 0 && ",
         "tip.textContent.trim().length > 0)"
       )))
-      if (hovered) break
+      if (hovered) {
+        hover_point <- points[i, ]
+        break
+      }
     }
     if (!hovered) {
       stop("Canvas hover did not show a tooltip", call. = FALSE)
@@ -204,17 +234,19 @@ bench_run_viewer_validation <- function(
 
     stage <<- "selection"
     started <- now()
-    drag <- app$get_js(sprintf(
-      paste0(
-        "(() => { const host = document.getElementById(",
-        "'overview_projection_cell_view_host'); ",
-        "host.querySelector('.cv-tbtn[data-act=\"box\"]').click(); ",
-        "const r = document.querySelector('%s').getBoundingClientRect(); ",
-        "return {x1:r.left+r.width*.3,y1:r.top+r.height*.3,",
-        "x2:r.right-r.width*.3,y2:r.bottom-r.height*.3}; })()"
-      ),
-      canvas
+    app$get_js(paste0(
+      "(() => { const host = document.getElementById(",
+      "'overview_projection_cell_view_host'); ",
+      "host.querySelector('.cv-tbtn[data-act=\"box\"]').click(); ",
+      "return true; })()"
     ))
+    padding <- min(20, geometry$width / 20, geometry$height / 20)
+    drag <- list(
+      x1 = max(geometry$left + 1, hover_point[[1L]] - padding),
+      y1 = max(geometry$top + 1, hover_point[[2L]] - padding),
+      x2 = min(geometry$left + geometry$width - 1, hover_point[[1L]] + padding),
+      y2 = min(geometry$top + geometry$height - 1, hover_point[[2L]] + padding)
+    )
     mouse(
       type = "mousePressed",
       x = drag$x1,
@@ -246,7 +278,8 @@ bench_run_viewer_validation <- function(
         "'overview_number_of_selected_cells'); ",
         "return active && !active.classList.contains(",
         "'cerebro-selection-status-hidden') && ",
-        "count?.textContent.includes('Selected'); })()"
+        "Number(count?.querySelector('b')?.textContent.replace(/,/g, '')) > 0; ",
+        "})()"
       ),
       timeout = timeout
     )
@@ -302,21 +335,10 @@ bench_run_viewer_validation <- function(
 
     stage <<- "logs"
     logs <- app$get_logs()
-    known_browser <- grepl(
-      "the fixed layout requires the slimscroll plugin",
-      logs$message,
-      fixed = TRUE
-    )
-    bad_browser <- logs$location %in%
-      c("browser", "chromote") &
-      tolower(logs$level) %in% c("error", "severe") &
-      !known_browser
-    bad_server <- logs$location == "shiny" &
-      logs$level == "stderr" &
-      grepl("(^Error|Execution halted|Unhandled)", logs$message)
-    if (any(bad_browser | bad_server)) {
+    bad_logs <- bench_viewer_bad_logs(logs)
+    if (any(bad_logs)) {
       stop(
-        paste(logs$message[bad_browser | bad_server], collapse = " | "),
+        paste(logs$message[bad_logs], collapse = " | "),
         call. = FALSE
       )
     }

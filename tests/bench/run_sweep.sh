@@ -167,7 +167,9 @@ for src in $SOURCES; do
       printf '"%s","%s","%s",%s,"%s",%s,%s,"export",%s\n' \
         "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
         "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
-      rm -rf -- "$out_dir"
+      if [ "${BENCH_KEEP:-0}" != "1" ]; then
+        rm -rf -- "$out_dir"
+      fi
       continue
     fi
 
@@ -204,10 +206,14 @@ for src in $SOURCES; do
         fi
       fi
     fi
-    rm -rf -- "$out_dir"
+    if [ "${BENCH_KEEP:-0}" != "1" ]; then
+      rm -rf -- "$out_dir"
+    fi
   done < "$SCHEDULE_TSV"
 
-  rm -f -- "$file"
+  if [ "${BENCH_KEEP:-0}" != "1" ]; then
+    rm -f -- "$file"
+  fi
 done
 
 echo "==> checking measurements"

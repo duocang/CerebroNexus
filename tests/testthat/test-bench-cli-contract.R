@@ -21,6 +21,20 @@ test_that("sweep cleanup cannot run twice through signal and exit traps", {
   expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
 })
 
+test_that("BENCH_KEEP retains generated artifacts for diagnosis", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    sweep,
+    'if [ "${BENCH_KEEP:-0}" != "1" ]; then\n      rm -rf -- "$out_dir"',
+    fixed = TRUE
+  )
+})
+
 test_that("sweep stages use plain names in a safe publication order", {
   skip_unless_bench_cli()
   expected <- c(

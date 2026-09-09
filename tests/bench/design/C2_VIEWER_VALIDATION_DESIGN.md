@@ -34,8 +34,8 @@ and cross-machine browser comparisons are outside this change.
 |---|---:|---|---:|
 | mouse brain E18 | 1,306,127 | bpcells | 1 |
 | mouse brain E18 | 1,306,127 | h5 | 1 |
-| PsychAD HBCC | 1,492,734 | bpcells | 1 |
-| PsychAD HBCC | 1,492,734 | h5 | 1 |
+| PsychAD HBCC | 1,486,324 | bpcells | 1 |
+| PsychAD HBCC | 1,486,324 | h5 | 1 |
 
 The Viewer validation runs immediately after the selected C2 backend's access
 processes and before its scratch artifact is removed. The generated App stays

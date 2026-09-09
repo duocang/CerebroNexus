@@ -120,6 +120,7 @@ obj <- tryCatch(
     backend,
     basename(sibling),
     src_name,
+    spec$organism,
     Sys.getenv("BENCH_RUN_ID")
   ),
   error = function(error) fail("shell", error)

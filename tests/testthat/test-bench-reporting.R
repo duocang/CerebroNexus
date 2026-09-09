@@ -54,6 +54,12 @@ test_that("C2 viewer results must cover the successful schedule", {
   )
 
   expect_silent(bench_validate_viewer_results(schedule, rows, "run-1"))
+  wrong_profile <- rows
+  wrong_profile$profile <- "publication"
+  expect_error(
+    bench_validate_viewer_results(schedule, wrong_profile, "run-1"),
+    "profile"
+  )
   expect_error(
     bench_validate_viewer_results(schedule, rows[-1L, ], "run-1"),
     "does not cover"

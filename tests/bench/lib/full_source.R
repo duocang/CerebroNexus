@@ -100,12 +100,16 @@ bench_make_full_shell <- function(
   backend,
   location,
   source_name,
+  organism,
   run_id
 ) {
   bench_validate_full_matrix(matrix)
   cells <- colnames(matrix)
   index <- seq_along(cells)
   metadata <- data.frame(
+    cell_barcode = cells,
+    nUMI = 1000 + index %% 100L,
+    nGene = 500 + index %% 50L,
     sample = factor(sprintf("sample_%02d", (index - 1L) %% 8L + 1L)),
     cluster = factor(sprintf("cluster_%02d", (index - 1L) %% 20L + 1L)),
     row.names = cells
@@ -118,6 +122,7 @@ bench_make_full_shell <- function(
   obj <- CerebroNexus::Cerebro$new()
   obj$setVersion(utils::packageVersion("CerebroNexus"))
   obj$addExperiment("experiment_name", paste0("Panel C2: ", source_name))
+  obj$addExperiment("organism", organism)
   obj$addExperiment("date_of_export", Sys.Date())
   obj$addTechnicalInfo("benchmark_run_id", run_id)
   obj$addTechnicalInfo("benchmark_source", source_name)

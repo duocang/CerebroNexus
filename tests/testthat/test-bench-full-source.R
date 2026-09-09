@@ -92,6 +92,7 @@ test_that("full-source query plan and portable shell use bounded expression", {
     backend = "bpcells",
     location = basename(sibling),
     source_name = "fixture",
+    organism = "mm10",
     run_id = "run-1"
   )
   saveRDS(obj, crb, version = 3)
@@ -99,7 +100,10 @@ test_that("full-source query plan and portable shell use bounded expression", {
 
   expect_null(loaded$expression)
   expect_equal(nrow(loaded$getMetaData()), ncol(fixture$matrix))
+  expect_identical(loaded$getMetaData()$cell_barcode, colnames(fixture$matrix))
+  expect_true(all(c("nUMI", "nGene") %in% names(loaded$getMetaData())))
   expect_equal(nrow(loaded$getProjection("benchmark")), ncol(fixture$matrix))
+  expect_identical(loaded$getExperiment()$organism, "mm10")
   expect_identical(loaded$getExpressionBackend()$location, "bench.bpcells")
 
   utility <- file.path(
@@ -121,6 +125,7 @@ test_that("full-source query plan and portable shell use bounded expression", {
     backend = "h5",
     location = basename(h5_sibling),
     source_name = "fixture",
+    organism = "mm10",
     run_id = "run-1"
   )
   saveRDS(h5_obj, h5_crb, version = 3)
