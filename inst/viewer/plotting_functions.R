@@ -77,7 +77,7 @@ cerebro_plotly_toolbar <- function(
     fig,
     displayModeBar = TRUE,
     displaylogo = FALSE,
-    modeBarButtons = list(buttons)
+    modeBarButtons = list(as.list(buttons))
   )
 }
 
