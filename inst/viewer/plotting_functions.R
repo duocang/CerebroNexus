@@ -63,13 +63,15 @@ cerebro_plotly_toolbar <- function(fig) {
     fig,
     displayModeBar = TRUE,
     displaylogo = FALSE,
-    modeBarButtonsToRemove = c(
-      "zoom2d",
-      "autoScale2d",
-      "hoverClosestCartesian",
-      "hoverCompareCartesian",
-      "toggleSpikelines"
-    )
+    modeBarButtons = list(list(
+      "select2d",
+      "lasso2d",
+      "pan2d",
+      "zoomIn2d",
+      "zoomOut2d",
+      "resetScale2d",
+      "toImage"
+    ))
   )
 }
 
