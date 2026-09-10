@@ -45,6 +45,7 @@ export BENCH_LIB="$SCRATCH/rlib"
 # personal R installation. Nix-provided site libraries remain available.
 export R_ENVIRON_USER=/dev/null
 export R_PROFILE_USER=/dev/null
+export NOT_CRAN=true
 export R_LIBS_USER="$SCRATCH/r-user-library"
 export BENCH_RUN_ID="${BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$REPO" rev-parse --short=12 HEAD)-$BENCH_PROFILE}"
 

@@ -61,11 +61,18 @@ test_that("full-source writers round-trip both runtime backends", {
   bench_write_full_backend(source_matrix, "h5", h5_path)
 
   bpcells <- BPCells::open_matrix_dir(bpcells_path)
-  h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "expression"))
+  h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "matrix"))
   expect_equal(as.matrix(bpcells), as.matrix(fixture$matrix))
   expect_equal(as.matrix(h5), as.matrix(fixture$matrix))
   expect_identical(dimnames(bpcells), dimnames(fixture$matrix))
   expect_identical(dimnames(h5), dimnames(fixture$matrix))
+})
+
+test_that("full-source H5 writer stays on the lazy BPCells path", {
+  body <- paste(readLines(full_source_lib, warn = FALSE), collapse = "\n")
+
+  expect_match(body, "BPCells::write_matrix_10x_hdf5", fixed = TRUE)
+  expect_false(grepl("rhdf5::H5Lmove", body, fixed = TRUE))
 })
 
 test_that("full-source query plan and portable shell use bounded expression", {

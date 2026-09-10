@@ -55,13 +55,8 @@ bench_write_full_backend <- function(matrix, backend, path) {
       path,
       type = "auto"
     )
-    fid <- rhdf5::H5Fopen(path)
-    on.exit(try(rhdf5::H5Fclose(fid), silent = TRUE), add = TRUE)
-    rhdf5::H5Lmove(fid, "/matrix", fid, "/expression")
-    rhdf5::H5Fclose(fid)
-    fid <- NULL
     written <- DelayedArray::t(
-      HDF5Array::TENxMatrix(path, group = "expression")
+      HDF5Array::TENxMatrix(path, group = "matrix")
     )
   } else {
     stop("backend must be bpcells or h5", call. = FALSE)

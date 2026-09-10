@@ -91,6 +91,7 @@ test_that("sweep isolates benchmark R processes from user startup files", {
   expect_match(sweep, "R_ENVIRON_USER=/dev/null", fixed = TRUE)
   expect_match(sweep, "R_PROFILE_USER=/dev/null", fixed = TRUE)
   expect_match(sweep, 'R_LIBS_USER="$SCRATCH/r-user-library"', fixed = TRUE)
+  expect_match(sweep, "NOT_CRAN=true", fixed = TRUE)
 })
 
 test_that("Panel C2 build CLI uses only the lazy full-source path", {

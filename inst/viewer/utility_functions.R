@@ -2499,7 +2499,12 @@ get_or_load_crb <- function(
     ## The matrix is never materialised into a dgCMatrix at attach time;
     ## queries stream from disk through the DelayedMatrix path in
     ## getExpressionRow / getExpressionBlock.
-    m_disk <- HDF5Array::TENxMatrix(loc_abs, group = "expression")
+    m_disk <- tryCatch(
+      HDF5Array::TENxMatrix(loc_abs, group = "expression"),
+      error = function(error) {
+        HDF5Array::TENxMatrix(loc_abs, group = "matrix")
+      }
+    )
     obj$expression <- t(m_disk)
   } else {
     stop(
