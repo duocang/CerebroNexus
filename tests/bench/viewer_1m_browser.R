@@ -4,7 +4,7 @@ args <- commandArgs(trailingOnly = TRUE)
 Sys.setenv(NOT_CRAN = "true")
 if (length(args) < 3L) {
   stop(
-    "usage: pr1_large_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]",
+    "usage: viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]",
     call. = FALSE
   )
 }
@@ -26,7 +26,7 @@ if (is.na(percentage) || percentage < 10 || percentage > 100) {
 quote_r <- function(value) encodeString(value, quote = '"')
 
 run_once <- function(version, root, round) {
-  app_dir <- tempfile(paste0("pr1-large-browser-", version, "-"))
+  app_dir <- tempfile(paste0("viewer-large-browser-", version, "-"))
   dir.create(app_dir)
   on.exit(unlink(app_dir, recursive = TRUE, force = TRUE), add = TRUE)
   writeLines(
@@ -49,7 +49,7 @@ run_once <- function(version, root, round) {
   started <- proc.time()[["elapsed"]]
   app <- shinytest2::AppDriver$new(
     app_dir,
-    name = paste0("pr1_large_", version, "_", round),
+    name = paste0("viewer_1m_", version, "_", round),
     height = 950,
     width = 1619,
     load_timeout = 900000,

@@ -3,7 +3,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 3L) {
   stop(
-    "usage: pr1_large_data.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]",
+    "usage: viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]",
     call. = FALSE
   )
 }
@@ -73,7 +73,7 @@ elapsed_ms <- function(work) {
 }
 
 allocated_mib <- function(work) {
-  profile <- tempfile("pr1-large-alloc-")
+  profile <- tempfile("viewer-large-alloc-")
   on.exit(unlink(profile), add = TRUE)
   gc()
   Rprofmem(profile)
