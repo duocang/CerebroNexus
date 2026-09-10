@@ -102,6 +102,20 @@ test_that("HLA exposes the shared cohort controls and a network saved-view adapt
   expect_match(config, "hla_motif_network", fixed = TRUE)
 })
 
+test_that("HLA node details stay in the hover tooltip", {
+  ui <- viewer_hla_text("hla_tcr_motifs/UI.R")
+  visual <- viewer_hla_text("hla_tcr_motifs/visualizations.R")
+  client <- viewer_hla_text("www/hla_motifs.js")
+
+  expect_no_match(ui, "hla-node-details", fixed = TRUE)
+  expect_no_match(visual, "hlaShowNodeDetails", fixed = TRUE)
+  expect_no_match(client, "hlaShowNodeDetails", fixed = TRUE)
+  expect_match(visual, "title = titles", fixed = TRUE)
+  expect_match(client, "function showNodeTooltip", fixed = TRUE)
+  expect_match(client, "network.getNodeAt", fixed = TRUE)
+  expect_match(client, "hla-node-tooltip", fixed = TRUE)
+})
+
 test_that("Projection adapter captures shared JSON and downloads its PNG", {
   output <- run_specialist_state_node(c(
     "const calls = [];",

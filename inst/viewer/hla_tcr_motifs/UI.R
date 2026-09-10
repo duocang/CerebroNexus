@@ -109,16 +109,12 @@ tab_hla_tcr_motifs <- tabItem(
           id = "hla_tabs",
           tabPanel(
             "Motif Network",
-            # The legend and the network share one positioning context so the
-            # modebar can float at its top-right: it lands on the legend's row
-            # when a legend is shown (reclaiming that otherwise-empty right side),
-            # and at the plot's top-right when the legend is hidden (the legend
-            # collapses to zero height). A modebar matching the app's plotly one
-            # is drawn by www/hla_motifs.js (visNetwork's own green nav buttons
-            # are turned off in visualizations.R for consistency).
+            # The legend remains a full-width row above the plot. The custom
+            # modebar floats inside the plot so long legends cannot collide with
+            # it. visNetwork's own green navigation buttons are disabled in
+            # visualizations.R for consistency with the other visualizations.
             tags$div(
               class = "hla-motif-tab",
-              hlaMotifModebar(),
               uiOutput("hla_legend_ui", class = "hla-legend-row"),
               # Fill the viewport instead of a hardcoded 640px: the wrapper is
               # sized to (viewport - its live top - a bottom gap) by
@@ -127,6 +123,7 @@ tab_hla_tcr_motifs <- tabItem(
               # moves and the height re-measures itself. See www/fill_height.js.
               tags$div(
                 class = "hla-plot-wrap",
+                hlaMotifModebar(),
                 tags$div(
                   class = "cerebro-fill",
                   shinycssloaders::withSpinner(
@@ -141,11 +138,6 @@ tab_hla_tcr_motifs <- tabItem(
                   class = "cerebro-selection-composition-slot"
                 )
               )
-            ),
-            tags$div(
-              id = "hla-node-details",
-              class = "well well-sm hla-node-details",
-              style = "display:none"
             ),
             uiOutput("hla_motif_note"),
             # A picture cannot be recomputed or audited; the tables and their

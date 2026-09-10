@@ -2,13 +2,11 @@
  * HLA & TCR Motifs — modebar over the visNetwork motif network.
  *
  * Same look and placement as the app's plotly modebar (see www/trekker.css
- * .tk-modebar): faint grey icons top-right, always visible (brighter on hover),
+ * .tk-modebar): faint grey icons top-right, revealed with the plot controls,
  * using the global design tokens from custom.css so it stays in lock-step with
  * the theme.
  *----------------------------------------------------------------------------*/
-/* The modebar is absolute inside .hla-motif-tab (which wraps legend + plot), so
- * it floats at the top-right of the legend row when a legend is shown and at the
- * plot's top-right when it is hidden. */
+/* The legend uses the full row; the modebar floats inside the plot below it. */
 .hla-motif-tab { position: relative; container-type: inline-size; }
 .hla-plot-wrap {
   position: relative;
@@ -20,20 +18,21 @@
 .hla-legend-row:not(:empty) {
   height: 30px;
   box-sizing: border-box;
-  margin: 0 280px 2px 0;
+  margin: 0 0 2px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
 }
 .hla-legend-row::-webkit-scrollbar { height: 4px; }
 .hla-modebar {
-  position: absolute; top: 3px; right: 4px; z-index: 6;
+  position: absolute; top: 8px; right: 8px; z-index: 6;
   display: flex; align-items: center; gap: 4px; padding: 3px;
   background: var(--c-surface); border: 1px solid var(--c-border);
   border-radius: 6px;
-  opacity: .92; transition: opacity .15s;
+  opacity: 0; pointer-events: none; transition: opacity .15s;
 }
-.hla-plot-wrap:hover .hla-modebar { opacity: 1; }
+.hla-plot-wrap:hover .hla-modebar,
+.hla-modebar:focus-within { opacity: 1; pointer-events: auto; }
 .hla-mb-btn {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;
@@ -74,7 +73,6 @@
 }
 
 @container (max-width: 420px) {
-  .hla-legend-row:not(:empty) { margin-right: 44px; }
   .hla-modebar { flex-direction: column; }
   .hla-mb-btn::after {
     top: 50%; right: calc(100% + 7px);
@@ -84,12 +82,29 @@
   .hla-mb-btn:focus-visible::after { transform: translateY(-50%); }
 }
 
+@media (hover: none) {
+  .hla-modebar { opacity: 1; pointer-events: auto; }
+}
+
 .hla-selection-overlay {
   position: absolute;
   inset: 0;
   z-index: 5;
   display: block;
   touch-action: none;
+}
+.hla-node-tooltip {
+  position: absolute;
+  z-index: 7;
+  max-width: min(340px, calc(100% - 16px));
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(28, 28, 30, .94);
+  box-shadow: var(--shadow-2);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
 }
 
 /* HLA Associations: each result table sits in its own card, so the three read

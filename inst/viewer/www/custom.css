@@ -536,10 +536,6 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   min-width: 180px;
   max-width: 240px;
 }
-.hla-node-details {
-  margin: 8px 0 4px;
-  font-size: 12px;
-}
 .cerebro-viz-toolbar .control-label,
 .coordviews-page .cv-ctl > label {
   margin-bottom: 5px;

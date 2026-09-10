@@ -82,10 +82,14 @@ test_that("composition dragging captures and reliably releases its pointer", {
   )
 })
 
-test_that("HLA reserves the modebar width from its legend", {
+test_that("HLA modebar does not consume legend width", {
   css <- review_source("www", "hla_motifs.css")
 
-  expect_match(css, "margin: 0 280px 2px 0;", fixed = TRUE)
+  expect_match(css, "margin: 0 0 2px;", fixed = TRUE)
+  expect_match(css, "position: absolute; top: 8px; right: 8px;", fixed = TRUE)
+  expect_match(css, "opacity: 0; pointer-events: none;", fixed = TRUE)
+  expect_match(css, ".hla-plot-wrap:hover .hla-modebar", fixed = TRUE)
+  expect_match(css, ".hla-modebar:focus-within", fixed = TRUE)
 })
 
 test_that("compact controls remain readable", {

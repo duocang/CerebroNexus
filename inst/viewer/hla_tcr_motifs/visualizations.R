@@ -557,7 +557,6 @@ output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
     selectNode = htmlwidgets::JS(
       paste(
         "function(p) {",
-        "window.hlaShowNodeDetails(p.nodes[0]);",
         "if (window.cerebroHlaMotifs) {",
         "window.cerebroHlaMotifs.handleNativeSelection(p.nodes);",
         "}",
@@ -566,7 +565,7 @@ output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
     ),
     deselectNode = htmlwidgets::JS(
       paste(
-        "function() { window.hlaShowNodeDetails(null);",
+        "function() {",
         "if (window.cerebroHlaMotifs) {",
         "window.cerebroHlaMotifs.handleNativeSelection([]);",
         "}",
@@ -583,9 +582,6 @@ output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
       "function() {",
       "  var w = HTMLWidgets.find('#hla_plot_motifNetwork');",
       "  var net = w && w.network; if (!net) { return; }",
-      "  if (!net.hlaDetailsReady) {",
-      "    net.hlaDetailsReady = true; window.hlaShowNodeDetails(null);",
-      "  }",
       "  var s = net.getScale();",
       "  if (!(s > 0)) { return; }",
       # The opening fit settles over a few draws (scale keeps shrinking to fit
@@ -626,7 +622,6 @@ observeEvent(hla_visnet(), ignoreInit = TRUE, {
     proxy,
     nodes = vn$nodes[, c("id", "color", "title", "detail", "size")]
   )
-  session$sendCustomMessage("hla-refresh-node-details", list())
 })
 
 ## ---- Export: tables + manifest ---------------------------------------- ##

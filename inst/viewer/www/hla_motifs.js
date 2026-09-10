@@ -5,6 +5,7 @@
   var mode = 'lasso';
   var overlay = null;
   var overlayNet = null;
+  var nodeTooltip = null;
   var drawNet = null;
   var drag = null;
   var committedCanvas = null;
@@ -103,6 +104,29 @@
     ctx.setLineDash([6, 4]);
     ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
   }
+  function hideNodeTooltip() {
+    if (nodeTooltip) nodeTooltip.hidden = true;
+  }
+  function showNodeTooltip(event) {
+    var network = net();
+    if (!network || !nodeTooltip) return;
+    var p = point(event);
+    var id = network.getNodeAt({ x: p[0], y: p[1] });
+    var data = nodeData(network);
+    var node = data && id != null ? data.get(id) : null;
+    var detail = node && node.title;
+    if (!detail) { hideNodeTooltip(); return; }
+    nodeTooltip.innerHTML = detail;
+    nodeTooltip.hidden = false;
+    var frame = network.canvas.frame;
+    var left = Math.min(p[0] + 12, frame.clientWidth - nodeTooltip.offsetWidth - 8);
+    var top = p[1] + 12;
+    if (top + nodeTooltip.offsetHeight > frame.clientHeight - 8) {
+      top = p[1] - nodeTooltip.offsetHeight - 12;
+    }
+    nodeTooltip.style.left = Math.max(8, left) + 'px';
+    nodeTooltip.style.top = Math.max(8, top) + 'px';
+  }
   function sendSelectedKeys(keys) {
     if (window.Shiny && Shiny.setInputValue) {
       Shiny.setInputValue('hla_motif_selected_keys', keys, { priority: 'event' });
@@ -124,19 +148,20 @@
     network.selectNodes(chosen, false);
     syncingSelection = false;
     selectedKeys = nodeKeysFromIds(network, chosen);
-    window.hlaShowNodeDetails(chosen.length ? chosen[0] : null);
     sendSelectedKeys(selectedKeys);
   }
   function pointerDown(event) {
     if (event.button !== 0) return;
     event.preventDefault();
+    hideNodeTooltip();
     var start = point(event);
     drag = { pointer: event.pointerId, points: [start] };
     overlay.setPointerCapture(event.pointerId);
     drawOverlay();
   }
   function pointerMove(event) {
-    if (!drag || drag.pointer !== event.pointerId) return;
+    if (!drag) { showNodeTooltip(event); return; }
+    if (drag.pointer !== event.pointerId) return;
     var next = point(event);
     if (mode === 'box') drag.points = [drag.points[0], next];
     else {
@@ -166,7 +191,6 @@
       if (network) network.selectNodes(clicked == null ? [] : [clicked], false);
       syncingSelection = false;
       selectedKeys = clicked == null ? [] : nodeKeysFromIds(network, [clicked]);
-      window.hlaShowNodeDetails(clicked);
       sendSelectedKeys(selectedKeys);
     } else {
       committedCanvas = polygon.map(function (value) {
@@ -186,12 +210,18 @@
     overlayNet = network;
     overlay = document.createElement('canvas');
     overlay.className = 'hla-selection-overlay';
+    nodeTooltip = document.createElement('div');
+    nodeTooltip.className = 'hla-node-tooltip';
+    nodeTooltip.setAttribute('role', 'tooltip');
+    nodeTooltip.hidden = true;
     frame.style.position = 'relative';
     frame.appendChild(overlay);
+    frame.appendChild(nodeTooltip);
     overlay.addEventListener('pointerdown', pointerDown);
     overlay.addEventListener('pointermove', pointerMove);
     overlay.addEventListener('pointerup', pointerUp);
     overlay.addEventListener('pointercancel', pointerUp);
+    overlay.addEventListener('pointerleave', hideNodeTooltip);
     setMode(mode);
     resizeOverlay();
   }
@@ -252,7 +282,6 @@
     selectedCells = [];
     if (network) network.unselectAll();
     syncModeButtons();
-    window.hlaShowNodeDetails(null);
     drawOverlay();
     if (notify) sendSelectedKeys([]);
   }
@@ -379,11 +408,6 @@
       if (!request) return;
       if (request.action === 'clear') clearSelection(false);
     });
-    Shiny.addCustomMessageHandler('hla-refresh-node-details', function (_message) {
-      var network = net();
-      var ids = network ? network.getSelectedNodes() : [];
-      window.hlaShowNodeDetails(ids.length ? ids[0] : null);
-    });
   }
   function build() {
     var bar = document.getElementById('hla-modebar');
@@ -414,22 +438,6 @@
     }
   }
 
-  window.hlaShowNodeDetails = function (id) {
-    var output = document.getElementById('hla-node-details');
-    var network = net();
-    if (!output || !network || id == null) {
-      if (output) { output.innerHTML = ''; output.style.display = 'none'; }
-      return;
-    }
-    var data = nodeData(network);
-    var node = data ? data.get(id) : null;
-    var detail = node && (node.detail || node.title);
-    if (!detail) {
-      output.innerHTML = ''; output.style.display = 'none'; return;
-    }
-    output.innerHTML = detail;
-    output.style.display = 'block';
-  };
   window.cerebroHlaMotifs = {
     captureState: captureState,
     applyState: applyState,
