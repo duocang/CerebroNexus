@@ -114,7 +114,9 @@ exportFromSeurat(
     is portable as long as the sibling `.bpcells/` directory travels
     with it; the Shiny runtime re-resolves paths via
     `getExpressionBackend()$location` relative to the `.crb`'s parent
-    directory (step 7.3 runtime attach).
+    directory (step 7.3 runtime attach). A BPCells-backed Seurat layer
+    streams directly to this backend without being materialised in
+    memory.
 
   - `"h5"` writes the matrix via
     [`HDF5Array::writeTENxMatrix()`](https://rdrr.io/pkg/HDF5Array/man/writeTENxMatrix.html)
@@ -203,22 +205,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [22:16:09] Initializing Cerebro object...
-#> [22:16:09] Adding expression data (embedded)...
-#> [22:16:09] Collecting available meta data...
-#> [22:16:09] Extracting all meta data columns...
-#> [22:16:09] Extracting dimensional reductions...
-#> [22:16:09] Will export the following dimensional reductions: umap
-#> [22:16:09] Extracting marker genes table...
-#> [22:16:09] No trajectories to extract...
-#> [22:16:09] Checking for spatial data...
-#> [22:16:09] Overview of Cerebro object:
+#> [11:20:19] Initializing Cerebro object...
+#> [11:20:19] Adding expression data (embedded)...
+#> [11:20:19] Collecting available meta data...
+#> [11:20:19] Extracting all meta data columns...
+#> [11:20:19] Extracting dimensional reductions...
+#> [11:20:19] Will export the following dimensional reductions: umap
+#> [11:20:19] Extracting marker genes table...
+#> [11:20:19] No trajectories to extract...
+#> [11:20:19] Checking for spatial data...
+#> [11:20:19] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 4.4.2
+#> exporter package version: 4.4.3
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-09-09
+#> date of export: 2026-09-10
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -234,6 +236,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [22:16:09] Saving Cerebro object to: /tmp/nix-shell-4349-2169149395/RtmpVCNO1l/pbmc_Seurat.crb
-#> [22:16:09] Done!
+#> [11:20:19] Saving Cerebro object to: /tmp/nix-shell-4365-754961393/Rtmp8uP2zT/pbmc_Seurat.crb
+#> [11:20:19] Done!
 ```

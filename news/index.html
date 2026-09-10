@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,6 +32,7 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="../articles/large_example_data_benchmark.html">Reproduce the 1M-cell Viewer benchmark</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -69,9 +70,17 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ui/compact-viewer-layout/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/backend-hot-paths-cleanup/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.4.3" id="cerebronexus-443">CerebroNexus 4.4.3<a class="anchor" aria-label="anchor" href="#cerebronexus-443"></a></h2>
+<div class="section level3">
+<h3 id="performance-4-4-3">Performance<a class="anchor" aria-label="anchor" href="#performance-4-4-3"></a></h3>
+<ul><li>Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.</li>
+<li>Reproducible 50K- and 1M-cell examples document runtime and memory changes against public 10x Genomics data.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.4.2" id="cerebronexus-442">CerebroNexus 4.4.2<a class="anchor" aria-label="anchor" href="#cerebronexus-442"></a></h2>
 <div class="section level3">

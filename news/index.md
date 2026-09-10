@@ -1,5 +1,15 @@
 # Changelog
 
+## CerebroNexus 4.4.3
+
+### Performance
+
+- Viewer filtering, sampling, expression access, and mean calculations
+  avoid unnecessary dense copies while preserving sparse and on-disk
+  backends.
+- Reproducible 50K- and 1M-cell examples document runtime and memory
+  changes against public 10x Genomics data.
+
 ## CerebroNexus 4.4.2
 
 ### Viewer

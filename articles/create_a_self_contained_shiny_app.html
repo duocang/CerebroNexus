@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -46,6 +46,7 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="../articles/large_example_data_benchmark.html">Reproduce the 1M-cell Viewer benchmark</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -97,9 +98,9 @@
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">09 September, 2026</h4>
+            <h4 data-toc-skip class="date">10 September, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ui/compact-viewer-layout/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/backend-hot-paths-cleanup/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
       <div class="d-none name"><code>create_a_self_contained_shiny_app.Rmd</code></div>
     </div>
 
@@ -170,6 +171,32 @@ an HTTP resource.</p>
 <code class="sourceCode R"><span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">runApp</a></span><span class="op">(</span><span class="va">out_dir</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="optional-50k-and-1m-examples">Optional 50K and 1M examples<a class="anchor" aria-label="anchor" href="#optional-50k-and-1m-examples"></a>
+</h2>
+<p>Set <code>example_data_size</code> only when you want CerebroNexus to
+obtain and prepare a large public example. <code>"50k"</code> uses
+exactly 50,000 cells from the 10x Fresh 68k PBMC Donor A data.
+<code>"1m"</code> uses exactly 1,000,000 cells from the 10x E18 mouse
+brain data. Source matrices are downloaded from 10x Genomics. Seurat’s
+sketch workflow computes clusters and a UMAP for all retained cells
+before conversion to a disk-backed Seurat object and BPCells CRB; all
+artifacts are cached for later calls.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
+<span>  cerebro_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  example_data_size <span class="op">=</span> <span class="st">"50k"</span>,</span>
+<span>  result_dir <span class="op">=</span> <span class="st">"cerebro_50k_app"</span>,</span>
+<span>  launch_browser <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The 50K tier downloads about 119 MB and uses roughly 1 GB of cache
+after preparation. The 1M tier downloads about 4.2 GB, uses roughly 11
+GB of cache, and needs substantial processing time. Both tiers require
+Seurat, SeuratObject, and BPCells. Override
+<code>example_data_dir</code> to keep the reusable cache in a chosen
+location. No download occurs when
+<code>example_data_size = NULL</code>.</p>
+</div>
+<div class="section level2">
 <h2 id="common-parameters">Common parameters<a class="anchor" aria-label="anchor" href="#common-parameters"></a>
 </h2>
 <table class="table">
@@ -188,21 +215,28 @@ an HTTP resource.</p>
 labels and resolved source files must both be unique</td>
 </tr>
 <tr class="even">
+<td>
+<code>example_data_size</code>, <code>example_data_dir</code>
+</td>
+<td>optionally prepare <code>"50k"</code> or <code>"1m"</code> public
+data in the default or chosen cache</td>
+</tr>
+<tr class="odd">
 <td><code>result_dir</code></td>
 <td>output directory (required; portable basename outside the reserved
 lock namespace)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>overwrite</code></td>
 <td>replace <code>result_dir</code> after a complete staged build; with
 <code>FALSE</code>, the destination must be absent or empty</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>max_request_size</code></td>
 <td>finite positive numeric request cap in MB; defaults to
 <code>8000</code>; closed Viewers use at most 6 MiB</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>
 <code>port</code>, <code>host</code>
 </td>
@@ -210,7 +244,7 @@ lock namespace)</td>
 host string; defaults to <code>8080</code> / <code>127.0.0.1</code>
 </td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>
 <code>launch_browser</code>, <code>quiet</code>,
 <code>display_mode</code>
@@ -220,48 +254,48 @@ host string; defaults to <code>8080</code> / <code>127.0.0.1</code>
 <code><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">shiny::runApp()</a></code>
 </td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>welcome_message</code></td>
 <td>text shown in the Load Data tab</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>colors</code></td>
 <td>optional
 <code>dataset -&gt; variable -&gt; named level colours</code> list</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>cerebro_options</code></td>
 <td>extra entries merged into <code>Cerebro.options</code>; matrix
 overrides must be absolute host paths (native paths must resolve outside
 <code>result_dir</code>)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>crb_pick_smallest_file</code></td>
 <td>forwarded into <code>Cerebro.options</code>
 </td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>show_upload_ui</code></td>
 <td>allow users to upload their own data; defaults to <code>FALSE</code>
 for generated apps</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>initial_page</code></td>
 <td>stable Viewer page ID used once when the first dataset loads</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>
 <code>point_size</code>, <code>point_opacity</code>,
 <code>percentage_cells_to_show</code>
 </td>
 <td>scalar or named per-dataset scatter defaults</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>variable_to_compare</code></td>
 <td>forwarded into <code>Cerebro.options</code>
 </td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>
 <code>extra_tables</code>, <code>extra_tables_sheets</code>
 </td>
@@ -283,7 +317,7 @@ displayed. Open Viewers use the supplied
 <p>The names of <code>cerebro_data</code> are what the user picks from
 inside Cerebro. You can also supply matching <code>colors</code> so each
 dataset gets a deterministic palette.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">crb_pbmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata/examples/example.crb"</span>, package <span class="op">=</span> <span class="st">"CerebroNexus"</span><span class="op">)</span></span>
 <span><span class="co"># crb_other &lt;- "/path/to/another_dataset.crb"</span></span>
 <span></span>
@@ -313,7 +347,7 @@ by all datasets or a named numeric vector/list whose names exactly match
 <p>Use <code>initial_page</code> with a stable page ID such as
 <code>"linked_views"</code>, <code>"extra_material"</code>, or
 <code>"spatial"</code>:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
 <span>  cerebro_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"PBMC example"</span> <span class="op">=</span> <span class="va">crb</span><span class="op">)</span>,</span>
 <span>  result_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"cerebro_app_spatial"</span><span class="op">)</span>,</span>
@@ -333,7 +367,7 @@ precedence over this default.</p>
 TXT, XLS, XLSX, or XLSM files. Excel workbooks expose each non-empty
 sheet separately. Use <code>extra_tables_sheets</code> to rename
 selected sheets while retaining unmapped sheet names:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
 <span>  cerebro_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"PBMC example"</span> <span class="op">=</span> <span class="va">crb</span><span class="op">)</span>,</span>
 <span>  result_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"cerebro_app_tables"</span><span class="op">)</span>,</span>
@@ -489,7 +523,7 @@ files.</p>
 <p>Anything you want to surface in <code>Cerebro.options</code> that
 isn’t already a top-level argument can go through
 <code>cerebro_options</code>.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
 <span>  cerebro_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"PBMC example"</span> <span class="op">=</span> <span class="va">crb</span><span class="op">)</span>,</span>
 <span>  result_dir   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"cerebro_app_opts"</span><span class="op">)</span>,</span>
@@ -512,7 +546,7 @@ supply for those keys is overwritten.</p>
 is self-contained: shipping the folder is all that is required. If you
 configured a host-managed matrix override, provision that absolute path
 separately on the deployment host. Three common targets:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># 1. Local</span></span>
 <span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">runApp</a></span><span class="op">(</span><span class="va">out_dir</span><span class="op">)</span></span>
 <span></span>

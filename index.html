@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -49,6 +49,7 @@
     <li><a class="dropdown-item" href="articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="articles/large_example_data_benchmark.html">Reproduce the 1M-cell Viewer benchmark</a></li>
     <li><a class="dropdown-item" href="articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -123,6 +124,23 @@
 <span>  cerebro_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"My dataset"</span> <span class="op">=</span> <span class="st">"output/cerebro_my_seurat.crb"</span><span class="op">)</span>,</span>
 <span>  result_dir <span class="op">=</span> <span class="st">"my_app"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
+<div class="section level3">
+<h3 id="optional-large-examples">Optional large examples<a class="anchor" aria-label="anchor" href="#optional-large-examples"></a>
+</h3>
+<p>Large examples are downloaded and converted only when explicitly requested. The prepared Seurat and CRB files are cached outside the package and reused on later runs:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># About 119 MB of source downloads; prepares exactly 50,000 PBMCs.</span></span>
+<span><span class="fu"><a href="reference/launchCerebro.html">launchCerebro</a></span><span class="op">(</span>example_data_size <span class="op">=</span> <span class="st">"50k"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># About 4.2 GB of source downloads; prepares exactly 1,000,000 mouse-brain cells.</span></span>
+<span><span class="fu"><a href="reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
+<span>  cerebro_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  example_data_size <span class="op">=</span> <span class="st">"1m"</span>,</span>
+<span>  result_dir <span class="op">=</span> <span class="st">"large_demo"</span>,</span>
+<span>  launch_browser <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Both modes require Seurat, SeuratObject, and BPCells. Seurat’s sketch workflow creates the UMAP and clusters. The sources are public 10x Genomics datasets; no large data file is stored in this Git repository. Allow roughly 1 GB of cache space for 50K and 11 GB for 1M after preparation.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="license">License<a class="anchor" aria-label="anchor" href="#license"></a>

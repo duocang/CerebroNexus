@@ -112,12 +112,14 @@ convertSeuratToCerebro(
   for details; briefly, `"embedded"` stores the matrix inside the `.crb`
   (legacy behaviour), `"bpcells"` writes an on-disk BPCells directory
   next to the `.crb` and keeps a lightweight handle inside it (typically
-  reduces `.crb` size by ~80 `"h5"` writes a TENx-format HDF5 file next
-  to the `.crb` that the Shiny runtime loads lazily, minimising RAM and
-  startup time (recommended default for large datasets). The Shiny
-  runtime re-resolves both backends relative to the `.crb`'s parent
-  directory, so packaging the `.crb` with its sibling `<stem>.bpcells/`
-  or `<stem>.h5` together is enough for portable deployment.
+  reduces `.crb` size by ~80 Seurat layer streams directly to this
+  backend without being materialised. `"h5"` writes a TENx-format HDF5
+  file next to the `.crb` that the Shiny runtime loads lazily,
+  minimising RAM and startup time (recommended default for large
+  datasets). The Shiny runtime re-resolves both backends relative to the
+  `.crb`'s parent directory, so packaging the `.crb` with its sibling
+  `<stem>.bpcells/` or `<stem>.h5` together is enough for portable
+  deployment.
 
 - spatial_images:
 
