@@ -24,16 +24,15 @@ knitr::opts_chunk$set(
 
 # Scope
 
-This vignette reproduces the large-data measurements used to evaluate
-`perf/pr1-backend-hot-paths`. It uses the official 10x Genomics E18 mouse
-brain matrix, retains exactly 1,000,000 cells, creates a BPCells-backed Seurat
-object and Cerebro file, and compares the Viewer before and after PR1.
+This vignette compares Viewer performance between two Git revisions. It uses
+the official 10x Genomics E18 mouse brain matrix, retains exactly 1,000,000
+cells, and creates a BPCells-backed Seurat object and Cerebro file.
 
 The benchmark has two layers:
 
-1. `tests/bench/pr1_large_data.R` measures filtering, sampling, hover
+1. `tests/bench/viewer_1m_hot_paths.R` measures filtering, sampling, hover
    preparation and expression access directly in R.
-2. `tests/bench/pr1_large_browser.R` launches the real Shiny Viewer in Chrome,
+2. `tests/bench/viewer_1m_browser.R` launches the real Shiny Viewer in Chrome,
    waits for the 1M dataset and Overview Canvas, checks that the Canvas contains
    plotted pixels, rejects browser errors, and records Shiny process memory.
 
@@ -43,27 +42,19 @@ implementation into a second place.
 
 # Compared revisions
 
-| Version | Revision | Meaning |
-|---|---|---|
-| Before | `master@892097a1` | PR #157 merge, without PR1 |
-| After | `perf/pr1-backend-hot-paths@f3358c1d` | PR1 rebased onto PR #157 |
-
-The intended branch stack is:
-
-```text
-master@892097a1
-└── perf/pr1-backend-hot-paths@f3358c1d
-    └── feat/large-example-data
-```
-
-Verify the ancestry from the `feat/large-example-data` checkout:
+Choose a baseline and candidate revision. The baseline must be an ancestor of
+the candidate so that the comparison isolates their intervening changes.
 
 ```{bash}
-git merge-base --is-ancestor 892097a1 f3358c1d
-git merge-base --is-ancestor f3358c1d HEAD
+export BASELINE_REV="<baseline revision>"
+export CANDIDATE_REV="<candidate revision>"
+
+git rev-parse --verify "$BASELINE_REV^{commit}"
+git rev-parse --verify "$CANDIDATE_REV^{commit}"
+git merge-base --is-ancestor "$BASELINE_REV" "$CANDIDATE_REV"
 ```
 
-Both commands exit with status zero when the stack is correct.
+All commands exit with status zero when the revisions are valid.
 
 # Requirements
 
@@ -105,12 +96,12 @@ Copy and run this block from the repository root:
 
 ```{bash}
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-BENCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cerebronexus-pr1.XXXXXX")"
+BENCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cerebronexus-viewer-bench.XXXXXX")"
 BEFORE_ROOT="$BENCH_ROOT/before"
 AFTER_ROOT="$BENCH_ROOT/after"
 
-git worktree add --detach "$BEFORE_ROOT" 892097a1
-git worktree add --detach "$AFTER_ROOT" f3358c1d
+git worktree add --detach "$BEFORE_ROOT" "$BASELINE_REV"
+git worktree add --detach "$AFTER_ROOT" "$CANDIDATE_REV"
 
 printf 'repository: %s\nbenchmark trees: %s\n' "$REPO_ROOT" "$BENCH_ROOT"
 ```
@@ -130,7 +121,7 @@ df -h "$CEREBRO_LARGE_CACHE"
 ```
 
 Run the complete download, Seurat sketch workflow and CRB conversion from the
-`feat/large-example-data` checkout:
+source checkout:
 
 ```{bash}
 cd "$REPO_ROOT"
@@ -181,20 +172,20 @@ added to Git.
 The command-line interface is:
 
 ```text
-pr1_large_data.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]
+viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]
 ```
 
 Run three repetitions and save the tab-separated result:
 
 ```{bash}
-Rscript "$REPO_ROOT/tests/bench/pr1_large_data.R" \
+Rscript "$REPO_ROOT/tests/bench/viewer_1m_hot_paths.R" \
   "$BEFORE_ROOT" \
   "$AFTER_ROOT" \
   "$CRB" \
   3 \
-  > "$BENCH_ROOT/pr1_large_data.tsv"
+  > "$BENCH_ROOT/viewer_1m_hot_paths.tsv"
 
-column -t -s $'\t' "$BENCH_ROOT/pr1_large_data.tsv"
+column -t -s $'\t' "$BENCH_ROOT/viewer_1m_hot_paths.tsv"
 ```
 
 For each operation the script:
@@ -231,7 +222,7 @@ backend-native.
 The browser command-line interface is:
 
 ```text
-pr1_large_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]
+viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]
 ```
 
 `PERCENT` is the percentage of cells drawn in Overview and must be between 10
@@ -239,15 +230,15 @@ and 100. The reported before/after comparison uses 10, meaning that the real
 1M dataset is loaded while 100,000 points are drawn. Run:
 
 ```{bash}
-Rscript "$REPO_ROOT/tests/bench/pr1_large_browser.R" \
+Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
   "$BEFORE_ROOT" \
   "$AFTER_ROOT" \
   "$CRB" \
   3 \
   10 \
-  > "$BENCH_ROOT/pr1_large_browser.txt"
+  > "$BENCH_ROOT/viewer_1m_browser.txt"
 
-cat "$BENCH_ROOT/pr1_large_browser.txt"
+cat "$BENCH_ROOT/viewer_1m_browser.txt"
 ```
 
 Each repetition performs the following checks and measurements:
@@ -278,14 +269,14 @@ same 1301-by-594 Canvas with more than 31,000 sampled non-white pixels.
 
 # Validate full 1M-point Canvas rendering
 
-The 10% comparison isolates PR1 under the intended large-data default. To
-exercise the large-data feature's chunked Canvas path, run the feature checkout
-as both inputs and request 100% rendering:
+The 10% comparison exercises the intended large-data default. To validate the
+chunked Canvas path, run the candidate checkout as both inputs and request 100%
+rendering:
 
 ```{bash}
-Rscript "$REPO_ROOT/tests/bench/pr1_large_browser.R" \
-  "$REPO_ROOT" \
-  "$REPO_ROOT" \
+Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
+  "$AFTER_ROOT" \
+  "$AFTER_ROOT" \
   "$CRB" \
   2 \
   100 \
@@ -294,7 +285,7 @@ Rscript "$REPO_ROOT/tests/bench/pr1_large_browser.R" \
 cat "$BENCH_ROOT/full_1m_canvas.txt"
 ```
 
-This is a rendering acceptance check, not a PR1 before/after comparison. The
+This is a rendering acceptance check, not a baseline/candidate comparison. The
 measured runs painted all 1M UMAP points in 72.4 and 73.5 seconds, using
 4,616.7 and 4,368.5 MiB RSS.
 

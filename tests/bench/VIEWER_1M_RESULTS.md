@@ -1,4 +1,4 @@
-# PR1 large-data benchmark
+# 1M-cell Viewer benchmark
 
 Measured on 2026-09-10 with the official 10x 1M neurons dataset.
 
@@ -6,10 +6,10 @@ Measured on 2026-09-10 with the official 10x 1M neurons dataset.
 
 | Version | Revision | Notes |
 | --- | --- | --- |
-| Before | `master@892097a1` | PR #157 merge |
-| After | `perf/pr1-backend-hot-paths@f3358c1d` | PR1 rebased onto PR #157 |
+| Baseline | `892097a1` | Reference revision |
+| Candidate | `f3358c1d` | Optimized revision |
 
-The measured detached worktrees differed only by PR1. The browser benchmark
+The measured detached worktrees differed only by the optimized changes. The browser benchmark
 passes a named CRB path, so clean checkouts of both revisions run unchanged.
 
 ## Dataset preparation
@@ -45,7 +45,7 @@ allocations reported by `Rprofmem`; correctness checks passed for every row.
 | Mean expression | 100 genes x 1M cells, dense vs backend-native | 5,540 ms | 3,978 ms | -28.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
 
 The single-gene path is effectively time-neutral in this run and allocates
-15.3 MiB more R memory. PR1's main expression gains come from batching RGB
+15.3 MiB more R memory. The main expression gains come from batching RGB
 reads and keeping aggregate computation backend-native.
 
 ## Browser loading
@@ -67,10 +67,10 @@ rerun from clean detached checkouts measured 64,033 ms and 3,530.4 MiB before
 versus 34,105 ms and 2,699.5 MiB after; both painted the same 1301 x 594 Canvas
 with more than 31,000 sampled non-white pixels.
 
-The large-data feature branch was also tested at 100% display. Two runs loaded
+The optimized revision was also tested at 100% display. Two runs loaded
 and painted all 1M UMAP points in 72.4 and 73.5 seconds, using 4,616.7 and
 4,368.5 MiB RSS respectively. This is an acceptance check for chunked Canvas
-painting, not a PR1 before/after comparison.
+painting, not a baseline/candidate comparison.
 
 ## Environment
 
@@ -82,6 +82,6 @@ painting, not a PR1 before/after comparison.
 ## Reproduce
 
 ```sh
-Rscript tests/bench/pr1_large_data.R BEFORE_ROOT AFTER_ROOT CRB 3
-Rscript tests/bench/pr1_large_browser.R BEFORE_ROOT AFTER_ROOT CRB 3 10
+Rscript tests/bench/viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB 3
+Rscript tests/bench/viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB 3 10
 ```
