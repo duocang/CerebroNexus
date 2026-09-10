@@ -329,45 +329,39 @@ test_that("Cerebro: DelayedArray means stay native", {
 
 test_that("Cerebro: HDF5Array means stay native", {
   skip_if_not_installed("HDF5Array")
-  dense <- mean_expression_test_matrix()
-  path <- withr::local_tempfile(fileext = ".h5")
-  mat <- HDF5Array::writeHDF5Array(
-    dense,
-    filepath = path,
-    name = "expression",
-    with.dimnames = TRUE
+  write_hdf5 <- function(mat) {
+    HDF5Array::writeHDF5Array(
+      mat,
+      filepath = tempfile(fileext = ".h5"),
+      name = "expression",
+      with.dimnames = TRUE
+    )
+  }
+  expect_native_cell_means(
+    write_hdf5(mean_expression_test_matrix()),
+    "DelayedArray",
+    "DelayedArray"
   )
-  expect_native_cell_means(mat, "DelayedArray", "DelayedArray")
-
-  zero_path <- withr::local_tempfile(fileext = ".h5")
-  zero_mat <- HDF5Array::writeHDF5Array(
-    zero_column_expression_test_matrix(),
-    filepath = zero_path,
-    name = "expression",
-    with.dimnames = TRUE
-  )
-  expect_zero_column_cell_means(zero_mat)
+  expect_zero_column_cell_means(write_hdf5(zero_column_expression_test_matrix()))
 })
 
 test_that("Cerebro: BPCells means stay native", {
   skip_if_not_installed("BPCells")
-  mat <- methods::as(
+  as_bpcells <- function(mat) {
     methods::as(
-      Matrix::Matrix(mean_expression_test_matrix(), sparse = TRUE),
-      "CsparseMatrix"
-    ),
+      methods::as(
+        Matrix::Matrix(mat, sparse = TRUE),
+        "CsparseMatrix"
+      ),
+      "IterableMatrix"
+    )
+  }
+  expect_native_cell_means(
+    as_bpcells(mean_expression_test_matrix()),
+    "BPCells",
     "IterableMatrix"
   )
-  expect_native_cell_means(mat, "BPCells", "IterableMatrix")
-
-  zero_mat <- methods::as(
-    methods::as(
-      Matrix::Matrix(zero_column_expression_test_matrix(), sparse = TRUE),
-      "CsparseMatrix"
-    ),
-    "IterableMatrix"
-  )
-  expect_zero_column_cell_means(zero_mat)
+  expect_zero_column_cell_means(as_bpcells(zero_column_expression_test_matrix()))
 })
 
 test_that("Cerebro: addGeneList / getGeneLists round-trip", {

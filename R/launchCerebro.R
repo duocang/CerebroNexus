@@ -13,12 +13,12 @@
 #' @param crb_file_to_load Path to \code{.crb} file to load on launch of
 #' Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
 #' \code{NULL}.
-#' @param extra_example_data Optional large public example to prepare and load.
-#'   Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
-#'   1,000,000-cell mouse-brain subset. Missing source data are downloaded from
-#'   10x Genomics, converted once, and then reused from the local cache.
-#' @param example_data_dir Optional cache directory for downloaded source data,
-#'   the prepared Seurat object, and converted CRB. Defaults to a per-user cache.
+#' @param large_example Optional unique vector of large public examples to
+#'   prepare and load in the supplied order. Use \code{"50k"} for a 50,000-cell
+#'   PBMC subset, \code{"1m"} for a 1,000,000-cell mouse-brain subset, or both.
+#'   Missing data are downloaded, converted once, and reused from the cache.
+#' @param large_example_cache_dir Optional cache directory for source data,
+#'   prepared Seurat objects, and converted CRBs. Defaults to a per-user cache.
 #' @param expression_matrix_mode  Mode of expression matrix. Can be either
 #' crb, h5, or BPCells. Default is crb.
 #' @param expression_matrix_h5 Optional: Path to \code{.h5} file containing an expression
@@ -95,8 +95,8 @@ launchCerebro <- function(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  extra_example_data = NULL,
-  example_data_dir = NULL,
+  large_example = NULL,
+  large_example_cache_dir = NULL,
   ...
 ) {
   ##--------------------------------------------------------------------------##
@@ -154,12 +154,12 @@ launchCerebro <- function(
     )
   }
 
-  large_example <- .prepareLargeExample(
-    extra_example_data,
-    example_data_dir
+  prepared_large_example <- .prepareLargeExample(
+    large_example,
+    large_example_cache_dir
   )
-  if (!is.null(large_example)) {
-    crb_file_to_load <- c(crb_file_to_load, large_example)
+  if (!is.null(prepared_large_example)) {
+    crb_file_to_load <- c(crb_file_to_load, prepared_large_example)
   }
 
   ## --------------------------------------------------------------------------##

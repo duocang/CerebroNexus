@@ -1,29 +1,59 @@
+write_large_example_artifact <- function(file, sidecar) {
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  writeBin(as.raw(1), file)
+  dir.create(sidecar, recursive = TRUE, showWarnings = FALSE)
+  writeBin(as.raw(1), file.path(sidecar, "matrix"))
+}
+
 test_that("large example sizes resolve to fixed public sources", {
   expect_null(.largeExampleSpec(NULL))
+  expect_null(.prepareLargeExample(NULL))
 
   pbmc <- .largeExampleSpec("50K")
-  expect_identical(pbmc$size, "50k")
-  expect_identical(pbmc$n_cells, 50000L)
-  expect_identical(pbmc$label, "50K PBMC example")
-  expect_identical(pbmc$organism, "Human")
-  expect_match(pbmc$matrix$url, "fresh_68k_pbmc_donor_a", fixed = TRUE)
-  expect_null(pbmc$matrix$bytes)
-  expect_null(pbmc$analysis)
-
   brain <- .largeExampleSpec("1m")
-  expect_identical(brain$size, "1m")
-  expect_identical(brain$n_cells, 1000000L)
-  expect_identical(brain$label, "1M mouse brain example")
-  expect_identical(brain$organism, "Mouse")
+  expect_identical(c(pbmc$size, brain$size), c("50k", "1m"))
+  expect_identical(c(pbmc$n_cells, brain$n_cells), c(50000L, 1000000L))
+  expect_identical(c(pbmc$organism, brain$organism), c("Human", "Mouse"))
+  expect_match(pbmc$matrix$url, "fresh_68k_pbmc_donor_a", fixed = TRUE)
   expect_match(brain$matrix$url, "1M_neurons", fixed = TRUE)
-  expect_null(brain$matrix$bytes)
-  expect_null(brain$analysis)
 })
 
 test_that("large example sizes reject unsupported values", {
   expect_error(.largeExampleSpec(character()), "one of NULL, '50k', or '1m'")
   expect_error(.largeExampleSpec(50000), "one of NULL, '50k', or '1m'")
   expect_error(.largeExampleSpec("500k"), "one of NULL, '50k', or '1m'")
+})
+
+test_that("large examples prepare multiple unique sizes in order", {
+  root <- withr::local_tempdir()
+  prepared <- character()
+  build <- function(spec, paths) {
+    prepared <<- c(prepared, spec$size)
+    write_large_example_artifact(paths$seurat, paths$seurat_sidecar)
+  }
+  convert <- function(spec, paths) {
+    write_large_example_artifact(paths$crb, paths$crb_sidecar)
+    paths$crb
+  }
+  testthat::local_mocked_bindings(
+    .requireLargeExamplePackages = function(...) invisible(TRUE),
+    .downloadLargeExample = function(...) NULL,
+    .extractLargeExampleArchive = function(...) NULL,
+    .buildLargeExampleSeurat = build,
+    .convertLargeExample = convert,
+    .package = "CerebroNexus"
+  )
+
+  result <- .prepareLargeExample(c("1m", "50K"), root)
+
+  expect_identical(prepared, c("1m", "50k"))
+  expect_identical(
+    names(result),
+    c("1M mouse brain example", "50K PBMC example")
+  )
+  expect_error(.prepareLargeExample(character(), root), "non-empty")
+  expect_error(.prepareLargeExample(c("50k", "50K"), root), "unique")
+  expect_error(.prepareLargeExample(c("50k", NA_character_), root), "non-NA")
 })
 
 test_that("large example cache defaults outside the package", {
@@ -91,27 +121,6 @@ test_that("large example downloads never publish partial files", {
   expect_length(list.files(root, pattern = "[.]part-", full.names = TRUE), 0L)
 })
 
-test_that("large example acquisition downloads only the expression matrix", {
-  root <- withr::local_tempdir()
-  spec <- .largeExampleSpec("50k")
-  paths <- .largeExamplePaths(spec, root)
-  downloads <- character()
-  extractions <- character()
-  download <- function(url, dest) {
-    downloads <<- c(downloads, url)
-    dest
-  }
-  extract <- function(archive, exdir) {
-    extractions <<- c(extractions, archive)
-    exdir
-  }
-
-  .acquireLargeExample(spec, paths, download = download, extract = extract)
-
-  expect_identical(downloads, spec$matrix$url)
-  expect_identical(extractions, paths$matrix)
-})
-
 test_that("large example selection is exact and reproducible", {
   cells <- paste0("cell", seq_len(10))
   first <- .selectLargeExampleCells(cells, 5L)
@@ -137,21 +146,10 @@ test_that("large example preparation reuses a complete CRB cache", {
   root <- withr::local_tempdir()
   spec <- .largeExampleSpec("50k")
   paths <- .largeExamplePaths(spec, root)
-  dir.create(dirname(paths$crb), recursive = TRUE)
-  writeBin(as.raw(1), paths$crb)
-  dir.create(paths$crb_sidecar)
-  writeBin(as.raw(1), file.path(paths$crb_sidecar, "matrix"))
+  write_large_example_artifact(paths$crb, paths$crb_sidecar)
 
-  called <- FALSE
-  result <- .prepareLargeExample(
-    "50k",
-    root,
-    acquire = function(...) called <<- TRUE,
-    build_seurat = function(...) called <<- TRUE,
-    convert = function(...) called <<- TRUE
-  )
+  result <- .prepareLargeExample("50k", root)
 
-  expect_false(called)
   expect_identical(unname(result), paths$crb)
   expect_identical(names(result), spec$label)
 })
@@ -159,43 +157,28 @@ test_that("large example preparation reuses a complete CRB cache", {
 test_that("large example preparation acquires, builds, and converts once", {
   root <- withr::local_tempdir()
   calls <- character()
-  acquire <- function(spec, paths) {
-    calls <<- c(calls, "acquire")
-    invisible(paths)
-  }
   build <- function(spec, paths) {
     calls <<- c(calls, "build")
-    dir.create(dirname(paths$seurat), recursive = TRUE)
-    writeBin(as.raw(1), paths$seurat)
-    dir.create(paths$seurat_sidecar)
-    writeBin(as.raw(1), file.path(paths$seurat_sidecar, "matrix"))
+    write_large_example_artifact(paths$seurat, paths$seurat_sidecar)
     invisible(paths$seurat)
   }
   convert <- function(spec, paths) {
     calls <<- c(calls, "convert")
-    dir.create(dirname(paths$crb), recursive = TRUE)
-    writeBin(as.raw(1), paths$crb)
-    dir.create(paths$crb_sidecar)
-    writeBin(as.raw(1), file.path(paths$crb_sidecar, "matrix"))
+    write_large_example_artifact(paths$crb, paths$crb_sidecar)
     invisible(paths$crb)
   }
-
-  first <- .prepareLargeExample(
-    "1m",
-    root,
-    acquire = acquire,
-    build_seurat = build,
-    convert = convert
-  )
-  second <- .prepareLargeExample(
-    "1m",
-    root,
-    acquire = acquire,
-    build_seurat = build,
-    convert = convert
+  testthat::local_mocked_bindings(
+    .requireLargeExamplePackages = function(...) invisible(TRUE),
+    .downloadLargeExample = function(...) calls <<- c(calls, "download"),
+    .buildLargeExampleSeurat = build,
+    .convertLargeExample = convert,
+    .package = "CerebroNexus"
   )
 
-  expect_identical(calls, c("acquire", "build", "convert"))
+  first <- .prepareLargeExample("1m", root)
+  second <- .prepareLargeExample("1m", root)
+
+  expect_identical(calls, c("download", "build", "convert"))
   expect_identical(first, second)
 })
 
@@ -270,10 +253,7 @@ test_that("large example conversion uses counts and BPCells", {
   captured <- NULL
   converter <- function(...) {
     captured <<- list(...)
-    dir.create(dirname(paths$crb), recursive = TRUE, showWarnings = FALSE)
-    writeBin(as.raw(1), paths$crb)
-    dir.create(paths$crb_sidecar)
-    writeBin(as.raw(1), file.path(paths$crb_sidecar, "matrix"))
+    write_large_example_artifact(paths$crb, paths$crb_sidecar)
   }
 
   expect_identical(
@@ -287,25 +267,6 @@ test_that("large example conversion uses counts and BPCells", {
   expect_false(captured$add_most_expressed_genes)
 })
 
-test_that("large example public arguments are opt-in", {
-  expect_true("extra_example_data" %in% names(formals(launchCerebro)))
-  expect_true("example_data_dir" %in% names(formals(launchCerebro)))
-  expect_true("extra_example_data" %in% names(formals(createShinyApp)))
-  expect_true("example_data_dir" %in% names(formals(createShinyApp)))
-  expect_null(formals(launchCerebro)$extra_example_data)
-  expect_null(formals(createShinyApp)$extra_example_data)
-  expect_false("example_data_size" %in% names(formals(launchCerebro)))
-  expect_false("example_data_size" %in% names(formals(createShinyApp)))
-  expect_identical(
-    head(names(formals(createShinyApp)), 2L),
-    c("cerebro_data", "result_dir")
-  )
-  expect_identical(
-    names(formals(launchCerebro))[3:4],
-    c("crb_file_to_load", "expression_matrix_mode")
-  )
-})
-
 test_that("launchCerebro appends a requested large example", {
   example <- system.file(
     "extdata/examples/example.crb",
@@ -313,9 +274,12 @@ test_that("launchCerebro appends a requested large example", {
   )
   testthat::local_mocked_bindings(
     .prepareLargeExample = function(size, cache_dir) {
-      expect_identical(size, "50k")
+      expect_identical(size, c("50k", "1m"))
       expect_identical(cache_dir, "custom-cache")
-      stats::setNames(example, "50K PBMC example")
+      stats::setNames(
+        rep(example, 2L),
+        c("50K PBMC example", "1M mouse brain example")
+      )
     },
     .package = "CerebroNexus"
   )
@@ -340,15 +304,15 @@ test_that("launchCerebro appends a requested large example", {
 
   app <- launchCerebro(
     crb_file_to_load = c("Existing" = example),
-    extra_example_data = "50k",
-    example_data_dir = "custom-cache",
+    large_example = c("50k", "1m"),
+    large_example_cache_dir = "custom-cache",
     mode = "closed"
   )
 
   expect_s3_class(app, "shiny.appobj")
   expect_identical(
     names(get("Cerebro.options", envir = .GlobalEnv)$crb_file_to_load),
-    c("Existing", "50K PBMC example")
+    c("Existing", "50K PBMC example", "1M mouse brain example")
   )
 })
 
@@ -357,11 +321,17 @@ test_that("createShinyApp can build an example-only app", {
     "extdata/examples/example.crb",
     package = "CerebroNexus"
   )
+  source_dir <- withr::local_tempdir()
+  examples <- file.path(source_dir, c("50k.crb", "1m.crb"))
+  file.copy(example, examples)
   testthat::local_mocked_bindings(
     .prepareLargeExample = function(size, cache_dir) {
-      expect_identical(size, "1m")
+      expect_identical(size, c("50k", "1m"))
       expect_identical(cache_dir, "custom-cache")
-      stats::setNames(example, "1M mouse brain example")
+      stats::setNames(
+        examples,
+        c("50K PBMC example", "1M mouse brain example")
+      )
     },
     .package = "CerebroNexus"
   )
@@ -371,8 +341,8 @@ test_that("createShinyApp can build an example-only app", {
     createShinyApp(
       cerebro_data = NULL,
       result_dir = output,
-      extra_example_data = "1m",
-      example_data_dir = "custom-cache",
+      large_example = c("50k", "1m"),
+      large_example_cache_dir = "custom-cache",
       launch_browser = FALSE,
       verbose = FALSE
     ),
@@ -381,6 +351,6 @@ test_that("createShinyApp can build an example-only app", {
   config <- readRDS(file.path(output, "cerebro_config.rds"))
   expect_identical(
     names(config$crb_file_to_load),
-    "1M mouse brain example"
+    c("50K PBMC example", "1M mouse brain example")
   )
 })

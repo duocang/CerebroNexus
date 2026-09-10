@@ -79,67 +79,67 @@ if (!identical(sort(browser$version), c("after", "before"))) {
   )
 }
 
-browser_value <- function(version, column) {
-  value <- browser[browser$version == version, column]
-  if (length(value) != 1L || !is.finite(value)) {
-    stop("invalid browser value for ", version, "/", column, call. = FALSE)
-  }
-  value
+result_rows <- function(
+  scope,
+  metric,
+  measure,
+  before,
+  after,
+  unit,
+  change_pct = (after / before - 1) * 100
+) {
+  data.frame(
+    scope,
+    metric,
+    measure,
+    before,
+    after,
+    change_pct,
+    unit,
+    check.names = FALSE
+  )
 }
 
-hot_time <- data.frame(
-  scope = "hot path",
-  metric = hot$metric,
-  measure = "elapsed time",
-  before = hot$before_ms,
-  after = hot$after_ms,
-  change_pct = hot$time_change_pct,
-  unit = "ms",
-  check.names = FALSE
+hot_time <- result_rows(
+  "hot path",
+  hot$metric,
+  "elapsed time",
+  hot$before_ms,
+  hot$after_ms,
+  "ms",
+  hot$time_change_pct
 )
-hot_alloc <- data.frame(
-  scope = "hot path",
-  metric = hot$metric,
-  measure = "R allocation",
-  before = hot$before_alloc_mib,
-  after = hot$after_alloc_mib,
-  change_pct = hot$alloc_change_pct,
-  unit = "MiB",
-  check.names = FALSE
+hot_alloc <- result_rows(
+  "hot path",
+  hot$metric,
+  "R allocation",
+  hot$before_alloc_mib,
+  hot$after_alloc_mib,
+  "MiB",
+  hot$alloc_change_pct
 )
 browser_metrics <- c(
   data_ready_ms = "Data ready",
   overview_ms = "Overview Canvas ready",
   total_ms = "Launch through painted Overview"
 )
-browser_time <- do.call(
-  rbind,
-  lapply(names(browser_metrics), function(column) {
-    before <- browser_value("before", column)
-    after <- browser_value("after", column)
-    data.frame(
-      scope = "browser",
-      metric = unname(browser_metrics[[column]]),
-      measure = "elapsed time",
-      before = before,
-      after = after,
-      change_pct = (after / before - 1) * 100,
-      unit = "ms",
-      check.names = FALSE
-    )
-  })
+browser_before <- browser[browser$version == "before", , drop = FALSE]
+browser_after <- browser[browser$version == "after", , drop = FALSE]
+browser_time <- result_rows(
+  "browser",
+  unname(browser_metrics),
+  "elapsed time",
+  unlist(browser_before[names(browser_metrics)], use.names = FALSE),
+  unlist(browser_after[names(browser_metrics)], use.names = FALSE),
+  "ms"
 )
-before_rss <- browser_value("before", "shiny_rss_mib")
-after_rss <- browser_value("after", "shiny_rss_mib")
-browser_rss <- data.frame(
-  scope = "browser",
-  metric = "Shiny process RSS",
-  measure = "resident memory",
-  before = before_rss,
-  after = after_rss,
-  change_pct = (after_rss / before_rss - 1) * 100,
-  unit = "MiB",
-  check.names = FALSE
+browser_rss <- result_rows(
+  "browser",
+  "Shiny process RSS",
+  "resident memory",
+  browser_before$shiny_rss_mib,
+  browser_after$shiny_rss_mib,
+  "MiB"
 )
 
 summary <- rbind(hot_time, hot_alloc, browser_time, browser_rss)

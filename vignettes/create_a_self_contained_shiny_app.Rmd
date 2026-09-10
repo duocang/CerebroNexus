@@ -69,7 +69,7 @@ shiny::runApp(out_dir)
 
 # Optional 50K and 1M examples
 
-Set `extra_example_data` only when you want CerebroNexus to obtain and prepare a
+Set `large_example` only when you want CerebroNexus to obtain and prepare a
 large public example. `"50k"` uses exactly 50,000 cells from the 10x Fresh 68k
 PBMC Donor A data. `"1m"` uses exactly 1,000,000 cells from the 10x E18 mouse
 brain data. Source matrices are downloaded from 10x Genomics. Seurat's sketch
@@ -78,7 +78,7 @@ all retained cells before conversion to a disk-backed Seurat object and BPCells
 CRB; all artifacts are cached for later calls.
 
 From the repository root, this reproducible example bundles all shipped demos
-and appends the cached or downloaded 1M example:
+and appends both cached or downloaded large examples:
 
 ```{r, eval=FALSE}
 pkgload::load_all(".", quiet = TRUE)
@@ -114,10 +114,10 @@ spatial_images <- list(
 )
 
 createShinyApp(
-  result_dir = "cerebro_demo_with_1m",
+  result_dir = "cerebro_demo_with_large_examples",
   cerebro_data = demo_data,
-  extra_example_data = "1m",
-  example_data_dir = "cerebro-example-cache",
+  large_example = c("50k", "1m"),
+  large_example_cache_dir = "cerebro-example-cache",
   spatial_images = spatial_images,
   crb_pick_smallest_file = FALSE,
   launch_browser = TRUE
@@ -127,15 +127,16 @@ createShinyApp(
 The 50K tier downloads about 119 MB and uses roughly 1 GB of cache after
 preparation. The 1M tier downloads about 4.2 GB, uses roughly 11 GB of cache,
 and needs substantial processing time. Both tiers require Seurat, SeuratObject,
-and BPCells. Override `example_data_dir` to keep the reusable cache in a chosen
-location. No download occurs when `extra_example_data = NULL`.
+and BPCells. Override `large_example_cache_dir` to keep the reusable cache in a
+chosen location. `NULL` uses the platform user cache. No download occurs when
+`large_example = NULL`; multiple unique presets retain their input order.
 
 # Common parameters
 
 | argument | purpose |
 |---|---|
 | `cerebro_data` | named vector/list of `.crb` (or `.rds`) paths; labels and resolved source files must both be unique |
-| `extra_example_data`, `example_data_dir` | optionally append a `"50k"` or `"1m"` public example using the default or chosen cache |
+| `large_example`, `large_example_cache_dir` | append one or both unique presets in input order, using the default or chosen cache |
 | `result_dir` | output directory (required; portable basename outside the reserved lock namespace) |
 | `overwrite` | replace `result_dir` after a complete staged build; with `FALSE`, the destination must be absent or empty |
 | `max_request_size` | finite positive numeric request cap in MB; defaults to `8000`; closed Viewers use at most 6 MiB |

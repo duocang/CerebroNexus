@@ -21,13 +21,16 @@ The shipped `.crb` files in this repo were last built with:
 
 ## Optional large examples
 
-The optional runtime examples are not committed. `extra_example_data = "50k"`
+The optional runtime examples are not committed. `large_example = "50k"`
 uses the 10x Genomics Fresh 68k PBMC Donor A filtered matrix, retaining exactly
 50,000 evenly distributed barcodes.
-`extra_example_data = "1m"` uses the 10x Genomics 1.3M E18 mouse-brain filtered
+`large_example = "1m"` uses the 10x Genomics 1.3M E18 mouse-brain filtered
 H5 matrix, retaining exactly 1,000,000 evenly distributed barcodes. Seurat's
 sketch workflow computes clusters and a UMAP for every retained cell. Both
 source datasets are CC BY 4.0.
+
+Pass `large_example = c("50k", "1m")` to prepare both and preserve that order
+in the Viewer dataset selector. Duplicate preset names are rejected.
 
 Downloads are written to a temporary file and renamed into place only after
 `download.file()` completes. Existing local source files are reused.

@@ -9,7 +9,7 @@
       !tolower(size) %in% c("50k", "1m")
   ) {
     stop(
-      "'extra_example_data' must be one of NULL, '50k', or '1m'.",
+      "'large_example' must be one of NULL, '50k', or '1m'.",
       call. = FALSE
     )
   }
@@ -57,7 +57,10 @@
         is.na(path) ||
         !nzchar(path)
     ) {
-      stop("'example_data_dir' must be one non-empty path.", call. = FALSE)
+      stop(
+        "'large_example_cache_dir' must be one non-empty path.",
+        call. = FALSE
+      )
     }
     return(path)
   }
@@ -72,8 +75,9 @@
   missing <- packages[
     !vapply(
       packages,
-      function(package) available(package, quietly = TRUE),
-      logical(1)
+      available,
+      logical(1),
+      quietly = TRUE
     )
   ]
   if (length(missing)) {
@@ -126,7 +130,6 @@
 .largeExamplePaths <- function(spec, cache_dir) {
   root <- file.path(.largeExampleCacheDir(cache_dir), spec$size)
   list(
-    root = root,
     matrix = file.path(root, "source", basename(spec$matrix$url)),
     matrix_extract = file.path(root, "source", "matrix"),
     seurat = file.path(root, "seurat", paste0(spec$slug, ".rds")),
@@ -158,24 +161,6 @@
   dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
   utils::untar(archive, exdir = exdir)
   exdir
-}
-
-.acquireLargeExample <- function(
-  spec,
-  paths,
-  download = .downloadLargeExample,
-  extract = .extractLargeExampleArchive
-) {
-  message(
-    "Preparing the ",
-    spec$label,
-    " from official 10x Genomics data."
-  )
-  download(spec$matrix$url, paths$matrix)
-  if (identical(spec$matrix$format, "mex")) {
-    extract(paths$matrix, paths$matrix_extract)
-  }
-  invisible(paths)
 }
 
 .findLargeExampleFile <- function(root, pattern, label) {
@@ -371,32 +356,65 @@
 
 .prepareLargeExample <- function(
   size,
-  cache_dir = NULL,
-  acquire = .acquireLargeExample,
-  build_seurat = .buildLargeExampleSeurat,
-  convert = .convertLargeExample
+  cache_dir = NULL
 ) {
-  spec <- .largeExampleSpec(size)
-  if (is.null(spec)) {
+  if (is.null(size)) {
     return(NULL)
   }
-  paths <- .largeExamplePaths(spec, cache_dir)
-  if (.completeLargeExampleArtifact(paths$crb, paths$crb_sidecar)) {
-    .requireLargeExamplePackages("BPCells")
-    return(stats::setNames(paths$crb, spec$label))
+  if (!is.character(size) || !length(size)) {
+    stop("'large_example' must be a non-empty character vector.", call. = FALSE)
+  }
+  if (anyNA(size)) {
+    stop("'large_example' must contain only non-NA values.", call. = FALSE)
+  }
+  size <- tolower(size)
+  if (any(!size %in% c("50k", "1m"))) {
+    stop("'large_example' must contain only '50k' or '1m'.", call. = FALSE)
+  }
+  if (anyDuplicated(size)) {
+    stop("'large_example' values must be unique.", call. = FALSE)
   }
 
-  .requireLargeExamplePackages()
-  if (!.completeLargeExampleArtifact(paths$seurat, paths$seurat_sidecar)) {
-    acquire(spec, paths)
-    build_seurat(spec, paths)
+  specs <- lapply(size, .largeExampleSpec)
+  paths <- lapply(specs, .largeExamplePaths, cache_dir = cache_dir)
+  complete <- vapply(
+    paths,
+    function(path) {
+      .completeLargeExampleArtifact(path$crb, path$crb_sidecar)
+    },
+    logical(1)
+  )
+  if (all(complete)) {
+    .requireLargeExamplePackages("BPCells")
+  } else {
+    .requireLargeExamplePackages()
+    for (index in which(!complete)) {
+      spec <- specs[[index]]
+      path <- paths[[index]]
+      if (!.completeLargeExampleArtifact(path$seurat, path$seurat_sidecar)) {
+        message(
+          "Preparing the ",
+          spec$label,
+          " from official 10x Genomics data."
+        )
+        .downloadLargeExample(spec$matrix$url, path$matrix)
+        if (identical(spec$matrix$format, "mex")) {
+          .extractLargeExampleArchive(path$matrix, path$matrix_extract)
+        }
+        .buildLargeExampleSeurat(spec, path)
+      }
+      .convertLargeExample(spec, path)
+      if (!.completeLargeExampleArtifact(path$crb, path$crb_sidecar)) {
+        stop(
+          "Large example conversion did not create a complete CRB.",
+          call. = FALSE
+        )
+      }
+    }
   }
-  convert(spec, paths)
-  if (!.completeLargeExampleArtifact(paths$crb, paths$crb_sidecar)) {
-    stop(
-      "Large example conversion did not create a complete CRB.",
-      call. = FALSE
-    )
-  }
-  stats::setNames(paths$crb, spec$label)
+
+  stats::setNames(
+    vapply(paths, `[[`, character(1), "crb"),
+    vapply(specs, `[[`, character(1), "label")
+  )
 }

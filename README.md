@@ -51,12 +51,12 @@ later runs:
 
 ```r
 # About 119 MB of source downloads; prepares exactly 50,000 PBMCs.
-launchCerebro(extra_example_data = "50k")
+launchCerebro(large_example = "50k")
 
-# About 4.2 GB of source downloads; prepares exactly 1,000,000 mouse-brain cells.
+# Append both examples to one Viewer in this dataset-selector order.
 createShinyApp(
   cerebro_data = NULL,
-  extra_example_data = "1m",
+  large_example = c("50k", "1m"),
   result_dir = "large_demo",
   launch_browser = FALSE
 )
@@ -65,7 +65,8 @@ createShinyApp(
 Both modes require Seurat, SeuratObject, and BPCells. Seurat's sketch workflow
 creates the UMAP and clusters. The sources are public 10x Genomics datasets; no
 large data file is stored in this Git repository. Allow roughly 1 GB of cache
-space for 50K and 11 GB for 1M after preparation.
+space for 50K and 11 GB for 1M after preparation. Set
+`large_example_cache_dir` only to override the platform user cache.
 
 ## License
 

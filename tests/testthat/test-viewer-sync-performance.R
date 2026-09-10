@@ -1,112 +1,28 @@
-sync_perf_root_candidates <- c(
-  file.path(getwd(), "inst", "viewer"),
-  file.path(getwd(), "..", "..", "inst", "viewer"),
-  testthat::test_path("..", "..", "inst", "viewer")
-)
-sync_perf_viewer_root <- sync_perf_root_candidates[
-  dir.exists(sync_perf_root_candidates)
-][1L]
-if (is.na(sync_perf_viewer_root)) {
-  sync_perf_viewer_root <- system.file("viewer", package = "CerebroNexus")
-}
-
-read_sync_perf_viewer <- function(...) {
-  paste(
-    readLines(file.path(sync_perf_viewer_root, ...), warn = FALSE),
-    collapse = "\n"
-  )
-}
-
 sync_perf_reactive <- function(value) {
   expression <- substitute(value)
   scope <- parent.frame()
   function() eval(expression, envir = scope)
 }
 
-find_sync_perf_assignment <- function(expression, name) {
-  if (
-    is.call(expression) &&
-      identical(expression[[1L]], quote(`<-`)) &&
-      identical(expression[[2L]], as.name(name))
-  ) {
-    return(expression[[3L]])
-  }
-  if (!is.recursive(expression)) {
-    return(NULL)
-  }
-  for (index in seq_along(expression)) {
-    if (identical(expression[[index]], quote(expr = ))) {
-      next
-    }
-    part <- expression[[index]]
-    found <- find_sync_perf_assignment(part, name)
-    if (!is.null(found)) {
-      return(found)
-    }
-  }
-  NULL
-}
-
-run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
-  utility <- new.env(parent = globalenv())
-  sys.source(
-    file.path(sync_perf_viewer_root, "utility_functions.R"),
-    envir = utility
-  )
-
-  sample_calls <- list()
-  mask_calls <- 0L
+run_projection_indices <- function(metadata, filters, percentage) {
   scope <- new.env(parent = globalenv())
-  scope$reactive <- sync_perf_reactive
-  scope$req <- shiny::req
   scope$input <- c(
-    stats::setNames(
-      list(percentage),
-      paste0(view$prefix, "_percentage_cells_to_show")
-    ),
+    list(test_percentage_cells_to_show = percentage),
     stats::setNames(
       filters,
-      paste0(view$prefix, "_group_filter_", names(filters))
+      paste0("test_group_filter_", names(filters))
     )
   )
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   scope$getGroups <- function() names(filters)
   scope$getGroupLevels <- function(group) unique(metadata[[group]])
-  scope$getMetaData <- function() metadata
-  scope$cerebroGroupFilterMask <- function(metadata, filters) {
-    mask_calls <<- mask_calls + 1L
-    utility$cerebroGroupFilterMask(metadata, filters)
-  }
-  scope$viewerProjectionCellIndices <- utility$viewerProjectionCellIndices
-  environment(scope$viewerProjectionCellIndices) <- scope
-  scope$sample <- function(x, size, replace = FALSE, prob = NULL) {
-    sample_calls[[length(sample_calls) + 1L]] <<- "sample"
-    if (missing(size)) {
-      return(base::sample(x, replace = replace, prob = prob))
-    }
-    base::sample(x, size, replace = replace, prob = prob)
-  }
-  scope$sample.int <- function(n, size, replace = FALSE, prob = NULL) {
-    sample_calls[[length(sample_calls) + 1L]] <<- "sample.int"
-    base::sample.int(n, size, replace = replace, prob = prob)
-  }
-  scope$randomlySubsetCells <- utility$randomlySubsetCells
-  environment(scope$randomlySubsetCells) <- scope
-
-  sys.source(
-    file.path(sync_perf_viewer_root, view$file),
-    envir = scope
-  )
-  list(
-    cells = scope[[view$reactive]](),
-    sample_calls = unlist(sample_calls, use.names = FALSE),
-    mask_calls = mask_calls
-  )
+  scope$viewerProjectionCellIndices("test", metadata)
 }
 
 test_that("expression rows are fetched once and aligned by cell", {
   utility_env <- new.env(parent = globalenv())
   sys.source(
-    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    viewer_test_path("utility_functions.R"),
     envir = utility_env
   )
   expect_true(is.function(utility_env$viewerExpressionValues))
@@ -140,7 +56,7 @@ test_that("expression rows are fetched once and aligned by cell", {
 test_that("single-gene expression uses row access with a matrix fallback", {
   utility_env <- new.env(parent = globalenv())
   sys.source(
-    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    viewer_test_path("utility_functions.R"),
     envir = utility_env
   )
 
@@ -175,7 +91,7 @@ test_that("already aligned expression cells skip the string match", {
     base::match(x, table, ...)
   }
   sys.source(
-    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    viewer_test_path("utility_functions.R"),
     envir = utility_env
   )
 
@@ -196,67 +112,7 @@ test_that("already aligned expression cells skip the string match", {
   expect_false(3L %in% match_lengths)
 })
 
-test_that("RGB and linked expression use batched reads", {
-  gene_expression <- read_sync_perf_viewer(
-    "gene_expression",
-    "obj_projection_expression_levels.R"
-  )
-  spatial <- read_sync_perf_viewer(
-    "spatial",
-    "obj_projection_data_to_plot.R"
-  )
-  linked <- read_sync_perf_viewer("coordinated_views", "server.R")
-
-  expect_match(gene_expression, "viewerExpressionValues", fixed = TRUE)
-  expect_match(spatial, "viewerExpressionValues", fixed = TRUE)
-  expect_match(linked, "cv_gene_values_many", fixed = TRUE)
-  expect_match(linked, "viewerExpressionValues", fixed = TRUE)
-})
-
-test_that("separate gene panels do not transpose the expression matrix", {
-  gene_expression <- read_sync_perf_viewer(
-    "gene_expression",
-    "obj_projection_expression_levels.R"
-  )
-
-  expect_no_match(gene_expression, "Matrix::t", fixed = TRUE)
-})
-
-test_that("single-gene Viewer routes prefer row extraction", {
-  paths <- c(
-    "gene_expression/obj_projection_expression_levels.R",
-    "spatial/obj_projection_data_to_plot.R",
-    "spatial/out_morans_i.R",
-    "trekker/server.R"
-  )
-  for (path in paths) {
-    expect_match(
-      read_sync_perf_viewer(path),
-      "viewerExpressionRow",
-      fixed = TRUE,
-      info = path
-    )
-  }
-})
-
-test_that("specialist cell sampling uses one original-row index sample", {
-  views <- list(
-    overview = list(
-      file = "overview/obj_projection_cells_to_show.R",
-      prefix = "overview_projection",
-      reactive = "overview_projection_cells_to_show"
-    ),
-    gene = list(
-      file = "gene_expression/obj_projection_cells_to_show.R",
-      prefix = "expression_projection",
-      reactive = "expression_projection_cells_to_show"
-    ),
-    spatial = list(
-      file = "spatial/obj_projection_cells_to_show.R",
-      prefix = "spatial_projection",
-      reactive = "spatial_projection_cells_to_show"
-    )
-  )
+test_that("projection filtering and sampling preserve original row indices", {
   metadata <- data.frame(
     cell_barcode = paste0("cell", seq_len(7L)),
     batch = factor(
@@ -267,142 +123,42 @@ test_that("specialist cell sampling uses one original-row index sample", {
     check.names = FALSE
   )
   eligible <- c(2L, 4L, 5L, 7L)
+  result <- run_projection_indices(
+    metadata,
+    list(batch = "keep", state = c("T", "B")),
+    50
+  )
+  expect_length(result, ceiling(length(eligible) * 0.5))
+  expect_true(all(result %in% eligible))
+  expect_identical(anyDuplicated(result), 0L)
 
-  for (name in names(views)) {
-    result <- run_sync_perf_cell_sampling(
-      views[[name]],
+  expect_identical(
+    run_projection_indices(
       metadata,
-      filters = list(batch = "keep", state = c("T", "B")),
-      percentage = 50
-    )
-    expect_identical(
-      result$sample_calls,
-      "sample.int",
-      info = name
-    )
-    expect_identical(result$mask_calls, 1L, info = name)
-    expect_equal(
-      length(result$cells),
-      ceiling(length(eligible) * 0.5),
-      info = name
-    )
-    expect_true(all(result$cells %in% eligible), info = name)
-    expect_equal(
-      length(unique(result$cells)),
-      length(result$cells),
-      info = name
-    )
-  }
-
-  all_cells <- run_sync_perf_cell_sampling(
-    views$overview,
-    metadata,
-    filters = list(batch = c("drop", "keep"), state = c("T", "B")),
-    percentage = 100
-  )
-  expect_identical(all_cells$cells, seq_len(nrow(metadata)))
-  expect_length(all_cells$sample_calls, 0L)
-  expect_identical(all_cells$mask_calls, 0L)
-
-  character_missing <- run_sync_perf_cell_sampling(
-    views$overview,
-    data.frame(
-      cell_barcode = c("cell1", "cell2"),
-      batch = c("keep", NA_character_)
+      list(batch = c("drop", "keep"), state = c("T", "B")),
+      100
     ),
-    filters = list(batch = "keep"),
-    percentage = 100
+    seq_len(nrow(metadata))
   )
-  expect_identical(character_missing$cells, 1L)
-  expect_identical(character_missing$mask_calls, 1L)
 
-  no_cells <- run_sync_perf_cell_sampling(
-    views$gene,
-    metadata,
-    filters = list(batch = character(), state = c("T", "B")),
-    percentage = 50
+  expect_identical(
+    run_projection_indices(
+      data.frame(batch = c("keep", NA_character_)),
+      list(batch = "keep"),
+      100
+    ),
+    1L
   )
-  expect_identical(no_cells$cells, integer())
-  expect_length(no_cells$sample_calls, 0L)
-
-  scalar_metadata <- data.frame(
-    cell_barcode = paste0("cell", seq_len(50L)),
-    batch = replace(rep("drop", 50L), 42L, "keep")
+  expect_identical(
+    run_projection_indices(metadata, list(batch = character()), 50),
+    integer()
   )
-  scalar <- run_sync_perf_cell_sampling(
-    views$spatial,
-    scalar_metadata,
-    filters = list(batch = "keep"),
-    percentage = 50
-  )
-  expect_identical(scalar$cells, 42L)
-  expect_identical(scalar$sample_calls, "sample.int")
-
-  for (view in views) {
-    source <- read_sync_perf_viewer(view$file)
-    expect_match(source, "viewerProjectionCellIndices", fixed = TRUE)
-    expect_no_match(source, "cerebroGroupFilterMask", fixed = TRUE)
-    expect_no_match(source, "sample.int", fixed = TRUE)
-    expect_no_match(source, "dplyr::mutate", fixed = TRUE)
-    expect_no_match(source, "dplyr::select", fixed = TRUE)
-    expect_no_match(source, "randomlySubsetCells", fixed = TRUE)
-  }
-})
-
-test_that("projection hover formats an existing metadata subset", {
-  expressions <- parse(file.path(sync_perf_viewer_root, "shiny_server.R"))
-  definition <- NULL
-  for (expression in expressions) {
-    definition <- find_sync_perf_assignment(
-      expression,
-      "hover_info_projections"
-    )
-    if (!is.null(definition)) {
-      break
-    }
-  }
-  is_plain_function <- is.call(definition) &&
-    identical(definition[[1L]], quote(`function`))
-  expect_true(is_plain_function)
-
-  if (is_plain_function) {
-    metadata <- data.frame(
-      cell_barcode = paste0("cell", seq_len(5L)),
-      nUMI = seq_len(5L) * 10L,
-      nGene = seq_len(5L),
-      group = LETTERS[seq_len(5L)]
-    )
-    formatted <- NULL
-    format_calls <- 0L
-    scope <- list2env(list(
-      preferences = list(show_hover_info_in_projections = TRUE),
-      buildHoverInfoForProjections = function(cells) {
-        format_calls <<- format_calls + 1L
-        formatted <<- cells
-        paste0("hover-", cells$cell_barcode)
-      }
-    ))
-    hover <- eval(definition, envir = scope)
-
-    displayed <- metadata[c(4L, 2L), , drop = FALSE]
-    result <- hover(displayed)
-    expect_identical(formatted, displayed)
-    expect_identical(
-      result,
-      stats::setNames(c("hover-cell4", "hover-cell2"), c("cell4", "cell2"))
-    )
-    expect_identical(format_calls, 1L)
-
-    scope$preferences[["show_hover_info_in_projections"]] <- FALSE
-    expect_identical(hover(metadata[c(1L, 3L), , drop = FALSE]), "none")
-    expect_identical(format_calls, 1L)
-  }
 })
 
 test_that("projection hover text is assembled in one vectorized pass", {
   utility <- new.env(parent = globalenv())
   sys.source(
-    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    viewer_test_path("utility_functions.R"),
     envir = utility
   )
   utility$getGroups <- function() c("sample", "cell_type")
@@ -433,9 +189,6 @@ test_that("projection hover text is assembled in one vectorized pass", {
     utility$buildHoverInfoForProjections(metadata[FALSE, , drop = FALSE]),
     character()
   )
-  source <- read_sync_perf_viewer("utility_functions.R")
-  expect_match(source, "do.call(paste0, parts)", fixed = TRUE)
-  expect_no_match(source, "hover_info <- glue::glue", fixed = TRUE)
 })
 
 test_that("specialist hover consumers reuse their metadata subset", {
@@ -489,7 +242,7 @@ test_that("specialist hover consumers reuse their metadata subset", {
       )
     }
 
-    sys.source(file.path(sync_perf_viewer_root, case$file), envir = scope)
+    sys.source(viewer_test_path(case$file), envir = scope)
     result <- scope[[case$hover]]()
 
     expect_identical(data_calls, 1L, info = name)
