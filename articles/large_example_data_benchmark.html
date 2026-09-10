@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.4</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -100,7 +100,7 @@ contributors</h4>
             
             <h4 data-toc-skip class="date">10 September, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/backend-hot-paths-cleanup/vignettes/large_example_data_benchmark.Rmd" class="external-link"><code>vignettes/large_example_data_benchmark.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr2-viewer-interactions/vignettes/large_example_data_benchmark.Rmd" class="external-link"><code>vignettes/large_example_data_benchmark.Rmd</code></a></small>
       <div class="d-none name"><code>large_example_data_benchmark.Rmd</code></div>
     </div>
 
@@ -109,15 +109,20 @@ contributors</h4>
 <div class="section level2">
 <h2 id="scope">Scope<a class="anchor" aria-label="anchor" href="#scope"></a>
 </h2>
-<p>This vignette compares Viewer performance between two Git revisions.
-It uses the official 10x Genomics E18 mouse brain matrix, retains
-exactly 1,000,000 cells, and creates a BPCells-backed Seurat object and
-Cerebro file.</p>
-<p>The benchmark has two layers:</p>
+<p>This vignette compares Viewer performance across three stacked Git
+revisions. It uses the official 10x Genomics E18 mouse brain matrix,
+retains exactly 1,000,000 cells, and creates a BPCells-backed Seurat
+object and Cerebro file.</p>
+<p>The benchmark has three layers:</p>
 <ol style="list-style-type: decimal">
 <li>
 <code>tests/bench/viewer_1m_hot_paths.R</code> measures filtering,
-sampling, hover preparation and expression access directly in R.</li>
+sampling, hover preparation and expression access between the release
+and backend revision.</li>
+<li>
+<code>tests/bench/viewer_interaction_hot_paths.R</code> and
+<code>tests/bench/viewer_interaction_hit_test.js</code> measure the
+Viewer interaction algorithms added by the final revision.</li>
 <li>
 <code>tests/bench/viewer_1m_browser.R</code> launches the real Shiny
 Viewer in Chrome, waits for the 1M dataset and Overview Canvas, checks
@@ -131,16 +136,24 @@ than copying their implementation into a second place.</p>
 <div class="section level2">
 <h2 id="compared-revisions">Compared revisions<a class="anchor" aria-label="anchor" href="#compared-revisions"></a>
 </h2>
-<p>Choose a baseline and candidate revision. The baseline must be an
-ancestor of the candidate so that the comparison isolates their
-intervening changes.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="bu">export</span> <span class="va">BASELINE_REV</span><span class="op">=</span><span class="st">"&lt;baseline revision&gt;"</span></span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="bu">export</span> <span class="va">CANDIDATE_REV</span><span class="op">=</span><span class="st">"&lt;candidate revision&gt;"</span></span>
-<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="fu">git</span> rev-parse <span class="at">--verify</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">^{commit}"</span></span>
-<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="fu">git</span> rev-parse <span class="at">--verify</span> <span class="st">"</span><span class="va">$CANDIDATE_REV</span><span class="st">^{commit}"</span></span>
-<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">git</span> merge-base <span class="at">--is-ancestor</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">"</span> <span class="st">"</span><span class="va">$CANDIDATE_REV</span><span class="st">"</span></span></code></pre></div>
-<p>All commands exit with status zero when the revisions are valid.</p>
+<p>Choose release, backend and Viewer revisions. Each revision must be
+an ancestor of the next so the three comparisons isolate backend work,
+Viewer interaction work and their cumulative effect. Tags and
+pull-request refs are preferable to short commit IDs in published
+commands.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="bu">export</span> <span class="va">BASELINE_REV</span><span class="op">=</span><span class="st">"v4.4.2"</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="bu">export</span> <span class="va">BACKEND_REV</span><span class="op">=</span><span class="st">"perf/pr1-backend-hot-paths"</span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="bu">export</span> <span class="va">VIEWER_REV</span><span class="op">=</span><span class="st">"perf/pr2-viewer-interactions"</span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="fu">git</span> rev-parse <span class="at">--verify</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">^{commit}"</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">git</span> rev-parse <span class="at">--verify</span> <span class="st">"</span><span class="va">$BACKEND_REV</span><span class="st">^{commit}"</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="fu">git</span> rev-parse <span class="at">--verify</span> <span class="st">"</span><span class="va">$VIEWER_REV</span><span class="st">^{commit}"</span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="fu">git</span> merge-base <span class="at">--is-ancestor</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">"</span> <span class="st">"</span><span class="va">$BACKEND_REV</span><span class="st">"</span></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="fu">git</span> merge-base <span class="at">--is-ancestor</span> <span class="st">"</span><span class="va">$BACKEND_REV</span><span class="st">"</span> <span class="st">"</span><span class="va">$VIEWER_REV</span><span class="st">"</span></span></code></pre></div>
+<p>The defaults above run directly in the development repository. For a
+published comparison, replace either branch ref with a fetched
+pull-request ref; no other command changes. All validation commands exit
+with status zero when the revisions form the required stack.</p>
 </div>
 <div class="section level2">
 <h2 id="requirements">Requirements<a class="anchor" aria-label="anchor" href="#requirements"></a>
@@ -175,20 +188,22 @@ packages; it does not install or change anything.</p>
 <h2 id="prepare-isolated-comparison-trees">Prepare isolated comparison trees<a class="anchor" aria-label="anchor" href="#prepare-isolated-comparison-trees"></a>
 </h2>
 <p>Do not switch the working checkout back and forth during a benchmark.
-Create two detached Git worktrees so the before and after versions
-coexist while both read the same CRB.</p>
+Create three detached Git worktrees so all revisions coexist while
+reading the same CRB.</p>
 <p>Copy and run this block from the repository root:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="va">REPO_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$(</span><span class="fu">git</span> rev-parse <span class="at">--show-toplevel</span><span class="va">)</span><span class="st">"</span></span>
 <span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="va">BENCH_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$(</span><span class="fu">mktemp</span> <span class="at">-d</span> <span class="st">"</span><span class="va">${TMPDIR</span><span class="op">:-</span>/tmp<span class="va">}</span><span class="st">/cerebronexus-viewer-bench.XXXXXX"</span><span class="va">)</span><span class="st">"</span></span>
-<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="va">BEFORE_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/before"</span></span>
-<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="va">AFTER_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/after"</span></span>
-<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a></span>
-<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> <span class="st">"</span><span class="va">$BEFORE_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">"</span></span>
-<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$CANDIDATE_REV</span><span class="st">"</span></span>
-<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a></span>
-<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="bu">printf</span> <span class="st">'repository: %s\nbenchmark trees: %s\n'</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">"</span></span></code></pre></div>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="va">BASELINE_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/base"</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="va">BACKEND_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/backend"</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="va">VIEWER_ROOT</span><span class="op">=</span><span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer"</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> <span class="st">"</span><span class="va">$BASELINE_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BASELINE_REV</span><span class="st">"</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BACKEND_REV</span><span class="st">"</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$VIEWER_REV</span><span class="st">"</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="bu">printf</span> <span class="st">'repository: %s\nbenchmark trees: %s\n'</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">"</span></span></code></pre></div>
 <p>The browser benchmark passes a named dataset path to
-<code><a href="../reference/launchCerebro.html">launchCerebro()</a></code>, so both worktrees remain clean and require
+<code><a href="../reference/launchCerebro.html">launchCerebro()</a></code>, so all worktrees remain clean and require
 no compatibility patch.</p>
 </div>
 <div class="section level2">
@@ -260,14 +275,14 @@ never added to Git.</p>
 <p>The command-line interface is:</p>
 <pre class="text"><code>viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]</code></pre>
 <p>Run three repetitions and save the tab-separated result:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">/tests/bench/viewer_1m_hot_paths.R"</span> <span class="dt">\</span></span>
-<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$BEFORE_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">/tests/bench/viewer_1m_hot_paths.R"</span> <span class="dt">\</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$BASELINE_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
 <span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> <span class="dt">\</span></span>
 <span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  3 <span class="dt">\</span></span>
-<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_1m_hot_paths.tsv"</span></span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/backend_hot_paths.tsv"</span></span>
 <span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a></span>
-<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="ex">column</span> <span class="at">-t</span> <span class="at">-s</span> <span class="st">$'</span><span class="dt">\t</span><span class="st">'</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_1m_hot_paths.tsv"</span></span></code></pre></div>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="ex">column</span> <span class="at">-t</span> <span class="at">-s</span> <span class="st">$'</span><span class="dt">\t</span><span class="st">'</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/backend_hot_paths.tsv"</span></span></code></pre></div>
 <p>For each operation the script:</p>
 <ol style="list-style-type: decimal">
 <li>reads the same 1M-cell CRB and BPCells sidecar;</li>
@@ -306,9 +321,9 @@ operation’s equality or invariant check.</li>
 <tr class="odd">
 <td>Full projection selection</td>
 <td>1M cells, all groups, 100%</td>
-<td align="right">222 ms</td>
-<td align="right">4 ms</td>
-<td align="right">-98.2%</td>
+<td align="right">228 ms</td>
+<td align="right">5 ms</td>
+<td align="right">-97.8%</td>
 <td align="right">206.7 MiB</td>
 <td align="right">11.4 MiB</td>
 <td align="right">-94.5%</td>
@@ -316,9 +331,9 @@ operation’s equality or invariant check.</li>
 <tr class="even">
 <td>Filtered projection selection</td>
 <td>1M cells, 17/33 clusters, 25%</td>
-<td align="right">356 ms</td>
+<td align="right">351 ms</td>
 <td align="right">30 ms</td>
-<td align="right">-91.6%</td>
+<td align="right">-91.5%</td>
 <td align="right">170.6 MiB</td>
 <td align="right">43.3 MiB</td>
 <td align="right">-74.6%</td>
@@ -326,9 +341,9 @@ operation’s equality or invariant check.</li>
 <tr class="odd">
 <td>Hover preparation</td>
 <td>1M loaded, 100K displayed, 3 groups</td>
-<td align="right">32,666 ms</td>
-<td align="right">2,385 ms</td>
-<td align="right">-92.7%</td>
+<td align="right">33,877 ms</td>
+<td align="right">2,438 ms</td>
+<td align="right">-92.8%</td>
 <td align="right">1,328.7 MiB</td>
 <td align="right">56.3 MiB</td>
 <td align="right">-95.8%</td>
@@ -336,9 +351,9 @@ operation’s equality or invariant check.</li>
 <tr class="even">
 <td>Single-gene expression</td>
 <td>1 gene x 1M cells, BPCells</td>
-<td align="right">4,041 ms</td>
-<td align="right">4,073 ms</td>
-<td align="right">+0.8%</td>
+<td align="right">4,060 ms</td>
+<td align="right">4,227 ms</td>
+<td align="right">+4.1%</td>
 <td align="right">154.1 MiB</td>
 <td align="right">169.3 MiB</td>
 <td align="right">+9.9%</td>
@@ -346,9 +361,9 @@ operation’s equality or invariant check.</li>
 <tr class="odd">
 <td>RGB expression</td>
 <td>3 genes x 1M cells</td>
-<td align="right">12,285 ms</td>
-<td align="right">4,067 ms</td>
-<td align="right">-66.9%</td>
+<td align="right">12,963 ms</td>
+<td align="right">4,170 ms</td>
+<td align="right">-67.8%</td>
 <td align="right">461.4 MiB</td>
 <td align="right">238.3 MiB</td>
 <td align="right">-48.4%</td>
@@ -357,8 +372,8 @@ operation’s equality or invariant check.</li>
 <td>Multi-panel expression</td>
 <td>9 genes x 1M cells</td>
 <td align="right">4,336 ms</td>
-<td align="right">4,272 ms</td>
-<td align="right">-1.5%</td>
+<td align="right">4,311 ms</td>
+<td align="right">-0.6%</td>
 <td align="right">562.3 MiB</td>
 <td align="right">463.2 MiB</td>
 <td align="right">-17.6%</td>
@@ -366,9 +381,9 @@ operation’s equality or invariant check.</li>
 <tr class="odd">
 <td>Mean expression</td>
 <td>100 genes x 1M cells</td>
-<td align="right">5,540 ms</td>
-<td align="right">3,978 ms</td>
-<td align="right">-28.2%</td>
+<td align="right">5,622 ms</td>
+<td align="right">3,988 ms</td>
+<td align="right">-29.1%</td>
 <td align="right">1,916.8 MiB</td>
 <td align="right">112.8 MiB</td>
 <td align="right">-94.1%</td>
@@ -378,8 +393,74 @@ operation’s equality or invariant check.</li>
 <p><code><a href="https://rdrr.io/r/utils/Rprofmem.html" class="external-link">Rprofmem()</a></code> measures allocations known to R, not all
 native memory owned by BPCells or the operating system. The browser
 benchmark below therefore also records process RSS. The single-gene
-result is time-neutral in this run; the main expression gains come from
-batching RGB reads and keeping mean expression backend-native.</p>
+result is a small regression in this run and must not be reported as an
+improvement. The main expression gains come from batching RGB reads and
+keeping mean expression backend-native.</p>
+</div>
+<div class="section level2">
+<h2 id="run-the-viewer-interaction-microbenchmarks">Run the Viewer interaction microbenchmarks<a class="anchor" aria-label="anchor" href="#run-the-viewer-interaction-microbenchmarks"></a>
+</h2>
+<p>These commands measure the interaction algorithms introduced between
+the backend and Viewer revisions. They use deterministic synthetic
+inputs and do not require the 1M-cell CRB.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">/tests/bench/viewer_interaction_hot_paths.R"</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_interaction_hot_paths.tsv"</span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="ex">node</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">/tests/bench/viewer_interaction_hit_test.js"</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_interaction_browser.json"</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a><span class="ex">column</span> <span class="at">-t</span> <span class="at">-s</span> <span class="st">$'</span><span class="dt">\t</span><span class="st">'</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_interaction_hot_paths.tsv"</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a><span class="fu">cat</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_interaction_browser.json"</span></span></code></pre></div>
+<p>The measured medians were:</p>
+<table class="table">
+<colgroup>
+<col width="20%">
+<col width="26%">
+<col width="26%">
+<col width="26%">
+</colgroup>
+<thead><tr class="header">
+<th>Operation</th>
+<th align="right">Before</th>
+<th align="right">After</th>
+<th align="right">Change</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Configuration fingerprint, 500K cells</td>
+<td align="right">139 ms</td>
+<td align="right">128 ms</td>
+<td align="right">-7.9%</td>
+</tr>
+<tr class="even">
+<td>Hover payload and JSON, 50K cells</td>
+<td align="right">1,224 ms</td>
+<td align="right">37 ms</td>
+<td align="right">-97.0%</td>
+</tr>
+<tr class="odd">
+<td>Spatial image, five cached renders</td>
+<td align="right">281 ms</td>
+<td align="right">below 1 ms</td>
+<td align="right">timer resolution</td>
+</tr>
+<tr class="even">
+<td>Spatial hulls, five style changes</td>
+<td align="right">413 ms</td>
+<td align="right">69 ms</td>
+<td align="right">-83.3%</td>
+</tr>
+<tr class="odd">
+<td>Hit testing, 500K cells</td>
+<td align="right">1.229 ms/event</td>
+<td align="right">0.0042 ms/event</td>
+<td align="right">-99.7%</td>
+</tr>
+</tbody>
+</table>
+<p>The hover payload fell from 8.65 MiB to 1.44 MiB. The hit-test index
+took 13.34 ms to build and broke even after approximately 11 pointer
+events.</p>
 </div>
 <div class="section level2">
 <h2 id="run-the-browser-loading-benchmark">Run the browser loading benchmark<a class="anchor" aria-label="anchor" href="#run-the-browser-loading-benchmark"></a>
@@ -387,18 +468,27 @@ batching RGB reads and keeping mean expression backend-native.</p>
 <p>The browser command-line interface is:</p>
 <pre class="text"><code>viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]</code></pre>
 <p><code>PERCENT</code> is the percentage of cells drawn in Overview and
-must be between 10 and 100. The reported before/after comparison uses
-10, meaning that the real 1M dataset is loaded while 100,000 points are
-drawn. Run:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">/tests/bench/viewer_1m_browser.R"</span> <span class="dt">\</span></span>
-<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$BEFORE_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  3 <span class="dt">\</span></span>
-<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>  10 <span class="dt">\</span></span>
-<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_1m_browser.txt"</span></span>
-<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a></span>
-<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="fu">cat</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/viewer_1m_browser.txt"</span></span></code></pre></div>
+must be between 10 and 100. The reported comparisons use 10, meaning
+that the real 1M dataset is loaded while 100,000 points are drawn. Run
+all three pairs to isolate backend, Viewer-interaction and cumulative
+changes:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">run_browser_pair()</span> <span class="kw">{</span></span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="va">comparison</span><span class="op">=</span><span class="st">"</span><span class="va">$1</span><span class="st">"</span></span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="va">before_root</span><span class="op">=</span><span class="st">"</span><span class="va">$2</span><span class="st">"</span></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="va">after_root</span><span class="op">=</span><span class="st">"</span><span class="va">$3</span><span class="st">"</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="ex">Rscript</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">/tests/bench/viewer_1m_browser.R"</span> <span class="dt">\</span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>    <span class="st">"</span><span class="va">$before_root</span><span class="st">"</span> <span class="st">"</span><span class="va">$after_root</span><span class="st">"</span> <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10 <span class="dt">\</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>    <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/browser_</span><span class="va">${comparison}</span><span class="st">.txt"</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="kw">}</span></span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="ex">run_browser_pair</span> release_to_backend <span class="st">"</span><span class="va">$BASELINE_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">"</span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="ex">run_browser_pair</span> backend_to_viewer <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span></span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="ex">run_browser_pair</span> release_to_viewer <span class="st">"</span><span class="va">$BASELINE_ROOT</span><span class="st">"</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span></span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a></span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="cf">for</span> report <span class="kw">in</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">"</span>/browser_<span class="pp">*</span>.txt<span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a>  <span class="bu">printf</span> <span class="st">'\n== %s ==\n'</span> <span class="st">"</span><span class="va">$(</span><span class="fu">basename</span> <span class="st">"</span><span class="va">$report</span><span class="st">"</span><span class="va">)</span><span class="st">"</span></span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a>  <span class="fu">cat</span> <span class="st">"</span><span class="va">$report</span><span class="st">"</span></span>
+<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a><span class="cf">done</span></span></code></pre></div>
 <p>Each repetition performs the following checks and measurements:</p>
 <ol style="list-style-type: decimal">
 <li>generates a temporary app that loads the selected Git revision;</li>
@@ -414,72 +504,77 @@ samples;</li>
 <li>records the Shiny R process RSS; and</li>
 <li>alternates before/after execution order between rounds.</li>
 </ol>
-<p>The output has a <code>RAW</code> table with every run and a
+<p>Each output has a <code>RAW</code> table with every run and a
 <code>SUMMARY</code> table containing the medians. The three-round
-result was:</p>
+results were:</p>
 <table class="table">
+<colgroup>
+<col width="15%">
+<col width="21%">
+<col width="21%">
+<col width="21%">
+<col width="21%">
+</colgroup>
 <thead><tr class="header">
-<th>Metric</th>
-<th align="right">Before median</th>
-<th align="right">After median</th>
-<th align="right">Change</th>
+<th>Comparison</th>
+<th align="right">Data ready</th>
+<th align="right">Overview Canvas</th>
+<th align="right">Total</th>
+<th align="right">Shiny RSS</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td>Data ready</td>
-<td align="right">16,315 ms</td>
-<td align="right">15,981 ms</td>
-<td align="right">-2.0%</td>
+<td>Release to backend</td>
+<td align="right">16.71 to 15.59 s (-6.7%)</td>
+<td align="right">45.38 to 18.28 s (-59.7%)</td>
+<td align="right">62.08 to 33.87 s (-45.4%)</td>
+<td align="right">3,464.7 to 2,435.3 MiB (-29.7%)</td>
 </tr>
 <tr class="even">
-<td>Overview Canvas ready</td>
-<td align="right">46,609 ms</td>
-<td align="right">19,102 ms</td>
-<td align="right">-59.0%</td>
+<td>Backend to Viewer</td>
+<td align="right">15.38 to 14.72 s (-4.3%)</td>
+<td align="right">18.25 to 1.52 s (-91.7%)</td>
+<td align="right">33.68 to 16.30 s (-51.6%)</td>
+<td align="right">2,154.6 to 1,913.9 MiB (-11.2%)</td>
 </tr>
 <tr class="odd">
-<td>Launch through painted Overview</td>
-<td align="right">62,460 ms</td>
-<td align="right">35,418 ms</td>
-<td align="right">-43.3%</td>
-</tr>
-<tr class="even">
-<td>Shiny process RSS</td>
-<td align="right">3,759.6 MiB</td>
-<td align="right">2,160.3 MiB</td>
-<td align="right">-42.5%</td>
+<td>Release to Viewer</td>
+<td align="right">15.49 to 15.10 s (-2.5%)</td>
+<td align="right">44.58 to 1.59 s (-96.4%)</td>
+<td align="right">59.70 to 16.69 s (-72.0%)</td>
+<td align="right">3,513.1 to 1,904.7 MiB (-45.8%)</td>
 </tr>
 </tbody>
 </table>
-<p>A separate rerun from clean detached checkouts measured 64,033 ms and
-3,530.4 MiB before, versus 34,105 ms and 2,699.5 MiB after. Both
-versions painted the same 1301-by-594 Canvas with more than 31,000
-sampled non-white pixels.</p>
+<p>Every run loaded 1,000,000 cells, painted the same 1301-by-594 Canvas
+and passed the browser-log check. Absolute medians vary slightly between
+pairwise runs; use each alternating pair only for its stated
+comparison.</p>
 </div>
 <div class="section level2">
 <h2 id="validate-full-1m-point-canvas-rendering">Validate full 1M-point Canvas rendering<a class="anchor" aria-label="anchor" href="#validate-full-1m-point-canvas-rendering"></a>
 </h2>
 <p>The 10% comparison exercises the intended large-data default. To
-validate the chunked Canvas path, run the candidate checkout as both
-inputs and request 100% rendering:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">/tests/bench/viewer_1m_browser.R"</span> <span class="dt">\</span></span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> <span class="dt">\</span></span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  2 <span class="dt">\</span></span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  100 <span class="dt">\</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/full_1m_canvas.txt"</span></span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a></span>
-<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="fu">cat</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/full_1m_canvas.txt"</span></span></code></pre></div>
-<p>This is a rendering acceptance check, not a baseline/candidate
-comparison. The measured runs painted all 1M UMAP points in 72.4 and
-73.5 seconds, using 4,616.7 and 4,368.5 MiB RSS.</p>
+validate the chunked Canvas path, run the Viewer revision as both inputs
+and request 100% rendering:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">/tests/bench/viewer_1m_browser.R"</span> <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>  2 <span class="dt">\</span></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>  100 <span class="dt">\</span></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>  <span class="op">&gt;</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/full_1m_canvas.txt"</span></span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a><span class="fu">cat</span> <span class="st">"</span><span class="va">$BENCH_ROOT</span><span class="st">/full_1m_canvas.txt"</span></span></code></pre></div>
+<p>This is a rendering acceptance check, not a revision comparison. The
+measured runs painted all 1M UMAP points in 72.4 and 73.5 seconds, using
+4,616.7 and 4,368.5 MiB RSS.</p>
 </div>
 <div class="section level2">
 <h2 id="use-the-prepared-example-normally">Use the prepared example normally<a class="anchor" aria-label="anchor" href="#use-the-prepared-example-normally"></a>
 </h2>
 <p>Launch it directly from the source checkout:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/load_all.html" class="external-link">load_all</a></span><span class="op">(</span><span class="st">"."</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/launchCerebro.html">launchCerebro</a></span><span class="op">(</span></span>
@@ -488,7 +583,7 @@ comparison. The measured runs painted all 1M UMAP points in 72.4 and
 <span>  percentage_cells_to_show <span class="op">=</span> <span class="fl">10</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Or package it together with other Cerebro datasets:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/load_all.html" class="external-link">load_all</a></span><span class="op">(</span><span class="st">"."</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
@@ -521,8 +616,9 @@ difference as a speedup without additional repetitions.</p>
 </h2>
 <p>The cache is intentionally retained. Remove only the temporary Git
 worktrees after collecting the result files you need:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">git</span> <span class="at">-C</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> worktree remove <span class="st">"</span><span class="va">$BEFORE_ROOT</span><span class="st">"</span></span>
-<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="fu">git</span> <span class="at">-C</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> worktree remove <span class="st">"</span><span class="va">$AFTER_ROOT</span><span class="st">"</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="fu">git</span> <span class="at">-C</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> worktree remove <span class="st">"</span><span class="va">$BASELINE_ROOT</span><span class="st">"</span></span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="fu">git</span> <span class="at">-C</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> worktree remove <span class="st">"</span><span class="va">$BACKEND_ROOT</span><span class="st">"</span></span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="fu">git</span> <span class="at">-C</span> <span class="st">"</span><span class="va">$REPO_ROOT</span><span class="st">"</span> worktree remove <span class="st">"</span><span class="va">$VIEWER_ROOT</span><span class="st">"</span></span></code></pre></div>
 <p>The benchmark result files remain under <code>$BENCH_ROOT</code>.
 Delete that temporary directory separately only after copying any
 results you want to keep.</p>

@@ -2,16 +2,20 @@
 
 ## Scope
 
-This vignette compares Viewer performance between two Git revisions. It
-uses the official 10x Genomics E18 mouse brain matrix, retains exactly
-1,000,000 cells, and creates a BPCells-backed Seurat object and Cerebro
-file.
+This vignette compares Viewer performance across three stacked Git
+revisions. It uses the official 10x Genomics E18 mouse brain matrix,
+retains exactly 1,000,000 cells, and creates a BPCells-backed Seurat
+object and Cerebro file.
 
-The benchmark has two layers:
+The benchmark has three layers:
 
 1.  `tests/bench/viewer_1m_hot_paths.R` measures filtering, sampling,
-    hover preparation and expression access directly in R.
-2.  `tests/bench/viewer_1m_browser.R` launches the real Shiny Viewer in
+    hover preparation and expression access between the release and
+    backend revision.
+2.  `tests/bench/viewer_interaction_hot_paths.R` and
+    `tests/bench/viewer_interaction_hit_test.js` measure the Viewer
+    interaction algorithms added by the final revision.
+3.  `tests/bench/viewer_1m_browser.R` launches the real Shiny Viewer in
     Chrome, waits for the 1M dataset and Overview Canvas, checks that
     the Canvas contains plotted pixels, rejects browser errors, and
     records Shiny process memory.
@@ -22,20 +26,28 @@ their implementation into a second place.
 
 ## Compared revisions
 
-Choose a baseline and candidate revision. The baseline must be an
-ancestor of the candidate so that the comparison isolates their
-intervening changes.
+Choose release, backend and Viewer revisions. Each revision must be an
+ancestor of the next so the three comparisons isolate backend work,
+Viewer interaction work and their cumulative effect. Tags and
+pull-request refs are preferable to short commit IDs in published
+commands.
 
 ``` bash
-export BASELINE_REV="<baseline revision>"
-export CANDIDATE_REV="<candidate revision>"
+export BASELINE_REV="v4.4.2"
+export BACKEND_REV="perf/pr1-backend-hot-paths"
+export VIEWER_REV="perf/pr2-viewer-interactions"
 
 git rev-parse --verify "$BASELINE_REV^{commit}"
-git rev-parse --verify "$CANDIDATE_REV^{commit}"
-git merge-base --is-ancestor "$BASELINE_REV" "$CANDIDATE_REV"
+git rev-parse --verify "$BACKEND_REV^{commit}"
+git rev-parse --verify "$VIEWER_REV^{commit}"
+git merge-base --is-ancestor "$BASELINE_REV" "$BACKEND_REV"
+git merge-base --is-ancestor "$BACKEND_REV" "$VIEWER_REV"
 ```
 
-All commands exit with status zero when the revisions are valid.
+The defaults above run directly in the development repository. For a
+published comparison, replace either branch ref with a fetched
+pull-request ref; no other command changes. All validation commands exit
+with status zero when the revisions form the required stack.
 
 ## Requirements
 
@@ -70,26 +82,28 @@ RS
 ## Prepare isolated comparison trees
 
 Do not switch the working checkout back and forth during a benchmark.
-Create two detached Git worktrees so the before and after versions
-coexist while both read the same CRB.
+Create three detached Git worktrees so all revisions coexist while
+reading the same CRB.
 
 Copy and run this block from the repository root:
 
 ``` bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 BENCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cerebronexus-viewer-bench.XXXXXX")"
-BEFORE_ROOT="$BENCH_ROOT/before"
-AFTER_ROOT="$BENCH_ROOT/after"
+BASELINE_ROOT="$BENCH_ROOT/base"
+BACKEND_ROOT="$BENCH_ROOT/backend"
+VIEWER_ROOT="$BENCH_ROOT/viewer"
 
-git worktree add --detach "$BEFORE_ROOT" "$BASELINE_REV"
-git worktree add --detach "$AFTER_ROOT" "$CANDIDATE_REV"
+git worktree add --detach "$BASELINE_ROOT" "$BASELINE_REV"
+git worktree add --detach "$BACKEND_ROOT" "$BACKEND_REV"
+git worktree add --detach "$VIEWER_ROOT" "$VIEWER_REV"
 
 printf 'repository: %s\nbenchmark trees: %s\n' "$REPO_ROOT" "$BENCH_ROOT"
 ```
 
 The browser benchmark passes a named dataset path to
 [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md),
-so both worktrees remain clean and require no compatibility patch.
+so all worktrees remain clean and require no compatibility patch.
 
 ## Download and prepare the 1M example
 
@@ -161,14 +175,14 @@ viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]
 Run three repetitions and save the tab-separated result:
 
 ``` bash
-Rscript "$REPO_ROOT/tests/bench/viewer_1m_hot_paths.R" \
-  "$BEFORE_ROOT" \
-  "$AFTER_ROOT" \
+Rscript "$BACKEND_ROOT/tests/bench/viewer_1m_hot_paths.R" \
+  "$BASELINE_ROOT" \
+  "$BACKEND_ROOT" \
   "$CRB" \
   3 \
-  > "$BENCH_ROOT/viewer_1m_hot_paths.tsv"
+  > "$BENCH_ROOT/backend_hot_paths.tsv"
 
-column -t -s $'\t' "$BENCH_ROOT/viewer_1m_hot_paths.tsv"
+column -t -s $'\t' "$BENCH_ROOT/backend_hot_paths.tsv"
 ```
 
 For each operation the script:
@@ -187,20 +201,51 @@ The measured three-repetition medians were:
 
 | Operation | Scale | Before | After | Time | Before allocation | After allocation | Allocation |
 |----|----|---:|---:|---:|---:|---:|---:|
-| Full projection selection | 1M cells, all groups, 100% | 222 ms | 4 ms | -98.2% | 206.7 MiB | 11.4 MiB | -94.5% |
-| Filtered projection selection | 1M cells, 17/33 clusters, 25% | 356 ms | 30 ms | -91.6% | 170.6 MiB | 43.3 MiB | -74.6% |
-| Hover preparation | 1M loaded, 100K displayed, 3 groups | 32,666 ms | 2,385 ms | -92.7% | 1,328.7 MiB | 56.3 MiB | -95.8% |
-| Single-gene expression | 1 gene x 1M cells, BPCells | 4,041 ms | 4,073 ms | +0.8% | 154.1 MiB | 169.3 MiB | +9.9% |
-| RGB expression | 3 genes x 1M cells | 12,285 ms | 4,067 ms | -66.9% | 461.4 MiB | 238.3 MiB | -48.4% |
-| Multi-panel expression | 9 genes x 1M cells | 4,336 ms | 4,272 ms | -1.5% | 562.3 MiB | 463.2 MiB | -17.6% |
-| Mean expression | 100 genes x 1M cells | 5,540 ms | 3,978 ms | -28.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
+| Full projection selection | 1M cells, all groups, 100% | 228 ms | 5 ms | -97.8% | 206.7 MiB | 11.4 MiB | -94.5% |
+| Filtered projection selection | 1M cells, 17/33 clusters, 25% | 351 ms | 30 ms | -91.5% | 170.6 MiB | 43.3 MiB | -74.6% |
+| Hover preparation | 1M loaded, 100K displayed, 3 groups | 33,877 ms | 2,438 ms | -92.8% | 1,328.7 MiB | 56.3 MiB | -95.8% |
+| Single-gene expression | 1 gene x 1M cells, BPCells | 4,060 ms | 4,227 ms | +4.1% | 154.1 MiB | 169.3 MiB | +9.9% |
+| RGB expression | 3 genes x 1M cells | 12,963 ms | 4,170 ms | -67.8% | 461.4 MiB | 238.3 MiB | -48.4% |
+| Multi-panel expression | 9 genes x 1M cells | 4,336 ms | 4,311 ms | -0.6% | 562.3 MiB | 463.2 MiB | -17.6% |
+| Mean expression | 100 genes x 1M cells | 5,622 ms | 3,988 ms | -29.1% | 1,916.8 MiB | 112.8 MiB | -94.1% |
 
 [`Rprofmem()`](https://rdrr.io/r/utils/Rprofmem.html) measures
 allocations known to R, not all native memory owned by BPCells or the
 operating system. The browser benchmark below therefore also records
-process RSS. The single-gene result is time-neutral in this run; the
-main expression gains come from batching RGB reads and keeping mean
-expression backend-native.
+process RSS. The single-gene result is a small regression in this run
+and must not be reported as an improvement. The main expression gains
+come from batching RGB reads and keeping mean expression backend-native.
+
+## Run the Viewer interaction microbenchmarks
+
+These commands measure the interaction algorithms introduced between the
+backend and Viewer revisions. They use deterministic synthetic inputs
+and do not require the 1M-cell CRB.
+
+``` bash
+Rscript "$VIEWER_ROOT/tests/bench/viewer_interaction_hot_paths.R" "$VIEWER_ROOT" \
+  > "$BENCH_ROOT/viewer_interaction_hot_paths.tsv"
+
+node "$VIEWER_ROOT/tests/bench/viewer_interaction_hit_test.js" "$VIEWER_ROOT" \
+  > "$BENCH_ROOT/viewer_interaction_browser.json"
+
+column -t -s $'\t' "$BENCH_ROOT/viewer_interaction_hot_paths.tsv"
+cat "$BENCH_ROOT/viewer_interaction_browser.json"
+```
+
+The measured medians were:
+
+| Operation | Before | After | Change |
+|----|---:|---:|---:|
+| Configuration fingerprint, 500K cells | 139 ms | 128 ms | -7.9% |
+| Hover payload and JSON, 50K cells | 1,224 ms | 37 ms | -97.0% |
+| Spatial image, five cached renders | 281 ms | below 1 ms | timer resolution |
+| Spatial hulls, five style changes | 413 ms | 69 ms | -83.3% |
+| Hit testing, 500K cells | 1.229 ms/event | 0.0042 ms/event | -99.7% |
+
+The hover payload fell from 8.65 MiB to 1.44 MiB. The hit-test index
+took 13.34 ms to build and broke even after approximately 11 pointer
+events.
 
 ## Run the browser loading benchmark
 
@@ -211,20 +256,28 @@ viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]
 ```
 
 `PERCENT` is the percentage of cells drawn in Overview and must be
-between 10 and 100. The reported before/after comparison uses 10,
-meaning that the real 1M dataset is loaded while 100,000 points are
-drawn. Run:
+between 10 and 100. The reported comparisons use 10, meaning that the
+real 1M dataset is loaded while 100,000 points are drawn. Run all three
+pairs to isolate backend, Viewer-interaction and cumulative changes:
 
 ``` bash
-Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
-  "$BEFORE_ROOT" \
-  "$AFTER_ROOT" \
-  "$CRB" \
-  3 \
-  10 \
-  > "$BENCH_ROOT/viewer_1m_browser.txt"
+run_browser_pair() {
+  comparison="$1"
+  before_root="$2"
+  after_root="$3"
+  Rscript "$VIEWER_ROOT/tests/bench/viewer_1m_browser.R" \
+    "$before_root" "$after_root" "$CRB" 3 10 \
+    > "$BENCH_ROOT/browser_${comparison}.txt"
+}
 
-cat "$BENCH_ROOT/viewer_1m_browser.txt"
+run_browser_pair release_to_backend "$BASELINE_ROOT" "$BACKEND_ROOT"
+run_browser_pair backend_to_viewer "$BACKEND_ROOT" "$VIEWER_ROOT"
+run_browser_pair release_to_viewer "$BASELINE_ROOT" "$VIEWER_ROOT"
+
+for report in "$BENCH_ROOT"/browser_*.txt; do
+  printf '\n== %s ==\n' "$(basename "$report")"
+  cat "$report"
+done
 ```
 
 Each repetition performs the following checks and measurements:
@@ -240,31 +293,29 @@ Each repetition performs the following checks and measurements:
 8.  records the Shiny R process RSS; and
 9.  alternates before/after execution order between rounds.
 
-The output has a `RAW` table with every run and a `SUMMARY` table
-containing the medians. The three-round result was:
+Each output has a `RAW` table with every run and a `SUMMARY` table
+containing the medians. The three-round results were:
 
-| Metric                          | Before median | After median | Change |
-|---------------------------------|--------------:|-------------:|-------:|
-| Data ready                      |     16,315 ms |    15,981 ms |  -2.0% |
-| Overview Canvas ready           |     46,609 ms |    19,102 ms | -59.0% |
-| Launch through painted Overview |     62,460 ms |    35,418 ms | -43.3% |
-| Shiny process RSS               |   3,759.6 MiB |  2,160.3 MiB | -42.5% |
+| Comparison | Data ready | Overview Canvas | Total | Shiny RSS |
+|----|---:|---:|---:|---:|
+| Release to backend | 16.71 to 15.59 s (-6.7%) | 45.38 to 18.28 s (-59.7%) | 62.08 to 33.87 s (-45.4%) | 3,464.7 to 2,435.3 MiB (-29.7%) |
+| Backend to Viewer | 15.38 to 14.72 s (-4.3%) | 18.25 to 1.52 s (-91.7%) | 33.68 to 16.30 s (-51.6%) | 2,154.6 to 1,913.9 MiB (-11.2%) |
+| Release to Viewer | 15.49 to 15.10 s (-2.5%) | 44.58 to 1.59 s (-96.4%) | 59.70 to 16.69 s (-72.0%) | 3,513.1 to 1,904.7 MiB (-45.8%) |
 
-A separate rerun from clean detached checkouts measured 64,033 ms and
-3,530.4 MiB before, versus 34,105 ms and 2,699.5 MiB after. Both
-versions painted the same 1301-by-594 Canvas with more than 31,000
-sampled non-white pixels.
+Every run loaded 1,000,000 cells, painted the same 1301-by-594 Canvas
+and passed the browser-log check. Absolute medians vary slightly between
+pairwise runs; use each alternating pair only for its stated comparison.
 
 ## Validate full 1M-point Canvas rendering
 
 The 10% comparison exercises the intended large-data default. To
-validate the chunked Canvas path, run the candidate checkout as both
-inputs and request 100% rendering:
+validate the chunked Canvas path, run the Viewer revision as both inputs
+and request 100% rendering:
 
 ``` bash
-Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
-  "$AFTER_ROOT" \
-  "$AFTER_ROOT" \
+Rscript "$VIEWER_ROOT/tests/bench/viewer_1m_browser.R" \
+  "$VIEWER_ROOT" \
+  "$VIEWER_ROOT" \
   "$CRB" \
   2 \
   100 \
@@ -273,9 +324,9 @@ Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
 cat "$BENCH_ROOT/full_1m_canvas.txt"
 ```
 
-This is a rendering acceptance check, not a baseline/candidate
-comparison. The measured runs painted all 1M UMAP points in 72.4 and
-73.5 seconds, using 4,616.7 and 4,368.5 MiB RSS.
+This is a rendering acceptance check, not a revision comparison. The
+measured runs painted all 1M UMAP points in 72.4 and 73.5 seconds, using
+4,616.7 and 4,368.5 MiB RSS.
 
 ## Use the prepared example normally
 
@@ -327,8 +378,9 @@ The cache is intentionally retained. Remove only the temporary Git
 worktrees after collecting the result files you need:
 
 ``` bash
-git -C "$REPO_ROOT" worktree remove "$BEFORE_ROOT"
-git -C "$REPO_ROOT" worktree remove "$AFTER_ROOT"
+git -C "$REPO_ROOT" worktree remove "$BASELINE_ROOT"
+git -C "$REPO_ROOT" worktree remove "$BACKEND_ROOT"
+git -C "$REPO_ROOT" worktree remove "$VIEWER_ROOT"
 ```
 
 The benchmark result files remain under `$BENCH_ROOT`. Delete that
