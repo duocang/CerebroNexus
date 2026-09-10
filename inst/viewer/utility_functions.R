@@ -218,16 +218,17 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       function(group) {
         selected <- filters[[group]]
         values <- metadata[[group]]
+        if (!is.factor(values) || !length(selected)) {
+          return(FALSE)
+        }
         levels <- tryCatch(
           as.character(getGroupLevels(group)),
           error = function(error_condition) character()
         )
-        is.factor(values) &&
-          !anyNA(values) &&
+        length(selected) == length(levels) &&
           setequal(base::levels(values), levels) &&
-          length(selected) > 0L &&
-          length(selected) == length(levels) &&
-          setequal(as.character(selected), levels)
+          setequal(as.character(selected), levels) &&
+          !anyNA(values)
       },
       logical(1)
     )
