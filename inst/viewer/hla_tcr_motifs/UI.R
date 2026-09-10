@@ -96,7 +96,16 @@ tab_hla_tcr_motifs <- tabItem(
           "hla_motif_network",
           "hla_selected_count",
           client_actions = FALSE,
-          portable = FALSE
+          portable = FALSE,
+          extra_actions = actionButton(
+            "hla_motif_network_focus_selection",
+            tagList(icon("crop-simple"), tags$span("Focus")),
+            class = paste(
+              "btn btn-xs btn-default btn-breathing",
+              "cerebro-selection-action-focus"
+            ),
+            `aria-pressed` = "false"
+          )
         )
       )
     ),

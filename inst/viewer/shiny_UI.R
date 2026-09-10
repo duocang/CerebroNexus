@@ -138,8 +138,27 @@ cerebroSelectionStatus <- function(
   plot_id,
   count_output_id,
   client_actions = TRUE,
-  portable = TRUE
+  portable = TRUE,
+  extra_actions = NULL
 ) {
+  focus_button <- function() {
+    if (!client_actions) {
+      return(NULL)
+    }
+    tags$button(
+      id = paste0(plot_id, "_focus_selection"),
+      type = "button",
+      class = paste(
+        "btn btn-xs btn-default btn-breathing",
+        "cerebro-selection-action-focus"
+      ),
+      `data-cell-view-id` = plot_id,
+      `data-cell-view-action` = "focus",
+      `aria-pressed` = "false",
+      icon("crop-simple"),
+      tags$span("Focus")
+    )
+  }
   clear_button <- function() {
     input_id <- paste0(plot_id, "_clear_selection")
     contents <- tagList(icon("eraser"), tags$span("Clear"))
@@ -190,6 +209,8 @@ cerebroSelectionStatus <- function(
         ),
         tags$div(
           class = "cerebro-selection-actions",
+          focus_button(),
+          extra_actions,
           clear_button()
         )
       )

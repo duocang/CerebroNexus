@@ -543,6 +543,16 @@ tab_coordinated_views <- tabItem(
             id = "cv-selactions",
             style = "display:none",
             tags$button(
+              id = "cv-zsel",
+              class = paste(
+                "btn btn-xs btn-default",
+                "cerebro-selection-action-focus"
+              ),
+              `aria-pressed` = "false",
+              icon("crop-simple"),
+              tags$span("Focus")
+            ),
+            tags$button(
               id = "cv-clear",
               class = paste(
                 "btn btn-xs btn-default",

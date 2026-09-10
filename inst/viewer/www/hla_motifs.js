@@ -11,6 +11,7 @@
   var committedCanvas = null;
   var selectedKeys = [];
   var selectedCells = [];
+  var selectionFocused = false;
   var pendingState = null;
   var syncingSelection = false;
   var shinyBound = false;
@@ -227,12 +228,21 @@
   }
   function syncModeButtons() {
     document.querySelectorAll('#hla-modebar [data-act]').forEach(function (button) {
-      button.classList.toggle('is-on', button.dataset.act === mode);
+      button.classList.toggle(
+        'is-on',
+        button.dataset.act === mode ||
+          (button.dataset.act === 'zsel' && selectionFocused)
+      );
       if (['zsel', 'clear'].indexOf(button.dataset.act) >= 0) {
         button.disabled = !selectedKeys.length;
         button.classList.toggle('hla-mb-btn--off', button.disabled);
       }
     });
+    var focus = document.getElementById('hla_motif_network_focus_selection');
+    if (focus) {
+      focus.classList.toggle('is-on', selectionFocused);
+      focus.setAttribute('aria-pressed', selectionFocused ? 'true' : 'false');
+    }
   }
   function setMode(next) {
     mode = ['box', 'lasso', 'pan'].indexOf(next) >= 0 ? next : 'lasso';
@@ -252,12 +262,18 @@
   }
   function resetView() {
     var network = net();
+    selectionFocused = false;
+    syncModeButtons();
     if (network) network.fit({ animation: { duration: 300 } });
   }
   function zoomSelection() {
     var network = net();
     var ids = idsFromNodeKeys(network, selectedKeys);
     if (!network || !ids.length) return;
+    if (selectionFocused) {
+      resetView();
+      return;
+    }
     var boxes = ids.map(function (id) { return network.getBoundingBox(id); });
     var left = Math.min.apply(null, boxes.map(function (box) { return box.left; }));
     var right = Math.max.apply(null, boxes.map(function (box) { return box.right; }));
@@ -269,6 +285,8 @@
       Math.max(1, frame.clientHeight - 80) / Math.max(1, bottom - top)
     );
     scale = Math.max(network.hlaMinScale || 0.02, scale);
+    selectionFocused = true;
+    syncModeButtons();
     network.moveTo({
       position: { x: (left + right) / 2, y: (top + bottom) / 2 },
       scale: Math.min(3, scale),
@@ -277,9 +295,11 @@
   }
   function clearSelection(notify) {
     var network = net();
+    if (selectionFocused) resetView();
     committedCanvas = null;
     selectedKeys = [];
     selectedCells = [];
+    selectionFocused = false;
     if (network) network.unselectAll();
     syncModeButtons();
     drawOverlay();
@@ -384,6 +404,7 @@
   }
   function receiveSelection(result) {
     var network = net();
+    selectionFocused = false;
     selectedKeys = result && Array.isArray(result.node_keys)
       ? result.node_keys.map(String) : [];
     selectedCells = result && Array.isArray(result.cells)
@@ -407,6 +428,7 @@
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
       if (!request) return;
       if (request.action === 'clear') clearSelection(false);
+      else if (request.action === 'focus') zoomSelection();
     });
   }
   function build() {

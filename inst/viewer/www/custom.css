@@ -2360,6 +2360,11 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
   border-color: color-mix(in srgb, var(--c-error-700) 28%, var(--c-surface)) !important;
   background: var(--c-surface) !important;
 }
+.cerebro-selection-actions .cerebro-selection-action-focus.is-on {
+  color: var(--c-amber-700) !important;
+  border-color: var(--c-amber-200) !important;
+  background: var(--c-amber-50) !important;
+}
 .cerebro-selection-actions .cerebro-selection-action-clear:hover {
   background: var(--c-error-100) !important;
 }

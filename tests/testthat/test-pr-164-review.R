@@ -172,9 +172,31 @@ test_that("HLA modebar exposes selection clearing consistently", {
 })
 
 test_that("HLA selection zoom derives a viewport from selected nodes", {
+  ui <- review_source("hla_tcr_motifs", "UI.R")
+  server <- review_source("hla_tcr_motifs", "network_table.R")
   javascript <- review_source("www", "hla_motifs.js")
 
+  expect_match(ui, 'tags$span("Focus")', fixed = TRUE)
+  expect_match(ui, 'extra_actions = actionButton(', fixed = TRUE)
+  expect_match(server, 'list(action = "focus")', fixed = TRUE)
+  expect_match(javascript, "if (selectionFocused) {", fixed = TRUE)
   expect_match(javascript, "network.getBoundingBox(id)", fixed = TRUE)
   expect_match(javascript, "scale: Math.min(3, scale)", fixed = TRUE)
   expect_false(grepl("network.fit({ nodes: ids", javascript, fixed = TRUE))
+  expect_match(javascript, "if (selectionFocused) resetView();", fixed = TRUE)
+})
+
+test_that("shared selection actions focus and clear the same viewport", {
+  ui <- review_source("shiny_UI.R")
+  linked_ui <- review_source("coordinated_views", "UI.R")
+  javascript <- review_source("www", "cell_views.js")
+
+  expect_match(ui, 'tags$span("Focus")', fixed = TRUE)
+  expect_match(linked_ui, 'id = "cv-zsel"', fixed = TRUE)
+  expect_match(
+    javascript,
+    "if (singleAct === 'focus') toggleSelectionFocus(singleId);",
+    fixed = TRUE
+  )
+  expect_match(javascript, "if (selectionZoomed) resetZoom();", fixed = TRUE)
 })

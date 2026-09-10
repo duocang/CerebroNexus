@@ -58,8 +58,8 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   ))
   expect_identical(linked_initial$count, 3L)
   expect_identical(linked_initial$rows, 1L)
-  expect_null(app$get_js(
-    "document.getElementById('cv-config-open').offsetParent"
+  expect_true(app$get_js(
+    "document.getElementById('cv-config-open').offsetParent !== null"
   ))
   linked_right_edges <- app$get_js(paste0(
     "(() => {",

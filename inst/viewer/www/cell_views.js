@@ -36,6 +36,7 @@
   var pendingColorPatch = null; // palette received before its dataset bundle
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
+  var selectionZoomed = false;
   var selectionSource = null;   // label of the lens that created the active cohort
   var selectionSourceSpace = null; // space id of the lens that created it
   var pick = null;              // hovered/clicked cell index
@@ -1643,6 +1644,15 @@
     revealEl($('cv-selactions'), hasSel || hasNiche);
   }
   // Zoom one requested panel to the bounding box of its selected cells.
+  function setSelectionZoomed(on) {
+    selectionZoomed = !!on;
+    document.querySelectorAll(
+      '[data-cell-view-action="focus"], #cv-zsel'
+    ).forEach(function (button) {
+      button.classList.toggle('is-on', selectionZoomed);
+      button.setAttribute('aria-pressed', selectionZoomed ? 'true' : 'false');
+    });
+  }
   function zoomToSelection(p) {
     if (!canZoomPanel(p)) return false;
     var u = spaceById[p.spaceId]._unit;
@@ -1656,6 +1666,7 @@
     p.view = clampView(p, CBGeom.fitView(
       nx0, nx1, ny0, ny1, 1.25, 0.02
     ));
+    setSelectionZoomed(true);
     project(p);
     drawAll();
     return true;
@@ -1807,7 +1818,18 @@
       if (only && p !== only) return;
       if (p.view) { p.view = null; project(p); any = true; }
     });
+    setSelectionZoomed(false);
     if (any) drawAll();
+  }
+  function toggleSelectionFocus(id) {
+    if (id && singleActive !== id) return;
+    if (selectionZoomed) {
+      resetZoom();
+      return;
+    }
+    panels.forEach(function (panel) {
+      if (canZoomPanel(panel)) zoomToSelection(panel);
+    });
   }
   // Sync the active drag-mode highlight (box vs lasso) across every toolbar.
   function syncModeButtons() {
@@ -1898,6 +1920,7 @@
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._SX || !p._SY) return;
+    setSelectionZoomed(false);
     var zx = (mx - p._sox) / p._SX;
     var zy = (p._soy + p._SY - my) / p._SY;
     var next = CBGeom.zoomView(p.view, factor, [zx, zy], 0.04);
@@ -5542,6 +5565,7 @@
     if (resetAxes) payload.lenses = [];
     restoreLinkedSurface();
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
+    setSelectionZoomed(false);
     if (!mountSingleSurface(id)) { singleActive = null; return false; }
     D = Object.assign({}, linkedBundle, {
       fields: Object.assign({}, linkedBundle.fields || {}),
@@ -5668,6 +5692,7 @@
       return Object.assign({}, lens, { lassoData: null });
     });
     if (singleActive === id) {
+      if (selectionZoomed) resetZoom();
       pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
     }
   }
@@ -6658,6 +6683,7 @@
         var singleId = singleAction.getAttribute('data-cell-view-id');
         var singleAct = singleAction.getAttribute('data-cell-view-action');
         if (singleAct === 'clear') clearSingleSelection(singleId);
+        if (singleAct === 'focus') toggleSelectionFocus(singleId);
         return;
       }
       // per-panel modebar: select mode (box/lasso), zoom in/out, reset, PNG
@@ -6688,6 +6714,7 @@
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
+            setSelectionZoomed(false);
             drawAll();
           }
         }
@@ -6699,7 +6726,12 @@
         return;
       }
       if (t && t.closest && t.closest('#cv-clear')) {
+        if (selectionZoomed) resetZoom();
         pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
+        return;
+      }
+      if (t && t.closest && t.closest('#cv-zsel')) {
+        toggleSelectionFocus();
         return;
       }
       // clonal-layout segmented toggle: recompute the clone space + reproject
