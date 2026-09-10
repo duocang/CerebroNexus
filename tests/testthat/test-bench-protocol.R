@@ -97,7 +97,7 @@ test_that("Panel C1 is the exact three-backend scale bridge", {
 
   schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c1")
 
-  expect_equal(nrow(schedule), 18L)
+  expect_equal(nrow(schedule), 6L)
   expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
   expect_equal(
     unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
@@ -108,7 +108,8 @@ test_that("Panel C1 is the exact three-backend scale bridge", {
     300e3
   )
   expect_false(any(schedule$n_cells == 800e3))
-  expect_true(all(schedule$access_repeats == 2L))
+  expect_true(all(schedule$export_repeat == 1L))
+  expect_true(all(schedule$access_repeats == 1L))
 })
 
 test_that("Panel C2 is the exact two-backend full-source schedule", {
