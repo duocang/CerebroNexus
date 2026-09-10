@@ -1,0 +1,8 @@
+metric	scale	before_ms	after_ms	time_change_pct	before_alloc_mib	after_alloc_mib	alloc_change_pct	check
+full projection selection	1,000,000 cells; all groups; 100%	222	4	-98.1982	206.7415	11.44945	-94.46195	equal
+filtered projection selection	1,000,000 cells; 17/33 clusters; 25% = 134557	356	30	-91.573	170.5885	43.2836	-74.62689	equal
+hover preparation	1,000,000 loaded; 100,000 displayed; 3 groups	32666	2385	-92.6988	1328.6632	56.28254	-95.76397	equal
+single-gene expression	1 gene x 1,000,000 cells; BPCells	4041	4073	0.79188	154.07525	169.33413	9.90352	equal
+RGB expression	3 genes x 1,000,000 cells; 3 reads vs 1	12285	4067	-66.89459	461.38718	238.25037	-48.36216	equal
+multi-panel expression	9 genes x 1,000,000 cells; transpose removed	4336	4272	-1.47601	562.34261	463.15966	-17.63746	equal
+mean expression	100 genes x 1,000,000 cells; dense vs backend-native	5540	3978	-28.19495	1916.82234	112.78245	-94.11618	equal

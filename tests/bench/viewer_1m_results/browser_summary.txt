@@ -1,0 +1,4 @@
+SUMMARY
+version	data_ready_ms	overview_ms	total_ms	shiny_rss_mib	time_change_pct	rss_change_pct
+after	15981	19102	35418	2160.28125	-43.2949087415946	-42.5402195189866
+before	16315	46609	62460	3759.640625	NA	NA

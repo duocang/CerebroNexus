@@ -28,17 +28,20 @@ This vignette compares Viewer performance between two Git revisions. It uses
 the official 10x Genomics E18 mouse brain matrix, retains exactly 1,000,000
 cells, and creates a BPCells-backed Seurat object and Cerebro file.
 
-The benchmark has two layers:
+The default entry point is `tests/bench/run_viewer_1m_benchmark.sh`. It
+downloads and prepares the example, creates temporary comparison worktrees,
+runs every measurement, draws the figure and removes the temporary worktrees.
+
+Three focused scripts remain available when only one stage needs to be rerun:
 
 1. `tests/bench/viewer_1m_hot_paths.R` measures filtering, sampling, hover
    preparation and expression access directly in R.
 2. `tests/bench/viewer_1m_browser.R` launches the real Shiny Viewer in Chrome,
    waits for the 1M dataset and Overview Canvas, checks that the Canvas contains
    plotted pixels, rejects browser errors, and records Shiny process memory.
+3. `tests/bench/viewer_1m_plot.R` creates a comparison figure and normalized CSV.
 
-The scripts are the executable source of truth. This vignette explains their
-arguments and supplies complete shell commands rather than copying their
-implementation into a second place.
+The scripts are the executable source of truth. This vignette explains their arguments and supplies complete shell commands rather than copying their implementation into a second place.
 
 # Compared revisions
 
@@ -67,8 +70,7 @@ The reported run used:
 - a Chrome or Chromium browser discoverable by shinytest2;
 - at least 15 GB of free disk space for the source and reusable outputs.
 
-Run this preflight from the repository root. It only reports missing packages;
-it does not install or change anything.
+Run this preflight from the repository root. It only reports missing packages; it does not install or change anything.
 
 ```{bash}
 Rscript - <<'RS'
@@ -86,11 +88,45 @@ cat("Benchmark packages: OK\n")
 RS
 ```
 
-# Prepare isolated comparison trees
+# One-command benchmark
 
-Do not switch the working checkout back and forth during a benchmark. Create
-two detached Git worktrees so the before and after versions coexist while both
-read the same CRB.
+The user does not prepare a CRB. Run this from the `feat/large-example-data` checkout:
+
+```{bash}
+tests/bench/run_viewer_1m_benchmark.sh
+```
+
+The runner performs the complete path:
+
+```text
+official 10x H5 → BPCells-backed Seurat → CRB + BPCells → benchmarks → CSV + PNG
+```
+
+By default it compares `892097a1` with the current `perf/pr1-backend-hot-paths`, uses three repetitions, draws 10% of the loaded 1M cells, reuses the standard CerebroNexus cache and writes results under the ignored `tests/bench/scratch/` directory. It prints the exact output directory when finished.
+
+Only override values when needed:
+
+```{bash}
+CEREBRO_LARGE_CACHE="$HOME/cerebro-large-cache" \
+REPEATS=3 \
+PERCENT=10 \
+tests/bench/run_viewer_1m_benchmark.sh \
+  892097a1 \
+  perf/pr1-backend-hot-paths \
+  "$HOME/cerebro-pr1-results"
+```
+
+The three optional positional arguments are the baseline Git ref, candidate Git
+ref and output directory. `CEREBRO_LARGE_CACHE`, `REPEATS` and `PERCENT` are
+optional environment overrides. The output contains `run_manifest.tsv`,
+`hot_paths.tsv`, `browser.txt`, `viewer_1m_benchmark_summary.csv` and
+`viewer_1m_benchmark.png`.
+
+The remaining sections show the same workflow step by step. Use them only to inspect or rerun an individual stage.
+
+# Manual workflow: prepare isolated comparison trees
+
+Do not switch the working checkout back and forth during a benchmark. Create two detached Git worktrees so the before and after versions coexist while both read the same CRB.
 
 Copy and run this block from the repository root:
 
@@ -106,13 +142,11 @@ git worktree add --detach "$AFTER_ROOT" "$CANDIDATE_REV"
 printf 'repository: %s\nbenchmark trees: %s\n' "$REPO_ROOT" "$BENCH_ROOT"
 ```
 
-The browser benchmark passes a named dataset path to `launchCerebro()`, so
-both worktrees remain clean and require no compatibility patch.
+The browser benchmark passes a named dataset path to `launchCerebro()`, so both worktrees remain clean and require no compatibility patch.
 
 # Download and prepare the 1M example
 
-Choose a persistent cache location. Reusing it is important because preparation
-takes tens of minutes and the source H5 is about 4.2 GB.
+Choose a persistent cache location. Reusing it is important because preparation takes tens of minutes and the source H5 is about 4.2 GB.
 
 ```{bash}
 export CEREBRO_LARGE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/CerebroNexus-benchmark"
@@ -136,9 +170,7 @@ print(result)
 RS
 ```
 
-The preparation is resumable at artifact boundaries. A later call reuses a
-complete source, Seurat object or CRB instead of downloading and converting it
-again. Partial downloads are not published as complete cache files.
+The preparation is resumable at artifact boundaries. A later call reuses a complete source, Seurat object or CRB instead of downloading and converting it again. Partial downloads are not published as complete cache files.
 
 Define and validate the resulting paths:
 
@@ -153,9 +185,7 @@ du -sh "$CEREBRO_LARGE_CACHE/1m/source" \
   "$CEREBRO_LARGE_CACHE/1m/cerebro"
 ```
 
-The benchmarked artifact contained 1,000,000 cells, 27,998 genes, 33 clusters
-and one full 1,000,000-row UMAP. Preparation took 1,342.12 seconds and reached
-8.47 GiB maximum resident memory.
+The benchmarked artifact contained 1,000,000 cells, 27,998 genes, 33 clusters and one full 1,000,000-row UMAP. Preparation took 1,342.12 seconds and reached 8.47 GiB maximum resident memory.
 
 | Artifact | Exact bytes |
 |---|---:|
@@ -164,8 +194,7 @@ and one full 1,000,000-row UMAP. Preparation took 1,342.12 seconds and reached
 | CRB and BPCells sidecar | 3,765,141,671 |
 | CRB metadata file alone | 28,132,278 |
 
-All of these files remain in the selected cache. The large data are never
-added to Git.
+All of these files remain in the selected cache. The large data are never added to Git.
 
 # Run the R hot-path benchmark
 
@@ -196,8 +225,7 @@ For each operation the script:
 4. runs garbage collection before each timed repetition;
 5. reports the median elapsed time;
 6. records one R allocation profile with `Rprofmem()`; and
-7. stops immediately if the before and after results violate the operation's
-   equality or invariant check.
+7. stops immediately if the before and after results violate the operation's equality or invariant check.
 
 The measured three-repetition medians were:
 
@@ -211,11 +239,7 @@ The measured three-repetition medians were:
 | Multi-panel expression | 9 genes x 1M cells | 4,336 ms | 4,272 ms | -1.5% | 562.3 MiB | 463.2 MiB | -17.6% |
 | Mean expression | 100 genes x 1M cells | 5,540 ms | 3,978 ms | -28.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
 
-`Rprofmem()` measures allocations known to R, not all native memory owned by
-BPCells or the operating system. The browser benchmark below therefore also
-records process RSS. The single-gene result is time-neutral in this run; the
-main expression gains come from batching RGB reads and keeping mean expression
-backend-native.
+`Rprofmem()` measures allocations known to R, not all native memory owned by BPCells or the operating system. The browser benchmark below therefore also records process RSS. The single-gene result is time-neutral in this run; the main expression gains come from batching RGB reads and keeping mean expression backend-native.
 
 # Run the browser loading benchmark
 
@@ -225,9 +249,7 @@ The browser command-line interface is:
 viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]
 ```
 
-`PERCENT` is the percentage of cells drawn in Overview and must be between 10
-and 100. The reported before/after comparison uses 10, meaning that the real
-1M dataset is loaded while 100,000 points are drawn. Run:
+`PERCENT` is the percentage of cells drawn in Overview and must be between 10 and 100. The reported before/after comparison uses 10, meaning that the real 1M dataset is loaded while 100,000 points are drawn. Run:
 
 ```{bash}
 Rscript "$REPO_ROOT/tests/bench/viewer_1m_browser.R" \
@@ -253,8 +275,7 @@ Each repetition performs the following checks and measurements:
 8. records the Shiny R process RSS; and
 9. alternates before/after execution order between rounds.
 
-The output has a `RAW` table with every run and a `SUMMARY` table containing
-the medians. The three-round result was:
+The output has a `RAW` table with every run and a `SUMMARY` table containing the medians. The three-round result was:
 
 | Metric | Before median | After median | Change |
 |---|---:|---:|---:|
@@ -263,9 +284,96 @@ the medians. The three-round result was:
 | Launch through painted Overview | 62,460 ms | 35,418 ms | -43.3% |
 | Shiny process RSS | 3,759.6 MiB | 2,160.3 MiB | -42.5% |
 
-A separate rerun from clean detached checkouts measured 64,033 ms and 3,530.4
-MiB before, versus 34,105 ms and 2,699.5 MiB after. Both versions painted the
-same 1301-by-594 Canvas with more than 31,000 sampled non-white pixels.
+A separate rerun from clean detached checkouts measured 64,033 ms and 3,530.4 MiB before, versus 34,105 ms and 2,699.5 MiB after. Both versions painted the same 1301-by-594 Canvas with more than 31,000 sampled non-white pixels.
+
+# Save, reuse and plot the results
+
+The measurement scripts print data to standard output; they do not silently choose a permanent result directory. The `>` operators in the commands above save that output as ordinary text files:
+
+| File | Contents | Directly machine-readable? |
+|---|---|---|
+| `viewer_1m_hot_paths.tsv` | One row per R hot path, including baseline/candidate time, allocation and correctness | Yes, TSV |
+| `viewer_1m_browser.txt` | `RAW` rows for every browser run followed by the median `SUMMARY` table | Yes, through the plotting script |
+
+These files contain no expression matrix or cell-level data. They are small, portable benchmark results that another person can archive, inspect in R or Python, or pass to the plotting script.
+
+Generate the comparison figure and normalized CSV:
+
+```{bash}
+Rscript "$REPO_ROOT/tests/bench/viewer_1m_plot.R" \
+  "$BENCH_ROOT/viewer_1m_hot_paths.tsv" \
+  "$BENCH_ROOT/viewer_1m_browser.txt" \
+  "$BENCH_ROOT/figures"
+```
+
+The command creates:
+
+```text
+$BENCH_ROOT/figures/viewer_1m_benchmark.png
+$BENCH_ROOT/figures/viewer_1m_benchmark_summary.csv
+```
+
+The PNG has four panels: hot-path elapsed time, hot-path R allocation, browser loading time and Shiny process RSS. The CSV converts both input formats to the same columns:
+
+| Column | Meaning |
+|---|---|
+| `scope` | `hot path` or `browser` |
+| `metric` | measured operation |
+| `measure` | elapsed time, allocation or resident memory |
+| `before`, `after` | absolute measurements |
+| `change_pct` | `(after / before - 1) * 100` |
+| `unit` | `ms` or `MiB` |
+
+The repository keeps the measured hot-path TSV, browser median table and
+normalized CSV under `tests/bench/viewer_1m_results/`. They are sufficient to
+regenerate the reference figure without downloading the 1M matrix:
+
+```{bash}
+Rscript tests/bench/viewer_1m_plot.R \
+  tests/bench/viewer_1m_results/hot_paths.tsv \
+  tests/bench/viewer_1m_results/browser_summary.txt \
+  /tmp/cerebronexus-pr1-figure
+```
+
+![1M-cell Viewer benchmark comparison](img/viewer_1m_benchmark.png)
+
+Export the temporary result root when using the following snippets in a new shell:
+
+```{bash}
+export BENCH_ROOT
+```
+
+Read the reusable summary in R:
+
+```{r}
+result <- read.csv(
+  file.path(
+    Sys.getenv("BENCH_ROOT"),
+    "figures",
+    "viewer_1m_benchmark_summary.csv"
+  )
+)
+result[result$scope == "browser", ]
+```
+
+Or read it in Python:
+
+```{python}
+import csv
+import os
+
+path = os.path.join(
+    os.environ["BENCH_ROOT"],
+    "figures",
+    "viewer_1m_benchmark_summary.csv",
+)
+with open(path, newline="", encoding="utf-8") as handle:
+    result = list(csv.DictReader(handle))
+
+for row in result:
+    if row["scope"] == "browser":
+        print(row)
+```
 
 # Validate full 1M-point Canvas rendering
 
@@ -319,8 +427,7 @@ createShinyApp(
 
 # Interpret and compare runs
 
-Use the medians, not a single fastest run. Keep the following fixed between
-versions:
+Use the medians, not a single fastest run. Keep the following fixed between versions:
 
 - CRB and BPCells sidecar;
 - display percentage and browser viewport;
@@ -328,20 +435,15 @@ versions:
 - machine power mode and competing workloads; and
 - number of repetitions.
 
-The first read may populate operating-system disk caches. Alternating browser
-order reduces, but does not eliminate, thermal and cache bias. Report the raw
-runs alongside medians, and do not describe a sub-percent difference as a
-speedup without additional repetitions.
+The first read may populate operating-system disk caches. Alternating browser order reduces, but does not eliminate, thermal and cache bias. Report the raw runs alongside medians, and do not describe a sub-percent difference as a speedup without additional repetitions.
 
 # Clean up comparison worktrees
 
-The cache is intentionally retained. Remove only the temporary Git worktrees
-after collecting the result files you need:
+The cache is intentionally retained. Remove only the temporary Git worktrees after collecting the result files you need:
 
 ```{bash}
 git -C "$REPO_ROOT" worktree remove "$BEFORE_ROOT"
 git -C "$REPO_ROOT" worktree remove "$AFTER_ROOT"
 ```
 
-The benchmark result files remain under `$BENCH_ROOT`. Delete that temporary
-directory separately only after copying any results you want to keep.
+The benchmark result files remain under `$BENCH_ROOT`. Delete that temporary directory separately only after copying any results you want to keep.

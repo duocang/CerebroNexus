@@ -31,8 +31,7 @@ All source and generated data are stored in the R user cache, outside Git.
 
 ## Viewer hot paths
 
-Medians use three repetitions on the same 1M-cell CRB. Allocations are R
-allocations reported by `Rprofmem`; correctness checks passed for every row.
+Medians use three repetitions on the same 1M-cell CRB. Allocations are R allocations reported by `Rprofmem`; correctness checks passed for every row.
 
 | Operation | Scale | Before | After | Time | Before alloc. | After alloc. | Allocation |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -50,10 +49,7 @@ reads and keeping aggregate computation backend-native.
 
 ## Browser loading
 
-The browser benchmark launches the real 1M CRB, verifies the displayed cell
-count, opens Overview, waits for Canvas, checks at least 1,000 sampled non-white
-pixels, rejects browser errors, and measures the Shiny process RSS. The Viewer
-displays 10% (100K cells), matching the default large-data operating mode.
+The browser benchmark launches the real 1M CRB, verifies the displayed cell count, opens Overview, waits for Canvas, checks at least 1,000 sampled non-white pixels, rejects browser errors, and measures the Shiny process RSS. The Viewer displays 10% (100K cells), matching the default large-data operating mode.
 
 | Metric | Before median | After median | Change |
 | --- | ---: | ---: | ---: |
@@ -62,10 +58,7 @@ displays 10% (100K cells), matching the default large-data operating mode.
 | Launch through painted Overview | 62,460 ms | 35,418 ms | -43.3% |
 | Shiny process RSS | 3,759.6 MiB | 2,160.3 MiB | -42.5% |
 
-These values are medians of three alternating-order runs. A later one-round
-rerun from clean detached checkouts measured 64,033 ms and 3,530.4 MiB before
-versus 34,105 ms and 2,699.5 MiB after; both painted the same 1301 x 594 Canvas
-with more than 31,000 sampled non-white pixels.
+These values are medians of three alternating-order runs. A later one-round rerun from clean detached checkouts measured 64,033 ms and 3,530.4 MiB before versus 34,105 ms and 2,699.5 MiB after; both painted the same 1301 x 594 Canvas with more than 31,000 sampled non-white pixels.
 
 The optimized revision was also tested at 100% display. Two runs loaded
 and painted all 1M UMAP points in 72.4 and 73.5 seconds, using 4,616.7 and
@@ -81,7 +74,21 @@ painting, not a baseline/candidate comparison.
 
 ## Reproduce
 
+The complete workflow downloads the official H5, creates the BPCells-backed
+Seurat and CRB artifacts, runs both benchmarks and draws the result:
+
+```sh
+tests/bench/run_viewer_1m_benchmark.sh
+```
+
+The lower-level commands accept an already prepared CRB so individual stages can be rerun without repeating conversion:
+
 ```sh
 Rscript tests/bench/viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB 3
 Rscript tests/bench/viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB 3 10
+Rscript tests/bench/viewer_1m_plot.R HOT_PATH_TSV BROWSER_OUTPUT OUTPUT_DIR
 ```
+
+The measured inputs and normalized CSV are retained in
+`tests/bench/viewer_1m_results/`; the rendered reference figure is
+`vignettes/img/viewer_1m_benchmark.png`.
