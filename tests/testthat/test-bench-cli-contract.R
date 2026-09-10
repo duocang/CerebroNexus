@@ -51,6 +51,48 @@ test_that("sweep stages use plain names in a safe publication order", {
   expect_true(all(diff(positions) > 0))
 })
 
+test_that("Viewer benchmark documents reproduce the three stacked revisions", {
+  skip_unless_bench_cli()
+  vignette_path <- file.path(
+    bench_root,
+    "..",
+    "..",
+    "vignettes",
+    "large_example_data_benchmark.Rmd"
+  )
+  results_path <- file.path(bench_root, "viewer_large_data_results.md")
+  vignette <- paste(readLines(vignette_path, warn = FALSE), collapse = "\n")
+
+  expect_identical(
+    basename(vignette_path),
+    "large_example_data_benchmark.Rmd"
+  )
+  expect_identical(basename(results_path), "viewer_large_data_results.md")
+  expect_true(all(vapply(
+    c(
+      "BASELINE_REV",
+      "BACKEND_REV",
+      "VIEWER_REV",
+      "BASELINE_ROOT",
+      "BACKEND_ROOT",
+      "VIEWER_ROOT",
+      "release_to_backend",
+      "backend_to_viewer",
+      "release_to_viewer",
+      "viewer_interaction_hot_paths.R",
+      "viewer_interaction_hit_test.js"
+    ),
+    grepl,
+    logical(1),
+    x = vignette,
+    fixed = TRUE
+  )))
+  expect_true(all(file.exists(file.path(
+    bench_root,
+    c("viewer_interaction_hot_paths.R", "viewer_interaction_hit_test.js")
+  ))))
+})
+
 run_bench_rscript <- function(script, args = character(), env = character()) {
   out <- tempfile("bench-cli-stdout-")
   err <- tempfile("bench-cli-stderr-")

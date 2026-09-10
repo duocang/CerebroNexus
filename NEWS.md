@@ -1,3 +1,10 @@
+# CerebroNexus 4.4.4
+
+## Performance
+
+- Viewer startup, hover lookup, specialist payloads, Canvas updates and Spatial caches avoid repeated work on large datasets.
+- The 1M-cell benchmark documents separate backend, Viewer interaction and cumulative comparisons with reproducible commands.
+
 # CerebroNexus 4.4.3
 
 ## Performance

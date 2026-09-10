@@ -4,6 +4,10 @@ This directory compares the `embedded`, `bpcells`, and `h5` backends on public s
 
 > **Current status:** the harness is ready for code review, but no complete `publication` run has been performed on this branch. The archived pilot is retained for provenance only and must not be cited as final evidence.
 
+## Viewer comparison
+
+The separate 1M-cell Viewer benchmark compares a release, the stacked backend change and the stacked Viewer-interaction change. See [`large_example_data_benchmark.Rmd`](../../vignettes/large_example_data_benchmark.Rmd) for complete preparation, execution and cleanup commands, and [`viewer_large_data_results.md`](viewer_large_data_results.md) for the measured results.
+
 ## Quick start
 
 ```bash
