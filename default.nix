@@ -63,6 +63,14 @@
 # Report any issues to https://github.com/ropensci/rix
 let
  pkgs = import (fetchTarball "https://github.com/rstats-on-nix/nixpkgs/archive/2026-08-31.tar.gz") {};
+
+  hdf5Ros3 = if pkgs.stdenv.hostPlatform.isLinux then
+    pkgs.hdf5.overrideAttrs (old: {
+      buildInputs = (old.buildInputs or []) ++ [ pkgs.curl.dev ];
+      cmakeFlags = (old.cmakeFlags or []) ++ [ "-DHDF5_ENABLE_ROS3_VFD=ON" ];
+    })
+  else
+    pkgs.hdf5;
  
   rpkgs = builtins.attrValues {
     inherit (pkgs.rPackages) 
@@ -168,7 +176,11 @@ let
     LC_PAPER = "en_US.UTF-8";
     LC_MEASUREMENT = "en_US.UTF-8";
     
-    buildInputs = [ BPCells rpkgs system_packages ];
+    buildInputs = [ BPCells hdf5Ros3 rpkgs system_packages ];
+
+    shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      export LD_LIBRARY_PATH="${hdf5Ros3}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    '';
     
   }; 
 in

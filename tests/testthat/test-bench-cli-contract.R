@@ -94,6 +94,16 @@ test_that("sweep isolates benchmark R processes from user startup files", {
   expect_match(sweep, "NOT_CRAN=true", fixed = TRUE)
 })
 
+test_that("Nix HDF5 provides the ROS3 symbol required by rhdf5", {
+  nix <- paste(
+    readLines(file.path(bench_root, "..", "..", "default.nix"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(nix, "-DHDF5_ENABLE_ROS3_VFD=ON", fixed = TRUE)
+  expect_match(nix, "LD_LIBRARY_PATH", fixed = TRUE)
+})
+
 test_that("Panel C2 build CLI uses only the lazy full-source path", {
   skip_unless_bench_cli()
   script <- file.path(bench_root, "src", "11_build_full_backend.R")
