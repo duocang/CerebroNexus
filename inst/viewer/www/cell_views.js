@@ -1641,9 +1641,6 @@
     var hasSel = !!(sel && sel.size);
     var hasNiche = !hasSel && pick != null && !!nicheSet;
     revealEl($('cv-selactions'), hasSel || hasNiche);
-    var share = $('cv-config-open');
-    revealEl(share, hasSel);
-    if (share) share.classList.toggle('is-visible', hasSel);
   }
   // Zoom one requested panel to the bounding box of its selected cells.
   function zoomToSelection(p) {
@@ -2185,15 +2182,8 @@
     if (singleActive) {
       var guide = $(singleActive + '_selection_guide');
       var active = $(singleActive + '_selection_active');
-      var share = document.querySelector(
-        '.cerebro-toolbar-share[data-view-id="' + singleActive + '"]'
-      );
       if (guide) guide.classList.toggle('cerebro-selection-status-hidden', !!arr);
       if (active) active.classList.toggle('cerebro-selection-status-hidden', !arr);
-      if (share) {
-        share.style.display = arr ? '' : 'none';
-        share.classList.toggle('is-visible', !!arr);
-      }
     }
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
@@ -6572,7 +6562,7 @@
       }
       if (singleId && linkedBundle && singleViews[singleId]) {
         activateSingle(singleId);
-      } else if (linkedVis && singleActive) {
+      } else if (singleActive) {
         activateLinked();
       }
       if (Shiny.setInputValue) {

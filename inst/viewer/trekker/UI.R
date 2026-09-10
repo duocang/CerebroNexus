@@ -23,7 +23,9 @@ tab_trekker <- tabItem(
         ## Trekker uses the same client-owned point, filter and image state as
         ## Linked views, so both buttons open the same drawer node. Duplicating
         ## that node would duplicate input ids and split one renderer's state.
-        cerebroSettingsButton("trekker_more_button", "cv-more"),
+        cerebroToolbarActions(
+          cerebroSettingsButton("trekker_more_button", "cv-more")
+        ),
         cerebroSelectionStatus(
           "trekker_projection",
           "trekker_number_of_selected_cells",

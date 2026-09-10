@@ -390,8 +390,17 @@ test_that("HLA keeps zoom-to-selection in its panel toolbar", {
   ui <- viewer_source("hla_tcr_motifs", "UI.R")
   javascript <- viewer_source("www", "hla_motifs.js")
 
-  expect_match(ui, 'button("zsel", "Zoom to selection"', fixed = TRUE)
+  expect_match(
+    ui,
+    'button("zsel", "Zoom to selection", "crop-simple", disabled = TRUE)',
+    fixed = TRUE
+  )
   expect_match(javascript, "action === 'zsel'", fixed = TRUE)
+  expect_match(
+    javascript,
+    "button.disabled = !selectedKeys.length",
+    fixed = TRUE
+  )
 })
 
 test_that("Linked actions stay compact and match their scope", {
@@ -407,7 +416,7 @@ test_that("Linked actions stay compact and match their scope", {
     '"cv-config-open cv-share-open cerebro-toolbar-share"',
     fixed = TRUE
   )
-  expect_match(javascript, "revealEl(share, hasSel);", fixed = TRUE)
+  expect_no_match(javascript, "revealEl(share, hasSel);", fixed = TRUE)
   expect_no_match(ui, 'id = "cv-zoom"', fixed = TRUE)
   expect_match(ui, "cv-clear-btn", fixed = TRUE)
   expect_match(ui, '`data-act` = "clear"', fixed = TRUE)
@@ -423,7 +432,7 @@ test_that("Linked actions stay compact and match their scope", {
     "t.closest && t.closest('#cv-clear')",
     fixed = TRUE
   )
-  expect_match(css, "font-size: 11.5px;", fixed = TRUE)
+  expect_match(css, "font-size: 13px;", fixed = TRUE)
   expect_match(
     javascript,
     "if (gname.indexOf('__single_') === 0) return;",

@@ -214,7 +214,14 @@
       });
     }
     function finish(pointerId) {
+      pointerId = typeof pointerId === "number"
+        ? pointerId
+        : pointerId && pointerId.pointerId;
       if (!drag || (pointerId != null && drag.pointerId !== pointerId)) return;
+      if (drag.handle.hasPointerCapture &&
+          drag.handle.hasPointerCapture(drag.pointerId)) {
+        drag.handle.releasePointerCapture(drag.pointerId);
+      }
       drag.slot.classList.remove("is-dragging");
       drag = null;
     }
@@ -228,10 +235,12 @@
       var rect = slot.getBoundingClientRect();
       drag = {
         slot: slot,
+        handle: header,
         pointerId: event.pointerId,
         offsetX: event.clientX - rect.left,
         offsetY: event.clientY - rect.top
       };
+      if (header.setPointerCapture) header.setPointerCapture(event.pointerId);
       slot.classList.add("is-dragging");
       event.preventDefault();
     });
@@ -251,6 +260,8 @@
     document.addEventListener("pointercancel", function (event) {
       finish(event.pointerId);
     });
+    document.addEventListener("lostpointercapture", finish);
+    window.addEventListener("blur", finish);
     document.addEventListener("keydown", function (event) {
       var handle = event.target.closest && event.target.closest(HANDLE);
       if (!handle || isMobile()) return;

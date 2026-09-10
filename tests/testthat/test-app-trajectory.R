@@ -129,9 +129,9 @@ test_that("trajectory projection fits the viewport with selectors in the top bar
   expect_lt(geometry$statusBottom, geometry$plotTop)
   expect_lte(geometry$plotBottom, geometry$hostBottom)
   expect_lte(geometry$hostBottom, geometry$viewport)
-  expect_null(app$get_js(paste0(
+  expect_true(app$get_js(paste0(
     "document.querySelector('[data-view-id=\"trajectory_projection\"]",
-    ".cerebro-toolbar-share').offsetParent"
+    ".cerebro-toolbar-share').offsetParent !== null"
   )))
 
   drag <- app$get_js(paste0(

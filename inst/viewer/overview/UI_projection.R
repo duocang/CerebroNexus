@@ -20,9 +20,12 @@ output[["overview_projection_UI"]] <- renderUI({
             class = "cerebro-viz-primary",
             uiOutput("overview_projection_main_parameters_UI")
           ),
-          cerebroSettingsButton(
-            "overview_projection_more_button",
-            "overview_projection_more"
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "overview_projection_more_button",
+              "overview_projection_more"
+            ),
+            cerebroShareButton("overview_projection")
           ),
           cerebroSettingsDrawer(
             "overview_projection_more",
@@ -54,7 +57,8 @@ output[["overview_projection_UI"]] <- renderUI({
           ),
           cerebroSelectionStatus(
             "overview_projection",
-            "overview_number_of_selected_cells"
+            "overview_number_of_selected_cells",
+            portable = FALSE
           )
         )
       ),

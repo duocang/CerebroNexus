@@ -296,27 +296,25 @@ tab_coordinated_views <- tabItem(
           )
         )
       ),
-      ## Reveals the shared advanced-settings drawer.
-      cerebroSettingsButton(
-        "cv-more-btn",
-        "cv-more"
-      ),
-      tags$button(
-        type = "button",
-        id = "cv-config-open",
-        class = paste(
-          "cv-config-open cv-share-open cerebro-toolbar-share",
-          "cv-collapse"
+      ## Share and Settings stay together as the right-aligned action group.
+      cerebroToolbarActions(
+        cerebroSettingsButton(
+          "cv-more-btn",
+          "cv-more"
         ),
-        style = "display:none",
-        `data-view-id` = "linked_views",
-        disabled = "disabled",
-        `aria-disabled` = "true",
-        `aria-haspopup` = "dialog",
-        `aria-controls` = "cv-config-dialog",
-        title = "The linked workspace is waiting for its plots",
-        icon("share-alt"),
-        tags$span("Share")
+        tags$button(
+          type = "button",
+          id = "cv-config-open",
+          class = "cv-config-open cv-share-open cerebro-toolbar-share",
+          `data-view-id` = "linked_views",
+          disabled = "disabled",
+          `aria-disabled` = "true",
+          `aria-haspopup` = "dialog",
+          `aria-controls` = "cv-config-dialog",
+          title = "The linked workspace is waiting for its plots",
+          icon("share-alt"),
+          tags$span("Share")
+        )
       ),
       ## Right-aligned global filter/subsample readout. Cohort actions belong to
       ## the Active cohort bar below, not to this settings row.

@@ -116,7 +116,6 @@ cerebroShareButton <- function(plot_id) {
   tags$button(
     type = "button",
     class = "cerebro-config-open cerebro-toolbar-share",
-    style = "display:none",
     `data-view-id` = plot_id,
     disabled = "disabled",
     `aria-disabled` = "true",
@@ -124,6 +123,14 @@ cerebroShareButton <- function(plot_id) {
     `aria-controls` = "cv-config-dialog",
     icon("share-alt"),
     tags$span("Share")
+  )
+}
+
+cerebroToolbarActions <- function(settings_button, share_button = NULL) {
+  div(
+    class = "cerebro-toolbar-actions",
+    share_button,
+    settings_button
   )
 }
 

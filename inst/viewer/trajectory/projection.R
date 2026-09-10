@@ -42,9 +42,12 @@ output[["trajectory_projection_UI"]] <- renderUI({
             uiOutput("trajectory_select_method_and_name_UI"),
             uiOutput("trajectory_projection_main_parameters_UI")
           ),
-          cerebroSettingsButton(
-            "trajectory_projection_more_button",
-            "trajectory_projection_more"
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "trajectory_projection_more_button",
+              "trajectory_projection_more"
+            ),
+            cerebroShareButton("trajectory_projection")
           ),
           cerebroSettingsDrawer(
             "trajectory_projection_more",
@@ -80,7 +83,8 @@ output[["trajectory_projection_UI"]] <- renderUI({
           ),
           cerebroSelectionStatus(
             "trajectory_projection",
-            "trajectory_number_of_selected_cells"
+            "trajectory_number_of_selected_cells",
+            portable = FALSE
           )
         )
       ),

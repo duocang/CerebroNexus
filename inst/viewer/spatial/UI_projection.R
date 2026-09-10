@@ -20,9 +20,12 @@ output[["spatial_projection_UI"]] <- renderUI({
             class = "cerebro-viz-primary",
             uiOutput("spatial_projection_main_parameters_UI")
           ),
-          cerebroSettingsButton(
-            "spatial_projection_more_button",
-            "spatial_projection_more"
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "spatial_projection_more_button",
+              "spatial_projection_more"
+            ),
+            cerebroShareButton("spatial_projection")
           ),
           cerebroSettingsDrawer(
             "spatial_projection_more",
@@ -63,7 +66,8 @@ output[["spatial_projection_UI"]] <- renderUI({
           ),
           cerebroSelectionStatus(
             "spatial_projection",
-            "spatial_number_of_selected_cells"
+            "spatial_number_of_selected_cells",
+            portable = FALSE
           )
         )
       ),

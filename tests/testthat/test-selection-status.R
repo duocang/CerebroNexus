@@ -44,7 +44,7 @@ test_that("selection status keeps one compact action per scope", {
   )
 
   expect_match(with_portable, "cerebro-toolbar-share", fixed = TRUE)
-  expect_match(with_portable, "display:none", fixed = TRUE)
+  expect_false(grepl("display:none", with_portable, fixed = TRUE))
   expect_match(with_portable, ">Share<", fixed = TRUE)
   expect_match(with_portable, ">Clear<", fixed = TRUE)
   expect_false(grepl("Zoom to selection", with_portable, fixed = TRUE))

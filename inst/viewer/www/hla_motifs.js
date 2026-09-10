@@ -198,6 +198,10 @@
   function syncModeButtons() {
     document.querySelectorAll('#hla-modebar [data-act]').forEach(function (button) {
       button.classList.toggle('is-on', button.dataset.act === mode);
+      if (['zsel', 'clear'].indexOf(button.dataset.act) >= 0) {
+        button.disabled = !selectedKeys.length;
+        button.classList.toggle('hla-mb-btn--off', button.disabled);
+      }
     });
   }
   function setMode(next) {
@@ -224,7 +228,22 @@
     var network = net();
     var ids = idsFromNodeKeys(network, selectedKeys);
     if (!network || !ids.length) return;
-    network.fit({ nodes: ids, animation: { duration: 300 } });
+    var boxes = ids.map(function (id) { return network.getBoundingBox(id); });
+    var left = Math.min.apply(null, boxes.map(function (box) { return box.left; }));
+    var right = Math.max.apply(null, boxes.map(function (box) { return box.right; }));
+    var top = Math.min.apply(null, boxes.map(function (box) { return box.top; }));
+    var bottom = Math.max.apply(null, boxes.map(function (box) { return box.bottom; }));
+    var frame = network.canvas.frame;
+    var scale = Math.min(
+      Math.max(1, frame.clientWidth - 80) / Math.max(1, right - left),
+      Math.max(1, frame.clientHeight - 80) / Math.max(1, bottom - top)
+    );
+    scale = Math.max(network.hlaMinScale || 0.02, scale);
+    network.moveTo({
+      position: { x: (left + right) / 2, y: (top + bottom) / 2 },
+      scale: Math.min(3, scale),
+      animation: { duration: 300 }
+    });
   }
   function clearSelection(notify) {
     var network = net();
@@ -232,9 +251,15 @@
     selectedKeys = [];
     selectedCells = [];
     if (network) network.unselectAll();
+    syncModeButtons();
     window.hlaShowNodeDetails(null);
     drawOverlay();
     if (notify) sendSelectedKeys([]);
+  }
+  function requestClearSelection() {
+    var button = document.getElementById('hla_motif_network_clear_selection');
+    if (button) button.click();
+    else clearSelection(true);
   }
   function downloadPNG() {
     var network = net();
@@ -319,6 +344,15 @@
       selectedCells: saved && saved.selection ? saved.selection.cells.length : 0
     };
   }
+  function reportState() {
+    window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
+      detail: {
+        viewId: 'hla_motif_network',
+        selectedCells: selectedCells.length,
+        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
+      }
+    }));
+  }
   function receiveSelection(result) {
     var network = net();
     selectedKeys = result && Array.isArray(result.node_keys)
@@ -334,13 +368,8 @@
       network.selectNodes(idsFromNodeKeys(network, selectedKeys), false);
       syncingSelection = false;
     }
-    window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
-      detail: {
-        viewId: 'hla_motif_network',
-        selectedCells: selectedCells.length,
-        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
-      }
-    }));
+    syncModeButtons();
+    reportState();
   }
   function connectShiny() {
     if (shinyBound || !window.Shiny || !Shiny.addCustomMessageHandler) return;
@@ -368,6 +397,7 @@
         else if (action === 'zoomout') zoomBy(1 / 1.3);
         else if (action === 'zsel') zoomSelection();
         else if (action === 'reset') resetView();
+        else if (action === 'clear') requestClearSelection();
         else if (action === 'download') {
           window.dispatchEvent(new CustomEvent('cerebro:png-result', {
             detail: { ok: downloadPNG() }
@@ -425,6 +455,7 @@
       }
       applyPendingState();
       drawOverlay();
+      if (changed && network) reportState();
     }
   };
 

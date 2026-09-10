@@ -118,8 +118,8 @@
   transition: opacity .16s ease, transform .16s ease;
 }
 .coordviews-page .cv-selactions .btn {
-  min-width: 0; height: 28px; padding: 0 9px;
-  font-size: 11.5px; gap: 5px;
+  min-width: 0; height: 32px; padding: 0 10px;
+  font-size: 13px; gap: 6px;
 }
 /* collapsed (hidden) state — a quiet fade + tiny lift */
 .coordviews-page .cv-selactions.cv-collapse {

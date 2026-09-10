@@ -34,11 +34,15 @@ output[["expression_projection_UI"]] <- renderUI({
               "expression_projection_input_type_UI",
               class = "cerebro-gene-input-output"
             ),
-            uiOutput("expression_projection_gene_color_mode_UI")
+            uiOutput("expression_projection_gene_color_mode_UI"),
+            uiOutput("expression_genes_displayed")
           ),
-          cerebroSettingsButton(
-            "expression_projection_more_button",
-            "expression_projection_more"
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "expression_projection_more_button",
+              "expression_projection_more"
+            ),
+            cerebroShareButton("expression_projection")
           ),
           cerebroSettingsDrawer(
             "expression_projection_more",
@@ -69,7 +73,8 @@ output[["expression_projection_UI"]] <- renderUI({
           ),
           cerebroSelectionStatus(
             "expression_projection",
-            "expression_number_of_selected_cells"
+            "expression_number_of_selected_cells",
+            portable = FALSE
           )
         )
       ),

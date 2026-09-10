@@ -13,13 +13,24 @@
 ##----------------------------------------------------------------------------##
 
 hlaMotifModebar <- function() {
-  button <- function(action, label, icon_name, active = FALSE) {
+  button <- function(
+    action,
+    label,
+    icon_name,
+    active = FALSE,
+    disabled = FALSE
+  ) {
     tags$button(
       type = "button",
-      class = if (active) "hla-mb-btn is-on" else "hla-mb-btn",
+      class = paste(
+        "hla-mb-btn",
+        if (active) "is-on" else NULL,
+        if (disabled) "hla-mb-btn--off" else NULL
+      ),
       `data-act` = action,
       `data-tip` = label,
       `aria-label` = label,
+      disabled = if (disabled) "disabled" else NULL,
       icon(icon_name)
     )
   }
@@ -31,8 +42,9 @@ hlaMotifModebar <- function() {
     button("pan", "Pan", "up-down-left-right"),
     button("zoomin", "Zoom in", "search-plus"),
     button("zoomout", "Zoom out", "search-minus"),
-    button("zsel", "Zoom to selection", "crop-simple"),
+    button("zsel", "Zoom to selection", "crop-simple", disabled = TRUE),
     button("reset", "Reset view", "house"),
+    button("clear", "Clear selection", "eraser", disabled = TRUE),
     button("download", "Download PNG", "download")
   )
 }
@@ -56,7 +68,10 @@ tab_hla_tcr_motifs <- tabItem(
           class = "cerebro-viz-primary",
           uiOutput("hla_parameters_ui")
         ),
-        cerebroSettingsButton("hla_more_button", "hla_more"),
+        cerebroToolbarActions(
+          cerebroSettingsButton("hla_more_button", "hla_more"),
+          cerebroShareButton("hla_motif_network")
+        ),
         cerebroSettingsDrawer(
           "hla_more",
           cerebroSettingsSection(
@@ -80,7 +95,8 @@ tab_hla_tcr_motifs <- tabItem(
         cerebroSelectionStatus(
           "hla_motif_network",
           "hla_selected_count",
-          client_actions = FALSE
+          client_actions = FALSE,
+          portable = FALSE
         )
       )
     ),
