@@ -69,7 +69,7 @@ shiny::runApp(out_dir)
 
 # Optional 50K and 1M examples
 
-Set `example_data_size` only when you want CerebroNexus to obtain and prepare a
+Set `extra_example_data` only when you want CerebroNexus to obtain and prepare a
 large public example. `"50k"` uses exactly 50,000 cells from the 10x Fresh 68k
 PBMC Donor A data. `"1m"` uses exactly 1,000,000 cells from the 10x E18 mouse
 brain data. Source matrices are downloaded from 10x Genomics. Seurat's sketch
@@ -77,12 +77,50 @@ workflow computes clusters and a UMAP for
 all retained cells before conversion to a disk-backed Seurat object and BPCells
 CRB; all artifacts are cached for later calls.
 
+From the repository root, this reproducible example bundles all shipped demos
+and appends the cached or downloaded 1M example:
+
 ```{r, eval=FALSE}
+pkgload::load_all(".", quiet = TRUE)
+
+example_dir <- file.path(normalizePath("."), "inst", "extdata", "examples")
+demo_data <- setNames(
+  file.path(example_dir, c(
+    "demo_full_tcr_bcr.crb", "demo_spatial_visium.crb",
+    "demo_spatial_slideseq.crb", "demo_spatial_merfish.crb",
+    "demo_spatial_xenium.crb", "demo_trekker.crb",
+    "demo_hla_tcr_dextramer.crb"
+  )),
+  c(
+    "PBMC - Full (T+B)", "Mouse brain (Visium)",
+    "Mouse hippocampus (Slide-seq v2)", "Mouse ileum (MERFISH)",
+    "Mouse brain (Xenium)", "Mouse brain (Trekker)", "HLA & TCR"
+  )
+)
+spatial_images <- list(
+  "Mouse brain (Visium)" = list(
+    anterior1 = c(
+      "Tissue background" = file.path(example_dir, "demo_spatial_visium_he.png")
+    )
+  ),
+  "Mouse brain (Xenium)" = list(
+    fov = list(
+      "Tissue background" = list(
+        path = file.path(example_dir, "spatial/xenium/dapi.png"),
+        bounds = c(xmin = 0, xmax = 5448.5, ymin = 0, ymax = 3538.55)
+      )
+    )
+  )
+)
+
 createShinyApp(
-  cerebro_data = NULL,
-  example_data_size = "50k",
-  result_dir = "cerebro_50k_app",
-  launch_browser = FALSE
+  result_dir = "cerebro_demo_with_1m",
+  cerebro_data = demo_data,
+  extra_example_data = "1m",
+  example_data_dir = "cerebro-example-cache",
+  spatial_images = spatial_images,
+  crb_pick_smallest_file = FALSE,
+  launch_browser = TRUE
 )
 ```
 
@@ -90,14 +128,14 @@ The 50K tier downloads about 119 MB and uses roughly 1 GB of cache after
 preparation. The 1M tier downloads about 4.2 GB, uses roughly 11 GB of cache,
 and needs substantial processing time. Both tiers require Seurat, SeuratObject,
 and BPCells. Override `example_data_dir` to keep the reusable cache in a chosen
-location. No download occurs when `example_data_size = NULL`.
+location. No download occurs when `extra_example_data = NULL`.
 
 # Common parameters
 
 | argument | purpose |
 |---|---|
 | `cerebro_data` | named vector/list of `.crb` (or `.rds`) paths; labels and resolved source files must both be unique |
-| `example_data_size`, `example_data_dir` | optionally prepare `"50k"` or `"1m"` public data in the default or chosen cache |
+| `extra_example_data`, `example_data_dir` | optionally append a `"50k"` or `"1m"` public example using the default or chosen cache |
 | `result_dir` | output directory (required; portable basename outside the reserved lock namespace) |
 | `overwrite` | replace `result_dir` after a complete staged build; with `FALSE`, the destination must be absent or empty |
 | `max_request_size` | finite positive numeric request cap in MB; defaults to `8000`; closed Viewers use at most 6 MiB |

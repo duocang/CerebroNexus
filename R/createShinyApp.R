@@ -2046,8 +2046,8 @@ dedent <- function(string) {
 #' @param cerebro_data Named character vector or list of \code{.crb} (or
 #'   \code{.rds}) file paths. Names must be non-missing and unique and are used
 #'   as dataset labels. Every path must resolve to a distinct canonical source
-#'   file. May be \code{NULL} only when \code{example_data_size} is supplied.
-#' @param example_data_size Optional large public example to prepare and append.
+#'   file. May be \code{NULL} only when \code{extra_example_data} is supplied.
+#' @param extra_example_data Optional large public example to prepare and append.
 #'   Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
 #'   1,000,000-cell mouse-brain subset. Missing source data are downloaded from
 #'   10x Genomics, converted once, and then reused from the local cache.
@@ -2208,12 +2208,12 @@ createShinyApp <- function(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  example_data_size = NULL,
+  extra_example_data = NULL,
   example_data_dir = NULL,
   initial_page = NULL
 ) {
   large_example <- .prepareLargeExample(
-    example_data_size,
+    extra_example_data,
     example_data_dir
   )
   if (!is.null(large_example)) {

@@ -36,7 +36,7 @@ createShinyApp(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  example_data_size = NULL,
+  extra_example_data = NULL,
   example_data_dir = NULL,
   initial_page = NULL
 )
@@ -45,7 +45,7 @@ createShinyApp(
 \item{cerebro_data}{Named character vector or list of \code{.crb} (or
 \code{.rds}) file paths. Names must be non-missing and unique and are used
 as dataset labels. Every path must resolve to a distinct canonical source
-file. May be \code{NULL} only when \code{example_data_size} is supplied.}
+file. May be \code{NULL} only when \code{extra_example_data} is supplied.}
 
 \item{result_dir}{Output directory. Its basename must be portable, its path
 must not use the reserved build-lock namespace, and its final target must
@@ -164,6 +164,14 @@ are listed separately and loaded only when selected in the Viewer.}
 by \code{extra_tables} labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.}
 
+\item{extra_example_data}{Optional large public example to prepare and append.
+Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
+1,000,000-cell mouse-brain subset. Missing source data are downloaded from
+10x Genomics, converted once, and then reused from the local cache.}
+
+\item{example_data_dir}{Optional cache directory for downloaded source data,
+the prepared Seurat object, and converted CRB. Defaults to a per-user cache.}
+
 \item{initial_page}{Optional initial Viewer page. Supported stable IDs are
 \code{"data_info"}, \code{"projection"}, \code{"linked_views"},
 \code{"groups"}, \code{"marker_genes"},
@@ -176,14 +184,6 @@ sheet names; unmapped sheets remain available.}
 for the first loaded dataset. Initial routing is attempted only once, so
 switching datasets later never triggers a delayed redirect. Shared links
 take precedence after restoration.}
-
-\item{example_data_size}{Optional large public example to prepare and append.
-Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
-1,000,000-cell mouse-brain subset. Missing source data are downloaded from
-10x Genomics, converted once, and then reused from the local cache.}
-
-\item{example_data_dir}{Optional cache directory for downloaded source data,
-the prepared Seurat object, and converted CRB. Defaults to a per-user cache.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution

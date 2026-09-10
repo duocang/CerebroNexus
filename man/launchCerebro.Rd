@@ -16,7 +16,7 @@ launchCerebro(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  example_data_size = NULL,
+  extra_example_data = NULL,
   example_data_dir = NULL,
   ...
 )
@@ -74,7 +74,7 @@ defaults to 100.}
 \item{projections_show_hover_info}{Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.}
 
-\item{example_data_size}{Optional large public example to prepare and load.
+\item{extra_example_data}{Optional large public example to prepare and load.
 Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
 1,000,000-cell mouse-brain subset. Missing source data are downloaded from
 10x Genomics, converted once, and then reused from the local cache.}

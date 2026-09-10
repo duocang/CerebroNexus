@@ -288,12 +288,14 @@ test_that("large example conversion uses counts and BPCells", {
 })
 
 test_that("large example public arguments are opt-in", {
-  expect_true("example_data_size" %in% names(formals(launchCerebro)))
+  expect_true("extra_example_data" %in% names(formals(launchCerebro)))
   expect_true("example_data_dir" %in% names(formals(launchCerebro)))
-  expect_true("example_data_size" %in% names(formals(createShinyApp)))
+  expect_true("extra_example_data" %in% names(formals(createShinyApp)))
   expect_true("example_data_dir" %in% names(formals(createShinyApp)))
-  expect_null(formals(launchCerebro)$example_data_size)
-  expect_null(formals(createShinyApp)$example_data_size)
+  expect_null(formals(launchCerebro)$extra_example_data)
+  expect_null(formals(createShinyApp)$extra_example_data)
+  expect_false("example_data_size" %in% names(formals(launchCerebro)))
+  expect_false("example_data_size" %in% names(formals(createShinyApp)))
   expect_identical(
     head(names(formals(createShinyApp)), 2L),
     c("cerebro_data", "result_dir")
@@ -338,7 +340,7 @@ test_that("launchCerebro appends a requested large example", {
 
   app <- launchCerebro(
     crb_file_to_load = c("Existing" = example),
-    example_data_size = "50k",
+    extra_example_data = "50k",
     example_data_dir = "custom-cache",
     mode = "closed"
   )
@@ -369,7 +371,7 @@ test_that("createShinyApp can build an example-only app", {
     createShinyApp(
       cerebro_data = NULL,
       result_dir = output,
-      example_data_size = "1m",
+      extra_example_data = "1m",
       example_data_dir = "custom-cache",
       launch_browser = FALSE,
       verbose = FALSE

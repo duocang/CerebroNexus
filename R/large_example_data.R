@@ -9,7 +9,7 @@
       !tolower(size) %in% c("50k", "1m")
   ) {
     stop(
-      "'example_data_size' must be one of NULL, '50k', or '1m'.",
+      "'extra_example_data' must be one of NULL, '50k', or '1m'.",
       call. = FALSE
     )
   }

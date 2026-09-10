@@ -51,12 +51,12 @@ later runs:
 
 ```r
 # About 119 MB of source downloads; prepares exactly 50,000 PBMCs.
-launchCerebro(example_data_size = "50k")
+launchCerebro(extra_example_data = "50k")
 
 # About 4.2 GB of source downloads; prepares exactly 1,000,000 mouse-brain cells.
 createShinyApp(
   cerebro_data = NULL,
-  example_data_size = "1m",
+  extra_example_data = "1m",
   result_dir = "large_demo",
   launch_browser = FALSE
 )

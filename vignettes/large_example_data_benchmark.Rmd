@@ -405,7 +405,7 @@ Launch it directly from the source checkout:
 devtools::load_all(".")
 
 launchCerebro(
-  example_data_size = "1m",
+  extra_example_data = "1m",
   example_data_dir = Sys.getenv("CEREBRO_LARGE_CACHE"),
   percentage_cells_to_show = 10
 )
@@ -418,7 +418,7 @@ devtools::load_all(".")
 
 createShinyApp(
   cerebro_data = c("Small dataset" = "/absolute/path/small.crb"),
-  example_data_size = "1m",
+  extra_example_data = "1m",
   example_data_dir = Sys.getenv("CEREBRO_LARGE_CACHE"),
   result_dir = "/absolute/path/cerebro-large-app",
   launch_browser = FALSE

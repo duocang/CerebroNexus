@@ -13,7 +13,7 @@
 #' @param crb_file_to_load Path to \code{.crb} file to load on launch of
 #' Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
 #' \code{NULL}.
-#' @param example_data_size Optional large public example to prepare and load.
+#' @param extra_example_data Optional large public example to prepare and load.
 #'   Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
 #'   1,000,000-cell mouse-brain subset. Missing source data are downloaded from
 #'   10x Genomics, converted once, and then reused from the local cache.
@@ -95,7 +95,7 @@ launchCerebro <- function(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  example_data_size = NULL,
+  extra_example_data = NULL,
   example_data_dir = NULL,
   ...
 ) {
@@ -155,7 +155,7 @@ launchCerebro <- function(
   }
 
   large_example <- .prepareLargeExample(
-    example_data_size,
+    extra_example_data,
     example_data_dir
   )
   if (!is.null(large_example)) {
