@@ -34,8 +34,8 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     ),
     panel_c1 = list(
       name = "panel_c1",
-      export_repeats = 1L,
-      access_repeats = 1L,
+      export_repeats = 3L,
+      access_repeats = 2L,
       query_genes = 12L,
       hot_iterations = 3L,
       include_scale_tiers = FALSE,
