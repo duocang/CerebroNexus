@@ -1322,6 +1322,9 @@
     // sets where it is visible and affordable, and batching only kicks in past
     // the size where the frame cost dominates.
     var BATCH_MIN = 20000;
+    // Chromium can silently drop a Canvas path containing hundreds of
+    // thousands of arcs. Flush bounded paths so million-cell views still paint.
+    var PATH_ARC_LIMIT = 50000;
     // Ascending-value order for a continuous colouring; null (= natural order)
     // otherwise. In the batched path this also fixes the ORDER OF THE BUCKETS:
     // they are created as their first member is met, and object keys keep
@@ -1345,15 +1348,18 @@
           for (var col2 in buckets) {
             var idx = buckets[col2];
             c.fillStyle = col2;
-            c.beginPath();
-            for (var b = 0; b < idx.length; b++) {
-              var j = idx[b], rj = radiusOf(p, j);
-              c.moveTo(p.sx[j] + rj, p.sy[j]);
-              c.arc(p.sx[j], p.sy[j], rj, 0, 6.2832);
-            }
-            c.fill();
-            if (border) {
-              c.strokeStyle = border.color; c.lineWidth = border.width; c.stroke();
+            for (var start = 0; start < idx.length; start += PATH_ARC_LIMIT) {
+              var end = Math.min(start + PATH_ARC_LIMIT, idx.length);
+              c.beginPath();
+              for (var b = start; b < end; b++) {
+                var j = idx[b], rj = radiusOf(p, j);
+                c.moveTo(p.sx[j] + rj, p.sy[j]);
+                c.arc(p.sx[j], p.sy[j], rj, 0, 6.2832);
+              }
+              c.fill();
+              if (border) {
+                c.strokeStyle = border.color; c.lineWidth = border.width; c.stroke();
+              }
             }
           }
         }

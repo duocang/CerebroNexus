@@ -89,8 +89,13 @@ color_input_id <- function(variable, level) {
   }
   selected_path <- available_crb_files$selected
   configured_index <- match(selected_path, unname(configured_files))
-  dataset <- if (length(configured_index) == 1L && !is.na(configured_index)) {
-    names(configured_files)[[configured_index]]
+  configured_name <- names(configured_files)[configured_index]
+  dataset <- if (
+    length(configured_name) == 1L &&
+      !is.na(configured_name) &&
+      nzchar(configured_name)
+  ) {
+    configured_name
   } else {
     selected_path
   }
