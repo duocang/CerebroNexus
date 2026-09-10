@@ -26,8 +26,10 @@ schedule <- if (profile$name %in% c("panel_c1", "panel_c2")) {
 dir.create(dirname(result), recursive = TRUE, showWarnings = FALSE)
 utils::write.csv(schedule, result, row.names = FALSE)
 if (!is.null(tsv_result)) {
+  tsv_schedule <- schedule
+  tsv_schedule$n_cells <- sprintf("%.0f", tsv_schedule$n_cells)
   utils::write.table(
-    schedule,
+    tsv_schedule,
     tsv_result,
     sep = "\t",
     quote = FALSE,

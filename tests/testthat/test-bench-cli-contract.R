@@ -427,6 +427,37 @@ test_that("schedule CLI emits a complete quick-profile grid", {
   expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
 })
 
+test_that("Panel C1 TSV uses canonical integer cell counts", {
+  skip_unless_bench_cli()
+  csv <- tempfile(fileext = ".csv")
+  tsv <- tempfile(fileext = ".tsv")
+  on.exit(unlink(c(csv, tsv)), add = TRUE)
+
+  run <- run_bench_rscript(
+    "03_plan_runs.R",
+    c(csv, tsv),
+    env = "BENCH_PROFILE=panel_c1"
+  )
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+
+  cells <- vapply(
+    strsplit(readLines(tsv, warn = FALSE), "\t", fixed = TRUE),
+    `[[`,
+    character(1),
+    3L
+  )
+  expect_setequal(unique(cells), c("300000", "400000"))
+  expect_false(any(grepl("[eE][+-]", cells)))
+
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, 'if [ ! -f "$crb" ]; then', fixed = TRUE)
+  expect_match(sweep, "export succeeded but artifact is missing", fixed = TRUE)
+  expect_match(sweep, '"export-artifact",1\\n', fixed = TRUE)
+})
+
 test_that("manifest CLI records source revision and runtime", {
   skip_unless_bench_cli()
   result <- tempfile(fileext = ".csv")

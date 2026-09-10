@@ -173,37 +173,43 @@ for src in $SOURCES; do
       continue
     fi
 
-    if [ -f "$crb" ]; then
-      for access_repeat in $(seq 1 "$access_repeats"); do
-        echo "==> [$tag] access repeat $access_repeat/$access_repeats"
-        Rscript "$BENCH_ROOT/src/20_measure_backend.R" \
-          "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
-          "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
-          > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
-        rc=$?
-        tail -2 "$LOG_DIR/access_${tag}_a${access_repeat}.log" | sed 's/^/    /'
-        if [ "$rc" -ne 0 ]; then
-          echo "    !! access process died (exit $rc)"
-          printf '"%s","%s","%s",%s,"%s",%s,%s,"access-%s",%s\n' \
-            "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
-            "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
-        fi
-      done
+    if [ ! -f "$crb" ]; then
+      echo "    !! export succeeded but artifact is missing: $crb" >&2
+      printf '"%s","%s","%s",%s,"%s",%s,%s,"export-artifact",1\n' \
+        "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+        "$export_repeat" "$order_position" >> "$CRASH_CSV"
+      exit 1
+    fi
 
-      if [ "$BENCH_PROFILE" = "panel_c2" ] && [ "$export_repeat" = "1" ]; then
-        echo "==> [$tag] Viewer interaction gate"
-        Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
-          "$src" "$tier" "$backend" "$export_repeat" "$crb" \
-          "$VIEWER_CSV" "$query_plan" \
-          > "$LOG_DIR/viewer_$tag.log" 2>&1
-        rc=$?
-        tail -3 "$LOG_DIR/viewer_$tag.log" | sed 's/^/    /'
-        if [ "$rc" -ne 0 ]; then
-          echo "    !! Viewer process died (exit $rc)"
-          printf '"%s","%s","%s",%s,"%s",%s,%s,"viewer",%s\n' \
-            "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
-            "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
-        fi
+    for access_repeat in $(seq 1 "$access_repeats"); do
+      echo "==> [$tag] access repeat $access_repeat/$access_repeats"
+      Rscript "$BENCH_ROOT/src/20_measure_backend.R" \
+        "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
+        "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
+        > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
+      rc=$?
+      tail -2 "$LOG_DIR/access_${tag}_a${access_repeat}.log" | sed 's/^/    /'
+      if [ "$rc" -ne 0 ]; then
+        echo "    !! access process died (exit $rc)"
+        printf '"%s","%s","%s",%s,"%s",%s,%s,"access-%s",%s\n' \
+          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+          "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
+      fi
+    done
+
+    if [ "$BENCH_PROFILE" = "panel_c2" ] && [ "$export_repeat" = "1" ]; then
+      echo "==> [$tag] Viewer interaction gate"
+      Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
+        "$src" "$tier" "$backend" "$export_repeat" "$crb" \
+        "$VIEWER_CSV" "$query_plan" \
+        > "$LOG_DIR/viewer_$tag.log" 2>&1
+      rc=$?
+      tail -3 "$LOG_DIR/viewer_$tag.log" | sed 's/^/    /'
+      if [ "$rc" -ne 0 ]; then
+        echo "    !! Viewer process died (exit $rc)"
+        printf '"%s","%s","%s",%s,"%s",%s,%s,"viewer",%s\n' \
+          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+          "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
       fi
     fi
     if [ "${BENCH_KEEP:-0}" != "1" ]; then
