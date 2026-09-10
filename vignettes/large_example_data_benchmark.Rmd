@@ -1,0 +1,356 @@
+---
+title: "Reproduce the 1M-cell Viewer benchmark"
+author: "CerebroNexus contributors"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    self_contained: yes
+    mode: selfcontained
+vignette: >
+  %\VignetteIndexEntry{Reproduce the 1M-cell Viewer benchmark}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# Scope
+
+This vignette reproduces the large-data measurements used to evaluate
+`perf/pr1-backend-hot-paths`. It uses the official 10x Genomics E18 mouse
+brain matrix, retains exactly 1,000,000 cells, creates a BPCells-backed Seurat
+object and Cerebro file, and compares the Viewer before and after PR1.
+
+The benchmark has two layers:
+
+1. `tests/bench/pr1_large_data.R` measures filtering, sampling, hover
+   preparation and expression access directly in R.
+2. `tests/bench/pr1_large_browser.R` launches the real Shiny Viewer in Chrome,
+   waits for the 1M dataset and Overview Canvas, checks that the Canvas contains
+   plotted pixels, rejects browser errors, and records Shiny process memory.
+
+The scripts are the executable source of truth. This vignette explains their
+arguments and supplies complete shell commands rather than copying their
+implementation into a second place.
+
+# Compared revisions
+
+| Version | Revision | Meaning |
+|---|---|---|
+| Before | `master@892097a1` | PR #157 merge, without PR1 |
+| After | `perf/pr1-backend-hot-paths@f3358c1d` | PR1 rebased onto PR #157 |
+
+The intended branch stack is:
+
+```text
+master@892097a1
+└── perf/pr1-backend-hot-paths@f3358c1d
+    └── feat/large-example-data
+```
+
+Verify the ancestry from the `feat/large-example-data` checkout:
+
+```{bash}
+git merge-base --is-ancestor 892097a1 f3358c1d
+git merge-base --is-ancestor f3358c1d HEAD
+```
+
+Both commands exit with status zero when the stack is correct.
+
+# Requirements
+
+The reported run used:
+
+- Apple M1 Pro with 32 GiB RAM;
+- macOS 27.0;
+- R 4.6.1 on `aarch64`;
+- BPCells 0.3.1, Seurat 5.5.1, Shiny 1.14.0 and shinytest2 0.5.1;
+- a Chrome or Chromium browser discoverable by shinytest2;
+- at least 15 GB of free disk space for the source and reusable outputs.
+
+Run this preflight from the repository root. It only reports missing packages;
+it does not install or change anything.
+
+```{bash}
+Rscript - <<'RS'
+required <- c(
+  "BPCells", "devtools", "dplyr", "glue", "magrittr", "Matrix",
+  "ps", "Seurat", "SeuratObject", "shiny", "shinytest2"
+)
+missing <- required[
+  !vapply(required, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))
+]
+if (length(missing)) {
+  stop("Missing packages: ", paste(missing, collapse = ", "))
+}
+cat("Benchmark packages: OK\n")
+RS
+```
+
+# Prepare isolated comparison trees
+
+Do not switch the working checkout back and forth during a benchmark. Create
+two detached Git worktrees so the before and after versions coexist while both
+read the same CRB.
+
+Copy and run this block from the repository root:
+
+```{bash}
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+BENCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cerebronexus-pr1.XXXXXX")"
+BEFORE_ROOT="$BENCH_ROOT/before"
+AFTER_ROOT="$BENCH_ROOT/after"
+
+git worktree add --detach "$BEFORE_ROOT" 892097a1
+git worktree add --detach "$AFTER_ROOT" f3358c1d
+
+printf 'repository: %s\nbenchmark trees: %s\n' "$REPO_ROOT" "$BENCH_ROOT"
+```
+
+The browser benchmark passes a named dataset path to `launchCerebro()`, so
+both worktrees remain clean and require no compatibility patch.
+
+# Download and prepare the 1M example
+
+Choose a persistent cache location. Reusing it is important because preparation
+takes tens of minutes and the source H5 is about 4.2 GB.
+
+```{bash}
+export CEREBRO_LARGE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/CerebroNexus-benchmark"
+mkdir -p "$CEREBRO_LARGE_CACHE"
+df -h "$CEREBRO_LARGE_CACHE"
+```
+
+Run the complete download, Seurat sketch workflow and CRB conversion from the
+`feat/large-example-data` checkout:
+
+```{bash}
+cd "$REPO_ROOT"
+
+/usr/bin/time -l Rscript - <<'RS'
+devtools::load_all(".", quiet = TRUE)
+result <- .prepareLargeExample(
+  size = "1m",
+  cache_dir = Sys.getenv("CEREBRO_LARGE_CACHE")
+)
+print(result)
+RS
+```
+
+The preparation is resumable at artifact boundaries. A later call reuses a
+complete source, Seurat object or CRB instead of downloading and converting it
+again. Partial downloads are not published as complete cache files.
+
+Define and validate the resulting paths:
+
+```{bash}
+CRB="$CEREBRO_LARGE_CACHE/1m/cerebro/cerebro_mouse_brain_1m.crb"
+SIDECAR="${CRB%.crb}.bpcells"
+
+test -f "$CRB"
+test -d "$SIDECAR"
+du -sh "$CEREBRO_LARGE_CACHE/1m/source" \
+  "$CEREBRO_LARGE_CACHE/1m/seurat" \
+  "$CEREBRO_LARGE_CACHE/1m/cerebro"
+```
+
+The benchmarked artifact contained 1,000,000 cells, 27,998 genes, 33 clusters
+and one full 1,000,000-row UMAP. Preparation took 1,342.12 seconds and reached
+8.47 GiB maximum resident memory.
+
+| Artifact | Exact bytes |
+|---|---:|
+| Official source H5 | 4,216,018,749 |
+| Reusable Seurat output and BPCells sidecar | 3,778,378,648 |
+| CRB and BPCells sidecar | 3,765,141,671 |
+| CRB metadata file alone | 28,132,278 |
+
+All of these files remain in the selected cache. The large data are never
+added to Git.
+
+# Run the R hot-path benchmark
+
+The command-line interface is:
+
+```text
+pr1_large_data.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS]
+```
+
+Run three repetitions and save the tab-separated result:
+
+```{bash}
+Rscript "$REPO_ROOT/tests/bench/pr1_large_data.R" \
+  "$BEFORE_ROOT" \
+  "$AFTER_ROOT" \
+  "$CRB" \
+  3 \
+  > "$BENCH_ROOT/pr1_large_data.tsv"
+
+column -t -s $'\t' "$BENCH_ROOT/pr1_large_data.tsv"
+```
+
+For each operation the script:
+
+1. reads the same 1M-cell CRB and BPCells sidecar;
+2. sources the Viewer helpers from the before and after worktrees;
+3. warms each operation once;
+4. runs garbage collection before each timed repetition;
+5. reports the median elapsed time;
+6. records one R allocation profile with `Rprofmem()`; and
+7. stops immediately if the before and after results violate the operation's
+   equality or invariant check.
+
+The measured three-repetition medians were:
+
+| Operation | Scale | Before | After | Time | Before allocation | After allocation | Allocation |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Full projection selection | 1M cells, all groups, 100% | 222 ms | 4 ms | -98.2% | 206.7 MiB | 11.4 MiB | -94.5% |
+| Filtered projection selection | 1M cells, 17/33 clusters, 25% | 356 ms | 30 ms | -91.6% | 170.6 MiB | 43.3 MiB | -74.6% |
+| Hover preparation | 1M loaded, 100K displayed, 3 groups | 32,666 ms | 2,385 ms | -92.7% | 1,328.7 MiB | 56.3 MiB | -95.8% |
+| Single-gene expression | 1 gene x 1M cells, BPCells | 4,041 ms | 4,073 ms | +0.8% | 154.1 MiB | 169.3 MiB | +9.9% |
+| RGB expression | 3 genes x 1M cells | 12,285 ms | 4,067 ms | -66.9% | 461.4 MiB | 238.3 MiB | -48.4% |
+| Multi-panel expression | 9 genes x 1M cells | 4,336 ms | 4,272 ms | -1.5% | 562.3 MiB | 463.2 MiB | -17.6% |
+| Mean expression | 100 genes x 1M cells | 5,540 ms | 3,978 ms | -28.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
+
+`Rprofmem()` measures allocations known to R, not all native memory owned by
+BPCells or the operating system. The browser benchmark below therefore also
+records process RSS. The single-gene result is time-neutral in this run; the
+main expression gains come from batching RGB reads and keeping mean expression
+backend-native.
+
+# Run the browser loading benchmark
+
+The browser command-line interface is:
+
+```text
+pr1_large_browser.R BEFORE_ROOT AFTER_ROOT CRB [REPEATS] [PERCENT]
+```
+
+`PERCENT` is the percentage of cells drawn in Overview and must be between 10
+and 100. The reported before/after comparison uses 10, meaning that the real
+1M dataset is loaded while 100,000 points are drawn. Run:
+
+```{bash}
+Rscript "$REPO_ROOT/tests/bench/pr1_large_browser.R" \
+  "$BEFORE_ROOT" \
+  "$AFTER_ROOT" \
+  "$CRB" \
+  3 \
+  10 \
+  > "$BENCH_ROOT/pr1_large_browser.txt"
+
+cat "$BENCH_ROOT/pr1_large_browser.txt"
+```
+
+Each repetition performs the following checks and measurements:
+
+1. generates a temporary app that loads the selected Git revision;
+2. launches it through shinytest2 and Chrome;
+3. opens Data Info and waits until it reports exactly 1,000,000 cells;
+4. records `data_ready_ms`;
+5. opens Overview and waits for a non-zero Canvas;
+6. samples Canvas pixels and requires at least 1,000 non-white samples;
+7. rejects unexpected browser `error`, `fatal` or `unhandled` log messages;
+8. records the Shiny R process RSS; and
+9. alternates before/after execution order between rounds.
+
+The output has a `RAW` table with every run and a `SUMMARY` table containing
+the medians. The three-round result was:
+
+| Metric | Before median | After median | Change |
+|---|---:|---:|---:|
+| Data ready | 16,315 ms | 15,981 ms | -2.0% |
+| Overview Canvas ready | 46,609 ms | 19,102 ms | -59.0% |
+| Launch through painted Overview | 62,460 ms | 35,418 ms | -43.3% |
+| Shiny process RSS | 3,759.6 MiB | 2,160.3 MiB | -42.5% |
+
+A separate rerun from clean detached checkouts measured 64,033 ms and 3,530.4
+MiB before, versus 34,105 ms and 2,699.5 MiB after. Both versions painted the
+same 1301-by-594 Canvas with more than 31,000 sampled non-white pixels.
+
+# Validate full 1M-point Canvas rendering
+
+The 10% comparison isolates PR1 under the intended large-data default. To
+exercise the large-data feature's chunked Canvas path, run the feature checkout
+as both inputs and request 100% rendering:
+
+```{bash}
+Rscript "$REPO_ROOT/tests/bench/pr1_large_browser.R" \
+  "$REPO_ROOT" \
+  "$REPO_ROOT" \
+  "$CRB" \
+  2 \
+  100 \
+  > "$BENCH_ROOT/full_1m_canvas.txt"
+
+cat "$BENCH_ROOT/full_1m_canvas.txt"
+```
+
+This is a rendering acceptance check, not a PR1 before/after comparison. The
+measured runs painted all 1M UMAP points in 72.4 and 73.5 seconds, using
+4,616.7 and 4,368.5 MiB RSS.
+
+# Use the prepared example normally
+
+Launch it directly from the source checkout:
+
+```{r}
+devtools::load_all(".")
+
+launchCerebro(
+  example_data_size = "1m",
+  example_data_dir = Sys.getenv("CEREBRO_LARGE_CACHE"),
+  percentage_cells_to_show = 10
+)
+```
+
+Or package it together with other Cerebro datasets:
+
+```{r}
+devtools::load_all(".")
+
+createShinyApp(
+  cerebro_data = c("Small dataset" = "/absolute/path/small.crb"),
+  example_data_size = "1m",
+  example_data_dir = Sys.getenv("CEREBRO_LARGE_CACHE"),
+  result_dir = "/absolute/path/cerebro-large-app",
+  launch_browser = FALSE
+)
+```
+
+# Interpret and compare runs
+
+Use the medians, not a single fastest run. Keep the following fixed between
+versions:
+
+- CRB and BPCells sidecar;
+- display percentage and browser viewport;
+- R, package and browser versions;
+- machine power mode and competing workloads; and
+- number of repetitions.
+
+The first read may populate operating-system disk caches. Alternating browser
+order reduces, but does not eliminate, thermal and cache bias. Report the raw
+runs alongside medians, and do not describe a sub-percent difference as a
+speedup without additional repetitions.
+
+# Clean up comparison worktrees
+
+The cache is intentionally retained. Remove only the temporary Git worktrees
+after collecting the result files you need:
+
+```{bash}
+git -C "$REPO_ROOT" worktree remove "$BEFORE_ROOT"
+git -C "$REPO_ROOT" worktree remove "$AFTER_ROOT"
+```
+
+The benchmark result files remain under `$BENCH_ROOT`. Delete that temporary
+directory separately only after copying any results you want to keep.

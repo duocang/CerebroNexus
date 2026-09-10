@@ -2043,10 +2043,16 @@ dedent <- function(string) {
 #' images and their source-path ancestors must remain trusted and unchanged
 #' while the build is running; the target build lock does not protect inputs.
 #'
-#' @param cerebro_data Non-empty named character vector or list of \code{.crb}
-#'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
-#'   used as dataset labels. Every path must resolve to a distinct canonical
-#'   source file.
+#' @param cerebro_data Named character vector or list of \code{.crb} (or
+#'   \code{.rds}) file paths. Names must be non-missing and unique and are used
+#'   as dataset labels. Every path must resolve to a distinct canonical source
+#'   file. May be \code{NULL} only when \code{example_data_size} is supplied.
+#' @param example_data_size Optional large public example to prepare and append.
+#'   Use \code{"50k"} for a 50,000-cell PBMC subset or \code{"1m"} for a
+#'   1,000,000-cell mouse-brain subset. Missing source data are downloaded from
+#'   10x Genomics, converted once, and then reused from the local cache.
+#' @param example_data_dir Optional cache directory for downloaded source data,
+#'   the prepared Seurat object, and converted CRB. Defaults to a per-user cache.
 #' @param result_dir Output directory. Its basename must be portable, its path
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
@@ -2171,7 +2177,7 @@ dedent <- function(string) {
 #' @importFrom stats setNames
 #' @export
 createShinyApp <- function(
-  cerebro_data,
+  cerebro_data = NULL,
   result_dir = NULL,
   max_request_size = 8000,
   port = 8080,
@@ -2202,8 +2208,18 @@ createShinyApp <- function(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
+  example_data_size = NULL,
+  example_data_dir = NULL,
   initial_page = NULL
 ) {
+  large_example <- .prepareLargeExample(
+    example_data_size,
+    example_data_dir
+  )
+  if (!is.null(large_example)) {
+    cerebro_data <- c(cerebro_data, large_example)
+  }
+
   # Validate inputs ----------------------------------------------------------##
   if (is.list(cerebro_data)) {
     valid_entries <- vapply(

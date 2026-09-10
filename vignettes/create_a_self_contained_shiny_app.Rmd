@@ -67,11 +67,37 @@ Launch it locally:
 shiny::runApp(out_dir)
 ```
 
+# Optional 50K and 1M examples
+
+Set `example_data_size` only when you want CerebroNexus to obtain and prepare a
+large public example. `"50k"` uses exactly 50,000 cells from the 10x Fresh 68k
+PBMC Donor A data. `"1m"` uses exactly 1,000,000 cells from the 10x E18 mouse
+brain data. Source matrices are downloaded from 10x Genomics. Seurat's sketch
+workflow computes clusters and a UMAP for
+all retained cells before conversion to a disk-backed Seurat object and BPCells
+CRB; all artifacts are cached for later calls.
+
+```{r, eval=FALSE}
+createShinyApp(
+  cerebro_data = NULL,
+  example_data_size = "50k",
+  result_dir = "cerebro_50k_app",
+  launch_browser = FALSE
+)
+```
+
+The 50K tier downloads about 119 MB and uses roughly 1 GB of cache after
+preparation. The 1M tier downloads about 4.2 GB, uses roughly 11 GB of cache,
+and needs substantial processing time. Both tiers require Seurat, SeuratObject,
+and BPCells. Override `example_data_dir` to keep the reusable cache in a chosen
+location. No download occurs when `example_data_size = NULL`.
+
 # Common parameters
 
 | argument | purpose |
 |---|---|
 | `cerebro_data` | named vector/list of `.crb` (or `.rds`) paths; labels and resolved source files must both be unique |
+| `example_data_size`, `example_data_dir` | optionally prepare `"50k"` or `"1m"` public data in the default or chosen cache |
 | `result_dir` | output directory (required; portable basename outside the reserved lock namespace) |
 | `overwrite` | replace `result_dir` after a complete staged build; with `FALSE`, the destination must be absent or empty |
 | `max_request_size` | finite positive numeric request cap in MB; defaults to `8000`; closed Viewers use at most 6 MiB |

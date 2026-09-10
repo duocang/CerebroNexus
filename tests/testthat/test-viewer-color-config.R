@@ -157,3 +157,15 @@ test_that("manual colours are isolated by loaded data set", {
     )
   })
 })
+
+test_that("manual colour IDs support an unnamed launch file", {
+  scope <- new.env(parent = globalenv())
+  scope$Cerebro.options <- list(crb_file_to_load = "/data/atlas.crb")
+  scope$available_crb_files <- list(selected = "/data/atlas.crb")
+  sys.source(viewer_test_path("color_setup.R"), envir = scope)
+
+  expect_match(
+    scope$color_input_id("cluster", "1"),
+    "^color_[[:xdigit:]]+_[[:xdigit:]]+_[[:xdigit:]]+$"
+  )
+})

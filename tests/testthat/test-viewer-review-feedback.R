@@ -326,6 +326,22 @@ test_that("Standalone cell views cannot enter linked-view focus", {
   expect_match(js, "if (!canFocusPanel()) return;", fixed = TRUE)
 })
 
+test_that("large Canvas scatter paths are flushed in bounded chunks", {
+  javascript <- viewer_source("www", "cell_views.js")
+
+  expect_match(javascript, "var PATH_ARC_LIMIT = 50000;", fixed = TRUE)
+  expect_match(
+    javascript,
+    "start += PATH_ARC_LIMIT",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "Math.min(start + PATH_ARC_LIMIT, idx.length)",
+    fixed = TRUE
+  )
+})
+
 test_that("Standalone cell-view toolbars reach the panel top-right", {
   css <- viewer_source("www", "coordviews.css")
   expect_match(

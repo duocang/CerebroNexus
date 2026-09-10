@@ -79,7 +79,8 @@ or \code{"h5"}. See \code{\link{exportFromSeurat}} for details; briefly,
 \code{"embedded"} stores the matrix inside the \code{.crb} (legacy
 behaviour), \code{"bpcells"} writes an on-disk BPCells directory next to
 the \code{.crb} and keeps a lightweight handle inside it (typically
-reduces \code{.crb} size by ~80% on large sparse matrices), and
+reduces \code{.crb} size by ~80% on large sparse matrices); a BPCells-backed
+Seurat layer streams directly to this backend without being materialised.
 \code{"h5"} writes a TENx-format HDF5 file next to the \code{.crb}
 that the Shiny runtime loads lazily, minimising RAM and startup time
 (recommended default for large datasets). The Shiny runtime
