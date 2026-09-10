@@ -783,6 +783,7 @@ test_that("IR fill layout survives tab activation and responsive resize", {
     ),
     timeout = 10000
   )
+  app$wait_for_idle(timeout = 10000)
   card_before <- app$get_js(paste0(
     "(() => {const r=document.querySelector('#shiny-tab-overview ",
     ".cerebro-selection-composition-slot').getBoundingClientRect();",
