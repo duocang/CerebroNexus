@@ -312,14 +312,7 @@ viewerExpressionValues <- function(data_set, cells, genes) {
     return(list())
   }
   if (is.null(dim(expression_matrix))) {
-    if (length(genes) != 1L) {
-      return(list())
-    }
-    expression_matrix <- matrix(
-      as.numeric(expression_matrix),
-      nrow = 1L,
-      dimnames = list(genes, NULL)
-    )
+    return(list())
   }
 
   gene_names <- rownames(expression_matrix)

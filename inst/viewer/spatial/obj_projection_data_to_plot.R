@@ -14,6 +14,11 @@ spatial_projection_data_to_plot_raw <- reactive({
   )
   metadata <- spatial_projection_metadata()
   plot_parameters <- spatial_projection_parameters_plot()
+  cells_to_extract <- if ("cell_barcode" %in% colnames(metadata)) {
+    metadata$cell_barcode
+  } else {
+    rownames(metadata)
+  }
 
   ## Handle ImageFeaturePlot (add gene expression data)
   if (
@@ -22,12 +27,6 @@ spatial_projection_data_to_plot_raw <- reactive({
   ) {
     gene <- plot_parameters$feature_to_display
     if (gene %in% getGeneNames()) {
-      # Use cell_barcode column if available, otherwise fallback to rownames
-      if ("cell_barcode" %in% colnames(metadata)) {
-        cells_to_extract <- metadata$cell_barcode
-      } else {
-        cells_to_extract <- rownames(metadata)
-      }
       expr_values <- viewerExpressionRow(
         data_set(),
         cells_to_extract,
@@ -42,11 +41,6 @@ spatial_projection_data_to_plot_raw <- reactive({
   ## Co-expression: pull each channel's gene expression into metadata columns
   ## keyed by a stable channel name, so the renderer can blend them onto RGB.
   if (plot_parameters$plot_type == "Co-expression (RGB)") {
-    if ("cell_barcode" %in% colnames(metadata)) {
-      cells_to_extract <- metadata$cell_barcode
-    } else {
-      cells_to_extract <- rownames(metadata)
-    }
     ## Use a list, not c(): an empty channel is NULL, and c() would DROP it and
     ## shift the remaining names, misaligning genes to channels.
     coexpr_genes <- list(

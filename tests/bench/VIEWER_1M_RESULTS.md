@@ -7,10 +7,12 @@ Measured on 2026-09-10 with the official 10x 1M neurons dataset.
 | Version | Revision | Notes |
 | --- | --- | --- |
 | Baseline | `892097a1` | Reference revision |
-| Candidate | `f3358c1d` | Optimized revision |
+| Candidate | `f3358c1d` | Measured optimized revision |
 
-The measured detached worktrees differed only by the optimized changes. The browser benchmark
-passes a named CRB path, so clean checkouts of both revisions run unchanged.
+These hashes identify the revisions used for the retained measurements, not the
+branch's current HEAD. The measured detached worktrees differed only by the
+optimized changes. The browser benchmark passes a named CRB path, so clean
+checkouts of both revisions run unchanged.
 
 ## Dataset preparation
 

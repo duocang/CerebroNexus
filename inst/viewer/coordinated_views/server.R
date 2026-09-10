@@ -182,13 +182,14 @@ cv_config_validate_genes <- function(config, cells) {
       "The configuration uses a gene that is unavailable here."
     )
   }
-  values <- lapply(requested, cv_gene_values, cells = cells)
-  if (any(vapply(values, is.null, logical(1)))) {
+  values <- cv_gene_values_many(requested, cells)
+  if (!all(requested %in% names(values))) {
     cv_config_abort(
       "missing_gene",
       "The configuration uses a gene that is unavailable here."
     )
   }
+  values <- values[requested]
   if (identical(colour$mode, "__gene_panels__")) {
     return(cv_gene_panels_payload(requested, values))
   }
@@ -657,11 +658,6 @@ cv_gene_values_many <- function(genes, cells) {
     value[is.na(value)] <- 0
     value
   })
-}
-
-cv_gene_values <- function(gene, cells) {
-  values <- cv_gene_values_many(gene, cells)
-  if (!length(values)) NULL else values[[1L]]
 }
 
 cv_scale_gene_values <- function(v) {
