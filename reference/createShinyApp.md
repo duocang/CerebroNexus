@@ -10,7 +10,7 @@ The output directory can be served directly by shiny-server or run with
 
 ``` r
 createShinyApp(
-  cerebro_data = NULL,
+  cerebro_data,
   result_dir = NULL,
   max_request_size = 8000,
   port = 8080,
@@ -41,8 +41,6 @@ createShinyApp(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  example_data_size = NULL,
-  example_data_dir = NULL,
   initial_page = NULL
 )
 ```
@@ -51,10 +49,9 @@ createShinyApp(
 
 - cerebro_data:
 
-  Named character vector or list of `.crb` (or `.rds`) file paths. Names
-  must be non-missing and unique and are used as dataset labels. Every
-  path must resolve to a distinct canonical source file. May be `NULL`
-  only when `example_data_size` is supplied.
+  Non-empty named character vector or list of `.crb` (or `.rds`) file
+  paths. Names must be non-missing and unique and are used as dataset
+  labels. Every path must resolve to a distinct canonical source file.
 
 - result_dir:
 
@@ -127,6 +124,19 @@ createShinyApp(
 
   One non-missing logical controlling whether users may upload their own
   data; defaults to `FALSE`.
+
+- initial_page:
+
+  Optional initial Viewer page. Supported stable IDs are `"data_info"`,
+  `"projection"`, `"linked_views"`, `"groups"`, `"marker_genes"`,
+  `"most_expressed_genes"`, `"enriched_pathways"`, `"extra_material"`,
+  `"immune_repertoire"`, `"trajectory"`, `"spatial"`, `"trekker"`,
+  `"hla_tcr_motifs"`, `"gene_expression"`, `"gene_id_conversion"`,
+  `"color_management"`, and `"about"`. A conditional page is selected
+  only when it is available for the first loaded dataset. Initial
+  routing is attempted only once, so switching datasets later never
+  triggers a delayed redirect. Shared links take precedence after
+  restoration.
 
 - welcome_message:
 
@@ -233,31 +243,6 @@ createShinyApp(
   labels. Each entry maps displayed names to source sheet names;
   unmapped sheets remain available.
 
-- initial_page:
-
-  Optional initial Viewer page. Supported stable IDs are `"data_info"`,
-  `"projection"`, `"linked_views"`, `"groups"`, `"marker_genes"`,
-  `"most_expressed_genes"`, `"enriched_pathways"`, `"extra_material"`,
-  `"immune_repertoire"`, `"trajectory"`, `"spatial"`, `"trekker"`,
-  `"hla_tcr_motifs"`, `"gene_expression"`, `"gene_id_conversion"`,
-  `"color_management"`, and `"about"`. A conditional page is selected
-  only when it is available for the first loaded dataset. Initial
-  routing is attempted only once, so switching datasets later never
-  triggers a delayed redirect. Shared links take precedence after
-  restoration.
-
-- example_data_size:
-
-  Optional large public example to prepare and append. Use `"50k"` for a
-  50,000-cell PBMC subset or `"1m"` for a 1,000,000-cell mouse-brain
-  subset. Missing source data are downloaded from 10x Genomics,
-  converted once, and then reused from the local cache.
-
-- example_data_dir:
-
-  Optional cache directory for downloaded source data, the prepared
-  Seurat object, and converted CRB. Defaults to a per-user cache.
-
 ## Value
 
 Invisibly returns `result_dir`. If that path changes resolution during
@@ -288,14 +273,12 @@ unsupported mixed format. Dataset labels and canonical CRB sources are
 both unique: two labels cannot select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global `Cerebro.options` does not provide same-process
-isolation between separately sourced apps.
-
-Launch settings are validated and frozen in a typed internal manifest
-before target preparation. The generated `app.R` reads that manifest
-instead of interpolating user values into source, and the staged source
-is parsed before publication. The upload limit is installed as
-`shiny.maxRequestSize` while the app is running and the previous process
-option is restored when the app stops.
+isolation between separately sourced apps. Launch settings are validated
+and frozen in a typed internal manifest before target preparation. The
+generated `app.R` reads that manifest instead of interpolating user
+values into source, and the staged source is parsed before publication.
+The upload limit is installed as `shiny.maxRequestSize` while the app is
+running and the previous process option is restored when the app stops.
 
 A configured runtime matrix override keeps its existing precedence and
 skips the descriptor sidecar copy. It must be an absolute path. Native

@@ -15,7 +15,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -40,7 +40,6 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
-    <li><a class="dropdown-item" href="../articles/large_example_data_benchmark.html">Reproduce the 1M-cell Viewer benchmark</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -78,7 +77,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained CerebroNexus Shiny app folder</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr2-viewer-interactions/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -93,7 +92,7 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">createShinyApp</span><span class="op">(</span></span>
-<span>  cerebro_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">cerebro_data</span>,</span>
 <span>  result_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  max_request_size <span class="op">=</span> <span class="fl">8000</span>,</span>
 <span>  port <span class="op">=</span> <span class="fl">8080</span>,</span>
@@ -124,8 +123,6 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 <span>  auth <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  extra_tables <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  extra_tables_sheets <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  example_data_size <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  example_data_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  initial_page <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -135,10 +132,10 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 
 
 <dl><dt id="arg-cerebro-data">cerebro_data<a class="anchor" aria-label="anchor" href="#arg-cerebro-data"></a></dt>
-<dd><p>Named character vector or list of <code>.crb</code> (or
-<code>.rds</code>) file paths. Names must be non-missing and unique and are used
-as dataset labels. Every path must resolve to a distinct canonical source
-file. May be <code>NULL</code> only when <code>example_data_size</code> is supplied.</p></dd>
+<dd><p>Non-empty named character vector or list of <code>.crb</code>
+(or <code>.rds</code>) file paths. Names must be non-missing and unique and are
+used as dataset labels. Every path must resolve to a distinct canonical
+source file.</p></dd>
 
 
 <dt id="arg-result-dir">result_dir<a class="anchor" aria-label="anchor" href="#arg-result-dir"></a></dt>
@@ -210,6 +207,20 @@ directory is rejected before any files are written.</p></dd>
 <dt id="arg-show-upload-ui">show_upload_ui<a class="anchor" aria-label="anchor" href="#arg-show-upload-ui"></a></dt>
 <dd><p>One non-missing logical controlling whether users may
 upload their own data; defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-initial-page">initial_page<a class="anchor" aria-label="anchor" href="#arg-initial-page"></a></dt>
+<dd><p>Optional initial Viewer page. Supported stable IDs are
+<code>"data_info"</code>, <code>"projection"</code>, <code>"linked_views"</code>,
+<code>"groups"</code>, <code>"marker_genes"</code>, <code>"most_expressed_genes"</code>,
+<code>"enriched_pathways"</code>, <code>"extra_material"</code>,
+<code>"immune_repertoire"</code>, <code>"trajectory"</code>, <code>"spatial"</code>,
+<code>"trekker"</code>, <code>"hla_tcr_motifs"</code>, <code>"gene_expression"</code>,
+<code>"gene_id_conversion"</code>, <code>"color_management"</code>, and
+<code>"about"</code>. A conditional page is selected only when it is available for
+the first loaded dataset. Initial routing is attempted only once, so switching
+datasets later never triggers a delayed redirect. Shared links take precedence
+after restoration.</p></dd>
 
 
 <dt id="arg-welcome-message">welcome_message<a class="anchor" aria-label="anchor" href="#arg-welcome-message"></a></dt>
@@ -305,7 +316,6 @@ created by <code><a href="https://rdrr.io/pkg/shinymanager/man/create_db.html" c
 the name of the environment variable containing its passphrase. Optional
 <code>timeout_minutes</code> defaults to 15.</p></dd>
 
-
 <dt id="arg-extra-tables">extra_tables<a class="anchor" aria-label="anchor" href="#arg-extra-tables"></a></dt>
 <dd><p>Optional named collection of CSV, TSV, TXT, XLS, XLSX,
 or XLSM files to bundle as private Extra material tables. Workbook sheets
@@ -316,33 +326,6 @@ are listed separately and loaded only when selected in the Viewer.</p></dd>
 <dd><p>Optional named list of Excel sheet renames keyed
 by <code>extra_tables</code> labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.</p></dd>
-
-
-<dt id="arg-initial-page">initial_page<a class="anchor" aria-label="anchor" href="#arg-initial-page"></a></dt>
-<dd><p>Optional initial Viewer page. Supported stable IDs are
-<code>"data_info"</code>, <code>"projection"</code>, <code>"linked_views"</code>,
-<code>"groups"</code>, <code>"marker_genes"</code>,
-<code>"most_expressed_genes"</code>, <code>"enriched_pathways"</code>,
-<code>"extra_material"</code>, <code>"immune_repertoire"</code>,
-<code>"trajectory"</code>, <code>"spatial"</code>, <code>"trekker"</code>,
-<code>"hla_tcr_motifs"</code>, <code>"gene_expression"</code>,
-<code>"gene_id_conversion"</code>, <code>"color_management"</code>, and
-<code>"about"</code>. A conditional page is selected only when it is available
-for the first loaded dataset. Initial routing is attempted only once, so
-switching datasets later never triggers a delayed redirect. Shared links
-take precedence after restoration.</p></dd>
-
-
-<dt id="arg-example-data-size">example_data_size<a class="anchor" aria-label="anchor" href="#arg-example-data-size"></a></dt>
-<dd><p>Optional large public example to prepare and append.
-Use <code>"50k"</code> for a 50,000-cell PBMC subset or <code>"1m"</code> for a
-1,000,000-cell mouse-brain subset. Missing source data are downloaded from
-10x Genomics, converted once, and then reused from the local cache.</p></dd>
-
-
-<dt id="arg-example-data-dir">example_data_dir<a class="anchor" aria-label="anchor" href="#arg-example-data-dir"></a></dt>
-<dd><p>Optional cache directory for downloaded source data,
-the prepared Seurat object, and converted CRB. Defaults to a per-user cache.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -376,8 +359,8 @@ Dataset labels and canonical CRB sources are both unique: two labels cannot
 select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global <code>Cerebro.options</code> does not provide same-process
-isolation between separately sourced apps.</p>
-<p>Launch settings are validated and frozen in a typed internal manifest before
+isolation between separately sourced apps.
+Launch settings are validated and frozen in a typed internal manifest before
 target preparation. The generated <code>app.R</code> reads that manifest instead of
 interpolating user values into source, and the staged source is parsed before
 publication. The upload limit is installed as

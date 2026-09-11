@@ -1,23 +1,13 @@
 # Changelog
 
-## CerebroNexus 4.4.4
-
-### Performance
-
-- Viewer startup, hover lookup, specialist payloads, Canvas updates and
-  Spatial caches avoid repeated work on large datasets.
-- The 1M-cell benchmark documents separate backend, Viewer interaction
-  and cumulative comparisons with reproducible commands.
-
 ## CerebroNexus 4.4.3
 
-### Performance
+### Viewer
 
-- Viewer filtering, sampling, expression access, and mean calculations
-  avoid unnecessary dense copies while preserving sparse and on-disk
-  backends.
-- Reproducible 50K- and 1M-cell examples document runtime and memory
-  changes against public 10x Genomics data.
+- Visualization pages use compact, consistent controls and selection
+  actions to leave more room for plots without layout shifts.
+- Legends, action buttons, and Immune Repertoire/HLA tabs share
+  consistent styling.
 
 ## CerebroNexus 4.4.2
 

@@ -17,8 +17,6 @@ launchCerebro(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  example_data_size = NULL,
-  example_data_dir = NULL,
   ...
 )
 ```
@@ -97,18 +95,6 @@ launchCerebro(
 
   Show hover infos in projections. This setting can be changed in the
   UI; defaults to TRUE.
-
-- example_data_size:
-
-  Optional large public example to prepare and load. Use `"50k"` for a
-  50,000-cell PBMC subset or `"1m"` for a 1,000,000-cell mouse-brain
-  subset. Missing source data are downloaded from 10x Genomics,
-  converted once, and then reused from the local cache.
-
-- example_data_dir:
-
-  Optional cache directory for downloaded source data, the prepared
-  Seurat object, and converted CRB. Defaults to a per-user cache.
 
 - ...:
 

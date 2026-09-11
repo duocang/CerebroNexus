@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,7 +32,6 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
-    <li><a class="dropdown-item" href="../articles/large_example_data_benchmark.html">Reproduce the 1M-cell Viewer benchmark</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -70,7 +69,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Launch CerebroNexus</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr2-viewer-interactions/R/launchCerebro.R" class="external-link"><code>R/launchCerebro.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/launchCerebro.R" class="external-link"><code>R/launchCerebro.R</code></a></small>
       <div class="d-none name"><code>launchCerebro.Rd</code></div>
     </div>
 
@@ -92,8 +91,6 @@
 <span>  point_opacity <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  percentage_cells_to_show <span class="op">=</span> <span class="fl">100</span>,</span>
 <span>  projections_show_hover_info <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  example_data_size <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  example_data_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -174,18 +171,6 @@ defaults to 100.</p></dd>
 <dt id="arg-projections-show-hover-info">projections_show_hover_info<a class="anchor" aria-label="anchor" href="#arg-projections-show-hover-info"></a></dt>
 <dd><p>Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.</p></dd>
-
-
-<dt id="arg-example-data-size">example_data_size<a class="anchor" aria-label="anchor" href="#arg-example-data-size"></a></dt>
-<dd><p>Optional large public example to prepare and load.
-Use <code>"50k"</code> for a 50,000-cell PBMC subset or <code>"1m"</code> for a
-1,000,000-cell mouse-brain subset. Missing source data are downloaded from
-10x Genomics, converted once, and then reused from the local cache.</p></dd>
-
-
-<dt id="arg-example-data-dir">example_data_dir<a class="anchor" aria-label="anchor" href="#arg-example-data-dir"></a></dt>
-<dd><p>Optional cache directory for downloaded source data,
-the prepared Seurat object, and converted CRB. Defaults to a per-user cache.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
