@@ -54,6 +54,118 @@ test_that("file and example adapters converge after loading", {
   expect_identical(from_example$source$type, "example")
 })
 
+test_that("plain RDS and QS2 sources become immutable snapshots without reserialization", {
+  root <- withr::local_tempdir()
+  writers <- list(
+    rds = function(object, path) saveRDS(object, path)
+  )
+  if (requireNamespace("qs2", quietly = TRUE)) {
+    writers$qs2 <- function(object, path) qs2::qs_save(object, path)
+  }
+
+  for (format in names(writers)) {
+    source <- file.path(root, paste0("source.", format))
+    writers[[format]](SeuratObject::pbmc_small, source)
+    inspected <- builder_adapter_inspect(
+      builder_seurat_retained_file_adapter(source)
+    )
+    expect_identical(
+      inspected$snapshot_source$source_md5,
+      unname(tools::md5sum(source))
+    )
+    frozen <- .builder_snapshot_seurat_impl(
+      inspected$object,
+      file.path(root, paste0(format, ".snapshot")),
+      available_bytes = 2^40,
+      source = inspected$snapshot_source
+    )
+
+    expect_identical(frozen$snapshot$serialization, format)
+    expect_identical(
+      unname(tools::md5sum(frozen$snapshot$object_file)),
+      unname(tools::md5sum(source))
+    )
+    expect_identical(
+      builder_open_snapshot(frozen$snapshot),
+      inspected$object
+    )
+    if (identical(format, "rds")) {
+      legacy <- frozen$snapshot
+      legacy$serialization <- NULL
+      marker_path <- .builder_snapshot_marker_path(legacy$path)
+      marker <- readRDS(marker_path)
+      marker$serialization <- NULL
+      saveRDS(marker, marker_path)
+      expect_true(.builder_snapshot_owned(legacy))
+      expect_identical(builder_open_snapshot(legacy), inspected$object)
+    }
+    changed_loader <- frozen$snapshot
+    changed_loader$serialization <- if (format == "rds") "qs2" else "rds"
+    expect_false(.builder_snapshot_owned(changed_loader))
+  }
+
+  saveRDS(1L, .builder_snapshot_marker_path(frozen$snapshot$path))
+  expect_false(.builder_snapshot_owned(frozen$snapshot))
+})
+
+test_that("retained snapshots reserve disk headroom before copying", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source.rds")
+  saveRDS(SeuratObject::pbmc_small, source)
+  inspected <- builder_adapter_inspect(
+    builder_seurat_retained_file_adapter(source)
+  )
+  copied <- FALSE
+  runtime <- environment(.builder_snapshot_seurat_impl)
+  original_copy <- .builder_snapshot_copy
+  assign(
+    ".builder_snapshot_copy",
+    function(...) {
+      copied <<- TRUE
+      original_copy(...)
+    },
+    envir = runtime
+  )
+  on.exit(
+    assign(".builder_snapshot_copy", original_copy, envir = runtime),
+    add = TRUE
+  )
+
+  expect_error(
+    .builder_snapshot_seurat_impl(
+      inspected$object,
+      file.path(root, "snapshot"),
+      available_bytes = file.info(source)$size + 1024^3 - 1,
+      source = inspected$snapshot_source
+    ),
+    "1 GiB"
+  )
+  expect_false(copied)
+  expect_false(dir.exists(file.path(root, "snapshot")))
+  expect_invisible(.builder_snapshot_check_budget(
+    8000 * 1024^2,
+    10000 * 1024^2
+  ))
+})
+
+test_that("snapshot opening rejects a marker changed after ownership validation", {
+  root <- withr::local_tempdir()
+  snapshot <- builder_snapshot_seurat(
+    SeuratObject::pbmc_small,
+    file.path(root, "snapshot"),
+    available_bytes = 2^40
+  )
+  runtime <- environment(builder_open_snapshot)
+  original <- .builder_snapshot_marker
+  assign(".builder_snapshot_marker", function(snapshot) 1L, envir = runtime)
+  on.exit(
+    assign(".builder_snapshot_marker", original, envir = runtime),
+    add = TRUE
+  )
+
+  expect_error(builder_open_snapshot(snapshot), "integrity check failed")
+})
+
 test_that("file adapters clear a materialized stale cache without executing it", {
   object <- SeuratObject::pbmc_small
   sentinel <- file.path(withr::local_tempdir(), "sentinel")
@@ -77,6 +189,7 @@ test_that("file adapters clear a materialized stale cache without executing it",
   inspected <- builder_adapter_inspect(builder_seurat_file_adapter(path))
   expect_s4_class(inspected$object, "Seurat")
   expect_null(.builder_saved_cache(inspected$object))
+  expect_null(inspected$snapshot_source)
   expect_false(file.exists(sentinel))
 })
 
@@ -173,6 +286,20 @@ test_that("adapter inputs fail closed", {
   expect_error(builder_example_adapter("", SeuratObject::pbmc_small), "id")
   expect_error(builder_example_adapter("bad", list()), "Seurat")
   expect_error(builder_adapter_inspect(list()), "adapter")
+
+  path <- file.path(withr::local_tempdir(), "source.rds")
+  saveRDS(SeuratObject::pbmc_small, path)
+  changed_format <- builder_seurat_file_adapter(path)
+  changed_format$reader$id <- "qs2"
+  expect_error(
+    builder_adapter_inspect(changed_format),
+    "format adapter changed"
+  )
+  changed_format$location <- NULL
+  expect_error(
+    builder_adapter_inspect(changed_format),
+    "format adapter changed"
+  )
 })
 
 test_that("file adapters reject sources replaced after adapter creation", {
@@ -189,12 +316,25 @@ test_that("file adapters reject sources changed while they are read", {
   root <- withr::local_tempdir()
   path <- file.path(root, "source.rds")
   saveRDS(SeuratObject::pbmc_small, path)
-  adapter <- builder_seurat_file_adapter(path)
+  adapter <- builder_seurat_retained_file_adapter(path)
+  original_mtime <- file.info(path)$mtime
   adapter_env <- environment(builder_adapter_inspect)
   original <- .builder_adapter_after_read
   assign(
     ".builder_adapter_after_read",
-    function(adapter) writeBin(charToRaw("changed"), adapter$location),
+    function(adapter) {
+      bytes <- readBin(
+        adapter$location,
+        what = "raw",
+        n = file.info(adapter$location)$size
+      )
+      bytes[[length(bytes)]] <- as.raw(bitwXor(
+        as.integer(bytes[[length(bytes)]]),
+        1L
+      ))
+      writeBin(bytes, adapter$location)
+      Sys.setFileTime(adapter$location, original_mtime)
+    },
     envir = adapter_env
   )
   on.exit(

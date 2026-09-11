@@ -347,6 +347,23 @@ builder_release_control_path <- function(target) {
   snapshot
 }
 
+.builder_release_digest_cache_key <- function(snapshot) {
+  numeric <- c(
+    "size",
+    "device_id",
+    "inode",
+    "hard_links",
+    "modification_time",
+    "change_time"
+  )
+  paste(
+    snapshot$type,
+    snapshot$permissions,
+    vapply(snapshot[numeric], function(value) sprintf("%.17g", value), ""),
+    collapse = "\034"
+  )
+}
+
 .builder_release_payload_md5_valid <- function(md5) {
   is.character(md5) &&
     length(md5) == 1L &&
@@ -373,7 +390,8 @@ builder_release_control_path <- function(target) {
 builder_release_identity <- function(
   target,
   .list_directory = .builder_release_list_directory,
-  .hash_file = .builder_release_payload_md5
+  .hash_file = .builder_release_payload_md5,
+  .digest_cache = NULL
 ) {
   target <- .builder_release_path(target)
   if (!.builder_release_exists(target)) {
@@ -439,13 +457,28 @@ builder_release_identity <- function(
       ))
     }
     before <- .builder_release_payload_snapshot(path)
-    md5 <- tryCatch(.hash_file(path), error = function(error) NA_character_)
+    cache_key <- if (is.environment(.digest_cache)) {
+      .builder_release_digest_cache_key(before)
+    } else {
+      NULL
+    }
+    md5 <- if (
+      !is.null(cache_key) &&
+        exists(cache_key, envir = .digest_cache, inherits = FALSE)
+    ) {
+      get(cache_key, envir = .digest_cache, inherits = FALSE)
+    } else {
+      tryCatch(.hash_file(path), error = function(error) NA_character_)
+    }
     if (!.builder_release_payload_md5_valid(md5)) {
       stop("A release payload could not be read safely.", call. = FALSE)
     }
     after <- .builder_release_payload_snapshot(path)
     if (!identical(before, after)) {
       stop("The release changed while its identity was read.", call. = FALSE)
+    }
+    if (!is.null(cache_key)) {
+      assign(cache_key, md5, envir = .digest_cache)
     }
     list(
       path = gsub("\\", "/", relative[[index]], fixed = TRUE),
@@ -679,7 +712,8 @@ builder_release_identity <- function(
   identity,
   token,
   .move = file.rename,
-  .after_create = function(temporary) invisible(NULL)
+  .after_create = function(temporary) invisible(NULL),
+  .digest_cache = NULL
 ) {
   target <- .builder_release_path(target)
   if (
@@ -832,7 +866,10 @@ builder_release_identity <- function(
       ) {
         .builder_release_record_error("changed during publication.")
       }
-      final_identity <- builder_release_identity(target)
+      final_identity <- builder_release_identity(
+        target,
+        .digest_cache = .digest_cache
+      )
       published <- .builder_release_read_record(
         target,
         final_identity,
@@ -864,9 +901,10 @@ builder_release_identity <- function(
 builder_release_state <- function(
   target,
   exact_record = TRUE,
-  allow_abandoned = FALSE
+  allow_abandoned = FALSE,
+  .digest_cache = NULL
 ) {
-  identity <- builder_release_identity(target)
+  identity <- builder_release_identity(target, .digest_cache = .digest_cache)
   record <- if (isTRUE(identity$exists)) {
     .builder_release_read_record(
       target,
@@ -877,7 +915,10 @@ builder_release_state <- function(
   } else {
     NULL
   }
-  confirmed_identity <- builder_release_identity(target)
+  confirmed_identity <- builder_release_identity(
+    target,
+    .digest_cache = .digest_cache
+  )
   if (!identical(confirmed_identity, identity)) {
     stop("The release changed while its snapshot was read.", call. = FALSE)
   }
@@ -1540,8 +1581,12 @@ builder_publish_release <- function(
   .move = file.rename,
   .after_phase = function(phase) invisible(NULL),
   .after_move = function(move) invisible(NULL),
-  .verify_payload = function(root, phase) TRUE
+  .verify_payload = function(root, phase) TRUE,
+  .digest_cache = NULL
 ) {
+  if (is.null(.digest_cache)) {
+    .digest_cache <- new.env(parent = emptyenv())
+  }
   handle <- .builder_release_handle(handle)
   verify_or_restore <- function(root, phase) {
     verified <- tryCatch(
@@ -1570,7 +1615,10 @@ builder_publish_release <- function(
   if (!dir.exists(handle$stage) || .builder_release_link(handle$stage)) {
     stop("The assigned release stage is missing or unsafe.", call. = FALSE)
   }
-  handle$record$prepared_identity <- builder_release_identity(handle$stage)
+  handle$record$prepared_identity <- builder_release_identity(
+    handle$stage,
+    .digest_cache = .digest_cache
+  )
   if (
     !is.null(handle$expected_stage_identity) &&
       !identical(
@@ -1586,7 +1634,8 @@ builder_publish_release <- function(
     exact_record = FALSE,
     allow_abandoned = isTRUE(
       handle$expected_prior_state$record$abandoned
-    )
+    ),
+    .digest_cache = .digest_cache
   )
   current <- current_state$identity
   if (
@@ -1610,7 +1659,11 @@ builder_publish_release <- function(
         !.builder_release_exists(handle$backup) &&
         identical(
           tryCatch(
-            builder_release_state(handle$target, exact_record = FALSE),
+            builder_release_state(
+              handle$target,
+              exact_record = FALSE,
+              .digest_cache = .digest_cache
+            ),
             error = function(error) NULL
           ),
           handle$expected_prior_state
@@ -1692,7 +1745,10 @@ builder_publish_release <- function(
     error = NULL,
     published = TRUE,
     target = handle$target,
-    identity = builder_release_identity(handle$target),
+    identity = builder_release_identity(
+      handle$target,
+      .digest_cache = .digest_cache
+    ),
     journal = handle$journal,
     warning = warning
   )

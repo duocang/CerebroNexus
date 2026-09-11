@@ -984,20 +984,18 @@ builder_verify_crb <- function(path, item) {
     path,
     embedded_images,
     trekker,
-    item$trekker_alignment %||% NULL
+    item$trekker_alignment %||% NULL,
+    external_images = if (identical(item$spatial_image_storage, "external")) {
+      item$images %||% list()
+    } else {
+      list()
+    }
   )
   if (!is.null(result$error)) {
     stop(result$error, call. = FALSE)
   }
   if (identical(item$spatial_image_storage, "external")) {
     external <- .builder_build_materialize_spatial_images(item, dirname(path))
-    appearance <- builder_attach_external_spatial_appearance(
-      path,
-      item$images %||% list()
-    )
-    if (!is.null(appearance$error)) {
-      stop(appearance$error, call. = FALSE)
-    }
     result$external_images <- external$images
     result$external_settings <- external$settings
   } else {

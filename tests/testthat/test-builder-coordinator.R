@@ -1863,19 +1863,33 @@ test_that("parent binds its App verification to final payload identity", {
       bundle_request = builder_app_bundle_request,
       verify_app = builder_verify_app
     )
+    app_crb <- file.path(
+      fixture$result$app_dir,
+      "private-data",
+      basename(unname(fixture$result$built[[1L]]))
+    )
     original_identity <- .builder_coordinator_stage_identity
+    original_md5 <- .builder_release_payload_md5
     injected <- FALSE
+    hashed <- character()
+    .builder_release_payload_md5 <- function(path) {
+      hashed <<- c(
+        hashed,
+        normalizePath(path, winslash = "/", mustWork = TRUE)
+      )
+      original_md5(path)
+    }
     .builder_coordinator_stage_identity <- function(...) {
       if (!injected) {
         injected <<- TRUE
-        saveRDS(
-          list(dataset = "post-parent-change"),
-          file.path(
-            fixture$result$app_dir,
-            "private-data",
-            basename(fixture$result$built[[1L]])
-          )
-        )
+        original_mtime <- file.info(app_crb)$mtime[[1L]]
+        bytes <- readBin(app_crb, "raw", n = file.info(app_crb)$size)
+        bytes[[length(bytes)]] <- as.raw(bitwXor(
+          as.integer(bytes[[length(bytes)]]),
+          1L
+        ))
+        writeBin(bytes, app_crb)
+        Sys.setFileTime(app_crb, original_mtime)
       }
       original_identity(...)
     }
@@ -1883,6 +1897,9 @@ test_that("parent binds its App verification to final payload identity", {
     expect_error(
       builder_coordinator_publish(fixture$handle, fixture$result),
       "changed after parent verification"
+    )
+    expect_true(
+      normalizePath(app_crb, winslash = "/", mustWork = TRUE) %in% hashed
     )
     expect_false(dir.exists(fixture$target))
     expect_true(builder_coordinator_abort(fixture$handle)$aborted)
@@ -2184,6 +2201,86 @@ test_that("coordinator reports after App verification and before ownership", {
     expect_identical(events, c("app_verify", "report", "ownership"))
     expect_true(published$published)
     expect_true(file.exists(published$report_path))
+  })
+})
+
+test_that("coordinator reuses parent-verified App digests for publication", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    tree <- .builder_app_tree_identity(fixture$result$app_dir)
+    file_entries <- Filter(
+      function(entry) identical(entry$type, "file"),
+      tree$entries
+    )
+    key_fields <- c(
+      "type",
+      "permissions",
+      "size",
+      "device_id",
+      "inode",
+      "hard_links",
+      "modification_time",
+      "change_time"
+    )
+    expect_true(length(file_entries) > 0L)
+    expect_true(all(vapply(
+      file_entries,
+      function(entry) {
+        all(vapply(
+          entry[key_fields],
+          function(value) length(value) == 1L && !is.na(value),
+          logical(1)
+        ))
+      },
+      logical(1)
+    )))
+    cache_keys <- vapply(
+      file_entries,
+      .builder_release_digest_cache_key,
+      character(1)
+    )
+    expect_false(anyNA(cache_keys))
+    expect_identical(anyDuplicated(cache_keys), 0L)
+    original_md5 <- .builder_release_payload_md5
+    hashed <- character()
+    .builder_release_payload_md5 <- function(path) {
+      hashed <<- c(
+        hashed,
+        normalizePath(
+          path,
+          winslash = "/",
+          mustWork = TRUE
+        )
+      )
+      original_md5(path)
+    }
+
+    published <- builder_coordinator_publish(fixture$handle, fixture$result)
+
+    expect_true(published$published)
+    expect_true(any(
+      basename(hashed) %in%
+        c(
+          "dataset-a.crb",
+          "dataset-b.crb"
+        )
+    ))
+    expect_false(any(grepl("/cerebro_app/", hashed, fixed = TRUE)))
   })
 })
 
@@ -2583,10 +2680,11 @@ test_that("login publisher guard rejects env changes in both rename windows", {
         bundle_request = builder_app_bundle_request,
         verify_app = builder_verify_app
       )
-      publish <- function(handle, .verify_payload) {
+      publish <- function(handle, .verify_payload, .digest_cache = NULL) {
         builder_publish_release(
           handle,
           .verify_payload = .verify_payload,
+          .digest_cache = .digest_cache,
           .after_phase = function(phase) {
             if (identical(window, "old_moved") && identical(phase, window)) {
               mutate(

@@ -51,7 +51,7 @@ launchCerebroBuilder <- function(
   ) {
     stop("'max_file_size' must be one positive finite number.", call. = FALSE)
   }
-  if (!requireNamespace("Seurat", quietly = TRUE)) {
+  if (!nzchar(system.file(package = "Seurat"))) {
     stop(
       "Building a data set from a Seurat object needs the Seurat package. ",
       "Install it and try again.",

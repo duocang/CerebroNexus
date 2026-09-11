@@ -83,6 +83,34 @@ test_that("the export stage and new artifacts are owner-only", {
   )
 })
 
+test_that("CRB publication uses the fast gzip profile", {
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  stage <- file.path(root, "stage")
+  dir.create(stage)
+  opened <- NULL
+  open_gz <- function(
+    description,
+    open = "",
+    encoding = getOption("encoding"),
+    compression = 6
+  ) {
+    opened <<- list(open = open, compression = compression)
+    base::gzfile(description, open, encoding, compression)
+  }
+
+  .publishCerebroExport(
+    export = minimal_export(),
+    final_file = output,
+    stage_dir = stage,
+    expression_matrix_mode = "embedded",
+    .open_gz = open_gz
+  )
+
+  expect_identical(opened, list(open = "wb", compression = 1L))
+  expect_s3_class(readRDS(output), "Cerebro")
+})
+
 test_that("export stage failures are actionable without exposing local paths", {
   root <- file.path("private", "lab", "project")
   stage <- file.path(root, ".crb-stage-example")

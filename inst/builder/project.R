@@ -1583,7 +1583,7 @@ builder_project_load_retained_source <- function(
   id,
   source,
   progress,
-  .adapter = function(path) builder_seurat_file_adapter(path),
+  .adapter = function(path) builder_seurat_retained_file_adapter(path),
   .register = function(adapter, id, progress) {
     .builder_register_adapter(adapter, id, progress)
   },

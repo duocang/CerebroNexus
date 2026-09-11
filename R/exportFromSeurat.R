@@ -191,7 +191,8 @@
   export,
   final_file,
   stage_dir,
-  expression_matrix_mode
+  expression_matrix_mode,
+  .open_gz = gzfile
 ) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -385,7 +386,8 @@
     }
   }
 
-  saveRDS(export, stage_crb)
+  connection <- .open_gz(stage_crb, open = "wb", compression = 1L)
+  tryCatch(saveRDS(export, connection), finally = close(connection))
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
   }

@@ -1721,13 +1721,50 @@ builder_pair_sections <- function(picture, per_section) {
 #' and leaves a partially augmented file when the second write fails. This
 #' helper validates and applies both in memory, writes a sibling temporary file,
 #' then replaces the original with rollback.
+.builder_apply_external_spatial_appearance <- function(crb, images) {
+  collection <- builder_image_collection_normalize(images)
+  if (!length(collection)) {
+    return(list(object = crb, applied = character()))
+  }
+  available <- try(crb$availableSpatial(), silent = TRUE)
+  if (inherits(available, "try-error")) {
+    return(list(error = "The .crb contains no spatial data."))
+  }
+  applied <- intersect(names(collection), available)
+  for (section_id in applied) {
+    spatial <- crb$getSpatialData(section_id)
+    previous <- spatial$histology_alignment %||% list()
+    embedded <- spatial$histology_images %||% list()
+    if (
+      isTRUE(previous$builder_managed) && previous$source %in% names(embedded)
+    ) {
+      embedded[[previous$source]] <- NULL
+    }
+    active_label <- utils::tail(names(collection[[section_id]]), 1L)
+    active <- collection[[section_id]][[active_label]]
+    alignment <- builder_alignment_payload(active)
+    alignment$source <- active_label
+    spatial$histology_images <- embedded
+    spatial$histology_image <- NULL
+    spatial$histology_image_bounds <- NULL
+    spatial$histology_alignment <- alignment
+    crb$addSpatialData(section_id, spatial)
+  }
+  list(object = crb, applied = applied)
+}
+
 builder_attach_crb_extras <- function(
   crb_path,
   images = list(),
   trekker = NULL,
-  trekker_alignment = NULL
+  trekker_alignment = NULL,
+  external_images = list()
 ) {
-  if (!length(images) && (is.null(trekker) || !length(trekker))) {
+  if (
+    !length(images) &&
+      (is.null(trekker) || !length(trekker)) &&
+      !length(external_images)
+  ) {
     return(list(applied = character(), trekker = FALSE))
   }
   if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
@@ -1809,6 +1846,12 @@ builder_attach_crb_extras <- function(
     trekker_applied <- TRUE
   }
 
+  external <- .builder_apply_external_spatial_appearance(crb, external_images)
+  if (!is.null(external$error)) {
+    return(list(error = external$error))
+  }
+  crb <- external$object
+
   temporary <- tempfile(
     paste0(".", basename(crb_path), "-"),
     tmpdir = dirname(crb_path)
@@ -1819,7 +1862,7 @@ builder_attach_crb_extras <- function(
   )
   on.exit(unlink(c(temporary, backup), force = TRUE), add = TRUE)
 
-  written <- try(saveRDS(crb, temporary, compress = "xz"), silent = TRUE)
+  written <- try(saveRDS(crb, temporary, compress = "gzip"), silent = TRUE)
   if (inherits(written, "try-error") || !file.exists(temporary)) {
     return(list(error = "Could not write the augmented .crb."))
   }
@@ -1840,51 +1883,31 @@ builder_attach_crb_extras <- function(
 }
 
 builder_attach_external_spatial_appearance <- function(crb_path, images) {
-  collection <- builder_image_collection_normalize(images)
-  if (!length(collection)) {
+  if (!length(builder_image_collection_normalize(images))) {
     return(list(applied = character()))
   }
   crb <- try(readRDS(crb_path), silent = TRUE)
   if (inherits(crb, "try-error")) {
     return(list(error = "The exported .crb could not be read back."))
   }
-  available <- try(crb$availableSpatial(), silent = TRUE)
-  if (inherits(available, "try-error")) {
-    return(list(error = "The .crb contains no spatial data."))
+  appearance <- .builder_apply_external_spatial_appearance(crb, images)
+  if (!is.null(appearance$error)) {
+    return(list(error = appearance$error))
   }
-  applied <- intersect(names(collection), available)
-  for (section_id in applied) {
-    spatial <- crb$getSpatialData(section_id)
-    previous <- spatial$histology_alignment %||% list()
-    embedded <- spatial$histology_images %||% list()
-    if (
-      isTRUE(previous$builder_managed) && previous$source %in% names(embedded)
-    ) {
-      embedded[[previous$source]] <- NULL
-    }
-    active_label <- utils::tail(names(collection[[section_id]]), 1L)
-    active <- collection[[section_id]][[active_label]]
-    alignment <- builder_alignment_payload(active)
-    alignment$source <- active_label
-    spatial$histology_images <- embedded
-    spatial$histology_image <- NULL
-    spatial$histology_image_bounds <- NULL
-    spatial$histology_alignment <- alignment
-    crb$addSpatialData(section_id, spatial)
-  }
+  crb <- appearance$object
   temporary <- tempfile(
     paste0(".", basename(crb_path), "-external-"),
     tmpdir = dirname(crb_path)
   )
   on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  written <- try(saveRDS(crb, temporary, compress = "xz"), silent = TRUE)
+  written <- try(saveRDS(crb, temporary, compress = "gzip"), silent = TRUE)
   if (inherits(written, "try-error") || !file.exists(temporary)) {
     return(list(error = "Could not write external-image CRB appearance."))
   }
   if (!file.rename(temporary, crb_path)) {
     return(list(error = "Could not replace the external-image CRB."))
   }
-  list(applied = applied)
+  list(applied = appearance$applied)
 }
 
 #' The coordinates of the first spatial slice, for bounds decisions.

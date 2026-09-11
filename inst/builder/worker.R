@@ -95,9 +95,15 @@ builder_worker_ensure_capability <- function(registry, name) {
   values <- c(
     snapshot$path,
     snapshot$owner_token,
-    snapshot$object_md5
+    snapshot$object_md5,
+    snapshot$serialization %||% "rds"
   )
-  if (length(values) != 3L || anyNA(values) || any(!nzchar(values))) {
+  if (
+    length(values) != 4L ||
+      anyNA(values) ||
+      any(!nzchar(values)) ||
+      !values[[4L]] %in% c("rds", "qs2", "qs")
+  ) {
     stop("Snapshot identity is incomplete.", call. = FALSE)
   }
   paste(values, collapse = "\n")
@@ -1302,12 +1308,19 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 }
 
 .builder_worker_snapshot_marker <- function(marker) {
+  serialization <- if (is.list(marker)) {
+    marker$serialization %||% "rds"
+  } else {
+    NULL
+  }
   is.list(marker) &&
     .builder_worker_scalar_text(marker$path) &&
     .builder_worker_owner_token(marker$owner_token) &&
     .builder_worker_owner_time(marker$created_at) &&
     .builder_worker_scalar_text(marker$object_md5) &&
-    grepl("^[0-9a-fA-F]{32}$", marker$object_md5)
+    grepl("^[0-9a-fA-F]{32}$", marker$object_md5) &&
+    .builder_worker_scalar_text(serialization) &&
+    serialization %in% c("rds", "qs2", "qs")
 }
 
 .builder_worker_stage_marker <- function(marker) {
@@ -1379,7 +1392,8 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
           object_file = file.path(canonical, "object.rds"),
           owner_token = marker$owner_token,
           created_at = marker$created_at,
-          object_md5 = marker$object_md5
+          object_md5 = marker$object_md5,
+          serialization = marker$serialization %||% "rds"
         )
       } else {
         NULL

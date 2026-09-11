@@ -607,9 +607,13 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
 .builder_coordinator_stage_identity <- function(
   handle,
   expected = handle$expected_payload_targets,
-  exact = FALSE
+  exact = FALSE,
+  .digest_cache = NULL
 ) {
-  identity <- builder_release_identity(handle$stage)
+  identity <- builder_release_identity(
+    handle$stage,
+    .digest_cache = .digest_cache
+  )
   if (!isTRUE(identity$exists)) {
     stop("The coordinator-assigned stage is missing.", call. = FALSE)
   }
@@ -753,7 +757,10 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
       stop("A temporary App input could not be removed.", call. = FALSE)
     }
   }
-  current <- .builder_app_tree_identity(handle$app_expectation$app_dir)
+  current <- .builder_app_tree_identity(
+    handle$app_expectation$app_dir,
+    .previous = parent_tree_identity
+  )
   if (!identical(current, parent_tree_identity)) {
     stop(
       "The staged App changed during temporary input removal.",
@@ -772,6 +779,7 @@ builder_coordinator_publish <- function(
   .publish = builder_publish_release
 ) {
   handle <- .builder_coordinator_handle(handle)
+  digest_cache <- new.env(parent = emptyenv())
   if (
     !is.list(build_result) ||
       !identical(build_result$state, "success") ||
@@ -923,14 +931,28 @@ builder_coordinator_publish <- function(
         call. = FALSE
       )
     }
+    # Cache hits bind device, inode, and change time; mutations are rehashed.
+    for (entry in parent_tree_identity$entries) {
+      if (identical(entry$type, "file")) {
+        assign(
+          .builder_release_digest_cache_key(entry),
+          entry$md5,
+          envir = digest_cache
+        )
+      }
+    }
   }
   payload_identity <- .builder_coordinator_stage_identity(
     handle,
-    expected = handle$expected_build_targets
+    expected = handle$expected_build_targets,
+    .digest_cache = digest_cache
   )
   if (app_expected) {
     current_app_identity <- tryCatch(
-      .builder_app_tree_identity(handle$app_expectation$app_dir),
+      .builder_app_tree_identity(
+        handle$app_expectation$app_dir,
+        .previous = parent_tree_identity
+      ),
       error = function(error) NULL
     )
     if (
@@ -1009,7 +1031,10 @@ builder_coordinator_publish <- function(
   if (app_expected) {
     if (
       !identical(
-        .builder_app_tree_identity(handle$app_expectation$app_dir),
+        .builder_app_tree_identity(
+          handle$app_expectation$app_dir,
+          .previous = parent_tree_identity
+        ),
         parent_tree_identity
       ) ||
         !identical(
@@ -1047,18 +1072,23 @@ builder_coordinator_publish <- function(
   payload_identity <- .builder_coordinator_stage_identity(
     handle,
     expected = final_payload_targets,
-    exact = TRUE
+    exact = TRUE,
+    .digest_cache = digest_cache
   )
   handle$expected_payload_targets <- final_payload_targets
   ownership <- .builder_release_write_record(
     handle$stage,
     payload_identity,
     handle$token,
-    .move = .record_move
+    .move = .record_move,
+    .digest_cache = digest_cache
   )
   if (app_expected) {
     ownership_app_identity <- tryCatch(
-      .builder_app_tree_identity(handle$app_expectation$app_dir),
+      .builder_app_tree_identity(
+        handle$app_expectation$app_dir,
+        .previous = parent_tree_identity
+      ),
       error = function(error) NULL
     )
     if (!identical(ownership_app_identity, parent_tree_identity)) {
@@ -1106,7 +1136,10 @@ builder_coordinator_publish <- function(
     }
     app_dir <- file.path(root, "cerebro_app")
     current <- tryCatch(
-      .builder_app_tree_identity(app_dir),
+      .builder_app_tree_identity(
+        app_dir,
+        .previous = parent_tree_identity
+      ),
       error = function(error) NULL
     )
     current_env <- tryCatch(
@@ -1161,7 +1194,8 @@ builder_coordinator_publish <- function(
   }
   published <- .publish(
     handle,
-    .verify_payload = publication_guard
+    .verify_payload = publication_guard,
+    .digest_cache = digest_cache
   )
   relative_built <- vapply(
     built,

@@ -163,30 +163,54 @@
     nrow(info) != 1L ||
       is.na(info$size) ||
       !is.finite(info$size) ||
-      is.na(info$mtime)
+      is.na(info$mtime) ||
+      is.na(info$ctime)
   ) {
     .builder_adapter_abort("The Seurat source file metadata is unavailable.")
   }
   list(
     location = .builder_canonical_path(path),
     size = unname(info$size),
-    mtime = as.numeric(info$mtime)
+    mtime = as.numeric(info$mtime),
+    ctime = as.numeric(info$ctime)
   )
 }
 
-.builder_file_source_fingerprint <- function(state) {
+.builder_file_source_identity <- function(state, content = TRUE) {
+  if (!isTRUE(content)) {
+    return(list(
+      fingerprint = paste(
+        "builder-retained-v1",
+        state$location,
+        state$size,
+        format(
+          as.POSIXct(state$mtime, origin = "1970-01-01", tz = "UTC"),
+          "%Y-%m-%dT%H:%M:%OS6%z"
+        ),
+        sep = ":"
+      ),
+      md5 = NULL
+    ))
+  }
   content_md5 <- unname(as.character(tools::md5sum(state$location)))
-  paste(
-    "builder-snapshot-v2",
-    basename(state$location),
-    state$size,
-    format(
-      as.POSIXct(state$mtime, origin = "1970-01-01", tz = "UTC"),
-      "%Y-%m-%dT%H:%M:%OS6%z"
+  list(
+    fingerprint = paste(
+      "builder-snapshot-v2",
+      basename(state$location),
+      state$size,
+      format(
+        as.POSIXct(state$mtime, origin = "1970-01-01", tz = "UTC"),
+        "%Y-%m-%dT%H:%M:%OS6%z"
+      ),
+      content_md5,
+      sep = ":"
     ),
-    content_md5,
-    sep = ":"
+    md5 = content_md5
   )
+}
+
+.builder_file_source_fingerprint <- function(state, content = TRUE) {
+  .builder_file_source_identity(state, content)$fingerprint
 }
 
 .builder_adapter_after_read <- function(adapter) invisible(adapter)
@@ -225,8 +249,11 @@
   ))
 }
 
-#' Describe a Seurat file source without loading it.
-builder_seurat_file_adapter <- function(path) {
+.builder_seurat_file_adapter <- function(
+  path,
+  content_fingerprint = TRUE,
+  snapshot_reusable = FALSE
+) {
   if (!.builder_adapter_scalar_text(path)) {
     .builder_adapter_abort("A Seurat file path must be one non-empty string.")
   }
@@ -244,17 +271,32 @@ builder_seurat_file_adapter <- function(path) {
     .builder_adapter_abort("The Seurat source has an unsupported file format.")
   }
   source_state <- .builder_file_source_state(path)
+  source_identity <- .builder_file_source_identity(
+    source_state,
+    content = content_fingerprint
+  )
   structure(
     list(
       type = "file",
       location = source_state$location,
       format = format$label,
-      fingerprint = .builder_file_source_fingerprint(source_state),
+      fingerprint = source_identity$fingerprint,
+      source_md5 = source_identity$md5,
       source_state = source_state,
+      snapshot_reusable = isTRUE(snapshot_reusable),
       reader = format
     ),
     class = c("builder_source_adapter", "list")
   )
+}
+
+#' Describe a Seurat file source without loading it.
+builder_seurat_file_adapter <- function(path) {
+  .builder_seurat_file_adapter(path)
+}
+
+builder_seurat_retained_file_adapter <- function(path) {
+  .builder_seurat_file_adapter(path, snapshot_reusable = TRUE)
 }
 
 #' Describe an in-memory example source.
@@ -286,9 +328,22 @@ builder_example_adapter <- function(id, object) {
 }
 
 .builder_adapter_load <- function(adapter) {
+  serialization <- NULL
   if (identical(adapter$type, "example")) {
     object <- adapter$object
   } else {
+    if (!.builder_adapter_scalar_text(adapter$location)) {
+      .builder_adapter_abort("The Seurat source format adapter changed.")
+    }
+    format <- builder_match_format(adapter$location)
+    if (
+      is.null(format) ||
+        !is.list(adapter$reader) ||
+        !identical(adapter$reader$id, format$id)
+    ) {
+      .builder_adapter_abort("The Seurat source format adapter changed.")
+    }
+    serialization <- format$id
     before <- .builder_file_source_state(adapter$location)
     if (!identical(before, adapter$source_state)) {
       .builder_adapter_abort("The Seurat source changed since it was selected.")
@@ -300,6 +355,14 @@ builder_example_adapter <- function(id, object) {
       .builder_adapter_abort(
         "The Seurat source changed while it was being read."
       )
+    }
+    if (isTRUE(adapter$snapshot_reusable)) {
+      observed_md5 <- unname(as.character(tools::md5sum(adapter$location)))
+      if (!identical(observed_md5, adapter$source_md5)) {
+        .builder_adapter_abort(
+          "The Seurat source changed while it was being read."
+        )
+      }
     }
     if (!is.null(read$error)) {
       .builder_adapter_abort(read$error)
@@ -314,7 +377,23 @@ builder_example_adapter <- function(id, object) {
       "save the materialized Seurat object before adding it to Builder."
     ))
   }
-  .builder_clear_saved_cache(object)
+  list(
+    object = .builder_clear_saved_cache(object),
+    snapshot_source = if (
+      identical(adapter$type, "file") &&
+        isTRUE(adapter$snapshot_reusable) &&
+        is.null(cache)
+    ) {
+      list(
+        location = adapter$location,
+        source_state = adapter$source_state,
+        source_md5 = adapter$source_md5,
+        serialization = serialization
+      )
+    } else {
+      NULL
+    }
+  )
 }
 
 .builder_adapter_inspect <- function(adapter, progress = NULL) {
@@ -324,7 +403,8 @@ builder_example_adapter <- function(id, object) {
   if (is.function(progress)) {
     progress("reading")
   }
-  object <- .builder_adapter_load(adapter)
+  loaded <- .builder_adapter_load(adapter)
+  object <- loaded$object
   source <- list(
     type = adapter$type,
     location = adapter$location,
@@ -346,7 +426,8 @@ builder_example_adapter <- function(id, object) {
     legacy_profile = legacy,
     levels = builder_group_levels_for(object, legacy$group_candidates),
     format = adapter$format,
-    source = source
+    source = source,
+    snapshot_source = loaded$snapshot_source
   )
 }
 
@@ -1091,11 +1172,21 @@ builder_adapter_inspect <- function(adapter) {
   }
   marker <- tryCatch(readRDS(marker_path), error = function(error) NULL)
   observed_md5 <- unname(tools::md5sum(object_file))
+  snapshot_serialization <- snapshot$serialization %||% "rds"
+  marker_serialization <- if (is.list(marker)) {
+    marker$serialization %||% "rds"
+  } else {
+    NULL
+  }
   is.list(marker) &&
+    .builder_adapter_scalar_text(snapshot_serialization) &&
+    snapshot_serialization %in% c("rds", "qs2", "qs") &&
+    .builder_adapter_scalar_text(marker_serialization) &&
     identical(marker$path, snapshot$path) &&
     identical(marker$owner_token, snapshot$owner_token) &&
     identical(marker$created_at, snapshot$created_at) &&
     identical(marker$object_md5, snapshot$object_md5) &&
+    identical(marker_serialization, snapshot_serialization) &&
     identical(snapshot$object_md5, observed_md5)
 }
 
@@ -1343,7 +1434,8 @@ builder_adapter_inspect <- function(adapter) {
 .builder_snapshot_seurat_impl <- function(
   object,
   snapshot_dir,
-  available_bytes = NULL
+  available_bytes = NULL,
+  source = NULL
 ) {
   if (!inherits(object, "Seurat")) {
     .builder_adapter_abort("A snapshot requires a Seurat object.")
@@ -1364,11 +1456,33 @@ builder_adapter_inspect <- function(adapter) {
   object <- .builder_clear_saved_cache(object)
   layer_contracts <- .builder_snapshot_layer_contracts(object)
   has_on_disk_layers <- length(layer_contracts) > 0L
+  reusable_source <- if (
+    !has_on_disk_layers &&
+      is.list(source) &&
+      .builder_adapter_scalar_text(source$location) &&
+      is.list(source$source_state) &&
+      .builder_adapter_scalar_text(source$serialization) &&
+      source$serialization %in% c("rds", "qs2", "qs") &&
+      .builder_adapter_scalar_text(source$source_md5) &&
+      grepl("^[0-9a-fA-F]{32}$", source$source_md5) &&
+      identical(
+        .builder_file_source_state(source$location),
+        source$source_state
+      )
+  ) {
+    source
+  } else {
+    NULL
+  }
   if (is.null(available_bytes)) {
     available_bytes <- .builder_snapshot_available_bytes(parent)
   }
   .builder_snapshot_check_budget(
-    .builder_snapshot_initial_estimate(object),
+    if (is.null(reusable_source)) {
+      .builder_snapshot_initial_estimate(object)
+    } else {
+      reusable_source$source_state$size
+    },
     available_bytes
   )
   stage <- tempfile(
@@ -1395,9 +1509,14 @@ builder_adapter_inspect <- function(adapter) {
   )
   stage_owner <- .builder_stage_owner(stage)
 
+  # This is a stable, format-neutral slot; serialization selects its reader.
   stub_path <- file.path(stage, "object.rds")
-  .builder_snapshot_save_stub(object, stub_path)
-  if (has_on_disk_layers) {
+  if (is.null(reusable_source)) {
+    .builder_snapshot_save_stub(object, stub_path)
+  } else {
+    .builder_snapshot_copy(reusable_source$location, stub_path)
+  }
+  if (has_on_disk_layers && is.null(reusable_source)) {
     stub <- readRDS(stub_path)
     discovered <- .builder_snapshot_validate_cache(.builder_saved_cache(stub))
   } else {
@@ -1464,14 +1583,40 @@ builder_adapter_inspect <- function(adapter) {
     saveRDS(stub, stub_path, compress = FALSE)
   } else {
     .builder_snapshot_after_copy()
+    if (
+      !is.null(reusable_source) &&
+        !identical(
+          .builder_file_source_state(reusable_source$location),
+          reusable_source$source_state
+        )
+    ) {
+      .builder_adapter_abort(paste0(
+        "The Seurat source changed while its snapshot was copied. Keep the ",
+        "input unchanged and retry."
+      ))
+    }
   }
 
   created_at <- .builder_snapshot_now()
   owner_token <- .builder_snapshot_token()
   object_md5 <- unname(tools::md5sum(stub_path))
+  if (
+    !is.null(reusable_source$source_md5) &&
+      !identical(object_md5, reusable_source$source_md5)
+  ) {
+    .builder_adapter_abort(
+      "The Seurat source content changed while its snapshot was copied."
+    )
+  }
+  serialization <- if (is.null(reusable_source)) {
+    "rds"
+  } else {
+    reusable_source$serialization
+  }
   descriptor <- list(
     path = target,
     object_file = file.path(target, "object.rds"),
+    serialization = serialization,
     owner_token = owner_token,
     created_at = created_at,
     object_md5 = object_md5,
@@ -1481,7 +1626,8 @@ builder_adapter_inspect <- function(adapter) {
     path = target,
     owner_token = owner_token,
     created_at = created_at,
-    object_md5 = object_md5
+    object_md5 = object_md5,
+    serialization = serialization
   )
   saveRDS(marker, .builder_snapshot_marker_path(stage))
   .builder_snapshot_permissions(stage)
@@ -1533,15 +1679,30 @@ builder_open_snapshot <- function(snapshot) {
   }
   marker <- .builder_snapshot_marker(snapshot)
   observed_md5 <- unname(tools::md5sum(object_file))
+  serialization <- snapshot$serialization %||% "rds"
+  marker_serialization <- if (is.list(marker)) {
+    marker$serialization %||% "rds"
+  } else {
+    NULL
+  }
   if (
-    !.builder_adapter_scalar_text(marker$object_md5) ||
+    !is.list(marker) ||
+      !.builder_adapter_scalar_text(marker$object_md5) ||
       !identical(marker$object_md5, snapshot$object_md5) ||
+      !identical(marker_serialization, serialization) ||
       !identical(snapshot$object_md5, observed_md5)
   ) {
     .builder_adapter_abort("The Builder snapshot integrity check failed.")
   }
+  readers <- stats::setNames(
+    lapply(builder_formats, `[[`, "read"),
+    vapply(builder_formats, `[[`, character(1), "id")
+  )
+  if (!serialization %in% names(readers)) {
+    .builder_adapter_abort("The Builder snapshot loader is not allowed.")
+  }
   stub <- tryCatch(
-    readRDS(object_file),
+    readers[[serialization]](object_file),
     error = function(error) {
       .builder_adapter_abort("The Builder snapshot object file is unreadable.")
     }
@@ -1619,7 +1780,11 @@ builder_open_snapshot <- function(snapshot) {
     paste0("dataset-", gsub("[^A-Za-z0-9_-]", "-", id), "-"),
     tmpdir = snapshot_root
   )
-  frozen <- .builder_snapshot_seurat_impl(inspected$object, target)
+  frozen <- .builder_snapshot_seurat_impl(
+    inspected$object,
+    target,
+    source = inspected$snapshot_source
+  )
   snapshot <- frozen$snapshot
   snapshot$source_fingerprint <- adapter$fingerprint
   reopened <- frozen$object

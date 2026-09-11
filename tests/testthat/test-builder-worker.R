@@ -79,6 +79,55 @@ test_that("the isolated worker API is available", {
   expect_true(builder_worker_stop_api_available)
 })
 
+test_that("worker snapshot identity includes its allowlisted loader", {
+  snapshot <- list(
+    path = "/private/snapshot",
+    owner_token = "owner-token",
+    object_md5 = strrep("a", 32L),
+    serialization = "rds"
+  )
+  changed <- snapshot
+  changed$serialization <- "qs2"
+
+  expect_false(identical(
+    .builder_worker_identity(snapshot),
+    .builder_worker_identity(changed)
+  ))
+  snapshot$serialization <- "other"
+  expect_error(.builder_worker_identity(snapshot), "incomplete")
+})
+
+test_that("an isolated worker reopens a QS2-backed snapshot", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("qs2")
+  root <- withr::local_tempdir()
+  source <- file.path(root, "pbmc.qs2")
+  qs2::qs_save(SeuratObject::pbmc_small, source)
+  inspected <- builder_adapter_inspect(
+    builder_seurat_retained_file_adapter(source)
+  )
+  frozen <- .builder_snapshot_seurat_impl(
+    inspected$object,
+    file.path(root, "dataset-a"),
+    available_bytes = 2^40,
+    source = inspected$snapshot_source
+  )
+
+  worker <- builder_worker_start(
+    builder_profile_inst_path("builder"),
+    snapshot_root = root,
+    snapshot_registry = list(`dataset-a` = frozen$snapshot)
+  )
+  withr::defer(try(builder_worker_stop(worker), silent = TRUE))
+
+  expect_s3_class(worker, "builder_worker")
+  expect_equal(builder_worker_cell_count(worker, "dataset-a"), 80L)
+
+  worker <- builder_worker_restart(worker)
+  expect_s3_class(worker, "builder_worker")
+  expect_equal(builder_worker_cell_count(worker, "dataset-a"), 80L)
+})
+
 test_that("the real worker lazy-loads Marker import support before Build", {
   worker <- readLines(builder_worker_path, warn = FALSE)
   marker_line <- grep(

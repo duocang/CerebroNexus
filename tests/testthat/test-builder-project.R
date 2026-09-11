@@ -251,6 +251,67 @@ test_that("source jobs reuse the MD5 frozen with a dataset snapshot", {
   )
 })
 
+test_that("legacy retained snapshots save and restore through verified hashing", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "session-sources", "ds1", "sample.rds")
+  project <- file.path(root, "project")
+  dir.create(dirname(source), recursive = TRUE)
+  dir.create(project)
+  writeBin(charToRaw("legacy-retained-source"), source)
+  entry <- list(
+    id = "ds1",
+    path = source,
+    filename = "sample.rds",
+    source_origin = "upload",
+    settings = list(name = "Dataset"),
+    snapshot = list(
+      source_fingerprint = paste(
+        "builder-retained-v1",
+        source,
+        file.info(source)$size,
+        "2026-08-22T00:00:00.000000+0000",
+        sep = ":"
+      )
+    )
+  )
+
+  job <- runtime$builder_project_source_job(entry, project)
+  expect_null(job$source_md5)
+  result <- runtime$builder_project_copy_source_job(job)
+  expect_identical(result$status, "ready")
+  source_record <- list(
+    kind = "managed",
+    origin = "upload",
+    filename = "sample.rds",
+    path = runtime$builder_project_relative_path(result$path, project),
+    status = "ready",
+    fingerprint = result$fingerprint
+  )
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source_record,
+    root = project
+  )
+  status <- runtime$builder_project_dataset_status(record, project)
+  restored <- runtime$builder_project_restore_entry(
+    record,
+    project,
+    status = status
+  )
+
+  expect_false(grepl(
+    "builder-retained-v1",
+    paste(capture.output(dput(record)), collapse = "")
+  ))
+  expect_true(status$source_matches)
+  expect_true(status$restorable)
+  expect_identical(
+    restored$path,
+    normalizePath(result$path, winslash = "/", mustWork = TRUE)
+  )
+})
+
 test_that("only content-addressed managed sources reuse metadata on restore", {
   runtime <- builder_project_test_runtime()
 

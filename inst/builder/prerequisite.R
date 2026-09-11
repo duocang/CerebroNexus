@@ -128,9 +128,9 @@ builder_app_capability <- function(
 }
 
 builder_runtime_capability <- function(
-  .available = function(package) requireNamespace(package, quietly = TRUE)
+  .available = function(package) nzchar(system.file(package = package))
 ) {
-  required <- c("callr", "mirai", "openssl", "promises")
+  required <- c("callr", "openssl")
   missing <- required[!vapply(required, .available, logical(1))]
   list(
     available = !length(missing),
@@ -160,7 +160,7 @@ builder_runtime_capability <- function(
 }
 
 builder_auth_capability <- function(
-  .available = function(package) requireNamespace(package, quietly = TRUE),
+  .available = function(package) nzchar(system.file(package = package)),
   .version = function(package) utils::packageVersion(package)
 ) {
   manager_available <- isTRUE(.available("shinymanager"))

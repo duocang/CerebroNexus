@@ -270,7 +270,8 @@
 
 .builder_app_tree_identity_once <- function(
   root,
-  .digest_file = tools::md5sum
+  .digest_file = tools::md5sum,
+  .previous = NULL
 ) {
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
   enumerated <- .builder_app_enumerate_tree(root)
@@ -286,6 +287,22 @@
   entries <- lapply(seq_along(paths), function(index) {
     fingerprint <- fingerprints[[index]]
     if (identical(fingerprint$type, "file")) {
+      cached <- if (is.list(.previous) && is.list(.previous$entries)) {
+        .previous$entries[[relative[[index]]]]
+      } else {
+        NULL
+      }
+      if (
+        is.list(cached) &&
+          identical(cached$path, relative[[index]]) &&
+          identical(cached[names(fingerprint)], fingerprint) &&
+          is.character(cached$md5) &&
+          length(cached$md5) == 1L &&
+          !is.na(cached$md5) &&
+          grepl("^[[:xdigit:]]{32}$", cached$md5)
+      ) {
+        return(cached)
+      }
       identity <- .builder_app_capture_file_identity(
         paths[[index]],
         .digest_file = .digest_file
@@ -323,9 +340,10 @@
 
 .builder_app_tree_identity <- function(
   root,
-  .digest_file = tools::md5sum
+  .digest_file = tools::md5sum,
+  .previous = NULL
 ) {
-  .builder_app_tree_identity_once(root, .digest_file)
+  .builder_app_tree_identity_once(root, .digest_file, .previous)
 }
 
 .builder_app_portable_tree_entries <- function(identity, prefix = NULL) {

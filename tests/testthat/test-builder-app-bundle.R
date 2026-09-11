@@ -1688,6 +1688,46 @@ test_that("App verification rejects a tree changed during one verification", {
   )
 })
 
+test_that("App verification hashes every regular file twice", {
+  fixture <- builder_app_bundle_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  app_dir <- builder_fake_app(
+    request,
+    file.path(fixture$stage, "cerebro_app")
+  )
+  hashed <- character()
+  identity <- function(path) {
+    .builder_app_tree_identity(
+      path,
+      .digest_file = function(file) {
+        hashed <<- c(
+          hashed,
+          normalizePath(
+            file,
+            winslash = "/",
+            mustWork = TRUE
+          )
+        )
+        tools::md5sum(file)
+      }
+    )
+  }
+
+  expect_true(
+    builder_verify_app(
+      app_dir,
+      request,
+      .tree_identity = identity
+    )$valid
+  )
+  expect_true(length(hashed) > 0L)
+  expect_true(all(table(hashed) == 2L))
+})
+
 test_that("App verification rejects config drift and private path aliases", {
   fixture <- builder_app_bundle_fixture()
   request <- builder_app_bundle_request(
