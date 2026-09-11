@@ -121,6 +121,7 @@
       imageBytes: imageBytes,
       contextLost: !!stats.contextLost,
       gpuError: stats.error || 0,
+      adapter: stats.adapter || '',
       userAgent: navigator.userAgent
     };
   };
