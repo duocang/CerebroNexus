@@ -536,30 +536,22 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   min-width: 180px;
   max-width: 240px;
 }
+.cerebro-viz-toolbar .shiny-panel-conditional:has(> .spatial-image-dim-controls) {
+  flex: 0 1 calc(2 * var(--c-control-width) + 10px);
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls .form-group {
+  flex: 0 1 var(--c-control-width);
+}
 .cerebro-viz-toolbar .spatial-roi-background-picker {
-  flex: 1 1 100%;
-  width: 100%;
-}
-.spatial-roi-background-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 8px;
-}
-.spatial-roi-background-group {
-  padding: 8px 10px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-sm);
-  background: var(--c-surface-2);
-}
-.spatial-roi-background-title {
-  margin-bottom: 4px;
-  overflow: hidden;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.spatial-roi-background-group .checkbox {
-  margin: 2px 0;
+  flex: 0 1 var(--c-control-width);
+  width: var(--c-control-width);
+  min-width: min(var(--c-select-min-width), 100%);
 }
 .hla-node-details {
   margin: 8px 0 4px;

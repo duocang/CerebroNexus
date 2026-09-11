@@ -150,16 +150,19 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     ),
     conditionalPanel(
       condition = "input.spatial_projection_plot_type == 'ImageDimPlot'",
-      selectInput(
-        "spatial_projection_point_color",
-        label = "Colour by",
-        choices = metadata_cols
-      ),
-      selectizeInput(
-        "spatial_projection_split_by",
-        label = "Split by",
-        choices = c("None" = spatial_split_none_value, split_columns),
-        selected = selected_split
+      div(
+        class = "spatial-image-dim-controls",
+        selectInput(
+          "spatial_projection_point_color",
+          label = "Colour by",
+          choices = metadata_cols
+        ),
+        selectizeInput(
+          "spatial_projection_split_by",
+          label = "Split by",
+          choices = c("None" = spatial_split_none_value, split_columns),
+          selected = selected_split
+        )
       )
     ),
     conditionalPanel(
@@ -288,55 +291,45 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   } else {
     list()
   }
-  background_control <- if (length(roi_background_groups)) {
+  background_control <- if (
+    identical(selected_roi, "__all__") ||
+      (!length(roi_background_groups) && length(background_choices) <= 1L)
+  ) {
+    NULL
+  } else if (length(roi_background_groups)) {
     input_id <- "spatial_projection_roi_background_images"
-    selections <- spatial_roi_background_selections(
-      roi_background_groups,
-      isolate(input[[input_id]])
+    selected_input <- isolate(input[[input_id]])
+    selected_tokens <- intersect(
+      unlist(lapply(roi_background_groups, `[[`, "tokens"), use.names = FALSE),
+      selected_input %||% character()
     )
-    tags$div(
-      id = input_id,
-      class = paste(
-        "form-group shiny-input-checkboxgroup shiny-input-container",
-        "spatial-roi-background-picker"
+    grouped_choices <- lapply(roi_background_groups, function(group) {
+      stats::setNames(unname(group$tokens), names(group$choices))
+    })
+    div(
+      class = "spatial-roi-background-picker",
+      selectizeInput(
+        input_id,
+        label = "Background images",
+        choices = grouped_choices,
+        selected = selected_tokens,
+        multiple = TRUE,
+        options = list(
+          plugins = list("remove_button"),
+          closeAfterSelect = FALSE,
+          onItemAdd = I(paste0(
+            "function(value) {",
+            "var group = value.replace(/-background-.*/, '');",
+            "this.items.slice().forEach(function(item) {",
+            "if (item !== value && item.replace(/-background-.*/, '') === group) ",
+            "this.removeItem(item, true);",
+            "}, this);",
+            "this.refreshItems();",
+            "}"
+          ))
+        )
       ),
-      role = "group",
-      `aria-labelledby` = paste0(input_id, "-label"),
-      tags$label(
-        id = paste0(input_id, "-label"),
-        class = "control-label",
-        "Background images"
-      ),
-      tags$div(
-        class = "shiny-options-group spatial-roi-background-groups",
-        lapply(seq_along(roi_background_groups), function(index) {
-          group <- roi_background_groups[[index]]
-          selected_token <- unname(group$tokens[[selections[[index]]]])
-          tags$div(
-            class = "spatial-roi-background-group",
-            `data-roi-group` = index,
-            tags$div(class = "spatial-roi-background-title", group$roi),
-            lapply(seq_along(group$choices), function(choice_index) {
-              token <- unname(group$tokens[[choice_index]])
-              tags$div(
-                class = "checkbox",
-                tags$label(
-                  tags$input(
-                    type = "checkbox",
-                    name = input_id,
-                    value = token,
-                    `data-roi-group` = index,
-                    checked = if (identical(token, selected_token)) {
-                      "checked"
-                    }
-                  ),
-                  tags$span(names(group$choices)[[choice_index]])
-                )
-              )
-            })
-          )
-        })
-      )
+      role = "group"
     )
   } else {
     selectInput(

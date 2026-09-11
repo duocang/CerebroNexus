@@ -127,16 +127,11 @@ observeEvent(input[["spatial_projection_background_reset"]], {
       input[["spatial_projection_roi"]] %||% ""
     )
   )
-  image_key <- if (is.null(selected_descriptor)) {
-    NULL
-  } else {
-    selected_descriptor$key %||% selected_descriptor$label
-  }
-  preset <- spatialImagePreset(
+  preset <- spatial_background_preset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_key
+    selected_descriptor
   )
   updateSliderInput(
     session,

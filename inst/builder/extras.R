@@ -448,6 +448,7 @@ builder_alignment_center <- function(record, bounds) {
     builder_alignment_oriented_bounds(record$base_bounds, record),
     parameters
   )
+  record$viewport_bounds <- bounds
   record
 }
 
@@ -663,6 +664,14 @@ builder_alignment_payload <- function(record) {
   )
   scope <- intersect(c("roi_field", "roi_value"), names(normalized))
   payload[scope] <- normalized[scope]
+  if (.builder_alignment_valid_bounds(normalized$viewport_bounds)) {
+    payload$viewport_bounds <- normalized$viewport_bounds[c(
+      "xmin",
+      "xmax",
+      "ymin",
+      "ymax"
+    )]
+  }
   payload
 }
 

@@ -227,7 +227,11 @@ configured_spatial_images <- function(
         !is.na(value[["path"]])
     ) {
       return(c(
-        list(path = value[["path"]], bounds = value[["bounds"]]),
+        list(
+          path = value[["path"]],
+          bounds = value[["bounds"]],
+          viewport_bounds = value[["viewport_bounds"]]
+        ),
         if (!is.null(value[["label"]])) list(label = value[["label"]]),
         value[intersect(c("roi_field", "roi_value"), names(value))]
       ))
@@ -253,7 +257,8 @@ embedded_spatial_images <- function(spatial_data, roi_value = NULL) {
       c(
         list(
           image = payload[["histology_image"]],
-          bounds = payload[["histology_image_bounds"]]
+          bounds = payload[["histology_image_bounds"]],
+          alignment = payload[["histology_alignment"]]
         ),
         if (!is.null(payload[["image_label"]])) {
           list(label = payload[["image_label"]])
@@ -338,6 +343,9 @@ spatial_roi_background_groups <- function(
       spatial_name,
       roi
     )
+    if (!length(embedded) && !length(external)) {
+      return(NULL)
+    }
     choices <- spatial_background_choices(embedded, external)
     list(
       roi = roi,
@@ -350,7 +358,8 @@ spatial_roi_background_groups <- function(
       )
     )
   })
-  stats::setNames(groups, roi_values)
+  groups <- groups[!vapply(groups, is.null, logical(1))]
+  stats::setNames(groups, vapply(groups, `[[`, character(1), "roi"))
 }
 
 spatial_roi_background_selections <- function(groups, selected_tokens) {
@@ -362,7 +371,11 @@ spatial_roi_background_selections <- function(groups, selected_tokens) {
     } else {
       NULL
     }
-    normalize_spatial_background_choice(selected_choice, group$choices)
+    if (is.null(selected_choice)) {
+      "none"
+    } else {
+      normalize_spatial_background_choice(selected_choice, group$choices)
+    }
   })
   stats::setNames(selections, names(groups))
 }
@@ -423,6 +436,24 @@ resolve_spatial_background <- function(
     list(source = source, key = key, label = label),
     descriptor[setdiff(names(descriptor), "label")]
   )
+}
+
+spatial_background_preset <- function(
+  options,
+  dataset,
+  spatial_name,
+  descriptor
+) {
+  image_key <- if (is.null(descriptor)) {
+    NULL
+  } else {
+    descriptor$key %||% descriptor$label
+  }
+  preset <- spatialImagePreset(options, dataset, spatial_name, image_key)
+  if (!is.null(descriptor) && identical(descriptor$source, "embedded")) {
+    preset <- spatialEmbeddedImagePreset(preset, descriptor$alignment)
+  }
+  preset
 }
 
 ## The browser must distinguish a logical image from its encoded bytes. Two

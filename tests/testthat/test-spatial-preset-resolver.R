@@ -133,7 +133,15 @@ test_that("embedded images expose canonical labels and normalize singular legacy
     histology_images = list(
       `H&E` = list(
         histology_image = "data:image/png;base64,HE",
-        histology_image_bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 20)
+        histology_image_bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 20),
+        histology_alignment = list(
+          dx = 12,
+          dy = -4,
+          scale = 1.5,
+          rotation = 90,
+          flip_x = TRUE,
+          image_opacity = 0.7
+        )
       ),
       DAPI = list(histology_image = "data:image/png;base64,DAPI")
     ),
@@ -143,6 +151,27 @@ test_that("embedded images expose canonical labels and normalize singular legacy
   expect_identical(
     embedded_spatial_images(canonical)$DAPI$image,
     "data:image/png;base64,DAPI"
+  )
+  expect_identical(
+    spatial_background_preset(
+      NULL,
+      NULL,
+      NULL,
+      c(
+        list(source = "embedded", key = "H&E", label = "H&E"),
+        embedded_spatial_images(canonical)[["H&E"]]
+      )
+    ),
+    list(
+      offsetX = 12,
+      offsetY = -4,
+      scaleX = 1.5,
+      scaleY = 1.5,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = 90,
+      opacity = 0.7
+    )
   )
 
   legacy <- list(

@@ -551,7 +551,11 @@ builder_spatial_alignment_server <- function(
       layer = entry$settings$layer %||% "data"
     )
   }
-  alignment_bounds_for <- function(preview, roi = active_roi()) {
+  alignment_bounds_for <- function(
+    preview,
+    roi = active_roi(),
+    include_coordinate_rotation = FALSE
+  ) {
     roi <- as.character(roi %||% "")[[1L]]
     viewport <- shiny::isolate(canvas_viewports())
     contract <- shiny::isolate(canvas_contract())
@@ -568,9 +572,19 @@ builder_spatial_alignment_server <- function(
       return(viewport$viewports[[key]])
     }
     if (nzchar(roi)) {
-      return(preview$roi_bounds[[roi]] %||% preview$bounds)
+      bounds <- preview$roi_bounds[[roi]] %||% preview$bounds
+    } else {
+      bounds <- preview$coordinate_frame %||% preview$bounds
     }
-    preview$coordinate_frame %||% preview$bounds
+    if (!isTRUE(include_coordinate_rotation)) {
+      return(bounds)
+    }
+    entry <- entry_of(current())
+    spec <- coordinate_spec_for(entry, active_section(), roi)
+    builder_alignment_rotated_bounds(
+      bounds,
+      spec$rotation_degrees %||% 0
+    )
   }
 
   shiny::observeEvent(
@@ -596,6 +610,47 @@ builder_spatial_alignment_server <- function(
       )
       event$viewports <- event$viewports[valid]
       canvas_viewports(event)
+      entry <- shiny::isolate(entry_of(current()))
+      section <- contract$section
+      if (is.null(entry) || is.null(section)) {
+        return()
+      }
+      images <- collection_for(entry)
+      records <- images[[section]] %||% list()
+      changed <- FALSE
+      for (label in names(records)) {
+        roi <- as.character(records[[label]]$roi_value %||% "")[[1L]]
+        key <- if (nzchar(roi)) roi else "__section__"
+        bounds <- event$viewports[[key]]
+        if (
+          .builder_alignment_valid_bounds(bounds) &&
+            !isTRUE(all.equal(
+              records[[label]]$viewport_bounds,
+              bounds,
+              check.attributes = FALSE
+            ))
+        ) {
+          records[[label]]$viewport_bounds <- bounds
+          changed <- TRUE
+          if (
+            identical(section, shiny::isolate(active_section())) &&
+              identical(label, shiny::isolate(active_image()))
+          ) {
+            draft(records[[label]])
+          }
+        }
+      }
+      if (changed) {
+        images[[section]] <- records
+        commit_images(entry, images)
+        image_collection_cache$dataset <- entry$id
+        image_collection_cache$images <- images
+        image_collection_cache$known_sections <- unique(c(
+          image_collection_cache$known_sections %||% character(),
+          section,
+          names(images)
+        ))
+      }
     },
     ignoreInit = TRUE
   )
@@ -1543,11 +1598,10 @@ builder_spatial_alignment_server <- function(
       roi = selected_roi
     )
     parameters[c("point_opacity", "point_size")] <- appearance
-    view_bounds <- alignment_bounds_for(preview, selected_roi)
-    coordinate_spec <- coordinate_spec_for(entry, section, selected_roi)
-    fit_bounds <- builder_alignment_rotated_bounds(
-      view_bounds,
-      coordinate_spec$rotation_degrees %||% 0
+    fit_bounds <- alignment_bounds_for(
+      preview,
+      selected_roi,
+      include_coordinate_rotation = TRUE
     )
     if (!length(existing)) {
       stored_appearance <- entry$settings$spatial_point_appearance %||% list()
@@ -1572,6 +1626,7 @@ builder_spatial_alignment_server <- function(
       parameters = parameters,
       section = preview$section
     )
+    record$viewport_bounds <- fit_bounds
     if (nzchar(selected_roi)) {
       record$roi_field <- preview$roi$field
       record$roi_value <- selected_roi
@@ -1600,7 +1655,7 @@ builder_spatial_alignment_server <- function(
     }
     draft(record)
     active_image(image_key)
-    update_controls(record, view_bounds)
+    update_controls(record, record$viewport_bounds)
     committed_images <- commit_section(
       entry,
       section,
@@ -2392,7 +2447,10 @@ builder_spatial_alignment_server <- function(
     if (is.null(current_draft) || !isTRUE(preview$available)) {
       return()
     }
-    bounds <- alignment_bounds_for(preview)
+    bounds <- alignment_bounds_for(
+      preview,
+      include_coordinate_rotation = TRUE
+    )
     centered <- builder_alignment_center(current_draft, bounds)
     draft(centered)
     canvas_reset_token(canvas_reset_token() + 1L)
@@ -2405,17 +2463,11 @@ builder_spatial_alignment_server <- function(
     if (is.null(current_draft) || !isTRUE(preview$available)) {
       return()
     }
-    bounds <- alignment_bounds_for(preview)
+    bounds <- alignment_bounds_for(
+      preview,
+      include_coordinate_rotation = TRUE
+    )
     reset <- builder_alignment_reset(current_draft)
-    coordinate_spec <- coordinate_spec_for(
-      entry_of(current()),
-      active_section(),
-      coordinate_roi()
-    )
-    fit_bounds <- builder_alignment_rotated_bounds(
-      bounds,
-      coordinate_spec$rotation_degrees %||% 0
-    )
     image_dimensions <- c(
       width = reset$source_width %||%
         (reset$base_bounds$xmax - reset$base_bounds$xmin),
@@ -2423,7 +2475,7 @@ builder_spatial_alignment_server <- function(
         (reset$base_bounds$ymax - reset$base_bounds$ymin)
     )
     reset$base_bounds <- builder_alignment_fit_bounds(
-      fit_bounds,
+      bounds,
       image_dimensions
     )
     reset <- builder_alignment_center(reset, bounds)

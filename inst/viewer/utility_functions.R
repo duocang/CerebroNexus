@@ -134,6 +134,34 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
   )
 }
 
+spatialEmbeddedImagePreset <- function(preset, alignment) {
+  if (!is.list(alignment)) {
+    return(preset)
+  }
+  number <- function(key, fallback) {
+    value <- suppressWarnings(as.numeric(alignment[[key]]))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      fallback
+    } else {
+      unname(value)
+    }
+  }
+  preset$offsetX <- number("dx", preset$offsetX)
+  preset$offsetY <- number("dy", preset$offsetY)
+  embedded_scale <- number("scale", preset$scaleX)
+  preset$scaleX <- embedded_scale
+  preset$scaleY <- embedded_scale
+  preset$rotation <- number("rotation", preset$rotation)
+  if (!is.null(alignment[["flip_x"]])) {
+    preset$flipX <- isTRUE(alignment[["flip_x"]])
+  }
+  if (!is.null(alignment[["flip_y"]])) {
+    preset$flipY <- isTRUE(alignment[["flip_y"]])
+  }
+  preset$opacity <- number("image_opacity", preset$opacity)
+  preset
+}
+
 spatialPlotRotation <- function(options, dataset, spatial_name) {
   configured <- if (is.list(options)) {
     options[["spatial_plot_rotation"]]

@@ -117,15 +117,11 @@ spatial_projection_parameters_plot <- reactive({
         list(
           descriptor = descriptor,
           identity = identity,
-          preset = spatialImagePreset(
+          preset = spatial_background_preset(
             if (exists("Cerebro.options")) Cerebro.options else NULL,
             dataset,
             spatial_name,
-            if (is.null(descriptor)) {
-              NULL
-            } else {
-              descriptor$key %||% descriptor$label
-            }
+            descriptor
           ),
           image_allowlist = vapply(
             group$external,
@@ -170,16 +166,11 @@ spatial_projection_parameters_plot <- reactive({
     spatial_name,
     background_descriptor
   )
-  image_key <- if (is.null(background_descriptor)) {
-    NULL
-  } else {
-    background_descriptor$key %||% background_descriptor$label
-  }
-  background_preset <- spatialImagePreset(
+  background_preset <- spatial_background_preset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_key
+    background_descriptor
   )
   ## Interaction changes travel through the decoupled background observer. Only
   ## isolate the current value here so the first payload starts at the preset

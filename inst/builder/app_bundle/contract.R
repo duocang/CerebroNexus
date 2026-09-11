@@ -229,6 +229,11 @@
         descriptor <- declarations[[label]]
         path <- if (is.character(descriptor)) descriptor else descriptor$path
         bounds <- if (is.list(descriptor)) descriptor$bounds else NULL
+        viewport_bounds <- if (is.list(descriptor)) {
+          descriptor$viewport_bounds
+        } else {
+          NULL
+        }
         descriptor_names <- if (is.list(descriptor)) names(descriptor) else NULL
         if (
           !is.character(path) ||
@@ -250,6 +255,7 @@
                     c(
                       "path",
                       "bounds",
+                      "viewport_bounds",
                       "label",
                       "roi_field",
                       "roi_value"
@@ -268,6 +274,15 @@
                     any(!is.finite(bounds)) ||
                     !identical(
                       names(bounds),
+                      c("xmin", "xmax", "ymin", "ymax")
+                    ))) ||
+                (!is.null(viewport_bounds) &&
+                  (!is.numeric(viewport_bounds) ||
+                    length(viewport_bounds) != 4L ||
+                    anyNA(viewport_bounds) ||
+                    any(!is.finite(viewport_bounds)) ||
+                    !identical(
+                      names(viewport_bounds),
                       c("xmin", "xmax", "ymin", "ymax")
                     ))))) ||
             (!is.character(descriptor) && !is.list(descriptor))
@@ -346,6 +361,11 @@
         identity <- section_identities[[label]]
         path <- if (is.list(descriptor)) descriptor$path else NULL
         bounds <- if (is.list(descriptor)) descriptor$bounds else NULL
+        viewport_bounds <- if (is.list(descriptor)) {
+          descriptor$viewport_bounds
+        } else {
+          NULL
+        }
         canonical <- tryCatch(
           normalizePath(path, winslash = "/", mustWork = TRUE),
           error = function(error) NULL
@@ -364,6 +384,7 @@
                 c(
                   "path",
                   "bounds",
+                  "viewport_bounds",
                   "label",
                   "roi_field",
                   "roi_value"
@@ -388,6 +409,15 @@
             anyNA(bounds) ||
             any(!is.finite(bounds)) ||
             !identical(names(bounds), c("xmin", "xmax", "ymin", "ymax")) ||
+            (!is.null(viewport_bounds) &&
+              (!is.numeric(viewport_bounds) ||
+                length(viewport_bounds) != 4L ||
+                anyNA(viewport_bounds) ||
+                any(!is.finite(viewport_bounds)) ||
+                !identical(
+                  names(viewport_bounds),
+                  c("xmin", "xmax", "ymin", "ymax")
+                ))) ||
             !is.list(setting) ||
             is.object(setting) ||
             !identical(names(setting), .builder_app_spatial_setting_fields) ||

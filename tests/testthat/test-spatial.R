@@ -446,6 +446,15 @@ test_that("background-image selection only recreates image calibration controls"
   )
   expect_match(
     projection_ui,
+    paste0(
+      'class = "cerebro-viz-primary",[[:space:]]*',
+      'uiOutput\\("spatial_projection_main_parameters_UI"\\),[[:space:]]*',
+      'uiOutput\\("spatial_projection_background_selector_UI"\\)'
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    projection_ui,
     'uiOutput\\("spatial_projection_background_parameters_UI"\\)'
   )
   expect_match(
@@ -1269,6 +1278,12 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
       spatial_projection_sample = "S2",
       spatial_projection_to_display = "sliceB"
     )
+    session$flushReact()
+    expect_length(
+      as.character(output$spatial_projection_background_selector_UI$html),
+      0L
+    )
+    session$setInputs(spatial_projection_roi = "C")
     session$flushReact()
     main_html <- as.character(
       output$spatial_projection_main_parameters_UI$html

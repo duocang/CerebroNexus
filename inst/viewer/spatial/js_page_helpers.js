@@ -103,22 +103,3 @@ shinyjs.hideScrollDownIndicator = function () {
     document.addEventListener('shiny:connected', register, { once: true });
   }
 })();
-
-// Separate-ROI backgrounds use checkboxes for compact grouping, but each ROI
-// owns exactly one background choice. Capture the change before Shiny reads the
-// group so sibling checks are cleared in the same input update.
-document.addEventListener('change', function (event) {
-  const input = event.target;
-  if (!input.matches(
-    '.spatial-roi-background-picker input[type="checkbox"]'
-  )) return;
-  const group = input.closest('.spatial-roi-background-group');
-  if (!group) return;
-  if (!input.checked) {
-    input.checked = !group.querySelector('input[type="checkbox"]:checked');
-    return;
-  }
-  group.querySelectorAll('input[type="checkbox"]').forEach(function (choice) {
-    if (choice !== input) choice.checked = false;
-  });
-}, true);

@@ -296,38 +296,6 @@ cv_image_preset <- function(spatial_name, image_label) {
   )
 }
 
-## Overlay the alignment stored beside one embedded image onto the generic
-## Viewer preset. Embedded CRBs are self-contained, so their per-image leaf is
-## the authority for every transform, not just appearance. Keeping this mapping
-## here also makes the embedded and external JavaScript contracts identical.
-cv_embedded_alignment_preset <- function(preset, alignment) {
-  if (!is.list(alignment)) {
-    return(preset)
-  }
-  number <- function(key, fallback) {
-    value <- suppressWarnings(as.numeric(alignment[[key]]))
-    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
-      fallback
-    } else {
-      unname(value)
-    }
-  }
-  preset$offsetX <- number("dx", preset$offsetX)
-  preset$offsetY <- number("dy", preset$offsetY)
-  embedded_scale <- number("scale", preset$scaleX)
-  preset$scaleX <- embedded_scale
-  preset$scaleY <- embedded_scale
-  preset$rotation <- number("rotation", preset$rotation)
-  if (!is.null(alignment[["flip_x"]])) {
-    preset$flipX <- isTRUE(alignment[["flip_x"]])
-  }
-  if (!is.null(alignment[["flip_y"]])) {
-    preset$flipY <- isTRUE(alignment[["flip_y"]])
-  }
-  preset$opacity <- number("image_opacity", preset$opacity)
-  preset
-}
-
 ## Resolve EXTERNAL histology images for one spatial entry of the selected data
 ## set. createShinyApp() stores them as dataset -> FOV -> image, with each leaf
 ## either a relative path or a descriptor containing path + coordinate bounds.
@@ -955,7 +923,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
     } else {
       NULL
     }
-    preset <- cv_embedded_alignment_preset(preset, entry_alignment)
+    preset <- spatialEmbeddedImagePreset(preset, entry_alignment)
     entry_appearance <- cv_alignment_appearance(entry_alignment)
     if (length(entry_appearance$image_opacity) == 1L) {
       preset$opacity <- entry_appearance$image_opacity

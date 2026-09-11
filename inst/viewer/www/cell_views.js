@@ -720,6 +720,20 @@
     var SX = Math.max(1, p.W - padL - padR);
     var SY = Math.max(1, p.H - padT - padB);
     var ox = padL, oy = padT;
+    if (sp._preserveAspect && !u.nz) {
+      var aspect = Number(u.aspect), panelAspect = SX / SY;
+      if (isFinite(aspect) && aspect > 0) {
+        if (panelAspect > aspect) {
+          var fittedWidth = SY * aspect;
+          ox += (SX - fittedWidth) / 2;
+          SX = fittedWidth;
+        } else {
+          var fittedHeight = SX / aspect;
+          oy += (SY - fittedHeight) / 2;
+          SY = fittedHeight;
+        }
+      }
+    }
     p._SX = SX; p._SY = SY; p._S = Math.min(SX, SY);
     p._sox = ox; p._soy = oy;                // for dataToScreen (image bounds)
     if (!p.sx || p.sx.length !== n) {
@@ -4975,6 +4989,7 @@
   function panelDataAspect(p) {
     var sp = p && spaceById[p.spaceId];
     if (!isSpatialSpace(sp)) return null;
+    if (sp._preserveAspect) return null;
     if (!sp._unit) sp._unit = unitOf(sp);
     var aspect = Number(sp._unit.aspect);
     return isFinite(aspect) && aspect > 0 ? aspect : null;
@@ -5545,6 +5560,7 @@
       if (panel.spatial) {
         space.background_scope = panel.label || 'Trekker';
         space._sampleName = panel.label || 'Trekker';
+        space._preserveAspect = !!panel.preserve_aspect;
       }
       space.xRange = panel.x_range;
       space.yRange = panel.y_range;

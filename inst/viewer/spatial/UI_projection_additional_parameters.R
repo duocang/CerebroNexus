@@ -168,16 +168,11 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     embedded_images,
     external_images
   )
-  image_key <- if (is.null(selected_descriptor)) {
-    NULL
-  } else {
-    selected_descriptor$key %||% selected_descriptor$label
-  }
-  preset <- spatialImagePreset(
+  preset <- spatial_background_preset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_key
+    selected_descriptor
   )
   ## Seed MOVE and FLIP from the preset so the controls honestly reflect the
   ## shipped alignment (checkbox ticked, sliders positioned). Both are read by

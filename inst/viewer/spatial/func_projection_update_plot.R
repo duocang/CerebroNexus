@@ -72,6 +72,31 @@ spatial_background_render_payload <- function(
 ) {
   image_data <- NULL
   image_bounds <- list()
+  viewport_bounds <- if (
+    !is.null(descriptor) && identical(descriptor$source, "embedded")
+  ) {
+    descriptor$alignment$viewport_bounds
+  } else if (!is.null(descriptor)) {
+    descriptor$viewport_bounds
+  } else {
+    NULL
+  }
+  required_bounds <- c("xmin", "xmax", "ymin", "ymax")
+  viewport_values <- suppressWarnings(as.numeric(unlist(
+    viewport_bounds[required_bounds],
+    use.names = FALSE
+  )))
+  if (
+    length(viewport_values) != 4L ||
+      anyNA(viewport_values) ||
+      any(!is.finite(viewport_values)) ||
+      viewport_values[[1L]] >= viewport_values[[2L]] ||
+      viewport_values[[3L]] >= viewport_values[[4L]]
+  ) {
+    viewport_bounds <- NULL
+  } else {
+    viewport_bounds <- stats::setNames(as.list(viewport_values), required_bounds)
+  }
   if (!is.null(descriptor) && identical(descriptor$source, "embedded")) {
     image_data <- descriptor$image
     bounds <- descriptor$bounds
@@ -145,6 +170,7 @@ spatial_background_render_payload <- function(
     background_image = image_data,
     background_identity = identity,
     image_bounds = image_bounds,
+    viewport_bounds = viewport_bounds,
     background_flip_x = preset$flipX,
     background_flip_y = preset$flipY,
     background_scale_x = preset$scaleX,
@@ -195,16 +221,6 @@ spatial_projection_update_plot <- function(input) {
       bounds = NULL
     )
   }
-  ## Axis ranges are a property of the CELLS only — never the background image.
-  ## The scatter plot's coordinate system is fixed by the point bounding box;
-  ## the background is a passenger that the JS maps into that fixed system via
-  ## its stored `image_bounds` (data-space extent → pixels).
-  ## So we do NOT widen the axes to the image extent here: doing that squashed the
-  ## points (the image is larger than the spot bbox, and — combined with the old
-  ## scaleanchor lock — it blew the y-axis out to negative values). Selecting a
-  ## background must not change the axes at all.
-  x_range_out <- plot_parameters[["x_range"]]
-  y_range_out <- plot_parameters[["y_range"]]
   background_meta <- c(
     list(is_spatial = TRUE),
     spatial_background_render_payload(
@@ -229,6 +245,14 @@ spatial_projection_update_plot <- function(input) {
       }
     )
   )
+  ## Builder-managed images carry the exact coordinate viewport in which the
+  ## user aligned them. Reuse it instead of deriving a second fit from the cells.
+  x_range_out <- plot_parameters[["x_range"]]
+  y_range_out <- plot_parameters[["y_range"]]
+  if (!is.null(background_meta$viewport_bounds)) {
+    x_range_out <- unlist(background_meta$viewport_bounds[c("xmin", "xmax")])
+    y_range_out <- unlist(background_meta$viewport_bounds[c("ymin", "ymax")])
+  }
   point_line <- if (plot_parameters[["draw_border"]]) {
     list(color = "rgb(196,196,196)", width = 1)
   } else {
@@ -387,18 +411,23 @@ spatial_projection_update_plot <- function(input) {
           NULL
         }
       )
-      list(
+      result <- list(
         background_image = rendered$background_image,
         image_bounds = rendered$image_bounds,
         image_identity = rendered$background_identity,
         image_label = configured$descriptor$label,
         image_preset = configured$preset
       )
+      if (!is.null(rendered$viewport_bounds)) {
+        result$x_range <- unlist(rendered$viewport_bounds[c("xmin", "xmax")])
+        result$y_range <- unlist(rendered$viewport_bounds[c("ymin", "ymax")])
+      }
+      result
     }
     payload$data$panels <- lapply(seq_along(panel_indices), function(index) {
       cells <- panel_indices[[index]]
       label <- names(panel_indices)[[index]]
-      c(
+      utils::modifyList(
         list(
           id = paste0("split-", index),
           label = label,
@@ -407,6 +436,10 @@ spatial_projection_update_plot <- function(input) {
           y = as.numeric(coordinates[[2]][cells]),
           hover = panel_hover[cells],
           spatial = TRUE,
+          preserve_aspect = identical(
+            plot_parameters[["roi_mode"]],
+            "separate"
+          ),
           x_range = if (identical(plot_parameters[["roi_mode"]], "separate")) {
             panel_range(coordinates[[1]][cells])
           } else {

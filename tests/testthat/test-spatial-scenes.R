@@ -79,22 +79,21 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
   )
   expect_match(engine, "JSON.stringify(panel.image_identity)", fixed = TRUE)
 
-  page_helpers <- paste(
-    readLines(file.path(root, "js_page_helpers.js"), warn = FALSE),
-    collapse = "\n"
-  )
   expect_match(
     controls,
     "spatial_projection_roi_background_images",
     fixed = TRUE
   )
-  expect_match(controls, "spatial-roi-background-group", fixed = TRUE)
+  expect_match(controls, "grouped_choices", fixed = TRUE)
+  expect_match(controls, "multiple = TRUE", fixed = TRUE)
+  expect_match(controls, 'plugins = list("remove_button")', fixed = TRUE)
+  expect_match(controls, "onItemAdd", fixed = TRUE)
+  expect_false(grepl("maxItems", controls, fixed = TRUE))
   expect_match(
-    page_helpers,
-    ".spatial-roi-background-group",
+    controls,
+    'identical(selected_roi, "__all__")',
     fixed = TRUE
   )
-  expect_match(page_helpers, "choice.checked = false", fixed = TRUE)
 })
 
 test_that("spatial split choices reuse safe categorical metadata", {
@@ -147,6 +146,7 @@ test_that("optional Spatial selectors retain their reset choices", {
   expect_match(controls, "length(sample_values) > 1L", fixed = TRUE)
   expect_false(grepl('"All samples"', controls, fixed = TRUE))
   expect_match(controls, "spatial_split_columns(", fixed = TRUE)
+  expect_match(controls, 'class = "spatial-image-dim-controls"', fixed = TRUE)
   expect_match(
     controls,
     'spatial_split_none_value <- "__none__"',
@@ -174,7 +174,7 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
     options = NULL,
     dataset = "dataset",
     spatial_name = "fov",
-    roi_values = rois
+    roi_values = c(rois, "ROI-without-image")
   )
 
   expect_named(groups, rois)
@@ -206,7 +206,25 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
       ROI1 = "embedded::ROI1-B",
       ROI2 = "none",
       ROI3 = "embedded::ROI3-A",
-      ROI4 = "embedded::ROI4-A"
+      ROI4 = "none"
+    )
+  )
+  expect_identical(
+    spatial_roi_background_selections(groups, selected[-4L]),
+    list(
+      ROI1 = "embedded::ROI1-B",
+      ROI2 = "none",
+      ROI3 = "embedded::ROI3-A",
+      ROI4 = "none"
+    )
+  )
+  expect_identical(
+    spatial_roi_background_selections(groups, NULL),
+    list(
+      ROI1 = "none",
+      ROI2 = "none",
+      ROI3 = "none",
+      ROI4 = "none"
     )
   )
 })

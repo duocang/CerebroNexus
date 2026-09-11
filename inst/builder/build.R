@@ -1075,9 +1075,17 @@ builder_verify_crb <- function(path, item) {
       )
       descriptor <- list(
         path = materialized,
-        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")]),
-        label = record$image_label %||% label
+        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")])
       )
+      if (.builder_alignment_valid_bounds(record$viewport_bounds)) {
+        descriptor$viewport_bounds <- unlist(record$viewport_bounds[c(
+          "xmin",
+          "xmax",
+          "ymin",
+          "ymax"
+        )])
+      }
+      descriptor$label <- record$image_label %||% label
       scope <- intersect(c("roi_field", "roi_value"), names(record))
       descriptor[scope] <- record[scope]
       images[[item$name]][[section_id]][[label]] <- descriptor

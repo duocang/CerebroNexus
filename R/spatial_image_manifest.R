@@ -390,7 +390,14 @@
         !anyDuplicated(names(descriptor)) &&
         all(
           names(descriptor) %in%
-            c("path", "bounds", "label", "roi_field", "roi_value")
+            c(
+              "path",
+              "bounds",
+              "viewport_bounds",
+              "label",
+              "roi_field",
+              "roi_value"
+            )
         )
       if (!valid_descriptor) {
         stop(
@@ -453,9 +460,36 @@
         )
         .spatialImageBounds(bounds, midpoint, descriptor_context)
       }
+      viewport_bounds <- descriptor[["viewport_bounds"]]
+      if (!is.null(viewport_bounds)) {
+        required <- c("xmin", "xmax", "ymin", "ymax")
+        valid_viewport <- is.numeric(viewport_bounds) &&
+          length(viewport_bounds) == 4L &&
+          !is.null(names(viewport_bounds)) &&
+          setequal(names(viewport_bounds), required) &&
+          !anyDuplicated(names(viewport_bounds))
+        if (!valid_viewport) {
+          stop(
+            descriptor_context,
+            " viewport_bounds must contain exactly xmin, xmax, ymin, and ymax.",
+            call. = FALSE
+          )
+        }
+        viewport_bounds <- viewport_bounds[required]
+        if (
+          any(!is.finite(viewport_bounds)) ||
+            viewport_bounds[["xmin"]] >= viewport_bounds[["xmax"]] ||
+            viewport_bounds[["ymin"]] >= viewport_bounds[["ymax"]]
+        ) {
+          stop(descriptor_context, " viewport_bounds are invalid.", call. = FALSE)
+        }
+      }
       compact <- list(path = path)
       if (!is.null(bounds)) {
         compact$bounds <- bounds
+      }
+      if (!is.null(viewport_bounds)) {
+        compact$viewport_bounds <- viewport_bounds
       }
       if (!is.null(descriptor[["label"]])) {
         display_label <- descriptor[["label"]]
@@ -515,6 +549,11 @@
       )
     ),
     c(
+      if (!is.null(descriptor[["viewport_bounds"]])) {
+        list(histology_alignment = list(
+          viewport_bounds = as.list(descriptor[["viewport_bounds"]])
+        ))
+      },
       if (!is.null(descriptor[["label"]])) {
         list(image_label = descriptor[["label"]])
       },
