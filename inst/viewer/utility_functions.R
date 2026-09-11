@@ -587,19 +587,26 @@ cerebroSelectionSummary <- function(
       `aria-live` = "polite",
       shiny::tags$div(
         class = "cerebro-selection-composition-head",
+        shiny::tags$button(
+          type = "button",
+          class = "cerebro-selection-composition-drag",
+          `aria-label` = "Move composition card; use arrow keys",
+          title = "Drag to move",
+          shiny::tags$span(
+            `aria-hidden` = "true",
+            shiny::HTML("&#10247;")
+          )
+        ),
         shiny::tags$strong("Composition"),
         shiny::tags$span(paste0(
-          "Selected ",
           formatC(n_selected, format = "f", big.mark = ",", digits = 0),
           " / ",
-          formatC(total, format = "f", big.mark = ",", digits = 0),
-          " ",
-          unit
+          formatC(total, format = "f", big.mark = ",", digits = 0)
         ))
       ),
       shiny::tags$div(
         class = "cerebro-selection-composition-sub",
-        paste("by", comp_group)
+        paste0("Selected ", unit, " · by ", comp_group)
       ),
       shiny::tags$div(
         class = "cerebro-selection-composition-rows",

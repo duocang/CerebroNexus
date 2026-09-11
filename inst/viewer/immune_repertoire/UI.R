@@ -26,7 +26,13 @@ tab_immune_repertoire <- tabItem(
           class = "cerebro-viz-primary",
           uiOutput("ir_main_params_UI")
         ),
-        cerebroSettingsButton("ir_more_button", "ir_more"),
+        cerebroToolbarActions(
+          cerebroSettingsButton("ir_more_button", "ir_more"),
+          conditionalPanel(
+            condition = "input.ir_tabs == 'Clonal UMAP' && input.ir_p_umap_group_by == ''",
+            cerebroShareButton("ir_clonalUMAP_projection")
+          )
+        ),
         cerebroSettingsDrawer(
           "ir_more",
           uiOutput("ir_appearance_section_UI"),
@@ -40,14 +46,14 @@ tab_immune_repertoire <- tabItem(
             uiOutput("ir_group_filters_UI"),
             cerebroInfoButton("ir_group_filters_info")
           )
-        )
+        ),
+        uiOutput("ir_selection_status_UI")
       )
     ),
     column(
       width = 12,
       offset = 0,
       class = "cerebro-viz-col",
-      uiOutput("ir_selection_status_UI"),
       uiOutput("ir_help_panel"),
       uiOutput("ir_visualizations_UI")
     )

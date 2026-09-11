@@ -20,9 +20,12 @@ output[["overview_projection_UI"]] <- renderUI({
             class = "cerebro-viz-primary",
             uiOutput("overview_projection_main_parameters_UI")
           ),
-          cerebroSettingsButton(
-            "overview_projection_more_button",
-            "overview_projection_more"
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "overview_projection_more_button",
+              "overview_projection_more"
+            ),
+            cerebroShareButton("overview_projection")
           ),
           cerebroSettingsDrawer(
             "overview_projection_more",
@@ -51,6 +54,11 @@ output[["overview_projection_UI"]] <- renderUI({
               uiOutput("overview_projection_group_filters_UI"),
               cerebroInfoButton("overview_projection_group_filters_info")
             )
+          ),
+          cerebroSelectionStatus(
+            "overview_projection",
+            "overview_number_of_selected_cells",
+            portable = FALSE
           )
         )
       ),
@@ -59,10 +67,6 @@ output[["overview_projection_UI"]] <- renderUI({
         width = 12,
         offset = 0,
         class = "cerebro-viz-col",
-        cerebroSelectionStatus(
-          "overview_projection",
-          "overview_number_of_selected_cells"
-        ),
         cerebroCellViewOutput("overview_projection")
       )
     )

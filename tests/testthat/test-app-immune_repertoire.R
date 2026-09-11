@@ -502,6 +502,22 @@ test_that("IR page uses the compact top toolbar and settings drawer", {
   expect_true(isTRUE(exists_el("#ir_additional_parameters_info")))
   expect_true(isTRUE(exists_el("#ir_group_filters_info")))
   expect_true(isTRUE(exists_el("#ir_tabs")))
+  toolbar_geometry <- app$get_js(paste0(
+    "(() => {",
+    "const toolbar=document.querySelector('#shiny-tab-immune_repertoire ",
+    ".cerebro-viz-toolbar').getBoundingClientRect();",
+    "const control=document.querySelector('#ir_main_params_UI ",
+    ".form-group').getBoundingClientRect();",
+    "const settings=document.getElementById('ir_more_button').getBoundingClientRect();",
+    "const status=document.querySelector('#ir_selection_status_UI ",
+    ".cerebro-selection-status-slot').getBoundingClientRect();",
+    "return {sameRow:Math.abs(control.bottom-settings.bottom),",
+    "rightGap:toolbar.right-settings.right,statusBelow:status.top>=settings.bottom};",
+    "})()"
+  ))
+  expect_lt(toolbar_geometry$sameRow, 2)
+  expect_lt(toolbar_geometry$rightGap, 16)
+  expect_true(toolbar_geometry$statusBelow)
 })
 
 test_that("Clonal UMAP has Show-all toggle and group filters", {

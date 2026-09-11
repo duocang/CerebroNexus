@@ -36,6 +36,7 @@
   var pendingColorPatch = null; // palette received before its dataset bundle
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
+  var selectionZoomed = false;
   var selectionSource = null;   // label of the lens that created the active cohort
   var selectionSourceSpace = null; // space id of the lens that created it
   var pick = null;              // hovered/clicked cell index
@@ -77,8 +78,6 @@
   // Panel key currently promoted as the primary lens, or null for equal overview.
   // Context lenses stay present and coordinated while the primary grows.
   var focusPanel = null;
-  var zoomed = false;           // did the cohort Zoom action change a panel view?
-  var zoomedSpace = null;       // space controlled by that action
   var selectMode = 'lasso';     // drag-select mode: 'lasso' (freeform) or 'box'
   // Trekker controls brought into Linked views (only when D.trekker is present):
   var dissolvePct = 0;          // % of least-confident nuclei to dissolve
@@ -351,9 +350,9 @@
   }
 
   // ---- per-space unit normalisation ---------------------------------------
-  // Spatial coordinates and explicitly stretched abstract layouts normalise
-  // each axis independently. Other embeddings keep their internal shape in a
-  // unit box, while their fluid panel may use a rectangular screen canvas.
+  // Every 2-D layout fills its fluid canvas by normalising x/y independently.
+  // Spatial views recover one physical screen scale through panelDataAspect();
+  // only rotatable 3-D embeddings keep one shared axis scale here.
   function unitOf(space) {
     var xs = space.x, ys = space.y, zs = space.z || null, n = xs.length;
     var xr = space.xRange, yr = space.yRange;
@@ -375,7 +374,7 @@
     }
     var dw = (x1 - x0) || 1, dh = (y1 - y0) || 1;
     var kx, ky, ox, oy;
-    if (space.stretch || isSpatialSpace(space)) {
+    if (!zs) {
       kx = 1 / dw; ky = 1 / dh; ox = 0; oy = 0;
     } else {
       var k = 1 / Math.max(dw, dh);
@@ -441,9 +440,9 @@
     // `ky` is retained separately because a spatial canvas follows the data's
     // own aspect ratio instead of letterboxing it into a square first.
     //
-    // `bx` is where the DATA actually lies inside the unit box. Aspect-preserving
-    // spaces letterbox the shorter axis, so that is not [0,1] on both axes, and
-    // clampView() needs the real extent to keep a panned view on the data.
+    // `bx` is where the DATA actually lies inside the unit box. A 3-D cloud can
+    // occupy less than [0,1] after its rotation-safe spherical fit, and clampView()
+    // needs that real extent to keep a panned view on the data.
     return { nx: nx, ny: ny, nz: nz, ok: ok,
       x0: x0, y0: y0, k: kx, ky: ky, ox: ox, oy: oy,
       aspect: dw / dh,
@@ -717,7 +716,7 @@
     // linked panels deliberately use the available screen width instead of
     // centring a square canvas with unused space on both sides.
     var axed = !!sp._axisSpec;
-    var padL = axed ? 42 : 16, padB = axed ? 30 : 16, padT = 16, padR = 16;
+    var padL = axed ? 36 : 10, padB = axed ? 24 : 10, padT = 10, padR = 10;
     var SX = Math.max(1, p.W - padL - padR);
     var SY = Math.max(1, p.H - padT - padB);
     var ox = padL, oy = padT;
@@ -1583,13 +1582,6 @@
       else selectionSourceSpace = source.spaceId || null;
     }
     rebuildNiche();   // a lasso selection supersedes the niche highlight
-    // A zoom is tied to a specific selection, so any selection change (new brush
-    // or clear) returns to the full view and resets the toggle.
-    if (zoomed) {
-      resetZoom(panelForSpace(zoomedSpace));
-      zoomed = false; zoomedSpace = null;
-    }
-    updateZoomBtn();
     updateSelActions();
     updateZselButtons();
     renderSelbar(); renderReadout(); reportSelection(); drawAll();
@@ -1644,21 +1636,23 @@
     }
     revealEl(guide, !!D && !active);
   }
-  // The Zoom / Clear buttons live together and appear only with a selection.
+  // Clearing is a global cohort action, so expose one compact control only
+  // while a selection or Trekker neighbourhood exists.
   function updateSelActions() {
     var hasSel = !!(sel && sel.size);
-    // A Trekker niche pick also gets the (animated) Clear button — but not the
-    // "Zoom to selection" button, which is meaningless for a single-cell pick.
     var hasNiche = !hasSel && pick != null && !!nicheSet;
-    var show = hasSel || hasNiche;
-    revealEl($('cv-selactions'), show);
-    var zb = $('cv-zoom');
-    // Offered only when at least one visible flat panel contains selected cells.
-    // The action follows the panel that created the cohort, whatever its modality.
-    var canZoom = hasSel && panels.some(canZoomPanel);
-    if (zb) zb.style.display = canZoom ? '' : 'none';
+    revealEl($('cv-selactions'), hasSel || hasNiche);
   }
   // Zoom one requested panel to the bounding box of its selected cells.
+  function setSelectionZoomed(on) {
+    selectionZoomed = !!on;
+    document.querySelectorAll(
+      '[data-cell-view-action="focus"], #cv-zsel'
+    ).forEach(function (button) {
+      button.classList.toggle('is-on', selectionZoomed);
+      button.setAttribute('aria-pressed', selectionZoomed ? 'true' : 'false');
+    });
+  }
   function zoomToSelection(p) {
     if (!canZoomPanel(p)) return false;
     var u = spaceById[p.spaceId]._unit;
@@ -1672,6 +1666,7 @@
     p.view = clampView(p, CBGeom.fitView(
       nx0, nx1, ny0, ny1, 1.25, 0.02
     ));
+    setSelectionZoomed(true);
     project(p);
     drawAll();
     return true;
@@ -1817,38 +1812,24 @@
     if (!spaceId) return null;
     return panels.find(function (panel) { return panel.spaceId === spaceId; }) || null;
   }
-  function selectionZoomPanel() {
-    var source = panelForSpace(selectionSourceSpace);
-    if (canZoomPanel(source)) return source;
-    return panels.find(function (panel) {
-      return isProjectionPanel(panel) && canZoomPanel(panel);
-    }) || panels.find(canZoomPanel) || null;
-  }
   function resetZoom(only) {
     var any = false;
     panels.forEach(function (p) {
       if (only && p !== only) return;
       if (p.view) { p.view = null; project(p); any = true; }
     });
+    setSelectionZoomed(false);
     if (any) drawAll();
   }
-  // The Zoom button is a toggle: zoom in to the selection, or zoom back out. Its
-  // label + active style reflect the current state.
-  function updateZoomBtn() {
-    var b = $('cv-zoom'); if (!b) return;
-    b.textContent = zoomed ? 'Zoom back' : 'Zoom to selection';
-    b.classList.toggle('is-zoomed', zoomed);
-  }
-  function toggleZoom() {
-    var target = selectionZoomPanel();
-    if (zoomed) {
-      resetZoom(panelForSpace(zoomedSpace) || target);
-      zoomed = false; zoomedSpace = null;
-    } else {
-      zoomed = !!target && zoomToSelection(target);
-      zoomedSpace = zoomed ? target.spaceId : null;
+  function toggleSelectionFocus(id) {
+    if (id && singleActive !== id) return;
+    if (selectionZoomed) {
+      resetZoom();
+      return;
     }
-    updateZoomBtn();
+    panels.forEach(function (panel) {
+      if (canZoomPanel(panel)) zoomToSelection(panel);
+    });
   }
   // Sync the active drag-mode highlight (box vs lasso) across every toolbar.
   function syncModeButtons() {
@@ -1932,9 +1913,6 @@
       if (p.spaceId !== spaceId) return;
       clearPanelView(p);
     });
-    if (spaceId === zoomedSpace && zoomed) {
-      zoomed = false; zoomedSpace = null; updateZoomBtn();
-    }
   }
 
   // Zoom about a screen point, keeping whatever is under it fixed — the gesture
@@ -1942,6 +1920,7 @@
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._SX || !p._SY) return;
+    setSelectionZoomed(false);
     var zx = (mx - p._sox) / p._SX;
     var zy = (p._soy + p._SY - my) / p._SY;
     var next = CBGeom.zoomView(p.view, factor, [zx, zy], 0.04);
@@ -1952,10 +1931,6 @@
       // little rather than carrying the view off the data.
       p.view = clampView(p, next);
       project(p);
-    }
-    // Keep the cohort "Zoom back" toggle honest when its panel returns to full.
-    if (p.spaceId === zoomedSpace && !p.view && zoomed) {
-      zoomed = false; zoomedSpace = null; updateZoomBtn();
     }
     drawAll();
   }
@@ -2254,31 +2229,31 @@
     Shiny.setInputValue(singleActive + '_hidden_groups', names);
   }
 
-  function reportSingleZoom() {
-    if (!singleActive) return;
-    var panel = panels.find(function (candidate) { return !!candidate.spaceId; });
-    var on = !!(panel && panel.view);
-    var button = $(singleActive + '_zoom_to_selection');
-    if (!button) return;
-    button.classList.toggle('is-zoomed', on);
-    button.setAttribute('aria-pressed', on ? 'true' : 'false');
-    var label = button.querySelector('span');
-    if (label) label.textContent = on ? 'Reset zoom' : 'Zoom to selection';
-    var icon = button.querySelector('i');
-    if (icon) {
-      icon.classList.toggle('fa-magnifying-glass-plus', !on);
-      icon.classList.toggle('fa-magnifying-glass-minus', on);
+  // ---- readouts (composition + top clonotypes) — fully client-side --------
+  function compactSpaceLabel(space, fallback) {
+    if (space && space._baseSpaceId) {
+      space = spaceById[space._baseSpaceId] || space;
     }
+    var label = String((space && space.label) || fallback || '');
+    if (space && space.trajectory) return 'Trajectory';
+    if (space && (space.id === 'clone' || space._role === 'clone')) return 'TCR';
+    if ((space && space._projectionName) || /\(expression(?:,[^)]+)?\)$/i.test(label)) {
+      return label.replace(/\s*\(expression(?:,[^)]+)?\)\s*$/i, '').toUpperCase();
+    }
+    return label;
   }
 
-  // ---- readouts (composition + top clonotypes) — fully client-side --------
   function renderSelbar() {
     var bar = $('cv-selbar');
     if (!bar) return;
     if (sel && sel.size) {
-      $('cv-sel-kicker').textContent = 'Active cohort';
-      $('cv-seltext').innerHTML = 'Selected <b>' + fmt(sel.size) + '</b> / ' +
-        fmt(D.n) + ' cells &mdash; coordinated across all panels';
+      var kicker = $('cv-sel-kicker');
+      if (kicker) {
+        kicker.hidden = true;
+        kicker.textContent = '';
+      }
+      $('cv-seltext').innerHTML = '<b>' + fmt(sel.size) + '</b> / ' +
+        fmt(D.n) + ' selected';
 
       // Give the geometry a compact biological identity. This is descriptive:
       // the dominant registered category and its observed share, not an inferred
@@ -2287,7 +2262,8 @@
       var g = catOf(compName), top = null, counts = {};
       if (g) {
         sel.forEach(function (i) {
-          var lv = g.values[i]; counts[lv] = (counts[lv] || 0) + 1;
+          var lv = g.values[i];
+          if (g.levels[+lv] != null) counts[lv] = (counts[lv] || 0) + 1;
         });
         Object.keys(counts).forEach(function (lv) {
           if (!top || counts[lv] > top[1]) top = [lv, counts[lv]];
@@ -2296,49 +2272,92 @@
       if (profile) {
         profile.textContent = top
           ? (g.levels[+top[0]] + ' · ' + Math.round(top[1] / sel.size * 100) + '%')
-          : 'Linked cell set';
+          : '';
+        profile.hidden = !top;
       }
 
+      var sourceSpace = selectionSourceSpace && spaceById[selectionSourceSpace];
+      var sourceBaseId = (sourceSpace && sourceSpace._baseSpaceId) ||
+        selectionSourceSpace;
+      var sourceBaseSpace = sourceBaseId && spaceById[sourceBaseId];
       var origin = $('cv-selorigin');
-      if (origin) origin.textContent = selectionSource
-        ? ('Selected in ' + selectionSource) : 'Shared selection';
+      if (origin) {
+        var sourceLabel = (sourceBaseSpace && sourceBaseSpace.label) || selectionSource;
+        origin.textContent = selectionSource
+          ? ('From ' + compactSpaceLabel(sourceSpace, selectionSource)) : '';
+        origin.hidden = !selectionSource;
+        if (selectionSource) {
+          origin.title = 'Selected in ' + sourceLabel;
+          origin.setAttribute('aria-label', 'Selected in ' + sourceLabel);
+        } else {
+          origin.removeAttribute('title');
+          origin.removeAttribute('aria-label');
+        }
+      }
 
       // A cohort remains the same set even when one lens cannot place every
       // member. Report that coverage rather than silently making it look smaller.
-      var mapped = [];
+      var mapped = [], seenSpaces = {};
       panels.forEach(function (p) {
         if (!p.spaceId || !p.ok) return;
-        var n = 0; sel.forEach(function (i) { if (p.ok[i]) n++; });
         var space = spaceById[p.spaceId];
-        mapped.push({ label: space ? space.label : p.spaceId, count: n });
+        var baseId = (space && space._baseSpaceId) || p.spaceId;
+        if (baseId === sourceBaseId || seenSpaces[baseId]) return;
+        seenSpaces[baseId] = true;
+        var n = 0; sel.forEach(function (i) { if (p.ok[i]) n++; });
+        var baseSpace = spaceById[baseId] || space;
+        mapped.push({
+          space: baseSpace,
+          label: baseSpace ? baseSpace.label : baseId,
+          count: n
+        });
       });
       var coverage = $('cv-selcoverage');
       if (coverage) {
-        var mappedCounts = mapped.map(function (item) { return item.count; });
-        var lo = mappedCounts.length ? Math.min.apply(Math, mappedCounts) : sel.size;
-        coverage.textContent = lo === sel.size
-          ? (mapped.length + ' linked views · complete mapping')
-          : mapped.map(function (item) {
-            return item.label + ' ' + item.count + '/' + sel.size;
-          }).join(' · ');
+        coverage.textContent = '';
+        coverage.hidden = !mapped.length;
+        mapped.forEach(function (item) {
+          var child = document.createElement('span');
+          var description = item.label + ': ' + fmt(item.count) + ' of ' +
+            fmt(sel.size) + ' selected cells mapped';
+          child.className = 'cv-coverage-item';
+          child.textContent = compactSpaceLabel(item.space, item.label) + ' ' +
+            fmt(item.count);
+          child.title = description;
+          child.setAttribute('aria-label', description);
+          coverage.appendChild(child);
+        });
       }
     } else if (pick != null && nicheSet) {
       // A picked Trekker nucleus is the single-cell counterpart of an active
       // cohort. Keep it in the same shared-state surface so its identity,
       // neighbourhood, and Clear action remain visible across every lens.
-      $('cv-sel-kicker').textContent = 'Active cell';
+      var pickKicker = $('cv-sel-kicker');
+      if (pickKicker) {
+        pickKicker.hidden = false;
+        pickKicker.textContent = 'Active cell';
+      }
       $('cv-seltext').innerHTML = 'Picked nucleus <b>' + esc(D.cells[pick]) + '</b>';
 
       var pickProfile = $('cv-selprofile'), pickGroup = catOf(compGroupName());
       if (pickProfile) {
+        pickProfile.hidden = false;
         var pickLevel = pickGroup && pickGroup.values[pick];
         pickProfile.textContent = pickGroup && pickGroup.levels[pickLevel] != null
           ? pickGroup.levels[pickLevel] : 'Single nucleus';
       }
       var pickOrigin = $('cv-selorigin');
-      if (pickOrigin) pickOrigin.textContent = 'Single-cell neighbourhood';
+      if (pickOrigin) {
+        pickOrigin.hidden = false;
+        pickOrigin.removeAttribute('title');
+        pickOrigin.removeAttribute('aria-label');
+        pickOrigin.textContent = 'Single-cell neighbourhood';
+      }
       var pickCoverage = $('cv-selcoverage');
       if (pickCoverage) {
+        pickCoverage.hidden = false;
+        pickCoverage.removeAttribute('title');
+        pickCoverage.removeAttribute('aria-label');
         pickCoverage.textContent = Math.max(0, nicheSet.size - 1) +
           ' neighbours within ' + nicheRadius + ' µm';
       }
@@ -4925,10 +4944,10 @@
     // CSS owns the flex layout. Read its actual gap so the width calculation
     // cannot drift from the browser and push the last pane onto a new row.
     var gap = parseFloat(getComputedStyle(panes).columnGap) || 0;
-    // Each pane is border-box with 12px padding + 1px border, so its content is
-    // 26px narrower than its column track. The canvas takes that full width;
+    // Each pane is border-box with 8px padding + 1px border, so its content is
+    // 18px narrower than its column track. The canvas takes that full width;
     // height is still fitted to the viewport by the existing overview logic.
-    var chromeX = 26;
+    var chromeX = 18;
     var firstCanvas = vis[0] && vis[0].canvas;
     var firstPane = vis[0] && vis[0].pane;
     var overhead = firstPane && firstCanvas
@@ -5068,7 +5087,7 @@
     selectionSourceSpace = null;
     pick = null; nicheSet = null;
     hoverCell = null; focusPanel = null;
-    zoomed = false; zoomedSpace = null; hidden = new Set(); groupFilter = {};
+    hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
       p.lasso = null; p.lassoData = null; p.view = null;
@@ -5546,6 +5565,7 @@
     if (resetAxes) payload.lenses = [];
     restoreLinkedSurface();
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
+    setSelectionZoomed(false);
     if (!mountSingleSurface(id)) { singleActive = null; return false; }
     D = Object.assign({}, linkedBundle, {
       fields: Object.assign({}, linkedBundle.fields || {}),
@@ -5564,7 +5584,6 @@
     hidden = new Set(); groupFilter = {}; sel = null; selectionSource = null;
     selectionSourceSpace = null;
     pick = null; hoverCell = null; focusPanel = null;
-    zoomed = false; zoomedSpace = null;
     var appearance = payload.meta.appearance;
     if (appearance) {
       labelsOn = appearance.group_labels !== false;
@@ -5623,7 +5642,7 @@
       sel = restored.size ? restored : null;
     }
     renderLegend(); resizeAll(); renderSelbar(); drawAll();
-    reportSingleHiddenGroups(); reportSelection(); reportSingleZoom();
+    reportSingleHiddenGroups(); reportSelection();
     return true;
   }
   function activateLinked() {
@@ -5673,23 +5692,9 @@
       return Object.assign({}, lens, { lassoData: null });
     });
     if (singleActive === id) {
+      if (selectionZoomed) resetZoom();
       pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
-      reportSingleZoom();
     }
-  }
-
-  function toggleSingleZoom(id) {
-    if (singleActive !== id) return;
-    var panel = panels.find(function (candidate) { return !!candidate.spaceId; });
-    if (!panel || panelIs3D(panel)) return;
-    if (panel.view) {
-      panel.view = null; project(panel); drawAll();
-    } else {
-      zoomToSelection(panel);
-    }
-    zoomed = !!panel.view;
-    zoomedSpace = zoomed ? panel.spaceId : null;
-    updateZoomBtn(); reportSingleZoom();
   }
 
   function captureSingleState(id) {
@@ -5908,8 +5913,8 @@
     // Give every present space its own panel and hide the unused slots (this also
     // places the Trekker info button on the Trekker panel).
     layoutPanels();
-    zoomed = false; zoomedSpace = null; updateZoomBtn(); syncModeButtons();
-    updateSelActions();   // hide the Zoom / Clear group until a selection exists
+    syncModeButtons();
+    updateSelActions();   // hide Clear until a selection exists
     updateZselButtons();
     // Immune axis present → reveal the clonal-layout switch and lay out the
     // clone space (client-owned) before the first projection runs.
@@ -6582,7 +6587,7 @@
       }
       if (singleId && linkedBundle && singleViews[singleId]) {
         activateSingle(singleId);
-      } else if (linkedVis && singleActive) {
+      } else if (singleActive) {
         activateLinked();
       }
       if (Shiny.setInputValue) {
@@ -6678,7 +6683,7 @@
         var singleId = singleAction.getAttribute('data-cell-view-id');
         var singleAct = singleAction.getAttribute('data-cell-view-action');
         if (singleAct === 'clear') clearSingleSelection(singleId);
-        else if (singleAct === 'zoom') toggleSingleZoom(singleId);
+        if (singleAct === 'focus') toggleSelectionFocus(singleId);
         return;
       }
       // per-panel modebar: select mode (box/lasso), zoom in/out, reset, PNG
@@ -6709,9 +6714,7 @@
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
-            if (pp.spaceId === zoomedSpace) {
-              zoomed = false; zoomedSpace = null; updateZoomBtn();
-            }
+            setSelectionZoomed(false);
             drawAll();
           }
         }
@@ -6722,9 +6725,13 @@
         if (!sel) { rebuildNiche(); renderReadout(); }
         return;
       }
-      if (t && t.id === 'cv-zoom') { toggleZoom(); return; }
-      if (t && t.id === 'cv-clear') {
+      if (t && t.closest && t.closest('#cv-clear')) {
+        if (selectionZoomed) resetZoom();
         pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
+        return;
+      }
+      if (t && t.closest && t.closest('#cv-zsel')) {
+        toggleSelectionFocus();
         return;
       }
       // clonal-layout segmented toggle: recompute the clone space + reproject

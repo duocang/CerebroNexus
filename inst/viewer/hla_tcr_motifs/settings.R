@@ -3,15 +3,15 @@
 ##----------------------------------------------------------------------------##
 
 ## ---- Two-line option renderer ----------------------------------------- ##
-## selectize draws each option/item as one run of text, so a label long enough
+## selectize draws each option as one run of text, so a label long enough
 ## to wrap breaks wherever it runs out of room — "re-colours" or "non-carrier"
 ## split across two lines. This renders "name|explanation" as a name plus a
 ## smaller, muted second line, so the break is a decision. escape() is
 ## selectize's own HTML escaper; the labels are ours, but rendering them raw
 ## would make any future label an injection point.
 ##
-## Shared by every picker on this page whose label is "what it is" plus "what it
-## means": network scope, and both allele pickers.
+## Dropdown options keep the explanation on a deliberate second line; selected
+## items show only the name so every primary control keeps the shared height.
 HLA_TWO_LINE_RENDER <- I(
   "{
     option: function(item, escape) {
@@ -24,11 +24,7 @@ HLA_TWO_LINE_RENDER <- I(
     },
     item: function(item, escape) {
       var p = item.label.split('|');
-      return '<div class=\"item\" style=\"line-height:1.35;\">' +
-             '<div>' + escape(p[0]) + '</div>' +
-             (p[1] ? '<div style=\"font-size:11px;color:#8a8a90;\">' +
-                     escape(p[1]) + '</div>' : '') +
-             '</div>';
+      return '<div class=\"item\">' + escape(p[0]) + '</div>';
     }
   }"
 )
@@ -111,14 +107,6 @@ output$hla_parameters_ui <- renderUI({
     conditionalPanel(
       condition = "input.hla_scope == 'pair'",
       uiOutput("hla_pair_allele_ui")
-    ),
-    sliderInput(
-      "hla_min_nodes",
-      "Minimum motif size (nodes):",
-      min = 2,
-      max = 10,
-      value = hla_default_min_nodes(),
-      step = 1
     )
   )
 })
@@ -126,6 +114,14 @@ output$hla_parameters_ui <- renderUI({
 ## ---- Secondary analysis parameters ------------------------------------ ##
 output$hla_more_parameters_ui <- renderUI({
   tagList(
+    sliderInput(
+      "hla_min_nodes",
+      "Minimum motif size (nodes):",
+      min = 2,
+      max = 10,
+      value = hla_default_min_nodes(),
+      step = 1
+    ),
     div(
       class = "cerebro-settings-full",
       uiOutput("hla_scope_status")

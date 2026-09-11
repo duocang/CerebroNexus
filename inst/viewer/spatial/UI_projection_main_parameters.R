@@ -37,27 +37,6 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   ) {
     current_spatial <- availableSpatial()[1]
   }
-  current_sd <- tryCatch(
-    getSpatialData(current_spatial),
-    error = function(e) NULL
-  )
-  embedded_images <- if (is.null(current_sd)) {
-    list()
-  } else {
-    embedded_spatial_images(current_sd)
-  }
-  dataset <- spatial_dataset_name(
-    if (exists("available_crb_files")) available_crb_files$files else NULL,
-    if (exists("available_crb_files")) available_crb_files$selected else NULL
-  )
-  background_choices <- spatial_background_choices(
-    embedded_images,
-    configured_spatial_images(
-      if (exists("Cerebro.options")) Cerebro.options else NULL,
-      dataset,
-      current_spatial
-    )
-  )
   tagList(
     selectInput(
       "spatial_projection_to_display",
@@ -77,15 +56,6 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         "spatial_projection_point_color",
         label = "Colour by",
         choices = metadata_cols
-      )
-    ),
-    selectInput(
-      "spatial_projection_background_image",
-      label = "Background image",
-      choices = background_choices,
-      selected = normalize_spatial_background_choice(
-        isolate(input[["spatial_projection_background_image"]]),
-        background_choices
       )
     ),
     conditionalPanel(
@@ -147,6 +117,50 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   )
 })
 
+output[["spatial_projection_background_selector_UI"]] <- renderUI({
+  req(data_set())
+  req(length(availableSpatial()) > 0)
+
+  current_spatial <- input[["spatial_projection_to_display"]]
+  if (
+    is.null(current_spatial) ||
+      !(current_spatial %in% availableSpatial())
+  ) {
+    current_spatial <- availableSpatial()[1]
+  }
+  current_sd <- tryCatch(
+    getSpatialData(current_spatial),
+    error = function(e) NULL
+  )
+  embedded_images <- if (is.null(current_sd)) {
+    list()
+  } else {
+    embedded_spatial_images(current_sd)
+  }
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  background_choices <- spatial_background_choices(
+    embedded_images,
+    configured_spatial_images(
+      if (exists("Cerebro.options")) Cerebro.options else NULL,
+      dataset,
+      current_spatial
+    )
+  )
+
+  selectInput(
+    "spatial_projection_background_image",
+    label = "Background image",
+    choices = background_choices,
+    selected = normalize_spatial_background_choice(
+      isolate(input[["spatial_projection_background_image"]]),
+      background_choices
+    )
+  )
+})
+
 serverSideGeneSelector(
   session,
   "spatial_projection_feature_to_display",
@@ -184,6 +198,11 @@ lapply(
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",
+  suspendWhenHidden = FALSE
+)
+outputOptions(
+  output,
+  "spatial_projection_background_selector_UI",
   suspendWhenHidden = FALSE
 )
 ##----------------------------------------------------------------------------##

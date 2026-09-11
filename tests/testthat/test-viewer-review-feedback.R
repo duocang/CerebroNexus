@@ -352,10 +352,11 @@ test_that("Standalone cell-view toolbars reach the panel top-right", {
   }
 })
 
-test_that("Spatial geometry does not constrain fluid linked views", {
+test_that("2-D views fill fluid panels without changing spatial scale", {
   js <- viewer_source("www", "cell_views.js")
 
-  expect_match(js, "space.stretch || isSpatialSpace(space)", fixed = TRUE)
+  expect_match(js, "if (!zs) {", fixed = TRUE)
+  expect_match(js, "var k = 1 / Math.max(dw, dh);", fixed = TRUE)
   expect_match(js, "function panelDataAspect", fixed = TRUE)
   expect_match(js, "Number(sp._unit.aspect)", fixed = TRUE)
   expect_match(js, "function fitAspectRow", fixed = TRUE)
@@ -385,11 +386,39 @@ test_that("Trekker uses the shared top toolbar and settings drawer", {
   expect_no_match(server, "shinyWidgets::pickerInput", fixed = TRUE)
 })
 
-test_that("Canvas panels separate view reset from selection clear", {
+test_that("HLA keeps zoom-to-selection in its panel toolbar", {
+  ui <- viewer_source("hla_tcr_motifs", "UI.R")
+  javascript <- viewer_source("www", "hla_motifs.js")
+
+  expect_match(
+    ui,
+    'button("zsel", "Zoom to selection", "crop-simple", disabled = TRUE)',
+    fixed = TRUE
+  )
+  expect_match(javascript, "action === 'zsel'", fixed = TRUE)
+  expect_match(
+    javascript,
+    "button.disabled = !selectedKeys.length",
+    fixed = TRUE
+  )
+})
+
+test_that("Linked actions stay compact and match their scope", {
   ui <- viewer_source("coordinated_views", "UI.R")
   javascript <- viewer_source("www", "cell_views.js")
+  css <- viewer_source("www", "coordviews.css")
 
-  expect_match(ui, 'class = "cv-tbtn cv-clear-btn"', fixed = TRUE)
+  config_open <- gregexpr('id = "cv-config-open"', ui, fixed = TRUE)[[1L]]
+  expect_length(config_open[config_open > 0L], 1L)
+  expect_match(ui, 'tags$span("Share")', fixed = TRUE)
+  expect_match(
+    ui,
+    '"cv-config-open cv-share-open cerebro-toolbar-share"',
+    fixed = TRUE
+  )
+  expect_no_match(javascript, "revealEl(share, hasSel);", fixed = TRUE)
+  expect_no_match(ui, 'id = "cv-zoom"', fixed = TRUE)
+  expect_match(ui, "cv-clear-btn", fixed = TRUE)
   expect_match(ui, '`data-act` = "clear"', fixed = TRUE)
   expect_match(javascript, "function updateResetButtons", fixed = TRUE)
   expect_match(
@@ -398,6 +427,12 @@ test_that("Canvas panels separate view reset from selection clear", {
     fixed = TRUE
   )
   expect_match(javascript, "if (act === 'clear')", fixed = TRUE)
+  expect_match(
+    javascript,
+    "t.closest && t.closest('#cv-clear')",
+    fixed = TRUE
+  )
+  expect_match(css, "font-size: 13px;", fixed = TRUE)
   expect_match(
     javascript,
     "if (gname.indexOf('__single_') === 0) return;",

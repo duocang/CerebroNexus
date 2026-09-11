@@ -13,13 +13,24 @@
 ##----------------------------------------------------------------------------##
 
 hlaMotifModebar <- function() {
-  button <- function(action, label, icon_name, active = FALSE) {
+  button <- function(
+    action,
+    label,
+    icon_name,
+    active = FALSE,
+    disabled = FALSE
+  ) {
     tags$button(
       type = "button",
-      class = if (active) "hla-mb-btn is-on" else "hla-mb-btn",
+      class = paste(
+        "hla-mb-btn",
+        if (active) "is-on" else NULL,
+        if (disabled) "hla-mb-btn--off" else NULL
+      ),
       `data-act` = action,
       `data-tip` = label,
       `aria-label` = label,
+      disabled = if (disabled) "disabled" else NULL,
       icon(icon_name)
     )
   }
@@ -31,7 +42,9 @@ hlaMotifModebar <- function() {
     button("pan", "Pan", "up-down-left-right"),
     button("zoomin", "Zoom in", "search-plus"),
     button("zoomout", "Zoom out", "search-minus"),
+    button("zsel", "Zoom to selection", "crop-simple", disabled = TRUE),
     button("reset", "Reset view", "house"),
+    button("clear", "Clear selection", "eraser", disabled = TRUE),
     button("download", "Download PNG", "download")
   )
 }
@@ -55,7 +68,10 @@ tab_hla_tcr_motifs <- tabItem(
           class = "cerebro-viz-primary",
           uiOutput("hla_parameters_ui")
         ),
-        cerebroSettingsButton("hla_more_button", "hla_more"),
+        cerebroToolbarActions(
+          cerebroSettingsButton("hla_more_button", "hla_more"),
+          cerebroShareButton("hla_motif_network")
+        ),
         cerebroSettingsDrawer(
           "hla_more",
           cerebroSettingsSection(
@@ -75,6 +91,21 @@ tab_hla_tcr_motifs <- tabItem(
             ),
             cerebroInfoButton("hla_status_info")
           )
+        ),
+        cerebroSelectionStatus(
+          "hla_motif_network",
+          "hla_selected_count",
+          client_actions = FALSE,
+          portable = FALSE,
+          extra_actions = actionButton(
+            "hla_motif_network_focus_selection",
+            tagList(icon("crop-simple"), tags$span("Focus")),
+            class = paste(
+              "btn btn-xs btn-default btn-breathing",
+              "cerebro-selection-action-focus"
+            ),
+            `aria-pressed` = "false"
+          )
         )
       )
     ),
@@ -82,30 +113,18 @@ tab_hla_tcr_motifs <- tabItem(
       width = 12,
       offset = 0,
       class = "cerebro-viz-col",
-      cerebroSelectionStatus(
-        "hla_motif_network",
-        "hla_selected_count",
-        client_actions = FALSE
-      ),
-      cerebroBox(
-        title = NULL,
-        collapsible = FALSE,
-        content = tabsetPanel(
+      shiny::tagAppendAttributes(
+        tabsetPanel(
           id = "hla_tabs",
           tabPanel(
             "Motif Network",
-            br(),
-            # The legend and the network share one positioning context so the
-            # modebar can float at its top-right: it lands on the legend's row
-            # when a legend is shown (reclaiming that otherwise-empty right side),
-            # and at the plot's top-right when the legend is hidden (the legend
-            # collapses to zero height). A modebar matching the app's plotly one
-            # is drawn by www/hla_motifs.js (visNetwork's own green nav buttons
-            # are turned off in visualizations.R for consistency).
+            # The legend remains a full-width row above the plot. The custom
+            # modebar floats inside the plot so long legends cannot collide with
+            # it. visNetwork's own green navigation buttons are disabled in
+            # visualizations.R for consistency with the other visualizations.
             tags$div(
               class = "hla-motif-tab",
-              hlaMotifModebar(),
-              uiOutput("hla_legend_ui"),
+              uiOutput("hla_legend_ui", class = "hla-legend-row"),
               # Fill the viewport instead of a hardcoded 640px: the wrapper is
               # sized to (viewport - its live top - a bottom gap) by
               # fill_height.js, and the network renders at height:100% inside it.
@@ -113,6 +132,7 @@ tab_hla_tcr_motifs <- tabItem(
               # moves and the height re-measures itself. See www/fill_height.js.
               tags$div(
                 class = "hla-plot-wrap",
+                hlaMotifModebar(),
                 tags$div(
                   class = "cerebro-fill",
                   shinycssloaders::withSpinner(
@@ -128,11 +148,6 @@ tab_hla_tcr_motifs <- tabItem(
                 )
               )
             ),
-            tags$div(
-              id = "hla-node-details",
-              class = "well well-sm hla-node-details",
-              style = "display:none"
-            ),
             uiOutput("hla_motif_note"),
             # A picture cannot be recomputed or audited; the tables and their
             # manifest can. See output$hla_export_analysis.
@@ -144,7 +159,6 @@ tab_hla_tcr_motifs <- tabItem(
           ),
           tabPanel(
             "Network data",
-            br(),
             # Rendered server-side: the second grain is one row per OBSERVATION
             # UNIT, which is a cell only when the data set says so. A bulk
             # repertoire's rows are analysis units, so the label has to follow
@@ -160,15 +174,14 @@ tab_hla_tcr_motifs <- tabItem(
           ),
           tabPanel(
             "HLA Associations",
-            br(),
             uiOutput("hla_associations_ui")
           ),
           tabPanel(
             "Data & QC",
-            br(),
             uiOutput("hla_data_qc_ui")
           )
-        )
+        ),
+        class = "cerebro-analysis-tabs"
       )
     )
   )

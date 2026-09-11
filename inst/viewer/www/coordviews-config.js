@@ -61,7 +61,7 @@
     button.disabled = exportBusy || !exportReady;
     button.title = exportReady
       ? ''
-      : 'Select at least one cell before sharing this view';
+      : 'This view is waiting for its plot';
   }
 
   function setBusy(busy) {
@@ -104,7 +104,6 @@
   }
 
   function setReadyFor(viewId, ready, selectedCells) {
-    var selected = Number(selectedCells) > 0;
     var buttons = document.querySelectorAll(
       '.cv-config-open[data-view-id="' + viewId + '"], ' +
       '.cerebro-config-open[data-view-id="' + viewId + '"]'
@@ -115,7 +114,7 @@
       button.title = ready ? 'Share this view' : 'This view is waiting for its plot';
     });
     if (viewId !== activeViewId) return;
-    exportReady = !!ready && selected;
+    exportReady = !!ready;
     refreshExportControls();
   }
 
@@ -169,10 +168,6 @@
     var state = adapter();
     if (!state || !state.ready || !state.ready()) {
       status('This view is not ready to download.', 'error');
-      return;
-    }
-    if (!exportReady) {
-      status('Select at least one cell before sharing this view.', 'error');
       return;
     }
     if (pending || typeof Shiny === 'undefined' || !Shiny.setInputValue) {

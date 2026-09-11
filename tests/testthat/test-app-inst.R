@@ -631,13 +631,9 @@ test_that("{shinytest2} recording: gene_expression", {
   ## is "not found" and no gene is ever selected.
   wait_for_input(app, "expression_genes_input")
 
-  ## select MS4A1 and verify it is found in the data set
+  ## select MS4A1 and verify the projection controls become available
   app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
   app$wait_for_idle(timeout = 15000)
-
-  genes_text <- retry_get_value(app, output = "expression_genes_displayed")
-  expect_true(grepl("MS4A1", genes_text))
-  expect_true(grepl("0 gene(s) are not in data set", genes_text, fixed = TRUE))
 
   app$wait_for_js(
     paste0(

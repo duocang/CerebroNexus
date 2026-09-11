@@ -14,10 +14,10 @@
 }
 /* ---- top control bar (the layout fix) ----------------------------------- */
 .coordviews-page .cv-topbar {
-  gap: 16px;
+  gap: 8px 10px;
   position: relative;
 }
-.coordviews-page .cv-ctl { display: flex; flex-direction: column; gap: 5px; }
+.coordviews-page .cv-ctl { display: flex; flex-direction: column; gap: 0; }
 .coordviews-page .cv-topbar > .cv-ctl > .selectize-control {
   width: 100%;
 }
@@ -88,7 +88,7 @@
 
 /* ---- right cluster: global readout -------------------------------------- */
 .coordviews-page .cv-topbar-right {
-  order: 98; display: flex; align-items: center; gap: 14px;
+  order: 97; display: flex; align-items: center; gap: 14px;
 }
 /* Sized up to match the buttons beside it — it reports on the same selection
    they act on, and at 12px it read as a footnote to them. One line, so the bar's
@@ -110,27 +110,21 @@
 .coordviews-page .cv-config-open:disabled {
   opacity: .48; cursor: not-allowed;
 }
-/* Zoom + Clear live inside the active-cohort bar, beside the selection they
-   affect. They stay horizontal and move to a new flex line only when needed. */
+/* The status row keeps one compact global Clear action. Per-panel zoom remains
+   in each pane's own toolbar, while Share stays in the main control row. */
 .coordviews-page .cv-selactions {
-  display: grid; gap: 6px; justify-items: end;
+  display: flex; align-items: center;
   align-self: center; margin-left: auto;
   transition: opacity .16s ease, transform .16s ease;
 }
-.coordviews-page .cv-sel-action-row {
-  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+.coordviews-page .cv-selactions .btn {
+  min-width: 0; height: 32px; padding: 0 10px;
+  font-size: 13px; gap: 6px;
 }
 /* collapsed (hidden) state — a quiet fade + tiny lift */
 .coordviews-page .cv-selactions.cv-collapse {
   opacity: 0; transform: translateY(-4px); pointer-events: none;
 }
-/* The button uses the app-wide More settings component; only its position in
-   this toolbar is page-specific. */
-.coordviews-page .cv-topbar > .cerebro-more-btn {
-  order: 99;
-  align-self: flex-end;
-}
-
 /* niche-radius slider disabled until a nucleus is picked */
 .coordviews-page .cv-disabled { opacity: 0.45; }
 .coordviews-page .cv-disabled input[type=range] { cursor: not-allowed; }
@@ -311,6 +305,7 @@
   min-width: 0;
 }
 .cerebro-cell-view-surface {
+  position: relative;
   width: 100%;
   min-width: 0;
 }
@@ -334,8 +329,8 @@
      saved lenses inherit that narrow measurement and remain stranded left. */
   display: flex; flex-wrap: wrap;
   width: 100%; min-width: 0; box-sizing: border-box;
-  padding: 14px 0 8px;
-  gap: 18px; justify-content: flex-start; align-items: flex-start;
+  padding: 4px 0 8px;
+  gap: 8px; justify-content: flex-start; align-items: flex-start;
   align-content: flex-start;
   /* anchors the detail card to the workspace's centre (it is absolutely
      positioned, so it stays out of the panel flow) */
@@ -348,7 +343,7 @@
 .coordviews-page .cv-pane {
   position: relative;
   background: var(--c-surface); border: 1px solid var(--c-border);
-  border-radius: 10px; padding: 12px;
+  border-radius: 10px; padding: 8px;
   box-sizing: border-box; flex: 0 0 auto;
   display: flex; flex-direction: column; align-self: start;
   transition: opacity .2s ease, border-color .2s ease, box-shadow .2s ease;
@@ -705,12 +700,16 @@
 @keyframes cvSkel { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 /* ---- legend ------------------------------------------------------------- */
 .coordviews-page .cv-legend {
-  display: flex; flex-wrap: wrap; gap: 4px 14px;
-  margin: 12px 2px 0; font-size: 11.5px;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 14px;
+  max-width: 100%; overflow-x: auto; overflow-y: hidden;
+  margin: 4px 2px 0; font-size: 11.5px;
+  scrollbar-width: thin;
 }
+.coordviews-page .cv-legend:not(:empty) { height: 30px; }
+.coordviews-page .cv-legend::-webkit-scrollbar { height: 4px; }
 .coordviews-page .cv-lg {
   display: flex; align-items: center; gap: 5px; cursor: pointer;
-  user-select: none; padding: 1px 4px; border-radius: 3px;
+  flex: 0 0 auto; user-select: none; padding: 1px 4px; border-radius: 3px;
 }
 .coordviews-page .cv-lg:hover { background: var(--c-surface-2); }
 .coordviews-page .cv-lg.off { opacity: .5; }
@@ -725,7 +724,7 @@
 .coordviews-page .cv-rgb-lg:hover { background: transparent; }
 .coordviews-page .cv-rgb-none { color: var(--c-text-3); font-style: italic; }
 .coordviews-page .cv-rgb-note {
-  flex: 1 0 100%; color: var(--c-text-3); line-height: 1.35;
+  flex: 0 0 auto; color: var(--c-text-3); line-height: 1.35;
 }
 
 /* ---- histology image control bar ---------------------------------------- */
@@ -813,7 +812,8 @@
 /* ---- colourbar (single-gene continuous) --------------------------------- */
 .coordviews-page .cv-cbar {
   display: flex; align-items: center; gap: 8px;
-  margin: 12px 2px 0; font-size: 11px; color: var(--c-text-2);
+  height: 30px; box-sizing: border-box;
+  margin: 4px 2px 0; font-size: 11px; color: var(--c-text-2);
 }
 .coordviews-page .cv-grad {
   flex: 0 1 240px; height: 10px; border-radius: 5px;
@@ -824,6 +824,26 @@
 .coordviews-page .cv-cbar.cv-shared-range .cv-cbar-note { display: none; }
 .coordviews-page .cv-cbar.cv-shared-range #cv-cb0 {
   color: var(--c-text-2); font-weight: 650;
+}
+.spatial-viz-surface {
+  position: relative;
+}
+.spatial-moran-overlay {
+  position: absolute;
+  top: 42px;
+  left: 12px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 9px;
+  border: 1px solid rgba(224, 224, 224, .9);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: var(--shadow-1);
+  color: var(--c-text-2);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
 }
 .coordviews-page .cv-panel-scale {
   display: inline-block; width: 52px; height: 6px; flex: 0 0 auto;
@@ -880,10 +900,28 @@
 .coordviews-page .cv-selbar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 8px 12px;
+  font-size: 11.5px;
 }
 .coordviews-page .cv-selcopy {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
-  min-width: 0;
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 6px 8px;
+  min-width: 0; overflow: hidden; white-space: nowrap;
+}
+.coordviews-page .cv-seltext,
+.coordviews-page .cv-selprofile,
+.coordviews-page .cv-selorigin { flex: 0 0 auto; }
+.coordviews-page .cv-selcoverage {
+  display: inline-flex; align-items: center; flex: 1 1 auto;
+  min-width: 0; gap: 6px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+}
+.coordviews-page .cv-selcoverage::-webkit-scrollbar { display: none; }
+.coordviews-page .cv-selorigin,
+.coordviews-page .cv-coverage-item {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  height: 24px; box-sizing: border-box; padding: 1px 8px;
+  border: 1px solid var(--c-border); border-radius: 999px;
+  background: var(--c-surface-2); color: var(--c-text-2);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
 }
 .coordviews-page .cv-selbar.cv-collapse {
   opacity: 0; visibility: hidden; pointer-events: none;
