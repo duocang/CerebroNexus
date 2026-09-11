@@ -244,7 +244,26 @@ void main() {
       setData: setData,
       draw: draw,
       clear: clear,
-      idle: function () { gl.finish(); return Promise.resolve(); },
+      idle: function () {
+        var fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        return new Promise(function (resolve, reject) {
+          function poll() {
+            var status = gl.clientWaitSync(fence, 0, 0);
+            if (status === gl.TIMEOUT_EXPIRED) {
+              global.setTimeout(poll, 0);
+              return;
+            }
+            gl.deleteSync(fence);
+            if (status === gl.WAIT_FAILED) {
+              reject(new Error('WebGL2 fence wait failed.'));
+            } else {
+              resolve();
+            }
+          }
+          poll();
+        });
+      },
       stats: function () {
         return Object.assign({}, metrics, {
           contextLost: gl.isContextLost(),
