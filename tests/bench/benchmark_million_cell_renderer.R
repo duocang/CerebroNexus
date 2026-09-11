@@ -2,6 +2,7 @@ args <- commandArgs(trailingOnly = TRUE)
 count <- if (length(args)) as.integer(args[[1]]) else 1000000L
 repeats <- if (length(args) > 1L) as.integer(args[[2]]) else 15L
 output <- if (length(args) > 2L) args[[3]] else ""
+screenshot <- if (length(args) > 3L) args[[4]] else ""
 if (is.na(count) || count < 1L || is.na(repeats) || repeats < 3L) {
   stop(
     "Usage: benchmark_million_cell_renderer.R [points] [repeats] [output.csv]"
@@ -36,5 +37,8 @@ if (nzchar(expected) && !identical(result$backend, expected)) {
 }
 if (nzchar(output)) {
   utils::write.csv(result, output, row.names = FALSE)
+}
+if (nzchar(screenshot)) {
+  driver$get_screenshot(screenshot, selector = "#benchmark-canvas")
 }
 print(result, row.names = FALSE)
