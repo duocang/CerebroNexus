@@ -77,6 +77,57 @@ test_that("RGB summaries preserve repeated channels and omit empty ones", {
   )
 })
 
+test_that("RGB expression reads all channels in one backend call", {
+  scope <- new.env(parent = globalenv())
+  scope$reactive <- shiny::reactive
+  scope$req <- shiny::req
+  scope$withProgress <- function(expr, ...) force(expr)
+  scope$incProgress <- function(...) NULL
+  scope$input <- shiny::reactiveValues(
+    expression_projection_genes_in_separate_panels = "rgb"
+  )
+
+  values <- matrix(
+    c(1, 2, 3, 4, 5, 6),
+    nrow = 3,
+    dimnames = list(c("g1", "g2", "g3"), c("c1", "c2"))
+  )
+  reads <- 0L
+  dataset <- new.env(parent = emptyenv())
+  dataset$expression <- values
+  dataset$getExpressionMatrix <- function(cells = NULL, genes = NULL) {
+    reads <<- reads + 1L
+    values[genes, cells, drop = FALSE]
+  }
+  scope$data_set <- shiny::reactive(dataset)
+  scope$getGeneNames <- function() rownames(values)
+  scope$expression_projection_cells_to_show <- shiny::reactive(c(1L, 2L))
+  scope$expression_projection_coordinates <- shiny::reactive(data.frame(
+    x = c(0, 1),
+    y = c(1, 0)
+  ))
+  scope$expression_selected_genes <- shiny::reactive(list(
+    genes_to_display_present = c("g1", "g2", "g3"),
+    rgb_genes = list(r = "g1", g = "g2", b = "g3")
+  ))
+
+  sys.source(
+    viewer_test_path("gene_expression", "func_expression_summary.R"),
+    envir = scope
+  )
+  sys.source(
+    viewer_test_path(
+      "gene_expression",
+      "obj_projection_expression_levels.R"
+    ),
+    envir = scope
+  )
+  levels <- shiny::isolate(scope$expression_projection_expression_levels())
+
+  expect_identical(reads, 1L)
+  expect_equal(levels, list(r = c(1, 4), g = c(2, 5), b = c(3, 6)))
+})
+
 test_that("RGB violin outliers use the channel color", {
   source(
     viewer_test_path("plotting_functions.R"),
@@ -128,7 +179,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "document.querySelector('#expression_in_selected_cells_UI h3') !== null"
   ))
 
-  app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
+  viewer_set_selectize(app, "expression_genes_input", "MS4A1")
   app$wait_for_js(
     "document.querySelector('#expression_by_group_UI h3') !== null",
     timeout = 20000
@@ -170,9 +221,10 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     timeout = 10000
   )
 
-  app$set_inputs(
-    expression_genes_input = c("MS4A1", "CD3D"),
-    wait_ = FALSE
+  viewer_set_selectize(
+    app,
+    "expression_genes_input",
+    c("MS4A1", "CD3D")
   )
   app$wait_for_js(
     paste0(
@@ -206,12 +258,9 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "document.getElementById('expression_rgb_gene_r') !== null",
     timeout = 10000
   )
-  app$set_inputs(
-    expression_rgb_gene_r = "MS4A1",
-    expression_rgb_gene_g = "CD3D",
-    expression_rgb_gene_b = "",
-    wait_ = FALSE
-  )
+  viewer_set_selectize(app, "expression_rgb_gene_r", "MS4A1")
+  viewer_set_selectize(app, "expression_rgb_gene_g", "CD3D")
+  viewer_set_selectize(app, "expression_rgb_gene_b", "")
   app$wait_for_js(
     paste0(
       "document.getElementById('expression_by_group')?.innerText",

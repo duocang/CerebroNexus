@@ -277,6 +277,15 @@ cerebroCellViewMessage <- function(
       wire_array(hover$text)
     }
   }
+  if (is.list(hover$columns)) {
+    hover$columns <- lapply(hover$columns, function(column) {
+      column$values <- wire_nested(column$values)
+      if (!is.null(column$levels)) {
+        column$levels <- wire_array(column$levels)
+      }
+      column
+    })
+  }
   if (is.list(extra$group_hulls)) {
     for (field in intersect(c("x", "y"), names(extra$group_hulls))) {
       extra$group_hulls[[field]] <- wire_nested(extra$group_hulls[[field]])
@@ -310,6 +319,7 @@ cerebroCellViewScatterPayload <- function(
   keep_square = FALSE,
   color_assignments = NULL,
   hover_info = NULL,
+  hover_columns = NULL,
   hover = TRUE,
   point_line = list(),
   x_range = list(),
@@ -366,10 +376,36 @@ cerebroCellViewScatterPayload <- function(
   }
 
   show_hover <- isTRUE(hover)
+  structured_hover <- if (show_hover && length(hover_columns)) {
+    lapply(hover_columns, function(column) {
+      if (!is.list(column) || is.null(column$label) || is.null(column$values)) {
+        stop("hover columns require label and values")
+      }
+      if (length(column$values) != cell_counts[[1L]]) {
+        stop("hover columns must describe the same number of cells")
+      }
+      column
+    })
+  } else {
+    list()
+  }
   hover_data <- list(
     hoverinfo = if (show_hover) "text" else "skip",
-    text = if (continuous && show_hover) I(unname(hover_info)) else list()
+    text = if (continuous && show_hover && !length(structured_hover)) {
+      I(unname(hover_info))
+    } else {
+      list()
+    }
   )
+  if (length(structured_hover)) {
+    hover_data$columns <- lapply(structured_hover, function(column) {
+      column$values <- if (continuous) I(unname(column$values)) else list()
+      if (!is.null(column$levels)) {
+        column$levels <- I(unname(column$levels))
+      }
+      column
+    })
+  }
   if (continuous) {
     return(list(meta = meta, data = data, hover = hover_data))
   }
@@ -423,8 +459,13 @@ cerebroCellViewScatterPayload <- function(
       unname(color_assignments[[group]]),
       length(cells)
     ))
-    if (show_hover) {
+    if (show_hover && !length(structured_hover)) {
       hover_data[["text"]][[index]] <- I(aligned_hover[cells])
+    }
+    for (column_index in seq_along(structured_hover)) {
+      hover_data$columns[[column_index]]$values[[index]] <- I(
+        unname(structured_hover[[column_index]]$values[cells])
+      )
     }
     index <- index + 1L
   }
@@ -1414,6 +1455,39 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ##----------------------------------------------------------------------------##
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
+cerebroProjectionHoverColumns <- function(table, groups = getGroups()) {
+  if (!is.data.frame(table)) {
+    stop("projection hover data must be a data frame")
+  }
+  columns <- list()
+  for (spec in list(
+    c(source = "nUMI", label = "Transcripts"),
+    c(source = "nGene", label = "Expressed genes")
+  )) {
+    if (spec[["source"]] %in% colnames(table)) {
+      columns[[length(columns) + 1L]] <- list(
+        label = unname(spec[["label"]]),
+        format = "integer",
+        values = unname(as.numeric(table[[spec[["source"]]]]))
+      )
+    }
+  }
+  for (group in unique(as.character(groups))) {
+    if (is.na(group) || !nzchar(group) || !group %in% colnames(table)) {
+      next
+    }
+    values <- as.character(table[[group]])
+    values[is.na(values)] <- "NA"
+    levels <- unique(values)
+    columns[[length(columns) + 1L]] <- list(
+      label = group,
+      levels = levels,
+      values = match(values, levels) - 1L
+    )
+  }
+  columns
+}
+
 buildHoverInfoForProjections <- function(table) {
   ## put together cell ID, number of transcripts and number of expressed genes
   hover_info <- glue::glue(
@@ -3011,7 +3085,8 @@ serverSideGeneSelector <- function(
   session,
   input_id,
   extra_triggers = function() NULL,
-  active = function() TRUE
+  active = function() TRUE,
+  retry = TRUE
 ) {
   observe({
     extra_triggers()
@@ -3043,9 +3118,13 @@ serverSideGeneSelector <- function(
     ## Sending the same update again after small timed delays ensures at least
     ## one lands after the binding exists. The message is idempotent (same
     ## choices, no selection), so duplicate sends are harmless.
-    session$onFlushed(send_update, once = TRUE)
-    later::later(send_update, delay = 0.3)
-    later::later(send_update, delay = 1.0)
+    if (isTRUE(retry)) {
+      session$onFlushed(send_update, once = TRUE)
+      later::later(send_update, delay = 0.3)
+      later::later(send_update, delay = 1.0)
+    } else {
+      later::later(send_update, delay = 0.3)
+    }
   })
 }
 

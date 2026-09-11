@@ -1007,13 +1007,15 @@ exportFromSeurat <- function(
 
     if (verbose) {
       message(sprintf(
-        "[%s] Writing expression matrix to BPCells directory: %s [%s]",
+        "[%s] Writing row-major expression matrix to BPCells directory: %s [%s]",
         format(Sys.time(), "%H:%M:%S"),
         bpc_abs,
         bpc_storage_msg
       ))
     }
-    BPCells::write_matrix_dir(mat = bpc_iter, dir = bpc_abs)
+    ## Cerebro reads expression by gene. Row-major storage keeps each logical
+    ## gene contiguous instead of scanning cell-major blocks for every query.
+    BPCells::transpose_storage_order(matrix = bpc_iter, outdir = bpc_abs)
     mat_handle <- BPCells::open_matrix_dir(dir = bpc_abs)
 
     ## Carry the live handle until publication and record the portable relative
