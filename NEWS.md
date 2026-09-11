@@ -1,3 +1,12 @@
+# CerebroNexus 4.4.4
+
+## Viewer
+
+- Large flat embeddings use native WebGPU instanced point rendering while the
+  existing Canvas layer retains interaction overlays and specialist fallbacks.
+- `CEREBRO_1M_DEMO_CRB` can add the public 10x E18 mouse-brain million-cell
+  dataset to the demo switcher with a 10% initial sample.
+
 # CerebroNexus 4.4.3
 
 ## Viewer
