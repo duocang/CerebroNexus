@@ -148,15 +148,6 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "Shiny.setInputValue('expression_projection_persistent_selection',",
     "{x:[0],y:[0],ids:['missing-cell']},{priority:'event'});"
   ))
-  selection <- app$wait_for_value(
-    input = "expression_projection_persistent_selection",
-    timeout = 20000
-  )
-  expect_identical(
-    unlist(selection$ids, use.names = FALSE),
-    "missing-cell"
-  )
-  app$wait_for_idle(timeout = 20000)
   app$wait_for_js(
     paste0(
       "document.querySelector(",

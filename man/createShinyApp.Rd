@@ -5,7 +5,7 @@
 \title{Create a self-contained CerebroNexus Shiny app folder}
 \usage{
 createShinyApp(
-  cerebro_data = NULL,
+  cerebro_data,
   result_dir = NULL,
   max_request_size = 8000,
   port = 8080,
@@ -36,16 +36,14 @@ createShinyApp(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  large_example = NULL,
-  large_example_cache_dir = NULL,
   initial_page = NULL
 )
 }
 \arguments{
-\item{cerebro_data}{Named character vector or list of \code{.crb} (or
-\code{.rds}) file paths. Names must be non-missing and unique and are used
-as dataset labels. Every path must resolve to a distinct canonical source
-file. May be \code{NULL} only when \code{large_example} is supplied.}
+\item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
+(or \code{.rds}) file paths. Names must be non-missing and unique and are
+used as dataset labels. Every path must resolve to a distinct canonical
+source file.}
 
 \item{result_dir}{Output directory. Its basename must be portable, its path
 must not use the reserved build-lock namespace, and its final target must
@@ -91,6 +89,18 @@ directory is rejected before any files are written.}
 
 \item{show_upload_ui}{One non-missing logical controlling whether users may
 upload their own data; defaults to \code{FALSE}.}
+
+\item{initial_page}{Optional initial Viewer page. Supported stable IDs are
+\code{"data_info"}, \code{"projection"}, \code{"linked_views"},
+\code{"groups"}, \code{"marker_genes"}, \code{"most_expressed_genes"},
+\code{"enriched_pathways"}, \code{"extra_material"},
+\code{"immune_repertoire"}, \code{"trajectory"}, \code{"spatial"},
+\code{"trekker"}, \code{"hla_tcr_motifs"}, \code{"gene_expression"},
+\code{"gene_id_conversion"}, \code{"color_management"}, and
+\code{"about"}. A conditional page is selected only when it is available for
+the first loaded dataset. Initial routing is attempted only once, so switching
+datasets later never triggers a delayed redirect. Shared links take precedence
+after restoration.}
 
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 
@@ -155,7 +165,6 @@ list with \code{credentials}, the path to an encrypted SQLite database
 created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 the name of the environment variable containing its passphrase. Optional
 \code{timeout_minutes} defaults to 15.}
-
 \item{extra_tables}{Optional named collection of CSV, TSV, TXT, XLS, XLSX,
 or XLSM files to bundle as private Extra material tables. Workbook sheets
 are listed separately and loaded only when selected in the Viewer.}
@@ -163,27 +172,6 @@ are listed separately and loaded only when selected in the Viewer.}
 \item{extra_tables_sheets}{Optional named list of Excel sheet renames keyed
 by \code{extra_tables} labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.}
-
-\item{large_example}{Optional unique vector of large public examples to
-prepare and append in the supplied order. Use \code{"50k"} for a
-50,000-cell PBMC subset, \code{"1m"} for a 1,000,000-cell mouse-brain
-subset, or both. Missing data are converted once and reused from the cache.}
-
-\item{large_example_cache_dir}{Optional cache directory for source data,
-prepared Seurat objects, and converted CRBs. Defaults to a per-user cache.}
-
-\item{initial_page}{Optional initial Viewer page. Supported stable IDs are
-\code{"data_info"}, \code{"projection"}, \code{"linked_views"},
-\code{"groups"}, \code{"marker_genes"},
-\code{"most_expressed_genes"}, \code{"enriched_pathways"},
-\code{"extra_material"}, \code{"immune_repertoire"},
-\code{"trajectory"}, \code{"spatial"}, \code{"trekker"},
-\code{"hla_tcr_motifs"}, \code{"gene_expression"},
-\code{"gene_id_conversion"}, \code{"color_management"}, and
-\code{"about"}. A conditional page is selected only when it is available
-for the first loaded dataset. Initial routing is attempted only once, so
-switching datasets later never triggers a delayed redirect. Shared links
-take precedence after restoration.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution
@@ -222,7 +210,6 @@ select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global \code{Cerebro.options} does not provide same-process
 isolation between separately sourced apps.
-
 Launch settings are validated and frozen in a typed internal manifest before
 target preparation. The generated \code{app.R} reads that manifest instead of
 interpolating user values into source, and the staged source is parsed before

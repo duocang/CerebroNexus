@@ -1,18 +1,16 @@
-# 1M-cell Viewer benchmark
+# 1M-cell backend hot-path benchmark
 
-Measured on 2026-09-10 with the official 10x 1M neurons dataset.
+Measured on 2026-09-11 with the official 10x 1M neurons dataset.
 
 ## Compared revisions
 
 | Version | Revision | Notes |
 | --- | --- | --- |
-| Baseline | `892097a1` | Reference revision |
-| Candidate | `f3358c1d` | Measured optimized revision |
+| Baseline | `69893a2b` | PR #165 merge / current upstream base |
+| Candidate | Current PR #167 worktree | Backend-only candidate |
 
-These hashes identify the revisions used for the retained measurements, not the
-branch's current HEAD. The measured detached worktrees differed only by the
-optimized changes. The browser benchmark passes a named CRB path, so clean
-checkouts of both revisions run unchanged.
+The candidate was measured directly from the cleaned worktree so the retained
+numbers exclude the Viewer-interaction changes moved to the next PR.
 
 ## Dataset preparation
 
@@ -37,60 +35,36 @@ Medians use three repetitions on the same 1M-cell CRB. Allocations are R allocat
 
 | Operation | Scale | Before | After | Time | Before alloc. | After alloc. | Allocation |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full projection selection | 1M cells, all groups, 100% | 222 ms | 4 ms | -98.2% | 206.7 MiB | 11.4 MiB | -94.5% |
-| Filtered projection selection | 1M cells, 17/33 clusters, 25% (134,557 cells) | 356 ms | 30 ms | -91.6% | 170.6 MiB | 43.3 MiB | -74.6% |
-| Hover preparation | 1M loaded, 100K displayed, 3 groups | 32,666 ms | 2,385 ms | -92.7% | 1,328.7 MiB | 56.3 MiB | -95.8% |
-| Single-gene expression | 1 gene x 1M cells, BPCells | 4,041 ms | 4,073 ms | +0.8% | 154.1 MiB | 169.3 MiB | +9.9% |
-| RGB expression | 3 genes x 1M cells, 3 reads vs 1 | 12,285 ms | 4,067 ms | -66.9% | 461.4 MiB | 238.3 MiB | -48.4% |
-| Multi-panel expression | 9 genes x 1M cells, transpose removed | 4,336 ms | 4,272 ms | -1.5% | 562.3 MiB | 463.2 MiB | -17.6% |
-| Mean expression | 100 genes x 1M cells, dense vs backend-native | 5,540 ms | 3,978 ms | -28.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
+| Full projection selection | 1M cells, all groups, 100% | 226 ms | 31 ms | -86.3% | 206.7 MiB | 19.1 MiB | -90.8% |
+| Filtered projection selection | 1M cells, 17/33 clusters, 25% (134,557 cells) | 345 ms | 28 ms | -91.9% | 170.6 MiB | 39.5 MiB | -76.9% |
+| Single-gene expression | 1 gene x 1M cells, BPCells | 4,167 ms | 4,182 ms | +0.4% | 154.1 MiB | 169.3 MiB | +9.9% |
+| RGB expression | 3 genes x 1M cells, 3 reads vs 1 | 12,310 ms | 4,106 ms | -66.6% | 461.4 MiB | 238.3 MiB | -48.4% |
+| Multi-panel expression | 9 genes x 1M cells, transpose removed | 5,327 ms | 4,702 ms | -11.7% | 562.3 MiB | 463.2 MiB | -17.6% |
+| Mean expression | 100 genes x 1M cells, dense vs backend-native | 5,861 ms | 4,093 ms | -30.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
 
 The single-gene path is effectively time-neutral in this run and allocates
 15.3 MiB more R memory. The main expression gains come from batching RGB
 reads and keeping aggregate computation backend-native.
-
-## Browser loading
-
-The browser benchmark launches the real 1M CRB, verifies the displayed cell count, opens Overview, waits for Canvas, checks at least 1,000 sampled non-white pixels, rejects browser errors, and measures the Shiny process RSS. The Viewer displays 10% (100K cells), matching the default large-data operating mode.
-
-| Metric | Before median | After median | Change |
-| --- | ---: | ---: | ---: |
-| Data ready | 16,315 ms | 15,981 ms | -2.0% |
-| Overview Canvas ready | 46,609 ms | 19,102 ms | -59.0% |
-| Launch through painted Overview | 62,460 ms | 35,418 ms | -43.3% |
-| Shiny process RSS | 3,759.6 MiB | 2,160.3 MiB | -42.5% |
-
-These values are medians of three alternating-order runs. A later one-round rerun from clean detached checkouts measured 64,033 ms and 3,530.4 MiB before versus 34,105 ms and 2,699.5 MiB after; both painted the same 1301 x 594 Canvas with more than 31,000 sampled non-white pixels.
-
-The optimized revision was also tested at 100% display. Two runs loaded
-and painted all 1M UMAP points in 72.4 and 73.5 seconds, using 4,616.7 and
-4,368.5 MiB RSS respectively. This is an acceptance check for chunked Canvas
-painting, not a baseline/candidate comparison.
 
 ## Environment
 
 - Apple M1 Pro, 32 GiB RAM
 - macOS 27.0 (26A5421a)
 - R 4.6.1, aarch64
-- BPCells 0.3.1, Seurat 5.5.1, Shiny 1.14.0, shinytest2 0.5.1
+- BPCells 0.3.1, Seurat 5.5.1, Shiny 1.14.0
 
 ## Reproduce
 
 The complete workflow downloads the official H5, creates the BPCells-backed
-Seurat and CRB artifacts, runs both benchmarks and draws the result:
+Seurat and CRB artifacts, and measures the backend hot paths:
 
 ```sh
 tests/bench/run_viewer_1m_benchmark.sh
 ```
 
-The lower-level commands accept an already prepared CRB so individual stages can be rerun without repeating conversion:
+The lower-level command accepts an already prepared CRB so measurements can be
+rerun without repeating conversion:
 
 ```sh
 Rscript tests/bench/viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB 3
-Rscript tests/bench/viewer_1m_browser.R BEFORE_ROOT AFTER_ROOT CRB 3 10
-Rscript tests/bench/viewer_1m_plot.R HOT_PATH_TSV BROWSER_OUTPUT OUTPUT_DIR
 ```
-
-The measured inputs and normalized CSV are retained in
-`tests/bench/viewer_1m_results/`; the rendered reference figure is
-`vignettes/img/viewer_1m_benchmark.png`.

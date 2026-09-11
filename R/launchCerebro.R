@@ -13,12 +13,6 @@
 #' @param crb_file_to_load Path to \code{.crb} file to load on launch of
 #' Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
 #' \code{NULL}.
-#' @param large_example Optional unique vector of large public examples to
-#'   prepare and load in the supplied order. Use \code{"50k"} for a 50,000-cell
-#'   PBMC subset, \code{"1m"} for a 1,000,000-cell mouse-brain subset, or both.
-#'   Missing data are downloaded, converted once, and reused from the cache.
-#' @param large_example_cache_dir Optional cache directory for source data,
-#'   prepared Seurat objects, and converted CRBs. Defaults to a per-user cache.
 #' @param expression_matrix_mode  Mode of expression matrix. Can be either
 #' crb, h5, or BPCells. Default is crb.
 #' @param expression_matrix_h5 Optional: Path to \code{.h5} file containing an expression
@@ -95,8 +89,6 @@ launchCerebro <- function(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  large_example = NULL,
-  large_example_cache_dir = NULL,
   ...
 ) {
   ##--------------------------------------------------------------------------##
@@ -152,14 +144,6 @@ launchCerebro <- function(
       "'projections_show_hover_info' parameter must be set to either TRUE or FALSE.",
       call. = FALSE
     )
-  }
-
-  prepared_large_example <- .prepareLargeExample(
-    large_example,
-    large_example_cache_dir
-  )
-  if (!is.null(prepared_large_example)) {
-    crb_file_to_load <- c(crb_file_to_load, prepared_large_example)
   }
 
   ## --------------------------------------------------------------------------##

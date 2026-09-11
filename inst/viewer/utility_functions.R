@@ -242,14 +242,18 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       size <- ceiling(cell_count * percentage / 100)
       return(sample.int(cell_count, size))
     }
-    return(seq_len(cell_count))
+    return(sample.int(cell_count))
   }
   indices <- which(cerebroGroupFilterMask(metadata, filters))
-  if (length(indices) && percentage < 100) {
-    size <- ceiling(length(indices) * percentage / 100)
-    indices <- indices[sample.int(length(indices), size)]
+  if (!length(indices)) {
+    return(indices)
   }
-  indices
+  size <- if (percentage < 100) {
+    ceiling(length(indices) * percentage / 100)
+  } else {
+    length(indices)
+  }
+  indices[sample.int(length(indices), size)]
 }
 
 ## Prefer the R6 row accessor so a single-gene request never needs a temporary
@@ -1554,21 +1558,20 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
 buildHoverInfoForProjections <- function(table) {
-  if (!nrow(table)) {
-    return(character())
-  }
-  parts <- list(
-    "<b>Cell</b>: ",
-    table[["cell_barcode"]],
-    "<br><b>Transcripts</b>: ",
-    formatC(table[["nUMI"]], format = "f", big.mark = ",", digits = 0),
-    "<br><b>Expressed genes</b>: ",
-    formatC(table[["nGene"]], format = "f", big.mark = ",", digits = 0)
+  ## put together cell ID, number of transcripts and number of expressed genes
+  hover_info <- glue::glue(
+    "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
+    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
+    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
   )
+  ## add info for known grouping variables
   for (group in getGroups()) {
-    parts <- c(parts, list("<br><b>", group, "</b>: ", table[[group]]))
+    hover_info <- glue::glue(
+      "{hover_info}<br>",
+      "<b>{group}</b>: {table[[ group ]]}"
+    )
   }
-  do.call(paste0, parts)
+  return(hover_info)
 }
 
 ##----------------------------------------------------------------------------##

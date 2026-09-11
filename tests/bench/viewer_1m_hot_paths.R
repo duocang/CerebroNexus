@@ -148,7 +148,7 @@ record(
   "1,000,000 cells; all groups; 100%",
   full_before,
   full_after,
-  function(x, y) identical(sort(x), sort(y))
+  function(x, y) identical(x, y)
 )
 
 filtered_levels <- group_levels
@@ -179,24 +179,6 @@ record(
       !anyDuplicated(x) &&
       !anyDuplicated(y)
   }
-)
-
-hover_rows <- seq.int(1L, nrow(metadata), by = 10L)
-before_hover <- function() {
-  all_hover <- before$buildHoverInfoForProjections(metadata)
-  unname(all_hover[hover_rows])
-}
-after_hover <- function() {
-  unname(after$buildHoverInfoForProjections(
-    metadata[hover_rows, , drop = FALSE]
-  ))
-}
-record(
-  "hover preparation",
-  "1,000,000 loaded; 100,000 displayed; 3 groups",
-  before_hover,
-  after_hover,
-  function(x, y) identical(as.character(x), as.character(y))
 )
 
 single_gene <- genes[[1L]]

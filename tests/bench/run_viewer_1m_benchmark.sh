@@ -3,11 +3,10 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-before_ref="${1:-892097a1}"
-after_ref="${2:-perf/pr1-backend-hot-paths}"
+before_ref="${1:-69893a2b}"
+after_ref="${2:-HEAD}"
 output_dir="${3:-$repo_root/tests/bench/scratch/viewer-1m-$(date +%Y%m%d-%H%M%S)}"
 repeats="${REPEATS:-3}"
-percentage="${PERCENT:-10}"
 cache_dir="${CEREBRO_LARGE_CACHE:-}"
 
 before_sha="$(git -C "$repo_root" rev-parse "${before_ref}^{commit}")"
@@ -36,9 +35,13 @@ export CEREBRO_BENCH_REPO_ROOT="$repo_root"
 export CEREBRO_LARGE_CACHE="$cache_dir"
 crb="$(Rscript - <<'RS'
 devtools::load_all(Sys.getenv("CEREBRO_BENCH_REPO_ROOT"), quiet = TRUE)
+source(file.path(
+  Sys.getenv("CEREBRO_BENCH_REPO_ROOT"),
+  "tests", "bench", "prepare_viewer_1m_data.R"
+))
 cache <- Sys.getenv("CEREBRO_LARGE_CACHE")
 if (!nzchar(cache)) cache <- NULL
-cat(unname(.prepareLargeExample("1m", cache_dir = cache)))
+cat(prepareViewer1mBenchmarkData(cache))
 RS
 )"
 
@@ -52,20 +55,10 @@ test -d "${crb%.crb}.bpcells"
   printf 'after_sha\t%s\n' "$after_sha"
   printf 'crb\t%s\n' "$crb"
   printf 'repeats\t%s\n' "$repeats"
-  printf 'percentage\t%s\n' "$percentage"
 } > "$output_dir/run_manifest.tsv"
 
 Rscript "$repo_root/tests/bench/viewer_1m_hot_paths.R" \
   "$before_root" "$after_root" "$crb" "$repeats" \
   > "$output_dir/hot_paths.tsv"
-
-Rscript "$repo_root/tests/bench/viewer_1m_browser.R" \
-  "$before_root" "$after_root" "$crb" "$repeats" "$percentage" \
-  > "$output_dir/browser.txt"
-
-Rscript "$repo_root/tests/bench/viewer_1m_plot.R" \
-  "$output_dir/hot_paths.tsv" \
-  "$output_dir/browser.txt" \
-  "$output_dir"
 
 printf 'benchmark results\t%s\n' "$output_dir"

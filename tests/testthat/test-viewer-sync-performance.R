@@ -1,9 +1,3 @@
-sync_perf_reactive <- function(value) {
-  expression <- substitute(value)
-  scope <- parent.frame()
-  function() eval(expression, envir = scope)
-}
-
 run_projection_indices <- function(metadata, filters, percentage) {
   scope <- new.env(parent = globalenv())
   scope$input <- c(
@@ -132,13 +126,16 @@ test_that("projection filtering and sampling preserve original row indices", {
   expect_true(all(result %in% eligible))
   expect_identical(anyDuplicated(result), 0L)
 
+  set.seed(123L)
+  expected_all <- sample.int(nrow(metadata))
+  set.seed(123L)
   expect_identical(
     run_projection_indices(
       metadata,
       list(batch = c("drop", "keep"), state = c("T", "B")),
       100
     ),
-    seq_len(nrow(metadata))
+    expected_all
   )
 
   expect_identical(
@@ -153,109 +150,4 @@ test_that("projection filtering and sampling preserve original row indices", {
     run_projection_indices(metadata, list(batch = character()), 50),
     integer()
   )
-})
-
-test_that("projection hover text is assembled in one vectorized pass", {
-  utility <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility
-  )
-  utility$getGroups <- function() c("sample", "cell_type")
-  metadata <- data.frame(
-    cell_barcode = c("cell1", "cell2"),
-    nUMI = c(1200, 34567),
-    nGene = c(800, 9012),
-    sample = c("A", "B"),
-    cell_type = c("T", "B")
-  )
-
-  expect_identical(
-    as.character(utility$buildHoverInfoForProjections(metadata)),
-    c(
-      paste0(
-        "<b>Cell</b>: cell1<br><b>Transcripts</b>: 1,200",
-        "<br><b>Expressed genes</b>: 800",
-        "<br><b>sample</b>: A<br><b>cell_type</b>: T"
-      ),
-      paste0(
-        "<b>Cell</b>: cell2<br><b>Transcripts</b>: 34,567",
-        "<br><b>Expressed genes</b>: 9,012",
-        "<br><b>sample</b>: B<br><b>cell_type</b>: B"
-      )
-    )
-  )
-  expect_identical(
-    utility$buildHoverInfoForProjections(metadata[FALSE, , drop = FALSE]),
-    character()
-  )
-})
-
-test_that("specialist hover consumers reuse their metadata subset", {
-  cases <- list(
-    overview = list(
-      file = "overview/obj_projection_hover_info.R",
-      data = "overview_projection_data",
-      hover = "overview_projection_hover_info",
-      value = integer()
-    ),
-    gene = list(
-      file = "gene_expression/obj_projection_hover_info.R",
-      data = "expression_projection_data",
-      hover = "expression_projection_hover_info",
-      value = c(5L, 2L)
-    ),
-    spatial = list(
-      file = "spatial/obj_projection_hover_info.R",
-      data = "spatial_projection_metadata",
-      hover = "spatial_projection_hover_info",
-      value = c(9L, 3L)
-    )
-  )
-
-  for (name in names(cases)) {
-    case <- cases[[name]]
-    data_calls <- 0L
-    helper_calls <- 0L
-    requested <- NULL
-    scope <- new.env(parent = globalenv())
-    scope$reactive <- sync_perf_reactive
-    scope$req <- shiny::req
-    scope$preferences <- list(show_hover_info_in_projections = TRUE)
-    displayed <- data.frame(
-      cell_barcode = sprintf("cell%d", case$value),
-      value = case$value
-    )
-    scope[[case$data]] <- function() {
-      data_calls <<- data_calls + 1L
-      displayed
-    }
-    scope$hover_info_projections <- function(cells_df) {
-      helper_calls <<- helper_calls + 1L
-      requested <<- cells_df
-      if (!nrow(cells_df)) {
-        return(stats::setNames(character(), character()))
-      }
-      stats::setNames(
-        paste0("hover-", cells_df$value),
-        cells_df$cell_barcode
-      )
-    }
-
-    sys.source(viewer_test_path(case$file), envir = scope)
-    result <- scope[[case$hover]]()
-
-    expect_identical(data_calls, 1L, info = name)
-    expect_identical(helper_calls, 1L, info = name)
-    expect_identical(requested, displayed, info = name)
-    expected <- if (length(case$value)) {
-      stats::setNames(
-        paste0("hover-", case$value),
-        paste0("cell", case$value)
-      )
-    } else {
-      stats::setNames(character(), character())
-    }
-    expect_identical(result, expected, info = name)
-  }
 })

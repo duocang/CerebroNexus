@@ -16,8 +16,6 @@ launchCerebro(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
-  large_example = NULL,
-  large_example_cache_dir = NULL,
   ...
 )
 }
@@ -73,14 +71,6 @@ defaults to 100.}
 
 \item{projections_show_hover_info}{Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.}
-
-\item{large_example}{Optional unique vector of large public examples to
-prepare and load in the supplied order. Use \code{"50k"} for a 50,000-cell
-PBMC subset, \code{"1m"} for a 1,000,000-cell mouse-brain subset, or both.
-Missing data are downloaded, converted once, and reused from the cache.}
-
-\item{large_example_cache_dir}{Optional cache directory for source data,
-prepared Seurat objects, and converted CRBs. Defaults to a per-user cache.}
 
 \item{...}{Further parameters that are used by \code{shiny::runApp}, e.g.
 \code{host} or \code{port}.}

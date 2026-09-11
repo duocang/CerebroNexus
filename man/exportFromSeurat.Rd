@@ -84,8 +84,7 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
   travels with it; the Shiny runtime re-resolves paths via
   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
-  parent directory (step 7.3 runtime attach). A BPCells-backed Seurat layer
-  streams directly to this backend without being materialised in memory.
+  parent directory (step 7.3 runtime attach).
   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
   \code{<stem>.h5}) and tags the backend with that relative location. The
