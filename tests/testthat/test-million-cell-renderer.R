@@ -1,6 +1,8 @@
 test_that("the million-cell renderer is loaded before cell views", {
   renderer <- viewer_test_path("www", "cell_points_gpu.js")
   expect_true(file.exists(renderer))
+  renderer_source <- paste(readLines(renderer, warn = FALSE), collapse = "\n")
+  expect_match(renderer_source, "backend: 'webgpu'", fixed = TRUE)
 
   ui <- paste(
     readLines(viewer_test_path("shiny_UI.R"), warn = FALSE),
