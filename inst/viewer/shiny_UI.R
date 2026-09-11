@@ -567,6 +567,7 @@ ui <- dashboardPage(
       cerebro_js("fill_height.js", defer = TRUE),
       cerebro_js("cv-geom.js", defer = TRUE),
       cerebro_js("cell_views_state.js", defer = TRUE),
+      cerebro_js("cell_points_gpu.js"),
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews-config.js", defer = TRUE),
       cerebro_js("viewer-shell.js", defer = TRUE),
