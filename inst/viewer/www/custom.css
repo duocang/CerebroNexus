@@ -536,6 +536,35 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   min-width: 180px;
   max-width: 240px;
 }
+.cerebro-viz-toolbar .spatial-roi-background-picker {
+  flex: 1 1 100%;
+  width: 100%;
+}
+.spatial-roi-background-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.spatial-roi-background-group {
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.spatial-roi-background-title {
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-roi-background-group .checkbox {
+  margin: 2px 0;
+}
+.hla-node-details {
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
 .cerebro-viz-toolbar .control-label,
 .coordviews-page .cv-ctl > label {
   margin-bottom: 5px;

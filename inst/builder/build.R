@@ -499,7 +499,19 @@ builder_verify_crb <- function(path, item) {
     }
     expected_record_labels <- names(expected_records)
     expected_payloads <- lapply(seq_along(expected_records), function(index) {
-      builder_histology_image_payload(expected_records[[index]])
+      record <- expected_records[[index]]
+      payload <- builder_histology_image_payload(record)
+      if (
+        !any(
+          c("dx", "rotation", "image_opacity", "point_opacity") %in%
+            names(record)
+        )
+      ) {
+        payload$histology_alignment <- NULL
+      } else if (!is.null(expected_record_labels)) {
+        payload$histology_alignment$source <- expected_record_labels[[index]]
+      }
+      payload
     })
     observed_images <- if (is.list(observed_image)) {
       observed_image$histology_images %||% list()
@@ -561,11 +573,13 @@ builder_verify_crb <- function(path, item) {
       !is.list(observed_trekker) ||
         !identical(
           observed_trekker$histology_image,
-          expected_trekker_alignment$uri
+          expected_trekker_alignment$source_uri %||%
+            expected_trekker_alignment$uri
         ) ||
         !.builder_build_value_equal(
           observed_trekker$histology_image_bounds,
-          expected_trekker_alignment$bounds
+          expected_trekker_alignment$base_bounds %||%
+            expected_trekker_alignment$bounds
         ) ||
         !.builder_build_value_equal(
           observed_trekker$histology_alignment,
@@ -1030,9 +1044,11 @@ builder_verify_crb <- function(path, item) {
         stop("Builder image URI has an unsupported MIME type.", call. = FALSE)
       )
       filename <- builder_safe_file_name(record$source$name, label)
-      if (!nzchar(tools::file_ext(filename))) {
-        filename <- paste0(filename, ".", extension)
-      }
+      filename <- paste0(
+        tools::file_path_sans_ext(filename),
+        ".",
+        extension
+      )
       existing_paths <- unlist(
         lapply(images[[item$name]][[section_id]] %||% list(), `[[`, "path"),
         use.names = FALSE
@@ -1042,18 +1058,31 @@ builder_verify_crb <- function(path, item) {
       } else {
         character()
       }
-      filename <- utils::tail(
-        make.unique(c(existing_names, filename)),
-        1L
-      )
+      if (filename %in% existing_names) {
+        existing_stems <- tools::file_path_sans_ext(existing_names[
+          tolower(tools::file_ext(existing_names)) == extension
+        ])
+        stem <- utils::tail(
+          make.unique(c(
+            existing_stems,
+            tools::file_path_sans_ext(filename)
+          )),
+          1L
+        )
+        filename <- paste0(stem, ".", extension)
+      }
       materialized <- builder_materialize_image_uri(
         record$source_uri,
         file.path(section_dir, filename)
       )
-      images[[item$name]][[section_id]][[label]] <- list(
+      descriptor <- list(
         path = materialized,
-        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")])
+        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")]),
+        label = record$image_label %||% label
       )
+      scope <- intersect(c("roi_field", "roi_value"), names(record))
+      descriptor[scope] <- record[scope]
+      images[[item$name]][[section_id]][[label]] <- descriptor
       settings[[item$name]][[section_id]][[label]] <- list(
         flip_x = record$flip_x,
         flip_y = record$flip_y,

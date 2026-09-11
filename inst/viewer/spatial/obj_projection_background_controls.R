@@ -25,6 +25,12 @@
 ## dimensional-reduction plot stays a function of its own parameters alone.
 ##----------------------------------------------------------------------------##
 observe({
+  ## Separate ROI panels each have their own saved image alignment. Do not let
+  ## the legacy global controls overwrite every panel during a mode switch.
+  if (identical(input[["spatial_projection_roi"]], "__separate__")) {
+    return()
+  }
+
   ## Depend on each appearance control. These are the ONLY inputs that reach the
   ## background div directly; everything else about the plot is untouched.
   opacity <- input[["spatial_projection_background_opacity"]]
@@ -110,23 +116,27 @@ observeEvent(input[["spatial_projection_background_reset"]], {
   )
   selected_descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
-    embedded_spatial_images(spatial_data),
+    embedded_spatial_images(
+      spatial_data,
+      input[["spatial_projection_roi"]] %||% ""
+    ),
     configured_spatial_images(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
       dataset,
-      spatial_name
+      spatial_name,
+      input[["spatial_projection_roi"]] %||% ""
     )
   )
-  image_label <- if (is.null(selected_descriptor)) {
+  image_key <- if (is.null(selected_descriptor)) {
     NULL
   } else {
-    selected_descriptor$label
+    selected_descriptor$key %||% selected_descriptor$label
   }
   preset <- spatialImagePreset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_label
+    image_key
   )
   updateSliderInput(
     session,
@@ -268,11 +278,15 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
   )
   descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
-    embedded_spatial_images(spatial_data),
+    embedded_spatial_images(
+      spatial_data,
+      input[["spatial_projection_roi"]] %||% ""
+    ),
     configured_spatial_images(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
       dataset,
-      spatial_name
+      spatial_name,
+      input[["spatial_projection_roi"]] %||% ""
     )
   )
   if (is.null(descriptor)) {
@@ -296,7 +310,7 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
   code <- format_spatial_preset_code(
     dataset = dataset,
     spatial_name = spatial_name,
-    image_label = descriptor$label,
+    image_label = descriptor$key %||% descriptor$label,
     offset_x = null_to(input[["spatial_projection_background_offset_x"]], 0),
     offset_y = null_to(input[["spatial_projection_background_offset_y"]], 0),
     scale_x = null_to(scale_x, 1),

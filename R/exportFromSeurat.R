@@ -1924,7 +1924,7 @@ exportFromSeurat <- function(
               coordinate_source = paste0("reduction.", image_name)
             )
           } else {
-            .getSpatialData(
+            extracted <- .getSpatialData(
               object,
               image = image_name,
               layer = slot,
@@ -1932,6 +1932,13 @@ exportFromSeurat <- function(
               expression_data = expression_data,
               expression_layer = expression_resolution$resolved
             )
+            extracted$boundaries <- .getSpatialBoundaries(
+              object,
+              image_name,
+              rownames(extracted$coordinates)
+            )
+            extracted$molecules <- .getSpatialMolecules(object, image_name)
+            extracted
           }
 
           # Also add coordinates as a projection for compatibility with existing visualization functions
@@ -1963,6 +1970,33 @@ exportFromSeurat <- function(
               coords_df,
               spatial_coordinate_transforms[[image_name]]
             )
+            transform_overlay <- function(data) {
+              if (is.null(data) || !nrow(data)) {
+                return(data)
+              }
+              angle <- coordinate_transform$rotation_degrees * pi / 180
+              centered_x <- data$x -
+                coordinate_transform$pivot[["x"]]
+              centered_y <- data$y -
+                coordinate_transform$pivot[["y"]]
+              data$x <-
+                coordinate_transform$pivot[["x"]] +
+                coordinate_transform$scale *
+                  (centered_x * cos(angle) - centered_y * sin(angle))
+              data$y <-
+                coordinate_transform$pivot[["y"]] +
+                coordinate_transform$scale *
+                  (centered_x * sin(angle) + centered_y * cos(angle))
+              data
+            }
+            spatial_data$boundaries <- transform_overlay(
+              spatial_data$boundaries
+            )
+            if (!is.null(spatial_data$molecules)) {
+              spatial_data$molecules$data <- transform_overlay(
+                spatial_data$molecules$data
+              )
+            }
             coordinate_transform$transformed_coordinate_fingerprint <-
               .spx_coordinate_transform_fingerprint(coords_df)
             coordinate_transform$source_coordinate_fingerprint <-

@@ -1575,7 +1575,7 @@ test_that("each section offers only its own configured backgrounds", {
   expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
   expect_match(
     js,
-    "rotateDataPoint(b.xmin, b.ymax, state.rotate)",
+    "c.rotate(-state.rotate * Math.PI / 180)",
     fixed = TRUE
   )
 })
@@ -1653,16 +1653,9 @@ test_that("per-image settings also apply to embedded backgrounds", {
       flipX = TRUE,
       flipY = FALSE,
       rotation = -32,
-      opacity = 0.7,
-      geometryBaked = TRUE
+      opacity = 0.7
     )
   )
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
-  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
 })
 
 test_that("legacy spatial images share identity and point appearance", {
@@ -1720,6 +1713,60 @@ test_that("legacy spatial images share identity and point appearance", {
       percentage_cells_to_show = 100
     )
   )
+})
+
+test_that("Linked views keeps the all-ROI coordinate layout unchanged", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  crb <- list(getSpatialData = function(name) {
+    list(
+      coordinates = data.frame(
+        x = c(0, 2),
+        y = c(0, 0),
+        row.names = cells
+      )
+    )
+  })
+  cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(
+        spatial_roi_settings = list(
+          fov = list(
+            roi = list(
+              rotation_degrees = 90,
+              point_opacity = 0.8,
+              point_size = 5
+            )
+          )
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  built <- cv_env$cv_spatial_one(
+    crb,
+    cells,
+    "fov",
+    allow_external = FALSE,
+    metadata = data.frame(
+      cell_barcode = cells,
+      sample_roi = rep("roi", 2)
+    )
+  )
+
+  expect_identical(built$x, c(0, 2))
+  expect_identical(built$y, c(0, 0))
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {

@@ -35,6 +35,49 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("Viewer resolves and applies per-ROI spatial settings", {
+  options <- list(
+    viewer_content = list(
+      "Dataset A" = list(
+        spatial_roi_settings = list(
+          "fov-a" = list(
+            lesion = list(
+              rotation_degrees = 90,
+              point_opacity = 0.65,
+              point_size = 7
+            )
+          )
+        )
+      )
+    )
+  )
+
+  setting <- utils_env$spatialRoiSetting(
+    options,
+    "Dataset A",
+    "fov-a",
+    "lesion"
+  )
+  rotated <- utils_env$rotateSpatialCoordinatesByRoi(
+    data.frame(x = c(0, 2, 10), y = c(0, 0, 0)),
+    c("lesion", "lesion", "control"),
+    list(lesion = setting),
+    degrees = 0
+  )
+  all_rois <- utils_env$rotateSpatialCoordinatesByRoi(
+    data.frame(x = c(0, 2, 10), y = c(0, 0, 0)),
+    rep(NA_character_, 3),
+    list(lesion = setting),
+    degrees = 0
+  )
+
+  expect_identical(setting$point_opacity, 0.65)
+  expect_equal(unname(unlist(rotated[1, ])), c(1, -1))
+  expect_equal(unname(unlist(rotated[2, ])), c(1, 1))
+  expect_equal(unname(unlist(rotated[3, ])), c(10, 0))
+  expect_equal(all_rois, data.frame(x = c(0, 2, 10), y = c(0, 0, 0)))
+})
+
 test_that("CRB cache diagnostics stay quiet when requested", {
   runtime <- new.env(parent = globalenv())
   sys.source(utils_file, envir = runtime)
@@ -630,6 +673,38 @@ test_that("direct one-cell renderer messages retain array fields", {
   expect_type(categorical_wire$data$x[[1L]], "list")
   expect_type(categorical_wire$data$selection_key[[1L]], "list")
   expect_type(categorical_wire$hover$text[[1L]], "list")
+
+  boundaries <- utils_env$cerebroCellViewMessage(
+    "spatial_projection",
+    meta = list(color_type = "categorical"),
+    data = list(),
+    extra = list(
+      cell_boundaries = list(
+        cell_barcode = "cell-1",
+        part = "1",
+        x = 1,
+        y = 2
+      )
+    )
+  )
+  boundary_wire <- jsonlite::fromJSON(
+    jsonlite::toJSON(boundaries, auto_unbox = TRUE),
+    simplifyVector = FALSE
+  )
+  expect_type(boundary_wire$extra$cell_boundaries$cell_barcode, "list")
+  expect_type(boundary_wire$extra$cell_boundaries$x, "list")
+
+  molecule_wire <- utils_env$cerebroCellViewMessage(
+    "spatial_projection",
+    meta = list(color_type = "categorical"),
+    data = list(),
+    extra = list(molecule_points = list(x = 1, y = 2))
+  )
+  molecule_wire <- jsonlite::fromJSON(
+    jsonlite::toJSON(molecule_wire, auto_unbox = TRUE),
+    simplifyVector = FALSE
+  )
+  expect_type(molecule_wire$extra$molecule_points$x, "list")
 })
 
 test_that("categorical scatter payloads retain cells with missing metadata", {

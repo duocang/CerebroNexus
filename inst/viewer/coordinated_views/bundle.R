@@ -325,10 +325,6 @@ cv_embedded_alignment_preset <- function(preset, alignment) {
     preset$flipY <- isTRUE(alignment[["flip_y"]])
   }
   preset$opacity <- number("image_opacity", preset$opacity)
-  ## The Builder serializes embedded pixels after applying this geometry and
-  ## writes their final data-space bounds. Viewer controls still expose the
-  ## saved calibration, but drawing must apply only changes relative to it.
-  preset$geometryBaked <- TRUE
   preset
 }
 
@@ -442,15 +438,16 @@ cv_external_images <- function(spatial_name = NULL) {
       next
     }
     base <- basename(path)
-    label <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
+    key <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
       labels[[i]]
     } else {
       base
     }
+    label <- if (is.list(descriptor)) descriptor$label %||% key else key
     out[[length(out) + 1]] <- list(
       ## Section + position + label keep equal basenames and equal labels on
       ## different FOVs distinct, while remaining stable across bundle pushes.
-      id = paste0("external:", spatial_name, ":", i, ":", label),
+      id = paste0("external:", spatial_name, ":", i, ":", key),
       label = label,
       uri = paste0(
         "data:",
@@ -459,7 +456,7 @@ cv_external_images <- function(spatial_name = NULL) {
         base64enc::base64encode(img_path)
       ),
       bounds = bounds,
-      preset = cv_image_preset(spatial_name, label)
+      preset = cv_image_preset(spatial_name, key)
     )
   }
   out
@@ -870,7 +867,7 @@ cv_build_projections <- function(crb, cells) {
 ##   - EXTERNAL (Visium H&E): separate files configured for this exact dataset
 ##     and FOV, with an optional per-image alignment preset and explicit bounds.
 ## Returns list(name, x, y, image) or NULL.
-cv_spatial_one <- function(crb, cells, nm, allow_external) {
+cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
   sd <- tryCatch(crb$getSpatialData(nm), error = function(e) NULL)
   co <- if (!is.null(sd)) sd$coordinates else NULL
   if (is.null(co)) {
@@ -881,11 +878,13 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     cv_selected_dataset_name(),
     nm
   )
-  co <- rotateSpatialCoordinates(co, rotation)
   spatial_cells <- cv_cell_ids(
     rownames(co),
     paste0("Spatial section `", nm, "`")
   )
+  ## Linked views is the all-ROI scene. Per-ROI rotations are local inspection
+  ## settings and must not change this shared coordinate layout.
+  co <- rotateSpatialCoordinates(co, rotation)
   sidx <- match(cells, spatial_cells)
   xr <- range(co[, 1], na.rm = TRUE)
   yr <- range(co[, 2], na.rm = TRUE)
@@ -931,7 +930,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       b <- entry$histology_image_bounds %||%
         entry$bounds %||%
         sd[["histology_image_bounds", exact = TRUE]]
-      label <- entry$label %||% entry_name
+      label <- entry$image_label %||% entry$label %||% entry_name
     } else {
       emb <- entry
       b <- sd[["histology_image_bounds", exact = TRUE]]
@@ -950,7 +949,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
         paste("Embedded histology", embedded_index)
       }
     }
-    preset <- cv_image_preset(nm, label)
+    preset <- cv_image_preset(nm, entry_name)
     entry_alignment <- if (is.list(entry)) {
       entry$histology_alignment %||% entry$alignment
     } else {
@@ -1040,7 +1039,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
 ## travels in `$samples` so Linked views can switch between them client-side (the
 ## "Spatial data" picker), each donor's tissue section being its own coordinate
 ## system + image. Returns the space or NULL when there is no spatial.
-cv_build_spatial <- function(crb, cells) {
+cv_build_spatial <- function(crb, cells, metadata = NULL) {
   sp_names <- tryCatch(crb$availableSpatial(), error = function(e) NULL)
   if (!length(sp_names)) {
     return(NULL)
@@ -1049,7 +1048,15 @@ cv_build_spatial <- function(crb, cells) {
     seq_along(sp_names),
     ## Every section resolves only its own dataset -> FOV -> image declarations.
     ## The client remembers the selected background and calibration per section.
-    function(i) cv_spatial_one(crb, cells, sp_names[i], allow_external = TRUE)
+    function(i) {
+      cv_spatial_one(
+        crb,
+        cells,
+        sp_names[i],
+        allow_external = TRUE,
+        metadata = metadata
+      )
+    }
   )
   built <- Filter(Negate(is.null), built)
   if (!length(built)) {
@@ -1530,7 +1537,7 @@ cv_build_bundle <- function(crb) {
   ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
   ## add each whenever the object carries it. An object with both gets both panels
   ## (the right-panel switch flips between them); neither is dropped.
-  sp <- cv_build_spatial(crb, cells)
+  sp <- cv_build_spatial(crb, cells, md)
   if (!is.null(sp)) {
     spaces[[length(spaces) + 1]] <- sp
   }

@@ -304,7 +304,7 @@ current_review_snapshot <- bindEvent(
   current_review_snapshot,
   dataset_check_marks(),
   dataset_revisions(),
-  alignment_server$coordinate_drafts(),
+  alignment_server$pending_drafts(),
   imports(),
   ignoreNULL = FALSE
 )
@@ -923,7 +923,8 @@ render_configure_workbench <- function() {
     settings = entry$settings,
     modules = list(),
     active_section = shiny::isolate(active_slice()),
-    active_image = shiny::isolate(alignment_server$active_image())
+    active_image = shiny::isolate(alignment_server$active_image()),
+    active_roi = shiny::isolate(alignment_server$active_roi())
   )
   div(
     class = "builder-stage builder-stage-shell builder-stage-configure",

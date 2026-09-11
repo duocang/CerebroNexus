@@ -561,6 +561,12 @@
         .builder_app_tree_identity(trusted_roots[[relative_root]])
       )
     )
+    if (identical(relative_root, "extdata")) {
+      expected <- expected[
+        !grepl("/", names(expected), fixed = TRUE) &
+          vapply(expected, `[[`, character(1), "type") == "file"
+      ]
+    }
     actual <- .builder_app_portable_tree_entries(
       .builder_app_without_system_metadata(identity),
       relative_root

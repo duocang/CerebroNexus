@@ -168,6 +168,24 @@
     grepl("^u(?:[0-9a-f]{2})+(?:-[0-9a-f]{32})?$", stem)
 }
 
+.builder_app_spatial_roi_scope_valid <- function(descriptor) {
+  scope <- intersect(c("roi_field", "roi_value"), names(descriptor))
+  if (!length(scope)) {
+    return(TRUE)
+  }
+  identical(scope, c("roi_field", "roi_value")) &&
+    all(vapply(
+      descriptor[scope],
+      function(value) {
+        is.character(value) &&
+          length(value) == 1L &&
+          !is.na(value) &&
+          nzchar(value)
+      },
+      logical(1)
+    ))
+}
+
 .builder_app_config_spatial_manifest_valid <- function(images, selector_order) {
   if (is.null(images)) {
     return(TRUE)
@@ -211,6 +229,7 @@
         descriptor <- declarations[[label]]
         path <- if (is.character(descriptor)) descriptor else descriptor$path
         bounds <- if (is.list(descriptor)) descriptor$bounds else NULL
+        descriptor_names <- if (is.list(descriptor)) names(descriptor) else NULL
         if (
           !is.character(path) ||
             length(path) != 1L ||
@@ -223,15 +242,34 @@
               label
             ) ||
             (is.list(descriptor) &&
-              (!identical(names(descriptor), c("path", "bounds")) ||
-                !is.numeric(bounds) ||
-                length(bounds) != 4L ||
-                anyNA(bounds) ||
-                any(!is.finite(bounds)) ||
-                !identical(
-                  names(bounds),
-                  c("xmin", "xmax", "ymin", "ymax")
-                ))) ||
+              (is.null(descriptor_names) ||
+                anyDuplicated(descriptor_names) ||
+                !identical(descriptor_names[[1L]], "path") ||
+                any(
+                  !descriptor_names %in%
+                    c(
+                      "path",
+                      "bounds",
+                      "label",
+                      "roi_field",
+                      "roi_value"
+                    )
+                ) ||
+                (!is.null(descriptor$label) &&
+                  (!is.character(descriptor$label) ||
+                    length(descriptor$label) != 1L ||
+                    is.na(descriptor$label) ||
+                    !nzchar(descriptor$label))) ||
+                !.builder_app_spatial_roi_scope_valid(descriptor) ||
+                (!is.null(bounds) &&
+                  (!is.numeric(bounds) ||
+                    length(bounds) != 4L ||
+                    anyNA(bounds) ||
+                    any(!is.finite(bounds)) ||
+                    !identical(
+                      names(bounds),
+                      c("xmin", "xmax", "ymin", "ymax")
+                    ))))) ||
             (!is.character(descriptor) && !is.list(descriptor))
         ) {
           return(FALSE)
@@ -313,10 +351,30 @@
           error = function(error) NULL
         )
         identity_label <- paste(dataset, section, label, sep = "/")
+        descriptor_names <- names(descriptor)
         if (
           !is.list(descriptor) ||
             is.object(descriptor) ||
-            !identical(names(descriptor), c("path", "bounds")) ||
+            is.null(descriptor_names) ||
+            anyDuplicated(descriptor_names) ||
+            !identical(descriptor_names[[1L]], "path") ||
+            !"bounds" %in% descriptor_names ||
+            any(
+              !descriptor_names %in%
+                c(
+                  "path",
+                  "bounds",
+                  "label",
+                  "roi_field",
+                  "roi_value"
+                )
+            ) ||
+            (!is.null(descriptor$label) &&
+              (!is.character(descriptor$label) ||
+                length(descriptor$label) != 1L ||
+                is.na(descriptor$label) ||
+                !nzchar(descriptor$label))) ||
+            !.builder_app_spatial_roi_scope_valid(descriptor) ||
             !is.character(path) ||
             length(path) != 1L ||
             is.na(path) ||
@@ -564,7 +622,8 @@
               "initial_projections",
               "default_trajectory",
               "overview_point_size",
-              "overview_percentage_cells_to_show"
+              "overview_percentage_cells_to_show",
+              "spatial_roi_settings"
             )
           )
       ) {
@@ -575,6 +634,7 @@
       trajectory <- item$default_trajectory
       point_size <- item$overview_point_size
       percentage_cells_to_show <- item$overview_percentage_cells_to_show
+      spatial_roi_settings <- item$spatial_roi_settings
       projection_valid <- is.null(projection) ||
         (is.character(projection) &&
           length(projection) == 1L &&
@@ -620,10 +680,43 @@
         !is.na(percentage_cells_to_show) &&
         is.finite(percentage_cells_to_show) &&
         percentage_cells_to_show >= 10 &&
-        percentage_cells_to_show <= 100
+        percentage_cells_to_show <= 100 &&
+        .builder_app_spatial_roi_settings_valid(spatial_roi_settings)
     },
     logical(1)
   ))
+}
+
+.builder_app_spatial_roi_settings_valid <- function(value) {
+  named_list <- function(item) {
+    is.list(item) &&
+      !is.object(item) &&
+      (length(item) == 0L ||
+        (!is.null(names(item)) &&
+          !anyNA(names(item)) &&
+          all(nzchar(names(item))) &&
+          !anyDuplicated(names(item))))
+  }
+  leaf_valid <- function(leaf) {
+    fields <- c("rotation_degrees", "point_opacity", "point_size")
+    values <- suppressWarnings(as.numeric(unlist(leaf[fields])))
+    named_list(leaf) &&
+      identical(sort(names(leaf)), sort(fields)) &&
+      length(values) == 3L &&
+      !anyNA(values) &&
+      all(is.finite(values)) &&
+      values[[2L]] >= 0 &&
+      values[[2L]] <= 1 &&
+      values[[3L]] > 0
+  }
+  named_list(value) &&
+    all(vapply(
+      value,
+      function(rois) {
+        named_list(rois) && all(vapply(rois, leaf_valid, logical(1)))
+      },
+      logical(1)
+    ))
 }
 
 .builder_app_viewer_content <- function(items, labels, fallback_point_size) {
@@ -704,7 +797,8 @@
       overview_point_size = as.double(point_size),
       overview_percentage_cells_to_show = as.double(
         percentage_cells_to_show
-      )
+      ),
+      spatial_roi_settings = item$spatial_roi_settings %||% list()
     )
   })
   names(values) <- labels

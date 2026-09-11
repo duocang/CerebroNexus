@@ -195,6 +195,7 @@ builder_default_settings <- function(
     images = list(),
     spatial_coordinate_transforms = list(),
     spatial_point_appearance = list(),
+    spatial_roi_settings = list(),
     spatial_image_storage = "external",
     palette = "cerebro",
     color_overrides = list(),

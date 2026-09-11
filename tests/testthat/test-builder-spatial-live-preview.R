@@ -44,7 +44,16 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_match(js, "viewKey", fixed = TRUE)
   expect_match(js, "devicePixelRatio", fixed = TRUE)
   expect_match(js, "Math.min(window.devicePixelRatio || 1, 2)", fixed = TRUE)
+  expect_false(grepl("fitImageToViewport", js, fixed = TRUE))
+  expect_match(js, "var left = screen({x: b.xmin, y: cy});", fixed = TRUE)
+  expect_match(js, "var right = screen({x: b.xmax, y: cy});", fixed = TRUE)
+  expect_match(js, "new ResizeObserver(schedule)", fixed = TRUE)
   expect_match(js, "pointermove", fixed = TRUE)
+  expect_match(js, 'scene.layout === "separate"', fixed = TRUE)
+  expect_match(js, "scene.roiImages", fixed = TRUE)
+  expect_match(js, "loadImages", fixed = TRUE)
+  expect_match(js, "drawImage(ctx, scene, screen, roiImage", fixed = TRUE)
+  expect_match(js, '"builder_spatial_roi_select"', fixed = TRUE)
   expect_match(js, "Shiny.setInputValue", fixed = TRUE)
   expect_match(js, "finishInteraction", fixed = TRUE)
   expect_match(js, '"builder_spatial_coordinate_draft"', fixed = TRUE)
@@ -100,6 +109,46 @@ test_that("same-token scene refreshes preserve browser-local controls", {
   )
 
   expect_match(js, "viewChanged || resetToken > state.resetToken", fixed = TRUE)
+})
+
+test_that("programmatic Image settings restore cannot commit partial values", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  server <- paste(
+    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  start <- regexpr(
+    "commit_alignment_controls <- function()",
+    server,
+    fixed = TRUE
+  )[[1L]]
+  block <- substr(server, start, start + 2200L)
+  expected_start <- regexpr(
+    "expected <- shiny::isolate(expected_controls())",
+    block,
+    fixed = TRUE
+  )[[1L]]
+  block <- substr(block, expected_start, nchar(block))
+  clear <- regexpr("expected_controls(NULL)", block, fixed = TRUE)[[1L]]
+  stop <- regexpr("return(invisible(FALSE))", block, fixed = TRUE)[[1L]]
+
+  expect_gt(clear, 0L)
+  expect_gt(stop, 0L)
+  expect_lt(clear, stop)
+  expect_match(
+    server,
+    "settled_parameters <- shiny::debounce(parameters, millis = 50)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    paste(
+      "parameters <- shiny::reactive({",
+      "current_draft <- shiny::isolate(draft())",
+      sep = "\n"
+    ),
+    fixed = TRUE
+  )
 })
 
 test_that("Spatial preview worker contract does not include coordinate drafts", {

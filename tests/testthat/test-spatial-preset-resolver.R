@@ -111,6 +111,23 @@ test_that("configured images fail closed without leaking neighbouring leaves", {
   expect_identical(configured_spatial_images(NULL, "Atlas", "sliceA"), list())
 })
 
+test_that("Viewer chooses FOV or matching ROI images", {
+  images <- list(
+    Overview = list(path = "overview.png", roi_value = NULL),
+    Lesion = list(path = "lesion.png", roi_value = "lesion"),
+    Border = list(path = "border.png", roi_value = "border")
+  )
+
+  expect_named(spatial_images_for_roi(images, ""), "Overview")
+  expect_named(spatial_images_for_roi(images, "__all__"), "Overview")
+  expect_named(
+    spatial_images_for_roi(images, "__separate__"),
+    c("Overview", "Lesion", "Border")
+  )
+  expect_named(spatial_images_for_roi(images, "lesion"), "Lesion")
+  expect_named(spatial_images_for_roi(images, "normal"), "Overview")
+})
+
 test_that("embedded images expose canonical labels and normalize singular legacy", {
   canonical <- list(
     histology_images = list(
@@ -274,6 +291,7 @@ test_that("background identity includes its full logical image location", {
       dataset = "Atlas",
       spatial_name = "sliceA",
       source = "embedded",
+      key = "H&E",
       label = "H&E"
     )
   )

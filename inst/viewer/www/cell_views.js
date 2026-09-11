@@ -893,29 +893,6 @@
   // Draw the histology image behind the points of the spatial panel. The image's
   // data-space bounds are mapped to screen with the SAME transform as the cells,
   // so it aligns; opacity/offset/scale/flip/rotate then adjust it on top.
-  function imageRenderState(img, state) {
-    var pr = (img && img.preset) || {};
-    if (!pr.geometryBaked) return state;
-    var baseScaleX = Number(pr.scaleX) || 1;
-    var baseScaleY = Number(pr.scaleY) || baseScaleX;
-    return {
-      show: state.show,
-      opacity: state.opacity,
-      offsetX: state.offsetX - (Number(pr.offsetX) || 0),
-      offsetY: state.offsetY - (Number(pr.offsetY) || 0),
-      scaleX: state.scaleX / baseScaleX,
-      scaleY: state.scaleY / baseScaleY,
-      flipX: !!state.flipX !== !!pr.flipX,
-      flipY: !!state.flipY !== !!pr.flipY,
-      rotate: state.rotate - (Number(pr.rotation) || 0)
-    };
-  }
-  function rotateDataPoint(x, y, degrees) {
-    if (!degrees) return [x, y];
-    var theta = degrees * Math.PI / 180;
-    return [x * Math.cos(theta) - y * Math.sin(theta),
-      x * Math.sin(theta) + y * Math.cos(theta)];
-  }
   function drawImage(p) {
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
@@ -923,15 +900,13 @@
     if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
-    state = imageRenderState(cimg, state);
-    var tlData = rotateDataPoint(b.xmin, b.ymax, state.rotate);
-    var trData = rotateDataPoint(b.xmax, b.ymax, state.rotate);
-    var blData = rotateDataPoint(b.xmin, b.ymin, state.rotate);
-    var centerData = rotateDataPoint(
+    var tlData = [b.xmin, b.ymax];
+    var trData = [b.xmax, b.ymax];
+    var blData = [b.xmin, b.ymin];
+    var centerData = [
       (Number(b.xmin) + Number(b.xmax)) / 2,
-      (Number(b.ymin) + Number(b.ymax)) / 2,
-      state.rotate
-    );
+      (Number(b.ymin) + Number(b.ymax)) / 2
+    ];
     var tl = dataToScreen(p, tlData[0], tlData[1]);
     var tr = dataToScreen(p, trData[0], trData[1]);
     var bl = dataToScreen(p, blData[0], blData[1]);
@@ -947,6 +922,7 @@
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(center[0] + offSX, center[1] + offSY);
+    c.rotate(-state.rotate * Math.PI / 180);
     c.scale(state.scaleX * (state.flipX ? -1 : 1),
       state.scaleY * (state.flipY ? -1 : 1));
     c.transform(tr[0] - tl[0], tr[1] - tl[1],
@@ -976,6 +952,45 @@
       c.lineTo(target[0], target[1]);
     });
     c.stroke();
+    c.restore();
+  }
+
+  function drawCellBoundaries(p) {
+    var sp = spaceById[p.spaceId];
+    if (!sp || !sp.cellBoundaries || !sp.cellBoundaries.length) return;
+    var c = p.ctx;
+    c.save();
+    c.globalAlpha = 0.58;
+    c.strokeStyle = '#374151';
+    c.lineWidth = 0.75;
+    sp.cellBoundaries.forEach(function (boundary) {
+      if (!boundary || !Array.isArray(boundary.points) ||
+        boundary.points.length < 3) return;
+      c.beginPath();
+      boundary.points.forEach(function (point, index) {
+        var screen = dataToScreen(p, point[0], point[1]);
+        if (!screen) return;
+        if (index) c.lineTo(screen[0], screen[1]);
+        else c.moveTo(screen[0], screen[1]);
+      });
+      c.closePath();
+      c.stroke();
+    });
+    c.restore();
+  }
+
+  function drawMolecules(p) {
+    var sp = spaceById[p.spaceId];
+    if (!sp || !sp.molecules || !sp.molecules.length) return;
+    var c = p.ctx;
+    c.save();
+    c.globalAlpha = 0.78;
+    c.fillStyle = '#f43f5e';
+    sp.molecules.forEach(function (point) {
+      var screen = dataToScreen(p, point[0], point[1]);
+      if (!screen) return;
+      c.fillRect(screen[0] - 1, screen[1] - 1, 2, 2);
+    });
     c.restore();
   }
 
@@ -1289,6 +1304,8 @@
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
+    drawCellBoundaries(p);
+    drawMolecules(p);
     drawHulls(p);
     drawTrajectory(p);
     drawAxes(p);
@@ -5396,6 +5413,40 @@
       return [Number(shape.x0), Number(shape.y0), Number(shape.x1), Number(shape.y1)];
     });
   }
+  function singleCellBoundaries(extra) {
+    var raw = extra && extra.cell_boundaries;
+    if (!raw || !Array.isArray(raw.cell_barcode) ||
+      !Array.isArray(raw.part) || !Array.isArray(raw.x) ||
+      !Array.isArray(raw.y)) return [];
+    var n = Math.min(raw.cell_barcode.length, raw.part.length,
+      raw.x.length, raw.y.length);
+    var boundaries = [], current = null, currentKey = null;
+    for (var i = 0; i < n; i++) {
+      var x = Number(raw.x[i]), y = Number(raw.y[i]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      var cell = String(raw.cell_barcode[i]);
+      var key = cell + '\u0000' + String(raw.part[i]);
+      if (key !== currentKey) {
+        current = { cell: cell, points: [] };
+        boundaries.push(current);
+        currentKey = key;
+      }
+      current.points.push([x, y]);
+    }
+    return boundaries.filter(function (boundary) {
+      return boundary.points.length >= 3;
+    });
+  }
+  function singleMolecules(extra) {
+    var raw = extra && extra.molecule_points;
+    if (!raw || !Array.isArray(raw.x) || !Array.isArray(raw.y)) return [];
+    var n = Math.min(raw.x.length, raw.y.length), points = [];
+    for (var i = 0; i < n; i++) {
+      var x = Number(raw.x[i]), y = Number(raw.y[i]);
+      if (isFinite(x) && isFinite(y)) points.push([x, y]);
+    }
+    return points;
+  }
   function singleHulls(extra) {
     var raw = extra && extra.group_hulls;
     if (!raw || !Array.isArray(raw.x) || !Array.isArray(raw.y)) return [];
@@ -5415,9 +5466,11 @@
     return out;
   }
   function buildSpecialistPanels(id, payload) {
-    var meta = payload.meta || {}, data = payload.data || {};
+    var meta = payload.meta || {}, data = payload.data || {},
+      extra = payload.extra || {};
     if (!Array.isArray(data.panels) || !data.panels.length) return null;
     var keys = Array.isArray(data.selection_key) ? data.selection_key : [];
+    var cellBoundaries = singleCellBoundaries(extra);
     var spaces = [], modes = {}, mode;
     if (meta.color_type === 'categorical') {
       var levels = Array.isArray(meta.traces) ? meta.traces.map(String) : [];
@@ -5468,6 +5521,12 @@
         _hoverEnabled: true,
         _hoverMask: emptyVector(true)
       };
+      if (cellBoundaries.length) {
+        var panelCells = new Set(panelKeys.map(String));
+        space.cellBoundaries = cellBoundaries.filter(function (boundary) {
+          return panelCells.has(boundary.cell);
+        });
+      }
       if (Array.isArray(panel.from_x) && Array.isArray(panel.to_x)) {
         var fromX = alignFlatValues(panelKeys, panel.from_x, null);
         var fromY = alignFlatValues(panelKeys, panel.from_y, null);
@@ -5487,13 +5546,30 @@
         space.background_scope = panel.label || 'Trekker';
         space._sampleName = panel.label || 'Trekker';
       }
-      if (panel.background_image && panel.image_bounds) {
+      space.xRange = panel.x_range;
+      space.yRange = panel.y_range;
+      var panelImage = panel.background_image || meta.background_image;
+      var panelBounds = panel.image_bounds || meta.image_bounds;
+      if (panelImage && panelBounds) {
+        var opacity = Number(meta.background_opacity);
         space.images = [{
-          id: panel.image_id || 'trekker-background',
-          label: panel.image_label || 'Trekker background',
-          uri: panel.background_image,
-          bounds: panel.image_bounds,
-          preset: panel.image_preset || {}
+          id: panel.image_id || (panel.image_identity
+            ? JSON.stringify(panel.image_identity)
+            : meta.background_identity
+            ? JSON.stringify(meta.background_identity) : 'trekker-background'),
+          label: panel.image_label || meta.image_label || 'Tissue background',
+          uri: panelImage,
+          bounds: panelBounds,
+          preset: panel.image_preset || {
+            opacity: isFinite(opacity) ? opacity : 0.6,
+            offsetX: Number(meta.background_offset_x) || 0,
+            offsetY: Number(meta.background_offset_y) || 0,
+            scaleX: Number(meta.background_scale_x) || 1,
+            scaleY: Number(meta.background_scale_y) || 1,
+            flipX: !!meta.background_flip_x,
+            flipY: !!meta.background_flip_y,
+            rotation: Number(meta.background_rotation) || 0
+          }
         }];
         space._customImageId = space.images[0].id;
       }
@@ -5512,6 +5588,8 @@
     var baseId = 'single::' + id, spaces = [], modes = {};
     var edges = singleEdges(extra);
     var hulls = singleHulls(extra);
+    var cellBoundaries = singleCellBoundaries(extra);
+    var molecules = singleMolecules(extra);
     var hasZ = aligned.z.some(function (value) { return value != null; });
     var hasHover = aligned.hoverEnabled.some(Boolean);
     var makeSpace = function (spaceId, label) {
@@ -5535,6 +5613,8 @@
       if (Array.isArray(meta.axes)) space.axes = meta.axes.slice(0, 3);
       if (edges.length) { space.trajectory = true; space.edges = edges; }
       if (hulls.length) space.hulls = hulls;
+      if (cellBoundaries.length) space.cellBoundaries = cellBoundaries;
+      if (molecules.length) space.molecules = molecules;
       if (meta.is_spatial) {
         space.background_scope = id;
         space._sampleName = meta.image_label || 'Spatial';

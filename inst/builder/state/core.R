@@ -279,6 +279,10 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     settings$spatial_point_appearance <- list()
     entry$settings <- settings
   }
+  if (is.null(settings$spatial_roi_settings)) {
+    settings$spatial_roi_settings <- list()
+    entry$settings <- settings
+  }
   if (!is.null(settings$spatial_coordinate_transforms)) {
     settings$spatial_coordinate_transforms <-
       .builder_state_spatial_coordinate_transforms(
@@ -288,6 +292,9 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   }
   settings$spatial_point_appearance <- .builder_state_spatial_point_appearance(
     settings$spatial_point_appearance
+  )
+  settings$spatial_roi_settings <- .builder_state_spatial_roi_settings(
+    settings$spatial_roi_settings
   )
   entry$settings <- settings
   ## Schema-1 entries created before the shared opacity control may contain a
@@ -623,6 +630,62 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   normalized
 }
 
+.builder_state_spatial_roi_leaf <- function(value, context) {
+  fields <- c("rotation_degrees", "point_opacity", "point_size")
+  numbers <- suppressWarnings(as.numeric(unlist(value[fields])))
+  if (
+    !.builder_state_plain_record(value) ||
+      !identical(sort(names(value)), sort(fields)) ||
+      length(numbers) != 3L ||
+      anyNA(numbers) ||
+      any(!is.finite(numbers)) ||
+      numbers[[2L]] < 0 ||
+      numbers[[2L]] > 1 ||
+      numbers[[3L]] <= 0
+  ) {
+    .builder_state_abort(
+      "invalid_spatial_roi_settings",
+      paste0("Spatial ROI settings for ", context, " are invalid.")
+    )
+  }
+  list(
+    rotation_degrees = numbers[[1L]],
+    point_opacity = numbers[[2L]],
+    point_size = numbers[[3L]]
+  )
+}
+
+.builder_state_spatial_roi_settings <- function(value) {
+  if (is.null(value)) {
+    return(list())
+  }
+  if (!.builder_state_plain_record(value)) {
+    .builder_state_abort(
+      "invalid_spatial_roi_settings",
+      "Spatial ROI settings must be an ordinary named list of FOVs."
+    )
+  }
+  normalized <- lapply(names(value), function(section) {
+    rois <- value[[section]]
+    if (!.builder_state_plain_record(rois)) {
+      .builder_state_abort(
+        "invalid_spatial_roi_settings",
+        paste0("Spatial ROI settings for ", section, " are invalid.")
+      )
+    }
+    result <- lapply(names(rois), function(roi) {
+      .builder_state_spatial_roi_leaf(
+        rois[[roi]],
+        paste0(section, "/", roi)
+      )
+    })
+    names(result) <- names(rois)
+    result
+  })
+  names(normalized) <- names(value)
+  normalized
+}
+
 .builder_state_validate_viewer_content_settings <- function(entry) {
   settings <- entry$settings
   if (!identical(settings$viewer_content_schema_version, 1L)) {
@@ -911,6 +974,9 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   )
   .builder_state_spatial_point_appearance(
     .subset2(settings, "spatial_point_appearance")
+  )
+  .builder_state_spatial_roi_settings(
+    .subset2(settings, "spatial_roi_settings")
   )
   text_vector <- function(value) {
     is.character(value) &&

@@ -323,6 +323,70 @@ test_that("manifest names must match their typed entry ids", {
   expect_identical(error$code, "invalid_manifest")
 })
 
+test_that("spatial scenes separate coordinate sources from annotations", {
+  scene <- builder_viewer_spatial_scene(
+    id = "xenium-fov",
+    label = "Patient 01 · tissue section",
+    kind = "spatial",
+    source_id = "fov",
+    unit = "micron",
+    observations = list(kind = "cell", count = 18420L),
+    annotations = list(
+      sample = list(
+        field = "sample",
+        count = 1L,
+        values = "Patient 01",
+        truncated = FALSE
+      ),
+      roi = list(
+        field = "roi",
+        count = 2L,
+        values = c("lesion", "border"),
+        truncated = FALSE
+      )
+    ),
+    layers = c("points", "raster")
+  )
+
+  expect_s3_class(scene, "builder_viewer_spatial_scene")
+  expect_named(
+    scene,
+    c(
+      "id",
+      "label",
+      "kind",
+      "source_id",
+      "unit",
+      "observations",
+      "annotations",
+      "layers"
+    )
+  )
+  expect_identical(scene$source_id, "fov")
+  expect_identical(scene$annotations$sample$values, "Patient 01")
+  expect_identical(scene$annotations$roi$values, c("lesion", "border"))
+  expect_identical(scene$layers, c("points", "raster"))
+})
+
+test_that("spatial annotation previews stay bounded", {
+  metadata <- data.frame(
+    cell_barcode = paste0("cell-", 1:6),
+    roi = c(strrep("long-roi-", 30L), paste0("roi-", 2:6)),
+    stringsAsFactors = FALSE
+  )
+
+  annotation <- builder_viewer_spatial_annotation(
+    metadata,
+    metadata$cell_barcode,
+    "roi"
+  )
+
+  expect_identical(annotation$count, 6L)
+  expect_length(annotation$values, 5L)
+  expect_true(annotation$truncated)
+  expect_lte(max(nchar(annotation$values, type = "bytes")), 80L)
+})
+
 test_that("Viewer contract core is byte-identical and bundle safe", {
   source_path <- viewer_contract_path("R")
   runtime_path <- viewer_contract_path("core")

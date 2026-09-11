@@ -25,6 +25,7 @@ sys.source(
 )
 builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
+builder_spatial_test_source("state/core.R")
 builder_spatial_test_source("extras.R")
 builder_spatial_test_source("worker.R")
 builder_spatial_test_source("plan/defaults.R")
@@ -51,12 +52,110 @@ test_that("alignment capability is limited to Spatial and Trekker datasets", {
     function(section) identical(section$kind, "spatial"),
     logical(1)
   )))
+  expect_true(all(vapply(
+    spatial_sections,
+    function(section) identical(section$layers, "points"),
+    logical(1)
+  )))
 
   trekker_sections <- builder_spatial_alignment_sections(trekker)
   expect_length(trekker_sections, 1L)
   expect_identical(trekker_sections[[1L]]$id, "trekker")
   expect_identical(trekker_sections[[1L]]$kind, "trekker")
   expect_match(trekker_sections[[1L]]$unit, "physical", ignore.case = TRUE)
+})
+
+test_that("alignment scenes summarize sample and ROI metadata", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("xenium-fov")
+  object$sample_roi <- rep(
+    c("S1_lesion", "S2_border", "S2_normal"),
+    length.out = ncol(object)
+  )
+
+  scene <- builder_spatial_alignment_sections(object)[[1L]]
+
+  expect_s3_class(scene, "builder_viewer_spatial_scene")
+  expect_identical(scene$observations$count, as.integer(ncol(object)))
+  expect_identical(scene$annotations$sample$field, "sample")
+  expect_identical(scene$annotations$sample$count, 2L)
+  expect_identical(scene$annotations$roi$field, "sample_roi")
+  expect_identical(scene$annotations$roi$count, 3L)
+  expect_match(scene$label, "2 samples", fixed = TRUE)
+  expect_match(scene$label, "3 ROIs", fixed = TRUE)
+})
+
+test_that("alignment preview separates observations by ROI metadata", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("xenium-fov")
+  cells <- colnames(object)
+  object$sample_roi <- rep(
+    c("lesion", "border", "normal", "core"),
+    length.out = length(cells)
+  )
+
+  all_rois <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    group = "sample_roi",
+    section_id = "xenium-fov",
+    layer = "counts"
+  )
+  lesion <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    group = "sample_roi",
+    section_id = "xenium-fov",
+    roi = "lesion",
+    layer = "counts"
+  )
+
+  expect_setequal(all_rois$roi$values, c("lesion", "border", "normal", "core"))
+  expect_setequal(names(all_rois$roi_bounds), all_rois$roi$values)
+  expect_equal(all_rois$roi_bounds$lesion, lesion$bounds)
+  expect_setequal(unique(all_rois$spatial$group), all_rois$roi$values)
+  expect_identical(
+    lesion$spatial$cell_barcode,
+    cells[object$sample_roi == "lesion"]
+  )
+  expect_true(all(lesion$spatial$group == "lesion"))
+  expect_lt(
+    diff(unlist(lesion$bounds[c("xmin", "xmax")])),
+    diff(unlist(all_rois$bounds[c("xmin", "xmax")]))
+  )
+})
+
+test_that("alignment scenes expose available spatial layers", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("xenium-fov")
+  image <- object@images[[1L]]
+  boundaries <- methods::slot(image, "boundaries")
+  boundaries$segmentation <- SeuratObject::CreateSegmentation(data.frame(
+    x = c(0, 1, 1, 0),
+    y = c(0, 0, 1, 1),
+    cell = rep(colnames(object)[[1L]], 4L)
+  ))
+  methods::slot(image, "boundaries") <- boundaries
+  methods::slot(image, "molecules") <- list(
+    RNA = SeuratObject::CreateMolecules(data.frame(
+      x = c(0.25, 0.75),
+      y = c(0.25, 0.75),
+      gene = c("Gene1", "Gene2")
+    ))
+  )
+  object@images[[1L]] <- image
+  object@misc$cerebro_spatial_images <- list(
+    `xenium-fov` = list(
+      DAPI = list(histology_image = "data:image/png;base64,AA==")
+    )
+  )
+
+  scene <- builder_spatial_alignment_sections(object)[[1L]]
+
+  expect_identical(
+    scene$layers,
+    c("points", "raster", "boundaries", "molecules")
+  )
 })
 
 test_that("alignment accepts a paired spatial reduction without a Seurat image", {
@@ -394,14 +493,14 @@ test_that("alignment controls auto-commit before dataset switches", {
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
   write_dummy_png(image_path)
-  image <- png::readPNG(image_path)
-  encoded <- builder_encode_image(image)
+  image <- builder_read_image(image_path)
+  expect_null(image$error)
   record <- builder_alignment_record(
     source = list(name = "section-a.png", type = "image/png"),
-    source_uri = encoded$uri,
-    uri = encoded$uri,
+    source_uri = image$source_uri,
+    uri = image$source_uri,
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-    image_geometry = encoded,
+    image_geometry = image,
     section = list(id = "section-a", kind = "spatial")
   )
   entry <- list(
@@ -468,8 +567,6 @@ test_that("alignment controls auto-commit before dataset switches", {
       session$flushReact()
       alignment_preview(preview)
       session$flushReact()
-      loaded_image <- alignment$raw_image()
-      expect_false(is.null(loaded_image))
 
       switch_accepted <- alignment$request_dataset_switch(
         "dataset-b",
@@ -512,8 +609,6 @@ test_that("alignment controls auto-commit before dataset switches", {
         current_entry()$settings$images[["section-a"]][["H&E"]]$flip_x
       )
 
-      alignment$raw_image(loaded_image)
-      session$flushReact()
       session$setInputs(`enhance-img_dx` = 1)
       session$flushReact()
       canonical <- alignment$current_record()
@@ -548,13 +643,14 @@ test_that("new images inherit the active image appearance", {
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
   write_dummy_png(image_path)
-  encoded <- builder_encode_image(png::readPNG(image_path))
+  image <- builder_read_image(image_path)
+  expect_null(image$error)
   parameters <- builder_alignment_defaults()
   parameters[c("point_opacity", "point_size")] <- list(0.65, 6)
   existing_record <- builder_alignment_record(
     source = list(name = "duplicate.png", type = "image/png"),
-    source_uri = encoded$uri,
-    uri = encoded$uri,
+    source_uri = image$source_uri,
+    uri = image$source_uri,
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
     parameters = parameters,
     section = list(id = "section-a", kind = "spatial")
@@ -562,6 +658,10 @@ test_that("new images inherit the active image appearance", {
   active_record <- existing_record
   active_record$source$name <- "DAPI.png"
   active_record[c("point_opacity", "point_size")] <- list(0.7, 7)
+  border_record <- existing_record
+  border_record$source$name <- "border.png"
+  border_record$roi_field <- "sample_roi"
+  border_record$roi_value <- "border"
 
   entry <- list(
     id = "dataset-a",
@@ -570,13 +670,27 @@ test_that("new images inherit the active image appearance", {
       owner_token = "owner-a",
       object_md5 = strrep("a", 32L)
     ),
-    profile = list(images = "section-a", extras = list()),
+    profile = list(
+      images = "section-a",
+      spatial_scenes = list(list(
+        id = "section-a",
+        annotations = list(
+          roi = list(
+            field = "sample_roi",
+            count = 2L,
+            values = c("lesion", "border")
+          )
+        )
+      )),
+      extras = list()
+    ),
     settings = list(
       name = "Dataset A",
       images = list(
         `section-a` = list(
           `duplicate.png` = existing_record,
-          DAPI = active_record
+          DAPI = active_record,
+          `border.png` = border_record
         )
       ),
       default_group = "cluster",
@@ -589,11 +703,17 @@ test_that("new images inherit the active image appearance", {
   alignment_preview <- shiny::reactiveVal(NULL)
   spatial_coords <- shiny::reactiveVal(NULL)
   commit_count <- 0L
+  preview_requests <- list()
   preview <- list(
     available = TRUE,
     bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
     section = list(id = "section-a", kind = "spatial", unit = "pixels"),
     projection_name = "umap",
+    roi = list(
+      field = "sample_roi",
+      values = c("lesion", "border"),
+      selected = NULL
+    ),
     capped = FALSE,
     transcriptome = data.frame(
       cell_id = c("cell-a", "cell-b"),
@@ -611,7 +731,7 @@ test_that("new images inherit the active image appearance", {
     )
   )
   upload <- data.frame(
-    name = "duplicate.png",
+    name = "border.png",
     size = file.info(image_path)$size,
     type = "image/png",
     datapath = image_path,
@@ -627,7 +747,10 @@ test_that("new images inherit the active image appearance", {
         current = current,
         entry_of = function(id) current_entry(),
         worker = shiny::reactiveVal(list()),
-        enqueue = function(request) TRUE,
+        enqueue = function(request) {
+          preview_requests[[length(preview_requests) + 1L]] <<- request
+          TRUE
+        },
         commit_images = function(entry, images) {
           updated <- current_entry()
           updated$settings$images <- images
@@ -645,7 +768,7 @@ test_that("new images inherit the active image appearance", {
       expect_identical(alignment$active_image(), "duplicate.png")
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "DAPI")
+        c("duplicate.png", "DAPI", "border.png")
       )
       expect_identical(
         current_entry()$settings$images[["section-a"]][["duplicate.png"]][
@@ -653,42 +776,79 @@ test_that("new images inherit the active image appearance", {
         ],
         list(point_opacity = 0.65, point_size = 6)
       )
+      session$setInputs(`enhance-active_roi` = "__separate__")
+      session$flushReact()
+      expect_identical(alignment$roi_view(), "__separate__")
+      expect_identical(alignment$active_roi(), "lesion")
+      expect_identical(utils::tail(preview_requests, 1L)[[1L]]$roi, "")
+      expect_identical(
+        utils::tail(preview_requests, 1L)[[1L]]$group,
+        "sample_roi"
+      )
+      session$setInputs(
+        builder_spatial_roi_select = list(roi = "border", nonce = 1)
+      )
+      session$flushReact()
+      expect_identical(alignment$active_roi(), "border")
+      session$setInputs(
+        builder_spatial_roi_select = list(roi = "lesion", nonce = 2)
+      )
+      session$flushReact()
+      expect_identical(alignment$active_roi(), "lesion")
       session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
+      expect_identical(alignment$active_image(), "DAPI")
+
+      session$setInputs(`enhance-active_image` = "border.png")
       session$flushReact()
       expect_identical(alignment$active_image(), "DAPI")
 
       suppressWarnings(session$setInputs(`enhance-tissue_image_file` = upload))
       session$flushReact()
-      expect_true(alignment$pending_upload()$awaiting_label)
-
-      session$setInputs(
-        `enhance-new_image_label` = "PAS",
-        `enhance-add_image_confirm` = 1L
-      )
-      session$flushReact()
+      expect_null(alignment$pending_upload())
+      expect_identical(alignment$active_image(), "border.png.1")
 
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "DAPI", "PAS")
+        c("duplicate.png", "DAPI", "border.png", "border.png.1")
       )
       expect_identical(
-        current_entry()$settings$images[["section-a"]][["PAS"]][
+        current_entry()$settings$images[["section-a"]][["border.png.1"]][
           c("point_opacity", "point_size")
         ],
         list(point_opacity = 0.7, point_size = 7)
       )
-      expect_null(alignment$pending_upload())
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["border.png.1"]][
+          c("roi_field", "roi_value")
+        ],
+        list(roi_field = "sample_roi", roi_value = "lesion")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["border.png.1"]][[
+          "image_label"
+        ]],
+        "border.png"
+      )
       expect_identical(commit_count, 1L)
 
+      session$setInputs(`enhance-active_roi` = "")
+      session$flushReact()
       session$setInputs(`enhance-active_image` = "DAPI")
       session$flushReact()
       session$setInputs(`enhance-remove_image_confirm` = 1L)
       session$flushReact()
 
-      expect_identical(alignment$active_image(), "PAS")
+      expect_identical(alignment$active_image(), "duplicate.png")
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "PAS")
+        c("duplicate.png", "border.png", "border.png.1")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["border.png"]][
+          c("roi_field", "roi_value")
+        ],
+        list(roi_field = "sample_roi", roi_value = "border")
       )
       expect_identical(
         current_entry()$settings$images[["section-a"]][["duplicate.png"]][
@@ -697,7 +857,7 @@ test_that("new images inherit the active image appearance", {
         list(point_opacity = 0.65, point_size = 6)
       )
       expect_identical(
-        current_entry()$settings$images[["section-a"]][["PAS"]][
+        current_entry()$settings$images[["section-a"]][["border.png.1"]][
           c("point_opacity", "point_size")
         ],
         list(point_opacity = 0.7, point_size = 7)
@@ -748,10 +908,26 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_false("coverage" %in% names(preview))
   expect_equal(preview$total_cells, ncol(object))
 
+  roi_image <- function(name, opacity) {
+    builder_alignment_record(
+      source = list(name = name, type = "image/png"),
+      source_uri = paste0("data:image/png;base64,", name),
+      uri = paste0("data:image/png;base64,", name),
+      base_bounds = list(xmin = 0, xmax = 5, ymin = 0, ymax = 5),
+      parameters = list(image_opacity = opacity),
+      section = list(id = "section-a", kind = "spatial")
+    )
+  }
   scene <- builder_spatial_canvas_scene(
     preview,
     colors = character(),
     point_appearance = list(point_opacity = 0.65, point_size = 6),
+    roi_images = list(
+      A = list(a = roi_image("A", 0.8)),
+      B = list(b = roi_image("B", 0.7))
+    ),
+    layout = "separate",
+    active_roi = "A",
     identity = "dataset::section-a",
     generation = 1L,
     dataset = "dataset-a",
@@ -764,6 +940,10 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_identical(scene$section, "section-a")
   expect_identical(scene$controls$point_opacity, 0.65)
   expect_identical(scene$controls$point_size, 6)
+  expect_identical(scene$layout, "separate")
+  expect_identical(scene$activeRoi, "A")
+  expect_named(scene$roiImages, c("A", "B"))
+  expect_identical(scene$roiImages$B[[1L]]$controls$image_opacity, 0.7)
 })
 
 test_that("alignment preview resolves layer membership without expression data", {
@@ -816,23 +996,37 @@ test_that("alignment preview fails safely when no paired spaces exist", {
   expect_match(model$message, "Spatial or Trekker", fixed = TRUE)
 })
 
-test_that("default image fit preserves aspect ratio and covers physical bounds", {
+test_that("default image fit preserves aspect ratio inside the viewport", {
   fitted <- builder_alignment_fit_bounds(
     list(xmin = 0, xmax = 100, ymin = 0, ymax = 100),
     c(width = 200, height = 100)
   )
-  expect_equal(fitted, list(xmin = -50, xmax = 150, ymin = 0, ymax = 100))
+  expect_equal(fitted, list(xmin = 0, xmax = 100, ymin = 25, ymax = 75))
   expect_equal(
     (fitted$xmax - fitted$xmin) / (fitted$ymax - fitted$ymin),
     2
   )
-  expect_lte(fitted$xmin, 0)
-  expect_gte(fitted$xmax, 100)
-  expect_lte(fitted$ymin, 0)
-  expect_gte(fitted$ymax, 100)
+  expect_gte(fitted$xmin, 0)
+  expect_lte(fitted$xmax, 100)
+  expect_gte(fitted$ymin, 0)
+  expect_lte(fitted$ymax, 100)
 })
 
-test_that("default image fit covers decimal extrema despite floating error", {
+test_that("image fit can use the displayed extent of rotated coordinates", {
+  rotated <- builder_alignment_rotated_bounds(
+    list(xmin = 0, xmax = 20, ymin = 0, ymax = 100),
+    rotation = 45
+  )
+
+  expect_equal(rotated$xmax - rotated$xmin, 120 / sqrt(2))
+  expect_equal(rotated$ymax - rotated$ymin, 120 / sqrt(2))
+  expect_equal(
+    c((rotated$xmin + rotated$xmax) / 2, (rotated$ymin + rotated$ymax) / 2),
+    c(10, 50)
+  )
+})
+
+test_that("default image fit contains decimal bounds", {
   bounds <- list(
     xmin = 17.52,
     xmax = 4151.96,
@@ -843,19 +1037,31 @@ test_that("default image fit covers decimal extrema despite floating error", {
     bounds,
     c(width = 320, height = 240)
   )
-  cover <- builder_bounds_cover(
-    fitted,
-    list(
-      c(bounds$xmin, bounds$xmax),
-      c(bounds$ymin, bounds$ymax)
-    )
+  expect_gte(fitted$xmin, bounds$xmin)
+  expect_lte(fitted$xmax, bounds$xmax)
+  expect_gte(fitted$ymin, bounds$ymin)
+  expect_lte(fitted$ymax, bounds$ymax)
+})
+
+test_that("centering aligns an existing image with the active viewport", {
+  record <- builder_alignment_record(
+    source = list(name = "tissue.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SOURCE",
+    uri = "data:image/png;base64,DISPLAY",
+    base_bounds = list(xmin = 0, xmax = 20, ymin = 10, ymax = 20),
+    parameters = list(scale = 1.5, rotation = 30),
+    section = list(id = "fov", kind = "spatial")
   )
 
-  expect_identical(cover$outside, 0L)
-  expect_lte(fitted$xmin, bounds$xmin)
-  expect_gte(fitted$xmax, bounds$xmax)
-  expect_lte(fitted$ymin, bounds$ymin)
-  expect_gte(fitted$ymax, bounds$ymax)
+  centered <- builder_alignment_center(
+    record,
+    list(xmin = 100, xmax = 200, ymin = 40, ymax = 80)
+  )
+
+  expect_equal(centered$dx, 140)
+  expect_equal(centered$dy, 45)
+  expect_equal(centered$scale, 1.5)
+  expect_equal(centered$rotation, 30)
 })
 
 test_that("canonical alignment transform is deterministic and complete", {
@@ -1000,6 +1206,25 @@ test_that("legacy image records drop saved flags and gain canonical defaults", {
   expect_identical(normalized$point_size, 5)
 })
 
+test_that("ROI image scope is complete and non-empty", {
+  legacy <- list(
+    uri = "data:image/png;base64,AAAA",
+    bounds = list(xmin = 0, xmax = 4, ymin = 0, ymax = 3)
+  )
+
+  expect_error(
+    builder_alignment_normalize(c(legacy, list(roi_field = "sample_roi"))),
+    "roi_field and roi_value"
+  )
+  expect_error(
+    builder_alignment_normalize(c(
+      legacy,
+      list(roi_field = "sample_roi", roi_value = "")
+    )),
+    "non-empty"
+  )
+})
+
 test_that("named spatial image collections normalize without losing labels", {
   record <- function(section, filename) {
     builder_alignment_record(
@@ -1073,6 +1298,8 @@ test_that("named spatial image actions preserve unaffected records", {
     section_a = list(`H&E` = he, DAPI = dapi)
   ))
   expect_named(images$section_a, c("H&E", "DAPI"))
+  he$image_label <- "H&E"
+  dapi$image_label <- "DAPI"
   expect_identical(images$section_a[["H&E"]], he)
 
   renamed <- builder_image_collection_rename(
@@ -1082,7 +1309,9 @@ test_that("named spatial image actions preserve unaffected records", {
     "IF"
   )
   expect_named(renamed$section_a, c("H&E", "IF"))
-  expect_identical(renamed$section_a[["IF"]], dapi)
+  renamed_dapi <- dapi
+  renamed_dapi$image_label <- "IF"
+  expect_identical(renamed$section_a[["IF"]], renamed_dapi)
   expect_identical(renamed$section_a[["H&E"]], he)
   expect_error(
     builder_image_collection_rename(renamed, "section_a", "IF", "H&E"),
@@ -1091,7 +1320,42 @@ test_that("named spatial image actions preserve unaffected records", {
 
   removed <- builder_image_collection_remove(renamed, "section_a", "H&E")
   expect_named(removed$section_a, "IF")
-  expect_identical(removed$section_a$IF, dapi)
+  expect_identical(removed$section_a$IF, renamed_dapi)
+})
+
+test_that("spatial image display labels are unique only within one ROI", {
+  scoped_record <- function(roi) {
+    value <- builder_alignment_record(
+      source = list(name = "same.png", type = "image/png", size = 4),
+      source_uri = paste0("data:image/png;base64,", roi),
+      uri = paste0("data:image/png;base64,", roi),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      section = list(id = "section_a", kind = "spatial")
+    )
+    value$image_label <- "same.png"
+    value$roi_field <- "sample_roi"
+    value$roi_value <- roi
+    value
+  }
+
+  images <- builder_image_collection_normalize(list(
+    section_a = list(
+      `same.png` = scoped_record("lesion"),
+      `same.png.1` = scoped_record("border")
+    )
+  ))
+  expect_identical(
+    names(builder_image_collection_choices(images, "section_a", "lesion")),
+    "same.png"
+  )
+  expect_identical(
+    names(builder_image_collection_choices(images, "section_a", "border")),
+    "same.png"
+  )
+
+  duplicate <- images
+  duplicate$section_a[["same.png.2"]] <- scoped_record("lesion")
+  expect_error(builder_image_collection_normalize(duplicate), "same ROI")
 })
 
 test_that("snapshot drop acknowledgement clears every preview cache", {
@@ -1484,6 +1748,50 @@ test_that("coordinate drafts batch materialize transforms without image state", 
   )
 })
 
+test_that("ROI drafts materialize coordinate and point settings together", {
+  entry <- list(
+    id = "dataset-a",
+    settings = list(spatial_roi_settings = list())
+  )
+  coordinates <- list(
+    "fov-a" = list(
+      lesion = list(
+        dataset = "dataset-a",
+        snapshot_identity = "snapshot-a",
+        section = "fov-a",
+        roi = "lesion",
+        spec = list(rotation_degrees = 37.5, scale = 1),
+        sequence = 1
+      )
+    )
+  )
+  appearance <- list(
+    "fov-a" = list(
+      lesion = list(
+        dataset = "dataset-a",
+        snapshot_identity = "snapshot-a",
+        section = "fov-a",
+        roi = "lesion",
+        point_opacity = 0.65,
+        point_size = 7
+      )
+    )
+  )
+
+  applied <- builder_roi_drafts_apply_entry(
+    entry,
+    coordinates,
+    appearance,
+    snapshot_identity = "snapshot-a"
+  )
+
+  expect_true(applied$changed)
+  expect_identical(
+    applied$entry$settings$spatial_roi_settings[["fov-a"]][["lesion"]],
+    list(rotation_degrees = 37.5, point_opacity = 0.65, point_size = 7)
+  )
+})
+
 test_that("coordinate release events stay light until one batched materialization", {
   skip_if_not_installed("shiny")
   entry <- list(
@@ -1852,6 +2160,23 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
   expect_false("datapath" %in% names(payload))
 })
 
+test_that("Builder image payload retains its ROI scope", {
+  record <- builder_alignment_record(
+    source = list(name = "roi-lesion.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SOURCE",
+    uri = "data:image/png;base64,DISPLAY",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 5),
+    section = list(id = "fov", kind = "spatial")
+  )
+  record$roi_field <- "sample_roi"
+  record$roi_value <- "lesion"
+
+  expect_identical(
+    builder_histology_image_payload(record)[c("roi_field", "roi_value")],
+    list(roi_field = "sample_roi", roi_value = "lesion")
+  )
+})
+
 test_that("Spatial and Trekker alignments are partitioned without collision", {
   spatial <- list(
     fov = list(
@@ -2184,86 +2509,6 @@ test_that("classed spatial coordinate tables fail without method dispatch", {
   }
 })
 
-test_that("all supported image channel kinds normalize to RGBA", {
-  gray <- matrix(c(0, 0.25, 0.75, 1), nrow = 2L)
-  gray_alpha <- array(
-    c(gray, matrix(c(1, 0.75, 0.5, 0.25), nrow = 2L)),
-    dim = c(2L, 2L, 2L)
-  )
-  rgb <- array(seq(0, 1, length.out = 12L), dim = c(2L, 2L, 3L))
-  rgba <- array(seq(0, 1, length.out = 16L), dim = c(2L, 2L, 4L))
-
-  normalized <- list(
-    grayscale = builder_normalize_image(gray, 20L),
-    grayscale_alpha = builder_normalize_image(gray_alpha, 20L),
-    rgb = builder_normalize_image(rgb, 20L),
-    rgba = builder_normalize_image(rgba, 20L)
-  )
-
-  for (kind in names(normalized)) {
-    got <- normalized[[kind]]
-    expect_null(got$error, info = kind)
-    expect_identical(dim(got$array), c(2L, 2L, 4L), info = kind)
-    expect_identical(got$source_channel_kind, kind, info = kind)
-  }
-  for (channel in 1:3) {
-    expect_equal(normalized$grayscale$array[,, channel], gray)
-    expect_equal(
-      normalized$grayscale_alpha$array[,, channel],
-      gray_alpha[,, 1L]
-    )
-  }
-  expect_equal(normalized$grayscale$array[,, 4L], matrix(1, 2L, 2L))
-  expect_equal(
-    normalized$grayscale_alpha$array[,, 4L],
-    gray_alpha[,, 2L]
-  )
-  expect_equal(normalized$rgba$array, rgba)
-})
-
-test_that("image normalization records dimensions and bounds display size", {
-  image <- array(seq(0, 1, length.out = 8L * 4L * 3L), dim = c(4L, 8L, 3L))
-  got <- builder_normalize_image(image, max_display_px = 3L)
-
-  expect_identical(got$source_dimensions, c(width = 8L, height = 4L))
-  expect_identical(
-    got$display_dimensions,
-    c(width = got$display_width, height = got$display_height)
-  )
-  expect_lte(max(got$display_dimensions), 3L)
-  expect_identical(dim(got$array)[3L], 4L)
-})
-
-test_that("image normalization rejects unsafe arrays and display limits", {
-  cases <- list(
-    non_numeric = array("x", dim = c(2L, 2L, 3L)),
-    non_finite = array(c(rep(0, 11L), Inf), dim = c(2L, 2L, 3L)),
-    out_of_range = array(c(rep(0, 11L), 2), dim = c(2L, 2L, 3L)),
-    zero_channels = array(numeric(), dim = c(2L, 2L, 0L)),
-    five_channels = array(0, dim = c(2L, 2L, 5L)),
-    bad_dimensions = structure(numeric(4L), dim = c(2L, 2L, 1L, 1L))
-  )
-  for (name in names(cases)) {
-    got <- builder_normalize_image(cases[[name]], 20L)
-    expect_type(got$error, "character")
-    expect_true(nzchar(got$error), info = name)
-  }
-
-  valid <- array(0, dim = c(2L, 2L, 3L))
-  for (limit in list(
-    0,
-    -1,
-    NA_real_,
-    Inf,
-    .Machine$integer.max + 1,
-    numeric(),
-    c(1, 2)
-  )) {
-    got <- builder_normalize_image(valid, limit)
-    expect_match(got$error, "display", ignore.case = TRUE)
-  }
-})
-
 test_that("PNG and JPEG read while TIFF variants give conversion guidance", {
   skip_if_not_installed("png")
   skip_if_not_installed("jpeg")
@@ -2287,7 +2532,7 @@ test_that("PNG and JPEG read while TIFF variants give conversion guidance", {
   }
 })
 
-test_that("image headers enforce a pixel budget before decoded arrays are kept", {
+test_that("image headers are read without raster decoding", {
   skip_if_not_installed("png")
   skip_if_not_installed("jpeg")
   skip_if_not_installed("base64enc")
@@ -2307,18 +2552,8 @@ test_that("image headers enforce a pixel budget before decoded arrays are kept",
     c(width = 3L, height = 3L)
   )
   expect_match(
-    builder_read_image(png_path, max_pixels = 8L)$error,
-    "pixel safety limit",
-    fixed = TRUE
-  )
-  expect_match(
-    builder_read_image(jpeg_path, max_pixels = 8L)$error,
-    "pixel safety limit",
-    fixed = TRUE
-  )
-  expect_match(
     builder_read_image(png_path, max_encoded_bytes = 8L)$error,
-    "encoded size limit",
+    "1 GiB file limit",
     fixed = TRUE
   )
   uri <- paste0(
@@ -2326,30 +2561,21 @@ test_that("image headers enforce a pixel budget before decoded arrays are kept",
     base64enc::base64encode(png_path)
   )
   expect_match(
-    builder_read_image_uri(uri, max_pixels = 8L)$error,
-    "pixel safety limit",
-    fixed = TRUE
-  )
-  expect_match(
     builder_read_image_uri(uri, max_encoded_bytes = 8L)$error,
-    "encoded size limit",
+    "1 GiB file limit",
     fixed = TRUE
   )
+  expect_false(grepl("readPNG|readJPEG", deparse1(body(builder_read_image))))
+  expect_false(grepl(
+    "readPNG|readJPEG",
+    deparse1(body(builder_read_image_uri))
+  ))
 })
 
-test_that("the default resident raster is bounded by decoded R memory", {
-  worst_case_bytes <- as.numeric(BUILDER_IMAGE_MAX_PIXELS) *
-    BUILDER_IMAGE_DECODE_CHANNELS *
-    8
-
-  expect_lte(worst_case_bytes, BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES)
-  expect_lte(BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES, 64 * 1024^2)
-})
-
-test_that("JPEG metadata scanning is bounded before main-process decode", {
+test_that("JPEG metadata scanning reports a missing frame", {
   path <- withr::local_tempfile(fileext = ".jpeg")
   writeBin(
-    c(as.raw(c(0xff, 0xd8)), raw(BUILDER_IMAGE_MAX_HEADER_BYTES)),
+    c(as.raw(c(0xff, 0xd8)), raw(1024L)),
     path
   )
 
@@ -2363,9 +2589,10 @@ test_that("JPEG metadata scanning is bounded before main-process decode", {
   )
   parser <- paste(deparse(body(.builder_jpeg_dimensions)), collapse = "\n")
   expect_false(grepl("which(", parser, fixed = TRUE))
+  expect_false(grepl("as.integer(bytes)", parser, fixed = TRUE))
 })
 
-test_that("malformed PNG metadata is rejected before URI raster decode", {
+test_that("malformed PNG metadata is rejected", {
   skip_if_not_installed("base64enc")
   malformed <- c(
     as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
@@ -2387,7 +2614,7 @@ test_that("malformed PNG metadata is rejected before URI raster decode", {
   )
 })
 
-test_that("oversized PNG uint32 dimensions fail through the safety budget", {
+test_that("PNG uint32 dimensions remain numeric above the integer range", {
   path <- withr::local_tempfile(fileext = ".png")
   header <- c(
     as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
@@ -2401,46 +2628,6 @@ test_that("oversized PNG uint32 dimensions fail through the safety budget", {
   dimensions <- builder_image_file_dimensions(path, "oversized.png")
   expect_identical(unname(dimensions), c(2147483648, 1))
   expect_false(anyNA(dimensions))
-  expect_match(
-    builder_read_image(path, filename = "oversized.png")$error,
-    "pixel safety limit",
-    fixed = TRUE
-  )
-})
-
-test_that("image encoding can retain only the bounded editable raster", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  rgb <- array(seq(0, 1, length.out = 12L * 8L * 3L), dim = c(8L, 12L, 3L))
-
-  encoded <- builder_encode_image(
-    rgb,
-    max_px = 4L,
-    retain_normalized_array = TRUE
-  )
-
-  expect_null(encoded$error)
-  encoded_bytes <- base64enc::base64decode(sub(
-    "^[^,]+,",
-    "",
-    encoded$uri
-  ))
-  expect_identical(
-    encoded$content_md5,
-    unclass(as.character(openssl::md5(encoded_bytes)))
-  )
-  expect_identical(dim(encoded$normalized_array), c(3L, 4L, 4L))
-  expect_identical(encoded$source_dimensions, c(width = 12L, height = 8L))
-  expect_lte(prod(dim(encoded$normalized_array)), 4L * 4L * 4L)
-
-  rotated <- builder_encode_image(
-    encoded$normalized_array,
-    max_px = 4L,
-    rotate = 90,
-    source_dimensions = encoded$source_dimensions
-  )
-  expect_null(rotated$error)
-  expect_identical(rotated$source_dimensions, c(width = 12L, height = 8L))
 })
 
 test_that("image read failures never expose a server-side upload path", {
@@ -2455,298 +2642,6 @@ test_that("image read failures never expose a server-side upload path", {
     "Could not read this image. Check that it is a valid PNG or JPEG file."
   )
   expect_false(grepl(path, got$error, fixed = TRUE))
-})
-
-test_that("encoding round-trips grayscale alpha through RGBA", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  gray <- matrix(c(0, 0.25, 0.75, 1), nrow = 2L)
-  alpha <- matrix(c(1, 0.5, 0.25, 0), nrow = 2L)
-  gray_alpha <- array(c(gray, alpha), dim = c(2L, 2L, 2L))
-
-  encoded <- builder_encode_image(gray_alpha, max_px = 10L)
-  expect_null(encoded$error)
-  expect_identical(encoded$source_channel_kind, "grayscale_alpha")
-  raw <- base64enc::base64decode(sub("^[^,]+,", "", encoded$uri))
-  path <- withr::local_tempfile(fileext = ".png")
-  writeBin(raw, path)
-  decoded <- png::readPNG(path)
-
-  expect_identical(dim(decoded), c(2L, 2L, 4L))
-  for (channel in 1:3) {
-    expect_equal(decoded[,, channel], gray, tolerance = 1 / 255)
-  }
-  expect_equal(decoded[,, 4L], alpha, tolerance = 1 / 255)
-})
-
-test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
-  rgba <- array(
-    seq(0.01, 0.96, length.out = 2L * 3L * 4L),
-    dim = c(2L, 3L, 4L)
-  )
-  pixel_signatures <- function(image) {
-    sort(as.vector(apply(image, c(1L, 2L), paste, collapse = ":")))
-  }
-  rotate <- function(image, angle) {
-    dimensions <- builder_rotation_plan(
-      width = dim(image)[2L],
-      height = dim(image)[1L],
-      degrees = angle,
-      max_edge = max(dim(image)[1:2])
-    )$output_dimensions
-    .builder_rotate_rgba(image, angle, dimensions)
-  }
-  rotations <- lapply(
-    c(`90` = 90, `180` = 180, `270` = 270, `-90` = -90),
-    function(angle) rotate(rgba, angle)
-  )
-  expected_dimensions <- list(
-    `90` = c(3L, 2L, 4L),
-    `180` = c(2L, 3L, 4L),
-    `270` = c(3L, 2L, 4L),
-    `-90` = c(3L, 2L, 4L)
-  )
-
-  for (angle in names(rotations)) {
-    rotated <- rotations[[angle]]
-    expect_identical(dim(rotated), expected_dimensions[[angle]], info = angle)
-    expect_identical(
-      pixel_signatures(rotated),
-      pixel_signatures(rgba),
-      info = angle
-    )
-    expect_identical(
-      sort(as.vector(rotated[,, 4L])),
-      sort(as.vector(rgba[,, 4L])),
-      info = angle
-    )
-  }
-  expect_identical(
-    rotations[["180"]],
-    rgba[
-      rev(seq_len(dim(rgba)[1L])),
-      rev(seq_len(dim(rgba)[2L])),
-      ,
-      drop = FALSE
-    ]
-  )
-  expect_identical(rotations[["-90"]], rotations[["270"]])
-
-  labelled <- array(1, dim = c(2L, 3L, 4L))
-  labelled[,, 1L] <- matrix(1:6 / 10, nrow = 2L, byrow = TRUE)
-  expect_identical(
-    rotate(labelled, 90)[,, 1L],
-    matrix(c(3, 6, 2, 5, 1, 4) / 10, nrow = 3L, byrow = TRUE)
-  )
-  expect_identical(
-    rotate(labelled, -90)[,, 1L],
-    matrix(c(4, 1, 5, 2, 6, 3) / 10, nrow = 3L, byrow = TRUE)
-  )
-
-  implementation <- paste(
-    deparse(body(.builder_rotate_rgba)),
-    collapse = "\n"
-  )
-  expect_false(grepl("aperm(", implementation, fixed = TRUE))
-  expect_false(grepl("return(arr[", implementation, fixed = TRUE))
-})
-
-test_that("rotation plans preserve dimensions for thin images", {
-  plan <- NULL
-  expect_no_error(
-    plan <- builder_rotation_plan(
-      width = 1L,
-      height = 4000L,
-      degrees = 45,
-      max_edge = 200L
-    )
-  )
-  if (is.null(plan)) {
-    return(invisible())
-  }
-
-  expect_identical(
-    names(plan$input_dimensions),
-    c("width", "height")
-  )
-  expect_lte(max(plan$output_dimensions), 200L)
-})
-
-test_that("valid thin images encode through the rotation plan", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  image <- array(
-    seq(0.01, 0.99, length.out = 4000L * 4L),
-    dim = c(4000L, 1L, 4L)
-  )
-
-  encoded <- builder_encode_image(image, max_px = 200L, rotate = 45)
-
-  expect_null(encoded$error)
-  expect_identical(
-    encoded$source_dimensions,
-    c(width = 1L, height = 4000L)
-  )
-  expect_lte(max(encoded$display_dimensions), 200L)
-})
-
-test_that("arbitrary rotation plans bound allocation before mapping", {
-  expect_true(exists("builder_rotation_plan", mode = "function"))
-  if (!exists("builder_rotation_plan", mode = "function")) {
-    return(invisible())
-  }
-
-  plan <- builder_rotation_plan(
-    width = 4000L,
-    height = 4000L,
-    degrees = 45,
-    max_edge = 1400L
-  )
-  expect_identical(
-    plan$full_extent_dimensions,
-    c(width = 5657L, height = 5657L)
-  )
-  expect_lte(max(plan$output_dimensions), 1400L)
-  expect_lt(max(plan$input_dimensions), 4000L)
-  expect_true(plan$prescaled)
-
-  encode_implementation <- paste(
-    deparse(body(builder_encode_image)),
-    collapse = "\n"
-  )
-  normalization_calls <- gregexpr(
-    "builder_normalize_image",
-    encode_implementation,
-    fixed = TRUE
-  )[[1L]]
-  expect_identical(sum(normalization_calls > 0L), 1L)
-})
-
-test_that("rotation prescaling samples thin images from pixel centres", {
-  plan <- builder_rotation_plan(
-    width = 100L,
-    height = 3L,
-    degrees = 45,
-    max_edge = 10L
-  )
-  expect_identical(plan$input_dimensions[["height"]], 1L)
-  thin <- array(0, dim = c(3L, 100L, 4L))
-  thin[1L, , 1L] <- 0.1
-  thin[2L, , 1L] <- 0.5
-  thin[3L, , 1L] <- 0.9
-  thin[,, 4L] <- 1
-  normalized <- builder_normalize_image(
-    thin,
-    max_display_px = plan$input_max_edge,
-    display_dimensions = plan$input_dimensions
-  )
-
-  expect_identical(
-    dim(normalized$array)[1:2],
-    unname(rev(plan$input_dimensions))
-  )
-  expect_true(all(normalized$array[,, 1L] == 0.5))
-})
-
-test_that("small nonzero rotations keep extent and encoded pixels aligned", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  image <- array(
-    seq(0.01, 0.99, length.out = 2L * 4L * 4L),
-    dim = c(2L, 4L, 4L)
-  )
-  encoded <- builder_encode_image(image, max_px = 10L, rotate = 0.005)
-
-  expect_identical(encoded$extent_dimensions, c(width = 5L, height = 3L))
-  expect_identical(encoded$display_dimensions, encoded$extent_dimensions)
-  bounds <- builder_image_bounds(
-    "pixels",
-    list(c(0, 1), c(0, 1)),
-    encoded
-  )
-  expect_identical(
-    c(width = bounds$xmax, height = bounds$ymax),
-    encoded$extent_dimensions
-  )
-})
-
-test_that("encoded display limits preserve transformed source extent", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  image <- array(
-    seq(0, 1, length.out = 100L * 200L * 3L),
-    dim = c(100L, 200L, 3L)
-  )
-
-  encoded <- builder_encode_image(image, max_px = 20L, rotate = 45)
-  expect_lte(max(encoded$display_dimensions), 20L)
-  expect_identical(encoded$source_dimensions, c(width = 200L, height = 100L))
-  expect_identical(encoded$extent_dimensions, c(width = 213L, height = 213L))
-  expect_identical(encoded$source_channel_kind, "rgb")
-  expect_identical(encoded$display_channels, 4L)
-  expect_identical(encoded$display_channel_kind, "rgba")
-  expect_identical(encoded$channel_kind, "rgba")
-
-  expect_identical(
-    builder_image_bounds("pixels", list(1, 1), encoded),
-    list(xmin = 0, xmax = 213L, ymin = 0, ymax = 213L)
-  )
-  expect_identical(
-    builder_image_bounds(
-      "physical",
-      list(1, 1),
-      encoded,
-      um_per_px = 0.5
-    ),
-    list(xmin = 0, xmax = 106.5, ymin = 0, ymax = 106.5)
-  )
-})
-
-test_that("rotated image extent drives bounds", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  image <- array(
-    seq(0.01, 0.99, length.out = 2L * 4L * 4L),
-    dim = c(2L, 4L, 4L)
-  )
-  expected <- list(
-    `90` = c(width = 2L, height = 4L),
-    `45` = c(width = 5L, height = 5L)
-  )
-
-  for (angle in names(expected)) {
-    encoded <- builder_encode_image(
-      image,
-      max_px = 2L,
-      rotate = as.numeric(angle)
-    )
-    expect_identical(
-      encoded$source_dimensions,
-      c(width = 4L, height = 2L),
-      info = angle
-    )
-    expect_identical(
-      encoded$extent_dimensions,
-      expected[[angle]],
-      info = angle
-    )
-    expect_lte(max(encoded$display_dimensions), 2L)
-    bounds <- builder_image_bounds(
-      "pixels",
-      list(c(0, 1), c(0, 1)),
-      encoded
-    )
-    expect_identical(
-      bounds,
-      list(
-        xmin = 0,
-        xmax = expected[[angle]][["width"]],
-        ymin = 0,
-        ymax = expected[[angle]][["height"]]
-      ),
-      info = angle
-    )
-  }
 })
 
 test_that("alignment records propagate transformed extent facts", {
@@ -2802,7 +2697,7 @@ test_that("alignment records propagate transformed extent facts", {
   expect_match(alignment_server, '"extent_width"', fixed = TRUE)
   expect_match(alignment_server, '"extent_height"', fixed = TRUE)
   expect_match(alignment_server, "builder_alignment_record", fixed = TRUE)
-  expect_match(alignment_server, "builder_encode_image", fixed = TRUE)
+  expect_false(grepl("builder_encode_image", alignment_server, fixed = TRUE))
   expect_match(app, "nxt\\$extent_width")
   expect_match(app, "nxt\\$extent_height")
   expect_match(session, "extent_width")

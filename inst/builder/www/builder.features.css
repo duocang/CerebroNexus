@@ -21,17 +21,49 @@
 .spatial-alignment-sidebar {
   grid-area: controls;
   align-content: start;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 .spatial-alignment-main { grid-area: preview; }
 .spatial-alignment-sidebar-primary {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-width: 0;
 }
 .spatial-image-storage-control .form-group { margin-bottom: var(--space-1); }
 .spatial-image-storage-control .hint { margin: 0; }
 .spatial-alignment-sidebar-fixed .form-group { margin-bottom: 0; }
+.builder-spatial-scene-inventory {
+  max-height: 18rem;
+  margin-top: var(--space-2);
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-muted);
+}
+.builder-spatial-scene-inventory > summary {
+  padding: var(--space-2) var(--space-3);
+  color: var(--c-text);
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.builder-spatial-scene {
+  padding: var(--space-3);
+  border-top: 1px solid var(--c-border);
+}
+.builder-spatial-scene > .hint,
+.builder-spatial-scene-annotation { margin: var(--space-1) 0 0; }
+.builder-spatial-scene-annotation {
+  color: var(--c-text-muted);
+  font-size: .78rem;
+  overflow-wrap: anywhere;
+}
+.builder-spatial-scene-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
 .spatial-alignment-sidebar-body { min-width: 0; }
 .spatial-alignment-sidebar-scroll { min-width: 0; }
 .spatial-coordinate-settings {
@@ -46,7 +78,7 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  min-height: 2.7rem;
+  min-height: 2.35rem;
   padding: 0 var(--space-3);
   color: var(--c-text);
   cursor: pointer;
@@ -69,24 +101,45 @@
 }
 .spatial-coordinate-settings-body {
   display: grid;
-  gap: var(--space-3);
-  padding: 0 var(--space-3) var(--space-3);
+  gap: 2px;
+  padding: 0 var(--space-3) var(--space-2);
   animation: spatial-coordinate-settings-expand var(--duration-normal) var(--ease) both;
 }
 .spatial-coordinate-settings-body > .form-group { margin-bottom: 0; }
 .spatial-image-file-summary:empty { display: none; }
 .spatial-image-file-summary .enhance-tissue-file-item {
-  padding: 0 0 var(--space-3);
+  padding: 0 0 var(--space-2);
   border: 0;
   border-bottom: 1px solid var(--c-border);
   border-radius: 0;
   background: transparent;
 }
+.spatial-image-file-summary .enhance-tissue-file-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.spatial-image-file-summary .enhance-tissue-file-name {
+  flex: 1 1 auto;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.spatial-image-file-summary .enhance-tissue-file-size {
+  flex: 0 0 auto;
+  margin-top: 0;
+  font-size: .75rem;
+  white-space: nowrap;
+}
+.spatial-image-file-summary .builder-file-list { margin-top: 0; }
+.spatial-image-file-summary .enhance-tissue-file-action-row {
+  margin-top: var(--space-2);
+}
 .spatial-coordinate-control {
   display: grid;
-  grid-template-columns: 6.75rem minmax(0, 1fr) 4rem;
+  grid-template-columns: 4rem minmax(0, 1fr) 3.25rem;
   align-items: center;
-  gap: var(--space-2);
+  gap: 2px;
 }
 .spatial-coordinate-control-label {
   margin: 0;
@@ -98,32 +151,93 @@
 }
 .spatial-coordinate-control .form-group { margin: 0; }
 .spatial-coordinate-control-slider { min-width: 0; }
-.spatial-coordinate-control-slider .irs { margin-bottom: 0; }
+.spatial-coordinate-control-slider .irs {
+  height: 2.5rem;
+  margin-bottom: 0;
+}
 .spatial-coordinate-control-slider .irs-single { display: none; }
 .spatial-coordinate-control-number .form-control {
-  height: 2.25rem;
+  height: 1.85rem;
   padding: .25rem .35rem;
   text-align: center;
+}
+.spatial-coordinate-control-number input[type="number"]::-webkit-inner-spin-button,
+.spatial-image-position input[type="number"]::-webkit-inner-spin-button {
+  height: 1.5rem;
+  margin: 0;
+  cursor: pointer;
+  opacity: 1;
+}
+.spatial-image-position {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.spatial-image-position .form-group {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+}
+.spatial-image-position label {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: .78rem;
+  font-weight: 600;
+}
+.spatial-image-position .form-control {
+  height: 1.85rem;
+  text-align: center;
+}
+.spatial-image-nudge {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr)) minmax(6rem, auto)
+    repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.spatial-image-nudge .btn {
+  min-width: 0;
+  padding: .35rem;
+  color: var(--c-accent);
+  font-size: 1.1rem;
+}
+.spatial-image-nudge .spatial-image-center {
+  font-size: .78rem;
+  white-space: nowrap;
 }
 .spatial-image-flips {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 .spatial-image-flips .form-group { margin: 0; }
 .spatial-image-flips .checkbox { margin: 0; }
 .spatial-image-flips .checkbox label {
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 1.25rem;
-  padding: 0;
+  min-height: 2.1rem;
+  padding: .35rem .6rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  color: var(--c-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.spatial-coordinate-settings-body > .builder-action-row {
+  margin-top: var(--space-1);
 }
 .spatial-image-flips .checkbox input[type="checkbox"] {
-  position: static;
-  flex: 0 0 auto;
-  margin: 0;
+  position: absolute;
+  opacity: 0;
+}
+.spatial-image-flips .checkbox label:has(input:checked) {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
 }
 @keyframes spatial-coordinate-settings-expand {
   from { opacity: 0; transform: translateY(-.3rem); }
@@ -249,7 +363,6 @@
     height: 100%;
     min-height: 0;
     overflow-y: auto;
-    overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scrollbar-color: var(--c-border-2) var(--c-surface-muted);
   }

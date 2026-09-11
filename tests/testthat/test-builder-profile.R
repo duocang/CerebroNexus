@@ -1103,6 +1103,7 @@ test_that("legacy describe_seurat fields remain available", {
       "reductions",
       "reduction_preselect",
       "images",
+      "spatial_scenes",
       "nUMI",
       "nGene",
       "qc_values",
@@ -1124,6 +1125,20 @@ test_that("legacy describe_seurat fields remain available", {
     builder_profile_reduction_object(c("pca", "umap"))
   )
   expect_identical(mixed$reduction_preselect, "umap")
+})
+
+test_that("describe_seurat carries bounded spatial scene labels", {
+  skip_if_not_installed("SeuratObject")
+  builder_repo_source("inspect.R")
+  object <- builder_content_spatial_example_object("xenium-fov")
+  object$sample_roi <- rep(c("S1_lesion", "S2_border"), ncol(object) / 2L)
+
+  described <- describe_seurat(object)
+
+  expect_length(described$spatial_scenes, 1L)
+  expect_identical(described$spatial_scenes[[1L]]$id, "xenium-fov")
+  expect_match(described$spatial_scenes[[1L]]$label, "2 samples", fixed = TRUE)
+  expect_match(described$spatial_scenes[[1L]]$label, "2 ROIs", fixed = TRUE)
 })
 
 test_that("profile bootstraps from the installed application layout", {

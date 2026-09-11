@@ -259,7 +259,16 @@ builder_verify_app <- function(
     stop("The staged App cell percentages differ from request.", call. = FALSE)
   }
   if (!identical(config[["viewer_content"]], request$viewer_content)) {
-    stop("The staged App Viewer defaults differ from request.", call. = FALSE)
+    difference <- all.equal(
+      config[["viewer_content"]],
+      request$viewer_content,
+      tolerance = 0
+    )
+    stop(
+      "The staged App Viewer defaults differ from request: ",
+      paste(difference, collapse = "; "),
+      call. = FALSE
+    )
   }
   if (
     !identical(config[["variable_to_compare"]], request$variable_to_compare)

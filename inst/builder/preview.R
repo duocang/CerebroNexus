@@ -46,6 +46,7 @@ BUILDER_PREVIEW_MAX <- 1000L
     spatial = NULL,
     bounds = NULL,
     coordinate_frame = NULL,
+    roi_bounds = list(),
     total_cells = 0L,
     capped = FALSE
   )
@@ -156,12 +157,17 @@ builder_alignment_preview_model <- function(
   object,
   default_projection = NULL,
   group = NULL,
+  roi = NULL,
   section_id = NULL,
   assay = NULL,
   layer = "data",
   coordinate_transforms = NULL,
   max_cells = BUILDER_PREVIEW_MAX
 ) {
+  roi <- as.character(roi %||% "")
+  if (length(roi) != 1L || is.na(roi)) {
+    roi <- ""
+  }
   sections <- builder_spatial_alignment_sections(object)
   if (!length(sections)) {
     return(.builder_alignment_unavailable(
@@ -237,6 +243,8 @@ builder_alignment_preview_model <- function(
       spatial = spatial_full[keep, , drop = FALSE],
       bounds = .builder_alignment_bounds(spatial_full),
       coordinate_frame = .builder_alignment_bounds(spatial_full),
+      roi_bounds = list(),
+      roi = list(field = NULL, values = character(), selected = ""),
       total_cells = nrow(spatial_full),
       capped = nrow(spatial_full) > length(keep)
     ))
@@ -320,7 +328,6 @@ builder_alignment_preview_model <- function(
       "The selected section has no safe paired spatial coordinates."
     ))
   }
-  coordinate_frame <- .builder_alignment_bounds(physical)
   common <- intersect(
     transcriptome_full$cell_barcode,
     physical$cell_barcode
@@ -330,6 +337,40 @@ builder_alignment_preview_model <- function(
       sections,
       "The transcriptome and spatial views share no cell identities."
     ))
+  }
+  roi_field <- section$annotations$roi$field %||% NULL
+  roi_values <- character()
+  roi_bounds <- list()
+  if (!is.null(roi_field) && roi_field %in% colnames(object@meta.data)) {
+    rows <- match(common, rownames(object@meta.data))
+    roi_by_cell <- as.character(object@meta.data[[roi_field]][rows])
+    roi_by_cell[is.na(roi_by_cell) | !nzchar(roi_by_cell)] <- NA_character_
+    names(roi_by_cell) <- common
+    roi_values <- unique(unname(roi_by_cell[!is.na(roi_by_cell)]))
+    roi_bounds <- stats::setNames(
+      lapply(roi_values, function(value) {
+        cells <- names(roi_by_cell)[
+          !is.na(roi_by_cell) & roi_by_cell == value
+        ]
+        .builder_alignment_bounds(physical[
+          match(cells, physical$cell_barcode),
+          c("x", "y"),
+          drop = FALSE
+        ])
+      }),
+      roi_values
+    )
+    if (nzchar(roi)) {
+      if (!roi %in% roi_values) {
+        return(.builder_alignment_unavailable(
+          sections,
+          paste0("ROI `", roi, "` is not available in this spatial section.")
+        ))
+      }
+      common <- common[!is.na(roi_by_cell[common]) & roi_by_cell[common] == roi]
+    }
+  } else {
+    roi <- ""
   }
   transcriptome_full <- transcriptome_full[
     match(common, transcriptome_full$cell_barcode),
@@ -342,6 +383,7 @@ builder_alignment_preview_model <- function(
     drop = FALSE
   ]
   spatial_full$group <- transcriptome_full$group
+  coordinate_frame <- .builder_alignment_bounds(spatial_full)
   keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
   list(
     available = TRUE,
@@ -353,7 +395,9 @@ builder_alignment_preview_model <- function(
     spatial = spatial_full[keep, , drop = FALSE],
     bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
+    roi_bounds = roi_bounds,
     coordinate_transform = NULL,
+    roi = list(field = roi_field, values = roi_values, selected = roi),
     total_cells = nrow(spatial_full),
     capped = nrow(spatial_full) > length(keep)
   )
@@ -365,6 +409,11 @@ builder_spatial_canvas_scene <- function(
   record = NULL,
   point_appearance = NULL,
   coordinate_transform = NULL,
+  roi_point_appearance = list(),
+  roi_coordinate_transforms = list(),
+  roi_images = list(),
+  layout = "overlay",
+  active_roi = NULL,
   identity,
   generation,
   reset_token = 0L,
@@ -390,6 +439,25 @@ builder_spatial_canvas_scene <- function(
   shared <- intersect(levels, names(colors %||% character()))
   palette[shared] <- colors[shared]
   counts <- table(points$group)
+  roi_images <- lapply(roi_images, function(records) {
+    records <- records %||% list()
+    Filter(
+      Negate(is.null),
+      lapply(names(records), function(key) {
+        image <- builder_alignment_normalize(records[[key]])
+        if (is.null(image)) {
+          return(NULL)
+        }
+        list(
+          id = key,
+          uri = image$source_uri %||% image$uri,
+          baseBounds = image$base_bounds,
+          controls = .builder_alignment_parameters(image),
+          active = isTRUE(records[[key]]$active)
+        )
+      })
+    )
+  })
   list(
     available = TRUE,
     viewKey = identity,
@@ -399,6 +467,11 @@ builder_spatial_canvas_scene <- function(
     generation = generation,
     resetToken = reset_token,
     capped = isTRUE(preview$capped),
+    layout = layout,
+    activeRoi = active_roi,
+    roiPointAppearance = roi_point_appearance,
+    roiCoordinateTransforms = roi_coordinate_transforms,
+    roiImages = roi_images,
     points = list(
       x = unname(as.numeric(points$x)),
       y = unname(as.numeric(points$y)),

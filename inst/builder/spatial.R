@@ -84,6 +84,92 @@ builder_match_cells <- function(ids, expected, mode = c("exact", "subset")) {
   stop(message, call. = FALSE)
 }
 
+.builder_spatial_plain_list <- function(value) {
+  is.list(value) && !is.object(value) && length(value) > 0L
+}
+
+builder_spatial_scene_layers <- function(object, id, kind) {
+  layers <- "points"
+  if (!identical(kind, "spatial")) {
+    return(layers)
+  }
+  image <- tryCatch(object[[id]], error = function(error) NULL)
+  slots <- if (isS4(image)) methods::slotNames(image) else character()
+  slot_value <- function(name) {
+    if (!name %in% slots) {
+      return(NULL)
+    }
+    tryCatch(methods::slot(image, name), error = function(error) NULL)
+  }
+
+  raster <- slot_value("image")
+  declared_raster <- tryCatch(
+    object@misc[["cerebro_spatial_images"]][[id]],
+    error = function(error) NULL
+  )
+  raster_dimensions <- tryCatch(dim(raster), error = function(error) NULL)
+  if (
+    length(raster_dimensions) >= 2L ||
+      .builder_spatial_plain_list(declared_raster)
+  ) {
+    layers <- c(layers, "raster")
+  }
+
+  boundaries <- slot_value("boundaries")
+  if (.builder_spatial_plain_list(boundaries)) {
+    has_boundaries <- any(vapply(
+      boundaries,
+      function(boundary) {
+        methods::is(boundary, "Segmentation") ||
+          (!methods::is(boundary, "Centroids") && !is.null(boundary))
+      },
+      logical(1)
+    ))
+    if (has_boundaries) {
+      layers <- c(layers, "boundaries")
+    }
+  }
+  if (.builder_spatial_plain_list(slot_value("molecules"))) {
+    layers <- c(layers, "molecules")
+  }
+  layers
+}
+
+.builder_spatial_scene <- function(
+  object,
+  id,
+  kind,
+  cells,
+  unit,
+  label = id
+) {
+  annotations <- list(
+    sample = builder_viewer_spatial_annotation(
+      object@meta.data,
+      cells,
+      c("sample", "sample_id", "orig.ident")
+    ),
+    roi = builder_viewer_spatial_annotation(
+      object@meta.data,
+      cells,
+      c("sample_roi", "roi", "roi_id", "region_of_interest")
+    )
+  )
+  builder_viewer_spatial_scene(
+    id = id,
+    label = builder_viewer_spatial_scene_label(label, annotations),
+    kind = kind,
+    source_id = id,
+    unit = unit,
+    observations = list(
+      kind = "cell_or_spot",
+      count = as.integer(length(unique(cells)))
+    ),
+    annotations = annotations,
+    layers = builder_spatial_scene_layers(object, id, kind)
+  )
+}
+
 #' Sections that can participate in the Builder alignment workbench.
 #'
 #' Seurat image names remain the stable section identifiers used by the
@@ -119,23 +205,32 @@ builder_spatial_alignment_sections <- function(object) {
     reduction_names
   )
   sections <- lapply(reduction_names, function(name) {
-    list(
-      id = name,
-      label = paste0(name, " (reduction)"),
-      kind = "spatial_reduction",
-      source_id = name,
-      unit = "Spatial coordinate units"
+    cells <- tryCatch(
+      rownames(SeuratObject::Embeddings(object[[name]])),
+      error = function(error) character()
+    )
+    .builder_spatial_scene(
+      object,
+      name,
+      "spatial_reduction",
+      cells,
+      "Spatial coordinate units",
+      paste0(name, " (reduction)")
     )
   })
   sections <- c(
     sections,
     lapply(image_names, function(name) {
-      list(
-        id = name,
-        label = name,
-        kind = "spatial",
-        source_id = name,
-        unit = "Spatial coordinate units"
+      cells <- tryCatch(
+        SeuratObject::Cells(object[[name]]),
+        error = function(error) character()
+      )
+      .builder_spatial_scene(
+        object,
+        name,
+        "spatial",
+        cells,
+        "Spatial coordinate units"
       )
     })
   )
@@ -146,12 +241,13 @@ builder_spatial_alignment_sections <- function(object) {
     length(trekker$x %||% numeric()) > 0L &&
     length(trekker$y %||% numeric()) > 0L
   if (has_trekker_coordinates) {
-    sections[[length(sections) + 1L]] <- list(
-      id = "trekker",
-      label = "Trekker physical space",
-      kind = "trekker",
-      source_id = "trekker",
-      unit = "Physical coordinate units"
+    sections[[length(sections) + 1L]] <- .builder_spatial_scene(
+      object,
+      "trekker",
+      "trekker",
+      as.character(trekker$barcodes),
+      "Physical coordinate units",
+      "Trekker physical space"
     )
   }
   sections
@@ -478,149 +574,5 @@ builder_spatial_contract <- function(
     coordinate_columns = coordinate_columns,
     source = source,
     image = selected_image
-  )
-}
-
-.builder_image_error <- function(message) {
-  list(error = message)
-}
-
-#' Convert grayscale, grayscale-alpha, RGB, or RGBA images to bounded RGBA.
-builder_normalize_image <- function(
-  image,
-  max_display_px,
-  display_dimensions = NULL
-) {
-  valid_limit <- is.numeric(max_display_px) &&
-    length(max_display_px) == 1L &&
-    !is.na(max_display_px) &&
-    is.finite(max_display_px) &&
-    max_display_px >= 1 &&
-    max_display_px <= .Machine$integer.max
-  if (!valid_limit) {
-    return(.builder_image_error(
-      "Maximum display edge must be one positive finite pixel count."
-    ))
-  }
-  max_display_px <- as.integer(floor(max_display_px))
-  dimensions <- dim(image)
-  valid_dimensions <- length(dimensions) %in%
-    c(2L, 3L) &&
-    all(!is.na(dimensions)) &&
-    all(dimensions > 0L)
-  if (!valid_dimensions) {
-    return(.builder_image_error("Image dimensions are invalid."))
-  }
-  if (!is.numeric(image)) {
-    return(.builder_image_error("Image pixels must be numeric."))
-  }
-  if (anyNA(image)) {
-    return(.builder_image_error("Image pixels must be finite."))
-  }
-  pixel_range <- range(image)
-  if (!all(is.finite(pixel_range))) {
-    return(.builder_image_error("Image pixels must be finite."))
-  }
-  if (pixel_range[[1L]] < 0 || pixel_range[[2L]] > 1) {
-    return(.builder_image_error("Image pixels must be between 0 and 1."))
-  }
-
-  height <- as.integer(dimensions[[1L]])
-  width <- as.integer(dimensions[[2L]])
-  channels <- if (length(dimensions) == 2L) {
-    1L
-  } else {
-    as.integer(dimensions[[3L]])
-  }
-  if (!channels %in% 1:4) {
-    return(.builder_image_error(
-      "Images must have grayscale, grayscale-alpha, RGB, or RGBA channels."
-    ))
-  }
-  channel_kind <- c(
-    "grayscale",
-    "grayscale_alpha",
-    "rgb",
-    "rgba"
-  )[[channels]]
-
-  if (is.null(display_dimensions)) {
-    scale <- min(1, max_display_px / max(height, width))
-    display_height <- max(1L, as.integer(round(height * scale)))
-    display_width <- max(1L, as.integer(round(width * scale)))
-    display_height <- min(display_height, max_display_px)
-    display_width <- min(display_width, max_display_px)
-  } else {
-    valid_display_dimensions <- is.numeric(display_dimensions) &&
-      !is.object(display_dimensions) &&
-      length(display_dimensions) == 2L &&
-      !anyNA(display_dimensions) &&
-      all(is.finite(display_dimensions)) &&
-      all(display_dimensions >= 1) &&
-      all(display_dimensions == floor(display_dimensions))
-    if (!valid_display_dimensions) {
-      return(.builder_image_error("Display image dimensions are invalid."))
-    }
-    display_width <- if ("width" %in% names(display_dimensions)) {
-      display_dimensions[["width"]]
-    } else {
-      display_dimensions[[1L]]
-    }
-    display_height <- if ("height" %in% names(display_dimensions)) {
-      display_dimensions[["height"]]
-    } else {
-      display_dimensions[[2L]]
-    }
-    if (
-      display_width > width ||
-        display_height > height ||
-        max(display_width, display_height) > max_display_px
-    ) {
-      return(.builder_image_error("Display image dimensions are invalid."))
-    }
-    display_width <- as.integer(display_width)
-    display_height <- as.integer(display_height)
-  }
-  rows <- floor((seq_len(display_height) - 0.5) * height / display_height) + 1L
-  columns <- floor((seq_len(display_width) - 0.5) * width / display_width) + 1L
-
-  rgba <- array(1, dim = c(display_height, display_width, 4L))
-  if (channels == 1L) {
-    sampled <- image[rows, columns, drop = FALSE]
-    for (channel in 1:3) {
-      rgba[,, channel] <- sampled
-    }
-  } else if (channels == 2L) {
-    for (channel in 1:3) {
-      rgba[,, channel] <- image[rows, columns, 1L, drop = FALSE]
-    }
-    rgba[,, 4L] <- image[rows, columns, 2L, drop = FALSE]
-  } else {
-    for (channel in 1:3) {
-      rgba[,, channel] <- image[rows, columns, channel, drop = FALSE]
-    }
-    if (channels == 4L) {
-      rgba[,, 4L] <- image[rows, columns, 4L, drop = FALSE]
-    }
-  }
-
-  list(
-    array = rgba,
-    width = display_width,
-    height = display_height,
-    source_width = width,
-    source_height = height,
-    display_width = display_width,
-    display_height = display_height,
-    source_dimensions = c(width = width, height = height),
-    display_dimensions = c(
-      width = display_width,
-      height = display_height
-    ),
-    source_channels = channels,
-    source_channel_kind = channel_kind,
-    display_channels = 4L,
-    display_channel_kind = "rgba",
-    channel_kind = "rgba"
   )
 }

@@ -159,15 +159,103 @@ spatialPlotRotation <- function(options, dataset, spatial_name) {
   }
 }
 
-rotateSpatialCoordinates <- function(coordinates, degrees) {
+spatialRoiSettings <- function(options, dataset, spatial_name) {
+  settings <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_roi_settings"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  if (is.list(settings) && !is.object(settings)) settings else list()
+}
+
+spatialRoiSetting <- function(options, dataset, spatial_name, roi) {
+  if (
+    !is.character(roi) ||
+      length(roi) != 1L ||
+      is.na(roi) ||
+      !nzchar(roi)
+  ) {
+    return(NULL)
+  }
+  setting <- spatialRoiSettings(options, dataset, spatial_name)[[roi]]
+  fields <- c("rotation_degrees", "point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 3L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[2L]] < 0 ||
+      values[[2L]] > 1 ||
+      values[[3L]] <= 0
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
+rotateSpatialCoordinates <- function(coordinates, degrees, pivot = c(0, 0)) {
   if (is.null(coordinates) || identical(degrees, 0)) {
     return(coordinates)
   }
   theta <- degrees * pi / 180
-  x <- coordinates[, 1]
-  y <- coordinates[, 2]
-  coordinates[, 1] <- x * cos(theta) - y * sin(theta)
-  coordinates[, 2] <- x * sin(theta) + y * cos(theta)
+  x <- coordinates[, 1] - pivot[[1L]]
+  y <- coordinates[, 2] - pivot[[2L]]
+  coordinates[, 1] <- x * cos(theta) - y * sin(theta) + pivot[[1L]]
+  coordinates[, 2] <- x * sin(theta) + y * cos(theta) + pivot[[2L]]
+  coordinates
+}
+
+rotateSpatialCoordinatesByRoi <- function(
+  coordinates,
+  roi_values,
+  settings,
+  degrees = 0
+) {
+  coordinates <- rotateSpatialCoordinates(coordinates, degrees)
+  if (
+    is.null(coordinates) ||
+      !is.list(settings) ||
+      !length(settings) ||
+      length(roi_values) != nrow(coordinates)
+  ) {
+    return(coordinates)
+  }
+  for (roi in intersect(unique(as.character(roi_values)), names(settings))) {
+    rotation <- suppressWarnings(as.numeric(
+      settings[[roi]][["rotation_degrees"]]
+    ))
+    if (length(rotation) != 1L || is.na(rotation) || !is.finite(rotation)) {
+      next
+    }
+    selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    roi_coordinates <- coordinates[selected, , drop = FALSE]
+    pivot <- vapply(
+      roi_coordinates[, 1:2, drop = FALSE],
+      function(values) mean(range(values, na.rm = TRUE)),
+      numeric(1)
+    )
+    if (any(!is.finite(pivot))) {
+      next
+    }
+    coordinates[selected, ] <- rotateSpatialCoordinates(
+      roi_coordinates,
+      rotation,
+      pivot
+    )
+  }
   coordinates
 }
 
@@ -286,6 +374,23 @@ cerebroCellViewMessage <- function(
   if (is.list(extra$group_hulls)) {
     for (field in intersect(c("x", "y"), names(extra$group_hulls))) {
       extra$group_hulls[[field]] <- wire_nested(extra$group_hulls[[field]])
+    }
+  }
+  if (is.list(extra$cell_boundaries)) {
+    for (field in intersect(
+      c("cell_barcode", "part", "x", "y"),
+      names(extra$cell_boundaries)
+    )) {
+      extra$cell_boundaries[[field]] <- wire_array(
+        extra$cell_boundaries[[field]]
+      )
+    }
+  }
+  if (is.list(extra$molecule_points)) {
+    for (field in intersect(c("x", "y"), names(extra$molecule_points))) {
+      extra$molecule_points[[field]] <- wire_array(
+        extra$molecule_points[[field]]
+      )
     }
   }
 

@@ -3149,7 +3149,14 @@ createShinyApp <- function(
   if (verbose) {
     cat("Copying extdata files...\n")
   }
-  if (!build_ops$copy(extdata_source, stage_result_dir, recursive = TRUE)) {
+  extdata_target <- file.path(stage_result_dir, "extdata")
+  extdata_files <- list.files(extdata_source, full.names = TRUE)
+  extdata_files <- extdata_files[file.info(extdata_files)$isdir %in% FALSE]
+  if (
+    !length(extdata_files) ||
+      !isTRUE(dir.create(extdata_target)) ||
+      !isTRUE(all(build_ops$copy(extdata_files, extdata_target)))
+  ) {
     stop("Failed to copy extdata files.", call. = FALSE)
   }
   .removeBundleSystemMetadata(stage_result_dir)

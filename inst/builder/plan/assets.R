@@ -329,9 +329,9 @@
   metadata <- make.unique(c(
     "cell_barcode",
     included_groups,
-    setdiff(cell_cycle, included_groups),
     "nUMI",
     "nGene",
+    setdiff(cell_cycle, included_groups),
     additional_metadata,
     setdiff(generated_metadata, source_metadata)
   ))

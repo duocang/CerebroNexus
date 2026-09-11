@@ -51,6 +51,33 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
     list(
       label = "Spatial alignment",
       sections = c("section_a", "section_b"),
+      section_labels = c(
+        section_a = "section_a · sample: S1 · 2 ROIs",
+        section_b = "section_b · sample: S2 · ROI: S2_normal"
+      ),
+      scenes = list(
+        list(
+          id = "section_a",
+          label = "section_a · sample: S1 · 2 ROIs",
+          unit = "Spatial coordinate units",
+          observations = list(kind = "cell_or_spot", count = 1200L),
+          annotations = list(
+            sample = list(
+              field = "sample",
+              count = 1L,
+              values = "S1",
+              truncated = FALSE
+            ),
+            roi = list(
+              field = "sample_roi",
+              count = 2L,
+              values = c("lesion", "border"),
+              truncated = FALSE
+            )
+          ),
+          layers = c("points", "raster", "boundaries", "molecules")
+        )
+      ),
       images = list(
         section_a = list(`H&E` = list(), DAPI = list()),
         section_b = list(`H&E` = list())
@@ -58,6 +85,9 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
       spatial_image_storage = "external"
     )
   ))$html
+  minimal_html <- htmltools::renderTags(
+    environment$builder_spatial_scene_inventory_ui(list(list(id = "section_b")))
+  )$html
   image_html <- htmltools::renderTags(
     environment$builder_tissue_image_file_ui(
       "enhance",
@@ -69,6 +99,20 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
     "Image storage",
     "External files in App (spatial-assets/)",
     "Embedded in CRB",
+    "section_a · sample: S1 · 2 ROIs",
+    "section_b · sample: S2 · ROI: S2_normal",
+    "ROI view",
+    "All ROIs",
+    "Separate ROIs",
+    "Scene inventory",
+    "1,200 observations",
+    "Samples (sample): S1",
+    "ROIs (sample_roi): lesion, border",
+    "points",
+    "raster",
+    "boundaries",
+    "molecules",
+    "Molecule export is capped at 200,000 records",
     "H&amp;E",
     "DAPI"
   )) {
@@ -76,6 +120,12 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
   }
   expect_match(html, 'id="enhance-add_image_label"', fixed = TRUE)
   expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
+  expect_match(
+    image_html,
+    'class="enhance-tissue-file-extension">.png<',
+    fixed = TRUE
+  )
+  expect_false(grepl("PNG ·", image_html, fixed = TRUE))
   expect_false(grepl(">Added<", image_html, fixed = TRUE))
   expect_false(grepl(">Spatial space<", html, fixed = TRUE))
   expect_false(grepl("alignment_spatial_label", html, fixed = TRUE))
@@ -95,6 +145,12 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
   expect_match(html, ">Reset image<", fixed = TRUE)
   expect_false(grepl('id="enhance-rename_image"', html, fixed = TRUE))
   expect_false(grepl('id="enhance-drop_image"', html, fixed = TRUE))
+  expect_false(grepl(
+    "builder-spatial-scene-annotation",
+    minimal_html,
+    fixed = TRUE
+  ))
+  expect_false(grepl("Molecule export is capped", minimal_html, fixed = TRUE))
 
   css <- paste(
     readLines(
@@ -125,10 +181,34 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
   expect_match(
     css,
     paste0(
+      ".spatial-image-file-summary .enhance-tissue-file-meta {\n",
+      "  display: flex;\n",
+      "  align-items: baseline;"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      ".spatial-image-file-summary .enhance-tissue-file-name {\n",
+      "  flex: 1 1 auto;\n",
+      "  font-size: .82rem;"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
       ".spatial-image-flips .checkbox label {\n",
-      "  display: inline-flex;\n",
+      "  display: flex;\n",
+      "  justify-content: center;\n",
       "  align-items: center;"
     ),
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    ".builder-spatial-scene-inventory {\n  max-height: 18rem;",
     fixed = TRUE
   )
   expect_match(

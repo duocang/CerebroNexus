@@ -10,6 +10,7 @@
     frame: 0,
     image: null,
     imageUri: null,
+    images: {},
     dragging: false,
     activeControlId: null,
     releaseGuardId: null,
@@ -18,9 +19,13 @@
     coordinateSequence: 0,
     colorGroups: {},
     screenPoints: [],
+    roiPanels: [],
     hoverFrame: 0,
     hoverPoint: null,
     hoverNode: null,
+    resizeObserver: null,
+    observedCanvas: null,
+    viewportSignature: null,
   };
   window.__builderSpatialCanvasMetrics = window.__builderSpatialCanvasMetrics || {
     sceneMessages: 0, renders: 0, latestCoordinateRotation: 0,
@@ -48,6 +53,13 @@
   }
   function schedule() {
     if (!state.frame) state.frame = window.requestAnimationFrame(draw);
+  }
+  function observeCanvas(node) {
+    if (!window.ResizeObserver || state.observedCanvas === node) return;
+    if (state.resizeObserver) state.resizeObserver.disconnect();
+    state.resizeObserver = new ResizeObserver(schedule);
+    state.resizeObserver.observe(node);
+    state.observedCanvas = node;
   }
   function pushMetric(name, value) {
     var values = window.__builderSpatialCanvasMetrics[name];
@@ -79,6 +91,7 @@
     }
     if (viewChanged) state.controlsHeld = false;
     loadImage(message.image && message.image.uri);
+    loadImages(message.roiImages || {});
     schedule();
   }
   function clear() {
@@ -88,10 +101,13 @@
     state.scene = null;
     state.image = null;
     state.imageUri = null;
+    state.images = {};
     state.colorGroups = {};
     state.screenPoints = [];
+    state.roiPanels = [];
     state.hoverPoint = null;
     state.hoverNode = null;
+    state.viewportSignature = null;
     if (state.hoverFrame) window.cancelAnimationFrame(state.hoverFrame);
     state.hoverFrame = 0;
     state.viewKey = null;
@@ -112,6 +128,21 @@
       schedule();
     };
     next.src = uri;
+  }
+  function loadImages(groups) {
+    Object.keys(groups).forEach(function (roi) {
+      (groups[roi] || []).forEach(function (image) {
+        var uri = image && image.uri;
+        if (!uri || Object.prototype.hasOwnProperty.call(state.images, uri)) {
+          return;
+        }
+        state.images[uri] = null;
+        var next = new Image();
+        next.onload = function () { state.images[uri] = next; schedule(); };
+        next.onerror = function () { state.images[uri] = null; schedule(); };
+        next.src = uri;
+      });
+    });
   }
   function rotated(point, bounds, degrees) {
     var cx = (bounds.xmin + bounds.xmax) / 2;
@@ -138,12 +169,21 @@
     var view = viewport(bounds, degrees);
     var viewWidth = view.xmax - view.xmin;
     var viewHeight = view.ymax - view.ymin;
-    var scale = Math.min(
-      Math.max(width - pad * 2, 1) / viewWidth,
-      Math.max(height - pad * 2, 1) / viewHeight
-    );
-    var plotWidth = viewWidth * scale;
-    var plotHeight = viewHeight * scale;
+    var plotWidth = Math.max(width - pad * 2, 1);
+    var plotHeight = Math.max(height - pad * 2, 1);
+    var targetAspect = plotWidth / plotHeight;
+    var centerX = (view.xmin + view.xmax) / 2;
+    var centerY = (view.ymin + view.ymax) / 2;
+    if (viewWidth / viewHeight < targetAspect) {
+      viewWidth = viewHeight * targetAspect;
+      view.xmin = centerX - viewWidth / 2;
+      view.xmax = centerX + viewWidth / 2;
+    } else {
+      viewHeight = viewWidth / targetAspect;
+      view.ymin = centerY - viewHeight / 2;
+      view.ymax = centerY + viewHeight / 2;
+    }
+    var scale = plotWidth / viewWidth;
     var offsetX = (width - plotWidth) / 2;
     var offsetY = (height - plotHeight) / 2;
     return {
@@ -159,10 +199,23 @@
       },
     };
   }
+  function publishViewports(scene, viewports) {
+    if (!window.Shiny || typeof Shiny.setInputValue !== "function") return;
+    var payload = {
+      viewKey: scene.viewKey,
+      generation: scene.generation,
+      viewports: viewports,
+    };
+    var signature = JSON.stringify(payload);
+    if (signature === state.viewportSignature) return;
+    state.viewportSignature = signature;
+    Shiny.setInputValue("builder_spatial_viewports", payload, {priority: "event"});
+  }
   function draw() {
     state.frame = 0;
     var node = canvas(), scene = state.scene;
     if (!node || !scene) return;
+    observeCanvas(node);
     setupCanvasHover(node);
     window.__builderSpatialCanvasMetrics.renders += 1;
     var now = performance.now();
@@ -187,6 +240,11 @@
     ctx.fillStyle = "#fafbfa"; ctx.fillRect(0, 0, cssWidth, cssHeight);
     state.screenPoints = [];
     if (!scene.available || !scene.bounds) return;
+    if (scene.layout === "separate") {
+      drawSeparate(ctx, scene, cssWidth, cssHeight);
+      updateSummary(node, scene, " across separate ROI panels.");
+      return;
+    }
     var pad = 2;
     var angle = finite(state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
@@ -202,16 +260,110 @@
       centerY: layout.offsetY + (layout.view.ymax - layout.view.ymin) * scale / 2,
       scale: scale,
     };
+    var viewportKey = scene.activeRoi || "__section__";
+    var viewports = {};
+    viewports[viewportKey] = layout.view;
+    publishViewports(scene, viewports);
     drawGrid(ctx, cssWidth, cssHeight, pad);
-    drawImage(ctx, scene, screen, scale);
+    drawImage(ctx, scene, screen);
     drawPoints(ctx, scene, screen);
     drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1);
     drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5);
     drawReference(ctx, scene.bounds, screen, angle);
+    updateSummary(node, scene, ".");
+  }
+  function updateSummary(node, scene, suffix) {
     var summary = document.getElementById(node.id + "-summary");
     if (summary) summary.textContent = "Spatial alignment preview with " +
       (scene.points.x || []).length + " sampled points" +
-      (scene.capped ? " from a bounded sample." : ".");
+      (scene.capped ? " from a bounded sample" : "") + suffix;
+  }
+  function drawSeparate(ctx, scene, width, height) {
+    var p = scene.points, groups = [];
+    (p.group || []).forEach(function (group) {
+      if (groups.indexOf(group) < 0) groups.push(group);
+    });
+    var columns = Math.ceil(Math.sqrt(groups.length));
+    var rows = Math.ceil(groups.length / columns);
+    var gap = 10, header = 24;
+    var panelWidth = (width - gap * (columns + 1)) / columns;
+    var panelHeight = (height - gap * (rows + 1)) / rows;
+    var controls = state.controls || {};
+    state.screenPoints = new Array(p.x.length);
+    state.roiPanels = [];
+    var viewports = {};
+    groups.forEach(function (group, panelIndex) {
+      var indices = [];
+      for (var i = 0; i < p.group.length; i += 1) {
+        if (p.group[i] === group) indices.push(i);
+      }
+      var column = panelIndex % columns, row = Math.floor(panelIndex / columns);
+      var left = gap + column * (panelWidth + gap);
+      var top = gap + row * (panelHeight + gap);
+      var plotTop = top + header;
+      var plotHeight = Math.max(panelHeight - header, 1);
+      var active = group === scene.activeRoi;
+      var roiControls = Object.assign({},
+        (scene.roiPointAppearance || {})[group] || {},
+        (scene.roiCoordinateTransforms || {})[group] || {});
+      if (active) roiControls = Object.assign(roiControls, controls);
+      var angle = finite(roiControls.coordinateRotation, 0);
+      var xs = indices.map(function (index) { return p.x[index]; });
+      var ys = indices.map(function (index) { return p.y[index]; });
+      var bounds = {
+        xmin: Math.min.apply(null, xs), xmax: Math.max.apply(null, xs),
+        ymin: Math.min.apply(null, ys), ymax: Math.max.apply(null, ys),
+      };
+      if (bounds.xmin === bounds.xmax) { bounds.xmin -= .5; bounds.xmax += .5; }
+      if (bounds.ymin === bounds.ymax) { bounds.ymin -= .5; bounds.ymax += .5; }
+      var local = viewportLayout(bounds, angle, panelWidth, plotHeight, 6);
+      viewports[group] = local.view;
+      var screen = function (point) {
+        var at = local.screen(point);
+        return {x: left + at.x, y: plotTop + at.y};
+      };
+      ctx.fillStyle = "#fafbfa";
+      ctx.fillRect(left, top, panelWidth, panelHeight);
+      var roiImages = (scene.roiImages || {})[group] || [];
+      roiImages.forEach(function (roiImage) {
+        var imageControls = Object.assign({}, roiImage.controls || {});
+        if (active && roiImage.active) {
+          imageControls = Object.assign(imageControls, controls);
+        }
+        drawImage(ctx, scene, screen, roiImage, imageControls);
+      });
+      ctx.globalAlpha = finite(roiControls.point_opacity, .85);
+      var radius = Math.max(1, finite(roiControls.point_size, 5) / 2);
+      var cx = (bounds.xmin + bounds.xmax) / 2;
+      var cy = (bounds.ymin + bounds.ymax) / 2;
+      var radians = angle * Math.PI / 180;
+      var cosine = Math.cos(radians), sine = Math.sin(radians);
+      indices.forEach(function (index) {
+        var x = p.x[index] - cx, y = p.y[index] - cy;
+        var at = screen({x: cx + x * cosine - y * sine,
+          y: cy + x * sine + y * cosine});
+        state.screenPoints[index] = at;
+        ctx.beginPath();
+        ctx.fillStyle = p.color[index] || "#777";
+        ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      if (active) {
+        drawFrame(ctx, bounds, screen, 0, "#9a958d", [4, 4], 1);
+        drawFrame(ctx, bounds, screen, angle, "#5f5a54", [], 1.5);
+        drawReference(ctx, bounds, screen, angle);
+      }
+      ctx.strokeStyle = active ? "#d45500" : "#9a958d";
+      ctx.lineWidth = active ? 3 : 1;
+      ctx.strokeRect(left, top, panelWidth, panelHeight);
+      ctx.fillStyle = active ? "#d45500" : "#4b4742";
+      ctx.font = "600 13px sans-serif";
+      ctx.fillText(group, left + 8, top + 16);
+      state.roiPanels.push({roi: group, left: left, top: top,
+        right: left + panelWidth, bottom: top + panelHeight});
+    });
+    publishViewports(scene, viewports);
   }
   function drawGrid(ctx, width, height, pad) {
     ctx.strokeStyle = "rgba(0,0,0,.08)"; ctx.lineWidth = 1;
@@ -222,18 +374,27 @@
       ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(width - pad, y); ctx.stroke();
     }
   }
-  function drawImage(ctx, scene, screen, scale) {
-    if (!state.image || !scene.image || !scene.image.baseBounds) return;
-    var b = scene.image.baseBounds, c = state.controls;
-    var center = screen({x: (b.xmin + b.xmax) / 2 + finite(c.dx, 0),
-      y: (b.ymin + b.ymax) / 2 + finite(c.dy, 0)});
-    var width = (b.xmax - b.xmin) * scale * finite(c.scale, 1);
-    var height = (b.ymax - b.ymin) * scale * finite(c.scale, 1);
+  function drawImage(ctx, scene, screen, image, controls) {
+    image = image || scene.image;
+    var loaded = image === scene.image ? state.image : state.images[image && image.uri];
+    if (!loaded || !image || !image.baseBounds) return;
+    var b = image.baseBounds, c = controls || state.controls;
+    var cx = (b.xmin + b.xmax) / 2, cy = (b.ymin + b.ymax) / 2;
+    var center = screen({x: cx + finite(c.dx, 0),
+      y: cy + finite(c.dy, 0)});
+    var left = screen({x: b.xmin, y: cy});
+    var right = screen({x: b.xmax, y: cy});
+    var bottom = screen({x: cx, y: b.ymin});
+    var top = screen({x: cx, y: b.ymax});
+    var width = Math.hypot(right.x - left.x, right.y - left.y) *
+      finite(c.scale, 1);
+    var height = Math.hypot(top.x - bottom.x, top.y - bottom.y) *
+      finite(c.scale, 1);
     ctx.save(); ctx.globalAlpha = finite(c.image_opacity, .8);
     ctx.translate(center.x, center.y);
     ctx.rotate(-finite(c.rotation, 0) * Math.PI / 180);
     ctx.scale(c.flip_x ? -1 : 1, c.flip_y ? -1 : 1);
-    ctx.drawImage(state.image, -width / 2, -height / 2, width, height);
+    ctx.drawImage(loaded, -width / 2, -height / 2, width, height);
     ctx.restore();
   }
   function drawPoints(ctx, scene, screen) {
@@ -292,6 +453,9 @@
     var spec = controlMap[target.id];
     if (!spec || !state.controls) return false;
     if (state.controlsHeld) return false;
+    if (spec[0] === "dx" || spec[0] === "dy") {
+      target.value = Math.round(finite(target.value, 0));
+    }
     state.controls[spec[0]] = controlValue(target, spec[1]);
     state.activeControlId = target.id;
     state.pendingEventAt = performance.now();
@@ -309,6 +473,7 @@
       dataset: scene.dataset,
       snapshotIdentity: scene.snapshotIdentity,
       section: scene.section,
+      roi: scene.activeRoi || "",
       rotationDegrees: value,
       sequence: state.coordinateSequence,
       generation: scene.generation,
@@ -363,6 +528,17 @@
       event.stopImmediatePropagation();
     }
   }, true);
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest &&
+      event.target.closest(".spatial-image-nudge button[data-target]");
+    if (!button) return;
+    var target = document.getElementById(button.dataset.target);
+    if (!target) return;
+    target.value = finite(target.value, 0) +
+      finite(button.dataset.delta, 0) * finite(target.step, 1);
+    target.dispatchEvent(new Event("input", {bubbles: true}));
+    target.dispatchEvent(new Event("change", {bubbles: true}));
+  }, true);
   document.addEventListener("pointerup", finishInteraction, true);
   document.addEventListener("pointercancel", finishInteraction, true);
   document.addEventListener("mouseup", finishInteraction, true);
@@ -406,6 +582,20 @@
   function setupCanvasHover(node) {
     if (node.dataset.builderSpatialHover === "true") return;
     node.dataset.builderSpatialHover = "true";
+    node.addEventListener("click", function (event) {
+      if (!state.scene || state.scene.layout !== "separate") return;
+      var rect = node.getBoundingClientRect();
+      var x = event.clientX - rect.left, y = event.clientY - rect.top;
+      var panel = state.roiPanels.find(function (candidate) {
+        return x >= candidate.left && x <= candidate.right &&
+          y >= candidate.top && y <= candidate.bottom;
+      });
+      if (panel && window.Shiny) {
+        Shiny.setInputValue("builder_spatial_roi_select", {
+          roi: panel.roi, nonce: Date.now(),
+        }, {priority: "event"});
+      }
+    });
     node.addEventListener("pointermove", function (event) {
       state.hoverNode = node;
       state.hoverPoint = {clientX: event.clientX, clientY: event.clientY};

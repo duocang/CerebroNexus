@@ -46,6 +46,8 @@
         item,
         "overview_percentage_cells_to_show"
       ),
+      spatial_roi_settings = .subset2(item, "spatial_roi_settings") %||%
+        list(),
       expression_backend = .subset2(item, "expression_backend"),
       sidecars = .subset2(item, "sidecars"),
       spatial_image_storage = .subset2(item, "spatial_image_storage") %||%

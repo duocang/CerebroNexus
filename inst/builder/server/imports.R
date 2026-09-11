@@ -1045,6 +1045,7 @@ observe({
         nxt$id,
         nxt$default_projection,
         nxt$group,
+        nxt$roi,
         nxt$section,
         nxt$assay,
         nxt$layer,

@@ -3,6 +3,11 @@ builder_content_spatial_source_runtime <- function(local = parent.frame()) {
     builder_content_spatial_inst_path(
       "viewer",
       "core",
+      "viewer_content_contract.R"
+    ),
+    builder_content_spatial_inst_path(
+      "viewer",
+      "core",
       "spatial_coordinate_contract.R"
     ),
     builder_content_spatial_inst_path(

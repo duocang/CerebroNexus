@@ -6,6 +6,19 @@
 ## sampling choices while moving among backgrounds.
 output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   appearance <- current_scatter_defaults()
+  roi_appearance <- spatialRoiSetting(
+    Cerebro.options,
+    viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    ),
+    input[["spatial_projection_to_display"]],
+    spatial_roi_value(input[["spatial_projection_roi"]] %||% "")
+  )
+  if (!is.null(roi_appearance)) {
+    appearance$point_size <- roi_appearance$point_size
+    appearance$point_opacity <- roi_appearance$point_opacity
+  }
 
   tagList(
     sliderInput(
@@ -29,11 +42,28 @@ output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
 
 output[["spatial_projection_data_parameters_UI"]] <- renderUI({
   appearance <- current_scatter_defaults()
+  spatial_data <- tryCatch(
+    getSpatialData(input[["spatial_projection_to_display"]]),
+    error = function(error) list()
+  )
+  boundaries <- spatial_data[["boundaries"]]
+  molecules <- spatial_data[["molecules"]]
+  molecule_genes <- if (
+    is.list(molecules) &&
+      !is.object(molecules) &&
+      is.character(molecules[["genes"]])
+  ) {
+    molecules[["genes"]]
+  } else {
+    character()
+  }
+  molecule_scope <- nzchar(input[["spatial_projection_sample"]] %||% "") ||
+    spatial_roi_is_specific(input[["spatial_projection_roi"]] %||% "")
 
   tagList(
     sliderInput(
       "spatial_projection_percentage_cells_to_show",
-      label = "Show % of cells",
+      label = "Show % of observations",
       min = preferences[["cell_percentage_cells_to_show"]][[
         "min"
       ]],
@@ -44,13 +74,46 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
         "step"
       ]],
       value = appearance$percentage_cells_to_show
-    )
+    ),
+    if (identical(class(boundaries), "data.frame") && nrow(boundaries)) {
+      checkboxInput(
+        "spatial_projection_show_cell_boundaries",
+        "Show cell boundaries",
+        value = FALSE
+      )
+    },
+    if (length(molecule_genes) && molecule_scope) {
+      helpText(
+        "Molecules are hidden while Sample or ROI filtering is active because ",
+        "the exported molecule records are not assigned to cells or ROIs."
+      )
+    } else if (length(molecule_genes)) {
+      tagList(
+        checkboxInput(
+          "spatial_projection_show_molecules",
+          "Show molecules",
+          value = FALSE
+        ),
+        selectInput(
+          "spatial_projection_molecule_gene",
+          "Molecule gene",
+          choices = molecule_genes,
+          selected = molecule_genes[[1L]]
+        )
+      )
+    }
   )
 })
 
 ## The image-specific controls may safely be regenerated when the selected
 ## image changes: their initial values come from that image's preset.
 output[["spatial_projection_background_parameters_UI"]] <- renderUI({
+  if (identical(input[["spatial_projection_roi"]], "__separate__")) {
+    return(tags$p(
+      class = "help-block",
+      "Each ROI uses its saved image alignment in Separate ROIs mode."
+    ))
+  }
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
   ## That keeps one range usable whether the coordinates run 0–5k (Xenium) or
@@ -92,27 +155,29 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     getSpatialData(spatial_name),
     error = function(e) list()
   )
-  embedded_images <- embedded_spatial_images(spatial_data)
+  selected_roi <- input[["spatial_projection_roi"]] %||% ""
+  embedded_images <- embedded_spatial_images(spatial_data, selected_roi)
   external_images <- configured_spatial_images(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
-    spatial_name
+    spatial_name,
+    selected_roi
   )
   selected_descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
     embedded_images,
     external_images
   )
-  image_label <- if (is.null(selected_descriptor)) {
+  image_key <- if (is.null(selected_descriptor)) {
     NULL
   } else {
-    selected_descriptor$label
+    selected_descriptor$key %||% selected_descriptor$label
   }
   preset <- spatialImagePreset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_label
+    image_key
   )
   ## Seed MOVE and FLIP from the preset so the controls honestly reflect the
   ## shipped alignment (checkbox ticked, sliders positioned). Both are read by
@@ -367,9 +432,9 @@ spatial_projection_additional_parameters_info <- list(
     "
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
-      <li><b>Point size:</b> Controls how large the cells should be.</li>
-      <li><b>Point opacity:</b> Controls the transparency of the cells.</li>
-      <li><b>Show % of cells:</b> Using the slider, you can randomly remove a fraction of cells from the plot. This can be useful for large data sets and/or computers with limited resources.</li>
+      <li><b>Point size:</b> Controls how large the observations should be.</li>
+      <li><b>Point opacity:</b> Controls the transparency of the observations.</li>
+      <li><b>Show % of observations:</b> Randomly subsamples cells or spots after the active Sample, FOV / section, ROI, and group filters.</li>
     </ul>
     "
   )

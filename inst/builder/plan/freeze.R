@@ -755,6 +755,7 @@ builder_freeze_plan <- function(
           index
         ]] %||%
           list(),
+        spatial_roi_settings = settings$spatial_roi_settings %||% list(),
         cell_count = as.integer(
           entry$profile$n_cells %||%
             artifact_identity$cells$count %||%

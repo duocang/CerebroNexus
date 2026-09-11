@@ -38,6 +38,55 @@ test_that("Cerebro stores multiple named spatial images canonically", {
   expect_null(stored[["histology_image_bounds"]])
 })
 
+test_that("spatial image manifests preserve ROI applicability", {
+  crb <- Cerebro$new()
+  embedded <- spatial_manifest_payload()
+  embedded$image_label <- "Shared stain"
+  embedded$roi_field <- "sample_roi"
+  embedded$roi_value <- "lesion"
+  crb$addSpatialData(
+    "section 1",
+    spatial_manifest_data(list(Lesion = embedded))
+  )
+
+  expect_identical(
+    crb$getSpatialData("section 1")$histology_images$Lesion[
+      c("roi_field", "roi_value")
+    ],
+    list(roi_field = "sample_roi", roi_value = "lesion")
+  )
+  expect_identical(
+    crb$getSpatialData("section 1")$histology_images$Lesion$image_label,
+    "Shared stain"
+  )
+
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)
+  normalized <- .normalizeAppSpatialImages(
+    list(
+      Dataset = list(
+        `section 1` = list(
+          Lesion = list(
+            path = path,
+            label = "Shared stain",
+            roi_field = "sample_roi",
+            roi_value = "lesion"
+          )
+        )
+      )
+    ),
+    list(Dataset = list(`section 1` = character()))
+  )
+  expect_identical(
+    normalized$Dataset[["section 1"]]$Lesion[c("roi_field", "roi_value")],
+    list(roi_field = "sample_roi", roi_value = "lesion")
+  )
+  expect_identical(
+    normalized$Dataset[["section 1"]]$Lesion$label,
+    "Shared stain"
+  )
+})
+
 test_that("Cerebro accepts coordinates-only spatial entries", {
   crb <- Cerebro$new()
   crb$addSpatialData("coordinates", spatial_manifest_data(list()))

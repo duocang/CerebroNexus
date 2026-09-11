@@ -27,6 +27,113 @@
   )
 }
 
+builder_viewer_spatial_scene <- function(
+  id,
+  label = id,
+  kind,
+  source_id = id,
+  unit = "Spatial coordinate units",
+  observations,
+  annotations = list(),
+  layers = "points"
+) {
+  structure(
+    list(
+      id = id,
+      label = label,
+      kind = kind,
+      source_id = source_id,
+      unit = unit,
+      observations = observations,
+      annotations = annotations,
+      layers = layers
+    ),
+    class = c("builder_viewer_spatial_scene", "list")
+  )
+}
+
+builder_viewer_spatial_annotation <- function(
+  metadata,
+  cells,
+  candidates
+) {
+  empty <- list(
+    field = NULL,
+    count = 0L,
+    values = character(),
+    truncated = FALSE
+  )
+  if (!is.data.frame(metadata) || !length(cells) || !ncol(metadata)) {
+    return(empty)
+  }
+  matches <- match(
+    tolower(candidates),
+    tolower(colnames(metadata)),
+    nomatch = 0L
+  )
+  matches <- matches[matches > 0L]
+  if (!length(matches)) {
+    return(empty)
+  }
+  field <- colnames(metadata)[[matches[[1L]]]]
+  keys <- if ("cell_barcode" %in% colnames(metadata)) {
+    as.character(metadata[["cell_barcode"]])
+  } else {
+    rownames(metadata)
+  }
+  row_index <- match(cells, keys)
+  values <- metadata[[field]][row_index[!is.na(row_index)]]
+  if (!is.atomic(values) || is.list(values)) {
+    return(empty)
+  }
+  values <- unique(as.character(values))
+  values <- values[!is.na(values) & nzchar(values)]
+  preview_count <- min(length(values), 5L)
+  preview <- values[seq_len(preview_count)]
+  bound <- function(value) {
+    value <- enc2utf8(value)
+    if (nchar(value, type = "bytes") <= 80L) {
+      return(value)
+    }
+    keep <- min(nchar(value), 77L)
+    while (
+      keep > 1L &&
+        nchar(substr(value, 1L, keep), type = "bytes") > 77L
+    ) {
+      keep <- keep - 1L
+    }
+    paste0(substr(value, 1L, keep), "...")
+  }
+  bounded <- vapply(preview, bound, character(1))
+  list(
+    field = field,
+    count = as.integer(length(values)),
+    values = unname(bounded),
+    truncated = length(values) > 5L ||
+      !identical(unname(preview), unname(bounded))
+  )
+}
+
+builder_viewer_spatial_scene_label <- function(id, annotations) {
+  describe <- function(annotation, singular, plural) {
+    if (!length(annotation$count) || annotation$count < 1L) {
+      return(character())
+    }
+    if (annotation$count == 1L) {
+      return(paste0(singular, ": ", annotation$values[[1L]]))
+    }
+    paste(annotation$count, plural)
+  }
+  paste(
+    c(
+      id,
+      describe(annotations$sample, "sample", "samples"),
+      describe(annotations$roi, "ROI", "ROIs")
+    ),
+    collapse = " · "
+  )
+}
+
 builder_viewer_page_catalog <- function() {
   list(
     always = .builder_page_table(

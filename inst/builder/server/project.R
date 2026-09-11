@@ -111,7 +111,7 @@ observe({
 })
 
 builder_spatial_drafts_dirty <- reactive({
-  drafts <- alignment_server$coordinate_drafts()
+  drafts <- alignment_server$pending_drafts()
   length(drafts %||% list()) > 0L
 })
 

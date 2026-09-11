@@ -150,7 +150,10 @@ test_that("BuildPlan freezes the complete Viewer-content selection", {
   expect_identical(item$overview_point_size, 8)
   expect_identical(item$overview_percentage_cells_to_show, 60)
   expect_identical(item$cell_cycle, "Phase")
-  expect_contains(item$artifact_identity$metadata, "Phase")
+  expect_identical(
+    item$artifact_identity$metadata,
+    c("cell_barcode", "sample", "nUMI", "nGene", "Phase", "batch")
+  )
   expect_contains(item$metadata_policy$included, "batch")
   expect_identical(
     item$group_color_overrides,
@@ -251,7 +254,8 @@ test_that("generated-App content freezes defaults for every dataset", {
           name = "lineage_b"
         ),
         overview_point_size = 8,
-        overview_percentage_cells_to_show = 60
+        overview_percentage_cells_to_show = 60,
+        spatial_roi_settings = list()
       )
     )
   )

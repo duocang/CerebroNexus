@@ -86,12 +86,14 @@ test_that("histology is attached per section, not once for all of them", {
     ## this guards -- would put one slide behind every other slide's cells.
     sections <- c("sectionA1", "sectionA2", "sectionB1")
     images <- list()
+    image_path <- withr::local_tempfile(fileext = ".png")
     for (i in seq_along(sections)) {
       arr <- array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3))
-      enc <- builder_encode_image(arr, max_px = 6)
-      expect_null(enc$error)
+      png::writePNG(arr, image_path)
+      image <- builder_read_image(image_path)
+      expect_null(image$error)
       images[[sections[i]]] <- list(
-        uri = enc$uri,
+        uri = image$source_uri,
         bounds = list(
           xmin = (i - 1) * 500,
           xmax = (i - 1) * 500 + 100,
@@ -158,13 +160,15 @@ test_that("attaching to some sections leaves the others without an image", {
     dir <- withr::local_tempdir()
     crb_path <- convert_synthetic_to_crb(obj, dir, "multisection")
 
-    arr <- array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3))
-    enc <- builder_encode_image(arr, max_px = 6)
+    image_path <- withr::local_tempfile(fileext = ".png")
+    png::writePNG(array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3)), image_path)
+    image <- builder_read_image(image_path)
+    expect_null(image$error)
     applied <- builder_attach_crb_extras(
       crb_path,
       list(
         sectionA2 = list(
-          uri = enc$uri,
+          uri = image$source_uri,
           bounds = list(xmin = 500, xmax = 600, ymin = 0, ymax = 80)
         )
       )

@@ -828,7 +828,7 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
   )
   expect_identical(
     observed$trekker$histology_image,
-    trekker_alignment$uri
+    trekker_alignment$source_uri
   )
   serialized <- paste(capture.output(str(observed)), collapse = "\n")
   expect_false(grepl("/private/tmp/shiny-upload", serialized, fixed = TRUE))
@@ -838,7 +838,7 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
 test_that("external Spatial images materialize without entering CRB payloads", {
   root <- withr::local_tempdir()
   record <- builder_alignment_record(
-    source = list(name = "H&E.png", type = "image/png"),
+    source = list(name = "H&E.jpg", type = "image/jpeg"),
     source_uri = "data:image/png;base64,iVBORw0KGgo=",
     uri = "data:image/png;base64,iVBORw0KGgo=",
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
@@ -853,6 +853,8 @@ test_that("external Spatial images materialize without entering CRB payloads", {
     ),
     section = list(id = "slice-a", kind = "spatial")
   )
+  record$roi_field <- "sample_roi"
+  record$roi_value <- "lesion"
   item <- list(
     id = "dataset-a",
     name = "Dataset A",
@@ -864,6 +866,7 @@ test_that("external Spatial images materialize without entering CRB payloads", {
   setting <- external$settings[["Dataset A"]][["slice-a"]][["H&E"]]
 
   expect_true(file.exists(descriptor$path))
+  expect_identical(basename(descriptor$path), "H&E.png")
   expect_identical(
     unname(descriptor$bounds),
     c(0, 10, 0, 8)
@@ -871,6 +874,8 @@ test_that("external Spatial images materialize without entering CRB payloads", {
   expect_identical(setting$image_opacity, 0.8)
   expect_identical(setting$scale_x, 1.25)
   expect_identical(setting$scale_y, 1.25)
+  expect_identical(descriptor$roi_field, "sample_roi")
+  expect_identical(descriptor$roi_value, "lesion")
 })
 
 test_that("Builder image attachment is exact, collision-safe, and idempotent", {

@@ -229,8 +229,10 @@ builder_release_runtime_files <- function() {
       "overview_point_size",
       "overview_point_opacity",
       "overview_percentage_cells_to_show",
+      "spatial_roi_settings",
       "expression_backend",
-      "sidecars"
+      "sidecars",
+      "spatial_image_storage"
     )]
   })
   request_plan <- structure(

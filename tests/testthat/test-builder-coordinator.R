@@ -243,11 +243,12 @@ builder_app_coordinator_fake_app <- function(
     app_dir,
     recursive = TRUE
   )
-  file.copy(
-    builder_profile_inst_path("extdata"),
-    app_dir,
-    recursive = TRUE
-  )
+  extdata_source <- builder_profile_inst_path("extdata")
+  extdata_target <- file.path(app_dir, "extdata")
+  dir.create(extdata_target)
+  extdata_files <- list.files(extdata_source, full.names = TRUE)
+  extdata_files <- extdata_files[file.info(extdata_files)$isdir %in% FALSE]
+  file.copy(extdata_files, extdata_target)
   .removeBundleSystemMetadata(app_dir)
   dir.create(file.path(app_dir, "private-data"))
   relative_crbs <- file.path(
@@ -1451,8 +1452,31 @@ test_that("coordinator preserves per-dataset Viewer defaults for parent verifica
     builder_task9_source()
     root <- withr::local_tempdir()
     plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    roi_settings <- list(
+      "fov-a" = list(
+        lesion = list(
+          rotation_degrees = 37.5,
+          point_opacity = 0.65,
+          point_size = 7
+        )
+      )
+    )
+    plan$items[[2L]]$spatial_roi_settings <- roi_settings
+    plan$items[[2L]]$spatial_image_storage <- "external"
     contract <- .builder_coordinator_app_contract(plan)
 
+    expect_identical(
+      contract$plan$items[[2L]]$spatial_roi_settings,
+      roi_settings
+    )
+    expect_identical(
+      contract$plan$items[[2L]]$spatial_image_storage,
+      "external"
+    )
+    expect_identical(
+      contract$plan$items[[1L]]$spatial_image_storage,
+      "embedded"
+    )
     expect_identical(
       contract$plan$items[[1L]]$default_projection,
       "umap"

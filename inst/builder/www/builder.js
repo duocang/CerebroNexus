@@ -3415,19 +3415,6 @@
   }
 
   function syncSpatialAlignmentScrollbar(sidebar) {
-    if (!sidebar.dataset.builderWheelPageScroll) {
-      sidebar.dataset.builderWheelPageScroll = "true";
-      sidebar.addEventListener("wheel", function (event) {
-        if (event.ctrlKey) return;
-        var multiplier = event.deltaMode === 1
-          ? 16
-          : event.deltaMode === 2
-            ? window.innerHeight
-            : 1;
-        event.preventDefault();
-        window.scrollBy(0, event.deltaY * multiplier);
-      }, { passive: false });
-    }
     var scrollbar = sidebar.querySelector(".spatial-alignment-persistent-scrollbar");
     if (!scrollbar) {
       scrollbar = document.createElement("div");

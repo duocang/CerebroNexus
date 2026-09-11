@@ -933,10 +933,20 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   grid-row: 1;
   min-width: 0;
 }
-.enhance-tissue-file-meta strong {
+.enhance-tissue-file-name {
+  display: flex;
+  min-width: 0;
+}
+.enhance-tissue-file-stem {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.enhance-tissue-file-extension { flex: 0 0 auto; }
+.enhance-tissue-file-size {
+  justify-self: end;
+  margin-top: var(--space-1);
 }
 .enhance-tissue-file-item .builder-action-row {
   flex-wrap: nowrap;
@@ -1180,6 +1190,15 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-field[data-builder-creatable-select="true"] .selectize-control {
   border: 0 !important;
   box-shadow: none !important;
+}
+.builder-field--organism .selectize-input:not(.has-items) {
+  border-color: var(--c-amber-600) !important;
+  background: var(--c-amber-50) !important;
+  box-shadow: 0 0 0 2px var(--c-amber-300) !important;
+}
+.builder-field--organism:has(.selectize-input:not(.has-items)) label {
+  color: var(--c-amber-700);
+  font-weight: 700;
 }
 .builder-field[data-builder-creatable-select="true"] select.selectized {
   display: none !important;

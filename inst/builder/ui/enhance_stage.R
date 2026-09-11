@@ -7,7 +7,8 @@ builder_enhance_model <- function(
   settings,
   modules,
   active_section = NULL,
-  active_image = NULL
+  active_image = NULL,
+  active_roi = NULL
 ) {
   manifest <- state$manifest %||% list()
   retained <- Filter(
@@ -41,11 +42,57 @@ builder_enhance_model <- function(
     },
     logical(1)
   ))
-  spatial_sections <- unique(c(
-    builder_profile_spatial_reductions(profile),
-    profile$images %||% character(),
-    if (has_trekker) "trekker" else character()
+  spatial_scenes <- profile$spatial_scenes %||% list()
+  spatial_sections <- if (length(spatial_scenes)) {
+    vapply(spatial_scenes, `[[`, character(1), "id")
+  } else {
+    unique(c(
+      builder_profile_spatial_reductions(profile),
+      profile$images %||% character(),
+      if (has_trekker) "trekker" else character()
+    ))
+  }
+  spatial_section_labels <- if (length(spatial_scenes)) {
+    stats::setNames(
+      vapply(
+        spatial_scenes,
+        function(scene) scene$label %||% scene$id,
+        character(1)
+      ),
+      spatial_sections
+    )
+  } else {
+    stats::setNames(spatial_sections, spatial_sections)
+  }
+  spatial_samples <- unique(unlist(
+    lapply(spatial_scenes, function(scene) {
+      scene$annotations$sample$values %||% character()
+    }),
+    use.names = FALSE
   ))
+  if (length(spatial_sections) && !length(spatial_samples)) {
+    spatial_samples <- settings$name %||% id
+  }
+  spatial_sample_sections <- stats::setNames(
+    lapply(spatial_samples, function(sample) {
+      matched <- vapply(
+        spatial_scenes,
+        function(scene) {
+          sample %in% (scene$annotations$sample$values %||% character())
+        },
+        logical(1)
+      )
+      sections <- unique(c(
+        spatial_sections[matched],
+        setdiff(
+          spatial_sections,
+          vapply(spatial_scenes, `[[`, character(1), "id")
+        )
+      ))
+      if (length(sections)) sections else spatial_sections
+    }),
+    spatial_samples
+  )
   spatial_images <- builder_image_collection_normalize(
     settings$images %||% list()
   )
@@ -57,16 +104,43 @@ builder_enhance_model <- function(
       NULL
     }
   }
+  active_roi <- as.character(active_roi %||% "")[[1L]]
+  active_roi_settings <- if (
+    is.null(selected_section) ||
+      !nzchar(active_roi) ||
+      identical(active_roi, "__separate__")
+  ) {
+    NULL
+  } else {
+    (settings$spatial_roi_settings %||% list())[[selected_section]][[
+      active_roi
+    ]]
+  }
   active_coordinate_transform <- if (is.null(selected_section)) {
     NULL
+  } else if (!is.null(active_roi_settings)) {
+    active_roi_settings
   } else {
     (settings$spatial_coordinate_transforms %||% list())[[selected_section]]
   }
-  image_labels <- if (is.null(selected_section)) {
-    character()
+  image_choices <- if (is.null(selected_section)) {
+    stats::setNames(character(), character())
   } else {
-    names(spatial_images[[selected_section]] %||% list()) %||% character()
+    choices <- builder_image_collection_choices(
+      spatial_images,
+      selected_section,
+      active_roi
+    )
+    if (!length(choices) && nzchar(active_roi)) {
+      choices <- builder_image_collection_choices(
+        spatial_images,
+        selected_section,
+        ""
+      )
+    }
+    choices
   }
+  image_labels <- unname(image_choices)
   selected_image <- if (
     !is.null(active_image) && active_image %in% image_labels
   ) {
@@ -85,6 +159,10 @@ builder_enhance_model <- function(
   controls <- .builder_alignment_parameters(
     active_image_record %||% control_defaults
   )
+  if (!is.null(active_roi_settings)) {
+    controls[c("point_opacity", "point_size")] <-
+      active_roi_settings[c("point_opacity", "point_size")]
+  }
   ranges <- builder_alignment_control_ranges(active_image_record)
   controls$dx_min <- ranges$dx$min
   controls$dx_max <- ranges$dx$max
@@ -122,12 +200,17 @@ builder_enhance_model <- function(
             },
             logical(1)
           )),
-        cost = "Image decoding, encoding, and alignment.",
+        cost = "Image validation and alignment.",
         network = "No network access.",
         prerequisite = "Requires spatial FOVs and coordinates.",
         sections = spatial_sections,
+        section_labels = spatial_section_labels,
+        samples = spatial_samples,
+        sample_sections = spatial_sample_sections,
+        scenes = spatial_scenes,
         active_section = selected_section,
         active_image = selected_image,
+        image_choices = image_choices,
         coordinate_rotation = active_coordinate_transform$rotation_degrees %||%
           0,
         controls = controls,
@@ -331,19 +414,33 @@ builder_tissue_image_file_ui <- function(id, record) {
   ns <- NS(id)
   source <- record$source %||% list()
   filename <- builder_safe_file_name(source$name, "Tissue image")
-  detail <- paste(
-    builder_file_type_label(filename, source$type),
-    builder_file_human_size(source$size %||% NA_real_),
-    sep = " · "
-  )
+  extension <- tools::file_ext(filename)
+  stem <- if (nzchar(extension)) {
+    substr(filename, 1L, nchar(filename) - nchar(extension) - 1L)
+  } else {
+    filename
+  }
   div(
     class = "builder-file-list builder-file-list--single",
     div(
       class = "builder-file-item enhance-tissue-file-item",
       div(
         class = "enhance-tissue-file-meta",
-        strong(filename),
-        span(class = "hint", detail)
+        strong(
+          class = "enhance-tissue-file-name",
+          title = filename,
+          span(class = "enhance-tissue-file-stem", stem),
+          if (nzchar(extension)) {
+            span(
+              class = "enhance-tissue-file-extension",
+              paste0(".", extension)
+            )
+          }
+        ),
+        span(
+          class = "hint enhance-tissue-file-size",
+          builder_file_human_size(source$size %||% NA_real_)
+        )
       ),
       div(
         class = "builder-action-row enhance-tissue-file-action-row",
@@ -431,11 +528,98 @@ builder_coordinate_control_ui <- function(
   )
 }
 
+builder_spatial_scene_inventory_ui <- function(scenes) {
+  scenes <- Filter(is.list, scenes %||% list())
+  if (!length(scenes)) {
+    return(NULL)
+  }
+  annotation <- function(value, label) {
+    if (!is.list(value)) {
+      return(NULL)
+    }
+    values <- value$values %||% character()
+    if (!is.atomic(values)) {
+      return(NULL)
+    }
+    values <- as.character(values)
+    values <- values[!is.na(values) & nzchar(values)]
+    if (!length(values)) {
+      return(NULL)
+    }
+    field <- value$field %||% "metadata"
+    suffix <- if (isTRUE(value$truncated)) ", ..." else ""
+    p(
+      class = "builder-spatial-scene-annotation",
+      paste0(
+        label,
+        " (",
+        field,
+        "): ",
+        paste(values, collapse = ", "),
+        suffix
+      )
+    )
+  }
+  tags$details(
+    class = "builder-spatial-scene-inventory",
+    tags$summary("Scene inventory"),
+    lapply(scenes, function(scene) {
+      count <- scene$observations$count %||% 0L
+      if (
+        !is.numeric(count) ||
+          length(count) != 1L ||
+          !is.finite(count) ||
+          count < 0
+      ) {
+        count <- 0L
+      }
+      layers <- unique(as.character(scene$layers %||% character()))
+      layers <- layers[!is.na(layers) & nzchar(layers)]
+      div(
+        class = "builder-spatial-scene",
+        tags$strong(scene$label %||% scene$id %||% "Spatial scene"),
+        p(
+          class = "hint",
+          paste0(
+            formatC(count, format = "f", big.mark = ",", digits = 0),
+            " observations · ",
+            scene$unit %||% "Spatial coordinate units"
+          )
+        ),
+        annotation(scene$annotations$sample, "Samples"),
+        annotation(scene$annotations$roi, "ROIs"),
+        div(
+          class = "builder-spatial-scene-layers",
+          lapply(layers, function(layer) {
+            span(class = "label label-default", layer)
+          })
+        ),
+        if ("molecules" %in% layers) {
+          p(
+            class = "hint",
+            "Molecule export is capped at 200,000 records; the CRB records ",
+            "whether truncation occurred."
+          )
+        }
+      )
+    })
+  )
+}
+
 builder_spatial_alignment_ui <- function(id, model) {
   ns <- NS(id)
   sections <- as.character(model$sections %||% character())
-  section_labels <- sections
-  section_labels[sections == "trekker"] <- "Trekker physical space"
+  section_labels <- model$section_labels %||% sections
+  if (!is.null(names(section_labels))) {
+    section_labels <- unname(section_labels[sections])
+  }
+  section_labels <- as.character(section_labels)
+  if (length(section_labels) != length(sections) || anyNA(section_labels)) {
+    section_labels <- sections
+  }
+  section_labels[
+    sections == "trekker" & section_labels == "trekker"
+  ] <- "Trekker physical space"
   choices <- stats::setNames(sections, section_labels)
   selected_section <- model$active_section
   if (
@@ -445,19 +629,32 @@ builder_spatial_alignment_ui <- function(id, model) {
     selected_section <- sections[[1L]]
   }
   initial_image_choices <- if (length(sections)) {
-    names(model$images[[selected_section]] %||% list()) %||% character()
+    model$image_choices %||% stats::setNames(character(), character())
+  } else {
+    stats::setNames(character(), character())
+  }
+  selected_scene <- Filter(
+    function(scene) identical(scene$id, selected_section),
+    model$scenes %||% list()
+  )
+  initial_rois <- if (length(selected_scene)) {
+    selected_scene[[1L]]$annotations$roi$values %||% character()
   } else {
     character()
   }
   selected_image <- model$active_image
-  if (is.null(selected_image) || !selected_image %in% initial_image_choices) {
+  if (
+    is.null(selected_image) ||
+      !selected_image %in% unname(initial_image_choices)
+  ) {
     selected_image <- if (length(initial_image_choices)) {
-      initial_image_choices[[1L]]
+      unname(initial_image_choices[[1L]])
     } else {
       character()
     }
   }
   controls <- model$controls %||% builder_alignment_defaults()
+  samples <- model$samples %||% "Sample"
   tagList(
     if (length(sections)) {
       div(
@@ -467,12 +664,39 @@ builder_spatial_alignment_ui <- function(id, model) {
           div(
             class = "spatial-alignment-sidebar-fixed",
             selectInput(
+              ns("active_sample"),
+              "Sample",
+              choices = stats::setNames(samples, samples),
+              selected = samples[[1L]],
+              selectize = FALSE
+            ),
+            selectInput(
               ns("active_section"),
-              "Spatial section",
+              "FOV / section",
               choices = choices,
               selected = selected_section,
               selectize = FALSE
-            )
+            ),
+            conditionalPanel(
+              condition = "output['has_rois']",
+              selectInput(
+                ns("active_roi"),
+                "ROI view",
+                choices = c(
+                  "All ROIs" = "",
+                  "Separate ROIs" = "__separate__",
+                  stats::setNames(initial_rois, initial_rois)
+                ),
+                selected = if (length(initial_rois) > 1L) {
+                  "__separate__"
+                } else {
+                  ""
+                },
+                selectize = FALSE
+              ),
+              ns = ns
+            ),
+            builder_spatial_scene_inventory_ui(model$scenes)
           ),
           div(
             class = "spatial-alignment-sidebar-body",
@@ -603,33 +827,6 @@ builder_spatial_alignment_ui <- function(id, model) {
                       ),
                       builder_coordinate_control_ui(
                         ns,
-                        "img_dx",
-                        "Horizontal offset",
-                        controls$dx_min %||% -1,
-                        controls$dx_max %||% 1,
-                        controls$dx %||% 0,
-                        controls$dx_step %||% NULL
-                      ),
-                      builder_coordinate_control_ui(
-                        ns,
-                        "img_dy",
-                        "Vertical offset",
-                        controls$dy_min %||% -1,
-                        controls$dy_max %||% 1,
-                        controls$dy %||% 0,
-                        controls$dy_step %||% NULL
-                      ),
-                      builder_coordinate_control_ui(
-                        ns,
-                        "img_scale",
-                        "Scale",
-                        0.2,
-                        3,
-                        controls$scale %||% 1,
-                        0.02
-                      ),
-                      builder_coordinate_control_ui(
-                        ns,
                         "img_rotate",
                         "Rotation",
                         -180,
@@ -637,16 +834,81 @@ builder_spatial_alignment_ui <- function(id, model) {
                         controls$rotation %||% 0,
                         NULL
                       ),
+                      builder_coordinate_control_ui(
+                        ns,
+                        "img_scale",
+                        "Scale",
+                        0,
+                        10,
+                        controls$scale %||% 1,
+                        0.02
+                      ),
+                      div(
+                        class = "spatial-image-position",
+                        numericInput(
+                          ns("img_dx"),
+                          "X pos.",
+                          controls$dx %||% 0,
+                          step = controls$dx_step %||% NA_real_
+                        ),
+                        numericInput(
+                          ns("img_dy"),
+                          "Y pos.",
+                          controls$dy %||% 0,
+                          step = controls$dy_step %||% NA_real_
+                        )
+                      ),
+                      div(
+                        class = "spatial-image-nudge",
+                        tags$button(
+                          type = "button",
+                          class = "btn",
+                          `data-target` = ns("img_dy"),
+                          `data-delta` = 1,
+                          `aria-label` = "Move image up",
+                          "↑"
+                        ),
+                        tags$button(
+                          type = "button",
+                          class = "btn",
+                          `data-target` = ns("img_dx"),
+                          `data-delta` = -1,
+                          `aria-label` = "Move image left",
+                          "←"
+                        ),
+                        actionButton(
+                          ns("center_image"),
+                          "Center image",
+                          class = "btn spatial-image-center",
+                          `aria-label` = "Center image"
+                        ),
+                        tags$button(
+                          type = "button",
+                          class = "btn",
+                          `data-target` = ns("img_dx"),
+                          `data-delta` = 1,
+                          `aria-label` = "Move image right",
+                          "→"
+                        ),
+                        tags$button(
+                          type = "button",
+                          class = "btn",
+                          `data-target` = ns("img_dy"),
+                          `data-delta` = -1,
+                          `aria-label` = "Move image down",
+                          "↓"
+                        )
+                      ),
                       div(
                         class = "spatial-image-flips",
                         checkboxInput(
                           ns("image_flip_x"),
-                          "Flip horizontally",
+                          "Flip X",
                           isTRUE(controls$flip_x)
                         ),
                         checkboxInput(
                           ns("image_flip_y"),
-                          "Flip vertically",
+                          "Flip Y",
                           isTRUE(controls$flip_y)
                         )
                       ),

@@ -330,6 +330,7 @@ describe_seurat <- function(object) {
     reductions = reductions,
     reduction_preselect = reduction_preselect,
     images = tryCatch(names(object@images), error = function(e) character()),
+    spatial_scenes = builder_spatial_alignment_sections(object),
     nUMI = default_profile$nUMI,
     nGene = default_profile$nGene,
     qc_values = qc_values,

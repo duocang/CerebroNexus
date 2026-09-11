@@ -1177,7 +1177,7 @@ test_that("parameter writes do not eagerly freeze Review or rebuild editors", {
   expect_match(snapshot, "dataset_revisions()", fixed = TRUE)
   expect_match(
     snapshot,
-    "alignment_server$coordinate_drafts()",
+    "alignment_server$pending_drafts()",
     fixed = TRUE
   )
   expect_match(snapshot, "imports()", fixed = TRUE)

@@ -22,10 +22,188 @@ spatial_dataset_name <- function(crb_files, selected) {
   if (is.na(dataset) || !nzchar(dataset)) NULL else dataset
 }
 
+spatial_roi_is_specific <- function(value) {
+  is.character(value) &&
+    length(value) == 1L &&
+    !is.na(value) &&
+    nzchar(value) &&
+    !value %in% c("__all__", "__separate__")
+}
+
+spatial_roi_value <- function(value) {
+  if (spatial_roi_is_specific(value)) value else ""
+}
+
+spatial_metadata_facet <- function(metadata, cells, candidates) {
+  empty <- list(
+    field = NULL,
+    by_cell = stats::setNames(rep(NA_character_, length(cells)), cells),
+    values = character()
+  )
+  if (
+    !is.data.frame(metadata) ||
+      !is.character(cells) ||
+      !is.character(candidates) ||
+      !length(candidates)
+  ) {
+    return(empty)
+  }
+  matches <- match(
+    tolower(candidates),
+    tolower(colnames(metadata)),
+    nomatch = 0L
+  )
+  matches <- matches[matches > 0L]
+  if (!length(matches)) {
+    return(empty)
+  }
+  field <- colnames(metadata)[matches[[1L]]]
+  column <- metadata[[field]]
+  if (!is.atomic(column) || is.list(column)) {
+    return(empty)
+  }
+  metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
+    as.character(metadata[["cell_barcode"]])
+  } else {
+    rownames(metadata)
+  }
+  rows <- match(cells, metadata_cells)
+  by_cell <- rep(NA_character_, length(cells))
+  valid <- !is.na(rows)
+  by_cell[valid] <- as.character(column[rows[valid]])
+  by_cell[is.na(by_cell) | !nzchar(by_cell)] <- NA_character_
+  names(by_cell) <- cells
+  list(
+    field = field,
+    by_cell = by_cell,
+    values = unique(unname(by_cell[!is.na(by_cell)]))
+  )
+}
+
+spatial_split_columns <- function(
+  metadata,
+  cells,
+  groups = character()
+) {
+  if (
+    !is.data.frame(metadata) ||
+      !is.character(cells) ||
+      !length(cells) ||
+      !is.character(groups)
+  ) {
+    return(character())
+  }
+  metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
+    as.character(metadata[["cell_barcode"]])
+  } else {
+    rownames(metadata)
+  }
+  rows <- match(cells, metadata_cells)
+  rows <- rows[!is.na(rows)]
+  n_rows <- length(unique(rows))
+  candidates <- setdiff(colnames(metadata), "cell_barcode")
+  candidates[vapply(
+    candidates,
+    function(name) {
+      values <- metadata[[name]][rows]
+      if (
+        !name %in% groups &&
+          !(is.character(values) || is.factor(values) || is.logical(values))
+      ) {
+        return(FALSE)
+      }
+      values <- as.character(values)
+      levels <- unique(values[!is.na(values) & nzchar(values)])
+      length(levels) >= 2L &&
+        length(levels) < n_rows
+    },
+    logical(1)
+  )]
+}
+
+spatial_scene_choices <- function(spatial_names, spatial_data, metadata) {
+  labels <- vapply(
+    spatial_names,
+    function(name) {
+      coordinates <- spatial_data[[name]][["coordinates"]]
+      cells <- rownames(coordinates) %||% character()
+      annotations <- list(
+        sample = builder_viewer_spatial_annotation(
+          metadata,
+          cells,
+          c("sample", "sample_id", "orig.ident")
+        ),
+        roi = builder_viewer_spatial_annotation(
+          metadata,
+          cells,
+          c("sample_roi", "roi", "roi_id", "region_of_interest")
+        )
+      )
+      label_annotations <- annotations
+      label_annotations$sample$count <- 0L
+      scene <- builder_viewer_spatial_scene(
+        id = name,
+        label = builder_viewer_spatial_scene_label(name, label_annotations),
+        kind = "spatial",
+        source_id = name,
+        observations = list(
+          kind = "cell_or_spot",
+          count = as.integer(length(unique(cells)))
+        ),
+        annotations = annotations,
+        layers = "points"
+      )
+      count <- scene$observations$count
+      paste(
+        scene$label,
+        paste(
+          format(count, big.mark = ",", scientific = FALSE),
+          if (count == 1L) "observation" else "observations"
+        ),
+        sep = " · "
+      )
+    },
+    character(1)
+  )
+  stats::setNames(spatial_names, labels)
+}
+
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
 ## is a descriptor so its display label is never confused with a filesystem
 ## path, and descriptor bounds survive all the way to the renderer.
-configured_spatial_images <- function(options, dataset, spatial_name) {
+spatial_images_for_roi <- function(images, roi_value = NULL) {
+  if (is.null(roi_value)) {
+    return(images)
+  }
+  if (identical(roi_value, "__separate__")) {
+    return(images)
+  }
+  roi_value <- spatial_roi_value(as.character(roi_value %||% ""))
+  if (length(roi_value) != 1L || is.na(roi_value)) {
+    roi_value <- ""
+  }
+  scopes <- vapply(
+    images,
+    function(image) {
+      as.character(image$roi_value %||% "")[[1L]]
+    },
+    character(1)
+  )
+  if (nzchar(roi_value)) {
+    matching <- scopes == roi_value
+    if (any(matching)) {
+      return(images[matching])
+    }
+  }
+  images[!nzchar(scopes)]
+}
+
+configured_spatial_images <- function(
+  options,
+  dataset,
+  spatial_name,
+  roi_value = NULL
+) {
   if (
     is.null(options) ||
       is.null(dataset) ||
@@ -48,30 +226,46 @@ configured_spatial_images <- function(options, dataset, spatial_name) {
         length(value[["path"]]) == 1L &&
         !is.na(value[["path"]])
     ) {
-      return(list(path = value[["path"]], bounds = value[["bounds"]]))
+      return(c(
+        list(path = value[["path"]], bounds = value[["bounds"]]),
+        if (!is.null(value[["label"]])) list(label = value[["label"]]),
+        value[intersect(c("roi_field", "roi_value"), names(value))]
+      ))
     }
     NULL
   }
   images <- lapply(as.list(leaf), normalize)
-  images[!vapply(images, is.null, logical(1))]
+  spatial_images_for_roi(
+    images[!vapply(images, is.null, logical(1))],
+    roi_value
+  )
 }
 
 ## Canonical .crb files carry histology_images; older files carry one singular
 ## histology_image. Prefer the canonical manifest when both happen to exist.
-embedded_spatial_images <- function(spatial_data) {
+embedded_spatial_images <- function(spatial_data, roi_value = NULL) {
   manifest <- spatial_data[["histology_images"]]
   if (is.list(manifest) && length(manifest) > 0L && !is.null(names(manifest))) {
     normalize <- function(payload) {
       if (!is.list(payload) || is.null(payload[["histology_image"]])) {
         return(NULL)
       }
-      list(
-        image = payload[["histology_image"]],
-        bounds = payload[["histology_image_bounds"]]
+      c(
+        list(
+          image = payload[["histology_image"]],
+          bounds = payload[["histology_image_bounds"]]
+        ),
+        if (!is.null(payload[["image_label"]])) {
+          list(label = payload[["image_label"]])
+        },
+        payload[intersect(c("roi_field", "roi_value"), names(payload))]
       )
     }
     images <- lapply(manifest, normalize)
-    return(images[!vapply(images, is.null, logical(1))])
+    return(spatial_images_for_roi(
+      images[!vapply(images, is.null, logical(1))],
+      roi_value
+    ))
   }
   if (!is.null(spatial_data[["histology_image"]])) {
     return(list(
@@ -89,21 +283,88 @@ spatial_background_key <- function(source, label) {
 }
 
 spatial_background_choices <- function(embedded_images, external_images) {
+  labels <- function(images) {
+    keys <- names(images) %||% character()
+    vapply(
+      seq_along(images),
+      function(index) {
+        label <- images[[index]][["label"]]
+        if (
+          is.character(label) &&
+            length(label) == 1L &&
+            !is.na(label) &&
+            nzchar(label)
+        ) {
+          label
+        } else {
+          keys[[index]]
+        }
+      },
+      character(1)
+    )
+  }
   c(
     "No Background" = "none",
     if (length(embedded_images) > 0L) {
       stats::setNames(
         paste0("embedded::", names(embedded_images)),
-        names(embedded_images)
+        labels(embedded_images)
       )
     },
     if (length(external_images) > 0L) {
       stats::setNames(
         paste0("external::", names(external_images)),
-        names(external_images)
+        labels(external_images)
       )
     }
   )
+}
+
+spatial_roi_background_groups <- function(
+  spatial_data,
+  options,
+  dataset,
+  spatial_name,
+  roi_values
+) {
+  roi_values <- unique(as.character(roi_values))
+  roi_values <- roi_values[!is.na(roi_values) & nzchar(roi_values)]
+  groups <- lapply(seq_along(roi_values), function(index) {
+    roi <- roi_values[[index]]
+    embedded <- embedded_spatial_images(spatial_data, roi)
+    external <- configured_spatial_images(
+      options,
+      dataset,
+      spatial_name,
+      roi
+    )
+    choices <- spatial_background_choices(embedded, external)
+    list(
+      roi = roi,
+      embedded = embedded,
+      external = external,
+      choices = choices,
+      tokens = stats::setNames(
+        paste0("roi-", index, "-background-", seq_along(choices)),
+        unname(choices)
+      )
+    )
+  })
+  stats::setNames(groups, roi_values)
+}
+
+spatial_roi_background_selections <- function(groups, selected_tokens) {
+  selected_tokens <- as.character(selected_tokens %||% character())
+  selections <- lapply(groups, function(group) {
+    selected <- intersect(unname(group$tokens), selected_tokens)
+    selected_choice <- if (length(selected)) {
+      names(group$tokens)[match(selected[[1L]], group$tokens)]
+    } else {
+      NULL
+    }
+    normalize_spatial_background_choice(selected_choice, group$choices)
+  })
+  stats::setNames(selections, names(groups))
 }
 
 normalize_spatial_background_choice <- function(background_image, choices) {
@@ -139,17 +400,29 @@ resolve_spatial_background <- function(
   } else {
     return(NULL)
   }
-  label <- sub("^[^:]+::", "", background_image)
+  key <- sub("^[^:]+::", "", background_image)
   images <- if (identical(source, "embedded")) {
     embedded_images
   } else {
     external_images
   }
-  descriptor <- images[[label]]
+  descriptor <- images[[key]]
   if (is.null(descriptor)) {
     return(NULL)
   }
-  c(list(source = source, label = label), descriptor)
+  label <- descriptor[["label"]]
+  if (
+    !is.character(label) ||
+      length(label) != 1L ||
+      is.na(label) ||
+      !nzchar(label)
+  ) {
+    label <- key
+  }
+  c(
+    list(source = source, key = key, label = label),
+    descriptor[setdiff(names(descriptor), "label")]
+  )
 }
 
 ## The browser must distinguish a logical image from its encoded bytes. Two
@@ -164,6 +437,7 @@ spatial_background_identity <- function(dataset, spatial_name, descriptor) {
     dataset = dataset,
     spatial_name = spatial_name,
     source = descriptor[["source"]],
+    key = descriptor[["key"]] %||% descriptor[["label"]],
     label = descriptor[["label"]]
   )
   if (
@@ -275,6 +549,101 @@ compute_group_hulls <- function(x, y, group) {
     result[[g]] <- list(x = gx[idx], y = gy[idx])
   }
   result
+}
+
+spatial_cell_boundaries <- function(
+  boundaries,
+  cells,
+  max_vertices = 200000L
+) {
+  required <- c("cell_barcode", "x", "y", "part")
+  if (
+    !identical(class(boundaries), "data.frame") ||
+      !identical(sort(names(boundaries)), sort(required)) ||
+      !is.character(boundaries$cell_barcode) ||
+      !is.character(boundaries$part) ||
+      !is.numeric(boundaries$x) ||
+      !is.numeric(boundaries$y) ||
+      any(vapply(boundaries, is.object, logical(1))) ||
+      !is.character(cells) ||
+      is.object(cells) ||
+      !is.numeric(max_vertices) ||
+      length(max_vertices) != 1L ||
+      is.na(max_vertices) ||
+      !is.finite(max_vertices) ||
+      max_vertices < 3L
+  ) {
+    return(list())
+  }
+  keep <- boundaries$cell_barcode %in%
+    cells &
+    !is.na(boundaries$cell_barcode) &
+    nzchar(boundaries$cell_barcode) &
+    !is.na(boundaries$part) &
+    nzchar(boundaries$part) &
+    is.finite(boundaries$x) &
+    is.finite(boundaries$y)
+  boundaries <- boundaries[keep, required, drop = FALSE]
+  if (!nrow(boundaries)) {
+    return(list())
+  }
+  cell_order <- unique(boundaries$cell_barcode)
+  counts <- tabulate(match(boundaries$cell_barcode, cell_order))
+  allowed <- cell_order[cumsum(counts) <= floor(max_vertices)]
+  boundaries <- boundaries[boundaries$cell_barcode %in% allowed, , drop = FALSE]
+  if (!nrow(boundaries)) {
+    return(list())
+  }
+  list(
+    cell_barcode = unname(boundaries$cell_barcode),
+    part = unname(boundaries$part),
+    x = unname(as.numeric(boundaries$x)),
+    y = unname(as.numeric(boundaries$y))
+  )
+}
+
+spatial_molecule_overlay <- function(
+  molecules,
+  gene,
+  max_points = 50000L,
+  scoped = FALSE
+) {
+  if (isTRUE(scoped) || !is.list(molecules) || is.object(molecules)) {
+    return(list())
+  }
+  data <- molecules[["data"]]
+  if (
+    !identical(class(data), "data.frame") ||
+      !identical(names(data), c("gene", "x", "y")) ||
+      !is.character(data$gene) ||
+      !is.numeric(data$x) ||
+      !is.numeric(data$y) ||
+      any(vapply(data, is.object, logical(1))) ||
+      !is.character(gene) ||
+      length(gene) != 1L ||
+      is.na(gene) ||
+      !is.numeric(max_points) ||
+      length(max_points) != 1L ||
+      is.na(max_points) ||
+      !is.finite(max_points) ||
+      max_points < 1L
+  ) {
+    return(list())
+  }
+  keep <- data$gene == gene & is.finite(data$x) & is.finite(data$y)
+  data <- data[keep, , drop = FALSE]
+  if (!nrow(data)) {
+    return(list())
+  }
+  if (nrow(data) > max_points) {
+    keep <- unique(round(seq.int(
+      1L,
+      nrow(data),
+      length.out = floor(max_points)
+    )))
+    data <- data[keep, , drop = FALSE]
+  }
+  list(x = unname(as.numeric(data$x)), y = unname(as.numeric(data$y)))
 }
 
 blend_genes_to_rgb <- function(r = NULL, g = NULL, b = NULL) {

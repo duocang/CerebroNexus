@@ -222,7 +222,14 @@ test_that("Spatial UI model carries every saved image control", {
   dapi$rotation <- 23
   model <- builder_enhance_model(
     id = "ds1",
-    profile = list(images = "fov-a", extras = list()),
+    profile = list(
+      images = "fov-a",
+      spatial_scenes = list(list(
+        id = "fov-a",
+        label = "fov-a · sample: S1 · ROI: lesion"
+      )),
+      extras = list()
+    ),
     state = list(manifest = list()),
     settings = list(
       tables = list(),
@@ -239,6 +246,11 @@ test_that("Spatial UI model carries every saved image control", {
   controls <- model$attachments$histology$controls
 
   expect_identical(model$attachments$histology$active_image, "DAPI")
+  expect_identical(
+    model$attachments$histology$section_labels,
+    c(`fov-a` = "fov-a · sample: S1 · ROI: lesion")
+  )
+  expect_identical(model$attachments$histology$scenes[[1L]]$id, "fov-a")
   expect_identical(controls$dx, 306)
   expect_identical(controls$dy, -25)
   expect_identical(controls$scale, 1.42)
@@ -260,12 +272,47 @@ test_that("Spatial UI model carries every saved image control", {
     )),
     collapse = ""
   )
-  expect_match(html, 'id="enhance-img_dx"[^>]+data-from="306"', perl = TRUE)
-  expect_match(html, 'id="enhance-img_dy"[^>]+data-from="-25"', perl = TRUE)
+  expect_match(html, 'id="enhance-img_dx"[^>]+value="306"', perl = TRUE)
+  expect_match(html, 'id="enhance-img_dy"[^>]+value="-25"', perl = TRUE)
   expect_match(html, 'id="enhance-img_scale"[^>]+data-from="1.42"', perl = TRUE)
   expect_match(html, 'id="enhance-img_rotate"[^>]+data-from="23"', perl = TRUE)
   expect_match(html, 'id="enhance-image_flip_x"[^>]+checked', perl = TRUE)
   expect_match(html, 'id="enhance-image_flip_y"[^>]+checked', perl = TRUE)
+})
+
+test_that("Spatial UI model restores active ROI coordinate settings", {
+  model <- builder_enhance_model(
+    id = "ds1",
+    profile = list(
+      images = "fov-a",
+      spatial_scenes = list(list(id = "fov-a", label = "fov-a")),
+      extras = list()
+    ),
+    state = list(manifest = list()),
+    settings = list(
+      images = list(),
+      spatial_coordinate_transforms = list(
+        `fov-a` = list(rotation_degrees = 0, scale = 1)
+      ),
+      spatial_roi_settings = list(
+        `fov-a` = list(
+          lesion = list(
+            rotation_degrees = -51.8,
+            point_opacity = 0.85,
+            point_size = 12
+          )
+        )
+      )
+    ),
+    modules = list(),
+    active_section = "fov-a",
+    active_roi = "lesion"
+  )
+
+  histology <- model$attachments$histology
+  expect_identical(histology$coordinate_rotation, -51.8)
+  expect_identical(histology$controls$point_opacity, 0.85)
+  expect_identical(histology$controls$point_size, 12)
 })
 
 test_that("Spatial control ranges retain saved offsets before preview bounds arrive", {
@@ -281,6 +328,8 @@ test_that("Spatial control ranges retain saved offsets before preview bounds arr
   expect_gte(pending$dx$max, 306)
   expect_lte(pending$dy$min, -25)
   expect_gte(pending$dy$max, -25)
+  expect_identical(pending$dx$step, 10)
+  expect_identical(pending$dy$step, 10)
 
   ready <- builder_alignment_control_ranges(
     record,

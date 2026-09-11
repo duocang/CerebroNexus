@@ -235,11 +235,12 @@ builder_fake_app <- function(request, app_dir) {
     app_dir,
     recursive = TRUE
   ))
-  expect_true(file.copy(
-    builder_profile_inst_path("extdata"),
-    app_dir,
-    recursive = TRUE
-  ))
+  extdata_source <- builder_profile_inst_path("extdata")
+  extdata_target <- file.path(app_dir, "extdata")
+  dir.create(extdata_target)
+  extdata_files <- list.files(extdata_source, full.names = TRUE)
+  extdata_files <- extdata_files[file.info(extdata_files)$isdir %in% FALSE]
+  expect_true(all(file.copy(extdata_files, extdata_target)))
   dir.create(file.path(app_dir, "private-data"))
   targets <- file.path("private-data", basename(request$cerebro_data))
   for (index in seq_along(targets)) {
@@ -411,6 +412,15 @@ builder_copy_backend_to_app <- function(fixture, app_dir) {
 
 test_that("App arguments come only from the frozen plan", {
   fixture <- builder_app_bundle_fixture()
+  fixture$plan$items[[2L]]$spatial_roi_settings <- list(
+    "fov-a" = list(
+      lesion = list(
+        rotation_degrees = 37.5,
+        point_opacity = 0.65,
+        point_size = 7
+      )
+    )
+  )
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -432,7 +442,8 @@ test_that("App arguments come only from the frozen plan", {
       initial_projections = "pca",
       default_trajectory = list(method = "monocle2", name = "lineage"),
       overview_point_size = 7,
-      overview_percentage_cells_to_show = 100
+      overview_percentage_cells_to_show = 100,
+      spatial_roi_settings = fixture$plan$items[[2L]]$spatial_roi_settings
     )
   )
   expect_false(request$crb_pick_smallest_file)
@@ -1308,6 +1319,7 @@ test_that("App request and config read-back preserve every Review option", {
   verification <- builder_verify_app(app_dir, request)
 
   expect_true(verification$valid)
+  expect_false(dir.exists(file.path(app_dir, "extdata", "examples")))
   expect_identical(request$welcome_message, "Welcome, team!")
   expect_identical(request$point_size, list(overview_projection_point_size = 6))
   expect_false(request$variable_to_compare)
@@ -1962,39 +1974,6 @@ test_that("App verification rejects private data outside exact allowed roots", {
     ),
     "outside private-data"
   )
-
-  fixture <- builder_app_bundle_fixture()
-  request <- builder_app_bundle_request(
-    fixture$plan,
-    fixture$paths,
-    fixture$labels
-  )
-  app_dir <- builder_fake_app(
-    request,
-    file.path(fixture$stage, "cerebro_app")
-  )
-  demo <- file.path(app_dir, "extdata", "examples", "example.crb")
-  trusted_demo <- builder_profile_inst_path(
-    "extdata",
-    "examples",
-    "example.crb"
-  )
-  expect_true(nzchar(trusted_demo))
-  rds_demo <- file.path(app_dir, "extdata", "examples", "pbmc_SCE.rds")
-  trusted_rds_demo <- builder_profile_inst_path(
-    "extdata",
-    "examples",
-    "pbmc_SCE.rds"
-  )
-  expect_true(nzchar(trusted_rds_demo))
-
-  expect_true(builder_verify_app(app_dir, request)$valid)
-
-  builder_flip_file_byte(rds_demo)
-  expect_error(builder_verify_app(app_dir, request), "outside private-data")
-  expect_true(file.copy(trusted_rds_demo, rds_demo, overwrite = TRUE))
-  builder_flip_file_byte(demo)
-  expect_error(builder_verify_app(app_dir, request), "outside private-data")
 })
 
 test_that("external spatial assets are frozen and passed as formal arguments", {
@@ -2037,6 +2016,26 @@ test_that("external spatial assets are frozen and passed as formal arguments", {
     builder_build_app(changed_request, changed$stage, create_app),
     "spatial image changed"
   )
+})
+
+test_that("external spatial assets preserve their ROI scope", {
+  fixture <- builder_app_external_fixture()
+  descriptor <- fixture$plan$items[[1L]]$external_images[["section-a"]][[
+    "H&E"
+  ]]
+  descriptor$roi_field <- "sample_roi"
+  descriptor$roi_value <- "lesion"
+  fixture$plan$items[[1L]]$external_images[["section-a"]][["H&E"]] <- descriptor
+
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  observed <- request$spatial_images[["Dataset A"]][["section-a"]][["H&E"]]
+
+  expect_identical(observed$roi_field, "sample_roi")
+  expect_identical(observed$roi_value, "lesion")
 })
 
 test_that("external spatial request rejects aliases and target collisions", {

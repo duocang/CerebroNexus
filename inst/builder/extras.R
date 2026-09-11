@@ -252,10 +252,33 @@ builder_alignment_defaults <- function() {
     bounds$ymax > bounds$ymin
 }
 
-#' Fit the original image into the full physical coordinate range.
+#' Expand a coordinate viewport to its displayed extent after rotation.
+builder_alignment_rotated_bounds <- function(bounds, rotation = 0) {
+  if (!.builder_alignment_valid_bounds(bounds)) {
+    stop("Alignment requires finite, non-empty physical bounds.", call. = FALSE)
+  }
+  rotation <- suppressWarnings(as.numeric(rotation))
+  if (length(rotation) != 1L || is.na(rotation) || !is.finite(rotation)) {
+    stop("Alignment rotation must be finite.", call. = FALSE)
+  }
+  radians <- rotation * pi / 180
+  width <- bounds$xmax - bounds$xmin
+  height <- bounds$ymax - bounds$ymin
+  extent_width <- abs(width * cos(radians)) + abs(height * sin(radians))
+  extent_height <- abs(width * sin(radians)) + abs(height * cos(radians))
+  centre_x <- (bounds$xmin + bounds$xmax) / 2
+  centre_y <- (bounds$ymin + bounds$ymax) / 2
+  list(
+    xmin = centre_x - extent_width / 2,
+    xmax = centre_x + extent_width / 2,
+    ymin = centre_y - extent_height / 2,
+    ymax = centre_y + extent_height / 2
+  )
+}
+
+#' Fit the original image inside the physical coordinate viewport.
 #'
-#' The image is centred and aspect-preserving. It is a stable starting point,
-#' not an edit to cell coordinates, and every later transform starts here.
+#' The image is centred, aspect-preserving, and fills the available viewport.
 builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   if (!.builder_alignment_valid_bounds(bounds)) {
     stop("Alignment requires finite, non-empty physical bounds.", call. = FALSE)
@@ -269,24 +292,14 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   ) {
     stop("Alignment requires positive image dimensions.", call. = FALSE)
   }
-  image_ratio <- image_dimensions[[1L]] / image_dimensions[[2L]]
   available_width <- bounds$xmax - bounds$xmin
   available_height <- bounds$ymax - bounds$ymin
-  available_ratio <- available_width / available_height
-  if (image_ratio >= available_ratio) {
-    height <- available_height
-    width <- height * image_ratio
-  } else {
-    width <- available_width
-    height <- width / image_ratio
-  }
-  ## Decimal extrema can land a few ulps outside an algebraically identical
-  ## centred rectangle (for example 3.92 after subtracting half the height).
-  ## Preserve the image aspect ratio while adding an invisible numerical guard
-  ## so the default fit really does cover every boundary point.
-  safety_factor <- 1 + 64 * .Machine$double.eps
-  width <- width * safety_factor
-  height <- height * safety_factor
+  fit <- min(
+    available_width / image_dimensions[[1L]],
+    available_height / image_dimensions[[2L]]
+  )
+  width <- image_dimensions[[1L]] * fit
+  height <- image_dimensions[[2L]] * fit
   centre_x <- (bounds$xmin + bounds$xmax) / 2
   centre_y <- (bounds$ymin + bounds$ymax) / 2
   list(
@@ -318,8 +331,10 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
     }
     parameters[[name]] <- value
   }
+  parameters$dx <- round(parameters$dx)
+  parameters$dy <- round(parameters$dy)
   if (
-    parameters$scale <= 0 ||
+    parameters$scale < 0 ||
       parameters$point_size <= 0 ||
       parameters$image_opacity < 0 ||
       parameters$image_opacity > 1 ||
@@ -374,12 +389,12 @@ builder_alignment_control_ranges <- function(record = NULL, bounds = NULL) {
     dx = list(
       min = -x_limit,
       max = x_limit,
-      step = nice(span_x / 200)
+      step = 10
     ),
     dy = list(
       min = -y_limit,
       max = y_limit,
-      step = nice(span_y / 200)
+      step = 10
     )
   )
 }
@@ -399,6 +414,41 @@ builder_alignment_transform_bounds <- function(
     dy = parameters$dy,
     scale = parameters$scale
   )
+}
+
+#' Center an existing image on the active spatial viewport.
+builder_alignment_center <- function(record, bounds) {
+  if (
+    !is.list(record) ||
+      !.builder_alignment_valid_bounds(record$base_bounds) ||
+      !.builder_alignment_valid_bounds(bounds)
+  ) {
+    stop(
+      "Alignment centering requires valid image and viewport bounds.",
+      call. = FALSE
+    )
+  }
+  parameters <- .builder_alignment_parameters(record)
+  parameters$dx <- round(
+    (bounds$xmin +
+      bounds$xmax -
+      record$base_bounds$xmin -
+      record$base_bounds$xmax) /
+      2
+  )
+  parameters$dy <- round(
+    (bounds$ymin +
+      bounds$ymax -
+      record$base_bounds$ymin -
+      record$base_bounds$ymax) /
+      2
+  )
+  record[names(parameters)] <- parameters
+  record$bounds <- builder_alignment_transform_bounds(
+    builder_alignment_oriented_bounds(record$base_bounds, record),
+    parameters
+  )
+  record
 }
 
 #' Expand the immutable source-image bounds to the encoded rotation canvas.
@@ -476,6 +526,35 @@ builder_alignment_record <- function(
   )
 }
 
+.builder_alignment_roi_scope <- function(record) {
+  fields <- c("roi_field", "roi_value")
+  present <- fields %in% names(record)
+  if (!any(present)) {
+    return(list())
+  }
+  if (!all(present)) {
+    stop(
+      "ROI image scope requires both roi_field and roi_value.",
+      call. = FALSE
+    )
+  }
+  values <- record[fields]
+  valid <- vapply(
+    values,
+    function(value) {
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(trimws(value))
+    },
+    logical(1)
+  )
+  if (!all(valid)) {
+    stop("ROI image scope values must be non-empty strings.", call. = FALSE)
+  }
+  lapply(values, trimws)
+}
+
 #' Upgrade an older URI/bounds record without invalidating existing projects.
 builder_alignment_normalize <- function(
   record,
@@ -502,6 +581,9 @@ builder_alignment_normalize <- function(
   )
   carried <- setdiff(names(record), c(names(normalized), "saved"))
   normalized[carried] <- record[carried]
+  normalized[c("roi_field", "roi_value")] <- NULL
+  scope <- .builder_alignment_roi_scope(record)
+  normalized[names(scope)] <- scope
   normalized
 }
 
@@ -540,6 +622,9 @@ builder_alignment_reset <- function(record) {
       "display_width",
       "display_height",
       "source_content_md5",
+      "image_label",
+      "roi_field",
+      "roi_value",
       "outside",
       "total"
     ),
@@ -563,7 +648,7 @@ builder_alignment_payload <- function(record) {
   if (is.null(normalized)) {
     return(NULL)
   }
-  list(
+  payload <- list(
     source = basename(as.character(normalized$source$name %||% "Tissue image")),
     builder_managed = TRUE,
     dx = normalized$dx,
@@ -576,6 +661,9 @@ builder_alignment_payload <- function(record) {
     point_opacity = normalized$point_opacity,
     point_size = normalized$point_size
   )
+  scope <- intersect(c("roi_field", "roi_value"), names(normalized))
+  payload[scope] <- normalized[scope]
+  payload
 }
 
 #' Convert one Builder alignment to the canonical multi-image leaf contract.
@@ -586,13 +674,19 @@ builder_histology_image_payload <- function(record) {
   }
   required <- c("xmin", "xmax", "ymin", "ymax")
   bounds <- stats::setNames(
-    as.numeric(unlist(normalized$bounds[required], use.names = FALSE)),
+    as.numeric(unlist(normalized$base_bounds[required], use.names = FALSE)),
     required
   )
-  list(
-    histology_image = normalized$uri,
+  payload <- list(
+    histology_image = normalized$source_uri,
     histology_image_bounds = bounds
   )
+  scope <- intersect(c("roi_field", "roi_value"), names(normalized))
+  payload[scope] <- normalized[scope]
+  payload$image_label <- normalized$image_label %||%
+    basename(as.character(normalized$source$name %||% "Tissue image"))
+  payload$histology_alignment <- builder_alignment_payload(normalized)
+  payload
 }
 
 #' Store one Builder background in the canonical multi-image CRB contract.
@@ -690,6 +784,8 @@ builder_attach_spatial_image <- function(
     label <- utils::tail(make.unique(c(names(images), label)), 1L)
   }
   payload <- builder_histology_image_payload(normalized)
+  payload$image_label <- normalized$image_label %||% label
+  payload$histology_alignment$source <- label
   images[[label]] <- payload
   alignment <- builder_alignment_payload(normalized)
   alignment$source <- label
@@ -725,6 +821,7 @@ builder_image_collection_normalize <- function(images) {
         legacy$source$name %||% "Embedded tissue image",
         fallback = "Embedded tissue image"
       )
+      legacy$image_label <- label
       normalized[[section_id]] <- stats::setNames(list(legacy), label)
       next
     }
@@ -760,12 +857,61 @@ builder_image_collection_normalize <- function(images) {
           call. = FALSE
         )
       }
+      display_label <- record$image_label %||% label
+      if (
+        !is.character(display_label) ||
+          length(display_label) != 1L ||
+          is.na(display_label) ||
+          !nzchar(trimws(display_label))
+      ) {
+        stop("Spatial image labels must be non-empty.", call. = FALSE)
+      }
+      record$image_label <- trimws(display_label)
       record
     })
     names(records) <- labels
+    scopes <- vapply(
+      records,
+      function(record) {
+        as.character(record$roi_value %||% "")[[1L]]
+      },
+      character(1)
+    )
+    display_labels <- vapply(records, `[[`, character(1), "image_label")
+    if (anyDuplicated(data.frame(scopes, display_labels))) {
+      stop(
+        "Spatial image labels must be unique within the same ROI.",
+        call. = FALSE
+      )
+    }
     normalized[[section_id]] <- records
   }
   normalized
+}
+
+builder_image_collection_choices <- function(images, section, roi = "") {
+  images <- builder_image_collection_normalize(images)
+  records <- images[[section]] %||% list()
+  keys <- names(records) %||% character()
+  roi <- as.character(roi %||% "")[[1L]]
+  scopes <- vapply(
+    records,
+    function(record) {
+      as.character(record$roi_value %||% "")[[1L]]
+    },
+    character(1)
+  )
+  keys <- keys[scopes == roi]
+  stats::setNames(
+    keys,
+    vapply(
+      keys,
+      function(key) {
+        records[[key]]$image_label %||% key
+      },
+      character(1)
+    )
+  )
 }
 
 builder_image_collection_flatten <- function(images) {
@@ -773,9 +919,14 @@ builder_image_collection_flatten <- function(images) {
   unlist(
     lapply(names(images), function(section_id) {
       lapply(names(images[[section_id]]), function(image_label) {
+        record <- images[[section_id]][[image_label]]
         c(
-          list(section_id = section_id, image_label = image_label),
-          images[[section_id]][[image_label]]
+          list(
+            section_id = section_id,
+            image_key = image_label,
+            image_label = record$image_label %||% image_label
+          ),
+          record[setdiff(names(record), "image_label")]
         )
       })
     }),
@@ -791,15 +942,36 @@ builder_image_collection_rename <- function(images, section, from, to) {
   if (!from %in% names(section_images)) {
     stop("The spatial image to rename does not exist.", call. = FALSE)
   }
-  if (!nzchar(to) || (to %in% names(section_images) && !identical(to, from))) {
+  record <- section_images[[from]]
+  scope <- as.character(record$roi_value %||% "")[[1L]]
+  other_keys <- setdiff(names(section_images), from)
+  duplicate <- any(vapply(
+    other_keys,
+    function(key) {
+      other <- section_images[[key]]
+      identical(as.character(other$roi_value %||% "")[[1L]], scope) &&
+        identical(other$image_label %||% key, to)
+    },
+    logical(1)
+  ))
+  if (!nzchar(to) || duplicate) {
     stop("Spatial image labels must be non-empty and unique.", call. = FALSE)
   }
-  if (identical(from, to)) {
+  if (identical(record$image_label %||% from, to)) {
+    attr(images, "renamed_image_key") <- from
     return(images)
   }
   position <- match(from, names(section_images))
-  names(section_images)[[position]] <- to
+  key <- if (!to %in% other_keys) {
+    to
+  } else {
+    utils::tail(make.unique(c(other_keys, to)), 1L)
+  }
+  record$image_label <- to
+  section_images[[position]] <- record
+  names(section_images)[[position]] <- key
   images[[section]] <- section_images
+  attr(images, "renamed_image_key") <- key
   images
 }
 
@@ -960,6 +1132,127 @@ builder_coordinate_drafts_apply_entry <- function(
   )
 }
 
+builder_roi_drafts_drop <- function(drafts, dataset, section = NULL) {
+  drafts <- drafts %||% list()
+  if (is.null(section)) {
+    drafts[[dataset]] <- NULL
+    return(drafts)
+  }
+  drafts[[dataset]][[section]] <- NULL
+  if (!length(drafts[[dataset]] %||% list())) {
+    drafts[[dataset]] <- NULL
+  }
+  drafts
+}
+
+builder_roi_drafts_prune <- function(drafts, entries) {
+  drafts <- drafts %||% list()
+  identities <- stats::setNames(
+    vapply(
+      entries,
+      function(entry) as.character(entry$snapshot_identity %||% "")[[1L]],
+      character(1)
+    ),
+    vapply(entries, function(entry) entry$id, character(1))
+  )
+  for (dataset in names(drafts) %||% character()) {
+    for (section in names(drafts[[dataset]]) %||% character()) {
+      records <- drafts[[dataset]][[section]] %||% list()
+      valid <- vapply(
+        records,
+        function(record) {
+          dataset %in%
+            names(identities) &&
+            identical(record$snapshot_identity, identities[[dataset]])
+        },
+        logical(1)
+      )
+      drafts[[dataset]][[section]] <- records[valid]
+      if (!length(drafts[[dataset]][[section]])) {
+        drafts <- builder_roi_drafts_drop(drafts, dataset, section)
+      }
+    }
+  }
+  drafts
+}
+
+builder_roi_drafts_apply_entry <- function(
+  entry,
+  coordinate_records,
+  appearance_records,
+  snapshot_identity
+) {
+  settings <- entry$settings$spatial_roi_settings %||% list()
+  before <- settings
+  sections <- union(
+    names(coordinate_records) %||% character(),
+    names(appearance_records) %||% character()
+  )
+  changed_sections <- character()
+  for (section in sections) {
+    coordinates <- coordinate_records[[section]] %||% list()
+    appearances <- appearance_records[[section]] %||% list()
+    rois <- union(
+      names(coordinates) %||% character(),
+      names(appearances) %||% character()
+    )
+    for (roi in rois) {
+      coordinate <- coordinates[[roi]]
+      appearance <- appearances[[roi]]
+      valid_record <- function(record) {
+        is.list(record) &&
+          identical(record$dataset, entry$id) &&
+          identical(record$snapshot_identity, snapshot_identity) &&
+          identical(record$section, section) &&
+          identical(record$roi, roi)
+      }
+      leaf <- settings[[section]][[roi]] %||%
+        list(
+          rotation_degrees = 0,
+          point_opacity = builder_alignment_defaults()$point_opacity,
+          point_size = builder_alignment_defaults()$point_size
+        )
+      if (valid_record(coordinate)) {
+        spec <- .spx_coordinate_transform_spec_normalize(
+          coordinate$spec,
+          context = paste0("ROI coordinate draft ", section, "/", roi)
+        )
+        leaf$rotation_degrees <- spec$rotation_degrees
+      }
+      if (valid_record(appearance)) {
+        leaf$point_opacity <- appearance$point_opacity
+        leaf$point_size <- appearance$point_size
+      }
+      leaf <- .builder_state_spatial_roi_leaf(
+        leaf,
+        paste0(section, "/", roi)
+      )
+      defaults <- builder_alignment_defaults()
+      if (
+        identical(leaf$rotation_degrees, 0) &&
+          identical(leaf$point_opacity, defaults$point_opacity) &&
+          identical(leaf$point_size, defaults$point_size)
+      ) {
+        settings[[section]][[roi]] <- NULL
+      } else {
+        settings[[section]][[roi]] <- leaf
+      }
+    }
+    if (!length(settings[[section]] %||% list())) {
+      settings[[section]] <- NULL
+    }
+    if (!identical(before[[section]], settings[[section]])) {
+      changed_sections <- c(changed_sections, section)
+    }
+  }
+  entry$settings$spatial_roi_settings <- settings
+  list(
+    entry = entry,
+    sections = changed_sections,
+    changed = length(changed_sections) > 0L
+  )
+}
+
 builder_partition_alignments <- function(images) {
   spatial <- list()
   trekker <- NULL
@@ -986,14 +1279,7 @@ builder_partition_alignments <- function(images) {
   )
 }
 
-BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES <- 64 * 1024^2
-BUILDER_IMAGE_DECODE_CHANNELS <- 4L
-BUILDER_IMAGE_MAX_ENCODED_BYTES <- 32 * 1024^2
-BUILDER_IMAGE_MAX_HEADER_BYTES <- 1024^2
-BUILDER_IMAGE_MAX_PIXELS <- floor(
-  BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES /
-    (8 * BUILDER_IMAGE_DECODE_CHANNELS)
-)
+BUILDER_IMAGE_MAX_ENCODED_BYTES <- 1024^3
 
 .builder_image_uint32_be <- function(bytes) {
   if (length(bytes) != 4L) {
@@ -1027,10 +1313,7 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
 .builder_jpeg_dimensions <- function(bytes) {
   unsafe <- function() {
     list(
-      error = paste0(
-        "JPEG metadata could not be read within the image safety limit. ",
-        "Re-export or downscale the image before uploading."
-      )
+      error = "JPEG metadata could not be read. Check that the file is valid."
     )
   }
   if (
@@ -1039,8 +1322,8 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
   ) {
     return(NULL)
   }
-  values <- as.integer(bytes)
-  total <- length(values)
+  value_at <- function(index) as.integer(bytes[[index]])
+  total <- length(bytes)
   start_of_frame <- c(
     0xc0,
     0xc1,
@@ -1059,20 +1342,20 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
   standalone <- c(0x01, 0xd8, 0xd9, 0xd0:0xd7)
   cursor <- 3L
   while (cursor <= total) {
-    while (cursor <= total && values[[cursor]] != 0xffL) {
+    while (cursor <= total && value_at(cursor) != 0xffL) {
       cursor <- cursor + 1L
     }
     if (cursor > total) {
       return(unsafe())
     }
     marker_index <- cursor + 1L
-    while (marker_index <= total && values[[marker_index]] == 0xffL) {
+    while (marker_index <= total && value_at(marker_index) == 0xffL) {
       marker_index <- marker_index + 1L
     }
     if (marker_index > total) {
       return(unsafe())
     }
-    marker <- values[[marker_index]]
+    marker <- value_at(marker_index)
     if (marker == 0L) {
       cursor <- marker_index + 1L
       next
@@ -1084,9 +1367,9 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
     if (marker == 0xdaL || marker_index + 2L > total) {
       return(unsafe())
     }
-    segment_length <- values[[marker_index + 1L]] *
+    segment_length <- value_at(marker_index + 1L) *
       256 +
-      values[[marker_index + 2L]]
+      value_at(marker_index + 2L)
     if (
       !is.finite(segment_length) ||
         segment_length < 2L ||
@@ -1098,8 +1381,8 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
       if (segment_length < 7L || marker_index + 7L > total) {
         return(unsafe())
       }
-      height <- values[[marker_index + 4L]] * 256 + values[[marker_index + 5L]]
-      width <- values[[marker_index + 6L]] * 256 + values[[marker_index + 7L]]
+      height <- value_at(marker_index + 4L) * 256 + value_at(marker_index + 5L)
+      width <- value_at(marker_index + 6L) * 256 + value_at(marker_index + 7L)
       if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
         return(unsafe())
       }
@@ -1123,39 +1406,32 @@ builder_image_file_dimensions <- function(path, filename = path) {
     header <- readBin(connection, what = "raw", n = 24L)
     return(.builder_png_dimensions(header))
   }
-  header <- readBin(
-    connection,
-    what = "raw",
-    n = BUILDER_IMAGE_MAX_HEADER_BYTES
-  )
+  header <- readBin(connection, what = "raw", n = file.size(path))
   .builder_jpeg_dimensions(header)
 }
 
-#' Read an image file into an array png::writePNG can write back out.
+#' Read PNG/JPEG metadata while retaining the original bytes.
 builder_read_image <- function(
   path,
   filename = path,
-  max_pixels = BUILDER_IMAGE_MAX_PIXELS,
   max_encoded_bytes = BUILDER_IMAGE_MAX_ENCODED_BYTES
 ) {
-  valid_budget <- is.numeric(max_pixels) &&
-    length(max_pixels) == 1L &&
-    !is.na(max_pixels) &&
-    is.finite(max_pixels) &&
-    max_pixels >= 1 &&
-    is.numeric(max_encoded_bytes) &&
+  valid_budget <- is.numeric(max_encoded_bytes) &&
     length(max_encoded_bytes) == 1L &&
     !is.na(max_encoded_bytes) &&
     is.finite(max_encoded_bytes) &&
     max_encoded_bytes >= 1
   if (!valid_budget) {
-    return(list(error = "Image safety limits are invalid."))
+    return(list(error = "The image file-size limit is invalid."))
   }
   ext <- tolower(tools::file_ext(filename))
   if (ext %in% c("png", "jpg", "jpeg")) {
     encoded_bytes <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
-    if (is.finite(encoded_bytes) && encoded_bytes > max_encoded_bytes) {
-      return(list(error = "This image exceeds its encoded size limit."))
+    if (!is.finite(encoded_bytes)) {
+      return(list(error = "Could not read this image."))
+    }
+    if (encoded_bytes > max_encoded_bytes) {
+      return(list(error = "This image is larger than the 1 GiB file limit."))
     }
     dimensions <- builder_image_file_dimensions(path, filename)
     if (
@@ -1175,31 +1451,6 @@ builder_read_image <- function(
         )
       ))
     }
-    if (prod(as.numeric(dimensions)) > as.numeric(max_pixels)) {
-      return(list(
-        error = paste0(
-          "This image exceeds the ",
-          format(as.numeric(max_pixels), big.mark = ",", scientific = FALSE),
-          " pixel safety limit. Downscale it before uploading."
-        )
-      ))
-    }
-  }
-  if (ext %in% c("png")) {
-    if (!requireNamespace("png", quietly = TRUE)) {
-      return(list(error = "Reading PNG images requires the png package."))
-    }
-    arr <- try(png::readPNG(path), silent = TRUE)
-  } else if (ext %in% c("jpg", "jpeg")) {
-    if (!requireNamespace("jpeg", quietly = TRUE)) {
-      return(list(
-        error = paste0(
-          "Reading JPEG images requires the jpeg package ",
-          "(install.packages(\"jpeg\")), or convert the image to PNG."
-        )
-      ))
-    }
-    arr <- try(jpeg::readJPEG(path), silent = TRUE)
   } else if (ext %in% c("tif", "tiff")) {
     return(list(
       error = paste0(
@@ -1216,113 +1467,94 @@ builder_read_image <- function(
       )
     ))
   }
-  if (inherits(arr, "try-error")) {
-    return(list(
-      error = paste0(
-        "Could not read this image. Check that it is a valid ",
-        "PNG or JPEG file."
-      )
-    ))
+  if (!requireNamespace("base64enc", quietly = TRUE)) {
+    return(list(error = "Reading tissue images requires base64enc."))
   }
-  decoded_dimensions <- dim(arr)
-  if (
-    length(decoded_dimensions) < 2L ||
-      prod(as.numeric(decoded_dimensions[1:2])) > as.numeric(max_pixels)
-  ) {
-    return(list(
-      error = paste0(
-        "This image exceeds the ",
-        format(as.numeric(max_pixels), big.mark = ",", scientific = FALSE),
-        " pixel safety limit. Downscale it before uploading."
-      )
-    ))
-  }
-  list(array = arr, width = dim(arr)[2], height = dim(arr)[1])
+  mime <- if (identical(ext, "png")) "image/png" else "image/jpeg"
+  width <- unname(dimensions[["width"]])
+  height <- unname(dimensions[["height"]])
+  source_uri <- paste0(
+    "data:",
+    mime,
+    ";base64,",
+    base64enc::base64encode(path)
+  )
+  list(
+    mime = mime,
+    source_uri = source_uri,
+    uri = source_uri,
+    source_content_md5 = unname(as.character(tools::md5sum(path))),
+    bytes = unname(file.size(path)),
+    width = width,
+    height = height,
+    source_width = width,
+    source_height = height,
+    extent_width = width,
+    extent_height = height,
+    display_width = width,
+    display_height = height,
+    source_dimensions = c(width = width, height = height)
+  )
 }
 
-#' Decode the bounded PNG data URI retained in Builder state.
+#' Read source-image metadata retained in Builder state.
 builder_read_image_uri <- function(
   uri,
-  max_pixels = BUILDER_IMAGE_MAX_PIXELS,
   max_encoded_bytes = BUILDER_IMAGE_MAX_ENCODED_BYTES
 ) {
-  prefix <- "data:image/png;base64,"
   if (
     !is.character(uri) ||
       length(uri) != 1L ||
       is.na(uri) ||
-      !startsWith(uri, prefix)
+      !grepl("^data:image/(png|jpeg);base64,", uri)
   ) {
     return(list(
-      error = "The saved tissue image is not a supported PNG payload."
+      error = "The saved tissue image is not a supported PNG or JPEG payload."
     ))
   }
-  if (
-    !requireNamespace("base64enc", quietly = TRUE) ||
-      !requireNamespace("png", quietly = TRUE)
-  ) {
-    return(list(error = "Reopening tissue images requires png and base64enc."))
-  }
-  payload <- substring(uri, nchar(prefix) + 1L)
-  valid_limits <- is.numeric(max_pixels) &&
-    length(max_pixels) == 1L &&
-    !is.na(max_pixels) &&
-    is.finite(max_pixels) &&
-    max_pixels >= 1 &&
-    is.numeric(max_encoded_bytes) &&
+  valid_limits <- is.numeric(max_encoded_bytes) &&
     length(max_encoded_bytes) == 1L &&
     !is.na(max_encoded_bytes) &&
     is.finite(max_encoded_bytes) &&
     max_encoded_bytes >= 1
   if (!valid_limits) {
-    return(list(error = "Saved tissue image safety limits are invalid."))
+    return(list(error = "The saved image file-size limit is invalid."))
   }
-  encoded_bytes <- nchar(payload, type = "bytes")
-  if (encoded_bytes > max_encoded_bytes) {
+  payload <- substring(uri, regexpr(",", uri, fixed = TRUE)[[1L]] + 1L)
+  padding <- if (endsWith(payload, "==")) {
+    2L
+  } else if (endsWith(payload, "=")) {
+    1L
+  } else {
+    0L
+  }
+  decoded_size <- nchar(payload, type = "bytes") * 3 / 4 - padding
+  if (decoded_size > max_encoded_bytes) {
     return(list(
-      error = "The saved tissue image exceeds its encoded size limit."
+      error = "The saved tissue image is larger than the 1 GiB file limit."
     ))
   }
-  decoded <- try(
-    base64enc::base64decode(payload),
-    silent = TRUE
+  parsed <- tryCatch(
+    builder_parse_image_uri(uri),
+    error = function(error) NULL
   )
-  if (inherits(decoded, "try-error")) {
+  if (is.null(parsed)) {
     return(list(error = "The saved tissue image could not be decoded."))
   }
-  dimensions <- .builder_png_dimensions(decoded)
-  if (is.null(dimensions)) {
+  dimensions <- if (identical(parsed$mime, "image/png")) {
+    .builder_png_dimensions(parsed$bytes)
+  } else {
+    .builder_jpeg_dimensions(parsed$bytes)
+  }
+  if (is.list(dimensions) || is.null(dimensions)) {
     return(list(
-      error = "The saved tissue image has invalid or unsafe PNG metadata."
+      error = "The saved tissue image has invalid or unsafe image metadata."
     ))
   }
-  if (prod(as.numeric(dimensions)) > as.numeric(max_pixels)) {
-    return(list(
-      error = paste0(
-        "This image exceeds the ",
-        format(as.numeric(max_pixels), big.mark = ",", scientific = FALSE),
-        " pixel safety limit. Downscale it before uploading."
-      )
-    ))
-  }
-  image <- try(png::readPNG(decoded), silent = TRUE)
-  if (inherits(image, "try-error")) {
-    return(list(error = "The saved tissue image could not be reopened."))
-  }
-  decoded_dimensions <- dim(image)
-  if (
-    length(decoded_dimensions) < 2L ||
-      prod(as.numeric(decoded_dimensions[1:2])) > as.numeric(max_pixels)
-  ) {
-    return(list(
-      error = paste0(
-        "This image exceeds the ",
-        format(as.numeric(max_pixels), big.mark = ",", scientific = FALSE),
-        " pixel safety limit. Downscale it before uploading."
-      )
-    ))
-  }
-  list(array = image, width = dim(image)[2L], height = dim(image)[1L])
+  list(
+    width = unname(dimensions[["width"]]),
+    height = unname(dimensions[["height"]])
+  )
 }
 
 builder_parse_image_uri <- function(uri) {
@@ -1384,283 +1616,6 @@ builder_materialize_image_uri <- function(uri, path) {
   }
   writeBin(parsed$bytes, path)
   normalizePath(path, winslash = "/", mustWork = TRUE)
-}
-
-.builder_rotation_quarter_turn <- function(degrees) {
-  normalized_degrees <- degrees %% 360
-  quarter_turn <- round(normalized_degrees / 90)
-  if (
-    isTRUE(
-      abs(normalized_degrees - quarter_turn * 90) < sqrt(.Machine$double.eps)
-    )
-  ) {
-    return(quarter_turn %% 4L)
-  }
-  NA_integer_
-}
-
-builder_rotation_extent <- function(width, height, degrees) {
-  valid_dimensions <- is.numeric(width) &&
-    length(width) == 1L &&
-    !is.na(width) &&
-    is.finite(width) &&
-    width >= 1 &&
-    width <= .Machine$integer.max &&
-    is.numeric(height) &&
-    length(height) == 1L &&
-    !is.na(height) &&
-    is.finite(height) &&
-    height >= 1 &&
-    height <= .Machine$integer.max
-  valid_rotation <- is.numeric(degrees) &&
-    length(degrees) == 1L &&
-    !is.na(degrees) &&
-    is.finite(degrees)
-  if (!valid_dimensions || !valid_rotation) {
-    stop(
-      "Rotation geometry requires finite positive dimensions.",
-      call. = FALSE
-    )
-  }
-  width <- as.integer(floor(width))
-  height <- as.integer(floor(height))
-  turn <- .builder_rotation_quarter_turn(degrees)
-  if (!is.na(turn)) {
-    if (turn %in% c(1L, 3L)) {
-      return(c(width = height, height = width))
-    }
-    return(c(width = width, height = height))
-  }
-
-  theta <- degrees * pi / 180
-  extent <- c(
-    width = ceiling(abs(width * cos(theta)) + abs(height * sin(theta))),
-    height = ceiling(abs(height * cos(theta)) + abs(width * sin(theta)))
-  )
-  if (any(extent > .Machine$integer.max)) {
-    stop("Rotated image extent is too large.", call. = FALSE)
-  }
-  as.integer(extent) |>
-    stats::setNames(c("width", "height"))
-}
-
-builder_rotation_plan <- function(width, height, degrees, max_edge) {
-  valid_limit <- is.numeric(max_edge) &&
-    length(max_edge) == 1L &&
-    !is.na(max_edge) &&
-    is.finite(max_edge) &&
-    max_edge >= 1 &&
-    max_edge <= .Machine$integer.max
-  if (!valid_limit) {
-    stop("Maximum rotation edge must be positive and finite.", call. = FALSE)
-  }
-  width <- as.integer(width)
-  height <- as.integer(height)
-  max_edge <- as.integer(floor(max_edge))
-  full_extent <- builder_rotation_extent(width, height, degrees)
-  scale <- min(1, max_edge / max(full_extent))
-  input_dimensions <- pmax(
-    1L,
-    as.integer(round(c(width = width, height = height) * scale))
-  )
-  names(input_dimensions) <- c("width", "height")
-  output_dimensions <- builder_rotation_extent(
-    input_dimensions[["width"]],
-    input_dimensions[["height"]],
-    degrees
-  )
-  while (
-    max(output_dimensions) > max_edge &&
-      any(input_dimensions > 1L)
-  ) {
-    input_dimensions[] <- pmax(1L, input_dimensions - 1L)
-    output_dimensions <- builder_rotation_extent(
-      input_dimensions[["width"]],
-      input_dimensions[["height"]],
-      degrees
-    )
-  }
-  if (max(output_dimensions) > max_edge) {
-    output_dimensions[] <- max_edge
-  }
-
-  list(
-    source_dimensions = c(width = width, height = height),
-    full_extent_dimensions = full_extent,
-    input_max_edge = max(input_dimensions),
-    input_dimensions = input_dimensions,
-    output_dimensions = output_dimensions,
-    prescaled = any(input_dimensions < c(width = width, height = height))
-  )
-}
-
-#' Downscale and encode an image array as a data URI.
-#'
-#' The image is the single biggest thing in a spatial `.crb` -- a
-#' full-resolution slide scan is not viable -- so `max_px` is a real control,
-#' not a formality.
-builder_encode_image <- function(
-  arr,
-  max_px = 1400,
-  flip_y = FALSE,
-  flip_x = FALSE,
-  rotate = 0,
-  source_dimensions = NULL,
-  retain_normalized_array = FALSE
-) {
-  if (!requireNamespace("png", quietly = TRUE)) {
-    return(list(error = "Embedding images requires the png package."))
-  }
-  if (!requireNamespace("base64enc", quietly = TRUE)) {
-    return(list(error = "Embedding images requires the base64enc package."))
-  }
-  valid_rotation <- is.numeric(rotate) &&
-    length(rotate) == 1L &&
-    !is.na(rotate) &&
-    is.finite(rotate)
-  if (!valid_rotation) {
-    return(list(error = "Image rotation must be one finite number."))
-  }
-  dimensions <- dim(arr)
-  valid_dimensions <- length(dimensions) %in%
-    c(2L, 3L) &&
-    all(!is.na(dimensions)) &&
-    all(dimensions > 0L)
-  logical_dimensions <- if (is.null(source_dimensions)) {
-    if (valid_dimensions) {
-      c(width = dimensions[[2L]], height = dimensions[[1L]])
-    } else {
-      NULL
-    }
-  } else {
-    supplied <- suppressWarnings(as.numeric(source_dimensions))
-    if (
-      length(supplied) != 2L ||
-        anyNA(supplied) ||
-        any(!is.finite(supplied)) ||
-        any(supplied < 1) ||
-        any(supplied != floor(supplied))
-    ) {
-      return(list(error = "Image source dimensions are invalid."))
-    }
-    if (all(c("width", "height") %in% names(source_dimensions))) {
-      supplied <- supplied[match(
-        c("width", "height"),
-        names(source_dimensions)
-      )]
-    }
-    c(width = supplied[[1L]], height = supplied[[2L]])
-  }
-  if (
-    valid_dimensions &&
-      !is.null(logical_dimensions) &&
-      (logical_dimensions[["width"]] < dimensions[[2L]] ||
-        logical_dimensions[["height"]] < dimensions[[1L]])
-  ) {
-    return(list(error = "Image source dimensions are invalid."))
-  }
-  rotation_plan <- if (valid_dimensions && !is.null(logical_dimensions)) {
-    tryCatch(
-      builder_rotation_plan(
-        logical_dimensions[["width"]],
-        logical_dimensions[["height"]],
-        rotate,
-        max_px
-      ),
-      error = function(error) NULL
-    )
-  } else {
-    NULL
-  }
-  normalization_edge <- if (is.null(rotation_plan)) {
-    max_px
-  } else {
-    rotation_plan$input_max_edge
-  }
-  normalized <- builder_normalize_image(
-    arr,
-    max_display_px = normalization_edge,
-    display_dimensions = if (is.null(rotation_plan)) {
-      NULL
-    } else {
-      rotation_plan$input_dimensions
-    }
-  )
-  if (!is.null(normalized$error)) {
-    return(normalized)
-  }
-  arr <- normalized$array
-  retained_array <- if (isTRUE(retain_normalized_array)) arr else NULL
-  normalized$array <- NULL
-  if (is.null(rotation_plan)) {
-    return(list(error = "Image rotation geometry is invalid."))
-  }
-  if (isTRUE(flip_y) || isTRUE(flip_x)) {
-    rows <- if (isTRUE(flip_y)) {
-      rev(seq_len(dim(arr)[1L]))
-    } else {
-      seq_len(dim(arr)[1L])
-    }
-    columns <- if (isTRUE(flip_x)) {
-      rev(seq_len(dim(arr)[2L]))
-    } else {
-      seq_len(dim(arr)[2L])
-    }
-    arr <- arr[rows, columns, , drop = FALSE]
-  }
-  arr <- .builder_rotate_rgba(
-    arr,
-    rotate,
-    rotation_plan$output_dimensions
-  )
-
-  tmp <- tempfile(fileext = ".png")
-  on.exit(unlink(tmp), add = TRUE)
-  ok <- try(png::writePNG(arr, tmp), silent = TRUE)
-  if (inherits(ok, "try-error")) {
-    return(list(
-      error = paste0(
-        "Could not encode the PNG: ",
-        conditionMessage(attr(ok, "condition"))
-      )
-    ))
-  }
-  display_dimensions <- c(
-    width = as.integer(dim(arr)[2L]),
-    height = as.integer(dim(arr)[1L])
-  )
-  extent_dimensions <- rotation_plan$full_extent_dimensions
-  result <- list(
-    uri = paste0(
-      "data:image/png;base64,",
-      base64enc::base64encode(tmp)
-    ),
-    content_md5 = unname(as.character(tools::md5sum(tmp))),
-    bytes = file.size(tmp),
-    width = display_dimensions[["width"]],
-    height = display_dimensions[["height"]],
-    source_width = as.integer(logical_dimensions[["width"]]),
-    source_height = as.integer(logical_dimensions[["height"]]),
-    extent_width = extent_dimensions[["width"]],
-    extent_height = extent_dimensions[["height"]],
-    display_width = display_dimensions[["width"]],
-    display_height = display_dimensions[["height"]],
-    source_dimensions = c(
-      width = as.integer(logical_dimensions[["width"]]),
-      height = as.integer(logical_dimensions[["height"]])
-    ),
-    extent_dimensions = extent_dimensions,
-    display_dimensions = display_dimensions,
-    source_channels = normalized$source_channels,
-    source_channel_kind = normalized$source_channel_kind,
-    display_channels = 4L,
-    display_channel_kind = "rgba",
-    channel_kind = "rgba"
-  )
-  if (isTRUE(retain_normalized_array)) {
-    result$normalized_array <- retained_array
-  }
-  result
 }
 
 #' Where the image sits, in the same coordinate space as the cells.
@@ -1838,8 +1793,8 @@ builder_attach_crb_extras <- function(
       section_kind = "trekker"
     )
     if (!is.null(alignment)) {
-      trekker$histology_image <- alignment$uri
-      trekker$histology_image_bounds <- alignment$bounds
+      trekker$histology_image <- alignment$source_uri
+      trekker$histology_image_bounds <- alignment$base_bounds
       trekker$histology_alignment <- builder_alignment_payload(alignment)
     }
     added <- try(crb$addTrekker(trekker), silent = TRUE)
@@ -1948,74 +1903,6 @@ builder_spatial_coords <- function(object, image = NULL) {
   }
   contract <- builder_spatial_contract(object, image = image)
   list(contract$coordinates$x, contract$coordinates$y)
-}
-
-## Rotate an already-normalized RGBA array without another full-size copy.
-.builder_rotate_rgba <- function(arr, degrees, output_dimensions) {
-  turn <- .builder_rotation_quarter_turn(degrees)
-  if (!is.na(turn)) {
-    if (turn == 0L) {
-      return(arr)
-    }
-    h <- dim(arr)[1L]
-    w <- dim(arr)[2L]
-    nh <- output_dimensions[["height"]]
-    nw <- output_dimensions[["width"]]
-    out <- array(0, dim = c(nh, nw, 4L))
-    source_plane_size <- h * w
-    columns <- seq_len(nw)
-    reverse_columns <- rev(columns)
-    for (row in seq_len(nh)) {
-      source_index <- if (turn == 1L) {
-        columns + (w - row) * h
-      } else if (turn == 2L) {
-        (h - row + 1L) + (reverse_columns - 1L) * h
-      } else {
-        reverse_columns + (row - 1L) * h
-      }
-      for (channel in seq_len(4L)) {
-        out[row, columns, channel] <- arr[
-          source_index + (channel - 1L) * source_plane_size
-        ]
-      }
-    }
-    return(out)
-  }
-  h <- dim(arr)[1]
-  w <- dim(arr)[2]
-  theta <- degrees * pi / 180
-  nh <- output_dimensions[["height"]]
-  nw <- output_dimensions[["width"]]
-
-  ## Alpha channel, so the corners the source does not cover are transparent
-  ## rather than black.
-  out <- array(0, dim = c(nh, nw, 4L))
-  continuous_width <- abs(w * cos(theta)) + abs(h * sin(theta))
-  continuous_height <- abs(h * cos(theta)) + abs(w * sin(theta))
-  dx <- ((seq_len(nw) - 0.5) / nw - 0.5) * continuous_width
-  source_plane_size <- h * w
-  for (row in seq_len(nh)) {
-    dy <- ((row - 0.5) / nh - 0.5) * continuous_height
-    source_x <- dx * cos(theta) - dy * sin(theta)
-    source_y <- dx * sin(theta) + dy * cos(theta)
-    inside <- source_x >= -w / 2 &
-      source_x < w / 2 &
-      source_y >= -h / 2 &
-      source_y < h / 2
-    if (!any(inside)) {
-      next
-    }
-    columns <- which(inside)
-    sx <- pmin(w, pmax(1L, floor(source_x[inside] + w / 2) + 1L))
-    sy <- pmin(h, pmax(1L, floor(source_y[inside] + h / 2) + 1L))
-    source_index <- (sx - 1L) * h + sy
-    for (channel in seq_len(4L)) {
-      out[row, columns, channel] <- arr[
-        source_index + (channel - 1L) * source_plane_size
-      ]
-    }
-  }
-  out
 }
 
 #' Shift and scale the image extent, the way a user nudges an overlay.
