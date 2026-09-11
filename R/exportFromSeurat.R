@@ -100,6 +100,79 @@
   invisible(location)
 }
 
+.bpcellsCellNamesChecksum <- function(sidecar) {
+  names_file <- file.path(sidecar, "col_names")
+  if (!file.exists(names_file) || dir.exists(names_file)) {
+    stop("The BPCells sidecar has no cell-name index.", call. = FALSE)
+  }
+  checksum <- unname(tools::md5sum(names_file))
+  if (length(checksum) != 1L || is.na(checksum) || !nzchar(checksum)) {
+    stop("Could not checksum the BPCells cell-name index.", call. = FALSE)
+  }
+  checksum
+}
+
+.compactCountColumn <- function(values) {
+  if (
+    is.double(values) &&
+      identical(class(values), "numeric") &&
+      all(
+        is.na(values) |
+          (is.finite(values) &
+            values >= 0 &
+            values <= .Machine$integer.max &
+            values == floor(values))
+      )
+  ) {
+    return(as.integer(values))
+  }
+  values
+}
+
+.thinBpcellsExport <- function(export, sidecar) {
+  cells <- colnames(export$expression)
+  metadata <- export$meta_data
+  if (
+    !is.character(cells) ||
+      anyNA(cells) ||
+      any(!nzchar(cells)) ||
+      anyDuplicated(cells) ||
+      !is.data.frame(metadata) ||
+      !"cell_barcode" %in% names(metadata) ||
+      !identical(as.character(metadata$cell_barcode), cells)
+  ) {
+    stop(
+      "The BPCells sidecar and CRB metadata must contain the same cells in ",
+      "the same order.",
+      call. = FALSE
+    )
+  }
+
+  compact_projections <- character()
+  for (name in names(export$projections)) {
+    projection <- export$projections[[name]]
+    if (identical(rownames(projection), cells)) {
+      rownames(projection) <- NULL
+      export$projections[[name]] <- projection
+      compact_projections <- c(compact_projections, name)
+    }
+  }
+
+  metadata$cell_barcode <- NULL
+  for (name in intersect(c("nUMI", "nGene"), names(metadata))) {
+    metadata[[name]] <- .compactCountColumn(metadata[[name]])
+  }
+  export$meta_data <- metadata
+  export$expression <- NULL
+  export$crb_schema <- list(
+    version = 1L,
+    cell_names = "expression",
+    cell_names_md5 = .bpcellsCellNamesChecksum(sidecar),
+    projection_rownames = compact_projections
+  )
+  export
+}
+
 .readPublishedExportBackend <- function(final_file) {
   if (!file.exists(final_file) || dir.exists(final_file)) {
     return(NULL)
@@ -328,14 +401,15 @@
     }
     installed_sidecar <- TRUE
 
-    ## A BPCells handle serialises its absolute directory. Reopen it only after
-    ## the staged directory has reached its published path, then serialise the
-    ## CRB. H5 stores no live handle and needs no equivalent step.
+    ## Validate against the published BPCells sidecar, then omit the live
+    ## handle and repeated cell names from the CRB. Runtime reopens the sidecar
+    ## and restores the compacted fields.
     if (identical(expression_matrix_mode, "bpcells")) {
       export$setExpression(
         BPCells::open_matrix_dir(dir = final_sidecar),
         backend = "external"
       )
+      export <- .thinBpcellsExport(export, final_sidecar)
     }
   }
 
@@ -451,8 +525,9 @@
 #'   \item \code{"embedded"} stores the matrix inside the \code{.crb} file, as
 #'   before. Compatible with all existing \code{.crb} readers.
 #'   \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
-#'   next to the \code{.crb} and keeps only a lightweight handle in the
-#'   serialised object. Recommended for large sparse matrices. The resulting
+#'   next to the \code{.crb}; the Viewer restores its matrix handle and cell
+#'   index from that sidecar at runtime. Recommended for large sparse matrices.
+#'   The resulting
 #'   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
 #'   travels with it; the Shiny runtime re-resolves paths via
 #'   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
@@ -883,11 +958,9 @@ exportFromSeurat <- function(
     export$setExpression(expression_data)
   } else if (expression_matrix_mode == "bpcells") {
     ## Write the expression matrix to a BPCells on-disk directory sitting next
-    ## to the target .crb. Keep a BPCells IterableMatrix handle on the object
-    ## so that the in-place session (crb + sibling .bpcells dir on the same
-    ## machine, same paths) can use it immediately. Step 7.3's runtime attach
-    ## will additionally re-resolve the relative location when the crb has
-    ## been moved to a different machine or layout.
+    ## to the target .crb. Keep a BPCells IterableMatrix handle while the
+    ## export is assembled; publication validates it against the installed
+    ## sidecar and removes it from the serialized CRB.
     crb_dir <- export_stage_dir
     bpc_dirname <- .exportSidecarName(final_file, expression_matrix_mode)
     bpc_abs <- file.path(crb_dir, bpc_dirname)
@@ -945,9 +1018,8 @@ exportFromSeurat <- function(
     BPCells::transpose_storage_order(matrix = bpc_iter, outdir = bpc_abs)
     mat_handle <- BPCells::open_matrix_dir(dir = bpc_abs)
 
-    ## Carry the live handle (absolute path inside @dir -- BPCells normalises
-    ## it on open_matrix_dir()) AND the portable relative location tag. Step
-    ## 7.3's attach reads the tag, not @dir, so the crb stays portable.
+    ## Carry the live handle until publication and record the portable relative
+    ## location used to reopen it at runtime.
     export$setExpression(mat_handle, backend = "external")
     export$setExpressionBackend(type = "bpcells", location = bpc_dirname)
   } else if (expression_matrix_mode == "h5") {

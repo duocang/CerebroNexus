@@ -79,8 +79,9 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   \item \code{"embedded"} stores the matrix inside the \code{.crb} file, as
   before. Compatible with all existing \code{.crb} readers.
   \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
-  next to the \code{.crb} and keeps only a lightweight handle in the
-  serialised object. Recommended for large sparse matrices. The resulting
+  next to the \code{.crb}; the Viewer restores its matrix handle and cell
+  index from that sidecar at runtime. Recommended for large sparse matrices.
+  The resulting
   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
   travels with it; the Shiny runtime re-resolves paths via
   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
