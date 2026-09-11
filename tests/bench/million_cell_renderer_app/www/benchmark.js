@@ -18,9 +18,12 @@
     var positions = new Float32Array(count * 2);
     var colors = new Uint8Array(count * 4);
     var layers = new Uint32Array(count);
+    var state = 0x12345678;
     for (var i = 0; i < count; i++) {
-      var x = Math.imul(i + 1, 2654435761) >>> 0;
-      var y = Math.imul(i + 1, 2246822519) >>> 0;
+      state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+      var x = state >>> 0;
+      state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+      var y = state >>> 0;
       positions[i * 2] = x / 4294967295;
       positions[i * 2 + 1] = y / 4294967295;
       if (rgb) {
@@ -71,7 +74,7 @@
     options = options || {};
     var count = Math.max(1, Number(options.count) || 1000000);
     var repeats = Math.max(3, Number(options.repeats) || 15);
-    var batchSize = Math.max(1, Number(options.batchSize) || 10);
+    var batchSize = Math.max(1, Number(options.batchSize) || 1);
     var canvas = document.getElementById('benchmark-canvas');
     if (!global.CerebroPointRenderer) throw new Error('Renderer module not loaded.');
 
@@ -90,6 +93,8 @@
     });
     var firstFrameMs = (await frames(renderer, 1, 1, 1))[0];
     var categoricalFrames = await frames(renderer, repeats, 1, batchSize);
+    var categoricalImageBytes = Math.max(0,
+      Math.round((canvas.toDataURL('image/png').length - 22) * 0.75));
 
     buildStarted = performance.now();
     var rgb = pointData(count, true);
@@ -114,6 +119,7 @@
       firstFrameMs: firstFrameMs,
       panZoomMedianMs: percentile(categoricalFrames, 0.5),
       panZoomP95Ms: percentile(categoricalFrames, 0.95),
+      categoricalImageBytes: categoricalImageBytes,
       rgbBuildMs: rgbBuildMs,
       rgbUploadMs: rgbUploadMs,
       rgbMedianMs: percentile(rgbFrames, 0.5),
