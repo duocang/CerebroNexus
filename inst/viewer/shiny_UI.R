@@ -18,12 +18,18 @@ cerebroBox <- function(
   )
 }
 
-cerebroInfoButton <- function(id, ...) {
+cerebroInfoButton <- function(
+  id,
+  ...,
+  label = "info",
+  icon = NULL,
+  class = "btn-xs cerebro-info-btn"
+) {
   actionButton(
     inputId = id,
-    label = "info",
-    icon = NULL,
-    class = "btn-xs cerebro-info-btn",
+    label = label,
+    icon = icon,
+    class = class,
     title = "Show additional information for this panel.",
     ...
   )
@@ -60,7 +66,12 @@ cerebroVizPageHeader <- function(title, info_id, subtitle, meta_id = NULL) {
     class = "cerebro-viz-page-heading",
     tags$h3(title),
     tags$span(id = meta_id, class = "cerebro-viz-page-meta", subtitle),
-    cerebroInfoButton(info_id)
+    cerebroInfoButton(
+      info_id,
+      label = "Info",
+      icon = icon("circle-info"),
+      class = "cerebro-page-info-btn"
+    )
   )
 }
 

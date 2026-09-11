@@ -686,7 +686,8 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   background-repeat: no-repeat;
   background-size: 14px 14px;
 }
-.cerebro-more-btn {
+.cerebro-more-btn,
+.cerebro-page-info-btn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -704,11 +705,14 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   transition: background .18s ease, border-color .18s ease, transform .12s ease;
 }
 .cerebro-more-btn:hover,
-.cerebro-more-btn[aria-expanded="true"] {
+.cerebro-more-btn[aria-expanded="true"],
+.cerebro-page-info-btn:hover,
+.cerebro-page-info-btn:focus-visible {
   border-color: var(--c-amber);
   background: var(--c-amber-100);
 }
-.cerebro-more-btn:active { transform: scale(.955); }
+.cerebro-more-btn:active,
+.cerebro-page-info-btn:active { transform: scale(.955); }
 
 .cerebro-viz-toolbar .cerebro-toolbar-export {
   height: var(--c-toolbar-control-height);
