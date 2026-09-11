@@ -886,6 +886,7 @@
     p.canvas.style.width = width + 'px';
     p.canvas.style.height = height + 'px';
     p.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (p.gpu) p.gpu.resize(width, height, dpr);
     if (p.pane) p.pane.classList.toggle('cv-narrow', width < 420);
     project(p);
   }
@@ -1283,9 +1284,154 @@
     return { mask: mask, count: count };
   }
 
+  var GPU_MIN_CELLS = 20000;
+  var gpuColorCache = new Map();
+  function gpuColor(value) {
+    value = cssColor(value, '#888888');
+    if (gpuColorCache.has(value)) return gpuColorCache.get(value);
+    var rgba;
+    if (_colCtx) {
+      _colCtx.clearRect(0, 0, 1, 1);
+      _colCtx.globalAlpha = 1;
+      _colCtx.fillStyle = value;
+      _colCtx.fillRect(0, 0, 1, 1);
+      rgba = Array.prototype.slice.call(_colCtx.getImageData(0, 0, 1, 1).data);
+    } else {
+      rgba = rgbChannels(value).concat(255);
+    }
+    gpuColorCache.set(value, rgba);
+    return rgba;
+  }
+
+  function gpuFilterKey() {
+    var groups = Object.keys(groupFilter).sort().map(function (name) {
+      var values = groupFilter[name];
+      return name + ':' + (values ? Array.from(values).sort().join(',') : '');
+    }).join('|');
+    return Array.from(hidden).sort().join(',') + '|' + groups;
+  }
+
+  function gpuDataState(p) {
+    var mode = panelColorMode(p), field = fieldForMode(mode), group = catOf(mode);
+    return {
+      data: D,
+      unit: spaceById[p.spaceId] && spaceById[p.spaceId]._unit,
+      mode: mode,
+      gene: D.gene && D.gene.v,
+      rgbR: D.rgb && D.rgb.r,
+      rgbG: D.rgb && D.rgb.g,
+      rgbB: D.rgb && D.rgb.b,
+      fieldValues: field && field.v,
+      fieldColors: field && field.colors && field.colors.join(','),
+      fieldPalette: field && field.palette && field.palette.join(','),
+      groupValues: group && group.values,
+      groupColors: group && group.colors && group.colors.join(','),
+      pctMask: pctMask,
+      dissolve: dissolveThresh,
+      filter: gpuFilterKey(),
+      selection: sel,
+      niche: nicheSet,
+      opacity: pointOpacityOf(p),
+      clip: colorClip
+    };
+  }
+
+  function sameGpuDataState(a, b) {
+    if (!a || !b) return false;
+    return Object.keys(a).every(function (key) { return a[key] === b[key]; });
+  }
+
+  function gpuEligible(p) {
+    if (!p.gpu || !p.gpu.isReady() || !D || D.n < GPU_MIN_CELLS) return false;
+    var space = spaceById[p.spaceId], unit = space && space._unit;
+    return !!(space && unit && !unit.nz && !space.background_scope &&
+      !space._axisSpec && !space.trajectory && !(space.hulls && space.hulls.length));
+  }
+
+  function hideGpu(p) {
+    if (!p.gpuCanvas) return;
+    p.gpuCanvas.style.display = 'none';
+    p.canvas.classList.remove('cv-gpu-overlay');
+    if (p.gpu) p.gpu.clear();
+  }
+
+  function attachGpu(p) {
+    if (!window.CerebroPointRenderer || !window.CerebroPointRenderer.create) return;
+    var canvas = document.createElement('canvas');
+    canvas.className = 'cv-gpu-layer';
+    canvas.style.display = 'none';
+    canvas.setAttribute('aria-hidden', 'true');
+    p.canvas.parentNode.insertBefore(canvas, p.canvas.nextSibling);
+    try {
+      p.gpuCanvas = canvas;
+      p.gpu = window.CerebroPointRenderer.create(canvas);
+      canvas._cerebroPointRenderer = p.gpu;
+      p.gpu.ready.then(function () {
+        if (D && p.spaceId) draw(p);
+      }).catch(function () { hideGpu(p); });
+    } catch (error) {
+      canvas.remove();
+      p.gpuCanvas = null;
+    }
+  }
+
+  function buildGpuData(p, shownMask) {
+    var state = gpuDataState(p);
+    if (sameGpuDataState(state, p.gpuDataState)) return p.gpuData;
+    var unit = state.unit, order = paintOrder(p), n = D.n;
+    var positions = new Float32Array(n * 2);
+    var colors = new Uint8Array(n * 4);
+    var layers = new Uint32Array(n);
+    var rgb = panelColorMode(p) === RGB_MODE;
+    var hiSet = (sel && sel.size) ? sel : nicheSet;
+    var foreground = false;
+    for (var at = 0; at < n; at++) {
+      var i = order ? order[at] : at;
+      positions[at * 2] = unit.nx[i];
+      positions[at * 2 + 1] = unit.ny[i];
+      if (!unit.ok[i] || !shownMask[i]) continue;
+      var fg = rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i));
+      var alpha = hiSet ? (fg ? 0.95 : 0.05)
+        : rgb ? (fg ? 1 : 0.5 * pointOpacityOf(p)) : pointOpacityOf(p);
+      var rgba = gpuColor(colorOf(i, p));
+      colors[at * 4] = rgba[0];
+      colors[at * 4 + 1] = rgba[1];
+      colors[at * 4 + 2] = rgba[2];
+      colors[at * 4 + 3] = Math.round(rgba[3] * alpha);
+      layers[at] = fg ? 1 : 0;
+      foreground = foreground || fg;
+    }
+    p.gpuDataState = state;
+    p.gpuData = {
+      positions: positions,
+      colors: colors,
+      layers: layers,
+      count: n,
+      foreground: foreground
+    };
+    return p.gpuData;
+  }
+
+  function drawGpuPoints(p, shownMask, border) {
+    if (!gpuEligible(p)) { hideGpu(p); return false; }
+    var data = buildGpuData(p, shownMask);
+    p.gpu.setData(data);
+    var ok = p.gpu.draw({
+      view: p.view || { cx: 0.5, cy: 0.5, span: 1 },
+      rect: { x: p._sox, y: p._soy, width: p._SX, height: p._SY },
+      pointSize: p._renderPointSize,
+      border: border || null
+    });
+    if (!ok) { hideGpu(p); return false; }
+    p.gpuCanvas.style.display = 'block';
+    p.canvas.classList.add('cv-gpu-overlay');
+    p.gpuCanvas.dataset.pointCount = String(data.count);
+    return true;
+  }
+
   function draw(p, shownMask) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
-    if (!p.sx) return;
+    if (!p.sx) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
@@ -1326,8 +1472,9 @@
     // otherwise. In the batched path this also fixes the ORDER OF THE BUCKETS:
     // they are created as their first member is met, and object keys keep
     // insertion order, so filling them low-to-high paints them low-to-high.
-    var ord = paintOrder(p);
-    for (var layer = 0; layer < 2; layer++) {
+    var gpuDrawn = drawGpuPoints(p, shownMask, border);
+    var ord = gpuDrawn ? null : paintOrder(p);
+    for (var layer = 0; !gpuDrawn && layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
         : rgb ? (layer === 1 ? 1 : 0.5 * panelPointOpacity) : panelPointOpacity;
       if (n >= BATCH_MIN) {
@@ -2142,6 +2289,15 @@
       var canvasY = canvasRect.top - bounds.top + padding;
       context.fillStyle = '#ffffff';
       context.fillRect(canvasX, canvasY, canvasRect.width, canvasRect.height);
+      if (panel.gpuCanvas && panel.gpuCanvas.style.display !== 'none') {
+        context.drawImage(
+          panel.gpuCanvas,
+          canvasX,
+          canvasY,
+          canvasRect.width,
+          canvasRect.height
+        );
+      }
       context.drawImage(
         panel.canvas,
         canvasX,
@@ -3416,7 +3572,9 @@
         // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
-        view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null };
+        view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null,
+        gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null };
+      attachGpu(p);
       // The minimap is a FIXED size, so its backing store is set once here
       // rather than on every re-fit.
       if (mini) {
@@ -5094,6 +5252,7 @@
       p.miniBg = null; p.miniUnit = null;
       if (p.mini) p.mini.classList.remove('is-on');
       if (p.ctx) p.ctx.clearRect(0, 0, p.W, p.H);
+      hideGpu(p);
       if (p.pane) p.pane.classList.add('cv-hidden');
     });
     var meta = $('cv-meta');
