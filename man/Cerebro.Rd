@@ -45,6 +45,10 @@ introduce \code{type = "h5"} / \code{"bpcells"} with an external
 existed) load with \code{expression_backend = NULL}; \code{getExpressionBackend()}
 treats that as \code{"embedded"} for backward compatibility.}
 
+    \item{\code{crb_schema}}{Optional description of fields omitted from the
+serialized CRB and restored from an external expression backend at
+runtime. Older and embedded CRBs leave this as \code{NULL}.}
+
     \item{\code{meta_data}}{\code{data.frame} that contains cell meta data.}
 
     \item{\code{projections}}{\code{list} that contains projections/dimensional

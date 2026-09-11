@@ -783,7 +783,32 @@ test_that("a sample-split object exports every cell in bpcells mode", {
   expect_true(dir.exists(matrix_dir))
   on_disk <- BPCells::open_matrix_dir(dir = matrix_dir)
   expect_equal(ncol(on_disk), ncol(obj))
-  expect_equal(nrow(readRDS(crb)$getMetaData()), ncol(obj))
+
+  thin <- readRDS(crb)
+  expect_null(thin$expression)
+  expect_identical(thin$crb_schema$version, 1L)
+  expect_identical(thin$crb_schema$cell_names, "expression")
+  expect_identical(thin$crb_schema$projection_rownames, "umap")
+  expect_false("cell_barcode" %in% names(thin$meta_data))
+  expect_type(thin$meta_data$nUMI, "integer")
+  expect_type(thin$meta_data$nGene, "integer")
+  expect_false(identical(rownames(thin$projections$umap), colnames(obj)))
+
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  hydrated <- runtime$.attachExternalExpression(thin, crb)
+
+  expect_s4_class(hydrated$expression, "MatrixDir")
+  expect_identical(hydrated$meta_data$cell_barcode, colnames(obj))
+  expect_identical(rownames(hydrated$projections$umap), colnames(obj))
+  expect_equal(nrow(hydrated$getMetaData()), ncol(obj))
+
+  mismatched <- readRDS(crb)
+  mismatched$crb_schema$cell_names_md5 <- paste(rep("0", 32L), collapse = "")
+  expect_error(
+    runtime$.attachExternalExpression(mismatched, crb),
+    "cell-name index does not match"
+  )
 })
 
 test_that("a layer asked for by name is not joined away underneath the caller", {

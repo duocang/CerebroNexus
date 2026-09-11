@@ -60,6 +60,11 @@ Cerebro <- R6::R6Class(
     #' treats that as \code{"embedded"} for backward compatibility.
     expression_backend = NULL,
 
+    #' @field crb_schema Optional description of fields omitted from the
+    #' serialized CRB and restored from an external expression backend at
+    #' runtime. Older and embedded CRBs leave this as \code{NULL}.
+    crb_schema = NULL,
+
     #' @field meta_data \code{data.frame} that contains cell meta data.
     meta_data = data.frame(),
 
