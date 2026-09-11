@@ -782,6 +782,7 @@ test_that("a sample-split object exports every cell in bpcells mode", {
   matrix_dir <- file.path(out_dir, "external.bpcells")
   expect_true(dir.exists(matrix_dir))
   on_disk <- BPCells::open_matrix_dir(dir = matrix_dir)
+  expect_true(on_disk@transpose)
   expect_equal(ncol(on_disk), ncol(obj))
   expect_equal(nrow(readRDS(crb)$getMetaData()), ncol(obj))
 })

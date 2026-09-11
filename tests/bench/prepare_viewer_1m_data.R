@@ -164,7 +164,10 @@
   if (dir.exists(paths$seurat_sidecar)) {
     unlink(paths$seurat_sidecar, recursive = TRUE, force = TRUE)
   }
-  BPCells::write_matrix_dir(selected_matrix, dir = paths$seurat_sidecar)
+  BPCells::transpose_storage_order(
+    selected_matrix,
+    outdir = paths$seurat_sidecar
+  )
   counts <- BPCells::open_matrix_dir(paths$seurat_sidecar)
   object <- SeuratObject::CreateSeuratObject(
     counts = counts,

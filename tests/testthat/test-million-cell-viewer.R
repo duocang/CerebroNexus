@@ -52,3 +52,48 @@ test_that("the 1M preparation keeps unique gene symbols", {
     "non-empty"
   )
 })
+
+test_that("million-cell hover stays columnar until the browser needs it", {
+  utility <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  columns <- utility$cerebroProjectionHoverColumns(
+    data.frame(
+      cell_barcode = c("cell-1", "cell-2"),
+      nUMI = c(1234, 9),
+      nGene = c(321, 4),
+      cluster = c("B", "A")
+    ),
+    groups = "cluster"
+  )
+
+  expect_identical(
+    vapply(columns, `[[`, character(1), "label"),
+    c("Transcripts", "Expressed genes", "cluster")
+  )
+  expect_identical(columns[[3L]]$levels, c("B", "A"))
+  expect_identical(columns[[3L]]$values, c(0L, 1L))
+})
+
+test_that("specialist pages do not request the full linked bundle", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(engine, "function singlePayloadBundle", fixed = TRUE)
+  expect_match(engine, "var vis = linkedVis;", fixed = TRUE)
+  expect_no_match(engine, "linkedVis || !!singleId", fixed = TRUE)
+})
+
+test_that("gene controls load transcriptome choices server-side", {
+  source <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "UI_projection_input_type.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_no_match(source, "list_of_genes()", fixed = TRUE)
+  expect_match(source, "serverSideGeneSelector(", fixed = TRUE)
+})

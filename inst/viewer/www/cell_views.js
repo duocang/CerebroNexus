@@ -2990,9 +2990,36 @@
   // while moving the mouse and, on a data set with several grouping variables,
   // a tooltip taller than what it is pointing at.
   var HOVER_MAX_GROUPS = 6;
+  function singleHoverColumnValue(column, i) {
+    var value = column.values && column.values[i];
+    if (Array.isArray(column.levels)) {
+      value = column.levels[Number(value)];
+    }
+    if (value == null || (typeof value === 'number' && !isFinite(value))) {
+      return 'NA';
+    }
+    if (column.format === 'integer') {
+      var number = Number(value);
+      return isFinite(number) ? Math.round(number).toLocaleString('en-US') : 'NA';
+    }
+    if (column.format === 'fixed') {
+      var fixed = Number(value);
+      return isFinite(fixed) ? fixed.toFixed(Number(column.digits) || 0) : 'NA';
+    }
+    return String(value);
+  }
   function hoverHtml(i, pinned) {
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
+      var columns = singleSpace && singleSpace._hoverColumns;
+      if (Array.isArray(columns) && columns.length) {
+        var lines = ['Cell: ' + (D.cells[i] || '')];
+        columns.forEach(function (column) {
+          lines.push(column.label + ': ' + singleHoverColumnValue(column, i));
+        });
+        return '<div class="cv-tip-row">' +
+          esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>';
+      }
       var raw = singleSpace && singleSpace._hover && singleSpace._hover[i];
       var text = String(raw || D.cells[i] || '')
         .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
@@ -5434,7 +5461,7 @@
     return true;
   }
   function singleIndex() {
-    var cells = linkedBundle && linkedBundle.cells;
+    var cells = D && D.cells;
     if (cells === singleIndexCells && singleIndexMap) return singleIndexMap;
     var out = new Map();
     if (Array.isArray(cells)) {
@@ -5444,7 +5471,28 @@
     return singleIndexMap;
   }
   function emptyVector(value) {
-    return new Array(linkedBundle.n || (linkedBundle.cells || []).length).fill(value);
+    return new Array(D && (D.n || (D.cells || []).length) || 0).fill(value);
+  }
+  function singlePayloadCells(payload) {
+    var keys = payload && payload.data && payload.data.selection_key;
+    if (!Array.isArray(keys)) return [];
+    if (!keys.length || !Array.isArray(keys[0])) return keys.map(String);
+    return keys.reduce(function (cells, group) {
+      return cells.concat((group || []).map(String));
+    }, []);
+  }
+  function singlePayloadBundle(id, payload) {
+    var cells = singlePayloadCells(payload);
+    return {
+      dataset_id: 'single:' + id + ':' + cells.length,
+      cells: cells,
+      n: cells.length,
+      groups: {},
+      cat_extra: {},
+      fields: {},
+      projections: {},
+      spaces: []
+    };
   }
   function alignSingleCoordinates(data, nested) {
     var index = singleIndex();
@@ -5452,6 +5500,17 @@
     var groups = emptyVector(-1), levels = [], colors = [];
     var hover = emptyVector('');
     var hoverEnabled = emptyVector(true);
+    var sourceHoverColumns = data.hover && Array.isArray(data.hover.columns)
+      ? data.hover.columns : [];
+    var hoverColumns = sourceHoverColumns.map(function (column) {
+      return {
+        label: String(column.label || ''),
+        format: column.format || null,
+        digits: column.digits,
+        levels: Array.isArray(column.levels) ? column.levels.map(String) : null,
+        values: emptyVector(null)
+      };
+    });
     if (nested) {
       var traces = Array.isArray(data.meta.traces) ? data.meta.traces : [];
       var hoverModes = data.hover && data.hover.hoverinfo;
@@ -5470,6 +5529,10 @@
           if (gz[j] != null) z[at] = Number(gz[j]);
           groups[at] = group; hover[at] = gh[j] || '';
           hoverEnabled[at] = hoverMode !== 'skip';
+          sourceHoverColumns.forEach(function (column, columnIndex) {
+            var values = column.values && column.values[group];
+            hoverColumns[columnIndex].values[at] = values ? values[j] : null;
+          });
         }
       });
     } else {
@@ -5484,10 +5547,15 @@
         if (hz[k] != null) z[pos] = Number(hz[k]);
         hover[pos] = hh[k] || '';
         hoverEnabled[pos] = enabled;
+        sourceHoverColumns.forEach(function (column, columnIndex) {
+          hoverColumns[columnIndex].values[pos] = column.values
+            ? column.values[k] : null;
+        });
       }
     }
     return { x: x, y: y, z: z, groups: groups,
-      levels: levels, colors: colors, hover: hover, hoverEnabled: hoverEnabled };
+      levels: levels, colors: colors, hover: hover, hoverEnabled: hoverEnabled,
+      hoverColumns: hoverColumns };
   }
   function quantisedField(label, raw, keys, data, panelScale) {
     var index = singleIndex(), values = emptyVector(null), min = Infinity, max = -Infinity;
@@ -5680,6 +5748,7 @@
       var space = { id: spaceId, label: label || id, x: aligned.x, y: aligned.y };
       space._projectionName = spaceId;
       space._hover = aligned.hover;
+      space._hoverColumns = aligned.hoverColumns;
       space._hoverEnabled = hasHover;
       space._hoverMask = aligned.hoverEnabled;
       if (hasZ) space.z = aligned.z;
@@ -5779,8 +5848,10 @@
   }
   function activateSingle(id, resetAxes, preserveTargetState) {
     var payload = singleViews[id];
-    if (!payload || !linkedBundle || rebuildingBase) return false;
-    if (!singleActive && !linkedState) linkedState = exportWorkspace();
+    if (!payload || rebuildingBase) return false;
+    if (!singleActive && linkedBundle && D && !linkedState) {
+      linkedState = exportWorkspace();
+    }
     if (CBViewState.shouldStashSingleState(
       singleActive,
       id,
@@ -5793,9 +5864,10 @@
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
     setSelectionZoomed(false);
     if (!mountSingleSurface(id)) { singleActive = null; return false; }
-    D = Object.assign({}, linkedBundle, {
-      fields: Object.assign({}, linkedBundle.fields || {}),
-      cat_extra: Object.assign({}, linkedBundle.cat_extra || {})
+    var base = singlePayloadBundle(id, payload);
+    D = Object.assign({}, base, {
+      fields: Object.assign({}, base.fields),
+      cat_extra: Object.assign({}, base.cat_extra)
     });
     spaceById = {}; spatialTemplate = null; _clipD = null;
     var built = buildSingleSpaces(id, payload);
@@ -6797,7 +6869,7 @@
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
       var singleId = visibleSingleId();
-      var vis = linkedVis || !!singleId;
+      var vis = linkedVis;
       var key = linkedVis ? 'linked' : (singleId || 'hidden');
       var host = singleId && singleHost(singleId);
       var surface = host && host.querySelector('.cerebro-cell-view-surface');
@@ -6811,10 +6883,16 @@
           priority: 'event'
         });
       }
-      if (singleId && linkedBundle && singleViews[singleId]) {
+      if (singleId && singleViews[singleId]) {
         activateSingle(singleId);
       } else if (singleActive) {
-        activateLinked();
+        if (linkedVis && linkedBundle) {
+          activateLinked();
+        } else {
+          restoreLinkedSurface();
+          singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+          if (linkedVis) showUnavailable('Loading linked views…');
+        }
       }
       if (Shiny.setInputValue) {
         Shiny.setInputValue('coordviews_visible', vis);

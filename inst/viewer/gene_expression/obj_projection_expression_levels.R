@@ -17,6 +17,7 @@ expression_projection_expression_levels <- reactive({
   )
 
   withProgress(message = 'Calculating expression levels...', value = 0.2, {
+    ds <- data_set()
     cells_to_show <- expression_projection_cells_to_show()
     ## expression_projection_cells_to_show() returns numeric row ids (see
     ## obj_projection_cells_to_show.R: `cells_to_show <- cells_df$row_id`),
@@ -26,7 +27,7 @@ expression_projection_expression_levels <- reactive({
     ## match(cells, colnames(self$expression)) -- matching numbers against
     ## barcode strings returns NA. Translate once here so every backend sees
     ## the documented contract: cells = character barcodes.
-    cells_to_show_bc <- colnames(data_set()$expression)[cells_to_show]
+    cells_to_show_bc <- colnames(ds$expression)[cells_to_show]
     n_cells <- length(cells_to_show)
     genes_data <- expression_selected_genes()
 
@@ -65,18 +66,30 @@ expression_projection_expression_levels <- reactive({
       ## so the former IterableMatrix special case is no longer needed.
       if (identical(display_mode, "rgb")) {
         incProgress(0.3, detail = "Calculating RGB co-expression...")
-        expression_levels <- lapply(genes_data[["rgb_genes"]], function(gene) {
-          if (is.null(gene) || !gene %in% genes_present) {
+        rgb_genes <- genes_data[["rgb_genes"]]
+        rgb_genes_present <- unique(unlist(rgb_genes, use.names = FALSE))
+        rgb_genes_present <- rgb_genes_present[
+          !is.na(rgb_genes_present) &
+            nzchar(rgb_genes_present) &
+            rgb_genes_present %in% genes_present
+        ]
+        expression_matrix <- ds$getExpressionMatrix(
+          cells = cells_to_show_bc,
+          genes = rgb_genes_present
+        )
+        expression_levels <- lapply(rgb_genes, function(gene) {
+          if (
+            length(gene) != 1L ||
+              is.na(gene) ||
+              !gene %in% rgb_genes_present
+          ) {
             return(rep(0, n_cells))
           }
-          unname(as.numeric(data_set()$getExpressionMatrix(
-            cells = cells_to_show_bc,
-            genes = gene
-          )))
+          unname(as.numeric(expression_matrix[gene, , drop = FALSE]))
         })
       } else if (identical(display_mode, "separate")) {
         incProgress(0.3, detail = "Extracting matrix for multiple panels...")
-        expression_matrix <- data_set()$getExpressionMatrix(
+        expression_matrix <- ds$getExpressionMatrix(
           cells = cells_to_show_bc,
           genes = genes_present
         )
@@ -89,7 +102,7 @@ expression_projection_expression_levels <- reactive({
         }
       } else if (length(genes_present) == 1) {
         incProgress(0.3, detail = "Extracting single gene expression...")
-        expression_matrix <- data_set()$getExpressionMatrix(
+        expression_matrix <- ds$getExpressionMatrix(
           cells = cells_to_show_bc,
           genes = genes_present
         )
@@ -98,7 +111,7 @@ expression_projection_expression_levels <- reactive({
         incProgress(0.3, detail = "Calculating mean expression...")
         ## Per-cell mean across the requested genes, restricted to cells_to_show.
         expression_levels <- unname(
-          data_set()$getMeanExpressionForCells(
+          ds$getMeanExpressionForCells(
             cells = cells_to_show_bc,
             genes = genes_present
           )
