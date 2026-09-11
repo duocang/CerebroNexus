@@ -706,9 +706,12 @@
   }
 
   // ---- panel geometry + projection ----------------------------------------
-  function project(p) {
+  function project(p, forceCpu) {
     var sp = spaceById[p.spaceId];
-    if (!sp) { p.sx = null; p.sy = null; return; }
+    if (!sp) {
+      p.sx = null; p.sy = null; p.gpuTransformOnly = false;
+      return;
+    }
     if (!sp._unit) sp._unit = unitOf(sp);
     var u = sp._unit, n = D.n;
     // Axis'd spaces (the clone panel) reserve room on the left for the y-label
@@ -722,10 +725,15 @@
     var ox = padL, oy = padT;
     p._SX = SX; p._SY = SY; p._S = Math.min(SX, SY);
     p._sox = ox; p._soy = oy;                // for dataToScreen (image bounds)
+    p.ok = u.ok;
+    if (!forceCpu && gpuEligible(p)) {
+      p.gpuTransformOnly = true;
+      return;
+    }
+    p.gpuTransformOnly = false;
     if (!p.sx || p.sx.length !== n) {
       p.sx = new Float32Array(n); p.sy = new Float32Array(n);
     }
-    p.ok = u.ok;
     // Inline the unitToScreen transform (avoids per-cell allocation on big sets).
     var v = p.view;
     // ---- 3-D: rotate about the cloud's centre, then flatten ---------------
@@ -786,6 +794,24 @@
         p._dmin = -0.5; p._dspan = 1;
       }
     }
+  }
+
+  function pointScreenX(p, i) {
+    if (!p.gpuTransformOnly) return p.sx && p.sx[i];
+    var u = spaceById[p.spaceId]._unit, x = u.nx[i], view = p.view;
+    if (view) x = (x - view.cx) / view.span + 0.5;
+    return p._sox + x * p._SX;
+  }
+
+  function pointScreenY(p, i) {
+    if (!p.gpuTransformOnly) return p.sy && p.sy[i];
+    var u = spaceById[p.spaceId]._unit, y = u.ny[i], view = p.view;
+    if (view) y = (y - view.cy) / view.span + 0.5;
+    return p._soy + p._SY - y * p._SY;
+  }
+
+  function ensureScreenProjection(p) {
+    if (p.gpuTransformOnly) project(p, true);
   }
 
   // A committed brush is part of the data conversation, not a decoration at a
@@ -1225,7 +1251,7 @@
   function drawMinimap(p) {
     if (!p.mini || !p.mctx) return;
     var sp = spaceById[p.spaceId], u = sp && sp._unit;
-    var on = !!(p.view && D && p.sx && u);
+    var on = !!(p.view && D && p.ok && u);
     p.mini.classList.toggle('is-on', on);
     if (!on) return;
     if (!p.miniBg || p.miniUnit !== u) p.miniBg = buildMiniBg(p, u);
@@ -1276,7 +1302,22 @@
     }
   }
 
+  var allShownData = null, allShownMask = null;
   function shownState(p) {
+    var filtered = pctMask || dissolveThresh != null || hidden.size;
+    if (!filtered) {
+      for (var name in groupFilter) {
+        if (groupFilter[name]) { filtered = true; break; }
+      }
+    }
+    if (!filtered) {
+      if (allShownData !== D) {
+        allShownData = D;
+        allShownMask = new Uint8Array(D.n);
+        allShownMask.fill(1);
+      }
+      return { mask: allShownMask, count: D.n };
+    }
     var mask = new Uint8Array(D.n), count = 0;
     for (var i = 0; i < D.n; i++) {
       if (shown(i, p)) { mask[i] = 1; count++; }
@@ -1375,46 +1416,47 @@
     }
   }
 
-  function buildGpuData(p, shownMask) {
+  function buildGpuData(p, shownMask, shownCount) {
     var state = gpuDataState(p);
     if (sameGpuDataState(state, p.gpuDataState)) return p.gpuData;
     var unit = state.unit, order = paintOrder(p), n = D.n;
-    var positions = new Float32Array(n * 2);
-    var colors = new Uint8Array(n * 4);
-    var layers = new Uint32Array(n);
+    var positions = new Float32Array(shownCount * 2);
+    var colors = new Uint8Array(shownCount * 4);
+    var layers = new Uint32Array(shownCount);
     var rgb = panelColorMode(p) === RGB_MODE;
     var hiSet = (sel && sel.size) ? sel : nicheSet;
-    var foreground = false;
+    var foreground = false, out = 0;
     for (var at = 0; at < n; at++) {
       var i = order ? order[at] : at;
-      positions[at * 2] = unit.nx[i];
-      positions[at * 2 + 1] = unit.ny[i];
       if (!unit.ok[i] || !shownMask[i]) continue;
+      positions[out * 2] = unit.nx[i];
+      positions[out * 2 + 1] = unit.ny[i];
       var fg = rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i));
       var alpha = hiSet ? (fg ? 0.95 : 0.05)
         : rgb ? (fg ? 1 : 0.5 * pointOpacityOf(p)) : pointOpacityOf(p);
       var rgba = gpuColor(colorOf(i, p));
-      colors[at * 4] = rgba[0];
-      colors[at * 4 + 1] = rgba[1];
-      colors[at * 4 + 2] = rgba[2];
-      colors[at * 4 + 3] = Math.round(rgba[3] * alpha);
-      layers[at] = fg ? 1 : 0;
+      colors[out * 4] = rgba[0];
+      colors[out * 4 + 1] = rgba[1];
+      colors[out * 4 + 2] = rgba[2];
+      colors[out * 4 + 3] = Math.round(rgba[3] * alpha);
+      layers[out] = fg ? 1 : 0;
       foreground = foreground || fg;
+      out++;
     }
     p.gpuDataState = state;
     p.gpuData = {
       positions: positions,
       colors: colors,
       layers: layers,
-      count: n,
+      count: out,
       foreground: foreground
     };
     return p.gpuData;
   }
 
-  function drawGpuPoints(p, shownMask, border) {
+  function drawGpuPoints(p, shownMask, shownCount, border) {
     if (!gpuEligible(p)) { hideGpu(p); return false; }
-    var data = buildGpuData(p, shownMask);
+    var data = buildGpuData(p, shownMask, shownCount);
     p.gpu.setData(data);
     var ok = p.gpu.draw({
       view: p.view || { cx: 0.5, cy: 0.5, span: 1 },
@@ -1429,9 +1471,9 @@
     return true;
   }
 
-  function draw(p, shownMask) {
+  function draw(p, shownMask, shownCount) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
-    if (!p.sx) { hideGpu(p); return; }
+    if (!p.ok) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
@@ -1455,7 +1497,11 @@
     // 2n times below (two layers) plus once in the evidence pass; precompute it
     // once. Uint8 mask, indexed instead of recomputed — halves the per-cell work
     // on the hot lasso-drag redraw path.
-    if (!shownMask || shownMask.length !== n) shownMask = shownState(p).mask;
+    if (!shownMask || shownMask.length !== n) {
+      var shown = shownState(p);
+      shownMask = shown.mask;
+      shownCount = shown.count;
+    }
     // Within one layer the alpha is CONSTANT (it depends only on fg/hiSet, which
     // is what defines the layer), so a layer can be drawn as one path per colour
     // instead of one path per cell. On a large data set that turns ~n canvas
@@ -1472,7 +1518,8 @@
     // otherwise. In the batched path this also fixes the ORDER OF THE BUCKETS:
     // they are created as their first member is met, and object keys keep
     // insertion order, so filling them low-to-high paints them low-to-high.
-    var gpuDrawn = drawGpuPoints(p, shownMask, border);
+    var gpuDrawn = drawGpuPoints(p, shownMask, shownCount, border);
+    if (!gpuDrawn) ensureScreenProjection(p);
     var ord = gpuDrawn ? null : paintOrder(p);
     for (var layer = 0; !gpuDrawn && layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
@@ -1519,7 +1566,8 @@
       c.globalAlpha = 1; c.strokeStyle = '#1f2937'; c.lineWidth = 1.4;
       for (i = 0; i < n; i++) {
         if (!p.ok[i] || !shownMask[i] || D.trekker.evidence[i] !== 1) continue;
-        c.beginPath(); c.arc(p.sx[i], p.sy[i], p._renderPointSize + 2.5, 0, 6.2832); c.stroke();
+        c.beginPath(); c.arc(pointScreenX(p, i), pointScreenY(p, i),
+          p._renderPointSize + 2.5, 0, 6.2832); c.stroke();
       }
     }
     drawAxes3D(p);
@@ -1530,17 +1578,20 @@
     if (hoverCell != null && hoverCell !== pick && p.ok[hoverCell]) {
       c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 3.5, 0, 6.2832);
+      c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
+        p._renderPointSize + 3.5, 0, 6.2832);
       c.stroke();
       c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 5, 0, 6.2832);
+      c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
+        p._renderPointSize + 5, 0, 6.2832);
       c.stroke();
     }
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
-      c.beginPath(); c.arc(p.sx[pick], p.sy[pick], p._renderPointSize + 4, 0, 6.2832); c.stroke();
+      c.beginPath(); c.arc(pointScreenX(p, pick), pointScreenY(p, pick),
+        p._renderPointSize + 4, 0, 6.2832); c.stroke();
     }
     // Trekker: dashed niche-radius circle around the picked nucleus (physical
     // panel). Radius µm → screen px via the same data→unit→screen scale.
@@ -1554,11 +1605,13 @@
         c.globalAlpha = 1;
         c.fillStyle = 'rgba(249,115,22,.10)';
         c.beginPath();
-        c.ellipse(p.sx[pick], p.sy[pick], radiusX, radiusY, 0, 0, 6.2832);
+        c.ellipse(pointScreenX(p, pick), pointScreenY(p, pick),
+          radiusX, radiusY, 0, 0, 6.2832);
         c.fill();
         c.strokeStyle = '#f97316'; c.lineWidth = 2.5; c.setLineDash([7, 4]);
         c.beginPath();
-        c.ellipse(p.sx[pick], p.sy[pick], radiusX, radiusY, 0, 0, 6.2832);
+        c.ellipse(pointScreenX(p, pick), pointScreenY(p, pick),
+          radiusX, radiusY, 0, 0, 6.2832);
         c.stroke();
         c.setLineDash([]);
       }
@@ -1597,7 +1650,7 @@
       if (!p.spaceId) return;
       var state = shownState(p);
       if (!first) first = state;
-      draw(p, state.mask);
+      draw(p, state.mask, state.count);
     });
     if (first) renderShownCount(first.count);
     updateResetButtons();
@@ -1702,6 +1755,7 @@
   // here: its visibility predicate (p.ok + shown) and fixed hit radius are this
   // engine's, not shared.
   function nearest(p, mx, my) {
+    ensureScreenProjection(p);
     var best = -1, bd = 200, n = D.n, i;
     for (i = 0; i < n; i++) {
       if (!p.ok[i] || !shown(i, p)) continue;
@@ -3182,9 +3236,12 @@
     centreCard();                       // land it before measuring the landing
     var cr = card.getBoundingClientRect();
     var from = null;
-    if (p && p.sx && p.canvas) {
+    if (p && p.ok && p.canvas) {
       var canv = p.canvas.getBoundingClientRect();
-      from = { x: canv.left + p.sx[i], y: canv.top + p.sy[i] };
+      from = {
+        x: canv.left + pointScreenX(p, i),
+        y: canv.top + pointScreenY(p, i)
+      };
     }
     // The start state must be written with transitions OFF. Left on, the browser
     // coalesces "jump to the point" and "go back to centre" into a single
@@ -3256,9 +3313,10 @@
   // say what they are.
   function placeTip(p, tip, i) {
     var tw = tip.offsetWidth, th = tip.offsetHeight, m = 4;
-    var tx = p.sx[i] + 14, ty = p.sy[i] - th - 10;
-    if (tx + tw > p.W - m) tx = p.sx[i] - tw - 14;   // flip left
-    if (ty < m) ty = p.sy[i] + 14;                   // flip below
+    var px = pointScreenX(p, i), py = pointScreenY(p, i);
+    var tx = px + 14, ty = py - th - 10;
+    if (tx + tw > p.W - m) tx = px - tw - 14;   // flip left
+    if (ty < m) ty = py + 14;                   // flip below
     tx = Math.max(m, Math.min(tx, p.W - tw - m));
     ty = Math.max(m, Math.min(ty, p.H - th - m));
     tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
@@ -3315,7 +3373,7 @@
     if (pinnedTip.panel !== p) return;
     var i = pinnedTip.cell, tip = $(p.tipId);
     if (!tip) return;
-    var x = p.sx[i], y = p.sy[i];
+    var x = pointScreenX(p, i), y = pointScreenY(p, i);
     if (x == null || isNaN(x) || x < 0 || y < 0 || x > p.W || y > p.H) {
       tip.style.opacity = 0;
       return;
@@ -3486,9 +3544,10 @@
       }
       if (!p.drag) return;
       p.drag = false;
-      if (!D || !p.ok || !p.sx) { p.lasso = null; p.lassoData = null; return; }  // not projected yet
+      if (!D || !p.ok) { p.lasso = null; p.lassoData = null; return; }  // not projected yet
       var keep = false;
       if (p.moved && p.lasso && p.lasso.length > 2) {
+        ensureScreenProjection(p);
         var s = new Set();
         for (var i = 0; i < D.n; i++) {
           if (p.ok[i] && shown(i, p) && CBGeom.inPoly(p.sx[i], p.sy[i], p.lasso)) s.add(i);
@@ -3573,7 +3632,8 @@
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
         view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null,
-        gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null };
+        gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null,
+        gpuTransformOnly: false };
       attachGpu(p);
       // The minimap is a FIXED size, so its backing store is set once here
       // rather than on every re-fit.
@@ -5248,6 +5308,7 @@
     hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
+      p.gpuTransformOnly = false;
       p.lasso = null; p.lassoData = null; p.view = null;
       p.miniBg = null; p.miniUnit = null;
       if (p.mini) p.mini.classList.remove('is-on');
