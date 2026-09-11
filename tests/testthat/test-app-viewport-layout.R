@@ -58,6 +58,9 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   ))
   expect_identical(linked_initial$count, 3L)
   expect_identical(linked_initial$rows, 1L)
+  expect_true(app$get_js(
+    "document.getElementById('cv-config-open').offsetParent !== null"
+  ))
   linked_right_edges <- app$get_js(paste0(
     "(() => {",
     "const top=document.querySelector('#shiny-tab-coordinated_views .cv-topbar')",
@@ -114,11 +117,48 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   app$wait_for_js(
     paste0(
       "document.querySelector('#cv-selbar:not(.cv-collapse)') && ",
-      "document.getElementById('cv-zoom').offsetParent !== null && ",
+      "Array.from(document.querySelectorAll('.cv-ptitle'))",
+      ".find(el => el.textContent.includes('B cell maturation'))",
+      ".closest('.cv-pane').querySelector('.cv-zsel-btn').offsetParent !== null && ",
+      "document.getElementById('cv-config-open').offsetParent !== null && ",
       "document.getElementById('cv-readout').offsetParent !== null"
     ),
     timeout = 10000
   )
+  linked_selection_status <- app$get_js(paste0(
+    "(() => {",
+    "const bar=document.getElementById('cv-selbar');",
+    "const count=document.getElementById('cv-seltext');",
+    "const origin=document.getElementById('cv-selorigin');",
+    "const coverage=document.getElementById('cv-selcoverage');",
+    "return {bar:bar.textContent.trim(),count:count.textContent.trim(),",
+    "origin:origin.textContent.trim(),coverage:coverage.textContent.trim(),",
+    "coverageLabels:Array.from(coverage.querySelectorAll('.cv-coverage-item'))",
+    ".map(el=>el.getAttribute('aria-label')||'')};})()"
+  ))
+  expect_match(
+    linked_selection_status$count,
+    "^[0-9,]+ / 1,476 selected$"
+  )
+  expect_match(linked_selection_status$origin, "^From ")
+  expect_no_match(
+    linked_selection_status$bar,
+    "Active cohort|coordinated across|Selected in"
+  )
+  expect_no_match(linked_selection_status$coverage, "[0-9,]+/[0-9,]+")
+  expect_gt(length(linked_selection_status$coverageLabels), 0)
+  expect_true(all(nzchar(linked_selection_status$coverageLabels)))
+  linked_actions <- app$get_js(paste0(
+    "(() => {",
+    "const share=document.getElementById('cv-config-open').getBoundingClientRect();",
+    "const settings=document.getElementById('cv-more-btn').getBoundingClientRect();",
+    "return {shareBefore:share.left < settings.left,",
+    "settingsRightmost:settings.right > share.right};",
+    "})()"
+  ))
+  expect_true(linked_actions$shareBefore)
+  expect_true(linked_actions$settingsRightmost)
+
   expect_length(
     unlist(app$get_js(
       "Array.from(document.querySelectorAll('.cv-mini.is-on')).map(String)"
@@ -126,7 +166,11 @@ test_that("IR fill layout survives tab activation and responsive resize", {
     0
   )
 
-  app$click(selector = "#cv-zoom")
+  app$run_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle'))",
+    ".find(el => el.textContent.includes('B cell maturation'))",
+    ".closest('.cv-pane').querySelector('.cv-zsel-btn').click()"
+  ))
   app$wait_for_js(
     paste0(
       "(() => {",
@@ -144,22 +188,20 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   )))
   expect_length(zoomed_titles, 1)
   expect_match(zoomed_titles[[1]], "B cell maturation", fixed = TRUE)
-  expect_identical(
-    app$get_js("document.getElementById('cv-zoom').textContent.trim()"),
-    "Zoom back"
-  )
-
-  app$click(selector = "#cv-zoom")
+  app$run_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle'))",
+    ".find(el => el.textContent.includes('B cell maturation'))",
+    ".closest('.cv-pane').querySelector('.cv-tbtn[data-act=\"reset\"]').click()"
+  ))
   app$wait_for_js(
     "document.querySelectorAll('.cv-mini.is-on').length === 0",
     timeout = 10000
   )
-  app$click(selector = "#cv-clear")
+  app$run_js("document.querySelector('#cv-clear span').click()")
   app$wait_for_js(
     "document.getElementById('cv-selbar').classList.contains('cv-collapse')",
     timeout = 10000
   )
-
   ## Touch users cannot reveal a hover-only toolbar. Coarse-pointer media must
   ## keep the controls visible and provide practical tap targets.
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(
@@ -656,7 +698,7 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   expect_true(isTRUE(page_no_hscroll))
 
   ## The mobile shell must clear the fixed navigation toggle, and an inactive
-  ## cohort card must not reserve height in the shared selection slot.
+  ## cohort card must not reserve height beyond the toolbar's 7px separator.
   app$click(selector = 'a[href="#shiny-tab-overview"]')
   app$wait_for_js(
     paste0(
@@ -682,5 +724,108 @@ test_that("IR fill layout survives tab activation and responsive resize", {
     "})()"
   ))
   expect_equal(mobile_padding_top, 56)
-  expect_lte(mobile_selection_slot$slot, mobile_selection_slot$guide + 1)
+  expect_equal(
+    mobile_selection_slot$slot,
+    mobile_selection_slot$guide + 7,
+    tolerance = 1
+  )
+
+  ## The standalone composition card is a canvas overlay, so it can be moved
+  ## away from data without leaving its visualization surface. Shiny replaces
+  ## the card contents but keeps the stable output slot and its position.
+  app$get_chromote_session()$set_viewport_size(width = 1200, height = 800)
+  app$wait_for_js(
+    "window.innerWidth === 1200 && window.innerHeight === 800",
+    timeout = 10000
+  )
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-tab-overview ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      "?.getBoundingClientRect().width > 100"
+    ),
+    timeout = 30000
+  )
+  app$click(
+    selector = paste0(
+      "#shiny-tab-overview .cv-pane:not(.cv-hidden) ",
+      ".cv-tbtn[data-act='box']"
+    )
+  )
+  projection_box <- app$get_js(paste0(
+    "(() => {const r=document.querySelector('#shiny-tab-overview ",
+    ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
+    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
+    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
+  ))
+  app$run_js(sprintf(
+    paste0(
+      "(() => {const pane=document.querySelector('#shiny-tab-overview ",
+      ".cv-pane:not(.cv-hidden)');",
+      "pane.dispatchEvent(new MouseEvent('mousedown',",
+      "{bubbles:true,button:0,clientX:%f,clientY:%f}));",
+      "window.dispatchEvent(new MouseEvent('mousemove',",
+      "{bubbles:true,buttons:1,clientX:%f,clientY:%f}));",
+      "window.dispatchEvent(new MouseEvent('mouseup',",
+      "{bubbles:true,button:0,clientX:%f,clientY:%f}));})()"
+    ),
+    projection_box$x1,
+    projection_box$y1,
+    projection_box$x2,
+    projection_box$y2,
+    projection_box$x2,
+    projection_box$y2
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-tab-overview ",
+      ".cerebro-selection-composition-drag')?.getClientRects().length > 0"
+    ),
+    timeout = 10000
+  )
+  app$wait_for_idle(timeout = 10000)
+  card_before <- app$get_js(paste0(
+    "(() => {const r=document.querySelector('#shiny-tab-overview ",
+    ".cerebro-selection-composition-slot').getBoundingClientRect();",
+    "const h=document.querySelector('#shiny-tab-overview ",
+    ".cerebro-selection-composition-head').getBoundingClientRect();",
+    "return {left:r.left,top:r.top,x:h.left+h.width/2,y:h.top+h.height/2};})()"
+  ))
+  viewer_drag_mouse(
+    app,
+    card_before$x,
+    card_before$y,
+    card_before$x + 150,
+    card_before$y - 100
+  )
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-tab-overview ",
+      ".cerebro-selection-composition-slot').dataset.dragged === 'true'"
+    ),
+    timeout = 5000
+  )
+  card_after <- app$get_js(paste0(
+    "(() => {const s=document.querySelector('#shiny-tab-overview ",
+    ".cerebro-selection-composition-slot');const f=s.parentElement.getBoundingClientRect();",
+    "const r=s.getBoundingClientRect();return {left:r.left,top:r.top,",
+    "inside:r.left>=f.left&&r.top>=f.top&&r.right<=f.right&&r.bottom<=f.bottom};})()"
+  ))
+  expect_gt(card_after$left, card_before$left + 50)
+  expect_lt(card_after$top, card_before$top - 50)
+  expect_true(card_after$inside)
+
+  app$get_chromote_session()$set_viewport_size(width = 390, height = 844)
+  app$wait_for_js(
+    "window.innerWidth === 390 && window.innerHeight === 844",
+    timeout = 10000
+  )
+  mobile_card <- app$get_js(paste0(
+    "(() => {const s=document.querySelector('#shiny-tab-overview ",
+    ".cerebro-selection-composition-slot');const h=s.querySelector(",
+    "'.cerebro-selection-composition-drag');return {position:getComputedStyle(s).position,",
+    "handle:getComputedStyle(h).display};})()"
+  ))
+  expect_identical(mobile_card$position, "static")
+  expect_identical(mobile_card$handle, "none")
 })

@@ -95,10 +95,12 @@ test_that("selection composition shows count, top groups, and Other", {
     composition = TRUE
   ))
 
-  expect_match(card, "Selected 8 / 8 cells", fixed = TRUE)
-  expect_match(card, "by cell_type", fixed = TRUE)
+  expect_match(card, ">8 / 8<", fixed = TRUE)
+  expect_match(card, "Selected cells · by cell_type", fixed = TRUE)
   expect_match(card, "T cells", fixed = TRUE)
   expect_match(card, "Other", fixed = TRUE)
+  expect_match(card, "cerebro-selection-composition-drag", fixed = TRUE)
+  expect_match(card, "Move composition card; use arrow keys", fixed = TRUE)
 })
 
 test_that("selection summary reports source and escapes labels", {

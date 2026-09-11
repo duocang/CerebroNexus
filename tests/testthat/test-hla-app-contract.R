@@ -118,12 +118,13 @@ test_that("motif network exposes a stable selected-node detail panel", {
     collapse = "\n"
   )
 
-  expect_match(ui, 'id = "hla-node-details"', fixed = TRUE)
+  expect_no_match(ui, "hla-node-details", fixed = TRUE)
   expect_match(viz, "detail = titles", fixed = TRUE)
-  expect_match(viz, "window.hlaShowNodeDetails", fixed = TRUE)
+  expect_match(viz, "title = titles", fixed = TRUE)
+  expect_no_match(viz, "window.hlaShowNodeDetails", fixed = TRUE)
   expect_no_match(viz, "hla_selected_node_id", fixed = TRUE)
   expect_match(viz, "visEvents")
-  expect_match(js, "hla-refresh-node-details", fixed = TRUE)
+  expect_no_match(js, "hla-refresh-node-details", fixed = TRUE)
 })
 
 test_that("core shim binds locally without polluting globalenv", {

@@ -174,7 +174,6 @@
         var api = engine(spec);
         var state = currentState(id, api);
         if (!state) throw new Error(spec.label + ' is not ready to save.');
-        if (!state.cells.length) throw new Error('Select at least one cell first.');
         return {
           schema: 'cerebronexus-specialist-view',
           version: 1,

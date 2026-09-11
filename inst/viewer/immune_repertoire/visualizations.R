@@ -193,9 +193,12 @@ output$ir_visualizations_UI <- renderUI({
     NULL
   }
 
-  do.call(
-    tabsetPanel,
-    c(list(id = "ir_tabs", selected = selected_tab), tabs)
+  shiny::tagAppendAttributes(
+    do.call(
+      tabsetPanel,
+      c(list(id = "ir_tabs", selected = selected_tab), tabs)
+    ),
+    class = "cerebro-analysis-tabs"
   )
 })
 
@@ -480,11 +483,28 @@ output[["ir_selection_status_UI"]] <- renderUI({
     (!is.null(active_tab) && !identical(active_tab, "Clonal UMAP")) ||
       (!is.null(group_by) && nzchar(group_by))
   ) {
-    return(NULL)
+    return(
+      div(
+        class = "cerebro-selection-status-slot",
+        div(
+          class = "cerebro-selection-status-guide",
+          tags$span(
+            class = "cerebro-selection-status-kicker",
+            icon("arrow-pointer"),
+            "Selection workspace"
+          ),
+          tags$span(
+            class = "cerebro-selection-status-text",
+            "Selection is available in Clonal UMAP."
+          )
+        )
+      )
+    )
   }
   cerebroSelectionStatus(
     "ir_clonalUMAP_projection",
-    "ir_clonalUMAP_number_of_selected_cells"
+    "ir_clonalUMAP_number_of_selected_cells",
+    portable = FALSE
   )
 })
 

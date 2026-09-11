@@ -5,11 +5,13 @@
   var mode = 'lasso';
   var overlay = null;
   var overlayNet = null;
+  var nodeTooltip = null;
   var drawNet = null;
   var drag = null;
   var committedCanvas = null;
   var selectedKeys = [];
   var selectedCells = [];
+  var selectionFocused = false;
   var pendingState = null;
   var syncingSelection = false;
   var shinyBound = false;
@@ -103,6 +105,29 @@
     ctx.setLineDash([6, 4]);
     ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
   }
+  function hideNodeTooltip() {
+    if (nodeTooltip) nodeTooltip.hidden = true;
+  }
+  function showNodeTooltip(event) {
+    var network = net();
+    if (!network || !nodeTooltip) return;
+    var p = point(event);
+    var id = network.getNodeAt({ x: p[0], y: p[1] });
+    var data = nodeData(network);
+    var node = data && id != null ? data.get(id) : null;
+    var detail = node && node.title;
+    if (!detail) { hideNodeTooltip(); return; }
+    nodeTooltip.innerHTML = detail;
+    nodeTooltip.hidden = false;
+    var frame = network.canvas.frame;
+    var left = Math.min(p[0] + 12, frame.clientWidth - nodeTooltip.offsetWidth - 8);
+    var top = p[1] + 12;
+    if (top + nodeTooltip.offsetHeight > frame.clientHeight - 8) {
+      top = p[1] - nodeTooltip.offsetHeight - 12;
+    }
+    nodeTooltip.style.left = Math.max(8, left) + 'px';
+    nodeTooltip.style.top = Math.max(8, top) + 'px';
+  }
   function sendSelectedKeys(keys) {
     if (window.Shiny && Shiny.setInputValue) {
       Shiny.setInputValue('hla_motif_selected_keys', keys, { priority: 'event' });
@@ -124,19 +149,20 @@
     network.selectNodes(chosen, false);
     syncingSelection = false;
     selectedKeys = nodeKeysFromIds(network, chosen);
-    window.hlaShowNodeDetails(chosen.length ? chosen[0] : null);
     sendSelectedKeys(selectedKeys);
   }
   function pointerDown(event) {
     if (event.button !== 0) return;
     event.preventDefault();
+    hideNodeTooltip();
     var start = point(event);
     drag = { pointer: event.pointerId, points: [start] };
     overlay.setPointerCapture(event.pointerId);
     drawOverlay();
   }
   function pointerMove(event) {
-    if (!drag || drag.pointer !== event.pointerId) return;
+    if (!drag) { showNodeTooltip(event); return; }
+    if (drag.pointer !== event.pointerId) return;
     var next = point(event);
     if (mode === 'box') drag.points = [drag.points[0], next];
     else {
@@ -166,7 +192,6 @@
       if (network) network.selectNodes(clicked == null ? [] : [clicked], false);
       syncingSelection = false;
       selectedKeys = clicked == null ? [] : nodeKeysFromIds(network, [clicked]);
-      window.hlaShowNodeDetails(clicked);
       sendSelectedKeys(selectedKeys);
     } else {
       committedCanvas = polygon.map(function (value) {
@@ -186,19 +211,38 @@
     overlayNet = network;
     overlay = document.createElement('canvas');
     overlay.className = 'hla-selection-overlay';
+    nodeTooltip = document.createElement('div');
+    nodeTooltip.className = 'hla-node-tooltip';
+    nodeTooltip.setAttribute('role', 'tooltip');
+    nodeTooltip.hidden = true;
     frame.style.position = 'relative';
     frame.appendChild(overlay);
+    frame.appendChild(nodeTooltip);
     overlay.addEventListener('pointerdown', pointerDown);
     overlay.addEventListener('pointermove', pointerMove);
     overlay.addEventListener('pointerup', pointerUp);
     overlay.addEventListener('pointercancel', pointerUp);
+    overlay.addEventListener('pointerleave', hideNodeTooltip);
     setMode(mode);
     resizeOverlay();
   }
   function syncModeButtons() {
     document.querySelectorAll('#hla-modebar [data-act]').forEach(function (button) {
-      button.classList.toggle('is-on', button.dataset.act === mode);
+      button.classList.toggle(
+        'is-on',
+        button.dataset.act === mode ||
+          (button.dataset.act === 'zsel' && selectionFocused)
+      );
+      if (['zsel', 'clear'].indexOf(button.dataset.act) >= 0) {
+        button.disabled = !selectedKeys.length;
+        button.classList.toggle('hla-mb-btn--off', button.disabled);
+      }
     });
+    var focus = document.getElementById('hla_motif_network_focus_selection');
+    if (focus) {
+      focus.classList.toggle('is-on', selectionFocused);
+      focus.setAttribute('aria-pressed', selectionFocused ? 'true' : 'false');
+    }
   }
   function setMode(next) {
     mode = ['box', 'lasso', 'pan'].indexOf(next) >= 0 ? next : 'lasso';
@@ -218,23 +262,53 @@
   }
   function resetView() {
     var network = net();
+    selectionFocused = false;
+    syncModeButtons();
     if (network) network.fit({ animation: { duration: 300 } });
   }
   function zoomSelection() {
     var network = net();
     var ids = idsFromNodeKeys(network, selectedKeys);
     if (!network || !ids.length) return;
-    network.fit({ nodes: ids, animation: { duration: 300 } });
+    if (selectionFocused) {
+      resetView();
+      return;
+    }
+    var boxes = ids.map(function (id) { return network.getBoundingBox(id); });
+    var left = Math.min.apply(null, boxes.map(function (box) { return box.left; }));
+    var right = Math.max.apply(null, boxes.map(function (box) { return box.right; }));
+    var top = Math.min.apply(null, boxes.map(function (box) { return box.top; }));
+    var bottom = Math.max.apply(null, boxes.map(function (box) { return box.bottom; }));
+    var frame = network.canvas.frame;
+    var scale = Math.min(
+      Math.max(1, frame.clientWidth - 80) / Math.max(1, right - left),
+      Math.max(1, frame.clientHeight - 80) / Math.max(1, bottom - top)
+    );
+    scale = Math.max(network.hlaMinScale || 0.02, scale);
+    selectionFocused = true;
+    syncModeButtons();
+    network.moveTo({
+      position: { x: (left + right) / 2, y: (top + bottom) / 2 },
+      scale: Math.min(3, scale),
+      animation: { duration: 300 }
+    });
   }
   function clearSelection(notify) {
     var network = net();
+    if (selectionFocused) resetView();
     committedCanvas = null;
     selectedKeys = [];
     selectedCells = [];
+    selectionFocused = false;
     if (network) network.unselectAll();
-    window.hlaShowNodeDetails(null);
+    syncModeButtons();
     drawOverlay();
     if (notify) sendSelectedKeys([]);
+  }
+  function requestClearSelection() {
+    var button = document.getElementById('hla_motif_network_clear_selection');
+    if (button) button.click();
+    else clearSelection(true);
   }
   function downloadPNG() {
     var network = net();
@@ -319,8 +393,18 @@
       selectedCells: saved && saved.selection ? saved.selection.cells.length : 0
     };
   }
+  function reportState() {
+    window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
+      detail: {
+        viewId: 'hla_motif_network',
+        selectedCells: selectedCells.length,
+        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
+      }
+    }));
+  }
   function receiveSelection(result) {
     var network = net();
+    selectionFocused = false;
     selectedKeys = result && Array.isArray(result.node_keys)
       ? result.node_keys.map(String) : [];
     selectedCells = result && Array.isArray(result.cells)
@@ -334,13 +418,8 @@
       network.selectNodes(idsFromNodeKeys(network, selectedKeys), false);
       syncingSelection = false;
     }
-    window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
-      detail: {
-        viewId: 'hla_motif_network',
-        selectedCells: selectedCells.length,
-        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
-      }
-    }));
+    syncModeButtons();
+    reportState();
   }
   function connectShiny() {
     if (shinyBound || !window.Shiny || !Shiny.addCustomMessageHandler) return;
@@ -349,12 +428,7 @@
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
       if (!request) return;
       if (request.action === 'clear') clearSelection(false);
-      if (request.action === 'zoom') zoomSelection();
-    });
-    Shiny.addCustomMessageHandler('hla-refresh-node-details', function (_message) {
-      var network = net();
-      var ids = network ? network.getSelectedNodes() : [];
-      window.hlaShowNodeDetails(ids.length ? ids[0] : null);
+      else if (request.action === 'focus') zoomSelection();
     });
   }
   function build() {
@@ -367,7 +441,9 @@
         if (['box', 'lasso', 'pan'].indexOf(action) >= 0) setMode(action);
         else if (action === 'zoomin') zoomBy(1.3);
         else if (action === 'zoomout') zoomBy(1 / 1.3);
+        else if (action === 'zsel') zoomSelection();
         else if (action === 'reset') resetView();
+        else if (action === 'clear') requestClearSelection();
         else if (action === 'download') {
           window.dispatchEvent(new CustomEvent('cerebro:png-result', {
             detail: { ok: downloadPNG() }
@@ -384,22 +460,6 @@
     }
   }
 
-  window.hlaShowNodeDetails = function (id) {
-    var output = document.getElementById('hla-node-details');
-    var network = net();
-    if (!output || !network || id == null) {
-      if (output) { output.innerHTML = ''; output.style.display = 'none'; }
-      return;
-    }
-    var data = nodeData(network);
-    var node = data ? data.get(id) : null;
-    var detail = node && (node.detail || node.title);
-    if (!detail) {
-      output.innerHTML = ''; output.style.display = 'none'; return;
-    }
-    output.innerHTML = detail;
-    output.style.display = 'block';
-  };
   window.cerebroHlaMotifs = {
     captureState: captureState,
     applyState: applyState,
@@ -425,6 +485,7 @@
       }
       applyPendingState();
       drawOverlay();
+      if (changed && network) reportState();
     }
   };
 

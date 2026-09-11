@@ -557,12 +557,12 @@ output$ir_help_panel <- renderUI({
     NULL
   }
   div(
-    style = "background: #e5f0fa; border-left: 4px solid #0f6cbd; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; border-radius: 2px; display: flex; align-items: flex-start; gap: 10px;",
+    class = "ir-plot-help",
     div(
-      style = "flex: 1;",
-      tags$strong(info$short),
+      class = "ir-plot-help-copy",
+      tags$strong(class = "ir-plot-help-title", info$short),
       tags$p(
-        style = "margin: 4px 0 0 0; color: var(--neutral-secondary);",
+        class = "ir-plot-help-summary",
         info$summary
       )
     ),

@@ -163,4 +163,131 @@
         finish(event.target);
       });
   });
+
+  ready(function () {
+    var HANDLE = ".cerebro-selection-composition-drag";
+    var HEADER = ".cerebro-selection-composition-head";
+    var SLOT = ".cerebro-selection-composition-slot";
+    var MOBILE = "(max-width: 700px)";
+    var EDGE = 8;
+    var drag = null;
+
+    function isMobile() {
+      return window.matchMedia(MOBILE).matches;
+    }
+    function frameOf(slot) {
+      return slot && slot.parentElement;
+    }
+    function place(slot, left, top) {
+      var frame = frameOf(slot);
+      if (!frame || !slot.getClientRects().length || isMobile()) return;
+      var frameRect = frame.getBoundingClientRect();
+      var slotRect = slot.getBoundingClientRect();
+      var maxLeft = Math.max(EDGE, frameRect.width - slotRect.width - EDGE);
+      var maxTop = Math.max(EDGE, frameRect.height - slotRect.height - EDGE);
+      slot.style.left = Math.max(EDGE, Math.min(maxLeft, left)) + "px";
+      slot.style.top = Math.max(EDGE, Math.min(maxTop, top)) + "px";
+      slot.style.bottom = "auto";
+      slot.dataset.dragged = "true";
+    }
+    function pin(slot) {
+      if (slot.dataset.dragged === "true") return;
+      var frame = frameOf(slot);
+      var frameRect = frame.getBoundingClientRect();
+      var slotRect = slot.getBoundingClientRect();
+      place(slot, slotRect.left - frameRect.left, slotRect.top - frameRect.top);
+    }
+    function clamp(slot) {
+      if (!slot || slot.dataset.dragged !== "true") return;
+      place(slot, parseFloat(slot.style.left) || EDGE,
+        parseFloat(slot.style.top) || EDGE);
+    }
+    function clampAll() {
+      Array.prototype.forEach.call(
+        document.querySelectorAll(SLOT + '[data-dragged="true"]'),
+        clamp
+      );
+    }
+    function scheduleClamp() {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(clampAll);
+      });
+    }
+    function finish(pointerId) {
+      pointerId = typeof pointerId === "number"
+        ? pointerId
+        : pointerId && pointerId.pointerId;
+      if (!drag || (pointerId != null && drag.pointerId !== pointerId)) return;
+      if (drag.handle.hasPointerCapture &&
+          drag.handle.hasPointerCapture(drag.pointerId)) {
+        drag.handle.releasePointerCapture(drag.pointerId);
+      }
+      drag.slot.classList.remove("is-dragging");
+      drag = null;
+    }
+
+    document.addEventListener("pointerdown", function (event) {
+      var header = event.target.closest && event.target.closest(HEADER);
+      if (!header || event.button !== 0 || isMobile()) return;
+      var slot = header.closest(SLOT);
+      if (!slot || !slot.getClientRects().length) return;
+      pin(slot);
+      var rect = slot.getBoundingClientRect();
+      drag = {
+        slot: slot,
+        handle: header,
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+      if (header.setPointerCapture) header.setPointerCapture(event.pointerId);
+      slot.classList.add("is-dragging");
+      event.preventDefault();
+    });
+    document.addEventListener("pointermove", function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      var frameRect = frameOf(drag.slot).getBoundingClientRect();
+      place(
+        drag.slot,
+        event.clientX - frameRect.left - drag.offsetX,
+        event.clientY - frameRect.top - drag.offsetY
+      );
+      event.preventDefault();
+    });
+    document.addEventListener("pointerup", function (event) {
+      finish(event.pointerId);
+    });
+    document.addEventListener("pointercancel", function (event) {
+      finish(event.pointerId);
+    });
+    document.addEventListener("lostpointercapture", finish);
+    window.addEventListener("blur", finish);
+    document.addEventListener("keydown", function (event) {
+      var handle = event.target.closest && event.target.closest(HANDLE);
+      if (!handle || isMobile()) return;
+      var moves = {
+        ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+        ArrowUp: [0, -1], ArrowDown: [0, 1]
+      };
+      var move = moves[event.key];
+      if (!move) return;
+      var slot = handle.closest(SLOT);
+      pin(slot);
+      var step = event.shiftKey ? 1 : 10;
+      place(
+        slot,
+        (parseFloat(slot.style.left) || EDGE) + move[0] * step,
+        (parseFloat(slot.style.top) || EDGE) + move[1] * step
+      );
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    window.addEventListener("resize", scheduleClamp);
+    if (window.jQuery) {
+      window.jQuery(document).on(
+        "shiny:value.cerebroCompositionDrag shown.bs.tab.cerebroCompositionDrag",
+        scheduleClamp
+      );
+    }
+  });
 }());

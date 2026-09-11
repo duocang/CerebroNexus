@@ -272,13 +272,11 @@ observeEvent(
 )
 
 observeEvent(
-  input[["hla_motif_network_zoom_to_selection"]],
-  {
-    session$sendCustomMessage(
-      "hla_motif_selection_command",
-      list(action = "zoom")
-    )
-  },
+  input[["hla_motif_network_focus_selection"]],
+  session$sendCustomMessage(
+    "hla_motif_selection_command",
+    list(action = "focus")
+  ),
   ignoreInit = TRUE
 )
 

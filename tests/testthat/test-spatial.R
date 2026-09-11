@@ -4,7 +4,7 @@
 # tab wiring (Session B). Backend contract tests come first; the module-parse
 # and UI/server wiring guards follow.
 
-shiny_root <- system.file("viewer", package = "CerebroNexus")
+shiny_root <- viewer_test_path()
 # demo_spatial.crb is the synthetic Xenium demo that carries spatial data;
 # the other bundled demos (PBMC sets, trajectory) have no spatial field.
 spatial_crb <- system.file(
@@ -170,8 +170,12 @@ test_that("background-image selection only recreates image calibration controls"
   )
   expect_match(
     main_parameters_ui,
-    'label = "Colour by"[\\s\\S]{0,320}"spatial_projection_background_image"',
+    'output\\[\\["spatial_projection_background_selector_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
     perl = TRUE
+  )
+  expect_match(
+    projection_ui,
+    'uiOutput\\("spatial_projection_background_selector_UI"\\)'
   )
   expect_match(
     projection_ui,
@@ -774,8 +778,7 @@ test_that("shared Canvas owns spatial background identity and appearance", {
 })
 
 test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
-  main_ui <- file.path(
-    system.file("viewer", package = "CerebroNexus"),
+  main_ui <- viewer_test_path(
     "spatial",
     "UI_projection_main_parameters.R"
   )
@@ -821,11 +824,14 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     main_html <- as.character(
       output$spatial_projection_main_parameters_UI$html
     )
+    background_html <- as.character(
+      output$spatial_projection_background_selector_UI$html
+    )
     expect_match(main_html, 'value="sliceB" selected', fixed = TRUE)
-    expect_match(main_html, "embedded::IF", fixed = TRUE)
-    expect_match(main_html, "external::MIBI", fixed = TRUE)
-    expect_false(grepl("embedded::H&amp;E", main_html, fixed = TRUE))
-    expect_false(grepl("external::DAPI", main_html, fixed = TRUE))
+    expect_match(background_html, "embedded::IF", fixed = TRUE)
+    expect_match(background_html, "external::MIBI", fixed = TRUE)
+    expect_false(grepl("embedded::H&amp;E", background_html, fixed = TRUE))
+    expect_false(grepl("external::DAPI", background_html, fixed = TRUE))
     expect_identical(getSpatialData("sliceB")$coordinates$x, 101:102)
   })
 })

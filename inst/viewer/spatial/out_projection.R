@@ -26,7 +26,7 @@ spatial_projection_info <- list(
       <li>Cells can be coloured by the sample they came from, the cluster they were assigned, the number of transcripts or expressed genes, percentage of mitochondrial and ribosomal gene expression, an apoptotic score (calculated based on the expression of few marker genes; more info in the 'Sample info' tab on the left), or cell cycle status (determined using the Seurat and Cyclone method).</li>
       <li>Confidence ellipses show the 95% confidence regions.</li>
       <li>Samples and clusters can be removed from the plot individually to highlight a contrast of interest.</li>
-      <li>Point size, point opacity, and the percentage of displayed cells can be changed in More settings.</li>
+      <li>Point size, point opacity, and the percentage of displayed cells can be changed in Settings.</li>
     </ul>
     The plot is interactive (drag and zoom) but depending on the computer of the user and the number of cells displayed it can become very slow."
   )

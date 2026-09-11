@@ -1208,7 +1208,7 @@ cv_specialist_normalize <- function(config, cells, fingerprint = NULL) {
     length(cells),
     1024L
   )
-  if (!length(selected_cells) || length(setdiff(selected_cells, cells))) {
+  if (length(setdiff(selected_cells, cells))) {
     cv_config_abort(
       "missing_cell",
       "The saved view contains unavailable cells."
