@@ -1393,7 +1393,7 @@
     if (!p.gpuCanvas) return;
     p.gpuCanvas.style.display = 'none';
     p.canvas.classList.remove('cv-gpu-overlay');
-    if (p.gpu) p.gpu.clear();
+    try { if (p.gpu) p.gpu.clear(); } catch (error) { /* Canvas fallback */ }
   }
 
   function attachGpu(p) {
@@ -1456,14 +1456,20 @@
 
   function drawGpuPoints(p, shownMask, shownCount, border) {
     if (!gpuEligible(p)) { hideGpu(p); return false; }
-    var data = buildGpuData(p, shownMask, shownCount);
-    p.gpu.setData(data);
-    var ok = p.gpu.draw({
-      view: p.view || { cx: 0.5, cy: 0.5, span: 1 },
-      rect: { x: p._sox, y: p._soy, width: p._SX, height: p._SY },
-      pointSize: p._renderPointSize,
-      border: border ? { color: gpuColor(border.color), width: border.width } : null
-    });
+    var data, ok;
+    try {
+      data = buildGpuData(p, shownMask, shownCount);
+      p.gpu.setData(data);
+      ok = p.gpu.draw({
+        view: p.view || { cx: 0.5, cy: 0.5, span: 1 },
+        rect: { x: p._sox, y: p._soy, width: p._SX, height: p._SY },
+        pointSize: p._renderPointSize,
+        border: border ? { color: gpuColor(border.color), width: border.width } : null
+      });
+    } catch (error) {
+      hideGpu(p);
+      return false;
+    }
     if (!ok) { hideGpu(p); return false; }
     p.gpuCanvas.style.display = 'block';
     p.canvas.classList.add('cv-gpu-overlay');
