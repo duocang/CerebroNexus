@@ -660,8 +660,8 @@ given set of cells.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{cells}}{Names/barcodes of cells to extract; defaults to \code{NULL},
-which will return all cells.}
+      \item{\code{cells}}{Names/barcodes or one-based column indices of cells to
+extract; defaults to \code{NULL}, which will return all cells.}
       \item{\code{genes}}{Names of genes to extract; defaults to \code{NULL}, which
 will return all genes.}
     }
@@ -686,8 +686,8 @@ each specified cell.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{cells}}{Names/barcodes of cells to extract; defaults to \code{NULL},
-which will return all cells.}
+      \item{\code{cells}}{Names/barcodes or one-based column indices of cells to
+extract; defaults to \code{NULL}, which will return all cells.}
       \item{\code{genes}}{Names of genes to extract; defaults to \code{NULL}, which
 will return all genes.}
     }
@@ -715,7 +715,8 @@ where materialising a 1 x N dense matrix first is wasteful.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{gene}}{Name of a single gene. Must exist in the matrix.}
-      \item{\code{cells}}{Names/barcodes of cells to extract; \code{NULL} returns all cells.}
+      \item{\code{cells}}{Names/barcodes or one-based column indices of cells to
+extract; \code{NULL} returns all cells.}
     }
     \if{html}{\out{</div>}}
   }
@@ -742,7 +743,8 @@ fast instead of densifying just to aggregate.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{genes}}{Non-empty character vector of gene names.}
-      \item{\code{cells}}{Names/barcodes of cells to extract; \code{NULL} returns all cells.}
+      \item{\code{cells}}{Names/barcodes or one-based column indices of cells to
+extract; \code{NULL} returns all cells.}
     }
     \if{html}{\out{</div>}}
   }

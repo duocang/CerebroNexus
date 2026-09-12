@@ -492,8 +492,8 @@ Cerebro <- R6::R6Class(
     #' Retrieve (mean) expression for a single gene or a set of genes for a
     #' given set of cells.
     #'
-    #' @param cells Names/barcodes of cells to extract; defaults to \code{NULL},
-    #' which will return all cells.
+    #' @param cells Names/barcodes or one-based column indices of cells to
+    #' extract; defaults to \code{NULL}, which will return all cells.
     #' @param genes Names of genes to extract; defaults to \code{NULL}, which
     #' will return all genes.
     #'
@@ -530,8 +530,8 @@ Cerebro <- R6::R6Class(
     #' @description
     #' Retrieve transcript count matrix.
     #'
-    #' @param cells Names/barcodes of cells to extract; defaults to \code{NULL},
-    #' which will return all cells.
+    #' @param cells Names/barcodes or one-based column indices of cells to
+    #' extract; defaults to \code{NULL}, which will return all cells.
     #' @param genes Names of genes to extract; defaults to \code{NULL}, which
     #' will return all genes.
     #'
@@ -548,23 +548,17 @@ Cerebro <- R6::R6Class(
     #' where materialising a 1 x N dense matrix first is wasteful.
     #'
     #' @param gene Name of a single gene. Must exist in the matrix.
-    #' @param cells Names/barcodes of cells to extract; \code{NULL} returns all cells.
+    #' @param cells Names/barcodes or one-based column indices of cells to
+    #' extract; \code{NULL} returns all cells.
     #' @return
     #' Named \code{numeric} vector, one entry per requested cell.
     getExpressionRow = function(gene, cells = NULL) {
       if (length(gene) != 1L || is.na(gene) || !is.character(gene)) {
         stop("`gene` must be a single non-NA character value.", call. = FALSE)
       }
-      all_cells <- is.null(cells)
-      if (all_cells) {
-        cells <- colnames(self$expression)
-      }
-      if (!is.character(cells) || anyNA(cells)) {
-        stop(
-          "`cells` must be a character vector of non-NA cell names/barcodes.",
-          call. = FALSE
-        )
-      }
+      cell_selection <- private$resolveExpressionCells(cells)
+      cell_idx <- cell_selection$indices
+      cells <- cell_selection$names
 
       gene_idx <- match(gene, rownames(self$expression))
       if (is.na(gene_idx)) {
@@ -578,23 +572,14 @@ Cerebro <- R6::R6Class(
       ## DelayedArray family (incl. RleMatrix): extract_array with indices
       ## avoids touching cells outside the requested subset.
       if (inherits(self$expression, "DelayedArray")) {
-        cell_idx <- if (all_cells) {
+        delayed_idx <- if (is.null(cell_idx)) {
           seq_len(ncol(self$expression))
         } else {
-          match(cells, colnames(self$expression))
-        }
-        if (anyNA(cell_idx)) {
-          missing_cells <- cells[is.na(cell_idx)]
-          stop(
-            "Cell(s) not found in expression matrix: ",
-            paste(utils::head(missing_cells, 5), collapse = ", "),
-            if (length(missing_cells) > 5L) " ..." else "",
-            call. = FALSE
-          )
+          cell_idx
         }
         mat <- DelayedArray::extract_array(
           self$expression,
-          list(gene_idx, cell_idx)
+          list(gene_idx, delayed_idx)
         )
         out <- as.numeric(mat)
         names(out) <- cells
@@ -604,10 +589,10 @@ Cerebro <- R6::R6Class(
       ## BPCells IterableMatrix: native [gene, cells] returns another
       ## IterableMatrix; coerce 1 x n to numeric.
       if (inherits(self$expression, "IterableMatrix")) {
-        sub <- if (all_cells) {
+        sub <- if (is.null(cell_idx)) {
           self$expression[gene_idx, , drop = FALSE]
         } else {
-          self$expression[gene_idx, cells, drop = FALSE]
+          self$expression[gene_idx, cell_idx, drop = FALSE]
         }
         out <- as.numeric(as.matrix(sub))
         names(out) <- cells
@@ -616,10 +601,10 @@ Cerebro <- R6::R6Class(
 
       ## dgCMatrix / base matrix: [gene, cells] already returns a named
       ## numeric vector without densifying the full matrix.
-      out <- if (all_cells) {
+      out <- if (is.null(cell_idx)) {
         as.numeric(self$expression[gene_idx, ])
       } else {
-        as.numeric(self$expression[gene_idx, cells])
+        as.numeric(self$expression[gene_idx, cell_idx])
       }
       names(out) <- cells
       return(out)
@@ -633,7 +618,8 @@ Cerebro <- R6::R6Class(
     #' fast instead of densifying just to aggregate.
     #'
     #' @param genes Non-empty character vector of gene names.
-    #' @param cells Names/barcodes of cells to extract; \code{NULL} returns all cells.
+    #' @param cells Names/barcodes or one-based column indices of cells to
+    #' extract; \code{NULL} returns all cells.
     #' @return
     #' A sub-matrix of the same concrete class as \code{self$expression}:
     #' \code{dgCMatrix} stays \code{dgCMatrix}, \code{RleMatrix} yields
@@ -649,19 +635,8 @@ Cerebro <- R6::R6Class(
         )
       }
 
-      all_cells <- is.null(cells)
-      if (all_cells) {
-        cells <- colnames(self$expression)
-        if (is.null(cells) && ncol(self$expression) == 0L) {
-          cells <- character()
-        }
-      }
-      if (!is.character(cells) || anyNA(cells)) {
-        stop(
-          "`cells` must be a character vector of non-NA cell names/barcodes.",
-          call. = FALSE
-        )
-      }
+      cell_selection <- private$resolveExpressionCells(cells)
+      cell_idx <- cell_selection$indices
 
       gene_idx <- match(genes, rownames(self$expression))
       if (anyNA(gene_idx)) {
@@ -674,19 +649,8 @@ Cerebro <- R6::R6Class(
         )
       }
 
-      if (all_cells) {
+      if (is.null(cell_idx)) {
         return(self$expression[gene_idx, , drop = FALSE])
-      }
-
-      cell_idx <- match(cells, colnames(self$expression))
-      if (anyNA(cell_idx)) {
-        missing_cells <- cells[is.na(cell_idx)]
-        stop(
-          "Cell(s) not found in expression matrix: ",
-          paste(utils::head(missing_cells, 5), collapse = ", "),
-          if (length(missing_cells) > 5L) " ..." else "",
-          call. = FALSE
-        )
       }
 
       ## Integer indices preserve request order without a second name lookup.
@@ -1781,22 +1745,53 @@ Cerebro <- R6::R6Class(
 
   ## private fields and methods
   private = list(
+    resolveExpressionCells = function(cells) {
+      cell_names <- colnames(self$expression)
+      if (is.null(cells)) {
+        return(list(indices = NULL, names = cell_names))
+      }
+      if (is.character(cells) && !anyNA(cells)) {
+        indices <- match(cells, cell_names)
+        if (anyNA(indices)) {
+          missing_cells <- cells[is.na(indices)]
+          stop(
+            "Cell(s) not found in expression matrix: ",
+            paste(utils::head(missing_cells, 5), collapse = ", "),
+            if (length(missing_cells) > 5L) " ..." else "",
+            call. = FALSE
+          )
+        }
+        return(list(indices = indices, names = cells))
+      }
+      if (
+        is.numeric(cells) &&
+          !anyNA(cells) &&
+          all(is.finite(cells)) &&
+          all(cells == as.integer(cells)) &&
+          all(cells >= 1L) &&
+          all(cells <= ncol(self$expression))
+      ) {
+        indices <- as.integer(cells)
+        return(list(indices = indices, names = cell_names[indices]))
+      }
+      stop(
+        "`cells` must contain valid names/barcodes or one-based column indices.",
+        call. = FALSE
+      )
+    },
+
     ## Extract expression matrix (helper)
     ##   cells  Names/barcodes of cells to extract; NULL for all.
     ##   genes  Names of genes to extract; NULL for all.
     ## Returns a dense matrix.
     extractExpression = function(cells = NULL, genes = NULL) {
+      cell_selection <- private$resolveExpressionCells(cells)
+      cell_indices <- cell_selection$indices
+      cells <- cell_selection$names
+
       ## check what kind of matrix the transcription counts are stored as
       ## ... DelayedArray / RleMatrix
       if (inherits(self$expression, 'RleMatrix')) {
-        ## resolve cell indices
-        if (!is.null(cells)) {
-          cell_indices <- match(cells, colnames(self$expression))
-        } else {
-          cell_indices <- NULL
-          cells <- colnames(self$expression)
-        }
-
         ## resolve gene indices
         if (!is.null(genes)) {
           gene_indices <- match(genes, rownames(self$expression))
@@ -1820,16 +1815,16 @@ Cerebro <- R6::R6Class(
         return(mat)
       } else {
         ## standard matrix logic
-        if (is.null(cells)) {
-          cells <- colnames(self$expression)
-        }
         if (is.null(genes)) {
           genes <- rownames(self$expression)
         }
 
-        return(
-          as.matrix(self$expression[genes, cells, drop = FALSE])
-        )
+        mat <- if (is.null(cell_indices)) {
+          self$expression[genes, , drop = FALSE]
+        } else {
+          self$expression[genes, cell_indices, drop = FALSE]
+        }
+        return(as.matrix(mat))
       }
     },
 

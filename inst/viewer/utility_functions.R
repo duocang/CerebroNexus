@@ -259,7 +259,7 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
 ## Prefer the R6 row accessor so a single-gene request never needs a temporary
 ## 1 x cells matrix. Older serialized objects fall back to the matrix method.
 viewerExpressionRow <- function(data_set, cells, gene) {
-  cells <- as.character(cells)
+  cell_indices <- is.numeric(cells)
   get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
   if (is.function(get_row)) {
     return(as.numeric(get_row(gene = gene, cells = cells)))
@@ -283,7 +283,9 @@ viewerExpressionRow <- function(data_set, cells, gene) {
     return(NULL)
   }
   cell_names <- colnames(expression_matrix)
-  cell_index <- if (is.null(cell_names) || identical(cells, cell_names)) {
+  cell_index <- if (
+    cell_indices || is.null(cell_names) || identical(cells, cell_names)
+  ) {
     seq_len(min(length(cells), ncol(expression_matrix)))
   } else {
     match(cells, cell_names)
@@ -294,7 +296,7 @@ viewerExpressionRow <- function(data_set, cells, gene) {
 ## Fetch several genes in one backend call and align every returned vector to
 ## the requested cell order. Missing genes are omitted from the result.
 viewerExpressionValues <- function(data_set, cells, genes) {
-  cells <- as.character(cells)
+  cell_indices <- is.numeric(cells)
   genes <- unique(as.character(unlist(genes, use.names = FALSE)))
   genes <- genes[!is.na(genes) & nzchar(genes)]
   if (!length(genes)) {
@@ -325,7 +327,7 @@ viewerExpressionValues <- function(data_set, cells, genes) {
     gene_names <- genes
   }
   cell_names <- colnames(expression_matrix)
-  cell_index <- if (is.null(cell_names)) {
+  cell_index <- if (cell_indices || is.null(cell_names)) {
     seq_len(min(length(cells), ncol(expression_matrix)))
   } else if (identical(cells, cell_names)) {
     seq_along(cells)
