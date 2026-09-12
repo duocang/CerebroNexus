@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.5.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.6.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -117,7 +117,7 @@ CerebroNexus Viewer. It covers four separate operations:</p>
 <li>download the official 10x Genomics E18 mouse-brain matrix;</li>
 <li>build a reproducible one-million-cell Seurat object and
 BPCells-backed CRB;</li>
-<li>compare the pre-GPU Viewer with the current WebGPU Viewer;</li>
+<li>compare the 4.5.1 Canvas Viewer with the 4.6.0 WebGPU Viewer;</li>
 <li>launch the same data interactively through the bundled demo
 app.</li>
 </ol>
@@ -203,11 +203,44 @@ passes for the real BPCells bundle check.</p>
 <div class="section level3">
 <h3 id="create-the-baseline-checkout">Create the baseline checkout<a class="anchor" aria-label="anchor" href="#create-the-baseline-checkout"></a>
 </h3>
-<p>Commit <code>5f509edd</code> contains the optional one-million-cell
-demo immediately before the GPU renderer work. Create a detached
-worktree so both implementations can be measured against the same CRB
-and browser installation:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> ../CerebroNexus-before-1m 5f509edd</span></code></pre></div>
+<p>Commit <code>c455d0cd</code> is the exact 4.5.1 baseline before the
+WebGPU work. It has no one-million-cell menu entry and still uses the
+Canvas 2D renderer, but the benchmark launches its
+<code><a href="../reference/launchCerebro.html">launchCerebro()</a></code> directly against the same CRB. The fixed
+revision keeps the comparison reproducible after development branches
+are merged or removed.</p>
+<table class="table">
+<colgroup>
+<col width="25%">
+<col width="25%">
+<col width="25%">
+<col width="25%">
+</colgroup>
+<thead><tr class="header">
+<th>Candidate</th>
+<th>Revision</th>
+<th>Version</th>
+<th>Role in this comparison</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Canvas baseline</td>
+<td><code>c455d0cd</code></td>
+<td>4.5.1</td>
+<td>Optimized CRB/backend, Canvas 2D Viewer, no bundled 1M demo</td>
+</tr>
+<tr class="even">
+<td>WebGPU release</td>
+<td>This source tree</td>
+<td>4.6.0</td>
+<td>Binary transport, WebGPU rendering, deferred hover payload, bundled
+opt-in 1M demo</td>
+</tr>
+</tbody>
+</table>
+<p>Create a detached worktree so both implementations can be measured
+against the same CRB and browser installation:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> ../CerebroNexus-4.5.1-baseline c455d0cd</span></code></pre></div>
 <p>Use an old-format BPCells CRB for this Viewer comparison. The current
 Viewer loads that format too, so both candidates receive exactly the
 same serialized input. This keeps the CRB-format reduction separate from
@@ -216,22 +249,25 @@ browser rendering.</p>
 <div class="section level3">
 <h3 id="run-the-full-viewer-benchmark">Run the full Viewer benchmark<a class="anchor" aria-label="anchor" href="#run-the-full-viewer-benchmark"></a>
 </h3>
-<p>The harness alternates candidate order on each round. It checks that
-Data Info reports 1,000,000 cells, waits for Overview and Linked Views,
-measures a single-gene Gene expression plot and a three-gene RGB plot,
-requires the current candidate to report <code>webgpu</code>, performs
-ten alternating zoom operations, and rejects GPU errors or context loss.
-Renderer-ready events must report the expected number of points, so a
-fast but incomplete plot fails the run.</p>
+<p>The 4.5.1-to-4.6.0 comparison uses the harness’s Overview-only mode
+because the 4.5.1 Canvas implementation cannot provide a usable
+one-million-cell Linked Views, gene-expression, or RGB workflow. The
+harness still checks that Data Info reports 1,000,000 cells, verifies
+that every expected point was rendered, performs ten alternating zoom
+operations, alternates candidate order on each round, and rejects GPU
+errors or context loss. The later WebGPU-to-WebGPU comparison exercises
+every page path.</p>
 <p>Replace <code>CRB</code> below with the path returned by the
 preparation step.</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="va">CRB</span><span class="op">=</span>/path/to/cerebro_mouse_brain_1m.crb</span>
 <span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a></span>
-<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
-<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  ../CerebroNexus-before-1m . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 100</span>
-<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a></span>
-<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
-<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>  ../CerebroNexus-before-1m . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10</span></code></pre></div>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="va">CEREBRO_VIEWER_BENCH_OVERVIEW_ONLY</span><span class="op">=</span>1 <span class="dt">\</span></span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  ../CerebroNexus-4.5.1-baseline . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 100</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="va">CEREBRO_VIEWER_BENCH_OVERVIEW_ONLY</span><span class="op">=</span>1 <span class="dt">\</span></span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>  <span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>  ../CerebroNexus-4.5.1-baseline . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10</span></code></pre></div>
 <p>The 100% run draws all one million cells. The 10% run draws 100,000
 cells and matches the bundled demo’s initial setting. Timings below are
 medians of three fresh app processes per candidate on the same host.</p>
@@ -254,79 +290,81 @@ medians of three fresh app processes per candidate on the same host.</p>
 <tr class="odd">
 <td>100%</td>
 <td>Data ready</td>
-<td align="right">17.425 s</td>
-<td align="right">17.106 s</td>
-<td align="right">1.8% faster</td>
+<td align="right">15.088 s</td>
+<td align="right">16.313 s</td>
+<td align="right">8.1% slower</td>
 </tr>
 <tr class="even">
 <td>100%</td>
 <td>First Overview</td>
-<td align="right">63.572 s</td>
-<td align="right">12.354 s</td>
-<td align="right">80.6% faster</td>
+<td align="right">48.768 s</td>
+<td align="right">1.377 s</td>
+<td align="right">97.2% faster</td>
 </tr>
 <tr class="odd">
 <td>100%</td>
 <td>Data + Overview</td>
-<td align="right">80.997 s</td>
-<td align="right">29.460 s</td>
-<td align="right">63.6% faster</td>
+<td align="right">63.856 s</td>
+<td align="right">17.690 s</td>
+<td align="right">72.3% faster</td>
 </tr>
 <tr class="even">
 <td>100%</td>
 <td>Zoom median</td>
-<td align="right">361.2 ms</td>
-<td align="right">8.7 ms</td>
-<td align="right">41.5x faster</td>
+<td align="right">280.9 ms</td>
+<td align="right">8.0 ms</td>
+<td align="right">35.1x faster</td>
 </tr>
 <tr class="odd">
 <td>100%</td>
 <td>Zoom p95</td>
-<td align="right">421.2 ms</td>
-<td align="right">11.5 ms</td>
-<td align="right">36.6x faster</td>
+<td align="right">310.3 ms</td>
+<td align="right">15.4 ms</td>
+<td align="right">20.1x faster</td>
 </tr>
 <tr class="even">
 <td>10%</td>
 <td>Data ready</td>
-<td align="right">16.247 s</td>
-<td align="right">16.889 s</td>
-<td align="right">effectively tied</td>
+<td align="right">14.836 s</td>
+<td align="right">15.613 s</td>
+<td align="right">5.2% slower</td>
 </tr>
 <tr class="odd">
 <td>10%</td>
 <td>First Overview</td>
-<td align="right">50.027 s</td>
-<td align="right">2.424 s</td>
-<td align="right">95.2% faster</td>
+<td align="right">35.838 s</td>
+<td align="right">0.323 s</td>
+<td align="right">99.1% faster</td>
 </tr>
 <tr class="even">
 <td>10%</td>
 <td>Data + Overview</td>
-<td align="right">66.274 s</td>
-<td align="right">19.313 s</td>
-<td align="right">70.9% faster</td>
+<td align="right">50.674 s</td>
+<td align="right">15.936 s</td>
+<td align="right">68.6% faster</td>
 </tr>
 <tr class="odd">
 <td>10%</td>
 <td>Zoom median</td>
-<td align="right">122.9 ms</td>
-<td align="right">3.5 ms</td>
-<td align="right">35.1x faster</td>
+<td align="right">91.5 ms</td>
+<td align="right">3.7 ms</td>
+<td align="right">24.7x faster</td>
 </tr>
 <tr class="even">
 <td>10%</td>
 <td>Zoom p95</td>
-<td align="right">134.5 ms</td>
-<td align="right">5.2 ms</td>
-<td align="right">25.9x faster</td>
+<td align="right">108.7 ms</td>
+<td align="right">5.9 ms</td>
+<td align="right">18.4x faster</td>
 </tr>
 </tbody>
 </table>
 <p>The first row group shows why storage and rendering are reported
-separately: loading and attaching the same old CRB barely changed, while
-the first plot and subsequent camera operations changed
-substantially.</p>
+separately: loading and attaching the same CRB barely changed, while the
+first plot and subsequent camera operations changed substantially. The
+missing 4.5.1 Linked Views and expression rows are intentional: at one
+million points those Canvas paths are the unusable baseline this release
+replaces, not a workflow worth presenting as a demo.</p>
 </div>
 <div class="section level3">
 <h3 id="verify-the-three-second-navigation-target">Verify the three-second navigation target<a class="anchor" aria-label="anchor" href="#verify-the-three-second-navigation-target"></a>
@@ -344,7 +382,9 @@ Canvas-to-WebGPU replacement as a second time.</p>
 <span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
 <span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>  ../CerebroNexus-before-wire . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10</span></code></pre></div>
 <p>Both candidates used WebGPU. Results are medians of three alternating
-fresh processes on 12 September 2026:</p>
+fresh processes on 12 September 2026. The selector is stabilized before
+timing so the expression rows include the actual million-cell BPCells
+read rather than a stale render:</p>
 <table class="table">
 <colgroup>
 <col width="16%">
@@ -364,51 +404,51 @@ fresh processes on 12 September 2026:</p>
 <tr class="odd">
 <td>100% (1,000,000 points)</td>
 <td>Data ready</td>
-<td align="right">14.798 s</td>
-<td align="right">14.185 s</td>
-<td align="right">4.1% faster</td>
+<td align="right">15.455 s</td>
+<td align="right">16.330 s</td>
+<td align="right">5.7% slower</td>
 </tr>
 <tr class="even">
 <td>100% (1,000,000 points)</td>
 <td>First Overview</td>
-<td align="right">11.819 s</td>
-<td align="right">1.789 s</td>
-<td align="right">84.9% faster</td>
+<td align="right">11.481 s</td>
+<td align="right">1.440 s</td>
+<td align="right">87.5% faster</td>
 </tr>
 <tr class="odd">
 <td>100% (1,000,000 points)</td>
 <td>Linked Views ready</td>
-<td align="right">4.519 s</td>
-<td align="right">2.608 s</td>
-<td align="right">42.3% faster</td>
+<td align="right">4.462 s</td>
+<td align="right">2.507 s</td>
+<td align="right">43.8% faster</td>
 </tr>
 <tr class="even">
 <td>100% (1,000,000 points)</td>
 <td>Gene expression ready</td>
-<td align="right">6.830 s</td>
-<td align="right">2.176 s</td>
-<td align="right">68.1% faster</td>
+<td align="right">88.790 s</td>
+<td align="right">81.846 s</td>
+<td align="right">7.8% faster</td>
 </tr>
 <tr class="odd">
 <td>100% (1,000,000 points)</td>
 <td>RGB ready</td>
-<td align="right">11.934 s</td>
-<td align="right">2.096 s</td>
-<td align="right">82.4% faster</td>
+<td align="right">99.863 s</td>
+<td align="right">82.157 s</td>
+<td align="right">17.7% faster</td>
 </tr>
 <tr class="even">
 <td>100% (1,000,000 points)</td>
 <td>Zoom median</td>
-<td align="right">7.9 ms</td>
-<td align="right">8.2 ms</td>
+<td align="right">8.1 ms</td>
+<td align="right">8.4 ms</td>
 <td align="right">effectively tied</td>
 </tr>
 <tr class="odd">
 <td>100% (1,000,000 points)</td>
 <td>Zoom p95</td>
-<td align="right">16.4 ms</td>
-<td align="right">15.7 ms</td>
-<td align="right">effectively tied</td>
+<td align="right">15.1 ms</td>
+<td align="right">22.0 ms</td>
+<td align="right">6.9 ms slower</td>
 </tr>
 <tr class="even">
 <td>10% (100,000 points)</td>
@@ -461,13 +501,20 @@ fresh processes on 12 September 2026:</p>
 </tr>
 </tbody>
 </table>
-<p>All four measured million-point page paths now meet the three-second
-navigation target. Integer vectors use the narrowest lossless wire type,
-reducing this dataset’s initial Linked Views bundle from 28,001,836 to
-15,001,832 bytes (46.4% smaller). Hover columns remain in their grouped
+<p>Overview and Linked Views now meet the three-second navigation
+target. Integer vectors use the narrowest lossless wire type, reducing
+this dataset’s initial Linked Views bundle from 28,001,836 to 15,001,832
+bytes (46.4% smaller). Hover columns remain in their grouped
 representation and are expanded only for the point actually under the
 pointer. Non-render-critical hover data is sent after the first-frame
 work rather than competing with it.</p>
+<p>The full-million gene and RGB rows remain dominated by reading
+expression values from the 3.5 GiB BPCells sidecar. WebGPU keeps their
+eventual million-point render responsive and avoids browser lock-up, but
+it does not turn that storage scan into a three-second operation.
+Improving those two rows requires a separate expression-cache or
+pre-aggregation change and is not claimed by this Viewer-rendering
+release.</p>
 <p><code>Data ready</code> remains about 14 seconds because it includes
 opening the CRB, attaching the BPCells sidecar, and starting the Shiny
 session. It is reported separately and is not included in the
@@ -641,7 +688,7 @@ experiment.</li>
 </ul>
 <p>Remove the detached baseline checkout when it is no longer
 needed:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">git</span> worktree remove ../CerebroNexus-before-1m</span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">git</span> worktree remove ../CerebroNexus-4.5.1-baseline</span></code></pre></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
