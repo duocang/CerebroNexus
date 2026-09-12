@@ -632,11 +632,9 @@ test_that("Linked views does not duplicate immutable bundle data", {
 })
 
 test_that("Linked views reuses the saved-view fingerprint", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(
-    readLines(
-      testthat::test_path("../../inst/viewer/coordinated_views/server.R"),
-      warn = FALSE
-    ),
+    readLines(server_file, warn = FALSE),
     collapse = "\n"
   )
 
