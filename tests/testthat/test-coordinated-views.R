@@ -548,6 +548,95 @@ test_that("one-cell dynamic expression messages retain JSON arrays", {
   expect_type(rgb$genes, "list")
 })
 
+test_that("large linked-view vectors use a lossless compact wire format", {
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("jsonlite")
+  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
+
+  bundle <- list(
+    cells = I(c("cell-1", "cell-2")),
+    groups = list(cluster = cv_env$cv_group(c(0L, NA_integer_), "A", "#fff")),
+    cat_extra = list(),
+    fields = list(score = cv_env$cv_field("Score", c(0L, 1000L), 0, 1)),
+    projections = list(
+      umap = list(x = I(c(1.25, NA_real_)), y = I(c(-2.5, 3.75)), ndim = 2L)
+    ),
+    spaces = list(cv_env$cv_space("spatial", "Spatial", c(4, 5), c(6, 7)))
+  )
+  packed <- cv_env$cv_wire_pack_bundle(bundle, min_length = 1L)
+
+  header_length <- readBin(
+    packed[seq_len(4L)],
+    integer(),
+    size = 4L,
+    endian = "little"
+  )
+  header <- jsonlite::fromJSON(
+    rawToChar(packed[4L + seq_len(header_length)]),
+    simplifyVector = FALSE
+  )
+  data_start <- 4L + header_length + ((4L - header_length %% 4L) %% 4L)
+  decode <- function(value) {
+    type <- value[["__cv_wire__"]]
+    first <- data_start + value$offset + 1L
+    bytes <- packed[seq.int(first, length.out = value$bytes)]
+    if (identical(type, "json")) {
+      return(jsonlite::fromJSON(rawToChar(bytes)))
+    }
+    if (identical(type, "f32")) {
+      readBin(bytes, numeric(), n = value$length, size = 4L, endian = "little")
+    } else {
+      readBin(
+        bytes,
+        integer(),
+        n = value$length,
+        size = switch(type, i8 = 1L, i16 = 2L, 4L),
+        signed = TRUE,
+        endian = "little"
+      )
+    }
+  }
+
+  expect_identical(header$wire_format, "binary-v1")
+  expect_identical(decode(header$cells), c("cell-1", "cell-2"))
+  expect_identical(decode(header$groups$cluster$values), c(0L, NA_integer_))
+  expect_identical(decode(header$fields$score$v), c(0L, 1000L))
+  expect_equal(decode(header$projections$umap$x), c(1.25, NA_real_))
+  expect_equal(decode(header$projections$umap$y), c(-2.5, 3.75))
+  expect_equal(decode(header$spaces[[1L]]$x), c(4, 5))
+  expect_equal(decode(header$spaces[[1L]]$y), c(6, 7))
+})
+
+test_that("Linked views negotiates compact transport with a legacy fallback", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, 'input[["coordviews_wire_supported"]]', fixed = TRUE)
+  expect_match(server, "sendBinaryMessage(", fixed = TRUE)
+  expect_match(server, '"coordviews_binary"', fixed = TRUE)
+  expect_match(server, '"coordviews_cells"', fixed = TRUE)
+  expect_match(server, "include_cells = FALSE", fixed = TRUE)
+  expect_match(server, "cv_wire_pack_bundle(bundle", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
+  expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
+  expect_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
+  expect_match(client, "coordviews_wire_supported", fixed = TRUE)
+  expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
+  expect_equal(
+    sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
+    1L
+  )
+})
+
 test_that("saved per-gene panels use the dynamic payload contract", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
