@@ -89,7 +89,7 @@ expression_projection_expression_levels <- reactive({
         ## Per-cell mean across the requested genes, restricted to cells_to_show.
         expression_levels <- unname(
           data_set()$getMeanExpressionForCells(
-            cells = cells_to_show,
+            cells = viewerExpressionCells(data_set(), cells_to_show),
             genes = genes_present
           )
         )

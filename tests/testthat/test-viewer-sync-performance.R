@@ -96,6 +96,43 @@ test_that("expression helpers preserve canonical cell indices", {
   expect_identical(values, list(A = c(30, 10)))
 })
 
+test_that("legacy expression accessors receive cell barcodes", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    viewer_test_path("utility_functions.R"),
+    envir = utility_env
+  )
+
+  LegacyCerebro <- R6::R6Class(
+    NULL,
+    public = list(
+      expression = NULL,
+      requested = NULL,
+      initialize = function() {
+        self$expression <- matrix(
+          1:3,
+          nrow = 1L,
+          dimnames = list("A", paste0("c", 1:3))
+        )
+      },
+      getExpressionRow = function(gene, cells) {
+        if (!is.character(cells)) {
+          stop("`cells` must be a character vector.")
+        }
+        self$requested <- cells
+        self$expression[gene, cells]
+      }
+    ),
+    private = list(legacy_serialized_method = TRUE)
+  )
+  data_set <- LegacyCerebro$new()
+
+  values <- utility_env$viewerExpressionValues(data_set, c(3L, 1L), "A")
+
+  expect_identical(data_set$requested, c("c3", "c1"))
+  expect_identical(values, list(A = c(3, 1)))
+})
+
 test_that("already aligned expression cells skip the string match", {
   match_lengths <- integer()
   utility_env <- new.env(parent = globalenv())

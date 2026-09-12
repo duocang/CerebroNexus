@@ -7,6 +7,7 @@
 - A reproducible 1M-cell benchmark separates PR #165 CRB lifecycle gains from Thin CRB and backend hot-path gains, records canonical-index lookup separately, and reports wall time and R allocation for all three stages.
 - Shuffled external-backend reads use storage order internally and restore the requested Viewer order afterward.
 - Linked Views bundles reuse the session cell fingerprint and avoid serializing duplicate projection coordinates.
+- Viewer expression reads retain canonical indices for current CRBs and fall back to barcodes for serialized legacy accessors.
 
 # CerebroNexus 4.5.0
 
