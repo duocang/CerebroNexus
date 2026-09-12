@@ -9,7 +9,8 @@ convertCerebro(input, output = input, codec = c("qs2", "rds"))
 \arguments{
 \item{input}{Input \code{.crb} path.}
 
-\item{output}{Output \code{.crb} path. Defaults to replacing \code{input}.}
+\item{output}{Output \code{.crb} path in the same directory as \code{input}.
+Defaults to replacing \code{input}.}
 
 \item{codec}{Serialization codec. Defaults to \code{"qs2"}; use
 \code{"rds"} when direct compatibility with \code{readRDS()} is required.}
