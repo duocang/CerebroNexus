@@ -64,4 +64,8 @@ Rscript "$repo_root/tests/bench/viewer_1m_hot_paths.R" \
   "$before_root" "$after_root" "$crb" "$repeats" \
   > "$output_dir/hot_paths.tsv"
 
+Rscript "$repo_root/tests/bench/viewer_1m_bundle.R" \
+  "$before_root" "$after_root" "$crb" "$repeats" \
+  > "$output_dir/bundle.tsv"
+
 printf 'benchmark results\t%s\n' "$output_dir"
