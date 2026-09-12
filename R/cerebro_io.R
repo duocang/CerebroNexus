@@ -407,12 +407,32 @@ readCerebro <- function(file) {
 #' Re-serializes a CRB while reusing its existing expression sidecar.
 #'
 #' @param input Input \code{.crb} path.
-#' @param output Output \code{.crb} path. Defaults to replacing \code{input}.
+#' @param output Output \code{.crb} path in the same directory as \code{input}.
+#' Defaults to replacing \code{input}.
 #' @param codec Serialization codec. Defaults to \code{"qs2"}; use
 #' \code{"rds"} when direct compatibility with \code{readRDS()} is required.
 #' @return The output path, invisibly.
 #' @export
 convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
   codec <- match.arg(codec)
+  input <- normalizePath(input, mustWork = TRUE)
+  valid_output <-
+    is.character(output) &&
+    length(output) == 1L &&
+    !is.na(output) &&
+    nzchar(output)
+  if (
+    valid_output &&
+      !identical(
+        dirname(input),
+        normalizePath(dirname(output), mustWork = FALSE)
+      )
+  ) {
+    stop(
+      "`input` and `output` must be in the same directory because ",
+      "conversion reuses the existing expression sidecar.",
+      call. = FALSE
+    )
+  }
   saveCerebro(readCerebro(input), output, codec = codec)
 }

@@ -91,7 +91,7 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
 
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R"),
+    viewer_test_path("utility_functions.R"),
     envir = runtime
   )
   runtime_object <- runtime$read_cerebro_file(qs)
@@ -115,6 +115,15 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   converted <- file.path(root, "converted-rds.crb")
   convertCerebro(qs, converted, codec = "rds")
   expect_cerebro_fields(readCerebro(converted), fixture)
+
+  other_root <- file.path(root, "converted")
+  cross_directory <- file.path(other_root, "converted-rds.crb")
+  expect_error(
+    convertCerebro(qs, cross_directory, codec = "rds"),
+    "must be in the same directory"
+  )
+  expect_false(file.exists(cross_directory))
+
   convertCerebro(qs)
   expect_cerebro_fields(readCerebro(qs), fixture)
 })
