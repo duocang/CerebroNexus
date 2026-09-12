@@ -8,7 +8,7 @@ The benchmark uses the official 10x 1M neurons dataset and the existing `large-e
 | --- | --- | --- | --- |
 | PR #165 | `69893a2b` | 4.4.3 | Legacy RDS CRB and original Viewer backend paths |
 | Thin CRB/qs2 | `27303f21` | 4.5.0 | Thin CRB v1, qs2, hydration, and canonical BPCells cell index |
-| Backend hot paths | `3fb88b8a` | 4.5.1 | Integer-index propagation, lower-copy filtering, batched reads, storage-order reads, and backend-native aggregation |
+| Backend hot paths | `1ad8abc0` | 4.5.1 | Integer-index propagation, lower-copy filtering, batched and storage-order reads, backend-native aggregation, and compact Linked Views bundles |
 
 The 4.4.3 and 4.5.0 Viewer hot-path implementations are identical: the intervening changes are confined to CRB serialization and hydration. Their Viewer measurements therefore share one run against the same hydrated Thin qs2 artifact; duplicating that baseline avoids claiming noise as a product difference. CRB lifecycle results are measured separately because that is where 4.5.0 changes behavior.
 
@@ -60,6 +60,19 @@ The strongest user-visible improvement is RGB colouring: 12.50 seconds becomes 4
 
 The ordinary single-gene full scan remains bounded by reading one million BPCells values and is effectively unchanged. Random Viewer order is more expensive on an on-disk column backend; reading the same 100,000 requested columns in storage order and restoring the requested output order reduces that case by 25.4% without changing values or order.
 
+## Linked Views bundle construction
+
+The bundle benchmark uses three alternating warm rounds. Both candidates read the same hydrated Thin qs2 CRB. The optimized bundle reuses the session's saved-view fingerprint and keeps projection coordinates only in the canonical `projections` field; the existing client rebuilds the lightweight expression-space descriptor from that field.
+
+| Resource | PR #165 and Thin CRB | Backend 4.5.1 | Change |
+| --- | ---: | ---: | ---: |
+| Bundle construction | 3,473 ms | 253 ms | 92.7% faster; 13.7x |
+| JSON encoding | 3,625 ms | 1,961 ms | 45.9% faster; 1.85x |
+| R bundle object | 135.88 MiB | 120.62 MiB | 11.2% smaller |
+| JSON payload | 62.94 MiB | 48.78 MiB | 22.5% smaller |
+
+The normalized before/after bundle contract is equal. The remaining 48.78 MiB is the intentional all-cell Linked Views workspace; sampling it or changing its transport format would alter Viewer behavior and belongs to the separate Viewer/WebGPU layer.
+
 ## Environment
 
 - Apple M1 Pro, 32 GiB RAM
@@ -72,7 +85,7 @@ The ordinary single-gene full scan remains bounded by reading one million BPCell
 The complete workflow reuses complete artifacts when present, otherwise prepares the missing official H5, BPCells-backed Seurat, and Thin CRB artifacts before measuring the backend hot paths. Its manifest records PR #165, Thin CRB, and latest implementation SHAs:
 
 ```sh
-tests/bench/run_viewer_1m_benchmark.sh 27303f21 3fb88b8a tests/bench/scratch/backend-4.5.1
+tests/bench/run_viewer_1m_benchmark.sh 27303f21 1ad8abc0 tests/bench/scratch/backend-4.5.1
 ```
 
 The lower-level command accepts an already prepared CRB so measurements can be rerun without repeating conversion:
