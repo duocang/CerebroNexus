@@ -1,3 +1,10 @@
+# CerebroNexus 4.6.1
+
+## Viewer
+
+- Thin BPCells CRB schema v2 records the cell count and lets the Viewer defer million-cell index hydration until metadata or projections are first used; package-level `readCerebro()` and schema v1 files remain eager and compatible.
+- Data Info is delivered before optional page servers and collapsed group filters are registered, reducing installed-package process-to-1M-cell readiness to a 2.557-second median while preserving those pages after the first response.
+
 # CerebroNexus 4.6.0
 
 ## Viewer
