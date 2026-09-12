@@ -28,6 +28,9 @@ Sys.setenv(NOT_CRAN = "true")
 quote_r <- function(value) encodeString(value, quote = '"')
 
 run_once <- function(candidate, root, round) {
+  has_gpu_renderer <- file.exists(
+    file.path(root, "inst", "viewer", "www", "cell_points_gpu.js")
+  )
   app_dir <- tempfile(paste0("million-cell-viewer-", candidate, "-"))
   dir.create(app_dir)
   on.exit(unlink(app_dir, recursive = TRUE, force = TRUE), add = TRUE)
@@ -76,11 +79,18 @@ run_once <- function(candidate, root, round) {
   )
   app$wait_for_js(
     paste0(
-      "(() => {const c=document.querySelector(",
-      "'#overview_projection_cell_view_host canvas.cv-gpu-layer');",
-      "return c?.style.display==='block' && ",
-      "Number(c.dataset.pointCount)>0 && ",
-      "c._cerebroPointRenderer?.isReady();})()"
+      "(() => {const h=document.getElementById(",
+      "'overview_projection_cell_view_host');",
+      "const g=h?.querySelector('canvas.cv-gpu-layer');",
+      "if(",
+      tolower(has_gpu_renderer),
+      ")return ",
+      "g?.style.display==='block'&&",
+      "Number(g.dataset.pointCount)>0&&",
+      "g._cerebroPointRenderer?.isReady();",
+      "const c=h?.querySelector('canvas[id^=\"cv-cv-\"]');",
+      "return !!c&&c.width>0&&c.height>0&&",
+      "c.toDataURL('image/png').length>10000;})()"
     ),
     timeout = 900000
   )
@@ -88,26 +98,32 @@ run_once <- function(candidate, root, round) {
   browser <- app$get_js(paste0(
     "(async()=>{const h=document.getElementById(",
     "'overview_projection_cell_view_host');",
-    "const c=h.querySelector('canvas.cv-gpu-layer');",
-    "const r=c._cerebroPointRenderer;await r.idle();",
+    "const g=h.querySelector('canvas.cv-gpu-layer');",
+    "const r=g?.style.display==='block'?g._cerebroPointRenderer:null;",
+    "const c=r?g:h.querySelector('canvas[id^=\"cv-cv-\"]');",
+    "if(r)await r.idle();",
     "const zoomIn=h.querySelector('[data-act=\"zin\"]');",
     "const zoomOut=h.querySelector('[data-act=\"zout\"]');",
     "if(!zoomIn||!zoomOut)throw new Error('zoom controls missing');",
     "const times=[];for(let i=0;i<10;i++){",
     "const t=performance.now();(i%2?zoomOut:zoomIn).click();",
-    "await r.idle();times.push(performance.now()-t);}",
-    "times.sort((a,b)=>a-b);const s=r.stats();",
-    "return{backend:s.backend,points:Number(c.dataset.pointCount),",
+    "if(r)await r.idle();times.push(performance.now()-t);}",
+    "times.sort((a,b)=>a-b);const s=r?r.stats():",
+    "{backend:'canvas2d',contextLost:false,error:''};",
+    "return{backend:s.backend,points:r?Number(c.dataset.pointCount):",
+    as.integer(round(1000000 * percentage / 100)),
+    ",",
     "zoomMedianMs:times[4],zoomP95Ms:times[9],",
     "imageBytes:Math.round((c.toDataURL('image/png').length-22)*.75),",
     "contextLost:!!s.contextLost,gpuError:s.error||''};})()"
   ))
   if (
-    isTRUE(browser$contextLost) ||
+    (has_gpu_renderer && !identical(browser$backend, "webgpu")) ||
+      isTRUE(browser$contextLost) ||
       nzchar(browser$gpuError) ||
       as.numeric(browser$imageBytes) < 10000
   ) {
-    stop("GPU canvas validation failed.", call. = FALSE)
+    stop("Viewer canvas validation failed.", call. = FALSE)
   }
 
   data.frame(

@@ -598,6 +598,39 @@ test_that("single-cell projections and bundle cell IDs stay JSON arrays", {
   expect_match(as_json(projection$y), "^\\[")
 })
 
+test_that("Linked views does not duplicate projection coordinates", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  md <- data.frame(
+    cell_barcode = cells,
+    cluster = c("A", "B"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() md,
+    getGroups = function() "cluster",
+    getParameters = function() list(main_group = "cluster"),
+    availableProjections = function() "umap",
+    getProjection = function(name) {
+      matrix(1:4, nrow = 2, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+  expression_space <- bundle$spaces[[which(
+    vapply(bundle$spaces, `[[`, character(1), "id") == "umap"
+  )]]
+
+  expect_true(all(c("x", "y") %in% names(bundle$projections$umap)))
+  expect_false(any(c("x", "y", "z") %in% names(expression_space)))
+  expect_null(bundle$cell_fingerprint)
+})
+
 test_that("bundle cell identity falls back to metadata row names", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")

@@ -109,3 +109,41 @@ test_that("column types from trajectory meta are preserved (state stays characte
   expect_type(merged$state, "character")
   expect_type(merged$pseudotime, "double")
 })
+
+test_that("trajectory consumers reuse merged cells and structured hover", {
+  trajectory_dir <- testthat::test_path("../../inst/viewer/trajectory")
+  server <- paste(
+    readLines(file.path(trajectory_dir, "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(server, "trajectory_cells_reactive <- reactive", fixed = TRUE)
+
+  active_files <- c(
+    "distribution_along_pseudotime.R",
+    "expression_metrics.R",
+    "projection_plot.R",
+    "selected_cells_table.R",
+    "states_by_group.R"
+  )
+  active_source <- paste(
+    vapply(
+      file.path(trajectory_dir, active_files),
+      function(path) paste(readLines(path, warn = FALSE), collapse = "\n"),
+      character(1)
+    ),
+    collapse = "\n"
+  )
+  expect_false(grepl(
+    "mergeTrajectoryWithMetaData(",
+    active_source,
+    fixed = TRUE
+  ))
+  expect_match(active_source, "trajectory_cells_reactive()", fixed = TRUE)
+
+  projection <- paste(
+    readLines(file.path(trajectory_dir, "projection_plot.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl("buildHoverInfoForProjections", projection, fixed = TRUE))
+  expect_match(projection, "hover_columns", fixed = TRUE)
+})

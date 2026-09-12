@@ -82,7 +82,7 @@ coordviews_bundle <- reactive({
           )
         )
       } else {
-        b$dataset_fingerprint <- cv_config_cell_fingerprint(b$cells)
+        b$dataset_fingerprint <- cv_saved_view_dataset()$fingerprint
         b
       }
     },
@@ -536,9 +536,14 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       ifelse(is_selected, "selected", "not selected"),
       levels = c("selected", "not selected")
     )
+    violin_data <- compactViolinData(
+      data.frame(group = grp, value = cells_df[[var]]),
+      "value",
+      "group"
+    )
     plot <- plotly::plot_ly(
-      x = grp,
-      y = cells_df[[var]],
+      x = violin_data[["group"]],
+      y = violin_data[["value"]],
       type = "violin",
       box = list(visible = TRUE),
       meanline = list(visible = TRUE),

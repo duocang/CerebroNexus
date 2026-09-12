@@ -23,8 +23,7 @@ trajectory_projection_prepared <- reactive({
   trajectory_data <- trajectory_data_reactive()
 
   ## build data frame with data
-  cells_df <- mergeTrajectoryWithMetaData(trajectory_data) %>%
-    dplyr::filter(!is.na(pseudotime))
+  cells_df <- trajectory_cells_reactive()
 
   groups <- getGroups()
   group_filters <- stats::setNames(
@@ -48,7 +47,8 @@ trajectory_projection_prepared <- reactive({
     return(list(
       cells_df = cells_df,
       trajectory_lines = list(),
-      hover_info = character(0),
+      hover_columns = list(),
+      hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
       color_variable = input[["trajectory_point_color"]],
       point_size = input[["trajectory_point_size"]],
       point_opacity = input[["trajectory_point_opacity"]],
@@ -77,18 +77,35 @@ trajectory_projection_prepared <- reactive({
     )
   })
 
-  ## hover info: cell + metadata + state + pseudotime
-  hover_info <- buildHoverInfoForProjections(cells_df)
-  hover_info <- glue::glue(
-    "{hover_info}<br>",
-    "<b>State</b>: {cells_df$state}<br>",
-    "<b>Pseudotime</b>: {formatC(cells_df$pseudotime, format = 'f', digits = 2)}"
-  )
+  hover <- isTRUE(preferences[["show_hover_info_in_projections"]])
+  hover_columns <- list()
+  if (hover) {
+    state <- as.character(cells_df[["state"]])
+    state[is.na(state)] <- "NA"
+    state_levels <- unique(state)
+    hover_columns <- c(
+      cerebroProjectionHoverColumns(cells_df),
+      list(
+        list(
+          label = "State",
+          levels = state_levels,
+          values = match(state, state_levels) - 1L
+        ),
+        list(
+          label = "Pseudotime",
+          format = "fixed",
+          digits = 2L,
+          values = unname(as.numeric(cells_df[["pseudotime"]]))
+        )
+      )
+    )
+  }
 
   list(
     cells_df = cells_df,
     trajectory_lines = trajectory_lines,
-    hover_info = as.character(hover_info),
+    hover_columns = hover_columns,
+    hover = hover,
     color_variable = input[["trajectory_point_color"]],
     point_size = input[["trajectory_point_size"]],
     point_opacity = input[["trajectory_point_opacity"]],
@@ -205,7 +222,8 @@ observeEvent(
       point_line = point_line,
       reset_axes = reset_axes_now,
       color_assignments = color_assignments,
-      hover_info = prepared[["hover_info"]],
+      hover_columns = prepared[["hover_columns"]],
+      hover = prepared[["hover"]],
       space_label = input[["trajectory_selected_name"]]
     )
     cerebroCellViewRender(
@@ -277,11 +295,7 @@ trajectory_projection_selected_cells <- reactive({
   hidden_groups <- input[["trajectory_projection_hidden_groups"]]
   if (length(hidden_groups) > 0) {
     color_variable <- input[["trajectory_point_color"]]
-    trajectory_data <- getTrajectory(
-      input[["trajectory_selected_method"]],
-      input[["trajectory_selected_name"]]
-    )
-    metadata <- mergeTrajectoryWithMetaData(trajectory_data) %>%
+    metadata <- trajectory_cells_reactive() %>%
       dplyr::mutate(
         identifier = paste0(DR_1, '-', DR_2),
         selection_key = as.character(cell_barcode)

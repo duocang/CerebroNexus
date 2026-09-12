@@ -97,3 +97,17 @@ test_that("gene controls load transcriptome choices server-side", {
   expect_no_match(source, "list_of_genes()", fixed = TRUE)
   expect_match(source, "serverSideGeneSelector(", fixed = TRUE)
 })
+
+test_that("the real Viewer benchmark accepts the Canvas baseline", {
+  benchmark <- paste(
+    readLines(
+      testthat::test_path("..", "bench", "benchmark_million_cell_viewer.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(benchmark, "has_gpu_renderer <- file.exists", fixed = TRUE)
+  expect_match(benchmark, "canvas[id^=\\\"cv-cv-\\\"]", fixed = TRUE)
+  expect_match(benchmark, "backend:'canvas2d'", fixed = TRUE)
+})
