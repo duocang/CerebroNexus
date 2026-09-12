@@ -18,15 +18,9 @@ expression_projection_expression_levels <- reactive({
 
   withProgress(message = 'Calculating expression levels...', value = 0.2, {
     cells_to_show <- expression_projection_cells_to_show()
-    ## expression_projection_cells_to_show() returns numeric row ids (see
-    ## obj_projection_cells_to_show.R: `cells_to_show <- cells_df$row_id`),
-    ## not cell barcodes. Passing numeric ids into getExpressionMatrix(cells=)
-    ## works by accident on dgCMatrix (R's `[` accepts column positions) but
-    ## breaks the RleMatrix branch in class-Cerebro.R, which calls
-    ## match(cells, colnames(self$expression)) -- matching numbers against
-    ## barcode strings returns NA. Translate once here so every backend sees
-    ## the documented contract: cells = character barcodes.
-    cells_to_show_bc <- colnames(data_set()$expression)[cells_to_show]
+    ## Keep the canonical numeric indices returned by the shared projection
+    ## sampler. Converting them to barcodes here only makes the backend match
+    ## the same million names back to the original column indices.
     n_cells <- length(cells_to_show)
     genes_data <- expression_selected_genes()
 
@@ -55,14 +49,9 @@ expression_projection_expression_levels <- reactive({
       }
     } else {
       req(expression_projection_coordinates())
-      ## All branches below go through data_set()$getExpressionMatrix(cells, genes)
-      ## with character barcodes (cells_to_show_bc) instead of subscripting
-      ## data_set()$expression directly. The helper materialises only the
-      ## requested gene x cell slice, avoiding the previous pattern of
-      ## extracting a full row (all cells) and subsetting afterwards. Using
-      ## barcodes lets the helper dispatch correctly across dgCMatrix (named
-      ## [ ] subset), RleMatrix (match() against colnames), and IterableMatrix,
-      ## so the former IterableMatrix special case is no longer needed.
+      ## All branches keep the requested slice in canonical index order. The
+      ## class accessors dispatch those indices across dgCMatrix, DelayedArray,
+      ## and IterableMatrix without a barcode lookup.
       if (identical(display_mode, "rgb")) {
         incProgress(0.3, detail = "Calculating RGB co-expression...")
         rgb_genes <- genes_data[["rgb_genes"]]
@@ -72,7 +61,7 @@ expression_projection_expression_levels <- reactive({
         )
         expression_values <- viewerExpressionValues(
           data_set(),
-          cells_to_show_bc,
+          cells_to_show,
           requested_genes
         )
         expression_levels <- lapply(rgb_genes, function(gene) {
@@ -85,14 +74,14 @@ expression_projection_expression_levels <- reactive({
         incProgress(0.3, detail = "Extracting multiple gene panels...")
         expression_levels <- viewerExpressionValues(
           data_set(),
-          cells_to_show_bc,
+          cells_to_show,
           genes_present
         )
       } else if (length(genes_present) == 1) {
         incProgress(0.3, detail = "Extracting single gene expression...")
         expression_levels <- unname(viewerExpressionRow(
           data_set(),
-          cells_to_show_bc,
+          cells_to_show,
           genes_present[[1L]]
         ))
       } else if (length(genes_present) >= 2) {
@@ -100,7 +89,7 @@ expression_projection_expression_levels <- reactive({
         ## Per-cell mean across the requested genes, restricted to cells_to_show.
         expression_levels <- unname(
           data_set()$getMeanExpressionForCells(
-            cells = cells_to_show_bc,
+            cells = cells_to_show,
             genes = genes_present
           )
         )
