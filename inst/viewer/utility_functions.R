@@ -2105,6 +2105,29 @@ getMetaData <- function() {
     return(data_set()$getMetaData())
   }
 }
+.runtimeCerebroCellCount <- function(object) {
+  schema <- if (
+    is.environment(object) &&
+      exists("crb_schema", envir = object, inherits = FALSE)
+  ) {
+    object$crb_schema
+  } else {
+    NULL
+  }
+  if (
+    is.list(schema) &&
+      identical(schema$version, 2L) &&
+      is.integer(schema$n_cells) &&
+      length(schema$n_cells) == 1L &&
+      !is.na(schema$n_cells)
+  ) {
+    return(schema$n_cells)
+  }
+  nrow(object$meta_data)
+}
+getNumberOfCells <- function() {
+  .runtimeCerebroCellCount(data_set())
+}
 availableProjections <- function() {
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$availableProjections())
@@ -2671,16 +2694,26 @@ get_or_load_crb <- function(
     return(NULL)
   }
   schema_names <- names(schema)
+  expected_names <- if (identical(schema$version, 1L)) {
+    c("version", "cell_names", "cell_names_md5", "projection_rownames")
+  } else if (identical(schema$version, 2L)) {
+    c(
+      "version",
+      "cell_names",
+      "cell_names_md5",
+      "projection_rownames",
+      "n_cells"
+    )
+  } else {
+    character()
+  }
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
-    length(schema) == 4L &&
+    length(expected_names) > 0L &&
+    length(schema) == length(expected_names) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
-    setequal(
-      schema_names,
-      c("version", "cell_names", "cell_names_md5", "projection_rownames")
-    ) &&
-    identical(schema$version, 1L) &&
+    setequal(schema_names, expected_names) &&
     identical(schema$cell_names, "expression") &&
     is.character(schema$cell_names_md5) &&
     length(schema$cell_names_md5) == 1L &&
@@ -2689,7 +2722,12 @@ get_or_load_crb <- function(
     is.character(schema$projection_rownames) &&
     !anyNA(schema$projection_rownames) &&
     !any(!nzchar(schema$projection_rownames)) &&
-    !anyDuplicated(schema$projection_rownames)
+    !anyDuplicated(schema$projection_rownames) &&
+    (identical(schema$version, 1L) ||
+      (is.integer(schema$n_cells) &&
+        length(schema$n_cells) == 1L &&
+        !is.na(schema$n_cells) &&
+        schema$n_cells >= 0L))
   if (!valid) {
     stop(
       "The Cerebro data file '",
@@ -2713,35 +2751,26 @@ get_or_load_crb <- function(
   checksum
 }
 
-.hydrateThinCrb <- function(obj, crb_path, sidecar, schema) {
-  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
-    stop(
-      "The BPCells cell-name index does not match CRB '",
-      basename(crb_path),
-      "'.",
-      call. = FALSE
-    )
+.validateThinCrbShape <- function(metadata, projections, schema) {
+  expected_cells <- if (identical(schema$version, 2L)) {
+    schema$n_cells
+  } else {
+    nrow(metadata)
   }
-  cells <- colnames(obj$expression)
-  metadata <- obj$meta_data
   if (
-    !is.character(cells) ||
-      anyNA(cells) ||
-      any(!nzchar(cells)) ||
-      anyDuplicated(cells) ||
-      !is.data.frame(metadata) ||
-      nrow(metadata) != length(cells) ||
+    !is.data.frame(metadata) ||
+      nrow(metadata) != expected_cells ||
       "cell_barcode" %in% names(metadata)
   ) {
     stop(
-      "The thin CRB and BPCells sidecar have incompatible cell metadata.",
+      "The thin CRB cell count does not match its cell metadata.",
       call. = FALSE
     )
   }
 
   missing_projections <- setdiff(
     schema$projection_rownames,
-    names(obj$projections)
+    names(projections)
   )
   if (length(missing_projections)) {
     stop(
@@ -2752,8 +2781,8 @@ get_or_load_crb <- function(
     )
   }
   for (name in schema$projection_rownames) {
-    projection <- obj$projections[[name]]
-    if (!is.data.frame(projection) || nrow(projection) != length(cells)) {
+    projection <- projections[[name]]
+    if (!is.data.frame(projection) || nrow(projection) != expected_cells) {
       stop(
         "Projection '",
         name,
@@ -2761,14 +2790,98 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    rownames(projection) <- cells
-    obj$projections[[name]] <- projection
   }
-  obj$meta_data <- data.frame(
-    cell_barcode = cells,
-    metadata,
-    check.names = FALSE,
-    stringsAsFactors = FALSE
+  invisible(TRUE)
+}
+
+.hydrateThinCrbFields <- function(metadata, projections, schema, cells) {
+  if (
+    !is.character(cells) ||
+      anyNA(cells) ||
+      any(!nzchar(cells)) ||
+      anyDuplicated(cells) ||
+      nrow(metadata) != length(cells)
+  ) {
+    stop(
+      "The thin CRB and BPCells sidecar have incompatible cell metadata.",
+      call. = FALSE
+    )
+  }
+  for (name in schema$projection_rownames) {
+    projection <- projections[[name]]
+    rownames(projection) <- cells
+    projections[[name]] <- projection
+  }
+  list(
+    meta_data = data.frame(
+      cell_barcode = cells,
+      metadata,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ),
+    projections = projections
+  )
+}
+
+.hydrateThinCrb <- function(obj, crb_path, sidecar, schema, cells = NULL) {
+  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+    stop(
+      "The BPCells cell-name index does not match CRB '",
+      basename(crb_path),
+      "'.",
+      call. = FALSE
+    )
+  }
+  if (is.null(cells)) {
+    cells <- colnames(obj$expression)
+  }
+  metadata <- obj$meta_data
+  projections <- obj$projections
+  .validateThinCrbShape(metadata, projections, schema)
+  hydrated <- .hydrateThinCrbFields(metadata, projections, schema, cells)
+  obj$meta_data <- hydrated$meta_data
+  obj$projections <- hydrated$projections
+  obj
+}
+
+.deferThinCrbHydration <- function(obj, crb_path, sidecar, schema) {
+  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+    stop(
+      "The BPCells cell-name index does not match CRB '",
+      basename(crb_path),
+      "'.",
+      call. = FALSE
+    )
+  }
+  metadata <- obj$meta_data
+  projections <- obj$projections
+  .validateThinCrbShape(metadata, projections, schema)
+  hydrate <- local({
+    hydrated <- NULL
+    function() {
+      if (is.null(hydrated)) {
+        cells <- readLines(file.path(sidecar, "col_names"), warn = FALSE)
+        hydrated <<- .hydrateThinCrbFields(
+          metadata,
+          projections,
+          schema,
+          cells
+        )
+      }
+      hydrated
+    }
+  })
+  delayedAssign(
+    "meta_data",
+    hydrate()$meta_data,
+    eval.env = environment(),
+    assign.env = obj
+  )
+  delayedAssign(
+    "projections",
+    hydrate()$projections,
+    eval.env = environment(),
+    assign.env = obj
   )
   obj
 }
@@ -2977,12 +3090,6 @@ get_or_load_crb <- function(
   }
 
   if (be$type == "bpcells") {
-    if (!requireNamespace("BPCells", quietly = TRUE)) {
-      stop(
-        "bpcells-backed crb requires the BPCells package; please install it.",
-        call. = FALSE
-      )
-    }
     if (!dir.exists(loc_abs)) {
       stop(
         sprintf(
@@ -2998,10 +3105,42 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
-    obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
     if (!is.null(crb_schema)) {
-      obj <- .hydrateThinCrb(obj, crb_path, loc_abs, crb_schema)
+      if (identical(crb_schema$version, 2L)) {
+        obj <- .deferThinCrbHydration(obj, crb_path, loc_abs, crb_schema)
+      } else {
+        cells <- readLines(file.path(loc_abs, "col_names"), warn = FALSE)
+        obj <- .hydrateThinCrb(obj, crb_path, loc_abs, crb_schema, cells)
+      }
+      delayedAssign(
+        "expression",
+        {
+          if (!requireNamespace("BPCells", quietly = TRUE)) {
+            stop(
+              paste(
+                "bpcells-backed crb requires the BPCells package;",
+                "please install it."
+              ),
+              call. = FALSE
+            )
+          }
+          print(glue::glue(
+            "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
+          ))
+          BPCells::open_matrix_dir(dir = loc_abs)
+        },
+        eval.env = environment(),
+        assign.env = obj
+      )
+    } else {
+      if (!requireNamespace("BPCells", quietly = TRUE)) {
+        stop(
+          "bpcells-backed crb requires the BPCells package; please install it.",
+          call. = FALSE
+        )
+      }
+      print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
+      obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
     }
   } else if (be$type == "h5") {
     if (!requireNamespace("HDF5Array", quietly = TRUE)) {
@@ -3346,6 +3485,22 @@ getImmuneRepertoireSummary <- function() {
     samples = names(repertoire) %||% character(),
     chains = character()
   )
+}
+
+viewerHasTcrRepertoire <- function(repertoire) {
+  if (!is.list(repertoire) || !length(repertoire)) {
+    return(FALSE)
+  }
+  any(vapply(
+    repertoire,
+    function(sample) {
+      if (is.null(sample) || !"CTgene" %in% names(sample)) {
+        return(FALSE)
+      }
+      any(grepl("TR[AB]", as.character(sample$CTgene)), na.rm = TRUE)
+    },
+    logical(1)
+  ))
 }
 
 ## ---- What one row of this data set is ---------------------------------- ##
