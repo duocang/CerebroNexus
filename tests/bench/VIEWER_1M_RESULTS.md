@@ -1,15 +1,16 @@
 # 1M-cell backend hot-path benchmark
 
-The benchmark uses the official 10x 1M neurons dataset and the existing `large-examples/1m` artifacts. The rebased comparison was intentionally not executed during branch reconstruction.
+The benchmark uses the official 10x 1M neurons dataset and the existing `large-examples/1m` artifacts. It separates the CRB persistence gain from the Viewer backend gain so each release is credited only for the layer it changes.
 
 ## Compared revisions
 
-| Version | Revision | Notes |
-| --- | --- | --- |
-| Before | `27303f21` | CerebroNexus 4.5.0 Thin CRB/qs2 baseline |
-| After | `HEAD` | CerebroNexus 4.5.1 backend hot paths with canonical cell indices |
+| Stage | Revision | Version | Optimization layer |
+| --- | --- | --- | --- |
+| PR #165 | `69893a2b` | 4.4.3 | Legacy RDS CRB and original Viewer backend paths |
+| Thin CRB/qs2 | `27303f21` | 4.5.0 | Thin CRB v1, qs2, hydration, and canonical BPCells cell index |
+| Backend hot paths | `3fb88b8a` | 4.5.1 | Integer-index propagation, lower-copy filtering, batched reads, storage-order reads, and backend-native aggregation |
 
-`tests/bench/run_viewer_1m_benchmark.sh` writes the exact before/after SHAs and a TSV comparison table. It reuses existing source, Seurat, Thin CRB, and BPCells artifacts and does not download or regenerate complete artifacts when they are present. The comparison includes an isolated one-million-cell barcode-to-index lookup plus the complete projection, single-gene, RGB, multi-panel, and mean-expression paths.
+The 4.4.3 and 4.5.0 Viewer hot-path implementations are identical: the intervening changes are confined to CRB serialization and hydration. Their Viewer measurements therefore share one run against the same hydrated Thin qs2 artifact; duplicating that baseline avoids claiming noise as a product difference. CRB lifecycle results are measured separately because that is where 4.5.0 changes behavior.
 
 ## Dataset preparation
 
@@ -29,32 +30,35 @@ The benchmark uses the official 10x 1M neurons dataset and the existing `large-e
 
 All source and generated data are stored in the R user cache, outside Git.
 
-## Historical Viewer hot paths
+## CRB lifecycle comparison
 
-These retained measurements were collected on 2026-09-11 for `69893a2b` versus the original backend candidate `8f803742`. They document the expected direction and scale only; rerun the script for authoritative `27303f21` versus 4.5.1 results. Medians use three repetitions on the same 1M-cell CRB. Allocations are R allocations reported by `Rprofmem`; correctness checks passed for every row.
+Warm-cache medians use five alternating rounds on the same BPCells sidecar. The 4.5.0 and 4.5.1 values come from separate runs of the same script; their small differences show run-to-run and serialized-method variation rather than a new persistence algorithm.
 
-| Operation | Scale | Before | After | Time | Before alloc. | After alloc. | Allocation |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full projection selection | 1M cells, all groups, 100% | 226 ms | 31 ms | -86.3% | 206.7 MiB | 19.1 MiB | -90.8% |
-| Filtered projection selection | 1M cells, 17/33 clusters, 25% (134,557 cells) | 345 ms | 28 ms | -91.9% | 170.6 MiB | 39.5 MiB | -76.9% |
-| Single-gene expression | 1 gene x 1M cells, BPCells | 4,167 ms | 4,182 ms | +0.4% | 154.1 MiB | 169.3 MiB | +9.9% |
-| RGB expression | 3 genes x 1M cells, 3 reads vs 1 | 12,310 ms | 4,106 ms | -66.6% | 461.4 MiB | 238.3 MiB | -48.4% |
-| Multi-panel expression | 9 genes x 1M cells, transpose removed | 5,327 ms | 4,702 ms | -11.7% | 562.3 MiB | 463.2 MiB | -17.6% |
-| Mean expression | 100 genes x 1M cells, dense vs backend-native | 5,861 ms | 4,093 ms | -30.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
+| Resource | PR #165 / 4.4.3 | Thin CRB / 4.5.0 | Backend / 4.5.1 | Latest vs PR #165 | Latest vs Thin CRB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CRB control payload | 26.829 MiB | 13.213 MiB | 13.215 MiB | 50.7% smaller | +0.02% |
+| Write median | 8,001 ms | 231 ms | 238 ms | 33.6x faster | 3.0% slower |
+| Decode median | 1,296 ms | 41 ms | 40 ms | 32.4x faster | 2.4% faster |
+| Hydrated `readCerebro()` median | 1,479 ms | 297 ms | 298 ms | 5.0x faster | 0.3% slower |
 
-One representative pass through the six historical operations fell from 28.236 to 17.142 seconds and from 3,471.9 to 1,042.2 MiB of cumulative R allocations: 39.3% less elapsed time and 70.0% less allocation. This aggregate is an explanatory workload, not an end-to-end Viewer benchmark.
+## Viewer backend hot paths
 
-## Rebased result status
+Measurements were collected on 2026-09-12 with three warm repetitions on the same 1M-cell Thin qs2 CRB. Times are wall-clock medians; allocations are cumulative R allocations from `Rprofmem`, not peak RSS. Every row checks equality of the selected indices or expression values before timing.
 
-| Metric | 4.5.0 before | 4.5.1 after | Status |
-| --- | ---: | ---: | --- |
-| Barcode-to-index resolution | — | — | Added to the reproducible benchmark; measurement pending |
-| Single-gene expression | — | — | Canonical-index path added; measurement pending |
-| RGB, multi-panel, and mean expression | — | — | Canonical-index path added; measurement pending |
+| Operation | Scale | PR #165 | Thin CRB | Backend 4.5.1 | Latest vs PR #165 | Latest vs Thin CRB | PR #165 alloc. | Thin CRB alloc. | Backend alloc. | Allocation change vs both |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full projection selection | 1M cells, all groups, 100% | 197 ms | 197 ms | 31 ms | -84.3% | -84.3% | 199.1 MiB | 199.1 MiB | 19.1 MiB | -90.4% |
+| Filtered projection selection | 1M cells, 17/33 clusters, 25% | 329 ms | 329 ms | 28 ms | -91.5% | -91.5% | 166.5 MiB | 166.5 MiB | 39.5 MiB | -76.3% |
+| Cell-index resolution | 1M shuffled indices vs barcode match | 79 ms | 79 ms | <1 ms | >98.7% faster | >98.7% faster | 27.1 MiB | 27.1 MiB | 0 MiB | -100.0% |
+| Single-gene expression | 1 gene x 1M cells, canonical order | 4,063 ms | 4,063 ms | 4,022 ms | -1.0% | -1.0% | 154.1 MiB | 154.1 MiB | 157.1 MiB | +2.0% |
+| Shuffled single-gene expression | 1 gene x 100k cells, random Viewer order | 7,886 ms | 7,886 ms | 5,881 ms | -25.4% | -25.4% | 33.4 MiB | 33.4 MiB | 22.3 MiB | -33.1% |
+| RGB expression | 3 genes x 1M cells | 12,498 ms | 12,498 ms | 4,021 ms | -67.8% | -67.8% | 461.4 MiB | 461.4 MiB | 226.1 MiB | -51.0% |
+| Multi-panel expression | 9 genes x 1M cells | 4,309 ms | 4,309 ms | 4,189 ms | -2.8% | -2.8% | 562.3 MiB | 562.3 MiB | 451.0 MiB | -19.8% |
+| Mean expression | 100 genes x 1M cells | 5,912 ms | 5,912 ms | 3,931 ms | -33.5% | -33.5% | 1,916.8 MiB | 1,916.8 MiB | 65.4 MiB | -96.6% |
 
-Blank values are deliberate: no new number is published until the rebased benchmark has produced its manifest and TSV output.
+The strongest user-visible improvement is RGB colouring: 12.50 seconds becomes 4.02 seconds, saving 8.48 seconds per update. A representative pass through the six full-scale operations, excluding the isolated index and 100k stress rows, falls from 27.308 to 16.222 seconds, a 40.6% reduction. Cumulative R allocation falls from 3,460.2 to 958.2 MiB, a 72.3% reduction. This sum is an explanatory workload, not an end-to-end Viewer latency claim.
 
-The single-gene path was effectively time-neutral in the historical run and allocated 15.3 MiB more R memory. The main expression gains came from batching RGB reads and keeping aggregate computation backend-native.
+The ordinary single-gene full scan remains bounded by reading one million BPCells values and is effectively unchanged. Random Viewer order is more expensive on an on-disk column backend; reading the same 100,000 requested columns in storage order and restoring the requested output order reduces that case by 25.4% without changing values or order.
 
 ## Environment
 
@@ -65,10 +69,10 @@ The single-gene path was effectively time-neutral in the historical run and allo
 
 ## Reproduce
 
-The complete workflow reuses complete artifacts when present, otherwise prepares the missing official H5, BPCells-backed Seurat, and Thin CRB artifacts before measuring the backend hot paths:
+The complete workflow reuses complete artifacts when present, otherwise prepares the missing official H5, BPCells-backed Seurat, and Thin CRB artifacts before measuring the backend hot paths. Its manifest records PR #165, Thin CRB, and latest implementation SHAs:
 
 ```sh
-tests/bench/run_viewer_1m_benchmark.sh
+tests/bench/run_viewer_1m_benchmark.sh 27303f21 3fb88b8a tests/bench/scratch/backend-4.5.1
 ```
 
 The lower-level command accepts an already prepared CRB so measurements can be rerun without repeating conversion:

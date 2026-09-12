@@ -17,11 +17,13 @@ vignette: >
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 
-historical <- data.frame(
+hot_paths <- data.frame(
   operation = c(
     "Full projection selection",
     "Filtered projection selection",
+    "Cell-index resolution",
     "Single-gene expression",
+    "Shuffled single-gene expression",
     "RGB expression",
     "Multi-panel expression",
     "Mean expression"
@@ -29,24 +31,45 @@ historical <- data.frame(
   scale = c(
     "1M cells, all groups, 100%",
     "1M cells, 17/33 clusters, 25%",
-    "1 gene x 1M cells",
+    "1M shuffled indices",
+    "1 gene x 1M cells, canonical order",
+    "1 gene x 100k cells, random order",
     "3 genes x 1M cells",
     "9 genes x 1M cells",
     "100 genes x 1M cells"
   ),
-  before_ms = c(226, 345, 4167, 12310, 5327, 5861),
-  after_ms = c(31, 28, 4182, 4106, 4702, 4093),
-  before_alloc_mib = c(206.7, 170.6, 154.1, 461.4, 562.3, 1916.8),
-  after_alloc_mib = c(19.1, 39.5, 169.3, 238.3, 463.2, 112.8),
+  pr165_ms = c(197, 329, 79, 4063, 7886, 12498, 4309, 5912),
+  thin_crb_ms = c(197, 329, 79, 4063, 7886, 12498, 4309, 5912),
+  latest_ms = c(31, 28, 0, 4022, 5881, 4021, 4189, 3931),
+  pr165_alloc_mib = c(199.1, 166.5, 27.1, 154.1, 33.4, 461.4, 562.3, 1916.8),
+  thin_crb_alloc_mib = c(199.1, 166.5, 27.1, 154.1, 33.4, 461.4, 562.3, 1916.8),
+  latest_alloc_mib = c(19.1, 39.5, 0, 157.1, 22.3, 226.1, 451.0, 65.4),
   check.names = FALSE
 )
-historical$time_change <- sprintf(
+hot_paths$latest_vs_pr165 <- sprintf(
   "%+.1f%%",
-  (historical$after_ms / historical$before_ms - 1) * 100
+  (hot_paths$latest_ms / hot_paths$pr165_ms - 1) * 100
 )
-historical$allocation_change <- sprintf(
+hot_paths$latest_vs_thin_crb <- sprintf(
   "%+.1f%%",
-  (historical$after_alloc_mib / historical$before_alloc_mib - 1) * 100
+  (hot_paths$latest_ms / hot_paths$thin_crb_ms - 1) * 100
+)
+hot_paths$allocation_change_vs_both <- sprintf(
+  "%+.1f%%",
+  (hot_paths$latest_alloc_mib / hot_paths$thin_crb_alloc_mib - 1) * 100
+)
+hot_paths$latest_ms[hot_paths$operation == "Cell-index resolution"] <- NA_real_
+hot_paths$latest_vs_pr165[hot_paths$operation == "Cell-index resolution"] <- ">98.7% faster"
+hot_paths$latest_vs_thin_crb[hot_paths$operation == "Cell-index resolution"] <- ">98.7% faster"
+
+crb_lifecycle <- data.frame(
+  resource = c("CRB control payload (MiB)", "Write median (ms)", "Decode median (ms)", "Hydrated read median (ms)"),
+  pr165 = c(26.83, 8001, 1296, 1479),
+  thin_crb = c(13.213, 231, 41, 297),
+  latest = c(13.215, 238, 40, 298),
+  latest_vs_pr165 = c("50.7% smaller", "33.6x faster", "32.4x faster", "5.0x faster"),
+  latest_vs_thin_crb = c("+0.02%", "3.0% slower", "2.4% faster", "0.3% slower"),
+  check.names = FALSE
 )
 ```
 
@@ -60,17 +83,18 @@ The comparison deliberately stops before Canvas or WebGPU rendering. It measures
 
 | Role | Revision | Version | Contract |
 |---|---|---|---|
-| Before | `27303f21` | CerebroNexus 4.5.0 | Thin CRB v1, qs2 default, canonical BPCells cell index |
-| After | current branch | CerebroNexus 4.5.1 | Same CRB contract plus backend hot-path and canonical-index optimizations |
+| PR #165 | `69893a2b` | CerebroNexus 4.4.3 | Legacy RDS CRB and original Viewer backend paths |
+| Thin CRB/qs2 | `27303f21` | CerebroNexus 4.5.0 | Thin CRB v1, qs2 default, hydration, and canonical BPCells cell index |
+| Backend hot paths | `3fb88b8a` | CerebroNexus 4.5.1 | Same CRB contract plus lower-copy Viewer backend paths and storage-order reads |
 
-Both sides read the same artifact under `large-examples/1m/cerebro/`. `readCerebro()` hydrates the qs2 or RDS Thin CRB, opens the unchanged BPCells sidecar, verifies the `cell_names` checksum, and restores omitted barcode and projection row names. The benchmark does not create a second data layout.
+The Thin CRB and backend stages read the same artifact under `large-examples/1m/cerebro/`. `readCerebro()` hydrates the qs2 or RDS Thin CRB, opens the unchanged BPCells sidecar, verifies the `cell_names` checksum, and restores omitted barcode and projection row names. The benchmark does not create a second data layout.
 
 ```text
 large-examples/1m/
 ├── source/
 ├── seurat/
 └── cerebro/
-    ├── cerebro_mouse_brain_1m.crb
+    ├── cerebro_mouse_brain_1m_thin_qs2.crb
     └── cerebro_mouse_brain_1m.bpcells/
 ```
 
@@ -80,44 +104,72 @@ Projection filtering now returns original integer row indices directly instead o
 
 The output is unchanged: sampling still uses the same seed and eligible cells, requested order is preserved, missing names still fail explicitly, and character barcode callers remain supported.
 
-# Recorded historical result
+# CRB lifecycle result
 
-The following measurements were collected on 2026-09-11 for the original `69893a2b` baseline and backend candidate `8f803742`. They are retained to show the observed direction and user-visible scale. They are not presented as measurements of the rebased 4.5.0-to-4.5.1 comparison; the canonical-index follow-up requires a new run.
+The CRB lifecycle benchmark uses five alternating warm-cache rounds on the same BPCells sidecar. The 4.5.0 and 4.5.1 values come from separate runs of the same script; their small differences show run-to-run and serialized-method variation rather than a new persistence algorithm.
 
-```{r historical-table}
+```{r crb-lifecycle-table}
 knitr::kable(
-  historical[, c(
-    "operation",
-    "scale",
-    "before_ms",
-    "after_ms",
-    "time_change",
-    "before_alloc_mib",
-    "after_alloc_mib",
-    "allocation_change"
-  )],
+  crb_lifecycle,
   col.names = c(
-    "Operation",
-    "Scale",
-    "Before (ms)",
-    "After (ms)",
-    "Time",
-    "Before allocation (MiB)",
-    "After allocation (MiB)",
-    "Allocation"
+    "Resource",
+    "PR #165 / 4.4.3",
+    "Thin CRB / 4.5.0",
+    "Backend / 4.5.1",
+    "Latest vs PR #165",
+    "Latest vs Thin CRB"
   ),
   row.names = FALSE,
   digits = 1
 )
 ```
 
-In direct terms, full projection filtering fell from 226 to 31 ms and filtered selection from 345 to 28 ms, moving both operations from a visible pause toward immediate feedback. RGB expression fell from 12.31 to 4.11 seconds, saving about 8.2 seconds per change. Mean expression fell from 5.86 to 4.09 seconds while cumulative R allocation dropped from 1,916.8 to 112.8 MiB. The single-gene result remained flat and allocated slightly more memory; that result motivated the 4.5.1 canonical-index follow-up.
+# Viewer backend result
 
-One explanatory pass through all six operations fell from 28.236 to 17.142 seconds and from 3,471.9 to 1,042.2 MiB of cumulative R allocations. That is 39.3% less elapsed time and 70.0% less allocation, but it is not an end-to-end Viewer timing because the operations have different UI frequencies and the total excludes transport and rendering.
+The PR #165 and Thin CRB Viewer hot-path implementations are identical. The code between those revisions changes serialization and hydration, so their Viewer columns intentionally share the same measured baseline. The latest column was measured from backend implementation `3fb88b8a` on 2026-09-12. Each value is a warm-cache median of three repetitions; every row first verifies identical selected cells or expression values.
+
+```{r hot-path-table}
+display_hot_paths <- hot_paths
+display_hot_paths$latest_ms <- ifelse(is.na(display_hot_paths$latest_ms), "<1", format(display_hot_paths$latest_ms, trim = TRUE))
+knitr::kable(
+  display_hot_paths[, c(
+    "operation",
+    "scale",
+    "pr165_ms",
+    "thin_crb_ms",
+    "latest_ms",
+    "latest_vs_pr165",
+    "latest_vs_thin_crb",
+    "pr165_alloc_mib",
+    "thin_crb_alloc_mib",
+    "latest_alloc_mib",
+    "allocation_change_vs_both"
+  )],
+  col.names = c(
+    "Operation",
+    "Scale",
+    "PR #165 (ms)",
+    "Thin CRB (ms)",
+    "Backend (ms)",
+    "Latest vs PR #165",
+    "Latest vs Thin CRB",
+    "PR #165 allocation (MiB)",
+    "Thin CRB allocation (MiB)",
+    "Backend allocation (MiB)",
+    "Allocation vs both"
+  ),
+  row.names = FALSE,
+  digits = 1
+)
+```
+
+Full projection selection falls from 197 to 31 ms and filtered selection from 329 to 28 ms, moving both operations toward immediate feedback. RGB expression falls from 12.50 to 4.02 seconds, saving 8.48 seconds per update. Mean expression falls from 5.91 to 3.93 seconds while cumulative R allocation drops from 1,916.8 to 65.4 MiB. A canonical-order single-gene scan remains I/O-bound and effectively unchanged; a 100,000-cell random-order stress read improves from 7.89 to 5.88 seconds after reading BPCells columns in storage order and restoring the requested output order.
+
+One explanatory pass through the six full-scale operations, excluding index resolution and the 100,000-cell stress row, falls from 27.308 to 16.222 seconds and from 3,460.2 to 958.2 MiB of cumulative R allocations. That is 40.6% less elapsed time and 72.3% less allocation, but it is not an end-to-end Viewer timing because the operations have different UI frequencies and the total excludes transport and rendering.
 
 # Resource interpretation
 
-`before_ms` and `after_ms` are warm-cache wall-clock medians. `before_alloc_mib` and `after_alloc_mib` are cumulative allocations recorded by `Rprofmem`; they are not peak resident memory. The preparation host reached 8.47 GiB maximum resident memory while creating the reusable 1M artifacts, but that preparation cost is outside the interactive hot-path comparison.
+Timing columns are warm-cache wall-clock medians. Allocation columns are cumulative allocations recorded by `Rprofmem`; they are not peak resident memory. The preparation host reached 8.47 GiB maximum resident memory while creating the reusable 1M artifacts, but that preparation cost is outside the interactive hot-path comparison.
 
 | Resource | Recorded value |
 |---|---:|
@@ -133,11 +185,11 @@ One explanatory pass through all six operations fell from 28.236 to 17.142 secon
 
 # Reproduce the comparison
 
-The wrapper defaults to the exact Thin CRB baseline and current checkout. It creates detached temporary worktrees, records both full SHAs, reuses complete artifacts, and writes a tab-separated before/after table. Existing 1M data are not downloaded or regenerated when the expected files and sidecar are complete.
+The wrapper defaults to the exact Thin CRB baseline and current checkout. It creates detached temporary worktrees, records the PR #165, Thin CRB, and backend implementation SHAs, reuses complete artifacts, and writes a tab-separated comparison table. Existing 1M data are not downloaded or regenerated when the expected files and sidecar are complete.
 
 ```{bash reproduce, eval=FALSE}
 export CEREBRO_LARGE_CACHE=/path/to/cerebro-large-examples
-tests/bench/run_viewer_1m_benchmark.sh 27303f21 HEAD tests/bench/scratch/backend-4.5.1
+tests/bench/run_viewer_1m_benchmark.sh 27303f21 3fb88b8a tests/bench/scratch/backend-4.5.1
 ```
 
 The output directory contains the exact comparison identity and measured rows:
@@ -150,7 +202,7 @@ column -t -s $'\t' tests/bench/scratch/backend-4.5.1/hot_paths.tsv
 To reuse a prepared CRB directly, run the lower-level benchmark with explicit source roots. The CRB may use qs2 or RDS because the script loads it through `readCerebro()`.
 
 ```{bash lower-level, eval=FALSE}
-Rscript tests/bench/viewer_1m_hot_paths.R /path/to/before /path/to/after /path/to/cerebro_mouse_brain_1m.crb 3
+Rscript tests/bench/viewer_1m_hot_paths.R /path/to/thin-crb-source /path/to/backend-source /path/to/cerebro_mouse_brain_1m_thin_qs2.crb 3
 ```
 
 The current benchmark records a separate barcode-to-index row before the expression workloads. This exposes the work removed by retaining canonical indices instead of hiding it inside a BPCells read.
