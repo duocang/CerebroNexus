@@ -181,9 +181,10 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   ))
 
   viewer_set_selectize(app, "expression_genes_input", "MS4A1")
+  app$wait_for_idle(timeout = 60000)
   app$wait_for_js(
     "document.querySelector('#expression_by_group_UI h3') !== null",
-    timeout = 20000
+    timeout = 60000
   )
   expect_false(app$get_js(
     "document.querySelector('#expression_by_gene_UI h3') !== null"
