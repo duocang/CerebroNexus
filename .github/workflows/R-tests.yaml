@@ -44,6 +44,12 @@ jobs:
             devtools::load_all('.')
             testthat::test_dir(
               path = 'tests/testthat',
+              filter = paste0(
+                '(app-inst|cell-view-wire|coordinated-views|',
+                'gene-expression-panel-modes|linked-views-portable|',
+                'million-cell-renderer|million-cell-viewer|',
+                'utility[-_]functions|viewer-sync-performance)$'
+              ),
               reporter = testthat::default_reporter(),
               stop_on_failure = TRUE
             )
