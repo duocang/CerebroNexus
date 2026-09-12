@@ -15,27 +15,6 @@ expression_projection_update_plot <- function(input) {
     draw_border = isTRUE(plot_parameters[["draw_border"]]),
     keep_square = isTRUE(plot_parameters[["keep_square"]])
   )
-  ## sort cells based on expression (if applicable)
-  if (
-    plot_parameters[['plot_order']] == 'Highest expression on top' &&
-      separate_panels == FALSE &&
-      !identical(display_mode, "rgb")
-  ) {
-    cell_order <- order(expression_levels)
-    coordinates <- coordinates[cell_order, ]
-    selection_keys <- selection_keys[cell_order]
-    hover_columns <- lapply(hover_columns, function(column) {
-      column$values <- column$values[cell_order]
-      column
-    })
-    if (is.list(expression_levels)) {
-      for (i in seq_along(expression_levels)) {
-        expression_levels[[i]] <- expression_levels[[i]][cell_order]
-      }
-    } else {
-      expression_levels <- expression_levels[cell_order]
-    }
-  }
   ## define output_data
   output_data <- list(
     x = coordinates[[1]],
@@ -47,6 +26,9 @@ expression_projection_update_plot <- function(input) {
     point_line = list(),
     x_range = plot_parameters[["x_range"]],
     y_range = plot_parameters[["y_range"]],
+    paint_order = if (
+      identical(plot_parameters[["plot_order"]], "Highest expression on top")
+    ) "highest" else "natural",
     reset_axes = reset_axes
   )
   if (plot_parameters[["draw_border"]]) {
@@ -82,14 +64,6 @@ expression_projection_update_plot <- function(input) {
   ## process trajectory data
   trajectory_lines <- list()
   if (plot_parameters[['is_trajectory']]) {
-    ## fix order of trajectory meta data if cells are sorted by expression
-    if (
-      plot_parameters[['plot_order']] == 'Highest expression on top' &&
-        separate_panels == FALSE &&
-        !identical(display_mode, "rgb")
-    ) {
-      trajectory[['meta']] <- trajectory[['meta']][cell_order, ]
-    }
     ## Add trajectory values as compact columns; the browser formats only the
     ## cell actually under the pointer.
     if (plot_parameters[['hover_info']]) {

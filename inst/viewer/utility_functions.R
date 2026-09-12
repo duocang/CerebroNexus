@@ -295,6 +295,9 @@ cerebroCellViewMessage <- function(
   list(id = id, meta = meta, data = data, hover = hover, extra = extra)
 }
 
+.cerebro_cell_view_wire_serial <- 0L
+.cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
+
 cerebroCellViewRender <- function(
   id,
   meta,
@@ -302,10 +305,54 @@ cerebroCellViewRender <- function(
   hover = list(),
   extra = list()
 ) {
-  session$sendCustomMessage(
-    "cell_view_render",
-    cerebroCellViewMessage(id, meta, data, hover, extra)
-  )
+  message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  if (
+    isTRUE(input[["coordviews_wire_supported"]]) &&
+      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
+  ) {
+    selection_keys <- message$data$selection_key
+    key_groups <- if (is.list(selection_keys)) {
+      selection_keys
+    } else {
+      list(selection_keys)
+    }
+    n_cells <- sum(vapply(key_groups, length, integer(1)))
+    progressive <- !is.null(selection_keys) &&
+      is.null(message$data$panels) &&
+      n_cells >= 4096L
+    if (progressive) {
+      .cerebro_cell_view_wire_serial <<-
+        .cerebro_cell_view_wire_serial + 1L
+      token <- .cerebro_cell_view_wire_serial
+      message$data$n <- n_cells
+      message$data$wire_token <- token
+      message$data$selection_key <- NULL
+      full_hover <- message$hover
+      message$hover <- list(hoverinfo = "skip")
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+      stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+      stale <- stale[startsWith(stale, paste0(id, ":"))]
+      if (length(stale)) {
+        rm(list = stale, envir = .cerebro_cell_view_aux_pending)
+      }
+      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- list(
+        id = id,
+        wire_token = token,
+        selection_key = selection_keys,
+        hover = full_hover
+      )
+    } else {
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+    }
+  } else {
+    session$sendCustomMessage("cell_view_render", message)
+  }
 }
 
 cerebroCellViewScatterPayload <- function(
@@ -455,10 +502,7 @@ cerebroCellViewScatterPayload <- function(
       data[["z"]][[index]] <- I(coordinates[[3L]][cells])
     }
     data[["selection_key"]][[index]] <- I(selection_keys[cells])
-    data[["color"]][[index]] <- I(rep(
-      unname(color_assignments[[group]]),
-      length(cells)
-    ))
+    data[["color"]][[index]] <- unname(color_assignments[[group]])
     if (show_hover && !length(structured_hover)) {
       hover_data[["text"]][[index]] <- I(aligned_hover[cells])
     }
@@ -1468,7 +1512,7 @@ cerebroProjectionHoverColumns <- function(table, groups = getGroups()) {
       columns[[length(columns) + 1L]] <- list(
         label = unname(spec[["label"]]),
         format = "integer",
-        values = unname(as.numeric(table[[spec[["source"]]]]))
+        values = unname(table[[spec[["source"]]]])
       )
     }
   }
@@ -2349,21 +2393,22 @@ get_or_load_crb <- function(
     return(NULL)
   }
   schema_names <- names(schema)
+  schema_fields <- c(
+    "version",
+    "cell_names",
+    "cell_names_md5",
+    "projection_rownames"
+  )
+  if (is.list(schema) && identical(schema$version, 2L)) {
+    schema_fields <- c(schema_fields, "cell_fingerprint")
+  }
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
-    length(schema) == 4L &&
+    length(schema) == length(schema_fields) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
-    setequal(
-      schema_names,
-      c(
-        "version",
-        "cell_names",
-        "cell_names_md5",
-        "projection_rownames"
-      )
-    ) &&
-    identical(schema$version, 1L) &&
+    setequal(schema_names, schema_fields) &&
+    schema$version %in% c(1L, 2L) &&
     identical(schema$cell_names, "expression") &&
     is.character(schema$cell_names_md5) &&
     length(schema$cell_names_md5) == 1L &&
@@ -2372,7 +2417,12 @@ get_or_load_crb <- function(
     is.character(schema$projection_rownames) &&
     !anyNA(schema$projection_rownames) &&
     !any(!nzchar(schema$projection_rownames)) &&
-    !anyDuplicated(schema$projection_rownames)
+    !anyDuplicated(schema$projection_rownames) &&
+    (identical(schema$version, 1L) ||
+      (is.character(schema$cell_fingerprint) &&
+        length(schema$cell_fingerprint) == 1L &&
+        !is.na(schema$cell_fingerprint) &&
+        grepl("^md5-cell-set-v1:[[:xdigit:]]{32}$", schema$cell_fingerprint)))
   if (!valid) {
     stop(
       "The Cerebro data file '",

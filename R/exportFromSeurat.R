@@ -112,6 +112,15 @@
   checksum
 }
 
+.cerebroCellFingerprint <- function(cells) {
+  cells <- sort(enc2utf8(as.character(cells)), method = "radix")
+  stream <- paste0(nchar(cells, type = "bytes"), ":", cells, collapse = "")
+  path <- tempfile("cerebro-cell-fingerprint-")
+  on.exit(unlink(path), add = TRUE)
+  writeBin(charToRaw(stream), path)
+  paste0("md5-cell-set-v1:", unname(tools::md5sum(path)))
+}
+
 .compactCountColumn <- function(values) {
   if (
     is.double(values) &&
@@ -165,9 +174,10 @@
   export$meta_data <- metadata
   export$expression <- NULL
   export$crb_schema <- list(
-    version = 1L,
+    version = 2L,
     cell_names = "expression",
     cell_names_md5 = .bpcellsCellNamesChecksum(sidecar),
+    cell_fingerprint = .cerebroCellFingerprint(cells),
     projection_rownames = compact_projections
   )
   export

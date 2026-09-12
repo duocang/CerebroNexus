@@ -152,12 +152,13 @@ observeEvent(
 ##----------------------------------------------------------------------------##
 ## Observer that pushes the prepared data to the shared JS renderer.
 ##----------------------------------------------------------------------------##
-observeEvent(
-  list(
-    trajectory_projection_prepared(),
-    input[["trajectory_projection_render_request"]]
-  ),
-  {
+trajectory_projection_started <- reactiveVal(FALSE)
+observeEvent(input[["trajectory_projection_render_request"]], {
+  trajectory_projection_started(TRUE)
+}, ignoreInit = TRUE)
+
+observe({
+    req(trajectory_projection_started())
     prepared <- trajectory_projection_prepared()
     req(prepared)
 
@@ -233,8 +234,7 @@ observeEvent(
       payload[["hover"]],
       extra = list(shapes = prepared[["trajectory_lines"]])
     )
-  }
-)
+})
 
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.

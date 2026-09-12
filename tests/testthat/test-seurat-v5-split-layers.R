@@ -787,9 +787,18 @@ test_that("a sample-split object exports every cell in bpcells mode", {
 
   thin <- readRDS(crb)
   expect_null(thin$expression)
-  expect_identical(thin$crb_schema$version, 1L)
+  expect_identical(thin$crb_schema$version, 2L)
   expect_identical(thin$crb_schema$cell_names, "expression")
   expect_identical(thin$crb_schema$projection_rownames, "umap")
+  config <- new.env(parent = globalenv())
+  sys.source(
+    viewer_test_path("coordinated_views", "config.R"),
+    envir = config
+  )
+  expect_identical(
+    thin$crb_schema$cell_fingerprint,
+    config$cv_config_cell_fingerprint(colnames(obj))
+  )
   expect_false("cell_barcode" %in% names(thin$meta_data))
   expect_type(thin$meta_data$nUMI, "integer")
   expect_type(thin$meta_data$nGene, "integer")

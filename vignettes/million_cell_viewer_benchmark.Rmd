@@ -143,9 +143,11 @@ input. This keeps the CRB-format reduction separate from browser rendering.
 ## Run the full Viewer benchmark
 
 The harness alternates candidate order on each round. It checks that Data Info
-reports 1,000,000 cells, waits for a non-empty canvas, requires the current
+reports 1,000,000 cells, waits for Overview and Linked Views, measures a
+single-gene Gene expression plot and a three-gene RGB plot, requires the current
 candidate to report `webgpu`, performs ten alternating zoom operations, and
-rejects GPU errors or context loss.
+rejects GPU errors or context loss. Renderer-ready events must report the
+expected number of points, so a fast but incomplete plot fails the run.
 
 Replace `CRB` below with the path returned by the preparation step.
 
@@ -179,6 +181,56 @@ fresh app processes per candidate on the same host.
 The first row group shows why storage and rendering are reported separately:
 loading and attaching the same old CRB barely changed, while the first plot and
 subsequent camera operations changed substantially.
+
+## Verify the three-second navigation target
+
+The later hot-path pass starts from commit `5a915962`, where WebGPU was already
+enabled. This comparison therefore measures transport, first-frame scheduling,
+group-label calculation, and large-dataset bundle preparation without counting
+the earlier Canvas-to-WebGPU replacement as a second time.
+
+```{bash three-second-baseline, eval=FALSE}
+git worktree add --detach ../CerebroNexus-before-wire 5a915962
+
+Rscript tests/bench/benchmark_million_cell_viewer.R \
+  ../CerebroNexus-before-wire . "$CRB" 3 100
+
+Rscript tests/bench/benchmark_million_cell_viewer.R \
+  ../CerebroNexus-before-wire . "$CRB" 3 10
+```
+
+Both candidates used WebGPU. Results are medians of three alternating fresh
+processes on 12 September 2026:
+
+| Display | Metric | Before | After | Change |
+|---|---|---:|---:|---:|
+| 100% (1,000,000 points) | Data ready | 14.798 s | 14.185 s | 4.1% faster |
+| 100% (1,000,000 points) | First Overview | 11.819 s | 1.789 s | 84.9% faster |
+| 100% (1,000,000 points) | Linked Views ready | 4.519 s | 2.608 s | 42.3% faster |
+| 100% (1,000,000 points) | Gene expression ready | 6.830 s | 2.176 s | 68.1% faster |
+| 100% (1,000,000 points) | RGB ready | 11.934 s | 2.096 s | 82.4% faster |
+| 100% (1,000,000 points) | Zoom median | 7.9 ms | 8.2 ms | effectively tied |
+| 100% (1,000,000 points) | Zoom p95 | 16.4 ms | 15.7 ms | effectively tied |
+| 10% (100,000 points) | Data ready | 13.693 s | 14.081 s | 2.8% slower |
+| 10% (100,000 points) | First Overview | 2.582 s | 1.526 s | 40.9% faster |
+| 10% (100,000 points) | Linked Views ready | 4.942 s | 1.187 s | 76.0% faster |
+| 10% (100,000 points) | Gene expression ready | 1.018 s | 0.869 s | 14.6% faster |
+| 10% (100,000 points) | RGB ready | 1.795 s | 1.470 s | 18.1% faster |
+| 10% (100,000 points) | Zoom median | 4.6 ms | 3.8 ms | 17.4% faster |
+| 10% (100,000 points) | Zoom p95 | 6.6 ms | 5.3 ms | 19.7% faster |
+
+All four measured million-point page paths now meet the three-second navigation
+target. Integer vectors use the narrowest lossless wire type, reducing this
+dataset's initial Linked Views bundle from 28,001,836 to 15,001,832 bytes
+(46.4% smaller). Hover columns remain in their grouped representation and are
+expanded only for the point actually under the pointer. Non-render-critical
+hover data is sent after the first-frame work rather than competing with it.
+
+`Data ready` remains about 14 seconds because it includes opening the CRB,
+attaching the BPCells sidecar, and starting the Shiny session. It is reported
+separately and is not included in the page-navigation target. Requiring a cold
+launch to finish within three seconds would be a separate storage and startup
+project; it is not a browser-rendering optimization.
 
 ## Measure the renderer alone
 

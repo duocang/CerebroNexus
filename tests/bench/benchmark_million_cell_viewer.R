@@ -12,6 +12,18 @@ roots <- c(
   b = normalizePath(args[[2L]], mustWork = TRUE)
 )
 crb <- normalizePath(args[[3L]], mustWork = TRUE)
+benchmark_genes <- c("Snap25", "Slc17a7", "Gad1")
+sidecar_names <- file.path(sub("[.]crb$", ".bpcells", crb), "row_names")
+if (file.exists(sidecar_names)) {
+  available_genes <- readLines(sidecar_names, warn = FALSE)
+  if (!all(benchmark_genes %in% available_genes)) {
+    benchmark_genes <- c(
+      "ENSMUSG00000027273",
+      "ENSMUSG00000070570",
+      "ENSMUSG00000070880"
+    )
+  }
+}
 repeats <- if (length(args) > 3L) as.integer(args[[4L]]) else 3L
 percentage <- if (length(args) > 4L) as.numeric(args[[5L]]) else 100
 if (
@@ -73,6 +85,7 @@ run_once <- function(candidate, root, round) {
     stop("Data Info did not report 1,000,000 cells.", call. = FALSE)
   }
   data_ready <- proc.time()[["elapsed"]]
+  message(candidate, " data ready")
 
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-overview\"]').click()"
@@ -95,6 +108,7 @@ run_once <- function(candidate, root, round) {
     timeout = 900000
   )
   overview_ready <- proc.time()[["elapsed"]]
+  message(candidate, " Overview ready")
   browser <- app$get_js(paste0(
     "(async()=>{const h=document.getElementById(",
     "'overview_projection_cell_view_host');",
@@ -126,6 +140,126 @@ run_once <- function(candidate, root, round) {
     stop("Viewer canvas validation failed.", call. = FALSE)
   }
 
+  linked_started <- proc.time()[["elapsed"]]
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click()"
+  )
+  app$wait_for_js(
+    paste0(
+      "(() => {if(!window.cerebroLinkedViewsState?.ready())return false;",
+      "return Array.from(document.querySelectorAll(",
+      "'#shiny-tab-coordinated_views canvas.cv-gpu-layer')).some(c=>",
+      "c.style.display==='block'&&Number(c.dataset.pointCount)>0&&",
+      "c._cerebroPointRenderer?.isReady());})()"
+    ),
+    timeout = 900000
+  )
+  linked_ready <- proc.time()[["elapsed"]]
+  message(candidate, " Linked views ready")
+
+  app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
+  app$wait_for_js(
+    paste0(
+      "typeof document.getElementById('expression_genes_input')",
+      "?.selectize?.settings.load === 'function'"
+    ),
+    timeout = 900000
+  )
+  message(candidate, " Gene controls ready")
+  app$wait_for_idle(timeout = 900000)
+  app$get_js("new Promise(resolve=>setTimeout(()=>resolve(true),500))")
+  genes_json <- jsonlite::toJSON(benchmark_genes, auto_unbox = FALSE)
+  gene_stable <- app$get_js(paste0(
+    "(async()=>{const gene=", genes_json, "[0],s=document.getElementById(",
+    "'expression_genes_input').selectize;for(let i=0;i<20;i++){",
+    "s.addOption({value:gene,text:gene});s.setValue([gene],true);",
+    "await new Promise(r=>setTimeout(r,500));if(String(s.getValue())===gene)return true;}",
+    "return false;})()"
+  ))
+  if (!isTRUE(gene_stable)) stop("Gene selector did not stabilise.")
+  gene_started <- proc.time()[["elapsed"]]
+  app$run_js(paste0(
+    "(() => {const s=document.getElementById('expression_genes_input').selectize;",
+    "const gene=", genes_json, "[0];",
+    "s.clear(true);s.setValue([gene]);})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(() => {const h=document.getElementById('expression_projection_cell_view_host');",
+      "const g=h?.querySelector('canvas.cv-gpu-layer');",
+      "const note=document.getElementById('cv-cbar-note')?.textContent||'';",
+      "return g?.style.display==='block'&&Number(g.dataset.pointCount)>0&&",
+      "g._cerebroPointRenderer?.isReady()&&note.includes(",
+      genes_json,
+      "[0]);})()"
+    ),
+    timeout = 900000
+  )
+  app$get_js(paste0(
+    "(async()=>{const g=document.querySelector(",
+    "'#expression_projection_cell_view_host canvas.cv-gpu-layer');",
+    "await g._cerebroPointRenderer.idle();return true;})()"
+  ))
+  gene_ready <- proc.time()[["elapsed"]]
+  gene_points <- app$get_js(paste0(
+    "Number(document.querySelector(",
+    "'#expression_projection_cell_view_host canvas.cv-gpu-layer')",
+    ".dataset.pointCount)"
+  ))
+  message(candidate, " Gene ready")
+
+  app$set_inputs(
+    expression_projection_genes_in_separate_panels = "rgb"
+  )
+  app$wait_for_js(
+    paste0(
+      "['r','g','b'].every(c=>typeof document.getElementById(",
+      "'expression_rgb_gene_'+c)?.selectize?.settings.load==='function')"
+    ),
+    timeout = 900000
+  )
+  message(candidate, " RGB controls ready")
+  rgb_stable <- app$get_js(paste0(
+    "(async()=>{const names=", genes_json, ",channels=['r','g','b'];",
+    "for(let n=0;n<20;n++){channels.forEach((c,i)=>{const s=document.getElementById(",
+    "'expression_rgb_gene_'+c).selectize,v=names[i];",
+    "s.addOption({value:v,text:v});s.setValue(v,true);});",
+    "await new Promise(r=>setTimeout(r,500));if(channels.every((c,i)=>",
+    "document.getElementById('expression_rgb_gene_'+c).selectize.getValue()===",
+    "names[i]))return true;}return false;})()"
+  ))
+  if (!isTRUE(rgb_stable)) stop("RGB selectors did not stabilise.")
+  rgb_started <- proc.time()[["elapsed"]]
+  app$run_js(paste0(
+    "(() => {const names=", genes_json, ";const channels=['r','g','b'];",
+    "channels.forEach((c,i)=>{const v=names[i],s=document.getElementById(",
+    "'expression_rgb_gene_'+c).selectize;s.clear(true);s.setValue(v);});})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(() => {const h=document.getElementById('expression_projection_cell_view_host');",
+      "const g=h?.querySelector('canvas.cv-gpu-layer');",
+      "const legend=document.getElementById('cv-legend')?.textContent||'';",
+      "return g?.style.display==='block'&&Number(g.dataset.pointCount)>0&&",
+      "g._cerebroPointRenderer?.isReady()&&",
+      genes_json,
+      ".every(x=>legend.includes(x));})()"
+    ),
+    timeout = 900000
+  )
+  app$get_js(paste0(
+    "(async()=>{const g=document.querySelector(",
+    "'#expression_projection_cell_view_host canvas.cv-gpu-layer');",
+    "await g._cerebroPointRenderer.idle();return true;})()"
+  ))
+  rgb_ready <- proc.time()[["elapsed"]]
+  rgb_points <- app$get_js(paste0(
+    "Number(document.querySelector(",
+    "'#expression_projection_cell_view_host canvas.cv-gpu-layer')",
+    ".dataset.pointCount)"
+  ))
+  message(candidate, " RGB ready")
+
   data.frame(
     candidate = candidate,
     backend = browser$backend,
@@ -134,6 +268,11 @@ run_once <- function(candidate, root, round) {
     rendered_points = as.numeric(browser$points),
     data_ready_ms = (data_ready - started) * 1000,
     overview_ready_ms = (overview_ready - data_ready) * 1000,
+    linked_ready_ms = (linked_ready - linked_started) * 1000,
+    gene_ready_ms = (gene_ready - gene_started) * 1000,
+    gene_points = as.numeric(gene_points),
+    rgb_ready_ms = (rgb_ready - rgb_started) * 1000,
+    rgb_points = as.numeric(rgb_points),
     zoom_median_ms = as.numeric(browser$zoomMedianMs),
     zoom_p95_ms = as.numeric(browser$zoomP95Ms),
     image_bytes = as.numeric(browser$imageBytes),
@@ -159,6 +298,11 @@ summary <- aggregate(
     "rendered_points",
     "data_ready_ms",
     "overview_ready_ms",
+    "linked_ready_ms",
+    "gene_ready_ms",
+    "gene_points",
+    "rgb_ready_ms",
+    "rgb_points",
     "zoom_median_ms",
     "zoom_p95_ms",
     "image_bytes"

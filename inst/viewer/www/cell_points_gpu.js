@@ -75,72 +75,19 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
   return color;
 }`;
 
-  function create(canvas) {
-    var adapter = null;
-    var device = null;
-    var context = null;
-    var pipeline = null;
-    var uniformBuffers = [];
-    var bindGroups = [];
-    var positionBuffer = null;
-    var colorBuffer = null;
-    var layerBuffer = null;
-    var data = null;
-    var width = 1;
-    var height = 1;
-    var ready = false;
-    var contextLost = false;
-    var gpuError = '';
-    var metrics = { backend: 'webgpu', ready: false, pointCount: 0 };
-
-    function resize(cssWidth, cssHeight, dpr) {
-      width = Math.max(1, Number(cssWidth) || 1);
-      height = Math.max(1, Number(cssHeight) || 1);
-      dpr = Math.max(1, Number(dpr) || 1);
-      canvas.width = Math.max(1, Math.round(width * dpr));
-      canvas.height = Math.max(1, Math.round(height * dpr));
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
-    }
-
-    function makeUniformBuffer() {
-      return device.createBuffer({
-        size: 80,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-      });
-    }
-
-    var initialized = (async function () {
+  var sharedResources = null;
+  function prepare() {
+    if (sharedResources) return sharedResources;
+    sharedResources = (async function () {
       if (!navigator.gpu) throw new Error('WebGPU is unavailable.');
-      adapter = await navigator.gpu.requestAdapter({
+      var adapter = await navigator.gpu.requestAdapter({
         powerPreference: 'high-performance'
       });
       if (!adapter) throw new Error('No WebGPU adapter is available.');
-      metrics.adapter = adapter.info
-        ? [adapter.info.vendor, adapter.info.architecture,
-          adapter.info.device, adapter.info.description].filter(Boolean).join(' ')
-        : '';
-      device = await adapter.requestDevice();
-      device.lost.then(function (info) {
-        contextLost = true;
-        gpuError = info.message || info.reason || 'WebGPU device lost.';
-        ready = false;
-      });
-      device.addEventListener('uncapturederror', function (event) {
-        gpuError = event.error && event.error.message
-          ? event.error.message : 'Uncaptured WebGPU error.';
-      });
-      context = canvas.getContext('webgpu');
-      if (!context) throw new Error('Could not create a WebGPU canvas context.');
+      var device = await adapter.requestDevice();
       var format = navigator.gpu.getPreferredCanvasFormat();
-      context.configure({
-        device: device,
-        format: format,
-        alphaMode: 'premultiplied',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
-      });
       var module = device.createShaderModule({ code: SHADER_SOURCE });
-      pipeline = await device.createRenderPipelineAsync({
+      var pipeline = await device.createRenderPipelineAsync({
         layout: 'auto',
         vertex: {
           module: module,
@@ -183,6 +130,73 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
           }]
         },
         primitive: { topology: 'triangle-strip' }
+      });
+      return { adapter: adapter, device: device, format: format, pipeline: pipeline };
+    })();
+    return sharedResources;
+  }
+
+  function create(canvas) {
+    var adapter = null;
+    var device = null;
+    var context = null;
+    var pipeline = null;
+    var uniformBuffers = [];
+    var bindGroups = [];
+    var positionBuffer = null;
+    var colorBuffer = null;
+    var layerBuffer = null;
+    var data = null;
+    var width = 1;
+    var height = 1;
+    var ready = false;
+    var contextLost = false;
+    var gpuError = '';
+    var metrics = { backend: 'webgpu', ready: false, pointCount: 0 };
+
+    function resize(cssWidth, cssHeight, dpr) {
+      width = Math.max(1, Number(cssWidth) || 1);
+      height = Math.max(1, Number(cssHeight) || 1);
+      dpr = Math.max(1, Number(dpr) || 1);
+      canvas.width = Math.max(1, Math.round(width * dpr));
+      canvas.height = Math.max(1, Math.round(height * dpr));
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+    }
+
+    function makeUniformBuffer() {
+      return device.createBuffer({
+        size: 80,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+    }
+
+    var initialized = (async function () {
+      var resources = await prepare();
+      adapter = resources.adapter;
+      device = resources.device;
+      pipeline = resources.pipeline;
+      metrics.adapter = adapter.info
+        ? [adapter.info.vendor, adapter.info.architecture,
+          adapter.info.device, adapter.info.description].filter(Boolean).join(' ')
+        : '';
+      device.lost.then(function (info) {
+        contextLost = true;
+        gpuError = info.message || info.reason || 'WebGPU device lost.';
+        ready = false;
+      });
+      device.addEventListener('uncapturederror', function (event) {
+        gpuError = event.error && event.error.message
+          ? event.error.message : 'Uncaptured WebGPU error.';
+      });
+      context = canvas.getContext('webgpu');
+      if (!context) throw new Error('Could not create a WebGPU canvas context.');
+      var format = resources.format;
+      context.configure({
+        device: device,
+        format: format,
+        alphaMode: 'premultiplied',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
       });
       uniformBuffers = [makeUniformBuffer(), makeUniformBuffer()];
       bindGroups = uniformBuffers.map(function (buffer) {
@@ -334,5 +348,8 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
     };
   }
 
-  global.CerebroPointRenderer = { backend: 'webgpu', create: create };
+  prepare().catch(function () {});
+  global.CerebroPointRenderer = {
+    backend: 'webgpu', create: create, prepare: prepare
+  };
 })(window);
