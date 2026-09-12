@@ -81,7 +81,7 @@ test_that("convertSeuratToCerebro produces a .crb carrying spatial data", {
   )
   expect_true(file.exists(crb_path))
 
-  crb <- readRDS(crb_path)
+  crb <- readCerebro(crb_path)
   expect_true(length(crb$availableSpatial()) > 0)
   sd <- crb$getSpatialData(crb$availableSpatial()[1])
   expect_true(all(c("coordinates", "expression") %in% names(sd)))
