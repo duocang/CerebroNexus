@@ -256,6 +256,7 @@ export_args <- function(object, file, ...) {
       groups = c("sample", "cluster"),
       nUMI = "nCount_RNA",
       nGene = "nFeature_RNA",
+      codec = "rds",
       file = file,
       verbose = FALSE
     ),

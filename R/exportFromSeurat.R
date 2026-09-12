@@ -150,7 +150,9 @@
   if (!file.exists(final_file) || dir.exists(final_file)) {
     return(NULL)
   }
-  object <- tryCatch(readRDS(final_file), error = function(error) NULL)
+  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
+    NULL
+  })
   if (
     !is.environment(object) ||
       !any(grepl("^Cerebro", class(object))) ||
@@ -192,6 +194,7 @@
   final_file,
   stage_dir,
   expression_matrix_mode,
+  codec = "rds",
   .open_gz = gzfile
 ) {
   final_dir <- dirname(final_file)
@@ -386,8 +389,21 @@
     }
   }
 
-  connection <- .open_gz(stage_crb, open = "wb", compression = 1L)
-  tryCatch(saveRDS(export, connection), finally = close(connection))
+  payload <- if (.recognizedCerebroObject(export)) {
+    .thinCerebroPayload(
+      export,
+      final_file,
+      sidecar = if (identical(backend$type, "bpcells")) final_sidecar else NULL
+    )
+  } else {
+    export
+  }
+  if (identical(codec, "rds")) {
+    connection <- .open_gz(stage_crb, open = "wb", compression = 1L)
+    tryCatch(saveRDS(payload, connection), finally = close(connection))
+  } else {
+    .writeCerebroPayload(payload, stage_crb, codec)
+  }
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
   }
@@ -547,6 +563,9 @@
 #' Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 #' attributes, and security labels remain the deployment system's
 #' responsibility on every platform.
+#' @param codec Serialization codec for the CRB payload. Defaults to
+#' \code{"qs2"}; use \code{"rds"} when direct compatibility with
+#' \code{readRDS()} is required.
 #' @param spatial_images Optional named list mapping Seurat image names to named
 #'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
@@ -625,6 +644,7 @@ exportFromSeurat <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  codec = c("qs2", "rds"),
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL,
@@ -636,6 +656,7 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
 
   expression_matrix_mode <- match.arg(expression_matrix_mode)
+  codec <- match.arg(codec)
   if (
     !is.character(file) ||
       length(file) != 1L ||
@@ -2097,7 +2118,8 @@ exportFromSeurat <- function(
     export = export,
     final_file = final_file,
     stage_dir = export_stage_dir,
-    expression_matrix_mode = expression_matrix_mode
+    expression_matrix_mode = expression_matrix_mode,
+    codec = codec
   )
 
   ## log message
