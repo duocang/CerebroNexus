@@ -54,6 +54,9 @@ a sibling spatial sidecar. The runtime-only \code{root} member is populated
 by \code{readCerebro()} or the generated Viewer and is never required for
 legacy CRBs with embedded molecule tables.}
 
+    \item{\code{cell_fingerprint}}{Stable identity of the cell population used by
+portable saved views. Older CRBs leave this as \code{NULL}.}
+
     \item{\code{meta_data}}{\code{data.frame} that contains cell meta data.}
 
     \item{\code{projections}}{\code{list} that contains projections/dimensional
