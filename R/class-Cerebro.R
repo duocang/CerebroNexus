@@ -582,6 +582,9 @@ Cerebro <- R6::R6Class(
           list(gene_idx, delayed_idx)
         )
         out <- as.numeric(mat)
+        if (!is.null(cell_selection$restore)) {
+          out <- out[cell_selection$restore]
+        }
         names(out) <- cells
         return(out)
       }
@@ -595,6 +598,9 @@ Cerebro <- R6::R6Class(
           self$expression[gene_idx, cell_idx, drop = FALSE]
         }
         out <- as.numeric(as.matrix(sub))
+        if (!is.null(cell_selection$restore)) {
+          out <- out[cell_selection$restore]
+        }
         names(out) <- cells
         return(out)
       }
@@ -653,8 +659,13 @@ Cerebro <- R6::R6Class(
         return(self$expression[gene_idx, , drop = FALSE])
       }
 
-      ## Integer indices preserve request order without a second name lookup.
-      self$expression[gene_idx, cell_idx, drop = FALSE]
+      ## Read external backends in storage order, then restore the requested
+      ## Viewer order without a barcode lookup.
+      block <- self$expression[gene_idx, cell_idx, drop = FALSE]
+      if (!is.null(cell_selection$restore)) {
+        block <- block[, cell_selection$restore, drop = FALSE]
+      }
+      block
     },
 
     #' @description
@@ -1772,7 +1783,23 @@ Cerebro <- R6::R6Class(
           all(cells <= ncol(self$expression))
       ) {
         indices <- as.integer(cells)
-        return(list(indices = indices, names = cell_names[indices]))
+        requested_names <- cell_names[indices]
+        restore <- NULL
+        if (
+          length(indices) > 1L &&
+            is.unsorted(indices) &&
+            (inherits(self$expression, "IterableMatrix") ||
+              inherits(self$expression, "DelayedArray"))
+        ) {
+          read_order <- order(indices)
+          indices <- indices[read_order]
+          restore <- order(read_order)
+        }
+        return(list(
+          indices = indices,
+          names = requested_names,
+          restore = restore
+        ))
       }
       stop(
         "`cells` must contain valid names/barcodes or one-based column indices.",
@@ -1807,6 +1834,9 @@ Cerebro <- R6::R6Class(
             list(gene_indices, cell_indices)
           )
         )
+        if (!is.null(cell_selection$restore)) {
+          mat <- mat[, cell_selection$restore, drop = FALSE]
+        }
 
         ## assign names (extract_array might lose them or not return them for indices)
         colnames(mat) <- cells
@@ -1823,6 +1853,9 @@ Cerebro <- R6::R6Class(
           self$expression[genes, , drop = FALSE]
         } else {
           self$expression[genes, cell_indices, drop = FALSE]
+        }
+        if (!is.null(cell_selection$restore)) {
+          mat <- mat[, cell_selection$restore, drop = FALSE]
         }
         return(as.matrix(mat))
       }

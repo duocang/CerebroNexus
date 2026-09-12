@@ -388,6 +388,16 @@ test_that("Cerebro: BPCells means stay native", {
     "BPCells",
     "IterableMatrix"
   )
+  obj <- Cerebro$new()
+  obj$setExpression(as_bpcells(mean_expression_test_matrix()))
+  expect_equal(
+    obj$getExpressionRow("g2", cells = c(4L, 2L)),
+    c(c4 = 40, c2 = 20)
+  )
+  expect_equal(
+    obj$getExpressionBlock("g1", cells = c(4L, 2L)),
+    mean_expression_test_matrix()["g1", c(4L, 2L), drop = FALSE]
+  )
   expect_zero_column_cell_means(as_bpcells(zero_column_expression_test_matrix()))
 })
 
