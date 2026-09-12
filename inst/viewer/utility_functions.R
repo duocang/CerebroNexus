@@ -452,6 +452,15 @@ cerebroCellViewMessage <- function(
       wire_array(hover$text)
     }
   }
+  if (is.list(hover$columns)) {
+    hover$columns <- lapply(hover$columns, function(column) {
+      column$values <- wire_nested(column$values)
+      if (!is.null(column$levels)) {
+        column$levels <- wire_array(column$levels)
+      }
+      column
+    })
+  }
   if (is.list(extra$group_hulls)) {
     for (field in intersect(c("x", "y"), names(extra$group_hulls))) {
       extra$group_hulls[[field]] <- wire_nested(extra$group_hulls[[field]])
@@ -461,6 +470,9 @@ cerebroCellViewMessage <- function(
   list(id = id, meta = meta, data = data, hover = hover, extra = extra)
 }
 
+.cerebro_cell_view_wire_serial <- 0L
+.cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
+
 cerebroCellViewRender <- function(
   id,
   meta,
@@ -468,10 +480,54 @@ cerebroCellViewRender <- function(
   hover = list(),
   extra = list()
 ) {
-  session$sendCustomMessage(
-    "cell_view_render",
-    cerebroCellViewMessage(id, meta, data, hover, extra)
-  )
+  message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  if (
+    isTRUE(input[["coordviews_wire_supported"]]) &&
+      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
+  ) {
+    selection_keys <- message$data$selection_key
+    key_groups <- if (is.list(selection_keys)) {
+      selection_keys
+    } else {
+      list(selection_keys)
+    }
+    n_cells <- sum(vapply(key_groups, length, integer(1)))
+    progressive <- !is.null(selection_keys) &&
+      is.null(message$data$panels) &&
+      n_cells >= 4096L
+    if (progressive) {
+      .cerebro_cell_view_wire_serial <<-
+        .cerebro_cell_view_wire_serial + 1L
+      token <- .cerebro_cell_view_wire_serial
+      message$data$n <- n_cells
+      message$data$wire_token <- token
+      message$data$selection_key <- NULL
+      full_hover <- message$hover
+      message$hover <- list(hoverinfo = "skip")
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+      stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+      stale <- stale[startsWith(stale, paste0(id, ":"))]
+      if (length(stale)) {
+        rm(list = stale, envir = .cerebro_cell_view_aux_pending)
+      }
+      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- list(
+        id = id,
+        wire_token = token,
+        selection_key = selection_keys,
+        hover = full_hover
+      )
+    } else {
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+    }
+  } else {
+    session$sendCustomMessage("cell_view_render", message)
+  }
 }
 
 cerebroCellViewScatterPayload <- function(
@@ -485,6 +541,7 @@ cerebroCellViewScatterPayload <- function(
   keep_square = FALSE,
   color_assignments = NULL,
   hover_info = NULL,
+  hover_columns = NULL,
   hover = TRUE,
   point_line = list(),
   x_range = list(),
@@ -541,10 +598,36 @@ cerebroCellViewScatterPayload <- function(
   }
 
   show_hover <- isTRUE(hover)
+  structured_hover <- if (show_hover && length(hover_columns)) {
+    lapply(hover_columns, function(column) {
+      if (!is.list(column) || is.null(column$label) || is.null(column$values)) {
+        stop("hover columns require label and values")
+      }
+      if (length(column$values) != cell_counts[[1L]]) {
+        stop("hover columns must describe the same number of cells")
+      }
+      column
+    })
+  } else {
+    list()
+  }
   hover_data <- list(
     hoverinfo = if (show_hover) "text" else "skip",
-    text = if (continuous && show_hover) I(unname(hover_info)) else list()
+    text = if (continuous && show_hover && !length(structured_hover)) {
+      I(unname(hover_info))
+    } else {
+      list()
+    }
   )
+  if (length(structured_hover)) {
+    hover_data$columns <- lapply(structured_hover, function(column) {
+      column$values <- if (continuous) I(unname(column$values)) else list()
+      if (!is.null(column$levels)) {
+        column$levels <- I(unname(column$levels))
+      }
+      column
+    })
+  }
   if (continuous) {
     return(list(meta = meta, data = data, hover = hover_data))
   }
@@ -594,12 +677,14 @@ cerebroCellViewScatterPayload <- function(
       data[["z"]][[index]] <- I(coordinates[[3L]][cells])
     }
     data[["selection_key"]][[index]] <- I(selection_keys[cells])
-    data[["color"]][[index]] <- I(rep(
-      unname(color_assignments[[group]]),
-      length(cells)
-    ))
-    if (show_hover) {
+    data[["color"]][[index]] <- unname(color_assignments[[group]])
+    if (show_hover && !length(structured_hover)) {
       hover_data[["text"]][[index]] <- I(aligned_hover[cells])
+    }
+    for (column_index in seq_along(structured_hover)) {
+      hover_data$columns[[column_index]]$values[[index]] <- I(
+        unname(structured_hover[[column_index]]$values[cells])
+      )
     }
     index <- index + 1L
   }
@@ -1589,6 +1674,39 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ##----------------------------------------------------------------------------##
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
+cerebroProjectionHoverColumns <- function(table, groups = getGroups()) {
+  if (!is.data.frame(table)) {
+    stop("projection hover data must be a data frame")
+  }
+  columns <- list()
+  for (spec in list(
+    c(source = "nUMI", label = "Transcripts"),
+    c(source = "nGene", label = "Expressed genes")
+  )) {
+    if (spec[["source"]] %in% colnames(table)) {
+      columns[[length(columns) + 1L]] <- list(
+        label = unname(spec[["label"]]),
+        format = "integer",
+        values = unname(table[[spec[["source"]]]])
+      )
+    }
+  }
+  for (group in unique(as.character(groups))) {
+    if (is.na(group) || !nzchar(group) || !group %in% colnames(table)) {
+      next
+    }
+    values <- as.character(table[[group]])
+    values[is.na(values)] <- "NA"
+    levels <- unique(values)
+    columns[[length(columns) + 1L]] <- list(
+      label = group,
+      levels = levels,
+      values = match(values, levels) - 1L
+    )
+  }
+  columns
+}
+
 buildHoverInfoForProjections <- function(table) {
   ## put together cell ID, number of transcripts and number of expressed genes
   hover_info <- glue::glue(
@@ -3184,7 +3302,8 @@ serverSideGeneSelector <- function(
   session,
   input_id,
   extra_triggers = function() NULL,
-  active = function() TRUE
+  active = function() TRUE,
+  retry = TRUE
 ) {
   observe({
     extra_triggers()
@@ -3203,7 +3322,6 @@ serverSideGeneSelector <- function(
         session,
         input_id,
         choices = genes,
-        selected = character(0),
         server = TRUE
       )
     }
@@ -3214,11 +3332,15 @@ serverSideGeneSelector <- function(
     ## dropped. onFlushed fires right after R's flush but before the browser
     ## has processed the DOM update, so it's necessary but not sufficient.
     ## Sending the same update again after small timed delays ensures at least
-    ## one lands after the binding exists. The message is idempotent (same
-    ## choices, no selection), so duplicate sends are harmless.
-    session$onFlushed(send_update, once = TRUE)
-    later::later(send_update, delay = 0.3)
-    later::later(send_update, delay = 1.0)
+    ## one lands after the binding exists. Selection is deliberately omitted:
+    ## a delayed choices update must not overwrite a newer browser selection.
+    if (isTRUE(retry)) {
+      session$onFlushed(send_update, once = TRUE)
+      later::later(send_update, delay = 0.3)
+      later::later(send_update, delay = 1.0)
+    } else {
+      later::later(send_update, delay = 0.3)
+    }
   })
 }
 
