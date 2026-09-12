@@ -258,7 +258,36 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
 
 ## Prefer the R6 row accessor so a single-gene request never needs a temporary
 ## 1 x cells matrix. Older serialized objects fall back to the matrix method.
+viewerExpressionCells <- function(data_set, cells) {
+  if (!is.numeric(cells)) {
+    return(cells)
+  }
+  accessor <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
+  if (!is.function(accessor)) {
+    accessor <- tryCatch(data_set$getExpressionMatrix, error = function(e) NULL)
+  }
+  method_env <- if (is.function(accessor)) environment(accessor) else NULL
+  if (
+    is.null(method_env) ||
+      !exists("private", envir = method_env, inherits = FALSE)
+  ) {
+    return(cells)
+  }
+  private <- get("private", envir = method_env, inherits = FALSE)
+  if (
+    is.function(tryCatch(
+      private$resolveExpressionCells,
+      error = function(e) NULL
+    ))
+  ) {
+    return(cells)
+  }
+  cell_names <- colnames(data_set$expression)
+  if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
+  cells <- viewerExpressionCells(data_set, cells)
   cell_indices <- is.numeric(cells)
   get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
   if (is.function(get_row)) {
@@ -296,6 +325,7 @@ viewerExpressionRow <- function(data_set, cells, gene) {
 ## Fetch several genes in one backend call and align every returned vector to
 ## the requested cell order. Missing genes are omitted from the result.
 viewerExpressionValues <- function(data_set, cells, genes) {
+  cells <- viewerExpressionCells(data_set, cells)
   cell_indices <- is.numeric(cells)
   genes <- unique(as.character(unlist(genes, use.names = FALSE)))
   genes <- genes[!is.na(genes) & nzchar(genes)]
