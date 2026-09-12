@@ -71,6 +71,14 @@ crb_lifecycle <- data.frame(
   latest_vs_thin_crb = c("+0.02%", "3.0% slower", "2.4% faster", "0.3% slower"),
   check.names = FALSE
 )
+
+linked_bundle <- data.frame(
+  resource = c("Bundle construction (ms)", "JSON encoding (ms)", "R bundle object (MiB)", "JSON payload (MiB)"),
+  baseline = c(3473, 3625, 135.88, 62.94),
+  backend = c(253, 1961, 120.62, 48.78),
+  change = c("92.7% faster; 13.7x", "45.9% faster; 1.85x", "11.2% smaller", "22.5% smaller"),
+  check.names = FALSE
+)
 ```
 
 # Purpose
@@ -85,7 +93,7 @@ The comparison deliberately stops before Canvas or WebGPU rendering. It measures
 |---|---|---|---|
 | PR #165 | `69893a2b` | CerebroNexus 4.4.3 | Legacy RDS CRB and original Viewer backend paths |
 | Thin CRB/qs2 | `27303f21` | CerebroNexus 4.5.0 | Thin CRB v1, qs2 default, hydration, and canonical BPCells cell index |
-| Backend hot paths | `3fb88b8a` | CerebroNexus 4.5.1 | Same CRB contract plus lower-copy Viewer backend paths and storage-order reads |
+| Backend hot paths | `1ad8abc0` | CerebroNexus 4.5.1 | Same CRB contract plus lower-copy Viewer backend paths, storage-order reads, and compact Linked Views bundles |
 
 The Thin CRB and backend stages read the same artifact under `large-examples/1m/cerebro/`. `readCerebro()` hydrates the qs2 or RDS Thin CRB, opens the unchanged BPCells sidecar, verifies the `cell_names` checksum, and restores omitted barcode and projection row names. The benchmark does not create a second data layout.
 
@@ -167,6 +175,28 @@ Full projection selection falls from 197 to 31 ms and filtered selection from 32
 
 One explanatory pass through the six full-scale operations, excluding index resolution and the 100,000-cell stress row, falls from 27.308 to 16.222 seconds and from 3,460.2 to 958.2 MiB of cumulative R allocations. That is 40.6% less elapsed time and 72.3% less allocation, but it is not an end-to-end Viewer timing because the operations have different UI frequencies and the total excludes transport and rendering.
 
+# Linked Views bundle construction
+
+The final backend audit found two repeated operations outside the expression benchmark: the full bundle calculated a second million-cell fingerprint and copied the default projection coordinates into both `projections` and `spaces`. The optimized bundle reuses the fingerprint already cached for saved views and keeps coordinates only in `projections`, from which the existing client reconstructs its lightweight space descriptor.
+
+```{r linked-bundle-table}
+knitr::kable(
+  linked_bundle,
+  col.names = c(
+    "Resource",
+    "PR #165 and Thin CRB",
+    "Backend 4.5.1",
+    "Change"
+  ),
+  row.names = FALSE,
+  digits = 2
+)
+```
+
+These are three-round warm medians on the same one-million-cell Thin qs2 CRB. Bundle construction falls from 3.473 seconds to 253 milliseconds, JSON encoding from 3.625 to 1.961 seconds, the R bundle from 135.88 to 120.62 MiB, and the JSON payload from 62.94 to 48.78 MiB. The benchmark normalizes only the intentionally removed duplicate fields and verifies that every remaining before/after value is equal.
+
+The remaining 48.78 MiB is the intentional all-cell Linked Views workspace. Sampling it, loading columns on demand, or introducing typed-array transport changes Viewer behavior or its wire protocol and therefore belongs to the separate Viewer/WebGPU layer rather than this backend branch.
+
 # Resource interpretation
 
 Timing columns are warm-cache wall-clock medians. Allocation columns are cumulative allocations recorded by `Rprofmem`; they are not peak resident memory. The preparation host reached 8.47 GiB maximum resident memory while creating the reusable 1M artifacts, but that preparation cost is outside the interactive hot-path comparison.
@@ -189,7 +219,7 @@ The wrapper defaults to the exact Thin CRB baseline and current checkout. It cre
 
 ```{bash reproduce, eval=FALSE}
 export CEREBRO_LARGE_CACHE=/path/to/cerebro-large-examples
-tests/bench/run_viewer_1m_benchmark.sh 27303f21 3fb88b8a tests/bench/scratch/backend-4.5.1
+tests/bench/run_viewer_1m_benchmark.sh 27303f21 1ad8abc0 tests/bench/scratch/backend-4.5.1
 ```
 
 The output directory contains the exact comparison identity and measured rows:
@@ -197,6 +227,7 @@ The output directory contains the exact comparison identity and measured rows:
 ```{bash inspect-output, eval=FALSE}
 column -t -s $'\t' tests/bench/scratch/backend-4.5.1/run_manifest.tsv
 column -t -s $'\t' tests/bench/scratch/backend-4.5.1/hot_paths.tsv
+column -t -s $'\t' tests/bench/scratch/backend-4.5.1/bundle.tsv
 ```
 
 To reuse a prepared CRB directly, run the lower-level benchmark with explicit source roots. The CRB may use qs2 or RDS because the script loads it through `readCerebro()`.
@@ -209,4 +240,4 @@ The current benchmark records a separate barcode-to-index row before the express
 
 # Evidence policy
 
-Published values must come from `hot_paths.tsv` together with its `run_manifest.tsv`; revision labels copied by hand are insufficient. A row is accepted only when its before/after correctness check passes. Cold-cache results, browser transfer, JSON parsing, Canvas/WebGPU rendering, GPU memory, and end-to-end interaction latency are intentionally outside this backend-only benchmark and must not be inferred from it.
+Published values must come from `hot_paths.tsv` and `bundle.tsv` together with `run_manifest.tsv`; revision labels copied by hand are insufficient. A row is accepted only when its before/after correctness check passes. Cold-cache results, browser transfer, JSON parsing, Canvas/WebGPU rendering, GPU memory, and end-to-end interaction latency are intentionally outside this backend-only benchmark and must not be inferred from it.

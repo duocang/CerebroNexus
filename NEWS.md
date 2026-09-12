@@ -6,6 +6,7 @@
 - Projection, gene-expression, and Spatial paths retain canonical cell indices through backend reads instead of matching up to one million barcodes back to the same matrix columns.
 - A reproducible 1M-cell benchmark separates PR #165 CRB lifecycle gains from Thin CRB and backend hot-path gains, records canonical-index lookup separately, and reports wall time and R allocation for all three stages.
 - Shuffled external-backend reads use storage order internally and restore the requested Viewer order afterward.
+- Linked Views bundles reuse the session cell fingerprint and avoid serializing duplicate projection coordinates.
 
 # CerebroNexus 4.5.0
 
