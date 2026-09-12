@@ -11,6 +11,7 @@ cache_dir="${CEREBRO_LARGE_CACHE:-}"
 
 before_sha="$(git -C "$repo_root" rev-parse "${before_ref}^{commit}")"
 after_sha="$(git -C "$repo_root" rev-parse "${after_ref}^{commit}")"
+pr165_sha="$(git -C "$repo_root" rev-parse '69893a2b^{commit}')"
 worktree_root="$(mktemp -d "${TMPDIR:-/tmp}/cerebronexus-viewer-1m.XXXXXX")"
 before_root="$worktree_root/before"
 after_root="$worktree_root/after"
@@ -41,14 +42,16 @@ source(file.path(
 ))
 cache <- Sys.getenv("CEREBRO_LARGE_CACHE")
 if (!nzchar(cache)) cache <- NULL
-cat(prepareViewer1mBenchmarkData(cache))
+prepared <- prepareViewer1mBenchmarkData(cache)
+thin_qs2 <- sub("[.]crb$", "_thin_qs2.crb", prepared)
+cat(if (file.exists(thin_qs2)) thin_qs2 else prepared)
 RS
 )"
 
 test -f "$crb"
-test -d "${crb%.crb}.bpcells"
 
 {
+  printf 'pr165_sha\t%s\n' "$pr165_sha"
   printf 'before_ref\t%s\n' "$before_ref"
   printf 'before_sha\t%s\n' "$before_sha"
   printf 'after_ref\t%s\n' "$after_ref"

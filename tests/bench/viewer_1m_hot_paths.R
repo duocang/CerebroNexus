@@ -27,11 +27,6 @@ suppressPackageStartupMessages({
 
 devtools::load_all(after_root, quiet = TRUE)
 
-sidecar <- sub("[.]crb$", ".bpcells", crb_path)
-if (identical(sidecar, crb_path) || !dir.exists(sidecar)) {
-  stop("CRB must have a sibling .bpcells directory.", call. = FALSE)
-}
-
 data_set <- readCerebro(crb_path)
 metadata <- data_set$getMetaData()
 cells <- as.character(metadata$cell_barcode)
@@ -46,6 +41,9 @@ if (
 set.seed(20260912L)
 expression_indices <- sample.int(length(cells))
 expression_cells <- cells[expression_indices]
+canonical_indices <- seq_along(cells)
+stress_indices <- expression_indices[seq_len(100000L)]
+stress_cells <- expression_cells[seq_len(100000L)]
 
 source_helpers <- function(root) {
   env <- new.env(parent = globalenv())
@@ -198,12 +196,12 @@ record(
 
 before_single <- function() {
   unname(as.numeric(data_set$getExpressionMatrix(
-    cells = expression_cells,
+    cells = cells,
     genes = single_gene
   )))
 }
 after_single <- function() {
-  unname(after$viewerExpressionRow(data_set, expression_indices, single_gene))
+  unname(after$viewerExpressionRow(data_set, canonical_indices, single_gene))
 }
 record(
   "single-gene expression",
@@ -213,12 +211,29 @@ record(
   function(x, y) isTRUE(all.equal(x, y, check.attributes = FALSE))
 )
 
+before_shuffled <- function() {
+  unname(as.numeric(data_set$getExpressionMatrix(
+    cells = stress_cells,
+    genes = single_gene
+  )))
+}
+after_shuffled <- function() {
+  unname(after$viewerExpressionRow(data_set, stress_indices, single_gene))
+}
+record(
+  "shuffled single-gene expression",
+  "1 gene x 100,000 shuffled cells; storage-order BPCells read",
+  before_shuffled,
+  after_shuffled,
+  function(x, y) isTRUE(all.equal(x, y, check.attributes = FALSE))
+)
+
 rgb_genes <- genes[seq_len(3L)]
 before_rgb <- function() {
   stats::setNames(
     lapply(rgb_genes, function(gene) {
       unname(as.numeric(data_set$getExpressionMatrix(
-        cells = expression_cells,
+        cells = cells,
         genes = gene
       )))
     }),
@@ -226,7 +241,7 @@ before_rgb <- function() {
   )
 }
 after_rgb <- function() {
-  after$viewerExpressionValues(data_set, expression_indices, rgb_genes)
+  after$viewerExpressionValues(data_set, canonical_indices, rgb_genes)
 }
 record(
   "RGB expression",
@@ -239,7 +254,7 @@ record(
 panel_genes <- genes[seq_len(9L)]
 before_panels <- function() {
   expression_matrix <- data_set$getExpressionMatrix(
-    cells = expression_cells,
+    cells = cells,
     genes = panel_genes
   )
   expression_matrix <- Matrix::t(expression_matrix)
@@ -251,7 +266,7 @@ before_panels <- function() {
   )
 }
 after_panels <- function() {
-  after$viewerExpressionValues(data_set, expression_indices, panel_genes)
+  after$viewerExpressionValues(data_set, canonical_indices, panel_genes)
 }
 record(
   "multi-panel expression",
@@ -264,14 +279,14 @@ record(
 mean_genes <- genes[seq_len(100L)]
 before_mean <- function() {
   unname(Matrix::colMeans(data_set$getExpressionMatrix(
-    cells = expression_cells,
+    cells = cells,
     genes = mean_genes
   )))
 }
 after_mean <- function() {
   unname(BPCells::colMeans(data_set$getExpressionBlock(
     genes = mean_genes,
-    cells = expression_indices
+    cells = canonical_indices
   )))
 }
 record(
