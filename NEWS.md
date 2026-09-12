@@ -1,3 +1,12 @@
+# CerebroNexus 4.5.1
+
+## Performance
+
+- Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.
+- Projection, gene-expression, and Spatial paths retain canonical cell indices through backend reads instead of matching up to one million barcodes back to the same matrix columns.
+- A reproducible 1M-cell benchmark separates PR #165 CRB lifecycle gains from Thin CRB and backend hot-path gains, records canonical-index lookup separately, and reports wall time and R allocation for all three stages.
+- Shuffled external-backend reads use storage order internally and restore the requested Viewer order afterward.
+
 # CerebroNexus 4.5.0
 
 ## Data format and I/O
