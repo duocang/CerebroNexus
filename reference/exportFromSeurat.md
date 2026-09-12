@@ -20,6 +20,7 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  codec = c("qs2", "rds"),
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -144,6 +145,12 @@ exportFromSeurat(
   preserved; ownership, ACLs, extended attributes, and security labels
   remain the deployment system's responsibility on every platform.
 
+- codec:
+
+  Serialization codec for the CRB payload. Defaults to `"qs2"`; use
+  `"rds"` when direct compatibility with
+  [`readRDS()`](https://rdrr.io/r/base/readRDS.html) is required.
+
 - spatial_images:
 
   Optional named list mapping Seurat image names to named image paths or
@@ -203,22 +210,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [23:51:52] Initializing Cerebro object...
-#> [23:51:52] Adding expression data (embedded)...
-#> [23:51:52] Collecting available meta data...
-#> [23:51:52] Extracting all meta data columns...
-#> [23:51:52] Extracting dimensional reductions...
-#> [23:51:52] Will export the following dimensional reductions: umap
-#> [23:51:52] Extracting marker genes table...
-#> [23:51:52] No trajectories to extract...
-#> [23:51:52] Checking for spatial data...
-#> [23:51:52] Overview of Cerebro object:
+#> [12:58:37] Initializing Cerebro object...
+#> [12:58:37] Adding expression data (embedded)...
+#> [12:58:37] Collecting available meta data...
+#> [12:58:37] Extracting all meta data columns...
+#> [12:58:37] Extracting dimensional reductions...
+#> [12:58:37] Will export the following dimensional reductions: umap
+#> [12:58:37] Extracting marker genes table...
+#> [12:58:37] No trajectories to extract...
+#> [12:58:37] Checking for spatial data...
+#> [12:58:37] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 4.4.3
+#> exporter package version: 4.5.1
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-09-11
+#> date of export: 2026-09-12
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -234,6 +241,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [23:51:52] Saving Cerebro object to: /tmp/nix-shell-4366-1849925450/RtmpJ4tg44/pbmc_Seurat.crb
-#> [23:51:52] Done!
+#> [12:58:37] Saving Cerebro object to: /tmp/nix-shell-4283-757109830/Rtmp4Qc1tq/pbmc_Seurat.crb
+#> [12:58:37] Done!
 ```

@@ -41,6 +41,8 @@
   : Add percentage of mitochondrial and ribosomal transcripts.
 - [`calculatePercentGenes()`](https://mihem.github.io/CerebroNexus/reference/calculatePercentGenes.md)
   : Calculate percentage of transcripts of gene list.
+- [`convertCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertCerebro.md)
+  : Convert a Cerebro data file
 - [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
   : Convert Seurat Object to Cerebro Format
 - [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
@@ -68,3 +70,7 @@
   : Launch CerebroNexus
 - [`performGeneSetEnrichmentAnalysis()`](https://mihem.github.io/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.md)
   : Perform gene set enrichment analysis with GSVA.
+- [`readCerebro()`](https://mihem.github.io/CerebroNexus/reference/readCerebro.md)
+  : Read a Cerebro data file
+- [`saveCerebro()`](https://mihem.github.io/CerebroNexus/reference/saveCerebro.md)
+  : Save a Cerebro data file

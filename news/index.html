@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.3</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.5.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,6 +32,8 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="../articles/million_cell_crb_artifacts.html">Reproduce the one-million-cell CRB artifacts</a></li>
+    <li><a class="dropdown-item" href="../articles/million_cell_backend_hot_paths.html">Million-cell Viewer backend hot paths</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -69,9 +71,29 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr1-backend-hot-paths/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.5.1" id="cerebronexus-451">CerebroNexus 4.5.1<a class="anchor" aria-label="anchor" href="#cerebronexus-451"></a></h2>
+<div class="section level3">
+<h3 id="performance-4-5-1">Performance<a class="anchor" aria-label="anchor" href="#performance-4-5-1"></a></h3>
+<ul><li>Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.</li>
+<li>Projection, gene-expression, and Spatial paths retain canonical cell indices through backend reads instead of matching up to one million barcodes back to the same matrix columns.</li>
+<li>A reproducible 1M-cell benchmark separates PR <a href="https://github.com/mihem/CerebroNexus/issues/165" class="external-link">#165</a> CRB lifecycle gains from Thin CRB and backend hot-path gains, records canonical-index lookup separately, and reports wall time and R allocation for all three stages.</li>
+<li>Shuffled external-backend reads use storage order internally and restore the requested Viewer order afterward.</li>
+<li>Linked Views bundles reuse the session cell fingerprint and avoid serializing duplicate projection coordinates.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.5.0" id="cerebronexus-450">CerebroNexus 4.5.0<a class="anchor" aria-label="anchor" href="#cerebronexus-450"></a></h2>
+<div class="section level3">
+<h3 id="data-format-and-io-4-5-0">Data format and I/O<a class="anchor" aria-label="anchor" href="#data-format-and-io-4-5-0"></a></h3>
+<ul><li>New <code><a href="../reference/saveCerebro.html">saveCerebro()</a></code>, <code><a href="../reference/readCerebro.html">readCerebro()</a></code>, and <code><a href="../reference/convertCerebro.html">convertCerebro()</a></code> APIs support codec-independent <code>.crb</code> files, automatically read legacy RDS and thin RDS/qs2 CRBs, and use qs2 by default for new files.</li>
+<li>BPCells-backed thin CRBs omit duplicated cell indexes, projection row names, and live expression handles while validating the shared sidecar checksum during hydration.</li>
+<li>The reproducible one-million-cell benchmark records source-to-artifact processing, physical file layouts, host and package versions, and comparisons against PR <a href="https://github.com/mihem/CerebroNexus/issues/165" class="external-link">#165</a>.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.4.3" id="cerebronexus-443">CerebroNexus 4.4.3<a class="anchor" aria-label="anchor" href="#cerebronexus-443"></a></h2>
 <div class="section level3">
