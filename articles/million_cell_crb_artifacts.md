@@ -65,8 +65,12 @@ The transformation is deterministic:
 The thin CRB uses the sidecar’s ordered `col_names` as its canonical
 cell index. It omits the live expression handle,
 `meta_data$cell_barcode`, and projection barcode row names, records the
-`col_names` checksum, and restores those fields in
+`col_names` checksum and portable-view cell fingerprint, and restores
+the omitted fields in
 [`readCerebro()`](https://mihem.github.io/CerebroNexus/reference/readCerebro.md).
+Computing the order-independent fingerprint once during export avoids
+sorting and hashing one million barcodes whenever the Viewer starts;
+older CRBs remain readable and calculate it at runtime.
 
 ## Files and formats
 

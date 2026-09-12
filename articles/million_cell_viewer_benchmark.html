@@ -292,7 +292,7 @@ medians of three fresh app processes per candidate on the same host.</p>
 <td>Data ready</td>
 <td align="right">15.088 s</td>
 <td align="right">16.313 s</td>
-<td align="right">8.1% slower</td>
+<td align="right">+1.225 s in development harness</td>
 </tr>
 <tr class="even">
 <td>100%</td>
@@ -327,7 +327,7 @@ medians of three fresh app processes per candidate on the same host.</p>
 <td>Data ready</td>
 <td align="right">14.836 s</td>
 <td align="right">15.613 s</td>
-<td align="right">5.2% slower</td>
+<td align="right">+0.777 s in development harness</td>
 </tr>
 <tr class="odd">
 <td>10%</td>
@@ -367,6 +367,107 @@ million points those Canvas paths are the unusable baseline this release
 replaces, not a workflow worth presenting as a demo.</p>
 </div>
 <div class="section level3">
+<h3 id="profile-cold-startup">Profile cold startup<a class="anchor" aria-label="anchor" href="#profile-cold-startup"></a>
+</h3>
+<p>The <code>Data ready</code> rows above are end-to-end
+development-harness measurements, not installed-package startup
+measurements. The timer starts before
+<code>shinytest2::AppDriver$new()</code>, and the generated child
+application begins with <code>devtools::load_all(root)</code>. A sampled
+16.93-second source-tree run attributed about 6.15 seconds to
+<code>load_all()</code>, 2.96 seconds to reading the legacy RDS CRB,
+1.63 seconds to sorting and hashing one million cell names, 0.78 seconds
+to the intentional Linked Views prewarm, 0.10 seconds to constructing
+the app, and less than 0.10 seconds to the Data Info output itself.
+Sampled stacks can overlap and do not sum to wall time, but they
+identify the expensive work.</p>
+<p>This also explains why the earlier CRB and backend passes did not
+expose one 15-second block. <code>benchmark_million_cell_crb.R</code>
+loads the package and warms every file before timing write, decode, and
+hydrated read operations. <code>viewer_1m_hot_paths.R</code> loads the
+package, reads the CRB, and materializes metadata before its
+<code>elapsed_ms()</code> loops. Those benchmarks correctly isolated
+their target operations, but neither measured cold Viewer startup.</p>
+<p>Use the installed-package harness below to measure startup without
+charging source loading to the product. It records package attachment,
+app construction, server listening, browser-to-data readiness, and total
+process-to-data readiness separately. Candidate order reverses on
+alternate rounds.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="va">STARTUP_LIB</span><span class="op">=</span><span class="va">$(</span><span class="fu">mktemp</span> <span class="at">-d</span> /tmp/cerebronexus-startup.XXXXXX<span class="va">)</span></span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="ex">R</span> CMD INSTALL <span class="at">--library</span><span class="op">=</span><span class="st">"</span><span class="va">$STARTUP_LIB</span><span class="st">"</span> .</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="va">R_LIBS</span><span class="op">=</span><span class="st">"</span><span class="va">$STARTUP_LIB</span><span class="st">"</span> <span class="dt">\</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>  <span class="va">CEREBRO_STARTUP_REPEATS</span><span class="op">=</span>3 <span class="dt">\</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  <span class="va">CEREBRO_STARTUP_OUTPUT</span><span class="op">=</span>tests/bench/results/million_cell_startup_4_6_0.csv <span class="dt">\</span></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>  <span class="ex">Rscript</span> tests/bench/benchmark_million_cell_startup.R <span class="dt">\</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>  legacy_rds=/path/to/cerebro_mouse_brain_1m.crb <span class="dt">\</span></span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a>  thin_qs2_no_fingerprint=/path/to/cerebro_mouse_brain_1m_thin_qs2.crb <span class="dt">\</span></span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>  thin_qs2_fingerprint=/path/to/cerebro_mouse_brain_1m_fingerprint_qs2.crb</span></code></pre></div>
+<p>The recorded values are medians of three fresh Viewer processes per
+artifact. All three candidates use the same installed 4.6.0 code and
+unchanged BPCells sidecar, so this comparison isolates the control-file
+representation and startup fingerprint work.</p>
+<table class="table">
+<colgroup>
+<col width="13%">
+<col width="17%">
+<col width="17%">
+<col width="17%">
+<col width="17%">
+<col width="17%">
+</colgroup>
+<thead><tr class="header">
+<th>CRB artifact</th>
+<th align="right">Package attach</th>
+<th align="right">App construct</th>
+<th align="right">Server listening</th>
+<th align="right">Browser to data</th>
+<th align="right">Process to data</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Legacy RDS</td>
+<td align="right">1.010 s</td>
+<td align="right">0.192 s</td>
+<td align="right">1.384 s</td>
+<td align="right">7.558 s</td>
+<td align="right">9.045 s</td>
+</tr>
+<tr class="even">
+<td>Thin qs2 without stored fingerprint</td>
+<td align="right">0.999 s</td>
+<td align="right">0.192 s</td>
+<td align="right">1.381 s</td>
+<td align="right">6.490 s</td>
+<td align="right">7.977 s</td>
+</tr>
+<tr class="odd">
+<td>Thin qs2 with stored fingerprint</td>
+<td align="right">1.015 s</td>
+<td align="right">0.193 s</td>
+<td align="right">1.382 s</td>
+<td align="right">4.559 s</td>
+<td align="right">6.024 s</td>
+</tr>
+</tbody>
+</table>
+<p>Thin qs2 removes 11.8% of legacy process-to-data time. Recording the
+fingerprint during export brings the total reduction to 33.4% against
+legacy RDS and 24.5% against the previous thin qs2 artifact. The
+remaining roughly 4.6 seconds after browser navigation includes Shiny
+session initialization, CRB hydration, metadata preparation, and the
+deliberate large-dataset Linked Views prewarm; moving that prewarm out
+would only transfer latency back to the first Linked Views visit.</p>
+<p>New BPCells CRBs written by <code><a href="../reference/saveCerebro.html">saveCerebro()</a></code> or an exporter
+contain the fingerprint automatically. To make an optimized artifact
+from an older thin CRB while preserving the original benchmark input,
+write the copy beside the same BPCells sidecar:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">old_crb</span> <span class="op">&lt;-</span> <span class="st">"/path/to/cerebro_mouse_brain_1m_thin_qs2.crb"</span></span>
+<span><span class="va">current_crb</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">dirname</a></span><span class="op">(</span><span class="va">old_crb</span><span class="op">)</span>, <span class="st">"cerebro_mouse_brain_1m_fingerprint_qs2.crb"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/saveCerebro.html">saveCerebro</a></span><span class="op">(</span><span class="fu"><a href="../reference/readCerebro.html">readCerebro</a></span><span class="op">(</span><span class="va">old_crb</span><span class="op">)</span>, <span class="va">current_crb</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
 <h3 id="verify-the-three-second-navigation-target">Verify the three-second navigation target<a class="anchor" aria-label="anchor" href="#verify-the-three-second-navigation-target"></a>
 </h3>
 <p>The later hot-path pass starts from commit <code>5a915962</code>,
@@ -374,13 +475,13 @@ where WebGPU was already enabled. This comparison therefore measures
 transport, first-frame scheduling, group-label calculation, and
 large-dataset bundle preparation without counting the earlier
 Canvas-to-WebGPU replacement as a second time.</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> ../CerebroNexus-before-wire 5a915962</span>
-<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a></span>
-<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
-<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>  ../CerebroNexus-before-wire . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 100</span>
-<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a></span>
-<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
-<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>  ../CerebroNexus-before-wire . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">git</span> worktree add <span class="at">--detach</span> ../CerebroNexus-before-wire 5a915962</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  ../CerebroNexus-before-wire . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 100</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_viewer.R <span class="dt">\</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  ../CerebroNexus-before-wire . <span class="st">"</span><span class="va">$CRB</span><span class="st">"</span> 3 10</span></code></pre></div>
 <p>Both candidates used WebGPU. Results are medians of three alternating
 fresh processes on 12 September 2026. The selector is stabilized before
 timing so the expression rows include the actual million-cell BPCells
@@ -406,7 +507,7 @@ read rather than a stale render:</p>
 <td>Data ready</td>
 <td align="right">15.455 s</td>
 <td align="right">16.330 s</td>
-<td align="right">5.7% slower</td>
+<td align="right">+0.875 s in development harness</td>
 </tr>
 <tr class="even">
 <td>100% (1,000,000 points)</td>
@@ -455,7 +556,7 @@ read rather than a stale render:</p>
 <td>Data ready</td>
 <td align="right">13.693 s</td>
 <td align="right">14.081 s</td>
-<td align="right">2.8% slower</td>
+<td align="right">+0.388 s in development harness</td>
 </tr>
 <tr class="odd">
 <td>10% (100,000 points)</td>
@@ -515,20 +616,19 @@ it does not turn that storage scan into a three-second operation.
 Improving those two rows requires a separate expression-cache or
 pre-aggregation change and is not claimed by this Viewer-rendering
 release.</p>
-<p><code>Data ready</code> remains about 14 seconds because it includes
-opening the CRB, attaching the BPCells sidecar, and starting the Shiny
-session. It is reported separately and is not included in the
-page-navigation target. Requiring a cold launch to finish within three
-seconds would be a separate storage and startup project; it is not a
-browser-rendering optimization.</p>
+<p>The 14-second <code>Data ready</code> values in this table use the
+same source-tree harness described above and are reported separately
+from the page-navigation target. Installed 4.6.0 reaches Data Info in a
+6.024-second median with a current thin qs2 artifact; the renderer and
+navigation timings begin only after that startup phase.</p>
 </div>
 <div class="section level3">
 <h3 id="measure-the-renderer-alone">Measure the renderer alone<a class="anchor" aria-label="anchor" href="#measure-the-renderer-alone"></a>
 </h3>
 <p>The synthetic harness isolates buffer construction, upload, the first
 frame, zoom, and RGB recolouring from Shiny and CRB startup:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_renderer.R <span class="dt">\</span></span>
-<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  1000000 15 renderer.csv renderer.png</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="ex">Rscript</span> tests/bench/benchmark_million_cell_renderer.R <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  1000000 15 renderer.csv renderer.png</span></code></pre></div>
 <p>The same run used Apple Metal 3 through WebGPU and produced:</p>
 <table class="table">
 <thead><tr class="header">
@@ -593,7 +693,7 @@ BPCells directory, validates its cell-name checksum, and restores the
 omitted metadata and projection row names.</p>
 <p>Measure an old and newly exported CRB after warming both files once.
 Alternating the order limits systematic page-cache bias:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">files</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>  before <span class="op">=</span> <span class="st">"/path/to/cerebro_mouse_brain_1m_before.crb"</span>,</span>
 <span>  after <span class="op">=</span> <span class="st">"/path/to/cerebro_mouse_brain_1m_after.crb"</span></span>
@@ -646,10 +746,14 @@ authoritative expression and cell-name store.</p>
 <div class="section level2">
 <h2 id="launch-the-interactive-one-million-cell-demo">Launch the interactive one-million-cell demo<a class="anchor" aria-label="anchor" href="#launch-the-interactive-one-million-cell-demo"></a>
 </h2>
-<p>Point <code>CEREBRO_1M_DEMO_CRB</code> at the prepared CRB and run
-the bundled app:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="va">CEREBRO_1M_DEMO_CRB</span><span class="op">=</span>/path/to/cerebro_mouse_brain_1m.crb <span class="dt">\</span></span>
-<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'shiny::runApp("inst", host = "127.0.0.1", port = 7451)'</span></span></code></pre></div>
+<p>Point <code>CEREBRO_1M_DEMO_CRB</code> at a CRB freshly written by
+4.6.0 <code><a href="../reference/saveCerebro.html">saveCerebro()</a></code> or an exporter, then run the bundled
+app. Older CRBs remain compatible but calculate the cell fingerprint
+once per Viewer session; <code><a href="../reference/convertCerebro.html">convertCerebro()</a></code> upgrades one in
+place, while the copy-preserving example above keeps a baseline artifact
+for comparison.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="va">CEREBRO_1M_DEMO_CRB</span><span class="op">=</span>/path/to/cerebro_mouse_brain_1m.crb <span class="dt">\</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>  <span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'shiny::runApp("inst", host = "127.0.0.1", port = 7451)'</span></span></code></pre></div>
 <p>Open <code>http://127.0.0.1:7451</code>, then select <strong>10x E18
 mouse brain (1M)</strong>. The dataset starts at 10% sampling with point
 size 1 and opacity 0.5. Increasing the sampling control to 100% renders
@@ -657,7 +761,7 @@ all one million points. When the environment variable is unset, the
 bundled application behaves exactly as before and does not show this
 dataset.</p>
 <p>For a direct launch without the bundled dataset switcher:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/load_all.html" class="external-link">load_all</a></span><span class="op">(</span>quiet <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/launchCerebro.html">launchCerebro</a></span><span class="op">(</span></span>
 <span>  mode <span class="op">=</span> <span class="st">"closed"</span>,</span>
@@ -688,7 +792,7 @@ experiment.</li>
 </ul>
 <p>Remove the detached baseline checkout when it is no longer
 needed:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">git</span> worktree remove ../CerebroNexus-4.5.1-baseline</span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a><span class="fu">git</span> worktree remove ../CerebroNexus-4.5.1-baseline</span></code></pre></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

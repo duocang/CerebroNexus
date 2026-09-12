@@ -9,6 +9,9 @@
 - Binary typed-array transport, compact categorical colours, grouped
   hover columns, and deferred non-render-critical metadata reduce
   transfer and first-frame work.
+- BPCells-backed CRBs record the portable-view cell fingerprint during
+  export, avoiding a million-cell sort and hash on every Viewer startup
+  while retaining a fallback for older CRBs.
 - Overview, Linked Views, gene-expression, Spatial, Trajectory, Trekker,
   and specialist plots share the accelerated renderer and selection
   state.

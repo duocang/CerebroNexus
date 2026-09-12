@@ -65,6 +65,11 @@ A new `Cerebro` object.
   external expression sidecar. Legacy and embedded CRBs leave this as
   `NULL`.
 
+- `cell_fingerprint`:
+
+  Stable identity of the cell population used by portable saved views.
+  Older CRBs leave this as `NULL`.
+
 - `meta_data`:
 
   `data.frame` that contains cell meta data.
