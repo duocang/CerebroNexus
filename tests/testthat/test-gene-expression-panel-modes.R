@@ -279,10 +279,10 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   viewer_set_selectize(app, "expression_rgb_gene_b", "")
   app$wait_for_js(
     paste0(
-      "document.getElementById('expression_by_group')?.innerText",
-      ".includes('R · MS4A1') && ",
-      "document.getElementById('expression_by_group')?.innerText",
-      ".includes('G · CD3D')"
+      "(() => {const text=document.getElementById(",
+      "'expression_by_group')?.innerText || '';",
+      "return text.includes('R · MS4A1') && ",
+      "text.includes('G · CD3D') && !text.includes('B ·');})()"
     ),
     timeout = 20000
   )
