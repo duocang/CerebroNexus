@@ -30,16 +30,49 @@ spatial_projection_full_ranges <- reactive({
   )
 })
 
+spatial_projection_group_hulls <- reactive({
+  if (
+    !isTRUE(input[["spatial_projection_show_region_outlines"]]) ||
+      !identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")
+  ) {
+    return(list())
+  }
+  color_variable <- input[["spatial_projection_point_color"]]
+  metadata <- spatial_projection_metadata()
+  req(color_variable, color_variable %in% colnames(metadata))
+  color_input <- metadata[[color_variable]]
+  if (is.numeric(color_input)) {
+    return(list())
+  }
+  coordinates <- spatial_projection_coordinates()
+  dataset <- spatial_dataset_name(
+    available_crb_files$files,
+    available_crb_files$selected
+  )
+  coordinates <- rotateSpatialCoordinates(
+    coordinates,
+    spatialPlotRotation(
+      Cerebro.options,
+      dataset,
+      input[["spatial_projection_to_display"]]
+    )
+  )
+  if (ncol(coordinates) != 2L) {
+    return(list())
+  }
+  compute_group_hulls(
+    coordinates[[1]],
+    coordinates[[2]],
+    as.character(color_input)
+  )
+})
+
 spatial_projection_data_to_plot_raw <- reactive({
   req(
     spatial_projection_metadata(),
     spatial_projection_coordinates(),
     spatial_projection_parameters_plot(),
-    reactive_colors(),
-    spatial_projection_hover_info(),
-    nrow(spatial_projection_metadata()) ==
-      length(spatial_projection_hover_info()) ||
-      spatial_projection_hover_info() == "none"
+    reactive_colors()
   )
   metadata <- spatial_projection_metadata()
   plot_parameters <- spatial_projection_parameters_plot()
@@ -159,13 +192,18 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    hover_info = spatial_projection_hover_info()
+    group_hulls = spatial_projection_group_hulls(),
+    hover_columns = if (isTRUE(plot_parameters[["hover_info"]])) {
+      cerebroProjectionHoverColumns(metadata)
+    } else {
+      list()
+    }
   )
 
   return(to_return)
 })
 
-spatial_projection_data_to_plot <- debounce(
+spatial_projection_data_to_plot <- debounceAfterFirst(
   spatial_projection_data_to_plot_raw,
   150
 )
