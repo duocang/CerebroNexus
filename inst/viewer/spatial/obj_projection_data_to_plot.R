@@ -1,6 +1,35 @@
 ##----------------------------------------------------------------------------##
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
+spatial_projection_full_ranges <- reactive({
+  spatial_name <- input[["spatial_projection_to_display"]]
+  req(spatial_name %in% availableSpatial())
+
+  dataset <- spatial_dataset_name(
+    available_crb_files$files,
+    available_crb_files$selected
+  )
+  rotation_angle <- spatialPlotRotation(
+    Cerebro.options,
+    dataset,
+    spatial_name
+  )
+  full_coords <- rotateSpatialCoordinates(
+    getSpatialData(spatial_name)$coordinates,
+    rotation_angle
+  )
+  x_full <- range(full_coords[[1]], na.rm = TRUE)
+  y_full <- range(full_coords[[2]], na.rm = TRUE)
+  if (!all(is.finite(c(x_full, y_full)))) {
+    return(list(x_range = NULL, y_range = NULL))
+  }
+
+  list(
+    x_range = x_full + c(-1, 1) * diff(x_full) * 0.02,
+    y_range = y_full + c(-1, 1) * diff(y_full) * 0.02
+  )
+})
+
 spatial_projection_data_to_plot_raw <- reactive({
   req(
     spatial_projection_metadata(),
@@ -106,24 +135,9 @@ spatial_projection_data_to_plot_raw <- reactive({
       is.null(plot_parameters[["y_range"]]) ||
       length(plot_parameters[["y_range"]]) < 2
   ) {
-    full_coords <- rotateSpatialCoordinates(
-      getSpatialData(plot_parameters[["projection"]])$coordinates,
-      rotation_angle
-    )
-    x_full <- range(full_coords[[1]], na.rm = TRUE)
-    y_full <- range(full_coords[[2]], na.rm = TRUE)
-    x_margin <- diff(x_full) * 0.02
-    y_margin <- diff(y_full) * 0.02
-    if (all(is.finite(x_full)) && all(is.finite(y_full))) {
-      plot_parameters[["x_range"]] <- c(
-        x_full[1] - x_margin,
-        x_full[2] + x_margin
-      )
-      plot_parameters[["y_range"]] <- c(
-        y_full[1] - y_margin,
-        y_full[2] + y_margin
-      )
-    }
+    full_ranges <- spatial_projection_full_ranges()
+    plot_parameters[["x_range"]] <- full_ranges[["x_range"]]
+    plot_parameters[["y_range"]] <- full_ranges[["y_range"]]
   }
 
   ## With an explicit full-extent range we must NOT let the JS autorange (which
