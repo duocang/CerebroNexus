@@ -3,6 +3,7 @@
 ## Performance
 
 - Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.
+- Projection, gene-expression, and Spatial paths retain canonical cell indices through backend reads instead of matching up to one million barcodes back to the same matrix columns.
 - A reproducible 1M-cell benchmark documents runtime and memory changes against the Thin CRB/qs2 baseline without adding a runtime example API.
 
 # CerebroNexus 4.5.0

@@ -215,6 +215,33 @@ test_that("Cerebro: per-cell means preserve dense and sparse semantics", {
   }
 })
 
+test_that("Cerebro: expression access accepts canonical cell indices", {
+  dense <- mean_expression_test_matrix()
+  for (mat in list(dense, Matrix::Matrix(dense, sparse = TRUE))) {
+    obj <- Cerebro$new()
+    obj$setExpression(mat)
+
+    expect_equal(
+      obj$getExpressionRow("g2", cells = c(4L, 2L)),
+      c(c4 = 40, c2 = 20)
+    )
+    expect_equal(
+      obj$getExpressionMatrix(cells = c(4L, 2L), genes = "g2"),
+      mat["g2", c(4L, 2L), drop = FALSE]
+    )
+    expect_equal(
+      obj$getExpressionBlock("g1", cells = c(4L, 2L)),
+      mat["g1", c(4L, 2L), drop = FALSE]
+    )
+    expect_equal(
+      obj$getMeanExpressionForCells(cells = c(4L, 2L), genes = c("g3", "g1")),
+      c(c4 = 202, c2 = 101)
+    )
+    expect_error(obj$getExpressionRow("g1", cells = 0L), "1-based")
+    expect_error(obj$getExpressionBlock("g1", cells = 5L), "1-based")
+  }
+})
+
 zero_column_expression_test_matrix <- function() {
   matrix(
     numeric(),

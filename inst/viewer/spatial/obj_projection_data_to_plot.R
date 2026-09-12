@@ -14,11 +14,7 @@ spatial_projection_data_to_plot_raw <- reactive({
   )
   metadata <- spatial_projection_metadata()
   plot_parameters <- spatial_projection_parameters_plot()
-  cells_to_extract <- if ("cell_barcode" %in% colnames(metadata)) {
-    metadata$cell_barcode
-  } else {
-    rownames(metadata)
-  }
+  cells_to_extract <- spatial_projection_cells_to_show()
 
   ## Handle ImageFeaturePlot (add gene expression data)
   if (

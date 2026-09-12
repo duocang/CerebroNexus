@@ -77,6 +77,25 @@ test_that("single-gene expression uses row access with a matrix fallback", {
   expect_identical(values, list(A = c(2, 1)))
 })
 
+test_that("expression helpers preserve canonical cell indices", {
+  utility_env <- new.env(parent = globalenv())
+  sys.source(
+    viewer_test_path("utility_functions.R"),
+    envir = utility_env
+  )
+
+  requested <- NULL
+  data_set <- new.env(parent = emptyenv())
+  data_set$getExpressionRow <- function(gene, cells) {
+    requested <<- cells
+    c(30, 10)
+  }
+
+  values <- utility_env$viewerExpressionValues(data_set, c(3L, 1L), "A")
+  expect_identical(requested, c(3L, 1L))
+  expect_identical(values, list(A = c(30, 10)))
+})
+
 test_that("already aligned expression cells skip the string match", {
   match_lengths <- integer()
   utility_env <- new.env(parent = globalenv())
