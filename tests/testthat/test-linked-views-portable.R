@@ -208,6 +208,22 @@ test_that("cell identity validation is unique and order-independent", {
   )
 })
 
+test_that("stored cell fingerprints bypass runtime hashing", {
+  root <- system.file("viewer", package = "CerebroNexus")
+  helpers <- new.env(parent = globalenv())
+  sys.source(file.path(root, "coordinated_views", "config.R"), envir = helpers)
+  stored <- paste0("md5-cell-set-v1:", paste(rep("a", 32L), collapse = ""))
+
+  expect_identical(
+    helpers$cv_config_dataset_fingerprint(c("cell-1", "cell-2"), stored),
+    stored
+  )
+  expect_identical(
+    helpers$cv_config_dataset_fingerprint(c("cell-2", "cell-1"), NULL),
+    helpers$cv_config_cell_fingerprint(c("cell-1", "cell-2"))
+  )
+})
+
 test_that("specialist configuration is validated and round-trips", {
   root <- system.file("viewer", package = "CerebroNexus")
   helpers <- new.env(parent = globalenv())
