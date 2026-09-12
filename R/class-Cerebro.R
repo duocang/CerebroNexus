@@ -71,6 +71,10 @@ Cerebro <- R6::R6Class(
     #' legacy CRBs with embedded molecule tables.
     spatial_molecule_backend = NULL,
 
+    #' @field cell_fingerprint Stable identity of the cell population used by
+    #' portable saved views. Older CRBs leave this as \code{NULL}.
+    cell_fingerprint = NULL,
+
     #' @field meta_data \code{data.frame} that contains cell meta data.
     meta_data = data.frame(),
 
