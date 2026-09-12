@@ -20,6 +20,7 @@ articles:
   launch_cerebro_with_pre-loaded_data_set: launch_cerebro_with_pre-loaded_data_set.html
   million_cell_backend_hot_paths: million_cell_backend_hot_paths.html
   million_cell_crb_artifacts: million_cell_crb_artifacts.html
+  million_cell_viewer_benchmark: million_cell_viewer_benchmark.html
   most_expressed_genes: most_expressed_genes.html
   multi_crb: multi_crb.html
   overview_of_cerebro_class: overview_of_cerebro_class.html
@@ -27,7 +28,7 @@ articles:
   spatial_analysis: spatial_analysis.html
   trajectory_analysis: trajectory_analysis.html
   trekker_spatial_mapping: trekker_spatial_mapping.html
-last_built: 2026-09-12T14:12Z
+last_built: 2026-09-12T15:47Z
 urls:
   reference: https://mihem.github.io/CerebroNexus/reference
   article: https://mihem.github.io/CerebroNexus/articles

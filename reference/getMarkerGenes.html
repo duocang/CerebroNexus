@@ -36,6 +36,7 @@ the meta data of the provided Seurat object."><meta property="og:image" content=
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
     <li><a class="dropdown-item" href="../articles/million_cell_crb_artifacts.html">Reproduce the one-million-cell CRB artifacts</a></li>
     <li><a class="dropdown-item" href="../articles/million_cell_backend_hot_paths.html">Million-cell Viewer backend hot paths</a></li>
+    <li><a class="dropdown-item" href="../articles/million_cell_viewer_benchmark.html">Benchmark the million-cell Viewer</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -73,7 +74,7 @@ the meta data of the provided Seurat object."><meta property="og:image" content=
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Get marker genes for specified grouping variables in Seurat object.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr1-backend-hot-paths/R/getMarkerGenes.R" class="external-link"><code>R/getMarkerGenes.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/pr2-million-cell-viewer-webgpu/R/getMarkerGenes.R" class="external-link"><code>R/getMarkerGenes.R</code></a></small>
       <div class="d-none name"><code>getMarkerGenes.Rd</code></div>
     </div>
 
@@ -182,8 +183,8 @@ stored in <code>object@misc$marker_genes</code>.</p>
 <span class="r-in"><span>  test <span class="op">=</span> <span class="st">'wilcox'</span>,</span></span>
 <span class="r-in"><span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [14:13:07] Genes in GO term "cell surface" (GO:0009986) could not be retrieved, possibly due to the server not being reachable at the moment.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [14:13:07] Get marker genes for 2 groups in `sample`...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [15:48:09] Genes in GO term "cell surface" (GO:0009986) could not be retrieved, possibly due to the server not being reachable at the moment.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [15:48:09] Get marker genes for 2 groups in `sample`...</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Calculating cluster pbmc_1</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> For a (much!) faster implementation of the Wilcoxon Rank Sum Test,</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> (default method for FindMarkers) please install the presto package</span>
@@ -195,7 +196,7 @@ stored in <code>object@misc$marker_genes</code>.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> efficient implementation (no further action necessary).</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> This message will be shown once per session</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Calculating cluster pbmc_2</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [14:13:07] Get marker genes for 2 groups in `seurat_clusters`...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [15:48:10] Get marker genes for 2 groups in `seurat_clusters`...</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Calculating cluster 0</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Calculating cluster 1</span>
 <span class="r-in"><span></span></span>
