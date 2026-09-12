@@ -7,9 +7,9 @@ The benchmark uses the official 10x 1M neurons dataset and the existing `large-e
 | Version | Revision | Notes |
 | --- | --- | --- |
 | Before | `27303f21` | CerebroNexus 4.5.0 Thin CRB/qs2 baseline |
-| After | Current branch | CerebroNexus 4.5.1 backend hot paths |
+| After | `HEAD` | CerebroNexus 4.5.1 backend hot paths with canonical cell indices |
 
-`tests/bench/run_viewer_1m_benchmark.sh` writes the exact before/after SHAs and a TSV comparison table. It reuses existing source, Seurat, Thin CRB, and BPCells artifacts and does not download or regenerate complete artifacts when they are present.
+`tests/bench/run_viewer_1m_benchmark.sh` writes the exact before/after SHAs and a TSV comparison table. It reuses existing source, Seurat, Thin CRB, and BPCells artifacts and does not download or regenerate complete artifacts when they are present. The comparison includes an isolated one-million-cell barcode-to-index lookup plus the complete projection, single-gene, RGB, multi-panel, and mean-expression paths.
 
 ## Dataset preparation
 
@@ -24,7 +24,8 @@ The benchmark uses the official 10x 1M neurons dataset and the existing `large-e
 | Official source H5 | 4,216,018,749 bytes |
 | Reusable Seurat output | 3,778,378,648 bytes |
 | CRB + BPCells output | 3,765,141,671 bytes |
-| CRB metadata file alone | 28,132,278 bytes |
+| Legacy CRB control payload | 28,132,278 bytes |
+| Thin qs2 CRB control payload | 13.21 MiB |
 
 All source and generated data are stored in the R user cache, outside Git.
 
@@ -40,6 +41,18 @@ These retained measurements were collected on 2026-09-11 for `69893a2b` versus t
 | RGB expression | 3 genes x 1M cells, 3 reads vs 1 | 12,310 ms | 4,106 ms | -66.6% | 461.4 MiB | 238.3 MiB | -48.4% |
 | Multi-panel expression | 9 genes x 1M cells, transpose removed | 5,327 ms | 4,702 ms | -11.7% | 562.3 MiB | 463.2 MiB | -17.6% |
 | Mean expression | 100 genes x 1M cells, dense vs backend-native | 5,861 ms | 4,093 ms | -30.2% | 1,916.8 MiB | 112.8 MiB | -94.1% |
+
+One representative pass through the six historical operations fell from 28.236 to 17.142 seconds and from 3,471.9 to 1,042.2 MiB of cumulative R allocations: 39.3% less elapsed time and 70.0% less allocation. This aggregate is an explanatory workload, not an end-to-end Viewer benchmark.
+
+## Rebased result status
+
+| Metric | 4.5.0 before | 4.5.1 after | Status |
+| --- | ---: | ---: | --- |
+| Barcode-to-index resolution | — | — | Added to the reproducible benchmark; measurement pending |
+| Single-gene expression | — | — | Canonical-index path added; measurement pending |
+| RGB, multi-panel, and mean expression | — | — | Canonical-index path added; measurement pending |
+
+Blank values are deliberate: no new number is published until the rebased benchmark has produced its manifest and TSV output.
 
 The single-gene path was effectively time-neutral in the historical run and allocated 15.3 MiB more R memory. The main expression gains came from batching RGB reads and keeping aggregate computation backend-native.
 

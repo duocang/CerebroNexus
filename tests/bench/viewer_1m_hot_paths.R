@@ -43,6 +43,9 @@ if (
 ) {
   stop("The benchmark requires the prepared 1M example CRB.", call. = FALSE)
 }
+set.seed(20260912L)
+expression_indices <- sample.int(length(cells))
+expression_cells <- cells[expression_indices]
 
 source_helpers <- function(root) {
   env <- new.env(parent = globalenv())
@@ -183,18 +186,28 @@ record(
 )
 
 single_gene <- genes[[1L]]
+resolve_before <- function() match(expression_cells, cells)
+resolve_after <- function() expression_indices
+record(
+  "cell index resolution",
+  "1,000,000 shuffled canonical indices vs barcode match",
+  resolve_before,
+  resolve_after,
+  function(x, y) identical(x, y)
+)
+
 before_single <- function() {
   unname(as.numeric(data_set$getExpressionMatrix(
-    cells = cells,
+    cells = expression_cells,
     genes = single_gene
   )))
 }
 after_single <- function() {
-  unname(after$viewerExpressionRow(data_set, cells, single_gene))
+  unname(after$viewerExpressionRow(data_set, expression_indices, single_gene))
 }
 record(
   "single-gene expression",
-  "1 gene x 1,000,000 cells; BPCells",
+  "1 gene x 1,000,000 cells; canonical indices; BPCells",
   before_single,
   after_single,
   function(x, y) isTRUE(all.equal(x, y, check.attributes = FALSE))
@@ -205,17 +218,19 @@ before_rgb <- function() {
   stats::setNames(
     lapply(rgb_genes, function(gene) {
       unname(as.numeric(data_set$getExpressionMatrix(
-        cells = cells,
+        cells = expression_cells,
         genes = gene
       )))
     }),
     rgb_genes
   )
 }
-after_rgb <- function() after$viewerExpressionValues(data_set, cells, rgb_genes)
+after_rgb <- function() {
+  after$viewerExpressionValues(data_set, expression_indices, rgb_genes)
+}
 record(
   "RGB expression",
-  "3 genes x 1,000,000 cells; 3 reads vs 1",
+  "3 genes x 1,000,000 cells; canonical indices; 3 reads vs 1",
   before_rgb,
   after_rgb,
   function(x, y) isTRUE(all.equal(x, y, check.attributes = FALSE))
@@ -224,7 +239,7 @@ record(
 panel_genes <- genes[seq_len(9L)]
 before_panels <- function() {
   expression_matrix <- data_set$getExpressionMatrix(
-    cells = cells,
+    cells = expression_cells,
     genes = panel_genes
   )
   expression_matrix <- Matrix::t(expression_matrix)
@@ -236,11 +251,11 @@ before_panels <- function() {
   )
 }
 after_panels <- function() {
-  after$viewerExpressionValues(data_set, cells, panel_genes)
+  after$viewerExpressionValues(data_set, expression_indices, panel_genes)
 }
 record(
   "multi-panel expression",
-  "9 genes x 1,000,000 cells; transpose removed",
+  "9 genes x 1,000,000 cells; canonical indices; transpose removed",
   before_panels,
   after_panels,
   function(x, y) isTRUE(all.equal(x, y, check.attributes = FALSE))
@@ -249,19 +264,19 @@ record(
 mean_genes <- genes[seq_len(100L)]
 before_mean <- function() {
   unname(Matrix::colMeans(data_set$getExpressionMatrix(
-    cells = cells,
+    cells = expression_cells,
     genes = mean_genes
   )))
 }
 after_mean <- function() {
   unname(BPCells::colMeans(data_set$getExpressionBlock(
     genes = mean_genes,
-    cells = cells
+    cells = expression_indices
   )))
 }
 record(
   "mean expression",
-  "100 genes x 1,000,000 cells; dense vs backend-native",
+  "100 genes x 1,000,000 cells; canonical indices; backend-native",
   before_mean,
   after_mean,
   function(x, y) isTRUE(all.equal(x, y, tolerance = 1e-12))
