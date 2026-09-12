@@ -61,6 +61,28 @@ test_that("legacy RDS CRBs rebuild the current Cerebro class", {
   )
 })
 
+test_that("bundled demo CRBs use the current qs2 codec", {
+  demo_dir <- file.path(viewer_app_test_path(), "extdata", "examples")
+  demos <- list.files(
+    demo_dir,
+    pattern = "\\.crb$",
+    full.names = TRUE
+  )
+
+  expect_length(demos, 9L)
+  for (path in demos) {
+    connection <- file(path, open = "rb")
+    magic <- readBin(connection, "raw", n = 4L)
+    close(connection)
+    expect_identical(
+      magic,
+      as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)),
+      info = basename(path)
+    )
+    expect_true(inherits(readCerebro(path), "Cerebro"), info = basename(path))
+  }
+})
+
 test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   skip_if_not_installed("BPCells")
   skip_if_not_installed("Matrix")
