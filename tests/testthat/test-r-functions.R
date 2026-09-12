@@ -227,7 +227,7 @@ test_that("Cerebro: expression access accepts canonical cell indices", {
     )
     expect_equal(
       obj$getExpressionMatrix(cells = c(4L, 2L), genes = "g2"),
-      mat["g2", c(4L, 2L), drop = FALSE]
+      as.matrix(mat["g2", c(4L, 2L), drop = FALSE])
     )
     expect_equal(
       obj$getExpressionBlock("g1", cells = c(4L, 2L)),
@@ -237,8 +237,8 @@ test_that("Cerebro: expression access accepts canonical cell indices", {
       obj$getMeanExpressionForCells(cells = c(4L, 2L), genes = c("g3", "g1")),
       c(c4 = 202, c2 = 101)
     )
-    expect_error(obj$getExpressionRow("g1", cells = 0L), "1-based")
-    expect_error(obj$getExpressionBlock("g1", cells = 5L), "1-based")
+    expect_error(obj$getExpressionRow("g1", cells = 0L), "one-based")
+    expect_error(obj$getExpressionBlock("g1", cells = 5L), "one-based")
   }
 })
 
@@ -395,7 +395,7 @@ test_that("Cerebro: BPCells means stay native", {
     c(c4 = 40, c2 = 20)
   )
   expect_equal(
-    obj$getExpressionBlock("g1", cells = c(4L, 2L)),
+    as.matrix(obj$getExpressionBlock("g1", cells = c(4L, 2L))),
     mean_expression_test_matrix()["g1", c(4L, 2L), drop = FALSE]
   )
   expect_zero_column_cell_means(as_bpcells(zero_column_expression_test_matrix()))
