@@ -689,7 +689,7 @@ test_that("{shinytest2} recording: gene_expression", {
       ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
       ".length === 2"
     ),
-    timeout = 60000
+    timeout = 20000
   )
   app$wait_for_js(
     paste0(

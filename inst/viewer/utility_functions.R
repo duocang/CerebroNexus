@@ -3318,11 +3318,15 @@ serverSideGeneSelector <- function(
     req(!is.null(genes), length(genes) > 0)
 
     send_update <- function() {
+      selected <- isolate(input[[input_id]])
+      if (is.null(selected)) {
+        selected <- character(0)
+      }
       updateSelectizeInput(
         session,
         input_id,
         choices = genes,
-        selected = character(0),
+        selected = selected,
         server = TRUE
       )
     }

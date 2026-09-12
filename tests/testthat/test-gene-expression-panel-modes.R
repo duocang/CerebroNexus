@@ -184,7 +184,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   app$wait_for_idle(timeout = 60000)
   app$wait_for_js(
     "document.querySelector('#expression_by_group_UI h3') !== null",
-    timeout = 60000
+    timeout = 20000
   )
   expect_false(app$get_js(
     "document.querySelector('#expression_by_gene_UI h3') !== null"
