@@ -1,3 +1,10 @@
+# CerebroNexus 4.5.1
+
+## Performance
+
+- Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.
+- A reproducible 1M-cell benchmark documents runtime and memory changes against the Thin CRB/qs2 baseline without adding a runtime example API.
+
 # CerebroNexus 4.5.0
 
 ## Data format and I/O
