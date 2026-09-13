@@ -2,89 +2,213 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 Sys.setenv(NOT_CRAN = "true")
-if (length(args) < 3L || length(args) > 4L) {
+script_argument <- grep("^--file=", commandArgs(), value = TRUE)[[1L]]
+source(file.path(
+  dirname(normalizePath(sub("^--file=", "", script_argument))),
+  "viewer_1m_page_protocol.R"
+))
+if (length(args) < 3L) {
   stop(
-    "usage: benchmark_viewer_1m_pages.R REPO_ROOT CRB OUTPUT_TSV [REPEATS]",
+    paste(
+      "usage: benchmark_viewer_1m_pages.R [LABEL=]REPO_ROOT CRB",
+      "OUTPUT_TSV [ROUNDS] [LABEL=REPO_ROOT ...]"
+    ),
     call. = FALSE
   )
 }
 
-root <- normalizePath(args[[1L]], mustWork = TRUE)
-crb <- normalizePath(args[[2L]], mustWork = TRUE)
-output <- normalizePath(args[[3L]], mustWork = FALSE)
-repeats <- if (length(args) == 4L) as.integer(args[[4L]]) else 3L
-if (is.na(repeats) || repeats < 1L) {
-  stop("REPEATS must be a positive integer.", call. = FALSE)
+quote_r <- function(value) encodeString(value, quote = '"')
+
+parse_candidate <- function(value, default_label = "candidate") {
+  separator <- regexpr("=", value, fixed = TRUE)
+  if (separator > 1L) {
+    label <- substr(value, 1L, separator - 1L)
+    path <- substring(value, separator + 1L)
+  } else {
+    label <- default_label
+    path <- value
+  }
+  c(label = label, root = normalizePath(path, mustWork = TRUE))
 }
 
-quote_r <- function(value) encodeString(value, quote = '"')
+first_candidate <- parse_candidate(args[[1L]])
+crb <- normalizePath(args[[2L]], mustWork = TRUE)
+output <- normalizePath(args[[3L]], mustWork = FALSE)
+profile <- Sys.getenv("VIEWER_BENCH_PROFILE", unset = "quick")
+rounds <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
+  as.integer(args[[4L]])
+} else {
+  3L
+}
+candidate_start <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
+  5L
+} else {
+  4L
+}
+extra_candidates <- if (length(args) >= candidate_start) {
+  lapply(args[seq.int(candidate_start, length(args))], parse_candidate)
+} else {
+  list()
+}
+candidate_specs <- c(list(first_candidate), extra_candidates)
+candidate_labels <- vapply(candidate_specs, `[[`, character(1), "label")
+validate_page_profile(profile, rounds)
+if (any(!nzchar(candidate_labels)) || anyDuplicated(candidate_labels)) {
+  stop("Candidate labels must be non-empty and unique.", call. = FALSE)
+}
+names(candidate_specs) <- candidate_labels
+
 page <- function(
   tab,
-  ready = NULL,
+  ready,
   budget_ms = 2000,
   required = FALSE,
-  wait_idle = TRUE
+  wait_idle = TRUE,
+  event_view = NULL,
+  ready_event = if (is.null(event_view)) NULL else "cerebro:specialist-state",
+  correctness = "true",
+  point_selector = NULL,
+  expected_point_count = NA_real_,
+  correctness_detail = "''"
 ) {
   list(
     tab = tab,
     ready = ready,
     budget_ms = budget_ms,
     required = required,
-    wait_idle = wait_idle
+    wait_idle = wait_idle,
+    event_view = event_view,
+    ready_event = ready_event,
+    correctness = correctness,
+    point_selector = point_selector,
+    expected_point_count = expected_point_count,
+    correctness_detail = correctness_detail
   )
 }
+
+canvas_page <- function(tab, host, expected_points = NULL, ...) {
+  selector <- paste0(host, " canvas:not(.cv-mini)[data-point-count]")
+  count_check <- if (is.null(expected_points)) {
+    "pointCount>0"
+  } else {
+    paste0("pointCount===", expected_points)
+  }
+  page(
+    tab,
+    sprintf("!!document.querySelector(%s)", quote_r(selector)),
+    ...,
+    correctness = sprintf(
+      paste0(
+        "(() => {const canvas=document.querySelector(%s);",
+        "const pointCount=Number(canvas?.getAttribute('data-point-count'));",
+        "const detail=window.__cerebroPageBenchEventDetail;",
+        "return Number.isFinite(pointCount)&&%s&&",
+        "typeof detail?.datasetFingerprint==='string'&&",
+        "detail.datasetFingerprint.length>0;})()"
+      ),
+      quote_r(selector),
+      count_check
+    ),
+    point_selector = selector,
+    expected_point_count = if (is.null(expected_points)) {
+      NA_real_
+    } else {
+      expected_points
+    },
+    correctness_detail = "JSON.stringify(window.__cerebroPageBenchEventDetail||{})"
+  )
+}
+
 pages <- list(
   groups = page(
     "groups",
-    "#groups_nUMI_plot.js-plotly-plot",
-    required = TRUE
+    "!!p.querySelector('#groups_nUMI_plot.js-plotly-plot')",
+    required = TRUE,
+    correctness = paste0(
+      "(() => {const plot=document.querySelector(",
+      "'#shiny-tab-groups #groups_nUMI_plot.js-plotly-plot');",
+      "return !!plot&&plot.offsetParent!==null&&",
+      "Array.isArray(plot.data)&&plot.data.length>0;})()"
+    ),
+    correctness_detail = paste0(
+      "(() => {const plot=document.querySelector(",
+      "'#shiny-tab-groups #groups_nUMI_plot.js-plotly-plot');",
+      "return 'plotly_traces='+(Array.isArray(plot?.data)?plot.data.length:0);})()"
+    )
   ),
-  overview = page(
+  overview = canvas_page(
     "overview",
-    "#overview_projection_cell_view_host canvas:not(.cv-mini)",
-    required = TRUE
+    "#overview_projection_cell_view_host",
+    expected_points = 1000000,
+    required = TRUE,
+    event_view = "overview_projection"
   ),
-  gene_expression = page(
+  gene_expression = canvas_page(
     "geneExpression",
-    "#expression_projection_cell_view_host canvas:not(.cv-mini)",
-    required = TRUE
+    "#expression_projection_cell_view_host",
+    expected_points = 1000000,
+    required = TRUE,
+    event_view = "expression_projection"
   ),
-  immune_repertoire = page(
+  immune_repertoire = canvas_page(
     "immune_repertoire",
-    paste(
-      "#ir_clonalUMAP_projection_cell_view_host canvas:not(.cv-mini),",
-      "#ir_visualizations_UI .js-plotly-plot"
-    ),
-    required = TRUE
+    "#ir_clonalUMAP_projection_cell_view_host",
+    expected_points = 1000000,
+    required = TRUE,
+    event_view = "ir_clonalUMAP_projection"
   ),
-  trajectory = page(
+  trajectory = canvas_page(
     "trajectory",
-    "#trajectory_projection_cell_view_host canvas:not(.cv-mini)",
-    budget_ms = 3000,
-    required = TRUE
-  ),
-  hla = page(
-    "hla_tcr_motifs",
-    paste0(
-      "#hla_motif_network_cell_view_host ",
-      "canvas:not(.cv-mini)[data-point-count]"
-    ),
+    "#trajectory_projection_cell_view_host",
+    expected_points = 1000000,
     budget_ms = 3000,
     required = TRUE,
-    wait_idle = FALSE
+    event_view = "trajectory_projection"
   ),
-  marker_genes = page("markerGenes"),
-  most_expressed_genes = page("mostExpressedGenes"),
-  enriched_pathways = page("enrichedPathways"),
-  extra_material = page("extra_material"),
-  spatial = page("spatial"),
-  trekker = page("trekker"),
-  gene_id_conversion = page("geneIdConversion"),
-  color_management = page("color_management"),
-  analysis_info = page("analysis_info"),
-  about = page("about"),
-  coordinated_views = page("coordinated_views")
+  hla = canvas_page(
+    "hla_tcr_motifs",
+    "#hla_motif_network_cell_view_host",
+    budget_ms = 3000,
+    required = TRUE,
+    wait_idle = FALSE,
+    event_view = "hla_motif_network"
+  ),
+  marker_genes = page("markerGenes", "true"),
+  most_expressed_genes = page("mostExpressedGenes", "true"),
+  enriched_pathways = page("enrichedPathways", "true"),
+  extra_material = page("extra_material", "true"),
+  spatial = canvas_page(
+    "spatial",
+    "#spatial_projection_cell_view_host",
+    event_view = "spatial_projection"
+  ),
+  trekker = page("trekker", "true"),
+  gene_id_conversion = page("geneIdConversion", "true"),
+  color_management = page("color_management", "true"),
+  analysis_info = page("analysis_info", "true"),
+  about = page("about", "true"),
+  coordinated_views = page(
+    "coordinated_views",
+    "!!window.cerebroLinkedViewsState&&window.cerebroLinkedViewsState.ready()",
+    required = TRUE,
+    ready_event = "cerebro:linkedviews-ready",
+    correctness = paste0(
+      "(() => {const state=window.cerebroLinkedViewsState;",
+      "const summary=state?.summary?.();",
+      "return summary?.ready===true&&",
+      "typeof summary.datasetFingerprint==='string'&&",
+      "summary.datasetFingerprint.length>0;})()"
+    ),
+    correctness_detail = paste0(
+      "(() => {const summary=window.cerebroLinkedViewsState?.summary?.()||{};",
+      "return JSON.stringify({ready:summary.ready,",
+      "datasetFingerprint:summary.datasetFingerprint,",
+      "projections:summary.projections?.length||0,",
+      "spatialSections:summary.spatialSections?.length||0});})()"
+    )
+  )
 )
+
 only <- Sys.getenv("VIEWER_PAGES_ONLY")
 if (nzchar(only)) {
   only <- trimws(strsplit(only, ",", fixed = TRUE)[[1L]])
@@ -95,22 +219,67 @@ if (nzchar(only)) {
   pages <- pages[only]
 }
 
-page_active_js <- function(page, first) {
-  ready <- if (!isTRUE(first) || is.null(page$ready)) {
-    "true"
-  } else {
-    sprintf("!!p.querySelector(%s)", quote_r(page$ready))
-  }
-  idle <- if (isTRUE(first) && isTRUE(page$wait_idle)) {
+page_active_js <- function(page, require_event = TRUE) {
+  idle <- if (isTRUE(page$wait_idle)) {
     "!document.documentElement.classList.contains('shiny-busy')"
   } else {
     "true"
   }
+  event_ready <- if (!isTRUE(require_event) || is.null(page$ready_event)) {
+    "true"
+  } else {
+    "window.__cerebroPageBenchSeen === true"
+  }
   sprintf(
-    "(() => { const p=document.getElementById('shiny-tab-%s'); return window.__cerebroPageBenchReady === true && !!p && p.classList.contains('active') && %s && %s; })()",
+    paste0(
+      "(() => {const p=document.getElementById('shiny-tab-%s');",
+      "return !!p&&p.classList.contains('active')&&%s&&%s&&(%s);})()"
+    ),
     page$tab,
     idle,
-    ready
+    event_ready,
+    page$ready
+  )
+}
+
+arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
+  listener <- if (!isTRUE(require_event) || is.null(page$ready_event)) {
+    ""
+  } else {
+    condition <- if (is.null(page$event_view)) {
+      "e.detail?.ready===true"
+    } else {
+      sprintf("e.detail?.viewId===%s", quote_r(page$event_view))
+    }
+    sprintf(
+      paste0(
+        "window.addEventListener(%s,function h(e){",
+        "if(window.__cerebroPageBenchGeneration===generation&&",
+        "e.timeStamp >= clickStart&&%s){",
+        "window.__cerebroPageBenchSeen=true;",
+        "window.__cerebroPageBenchEventDetail=e.detail||null;",
+        "window.removeEventListener(%s,h);}});"
+      ),
+      quote_r(page$ready_event),
+      condition,
+      quote_r(page$ready_event)
+    )
+  }
+  app$run_js(
+    sprintf(
+      paste0(
+        "(() => {const generation=",
+        "(window.__cerebroPageBenchGeneration||0)+1;",
+        "window.__cerebroPageBenchGeneration=generation;",
+        "const clickStart=performance.now();",
+        "window.__cerebroPageBenchClickStart=clickStart;",
+        "window.__cerebroPageBenchSeen=false;",
+        "window.__cerebroPageBenchEventDetail=null;",
+        "%sdocument.querySelector(%s).click();})()"
+      ),
+      listener,
+      quote_r(selector)
+    )
   )
 }
 
@@ -119,34 +288,215 @@ page_available <- function(app, page) {
   app$get_js(sprintf("!!document.querySelector(%s)", quote_r(selector)))
 }
 
-open_page <- function(app, page, first = TRUE) {
+open_page <- function(app, page, require_event = TRUE) {
   selector <- sprintf("a[href='#shiny-tab-%s']", page$tab)
-  exists <- page_available(app, page)
-  if (!isTRUE(exists)) {
+  if (!isTRUE(page_available(app, page))) {
     if (isTRUE(page$required)) {
       stop("Missing required benchmark page: ", page$tab, call. = FALSE)
     }
     return(NA_real_)
   }
   started <- proc.time()[["elapsed"]]
-  message("opening ", page$tab)
-  app$run_js(sprintf(
-    "window.__cerebroPageBenchReady=false; document.querySelector(%s).click(); requestAnimationFrame(() => requestAnimationFrame(() => { window.__cerebroPageBenchReady=true; }));",
-    quote_r(selector)
-  ))
-  app$wait_for_js(page_active_js(page, first), timeout = 120000)
-  elapsed <- (proc.time()[["elapsed"]] - started) * 1000
-  message("ready ", page$tab, ": ", round(elapsed), " ms")
-  elapsed
+  arm_and_click_page(app, page, selector, require_event = require_event)
+  app$wait_for_js(
+    page_active_js(page, require_event = require_event),
+    timeout = 120000
+  )
+  (proc.time()[["elapsed"]] - started) * 1000
 }
 
-run_once <- function(round) {
-  app_dir <- tempfile("viewer-1m-pages-")
+page_correctness <- function(app, page) {
+  pass <- isTRUE(app$get_js(page$correctness))
+  point_count <- if (is.null(page$point_selector)) {
+    NA_real_
+  } else {
+    value <- app$get_js(sprintf(
+      paste0(
+        "(() => {const value=document.querySelector(%s)?.",
+        "getAttribute('data-point-count');",
+        "return value===null||value===undefined?null:Number(value);})()"
+      ),
+      quote_r(page$point_selector)
+    ))
+    if (is.null(value)) NA_real_ else as.numeric(value)
+  }
+  detail <- app$get_js(page$correctness_detail)
+  list(
+    pass = pass,
+    point_count = point_count,
+    detail = if (is.null(detail)) "" else as.character(detail)
+  )
+}
+
+start_socket_meter <- function(app) {
+  app$run_js(paste0(
+    "(() => {if(window.__cerebroPageBenchSocketMeter){",
+    "throw new Error('Socket meter is already active');}",
+    "const socket=window.Shiny&&Shiny.shinyapp&&Shiny.shinyapp.$socket;",
+    "if(!socket||typeof socket.addEventListener!=='function'||",
+    "typeof socket.send!=='function'){",
+    "throw new Error('Shiny socket is unavailable');}",
+    "const encoder=new TextEncoder();",
+    "const byteLength=data=>{",
+    "if(typeof data==='string')return encoder.encode(data).byteLength;",
+    "if(data instanceof ArrayBuffer)return data.byteLength;",
+    "if(ArrayBuffer.isView(data))return data.byteLength;",
+    "if(data instanceof Blob)return data.size;return 0;};",
+    "const meter={socket:socket,sent:0,received:0,",
+    "originalSend:socket.send,handler:null,wrappedSend:null};",
+    "meter.handler=event=>{meter.received+=byteLength(event.data);};",
+    "meter.wrappedSend=function(data){meter.sent+=byteLength(data);",
+    "return meter.originalSend.apply(this,arguments);};",
+    "try{socket.addEventListener('message',meter.handler);",
+    "socket.send=meter.wrappedSend;",
+    "if(socket.send!==meter.wrappedSend){",
+    "throw new Error('Shiny socket send cannot be wrapped');}",
+    "window.__cerebroPageBenchSocketMeter=meter;}",
+    "catch(error){socket.removeEventListener('message',meter.handler);",
+    "if(socket.send===meter.wrappedSend){socket.send=meter.originalSend;}",
+    "throw error;}})()"
+  ))
+  invisible(TRUE)
+}
+
+cleanup_socket_meter <- function(app) {
+  app$run_js(paste0(
+    "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
+    "if(!meter)return;",
+    "meter.socket.removeEventListener('message',meter.handler);",
+    "if(meter.socket.send===meter.wrappedSend){",
+    "meter.socket.send=meter.originalSend;}",
+    "window.__cerebroPageBenchSocketMeter=null;})()"
+  ))
+  invisible(TRUE)
+}
+
+stop_socket_meter <- function(app) {
+  value <- app$get_js(paste0(
+    "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
+    "if(!meter)throw new Error('Socket meter is not active');",
+    "try{return {sent:meter.sent,received:meter.received};}",
+    "finally{meter.socket.removeEventListener('message',meter.handler);",
+    "if(meter.socket.send===meter.wrappedSend){",
+    "meter.socket.send=meter.originalSend;}",
+    "window.__cerebroPageBenchSocketMeter=null;}})()"
+  ))
+  if (
+    is.null(value$sent) ||
+      !is.finite(value$sent) ||
+      is.null(value$received) ||
+      !is.finite(value$received)
+  ) {
+    stop("Socket meter returned invalid byte counts.", call. = FALSE)
+  }
+  value
+}
+
+start_rss_monitor <- function(r_pid, chrome_pid) {
+  result <- tempfile("viewer-page-rss-", fileext = ".rds")
+  stop_file <- paste0(result, ".stop")
+  ready_file <- paste0(result, ".ready")
+  process <- callr::r_bg(
+    function(r_pid, chrome_pid, result, stop_file, ready_file) {
+      tree_rss <- function(root, processes) {
+        members <- root
+        repeat {
+          children <- processes$pid[processes$ppid %in% members]
+          children <- setdiff(children, members)
+          if (!length(children)) {
+            break
+          }
+          members <- c(members, children)
+        }
+        sum(processes$rss[processes$pid %in% members], na.rm = TRUE)
+      }
+      peaks <- c(r_peak_rss_kib = 0, chrome_peak_rss_kib = 0)
+      file.create(ready_file)
+      repeat {
+        lines <- system2(
+          "ps",
+          c("-axo", "pid=,ppid=,rss="),
+          stdout = TRUE,
+          stderr = FALSE
+        )
+        processes <- tryCatch(
+          utils::read.table(
+            text = lines,
+            col.names = c("pid", "ppid", "rss")
+          ),
+          error = function(error) NULL
+        )
+        if (!is.null(processes)) {
+          peaks[[1L]] <- max(peaks[[1L]], tree_rss(r_pid, processes))
+          peaks[[2L]] <- max(peaks[[2L]], tree_rss(chrome_pid, processes))
+        }
+        if (file.exists(stop_file)) {
+          break
+        }
+        Sys.sleep(0.05)
+      }
+      saveRDS(peaks, result)
+    },
+    args = list(r_pid, chrome_pid, result, stop_file, ready_file),
+    stdout = "|",
+    stderr = "|"
+  )
+  deadline <- Sys.time() + 5
+  while (
+    !file.exists(ready_file) && process$is_alive() && Sys.time() < deadline
+  ) {
+    Sys.sleep(0.01)
+  }
+  if (!file.exists(ready_file)) {
+    process$kill()
+    stop("RSS monitor did not start.", call. = FALSE)
+  }
+  list(process = process, result = result, stop = stop_file, ready = ready_file)
+}
+
+stop_rss_monitor <- function(monitor) {
+  file.create(monitor$stop)
+  monitor$process$wait(5000)
+  value <- if (file.exists(monitor$result)) {
+    readRDS(monitor$result)
+  } else {
+    c(r_peak_rss_kib = NA_real_, chrome_peak_rss_kib = NA_real_)
+  }
+  unlink(c(monitor$result, monitor$stop, monitor$ready))
+  value
+}
+
+js_heap_used <- function(session) {
+  metrics <- session$Performance$getMetrics()$metrics
+  names <- vapply(metrics, `[[`, character(1), "name")
+  values <- vapply(metrics, `[[`, numeric(1), "value")
+  unname(values[match("JSHeapUsedSize", names)])
+}
+
+assert_clean_logs <- function(app) {
+  logs <- app$get_logs()
+  browser_error <- logs$location == "chromote" &
+    logs$level %in% c("error", "assert", "throw")
+  server_error <- logs$location == "shiny" &
+    grepl(
+      "Warning: Error|Execution halted|Error in ",
+      logs$message
+    )
+  if (any(browser_error | server_error, na.rm = TRUE)) {
+    stop("Browser or Shiny server error occurred.", call. = FALSE)
+  }
+}
+
+run_observation <- function(schedule_row, candidate, page, crb) {
+  app_dir <- tempfile("viewer-1m-page-")
   dir.create(app_dir)
   on.exit(unlink(app_dir, recursive = TRUE, force = TRUE), add = TRUE)
   writeLines(
     c(
-      sprintf("devtools::load_all(%s, quiet = TRUE)", quote_r(root)),
+      sprintf(
+        "devtools::load_all(%s, quiet = TRUE)",
+        quote_r(candidate[["root"]])
+      ),
       "launchCerebro(",
       "  mode = \"closed\",",
       sprintf("  crb_file_to_load = c(\"1M pages\" = %s),", quote_r(crb)),
@@ -159,43 +509,37 @@ run_once <- function(round) {
   suppressWarnings(shinytest2::local_app_support(app_dir))
   app <- shinytest2::AppDriver$new(
     app_dir,
-    name = paste0("viewer_1m_pages_", round),
+    name = paste0("viewer_1m_page_", schedule_row$schedule_position),
     height = 950,
     width = 1619,
     load_timeout = 900000,
-    timeout = 900000
+    timeout = 900000,
+    check_names = FALSE
   )
-  on.exit(app$stop(), add = TRUE)
+  session <- app$get_chromote_session()
+  browser <- session$parent
+  on.exit(
+    {
+      try(app$stop(), silent = TRUE)
+      try(browser$close(), silent = TRUE)
+    },
+    add = TRUE
+  )
   app$wait_for_value(output = "load_data_number_of_cells", timeout = 900000)
   count <- app$get_value(output = "load_data_number_of_cells")
   if (is.null(count$html) || !grepl("1,000,000", count$html, fixed = TRUE)) {
     stop("Data Info did not report 1,000,000 cells.", call. = FALSE)
   }
-
-  rows <- list()
-  record <- function(visit, name, elapsed_ms) {
-    page <- pages[[name]]
-    budget <- if (identical(visit, "first")) page$budget_ms else 500
-    rows[[length(rows) + 1L]] <<- data.frame(
-      round = round,
-      visit = visit,
-      page = name,
-      elapsed_ms = elapsed_ms,
-      budget_ms = budget,
-      pass = elapsed_ms <= budget,
-      check.names = FALSE
-    )
-  }
-
-  required <- names(pages)[vapply(pages, `[[`, logical(1), "required")]
-  optional <- setdiff(names(pages), required)
-  for (name in required) {
-    elapsed <- open_page(app, pages[[name]], first = TRUE)
-    if (is.finite(elapsed)) {
-      record("first", name, elapsed)
+  if (!isTRUE(page_available(app, page))) {
+    if (isTRUE(page$required)) {
+      stop("Missing required benchmark page: ", page$tab, call. = FALSE)
     }
+    return(empty_observation("skipped", "page unavailable"))
   }
-  for (name in required) {
+  warmed <- FALSE
+  if (identical(schedule_row$visit, "repeat")) {
+    open_page(app, page, require_event = TRUE)
+    warmed <- TRUE
     app$run_js(
       "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
     )
@@ -203,29 +547,242 @@ run_once <- function(round) {
       "document.getElementById('shiny-tab-loadData').classList.contains('active')",
       timeout = 120000
     )
-    record("repeat", name, open_page(app, pages[[name]], first = FALSE))
   }
-  for (name in optional) {
-    if (!isTRUE(page_available(app, pages[[name]]))) {
-      next
-    }
-    record("first", name, open_page(app, pages[[name]], first = TRUE))
-    app$run_js(
-      "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
-    )
-    app$wait_for_js(
-      "document.getElementById('shiny-tab-loadData').classList.contains('active')",
-      timeout = 120000
-    )
-    record("repeat", name, open_page(app, pages[[name]], first = FALSE))
-  }
-  do.call(rbind, rows)
+
+  session$Performance$enable()
+  start_socket_meter(app)
+  socket_meter_active <- TRUE
+  on.exit(
+    {
+      if (socket_meter_active) try(cleanup_socket_meter(app), silent = TRUE)
+    },
+    add = TRUE
+  )
+  r_pid <- app$.__enclos_env__$private$shiny_process$get_pid()
+  chrome_pid <- browser$get_browser()$.__enclos_env__$private$process$get_pid()
+  monitor <- start_rss_monitor(r_pid, chrome_pid)
+  monitor_stopped <- FALSE
+  on.exit(
+    {
+      if (!monitor_stopped) try(stop_rss_monitor(monitor), silent = TRUE)
+    },
+    add = TRUE
+  )
+  require_event <- requires_ready_event(
+    schedule_row$page,
+    schedule_row$visit,
+    warmed
+  )
+  elapsed_ms <- open_page(app, page, require_event = require_event)
+  websocket <- stop_socket_meter(app)
+  socket_meter_active <- FALSE
+  resources <- stop_rss_monitor(monitor)
+  monitor_stopped <- TRUE
+  correctness <- page_correctness(app, page)
+  assert_clean_logs(app)
+  data.frame(
+    status = if (correctness$pass) "ok" else "error",
+    error = if (correctness$pass) "" else "Page correctness check failed.",
+    elapsed_ms = elapsed_ms,
+    ready_event_required = require_event && !is.null(page$ready_event),
+    correctness_pass = correctness$pass,
+    rendered_point_count = correctness$point_count,
+    expected_point_count = page$expected_point_count,
+    correctness_detail = correctness$detail,
+    r_peak_rss_kib = unname(resources[["r_peak_rss_kib"]]),
+    chrome_peak_rss_kib = unname(resources[["chrome_peak_rss_kib"]]),
+    js_heap_used_bytes = js_heap_used(session),
+    websocket_sent_payload_bytes = as.numeric(websocket$sent),
+    websocket_received_payload_bytes = as.numeric(websocket$received),
+    chrome_version = session$Browser$getVersion()$product,
+    stringsAsFactors = FALSE
+  )
 }
 
-results <- do.call(rbind, lapply(seq_len(repeats), run_once))
+git_value <- function(root, ...) {
+  value <- system2("git", c("-C", root, ...), stdout = TRUE, stderr = TRUE)
+  if (!length(value)) NA_character_ else value[[1L]]
+}
+
+git_dirty <- function(root) {
+  length(system2(
+    "git",
+    c("-C", root, "status", "--porcelain"),
+    stdout = TRUE,
+    stderr = TRUE
+  )) >
+    0L
+}
+
+sha256_file <- function(path) {
+  if (exists("sha256sum", envir = asNamespace("tools"), inherits = FALSE)) {
+    return(unname(tools::sha256sum(path)))
+  }
+  command <- Sys.which("shasum")
+  if (!nzchar(command)) {
+    stop("No SHA-256 implementation is available.")
+  }
+  sub(" .*", "", system2(command, c("-a", "256", path), stdout = TRUE)[[1L]])
+}
+
+package_version_at <- function(root) {
+  description <- read.dcf(file.path(root, "DESCRIPTION"), fields = "Version")
+  unname(description[[1L]])
+}
+
+provenance <- do.call(
+  rbind,
+  lapply(candidate_specs, function(candidate) {
+    root <- candidate[["root"]]
+    data.frame(
+      candidate = candidate[["label"]],
+      candidate_root = root,
+      candidate_git_sha = git_value(root, "rev-parse", "HEAD"),
+      candidate_git_dirty = git_dirty(root),
+      artifact = crb,
+      artifact_sha256 = sha256_file(crb),
+      host = unname(Sys.info()[["nodename"]]),
+      os = paste(
+        Sys.info()[c("sysname", "release", "machine")],
+        collapse = " "
+      ),
+      r_version = R.version.string,
+      package_version = package_version_at(root),
+      shinytest2_version = as.character(utils::packageVersion("shinytest2")),
+      chromote_version = as.character(utils::packageVersion("chromote")),
+      profile = profile,
+      rounds = rounds,
+      stringsAsFactors = FALSE
+    )
+  })
+)
+
+schedule <- build_balanced_schedule(candidate_labels, names(pages), rounds)
+schedule_output <- sub("[.]tsv$", "_schedule.tsv", output)
+if (identical(schedule_output, output)) {
+  schedule_output <- paste0(output, ".schedule.tsv")
+}
 dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
+write.table(
+  schedule,
+  schedule_output,
+  row.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+)
+
+empty_observation <- function(status, error) {
+  data.frame(
+    status = status,
+    error = error,
+    elapsed_ms = NA_real_,
+    ready_event_required = NA,
+    correctness_pass = NA,
+    rendered_point_count = NA_real_,
+    expected_point_count = NA_real_,
+    correctness_detail = "",
+    r_peak_rss_kib = NA_real_,
+    chrome_peak_rss_kib = NA_real_,
+    js_heap_used_bytes = NA_real_,
+    websocket_sent_payload_bytes = NA_real_,
+    websocket_received_payload_bytes = NA_real_,
+    chrome_version = NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+
+rows <- lapply(seq_len(nrow(schedule)), function(index) {
+  scheduled <- schedule[index, , drop = FALSE]
+  candidate <- candidate_specs[[scheduled$candidate]]
+  observation <- tryCatch(
+    run_observation(scheduled, candidate, pages[[scheduled$page]], crb),
+    error = function(error) empty_observation("error", conditionMessage(error))
+  )
+  page_spec <- pages[[scheduled$page]]
+  budget_ms <- if (identical(scheduled$visit, "first")) {
+    page_spec$budget_ms
+  } else {
+    500
+  }
+  row <- cbind(
+    scheduled,
+    required = page_spec$required,
+    budget_ms = budget_ms,
+    observation,
+    stringsAsFactors = FALSE
+  )
+  row$pass <- row$status == "ok" &&
+    page_budget_pass(
+      row$elapsed_ms,
+      row$budget_ms
+    )
+  message(
+    row$candidate,
+    " round ",
+    row$round,
+    " ",
+    row$page,
+    " ",
+    row$visit,
+    ": ",
+    row$status,
+    if (is.finite(row$elapsed_ms)) {
+      paste0(" ", round(row$elapsed_ms), " ms")
+    } else {
+      ""
+    }
+  )
+  row
+})
+
+results <- do.call(rbind, rows)
+results <- merge(results, provenance, by = "candidate", sort = FALSE)
+results <- results[order(results$schedule_position), ]
 write.table(results, output, row.names = FALSE, sep = "\t", quote = FALSE)
+
+chrome_versions <- tapply(
+  results$chrome_version,
+  results$candidate,
+  function(value) {
+    value <- value[!is.na(value) & nzchar(value)]
+    if (length(value)) value[[1L]] else NA_character_
+  }
+)
+provenance$chrome_version <- unname(chrome_versions[provenance$candidate])
+manifest_output <- sub("[.]tsv$", "_manifest.tsv", output)
+if (identical(manifest_output, output)) {
+  manifest_output <- paste0(output, ".manifest.tsv")
+}
+write.table(
+  provenance,
+  manifest_output,
+  row.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+)
 print(results, row.names = FALSE)
-if (any(!results$pass)) {
-  stop("One or more 1M page budgets failed; see ", output, call. = FALSE)
+
+bad_status <- results$status == "error" |
+  (results$required & results$status != "ok")
+missing_resources <- results$status == "ok" &
+  (!is.finite(results$r_peak_rss_kib) |
+    !is.finite(results$chrome_peak_rss_kib) |
+    !is.finite(results$js_heap_used_bytes) |
+    !is.finite(results$websocket_sent_payload_bytes) |
+    !is.finite(results$websocket_received_payload_bytes))
+if (any(bad_status | missing_resources)) {
+  stop(
+    "Page observations contain errors or missing required metrics; refusing publication.",
+    call. = FALSE
+  )
+}
+if (identical(profile, "publication") && any(provenance$candidate_git_dirty)) {
+  stop("Publication requires clean candidate worktrees.", call. = FALSE)
+}
+if (any(results$status == "ok" & !results$pass)) {
+  stop(
+    "One or more available 1M page budgets failed; see ",
+    output,
+    call. = FALSE
+  )
 }
