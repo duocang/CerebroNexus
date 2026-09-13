@@ -25,3 +25,10 @@ TODO.md
 Rplots\.pdf$
 ^inst/private-data/linked-view-shares\.sqlite$
 ^tests/bench$
+^AGENTS\.md$
+^scripts$
+^vignettes$
+^inst/extdata/examples/demo_.*[.]crb$
+^inst/extdata/examples/demo_hla_tcr_dextramer[.]ATTRIBUTION[.]md$
+^inst/extdata/examples/demo_spatial_visium_he[.]png$
+^inst/extdata/examples/spatial/xenium$

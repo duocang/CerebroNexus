@@ -20,6 +20,25 @@ viewerUploadPath <- function(input_file, options) {
   datapath
 }
 
+viewerAvailableDataSources <- function(
+  sources,
+  fallback = NULL,
+  envir = parent.frame()
+) {
+  is_available <- function(source) {
+    is.character(source) &&
+      length(source) == 1L &&
+      !is.na(source) &&
+      nzchar(source) &&
+      (file.exists(source) || exists(source, envir = envir, inherits = TRUE))
+  }
+  available <- sources[vapply(unname(sources), is_available, logical(1))]
+  if (length(available) || !is_available(fallback)) {
+    return(available)
+  }
+  fallback
+}
+
 viewerInitialPageDecision <- function(
   initial_tab,
   tab_name,

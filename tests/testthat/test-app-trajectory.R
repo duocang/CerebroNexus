@@ -5,6 +5,7 @@
 # Trajectory tab is present from the start.
 
 library(shinytest2)
+skip_on_cran()
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),

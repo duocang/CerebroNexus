@@ -147,8 +147,7 @@ launchCerebro <- function(
   }
 
   ## --------------------------------------------------------------------------##
-  ## Create global variable with options that need to be available inside the
-  ## Shiny app.
+  ## Create an isolated runtime environment containing the Viewer options.
   ## --------------------------------------------------------------------------##
   cerebro_options <- list(
     "mode" = mode,
@@ -166,7 +165,8 @@ launchCerebro <- function(
     "percentage_cells_to_show" = percentage_cells_to_show,
     "projections_show_hover_info" = projections_show_hover_info
   )
-  assign("Cerebro.options", cerebro_options, envir = .GlobalEnv)
+  runtime <- new.env(parent = environment())
+  runtime$Cerebro.options <- cerebro_options
 
   ##--------------------------------------------------------------------------##
   ## Allow upload of files up to 800 MB.
@@ -181,14 +181,14 @@ launchCerebro <- function(
       paste0("viewer/shiny_UI.R"),
       package = "CerebroNexus"
     ),
-    local = TRUE
+    local = runtime
   )
   source(
     system.file(
       paste0("viewer/shiny_server.R"),
       package = "CerebroNexus"
     ),
-    local = TRUE
+    local = runtime
   )
 
   ##--------------------------------------------------------------------------##
@@ -202,8 +202,8 @@ launchCerebro <- function(
     )
   )
   shiny::shinyApp(
-    ui = ui,
-    server = server,
+    ui = runtime$ui,
+    server = runtime$server,
     ...
   )
 }

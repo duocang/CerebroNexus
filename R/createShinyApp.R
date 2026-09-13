@@ -2168,6 +2168,7 @@ dedent <- function(string) {
 #' }
 #'
 #' @importFrom later later
+#' @importFrom jsonlite fromJSON toJSON
 #' @importFrom stats setNames
 #' @export
 createShinyApp <- function(

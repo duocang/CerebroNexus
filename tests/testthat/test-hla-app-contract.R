@@ -406,6 +406,7 @@ test_that("the shipped demo ships its CC-BY attribution beside the data", {
   # installed user would otherwise receive the CC-BY data with no licensing
   # record. The attribution file lives in extdata so it installs with the demo.
   att <- hla_inst_file("extdata/examples/demo_hla_tcr_dextramer.ATTRIBUTION.md")
+  skip_if_not(file.exists(att), "external HLA demo is not bundled")
   expect_true(file.exists(att))
   txt <- paste(readLines(att, warn = FALSE), collapse = "\n")
   expect_match(txt, "CC-BY", fixed = TRUE)

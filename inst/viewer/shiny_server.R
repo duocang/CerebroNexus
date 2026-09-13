@@ -172,6 +172,13 @@ server <- function(input, output, session) {
         !is.null(Cerebro.options[["crb_file_to_load"]])
     ) {
       file_to_load <- Cerebro.options[["crb_file_to_load"]]
+      file_to_load <- viewerAvailableDataSources(
+        file_to_load,
+        fallback = file.path(
+          Cerebro.options[["cerebro_root"]],
+          "extdata/examples/example.crb"
+        )
+      )
       ## multiple files (or a single named file) -> enable dataset switcher
       if (length(file_to_load) > 1 || !is.null(names(file_to_load))) {
         available_crb_files$files <- file_to_load

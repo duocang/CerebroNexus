@@ -330,22 +330,18 @@ test_that("launchCerebro rejects non-logical projections_show_hover_info", {
   )
 })
 
-test_that("launchCerebro loads the installed Viewer", {
+test_that("launchCerebro loads the installed Viewer without global state", {
+  sentinel <- list(mode = "sentinel")
   had_options <- exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
   previous_options <- if (had_options) {
     get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
-  } else {
-    NULL
   }
+  assign("Cerebro.options", sentinel, envir = .GlobalEnv)
   on.exit(
-    {
-      if (had_options) {
-        assign("Cerebro.options", previous_options, envir = .GlobalEnv)
-      } else if (
-        exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
-      ) {
-        rm("Cerebro.options", envir = .GlobalEnv)
-      }
+    if (had_options) {
+      assign("Cerebro.options", previous_options, envir = .GlobalEnv)
+    } else {
+      rm("Cerebro.options", envir = .GlobalEnv)
     },
     add = TRUE
   )
@@ -354,8 +350,8 @@ test_that("launchCerebro loads the installed Viewer", {
 
   expect_s3_class(app, "shiny.appobj")
   expect_identical(
-    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)$mode,
-    "closed"
+    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE),
+    sentinel
   )
 })
 

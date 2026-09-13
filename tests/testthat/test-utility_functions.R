@@ -35,6 +35,25 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("unavailable bundled demos are filtered with a compact fallback", {
+  existing <- tempfile(fileext = ".crb")
+  writeBin(as.raw(1L), existing)
+  on.exit(unlink(existing), add = TRUE)
+  configured <- c(
+    "Missing demo" = tempfile(fileext = ".crb"),
+    "Available demo" = existing
+  )
+
+  expect_identical(
+    utils_env$viewerAvailableDataSources(configured, tempfile()),
+    configured["Available demo"]
+  )
+  expect_identical(
+    utils_env$viewerAvailableDataSources(configured["Missing demo"], existing),
+    existing
+  )
+})
+
 test_that("infinite values are replaced without changing other columns", {
   replaceInfiniteValues <- utils_env$replaceInfiniteValues
   expect_true(is.function(replaceInfiniteValues))

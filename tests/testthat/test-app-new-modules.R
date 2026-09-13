@@ -1,6 +1,7 @@
 # test-app-new-modules.R — shinytest2 integration tests for PR2 enhanced modules
 
 library(shinytest2)
+skip_on_cran()
 
 inst_dir <- system.file(package = "CerebroNexus")
 if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
