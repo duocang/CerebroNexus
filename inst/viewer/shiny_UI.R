@@ -1,6 +1,13 @@
 ##----------------------------------------------------------------------------##
 ## Custom functions.
 ##----------------------------------------------------------------------------##
+cerebroIcon <- function(name) {
+  result <- icon(name)
+  result$attribs[["aria-label"]] <- NULL
+  result$attribs[["aria-hidden"]] <- "true"
+  result
+}
+
 cerebroBox <- function(
   title,
   content,
@@ -47,7 +54,7 @@ cerebroSettingsButton <- function(id, target) {
     `aria-expanded` = "false",
     `aria-controls` = target,
     `data-cerebro-drawer-target` = target,
-    icon("sliders"),
+    cerebroIcon("sliders"),
     tags$span("Settings"),
     tags$span(class = "cerebro-more-caret")
   )
@@ -55,7 +62,7 @@ cerebroSettingsButton <- function(id, target) {
 
 conditionalSidebarItem <- function(label, tab_name, icon_name) {
   shiny::tagAppendAttributes(
-    menuItem(label, tabName = tab_name, icon = icon(icon_name)),
+    menuItem(label, tabName = tab_name, icon = cerebroIcon(icon_name)),
     id = paste0("sidebar_item_", tab_name),
     style = "display: none;"
   )
@@ -64,12 +71,12 @@ conditionalSidebarItem <- function(label, tab_name, icon_name) {
 cerebroVizPageHeader <- function(title, info_id, subtitle, meta_id = NULL) {
   div(
     class = "cerebro-viz-page-heading",
-    tags$h3(title),
+    tags$h1(title),
     tags$span(id = meta_id, class = "cerebro-viz-page-meta", subtitle),
     cerebroInfoButton(
       info_id,
       label = "Info",
-      icon = icon("circle-info"),
+      icon = cerebroIcon("circle-info"),
       class = "cerebro-page-info-btn"
     )
   )
@@ -132,7 +139,7 @@ cerebroShareButton <- function(plot_id) {
     `aria-disabled` = "true",
     `aria-haspopup` = "dialog",
     `aria-controls` = "cv-config-dialog",
-    icon("share-alt"),
+    cerebroIcon("share-alt"),
     tags$span("Share")
   )
 }
@@ -166,13 +173,13 @@ cerebroSelectionStatus <- function(
       `data-cell-view-id` = plot_id,
       `data-cell-view-action` = "focus",
       `aria-pressed` = "false",
-      icon("crop-simple"),
+      cerebroIcon("crop-simple"),
       tags$span("Focus")
     )
   }
   clear_button <- function() {
     input_id <- paste0(plot_id, "_clear_selection")
-    contents <- tagList(icon("eraser"), tags$span("Clear"))
+    contents <- tagList(cerebroIcon("eraser"), tags$span("Clear"))
     class <- paste(
       "btn btn-xs btn-default btn-breathing",
       "cerebro-selection-action-clear"
@@ -198,7 +205,7 @@ cerebroSelectionStatus <- function(
         class = "cerebro-selection-status-guide",
         tags$span(
           class = "cerebro-selection-status-kicker",
-          icon("arrow-pointer"),
+          cerebroIcon("arrow-pointer"),
           "Selection workspace"
         ),
         tags$span(
@@ -325,28 +332,77 @@ cerebro_js <- function(file, defer = FALSE) {
 ##----------------------------------------------------------------------------##
 
 timeoutSeconds <- 600
+timeoutWarningSeconds <- 60
 
 inactivity <- sprintf(
   "function idleTimer() {
-var t = setTimeout(logout, %s);
-window.onmousemove = resetTimer; // catches mouse movements
-window.onmousedown = resetTimer; // catches mouse movements
-window.onclick = resetTimer;     // catches mouse clicks
-window.onscroll = resetTimer;    // catches scrolling
-window.onkeypress = resetTimer;  //catches keyboard actions
+var warningTimer;
+var logoutTimer;
+var countdownTimer;
+var deadline;
+var previousFocus;
+var warning = document.getElementById('session-timeout-warning');
+var countdown = document.getElementById('session-timeout-countdown');
+var continueButton = document.getElementById('session-timeout-continue');
+
+function clearTimers() {
+clearTimeout(warningTimer);
+clearTimeout(logoutTimer);
+clearInterval(countdownTimer);
+}
+
+function closeWarning(restoreFocus) {
+clearInterval(countdownTimer);
+if (warning && warning.open) warning.close();
+if (restoreFocus && previousFocus && previousFocus.isConnected) previousFocus.focus();
+previousFocus = null;
+}
 
 function logout() {
+clearTimers();
+closeWarning(false);
 Shiny.setInputValue('timeOut', '%ss')
 }
 
-function resetTimer() {
-clearTimeout(t);
-t = setTimeout(logout, %s);  // time is in milliseconds (1000 is 1 second)
+function updateCountdown() {
+if (!countdown) return;
+countdown.textContent = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
 }
+
+function showWarning() {
+if (!warning) return;
+document.dispatchEvent(new CustomEvent('cerebro:overlay-opening', {
+detail: { owner: 'session-timeout' }
+}));
+previousFocus = document.activeElement;
+deadline = Date.now() + %s;
+updateCountdown();
+countdownTimer = setInterval(updateCountdown, 1000);
+if (!warning.open) warning.showModal();
+if (continueButton) continueButton.focus();
+}
+
+function resetTimer() {
+clearTimers();
+closeWarning(true);
+warningTimer = setTimeout(showWarning, %s);
+logoutTimer = setTimeout(logout, %s);
+}
+
+if (continueButton) continueButton.addEventListener('click', resetTimer);
+if (warning) warning.addEventListener('cancel', function(event) {
+event.preventDefault();
+resetTimer();
+});
+['mousemove', 'mousedown', 'click', 'scroll', 'keydown'].forEach(function(name) {
+window.addEventListener(name, resetTimer, { passive: name !== 'keydown' });
+});
+resetTimer();
 }
 idleTimer();",
-  timeoutSeconds * 1000,
   timeoutSeconds,
+  timeoutWarningSeconds * 1000,
+  (timeoutSeconds - timeoutWarningSeconds) * 1000,
   timeoutSeconds * 1000
 )
 
@@ -485,16 +541,24 @@ ui <- dashboardPage(
       menuItem(
         "Data info",
         tabName = "loadData",
-        icon = icon("info"),
+        icon = cerebroIcon("info"),
         selected = TRUE
       ),
-      menuItem("Projection", tabName = "overview", icon = icon("home")),
+      menuItem(
+        "Projection",
+        tabName = "overview",
+        icon = cerebroIcon("home")
+      ),
       menuItem(
         "Linked views",
         tabName = "coordinated_views",
-        icon = icon("project-diagram")
+        icon = cerebroIcon("link")
       ),
-      menuItem("Groups", tabName = "groups", icon = icon("layer-group")),
+      menuItem(
+        "Groups",
+        tabName = "groups",
+        icon = cerebroIcon("layer-group")
+      ),
       ## Conditional items are present when shinydashboard binds the sidebar,
       ## then shown only for data sets that support them. Keeping their anchors
       ## in the initial DOM lets updateTabItems() select them reliably.
@@ -507,7 +571,7 @@ ui <- dashboardPage(
       conditionalSidebarItem(
         "Enriched pathways",
         "enrichedPathways",
-        "project-diagram"
+        "sitemap"
       ),
       conditionalSidebarItem("Extra material", "extra_material", "gift"),
       conditionalSidebarItem(
@@ -521,24 +585,24 @@ ui <- dashboardPage(
       conditionalSidebarItem(
         "HLA & TCR Motifs",
         "hla_tcr_motifs",
-        "project-diagram"
+        "fingerprint"
       ),
       menuItem(
         "Gene expression",
         tabName = "geneExpression",
-        icon = icon("signal")
+        icon = cerebroIcon("signal")
       ),
       menuItem(
         "Gene ID conversion",
         tabName = "geneIdConversion",
-        icon = icon("barcode")
+        icon = cerebroIcon("barcode")
       ),
       menuItem(
         "Colour management",
         tabName = "color_management",
-        icon = icon("palette")
+        icon = cerebroIcon("palette")
       ),
-      menuItem("About", tabName = "about", icon = icon("at"))
+      menuItem("About", tabName = "about", icon = cerebroIcon("at"))
     )
   ),
   dashboardBody(
@@ -549,6 +613,33 @@ ui <- dashboardPage(
       `aria-label` = "Close navigation",
       `aria-hidden` = "true",
       tabindex = "-1"
+    ),
+    tags$div(
+      id = "cerebro-update-status",
+      class = "sr-only",
+      role = "status",
+      `aria-live` = "polite",
+      `aria-atomic` = "true"
+    ),
+    tags$dialog(
+      id = "session-timeout-warning",
+      role = "dialog",
+      `aria-modal` = "true",
+      `aria-labelledby` = "session-timeout-warning-title",
+      `aria-describedby` = "session-timeout-warning-message",
+      tags$h2(id = "session-timeout-warning-title", "Session expiring"),
+      tags$p(
+        id = "session-timeout-warning-message",
+        "Your session will end in ",
+        tags$span(id = "session-timeout-countdown", "60"),
+        " seconds unless you continue."
+      ),
+      tags$button(
+        id = "session-timeout-continue",
+        type = "button",
+        class = "btn btn-primary",
+        "Continue session"
+      )
     ),
     ## App CSS/JS as cacheable static resources (served from the cerebro_www
     ## resource path registered above) instead of inlined into every page. The
@@ -577,25 +668,38 @@ ui <- dashboardPage(
       cerebro_js("settings_drawer.js", defer = TRUE),
       cerebro_js("specialist-view-state.js", defer = TRUE)
     ),
-    tabItems(
-      tab_load_data,
-      tab_overview,
-      tab_coordinated_views,
-      tab_groups,
-      tab_marker_genes,
-      tab_most_expressed_genes,
-      tab_enriched_pathways,
-      tab_extra_material,
-      tab_immune_repertoire,
-      tab_trajectory,
-      tab_spatial,
-      tab_trekker,
-      tab_hla_tcr_motifs,
-      tab_gene_expression,
-      tab_gene_id_conversion,
-      tab_color_management,
-      tab_about
+    tags$main(
+      id = "main-content",
+      tabindex = "-1",
+      tabItems(
+        tab_load_data,
+        tab_overview,
+        tab_coordinated_views,
+        tab_groups,
+        tab_marker_genes,
+        tab_most_expressed_genes,
+        tab_enriched_pathways,
+        tab_extra_material,
+        tab_immune_repertoire,
+        tab_trajectory,
+        tab_spatial,
+        tab_trekker,
+        tab_hla_tcr_motifs,
+        tab_gene_expression,
+        tab_gene_id_conversion,
+        tab_color_management,
+        tab_about
+      )
     ),
-    tags$script(inactivity)
+    tags$script(HTML(inactivity))
   )
+)
+
+ui$children <- tagList(
+  tags$a(
+    class = "cerebro-skip-link",
+    href = "#main-content",
+    "Skip to main content"
+  ),
+  ui$children
 )

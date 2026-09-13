@@ -74,7 +74,12 @@ output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
   ## If no data available, show message
   if (length(metric_choices) == 0) {
     return(fluidRow(
-      column(12, tags$p("No expression data available for the selected group."))
+      column(
+        12,
+        tags$p(
+          "This grouping variable has no stored expression summary. Choose another grouping variable."
+        )
+      )
     ))
   }
 
@@ -278,7 +283,7 @@ output[["most_expressed_genes_table"]] <- DT::renderDataTable({
 ## Alternative text message if data is missing.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_message_no_data_found"]] <- renderText({
-  "No data available."
+  "Choose a grouping variable to view its stored expression summary."
 })
 
 ##----------------------------------------------------------------------------##
