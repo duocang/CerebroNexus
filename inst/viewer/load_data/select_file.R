@@ -66,8 +66,7 @@ output[["load_data_mode_open"]] <- renderText({
     HTML(Cerebro.options[["welcome_message"]])
   } else {
     HTML(
-      "<h3 style='text-align: center; margin-top: 0px'><strong>Welcome to CerebroNexus!</strong></h3>
-      <p style='text-align: center'>Please load your data set or take a look at the pre-loaded data.</p>"
+      "<p>Please load your data set or explore the pre-loaded data.</p>"
     )
   }
 })
@@ -84,9 +83,7 @@ output[["load_data_mode_closed"]] <- renderText({
     HTML(Cerebro.options[["welcome_message"]])
   } else {
     HTML(
-      "<h3 style='text-align: center; margin-top: 0px'><strong>Welcome to CerebroNexus!</strong></h3>
-      <p style='text-align: center'>CerebroNexus was launched in 'closed' mode, which means you cannot load your own data set. Instead, take a look at the pre-loaded data.</p>
-      <br>"
+      "<p>This app uses pre-loaded data. Choose a data set below to begin exploring.</p>"
     )
   }
 })

@@ -1280,7 +1280,6 @@ prettifyTable <- function(
   ## - align numerics to the right
   table <- DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = escape,
     extensions = table_extensions,
@@ -1303,7 +1302,22 @@ prettifyTable <- function(
       dom = dom,
       lengthMenu = page_length_menu,
       pageLength = page_length_default,
-      scrollX = TRUE
+      scrollX = TRUE,
+      initComplete = DT::JS(
+        "function() {",
+        "  var api = this.api();",
+        "  var table = $(api.table().container());",
+        "  var headers = api.columns().header().toArray();",
+        "  setTimeout(function() {",
+        "    table.find('thead tr:last-child, tfoot tr:first-child').each(function() {",
+        "      $(this).children('td').each(function(index) {",
+        "        var label = 'Filter ' + $(headers[index]).text().trim();",
+        "        $(this).find('input, select').attr('aria-label', label);",
+        "      });",
+        "    });",
+        "  }, 0);",
+        "}"
+      )
     )
   ) %>%
     DT::formatStyle(
@@ -1578,7 +1592,6 @@ prettifyTable <- function(
 prepareEmptyTable <- function(table) {
   DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = TRUE,
     filter = "none",

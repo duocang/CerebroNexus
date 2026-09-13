@@ -116,6 +116,42 @@
     '#FF6692', '#B6E880', '#FF97FF', '#FECB52', '#2f6fd6', '#f97316',
     '#16a34a', '#9a5cd0', '#e05780', '#38b2ac', '#d97706', '#7bb0e8'];
 
+  function updateCanvasDescription(p) {
+    if (!p || !p.canvas || !p.description) return;
+    var space = p.spaceId && spaceById[p.spaceId];
+    var label = String((space && space.label) || 'Cell');
+    var pointCount = D && Number(D.n) || 0;
+    var selectedCount = sel ? sel.size : 0;
+    var description = label + ' view with ' + pointCount + ' points; ' +
+      selectedCount + ' selected.';
+    p.canvas.setAttribute('role', 'img');
+    p.canvas.setAttribute('aria-label', label + ' cell view');
+    if (p.description.textContent !== description) {
+      p.description.textContent = description;
+    }
+  }
+
+  function prepareCanvasSemantics(p) {
+    var ids = (p.canvas.getAttribute('aria-describedby') || '').trim().split(/\s+/)
+      .filter(Boolean);
+    var description = null;
+    ids.some(function (id) {
+      description = document.getElementById(id);
+      return !!description;
+    });
+    if (!description) {
+      description = document.createElement('span');
+      description.id = p.canvas.id + '-description';
+      description.className = 'sr-only';
+      p.canvas.parentNode.insertBefore(description, p.canvas.nextSibling);
+      ids.push(description.id);
+      p.canvas.setAttribute('aria-describedby', ids.join(' '));
+    }
+    p.description = description;
+    if (p.mini) p.mini.setAttribute('aria-hidden', 'true');
+    updateCanvasDescription(p);
+  }
+
   function cssEscape(value) {
     if (window.CSS && typeof window.CSS.escape === 'function') {
       return window.CSS.escape(String(value));
@@ -1705,6 +1741,7 @@
 
   function draw(p, shownMask, shownCount) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
+    updateCanvasDescription(p);
     if (!p.ok) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
@@ -3923,6 +3960,7 @@
         gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null,
         gpuTransformOnly: false };
       attachGpu(p);
+      prepareCanvasSemantics(p);
       // The minimap is a FIXED size, so its backing store is set once here
       // rather than on every re-fit.
       if (mini) {
@@ -5316,6 +5354,7 @@
         p.colorBy = null;
         if (p.pane) p.pane.classList.add('cv-hidden');
       }
+      updateCanvasDescription(p);
     });
     updateMoranBadges();
     // Trekker info button lives on the Trekker panel only.

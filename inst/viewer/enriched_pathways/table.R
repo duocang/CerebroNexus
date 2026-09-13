@@ -285,7 +285,7 @@ output[["enriched_pathways_table"]] <- DT::renderDataTable({
 ##----------------------------------------------------------------------------##
 
 output[["enriched_pathways_message_no_markers_found"]] <- renderText({
-  "No marker genes were identified for any of the subpopulations of this grouping variable, which are required to perform pathway enrichment analysis with Enrichr."
+  "Enrichr cannot run because this grouping variable has no stored marker genes. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##
@@ -293,7 +293,7 @@ output[["enriched_pathways_message_no_markers_found"]] <- renderText({
 ##----------------------------------------------------------------------------##
 
 output[["enriched_pathways_message_no_pathways_found"]] <- renderText({
-  "Enrichr did not find any pathway to be enriched in any subpopulation of this grouping variable."
+  "Enrichr found no enriched pathways for this grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##
@@ -301,7 +301,7 @@ output[["enriched_pathways_message_no_pathways_found"]] <- renderText({
 ##----------------------------------------------------------------------------##
 
 output[["enriched_pathways_message_no_gene_sets_enriched"]] <- renderText({
-  "No gene sets were found to be enriched (considering the selected statistical thresholds) by GSVA in any of the subpopulations of this grouping variable."
+  "No gene sets meet the stored GSVA thresholds for this grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##
@@ -309,7 +309,7 @@ output[["enriched_pathways_message_no_gene_sets_enriched"]] <- renderText({
 ##----------------------------------------------------------------------------##
 
 output[["enriched_pathways_message_no_data_found"]] <- renderText({
-  "Data not available or not in correct format (data frame)."
+  "No enrichment table is available for this method and grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##

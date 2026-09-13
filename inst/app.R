@@ -14,7 +14,7 @@ source("viewer/million_cell_demo.R", local = TRUE)
 ##----------------------------------------------------------------------------##
 ## set options
 ##----------------------------------------------------------------------------##
-custom_welcome_message <- "Welcome to CerebroNexus! This is a custom welcome message. You can change it in the app options."
+custom_welcome_message <- "Explore single-cell and spatial data in CerebroNexus through coordinated, interactive views. Choose a sample data set to begin."
 Cerebro.options <<- list(
   "mode" = "closed",
   ## Keep the source demo runnable directly from inst/ without requiring an
