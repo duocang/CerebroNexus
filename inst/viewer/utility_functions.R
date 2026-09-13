@@ -246,7 +246,7 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
   filters <- stats::setNames(
     lapply(groups, function(group) {
       value <- input[[paste0(prefix, "_group_filter_", group)]]
-      if (is.null(value)) character() else value
+      if (is.null(value)) getGroupLevels(group) else value
     }),
     groups
   )
@@ -3529,10 +3529,12 @@ serverSideGeneSelector <- function(
     req(!is.null(genes), length(genes) > 0)
 
     send_update <- function() {
+      selected <- isolate(input[[input_id]])
       updateSelectizeInput(
         session,
         input_id,
         choices = genes,
+        selected = selected,
         server = TRUE
       )
     }
@@ -3543,8 +3545,8 @@ serverSideGeneSelector <- function(
     ## dropped. onFlushed fires right after R's flush but before the browser
     ## has processed the DOM update, so it's necessary but not sufficient.
     ## Sending the same update again after small timed delays ensures at least
-    ## one lands after the binding exists. Selection is deliberately omitted:
-    ## a delayed choices update must not overwrite a newer browser selection.
+    ## one lands after the binding exists. Preserve any selection made between
+    ## retries so a delayed choices update cannot clear newer browser state.
     if (isTRUE(retry)) {
       session$onFlushed(send_update, once = TRUE)
       later::later(send_update, delay = 0.3)

@@ -295,20 +295,29 @@ test_that("specialist configuration is validated and round-trips", {
     list(cx = 0.5, cy = 0.4, span = 0.75)
   )
 
-  network <- config
-  network$page <- list(
+  hla <- config
+  hla$page <- list(
     id = "hla_motif_network",
     label = "HLA & TCR Motifs",
     tab = "hla_tcr_motifs",
-    engine = "network"
+    engine = "canvas"
   )
-  network$controls[[1]]$id <- "hla_motifs_chain"
-  expect_identical(
+  hla$controls[[1]]$id <- "hla_motifs_chain"
+  prepared_hla <- helpers$cv_config_prepare(
+    hla,
+    cells = c("cell-1", "cell-2")
+  )$config
+  expect_identical(prepared_hla$page$engine, "canvas")
+  expect_null(prepared_hla$view$viewport)
+
+  legacy_hla <- hla
+  legacy_hla$page$engine <- "network"
+  expect_error(
     helpers$cv_config_prepare(
-      network,
+      legacy_hla,
       cells = c("cell-1", "cell-2")
-    )$config$view$viewport,
-    list(x0 = 0, x1 = 1, y0 = 0, y1 = 1)
+    ),
+    "page identity is invalid"
   )
 
   spatial <- config

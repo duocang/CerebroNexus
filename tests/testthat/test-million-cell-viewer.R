@@ -225,9 +225,15 @@ test_that("gene controls load transcriptome choices server-side", {
     ),
     collapse = "\n"
   )
+  utility <- paste(
+    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
+    collapse = "\n"
+  )
 
   expect_no_match(source, "list_of_genes()", fixed = TRUE)
   expect_match(source, "serverSideGeneSelector(", fixed = TRUE)
+  expect_no_match(source, "retry = FALSE", fixed = TRUE)
+  expect_match(utility, "selected <- isolate(input[[input_id]])", fixed = TRUE)
 })
 
 test_that("the real Viewer benchmark accepts the Canvas baseline", {
@@ -354,7 +360,7 @@ test_that("the page benchmark has a publication-grade contract", {
   )
   expect_match(
     benchmark,
-    'results$status == "ok" & !results$pass',
+    'results$status == "ok" & results$performance_applicable & !results$pass',
     fixed = TRUE
   )
   expect_equal(
@@ -363,6 +369,9 @@ test_that("the page benchmark has a publication-grade contract", {
   )
   expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
   expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
+  expect_match(benchmark, "link.offsetParent !== null", fixed = TRUE)
+  expect_match(benchmark, "app$get_screenshot", fixed = TRUE)
+  expect_match(benchmark, "png::readPNG", fixed = TRUE)
 
   for (field in c(
     "candidate_git_sha",
@@ -379,7 +388,16 @@ test_that("the page benchmark has a publication-grade contract", {
     "correctness_pass",
     "rendered_point_count",
     "expected_point_count",
-    "correctness_detail"
+    "correctness_detail",
+    "navigator_gpu",
+    "renderer_backend",
+    "renderer_adapter",
+    "renderer_context_lost",
+    "renderer_error",
+    "visible_pixel_count",
+    "visible_pixels_pass",
+    "requires_webgpu",
+    "performance_applicable"
   )) {
     expect_match(benchmark, field, fixed = TRUE, info = field)
   }
