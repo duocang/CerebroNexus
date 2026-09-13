@@ -65,6 +65,73 @@ ir_build_definition_plot <- ir_env$ir_build_definition_plot
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
 
+# --- ir_annotate_metadata -------------------------------------------------
+
+test_that("ir_annotate_metadata matches metadata once without overwriting IR data", {
+  metadata <- data.frame(
+    cell_barcode = c("bc1", "bc2", "bc2", "bc3"),
+    condition = factor(c("A", "B", "duplicate", "C")),
+    cell_type = c("T", "B", "duplicate", "Myeloid"),
+    stringsAsFactors = FALSE
+  )
+  data <- list(
+    s1 = data.frame(
+      barcode = c("bc2", "missing", "bc1"),
+      condition = c("IR-B", "IR-missing", "IR-A"),
+      stringsAsFactors = FALSE
+    ),
+    s2 = data.frame(
+      barcode = c("bc3", "missing-too", "bc2"),
+      cell_type = c("IR-myeloid", "IR-missing", "IR-B"),
+      stringsAsFactors = FALSE
+    ),
+    no_barcode = data.frame(value = 1:2),
+    complete = data.frame(
+      barcode = "missing",
+      condition = "IR-condition",
+      cell_type = "IR-cell-type",
+      stringsAsFactors = FALSE
+    )
+  )
+
+  match_calls <- 0L
+  ir_env$match <- function(x, table, ...) {
+    match_calls <<- match_calls + 1L
+    base::match(x, table, ...)
+  }
+  warnings <- character(0)
+  out <- withCallingHandlers(
+    ir_env$ir_annotate_metadata(data, metadata),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_identical(match_calls, 1L)
+  expect_identical(names(out), names(data))
+  expect_identical(out$s1$barcode, data$s1$barcode)
+  expect_identical(out$s2$barcode, data$s2$barcode)
+  expect_identical(out$s1$condition, data$s1$condition)
+  expect_identical(out$s2$cell_type, data$s2$cell_type)
+  expect_identical(out$s1$cell_type, c("B", NA_character_, "T"))
+  expect_true(is.factor(out$s2$condition))
+  expect_identical(as.character(out$s2$condition), c("C", NA_character_, "B"))
+  expect_identical(out$no_barcode, data$no_barcode)
+  expect_identical(out$complete, data$complete)
+  expect_length(warnings, 2L)
+  expect_match(warnings, "1 / 3 clonotype barcodes")
+
+  match_calls <- 0L
+  expect_no_warning(
+    expect_identical(
+      ir_env$ir_annotate_metadata(data[c("no_barcode", "complete")], metadata),
+      data[c("no_barcode", "complete")]
+    )
+  )
+  expect_identical(match_calls, 0L)
+})
+
 # --- ir_parse_segments -----------------------------------------------------
 
 test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {
