@@ -76,3 +76,60 @@ test_that("WebGPU failures make the renderer fall back", {
   )
   expect_match(engine, "renderer.failed.then", fixed = TRUE)
 })
+
+test_that("WebGPU fallback keeps validity from the materialized CPU unit", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  occupancy_source <- regmatches(
+    engine,
+    regexpr(
+      "(?s)var OCC = 64;.*?(?=\\n  function occCount)",
+      engine,
+      perl = TRUE
+    )
+  )
+  unit_source <- regmatches(
+    engine,
+    regexpr(
+      "(?s)function deferredUnitOf\\(space\\).*?(?=\\n  function transitionUnit)",
+      engine,
+      perl = TRUE
+    )
+  )
+  project_source <- regmatches(
+    engine,
+    regexpr(
+      "(?s)function project\\(p, forceCpu\\).*?(?=\\n  function pointScreenX)",
+      engine,
+      perl = TRUE
+    )
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const assert = require('assert');",
+      occupancy_source,
+      unit_source,
+      "const D = {n:2};",
+      "const space = {x:[0,1],y:[0,1],xRange:[0,1],yRange:[0,1]};",
+      "const spaceById = {projection:space};",
+      "const gpuCandidate = () => true;",
+      project_source,
+      "const panel = {spaceId:'projection',W:100,H:100,view:null};",
+      "project(panel, false);",
+      "assert.strictEqual(panel.ok, space._unit.ok);",
+      "assert.deepStrictEqual(Array.from(panel.ok), [0,0]);",
+      "project(panel, true);",
+      "assert.strictEqual(panel.ok, space._unit.ok);",
+      "assert.deepStrictEqual(Array.from(panel.ok), [1,1]);",
+      "assert.strictEqual(panel.gpuTransformOnly, false);"
+    ),
+    runner
+  )
+
+  expect_identical(system2("node", runner), 0L)
+})

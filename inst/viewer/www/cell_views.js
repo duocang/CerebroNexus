@@ -772,8 +772,8 @@
     var ox = padL, oy = padT;
     p._SX = SX; p._SY = SY; p._S = Math.min(SX, SY);
     p._sox = ox; p._soy = oy;                // for dataToScreen (image bounds)
-    p.ok = u.ok;
     if (!forceCpu && gpuCandidate(p)) {
+      p.ok = u.ok;
       p.gpuTransformOnly = true;
       return;
     }
@@ -781,6 +781,7 @@
       sp._unit = unitOf(sp);
       u = sp._unit;
     }
+    p.ok = u.ok;
     p.gpuTransformOnly = false;
     if (!p.sx || p.sx.length !== n) {
       p.sx = new Float32Array(n); p.sy = new Float32Array(n);

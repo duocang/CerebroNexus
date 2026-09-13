@@ -422,6 +422,24 @@ test_that("{shinytest2} recording: main", {
     ),
     timeout = 20000
   )
+  projection_visible_points <- paste0(
+    "(() => {const h=document.getElementById(",
+    "'overview_projection_cell_view_host');if(!h)return 0;",
+    "const g=h.querySelector('.cv-gpu-layer');",
+    "if(g&&getComputedStyle(g).display!=='none')",
+    "return Number(g.dataset.pointCount)||0;",
+    "const c=h.querySelector('canvas[id^=\"cv-cv-\"]');",
+    "if(!c)return 0;const d=c.getContext('2d').getImageData(",
+    "0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4){",
+    "if(d[i+3]>0&&Math.max(d[i],d[i+1],d[i+2])-",
+    "Math.min(d[i],d[i+1],d[i+2])>40)n++;}return n;})()"
+  )
+  app$wait_for_js(
+    paste0(projection_visible_points, " > 500"),
+    timeout = 20000
+  )
+  Sys.sleep(0.75)
+  expect_gt(as.numeric(app$get_js(projection_visible_points)), 500)
   plot_size <- app$get_js(
     paste0(
       "(function(){var e=document.querySelector(",
