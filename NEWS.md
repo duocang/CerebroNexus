@@ -5,7 +5,6 @@
 - Repeated visits to million-cell Canvas pages reuse the prepared CPU view while preserving current selection, remount, and stale-payload behavior.
 - Overview keeps full-data cells in canonical order, and Immune Repertoire joins metadata once and vectorizes receptor-chain matching.
 - Linked Views uses the existing recursive binary packer for trajectory, clone, and Trekker vectors instead of leaving long arrays in its JSON header.
-- Specialist readiness reports the loaded data set's persisted cell fingerprint, and the initial Clonal UMAP host waits for its dynamic grouping input before mounting.
 
 # CerebroNexus 4.6.2
 
