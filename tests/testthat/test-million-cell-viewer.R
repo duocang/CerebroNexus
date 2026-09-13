@@ -263,6 +263,33 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "data instanceof Blob", fixed = TRUE)
   expect_match(benchmark, "removeEventListener('message'", fixed = TRUE)
   expect_match(benchmark, "socket.send=meter.originalSend", fixed = TRUE)
+  canvas_spec <- sub(
+    "(?s).*?(canvas_page <- function.*?)(?=\\n\\npages <- list).*",
+    "\\1",
+    benchmark,
+    perl = TRUE
+  )
+  expect_match(canvas_spec, "wait_idle = FALSE", fixed = TRUE)
+  for (name in c(
+    "overview",
+    "gene_expression",
+    "immune_repertoire",
+    "trajectory",
+    "hla",
+    "spatial"
+  )) {
+    expect_match(
+      benchmark,
+      paste0(name, " = canvas_page("),
+      fixed = TRUE,
+      info = name
+    )
+  }
+  coordinated_spec <- substring(
+    benchmark,
+    regexpr("coordinated_views = page(", benchmark, fixed = TRUE)
+  )
+  expect_match(coordinated_spec, "wait_idle = FALSE", fixed = TRUE)
   atomic_click <- sub(
     "(?s).*?(arm_and_click_page <- function.*?)(?=\\n\\npage_available).*",
     "\\1",
