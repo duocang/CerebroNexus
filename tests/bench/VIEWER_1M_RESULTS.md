@@ -93,6 +93,8 @@ The current 2.557-second median passes the strict `<3,000 ms` gate with 443 ms o
 
 These are exploratory single warm-cache observations, not publication medians. PR3 and PR4 used the same current-schema gene-major CRB, 1,000,000 trajectory rows, 100,000 synthetic receptor rows, and 32 synthetic HLA-typed samples. The page table isolates runtime changes because both candidates use the same gene-major expression artifact.
 
+These archived rows predate the independent-process, post-click readiness and resource contract now enforced by `benchmark_viewer_1m_pages.R`. In particular, the archived repeat rows used a two-animation-frame navigation proxy and must not be interpreted as completed repeat renders. No values in this section are publication evidence, and the optional Spatial row is not a Spatial performance result because the fixture contains no Spatial data.
+
 | Backend operation | BPCells column-major | Gene-major | Change |
 | --- | ---: | ---: | ---: |
 | Single gene × 1M cells | 3,982 ms | 194 ms | 95.1% faster |

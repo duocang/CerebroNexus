@@ -224,6 +224,159 @@ test_that("the real Viewer benchmark accepts the Canvas baseline", {
   expect_match(benchmark, "rgb_ready_ms", fixed = TRUE)
 })
 
+test_that("the page benchmark has a publication-grade contract", {
+  benchmark_file <- testthat::test_path(
+    "..",
+    "bench",
+    "benchmark_viewer_1m_pages.R"
+  )
+  skip_if_not(
+    file.exists(benchmark_file),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+  benchmark <- paste(readLines(benchmark_file, warn = FALSE), collapse = "\n")
+
+  expect_no_match(benchmark, "requestAnimationFrame", fixed = TRUE)
+  expect_no_match(benchmark, "!isTRUE(first) ||", fixed = TRUE)
+  expect_match(benchmark, "cerebro:specialist-state", fixed = TRUE)
+  expect_match(benchmark, "cerebro:linkedviews-ready", fixed = TRUE)
+  expect_match(benchmark, "cerebroLinkedViewsState.ready()", fixed = TRUE)
+  expect_match(benchmark, "run_observation", fixed = TRUE)
+  expect_match(benchmark, "arm_and_click_page <- function", fixed = TRUE)
+  expect_no_match(benchmark, "arm_page <- function", fixed = TRUE)
+  expect_match(benchmark, "const generation", fixed = TRUE)
+  expect_match(benchmark, "performance.now()", fixed = TRUE)
+  expect_match(benchmark, "e.timeStamp >= clickStart", fixed = TRUE)
+  expect_match(
+    benchmark,
+    "open_page(app, page, require_event = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(benchmark, "requires_ready_event(", fixed = TRUE)
+  expect_match(benchmark, "ready_event_required", fixed = TRUE)
+  expect_no_match(benchmark, "Network$enable", fixed = TRUE)
+  expect_no_match(benchmark, "Network$webSocketFrame", fixed = TRUE)
+  expect_no_match(benchmark, "frame_payload_bytes", fixed = TRUE)
+  expect_match(benchmark, "Shiny.shinyapp.$socket", fixed = TRUE)
+  expect_match(benchmark, "TextEncoder", fixed = TRUE)
+  expect_match(benchmark, "ArrayBuffer.isView", fixed = TRUE)
+  expect_match(benchmark, "data instanceof Blob", fixed = TRUE)
+  expect_match(benchmark, "removeEventListener('message'", fixed = TRUE)
+  expect_match(benchmark, "socket.send=meter.originalSend", fixed = TRUE)
+  atomic_click <- sub(
+    "(?s).*?(arm_and_click_page <- function.*?)(?=\\n\\npage_available).*",
+    "\\1",
+    benchmark,
+    perl = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(atomic_click, gregexpr("app\\$run_js", atomic_click))),
+    1L
+  )
+  expect_match(
+    benchmark,
+    "(?s)coordinated_views = page\\(.*?required = TRUE.*?ready_event = ",
+    perl = TRUE
+  )
+  expect_match(
+    benchmark,
+    'results$status == "ok" & !results$pass',
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(gregexpr("expected_points = 1000000", benchmark, fixed = TRUE)),
+    4L
+  )
+  expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
+  expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
+
+  for (field in c(
+    "candidate_git_sha",
+    "artifact_sha256",
+    "host",
+    "r_version",
+    "package_version",
+    "chrome_version",
+    "r_peak_rss_kib",
+    "chrome_peak_rss_kib",
+    "js_heap_used_bytes",
+    "websocket_sent_payload_bytes",
+    "websocket_received_payload_bytes",
+    "correctness_pass",
+    "rendered_point_count",
+    "expected_point_count",
+    "correctness_detail"
+  )) {
+    expect_match(benchmark, field, fixed = TRUE, info = field)
+  }
+})
+
+test_that("the page benchmark schedule and budgets are balanced", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  expect_true(file.exists(protocol_file))
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+
+  schedule <- protocol$build_balanced_schedule(
+    c("baseline", "candidate"),
+    c("overview", "trajectory"),
+    5L
+  )
+  units <- split(
+    schedule,
+    interaction(schedule$round, schedule$page, schedule$visit, drop = TRUE)
+  )
+  expect_true(all(vapply(
+    units,
+    function(unit) setequal(unit$candidate, c("baseline", "candidate")),
+    logical(1)
+  )))
+  page_visits <- split(
+    schedule,
+    interaction(schedule$page, schedule$visit, drop = TRUE)
+  )
+  expect_true(all(vapply(
+    page_visits,
+    function(rows) {
+      positions <- table(rows$candidate, rows$candidate_position)
+      max(positions) - min(positions) <= 1L
+    },
+    logical(1)
+  )))
+
+  expect_error(
+    protocol$validate_page_profile("publication", 4L),
+    "at least 5 rounds"
+  )
+  expect_silent(protocol$validate_page_profile("publication", 5L))
+  expect_true(protocol$page_budget_pass(1999, 2000))
+  expect_false(protocol$page_budget_pass(2000, 2000))
+  expect_true(protocol$requires_ready_event(
+    "coordinated_views",
+    "first",
+    warmed = FALSE
+  ))
+  expect_true(protocol$requires_ready_event(
+    "coordinated_views",
+    "repeat",
+    warmed = FALSE
+  ))
+  expect_false(protocol$requires_ready_event(
+    "coordinated_views",
+    "repeat",
+    warmed = TRUE
+  ))
+  expect_true(protocol$requires_ready_event(
+    "trajectory",
+    "repeat",
+    warmed = TRUE
+  ))
+})
+
 test_that("the cold-start benchmark measures an installed Viewer", {
   benchmark_file <- testthat::test_path(
     "..",
