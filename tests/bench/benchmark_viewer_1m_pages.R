@@ -104,8 +104,8 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
         "const pointCount=Number(canvas?.getAttribute('data-point-count'));",
         "const detail=window.__cerebroPageBenchEventDetail;",
         "return Number.isFinite(pointCount)&&%s&&",
-        "typeof detail?.datasetFingerprint==='string'&&",
-        "detail.datasetFingerprint.length>0;})()"
+        "/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
+        "detail?.datasetFingerprint);})()"
       ),
       quote_r(selector),
       count_check
