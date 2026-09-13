@@ -892,8 +892,14 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
     rep(NA_character_, length(values))
   }
   text[is.na(text)] <- "N/A"
-  text[!nzchar(text)] <- "(blank)"
-  counts <- sort(table(text, useNA = "no"), decreasing = TRUE)
+  full_counts <- sort(table(text, useNA = "no"), decreasing = TRUE)
+  display_names <- names(full_counts)
+  display_names[!nzchar(display_names)] <- "(blank)"
+  counts <- stats::setNames(as.numeric(full_counts), display_names)
+  if (anyDuplicated(display_names)) {
+    counts <- tapply(counts, display_names, sum)
+  }
+  counts <- sort(counts, decreasing = TRUE)
   total <- length(counts)
   shown <- utils::head(counts, BUILDER_METADATA_LEVEL_MAX)
   items <- lapply(seq_along(shown), function(index) {
@@ -902,7 +908,7 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
       count = as.integer(shown[[index]])
     )
   })
-  list(
+  summary <- list(
     items = items,
     total = as.integer(total),
     truncated = total > length(shown),
@@ -912,6 +918,8 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
       0L
     }
   )
+  attr(summary, "builder_full_counts") <- full_counts
+  summary
 }
 
 .builder_profile_group_reason_label <- function(reason, distinct) {
@@ -1036,6 +1044,10 @@ builder_profile_metadata <- function(meta, expected_cells) {
   conversions <- character()
   rejected <- character()
   catalog <- list()
+  legacy_columns <- character()
+  legacy_distinct <- integer()
+  legacy_counts <- list()
+  legacy_levels <- list()
   if (!column_identity$valid) {
     keys <- column_names
     invalid_key <- is.na(keys) | !nzchar(keys)
@@ -1046,11 +1058,13 @@ builder_profile_metadata <- function(meta, expected_cells) {
       keys
     )
     catalog <- lapply(seq_along(column_names), function(index) {
-      .builder_profile_metadata_catalog_entry(
+      entry <- .builder_profile_metadata_catalog_entry(
         meta[[index]],
         keys[[index]],
         "metadata column name is missing or duplicated"
       )
+      attr(entry$level_counts, "builder_full_counts") <- NULL
+      entry
     })
     names(catalog) <- keys
   } else {
@@ -1062,11 +1076,35 @@ builder_profile_metadata <- function(meta, expected_cells) {
         name,
         length(expected_cells)
       )
-      catalog[[name]] <- .builder_profile_metadata_catalog_entry(
+      entry <- .builder_profile_metadata_catalog_entry(
         values,
         name,
         reason
       )
+      full_counts <- attr(entry$level_counts, "builder_full_counts")
+      attr(entry$level_counts, "builder_full_counts") <- NULL
+      catalog[[name]] <- entry
+      if (is.character(values) || is.factor(values) || is.integer(values)) {
+        legacy_columns <- c(legacy_columns, name)
+        legacy_distinct[[name]] <- length(full_counts)
+        if (length(full_counts) <= 100L) {
+          legacy_counts[[name]] <- full_counts
+          if (is.factor(values)) {
+            levels <- base::levels(values)
+            if (anyNA(values) && !"N/A" %in% levels) {
+              levels <- c(levels, "N/A")
+            }
+          } else {
+            levels <- names(full_counts)
+            if (anyNA(values)) {
+              levels <- c(sort(setdiff(levels, "N/A")), "N/A")
+            } else {
+              levels <- sort(levels)
+            }
+          }
+          legacy_levels[[name]] <- levels
+        }
+      }
       if (!is.null(reason)) {
         rejected[[name]] <- reason
         next
@@ -1086,7 +1124,13 @@ builder_profile_metadata <- function(meta, expected_cells) {
     groups = list(
       candidates = candidates,
       conversions = conversions,
-      rejected = rejected
+      rejected = rejected,
+      legacy = list(
+        columns = legacy_columns,
+        distinct = legacy_distinct,
+        counts = legacy_counts,
+        levels = legacy_levels
+      )
     )
   )
 }

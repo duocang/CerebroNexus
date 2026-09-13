@@ -156,7 +156,7 @@ builder_qc_numeric_values <- function(values) {
 }
 
 #' Describe a Seurat object in the terms the exporter cares about.
-describe_seurat <- function(object) {
+describe_seurat <- function(object, metadata_groups = NULL) {
   meta <- object@meta.data
   n_cells <- ncol(object)
 
@@ -230,37 +230,64 @@ describe_seurat <- function(object) {
     "^percent[._]|[._]score$|^S\\.Score$|^G2M\\.Score$"
   )
 
+  legacy_metadata <- metadata_groups$legacy %||% NULL
+  reuse_metadata <- is.list(legacy_metadata) &&
+    is.character(legacy_metadata$columns) &&
+    is.integer(legacy_metadata$distinct) &&
+    is.list(legacy_metadata$counts)
   candidates <- character()
   struck <- character()
-  for (col in colnames(meta)) {
-    values <- meta[[col]]
-    if (!(is.character(values) || is.factor(values) || is.integer(values))) {
-      next
+  group_counts <- list()
+  if (reuse_metadata) {
+    for (col in legacy_metadata$columns) {
+      n <- legacy_metadata$distinct[[col]]
+      if (grepl(qc_pattern, col, ignore.case = TRUE)) {
+        struck <- c(struck, paste0(col, " (QC metric, not a group)"))
+      } else if (n < 2L) {
+        struck <- c(struck, paste0(col, " (only one value)"))
+      } else if (n >= n_cells) {
+        struck <- c(struck, paste0(col, " (one value per cell)"))
+      } else if (n > 100L) {
+        struck <- c(struck, paste0(col, " (", n, " values; too many)"))
+      } else {
+        candidates <- c(candidates, col)
+        group_counts[[col]] <- legacy_metadata$counts[[col]]
+      }
     }
-    n <- length(unique(values))
-    if (grepl(qc_pattern, col, ignore.case = TRUE)) {
-      struck <- c(struck, paste0(col, " (QC metric, not a group)"))
-    } else if (n < 2) {
-      struck <- c(struck, paste0(col, " (only one value)"))
-    } else if (n >= n_cells) {
-      struck <- c(struck, paste0(col, " (one value per cell)"))
-    } else if (n > 100) {
-      struck <- c(struck, paste0(col, " (", n, " values; too many)"))
-    } else {
-      candidates <- c(candidates, col)
+  } else {
+    for (col in colnames(meta)) {
+      values <- meta[[col]]
+      if (!(is.character(values) || is.factor(values) || is.integer(values))) {
+        next
+      }
+      n <- length(unique(values))
+      if (grepl(qc_pattern, col, ignore.case = TRUE)) {
+        struck <- c(struck, paste0(col, " (QC metric, not a group)"))
+      } else if (n < 2) {
+        struck <- c(struck, paste0(col, " (only one value)"))
+      } else if (n >= n_cells) {
+        struck <- c(struck, paste0(col, " (one value per cell)"))
+      } else if (n > 100) {
+        struck <- c(struck, paste0(col, " (", n, " values; too many)"))
+      } else {
+        candidates <- c(candidates, col)
+      }
     }
   }
   if (length(candidates)) {
+    candidate_counts <- if (reuse_metadata) {
+      legacy_metadata$distinct[candidates]
+    } else {
+      vapply(
+        candidates,
+        function(c) length(unique(meta[[c]])),
+        integer(1)
+      )
+    }
     names(candidates) <- paste0(
       candidates,
       "  (",
-      vapply(
-        candidates,
-        function(c) {
-          length(unique(meta[[c]]))
-        },
-        integer(1)
-      ),
+      candidate_counts,
       " groups)"
     )
   }
@@ -272,12 +299,14 @@ describe_seurat <- function(object) {
   if (!length(preselect)) {
     preselect <- if (length(candidates)) unname(candidates)[1] else character()
   }
-  group_counts <- lapply(unname(candidates), function(column) {
-    values <- as.character(meta[[column]])
-    values[is.na(values)] <- "N/A"
-    sort(table(values), decreasing = TRUE)
-  })
-  names(group_counts) <- unname(candidates)
+  if (!reuse_metadata) {
+    group_counts <- lapply(unname(candidates), function(column) {
+      values <- as.character(meta[[column]])
+      values[is.na(values)] <- "N/A"
+      sort(table(values), decreasing = TRUE)
+    })
+    names(group_counts) <- unname(candidates)
+  }
   qc_values <- lapply(numeric_cols, function(column) {
     values <- qc_numeric_values[[column]]
     values <- values[is.finite(values)]

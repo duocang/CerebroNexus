@@ -292,7 +292,7 @@
 
 #' Describe a Seurat file source without loading it.
 builder_seurat_file_adapter <- function(path) {
-  .builder_seurat_file_adapter(path)
+  .builder_seurat_file_adapter(path, snapshot_reusable = TRUE)
 }
 
 builder_seurat_retained_file_adapter <- function(path) {
@@ -356,20 +356,22 @@ builder_example_adapter <- function(id, object) {
         "The Seurat source changed while it was being read."
       )
     }
-    if (isTRUE(adapter$snapshot_reusable)) {
-      observed_md5 <- unname(as.character(tools::md5sum(adapter$location)))
-      if (!identical(observed_md5, adapter$source_md5)) {
-        .builder_adapter_abort(
-          "The Seurat source changed while it was being read."
-        )
-      }
-    }
     if (!is.null(read$error)) {
       .builder_adapter_abort(read$error)
     }
     object <- read$object
   }
   cache <- .builder_saved_cache(object)
+  if (
+    isTRUE(adapter$snapshot_reusable) &&
+      !is.null(cache) &&
+      !identical(
+        unname(as.character(tools::md5sum(adapter$location))),
+        adapter$source_md5
+      )
+  ) {
+    .builder_adapter_abort("The Seurat source changed while it was being read.")
+  }
   if (!is.null(cache) && !.builder_cached_layers_materialized(object, cache)) {
     .builder_adapter_abort(paste0(
       "This file is an incomplete SaveSeuratRds cache stub. Open it with ",
@@ -418,13 +420,14 @@ builder_example_adapter <- function(id, object) {
   if (is.function(progress)) {
     progress("validating")
   }
-  legacy <- describe_seurat(object)
+  legacy <- describe_seurat(object, metadata_groups = profile$groups)
+  levels <- profile$groups$legacy$levels[unname(legacy$group_candidates)]
   profile <- builder_profile_workspace_contract(profile)
   list(
     object = object,
     profile = profile,
     legacy_profile = legacy,
-    levels = builder_group_levels_for(object, legacy$group_candidates),
+    levels = levels,
     format = adapter$format,
     source = source,
     snapshot_source = loaded$snapshot_source
@@ -974,6 +977,40 @@ builder_adapter_inspect <- function(adapter) {
 }
 
 .builder_snapshot_copy <- function(source, destination) {
+  cloned <- FALSE
+  if (
+    identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
+      file.exists("/bin/cp")
+  ) {
+    if (dir.exists(source)) {
+      dir.create(destination, recursive = TRUE, showWarnings = FALSE)
+      status <- suppressWarnings(system2(
+        "/bin/cp",
+        c("-cR", "--", shQuote(file.path(source, ".")), shQuote(destination)),
+        stdout = FALSE,
+        stderr = FALSE
+      ))
+    } else {
+      status <- suppressWarnings(system2(
+        "/bin/cp",
+        c("-c", "--", shQuote(source), shQuote(destination)),
+        stdout = FALSE,
+        stderr = FALSE
+      ))
+    }
+    cloned <- isTRUE(status == 0L) &&
+      if (dir.exists(source)) {
+        dir.exists(destination)
+      } else {
+        file.exists(destination)
+      }
+    if (!cloned) {
+      unlink(destination, recursive = TRUE, force = TRUE)
+    }
+  }
+  if (cloned) {
+    return(invisible(destination))
+  }
   if (dir.exists(source)) {
     if (!dir.create(destination, recursive = TRUE, showWarnings = FALSE)) {
       .builder_adapter_abort("Could not create a snapshot backing directory.")
