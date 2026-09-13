@@ -344,7 +344,10 @@ test_that("the page benchmark schedule and budgets are balanced", {
     "bench",
     "viewer_1m_page_protocol.R"
   )
-  expect_true(file.exists(protocol_file))
+  skip_if_not(
+    file.exists(protocol_file),
+    "benchmark tree not present (expected when checking a built package)"
+  )
   protocol <- new.env(parent = baseenv())
   sys.source(protocol_file, envir = protocol)
 
