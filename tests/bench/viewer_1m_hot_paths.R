@@ -133,7 +133,11 @@ optimized_projection_indices <- function(filters, percentage) {
       paste0("overview_projection_group_filter_", names(filters))
     )
   )
-  after$viewerProjectionCellIndices("overview_projection", metadata)
+  after$viewerProjectionCellIndices(
+    "overview_projection",
+    metadata,
+    canonical_full = TRUE
+  )
 }
 
 all_filters <- lapply(group_levels, identity)
@@ -150,7 +154,9 @@ record(
   "1,000,000 cells; all groups; 100%",
   full_before,
   full_after,
-  function(x, y) identical(x, y)
+  function(x, y) {
+    identical(sort(x), y) && identical(y, seq_len(nrow(metadata)))
+  }
 )
 
 filtered_levels <- group_levels

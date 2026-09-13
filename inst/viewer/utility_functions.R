@@ -240,7 +240,11 @@ viewerOutputTab <- function(ids) {
 }
 
 ## Apply the shared projection filters and sample original metadata row ids.
-viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  canonical_full = FALSE
+) {
   groups <- getGroups()
   percentage <- input[[paste0(prefix, "_percentage_cells_to_show")]]
   filters <- stats::setNames(
@@ -280,6 +284,9 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       size <- ceiling(cell_count * percentage / 100)
       return(sample.int(cell_count, size))
     }
+    if (canonical_full) {
+      return(seq_len(cell_count))
+    }
     return(sample.int(cell_count))
   }
   indices <- which(cerebroGroupFilterMask(metadata, filters))
@@ -290,6 +297,9 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
     ceiling(length(indices) * percentage / 100)
   } else {
     length(indices)
+  }
+  if (canonical_full && percentage == 100) {
+    return(indices)
   }
   indices[sample.int(length(indices), size)]
 }

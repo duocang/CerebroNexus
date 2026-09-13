@@ -1,4 +1,9 @@
-run_projection_indices <- function(metadata, filters, percentage) {
+run_projection_indices <- function(
+  metadata,
+  filters,
+  percentage,
+  canonical_full = FALSE
+) {
   scope <- new.env(parent = globalenv())
   scope$input <- c(
     list(test_percentage_cells_to_show = percentage),
@@ -10,7 +15,14 @@ run_projection_indices <- function(metadata, filters, percentage) {
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   scope$getGroups <- function() names(filters)
   scope$getGroupLevels <- function(group) unique(metadata[[group]])
-  scope$viewerProjectionCellIndices("test", metadata)
+  if (missing(canonical_full)) {
+    return(scope$viewerProjectionCellIndices("test", metadata))
+  }
+  scope$viewerProjectionCellIndices(
+    "test",
+    metadata,
+    canonical_full = canonical_full
+  )
 }
 
 test_that("expression rows are fetched once and aligned by cell", {
@@ -205,6 +217,66 @@ test_that("projection filtering and sampling preserve original row indices", {
   expect_identical(
     run_projection_indices(metadata, list(batch = character()), 50),
     integer()
+  )
+})
+
+test_that("canonical full projections preserve metadata order and RNG state", {
+  metadata <- data.frame(
+    cell_barcode = paste0("cell", seq_len(7L)),
+    batch = factor(c("drop", "keep", "drop", "keep", "keep", "drop", "keep")),
+    state = factor(c("T", "T", "T", "B", "T", "B", "B"))
+  )
+  all_filters <- list(batch = c("drop", "keep"), state = c("T", "B"))
+
+  set.seed(123L)
+  seed_before <- .Random.seed
+  expect_identical(
+    run_projection_indices(metadata, all_filters, 100, canonical_full = TRUE),
+    seq_len(nrow(metadata))
+  )
+  expect_identical(.Random.seed, seed_before)
+
+  set.seed(456L)
+  seed_before <- .Random.seed
+  expect_identical(
+    run_projection_indices(
+      metadata,
+      list(batch = "keep", state = c("T", "B")),
+      100,
+      canonical_full = TRUE
+    ),
+    which(metadata$batch == "keep")
+  )
+  expect_identical(.Random.seed, seed_before)
+
+  set.seed(789L)
+  seed_before_sampling <- .Random.seed
+  sampled <- run_projection_indices(
+    metadata,
+    list(batch = "keep", state = c("T", "B")),
+    50,
+    canonical_full = TRUE
+  )
+  expect_length(sampled, ceiling(sum(metadata$batch == "keep") * 0.5))
+  expect_true(all(sampled %in% which(metadata$batch == "keep")))
+  expect_false(identical(.Random.seed, seed_before_sampling))
+
+  expect_identical(
+    run_projection_indices(
+      metadata,
+      list(batch = character(), state = c("T", "B")),
+      100,
+      canonical_full = TRUE
+    ),
+    integer()
+  )
+
+  set.seed(123L)
+  expected <- sample.int(nrow(metadata))
+  set.seed(123L)
+  expect_identical(
+    run_projection_indices(metadata, all_filters, 100),
+    expected
   )
 })
 
