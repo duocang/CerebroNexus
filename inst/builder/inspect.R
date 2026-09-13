@@ -166,7 +166,15 @@ describe_seurat <- function(object, metadata_groups = NULL) {
     error = function(e) assays[1]
   )
 
-  qc_numeric_values <- lapply(meta, builder_qc_numeric_values)
+  qc_columns <- names(meta)[grepl(
+    paste0(
+      "^(nCount|nFeature|nUMI|nGene)|",
+      "^total[._]?(count|UMI|gene)s?$"
+    ),
+    names(meta),
+    ignore.case = TRUE
+  )]
+  qc_numeric_values <- lapply(meta[qc_columns], builder_qc_numeric_values)
   qc_numeric_values <- qc_numeric_values[
     !vapply(qc_numeric_values, is.null, logical(1))
   ]

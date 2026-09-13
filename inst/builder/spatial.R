@@ -23,6 +23,35 @@ builder_match_cells <- function(ids, expected, mode = c("exact", "subset")) {
   ids <- .builder_match_ids(ids)
   expected <- .builder_match_ids(expected)
 
+  if (
+    length(ids) > 0L &&
+      identical(ids, expected) &&
+      !anyNA(ids) &&
+      all(nzchar(ids)) &&
+      !anyDuplicated(ids)
+  ) {
+    index <- seq_along(ids)
+    return(list(
+      ids = ids,
+      expected = expected,
+      count = length(ids),
+      valid = TRUE,
+      relation = "full",
+      duplicates = character(),
+      expected_duplicates = character(),
+      blanks = character(),
+      expected_blanks = character(),
+      missing = character(),
+      extra = character(),
+      order_matches = TRUE,
+      coverage = 1,
+      canonical_ids = expected,
+      reorder_index = index,
+      matched_ids = expected,
+      input_index = index
+    ))
+  }
+
   blank <- is.na(ids) | !nzchar(ids)
   expected_blank <- is.na(expected) | !nzchar(expected)
   usable <- ids[!blank]

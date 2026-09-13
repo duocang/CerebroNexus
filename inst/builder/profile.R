@@ -954,8 +954,21 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
   "This column remains available as metadata but cannot be a Viewer group."
 }
 
-.builder_profile_metadata_catalog_entry <- function(values, name, reason) {
-  distinct <- length(unique(values[!is.na(values)]))
+.builder_profile_metadata_catalog_entry <- function(
+  values,
+  name,
+  reason,
+  stats = NULL
+) {
+  if (is.null(stats)) {
+    missing <- is.na(values)
+    stats <- list(
+      distinct = length(unique(values[!missing])),
+      missing = sum(missing)
+    )
+  }
+  distinct <- stats$distinct
+  missing <- stats$missing
   list(
     name = .builder_profile_bounded_text(name),
     classification = .builder_profile_metadata_classification(
@@ -966,9 +979,9 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
     group_reason = .builder_profile_group_reason_label(reason, distinct),
     count = as.integer(length(values)),
     distinct_count = as.integer(distinct),
-    missing_count = as.integer(sum(is.na(values))),
+    missing_count = as.integer(missing),
     missing_percentage = if (length(values)) {
-      100 * sum(is.na(values)) / length(values)
+      100 * missing / length(values)
     } else {
       0
     },
@@ -977,7 +990,27 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
   )
 }
 
-.builder_profile_metadata_column <- function(values, name) {
+.builder_profile_metadata_column <- function(
+  values,
+  name,
+  stats = NULL,
+  full_counts = NULL
+) {
+  if (!is.null(stats) && !is.null(full_counts)) {
+    blanks <- full_counts[names(full_counts) == ""]
+    return(list(
+      name = name,
+      class = class(values),
+      storage_type = typeof(values),
+      count = length(values),
+      missing = stats$missing,
+      blanks = if (length(blanks)) as.integer(blanks[[1L]]) else 0L,
+      unique = stats$distinct + as.integer(stats$missing > 0L),
+      non_missing = length(values) - stats$missing,
+      unique_non_missing = stats$distinct,
+      supported = is.atomic(values) && !is.list(values)
+    ))
+  }
   as_text <- if (is.factor(values)) {
     as.character(values)
   } else if (is.atomic(values)) {
@@ -999,7 +1032,12 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
   )
 }
 
-.builder_profile_group_reason <- function(values, name, n_cells) {
+.builder_profile_group_reason <- function(
+  values,
+  name,
+  n_cells,
+  distinct = NULL
+) {
   qc_pattern <- paste0(
     "^(nCount|nFeature|nUMI|nGene)_?|^total[._]?(count|UMI|gene)s?$|",
     "^percent[._]|[._]score$|^S\\.Score$|^G2M\\.Score$"
@@ -1010,7 +1048,9 @@ BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
   if (grepl(qc_pattern, name, ignore.case = TRUE)) {
     return("QC metric, not a group")
   }
-  distinct <- length(unique(values[!is.na(values)]))
+  if (is.null(distinct)) {
+    distinct <- length(unique(values[!is.na(values)]))
+  }
   if (distinct < 2L) {
     return("only one value")
   }
@@ -1035,10 +1075,7 @@ builder_profile_metadata <- function(meta, expected_cells) {
   identity <- builder_identity_profile(rownames(meta), expected_cells)
   column_names <- colnames(meta)
   column_identity <- builder_identity_profile(column_names, column_names)
-  columns <- lapply(seq_along(column_names), function(index) {
-    .builder_profile_metadata_column(meta[[index]], column_names[[index]])
-  })
-  names(columns) <- column_names
+  columns <- list()
 
   candidates <- character()
   conversions <- character()
@@ -1058,10 +1095,23 @@ builder_profile_metadata <- function(meta, expected_cells) {
       keys
     )
     catalog <- lapply(seq_along(column_names), function(index) {
+      values <- meta[[index]]
+      missing <- is.na(values)
+      stats <- list(
+        distinct = length(unique(values[!missing])),
+        missing = sum(missing)
+      )
       entry <- .builder_profile_metadata_catalog_entry(
-        meta[[index]],
+        values,
         keys[[index]],
-        "metadata column name is missing or duplicated"
+        "metadata column name is missing or duplicated",
+        stats
+      )
+      columns[[index]] <<- .builder_profile_metadata_column(
+        values,
+        column_names[[index]],
+        stats,
+        attr(entry$level_counts, "builder_full_counts")
       )
       attr(entry$level_counts, "builder_full_counts") <- NULL
       entry
@@ -1071,17 +1121,30 @@ builder_profile_metadata <- function(meta, expected_cells) {
     for (index in seq_along(column_names)) {
       name <- column_names[[index]]
       values <- meta[[index]]
+      missing <- is.na(values)
+      stats <- list(
+        distinct = length(unique(values[!missing])),
+        missing = sum(missing)
+      )
       reason <- .builder_profile_group_reason(
         values,
         name,
-        length(expected_cells)
+        length(expected_cells),
+        stats$distinct
       )
       entry <- .builder_profile_metadata_catalog_entry(
         values,
         name,
-        reason
+        reason,
+        stats
       )
       full_counts <- attr(entry$level_counts, "builder_full_counts")
+      columns[[index]] <- .builder_profile_metadata_column(
+        values,
+        name,
+        stats,
+        full_counts
+      )
       attr(entry$level_counts, "builder_full_counts") <- NULL
       catalog[[name]] <- entry
       if (is.character(values) || is.factor(values) || is.integer(values)) {
@@ -1115,6 +1178,7 @@ builder_profile_metadata <- function(meta, expected_cells) {
       }
     }
   }
+  names(columns) <- column_names
 
   list(
     identity = identity,
