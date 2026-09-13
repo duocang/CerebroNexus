@@ -142,6 +142,41 @@ test_that("specialist pages use binary transport when the browser supports it", 
   expect_match(engine, "!ArrayBuffer.isView(data.color)", fixed = TRUE)
 })
 
+test_that("specialist bundles carry the saved dataset fingerprint", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const start = source.indexOf('  function singlePayloadCells');",
+      "const end = source.indexOf('  function alignSingleCoordinates', start);",
+      "global.window = {cerebroSavedViewDataset:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'}};",
+      "eval(source.slice(start, end));",
+      "const payload = {data:{n:2,selection_key:['c1','c2']}};",
+      "const present = singlePayloadBundle('overview', payload).dataset_fingerprint;",
+      "delete window.cerebroSavedViewDataset;",
+      "const missing = singlePayloadBundle('overview', payload).dataset_fingerprint;",
+      "console.log(JSON.stringify({present:present,missing:missing}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      present = "md5-cell-set-v1:0123456789abcdef0123456789abcdef",
+      missing = ""
+    )
+  )
+})
 test_that("trajectory cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
@@ -270,6 +305,18 @@ test_that("the page benchmark has a publication-grade contract", {
     perl = TRUE
   )
   expect_match(canvas_spec, "wait_idle = FALSE", fixed = TRUE)
+  expect_match(
+    canvas_spec,
+    "/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
+    fixed = TRUE
+  )
+  expect_no_match(canvas_spec, "datasetFingerprint.length>0", fixed = TRUE)
+  fingerprint_pattern <- "^md5-cell-set-v1:[0-9a-f]{32}$"
+  expect_true(grepl(
+    fingerprint_pattern,
+    "md5-cell-set-v1:0123456789abcdef0123456789abcdef"
+  ))
+  expect_false(grepl(fingerprint_pattern, "0:811c9dc5:85ebca77"))
   for (name in c(
     "overview",
     "gene_expression",
