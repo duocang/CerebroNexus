@@ -213,7 +213,7 @@ test_that("login capability identifies only missing package requirements", {
 
 test_that("Builder runtime capability blocks startup with exact guidance", {
   capability <- builder_runtime_capability(
-    function(package) package %in% c("callr", "mirai", "promises")
+    function(package) identical(package, "callr")
   )
 
   expect_false(capability$available)
@@ -229,11 +229,11 @@ test_that("Builder runtime capability blocks startup with exact guidance", {
   unavailable <- builder_runtime_capability(function(package) FALSE)
   expect_identical(
     unavailable$missing,
-    c("callr", "mirai", "openssl", "promises")
+    c("callr", "openssl")
   )
   expect_match(
     unavailable$reason,
-    'install.packages(c("callr", "mirai", "openssl", "promises"))',
+    'install.packages(c("callr", "openssl"))',
     fixed = TRUE
   )
 })

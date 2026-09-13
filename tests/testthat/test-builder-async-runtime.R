@@ -1,7 +1,4 @@
-test_that("Builder async runtime owns one bounded mirai pool", {
-  skip_if_not_installed("mirai")
-  skip_if_not_installed("promises")
-
+test_that("Builder async runtime owns one bounded callr pool", {
   path <- builder_profile_inst_path("builder", "async.R")
   expect_true(file.exists(path))
 
@@ -27,7 +24,7 @@ test_that("Builder async runtime owns one bounded mirai pool", {
   expect_identical(runtime$.builder_async$memory, 64L)
 })
 
-test_that("the three read-only jobs use event-driven mirai callbacks", {
+test_that("the three read-only jobs use event-driven async callbacks", {
   source_text <- function(...) {
     paste(
       readLines(builder_profile_inst_path("builder", ...), warn = FALSE),
@@ -83,9 +80,11 @@ test_that("async callback failures use the task rejection path", {
     builder_profile_inst_path("builder", "async.R"),
     envir = runtime
   )
+  on.exit(runtime$builder_async_stop(), add = TRUE)
   rejected <- NULL
+  task <- runtime$builder_async_submit(quote(1L))
   runtime$builder_async_then(
-    promises::promise_resolve(1L),
+    task,
     session = NULL,
     on_fulfilled = function(value) stop("callback failed"),
     on_rejected = function(error) rejected <<- conditionMessage(error)
@@ -98,14 +97,14 @@ test_that("async callback failures use the task rejection path", {
   expect_identical(rejected, "callback failed")
 })
 
-test_that("Builder declares the mirai Promise runtime", {
+test_that("Builder declares only its callr async runtime", {
   description_path <- file.path(
     dirname(dirname(builder_profile_inst_path("builder"))),
     "DESCRIPTION"
   )
-  description <- read.dcf(description_path, fields = "Suggests")[[1L]]
-  expect_match(description, "mirai")
-  expect_match(description, "promises")
+  description <- read.dcf(description_path)[1L, ]
+  expect_match(description[["Suggests"]], "callr")
+  expect_false(grepl("mirai|promises", paste(description, collapse = "\n")))
 
   app <- paste(
     readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
