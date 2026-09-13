@@ -38,7 +38,26 @@ test_that("the browser restores compact linked-view vectors", {
       projections = list(
         umap = list(x = I(c(1.25, NA_real_)), y = I(c(-2.5, 3.75)), ndim = 2L)
       ),
-      spaces = list(helpers$cv_space("spatial", "Spatial", c(4, 5), c(6, 7)))
+      trajectories = list(
+        list(x = I(c(0.25, NA_real_)), y = I(c(-1.5, 2.5)))
+      ),
+      spaces = list(
+        helpers$cv_space("spatial", "Spatial", c(4, 5), c(6, 7)),
+        helpers$cv_space("trekker", "Trekker", c(8, 9), c(10, 11))
+      ),
+      clone = list(
+        id = I(c(0L, 1L)),
+        label = I(c("CASSL", "CASSP")),
+        size = I(c(2L, 1L)),
+        n_cdr3 = I(c(1L, 2L)),
+        n_clones = 2L,
+        n_receptor = 2L
+      ),
+      trekker = list(
+        conf = I(c(0.8, NA_real_)),
+        conf_noise = I(c(0.1, 0.2)),
+        evidence = I(c(1L, 0L))
+      )
     ),
     min_length = 1L
   )
@@ -46,6 +65,14 @@ test_that("the browser restores compact linked-view vectors", {
   expect_identical(header$groups$cluster$values$`__cv_wire__`, "i32")
   expect_identical(header$cat_extra$batch$values$`__cv_wire__`, "i8")
   expect_identical(header$fields$score$v$`__cv_wire__`, "i16")
+  expect_identical(header$trajectories[[1L]]$x$`__cv_wire__`, "f32")
+  expect_identical(header$spaces[[2L]]$x$`__cv_wire__`, "f32")
+  expect_identical(header$clone$id$`__cv_wire__`, "i8")
+  expect_identical(header$clone$label$`__cv_wire__`, "json")
+  expect_identical(header$clone$size$`__cv_wire__`, "i8")
+  expect_identical(header$clone$n_cdr3$`__cv_wire__`, "i8")
+  expect_identical(header$trekker$conf$`__cv_wire__`, "f64")
+  expect_identical(header$trekker$evidence$`__cv_wire__`, "i8")
   payload <- tempfile(fileext = ".json")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(c(payload, runner)), add = TRUE)
@@ -80,6 +107,16 @@ test_that("the browser restores compact linked-view vectors", {
   expect_identical(restored$projections$umap$x[[1L]], 1.25)
   expect_null(restored$projections$umap$x[[2L]])
   expect_equal(unlist(restored$projections$umap$y), c(-2.5, 3.75))
+  expect_identical(restored$trajectories[[1L]]$x[[1L]], 0.25)
+  expect_null(restored$trajectories[[1L]]$x[[2L]])
+  expect_equal(unlist(restored$spaces[[2L]]$x), c(8, 9))
+  expect_identical(unlist(restored$clone$id), c(0L, 1L))
+  expect_identical(unlist(restored$clone$label), c("CASSL", "CASSP"))
+  expect_identical(unlist(restored$clone$size), c(2L, 1L))
+  expect_identical(unlist(restored$clone$n_cdr3), c(1L, 2L))
+  expect_identical(restored$trekker$conf[[1L]], 0.8)
+  expect_null(restored$trekker$conf[[2L]])
+  expect_identical(unlist(restored$trekker$evidence), c(1L, 0L))
 })
 
 test_that("cell identities travel separately from the first frame", {
@@ -88,6 +125,12 @@ test_that("cell identities travel separately from the first frame", {
 
   helpers <- new.env(parent = globalenv())
   sys.source(bundle_file, envir = helpers)
+  first <- wire_header(helpers$cv_wire_pack_bundle(
+    list(cells = I(c("cell-1", "cell-2"))),
+    min_length = 1L,
+    include_cells = FALSE
+  ))
+  expect_null(first$cells)
   payload <- tempfile(fileext = ".bin")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(c(payload, runner)), add = TRUE)

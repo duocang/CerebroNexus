@@ -534,95 +534,10 @@ cv_wire_pack_bundle <- function(
   min_length = 4096L,
   include_cells = TRUE
 ) {
-  chunks <- list()
-  data_size <- 0L
-  pack <- function(values, type) {
-    if (length(values) < min_length) {
-      return(values)
-    }
-    bytes <- if (identical(type, "json")) {
-      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-        as.character(values),
-        auto_unbox = FALSE,
-        na = "null"
-      ))))
-    } else if (identical(type, "f32")) {
-      writeBin(
-        as.numeric(values),
-        raw(),
-        size = 4L,
-        endian = "little"
-      )
-    } else {
-      writeBin(
-        as.integer(values),
-        raw(),
-        size = switch(type, i8 = 1L, i16 = 2L, 4L),
-        endian = "little"
-      )
-    }
-    alignment <- switch(type, i8 = 1L, i16 = 2L, json = 1L, 4L)
-    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
-    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
-    data_size <<- offset + length(bytes)
-    list(
-      `__cv_wire__` = type,
-      length = length(values),
-      offset = offset,
-      bytes = length(bytes)
-    )
+  if (!isTRUE(include_cells)) {
+    bundle$cells <- NULL
   }
-  pack_space <- function(space) {
-    for (axis in intersect(c("x", "y", "z"), names(space))) {
-      space[[axis]] <- pack(space[[axis]], "f32")
-    }
-    if (length(space$samples)) {
-      space$samples <- lapply(space$samples, pack_space)
-    }
-    space
-  }
-
-  bundle$cells <- if (isTRUE(include_cells)) {
-    pack(bundle$cells, "json")
-  } else {
-    NULL
-  }
-  bundle$groups <- lapply(bundle$groups, function(group) {
-    group$values <- pack(group$values, cv_wire_integer_type(group$values))
-    group
-  })
-  bundle$cat_extra <- lapply(bundle$cat_extra, function(group) {
-    group$values <- pack(group$values, cv_wire_integer_type(group$values))
-    group
-  })
-  bundle$fields <- lapply(bundle$fields, function(field) {
-    field$v <- pack(field$v, cv_wire_integer_type(field$v))
-    field
-  })
-  bundle$projections <- lapply(bundle$projections, pack_space)
-  bundle$spaces <- lapply(bundle$spaces, pack_space)
-  bundle$wire_format <- "binary-v1"
-  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-    bundle,
-    auto_unbox = TRUE,
-    null = "null",
-    na = "null"
-  ))))
-  header_padding <- (4L - length(header) %% 4L) %% 4L
-  data_start <- 4L + length(header) + header_padding
-  payload <- raw(data_start + data_size)
-  payload[seq_len(4L)] <- writeBin(
-    as.integer(length(header)),
-    raw(),
-    size = 4L,
-    endian = "little"
-  )
-  payload[4L + seq_along(header)] <- header
-  for (chunk in chunks) {
-    first <- data_start + chunk$offset + 1L
-    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
-  }
-  payload
+  cv_wire_pack_message(bundle, min_length = min_length)
 }
 
 cv_wire_pack_cells <- function(dataset_id, cells) {
