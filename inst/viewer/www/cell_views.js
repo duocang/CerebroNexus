@@ -1462,6 +1462,15 @@
     try { if (p.gpu) p.gpu.clear(); } catch (error) { /* Canvas fallback */ }
   }
 
+  function disableGpu(p) {
+    hideGpu(p);
+    p.gpu = null;
+    p.gpuTransformOnly = false;
+    p.gpuData = null;
+    p.gpuDataState = null;
+    if (D && p.spaceId) project(p, true);
+  }
+
   function attachGpu(p) {
     if (!window.CerebroPointRenderer || !window.CerebroPointRenderer.create) return;
     var canvas = document.createElement('canvas');
@@ -1473,16 +1482,19 @@
       p.gpuCanvas = canvas;
       p.gpu = window.CerebroPointRenderer.create(canvas);
       canvas._cerebroPointRenderer = p.gpu;
-      p.gpu.ready.then(function () {
+      var renderer = p.gpu;
+      renderer.failed.then(function () {
+        if (p.gpu !== renderer) return;
+        disableGpu(p);
+        if (D && p.spaceId) draw(p);
+      });
+      renderer.ready.then(function () {
+        if (p.gpu !== renderer) return;
         if (D && p.spaceId) draw(p);
       }).catch(function () {
-        hideGpu(p);
-        p.gpu = null;
-        if (D && p.spaceId) {
-          p.gpuTransformOnly = false;
-          project(p, true);
-          draw(p);
-        }
+        if (p.gpu !== renderer) return;
+        disableGpu(p);
+        if (D && p.spaceId) draw(p);
       });
     } catch (error) {
       canvas.remove();
@@ -1594,10 +1606,10 @@
         border: border ? { color: gpuColor(border.color), width: border.width } : null
       });
     } catch (error) {
-      hideGpu(p);
+      disableGpu(p);
       return false;
     }
-    if (!ok) { hideGpu(p); return false; }
+    if (!ok) { disableGpu(p); return false; }
     p.gpuCanvas.style.display = 'block';
     p.canvas.classList.add('cv-gpu-overlay');
     p.gpuCanvas.dataset.pointCount = String(data.count);
