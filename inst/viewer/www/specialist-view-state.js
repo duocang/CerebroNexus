@@ -22,7 +22,7 @@
       prefix: 'ir_'
     },
     hla_motif_network: {
-      label: 'HLA & TCR Motifs', tab: 'hla_tcr_motifs', engine: 'network',
+      label: 'HLA & TCR Motifs', tab: 'hla_tcr_motifs', engine: 'canvas',
       prefix: 'hla_'
     }
   };

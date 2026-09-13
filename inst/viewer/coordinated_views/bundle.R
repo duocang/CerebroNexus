@@ -63,13 +63,6 @@ cv_cell_metadata <- function(metadata, cell) {
   metadata[index, , drop = FALSE]
 }
 
-cv_cell_fingerprint <- function(cells) {
-  path <- tempfile("cerebronexus-cell-ids-")
-  on.exit(unlink(path), add = TRUE)
-  writeBin(sort(enc2utf8(cells)), path, useBytes = TRUE)
-  unname(tools::md5sum(path))
-}
-
 ## Categorical palette (mirrors the app's plotly categorical colours).
 cv_palette <- c(
   "#636EFA",
@@ -522,6 +515,164 @@ cv_rgb_message <- function(red, green, blue) {
   )
 }
 
+cv_wire_integer_type <- function(values) {
+  if (anyNA(values)) {
+    return("i32")
+  }
+  bounds <- range(values)
+  if (bounds[[1L]] >= -128L && bounds[[2L]] <= 127L) {
+    "i8"
+  } else if (bounds[[1L]] >= -32768L && bounds[[2L]] <= 32767L) {
+    "i16"
+  } else {
+    "i32"
+  }
+}
+
+cv_wire_pack_bundle <- function(
+  bundle,
+  min_length = 4096L,
+  include_cells = TRUE
+) {
+  if (!isTRUE(include_cells)) {
+    bundle$cells <- NULL
+  }
+  cv_wire_pack_message(bundle, min_length = min_length)
+}
+
+cv_wire_pack_cells <- function(dataset_id, cells) {
+  dataset <- charToRaw(enc2utf8(as.character(dataset_id)))
+  values <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    as.character(cells),
+    auto_unbox = FALSE,
+    na = "null"
+  ))))
+  c(
+    writeBin(as.integer(length(dataset)), raw(), size = 4L, endian = "little"),
+    dataset,
+    values
+  )
+}
+
+cv_wire_pack_message <- function(message, min_length = 4096L) {
+  chunks <- list()
+  data_size <- 0L
+  pack <- function(values, type) {
+    bytes <- if (identical(type, "json")) {
+      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+        as.character(values),
+        auto_unbox = FALSE,
+        na = "null"
+      ))))
+    } else {
+      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
+      writeBin(
+        if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
+        raw(),
+        size = size,
+        endian = "little"
+      )
+    }
+    alignment <- switch(
+      type,
+      i8 = 1L,
+      i16 = 2L,
+      i32 = 4L,
+      f32 = 4L,
+      f64 = 8L,
+      1L
+    )
+    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
+    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
+    data_size <<- offset + length(bytes)
+    list(
+      `__cv_wire__` = type,
+      length = length(values),
+      offset = offset,
+      bytes = length(bytes)
+    )
+  }
+  walk <- function(value, field = NULL) {
+    if (is.list(value)) {
+      value_names <- names(value)
+      packed <- lapply(seq_along(value), function(index) {
+        child_field <- if (
+          !is.null(value_names) && nzchar(value_names[[index]])
+        ) {
+          value_names[[index]]
+        } else {
+          field
+        }
+        walk(value[[index]], child_field)
+      })
+      names(packed) <- value_names
+      return(packed)
+    }
+    if (
+      !is.atomic(value) || length(value) <= 1L || length(value) < min_length
+    ) {
+      return(value)
+    }
+    if (is.factor(value) || is.character(value)) {
+      return(pack(as.character(value), "json"))
+    }
+    if (is.integer(value)) {
+      return(pack(value, cv_wire_integer_type(value)))
+    }
+    if (is.numeric(value)) {
+      return(pack(
+        value,
+        if (
+          field %in%
+            c(
+              "x",
+              "y",
+              "z",
+              "from_x",
+              "from_y",
+              "to_x",
+              "to_y",
+              "point_sizes",
+              "color",
+              "r",
+              "g",
+              "b"
+            )
+        ) {
+          "f32"
+        } else {
+          "f64"
+        }
+      ))
+    }
+    value
+  }
+
+  message <- walk(message)
+  message$wire_format <- "binary-v1"
+  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    message,
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null"
+  ))))
+  header_padding <- (4L - length(header) %% 4L) %% 4L
+  data_start <- 4L + length(header) + header_padding
+  payload <- raw(data_start + data_size)
+  payload[seq_len(4L)] <- writeBin(
+    as.integer(length(header)),
+    raw(),
+    size = 4L,
+    endian = "little"
+  )
+  payload[4L + seq_along(header)] <- header
+  for (chunk in chunks) {
+    first <- data_start + chunk$offset + 1L
+    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
+  }
+  payload
+}
+
 ## Colour management changes labels, not cells or coordinates. Send that small
 ## delta separately so recolouring never rebuilds the per-dataset bundle.
 cv_color_patch <- function(bundle, color_map = NULL) {
@@ -832,17 +983,21 @@ cv_build_projections <- function(crb, cells) {
       rownames(pj),
       paste0("Projection `", pn, "`")
     )
-    pjidx <- match(cells, projection_cells)
+    aligned <- identical(cells, projection_cells)
+    pjidx <- if (aligned) NULL else match(cells, projection_cells)
+    coordinate <- function(index) {
+      if (aligned) pj[, index] else pj[pjidx, index]
+    }
     nd <- as.integer(ncol(pj))
     entry <- list(
-      x = I(round(as.numeric(pj[pjidx, 1]), 4)),
-      y = I(round(as.numeric(pj[pjidx, 2]), 4)),
+      x = I(round(as.numeric(coordinate(1L)), 4)),
+      y = I(round(as.numeric(coordinate(2L)), 4)),
       ndim = nd
     )
     ## I() so a single-cell data set still serialises z as an array, the same
     ## invariant cv_space() enforces for x/y.
     if (nd >= 3) {
-      entry$z <- I(round(as.numeric(pj[pjidx, 3]), 4))
+      entry$z <- I(round(as.numeric(coordinate(3L)), 4))
       ## The three axis names, for the tripod the client draws on a rotated
       ## cloud. Its own column names rather than a generic X/Y/Z: on a PCA those
       ## carry which components are being shown, which is the whole question
@@ -1423,14 +1578,13 @@ cv_default_group <- function(available) {
 
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
-cv_build_bundle <- function(crb) {
+cv_build_bundle <- function(crb, primary_only = FALSE) {
   md <- cv_canonical_metadata(crb$getMetaData())
   if (is.null(md)) {
     return(NULL)
   }
   cells <- md$cell_barcode
   n <- length(cells)
-  cell_fingerprint <- cv_cell_fingerprint(cells)
 
   ## Seed a stable fallback here. The user-editable palette travels separately
   ## as cv_color_patch(), so changing one colour cannot rebuild this bundle.
@@ -1481,23 +1635,21 @@ cv_build_bundle <- function(crb) {
     } else {
       names(projections)[1]
     }
-    dp <- projections[[default_projection]]
-    expression_space <- cv_space(
-      "umap",
-      paste0(default_projection, " (expression)"),
-      dp$x,
-      dp$y
+    ## Coordinates live in `projections`; the client rebuilds this descriptor
+    ## from there. Keeping another x/y/z copy doubles the largest part of a
+    ## million-cell wire payload.
+    expression_space <- list(
+      id = "umap",
+      label = paste0(default_projection, " (expression)")
     )
-    ## A 3-D embedding carries its z into the space too, so the expression panel
-    ## starts orbitable rather than only becoming so after a projection switch.
-    if (!is.null(dp$z)) {
-      expression_space$z <- dp$z
-      expression_space$axes <- dp$axes
-    }
     spaces[[length(spaces) + 1L]] <- expression_space
   }
 
-  trajectories <- cv_build_trajectories(crb, cells)
+  trajectories <- if (isTRUE(primary_only)) {
+    list()
+  } else {
+    cv_build_trajectories(crb, cells)
+  }
   if (length(trajectories)) {
     spaces <- c(spaces, trajectories)
   }
@@ -1505,12 +1657,12 @@ cv_build_bundle <- function(crb) {
   ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
   ## add each whenever the object carries it. An object with both gets both panels
   ## (the right-panel switch flips between them); neither is dropped.
-  sp <- cv_build_spatial(crb, cells)
+  sp <- if (isTRUE(primary_only)) NULL else cv_build_spatial(crb, cells)
   if (!is.null(sp)) {
     spaces[[length(spaces) + 1]] <- sp
   }
   trekker_bundle <- NULL
-  tk <- cv_build_trekker(crb, cells, md)
+  tk <- if (isTRUE(primary_only)) NULL else cv_build_trekker(crb, cells, md)
   if (!is.null(tk)) {
     spaces[[length(spaces) + 1]] <- tk$space
     trekker_bundle <- tk$bundle
@@ -1520,7 +1672,7 @@ cv_build_bundle <- function(crb) {
   ## immune axis: adds a clone space + a clone_expansion group when receptors
   ## are present.
   clone_bundle <- NULL
-  cl <- cv_build_clone(crb, cells, n)
+  cl <- if (isTRUE(primary_only)) NULL else cv_build_clone(crb, cells, n)
   if (!is.null(cl)) {
     spaces[[length(spaces) + 1]] <- cl$space
     groups[["clone_expansion"]] <- cl$group
@@ -1538,6 +1690,10 @@ cv_build_bundle <- function(crb) {
   default_group <- cv_default_group(available_groups)
   if (is.null(default_group) && length(fields)) {
     default_group <- paste0(cv_field_mode, names(fields)[1])
+  }
+
+  if (isTRUE(primary_only) && length(projections)) {
+    projections <- projections[default_projection]
   }
 
   list(
@@ -1570,7 +1726,6 @@ cv_build_bundle <- function(crb) {
       error = function(e) paste0("cells:", n)
     ),
     cells = I(cells),
-    cell_fingerprint = cell_fingerprint,
     n = n,
     groups = groups,
     cat_extra = cat_extra,
@@ -1585,9 +1740,30 @@ cv_build_bundle <- function(crb) {
     default_point_opacity = default_point_opacity,
     projections = projections,
     default_projection = default_projection,
-    trajectories = trajectories,
     spaces = spaces,
     clone = clone_bundle,
     trekker = trekker_bundle
+  )
+}
+
+cv_bundle_supplement <- function(primary, full) {
+  missing_named <- function(all, initial) {
+    all[setdiff(names(all), names(initial))]
+  }
+  primary_space_ids <- vapply(primary$spaces, `[[`, character(1), "id")
+  list(
+    dataset_id = full$dataset_id,
+    dataset_fingerprint = full$dataset_fingerprint,
+    progressive_token = primary$progressive_token,
+    groups = missing_named(full$groups, primary$groups),
+    cat_extra = missing_named(full$cat_extra, primary$cat_extra),
+    fields = missing_named(full$fields, primary$fields),
+    projections = missing_named(full$projections, primary$projections),
+    spaces = Filter(
+      function(space) !space$id %in% primary_space_ids,
+      full$spaces
+    ),
+    clone = full$clone,
+    trekker = full$trekker
   )
 }

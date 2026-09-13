@@ -40,5 +40,62 @@
     return !preserveTarget || activeView !== targetView;
   };
 
+  S.createSinglePreparedCache = function (limit) {
+    var entry = null;
+    var enabled = limit == null || Number(limit) > 0;
+    var valid = function (id, token) {
+      return enabled && id != null && token != null && String(token) !== '';
+    };
+    var matches = function (id, token) {
+      return entry && entry.id === String(id) && entry.token === String(token);
+    };
+    return {
+      resolve: function (id, token, build) {
+        if (!valid(id, token)) return build();
+        if (!matches(id, token)) {
+          entry = { id: String(id), token: String(token), value: build() };
+        }
+        return entry.value;
+      },
+      update: function (id, token, patch) {
+        if (!matches(id, token)) return false;
+        var updated = patch(entry.value);
+        if (updated === false) entry = null;
+        return updated;
+      },
+      clear: function () { entry = null; },
+      size: function () { return entry ? 1 : 0; }
+    };
+  };
+
+  S.patchSinglePreparedAux = function (prepared, cells, hover, nestedLengths) {
+    if (!prepared || !prepared.data || !Array.isArray(cells) ||
+        cells.length !== prepared.data.n) return false;
+    prepared.data.cells = cells;
+    var offsets = null;
+    if (Array.isArray(nestedLengths)) {
+      offsets = new Uint32Array(nestedLengths.length + 1);
+      nestedLengths.forEach(function (length, index) {
+        offsets[index + 1] = offsets[index] + Number(length || 0);
+      });
+    }
+    hover = hover || {};
+    var modes = hover.hoverinfo;
+    var enabled = Array.isArray(modes)
+      ? modes.some(function (mode) { return mode !== 'skip'; })
+      : modes !== 'skip';
+    (prepared.spaceIds || []).forEach(function (spaceId) {
+      var space = prepared.spaceById && prepared.spaceById[spaceId];
+      if (!space) return;
+      space._hover = Array.isArray(hover.text) ? hover.text : [];
+      space._hoverColumns = Array.isArray(hover.columns) ? hover.columns : [];
+      space._hoverModes = modes;
+      space._hoverOffsets = offsets;
+      space._hoverEnabled = enabled;
+      space._hoverMask = null;
+    });
+    return true;
+  };
+
   window.CBViewState = S;
 })();
