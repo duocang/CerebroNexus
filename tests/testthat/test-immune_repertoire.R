@@ -437,6 +437,27 @@ test_that("Clonal UMAP does not depend on the hidden Clone call control", {
   expect_no_match(block, "input\\$ir_cloneCall")
 })
 
+test_that("Clonal UMAP waits for its raw grouping input", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  skip_if_not(file.exists(viz))
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "output\\$ir_ui_clonalUMAP <- renderUI\\(\\{[\\s\\S]*?output\\[\\[\"ir_selection_status_UI\"\\]\\]",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_length(block, 1)
+  expect_match(
+    block,
+    'group_by <- input\\[\\["ir_p_umap_group_by"\\]\\]'
+  )
+  expect_match(block, "req\\(!is.null\\(group_by\\)\\)")
+  expect_no_match(block, 'ir_param\\("ir_p_umap_group_by"')
+})
+
 test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
   skip_if_not(file.exists(viz))
