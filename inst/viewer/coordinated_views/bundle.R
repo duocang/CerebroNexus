@@ -1578,7 +1578,7 @@ cv_default_group <- function(available) {
 
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
-cv_build_bundle <- function(crb) {
+cv_build_bundle <- function(crb, primary_only = FALSE) {
   md <- cv_canonical_metadata(crb$getMetaData())
   if (is.null(md)) {
     return(NULL)
@@ -1645,7 +1645,11 @@ cv_build_bundle <- function(crb) {
     spaces[[length(spaces) + 1L]] <- expression_space
   }
 
-  trajectories <- cv_build_trajectories(crb, cells)
+  trajectories <- if (isTRUE(primary_only)) {
+    list()
+  } else {
+    cv_build_trajectories(crb, cells)
+  }
   if (length(trajectories)) {
     spaces <- c(spaces, trajectories)
   }
@@ -1653,12 +1657,12 @@ cv_build_bundle <- function(crb) {
   ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
   ## add each whenever the object carries it. An object with both gets both panels
   ## (the right-panel switch flips between them); neither is dropped.
-  sp <- cv_build_spatial(crb, cells)
+  sp <- if (isTRUE(primary_only)) NULL else cv_build_spatial(crb, cells)
   if (!is.null(sp)) {
     spaces[[length(spaces) + 1]] <- sp
   }
   trekker_bundle <- NULL
-  tk <- cv_build_trekker(crb, cells, md)
+  tk <- if (isTRUE(primary_only)) NULL else cv_build_trekker(crb, cells, md)
   if (!is.null(tk)) {
     spaces[[length(spaces) + 1]] <- tk$space
     trekker_bundle <- tk$bundle
@@ -1668,7 +1672,7 @@ cv_build_bundle <- function(crb) {
   ## immune axis: adds a clone space + a clone_expansion group when receptors
   ## are present.
   clone_bundle <- NULL
-  cl <- cv_build_clone(crb, cells, n)
+  cl <- if (isTRUE(primary_only)) NULL else cv_build_clone(crb, cells, n)
   if (!is.null(cl)) {
     spaces[[length(spaces) + 1]] <- cl$space
     groups[["clone_expansion"]] <- cl$group
@@ -1686,6 +1690,10 @@ cv_build_bundle <- function(crb) {
   default_group <- cv_default_group(available_groups)
   if (is.null(default_group) && length(fields)) {
     default_group <- paste0(cv_field_mode, names(fields)[1])
+  }
+
+  if (isTRUE(primary_only) && length(projections)) {
+    projections <- projections[default_projection]
   }
 
   list(
@@ -1732,9 +1740,30 @@ cv_build_bundle <- function(crb) {
     default_point_opacity = default_point_opacity,
     projections = projections,
     default_projection = default_projection,
-    trajectories = trajectories,
     spaces = spaces,
     clone = clone_bundle,
     trekker = trekker_bundle
+  )
+}
+
+cv_bundle_supplement <- function(primary, full) {
+  missing_named <- function(all, initial) {
+    all[setdiff(names(all), names(initial))]
+  }
+  primary_space_ids <- vapply(primary$spaces, `[[`, character(1), "id")
+  list(
+    dataset_id = full$dataset_id,
+    dataset_fingerprint = full$dataset_fingerprint,
+    progressive_token = primary$progressive_token,
+    groups = missing_named(full$groups, primary$groups),
+    cat_extra = missing_named(full$cat_extra, primary$cat_extra),
+    fields = missing_named(full$fields, primary$fields),
+    projections = missing_named(full$projections, primary$projections),
+    spaces = Filter(
+      function(space) !space$id %in% primary_space_ids,
+      full$spaces
+    ),
+    clone = full$clone,
+    trekker = full$trekker
   )
 }

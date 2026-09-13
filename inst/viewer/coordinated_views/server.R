@@ -89,20 +89,20 @@ observe({
 ## How many times the bundle has actually been built this session. A plain
 ## environment rather than a reactiveVal: it is written from inside the reactive
 ## that it counts, and a reactive value would make that a dependency on itself.
-## Read back through exportTestValues so tests can distinguish an intentional
-## large-dataset prewarm from accidental builds on the ordinary lazy path.
+## Read back through exportTestValues so tests can distinguish primary and full
+## builds from accidental work on the ordinary lazy path.
 coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
-coordviews_build_log$sent_n <- 0L
+coordviews_build_log$primary_n <- 0L
+coordviews_build_log$sent_primary_n <- 0L
+coordviews_build_log$supplemented_primary_n <- 0L
 coordviews_build_log$color_observer_started <- FALSE
 coordviews_background_ready <- reactiveVal(FALSE)
 
-coordviews_bundle <- reactive({
-  req(!is.null(data_set()))
-  coordviews_build_log$n <- coordviews_build_log$n + 1L
+cv_build_bundle_safe <- function(primary_only = FALSE) {
   tryCatch(
     {
-      b <- cv_build_bundle(data_set())
+      b <- cv_build_bundle(data_set(), primary_only)
       if (is.null(b)) {
         list(
           error = paste(
@@ -127,32 +127,19 @@ coordviews_bundle <- reactive({
       list(error = "Linked views could not be built for this data set.")
     }
   )
+}
+
+coordviews_bundle <- reactive({
+  req(!is.null(data_set()))
+  coordviews_build_log$n <- coordviews_build_log$n + 1L
+  cv_build_bundle_safe()
 })
 
-## Large datasets need the bundle before an on-demand click can meet the
-## interaction budget. Give the browser three seconds to receive the initial data
-## response before using the otherwise idle session to build a hidden page.
-observeEvent(
-  cv_saved_view_identity(),
-  {
-    req(cv_saved_view_identity()$cell_count >= 200000L)
-    session$onFlushed(
-      function() {
-        later::later(
-          function() {
-            if (!session$isClosed()) {
-              coordviews_background_ready(TRUE)
-              isolate(coordviews_bundle())
-            }
-          },
-          delay = 3
-        )
-      },
-      once = TRUE
-    )
-  },
-  ignoreInit = FALSE
-)
+coordviews_primary_bundle <- reactive({
+  req(!is.null(data_set()))
+  coordviews_build_log$primary_n <- coordviews_build_log$primary_n + 1L
+  cv_build_bundle_safe(primary_only = TRUE)
+})
 
 ## The bundle when it actually built; NULL otherwise. Server-side consumers
 ## (gene vectors, histology controls) need real cells, not an error payload.
@@ -409,14 +396,14 @@ observeEvent(
 )
 
 
-## Nothing is sent until the user actually opens the tab. Bundles below the
-## large-dataset prewarm threshold are not built either.
+## Nothing is sent until the user actually opens the tab. Large data sets send
+## one renderable projection first; the remaining spaces and cell IDs are built
+## only after the browser confirms that the first canvas has been painted.
 ##
 ## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
 ## spatial coordinates, the immune repertoire -- and the result is sizeable.
-## Small datasets do not pay for a tab they may never open. Large datasets use
-## the bounded prewarm above so opening the workspace stays under its budget;
-## colour edits still stay in the small patch reactive above.
+## Small data sets do not pay for a tab they may never open either; colour edits
+## still stay in the small patch reactive above.
 ##
 ## The client reports whether the workspace is on screen (`coordviews_visible`)
 ## -- see www/cell_views.js for why that signal rather than the sidebar's
@@ -429,10 +416,10 @@ observeEvent(input[["coordviews_visible"]], {
   coordviews_visible(isTRUE(input[["coordviews_visible"]]))
 })
 
-## Push the full bundle while visible and when the data set changes. The error
-## payload is pushed too, and that is the point: staying silent would leave the
-## PREVIOUS data set's panels on screen, presenting one data set's cells as
-## another's. Colour changes use the patch observer below.
+## Push the primary bundle while visible and when its reactive generation
+## changes. Generation, rather than dataset name alone, also catches a reload of
+## the same file after its projections or metadata changed. The error payload is
+## pushed too: staying silent would leave the previous data set on screen.
 ##
 ## The req() has to come FIRST. It is what keeps this observer from taking a
 ## dependency on the bundle while hidden -- nothing is built until the user
@@ -440,29 +427,37 @@ observeEvent(input[["coordviews_visible"]], {
 observe(
   {
     req(coordviews_visible())
-    bundle <- coordviews_bundle()
-    if (identical(coordviews_build_log$sent_n, coordviews_build_log$n)) {
+    primary <- coordviews_primary_bundle()
+    primary_n <- coordviews_build_log$primary_n
+    if (identical(coordviews_build_log$sent_primary_n, primary_n)) {
       return()
     }
-    if (is.null(bundle$error)) {
-      bundle <- cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
-    }
-    if (
-      is.null(bundle$error) &&
-        isTRUE(input[["coordviews_wire_supported"]])
-    ) {
+    colors <- tryCatch(reactive_colors(), error = function(e) NULL)
+    progressive <- is.null(primary$error) &&
+      cv_saved_view_identity()$cell_count >= 200000L &&
+      isTRUE(input[["coordviews_wire_supported"]])
+    if (progressive) {
+      primary <- cv_apply_color_patch(
+        primary,
+        cv_color_patch(primary, colors)
+      )
+      coordviews_background_ready(FALSE)
+      primary$progressive <- TRUE
+      primary$progressive_token <- primary_n
       session$sendBinaryMessage(
         "coordviews_binary",
-        cv_wire_pack_bundle(bundle, include_cells = FALSE)
-      )
-      session$sendBinaryMessage(
-        "coordviews_cells",
-        cv_wire_pack_cells(bundle$dataset_id, bundle$cells)
+        cv_wire_pack_bundle(primary, include_cells = FALSE)
       )
     } else {
+      bundle <- coordviews_bundle()
+      if (is.null(bundle$error)) {
+        bundle <- cv_apply_color_patch(bundle, cv_color_patch(bundle, colors))
+      }
       session$sendCustomMessage("coordviews_data", bundle)
+      coordviews_background_ready(TRUE)
+      coordviews_build_log$supplemented_primary_n <- primary_n
     }
-    coordviews_build_log$sent_n <- coordviews_build_log$n
+    coordviews_build_log$sent_primary_n <- primary_n
     if (!isTRUE(coordviews_build_log$color_observer_started)) {
       coordviews_build_log$color_observer_started <- TRUE
       observeEvent(
@@ -480,20 +475,66 @@ observe(
   priority = 1
 )
 
+observeEvent(
+  input[["coordviews_primary_ready"]],
+  {
+    request <- input[["coordviews_primary_ready"]]
+    primary <- isolate(coordviews_primary_bundle())
+    primary_n <- coordviews_build_log$primary_n
+    req(
+      !is.null(request$dataset_id),
+      !is.null(request$dataset_fingerprint),
+      !is.null(request$progressive_token),
+      identical(as.character(request$dataset_id), primary$dataset_id),
+      identical(
+        as.character(request$dataset_fingerprint),
+        primary$dataset_fingerprint
+      ),
+      identical(as.integer(request$progressive_token), primary_n)
+    )
+    if (identical(coordviews_build_log$supplemented_primary_n, primary_n)) {
+      return()
+    }
+    primary$progressive_token <- primary_n
+    session$sendBinaryMessage(
+      "coordviews_cells",
+      cv_wire_pack_cells(primary$dataset_id, primary$cells)
+    )
+    bundle <- isolate(coordviews_bundle())
+    req(
+      is.null(bundle$error),
+      identical(bundle$dataset_id, primary$dataset_id),
+      identical(bundle$dataset_fingerprint, primary$dataset_fingerprint)
+    )
+    session$sendBinaryMessage(
+      "coordviews_supplement",
+      cv_wire_pack_message(cv_bundle_supplement(primary, bundle))
+    )
+    coordviews_background_ready(TRUE)
+    coordviews_build_log$supplemented_primary_n <- primary_n
+  },
+  ignoreInit = TRUE
+)
+
 observeEvent(input[["coordviews_wire_fallback"]], {
   req(coordviews_visible())
   request <- input[["coordviews_wire_fallback"]]
   bundle <- cv_ok(coordviews_bundle())
   req(!is.null(bundle))
   requested_dataset <- as.character(request$dataset_id %||% "")
+  requested_fingerprint <- as.character(request$dataset_fingerprint %||% "")
   req(
     !nzchar(requested_dataset) ||
-      identical(requested_dataset, bundle$dataset_id)
+      identical(requested_dataset, bundle$dataset_id),
+    !nzchar(requested_fingerprint) ||
+      identical(requested_fingerprint, bundle$dataset_fingerprint)
   )
   session$sendCustomMessage(
     "coordviews_data",
     cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
   )
+  coordviews_background_ready(TRUE)
+  coordviews_build_log$supplemented_primary_n <- coordviews_build_log$primary_n
 })
 
 ##----------------------------------------------------------------------------##
@@ -920,6 +961,7 @@ output[["coordviews_image_ui"]] <- renderUI({
   ## hidden -- and it reads the bundle. Without the same gate as the push, it
   ## would build the bundle on connect on its own and the laziness would be
   ## worth nothing.
+  req(coordviews_background_ready())
   req(coordviews_visible())
   b <- cv_ok(coordviews_bundle())
   ## Two separate questions, and conflating them is what went wrong before.

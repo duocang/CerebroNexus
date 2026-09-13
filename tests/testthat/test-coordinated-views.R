@@ -607,7 +607,7 @@ test_that("large linked-view vectors use a lossless compact wire format", {
   expect_equal(decode(header$spaces[[1L]]$y), c(6, 7))
 })
 
-test_that("Linked views negotiates compact transport with a legacy fallback", {
+test_that("Linked views progressive transport is identity-safe and recoverable", {
   server <- paste(
     readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
     collapse = "\n"
@@ -621,14 +621,24 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   )
 
   expect_match(server, 'input[["coordviews_wire_supported"]]', fixed = TRUE)
-  expect_match(server, "sendBinaryMessage(", fixed = TRUE)
   expect_match(server, '"coordviews_binary"', fixed = TRUE)
+  expect_match(server, '"coordviews_supplement"', fixed = TRUE)
   expect_match(server, '"coordviews_cells"', fixed = TRUE)
   expect_match(server, "include_cells = FALSE", fixed = TRUE)
-  expect_match(server, "cv_wire_pack_bundle(bundle", fixed = TRUE)
+  expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(server, "request$dataset_fingerprint", fixed = TRUE)
+  expect_match(server, "request$progressive_token", fixed = TRUE)
+  expect_match(server, "supplemented_primary_n", fixed = TRUE)
   expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
   expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
   expect_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
+  expect_match(client, "requestWireFallback", fixed = TRUE)
+  expect_match(client, "dataset_fingerprint: configFingerprint()", fixed = TRUE)
+  expect_match(client, "progressive_token: D.progressive_token", fixed = TRUE)
+  expect_match(client, "progressiveRequestedKey = null", fixed = TRUE)
+  expect_match(client, "var saved = exportWorkspace();", fixed = TRUE)
+  expect_match(client, "restoreWorkspace(saved);", fixed = TRUE)
   expect_match(client, "coordviews_wire_supported", fixed = TRUE)
   expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
   expect_equal(
@@ -720,6 +730,40 @@ test_that("Linked views does not duplicate immutable bundle data", {
   expect_null(bundle$cell_fingerprint)
 })
 
+test_that("progressive supplement carries identity and only missing data", {
+  skip_if_not(have_bundle)
+  primary <- list(
+    dataset_id = "brain.crb",
+    dataset_fingerprint = "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    progressive_token = 3L,
+    groups = list(cluster = list()),
+    cat_extra = list(),
+    fields = list(score = list()),
+    projections = list(umap = list()),
+    spaces = list(list(id = "projection::umap")),
+    clone = NULL,
+    trekker = NULL
+  )
+  full <- primary
+  full$groups$sample <- list()
+  full$projections$tsne <- list()
+  full$spaces <- c(full$spaces, list(list(id = "trajectory::slingshot")))
+  full$clone <- list(ids = 1L)
+
+  supplement <- cv_env$cv_bundle_supplement(primary, full)
+
+  expect_identical(supplement$dataset_id, full$dataset_id)
+  expect_identical(
+    supplement$dataset_fingerprint,
+    full$dataset_fingerprint
+  )
+  expect_identical(supplement$progressive_token, primary$progressive_token)
+  expect_named(supplement$groups, "sample")
+  expect_named(supplement$projections, "tsne")
+  expect_identical(supplement$spaces[[1L]]$id, "trajectory::slingshot")
+  expect_identical(supplement$clone, full$clone)
+})
+
 test_that("Linked views reuses the saved-view fingerprint", {
   server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(
@@ -761,7 +805,7 @@ test_that("saved-view startup identity does not materialize cell names", {
   )
   expect_match(
     server,
-    "req(cv_saved_view_identity()$cell_count >= 200000L)",
+    "cv_saved_view_identity()$cell_count >= 200000L",
     fixed = TRUE
   )
 })
@@ -774,7 +818,7 @@ test_that("colour observation starts only after a bundle is sent", {
   )
 
   sent <- regexpr(
-    "coordviews_build_log$sent_n <- coordviews_build_log$n",
+    "coordviews_build_log$sent_primary_n <- primary_n",
     server,
     fixed = TRUE
   )[[1]]
@@ -791,10 +835,30 @@ test_that("colour observation starts only after a bundle is sent", {
 test_that("large-dataset work stays off the initial response", {
   server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
-  expect_match(server, "later::later(", fixed = TRUE)
-  expect_match(server, "isolate(coordviews_bundle())", fixed = TRUE)
+  expect_false(grepl("session$onFlushed(", server, fixed = TRUE))
+  expect_false(grepl("later::later(", server, fixed = TRUE))
+  expect_match(
+    server,
+    "cv_build_bundle(data_set(), primary_only)",
+    fixed = TRUE
+  )
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(
+    server,
+    paste0(
+      "req\\(coordviews_background_ready\\(\\)\\)\\s+",
+      "req\\(coordviews_visible\\(\\)\\)\\s+",
+      "b <- cv_ok\\(coordviews_bundle\\(\\)\\)"
+    )
+  )
   expect_match(
     server,
     "coordviews_background_ready <- reactiveVal(FALSE)",
@@ -806,6 +870,17 @@ test_that("large-dataset work stays off the initial response", {
       "coordviews_background_ready\\(\\) &&\\s+",
       "coordviews_visible\\(\\) &&\\s+cv_has_expression\\(\\)"
     )
+  )
+  expect_match(
+    client,
+    "resizeAll();\n          reportWorkspaceReady();",
+    fixed = TRUE
+  )
+  expect_gte(
+    sum(
+      gregexpr("progressiveRequestedKey = null", client, fixed = TRUE)[[1L]] > 0
+    ),
+    2L
   )
 })
 

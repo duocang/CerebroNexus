@@ -35,6 +35,7 @@
   var surfaceHome = null;       // original Linked Views panel/legend locations
   var linkedState = null;       // Linked workspace state while a single page owns the surface
   var pendingColorPatch = null; // palette received before its dataset bundle
+  var progressiveRequestedKey = null;
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
@@ -3910,7 +3911,11 @@
     if (!resizeObserver) {
       resizeObserver = new ResizeObserver(function () {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () { if (D && !focusAnimating) resizeAll(); }, 30);
+        resizeTimer = setTimeout(function () {
+          if (!D || focusAnimating) return;
+          resizeAll();
+          reportWorkspaceReady();
+        }, 30);
       });
       panels.forEach(function (p) {
         if (p.pane) resizeObserver.observe(p.pane);
@@ -6363,6 +6368,14 @@
     applyData(bundle);
   }
 
+  function requestWireFallback(datasetId, fingerprint) {
+    Shiny.setInputValue('coordviews_wire_fallback', {
+      dataset_id: datasetId || '',
+      dataset_fingerprint: fingerprint || '',
+      nonce: Date.now()
+    }, { priority: 'event' });
+  }
+
   function onBinaryData(buffer) {
     var token = ++wireToken;
     try {
@@ -6373,25 +6386,60 @@
       if (token === wireToken) applyData(decoded);
     } catch (error) {
       if (token !== wireToken) return;
-      Shiny.setInputValue('coordviews_wire_fallback', {
-        dataset_id: '', nonce: Date.now()
-      }, { priority: 'event' });
+      requestWireFallback('', '');
     }
   }
 
   function onBinaryCells(buffer) {
     try {
       var message = window.CBViewWire.unpackCells(buffer);
-      if (!D || message.dataset_id !== D.dataset_id ||
-          !Array.isArray(message.cells) || message.cells.length !== D.n) return;
+      if (!D || message.dataset_id !== D.dataset_id) return;
+      if (!Array.isArray(message.cells) || message.cells.length !== D.n) {
+        throw new Error('Linked views cells do not match the primary bundle');
+      }
       D.cells = message.cells;
       if (linkedBundle) linkedBundle.cells = message.cells;
       singleIndexCells = null; singleIndexMap = null;
       reportWorkspaceReady();
     } catch (error) {
-      Shiny.setInputValue('coordviews_wire_fallback', {
-        dataset_id: '', nonce: Date.now()
-      }, { priority: 'event' });
+      requestWireFallback(
+        D && D.dataset_id,
+        D && configFingerprint()
+      );
+    }
+  }
+
+  function onBinarySupplement(buffer) {
+    try {
+      var extra = window.CBViewWire.unpack(buffer);
+      if (!D) return;
+      if (!extra) throw new Error('Linked views supplement is empty');
+      if (extra.dataset_id !== D.dataset_id ||
+          extra.dataset_fingerprint !== configFingerprint() ||
+          extra.progressive_token !== D.progressive_token ||
+          !D.progressive) return;
+      if (!Array.isArray(D.cells) || D.cells.length !== D.n) {
+        throw new Error('Linked views cells must arrive before the supplement');
+      }
+      var saved = exportWorkspace();
+      var merged = Object.assign({}, D, {
+        groups: Object.assign({}, D.groups, extra.groups),
+        cat_extra: Object.assign({}, D.cat_extra, extra.cat_extra),
+        fields: Object.assign({}, D.fields, extra.fields),
+        projections: Object.assign({}, D.projections, extra.projections),
+        spaces: (D.spaces || []).concat(extra.spaces || []),
+        clone: extra.clone || D.clone,
+        trekker: extra.trekker || D.trekker,
+        progressive: false
+      });
+      applyData(merged);
+      restoreWorkspace(saved);
+      reportWorkspaceReady();
+    } catch (error) {
+      requestWireFallback(
+        D && D.dataset_id,
+        D && configFingerprint()
+      );
     }
   }
 
@@ -6455,6 +6503,7 @@
     }
     linkedBundle = bundle;
     D = bundle;
+    if (!Array.isArray(D.cells)) D.cells = [];
     sanitiseColors(D);
     syncCloneTiers();
     _clipD = null;   // ranges belong to the data set that produced them
@@ -6651,6 +6700,7 @@
 
   function selectedCellIds() {
     var out = [];
+    if (!D || !Array.isArray(D.cells) || D.cells.length !== D.n) return out;
     if (sel) sel.forEach(function (index) { out.push(D.cells[index]); });
     return out;
   }
@@ -7033,9 +7083,13 @@
   }
 
   function workspaceSummary() {
+    var rendered = !!(D && configFingerprint() && panels.some(function (panel) {
+      return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
+    }));
     return {
-      ready: !!(D && Array.isArray(D.cells) && D.cells.length === D.n &&
-        configFingerprint()),
+      ready: rendered,
+      complete: !!(rendered && !D.progressive &&
+        Array.isArray(D.cells) && D.cells.length === D.n),
       datasetFingerprint: D ? configFingerprint() : null,
       selectedCells: sel ? sel.size : 0,
       selectedCellBarcodes: selectedCellIds(),
@@ -7075,9 +7129,23 @@
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
         ready: summary.ready,
+        complete: summary.complete,
         selectedCells: summary.selectedCells
       }
     }));
+    if (summary.ready && D.progressive && Shiny.setInputValue) {
+      var key = String(D.dataset_id || '') + '\u0000' + configFingerprint() +
+        '\u0000' + String(D.progressive_token || '');
+      if (progressiveRequestedKey !== key) {
+        progressiveRequestedKey = key;
+        Shiny.setInputValue('coordviews_primary_ready', {
+          dataset_id: D.dataset_id,
+          dataset_fingerprint: configFingerprint(),
+          progressive_token: D.progressive_token,
+          nonce: Date.now()
+        }, { priority: 'event' });
+      }
+    }
   }
 
   window.cerebroLinkedViewsState = Object.freeze({
@@ -7107,6 +7175,7 @@
     booted = true;
     Shiny.addCustomMessageHandler('coordviews_data', onData);
     Shiny.addCustomMessageHandler('coordviews_binary', onBinaryData);
+    Shiny.addCustomMessageHandler('coordviews_supplement', onBinarySupplement);
     Shiny.addCustomMessageHandler('coordviews_cells', onBinaryCells);
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
     Shiny.addCustomMessageHandler('cell_view_aux_binary', onSingleAuxBinary);
@@ -7279,6 +7348,7 @@
     // A reconnect gives a fresh server session that knows nothing, so the state
     // has to be sent again rather than suppressed as unchanged.
     var onConnected = function () {
+      progressiveRequestedKey = null;
       Shiny.setInputValue(
         'coordviews_wire_supported',
         !!(window.CBViewWire && window.CBViewWire.supported),
