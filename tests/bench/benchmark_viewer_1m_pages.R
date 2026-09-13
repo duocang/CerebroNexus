@@ -69,7 +69,9 @@ page <- function(
   correctness = "true",
   point_selector = NULL,
   expected_point_count = NA_real_,
-  correctness_detail = "''"
+  correctness_detail = "''",
+  visual_check = FALSE,
+  requires_webgpu = FALSE
 ) {
   list(
     tab = tab,
@@ -82,7 +84,9 @@ page <- function(
     correctness = correctness,
     point_selector = point_selector,
     expected_point_count = expected_point_count,
-    correctness_detail = correctness_detail
+    correctness_detail = correctness_detail,
+    visual_check = visual_check,
+    requires_webgpu = requires_webgpu
   )
 }
 
@@ -116,7 +120,9 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
     } else {
       expected_points
     },
-    correctness_detail = "JSON.stringify(window.__cerebroPageBenchEventDetail||{})"
+    correctness_detail = "JSON.stringify(window.__cerebroPageBenchEventDetail||{})",
+    visual_check = TRUE,
+    requires_webgpu = !is.null(expected_points)
   )
 }
 
@@ -192,6 +198,8 @@ pages <- list(
     "!!window.cerebroLinkedViewsState&&window.cerebroLinkedViewsState.ready()",
     required = TRUE,
     wait_idle = FALSE,
+    visual_check = TRUE,
+    requires_webgpu = TRUE,
     ready_event = "cerebro:linkedviews-ready",
     correctness = paste0(
       "(() => {const state=window.cerebroLinkedViewsState;",
@@ -286,7 +294,10 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
 
 page_available <- function(app, page) {
   selector <- sprintf("a[href='#shiny-tab-%s']", page$tab)
-  app$get_js(sprintf("!!document.querySelector(%s)", quote_r(selector)))
+  app$get_js(sprintf(
+    "(() => {const link=document.querySelector(%s);return !!link&&link.offsetParent !== null;})()",
+    quote_r(selector)
+  ))
 }
 
 open_page <- function(app, page, require_event = TRUE) {
@@ -327,6 +338,111 @@ page_correctness <- function(app, page) {
     point_count = point_count,
     detail = if (is.null(detail)) "" else as.character(detail)
   )
+}
+
+page_renderer_diagnostics <- function(app, page) {
+  value <- app$get_js(sprintf(
+    paste0(
+      "(() => {const root=document.getElementById('shiny-tab-%s');",
+      "const canvases=Array.from(root?.querySelectorAll(",
+      "'canvas:not(.cv-mini)')||[]);",
+      "const gpu=canvases.find(canvas=>canvas.classList.contains(",
+      "'cv-gpu-layer')&&canvas.style.display!=='none');",
+      "const renderer=gpu?._cerebroPointRenderer||canvases.find(canvas=>",
+      "canvas.classList.contains('cv-gpu-layer'))?._cerebroPointRenderer;",
+      "const stats=renderer?.stats?.()||{};",
+      "const pointCanvas=canvases.find(canvas=>canvas.dataset.pointCount);",
+      "return {navigatorGpu:!!navigator.gpu,",
+      "backend:gpu?(stats.backend||'webgpu'):",
+      "(pointCanvas?'canvas2d':'not_applicable'),",
+      "adapter:String(stats.adapter||''),contextLost:!!stats.contextLost,",
+      "error:String(stats.error||'')};})()"
+    ),
+    page$tab
+  ))
+  list(
+    navigator_gpu = isTRUE(value$navigatorGpu),
+    renderer_backend = if (is.null(value$backend)) {
+      "not_applicable"
+    } else {
+      as.character(value$backend)
+    },
+    renderer_adapter = if (is.null(value$adapter)) {
+      ""
+    } else {
+      as.character(value$adapter)
+    },
+    renderer_context_lost = isTRUE(value$contextLost),
+    renderer_error = if (is.null(value$error)) "" else as.character(value$error)
+  )
+}
+
+page_visible_pixels <- function(app, page) {
+  if (!isTRUE(page$visual_check)) {
+    return(list(count = NA_real_, pass = NA))
+  }
+  screenshot <- tempfile("viewer-page-pixels-", fileext = ".png")
+  on.exit(unlink(screenshot), add = TRUE)
+  prepared <- app$get_js(sprintf(
+    paste0(
+      "(async () => {const root=document.getElementById('shiny-tab-%s');",
+      "const canvases=Array.from(root?.querySelectorAll(",
+      "'canvas:not(.cv-mini)')||[]).filter(canvas=>",
+      "canvas.offsetParent!==null&&canvas.width>0&&canvas.height>0);",
+      "const gpu=canvases.find(canvas=>canvas.classList.contains(",
+      "'cv-gpu-layer')&&canvas.style.display!=='none');",
+      "const target=gpu||canvases.find(canvas=>",
+      "!canvas.classList.contains('cv-gpu-layer')&&",
+      "canvas.dataset.pointCount);if(!target)return false;",
+      "if(gpu?._cerebroPointRenderer)await gpu._cerebroPointRenderer.idle();",
+      "canvases.forEach(canvas=>{canvas.__cerebroBenchVisibility=",
+      "canvas.style.visibility;if(canvas!==target)canvas.style.visibility=",
+      "'hidden';});target.dataset.cerebroBenchmarkVisual='true';",
+      "return true;})()"
+    ),
+    page$tab
+  ))
+  if (!isTRUE(prepared)) {
+    return(list(count = 0, pass = FALSE))
+  }
+  restore <- paste0(
+    "(() => {document.querySelectorAll('canvas[data-cerebro-benchmark-visual]')",
+    ".forEach(target=>{const root=target.closest('[id^=\"shiny-tab-\"]');",
+    "Array.from(root?.querySelectorAll('canvas:not(.cv-mini)')||[])",
+    ".forEach(canvas=>{canvas.style.visibility=",
+    "canvas.__cerebroBenchVisibility||'';delete canvas.__cerebroBenchVisibility;});",
+    "delete target.dataset.cerebroBenchmarkVisual;});})()"
+  )
+  tryCatch(
+    app$get_screenshot(
+      screenshot,
+      selector = "canvas[data-cerebro-benchmark-visual='true']"
+    ),
+    finally = app$run_js(restore)
+  )
+  image <- png::readPNG(screenshot)
+  rgb <- image[,, seq_len(min(3L, dim(image)[[3L]])), drop = FALSE]
+  height <- dim(rgb)[[1L]]
+  width <- dim(rgb)[[2L]]
+  border <- rbind(
+    matrix(rgb[1L, , ], ncol = dim(rgb)[[3L]]),
+    matrix(rgb[height, , ], ncol = dim(rgb)[[3L]]),
+    matrix(rgb[, 1L, ], ncol = dim(rgb)[[3L]]),
+    matrix(rgb[, width, ], ncol = dim(rgb)[[3L]])
+  )
+  background <- apply(border, 2L, stats::median)
+  rows <- seq.int(
+    max(1L, floor(height * 0.1)),
+    min(height, ceiling(height * 0.9))
+  )
+  columns <- seq.int(
+    max(1L, floor(width * 0.1)),
+    min(width, ceiling(width * 0.9))
+  )
+  interior <- rgb[rows, columns, , drop = FALSE]
+  difference <- sweep(interior, 3L, background, "-")
+  count <- sum(apply(abs(difference), c(1L, 2L), max) > 2 / 255)
+  list(count = as.numeric(count), pass = count > 0)
 }
 
 start_socket_meter <- function(app) {
@@ -581,16 +697,27 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   resources <- stop_rss_monitor(monitor)
   monitor_stopped <- TRUE
   correctness <- page_correctness(app, page)
+  renderer <- page_renderer_diagnostics(app, page)
+  visible_pixels <- page_visible_pixels(app, page)
+  correctness_pass <- correctness$pass &&
+    (is.na(visible_pixels$pass) || visible_pixels$pass)
   assert_clean_logs(app)
   data.frame(
-    status = if (correctness$pass) "ok" else "error",
-    error = if (correctness$pass) "" else "Page correctness check failed.",
+    status = if (correctness_pass) "ok" else "error",
+    error = if (correctness_pass) "" else "Page correctness check failed.",
     elapsed_ms = elapsed_ms,
     ready_event_required = require_event && !is.null(page$ready_event),
-    correctness_pass = correctness$pass,
+    correctness_pass = correctness_pass,
     rendered_point_count = correctness$point_count,
     expected_point_count = page$expected_point_count,
     correctness_detail = correctness$detail,
+    navigator_gpu = renderer$navigator_gpu,
+    renderer_backend = renderer$renderer_backend,
+    renderer_adapter = renderer$renderer_adapter,
+    renderer_context_lost = renderer$renderer_context_lost,
+    renderer_error = renderer$renderer_error,
+    visible_pixel_count = visible_pixels$count,
+    visible_pixels_pass = visible_pixels$pass,
     r_peak_rss_kib = unname(resources[["r_peak_rss_kib"]]),
     chrome_peak_rss_kib = unname(resources[["chrome_peak_rss_kib"]]),
     js_heap_used_bytes = heap_used_bytes,
@@ -683,6 +810,13 @@ empty_observation <- function(status, error) {
     rendered_point_count = NA_real_,
     expected_point_count = NA_real_,
     correctness_detail = "",
+    navigator_gpu = NA,
+    renderer_backend = NA_character_,
+    renderer_adapter = NA_character_,
+    renderer_context_lost = NA,
+    renderer_error = NA_character_,
+    visible_pixel_count = NA_real_,
+    visible_pixels_pass = NA,
     r_peak_rss_kib = NA_real_,
     chrome_peak_rss_kib = NA_real_,
     js_heap_used_bytes = NA_real_,
@@ -709,15 +843,18 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
   row <- cbind(
     scheduled,
     required = page_spec$required,
+    requires_webgpu = page_spec$requires_webgpu,
     budget_ms = budget_ms,
     observation,
     stringsAsFactors = FALSE
   )
-  row$pass <- row$status == "ok" &&
-    page_budget_pass(
-      row$elapsed_ms,
-      row$budget_ms
-    )
+  row$performance_applicable <- !row$requires_webgpu ||
+    identical(row$renderer_backend, "webgpu")
+  row$pass <- if (isTRUE(row$performance_applicable)) {
+    row$status == "ok" && page_budget_pass(row$elapsed_ms, row$budget_ms)
+  } else {
+    NA
+  }
   message(
     row$candidate,
     " round ",
@@ -781,7 +918,22 @@ if (any(bad_status | missing_resources)) {
 if (identical(profile, "publication") && any(provenance$candidate_git_dirty)) {
   stop("Publication requires clean candidate worktrees.", call. = FALSE)
 }
-if (any(results$status == "ok" & !results$pass)) {
+if (
+  identical(profile, "publication") &&
+    any(
+      results$required &
+        results$requires_webgpu &
+        !results$performance_applicable
+    )
+) {
+  stop(
+    "Publication requires WebGPU for million-cell page timings.",
+    call. = FALSE
+  )
+}
+if (
+  any(results$status == "ok" & results$performance_applicable & !results$pass)
+) {
   stop(
     "One or more available 1M page budgets failed; see ",
     output,
