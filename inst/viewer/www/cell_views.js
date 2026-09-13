@@ -5709,6 +5709,7 @@
     var n = Number(payload.data && payload.data.n) || cells.length;
     return {
       dataset_id: 'single:' + id + ':' + n,
+      dataset_fingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || '',
       cells: cells,
       n: n,
       groups: {},

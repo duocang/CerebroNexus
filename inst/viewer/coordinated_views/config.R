@@ -1051,7 +1051,7 @@ cv_specialist_page_specs <- list(
   hla_motif_network = list(
     label = "HLA & TCR Motifs",
     tab = "hla_tcr_motifs",
-    engine = "network",
+    engine = "canvas",
     prefix = "hla_"
   )
 )
