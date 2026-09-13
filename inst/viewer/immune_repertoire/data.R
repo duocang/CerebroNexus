@@ -29,28 +29,49 @@ ir_scr_cols <- c(
 ## the data set's cell metadata. We attach it here by `cell_barcode` so the
 ## module can group/split by ANY metadata column, not just whatever columns a
 ## data producer happened to embed in the IR table.
-ir_data_annotated <- reactive({
-  data <- ir_data_raw()
-  if (is.null(data)) {
-    return(NULL)
+ir_annotate_metadata <- function(data, metadata) {
+  if (
+    is.null(metadata) ||
+      !("cell_barcode" %in% colnames(metadata))
+  ) {
+    return(data)
   }
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
-    return(data) # nothing to join; fall back to raw IR data
-  }
-  # metadata columns that don't already exist in the IR tables
-  meta_cols <- setdiff(colnames(md), "cell_barcode")
-  lapply(data, function(df) {
+
+  meta_cols <- setdiff(colnames(metadata), "cell_barcode")
+  add <- lapply(data, function(df) {
     if (is.null(df) || !("barcode" %in% colnames(df))) {
+      return(character(0))
+    }
+    setdiff(meta_cols, colnames(df))
+  })
+  join <- lengths(add) > 0L
+  if (!any(join)) {
+    return(data)
+  }
+
+  n_rows <- vapply(
+    seq_along(data),
+    function(i) {
+      if (join[[i]]) nrow(data[[i]]) else 0L
+    },
+    integer(1)
+  )
+  ends <- cumsum(n_rows)
+  idx <- match(
+    unlist(lapply(data[join], `[[`, "barcode"), use.names = FALSE),
+    metadata$cell_barcode
+  )
+  out <- lapply(seq_along(data), function(i) {
+    df <- data[[i]]
+    if (!join[[i]]) {
       return(df)
     }
-    add <- setdiff(meta_cols, colnames(df))
-    if (length(add) == 0) {
-      return(df)
-    }
-    idx <- match(df$barcode, md$cell_barcode)
-    n_miss <- sum(is.na(idx))
-    if (n_miss > 0) {
+
+    n <- n_rows[[i]]
+    rows <- seq.int(ends[[i]] - n + 1L, length.out = n)
+    frame_idx <- idx[rows]
+    n_miss <- sum(is.na(frame_idx))
+    if (n_miss > 0L) {
       warning(sprintf(
         paste0(
           "[IR] %d / %d clonotype barcodes not found in cell metadata; ",
@@ -58,14 +79,25 @@ ir_data_annotated <- reactive({
           "Check that IR barcodes match the cell barcodes (e.g. the '-1' suffix)."
         ),
         n_miss,
-        length(idx)
+        length(frame_idx)
       ))
     }
-    for (col in add) {
-      df[[col]] <- md[[col]][idx]
+    for (col in add[[i]]) {
+      df[[col]] <- metadata[[col]][frame_idx]
     }
     df
   })
+  names(out) <- names(data)
+  out
+}
+
+ir_data_annotated <- reactive({
+  data <- ir_data_raw()
+  if (is.null(data)) {
+    return(NULL)
+  }
+  md <- tryCatch(getMetaData(), error = function(e) NULL)
+  ir_annotate_metadata(data, md)
 })
 
 ## ---- Reactive: repertoire data --------------------------------------- ##
@@ -389,16 +421,10 @@ ir_clonal_umap_data <- function(
     } else {
       as.character(df[[clone_col]])
     }
-    in_receptor <- vapply(
-      chain_ref,
-      function(s) {
-        any(vapply(
-          keep_chains,
-          function(ch) grepl(ch, s, fixed = TRUE),
-          logical(1)
-        ))
-      },
-      logical(1)
+    in_receptor <- Reduce(
+      `|`,
+      lapply(keep_chains, function(ch) grepl(ch, chain_ref, fixed = TRUE)),
+      init = rep(FALSE, length(chain_ref))
     )
     df <- df[in_receptor, , drop = FALSE]
     if (nrow(df) == 0) {
@@ -463,42 +489,30 @@ ir_clonal_umap_data <- function(
   if (length(idx) == 0 && !isTRUE(show_all)) {
     return(NULL)
   }
-  coloured <- if (length(idx) > 0) {
-    xy <- coords[idx, 1:2, drop = FALSE]
-    data.frame(
-      x = as.numeric(xy[[1]]),
-      y = as.numeric(xy[[2]]),
-      expansion = factor(rows$expansion, levels = IR_CLONE_LABELS),
-      barcode = rows$barcode,
-      stringsAsFactors = FALSE
-    )
-  } else {
-    NULL
-  }
-
-  # Background layer: every other cell in the projection, expansion = NA, so the
-  # renderer can draw them in grey. Only when show_all is requested.
-  background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- !(coord_bc %in%
-      (if (length(idx) > 0) rows$barcode else character(0)))
-    if (any(bg_mask)) {
-      xy_bg <- coords[bg_mask, 1:2, drop = FALSE]
-      background <- data.frame(
-        x = as.numeric(xy_bg[[1]]),
-        y = as.numeric(xy_bg[[2]]),
-        expansion = factor(NA, levels = IR_CLONE_LABELS),
-        barcode = coord_bc[bg_mask],
-        stringsAsFactors = FALSE
-      )
+    expansion <- factor(
+      rep(NA_character_, length(coord_bc)),
+      levels = IR_CLONE_LABELS
+    )
+    if (length(idx)) {
+      expansion[idx] <- as.character(rows$expansion)
     }
+    return(data.frame(
+      x = as.numeric(coords[[1]]),
+      y = as.numeric(coords[[2]]),
+      expansion = expansion,
+      barcode = coord_bc,
+      stringsAsFactors = FALSE
+    ))
   }
-
-  out <- rbind(background, coloured)
-  if (is.null(out) || nrow(out) == 0) {
-    return(NULL)
-  }
-  out
+  xy <- coords[idx, 1:2, drop = FALSE]
+  data.frame(
+    x = as.numeric(xy[[1]]),
+    y = as.numeric(xy[[2]]),
+    expansion = factor(rows$expansion, levels = IR_CLONE_LABELS),
+    barcode = rows$barcode,
+    stringsAsFactors = FALSE
+  )
 }
 
 ##----------------------------------------------------------------------------##

@@ -64,7 +64,7 @@ test_that("immune_repertoire UI defines correct tabName", {
 
 test_that("example.crb contains real immune repertoire data", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   expect_true(is.list(ir))
   expect_true(length(ir) > 0)
@@ -81,7 +81,7 @@ test_that("example.crb contains real immune repertoire data", {
 
 test_that("example.crb IR barcodes align with cell metadata", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   ir_bc <- unlist(lapply(ir, function(df) df$barcode), use.names = FALSE)
@@ -98,7 +98,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
   # for the example data set, so the Group by dropdown is populated regardless
   # of which columns a producer embedded in the IR table.
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   groups <- crb$getGroups()
@@ -122,7 +122,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
 
 test_that("example.crb IR contains both TCR and BCR clonotypes", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   expect_true(grepl("TR[AB]", all_ct)) # TCR present
@@ -131,7 +131,7 @@ test_that("example.crb IR contains both TCR and BCR clonotypes", {
 
 test_that("example.crb IR has TCR chains detectable from CTgene", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   has_tcr <- grepl("TRA", all_ct) || grepl("TRB", all_ct)
@@ -378,7 +378,7 @@ test_that("ir_bindCache keeps only global cache keys centralized", {
 
 test_that("example.crb preserves core data fields", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   expect_true(!is.null(crb$getMetaData()))
   expect_true(nrow(crb$getMetaData()) > 0)
   expect_true(!is.null(crb$experiment))
@@ -435,6 +435,49 @@ test_that("Clonal UMAP does not depend on the hidden Clone call control", {
   expect_match(block, 'clone_call <- "gene"')
   expect_no_match(block, "ir_params\\(\\)\\$cloneCall")
   expect_no_match(block, "input\\$ir_cloneCall")
+})
+
+test_that("Clonal UMAP waits for its raw grouping input", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  skip_if_not(file.exists(viz))
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "output\\$ir_ui_clonalUMAP <- renderUI\\(\\{[\\s\\S]*?output\\[\\[\"ir_selection_status_UI\"\\]\\]",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_length(block, 1)
+  expect_match(
+    block,
+    'group_by <- input\\[\\["ir_p_umap_group_by"\\]\\]'
+  )
+  expect_match(block, "req\\(!is.null\\(group_by\\)\\)")
+  expect_no_match(block, 'ir_param\\("ir_p_umap_group_by"')
+})
+
+test_that("Clonal UMAP builds traces without copying grouped data frames", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  skip_if_not(file.exists(viz))
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "## Draw the non-faceted Clonal UMAP[\\s\\S]*?## ---- Clonal UMAP selection summaries",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_length(block, 1)
+  expect_match(
+    block,
+    "background_cells <- which\\(is.na\\(df\\$expansion\\)\\)"
+  )
+  expect_match(block, "cells <- which\\(df\\$expansion == lvl\\)")
+  expect_no_match(block, "bg <- df[", fixed = TRUE)
+  expect_no_match(block, "fg <- df[", fixed = TRUE)
 })
 
 test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {
