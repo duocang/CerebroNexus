@@ -93,7 +93,7 @@ observeEvent(
     )) {
       local({
         id <- input_id
-        serverSideGeneSelector(session, id, retry = FALSE)
+        serverSideGeneSelector(session, id)
       })
     }
   },
