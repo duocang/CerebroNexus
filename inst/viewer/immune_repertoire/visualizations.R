@@ -568,9 +568,6 @@ observe({
   ## Grey background = cells without the selected receptor (expansion = NA);
   ## coloured foreground = receptor cells with an expansion level. One trace per
   ## expansion level, in canonical order, so each keeps its turbo colour.
-  bg <- df[is.na(df$expansion), , drop = FALSE]
-  fg <- df[!is.na(df$expansion), , drop = FALSE]
-
   traces <- list()
   data_x <- list()
   data_y <- list()
@@ -579,39 +576,36 @@ observe({
   hover_info <- list()
   hover_text <- list()
 
-  if (nrow(bg) > 0) {
+  background_cells <- which(is.na(df$expansion))
+  if (length(background_cells)) {
     traces[[length(traces) + 1]] <- "Other cells"
-    data_x[[length(data_x) + 1]] <- bg$x
-    data_y[[length(data_y) + 1]] <- bg$y
-    data_key[[length(data_key) + 1]] <- bg$barcode
+    data_x[[length(data_x) + 1]] <- df$x[background_cells]
+    data_y[[length(data_y) + 1]] <- df$y[background_cells]
+    data_key[[length(data_key) + 1]] <- df$barcode[background_cells]
     data_color[[length(data_color) + 1]] <- "#D9D9D9"
     ## Background cells skip hover (per-trace hoverinfo, honoured by shared JS).
     hover_info[[length(hover_info) + 1]] <- "skip"
     hover_text[[length(hover_text) + 1]] <- ""
   }
   for (lvl in names(IR_EXPANSION_COLORS)) {
-    sub <- fg[
-      !is.na(fg$expansion) & as.character(fg$expansion) == lvl,
-      ,
-      drop = FALSE
-    ]
-    if (nrow(sub) == 0) {
+    cells <- which(df$expansion == lvl)
+    if (!length(cells)) {
       next
     }
     traces[[length(traces) + 1]] <- lvl
-    data_x[[length(data_x) + 1]] <- sub$x
-    data_y[[length(data_y) + 1]] <- sub$y
-    data_key[[length(data_key) + 1]] <- sub$barcode
+    data_x[[length(data_x) + 1]] <- df$x[cells]
+    data_y[[length(data_y) + 1]] <- df$y[cells]
+    data_key[[length(data_key) + 1]] <- df$barcode[cells]
     data_color[[length(data_color) + 1]] <- unname(IR_EXPANSION_COLORS[[lvl]])
     hover_info[[length(hover_info) + 1]] <- "text"
     hover_text[[length(hover_text) + 1]] <- paste0(
-      sub$barcode,
+      df$barcode[cells],
       "<br>",
       lvl,
       "<br>UMAP_1: ",
-      formatC(sub$x, format = "f", digits = 2),
+      formatC(df$x[cells], format = "f", digits = 2),
       "<br>UMAP_2: ",
-      formatC(sub$y, format = "f", digits = 2)
+      formatC(df$y[cells], format = "f", digits = 2)
     )
   }
   req(length(traces) > 0)

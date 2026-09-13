@@ -730,6 +730,63 @@ test_that("Linked views does not duplicate immutable bundle data", {
   expect_null(bundle$cell_fingerprint)
 })
 
+test_that("primary bundle materializes only the first visible projection and colour", {
+  skip_if_not(have_bundle)
+  cells <- paste0("c", 1:4)
+  metadata <- data.frame(
+    cell_barcode = cells,
+    cell_type = c("B", "T", "B", "T"),
+    sample = c("s1", "s1", "s2", "s2"),
+    donor = c("d1", "d2", "d1", "d2"),
+    score = c(1, 2, 3, 4),
+    identifier = cells,
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  calls <- new.env(parent = emptyenv())
+  calls$projections <- character()
+  calls$genes <- 0L
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() c("cell_type", "sample"),
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() c("umap", "tsne"),
+    getProjection = function(name) {
+      calls$projections <- c(calls$projections, name)
+      matrix(seq_len(8), nrow = 4, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() {
+      calls$genes <- calls$genes + 1L
+      c("CD3D", "MS4A1")
+    }
+  )
+
+  primary <- cv_env$cv_build_bundle(crb, primary_only = TRUE)
+
+  expect_named(primary$groups, "cell_type")
+  expect_length(primary$cat_extra, 0L)
+  expect_length(primary$fields, 0L)
+  expect_length(primary$genes, 0L)
+  expect_named(primary$projections, "umap")
+  expect_identical(calls$projections, "umap")
+  expect_identical(calls$genes, 0L)
+
+  full <- cv_env$cv_build_bundle(crb)
+  primary$dataset_fingerprint <- "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  primary$progressive_token <- 4L
+  full$dataset_fingerprint <- primary$dataset_fingerprint
+  supplement <- cv_env$cv_bundle_supplement(primary, full)
+
+  expect_named(supplement$groups, "sample")
+  expect_named(supplement$cat_extra, "donor")
+  expect_named(supplement$fields, "meta:score")
+  expect_named(supplement$projections, "tsne")
+  expect_identical(supplement$cat_skipped, full$cat_skipped)
+})
+
 test_that("progressive supplement carries identity and only missing data", {
   skip_if_not(have_bundle)
   primary <- list(
@@ -739,6 +796,7 @@ test_that("progressive supplement carries identity and only missing data", {
     groups = list(cluster = list()),
     cat_extra = list(),
     fields = list(score = list()),
+    cat_skipped = list(),
     projections = list(umap = list()),
     spaces = list(list(id = "projection::umap")),
     clone = NULL,
@@ -746,6 +804,7 @@ test_that("progressive supplement carries identity and only missing data", {
   )
   full <- primary
   full$groups$sample <- list()
+  full$cat_skipped$barcode <- 100L
   full$projections$tsne <- list()
   full$spaces <- c(full$spaces, list(list(id = "trajectory::slingshot")))
   full$clone <- list(ids = 1L)
@@ -759,6 +818,7 @@ test_that("progressive supplement carries identity and only missing data", {
   )
   expect_identical(supplement$progressive_token, primary$progressive_token)
   expect_named(supplement$groups, "sample")
+  expect_identical(supplement$cat_skipped, full$cat_skipped)
   expect_named(supplement$projections, "tsne")
   expect_identical(supplement$spaces[[1L]]$id, "trajectory::slingshot")
   expect_identical(supplement$clone, full$clone)

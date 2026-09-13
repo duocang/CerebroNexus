@@ -489,42 +489,30 @@ ir_clonal_umap_data <- function(
   if (length(idx) == 0 && !isTRUE(show_all)) {
     return(NULL)
   }
-  coloured <- if (length(idx) > 0) {
-    xy <- coords[idx, 1:2, drop = FALSE]
-    data.frame(
-      x = as.numeric(xy[[1]]),
-      y = as.numeric(xy[[2]]),
-      expansion = factor(rows$expansion, levels = IR_CLONE_LABELS),
-      barcode = rows$barcode,
-      stringsAsFactors = FALSE
-    )
-  } else {
-    NULL
-  }
-
-  # Background layer: every other cell in the projection, expansion = NA, so the
-  # renderer can draw them in grey. Only when show_all is requested.
-  background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- !(coord_bc %in%
-      (if (length(idx) > 0) rows$barcode else character(0)))
-    if (any(bg_mask)) {
-      xy_bg <- coords[bg_mask, 1:2, drop = FALSE]
-      background <- data.frame(
-        x = as.numeric(xy_bg[[1]]),
-        y = as.numeric(xy_bg[[2]]),
-        expansion = factor(NA, levels = IR_CLONE_LABELS),
-        barcode = coord_bc[bg_mask],
-        stringsAsFactors = FALSE
-      )
+    expansion <- factor(
+      rep(NA_character_, length(coord_bc)),
+      levels = IR_CLONE_LABELS
+    )
+    if (length(idx)) {
+      expansion[idx] <- as.character(rows$expansion)
     }
+    return(data.frame(
+      x = as.numeric(coords[[1]]),
+      y = as.numeric(coords[[2]]),
+      expansion = expansion,
+      barcode = coord_bc,
+      stringsAsFactors = FALSE
+    ))
   }
-
-  out <- rbind(background, coloured)
-  if (is.null(out) || nrow(out) == 0) {
-    return(NULL)
-  }
-  out
+  xy <- coords[idx, 1:2, drop = FALSE]
+  data.frame(
+    x = as.numeric(xy[[1]]),
+    y = as.numeric(xy[[2]]),
+    expansion = factor(rows$expansion, levels = IR_CLONE_LABELS),
+    barcode = rows$barcode,
+    stringsAsFactors = FALSE
+  )
 }
 
 ##----------------------------------------------------------------------------##

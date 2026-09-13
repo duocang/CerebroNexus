@@ -6438,6 +6438,7 @@
       var merged = Object.assign({}, D, {
         groups: Object.assign({}, D.groups, extra.groups),
         cat_extra: Object.assign({}, D.cat_extra, extra.cat_extra),
+        cat_skipped: extra.cat_skipped || D.cat_skipped,
         fields: Object.assign({}, D.fields, extra.fields),
         projections: Object.assign({}, D.projections, extra.projections),
         spaces: (D.spaces || []).concat(extra.spaces || []),

@@ -170,6 +170,35 @@ test_that("vectorised receptor matching preserves edge-case masks", {
   )
 })
 
+test_that("ir_clonal_umap_data keeps the projection order when showing all cells", {
+  cells <- paste0("bc", 1:4)
+  coords <- matrix(
+    seq_len(8),
+    ncol = 2,
+    dimnames = list(cells, c("x", "y"))
+  )
+  ir_env$availableProjections <- function() "umap"
+  ir_env$getProjection <- function(...) coords
+  ir_env$getMetaData <- function(...) data.frame(cell_barcode = cells)
+  ir_env$ir_data_annotated <- function() {
+    list(
+      sample = data.frame(
+        barcode = c("bc2", "bc4", "bc3"),
+        CTgene = c("TRB-A", "TRB-A", "TRB-B"),
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  ir_env$ir_clonecall_col <- function(...) "CTgene"
+  ir_env$ir_umap_chains <- function(...) "TRB"
+
+  out <- ir_env$ir_clonal_umap_data("umap", "TCR", show_all = TRUE)
+
+  expect_identical(out$barcode, cells)
+  expect_true(is.na(out$expansion[[1L]]))
+  expect_false(anyNA(out$expansion[-1L]))
+})
+
 # --- ir_parse_segments -----------------------------------------------------
 
 test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {

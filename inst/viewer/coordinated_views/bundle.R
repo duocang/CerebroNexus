@@ -868,8 +868,11 @@ cv_clone <- function(
 }
 
 ## Categorical groupings: each md group column -> {values, levels, colors}.
-cv_build_groups <- function(crb, md, colors_fn) {
+cv_build_groups <- function(crb, md, colors_fn, only = NULL) {
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
+  if (!is.null(only)) {
+    group_names <- intersect(group_names, only)
+  }
   groups <- list()
   for (g in group_names) {
     v <- md[[g]]
@@ -897,9 +900,14 @@ cv_build_groups <- function(crb, md, colors_fn) {
 ## "colour the embedding by percent.mt and see which blob is junk" is one of the
 ## most-used actions on that page. Constant and all-NA columns are skipped —
 ## there is no colouring to build from them.
-cv_build_fields <- function(md, skip = "cell_barcode") {
+cv_build_fields <- function(md, skip = "cell_barcode", only = NULL) {
   fields <- list()
-  for (mc in colnames(md)) {
+  field_names <- if (is.null(only)) {
+    colnames(md)
+  } else {
+    intersect(only, colnames(md))
+  }
+  for (mc in field_names) {
     if (mc %in% skip) {
       next
     }
@@ -933,12 +941,17 @@ cv_build_fields <- function(md, skip = "cell_barcode") {
 ## instead of dropped — `skipped` is name -> level count, which the client shows
 ## greyed out in the picker. Silently omitting them left the two tabs offering
 ## different lists with no way to tell why.
-cv_build_extra_groups <- function(md, group_names, colors_fn) {
+cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
   n <- nrow(md)
   max_levels <- max(2L, min(60L, as.integer(n / 2)))
   extra <- list()
   skipped <- list()
-  for (mc in colnames(md)) {
+  extra_names <- if (is.null(only)) {
+    colnames(md)
+  } else {
+    intersect(only, colnames(md))
+  }
+  for (mc in extra_names) {
     if (mc == "cell_barcode" || mc %in% group_names) {
       next
     }
@@ -971,8 +984,11 @@ cv_build_extra_groups <- function(md, group_names, colors_fn) {
 ## A 3-D embedding also sends its third dimension, so the client can orbit it
 ## rather than show a flattened shadow of it. `ndim` travels either way — the
 ## client needs to know which panels can rotate and which are flat.
-cv_build_projections <- function(crb, cells) {
+cv_build_projections <- function(crb, cells, only = NULL) {
   proj_names <- tryCatch(crb$availableProjections(), error = function(e) NULL)
+  if (!is.null(only)) {
+    proj_names <- intersect(proj_names, only)
+  }
   projections <- list()
   for (pn in proj_names) {
     pj <- tryCatch(crb$getProjection(pn), error = function(e) NULL)
@@ -1576,6 +1592,77 @@ cv_default_group <- function(available) {
   sample(available, 1L)
 }
 
+cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
+  group_candidates <- group_names[vapply(
+    group_names,
+    function(name) {
+      value <- md[[name]]
+      if (is.null(value)) {
+        return(FALSE)
+      }
+      levels <- if (is.factor(value)) {
+        levels(value)
+      } else {
+        unique(as.character(value))
+      }
+      any(!is.na(levels))
+    },
+    logical(1)
+  )]
+  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
+  extra_candidates <- character()
+  skipped <- list()
+  for (name in setdiff(colnames(md), c("cell_barcode", group_names))) {
+    value <- md[[name]]
+    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
+      next
+    }
+    levels <- if (is.factor(value)) {
+      levels(value)
+    } else {
+      unique(as.character(value))
+    }
+    levels <- levels[!is.na(levels)]
+    if (!length(levels)) {
+      next
+    }
+    if (length(levels) > max_levels) {
+      skipped[[name]] <- length(levels)
+    } else {
+      extra_candidates <- c(extra_candidates, name)
+    }
+  }
+  default_group <- cv_default_group(c(group_candidates, extra_candidates))
+  groups <- list()
+  cat_extra <- list()
+  fields <- list()
+  if (!is.null(default_group) && default_group %in% group_candidates) {
+    groups <- cv_build_groups(crb, md, colors_fn, default_group)
+  } else if (!is.null(default_group)) {
+    cat_extra <- cv_build_extra_groups(
+      md,
+      group_names,
+      colors_fn,
+      default_group
+    )$groups
+  } else {
+    for (name in setdiff(colnames(md), "cell_barcode")) {
+      fields <- cv_build_fields(md, only = name)
+      if (length(fields)) {
+        default_group <- paste0(cv_field_mode, names(fields)[1L])
+        break
+      }
+    }
+  }
+  list(
+    groups = groups,
+    cat_extra = cat_extra,
+    cat_skipped = skipped,
+    fields = fields,
+    default_group = default_group
+  )
+}
+
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
 cv_build_bundle <- function(crb, primary_only = FALSE) {
@@ -1602,17 +1689,30 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   ##   cat_extra — other categorical columns: colour only
   ##   fields    — numeric columns (+ Trekker's physical fields): continuous
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
-  groups <- cv_build_groups(crb, md, cv_group_colors)
-  extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
-  cat_extra <- extra$groups
-  cat_skipped <- extra$skipped
-  fields <- cv_build_fields(md)
+  if (isTRUE(primary_only)) {
+    primary_colours <- cv_build_primary_colours(
+      crb,
+      md,
+      group_names,
+      cv_group_colors
+    )
+    groups <- primary_colours$groups
+    cat_extra <- primary_colours$cat_extra
+    cat_skipped <- primary_colours$cat_skipped
+    fields <- primary_colours$fields
+    default_group <- primary_colours$default_group
+  } else {
+    groups <- cv_build_groups(crb, md, cv_group_colors)
+    extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
+    cat_extra <- extra$groups
+    cat_skipped <- extra$skipped
+    fields <- cv_build_fields(md)
+    default_group <- NULL
+  }
 
   ## Every modality is independently useful. Linked views adds a coordinated
   ## workspace without changing the dedicated Projection/Spatial/Trekker pages.
-  projections <- cv_build_projections(crb, cells)
   viewer_content <- cv_selected_viewer_content()
-  default_projection <- NULL
   appearance <- viewerScatterDefaults(
     if (exists("Cerebro.options")) Cerebro.options else list(),
     cv_selected_dataset_name()
@@ -1620,9 +1720,38 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   default_point_size <- appearance$point_size
   default_percentage_cells_to_show <- appearance$percentage_cells_to_show
   default_point_opacity <- appearance$point_opacity
+  projection_names <- tryCatch(
+    crb$availableProjections(),
+    error = function(e) character()
+  )
+  configured_projection <- viewer_content[["default_projection"]]
+  preferred_projection <- if (
+    is.character(configured_projection) &&
+      length(configured_projection) == 1L &&
+      !is.na(configured_projection) &&
+      configured_projection %in% projection_names
+  ) {
+    configured_projection
+  } else if ("umap" %in% projection_names) {
+    "umap"
+  } else {
+    projection_names[1L]
+  }
+  projections <- if (isTRUE(primary_only)) {
+    built <- list()
+    for (projection_name in unique(c(preferred_projection, projection_names))) {
+      built <- cv_build_projections(crb, cells, projection_name)
+      if (length(built)) {
+        break
+      }
+    }
+    built
+  } else {
+    cv_build_projections(crb, cells)
+  }
+  default_projection <- NULL
   spaces <- list()
   if (length(projections)) {
-    configured_projection <- viewer_content[["default_projection"]]
     default_projection <- if (
       is.character(configured_projection) &&
         length(configured_projection) == 1L &&
@@ -1686,14 +1815,12 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   ## Default colouring: prefer a cell-type-like name, then a sample-like name,
   ## then any categorical field. If no categorical field exists, use the first
   ## continuous field; with no colourable metadata the panels draw one colour.
-  available_groups <- c(names(groups), names(cat_extra))
-  default_group <- cv_default_group(available_groups)
-  if (is.null(default_group) && length(fields)) {
-    default_group <- paste0(cv_field_mode, names(fields)[1])
-  }
-
-  if (isTRUE(primary_only) && length(projections)) {
-    projections <- projections[default_projection]
+  if (!isTRUE(primary_only)) {
+    available_groups <- c(names(groups), names(cat_extra))
+    default_group <- cv_default_group(available_groups)
+    if (is.null(default_group) && length(fields)) {
+      default_group <- paste0(cv_field_mode, names(fields)[1])
+    }
   }
 
   list(
@@ -1731,9 +1858,13 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     cat_extra = cat_extra,
     cat_skipped = cat_skipped,
     fields = fields,
-    genes = I(enc2utf8(tryCatch(crb$getGeneNames(), error = function(e) {
-      character()
-    }))),
+    genes = I(
+      if (isTRUE(primary_only)) {
+        character()
+      } else {
+        enc2utf8(tryCatch(crb$getGeneNames(), error = function(e) character()))
+      }
+    ),
     default_group = default_group,
     default_point_size = default_point_size,
     default_percentage_cells_to_show = default_percentage_cells_to_show,
@@ -1758,6 +1889,7 @@ cv_bundle_supplement <- function(primary, full) {
     groups = missing_named(full$groups, primary$groups),
     cat_extra = missing_named(full$cat_extra, primary$cat_extra),
     fields = missing_named(full$fields, primary$fields),
+    cat_skipped = full$cat_skipped,
     projections = missing_named(full$projections, primary$projections),
     spaces = Filter(
       function(space) !space$id %in% primary_space_ids,
