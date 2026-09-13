@@ -421,16 +421,10 @@ ir_clonal_umap_data <- function(
     } else {
       as.character(df[[clone_col]])
     }
-    in_receptor <- vapply(
-      chain_ref,
-      function(s) {
-        any(vapply(
-          keep_chains,
-          function(ch) grepl(ch, s, fixed = TRUE),
-          logical(1)
-        ))
-      },
-      logical(1)
+    in_receptor <- Reduce(
+      `|`,
+      lapply(keep_chains, function(ch) grepl(ch, chain_ref, fixed = TRUE)),
+      init = rep(FALSE, length(chain_ref))
     )
     df <- df[in_receptor, , drop = FALSE]
     if (nrow(df) == 0) {

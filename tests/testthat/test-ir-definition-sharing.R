@@ -132,6 +132,44 @@ test_that("ir_annotate_metadata matches metadata once without overwriting IR dat
   expect_identical(match_calls, 0L)
 })
 
+# --- ir_clonal_umap_data --------------------------------------------------
+
+test_that("ir_clonal_umap_data vectorises receptor chain matching", {
+  source <- paste(readLines(data_r, warn = FALSE), collapse = "\n")
+  expect_match(source, "in_receptor <- Reduce(", fixed = TRUE)
+  expect_match(source, "lapply(keep_chains, function(ch)", fixed = TRUE)
+  expect_match(source, "grepl(ch, chain_ref, fixed = TRUE)", fixed = TRUE)
+  expect_match(source, "init = rep(FALSE, length(chain_ref))", fixed = TRUE)
+  expect_no_match(source, "in_receptor <- vapply(", fixed = TRUE)
+})
+
+test_that("vectorised receptor matching preserves edge-case masks", {
+  receptor_mask <- function(chain_ref, keep_chains) {
+    Reduce(
+      `|`,
+      lapply(
+        keep_chains,
+        function(ch) grepl(ch, chain_ref, fixed = TRUE)
+      ),
+      init = rep(FALSE, length(chain_ref))
+    )
+  }
+
+  chain_ref <- c("TRAV1_TRAJ1", "TRBV2_TRBJ2", "IGHV3_IGHJ4", NA, "none")
+  expect_identical(
+    receptor_mask(chain_ref, c("TRA", "TRB")),
+    c(TRUE, TRUE, FALSE, FALSE, FALSE)
+  )
+  expect_identical(
+    receptor_mask(chain_ref, c("IGK", "IGL")),
+    rep(FALSE, length(chain_ref))
+  )
+  expect_identical(
+    receptor_mask(chain_ref, character(0)),
+    rep(FALSE, length(chain_ref))
+  )
+})
+
 # --- ir_parse_segments -----------------------------------------------------
 
 test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {
