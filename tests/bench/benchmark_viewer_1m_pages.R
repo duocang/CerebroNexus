@@ -97,6 +97,7 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
     tab,
     sprintf("!!document.querySelector(%s)", quote_r(selector)),
     ...,
+    wait_idle = FALSE,
     correctness = sprintf(
       paste0(
         "(() => {const canvas=document.querySelector(%s);",
@@ -170,7 +171,6 @@ pages <- list(
     "#hla_motif_network_cell_view_host",
     budget_ms = 3000,
     required = TRUE,
-    wait_idle = FALSE,
     event_view = "hla_motif_network"
   ),
   marker_genes = page("markerGenes", "true"),
@@ -191,6 +191,7 @@ pages <- list(
     "coordinated_views",
     "!!window.cerebroLinkedViewsState&&window.cerebroLinkedViewsState.ready()",
     required = TRUE,
+    wait_idle = FALSE,
     ready_event = "cerebro:linkedviews-ready",
     correctness = paste0(
       "(() => {const state=window.cerebroLinkedViewsState;",
@@ -574,6 +575,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     warmed
   )
   elapsed_ms <- open_page(app, page, require_event = require_event)
+  heap_used_bytes <- js_heap_used(session)
   websocket <- stop_socket_meter(app)
   socket_meter_active <- FALSE
   resources <- stop_rss_monitor(monitor)
@@ -591,7 +593,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     correctness_detail = correctness$detail,
     r_peak_rss_kib = unname(resources[["r_peak_rss_kib"]]),
     chrome_peak_rss_kib = unname(resources[["chrome_peak_rss_kib"]]),
-    js_heap_used_bytes = js_heap_used(session),
+    js_heap_used_bytes = heap_used_bytes,
     websocket_sent_payload_bytes = as.numeric(websocket$sent),
     websocket_received_payload_bytes = as.numeric(websocket$received),
     chrome_version = session$Browser$getVersion()$product,
