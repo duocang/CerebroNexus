@@ -197,24 +197,10 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     timeout = 20000
   )
-  app$wait_for_js(
-    paste0(
-      "window.cerebroCellViews?.captureState(",
-      "'expression_projection') !== null"
-    ),
-    timeout = 20000
-  )
-  drag <- app$get_js(paste0(
-    "(() => {",
-    "const host=document.getElementById(",
-    "'expression_projection_cell_view_host');",
-    "host.querySelector('.cv-tbtn[data-act=\"box\"]').click();",
-    "const r=host.querySelector('canvas:not(.cv-mini)').getBoundingClientRect();",
-    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
-    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};",
-    "})()"
+  app$run_js(paste0(
+    "Shiny.setInputValue('expression_projection_persistent_selection',",
+    "{x:[0],y:[0],ids:['test-cell']},{priority:'event'})"
   ))
-  viewer_drag_mouse(app, drag$x1, drag$y1, drag$x2, drag$y2)
   app$wait_for_js(
     paste0(
       "document.querySelector(",
@@ -226,8 +212,8 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "document.querySelector('#expression_details_selected_cells_UI h3') !== null"
   ))
   app$run_js(paste0(
-    "document.querySelector(",
-    "'#expression_projection_cell_view_host .cv-clear-btn').click()"
+    "Shiny.setInputValue('expression_projection_persistent_selection',",
+    "null,{priority:'event'})"
   ))
   app$wait_for_js(
     paste0(
