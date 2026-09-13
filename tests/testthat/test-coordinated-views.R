@@ -800,12 +800,16 @@ test_that("large-dataset work stays off the initial response", {
     "coordviews_background_ready <- reactiveVal(FALSE)",
     fixed = TRUE
   )
-  expect_match(
+  expect_no_match(
     server,
     paste0(
       "coordviews_background_ready\\(\\) &&\\s+",
       "coordviews_visible\\(\\) &&\\s+cv_has_expression\\(\\)"
     )
+  )
+  expect_match(
+    server,
+    "coordviews_visible\\(\\) &&\\s+cv_has_expression\\(\\)"
   )
 })
 
