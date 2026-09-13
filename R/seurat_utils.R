@@ -467,7 +467,8 @@
   assay,
   requested_layer,
   join_samples = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  .layer_data = SeuratObject::LayerData
 ) {
   assay_object <- seurat[[assay]]
   layer_names <- SeuratObject::Layers(assay_object)
@@ -475,9 +476,14 @@
 
   if (requested_layer %in% layer_names) {
     return(list(
-      data = suppressWarnings(
-        SeuratObject::LayerData(assay_object, layer = requested_layer)
-      ),
+      data = if (
+        inherits(assay_object, "Assay") &&
+          requested_layer %in% methods::slotNames(assay_object)
+      ) {
+        methods::slot(assay_object, requested_layer)
+      } else {
+        suppressWarnings(.layer_data(assay_object, layer = requested_layer))
+      },
       requested = requested_layer,
       resolved = requested_layer,
       joined = FALSE,

@@ -1723,13 +1723,12 @@ builder_pair_sections <- function(picture, per_section) {
   out
 }
 
-#' Attach every post-export payload with one atomic CRB replacement.
+#' Attach post-export payloads with one atomic CRB replacement.
 #'
-#' Histology and Trekker both require a read-modify-write after
-#' `exportFromSeurat()`. Doing them separately writes the same large CRB twice
-#' and leaves a partially augmented file when the second write fails. This
-#' helper validates and applies both in memory, writes a sibling temporary file,
-#' then replaces the original with rollback.
+#' The default Builder path prepares Trekker before `exportFromSeurat()`, while
+#' direct callers may still supply it here. This helper validates and applies all
+#' requested payloads in memory, writes a sibling temporary file, then replaces
+#' the original with rollback.
 .builder_apply_external_spatial_appearance <- function(crb, images) {
   collection <- builder_image_collection_normalize(images)
   if (!length(collection)) {
@@ -1767,7 +1766,8 @@ builder_attach_crb_extras <- function(
   images = list(),
   trekker = NULL,
   trekker_alignment = NULL,
-  external_images = list()
+  external_images = list(),
+  .open_gz = gzfile
 ) {
   if (
     !length(images) &&
@@ -1871,7 +1871,13 @@ builder_attach_crb_extras <- function(
   )
   on.exit(unlink(c(temporary, backup), force = TRUE), add = TRUE)
 
-  written <- try(saveRDS(crb, temporary, compress = "gzip"), silent = TRUE)
+  written <- try(
+    {
+      connection <- .open_gz(temporary, open = "wb", compression = 1L)
+      tryCatch(saveRDS(crb, connection), finally = close(connection))
+    },
+    silent = TRUE
+  )
   if (inherits(written, "try-error") || !file.exists(temporary)) {
     return(list(error = "Could not write the augmented .crb."))
   }
@@ -1889,34 +1895,6 @@ builder_attach_crb_extras <- function(
   unlink(backup, force = TRUE)
 
   list(applied = applied, trekker = trekker_applied)
-}
-
-builder_attach_external_spatial_appearance <- function(crb_path, images) {
-  if (!length(builder_image_collection_normalize(images))) {
-    return(list(applied = character()))
-  }
-  crb <- try(readRDS(crb_path), silent = TRUE)
-  if (inherits(crb, "try-error")) {
-    return(list(error = "The exported .crb could not be read back."))
-  }
-  appearance <- .builder_apply_external_spatial_appearance(crb, images)
-  if (!is.null(appearance$error)) {
-    return(list(error = appearance$error))
-  }
-  crb <- appearance$object
-  temporary <- tempfile(
-    paste0(".", basename(crb_path), "-external-"),
-    tmpdir = dirname(crb_path)
-  )
-  on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  written <- try(saveRDS(crb, temporary, compress = "gzip"), silent = TRUE)
-  if (inherits(written, "try-error") || !file.exists(temporary)) {
-    return(list(error = "Could not write external-image CRB appearance."))
-  }
-  if (!file.rename(temporary, crb_path)) {
-    return(list(error = "Could not replace the external-image CRB."))
-  }
-  list(applied = appearance$applied)
 }
 
 #' The coordinates of the first spatial slice, for bounds decisions.

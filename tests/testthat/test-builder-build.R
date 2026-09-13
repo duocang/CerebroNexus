@@ -58,6 +58,46 @@ test_that("build preparation normalizes numeric-like QC metadata", {
   )
 })
 
+test_that("build preparation embeds configured Trekker metadata", {
+  object <- SeuratObject::pbmc_small
+  barcodes <- colnames(object)[1:2]
+  object@misc$trekker <- list(
+    barcodes = barcodes,
+    x = c(1, 2),
+    y = c(3, 4),
+    clusters = c(0L, 1L)
+  )
+  alignment <- builder_alignment_record(
+    source = list(name = "trekker.png", type = "image/png"),
+    source_uri = "data:image/png;base64,AA==",
+    uri = "data:image/png;base64,BB==",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
+    parameters = list(dx = 2, dy = -1, scale = 1.25, rotation = 90),
+    section = list(id = "trekker", kind = "trekker")
+  )
+  item <- list(
+    default_group = "groups",
+    colors = list(groups = c(`0` = "#000000", `1` = "#ffffff")),
+    trekker_alignment = alignment
+  )
+
+  prepared <- .builder_build_prepare_trekker(object, item)
+  trekker <- prepared@misc$trekker
+
+  expect_identical(trekker$builder_group, "groups")
+  expect_identical(trekker$builder_colors, item$colors$groups)
+  expect_identical(
+    trekker$builder_group_values,
+    as.character(object@meta.data[barcodes, "groups", drop = TRUE])
+  )
+  expect_identical(trekker$histology_image, alignment$source_uri)
+  expect_identical(trekker$histology_image_bounds, alignment$base_bounds)
+  expect_identical(
+    trekker$histology_alignment,
+    builder_alignment_payload(alignment)
+  )
+})
+
 test_that("session execution stages artifacts without publishing them", {
   path <- testthat::test_path("..", "..", "inst", "builder", "session.R")
   if (!file.exists(path)) {
@@ -339,6 +379,7 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
   stage <- tempfile("builder-stage-")
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE, force = TRUE), add = TRUE)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
   plan <- builder_build_test_plan()
   plan$make_app <- TRUE
   plan$app_contract_version <- 1L
@@ -347,11 +388,25 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
   hooks <- builder_build_test_hooks()
   hooks$verify <- function(path, item) {
     calls <<- c(calls, "verify_crb")
-    list(valid = TRUE, path = path)
+    list(
+      valid = TRUE,
+      path = path,
+      file_fingerprint = .bundlePreflightFingerprint(path),
+      bundle_preflight = list(
+        backend = list(type = "embedded", location = NULL, legacy = FALSE),
+        spatial_catalog = list()
+      )
+    )
   }
   hooks$build_app <- function(request, stage, auth_material = NULL) {
     calls <<- c(calls, "build_app")
     expect_true(all(file.exists(request$cerebro_data)))
+    preflight <- .preflightBundleData(
+      request$cerebro_data,
+      read_object = function(path) stop("verified CRB was read again")
+    )
+    expect_identical(preflight$backends[[1L]]$type, "embedded")
+    expect_identical(preflight$spatial_catalogs[[1L]], list())
     app_dir <- file.path(stage, "cerebro_app")
     dir.create(app_dir)
     app_dir
@@ -618,7 +673,8 @@ test_that("CRB read-back matches exact frozen artifact identity", {
             xmax = 10,
             ymin = 0,
             ymax = 10
-          )
+          ),
+          image_label = "Embedded tissue image"
         )
       )
     )
@@ -833,6 +889,69 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
   serialized <- paste(capture.output(str(observed)), collapse = "\n")
   expect_false(grepl("/private/tmp/shiny-upload", serialized, fixed = TRUE))
   expect_false(grepl("source_uri", serialized, fixed = TRUE))
+})
+
+test_that("CRB extras use the fast gzip compression level", {
+  crb_path <- tempfile(fileext = ".crb")
+  on.exit(unlink(crb_path), add = TRUE)
+
+  crb <- new.env(parent = emptyenv())
+  crb$trekker <- NULL
+  crb$addTrekker <- function(value) {
+    crb$trekker <- value
+    invisible(value)
+  }
+  class(crb) <- c("Cerebro_v1.3", "R6")
+  saveRDS(crb, crb_path)
+
+  observed_compression <- NULL
+  open_gz <- function(description, open, compression) {
+    observed_compression <<- compression
+    gzfile(description, open = open, compression = compression)
+  }
+  result <- builder_attach_crb_extras(
+    crb_path,
+    trekker = list(x = 1, y = 2, clusters = 0L),
+    .open_gz = open_gz
+  )
+
+  expect_null(result$error)
+  expect_identical(observed_compression, 1L)
+})
+
+test_that("Trekker-only extras do not rewrite an exported CRB", {
+  crb_path <- tempfile(fileext = ".crb")
+  on.exit(unlink(crb_path), add = TRUE)
+
+  crb <- new.env(parent = emptyenv())
+  crb$trekker <- list(existing = TRUE)
+  crb$addTrekker <- function(value) {
+    crb$trekker <- value
+    invisible(value)
+  }
+  class(crb) <- c("Cerebro_v1.3", "R6")
+  saveRDS(crb, crb_path, compress = FALSE)
+  before <- unname(tools::md5sum(crb_path))
+
+  object <- SeuratObject::pbmc_small
+  object@misc$trekker <- list(
+    barcodes = colnames(object)[1:2],
+    x = c(1, 2),
+    y = c(3, 4),
+    clusters = c(0L, 1L)
+  )
+  item <- list(
+    default_group = "groups",
+    colors = list(groups = c(`0` = "#000000", `1` = "#ffffff")),
+    trekker_alignment = NULL,
+    spatial_image_storage = "embedded",
+    images = list()
+  )
+
+  result <- .builder_build_attach_extras(crb_path, object, item)
+
+  expect_true(result$trekker)
+  expect_identical(unname(tools::md5sum(crb_path)), before)
 })
 
 test_that("external Spatial images materialize without entering CRB payloads", {
@@ -1604,6 +1723,18 @@ test_that("a real example is exported and verified only inside its stage", {
   expect_length(result$built, 1L)
   expect_true(startsWith(result$built[[1L]], normalizePath(stage)))
   expect_true(result$verifications[["pbmc-small"]]$valid)
+  expect_identical(
+    result$verifications[["pbmc-small"]]$file_fingerprint,
+    .bundlePreflightFingerprint(result$built[[1L]])
+  )
+  expect_identical(
+    result$verifications[["pbmc-small"]]$bundle_preflight$backend$type,
+    "embedded"
+  )
+  expect_length(
+    result$verifications[["pbmc-small"]]$bundle_preflight$spatial_catalog,
+    0L
+  )
   expect_identical(
     result$verifications[["pbmc-small"]]$metadata,
     item$artifact_identity$metadata

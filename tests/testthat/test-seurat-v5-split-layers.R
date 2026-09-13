@@ -114,6 +114,28 @@ test_that("alignment resolves exact Assay5 and legacy Assay memberships", {
   )
 })
 
+test_that("exact legacy Assay resolution reads its slot directly", {
+  object <- SeuratObject::pbmc_small
+  assay <- object[["RNA"]]
+  expect_true(inherits(assay, "Assay"))
+  layer_data_called <- FALSE
+
+  resolution <- .resolve_seurat_v5_layer(
+    seurat = object,
+    assay = "RNA",
+    requested_layer = "data",
+    .layer_data = function(...) {
+      layer_data_called <<- TRUE
+      stop("legacy Assay should not call LayerData")
+    }
+  )
+
+  expect_false(layer_data_called)
+  expect_identical(resolution$data, methods::slot(assay, "data"))
+  expect_identical(resolution$resolved, "data")
+  expect_false(resolution$joined)
+})
+
 add_custom_partition <- function(
   object,
   root,

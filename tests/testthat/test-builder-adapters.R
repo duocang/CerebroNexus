@@ -8,6 +8,23 @@ builder_repo_source("io.R", local = globalenv())
 
 .builder_adapter_source_contracts()
 
+test_that("snapshot contracts read legacy Assay slots directly", {
+  object <- SeuratObject::pbmc_small
+  expect_true(inherits(object[["RNA"]], "Assay"))
+  layer_data_called <- FALSE
+
+  contracts <- .builder_snapshot_layer_contracts(
+    object,
+    .layer_data = function(...) {
+      layer_data_called <<- TRUE
+      stop("legacy Assay should not call LayerData")
+    }
+  )
+
+  expect_false(layer_data_called)
+  expect_length(contracts, 0L)
+})
+
 .builder_normalize_profile_sources <- function(value) {
   if (!is.list(value)) {
     return(value)

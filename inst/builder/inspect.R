@@ -380,10 +380,9 @@ describe_misc <- function(object) {
       label = "HLA typing",
       found = present("hla_typing")
     ),
-    ## Trekker is the one modality exportFromSeurat() does not read off @misc,
-    ## so the builder writes it into the .crb afterwards. Worth listing for the
-    ## same reason as the rest: its absence is why a page the user expected is
-    ## missing.
+    ## exportFromSeurat() reads Trekker from @misc after Builder has applied its
+    ## frozen group, colour, and alignment settings. Its absence is why a page
+    ## the user expected is missing.
     list(
       key = "trekker",
       label = "Trekker spatial mapping",

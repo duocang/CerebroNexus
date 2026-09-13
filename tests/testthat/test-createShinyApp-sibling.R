@@ -158,6 +158,82 @@ test_that("CRB preflight preserves an inspection error when release also fails",
   expect_identical(events, c("backend", "release"))
 })
 
+test_that("CRB preflight consumes matching Builder verification once", {
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  writeBin(as.raw(1:8), path)
+  data <- c(First = path)
+  cached <- list(
+    backends = list(
+      First = list(
+        type = "embedded",
+        location = NULL,
+        legacy = FALSE
+      )
+    ),
+    spatial_catalogs = list(First = list(section = "H&E"))
+  )
+  fingerprints <- list(First = .bundlePreflightFingerprint(path))
+
+  expect_true(.cacheBundlePreflightData(data, cached, fingerprints))
+  observed <- .preflightBundleData(
+    data,
+    read_object = function(path) stop("cached CRB was read again")
+  )
+
+  expect_identical(observed, cached)
+  reads <- 0L
+  .preflightBundleData(
+    data,
+    read_object = function(path) {
+      reads <<- reads + 1L
+      list(path = path)
+    },
+    inspect_backend = function(path, object) cached$backends$First,
+    inspect_spatial = function(object, dataset) cached$spatial_catalogs$First
+  )
+  expect_identical(reads, 1L)
+})
+
+test_that("CRB preflight rejects a same-size cache substitution", {
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  writeBin(as.raw(1:8), path)
+  data <- c(First = path)
+  cached <- list(
+    backends = list(
+      First = list(
+        type = "embedded",
+        location = NULL,
+        legacy = FALSE
+      )
+    ),
+    spatial_catalogs = list(First = list())
+  )
+  fingerprints <- list(First = .bundlePreflightFingerprint(path))
+  expect_true(.cacheBundlePreflightData(data, cached, fingerprints))
+
+  old_time <- file.info(path)$mtime
+  Sys.sleep(0.01)
+  writeBin(as.raw(9:16), path)
+  Sys.setFileTime(path, old_time)
+  reads <- 0L
+  observed <- .preflightBundleData(
+    data,
+    read_object = function(path) {
+      reads <<- reads + 1L
+      list(path = path)
+    },
+    inspect_backend = function(path, object) cached$backends$First,
+    inspect_spatial = function(object, dataset) cached$spatial_catalogs$First
+  )
+
+  expect_identical(reads, 1L)
+  expect_identical(observed, cached)
+})
+
 write_spatial_bundle_crb <- function(
   directory,
   name = "dataset.crb",

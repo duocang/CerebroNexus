@@ -1294,14 +1294,22 @@ builder_adapter_inspect <- function(adapter) {
   as.matrix(layer[rows, columns, drop = FALSE])
 }
 
-.builder_snapshot_layer_contracts <- function(object) {
+.builder_snapshot_layer_contracts <- function(
+  object,
+  .layer_data = SeuratObject::LayerData
+) {
   contracts <- list()
   for (assay in names(object@assays)) {
-    for (layer_name in SeuratObject::Layers(object[[assay]])) {
-      layer <- suppressWarnings(SeuratObject::LayerData(
-        object[[assay]],
-        layer = layer_name
-      ))
+    assay_object <- object[[assay]]
+    for (layer_name in SeuratObject::Layers(assay_object)) {
+      layer <- if (
+        inherits(assay_object, "Assay") &&
+          layer_name %in% methods::slotNames(assay_object)
+      ) {
+        methods::slot(assay_object, layer_name)
+      } else {
+        suppressWarnings(.layer_data(assay_object, layer = layer_name))
+      }
       signature <- NULL
       if (inherits(layer, "IterableMatrix")) {
         inputs <- tryCatch(

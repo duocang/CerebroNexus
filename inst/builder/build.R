@@ -176,6 +176,14 @@
   NULL
 }
 
+.builder_build_runtime_function <- function(name) {
+  value <- get0(name, mode = "function", inherits = TRUE)
+  if (is.null(value)) {
+    value <- get(name, envir = asNamespace("CerebroNexus"), inherits = FALSE)
+  }
+  value
+}
+
 .builder_build_identity <- function(object, axis) {
   expression <- .builder_build_field(object, "expression")
   ids <- if (identical(axis, "cells")) {
@@ -283,6 +291,10 @@ builder_verify_crb <- function(path, item) {
   if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
     stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
   }
+  fingerprint_file <- .builder_build_runtime_function(
+    ".bundlePreflightFingerprint"
+  )
+  file_fingerprint <- fingerprint_file(path)
   object <- tryCatch(readRDS(path), error = function(error) error)
   if (inherits(object, "condition")) {
     stop(
@@ -624,6 +636,31 @@ builder_verify_crb <- function(path, item) {
       call. = FALSE
     )
   }
+  bundle_preflight <- if (is.null(file_fingerprint)) {
+    NULL
+  } else {
+    tryCatch(
+      list(
+        backend = .builder_build_runtime_function(".readBundleBackend")(
+          path,
+          object
+        ),
+        spatial_catalog = .builder_build_runtime_function(
+          ".readBundleSpatialCatalog"
+        )(
+          object,
+          item$name %||% basename(path)
+        )
+      ),
+      error = function(error) NULL
+    )
+  }
+  if (
+    !is.null(file_fingerprint) &&
+      !identical(file_fingerprint, fingerprint_file(path))
+  ) {
+    stop("The staged CRB changed while it was verified.", call. = FALSE)
+  }
   list(
     valid = TRUE,
     path = path,
@@ -637,6 +674,8 @@ builder_verify_crb <- function(path, item) {
     spatial_sections = spatial_sections,
     image_sections = names(expected_images),
     backend = backend,
+    file_fingerprint = file_fingerprint,
+    bundle_preflight = bundle_preflight,
     page_contract = list(visible_conditional = visible)
   )
 }
@@ -865,6 +904,51 @@ builder_verify_crb <- function(path, item) {
   object
 }
 
+.builder_build_prepare_trekker <- function(object, item) {
+  if (!methods::is(object, "Seurat")) {
+    return(object)
+  }
+  trekker <- object@misc$trekker
+  if (is.null(trekker) || !length(trekker)) {
+    return(object)
+  }
+  if (!is.list(trekker)) {
+    stop("Trekker data must be a list.", call. = FALSE)
+  }
+
+  group <- item$default_group %||% NULL
+  trekker$builder_group <- group
+  trekker$builder_colors <- if (is.null(group)) {
+    NULL
+  } else {
+    (item$colors %||% list())[[group]] %||% NULL
+  }
+  barcodes <- as.character(trekker$barcodes %||% character())
+  if (
+    !is.null(group) &&
+      length(barcodes) &&
+      group %in% colnames(object@meta.data) &&
+      all(barcodes %in% rownames(object@meta.data))
+  ) {
+    trekker$builder_group_values <- as.character(
+      object@meta.data[barcodes, group, drop = TRUE]
+    )
+  }
+
+  alignment <- builder_alignment_normalize(
+    item$trekker_alignment %||% NULL,
+    section_id = "trekker",
+    section_kind = "trekker"
+  )
+  if (!is.null(alignment)) {
+    trekker$histology_image <- alignment$source_uri
+    trekker$histology_image_bounds <- alignment$base_bounds
+    trekker$histology_alignment <- builder_alignment_payload(alignment)
+  }
+  object@misc$trekker <- trekker
+  object
+}
+
 .builder_build_prepare <- function(object, item) {
   if (methods::is(object, "Seurat")) {
     object@reductions <- object@reductions[item$included_projections]
@@ -883,6 +967,7 @@ builder_verify_crb <- function(path, item) {
         levels = item$artifact_identity$group_levels[[group]]
       )
     }
+    object <- .builder_build_prepare_trekker(object, item)
     if (length(item$tables %||% list())) {
       object <- builder_attach_tables(
         object,
@@ -959,32 +1044,18 @@ builder_verify_crb <- function(path, item) {
   } else {
     NULL
   }
-  if (!is.null(trekker) && length(trekker)) {
-    trekker$builder_group <- item$default_group %||% NULL
-    trekker$builder_colors <- item$colors[[item$default_group]] %||% NULL
-    group <- item$default_group %||% NULL
-    barcodes <- as.character(trekker$barcodes %||% character())
-    if (
-      !is.null(group) &&
-        length(barcodes) &&
-        group %in% colnames(object@meta.data) &&
-        all(barcodes %in% rownames(object@meta.data))
-    ) {
-      trekker$builder_group_values <- as.character(
-        object@meta.data[barcodes, group, drop = TRUE]
-      )
-    }
+  if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
+    stop("Trekker data must be a list.", call. = FALSE)
   }
+  trekker_applied <- is.list(trekker) && length(trekker) > 0L
   embedded_images <- if (identical(item$spatial_image_storage, "external")) {
     list()
   } else {
     item$images %||% list()
   }
   result <- builder_attach_crb_extras(
-    path,
-    embedded_images,
-    trekker,
-    item$trekker_alignment %||% NULL,
+    crb_path = path,
+    images = embedded_images,
     external_images = if (identical(item$spatial_image_storage, "external")) {
       item$images %||% list()
     } else {
@@ -994,6 +1065,7 @@ builder_verify_crb <- function(path, item) {
   if (!is.null(result$error)) {
     stop(result$error, call. = FALSE)
   }
+  result$trekker <- trekker_applied
   if (identical(item$spatial_image_storage, "external")) {
     external <- .builder_build_materialize_spatial_images(item, dirname(path))
     result$external_images <- external$images
@@ -1430,6 +1502,49 @@ builder_execute_plan <- function(
     )
     if (inherits(request, "condition")) {
       return(.builder_build_failure(conditionMessage(request)))
+    }
+    verified_preflight <- lapply(app_plan$items, function(item) {
+      result$verifications[[item$id]] %||% list()
+    })
+    cacheable <- all(vapply(
+      verified_preflight,
+      function(verification) {
+        is.list(verification$bundle_preflight) &&
+          is.list(verification$file_fingerprint)
+      },
+      logical(1)
+    ))
+    clear_preflight <- .builder_build_runtime_function(
+      ".clearBundlePreflightCache"
+    )
+    cache_preflight <- .builder_build_runtime_function(
+      ".cacheBundlePreflightData"
+    )
+    clear_preflight()
+    on.exit(clear_preflight(), add = TRUE)
+    if (cacheable) {
+      preflight_data <- list(
+        backends = stats::setNames(
+          lapply(verified_preflight, function(x) x$bundle_preflight$backend),
+          result$labels
+        ),
+        spatial_catalogs = stats::setNames(
+          lapply(
+            verified_preflight,
+            function(x) x$bundle_preflight$spatial_catalog
+          ),
+          result$labels
+        )
+      )
+      fingerprints <- stats::setNames(
+        lapply(verified_preflight, `[[`, "file_fingerprint"),
+        result$labels
+      )
+      cache_preflight(
+        request$cerebro_data,
+        preflight_data,
+        fingerprints
+      )
     }
     app_dir <- tryCatch(
       hooks$build_app(request, stage, auth_material = auth_material),

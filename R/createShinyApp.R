@@ -1052,6 +1052,134 @@ dedent <- function(string) {
   catalog
 }
 
+# Builder verification may populate this one-shot cache. Reuse requires the
+# same path, inode, timestamps (including ctime), permissions, and size; every
+# miss keeps the ordinary CRB preflight path.
+.bundlePreflightCache <- new.env(parent = emptyenv())
+
+.bundlePreflightFingerprint <- function(path) {
+  info <- tryCatch(
+    fs::file_info(path, fail = TRUE, follow = FALSE),
+    error = function(error) NULL
+  )
+  canonical <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (
+    is.null(info) ||
+      nrow(info) != 1L ||
+      !identical(as.character(info$type), "file") ||
+      is.null(canonical)
+  ) {
+    return(NULL)
+  }
+  fingerprint <- list(
+    path = canonical,
+    size = as.double(info$size),
+    permissions = as.character(info$permissions),
+    device_id = as.double(info$device_id),
+    inode = as.double(info$inode),
+    hard_links = as.double(info$hard_links),
+    modification_time = as.double(info$modification_time),
+    change_time = as.double(info$change_time)
+  )
+  scalar <- vapply(fingerprint, length, integer(1)) == 1L
+  missing <- vapply(fingerprint, function(value) anyNA(value), logical(1))
+  numeric_fields <- setdiff(names(fingerprint), c("path", "permissions"))
+  finite <- vapply(
+    fingerprint[numeric_fields],
+    function(value) is.finite(value),
+    logical(1)
+  )
+  if (
+    !all(scalar) ||
+      any(missing) ||
+      !all(finite) ||
+      !nzchar(fingerprint$path) ||
+      !nzchar(fingerprint$permissions) ||
+      fingerprint$size < 0 ||
+      fingerprint$device_id < 0 ||
+      fingerprint$inode < 0 ||
+      fingerprint$hard_links < 1
+  ) {
+    return(NULL)
+  }
+  fingerprint
+}
+
+.bundlePreflightCacheKey <- function(path, dataset) {
+  paste(dataset, path, sep = "\r")
+}
+
+.clearBundlePreflightCache <- function() {
+  keys <- ls(.bundlePreflightCache, all.names = TRUE)
+  if (length(keys)) {
+    rm(list = keys, envir = .bundlePreflightCache)
+  }
+  invisible(TRUE)
+}
+
+.cacheBundlePreflightData <- function(
+  cerebro_data,
+  preflight_data,
+  fingerprints
+) {
+  labels <- names(cerebro_data)
+  valid <- is.character(cerebro_data) &&
+    length(cerebro_data) > 0L &&
+    !is.null(labels) &&
+    !anyNA(labels) &&
+    all(nzchar(labels)) &&
+    is.list(preflight_data) &&
+    identical(names(preflight_data), c("backends", "spatial_catalogs")) &&
+    identical(names(preflight_data$backends), labels) &&
+    identical(names(preflight_data$spatial_catalogs), labels) &&
+    is.list(fingerprints) &&
+    identical(names(fingerprints), labels)
+  if (!valid) {
+    return(FALSE)
+  }
+
+  entries <- vector("list", length(cerebro_data))
+  for (index in seq_along(cerebro_data)) {
+    observed <- .bundlePreflightFingerprint(cerebro_data[[index]])
+    if (is.null(observed) || !identical(observed, fingerprints[[index]])) {
+      return(FALSE)
+    }
+    entries[[index]] <- list(
+      key = .bundlePreflightCacheKey(observed$path, labels[[index]]),
+      fingerprint = observed,
+      backend = preflight_data$backends[[index]],
+      spatial_catalog = preflight_data$spatial_catalogs[[index]]
+    )
+  }
+  for (entry in entries) {
+    assign(entry$key, entry, envir = .bundlePreflightCache)
+  }
+  TRUE
+}
+
+.takeBundlePreflightData <- function(path, dataset) {
+  observed <- .bundlePreflightFingerprint(path)
+  if (is.null(observed)) {
+    return(NULL)
+  }
+  key <- .bundlePreflightCacheKey(observed$path, dataset)
+  entry <- get0(key, envir = .bundlePreflightCache, inherits = FALSE)
+  if (is.null(entry)) {
+    return(NULL)
+  }
+  rm(list = key, envir = .bundlePreflightCache)
+  if (!identical(entry$fingerprint, observed)) {
+    return(NULL)
+  }
+  list(
+    backend = entry$backend,
+    spatial_catalog = entry$spatial_catalog
+  )
+}
+
 .preflightBundleData <- function(
   cerebro_data,
   read_object = readRDS,
@@ -1064,6 +1192,15 @@ dedent <- function(string) {
   names(backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
+    cached <- .takeBundlePreflightData(
+      cerebro_data[[index]],
+      names(cerebro_data)[[index]]
+    )
+    if (!is.null(cached)) {
+      backends[[index]] <- cached$backend
+      spatial_catalogs[[index]] <- cached$spatial_catalog
+      next
+    }
     object <- read_object(cerebro_data[[index]])
     inspection_error <- NULL
     release_error <- NULL
