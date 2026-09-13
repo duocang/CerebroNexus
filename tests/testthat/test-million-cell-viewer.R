@@ -88,6 +88,44 @@ test_that("specialist pages do not request the full linked bundle", {
   expect_no_match(engine, "linkedVis || !!singleId", fixed = TRUE)
 })
 
+test_that("specialist pages resend whenever they become visible again", {
+  pages <- list(
+    list(
+      c("overview", "event_projection_update_plot.R"),
+      "overview_projection_render_request"
+    ),
+    list(
+      c("gene_expression", "event_projection_update_plot.R"),
+      "expression_projection_render_request"
+    ),
+    list(
+      c("spatial", "event_projection_update_plot.R"),
+      "spatial_projection_render_request"
+    ),
+    list(
+      c("trajectory", "projection_plot.R"),
+      "trajectory_projection_render_request"
+    ),
+    list(
+      c("hla_tcr_motifs", "visualizations.R"),
+      "hla_motif_network_render_request"
+    )
+  )
+
+  for (page in pages) {
+    source <- paste(
+      readLines(do.call(viewer_test_path, as.list(page[[1]])), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_match(
+      source,
+      sprintf('req(input[["%s"]]', page[[2]]),
+      fixed = TRUE,
+      info = page[[2]]
+    )
+  }
+})
+
 test_that("specialist pages use binary transport when the browser supports it", {
   utility <- paste(
     readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
@@ -102,6 +140,46 @@ test_that("specialist pages use binary transport when the browser supports it", 
   expect_match(utility, '"cell_view_binary"', fixed = TRUE)
   expect_match(engine, "'cell_view_binary'", fixed = TRUE)
   expect_match(engine, "!ArrayBuffer.isView(data.color)", fixed = TRUE)
+})
+
+test_that("trajectory cell views remain eligible for WebGPU", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const fn = source.match(/function gpuCandidate\\(p\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
+      "const GPU_MIN_CELLS = 4096, D = {n: 1000000};",
+      "const spaceById = {trajectory: {_unit: {nz: false}, trajectory: true}};",
+      "eval(fn);",
+      "if (!gpuCandidate({gpu: {}, spaceId: 'trajectory'})) process.exit(1);"
+    ),
+    runner
+  )
+
+  expect_identical(system2("node", runner), 0L)
+})
+
+test_that("single Canvas views accept per-point sizes", {
+  utility <- paste(
+    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(utility, '"point_sizes"', fixed = TRUE)
+  expect_match(javascript, "space.pointSizes", fixed = TRUE)
+  expect_match(javascript, "pointSizes[i]", fixed = TRUE)
+  expect_match(javascript, "singleView._selectionReported", fixed = TRUE)
 })
 
 test_that("gene controls load transcriptome choices server-side", {
@@ -144,6 +222,186 @@ test_that("the real Viewer benchmark accepts the Canvas baseline", {
   expect_match(benchmark, "linked_ready_ms", fixed = TRUE)
   expect_match(benchmark, "gene_ready_ms", fixed = TRUE)
   expect_match(benchmark, "rgb_ready_ms", fixed = TRUE)
+})
+
+test_that("the page benchmark has a publication-grade contract", {
+  benchmark_file <- testthat::test_path(
+    "..",
+    "bench",
+    "benchmark_viewer_1m_pages.R"
+  )
+  skip_if_not(
+    file.exists(benchmark_file),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+  benchmark <- paste(readLines(benchmark_file, warn = FALSE), collapse = "\n")
+
+  expect_no_match(benchmark, "requestAnimationFrame", fixed = TRUE)
+  expect_no_match(benchmark, "!isTRUE(first) ||", fixed = TRUE)
+  expect_match(benchmark, "cerebro:specialist-state", fixed = TRUE)
+  expect_match(benchmark, "cerebro:linkedviews-ready", fixed = TRUE)
+  expect_match(benchmark, "cerebroLinkedViewsState.ready()", fixed = TRUE)
+  expect_match(benchmark, "run_observation", fixed = TRUE)
+  expect_match(benchmark, "arm_and_click_page <- function", fixed = TRUE)
+  expect_no_match(benchmark, "arm_page <- function", fixed = TRUE)
+  expect_match(benchmark, "const generation", fixed = TRUE)
+  expect_match(benchmark, "performance.now()", fixed = TRUE)
+  expect_match(benchmark, "e.timeStamp >= clickStart", fixed = TRUE)
+  expect_match(
+    benchmark,
+    "open_page(app, page, require_event = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(benchmark, "requires_ready_event(", fixed = TRUE)
+  expect_match(benchmark, "ready_event_required", fixed = TRUE)
+  expect_no_match(benchmark, "Network$enable", fixed = TRUE)
+  expect_no_match(benchmark, "Network$webSocketFrame", fixed = TRUE)
+  expect_no_match(benchmark, "frame_payload_bytes", fixed = TRUE)
+  expect_match(benchmark, "Shiny.shinyapp.$socket", fixed = TRUE)
+  expect_match(benchmark, "TextEncoder", fixed = TRUE)
+  expect_match(benchmark, "ArrayBuffer.isView", fixed = TRUE)
+  expect_match(benchmark, "data instanceof Blob", fixed = TRUE)
+  expect_match(benchmark, "removeEventListener('message'", fixed = TRUE)
+  expect_match(benchmark, "socket.send=meter.originalSend", fixed = TRUE)
+  canvas_spec <- sub(
+    "(?s).*?(canvas_page <- function.*?)(?=\\n\\npages <- list).*",
+    "\\1",
+    benchmark,
+    perl = TRUE
+  )
+  expect_match(canvas_spec, "wait_idle = FALSE", fixed = TRUE)
+  for (name in c(
+    "overview",
+    "gene_expression",
+    "immune_repertoire",
+    "trajectory",
+    "hla",
+    "spatial"
+  )) {
+    expect_match(
+      benchmark,
+      paste0(name, " = canvas_page("),
+      fixed = TRUE,
+      info = name
+    )
+  }
+  coordinated_spec <- substring(
+    benchmark,
+    regexpr("coordinated_views = page(", benchmark, fixed = TRUE)
+  )
+  expect_match(coordinated_spec, "wait_idle = FALSE", fixed = TRUE)
+  atomic_click <- sub(
+    "(?s).*?(arm_and_click_page <- function.*?)(?=\\n\\npage_available).*",
+    "\\1",
+    benchmark,
+    perl = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(atomic_click, gregexpr("app\\$run_js", atomic_click))),
+    1L
+  )
+  expect_match(
+    benchmark,
+    "(?s)coordinated_views = page\\(.*?required = TRUE.*?ready_event = ",
+    perl = TRUE
+  )
+  expect_match(
+    benchmark,
+    'results$status == "ok" & !results$pass',
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(gregexpr("expected_points = 1000000", benchmark, fixed = TRUE)),
+    4L
+  )
+  expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
+  expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
+
+  for (field in c(
+    "candidate_git_sha",
+    "artifact_sha256",
+    "host",
+    "r_version",
+    "package_version",
+    "chrome_version",
+    "r_peak_rss_kib",
+    "chrome_peak_rss_kib",
+    "js_heap_used_bytes",
+    "websocket_sent_payload_bytes",
+    "websocket_received_payload_bytes",
+    "correctness_pass",
+    "rendered_point_count",
+    "expected_point_count",
+    "correctness_detail"
+  )) {
+    expect_match(benchmark, field, fixed = TRUE, info = field)
+  }
+})
+
+test_that("the page benchmark schedule and budgets are balanced", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  expect_true(file.exists(protocol_file))
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+
+  schedule <- protocol$build_balanced_schedule(
+    c("baseline", "candidate"),
+    c("overview", "trajectory"),
+    5L
+  )
+  units <- split(
+    schedule,
+    interaction(schedule$round, schedule$page, schedule$visit, drop = TRUE)
+  )
+  expect_true(all(vapply(
+    units,
+    function(unit) setequal(unit$candidate, c("baseline", "candidate")),
+    logical(1)
+  )))
+  page_visits <- split(
+    schedule,
+    interaction(schedule$page, schedule$visit, drop = TRUE)
+  )
+  expect_true(all(vapply(
+    page_visits,
+    function(rows) {
+      positions <- table(rows$candidate, rows$candidate_position)
+      max(positions) - min(positions) <= 1L
+    },
+    logical(1)
+  )))
+
+  expect_error(
+    protocol$validate_page_profile("publication", 4L),
+    "at least 5 rounds"
+  )
+  expect_silent(protocol$validate_page_profile("publication", 5L))
+  expect_true(protocol$page_budget_pass(1999, 2000))
+  expect_false(protocol$page_budget_pass(2000, 2000))
+  expect_true(protocol$requires_ready_event(
+    "coordinated_views",
+    "first",
+    warmed = FALSE
+  ))
+  expect_true(protocol$requires_ready_event(
+    "coordinated_views",
+    "repeat",
+    warmed = FALSE
+  ))
+  expect_false(protocol$requires_ready_event(
+    "coordinated_views",
+    "repeat",
+    warmed = TRUE
+  ))
+  expect_true(protocol$requires_ready_event(
+    "trajectory",
+    "repeat",
+    warmed = TRUE
+  ))
 })
 
 test_that("the cold-start benchmark measures an installed Viewer", {
