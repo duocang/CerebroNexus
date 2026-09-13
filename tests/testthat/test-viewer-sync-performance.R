@@ -1,14 +1,23 @@
-run_projection_indices <- function(metadata, filters, percentage) {
+run_projection_indices <- function(
+  metadata,
+  filters,
+  percentage,
+  groups = names(filters)
+) {
   scope <- new.env(parent = globalenv())
   scope$input <- c(
     list(test_percentage_cells_to_show = percentage),
-    stats::setNames(
-      filters,
-      paste0("test_group_filter_", names(filters))
-    )
+    if (length(filters)) {
+      stats::setNames(
+        filters,
+        paste0("test_group_filter_", names(filters))
+      )
+    } else {
+      list()
+    }
   )
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
-  scope$getGroups <- function() names(filters)
+  scope$getGroups <- function() groups
   scope$getGroupLevels <- function(group) unique(metadata[[group]])
   scope$viewerProjectionCellIndices("test", metadata)
 }
@@ -205,6 +214,19 @@ test_that("projection filtering and sampling preserve original row indices", {
   expect_identical(
     run_projection_indices(metadata, list(batch = character()), 50),
     integer()
+  )
+
+  set.seed(456L)
+  expected_unbound <- sample.int(nrow(metadata))
+  set.seed(456L)
+  expect_identical(
+    run_projection_indices(
+      metadata,
+      list(),
+      100,
+      groups = c("batch", "state")
+    ),
+    expected_unbound
   )
 })
 
