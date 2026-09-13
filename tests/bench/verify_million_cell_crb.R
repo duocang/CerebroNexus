@@ -41,6 +41,10 @@ linked_sidecar <- file.path(root, backend$location)
 if (!file.symlink(sidecar, linked_sidecar)) {
   stop("Could not link the shared 1M BPCells sidecar.", call. = FALSE)
 }
+local_crb <- file.path(root, basename(crb))
+if (!file.copy(crb, local_crb)) {
+  stop("Could not stage the 1M CRB beside its shared sidecar.", call. = FALSE)
+}
 
 verify_hydrated <- function(object) {
   stopifnot(
@@ -96,7 +100,7 @@ if (phase %in% c("rds", "all")) {
   ))
 
   converted <- file.path(root, "converted-rds.crb")
-  convertCerebro(crb, converted, codec = "rds")
+  convertCerebro(local_crb, converted, codec = "rds")
   verify_thin_payload(readRDS(converted))
   verify_hydrated(readCerebro(converted))
 }
@@ -117,7 +121,7 @@ if (phase %in% c("qs2", "all")) {
   verify_hydrated(readCerebro(back_to_rds))
 
   default <- file.path(root, "thin-default.crb")
-  convertCerebro(crb, default)
+  convertCerebro(local_crb, default)
   stopifnot(identical(
     readBin(default, "raw", n = 4L),
     as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))

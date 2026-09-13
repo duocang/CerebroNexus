@@ -312,15 +312,22 @@
   }
 }
 
-.readCerebroPayload <- function(file) {
+.cerebroPayloadCodec <- function(file) {
   connection <- file(file, open = "rb")
   on.exit(close(connection), add = TRUE)
   magic <- readBin(connection, "raw", n = 4L)
   if (identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))) {
-    qs2::qs_read(file)
+    "qs2"
   } else {
-    readRDS(file)
+    "rds"
   }
+}
+
+.readCerebroPayload <- function(file) {
+  if (identical(.cerebroPayloadCodec(file), "qs2")) {
+    return(qs2::qs_read(file))
+  }
+  readRDS(file)
 }
 
 .installCerebroPayload <- function(stage, file) {

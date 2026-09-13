@@ -1780,7 +1780,8 @@ builder_attach_crb_extras <- function(
     return(list(error = "Trekker data must be a list."))
   }
 
-  crb <- try(readRDS(crb_path), silent = TRUE)
+  codec <- try(.cerebroPayloadCodec(crb_path), silent = TRUE)
+  crb <- try(readCerebro(crb_path), silent = TRUE)
   if (inherits(crb, "try-error")) {
     return(list(error = "The exported .crb could not be read back."))
   }
@@ -1873,8 +1874,13 @@ builder_attach_crb_extras <- function(
 
   written <- try(
     {
-      connection <- .open_gz(temporary, open = "wb", compression = 1L)
-      tryCatch(saveRDS(crb, connection), finally = close(connection))
+      payload <- .thinCerebroPayload(crb, crb_path)
+      if (identical(codec, "rds")) {
+        connection <- .open_gz(temporary, open = "wb", compression = 1L)
+        tryCatch(saveRDS(payload, connection), finally = close(connection))
+      } else {
+        .writeCerebroPayload(payload, temporary, codec)
+      }
     },
     silent = TRUE
   )

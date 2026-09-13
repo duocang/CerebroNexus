@@ -295,7 +295,8 @@ builder_verify_crb <- function(path, item) {
     ".bundlePreflightFingerprint"
   )
   file_fingerprint <- fingerprint_file(path)
-  object <- tryCatch(readRDS(path), error = function(error) error)
+  read_crb <- .builder_build_runtime_function("readCerebro")
+  object <- tryCatch(read_crb(path), error = function(error) error)
   if (inherits(object, "condition")) {
     stop(
       "The staged CRB cannot be reopened: ",
@@ -1032,6 +1033,7 @@ builder_verify_crb <- function(path, item) {
     add_all_meta_data = TRUE,
     projections = item$included_projections,
     expression_matrix_mode = item$expression_backend,
+    codec = "qs2",
     spatial_coordinate_transforms = coordinate_transforms,
     verbose = FALSE
   )
