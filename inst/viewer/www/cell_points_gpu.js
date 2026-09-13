@@ -153,6 +153,17 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
     var contextLost = false;
     var gpuError = '';
     var metrics = { backend: 'webgpu', ready: false, pointCount: 0 };
+    var resolveFailure;
+    var failed = new Promise(function (resolve) { resolveFailure = resolve; });
+
+    function fail(error) {
+      if (!ready && gpuError) return;
+      gpuError = error && (error.message || error.reason)
+        ? error.message || error.reason : String(error || 'WebGPU failed.');
+      ready = false;
+      metrics.ready = false;
+      resolveFailure(gpuError);
+    }
 
     function resize(cssWidth, cssHeight, dpr) {
       width = Math.max(1, Number(cssWidth) || 1);
@@ -182,12 +193,10 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
         : '';
       device.lost.then(function (info) {
         contextLost = true;
-        gpuError = info.message || info.reason || 'WebGPU device lost.';
-        ready = false;
+        fail(info || 'WebGPU device lost.');
       });
       device.addEventListener('uncapturederror', function (event) {
-        gpuError = event.error && event.error.message
-          ? event.error.message : 'Uncaptured WebGPU error.';
+        fail(event.error || 'Uncaptured WebGPU error.');
       });
       context = canvas.getContext('webgpu');
       if (!context) throw new Error('Could not create a WebGPU canvas context.');
@@ -208,7 +217,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
       ready = true;
       metrics.ready = true;
     })().catch(function (error) {
-      gpuError = error.message || String(error);
+      fail(error);
       throw error;
     });
 
@@ -331,6 +340,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
       global.devicePixelRatio || 1);
     return {
       ready: initialized,
+      failed: failed,
       isReady: function () { return ready; },
       resize: resize,
       setData: setData,
