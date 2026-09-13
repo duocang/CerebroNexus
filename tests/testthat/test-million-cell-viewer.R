@@ -177,6 +177,40 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
     )
   )
 })
+
+test_that("progressive specialist preparation has a bounded lifecycle", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(engine, "createSinglePreparedCache(1)", fixed = TRUE)
+  expect_match(engine, "singlePreparedCache.clear()", fixed = TRUE)
+  expect_match(engine, "singlePreparedCache.resolve(", fixed = TRUE)
+  expect_match(engine, "singlePreparedCache.update(", fixed = TRUE)
+  expect_match(engine, "!isFinite(n) || n < 4096", fixed = TRUE)
+  expect_match(engine, "Array.isArray(data.panels)", fixed = TRUE)
+  expect_match(engine, "payload.meta && payload.meta.is_spatial", fixed = TRUE)
+  aux_start <- regexpr(
+    "function onSingleAuxBinary(buffer) {",
+    engine,
+    fixed = TRUE
+  )
+  aux_end <- regexpr("function applyData(bundle) {", engine, fixed = TRUE)
+  aux <- substr(engine, aux_start, aux_end - 1L)
+  expect_lt(
+    regexpr("singlePreparedCache.update(", aux, fixed = TRUE),
+    regexpr("if (singleActive !== message.id) return", aux, fixed = TRUE)
+  )
+  boot_start <- regexpr("function boot() {", engine, fixed = TRUE)
+  before_boot <- substr(engine, 1L, boot_start - 1L)
+  expect_no_match(before_boot, "createSinglePreparedCache(1)", fixed = TRUE)
+  expect_match(
+    substr(engine, boot_start, nchar(engine)),
+    "createSinglePreparedCache(1)",
+    fixed = TRUE
+  )
+})
 test_that("trajectory cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")

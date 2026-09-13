@@ -31,6 +31,7 @@
   var singleIndexMap = null;
   var singleSpaceIds = [];      // one space, or one per gene in multi-panel mode
   var singleSpaceModes = {};    // space id -> categorical/continuous colour mode
+  var singlePreparedCache = null;
   var surfaceHome = null;       // original Linked Views panel/legend locations
   var linkedState = null;       // Linked workspace state while a single page owns the surface
   var pendingColorPatch = null; // palette received before its dataset bundle
@@ -5633,6 +5634,7 @@
     restoreLinkedSurface();
     singleViews = {}; singleActive = null;
     singleRequests.clear();
+    singlePreparedCache.clear();
     singleSpaceIds = []; singleSpaceModes = {};
     singleIndexCells = null; singleIndexMap = null;
     linkedState = null;
@@ -6066,6 +6068,52 @@
     }
     return { spaces: spaces, modes: modes };
   }
+  function buildSinglePrepared(id, payload) {
+    var base = singlePayloadBundle(id, payload);
+    D = Object.assign({}, base, {
+      fields: Object.assign({}, base.fields),
+      cat_extra: Object.assign({}, base.cat_extra)
+    });
+    spaceById = {}; spatialTemplate = null; _clipD = null;
+    var built = buildSingleSpaces(id, payload);
+    sanitiseColors(D);
+    return {
+      data: D,
+      spaceById: spaceById,
+      spaceIds: built.spaces,
+      modes: built.modes
+    };
+  }
+  function restoreSinglePrepared(prepared) {
+    D = prepared.data;
+    spaceById = prepared.spaceById;
+    singleSpaceIds = prepared.spaceIds;
+    singleSpaceModes = prepared.modes;
+    spatialTemplate = null; _clipD = null;
+    singleIndexCells = null; singleIndexMap = null;
+  }
+  function singlePreparedToken(payload) {
+    var data = payload && payload.data;
+    var n = Number(data && data.n);
+    if (!data || (payload.meta && payload.meta.is_spatial) ||
+        Array.isArray(data.panels) || !isFinite(n) || n < 4096) return null;
+    return data.wire_token;
+  }
+  function patchSinglePreparedAux(prepared, view) {
+    var cells = singlePayloadCells(view);
+    var nestedLengths = null;
+    if (view.meta && view.meta.color_type === 'categorical') {
+      nestedLengths = (Array.isArray(view.data.x) ? view.data.x : []).map(
+        function (group) { return group ? group.length : 0; }
+      );
+    }
+    return window.CBViewState.patchSinglePreparedAux(
+      prepared,
+      cells,
+      view.hover,
+      nestedLengths
+    );
+  }
   function stashSingleState() {
     if (!singleActive || !singleViews[singleActive]) return;
     var view = singleViews[singleActive];
@@ -6099,16 +6147,13 @@
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
     setSelectionZoomed(false);
     if (!mountSingleSurface(id)) { singleActive = null; return false; }
-    var base = singlePayloadBundle(id, payload);
-    D = Object.assign({}, base, {
-      fields: Object.assign({}, base.fields),
-      cat_extra: Object.assign({}, base.cat_extra)
-    });
-    spaceById = {}; spatialTemplate = null; _clipD = null;
-    var built = buildSingleSpaces(id, payload);
+    var prepared = singlePreparedCache.resolve(
+      id,
+      singlePreparedToken(payload),
+      function () { return buildSinglePrepared(id, payload); }
+    );
+    restoreSinglePrepared(prepared);
     payload.data.reset_axes = false;
-    singleSpaceIds = built.spaces; singleSpaceModes = built.modes;
-    sanitiseColors(D);
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (isSpatialSpace(space)) loadSpaceImage(space);
     });
@@ -6370,39 +6415,23 @@
     try {
       var message = window.CBViewWire.unpack(buffer);
       var view = message && singleViews[message.id];
-      if (!view || !view.data ||
-          Number(view.data.wire_token) !== Number(message.wire_token)) return;
+      if (!view || !view.data || view.data.wire_token == null ||
+          message.wire_token == null ||
+          String(view.data.wire_token) !== String(message.wire_token)) return;
       view.data.selection_key = message.selection_key;
       view.hover = message.hover || {};
+      var cachedPatched = singlePreparedCache.update(
+        message.id,
+        message.wire_token,
+        function (prepared) { return patchSinglePreparedAux(prepared, view); }
+      );
       if (singleActive !== message.id) return;
-      var cells = singlePayloadCells(view);
-      if (cells.length !== D.n) return;
-      D.cells = cells;
+      if (!cachedPatched && !patchSinglePreparedAux({
+        data: D,
+        spaceById: spaceById,
+        spaceIds: singleSpaceIds
+      }, view)) return;
       singleIndexCells = null; singleIndexMap = null;
-      var nested = view.meta && view.meta.color_type === 'categorical';
-      var offsets = null;
-      if (nested) {
-        var groups = Array.isArray(view.data.x) ? view.data.x : [];
-        offsets = new Uint32Array(groups.length + 1);
-        groups.forEach(function (group, index) {
-          offsets[index + 1] = offsets[index] + (group ? group.length : 0);
-        });
-      }
-      var hover = view.hover || {};
-      var modes = hover.hoverinfo;
-      var enabled = Array.isArray(modes)
-        ? modes.some(function (mode) { return mode !== 'skip'; })
-        : modes !== 'skip';
-      singleSpaceIds.forEach(function (spaceId) {
-        var space = spaceById[spaceId];
-        if (!space) return;
-        space._hover = Array.isArray(hover.text) ? hover.text : [];
-        space._hoverColumns = Array.isArray(hover.columns) ? hover.columns : [];
-        space._hoverModes = modes;
-        space._hoverOffsets = offsets;
-        space._hoverEnabled = enabled;
-        space._hoverMask = null;
-      });
     } catch (error) {
       return;
     }
@@ -7072,7 +7101,9 @@
   var booted = false;
   function boot() {
     if (booted) return true;
-    if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return false;
+    if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler ||
+        !window.CBViewState || !window.CBViewState.createSinglePreparedCache) return false;
+    singlePreparedCache = window.CBViewState.createSinglePreparedCache(1);
     booted = true;
     Shiny.addCustomMessageHandler('coordviews_data', onData);
     Shiny.addCustomMessageHandler('coordviews_binary', onBinaryData);
