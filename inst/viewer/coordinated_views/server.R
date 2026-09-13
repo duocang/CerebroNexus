@@ -790,8 +790,7 @@ serverSideGeneSelector(
   session,
   "coordviews_gene",
   active = function() {
-    coordviews_background_ready() &&
-      coordviews_visible() &&
+    coordviews_visible() &&
       cv_has_expression()
   }
 )
@@ -802,8 +801,7 @@ lapply(
       session,
       channel_id,
       active = function() {
-        coordviews_background_ready() &&
-          coordviews_visible() &&
+        coordviews_visible() &&
           cv_has_expression()
       }
     )
