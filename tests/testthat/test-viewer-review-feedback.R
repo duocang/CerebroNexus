@@ -169,10 +169,28 @@ test_that("Informational Canvas text uses the readable secondary token", {
   }
 })
 
-test_that("Projection defaults to cell type when available", {
+test_that("Projection uses registered groups and their shared default", {
   ui <- viewer_source("overview", "UI_projection_main_parameters.R")
 
-  expect_match(ui, '"cell_type" %in% color_choices', fixed = TRUE)
+  expect_match(ui, "colour_groups <- viewerColourGroupChoices()", fixed = TRUE)
+  expect_match(ui, "choices = colour_groups$choices", fixed = TRUE)
+  expect_match(ui, "selected = colour_groups$selected", fixed = TRUE)
+})
+
+test_that("Viewer metadata Colour by controls share registered group choices", {
+  metadata_pages <- c(
+    viewer_source("overview", "UI_projection_main_parameters.R"),
+    viewer_source("spatial", "UI_projection_main_parameters.R"),
+    viewer_source("trajectory", "projection.R")
+  )
+  pages <- c(metadata_pages, viewer_source("coordinated_views", "bundle.R"))
+
+  for (page in pages) {
+    expect_match(page, "viewerColourGroupChoices(", fixed = TRUE)
+  }
+  for (page in metadata_pages) {
+    expect_no_match(page, "colnames(getMetaData())", fixed = TRUE)
+  }
 })
 
 test_that("Cell-view More settings expose only effective appearance controls", {
@@ -369,13 +387,33 @@ test_that("2-D views fill fluid panels without changing spatial scale", {
 
   expect_match(js, "if (!zs) {", fixed = TRUE)
   expect_match(js, "var k = 1 / Math.max(dw, dh);", fixed = TRUE)
-  expect_match(js, "function panelDataAspect", fixed = TRUE)
-  expect_match(js, "Number(sp._unit.aspect)", fixed = TRUE)
-  expect_match(js, "function fitAspectRow", fixed = TRUE)
-  expect_match(js, "if (!aspects.every(Boolean)) return null;", fixed = TRUE)
-  expect_no_match(js, "if (!aspects.some(Boolean)) return null;", fixed = TRUE)
-  expect_match(js, "fitAspectRow(vis, usableW", fixed = TRUE)
-  expect_match(js, "var aspect = panelDataAspect(p);", fixed = TRUE)
+  expect_match(js, "if (isSpatialSpace(sp) && !u.nz)", fixed = TRUE)
+  expect_match(
+    js,
+    "var aspect = Number(u.aspect), panelAspect = SX / SY;",
+    fixed = TRUE
+  )
+  expect_match(js, "ox += (SX - fittedWidth) / 2;", fixed = TRUE)
+  expect_match(js, "oy += (SY - fittedHeight) / 2;", fixed = TRUE)
+  expect_no_match(js, "function panelDataAspect", fixed = TRUE)
+  expect_no_match(js, "function fitAspectRow", fixed = TRUE)
+})
+
+test_that("Runtime-linked view slots create exactly one WebGL layer", {
+  js <- viewer_source("www", "cell_views.js")
+
+  expect_match(
+    js,
+    "clone.querySelectorAll('.cv-gpu-layer').forEach",
+    fixed = TRUE
+  )
+  expect_match(js, "attachGpu(p);", fixed = TRUE)
+  expect_match(js, "candidate.side === maxSide", fixed = TRUE)
+  expect_match(
+    js,
+    "Math.min(overview ? overview.cols : 1, availableCols)",
+    fixed = TRUE
+  )
 })
 
 test_that("Trekker uses the shared top toolbar and settings drawer", {

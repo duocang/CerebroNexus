@@ -91,6 +91,76 @@ test_that("bundle.R parses and defines the builder API", {
   )
 })
 
+test_that("Viewer Colour by honours registered groups and main group", {
+  skip_if_not(have_bundle)
+  helper <- get0("viewerColourGroupChoices", envir = cv_env)
+  expect_true(is.function(helper))
+  if (!is.function(helper)) {
+    return()
+  }
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    sample = c("s1", "s1", "s2"),
+    seurat_clusters = c("0", "1", "0"),
+    nUMI = c(100, 200, 300),
+    nGene = c(50, 75, 100),
+    orig.ident = c("old-a", "old-a", "old-b"),
+    stringsAsFactors = FALSE
+  )
+  result <- helper(
+    metadata,
+    c("sample", "seurat_clusters"),
+    "seurat_clusters"
+  )
+
+  expect_identical(result$choices, c("sample", "seurat_clusters"))
+  expect_identical(result$selected, "seurat_clusters")
+  expect_false(any(c("nUMI", "nGene", "orig.ident") %in% result$choices))
+  expect_identical(
+    helper(metadata, c("missing", "sample"), "missing")$selected,
+    "sample"
+  )
+  expect_identical(helper(metadata, character(), "sample")$choices, character())
+  expect_null(helper(metadata, character(), "sample")$selected)
+})
+
+test_that("Linked views excludes unregistered metadata colourings", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3")
+  metadata <- data.frame(
+    cell_barcode = cells,
+    sample = c("s1", "s1", "s2"),
+    seurat_clusters = c("0", "1", "0"),
+    nUMI = c(100, 200, 300),
+    nGene = c(50, 75, 100),
+    orig.ident = c("old-a", "old-a", "old-b"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() c("sample", "seurat_clusters"),
+    getParameters = function() list(main_group = "seurat_clusters"),
+    availableProjections = function() "umap",
+    getProjection = function(name) {
+      matrix(1:6, nrow = 3, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() c("ACTB", "GAPDH")
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+
+  expect_named(bundle$groups, c("sample", "seurat_clusters"))
+  expect_length(bundle$cat_extra, 0L)
+  expect_length(grep("^meta:", names(bundle$fields)), 0L)
+  expect_identical(bundle$default_group, "seurat_clusters")
+  expect_identical(as.character(bundle$genes), c("ACTB", "GAPDH"))
+})
+
 test_that("trajectory coordinates and graph enter Linked views", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
@@ -185,6 +255,16 @@ test_that("Linked views delegates menu height to the shared viewport sizing", {
     "window.innerHeight - top - 16",
     fixed = TRUE
   )
+  expect_match(
+    js,
+    "select._cerebroDropdownInstance !== instance",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "dataset.cerebroDropdownReady",
+    js,
+    fixed = TRUE
+  ))
 })
 
 test_that("Linked views places the shared legend above the panel grid", {
@@ -793,8 +873,8 @@ test_that("primary bundle materializes only the first visible projection and col
   supplement <- cv_env$cv_bundle_supplement(primary, full)
 
   expect_named(supplement$groups, "sample")
-  expect_named(supplement$cat_extra, "donor")
-  expect_named(supplement$fields, "meta:score")
+  expect_length(supplement$cat_extra, 0L)
+  expect_length(supplement$fields, 0L)
   expect_named(supplement$projections, "tsne")
   expect_identical(supplement$cat_skipped, full$cat_skipped)
 })
@@ -1279,7 +1359,7 @@ test_that("cv_build_projections records dimensionality instead of dropping it", 
   expect_s3_class(pj$umap_3D$z, "AsIs")
 })
 
-test_that("cv_build_bundle still works when no grouping variable is registered", {
+test_that("cv_build_bundle safely handles no registered grouping variable", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3")
   md <- data.frame(
@@ -1299,14 +1379,12 @@ test_that("cv_build_bundle still works when no grouping variable is registered",
     getImmuneRepertoire = function() NULL
   )
   b <- cv_env$cv_build_bundle(crb)
-  ## Projection colours cells by ANY meta column, so an object with no
-  ## registered group is perfectly usable there — Linked views must not go blank.
   expect_type(b, "list")
   expect_equal(b$n, 3L)
-  expect_true("meta:nUMI" %in% names(b$fields))
-  ## with nothing categorical to fall back on, the default colouring is the
-  ## first continuous field, expressed as the client's field mode string.
-  expect_equal(b$default_group, paste0(cv_env$cv_field_mode, "meta:nUMI"))
+  expect_length(b$groups, 0L)
+  expect_length(b$cat_extra, 0L)
+  expect_length(b$fields, 0L)
+  expect_null(b$default_group)
 })
 
 test_that("Linked views consumes the selected dataset point appearance", {
@@ -1361,7 +1439,7 @@ test_that("Linked views consumes the selected dataset point appearance", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expect_identical(bundle$default_projection, "tsne")
-  expect_identical(bundle$default_group, "cell_type")
+  expect_identical(bundle$default_group, "region")
   expect_identical(bundle$default_point_size, 5)
   expect_identical(bundle$default_point_opacity, 0.7)
   expect_identical(bundle$default_percentage_cells_to_show, 60)

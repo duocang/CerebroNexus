@@ -103,34 +103,20 @@ output[["trajectory_projection_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_projection_main_parameters_UI"]] <- renderUI({
-  ## determine which metadata columns to include based on exclude_trivial_metadata
-  exclude_trivial <- FALSE
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[['exclude_trivial_metadata']])
-  ) {
-    exclude_trivial <- Cerebro.options[['exclude_trivial_metadata']]
-  }
-
-  ## build choices based on setting
-  if (exclude_trivial == TRUE) {
-    ## only include groups from getGroups()
-    metadata_cols <- getGroups()
-  } else {
-    ## include all metadata columns except cell_barcode
-    metadata_cols <- colnames(getMetaData())[
-      !colnames(getMetaData()) %in% c("cell_barcode")
-    ]
-  }
+  colour_groups <- viewerColourGroupChoices()
 
   selectInput(
     "trajectory_point_color",
     label = "Colour by",
-    choices = c(
-      "state",
-      "pseudotime",
-      metadata_cols
-    )
+    choices = list(
+      "Trajectory" = c("State" = "state", "Pseudotime" = "pseudotime"),
+      "Grouping variables" = colour_groups$choices
+    ),
+    selected = if (is.null(colour_groups$selected)) {
+      "state"
+    } else {
+      colour_groups$selected
+    }
   )
 })
 
@@ -162,7 +148,7 @@ trajectory_projection_main_parameters_info <- list(
     <ul>
       <li><b>Choose a method:</b> Select the trajectory-inference method.</li>
       <li><b>Choose a trajectory:</b> Select the trajectory to display.</li>
-      <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
+      <li><b>Colour by:</b> Select a trajectory measure or one of the data set's registered grouping variables.</li>
     </ul>
     "
   )

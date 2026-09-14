@@ -893,13 +893,9 @@ cv_build_groups <- function(crb, md, colors_fn, only = NULL) {
   groups
 }
 
-## Continuous colourings from the meta data — every numeric column, aligned to
-## the meta data's row order (which IS `cells` order). This is the Projection
-## tab's "Colour by" list minus the categorical columns: it deliberately
-## includes the QC columns (nUMI / nGene / percent.mt / nCount_*), because
-## "colour the embedding by percent.mt and see which blob is junk" is one of the
-## most-used actions on that page. Constant and all-NA columns are skipped —
-## there is no colouring to build from them.
+## Encode numeric metadata as a continuous field for specialist payloads. The
+## main Viewer Colour by controls deliberately do not call this helper: their
+## metadata choices come only from registered groups.
 cv_build_fields <- function(md, skip = "cell_barcode", only = NULL) {
   fields <- list()
   field_names <- if (is.null(only)) {
@@ -930,17 +926,9 @@ cv_build_fields <- function(md, skip = "cell_barcode", only = NULL) {
   fields
 }
 
-## Categorical columns that are NOT registered grouping variables. The Projection
-## tab offers every meta column in "Colour by" while its "Group filters" box
-## only lists getGroups(); this mirrors that split — these are colourings (legend,
-## legend-hiding) but they do not become filters.
-##
-## Returns list(groups, skipped). A column with (nearly) as many levels as cells
-## is an identifier rather than a grouping: one colour per cell, and a legend
-## thousands of rows long. Those cannot be coloured by, but they are REPORTED
-## instead of dropped — `skipped` is name -> level count, which the client shows
-## greyed out in the picker. Silently omitting them left the two tabs offering
-## different lists with no way to tell why.
+## Encode unregistered categorical metadata for specialist payloads. The main
+## Linked views bundle keeps `cat_extra` empty so Builder group registration is
+## authoritative for metadata colouring.
 cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
   n <- nrow(md)
   max_levels <- max(2L, min(60L, as.integer(n / 2)))
@@ -1356,12 +1344,11 @@ cv_build_trekker <- function(crb, cells, md) {
     space$images <- I(list(image_entry))
     space$background_scope <- "Trekker"
   }
-  ## Bring the Trekker page's extra controls into Linked views: continuous
+  ## Bring the Trekker page's non-metadata controls into Linked views: continuous
   ## physical fields to colour by, per-cell positioning confidence (dissolve),
   ## and a positioning-evidence flag (nuclei markers). All aligned to `cells`;
-  ## positioned-only fields are NA where unpositioned. Numeric META columns are
-  ## NOT built here — cv_build_fields() offers every one of them for every data
-  ## set, Trekker or not.
+  ## positioned-only fields are NA where unpositioned. Numeric metadata columns
+  ## are deliberately not added to the Linked views Colour by picker.
   flds <- list()
   for (fn in names(tk$fields)) {
     f <- tk$fields[[fn]]
@@ -1547,118 +1534,29 @@ cv_build_clone <- function(crb, cells, n) {
   list(space = space, group = group, bundle = bundle)
 }
 
-## Pick the initial categorical colouring from human-written metadata names.
-## Separators and case are irrelevant; a short edit-distance fallback catches
-## common transpositions such as "Cell Tyep". Cell type wins over sample, and a
-## data set with neither starts on one randomly selected categorical field.
-cv_default_group <- function(available) {
-  available <- unique(as.character(available))
-  available <- available[!is.na(available) & nzchar(available)]
-  if (!length(available)) {
-    return(NULL)
-  }
-
-  normalized <- tolower(gsub("[^[:alnum:]]", "", available))
-  find_name <- function(target, prefix, max_distance = 2L) {
-    exact <- which(normalized == target)
-    if (length(exact)) {
-      return(available[[exact[[1L]]]])
-    }
-    prefixed <- which(startsWith(normalized, target))
-    if (length(prefixed)) {
-      return(available[[prefixed[[1L]]]])
-    }
-    candidates <- which(startsWith(normalized, prefix))
-    if (!length(candidates)) {
-      return(NULL)
-    }
-    distances <- as.integer(utils::adist(normalized[candidates], target))
-    closest <- which.min(distances)
-    if (distances[[closest]] <= max_distance) {
-      available[[candidates[[closest]]]]
-    } else {
-      NULL
-    }
-  }
-
-  cell_type <- find_name("celltype", "cell")
-  if (!is.null(cell_type)) {
-    return(cell_type)
-  }
-  sample_group <- find_name("sample", "sam")
-  if (!is.null(sample_group)) {
-    return(sample_group)
-  }
-  sample(available, 1L)
-}
-
-cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
-  group_candidates <- group_names[vapply(
-    group_names,
-    function(name) {
-      value <- md[[name]]
-      if (is.null(value)) {
-        return(FALSE)
-      }
-      levels <- if (is.factor(value)) {
-        levels(value)
-      } else {
-        unique(as.character(value))
-      }
-      any(!is.na(levels))
-    },
-    logical(1)
-  )]
-  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
-  extra_candidates <- character()
-  skipped <- list()
-  for (name in setdiff(colnames(md), c("cell_barcode", group_names))) {
-    value <- md[[name]]
-    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
-      next
-    }
-    levels <- if (is.factor(value)) {
-      levels(value)
-    } else {
-      unique(as.character(value))
-    }
-    levels <- levels[!is.na(levels)]
-    if (!length(levels)) {
-      next
-    }
-    if (length(levels) > max_levels) {
-      skipped[[name]] <- length(levels)
-    } else {
-      extra_candidates <- c(extra_candidates, name)
-    }
-  }
-  default_group <- cv_default_group(c(group_candidates, extra_candidates))
+cv_build_primary_colours <- function(
+  crb,
+  md,
+  group_names,
+  default_group,
+  colors_fn
+) {
+  candidates <- unique(c(default_group, group_names))
+  default_group <- NULL
   groups <- list()
-  cat_extra <- list()
-  fields <- list()
-  if (!is.null(default_group) && default_group %in% group_candidates) {
-    groups <- cv_build_groups(crb, md, colors_fn, default_group)
-  } else if (!is.null(default_group)) {
-    cat_extra <- cv_build_extra_groups(
-      md,
-      group_names,
-      colors_fn,
-      default_group
-    )$groups
-  } else {
-    for (name in setdiff(colnames(md), "cell_barcode")) {
-      fields <- cv_build_fields(md, only = name)
-      if (length(fields)) {
-        default_group <- paste0(cv_field_mode, names(fields)[1L])
-        break
-      }
+  for (name in candidates) {
+    candidate <- cv_build_groups(crb, md, colors_fn, name)
+    if (length(candidate)) {
+      groups <- candidate
+      default_group <- names(candidate)[[1L]]
+      break
     }
   }
   list(
     groups = groups,
-    cat_extra = cat_extra,
-    cat_skipped = skipped,
-    fields = fields,
+    cat_extra = list(),
+    cat_skipped = list(),
+    fields = list(),
     default_group = default_group
   )
 }
@@ -1682,18 +1580,19 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     )
   }
 
-  ## Three colouring sources, mirroring the Projection tab's "Colour by"
-  ## (which offers every meta column) while keeping its narrower "Group filters"
-  ## (which lists only getGroups()):
-  ##   groups    — registered grouping variables: colour AND filter
-  ##   cat_extra — other categorical columns: colour only
-  ##   fields    — numeric columns (+ Trekker's physical fields): continuous
-  group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
+  parameters <- tryCatch(crb$getParameters(), error = function(e) NULL)
+  colour_groups <- viewerColourGroupChoices(
+    md,
+    tryCatch(crb$getGroups(), error = function(e) character()),
+    if (is.list(parameters)) parameters[["main_group"]] else NULL
+  )
+  group_names <- colour_groups$choices
   if (isTRUE(primary_only)) {
     primary_colours <- cv_build_primary_colours(
       crb,
       md,
       group_names,
+      colour_groups$selected,
       cv_group_colors
     )
     groups <- primary_colours$groups
@@ -1703,11 +1602,10 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     default_group <- primary_colours$default_group
   } else {
     groups <- cv_build_groups(crb, md, cv_group_colors)
-    extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
-    cat_extra <- extra$groups
-    cat_skipped <- extra$skipped
-    fields <- cv_build_fields(md)
-    default_group <- NULL
+    cat_extra <- list()
+    cat_skipped <- list()
+    fields <- list()
+    default_group <- colour_groups$selected
   }
 
   ## Every modality is independently useful. Linked views adds a coordinated
@@ -1812,14 +1710,14 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     return(NULL)
   }
 
-  ## Default colouring: prefer a cell-type-like name, then a sample-like name,
-  ## then any categorical field. If no categorical field exists, use the first
-  ## continuous field; with no colourable metadata the panels draw one colour.
   if (!isTRUE(primary_only)) {
-    available_groups <- c(names(groups), names(cat_extra))
-    default_group <- cv_default_group(available_groups)
-    if (is.null(default_group) && length(fields)) {
-      default_group <- paste0(cv_field_mode, names(fields)[1])
+    available_groups <- intersect(group_names, names(groups))
+    if (is.null(default_group) || !default_group %in% available_groups) {
+      default_group <- if (length(available_groups)) {
+        available_groups[[1L]]
+      } else {
+        NULL
+      }
     }
   }
 
