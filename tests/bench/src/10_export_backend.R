@@ -77,6 +77,8 @@ row <- data.frame(
   read_secs = NA_real_,
   seurat_secs = NA_real_,
   export_secs = NA_real_,
+  shell_secs = NA_real_,
+  serialize_secs = NA_real_,
   crb_mb = NA_real_,
   sibling_mb = NA_real_,
   total_mb = NA_real_,

@@ -23,7 +23,11 @@ if (identical(profile, "publication")) {
   )
 }
 if (identical(profile, "panel_c2")) {
-  required <- c(required, "21_viewer.csv")
+  required <- c(
+    required,
+    "21_viewer.csv",
+    file.path("figures", "expression_backend_benchmark_overview.png")
+  )
 }
 paths <- file.path(stage, required)
 missing <- !file.exists(paths) |

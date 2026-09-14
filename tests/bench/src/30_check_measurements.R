@@ -116,11 +116,21 @@ required_panel_columns <- c(
   "reference_row_fingerprint",
   "reference_block_fingerprint"
 )
+subset_panel_columns <- c(
+  "subset_n_cells",
+  "subset_cells_fingerprint",
+  "reference_subset_row_fingerprint",
+  "reference_subset_block_fingerprint"
+)
+if (identical(profile$name, "panel_c2")) {
+  required_panel_columns <- c(required_panel_columns, subset_panel_columns)
+}
 if (!all(required_panel_columns %in% names(query_panel))) {
   stop("query panel is missing required columns", call. = FALSE)
 }
 panel_keys <- paste(query_panel$source, query_panel$n_cells, sep = "\r")
 panel_groups <- split(query_panel, panel_keys)
+validate_subset <- all(subset_panel_columns %in% names(query_panel))
 if (
   any(query_panel$run_id != run_id) ||
     any(query_panel$profile != profile$name) ||
@@ -149,7 +159,13 @@ if (
           ) ||
           length(unique(rows$query_plan_fingerprint)) != 1L ||
           length(unique(rows$reference_row_fingerprint)) != 1L ||
-          length(unique(rows$reference_block_fingerprint)) != 1L
+          length(unique(rows$reference_block_fingerprint)) != 1L ||
+          (validate_subset &&
+            (length(unique(rows$subset_n_cells)) != 1L ||
+              any(!is.finite(rows$subset_n_cells) | rows$subset_n_cells < 1L) ||
+              length(unique(rows$subset_cells_fingerprint)) != 1L ||
+              length(unique(rows$reference_subset_row_fingerprint)) != 1L ||
+              length(unique(rows$reference_subset_block_fingerprint)) != 1L))
       },
       logical(1)
     ))

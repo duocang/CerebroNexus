@@ -69,6 +69,8 @@ row <- data.frame(
   read_secs = NA_real_,
   seurat_secs = 0,
   export_secs = NA_real_,
+  shell_secs = NA_real_,
+  serialize_secs = NA_real_,
   crb_mb = NA_real_,
   sibling_mb = NA_real_,
   total_mb = NA_real_,
@@ -114,19 +116,22 @@ row$export_secs <- tryCatch(
   bench_time(bench_write_full_backend(source_matrix, backend, sibling)),
   error = function(error) fail("build", error)
 )
-obj <- tryCatch(
-  bench_make_full_shell(
-    source_matrix,
-    backend,
-    basename(sibling),
-    src_name,
-    spec$organism,
-    Sys.getenv("BENCH_RUN_ID")
+obj <- NULL
+row$shell_secs <- tryCatch(
+  bench_time(
+    obj <<- bench_make_full_shell(
+      source_matrix,
+      backend,
+      basename(sibling),
+      src_name,
+      spec$organism,
+      Sys.getenv("BENCH_RUN_ID")
+    )
   ),
   error = function(error) fail("shell", error)
 )
-tryCatch(
-  saveRDS(obj, crb, version = 3),
+row$serialize_secs <- tryCatch(
+  bench_time(saveCerebro(obj, crb)),
   error = function(error) fail("shell", error)
 )
 

@@ -29,7 +29,7 @@ viewer_ring_fixture <- function(
     organism = "mm10",
     run_id = "ring-fixture"
   )
-  saveRDS(object, crb, version = 3)
+  CerebroNexus::saveCerebro(object, crb)
   crb
 }
 
@@ -65,11 +65,16 @@ test_that("Viewer validation drives a standalone App end to end", {
     "hover_secs",
     "selection_secs",
     "zoom_secs",
-    "gene_secs"
+    "gene_secs",
+    "linked_secs"
   )
   expect_true(all(timings %in% names(result)))
   expect_true(all(is.finite(unlist(result[timings]))))
   expect_true(all(unlist(result[timings]) >= 0))
+  expect_true(is.finite(result$rendered_point_count))
+  expect_true(result$renderer_backend %in% c("canvas2d", "webgpu"))
+  expect_false(result$renderer_context_lost)
+  expect_identical(result$renderer_error, "")
 })
 
 test_that("Viewer selection follows rendered cells in the C2 ring projection", {
@@ -93,10 +98,12 @@ test_that("Viewer selection follows rendered cells in the C2 ring projection", {
     crb = crb,
     app_dir = file.path(root, "app"),
     gene = "g1",
+    expected_cells = 1000L,
     timeout = 30000
   )
 
   expect_identical(result$correctness, "OK")
+  expect_equal(result$rendered_point_count, 1000)
 })
 
 test_that("Viewer log validation catches standard Shiny errors", {

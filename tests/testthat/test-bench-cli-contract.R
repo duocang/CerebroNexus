@@ -152,7 +152,7 @@ test_that("query plans are prepared before any timed backend build", {
   )
 })
 
-test_that("publication-full wrapper owns all three study phases", {
+test_that("publication-full wrapper runs only complete sources", {
   skip_unless_bench_cli()
   wrapper <- file.path(bench_root, "run_publication_full.sh")
   expect_true(file.exists(wrapper))
@@ -162,11 +162,27 @@ test_that("publication-full wrapper owns all three study phases", {
 
   body <- paste(readLines(wrapper, warn = FALSE), collapse = "\n")
   expect_match(body, "BENCH_STUDY_ID", fixed = TRUE)
-  expect_match(body, "run_phase ab publication", fixed = TRUE)
-  expect_match(body, "run_phase c1 panel_c1", fixed = TRUE)
-  expect_match(body, "run_phase c2 panel_c2", fixed = TRUE)
-  expect_match(body, "60_publish_results.R", fixed = TRUE)
+  expect_match(body, "BENCH_PROFILE=panel_c2", fixed = TRUE)
+  expect_match(body, "run_sweep.sh", fixed = TRUE)
+  expect_false(grepl("run_phase ab", body, fixed = TRUE))
+  expect_false(grepl("panel_c1", body, fixed = TRUE))
   expect_match(body, "publication-full", fixed = TRUE)
+})
+
+test_that("remote launcher safely updates, clears, and backgrounds", {
+  skip_unless_bench_cli()
+  launcher <- file.path(bench_root, "update_and_run_publication_full.sh")
+  expect_true(file.exists(launcher))
+  if (!file.exists(launcher)) {
+    return()
+  }
+
+  body <- paste(readLines(launcher, warn = FALSE), collapse = "\n")
+  expect_match(body, 'merge --ff-only "$REMOTE/$BRANCH"', fixed = TRUE)
+  expect_match(body, '"$RESULT_ROOT"', fixed = TRUE)
+  expect_match(body, 'source cache 已保留', fixed = TRUE)
+  expect_match(body, 'nohup "$SCRIPT" _worker', fixed = TRUE)
+  expect_match(body, 'kill -0 "$pid"', fixed = TRUE)
 })
 
 test_that("publication-full figure uses frozen inputs and uncertainty", {
@@ -200,7 +216,7 @@ test_that("shared sweep selects the full-source build and resource paths", {
   expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
 })
 
-test_that("C2 sweep runs one Viewer gate per source and backend", {
+test_that("full-source sweep runs Viewer checks for every build", {
   skip_unless_bench_cli()
   script <- file.path(bench_root, "src", "21_measure_viewer.R")
   expect_true(file.exists(script))
@@ -212,7 +228,7 @@ test_that("C2 sweep runs one Viewer gate per source and backend", {
   expect_match(sweep, 'VIEWER_CSV="$STAGE/21_viewer.csv"', fixed = TRUE)
   expect_match(sweep, "bundle_secs,launch_secs,hover_secs", fixed = TRUE)
   expect_match(sweep, '[ "$BENCH_PROFILE" = "panel_c2" ]', fixed = TRUE)
-  expect_match(sweep, '[ "$export_repeat" = "1" ]', fixed = TRUE)
+  expect_false(grepl('[ "$export_repeat" = "1" ]', sweep, fixed = TRUE))
   expect_match(sweep, "21_measure_viewer.R", fixed = TRUE)
 
   if (file.exists(script)) {
@@ -223,7 +239,7 @@ test_that("C2 sweep runs one Viewer gate per source and backend", {
   }
 })
 
-test_that("C2 Viewer evidence is required through final publication", {
+test_that("full-source Viewer evidence and figure are required", {
   skip_unless_bench_cli()
   output_check <- paste(
     readLines(
@@ -239,10 +255,15 @@ test_that("C2 Viewer evidence is required through final publication", {
 
   expect_match(output_check, 'identical(profile, "panel_c2")', fixed = TRUE)
   expect_match(output_check, "21_viewer.csv", fixed = TRUE)
-  expect_match(wrapper, "viewer_metrics.csv", fixed = TRUE)
+  expect_match(
+    output_check,
+    "expression_backend_benchmark_overview.png",
+    fixed = TRUE
+  )
+  expect_match(wrapper, "run_sweep.sh", fixed = TRUE)
 })
 
-test_that("benchmark docs define the four-row C2 Viewer boundary", {
+test_that("benchmark docs define replicated full-source Viewer evidence", {
   skip_unless_bench_cli()
   repo <- normalizePath(file.path(bench_root, "..", ".."))
   paths <- c(
@@ -260,8 +281,10 @@ test_that("benchmark docs define the four-row C2 Viewer boundary", {
   expect_match(docs, "box selection", fixed = TRUE)
   expect_match(docs, "zoom", fixed = TRUE)
   expect_match(docs, "gene switching", fixed = TRUE)
-  expect_match(docs, "four", fixed = TRUE)
-  expect_match(docs, "single-run diagnostics", fixed = TRUE)
+  expect_match(docs, "Linked Views", fixed = TRUE)
+  expect_match(docs, "12", fixed = TRUE)
+  expect_match(docs, "three independent", fixed = TRUE)
+  expect_match(docs, "WebGPU", fixed = TRUE)
   expect_match(docs, "Vitessce", fixed = TRUE)
   expect_false(grepl("not end-to-end biological analysis or Viewer UX", docs))
   expect_false(grepl("browser experiments are required", docs))

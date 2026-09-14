@@ -10,7 +10,7 @@ skip_unless_bench_reporting <- function() {
   )
 }
 
-test_that("C2 viewer schedule selects one build per source and backend", {
+test_that("full-source viewer schedule includes every independent build", {
   skip_unless_bench_reporting()
   source(bench_protocol, local = TRUE)
   source(file.path(bench_root, "config", "sources.R"), local = TRUE)
@@ -20,8 +20,8 @@ test_that("C2 viewer schedule selects one build per source and backend", {
     bench_panel_c_schedule(BENCH_SOURCES, "c2")
   )
 
-  expect_equal(nrow(schedule), 4L)
-  expect_true(all(schedule$export_repeat == 1L))
+  expect_equal(nrow(schedule), 12L)
+  expect_setequal(unique(schedule$export_repeat), 1:3)
   expect_setequal(
     unique(schedule$source),
     c("mouse_brain_e18", "human_pfc_hbcc")
@@ -50,7 +50,15 @@ test_that("C2 viewer results must cover the successful schedule", {
     hover_secs = 0.1,
     selection_secs = 0.2,
     zoom_secs = 0.1,
-    gene_secs = 1
+    gene_secs = 1,
+    linked_secs = 1,
+    rendered_point_count = n_cells,
+    navigator_gpu = TRUE,
+    renderer_backend = "webgpu",
+    renderer_adapter = "fixture",
+    renderer_context_lost = FALSE,
+    renderer_error = "",
+    js_heap_mb = 100
   )
 
   expect_silent(bench_validate_viewer_results(schedule, rows, "run-1"))
@@ -75,6 +83,12 @@ test_that("C2 viewer results must cover the successful schedule", {
   expect_error(
     bench_validate_viewer_results(schedule, invalid, "run-1"),
     "timings"
+  )
+  fallback <- rows
+  fallback$renderer_backend[1L] <- "canvas2d"
+  expect_error(
+    bench_validate_viewer_results(schedule, fallback, "run-1"),
+    "WebGPU"
   )
 })
 
@@ -492,8 +506,14 @@ test_that("publication-full report and figure use one frozen study", {
       schedule,
       run_id = run_id,
       status = "OK",
+      read_secs = seq_len(nrow(schedule)) / 10,
       export_secs = seq_len(nrow(schedule)),
+      shell_secs = seq_len(nrow(schedule)) / 20,
+      serialize_secs = seq_len(nrow(schedule)) / 30,
+      crb_mb = 1,
+      sibling_mb = seq_len(nrow(schedule)) * 10 - 1,
       total_mb = seq_len(nrow(schedule)) * 10,
+      r_peak_mb = seq_len(nrow(schedule)) * 15,
       peak_rss_mb = seq_len(nrow(schedule)) * 20,
       query_plan_fingerprint = tier_key
     )
@@ -514,14 +534,23 @@ test_that("publication-full report and figure use one frozen study", {
           attach_secs = seq_len(repeats) / 20,
           rss_mb = 100 + seq_len(repeats),
           peak_rss_mb = 110 + seq_len(repeats),
+          first_query_secs = seq_len(repeats) / 200,
           hot_p50_secs = seq_len(repeats) / 100,
+          hot_p95_secs = seq_len(repeats) / 80,
           block_secs = seq_len(repeats) / 50,
+          subset_row_secs = seq_len(repeats) / 300,
+          subset_block_secs = seq_len(repeats) / 250,
+          subset_n_cells = pmin(100000, schedule$n_cells[i]),
           n_hot = 33L,
           correctness = "OK",
           row_fingerprint = "row",
           reference_row_fingerprint = "row",
           block_fingerprint = "block",
           reference_block_fingerprint = "block",
+          subset_row_fingerprint = "subset-row",
+          reference_subset_row_fingerprint = "subset-row",
+          subset_block_fingerprint = "subset-block",
+          reference_subset_block_fingerprint = "subset-block",
           query_plan_fingerprint = tier_key[i],
           stringsAsFactors = FALSE
         )
@@ -555,6 +584,10 @@ test_that("publication-full report and figure use one frozen study", {
           query_plan_fingerprint = preparation$query_plan_fingerprint[i],
           reference_row_fingerprint = "row",
           reference_block_fingerprint = "block",
+          subset_n_cells = pmin(100000, preparation$n_cells[i]),
+          subset_cells_fingerprint = "subset-cells",
+          reference_subset_row_fingerprint = "subset-row",
+          reference_subset_block_fingerprint = "subset-block",
           stringsAsFactors = FALSE
         )
       })
@@ -625,7 +658,15 @@ test_that("publication-full report and figure use one frozen study", {
         hover_secs = .1,
         selection_secs = .2,
         zoom_secs = .1,
-        gene_secs = 1
+        gene_secs = 1,
+        linked_secs = 1,
+        rendered_point_count = n_cells,
+        navigator_gpu = TRUE,
+        renderer_backend = "webgpu",
+        renderer_adapter = "fixture",
+        renderer_context_lost = FALSE,
+        renderer_error = "",
+        js_heap_mb = 100
       )
     }
     files <- list(
@@ -655,6 +696,49 @@ test_that("publication-full report and figure use one frozen study", {
   make_phase("c2")
 
   env <- paste0("BENCH_ROOT=", normalizePath(bench_root))
+  full_report <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "40_write_report.R"),
+      file.path(root, "c2")
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  )
+  expect_null(
+    attr(full_report, "status"),
+    info = paste(full_report, collapse = "\n")
+  )
+  full_figure <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "41_draw_figures.R"),
+      file.path(root, "c2"),
+      file.path(root, "c2", "figures")
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  )
+  expect_null(
+    attr(full_figure, "status"),
+    info = paste(full_figure, collapse = "\n")
+  )
+  full_output <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "50_check_outputs.R"),
+      file.path(root, "c2")
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  )
+  expect_null(
+    attr(full_output, "status"),
+    info = paste(full_output, collapse = "\n")
+  )
   report <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(file.path(bench_root, "src", "42_write_panel_c_report.R"), root, out),
@@ -693,10 +777,10 @@ test_that("publication-full report and figure use one frozen study", {
     file.path(out, "viewer_metrics.csv"),
     stringsAsFactors = FALSE
   )
-  expect_equal(nrow(viewer), 4L)
+  expect_equal(nrow(viewer), 12L)
   expect_true(all(viewer$status == "OK" & viewer$correctness == "OK"))
   summary <- readLines(file.path(out, "summary.md"), warn = FALSE)
-  expect_true(any(grepl("single-run diagnostics", summary, fixed = TRUE)))
+  expect_true(any(grepl("three independent", summary, fixed = TRUE)))
 
   figure <- system2(
     file.path(R.home("bin"), "Rscript"),

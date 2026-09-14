@@ -85,11 +85,7 @@
 
 ## Benchmark
 
-- Publication-full C2 now requires four million-cell standalone Viewer checks,
-  one per source/backend pair. They exercise `createShinyApp()`/`runApp()`, the
-  Shiny WebSocket, Canvas hover, box selection, zoom, and frozen-gene switching;
-  their timings are retained as single-run diagnostics. Vitessce comparison is
-  outside this benchmark.
+- The publication benchmark now uses every cell in both public million-scale sources, with no 50k, 150k, or one-million-cell publication subset. BPCells and H5 each receive three independent builds, six fresh access processes, and three standalone Viewer processes per source. The Viewer gate requires exact full-cell WebGPU rendering, Canvas hover, box selection, zoom, frozen-gene switching, and Linked Views; Vitessce remains outside this benchmark.
 
 ## Viewer
 

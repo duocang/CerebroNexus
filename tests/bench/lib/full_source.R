@@ -43,8 +43,10 @@ bench_open_full_source <- function(spec, path) {
 bench_write_full_backend <- function(matrix, backend, path) {
   bench_validate_full_matrix(matrix)
   if (backend == "bpcells") {
-    BPCells::write_matrix_dir(matrix, path, overwrite = TRUE)
-    written <- BPCells::open_matrix_dir(path)
+    if (dir.exists(path)) {
+      unlink(path, recursive = TRUE)
+    }
+    written <- CerebroNexus:::.writeBpcellsGeneMajor(matrix, path)
   } else if (backend == "h5") {
     if (file.exists(path)) {
       unlink(path)
@@ -55,8 +57,13 @@ bench_write_full_backend <- function(matrix, backend, path) {
       path,
       type = "auto"
     )
+    local({
+      handle <- rhdf5::H5Fopen(path, flags = "H5F_ACC_RDWR")
+      on.exit(rhdf5::H5Fclose(handle), add = TRUE)
+      rhdf5::H5Lmove(handle, "matrix", handle, "expression")
+    })
     written <- DelayedArray::t(
-      HDF5Array::TENxMatrix(path, group = "matrix")
+      HDF5Array::TENxMatrix(path, group = "expression")
     )
   } else {
     stop("backend must be bpcells or h5", call. = FALSE)
@@ -77,14 +84,23 @@ bench_build_lazy_query_plan <- function(matrix, n_genes = 12L) {
   panel <- bench_stratified_gene_panel(rownames(matrix), counts, n_genes)
   first_values <- as.numeric(as.matrix(matrix[panel$gene[1L], , drop = FALSE]))
   block_values <- as.matrix(matrix[panel$gene, , drop = FALSE])
+  subset_cells <- bench_subset_cells(ncol(matrix))
   plan <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     n_cells = ncol(matrix),
     n_genes = nrow(matrix),
     nnz = sum(counts),
     panel = panel,
+    subset_cells = subset_cells,
+    subset_cells_fingerprint = bench_numeric_fingerprint(subset_cells),
     reference_row_fingerprint = bench_numeric_fingerprint(first_values),
-    reference_block_fingerprint = bench_numeric_fingerprint(block_values)
+    reference_block_fingerprint = bench_numeric_fingerprint(block_values),
+    reference_subset_row_fingerprint = bench_numeric_fingerprint(
+      first_values[subset_cells]
+    ),
+    reference_subset_block_fingerprint = bench_numeric_fingerprint(
+      block_values[, subset_cells, drop = FALSE]
+    )
   )
   plan$query_plan_fingerprint <- bench_serialized_fingerprint(plan)
   plan
@@ -125,6 +141,9 @@ bench_make_full_shell <- function(
   obj$addGroup("sample", levels(metadata$sample))
   obj$addGroup("cluster", levels(metadata$cluster))
   obj$addProjection("benchmark", projection)
+  if (identical(backend, "bpcells")) {
+    obj$setExpression(matrix, backend = "external")
+  }
   obj$setExpressionBackend(backend, location)
   obj
 }

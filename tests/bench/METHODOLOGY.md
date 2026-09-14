@@ -1,175 +1,52 @@
-# Expression-backend benchmark methodology
+# Full-source expression-backend benchmark methodology
 
 ## Research question
 
-For the same public expression matrices and deterministic query workloads, how
-do Cerebro's `embedded`, `bpcells`, and `h5` backends trade build time, stored
-size, process memory, fresh-process startup, warmed single-gene latency, and a
-12-gene block read as cell count grows?
+On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends compare in backend construction, stored size, memory, hydrated startup, expression access, and standalone Viewer behaviour after the PR0-PR6 performance work?
 
-The study is descriptive engineering evidence. It does not compare biological
-methods, test statistical significance, control the operating-system page
-cache, or claim cross-machine generality.
+This is descriptive engineering evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
 
-## One complete publication study
+## Sources and scope
 
-`run_publication_full.sh` acquires three phases under one study ID:
+The study uses every cell in two pinned public files: 1,306,127 cells from the 10x mouse brain E18 dataset (`GSE93421`, `SRP096558`) and 1,486,324 cells from the CELLxGENE PsychAD HBCC human prefrontal-cortex dataset (dataset `d27fb144-f105-46c2-b36f-f51421f74e4e`, collection `84ce6837-548d-4a1f-919f-0bc0d9a3952f`, DOI `10.1038/s41597-025-04687-5`). Downloads are reused only after byte-size and SHA-256 verification.
 
-| phase | source tiers | backends |
-|---|---|---|
-| A/B | mouse and human at 50k and 150k cells | embedded, bpcells, h5 |
-| C1 | mouse 400k and human 300k | embedded, bpcells, h5 |
-| C2 | complete mouse and human sources | bpcells, h5 |
+Neither source is sampled or cropped. `embedded` is excluded because both complete matrices exceed the 32-bit non-zero index limit of `Matrix::dgCMatrix`; the result is labelled not representable rather than inferred from a smaller tier.
 
-All phases must share the same Git SHA, clean worktree, R and dependency
-versions, CPU, OS, thread count, storage description, and acquired source
-SHA-256 values. Any drift aborts the combined report. `embedded` is omitted
-from C2 because both full matrices exceed the 32-bit non-zero index limit of
-`Matrix::dgCMatrix`; the report labels it `not representable` rather than zero
-or failed.
+## Experimental units
 
-## Sources and sampling
+For each source/backend pair, three fresh R processes independently open the complete source, stream the backend, construct the Cerebro shell, and serialize the CRB. Backend order alternates across repeats. Each artifact is opened by two fresh access processes, yielding six access observations per source/backend. Every artifact is also passed through one fresh standalone App and browser process, yielding three Viewer observations per source/backend and 12 Viewer rows overall.
 
-The sources are the 10x 1.3-million-cell mouse brain E18 dataset (`GSE93421`,
-`SRP096558`) and the CELLxGENE PsychAD HBCC human prefrontal-cortex dataset
-(dataset `d27fb144-f105-46c2-b36f-f51421f74e4e`, collection
-`84ce6837-548d-4a1f-919f-0bc0d9a3952f`, DOI
-`10.1038/s41597-025-04687-5`). Downloads live outside Git in a persistent
-cache and are reused only after byte-size and SHA-256 verification.
+Processes run sequentially with a fixed thread count on an exclusive node. Reports show medians, observed minima/maxima, and independent-process `n`; no significance test is performed.
 
-Sampled tiers contain four evenly spaced contiguous cell runs. This limits HDF5
-hyperslabs while avoiding a prefix-only sample. The samples support storage and
-runtime measurement, not biological inference. C2 opens the complete sources
-lazily and streams expression to BPCells or TENx HDF5 without constructing a
-full `dgCMatrix`.
+## Production artifact path
 
-## Experimental units and order
+BPCells output uses CerebroNexus's gene-major writer. H5 output is streamed as a cells-by-genes TENx matrix under the production `expression` group. The shell is saved with `saveCerebro()` and its default qs2 codec. Fresh-process access uses `readCerebro()`, so qs2 decoding, schema-v2 validation, thin-CRB hydration, and relative sidecar attachment are included rather than bypassed with `readRDS()`.
 
-Each backend build runs in a fresh process and is an independent observation
-for build time, stored size, R heap, and process peak RSS. Each access repeat
-runs in a fresh process and is an independent observation for load, attach,
-resident memory, peak RSS, and query timing. Calls repeated inside one access
-process describe that process's warmed-query distribution and are not treated
-as independent replicates.
+Build metrics separate lazy source opening, backend writing, shell construction, CRB serialization, stored size, R heap, and whole-process peak RSS.
 
-Every tier has three builds and two access processes per build. Backend order
-rotates deterministically across the three builds, so every backend occupies
-each order position once when three backends are compared. Processes run
-sequentially with a fixed thread count on an exclusive node.
+## Frozen access workload
 
-## Query plan and cache semantics
+A separate untimed process selects 12 expressed genes across the source's observed density range and records reference fingerprints. Every timed process uses the same immutable plan.
 
-For each source/tier, a separate process reads or lazily opens the source,
-selects 12 expressed genes across the observed density range, computes source
-fingerprints, and atomically freezes one query plan. Its preparation time and
-peak RSS are stored in `query_plan_manifest.csv` but excluded from all timed
-backend builds. `query_panel.csv` retains the exact gene order, roles, density,
-and reference fingerprints used by every process.
+The access workload measures hydrated startup, the first full-cell single-gene read, warmed full-cell single-gene latency, one 12-gene-by-all-cells block, one single-gene read over up to 100,000 deterministic reverse-ordered non-contiguous cell indices, and the corresponding 12-gene subset block. The subset specifically exercises sorting and order restoration for BPCells and DelayedArray without replacing the complete source with a sampled dataset.
 
-Every build and access process reads this exact plan. Validation requires one
-matching fingerprint across preparation, all builds, and all access processes.
-The first getter call is a fresh-process first query, not a cold-disk query:
-source preparation and earlier runs may warm the operating-system cache. The
-remaining genes are warmed once, then queried in deterministic repeated passes.
-Publication access rows contain 33 warmed observations per process.
+The first getter call is fresh-process but not controlled cold disk; the operating-system page cache may be warm. Every result is fingerprinted outside the timed expression. Any full or subset mismatch invalidates the run.
 
-## C2 Viewer functional gate
+## Standalone Viewer workload
 
-Build repeat 1 for each full-source/backend pair is also passed through the
-production standalone path: `createShinyApp()` builds the bundle,
-`shinytest2::AppDriver` launches `runApp()`, the Shiny WebSocket transfers the
-view data, and a non-mini Canvas must render. The driver then requires Canvas
-hover with a visible tooltip, a non-empty box selection with server round-trip,
-zoom with an active minimap, and frozen-gene switching with a rendered
-expression Canvas and non-empty expression vector.
+Each artifact runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The driver records bundle and launch time, verifies the exact scheduled point count, requires WebGPU, rejects renderer errors and context loss, and records JavaScript heap use.
 
-This produces exactly four rows: two complete sources by two backends. Each is
-one functional validation, so its bundle, launch, hover, selection, zoom, and
-gene timings are single-run diagnostics. They are not independent replicates,
-are excluded from backend ratios, and have no fixed latency threshold. The
-browser executable/version and frozen first gene are retained with every row.
+The driver then requires visible Canvas hover feedback, a non-empty box selection with server round-trip, zoom with an active minimap, frozen-gene switching with positive expression, and complete Linked Views readiness. All 12 browser rows are mandatory publication evidence. Vitessce and cross-browser comparison remain outside this study.
 
-## Metrics
+## Provenance and publication gate
 
-| metric | interpretation |
-|---|---|
-| `source_prepare_secs`, `query_plan_secs` | untimed study preparation, reported separately |
-| `read_secs` | sampled source construction or lazy full-source open |
-| `seurat_secs` | sampled Seurat shell construction; zero for C2 |
-| `export_secs` | backend build only |
-| `crb_mb`, `sibling_mb`, `total_mb` | stored artifact size |
-| `r_peak_mb`, `peak_rss_mb` | R heap and whole-process peak during the build process |
-| `load_secs`, `attach_secs` | fresh-process CRB load and backend attachment |
-| `rss_mb`, `peak_rss_mb` | attached-process resident and peak memory |
-| `first_query_secs` | first getter call in that process |
-| `hot_p50_secs`, `hot_p95_secs` | within-process warmed single-gene distribution |
-| `block_secs` | one deterministic 12-gene by all-cell read |
-| `bundle_secs`, `launch_secs` | standalone C2 App construction and initial Canvas readiness |
-| `hover_secs`, `selection_secs`, `zoom_secs`, `gene_secs` | C2 Viewer functional-step diagnostics |
+The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed processes, mismatched plans, incorrect values, Canvas fallback, incomplete point counts, GPU failures, missing figures, or dirty publication state reject the run before immutable publication.
 
-For C2, build peak RSS includes lazy source opening, backend writing, and shell
-serialization, but excludes query-plan preparation. Reports retain raw rows and
-show median, observed minimum/maximum, and independent-process `n`. Matched
-backend ratios are computed only within the same source, tier, phase, and
-metric.
+Validated evidence is published under `result/publication-full/runs/<run-id>/`, and `CURRENT` is updated only after all checks pass.
 
-## Correctness and provenance gates
+## Interpretation limits
 
-Each access process recomputes deterministic fingerprints for the first gene
-and 12-gene block outside timed expressions. Any failed status, value mismatch,
-missing scheduled row, duplicate tier plan, source-hash drift, protocol drift,
-or environment drift invalidates publication.
-
-For C2, publication additionally requires the exact four Viewer rows, matching
-frozen first genes, non-empty browser provenance, finite non-negative timings,
-and successful launch, hover, box selection, zoom, gene switching, and log
-checks. Raw rows are preserved in `21_viewer.csv` and `viewer_metrics.csv`.
-
-`run_manifest.csv` records the study/run IDs, clean Git SHA, package version,
-R platform, key dependency versions, OS, CPU, allocated threads, scheduler
-metadata, RAM and vector limits, scratch filesystem, and operator-supplied
-storage description. Stable source identifiers and hashes are preserved in the
-final `source_provenance.csv`.
-
-## Resource and publication safety
-
-Sampled phases are rejected when their conservative memory, sparse-index, or
-disk estimates exceed the recorded host budget. C2 has a separate out-of-core
-resource gate. Unsafe tiers are never silently removed.
-
-Each phase first publishes immutably inside marked study work. The final bundle
-freezes all three raw phase directories, validates them together, creates the
-tables and figure, and is then copied atomically to
-`result/publication-full/runs/<study-id>/`; `CURRENT` changes last. A failed or
-interrupted study cannot replace previous evidence. A stopped study can resume
-by reusing the same explicit `BENCH_STUDY_ID`.
-
-## Interpretation boundaries
-
-- Results apply to the recorded host, filesystem, code, dependencies, sources,
-  cell tiers, query plan, and fixed thread count.
-- First-query results are warm-cache-compatible, not controlled cold-disk I/O.
-- Median and range describe observed process variation; they are not confidence
-  intervals and no significance test is performed.
-- Synthetic metadata and projection in C2 exercise the expression backend,
-  portable Cerebro shell, and Viewer interaction path, not end-to-end biological
-  analysis of the source studies.
-- The four Viewer rows establish functional completion on the recorded host;
-  they do not estimate a latency distribution, visual quality, concurrent-user
-  behavior, or cross-machine usability.
-- Vitessce comparison, network shaping, and visual-regression screenshots are
-  outside this study. A second host is required for cross-machine generality.
-
-## Reproduction
-
-```bash
-BENCH_THREADS=1 \
-  BENCH_SOURCE_CACHE=/persistent/cache \
-  BENCH_SCRATCH_PARENT=/local/scratch \
-  BENCH_STORAGE_DESCRIPTION="local NVMe; ext4; model=<model>" \
-  tests/bench/run_publication_full.sh
-```
-
-Use `BENCH_KEEP=1` only to retain a failed phase scratch directory for diagnosis.
-Use `BENCH_KEEP_STUDY_WORK=1` to retain the completed study work after final
-publication.
+- Synthetic metadata and sinusoidal projection coordinates isolate backend and Viewer engineering; they are not biological results.
+- The 100,000-cell access subset is a query workload, not a sampled study cohort.
+- Browser timings describe the recorded host and Chrome build only.
+- Historical one-million-cell fixtures remain reproducibility artifacts for earlier PR comparisons and do not contribute to the paper benchmark.

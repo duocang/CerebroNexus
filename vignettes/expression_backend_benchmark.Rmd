@@ -1,5 +1,5 @@
 ---
-title: "Expression backend benchmark: embedded vs bpcells vs h5 at scale"
+title: "Full-source expression backend benchmark"
 author: "Xuesong Wang"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -9,7 +9,7 @@ output:
     self_contained: yes
     mode: selfcontained
 vignette: >
-  %\VignetteIndexEntry{Expression backend benchmark: embedded vs bpcells vs h5 at scale}
+  %\VignetteIndexEntry{Full-source expression backend benchmark}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,103 +24,58 @@ knitr::opts_chunk$set(
 
 # Evidence status
 
-> The historical pilot and incremental benchmark results have been retired.
-> This article intentionally contains no performance numbers until one complete
-> `publication-full` study has been acquired and validated. The final narrative,
-> tables, and figures must be generated from one immutable study ID.
+> Historical pilot and sampled results have been retired. This article intentionally contains no performance numbers until one complete `publication-full` run has been acquired and validated.
 
 # Research question
 
-For the same public single-cell expression matrices and deterministic query
-workloads, how do the `embedded`, `bpcells`, and `h5` backends trade backend
-construction time, stored size, process memory, fresh-process startup, warmed
-single-gene latency, and a 12-gene block read as cell count grows?
+On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends trade construction time, stored size, process memory, hydrated startup, expression access, and standalone Viewer behaviour after the PR0-PR6 performance work?
 
-This is an engineering benchmark, not a comparison of biological methods. It
-does not claim controlled cold-disk behaviour, statistical significance,
-cross-machine generality, or replicated Viewer interaction performance.
+This is an engineering benchmark, not a comparison of biological methods. It does not claim controlled cold-disk behaviour, statistical significance, or cross-machine generality.
 
-# Backends
+# Sources and backends
 
-| | `embedded` | `bpcells` | `h5` |
-|---|---|---|---|
-| expression location | inside the `.crb` | sibling `.bpcells/` directory | sibling `.h5` file |
-| runtime representation | in-memory sparse matrix | lazy BPCells matrix | lazy TENx/HDF5 matrix |
-| portability unit | one file | `.crb` plus directory | `.crb` plus HDF5 file |
+| source | complete cells | genes | compared backends |
+|---|---:|---:|---|
+| 10x mouse brain E18 | 1,306,127 | 27,998 | bpcells, h5 |
+| PsychAD HBCC human PFC | 1,486,324 | 34,176 | bpcells, h5 |
 
-# Public sources and study grid
+Every acquired file must match its pinned byte size and SHA-256 value. No source is truncated to 50k, 150k, or one million cells. `embedded` is labelled not representable because both complete matrices exceed `Matrix::dgCMatrix`'s 32-bit non-zero index limit.
 
-The study uses the 10x mouse brain E18 dataset (`GSE93421`, `SRP096558`) and
-the CELLxGENE PsychAD HBCC human prefrontal-cortex dataset (DOI
-`10.1038/s41597-025-04687-5`). Each acquired file must match its pinned byte
-size and SHA-256 value.
+# Measurement design
 
-| phase | source tiers | backends |
-|---|---|---|
-| A/B | mouse and human at 50k and 150k cells | embedded, bpcells, h5 |
-| C1 | mouse 400k and human 300k | embedded, bpcells, h5 |
-| C2 | both complete sources | bpcells, h5 |
+Each source/backend pair has three independent build processes. Each build is opened by two independent access processes and one independent standalone App/browser process, producing 12 builds, 24 access rows, and 12 Viewer rows.
 
-Every tier has three independent build processes and two independent access
-processes per build. Backend order rotates across builds. Complete-source
-`embedded` results are labelled `not representable` because both matrices
-exceed `dgCMatrix`'s 32-bit non-zero index limit.
+The artifact path uses the production defaults under test: gene-major BPCells storage, H5 group `expression`, `saveCerebro()` with qs2, and public `readCerebro()` hydration. Build timing separately records source opening, backend writing, shell construction, and CRB serialization.
 
-C2 also has four mandatory standalone Viewer rows: build repeat 1 for each
-complete-source/backend pair runs through `createShinyApp()`, `runApp()`, the
-Shiny WebSocket, and Canvas. Canvas hover, non-empty box selection, zoom, and
-frozen-gene switching must all succeed. The recorded step timings are single-run
-diagnostics, not replicated performance evidence. Vitessce comparison is
-outside this study.
+A deterministic 12-gene query plan is frozen before timed builds. Access processes measure full-cell row and block reads plus a reverse-ordered, non-contiguous workload over up to 100,000 cells. Full and subset values must match source fingerprints.
 
-# Measurement and correctness
+# Viewer gate
 
-A deterministic 12-gene query plan is prepared and frozen in a separate process
-before any timed backend build. Preparation cost is reported separately. Every
-build and access process must reproduce the same query-plan fingerprint. The
-exact gene order, roles, densities, and reference fingerprints are retained in
-`query_panel.csv`.
-
-The first getter call is a fresh-process first query, not a cold-disk query.
-Subsequent genes are warmed and measured in deterministic passes. Correctness
-fingerprints for the first row and full 12-gene block are checked outside the
-timed expressions; any mismatch invalidates the study.
-
-The independent process is the experimental unit. Final tables report raw rows,
-median, observed range, and process `n`, plus matched backend ratios within the
-same source, tier, phase, and metric. No significance test is performed.
+Every build runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The Viewer must report the exact complete-source point count, use WebGPU, and show no renderer error or context loss. Canvas hover, non-empty box selection, zoom, frozen-gene switching, and complete Linked Views readiness must all succeed. Browser timings and JavaScript heap use are summarized across three independent runs per source/backend pair. Vitessce comparison remains outside this study.
 
 # Publication gate
 
-A final report is generated only when A/B, C1, and C2 share one study ID, clean
-acquisition Git SHA, source hashes, CPU, OS, R platform, key dependency versions,
-thread count, and storage description. All phases and derived outputs are frozen
-inside one immutable result bundle; its `CURRENT` pointer changes last. C2 is
-accepted only when all four Viewer rows pass and retain the browser version and
-frozen first gene.
-
-The combined evidence will be read from:
+The wrapper requires a clean Git state, explicit storage description, fixed thread count, verified source cache, complete schedules, matching query-plan and value fingerprints, all Viewer checks, and generated report outputs. Only a fully validated run is published:
 
 ```text
 tests/bench/result/publication-full/
 ├── CURRENT
-└── runs/<study-id>/
-    ├── phases/{ab,c1,c2}/
-    ├── combined_metrics.csv
-    ├── backend_ratios.csv
-    ├── correctness.csv
-    ├── query_plan_metrics.csv
+└── runs/<run-id>/
+    ├── 05_schedule.csv
+    ├── 10_export.csv
+    ├── 20_access.csv
+    ├── 21_viewer.csv
+    ├── query_plan_manifest.csv
     ├── query_panel.csv
-    ├── viewer_metrics.csv
-    ├── source_provenance.csv
+    ├── run_manifest.csv
+    ├── source_manifest.csv
     ├── summary.md
-    └── figures/expression_backend_benchmark_publication_full.png
+    └── figures/expression_backend_benchmark_overview.png
 ```
 
 # Reproduction
 
-Run from a clean checkout in the pinned environment on an exclusive node with
-local scratch storage:
+Run from a clean checkout in the pinned environment on an exclusive node with local scratch storage:
 
 ```bash
 BENCH_THREADS=1 \
@@ -130,7 +85,4 @@ BENCH_THREADS=1 \
   tests/bench/run_publication_full.sh
 ```
 
-After the immutable study is returned, this article should be completed from
-its generated `summary.md`, CSV tables, raw process rows, and combined figure.
-The full protocol and interpretation limits are documented in
-`tests/bench/METHODOLOGY.md`.
+After the immutable run is returned, complete this article from its generated `summary.md`, raw CSV rows, and figure. The full protocol and interpretation limits are documented in `tests/bench/METHODOLOGY.md`.

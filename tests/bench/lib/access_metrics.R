@@ -10,14 +10,23 @@ bench_build_query_plan <- function(m, n_genes = 50L) {
 
   first_values <- as.numeric(m[panel$gene[1], ])
   block_values <- as.matrix(m[panel$gene, , drop = FALSE])
+  subset_cells <- bench_subset_cells(ncol(m))
   plan <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     n_cells = ncol(m),
     n_genes = nrow(m),
     nnz = sum(counts),
     panel = panel,
+    subset_cells = subset_cells,
+    subset_cells_fingerprint = bench_numeric_fingerprint(subset_cells),
     reference_row_fingerprint = bench_numeric_fingerprint(first_values),
-    reference_block_fingerprint = bench_numeric_fingerprint(block_values)
+    reference_block_fingerprint = bench_numeric_fingerprint(block_values),
+    reference_subset_row_fingerprint = bench_numeric_fingerprint(
+      first_values[subset_cells]
+    ),
+    reference_subset_block_fingerprint = bench_numeric_fingerprint(
+      block_values[, subset_cells, drop = FALSE]
+    )
   )
   plan$query_plan_fingerprint <- bench_serialized_fingerprint(plan)
   plan
@@ -38,7 +47,7 @@ bench_measure_backend <- function(
   hot_iterations = 5L,
   timer = bench_default_timer
 ) {
-  if (!identical(plan$schema_version, 1L)) {
+  if (!identical(plan$schema_version, 2L)) {
     stop("unsupported query-plan schema", call. = FALSE)
   }
   panel <- plan$panel
@@ -71,17 +80,50 @@ bench_measure_backend <- function(
     stop("block fingerprint mismatch", call. = FALSE)
   }
 
+  subset_row <- timer(function() {
+    obj$getExpressionRow(first_gene, cells = plan$subset_cells)
+  })
+  subset_row_fingerprint <- bench_numeric_fingerprint(subset_row$value)
+  if (
+    !identical(
+      subset_row_fingerprint,
+      plan$reference_subset_row_fingerprint
+    )
+  ) {
+    stop("subset-row fingerprint mismatch", call. = FALSE)
+  }
+
+  subset_block <- timer(function() {
+    obj$getExpressionBlock(panel$gene, cells = plan$subset_cells)
+  })
+  subset_block_fingerprint <- bench_numeric_fingerprint(subset_block$value)
+  if (
+    !identical(
+      subset_block_fingerprint,
+      plan$reference_subset_block_fingerprint
+    )
+  ) {
+    stop("subset-block fingerprint mismatch", call. = FALSE)
+  }
+
   list(
     first_query_secs = first$seconds,
     hot_p50_secs = stats::quantile(hot_secs, 0.5, names = FALSE),
     hot_p95_secs = stats::quantile(hot_secs, 0.95, names = FALSE),
     block_secs = block$seconds,
+    subset_row_secs = subset_row$seconds,
+    subset_block_secs = subset_block$seconds,
+    subset_n_cells = length(plan$subset_cells),
     n_hot = length(hot_secs),
     correctness = "OK",
     row_fingerprint = row_fingerprint,
     reference_row_fingerprint = plan$reference_row_fingerprint,
     block_fingerprint = block_fingerprint,
     reference_block_fingerprint = plan$reference_block_fingerprint,
+    subset_row_fingerprint = subset_row_fingerprint,
+    reference_subset_row_fingerprint = plan$reference_subset_row_fingerprint,
+    subset_block_fingerprint = subset_block_fingerprint,
+    reference_subset_block_fingerprint = plan$reference_subset_block_fingerprint,
     query_plan_fingerprint = plan$query_plan_fingerprint
   )
 }

@@ -23,10 +23,11 @@ test_that("query plans stratify genes and fingerprint source values", {
   )
   plan <- bench_build_query_plan(m, n_genes = 3L)
 
-  expect_equal(plan$schema_version, 1L)
+  expect_equal(plan$schema_version, 2L)
   expect_equal(plan$n_cells, 4L)
   expect_equal(nrow(plan$panel), 3L)
   expect_equal(plan$panel$role[1], "first")
+  expect_identical(plan$subset_cells, 4:1)
   expect_identical(
     plan$reference_row_fingerprint,
     bench_numeric_fingerprint(m[plan$panel$gene[1], ])
@@ -34,6 +35,12 @@ test_that("query plans stratify genes and fingerprint source values", {
   expect_identical(
     plan$reference_block_fingerprint,
     bench_numeric_fingerprint(as.matrix(m[plan$panel$gene, , drop = FALSE]))
+  )
+  expect_identical(
+    plan$reference_subset_block_fingerprint,
+    bench_numeric_fingerprint(
+      as.matrix(m[plan$panel$gene, plan$subset_cells, drop = FALSE])
+    )
   )
 })
 
@@ -68,23 +75,35 @@ test_that("the first backend call is the timed fresh-process query", {
     stringsAsFactors = FALSE
   )
   plan <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     panel = panel,
+    subset_cells = c(4L, 2L),
     reference_row_fingerprint = bench_numeric_fingerprint(rows$median),
     reference_block_fingerprint = bench_numeric_fingerprint(
       rbind(rows$median, rows$sparse, rows$dense)
+    ),
+    reference_subset_row_fingerprint = bench_numeric_fingerprint(
+      rows$median[c(4L, 2L)]
+    ),
+    reference_subset_block_fingerprint = bench_numeric_fingerprint(
+      rbind(rows$median, rows$sparse, rows$dense)[, c(4L, 2L), drop = FALSE]
     )
   )
 
   calls <- character()
   obj <- new.env(parent = emptyenv())
-  obj$getExpressionRow <- function(gene) {
-    calls <<- c(calls, paste0("row:", gene))
-    rows[[gene]]
+  obj$getExpressionRow <- function(gene, cells = NULL) {
+    calls <<- c(
+      calls,
+      paste0("row:", gene, if (is.null(cells)) ":all" else ":subset")
+    )
+    values <- rows[[gene]]
+    if (is.null(cells)) values else values[cells]
   }
-  obj$getExpressionBlock <- function(genes) {
+  obj$getExpressionBlock <- function(genes, cells = NULL) {
     calls <<- c(calls, paste0("block:", paste(genes, collapse = ",")))
-    do.call(rbind, rows[genes])
+    values <- do.call(rbind, rows[genes])
+    if (is.null(cells)) values else values[, cells, drop = FALSE]
   }
   timer <- function(fn) list(seconds = 0.01, value = fn())
 
@@ -95,12 +114,18 @@ test_that("the first backend call is the timed fresh-process query", {
     timer = timer
   )
 
-  expect_equal(calls[1], "row:median")
+  expect_equal(calls[1], "row:median:all")
   expect_equal(got$first_query_secs, 0.01)
   expect_equal(got$n_hot, 4L)
   expect_equal(got$correctness, "OK")
   expect_identical(got$row_fingerprint, plan$reference_row_fingerprint)
   expect_identical(got$block_fingerprint, plan$reference_block_fingerprint)
+  expect_equal(got$subset_row_secs, 0.01)
+  expect_equal(got$subset_block_secs, 0.01)
+  expect_identical(
+    got$subset_block_fingerprint,
+    plan$reference_subset_block_fingerprint
+  )
 })
 
 test_that("backend measurements fail closed on wrong values", {
@@ -109,18 +134,23 @@ test_that("backend measurements fail closed on wrong values", {
   source(bench_access_metrics, local = TRUE)
 
   obj <- new.env(parent = emptyenv())
-  obj$getExpressionRow <- function(gene) c(1, 2)
-  obj$getExpressionBlock <- function(genes) matrix(c(1, 2), nrow = 1)
+  obj$getExpressionRow <- function(gene, cells = NULL) c(1, 2)
+  obj$getExpressionBlock <- function(genes, cells = NULL) {
+    matrix(c(1, 2), nrow = 1)
+  }
   plan <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     panel = data.frame(
       gene = "g1",
       nnz = 2,
       role = "first",
       stringsAsFactors = FALSE
     ),
+    subset_cells = 2:1,
     reference_row_fingerprint = "wrong-row",
-    reference_block_fingerprint = "wrong-block"
+    reference_block_fingerprint = "wrong-block",
+    reference_subset_row_fingerprint = "wrong-subset-row",
+    reference_subset_block_fingerprint = "wrong-subset-block"
   )
 
   expect_error(

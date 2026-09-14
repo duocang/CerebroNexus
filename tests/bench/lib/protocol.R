@@ -231,6 +231,19 @@ bench_numeric_fingerprint <- function(x) {
   ))
 }
 
+bench_subset_cells <- function(n_cells, limit = 100000L) {
+  if (
+    length(n_cells) != 1L ||
+      !is.finite(n_cells) ||
+      n_cells < 1L ||
+      n_cells != as.integer(n_cells)
+  ) {
+    stop("n_cells must be one positive integer", call. = FALSE)
+  }
+  count <- min(as.integer(n_cells), as.integer(limit))
+  rev(unique(as.integer(round(seq.int(1, n_cells, length.out = count)))))
+}
+
 .bench_result_key <- function(x) {
   paste(x$source, x$n_cells, x$backend, x$export_repeat, sep = "|")
 }
@@ -283,6 +296,30 @@ bench_validate_results <- function(
   }
 
   if (nrow(access)) {
+    required_access <- c(
+      "status",
+      "correctness",
+      "row_fingerprint",
+      "reference_row_fingerprint",
+      "block_fingerprint",
+      "reference_block_fingerprint"
+    )
+    subset_access <- c(
+      "subset_row_fingerprint",
+      "reference_subset_row_fingerprint",
+      "subset_block_fingerprint",
+      "reference_subset_block_fingerprint"
+    )
+    if (!all(required_access %in% names(access))) {
+      stop("access results are missing required columns", call. = FALSE)
+    }
+    has_subset <- subset_access %in% names(access)
+    if (any(has_subset) && !all(has_subset)) {
+      stop("access subset results are incomplete", call. = FALSE)
+    }
+    if (identical(profile$name, "panel_c2") && !all(has_subset)) {
+      stop("full-source access results require subset metrics", call. = FALSE)
+    }
     if (!"status" %in% names(access) || any(access$status != "OK")) {
       stop("access process failed", call. = FALSE)
     }
@@ -290,6 +327,13 @@ bench_validate_results <- function(
       access$correctness != "OK" |
       access$row_fingerprint != access$reference_row_fingerprint |
       access$block_fingerprint != access$reference_block_fingerprint
+    if (all(has_subset)) {
+      mismatch <- mismatch |
+        access$subset_row_fingerprint !=
+          access$reference_subset_row_fingerprint |
+        access$subset_block_fingerprint !=
+          access$reference_subset_block_fingerprint
+    }
     if (any(is.na(mismatch) | mismatch)) {
       stop("backend correctness fingerprint mismatch", call. = FALSE)
     }

@@ -81,7 +81,7 @@ mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
   "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
-printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,browser,status,correctness,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs' > "$VIEWER_CSV"
+printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,browser,status,correctness,rendered_point_count,navigator_gpu,renderer_backend,renderer_adapter,renderer_context_lost,renderer_error,js_heap_mb,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs,linked_secs' > "$VIEWER_CSV"
 
 echo "==> run:      $BENCH_RUN_ID"
 echo "==> profile:  $BENCH_PROFILE"
@@ -198,7 +198,7 @@ for src in $SOURCES; do
       fi
     done
 
-    if [ "$BENCH_PROFILE" = "panel_c2" ] && [ "$export_repeat" = "1" ]; then
+    if [ "$BENCH_PROFILE" = "panel_c2" ]; then
       echo "==> [$tag] Viewer interaction gate"
       Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
         "$src" "$tier" "$backend" "$export_repeat" "$crb" \
@@ -230,7 +230,7 @@ echo "==> writing report"
 Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE" 2>&1 \
   | tee "$LOG_DIR/report.log" || exit 1
 
-if [ "$BENCH_PROFILE" = "publication" ]; then
+if [ "$BENCH_PROFILE" = "publication" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
   echo "==> drawing publication figures"
   Rscript "$BENCH_ROOT/src/41_draw_figures.R" "$STAGE" "$STAGE/figures" \
     > "$LOG_DIR/figures.log" 2>&1 || {

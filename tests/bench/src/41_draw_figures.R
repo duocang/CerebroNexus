@@ -41,7 +41,9 @@ access <- utils::read.csv(
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 exports$r_peak_mb[exports$r_peak_mb > 4e6] <- NA_real_
-access$startup_secs <- access$load_secs + access$attach_secs
+if (!"startup_secs" %in% names(access)) {
+  access$startup_secs <- access$load_secs + access$attach_secs
+}
 export_summary <- bench_summarise_metrics(
   exports,
   group = c("source", "n_cells", "backend"),
@@ -195,6 +197,16 @@ ggsave(
   dpi = 150,
   bg = "white"
 )
+
+if (identical(profile$name, "panel_c2")) {
+  message(
+    sprintf(
+      "wrote full-source publication figure from %s",
+      manifest_values[["run_id"]]
+    )
+  )
+  quit(status = 0L)
+}
 
 usable <- exports[
   exports$status == "OK" & is.finite(exports$r_peak_mb) & !is.na(exports$nnz),

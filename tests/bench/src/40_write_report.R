@@ -31,6 +31,7 @@ access <- read_if("20_access.csv")
 crashes <- read_if("crashes.csv")
 manifest <- read_if("run_manifest.csv")
 source_manifest <- read_if("source_manifest.csv")
+viewer <- read_if("21_viewer.csv")
 
 if (is.null(manifest)) {
   stop(
@@ -92,6 +93,11 @@ if (!is.null(exports) && nrow(exports)) {
   if (!"peak_rss_mb" %in% names(exports)) {
     exports$peak_rss_mb <- NA_real_
   }
+  for (name in c("shell_secs", "serialize_secs")) {
+    if (!name %in% names(exports)) {
+      exports[[name]] <- NA_real_
+    }
+  }
   exports$r_peak_mb[exports$r_peak_mb > 4e6] <- NA_real_
   export_summary <- bench_summarise_metrics(
     exports,
@@ -101,6 +107,8 @@ if (!is.null(exports) && nrow(exports)) {
       "sibling_mb",
       "total_mb",
       "export_secs",
+      "shell_secs",
+      "serialize_secs",
       "r_peak_mb",
       "peak_rss_mb"
     )
@@ -121,22 +129,24 @@ if (!is.null(exports) && nrow(exports)) {
     "Values are median [minimum-maximum], followed by the number of independent export processes.",
     "",
     paste0(
-      "| source | cells | backend | total MB | export seconds | ",
-      "peak R heap MB | peak process RSS MB |"
+      "| source | cells | backend | total MB | backend build s | shell s | ",
+      "CRB serialization s | peak R heap MB | peak process RSS MB |"
     ),
-    "|---|---:|---|---:|---:|---:|---:|"
+    "|---|---:|---|---:|---:|---:|---:|---:|---:|"
   )
   for (i in seq_len(nrow(export_summary))) {
     row <- export_summary[i, , drop = FALSE]
     out <- c(
       out,
       sprintf(
-        "| %s | %s | %s | %s | %s | %s | %s |",
+        "| %s | %s | %s | %s | %s | %s | %s | %s | %s |",
         row$source,
         format(row$n_cells, big.mark = ","),
         row$backend,
         interval(row, "total_mb", 1L),
         interval(row, "export_secs", 1L),
+        interval(row, "shell_secs", 2L),
+        interval(row, "serialize_secs", 2L),
         interval(row, "r_peak_mb", 0L),
         interval(row, "peak_rss_mb", 0L)
       )
@@ -174,7 +184,13 @@ if (!is.null(access) && nrow(access)) {
   if (!"peak_rss_mb" %in% names(access)) {
     access$peak_rss_mb <- NA_real_
   }
-  access$startup_secs <- access$load_secs + access$attach_secs
+  if (!"startup_secs" %in% names(access)) {
+    access$startup_secs <- access$load_secs + access$attach_secs
+  }
+  if (!"subset_row_secs" %in% names(access)) {
+    access$subset_row_secs <- NA_real_
+    access$subset_block_secs <- NA_real_
+  }
   access_summary <- bench_summarise_metrics(
     access,
     group = c("source", "n_cells", "backend"),
@@ -185,7 +201,9 @@ if (!is.null(access) && nrow(access)) {
       "first_query_secs",
       "hot_p50_secs",
       "hot_p95_secs",
-      "block_secs"
+      "block_secs",
+      "subset_row_secs",
+      "subset_block_secs"
     )
   )
   access_summary <- access_summary[
@@ -209,16 +227,16 @@ if (!is.null(access) && nrow(access)) {
     paste0(
       "| source | cells | backend | startup s | RSS MB | ",
       "peak process RSS MB | first query s | warmed p50 s | warmed p95 s | ",
-      "12-gene block s |"
+      "12-gene full block s | shuffled 100k row s | shuffled 100k block s |"
     ),
-    "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|"
+    "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
   )
   for (i in seq_len(nrow(access_summary))) {
     row <- access_summary[i, , drop = FALSE]
     out <- c(
       out,
       sprintf(
-        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
+        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
         row$source,
         format(row$n_cells, big.mark = ","),
         row$backend,
@@ -228,7 +246,9 @@ if (!is.null(access) && nrow(access)) {
         interval(row, "first_query_secs", 4L),
         interval(row, "hot_p50_secs", 4L),
         interval(row, "hot_p95_secs", 4L),
-        interval(row, "block_secs", 3L)
+        interval(row, "block_secs", 3L),
+        interval(row, "subset_row_secs", 4L),
+        interval(row, "subset_block_secs", 3L)
       )
     )
   }
@@ -244,7 +264,52 @@ if (!is.null(access) && nrow(access)) {
   )
 }
 
-if (!is.null(exports) && nrow(exports)) {
+if (!is.null(viewer) && nrow(viewer)) {
+  viewer_summary <- bench_summarise_metrics(
+    viewer,
+    group = c("source", "n_cells", "backend"),
+    metrics = c(
+      "bundle_secs",
+      "launch_secs",
+      "gene_secs",
+      "linked_secs",
+      "js_heap_mb"
+    )
+  )
+  out <- c(
+    out,
+    "## Standalone Viewer",
+    "",
+    "Each source/backend has three independent App and browser processes. Every row must render all cells with WebGPU and pass hover, selection, zoom, gene switching, and Linked Views.",
+    "",
+    "| source | cells | backend | bundle s | launch s | gene s | Linked Views s | JS heap MB |",
+    "|---|---:|---|---:|---:|---:|---:|---:|"
+  )
+  for (i in seq_len(nrow(viewer_summary))) {
+    row <- viewer_summary[i, , drop = FALSE]
+    out <- c(
+      out,
+      sprintf(
+        "| %s | %s | %s | %s | %s | %s | %s | %s |",
+        row$source,
+        format(row$n_cells, big.mark = ","),
+        row$backend,
+        interval(row, "bundle_secs", 2L),
+        interval(row, "launch_secs", 2L),
+        interval(row, "gene_secs", 2L),
+        interval(row, "linked_secs", 2L),
+        interval(row, "js_heap_mb", 0L)
+      )
+    )
+  }
+  out <- c(out, "")
+}
+
+if (
+  !identical(profile$name, "panel_c2") &&
+    !is.null(exports) &&
+    nrow(exports)
+) {
   usable <- exports[
     exports$status == "OK" & is.finite(exports$r_peak_mb) & !is.na(exports$nnz),
     ,

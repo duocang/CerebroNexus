@@ -51,6 +51,8 @@ row <- data.frame(
   source_prepare_secs = NA_real_,
   query_plan_secs = NA_real_,
   peak_rss_mb = NA_real_,
+  subset_n_cells = NA_real_,
+  subset_cells_fingerprint = NA_character_,
   query_plan_fingerprint = NA_character_,
   status = "OK",
   stringsAsFactors = FALSE
@@ -103,6 +105,8 @@ row$query_plan_secs <- tryCatch(
 )
 row$nnz <- plan$nnz
 row$query_plan_fingerprint <- plan$query_plan_fingerprint
+row$subset_n_cells <- length(plan$subset_cells)
+row$subset_cells_fingerprint <- plan$subset_cells_fingerprint
 row$peak_rss_mb <- bench_peak_rss_mb()
 
 dir.create(dirname(query_plan_path), recursive = TRUE, showWarnings = FALSE)
@@ -127,6 +131,10 @@ panel_rows <- data.frame(
   query_plan_fingerprint = plan$query_plan_fingerprint,
   reference_row_fingerprint = plan$reference_row_fingerprint,
   reference_block_fingerprint = plan$reference_block_fingerprint,
+  subset_n_cells = length(plan$subset_cells),
+  subset_cells_fingerprint = plan$subset_cells_fingerprint,
+  reference_subset_row_fingerprint = plan$reference_subset_row_fingerprint,
+  reference_subset_block_fingerprint = plan$reference_subset_block_fingerprint,
   stringsAsFactors = FALSE
 )
 bench_append_row(query_panel_result, panel_rows)

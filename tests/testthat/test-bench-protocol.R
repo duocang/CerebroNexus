@@ -197,6 +197,10 @@ test_that("result validation rejects missing and incorrect measurements", {
         reference_row_fingerprint = "same-row",
         block_fingerprint = "same-block",
         reference_block_fingerprint = "same-block",
+        subset_row_fingerprint = "same-subset-row",
+        reference_subset_row_fingerprint = "same-subset-row",
+        subset_block_fingerprint = "same-subset-block",
+        reference_subset_block_fingerprint = "same-subset-block",
         stringsAsFactors = FALSE
       )
     })
@@ -278,6 +282,10 @@ test_that("access crashes do not masquerade as duplicate export outcomes", {
     reference_row_fingerprint = "row",
     block_fingerprint = "block",
     reference_block_fingerprint = "block",
+    subset_row_fingerprint = "subset-row",
+    reference_subset_row_fingerprint = "subset-row",
+    subset_block_fingerprint = "subset-block",
+    reference_subset_block_fingerprint = "subset-block",
     stringsAsFactors = FALSE
   )
   crashes <- transform(

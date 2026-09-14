@@ -43,12 +43,20 @@ row <- data.frame(
   browser = NA_character_,
   status = "OK",
   correctness = NA_character_,
+  rendered_point_count = NA_real_,
+  navigator_gpu = NA,
+  renderer_backend = NA_character_,
+  renderer_adapter = NA_character_,
+  renderer_context_lost = NA,
+  renderer_error = NA_character_,
+  js_heap_mb = NA_real_,
   bundle_secs = NA_real_,
   launch_secs = NA_real_,
   hover_secs = NA_real_,
   selection_secs = NA_real_,
   zoom_secs = NA_real_,
   gene_secs = NA_real_,
+  linked_secs = NA_real_,
   stringsAsFactors = FALSE
 )
 
@@ -74,7 +82,9 @@ metrics <- tryCatch(
   bench_run_viewer_validation(
     crb = crb,
     app_dir = file.path(dirname(crb), "viewer-app"),
-    gene = first_gene
+    gene = first_gene,
+    expected_cells = n_cells,
+    require_webgpu = TRUE
   ),
   error = function(error) {
     stage <- if (is.null(error$stage)) "viewer" else error$stage
@@ -85,6 +95,18 @@ row$correctness <- metrics$correctness
 row$browser <- metrics$browser
 timings <- grep("_secs$", names(row), value = TRUE)
 for (name in timings) {
+  row[[name]] <- metrics[[name]]
+}
+diagnostics <- c(
+  "rendered_point_count",
+  "navigator_gpu",
+  "renderer_backend",
+  "renderer_adapter",
+  "renderer_context_lost",
+  "renderer_error",
+  "js_heap_mb"
+)
+for (name in diagnostics) {
   row[[name]] <- metrics[[name]]
 }
 bench_append_row(result, row)

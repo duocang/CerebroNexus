@@ -6,7 +6,7 @@ bench_viewer_schedule <- function(schedule) {
     stop("Viewer schedule is missing required columns", call. = FALSE)
   }
   rows <- schedule[
-    schedule$profile == "panel_c2" & schedule$export_repeat == 1L,
+    schedule$profile == "panel_c2",
     required,
     drop = FALSE
   ]
@@ -26,7 +26,8 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
     "hover_secs",
     "selection_secs",
     "zoom_secs",
-    "gene_secs"
+    "gene_secs",
+    "linked_secs"
   )
   required <- c(
     "run_id",
@@ -35,6 +36,13 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
     "browser",
     "status",
     "correctness",
+    "rendered_point_count",
+    "navigator_gpu",
+    "renderer_backend",
+    "renderer_adapter",
+    "renderer_context_lost",
+    "renderer_error",
+    "js_heap_mb",
     timings
   )
   if (!all(required %in% names(results))) {
@@ -72,7 +80,133 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
   if (any(!is.finite(values)) || any(values < 0)) {
     stop("Viewer timings must be finite and non-negative", call. = FALSE)
   }
+  if (
+    any(!is.finite(results$rendered_point_count)) ||
+      any(results$rendered_point_count != results$n_cells)
+  ) {
+    stop("Viewer did not render every scheduled cell", call. = FALSE)
+  }
+  if (
+    any(is.na(results$navigator_gpu) | !results$navigator_gpu) ||
+      any(
+        is.na(results$renderer_backend) |
+          results$renderer_backend != "webgpu"
+      )
+  ) {
+    stop("publication Viewer evidence requires WebGPU", call. = FALSE)
+  }
+  renderer_error <- ifelse(
+    is.na(results$renderer_error),
+    "",
+    as.character(results$renderer_error)
+  )
+  if (
+    any(
+      is.na(results$renderer_context_lost) |
+        results$renderer_context_lost
+    ) ||
+      any(nzchar(renderer_error))
+  ) {
+    stop("Viewer reported a GPU error or context loss", call. = FALSE)
+  }
+  if (any(!is.finite(results$js_heap_mb) | results$js_heap_mb <= 0)) {
+    stop("Viewer JavaScript heap measurement is invalid", call. = FALSE)
+  }
   invisible(TRUE)
+}
+
+bench_viewer_renderer <- function(app, root_selector) {
+  app$get_js(sprintf(
+    paste0(
+      "(() => {const root=document.querySelector(%s);",
+      "const canvases=Array.from(root?.querySelectorAll(",
+      "'canvas:not(.cv-mini)')||[]).filter(canvas=>",
+      "canvas.offsetParent!==null&&canvas.width>0&&canvas.height>0);",
+      "const gpu=canvases.find(canvas=>canvas.classList.contains(",
+      "'cv-gpu-layer')&&canvas.style.display!=='none');",
+      "const renderer=gpu?._cerebroPointRenderer;",
+      "const stats=renderer?.stats?.()||{};",
+      "const points=(gpu||canvases.find(canvas=>canvas.dataset.pointCount))",
+      "?.dataset.pointCount;return {navigatorGpu:!!navigator.gpu,",
+      "pointCount:points==null?null:Number(points),",
+      "backend:gpu?(stats.backend||'webgpu'):'canvas2d',",
+      "adapter:String(stats.adapter||''),contextLost:!!stats.contextLost,",
+      "error:String(stats.error||'')};})()"
+    ),
+    jsonlite::toJSON(root_selector, auto_unbox = TRUE)
+  ))
+}
+
+bench_wait_viewer_renderer <- function(
+  app,
+  root_selector,
+  expected_cells = NULL,
+  require_webgpu = FALSE,
+  timeout = 300000
+) {
+  expected <- if (is.null(expected_cells)) {
+    "null"
+  } else {
+    format(as.numeric(expected_cells), scientific = FALSE, trim = TRUE)
+  }
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => {const root=document.querySelector(%s);",
+        "const canvases=Array.from(root?.querySelectorAll(",
+        "'canvas:not(.cv-mini)')||[]).filter(canvas=>",
+        "canvas.offsetParent!==null&&canvas.width>0&&canvas.height>0);",
+        "const gpu=canvases.find(canvas=>canvas.classList.contains(",
+        "'cv-gpu-layer')&&canvas.style.display!=='none');",
+        "const points=(gpu||canvases.find(canvas=>canvas.dataset.pointCount))",
+        "?.dataset.pointCount;const count=Number(points);",
+        "return Number.isFinite(count)&&(%s===null||count===%s)&&",
+        "(!%s||!!gpu);})()"
+      ),
+      jsonlite::toJSON(root_selector, auto_unbox = TRUE),
+      expected,
+      expected,
+      if (isTRUE(require_webgpu)) "true" else "false"
+    ),
+    timeout = timeout
+  )
+  diagnostics <- bench_viewer_renderer(app, root_selector)
+  bench_require_viewer_renderer(
+    diagnostics,
+    expected_cells,
+    require_webgpu,
+    root_selector
+  )
+  diagnostics
+}
+
+bench_require_viewer_renderer <- function(
+  diagnostics,
+  expected_cells = NULL,
+  require_webgpu = FALSE,
+  label = "Viewer"
+) {
+  point_count <- as.numeric(diagnostics$pointCount)
+  if (
+    !is.null(expected_cells) &&
+      (!is.finite(point_count) || point_count != expected_cells)
+  ) {
+    stop(label, " did not render every cell", call. = FALSE)
+  }
+  if (
+    isTRUE(require_webgpu) &&
+      (!isTRUE(diagnostics$navigatorGpu) ||
+        !identical(diagnostics$backend, "webgpu"))
+  ) {
+    stop(label, " did not use WebGPU", call. = FALSE)
+  }
+  if (
+    isTRUE(diagnostics$contextLost) ||
+      nzchar(as.character(diagnostics$error))
+  ) {
+    stop(label, " reported a GPU error or context loss", call. = FALSE)
+  }
+  invisible(diagnostics)
 }
 
 bench_viewer_bad_logs <- function(logs) {
@@ -101,6 +235,8 @@ bench_run_viewer_validation <- function(
   crb,
   app_dir,
   gene,
+  expected_cells = NULL,
+  require_webgpu = FALSE,
   timeout = 300000
 ) {
   now <- function() unname(proc.time()[["elapsed"]])
@@ -160,6 +296,13 @@ bench_run_viewer_validation <- function(
         canvas
       ),
       timeout = timeout
+    )
+    overview_renderer <- bench_wait_viewer_renderer(
+      app,
+      "#shiny-tab-overview",
+      expected_cells,
+      require_webgpu,
+      timeout
     )
     launch_secs <- now() - started
 
@@ -353,7 +496,40 @@ bench_run_viewer_validation <- function(
       }
       Sys.sleep(.25)
     }
+    gene_renderer <- bench_wait_viewer_renderer(
+      app,
+      "#shiny-tab-geneExpression",
+      expected_cells,
+      require_webgpu,
+      timeout
+    )
     gene_secs <- now() - started
+
+    stage <<- "linked"
+    started <- now()
+    app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
+    app$wait_for_js(
+      paste0(
+        "(() => {const summary=window.cerebroLinkedViewsState?.summary?.();",
+        "return summary?.ready===true&&summary?.complete===true;})()"
+      ),
+      timeout = timeout
+    )
+    linked_renderer <- bench_wait_viewer_renderer(
+      app,
+      "#shiny-tab-coordinated_views",
+      expected_cells,
+      require_webgpu,
+      timeout
+    )
+    linked_secs <- now() - started
+
+    js_heap_mb <- as.numeric(app$get_js(
+      "Number(performance.memory?.usedJSHeapSize||0)/1048576"
+    ))
+    if (!is.finite(js_heap_mb) || js_heap_mb <= 0) {
+      stop("JavaScript heap measurement is unavailable", call. = FALSE)
+    }
 
     stage <<- "logs"
     logs <- app$get_logs()
@@ -377,7 +553,15 @@ bench_run_viewer_validation <- function(
       hover_secs = hover_secs,
       selection_secs = selection_secs,
       zoom_secs = zoom_secs,
-      gene_secs = gene_secs
+      gene_secs = gene_secs,
+      linked_secs = linked_secs,
+      rendered_point_count = as.numeric(overview_renderer$pointCount),
+      navigator_gpu = isTRUE(overview_renderer$navigatorGpu),
+      renderer_backend = as.character(overview_renderer$backend),
+      renderer_adapter = as.character(overview_renderer$adapter),
+      renderer_context_lost = isTRUE(overview_renderer$contextLost),
+      renderer_error = as.character(overview_renderer$error),
+      js_heap_mb = js_heap_mb
     )
   }
 

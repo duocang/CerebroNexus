@@ -509,7 +509,7 @@ viewer_rows <- vapply(
   function(i) {
     row <- viewer[i, ]
     sprintf(
-      "| %s | %.0f | %s | %s | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f |",
+      "| %s | %.0f | %s | %s | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f |",
       row$source,
       row$n_cells,
       row$backend,
@@ -519,7 +519,8 @@ viewer_rows <- vapply(
       row$hover_secs,
       row$selection_secs,
       row$zoom_secs,
-      row$gene_secs
+      row$gene_secs,
+      row$linked_secs
     )
   },
   character(1)
@@ -546,13 +547,13 @@ summary <- c(
   "",
   "## C2 Viewer functional gate",
   "",
-  "All four C2 source/backend rows passed standalone App launch, Canvas hover,",
-  "box selection, zoom, and frozen-gene switching. These are single-run diagnostics",
-  "from the recorded host and browser, not replicated browser-performance estimates.",
+  "All 12 C2 rows (three independent builds per source/backend) passed standalone",
+  "App launch, full-cell WebGPU rendering, Canvas hover, box selection, zoom,",
+  "frozen-gene switching, and Linked Views.",
   sprintf("Browser: %s", paste(unique(viewer$browser), collapse = "; ")),
   "",
-  "| source | cells | backend | gene | bundle s | launch s | hover s | selection s | zoom s | gene s |",
-  "|---|---:|---|---|---:|---:|---:|---:|---:|---:|",
+  "| source | cells | backend | gene | bundle s | launch s | hover s | selection s | zoom s | gene s | linked s |",
+  "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
   viewer_rows,
   "",
   "## Sources",

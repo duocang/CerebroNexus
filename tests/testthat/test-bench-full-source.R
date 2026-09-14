@@ -61,18 +61,19 @@ test_that("full-source writers round-trip both runtime backends", {
   bench_write_full_backend(source_matrix, "h5", h5_path)
 
   bpcells <- BPCells::open_matrix_dir(bpcells_path)
-  h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "matrix"))
+  h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "expression"))
   expect_equal(as.matrix(bpcells), as.matrix(fixture$matrix))
   expect_equal(as.matrix(h5), as.matrix(fixture$matrix))
   expect_identical(dimnames(bpcells), dimnames(fixture$matrix))
   expect_identical(dimnames(h5), dimnames(fixture$matrix))
+  expect_identical(BPCells::storage_order(bpcells), "row")
 })
 
 test_that("full-source H5 writer stays on the lazy BPCells path", {
   body <- paste(readLines(full_source_lib, warn = FALSE), collapse = "\n")
 
   expect_match(body, "BPCells::write_matrix_10x_hdf5", fixed = TRUE)
-  expect_false(grepl("rhdf5::H5Lmove", body, fixed = TRUE))
+  expect_match(body, "rhdf5::H5Lmove", fixed = TRUE)
 })
 
 test_that("full-source query plan and portable shell use bounded expression", {
@@ -102,10 +103,12 @@ test_that("full-source query plan and portable shell use bounded expression", {
     organism = "mm10",
     run_id = "run-1"
   )
-  saveRDS(obj, crb, version = 3)
-  loaded <- readRDS(crb)
+  CerebroNexus::saveCerebro(obj, crb)
+  payload <- CerebroNexus:::.readCerebroPayload(crb)
+  loaded <- CerebroNexus::readCerebro(crb)
 
-  expect_null(loaded$expression)
+  expect_null(payload$expression)
+  expect_identical(payload$crb_schema$version, 2L)
   expect_equal(nrow(loaded$getMetaData()), ncol(fixture$matrix))
   expect_identical(loaded$getMetaData()$cell_barcode, colnames(fixture$matrix))
   expect_true(all(c("nUMI", "nGene") %in% names(loaded$getMetaData())))
@@ -113,15 +116,7 @@ test_that("full-source query plan and portable shell use bounded expression", {
   expect_identical(loaded$getExperiment()$organism, "mm10")
   expect_identical(loaded$getExpressionBackend()$location, "bench.bpcells")
 
-  utility <- file.path(
-    system.file(package = "CerebroNexus"),
-    "viewer",
-    "utility_functions.R"
-  )
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility, envir = runtime)
-  attached <- runtime$.attachExternalExpression(loaded, crb)
-  metrics <- bench_measure_backend(attached, plan, hot_iterations = 1L)
+  metrics <- bench_measure_backend(loaded, plan, hot_iterations = 1L)
   expect_identical(metrics$correctness, "OK")
 
   h5_sibling <- file.path(root, "bench.h5")
@@ -135,8 +130,8 @@ test_that("full-source query plan and portable shell use bounded expression", {
     organism = "mm10",
     run_id = "run-1"
   )
-  saveRDS(h5_obj, h5_crb, version = 3)
-  h5_attached <- runtime$.attachExternalExpression(readRDS(h5_crb), h5_crb)
+  CerebroNexus::saveCerebro(h5_obj, h5_crb)
+  h5_attached <- CerebroNexus::readCerebro(h5_crb)
   h5_metrics <- bench_measure_backend(h5_attached, plan, hot_iterations = 1L)
   expect_identical(h5_metrics$correctness, "OK")
 })
