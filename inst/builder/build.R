@@ -9,7 +9,40 @@
   is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
 }
 
-.builder_build_copy_file <- function(source, target) {
+builder_build_queue_note <- function(plan) {
+  items <- plan$items %||% list()
+  reused <- sum(vapply(
+    items,
+    function(item) is.list(item$reused_artifact %||% NULL),
+    logical(1)
+  ))
+  rebuilding <- length(items) - reused
+  parts <- character()
+  if (reused > 0L) {
+    parts <- c(parts, paste("Reusing", reused, "CRBs"))
+  }
+  if (rebuilding > 0L) {
+    parts <- c(
+      parts,
+      paste(
+        "Building",
+        rebuilding,
+        if (rebuilding == 1L) "dataset" else "datasets"
+      )
+    )
+  } else if (isTRUE(plan$make_app)) {
+    parts <- c(parts, "Packaging Viewer")
+  }
+  paste0(paste(parts, collapse = " · "), "…")
+}
+
+.builder_build_copy_file <- function(
+  source,
+  target,
+  .sysname = unname(Sys.info()[["sysname"]]),
+  .command = system2,
+  .fallback = file.copy
+) {
   if (
     !.builder_build_text(source) ||
       !.builder_build_text(target) ||
@@ -21,15 +54,23 @@
     return(FALSE)
   }
   cloned <- FALSE
-  if (
-    identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
-      file.exists("/bin/cp")
-  ) {
-    status <- suppressWarnings(system2(
-      "/bin/cp",
-      c("-c", "--", shQuote(source), shQuote(target)),
-      stdout = FALSE,
-      stderr = FALSE
+  command_args <- if (identical(.sysname, "Darwin")) {
+    c("-c", "--", shQuote(source), shQuote(target))
+  } else if (identical(.sysname, "Linux")) {
+    c("--reflink=auto", "--", shQuote(source), shQuote(target))
+  } else {
+    NULL
+  }
+  copy_command <- unname(Sys.which("cp"))
+  if (length(command_args) && nzchar(copy_command)) {
+    status <- suppressWarnings(tryCatch(
+      .command(
+        copy_command,
+        command_args,
+        stdout = FALSE,
+        stderr = FALSE
+      ),
+      error = function(error) 1L
     ))
     cloned <- isTRUE(status == 0L) && file.exists(target)
     if (!cloned) {
@@ -37,7 +78,7 @@
     }
   }
   cloned ||
-    file.copy(
+    .fallback(
       source,
       target,
       overwrite = FALSE,

@@ -171,6 +171,7 @@ builder_spatial_alignment_server <- function(
   expected_controls <- shiny::reactiveVal(NULL)
   canvas_generation <- shiny::reactiveVal(0L)
   canvas_reset_token <- shiny::reactiveVal(0L)
+  canvas_source_keys <- character()
   canvas_contract <- shiny::reactiveVal(NULL)
   canvas_viewports <- shiny::reactiveVal(NULL)
   image_collection_cache <- new.env(parent = emptyenv())
@@ -1092,6 +1093,7 @@ builder_spatial_alignment_server <- function(
       id
     )
     session$sendCustomMessage("builder_spatial_canvas_clear", list())
+    canvas_source_keys <<- character()
     draft(NULL)
     coordinate_draft(list(rotation_degrees = 0, scale = 1))
     coordinate_baseline(list(rotation_degrees = 0, scale = 1))
@@ -1947,6 +1949,12 @@ builder_spatial_alignment_server <- function(
       snapshot_identity = contract$snapshot_identity,
       section = section
     )
+    cached_scene <- builder_spatial_canvas_cache_sources(
+      scene,
+      canvas_source_keys
+    )
+    canvas_source_keys <<- cached_scene$known
+    scene <- cached_scene$scene
     canvas_contract(scene[c(
       "viewKey",
       "generation",
@@ -2012,9 +2020,8 @@ builder_spatial_alignment_server <- function(
     }
     expected <- shiny::isolate(expected_controls())
     if (!is.null(expected)) {
-      expected_controls(NULL)
       if (
-        isTRUE(all.equal(
+        !isTRUE(all.equal(
           observed,
           expected,
           check.attributes = FALSE
@@ -2022,6 +2029,8 @@ builder_spatial_alignment_server <- function(
       ) {
         return(invisible(FALSE))
       }
+      expected_controls(NULL)
+      return(invisible(FALSE))
     }
     draft_parameters <- .builder_alignment_parameters(current_draft)
     if (

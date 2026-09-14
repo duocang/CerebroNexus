@@ -720,7 +720,6 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
   handle,
   built,
   parent_request,
-  parent_tree_identity,
   .unlink = unlink
 ) {
   expected <- handle$transient_app_inputs
@@ -757,16 +756,6 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
     ) {
       stop("A temporary App input could not be removed.", call. = FALSE)
     }
-  }
-  current <- .builder_app_tree_identity(
-    handle$app_expectation$app_dir,
-    .previous = parent_tree_identity
-  )
-  if (!identical(current, parent_tree_identity)) {
-    stop(
-      "The staged App changed during temporary input removal.",
-      call. = FALSE
-    )
   }
   invisible(TRUE)
 }
@@ -948,24 +937,6 @@ builder_coordinator_publish <- function(
     expected = handle$expected_build_targets,
     .digest_cache = digest_cache
   )
-  if (app_expected) {
-    current_app_identity <- tryCatch(
-      .builder_app_tree_identity(
-        handle$app_expectation$app_dir,
-        .previous = parent_tree_identity
-      ),
-      error = function(error) NULL
-    )
-    if (
-      is.null(parent_tree_identity) ||
-        !identical(current_app_identity, parent_tree_identity)
-    ) {
-      stop(
-        "The staged App changed after parent verification.",
-        call. = FALSE
-      )
-    }
-  }
   parent_env_identity <- .builder_coordinator_auth_env_identity(handle)
   if (
     app_expected &&
@@ -1032,24 +1003,16 @@ builder_coordinator_publish <- function(
   if (app_expected) {
     if (
       !identical(
-        .builder_app_tree_identity(
-          handle$app_expectation$app_dir,
-          .previous = parent_tree_identity
-        ),
-        parent_tree_identity
-      ) ||
-        !identical(
-          .builder_coordinator_auth_env_identity(handle),
-          parent_env_identity
-        )
+        .builder_coordinator_auth_env_identity(handle),
+        parent_env_identity
+      )
     ) {
       stop("The staged App changed after parent verification.", call. = FALSE)
     }
     .builder_coordinator_remove_app_inputs(
       handle,
       built,
-      parent_request,
-      parent_tree_identity
+      parent_request
     )
     if (
       !identical(
@@ -1076,6 +1039,18 @@ builder_coordinator_publish <- function(
     exact = TRUE,
     .digest_cache = digest_cache
   )
+  if (
+    app_expected &&
+      !identical(
+        .builder_coordinator_app_payload_summary(payload_identity),
+        parent_verification$diagnostic_tree_identity
+      )
+  ) {
+    stop(
+      "The staged App changed during temporary input removal.",
+      call. = FALSE
+    )
+  }
   handle$expected_payload_targets <- final_payload_targets
   ownership <- .builder_release_write_record(
     handle$stage,
@@ -1085,14 +1060,12 @@ builder_coordinator_publish <- function(
     .digest_cache = digest_cache
   )
   if (app_expected) {
-    ownership_app_identity <- tryCatch(
-      .builder_app_tree_identity(
-        handle$app_expectation$app_dir,
-        .previous = parent_tree_identity
-      ),
-      error = function(error) NULL
-    )
-    if (!identical(ownership_app_identity, parent_tree_identity)) {
+    if (
+      !identical(
+        .builder_coordinator_app_payload_summary(ownership$identity),
+        parent_verification$diagnostic_tree_identity
+      )
+    ) {
       stop(
         "The staged App changed during ownership record commit.",
         call. = FALSE

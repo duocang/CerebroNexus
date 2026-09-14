@@ -149,6 +149,14 @@
   }
   groups <- .builder_state_viewer_ids(groups)
   cell_cycle <- builder_cell_cycle_candidate_ids(metadata)
+  if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+    cell_cycle <- unique(c(
+      cell_cycle,
+      .builder_state_viewer_ids(
+        entry$project_artifact$plan_item$cell_cycle %||% character()
+      )
+    ))
+  }
 
   projection_catalog <- viewer$projections
   projections <- if (

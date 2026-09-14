@@ -9,7 +9,7 @@
     controls: null,
     frame: 0,
     image: null,
-    imageUri: null,
+    imageKey: null,
     images: {},
     dragging: false,
     activeControlId: null,
@@ -94,7 +94,7 @@
       state.controlsHeld = false;
       state.activeTransform = "points";
     }
-    loadImage(message.image && message.image.uri);
+    loadImage(message.image);
     loadImages(message.roiImages || {});
     schedule();
   }
@@ -104,7 +104,7 @@
     if (tip) tip.hidden = true;
     state.scene = null;
     state.image = null;
-    state.imageUri = null;
+    state.imageKey = null;
     state.images = {};
     state.colorGroups = {};
     state.screenPoints = [];
@@ -120,16 +120,28 @@
     state.activeTransform = "points";
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
-  function loadImage(uri) {
-    if (!uri || uri === state.imageUri) return;
-    state.imageUri = uri;
+  function imageKey(image) {
+    return image && (image.sourceKey || image.uri);
+  }
+  function loadImage(image) {
+    var key = imageKey(image), uri = image && image.uri;
+    if (!key) return;
+    state.imageKey = key;
+    if (state.images[key]) {
+      state.image = state.images[key];
+      return;
+    }
+    if (!uri || Object.prototype.hasOwnProperty.call(state.images, key)) return;
+    state.images[key] = null;
     var next = new Image();
     next.onload = function () {
-      if (state.imageUri === uri) state.image = next;
+      state.images[key] = next;
+      if (state.imageKey === key) state.image = next;
       schedule();
     };
     next.onerror = function () {
-      if (state.imageUri === uri) state.image = null;
+      state.images[key] = null;
+      if (state.imageKey === key) state.image = null;
       schedule();
     };
     next.src = uri;
@@ -137,14 +149,14 @@
   function loadImages(groups) {
     Object.keys(groups).forEach(function (roi) {
       (groups[roi] || []).forEach(function (image) {
-        var uri = image && image.uri;
-        if (!uri || Object.prototype.hasOwnProperty.call(state.images, uri)) {
+        var key = imageKey(image), uri = image && image.uri;
+        if (!key || !uri || Object.prototype.hasOwnProperty.call(state.images, key)) {
           return;
         }
-        state.images[uri] = null;
+        state.images[key] = null;
         var next = new Image();
-        next.onload = function () { state.images[uri] = next; schedule(); };
-        next.onerror = function () { state.images[uri] = null; schedule(); };
+        next.onload = function () { state.images[key] = next; schedule(); };
+        next.onerror = function () { state.images[key] = null; schedule(); };
         next.src = uri;
       });
     });
@@ -254,7 +266,7 @@
     var angle = finite(state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
       scene.bounds,
-      0,
+      angle,
       cssWidth,
       cssHeight,
       pad
@@ -326,7 +338,7 @@
       };
       if (bounds.xmin === bounds.xmax) { bounds.xmin -= .5; bounds.xmax += .5; }
       if (bounds.ymin === bounds.ymax) { bounds.ymin -= .5; bounds.ymax += .5; }
-      var local = viewportLayout(bounds, 0, panelWidth, plotHeight, 6);
+      var local = viewportLayout(bounds, angle, panelWidth, plotHeight, 6);
       viewports[group] = local.view;
       var screen = function (point) {
         var at = local.screen(point);
@@ -397,7 +409,7 @@
   }
   function drawImage(ctx, scene, screen, image, controls) {
     image = image || scene.image;
-    var loaded = image === scene.image ? state.image : state.images[image && image.uri];
+    var loaded = image === scene.image ? state.image : state.images[imageKey(image)];
     if (!loaded || !image || !image.baseBounds) return null;
     var b = image.baseBounds, c = controls || state.controls || {};
     var cx = (b.xmin + b.xmax) / 2, cy = (b.ymin + b.ymax) / 2;
@@ -529,6 +541,41 @@
     if (target.type === "checkbox") return target.checked;
     return finite(target.value, 0) * factor;
   }
+  function resetControl(id, value) {
+    var input = document.getElementById(id);
+    if (!input) return;
+    if (input.type === "checkbox") {
+      input.checked = value;
+      return;
+    }
+    input.value = value;
+    var number = document.getElementById(id + "_number");
+    if (number) number.value = value;
+    var slider = window.jQuery && window.jQuery(input).data("ionRangeSlider");
+    if (slider) slider.update({from: value});
+  }
+  function resetImageControls() {
+    if (!state.controls) return;
+    var values = {
+      "enhance-img_dx": 0,
+      "enhance-img_dy": 0,
+      "enhance-img_scale": 1,
+      "enhance-img_rotate": 0,
+      "enhance-image_flip_x": false,
+      "enhance-image_flip_y": false,
+      "enhance-image_opacity": 80,
+    };
+    Object.keys(values).forEach(function (id) {
+      resetControl(id, values[id]);
+    });
+    Object.assign(state.controls, {
+      dx: 0, dy: 0, scale: 1, rotation: 0,
+      flip_x: false, flip_y: false, image_opacity: .8,
+    });
+    state.activeTransform = "image";
+    state.pendingEventAt = performance.now();
+    schedule();
+  }
   function consumeControl(target) {
     var spec = controlMap[target.id];
     if (!spec || !state.controls) return false;
@@ -624,6 +671,10 @@
     }
   }, true);
   document.addEventListener("click", function (event) {
+    if (event.target.closest && event.target.closest("#enhance-reset_align")) {
+      resetImageControls();
+      return;
+    }
     var button = event.target.closest &&
       event.target.closest(".spatial-image-nudge button[data-target]");
     if (!button) return;

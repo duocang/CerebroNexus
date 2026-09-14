@@ -872,8 +872,15 @@ builder_adapter_inspect <- function(adapter) {
       .builder_adapter_abort("Builder could not identify the snapshot drive.")
     }
     expression <- paste0("(Get-PSDrive -Name '", drive, "').Free")
+    powershell <- if (nzchar(Sys.which("powershell"))) {
+      "powershell"
+    } else if (nzchar(Sys.which("pwsh"))) {
+      "pwsh"
+    } else {
+      "powershell"
+    }
     return(list(
-      command = "powershell",
+      command = powershell,
       args = c(
         "-NoProfile",
         "-NonInteractive",
@@ -909,7 +916,7 @@ builder_adapter_inspect <- function(adapter) {
   if (!length(output) || (!is.null(status) && status != 0L)) {
     .builder_adapter_abort(paste0(
       "Builder could not determine free disk space for the snapshot. ",
-      "Check the destination with df and retry."
+      "Check the destination and retry."
     ))
   }
   if (identical(os_type, "windows")) {

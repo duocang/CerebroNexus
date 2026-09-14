@@ -946,7 +946,11 @@ builder_build_stage_status_body_ui <- function(model) {
     } else {
       NULL
     },
-    choosing_folder = NULL,
+    choosing_folder = div(
+      class = "builder-build-waiting",
+      span(class = "spinner"),
+      span("Choosing output folder…")
+    ),
     checking_folder = div(
       class = "builder-build-waiting",
       span(class = "spinner"),

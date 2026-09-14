@@ -403,6 +403,28 @@ builder_alignment_preview_model <- function(
   )
 }
 
+builder_spatial_canvas_cache_sources <- function(scene, known = character()) {
+  known <- unique(as.character(known))
+  cache <- function(image) {
+    if (is.null(image) || is.null(image$uri) || is.null(image$sourceKey)) {
+      return(image)
+    }
+    key <- as.character(image$sourceKey)[[1L]]
+    if (key %in% known) {
+      image$uri <- NULL
+    } else {
+      known <<- c(known, key)
+    }
+    image
+  }
+  scene$image <- cache(scene$image)
+  scene$roiImages <- lapply(
+    scene$roiImages,
+    function(images) lapply(images, cache)
+  )
+  list(scene = scene, known = known)
+}
+
 builder_spatial_canvas_scene <- function(
   preview,
   colors,
@@ -450,6 +472,8 @@ builder_spatial_canvas_scene <- function(
         }
         list(
           id = key,
+          sourceKey = image$source_content_md5 %||%
+            paste0(identity, "::roi::", key),
           uri = image$source_uri %||% image$uri,
           baseBounds = image$base_bounds,
           controls = .builder_alignment_parameters(image),
@@ -485,6 +509,8 @@ builder_spatial_canvas_scene <- function(
       NULL
     } else {
       list(
+        sourceKey = record$source_content_md5 %||%
+          paste0(identity, "::active"),
         uri = record$source_uri %||% record$uri,
         baseBounds = record$base_bounds
       )

@@ -1482,6 +1482,55 @@ test_that("reusable artifacts are staged without replacing existing files", {
   expect_identical(readBin(target, "raw", n = 100L), charToRaw("existing"))
 })
 
+test_that("reusable artifact staging uses portable clone fallbacks", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source.crb")
+  target <- file.path(root, "darwin.crb")
+  writeBin(charToRaw("artifact"), source)
+  commands <- list()
+  fallbacks <- 0L
+  command <- function(command, args, stdout, stderr) {
+    commands[[length(commands) + 1L]] <<- c(command, args)
+    file.copy(source, target)
+    0L
+  }
+  fallback <- function(...) {
+    fallbacks <<- fallbacks + 1L
+    TRUE
+  }
+
+  expect_true(runtime$.builder_build_copy_file(
+    source,
+    target,
+    .sysname = "Darwin",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("-c" %in% commands[[1L]])
+
+  target <- file.path(root, "linux.crb")
+  expect_true(runtime$.builder_build_copy_file(
+    source,
+    target,
+    .sysname = "Linux",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("--reflink=auto" %in% commands[[2L]])
+
+  target <- file.path(root, "windows.crb")
+  expect_true(runtime$.builder_build_copy_file(
+    source,
+    target,
+    .sysname = "Windows",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_identical(length(commands), 2L)
+  expect_identical(fallbacks, 1L)
+})
+
 test_that("persisted artifact fingerprints contain only plain JSON values", {
   runtime <- builder_project_test_runtime()
   artifact <- withr::local_tempfile(fileext = ".crb")
@@ -3289,6 +3338,14 @@ test_that("project input and inline image payloads are bounded before decoding",
     "encoded size limit",
     fixed = TRUE
   )
+
+  formerly_oversized <- paste0(
+    "data:image/png;base64,",
+    strrep("A", 8L * 1024L^2 + 4L)
+  )
+  expect_no_error(
+    runtime$.builder_project_decode_image_uri(formerly_oversized)
+  )
 })
 
 test_that("restored source identity requires the recorded content fingerprint", {
@@ -3414,6 +3471,67 @@ test_that("artifact bundles are immutable generations", {
     first_bytes
   )
   expect_identical(length(second$members), 1L)
+})
+
+test_that("artifact bundles retain BPCells directory contents", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  build_dir <- file.path(root, "build")
+  project <- file.path(root, "project")
+  sidecar <- file.path(build_dir, "ds1.bpcells")
+  dir.create(file.path(sidecar, "matrix"), recursive = TRUE)
+  dir.create(project)
+  primary <- file.path(build_dir, "ds1.crb")
+  writeBin(charToRaw("primary"), primary)
+  writeBin(charToRaw("index"), file.path(sidecar, ".index"))
+  writeBin(charToRaw("data"), file.path(sidecar, "matrix", "data"))
+
+  bundle <- runtime$builder_project_store_artifact_bundle(
+    primary,
+    sidecars = "ds1.bpcells",
+    dataset_id = "ds1",
+    root = project,
+    promote = TRUE
+  )
+
+  expect_false(file.exists(primary))
+  expect_false(file.exists(file.path(sidecar, ".index")))
+  expect_false(file.exists(file.path(sidecar, "matrix", "data")))
+  expect_setequal(
+    vapply(bundle$members, `[[`, character(1), "target"),
+    c("ds1.bpcells/.index", "ds1.bpcells/matrix/data")
+  )
+  expect_true(runtime$builder_project_artifact_available(
+    c(list(status = "ready"), bundle),
+    project
+  ))
+})
+
+test_that("BPCells artifact bundles reject symbolic links", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  build_dir <- file.path(root, "build")
+  project <- file.path(root, "project")
+  sidecar <- file.path(build_dir, "ds1.bpcells")
+  dir.create(sidecar, recursive = TRUE)
+  dir.create(project)
+  primary <- file.path(build_dir, "ds1.crb")
+  data <- file.path(sidecar, "data")
+  writeBin(charToRaw("primary"), primary)
+  writeBin(charToRaw("data"), data)
+  skip_if_not(file.symlink(data, file.path(sidecar, "linked")))
+
+  expect_error(
+    runtime$builder_project_store_artifact_bundle(
+      primary,
+      sidecars = "ds1.bpcells",
+      dataset_id = "ds1",
+      root = project
+    ),
+    "escaped the build folder",
+    fixed = TRUE
+  )
 })
 
 test_that("checkpoint artifacts promote to immutable shared generations", {

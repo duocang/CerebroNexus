@@ -2,6 +2,31 @@ builder_stage_contract_source_runtime(environment())
 builder_profile_source_runtime(environment())
 builder_plan_contract_source_runtime(environment())
 
+test_that("build progress distinguishes reused and rebuilt datasets", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  plan <- list(
+    make_app = TRUE,
+    items = list(
+      list(reused_artifact = list(path = "a.crb")),
+      list(reused_artifact = list(path = "b.crb")),
+      list(reused_artifact = NULL)
+    )
+  )
+
+  expect_identical(
+    app_env$builder_build_queue_note(plan),
+    "Reusing 2 CRBs · Building 1 dataset…"
+  )
+  plan$items[[3L]]$reused_artifact <- list(path = "c.crb")
+  expect_identical(
+    app_env$builder_build_queue_note(plan),
+    "Reusing 3 CRBs · Packaging Viewer…"
+  )
+})
+
 test_that("new gallery imports apply the complete example preset", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())

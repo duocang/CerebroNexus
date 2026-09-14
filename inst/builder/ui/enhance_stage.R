@@ -1040,12 +1040,8 @@ builder_enhance_stage_ui <- function(
             div(
               class = "enhance-table-file-actions builder-action-row",
               tags$button(
-                id = ns("choose_local_tables"),
                 class = "btn enhance-table-add-button",
                 type = "button",
-                `data-native-picker` = tolower(as.character(
-                  builder_native_picker_available("table_files")
-                )),
                 shiny::icon("folder-open"),
                 span(class = "builder-add-label", "Add tables")
               ),

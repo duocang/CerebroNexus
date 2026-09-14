@@ -2,7 +2,12 @@
 #'
 #' @keywords internal
 #' @noRd
-.spatialImageBounds <- function(bounds, coordinates, context) {
+.spatialImageBounds <- function(
+  bounds,
+  coordinates,
+  context,
+  allow_outside = FALSE
+) {
   valid_coordinates <- is.data.frame(coordinates) &&
     all(c("x", "y") %in% colnames(coordinates)) &&
     is.numeric(coordinates[["x"]]) &&
@@ -59,7 +64,7 @@
     coordinates[["x"]] > bounds[["xmax"]] |
     coordinates[["y"]] < bounds[["ymin"]] |
     coordinates[["y"]] > bounds[["ymax"]]
-  if (any(outside)) {
+  if (!isTRUE(allow_outside) && any(outside)) {
     stop(
       context,
       " has coordinates outside its declared bounds.",
@@ -218,7 +223,8 @@
         histology_image_bounds = .spatialImageBounds(
           payload[["histology_image_bounds"]],
           coordinates,
-          payload_context
+          payload_context,
+          allow_outside = length(scope) > 0L
         )
       ),
       scope
@@ -529,6 +535,7 @@
 #' @keywords internal
 #' @noRd
 .encodeSpatialImageDescriptor <- function(descriptor, coordinates, context) {
+  scope <- .spatialImageRoiScope(descriptor, context)
   extension <- tolower(tools::file_ext(descriptor$path))
   mime <- switch(
     extension,
@@ -549,7 +556,8 @@
       histology_image_bounds = .spatialImageBounds(
         descriptor$bounds,
         coordinates,
-        context
+        context,
+        allow_outside = length(scope) > 0L
       )
     ),
     c(
@@ -563,7 +571,7 @@
       if (!is.null(descriptor[["label"]])) {
         list(image_label = descriptor[["label"]])
       },
-      descriptor[intersect(c("roi_field", "roi_value"), names(descriptor))]
+      scope
     )
   )
 }

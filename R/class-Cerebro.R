@@ -1242,7 +1242,12 @@ Cerebro <- R6::R6Class(
       }
       data <- self$spatial[[name]]
       context <- paste0("Spatial data `", name, "`")
-      normalize_bounds <- function(bounds, coordinates, image_context) {
+      normalize_bounds <- function(
+        bounds,
+        coordinates,
+        image_context,
+        allow_outside = FALSE
+      ) {
         valid_coordinates <- is.data.frame(coordinates) &&
           all(c("x", "y") %in% colnames(coordinates)) &&
           is.numeric(coordinates[["x"]]) &&
@@ -1303,7 +1308,7 @@ Cerebro <- R6::R6Class(
           coordinates[["x"]] > bounds[["xmax"]] |
           coordinates[["y"]] < bounds[["ymin"]] |
           coordinates[["y"]] > bounds[["ymax"]]
-        if (any(outside)) {
+        if (!isTRUE(allow_outside) && any(outside)) {
           stop(
             image_context,
             " has coordinates outside its declared bounds.",
@@ -1482,7 +1487,8 @@ Cerebro <- R6::R6Class(
               histology_image_bounds = normalize_bounds(
                 payload[["histology_image_bounds"]],
                 data[["coordinates"]],
-                image_context
+                image_context,
+                allow_outside = all(scope_present)
               )
             ),
             payload[scope_fields[scope_present]]

@@ -947,6 +947,61 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_identical(scene$roiImages$B[[1L]]$controls$image_opacity, 0.7)
 })
 
+test_that("spatial Canvas sends each image source only once", {
+  source_key <- strrep("a", 32L)
+  image <- builder_alignment_record(
+    source = list(name = "large.jpg", type = "image/jpeg"),
+    source_uri = "data:image/jpeg;base64,LARGE",
+    uri = "data:image/jpeg;base64,LARGE",
+    base_bounds = list(xmin = 0, xmax = 5, ymin = 0, ymax = 5),
+    section = list(id = "section-a", kind = "spatial")
+  )
+  image$source_content_md5 <- source_key
+  scene <- builder_spatial_canvas_scene(
+    preview = list(
+      available = TRUE,
+      capped = FALSE,
+      spatial = data.frame(
+        x = c(1, 2),
+        y = c(3, 4),
+        cell_barcode = c("cell-a", "cell-b"),
+        group = c("A", "B")
+      ),
+      coordinate_frame = list(xmin = 0, xmax = 5, ymin = 0, ymax = 5)
+    ),
+    colors = character(),
+    record = image,
+    roi_images = list(A = list(a = image), B = list(b = image)),
+    identity = "dataset::section-a",
+    generation = 1L
+  )
+
+  first <- builder_spatial_canvas_cache_sources(scene, character())
+  first_uris <- c(
+    list(first$scene$image$uri),
+    unlist(
+      lapply(first$scene$roiImages, function(images) {
+        lapply(images, `[[`, "uri")
+      }),
+      recursive = FALSE
+    )
+  )
+  expect_identical(sum(!vapply(first_uris, is.null, logical(1))), 1L)
+  expect_identical(first$known, source_key)
+
+  second <- builder_spatial_canvas_cache_sources(scene, first$known)
+  second_uris <- c(
+    list(second$scene$image$uri),
+    unlist(
+      lapply(second$scene$roiImages, function(images) {
+        lapply(images, `[[`, "uri")
+      }),
+      recursive = FALSE
+    )
+  )
+  expect_false(any(!vapply(second_uris, is.null, logical(1))))
+})
+
 test_that("alignment preview resolves layer membership without expression data", {
   preview_source <- paste(
     deparse(body(builder_alignment_preview_model)),

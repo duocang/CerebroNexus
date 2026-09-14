@@ -108,8 +108,6 @@ builder_windows_picker_script <- function() {
     "args <- commandArgs(trailingOnly = TRUE)",
     "kind <- args[[1L]]",
     "prompt <- args[[2L]]",
-    "title <- args[[3L]]",
-    "patterns <- args[[4L]]",
     "chosen <- tryCatch(",
     "  switch(",
     "    kind,",
@@ -118,12 +116,7 @@ builder_windows_picker_script <- function() {
     paste0(
       "    project_manifest = utils::choose.files(caption = prompt, ",
       "multi = FALSE, filters = matrix(c('Builder project', '*.json', ",
-      "'All files', '*.*'), ncol = 2L, byrow = TRUE)),"
-    ),
-    paste0(
-      "    utils::choose.files(caption = prompt, multi = TRUE, filters = ",
-      "matrix(c(title, patterns, 'All files', '*.*'), ncol = 2L, ",
-      "byrow = TRUE))"
+      "'All files', '*.*'), ncol = 2L, byrow = TRUE))"
     ),
     "  ),",
     "  error = function(error) {",
@@ -149,8 +142,6 @@ builder_table_extensions <- function() {
 builder_native_picker_spec <- function(
   kind = c(
     "output_directory",
-    "dataset_files",
-    "table_files",
     "project_directory",
     "project_manifest"
   ),
@@ -159,23 +150,13 @@ builder_native_picker_spec <- function(
   .which = Sys.which
 ) {
   kind <- match.arg(kind)
-  files <- kind %in% c("dataset_files", "table_files")
   directory <- kind %in% c("output_directory", "project_directory")
-  label <- if (identical(kind, "dataset_files")) "dataset" else "table"
-  extensions <- switch(
-    kind,
-    dataset_files = builder_dataset_extensions(),
-    table_files = builder_table_extensions(),
-    character()
-  )
   prompt <- switch(
     kind,
     output_directory = "Choose where to save the build output.",
     project_directory = "Choose a folder for the Builder project.",
-    project_manifest = "Open a Builder project.",
-    paste0("Choose ", label, " files.")
+    project_manifest = "Open a Builder project."
   )
-  title <- if (files) paste0(tools::toTitleCase(label), " files") else NULL
   if (identical(.system, "Windows")) {
     rscript <- .rscript %||% file.path(R.home("bin"), "Rscript.exe")
     return(list(
@@ -185,9 +166,7 @@ builder_native_picker_spec <- function(
         "-e",
         builder_windows_picker_script(),
         kind,
-        prompt,
-        title %||% "",
-        paste0("*.", extensions, collapse = ";")
+        prompt
       ),
       cancel_status = integer()
     ))
@@ -199,24 +178,10 @@ builder_native_picker_spec <- function(
         prompt,
         "\")"
       ))
-    } else if (identical(kind, "project_manifest")) {
+    } else {
       builder_macos_picker_script(paste0(
         "POSIX path of (choose file with prompt ",
         "\"Open a Builder project.\" of type {\"public.json\"})"
-      ))
-    } else {
-      builder_macos_picker_script(paste(
-        paste0(
-          'set chosenFiles to choose file with prompt "',
-          prompt,
-          '" with multiple selections allowed'
-        ),
-        'set chosenPaths to ""',
-        "repeat with chosenFile in chosenFiles",
-        "set chosenPaths to chosenPaths & POSIX path of chosenFile & linefeed",
-        "end repeat",
-        "return chosenPaths",
-        sep = "\n"
       ))
     }
     return(list(
@@ -233,18 +198,11 @@ builder_native_picker_spec <- function(
         "--directory",
         paste0("--title=", prompt)
       )
-    } else if (identical(kind, "project_manifest")) {
+    } else {
       c(
         "--file-selection",
         paste0("--title=", prompt),
         "--file-filter=Builder project | *.json"
-      )
-    } else {
-      c(
-        "--file-selection",
-        "--multiple",
-        "--separator=\n",
-        paste0("--title=", prompt)
       )
     }
     return(list(command = unname(zenity), args = args, cancel_status = 1L))
@@ -253,50 +211,12 @@ builder_native_picker_spec <- function(
   if (nzchar(kdialog)) {
     args <- if (directory) {
       c("--getexistingdirectory", path.expand("~"))
-    } else if (identical(kind, "project_manifest")) {
-      c("--getopenfilename", path.expand("~"), "*.json")
     } else {
-      c(
-        "--getopenfilename",
-        path.expand("~"),
-        paste0(title, " (", paste0("*.", extensions, collapse = " "), ")"),
-        "--multiple",
-        "--separate-output"
-      )
+      c("--getopenfilename", path.expand("~"), "*.json")
     }
     return(list(command = unname(kdialog), args = args, cancel_status = 1L))
   }
-  stop(
-    if (files) {
-      "No system file picker is available."
-    } else {
-      "No system folder picker is available."
-    },
-    call. = FALSE
-  )
-}
-
-builder_native_picker_available <- function(
-  kind,
-  .system = Sys.info()[["sysname"]] %||% "",
-  .display = Sys.getenv(c("DISPLAY", "WAYLAND_DISPLAY"), unset = "")
-) {
-  if (!requireNamespace("processx", quietly = TRUE)) {
-    return(FALSE)
-  }
-  if (
-    !.system %in% c("Darwin", "Windows") &&
-      !any(nzchar(.display))
-  ) {
-    return(FALSE)
-  }
-  !inherits(
-    tryCatch(
-      builder_native_picker_spec(kind, .system = .system),
-      error = identity
-    ),
-    "condition"
-  )
+  stop("No system picker is available.", call. = FALSE)
 }
 
 builder_native_picker_lines <- function(output) {
@@ -351,24 +271,16 @@ builder_native_picker_result <- function(kind, select) {
     kind,
     c(
       "output_directory",
-      "dataset_files",
-      "table_files",
       "project_directory",
       "project_manifest"
     )
   )
-  multiple <- kind %in% c("dataset_files", "table_files")
   result <- function(
     status,
-    paths = character(),
     error = NULL,
     fallback = FALSE
   ) {
-    value <- if (multiple) {
-      list(status = status, paths = paths)
-    } else {
-      list(status = status, path = NULL)
-    }
+    value <- list(status = status, path = NULL)
     if (!is.null(error)) {
       value$error <- error
     }
@@ -387,10 +299,10 @@ builder_native_picker_result <- function(kind, select) {
   }
   chosen <- as.character(chosen)
   chosen <- chosen[!is.na(chosen) & nzchar(chosen)]
-  if (!multiple && length(chosen)) {
+  if (length(chosen)) {
     chosen <- trimws(chosen[[1L]])
   }
-  if (!length(chosen) || (!multiple && !nzchar(chosen))) {
+  if (!length(chosen) || !nzchar(chosen)) {
     return(result("cancelled"))
   }
   paths <- tryCatch(
@@ -401,44 +313,21 @@ builder_native_picker_result <- function(kind, select) {
     )),
     error = identity
   )
-  extensions <- switch(
-    kind,
-    dataset_files = builder_dataset_extensions(),
-    table_files = builder_table_extensions(),
-    NULL
-  )
   valid <- !inherits(paths, "condition") &&
     switch(
       kind,
       output_directory = dir.exists(paths[[1L]]),
       project_directory = dir.exists(paths[[1L]]),
-      project_manifest = file.exists(paths[[1L]]) && !dir.exists(paths[[1L]]),
-      dataset_files = all(file.exists(paths) & !dir.exists(paths)) &&
-        all(tolower(tools::file_ext(paths)) %in% extensions),
-      table_files = all(file.exists(paths) & !dir.exists(paths)) &&
-        all(tolower(tools::file_ext(paths)) %in% extensions)
+      project_manifest = file.exists(paths[[1L]]) && !dir.exists(paths[[1L]])
     )
   if (!isTRUE(valid)) {
     message <- switch(
       kind,
       output_directory = "The selected folder is not available.",
       project_directory = "The selected folder is not available.",
-      project_manifest = "The selected project file is not available.",
-      dataset_files = paste0(
-        "Choose supported dataset files (.",
-        paste(extensions, collapse = ", ."),
-        ")."
-      ),
-      table_files = paste0(
-        "Choose supported table files (.",
-        paste(extensions, collapse = ", ."),
-        ")."
-      )
+      project_manifest = "The selected project file is not available."
     )
     return(result("error", error = message))
-  }
-  if (multiple) {
-    return(result("selected", paths))
   }
   list(status = "selected", path = paths[[1L]])
 }
@@ -448,8 +337,6 @@ builder_native_picker_result <- function(kind, select) {
 builder_start_native_picker <- function(
   kind = c(
     "output_directory",
-    "dataset_files",
-    "table_files",
     "project_directory",
     "project_manifest"
   ),

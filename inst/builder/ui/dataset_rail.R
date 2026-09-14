@@ -525,14 +525,12 @@ builder_empty_workbench_ui <- function(
   formats = get0("builder_formats", inherits = TRUE),
   examples = builder_example_directory()
 ) {
-  native_picker <- isTRUE(builder_native_picker_available("dataset_files"))
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-dropzone-title",
     shiny::tags$button(
       type = "button",
       class = "builder-dataset-dropzone builder-add-datasets",
-      `data-native-picker` = tolower(as.character(native_picker)),
       `aria-labelledby` = "builder-dropzone-title",
       `aria-describedby` = "builder-empty-description builder-empty-formats",
       shiny::tags$div(

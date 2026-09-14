@@ -939,10 +939,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
       h3("Output"),
       p(
         class = "review-output-download-note",
-        paste(
-          "CRB files will be available to download after the build",
-          "completes."
-        )
+        "CRB files will be written to the selected output folder."
       ),
       tags$dl(
         class = "review-fields review-output-fields",

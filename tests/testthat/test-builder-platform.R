@@ -1,31 +1,38 @@
 builder_repo_source("io.R", local = globalenv())
 
-test_that("Windows native pickers run outside the Shiny process", {
-  rscript <- "C:/R/bin/Rscript.exe"
-  files <- builder_native_picker_spec(
-    "dataset_files",
-    .system = "Windows",
-    .rscript = rscript
+test_that("native pickers are reserved for projects and output folders", {
+  expect_identical(
+    eval(formals(builder_native_picker_spec)$kind),
+    c("output_directory", "project_directory", "project_manifest")
   )
+  expect_identical(
+    eval(formals(builder_start_native_picker)$kind),
+    c("output_directory", "project_directory", "project_manifest")
+  )
+  expect_error(
+    builder_native_picker_result("dataset_files", function() character()),
+    "should be one of"
+  )
+})
+
+test_that("Windows native pickers run through the existing R helper", {
+  rscript <- "C:/R/bin/Rscript.exe"
   folder <- builder_native_picker_spec(
     "project_directory",
     .system = "Windows",
     .rscript = rscript
   )
 
-  expect_identical(files$command, rscript)
   expect_identical(folder$command, rscript)
-  expect_false("select" %in% names(files))
   expect_false("select" %in% names(folder))
   expect_silent(parse(text = builder_windows_picker_script()))
-  expect_match(paste(files$args, collapse = "\n"), "choose.files", fixed = TRUE)
   expect_match(paste(folder$args, collapse = "\n"), "choose.dir", fixed = TRUE)
 })
 
 test_that("macOS and Linux picker specs keep their native cancellation contracts", {
   macos <- builder_native_picker_spec("project_manifest", .system = "Darwin")
   zenity <- builder_native_picker_spec(
-    "table_files",
+    "project_manifest",
     .system = "Linux",
     .which = function(command) {
       if (identical(command, "zenity")) "/usr/bin/zenity" else ""
@@ -48,7 +55,7 @@ test_that("macOS and Linux picker specs keep their native cancellation contracts
   )
   expect_identical(zenity$command, "/usr/bin/zenity")
   expect_identical(zenity$cancel_status, 1L)
-  expect_true(all(c("--multiple", "--separator=\n") %in% zenity$args))
+  expect_true("--file-filter=Builder project | *.json" %in% zenity$args)
   expect_identical(kdialog$command, "/usr/bin/kdialog")
   expect_identical(kdialog$cancel_status, 1L)
   expect_true("--getexistingdirectory" %in% kdialog$args)

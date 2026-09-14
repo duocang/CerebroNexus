@@ -1463,11 +1463,76 @@ dedent <- function(string) {
   )
 }
 
+.bundleCopyPath <- function(
+  from,
+  to,
+  overwrite = recursive,
+  recursive = FALSE,
+  copy.mode = TRUE,
+  copy.date = FALSE,
+  .sysname = unname(Sys.info()[["sysname"]]),
+  .command = system2,
+  .fallback = file.copy
+) {
+  scalar <- is.character(from) &&
+    length(from) == 1L &&
+    !is.na(from) &&
+    is.character(to) &&
+    length(to) == 1L &&
+    !is.na(to)
+  command_args <- if (scalar && identical(.sysname, "Darwin")) {
+    c("-c", if (isTRUE(recursive)) "-R", "--", shQuote(from), shQuote(to))
+  } else if (scalar && identical(.sysname, "Linux")) {
+    c(
+      if (isTRUE(recursive)) "-R",
+      "--reflink=auto",
+      "--",
+      shQuote(from),
+      shQuote(to)
+    )
+  } else {
+    NULL
+  }
+  copy_command <- unname(Sys.which("cp"))
+  destination <- if (scalar && dir.exists(from) && dir.exists(to)) {
+    file.path(to, basename(from))
+  } else {
+    to
+  }
+  destination_existed <- scalar &&
+    (file.exists(destination) || nzchar(Sys.readlink(destination)))
+  if (length(command_args) && nzchar(copy_command)) {
+    status <- suppressWarnings(tryCatch(
+      .command(
+        copy_command,
+        command_args,
+        stdout = FALSE,
+        stderr = FALSE
+      ),
+      error = function(error) 1L
+    ))
+    if (isTRUE(status == 0L)) {
+      return(TRUE)
+    }
+    if (!destination_existed) {
+      unlink(destination, recursive = TRUE, force = TRUE)
+    }
+  }
+  .fallback(
+    from,
+    to,
+    overwrite = overwrite,
+    recursive = recursive,
+    copy.mode = copy.mode,
+    copy.date = copy.date
+  )
+}
+
 .bundleBuildOps <- function() {
   list(
     access = function(path, mode) file.access(path, mode = mode),
     chmod = function(path, mode) Sys.chmod(path, mode = mode),
-    copy = function(from, to, ...) file.copy(from, to, ...),
+    copy = .bundleCopyPath,
     mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
     save_extra_rds = function(object, file) .saveExtraTableRDS(object, file),
@@ -1713,7 +1778,7 @@ dedent <- function(string) {
     if (any(regular_files)) {
       file.remove(metadata_paths[regular_files])
     }
-    file.remove(lock_path)
+    unlink(lock_path, recursive = TRUE, force = TRUE)
     if (.bundlePathExists(lock_path)) {
       stop(
         "Failed to initialize the build lock. An incomplete lock remains at '",
@@ -1879,7 +1944,7 @@ dedent <- function(string) {
   }
 
   remove_dir_attempt <- .attemptBundleOperation(function() {
-    file.remove(release_path)
+    unlink(release_path, recursive = TRUE, force = TRUE)
   })
   if (.bundlePathExists(release_path)) {
     warning(

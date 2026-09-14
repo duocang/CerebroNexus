@@ -414,9 +414,6 @@ ui <- tagList(
           type = "button",
           class = "btn builder-add-datasets",
           `aria-label` = "Add dataset files",
-          `data-native-picker` = tolower(as.character(
-            builder_native_picker_available("dataset_files")
-          )),
           tags$span(
             class = "rail-add-title",
             tags$span(

@@ -1,6 +1,5 @@
-builder_data_page_runtime <- function(native_picker = TRUE) {
+builder_data_page_runtime <- function() {
   runtime <- new.env(parent = globalenv())
-  runtime$builder_native_picker_available <- function(...) native_picker
   runtime$builder_example_directory <- function() list()
   runtime$builder_example_buttons_ui <- function(...) {
     shiny::tags$button(
@@ -29,8 +28,8 @@ builder_data_page_runtime <- function(native_picker = TRUE) {
   runtime
 }
 
-builder_data_page_html <- function(native_picker = TRUE) {
-  runtime <- builder_data_page_runtime(native_picker)
+builder_data_page_html <- function() {
+  runtime <- builder_data_page_runtime()
   htmltools::renderTags(runtime$builder_empty_workbench_ui(
     formats = c("rds", "qs", "qs2"),
     examples = list()
@@ -39,7 +38,7 @@ builder_data_page_html <- function(native_picker = TRUE) {
 
 test_that("Data page makes the whole dropzone the upload action", {
   withr::local_package("shiny")
-  html <- builder_data_page_html(native_picker = TRUE)
+  html <- builder_data_page_html()
 
   expect_match(html, "builder-dataset-dropzone-copy", fixed = TRUE)
   expect_match(html, "builder-add-datasets", fixed = TRUE)
@@ -120,16 +119,7 @@ test_that("Data page shows its footer only after a dataset exists", {
   expect_match(html, "Configure Datasets", fixed = TRUE)
 })
 
-test_that("Data page keeps one upload action without a native picker", {
-  withr::local_package("shiny")
-  html <- builder_data_page_html(native_picker = FALSE)
-
-  expect_match(html, "builder-add-datasets", fixed = TRUE)
-  expect_false(grepl(">Add files<", html, fixed = TRUE))
-  expect_false(grepl("builder-local-dataset-files", html, fixed = TRUE))
-})
-
-test_that("Data page uses the shared local-first fallback state machine", {
+test_that("Data page upload action opens only the browser file picker", {
   js <- paste(
     readLines(
       builder_profile_inst_path("builder", "www", "builder.js"),
@@ -139,6 +129,12 @@ test_that("Data page uses the shared local-first fallback state machine", {
   )
 
   expect_match(js, "addDatasetFiles(addDatasets)", fixed = TRUE)
+  expect_match(js, "function addDatasetFiles", fixed = TRUE)
+  expect_match(js, "openDatasetPicker();", fixed = TRUE)
+  expect_false(grepl("choose_local_datasets", js, fixed = TRUE))
+  expect_false(grepl("startFilePickerRecovery", js, fixed = TRUE))
+  expect_false(grepl("datasetFileSource", js, fixed = TRUE))
+  expect_false(grepl("tableFileSource", js, fixed = TRUE))
   expect_false(grepl(
     '".builder-dataset-dropzone.builder-add-datasets"',
     js,
@@ -210,7 +206,7 @@ test_that("the real example action uses the approved secondary label", {
   expect_match(js, "members.forEach", fixed = TRUE)
 })
 
-test_that("native picker fallback does not refer to a missing Data page action", {
+test_that("dataset and table uploads do not have server-side file pickers", {
   imports <- paste(
     readLines(
       builder_profile_inst_path("builder", "server", "imports.R"),
@@ -219,12 +215,18 @@ test_that("native picker fallback does not refer to a missing Data page action",
     collapse = "\n"
   )
 
-  expect_false(grepl("Click Add files again", imports, fixed = TRUE))
-  expect_match(
-    imports,
-    "Upload the files through the browser instead.",
-    fixed = TRUE
+  enhancements <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "enhancements.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
   )
+
+  expect_false(grepl("choose_local_datasets", imports, fixed = TRUE))
+  expect_false(grepl("builder_cancel_file_picker", imports, fixed = TRUE))
+  expect_false(grepl("enhance-choose_local_tables", enhancements, fixed = TRUE))
+  expect_false(grepl("native_table_picker_active", enhancements, fixed = TRUE))
 })
 
 test_that("Precision Scientific is the final Builder presentation layer", {

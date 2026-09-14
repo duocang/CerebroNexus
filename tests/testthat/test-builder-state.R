@@ -220,6 +220,28 @@ if (builder_state_api_available) {
     )
   })
 
+  test_that("reusable artifacts restore their saved cell-cycle catalog", {
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$profile <- list(n_cells = 10L, n_genes = 5L)
+    entry$dataset_profile <- list()
+    entry$load_state <- "artifact_ready"
+    entry$project_artifact <- list(
+      status = "ready",
+      reusable = TRUE,
+      path = "artifacts/dataset-a.crb",
+      plan_item = list(cell_cycle = "Phase")
+    )
+
+    state <- builder_state(list(entry))
+
+    expect_identical(
+      state$datasets[[1L]]$settings$cell_cycle_columns,
+      "Phase"
+    )
+  })
+
   test_that("canonical Viewer defaults must belong to included content", {
     entry <- builder_upgrade_viewer_content_entry(
       builder_viewer_settings_entry()

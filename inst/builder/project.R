@@ -7,7 +7,7 @@
 .builder_project_config_schema_version <- 1L
 .builder_project_configuration_contract_version <- 1L
 .builder_project_manifest_max_bytes <- 10L * 1024L^2
-.builder_project_inline_image_max_encoded_bytes <- 8L * 1024L^2
+.builder_project_inline_image_max_encoded_bytes <- 4 * ceiling(1024^3 / 3)
 
 .builder_project_phases <- c(
   "none",
@@ -594,7 +594,10 @@ builder_project_release_manifest_lock <- function(lock) {
   }
   metadata <- file.path(isolated, c("owner-token", "owner.txt"))
   file.remove(metadata)
-  if (any(file.exists(metadata)) || !file.remove(isolated)) {
+  if (
+    any(file.exists(metadata)) ||
+      unlink(isolated, recursive = TRUE, force = TRUE) != 0L
+  ) {
     warning(
       "The isolated Project write lock could not be removed.",
       call. = FALSE
@@ -1317,7 +1320,7 @@ builder_project_release_session_source <- function(path, session_root) {
       identical(dirname(dataset_dir), source_root) &&
       !length(list.files(dataset_dir, all.files = TRUE, no.. = TRUE))
   ) {
-    unlink(dataset_dir, recursive = FALSE, force = TRUE)
+    unlink(dataset_dir, recursive = TRUE, force = TRUE)
   }
   TRUE
 }
@@ -2917,7 +2920,7 @@ builder_project_store_artifact_bundle <- function(
   built <- normalizePath(built, winslash = "/", mustWork = TRUE)
   build_root <- normalizePath(dirname(built), winslash = "/", mustWork = TRUE)
   sidecars <- unique(as.character(sidecars %||% character()))
-  safe_member <- function(target) {
+  member_source <- function(target, allow_directory = FALSE) {
     normalized_target <- gsub("\\\\", "/", target)
     if (
       !.builder_project_text(target) ||
@@ -2931,14 +2934,43 @@ builder_project_store_artifact_bundle <- function(
     ) {
       stop("An artifact member path is unsafe.", call. = FALSE)
     }
+    candidate <- file.path(build_root, target)
     source <- normalizePath(
-      file.path(build_root, target),
+      candidate,
       winslash = "/",
       mustWork = TRUE
     )
-    if (!startsWith(source, paste0(build_root, "/")) || dir.exists(source)) {
+    if (
+      !startsWith(source, paste0(build_root, "/")) ||
+        .builder_project_path_has_link_within(candidate, build_root) ||
+        (!isTRUE(allow_directory) && dir.exists(source))
+    ) {
       stop("An artifact member escaped the build folder.", call. = FALSE)
     }
+    source
+  }
+  expand_member <- function(target) {
+    source <- member_source(target, allow_directory = TRUE)
+    if (!dir.exists(source)) {
+      return(gsub("\\\\", "/", target))
+    }
+    descendants <- list.files(
+      source,
+      all.files = TRUE,
+      no.. = TRUE,
+      recursive = TRUE,
+      full.names = FALSE,
+      include.dirs = FALSE
+    )
+    if (!length(descendants)) {
+      stop("An artifact member directory is empty.", call. = FALSE)
+    }
+    gsub("\\\\", "/", file.path(target, descendants))
+  }
+  sidecars <- unique(unlist(lapply(sidecars, expand_member), use.names = FALSE))
+  safe_member <- function(target) {
+    normalized_target <- gsub("\\\\", "/", target)
+    source <- member_source(target)
     list(target = normalized_target, source = source)
   }
   members <- lapply(sidecars, safe_member)

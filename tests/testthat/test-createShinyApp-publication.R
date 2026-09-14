@@ -24,6 +24,65 @@ publication_build_ops <- function(...) {
   utils::modifyList(defaults, overrides)
 }
 
+test_that("bundle copies use platform clones with a portable fallback", {
+  commands <- list()
+  fallbacks <- 0L
+  command <- function(command, args, stdout, stderr) {
+    commands[[length(commands) + 1L]] <<- c(command, args)
+    0L
+  }
+  fallback <- function(from, to, ...) {
+    fallbacks <<- fallbacks + 1L
+    TRUE
+  }
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    recursive = TRUE,
+    .sysname = "Darwin",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("-c" %in% commands[[1L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("--reflink=auto" %in% commands[[2L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Windows",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_identical(length(commands), 2L)
+  expect_identical(fallbacks, 1L)
+})
+
+test_that("bundle clone failures fall back to ordinary copies", {
+  fallback_calls <- 0L
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = function(...) 1L,
+    .fallback = function(from, to, ...) {
+      fallback_calls <<- fallback_calls + 1L
+      TRUE
+    }
+  ))
+  expect_identical(fallback_calls, 1L)
+})
+
 publication_test_tree <- function(root) {
   result <- file.path(root, "app")
   stage <- file.path(root, ".app-stage")

@@ -87,6 +87,41 @@ test_that("spatial image manifests preserve ROI applicability", {
   )
 })
 
+test_that("ROI-scoped spatial images may cover only part of a section", {
+  payload <- spatial_manifest_payload()
+  payload$histology_image_bounds <- c(
+    xmin = 0,
+    xmax = 20,
+    ymin = 0,
+    ymax = 20
+  )
+  payload$roi_field <- "sample_roi"
+  payload$roi_value <- "lesion"
+  data <- spatial_manifest_data(list(Lesion = payload))
+
+  crb <- Cerebro$new()
+  expect_no_error(crb$addSpatialData("section 1", data))
+
+  crb$spatial[["section 2"]] <- data
+  expect_no_error(crb$getSpatialData("section 2"))
+
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)
+  descriptor <- list(
+    path = path,
+    bounds = payload$histology_image_bounds,
+    roi_field = payload$roi_field,
+    roi_value = payload$roi_value
+  )
+  expect_no_error(
+    .encodeSpatialImageDescriptor(
+      descriptor,
+      spatial_manifest_coordinates(),
+      "section 3 image `Lesion`"
+    )
+  )
+})
+
 test_that("Cerebro accepts coordinates-only spatial entries", {
   crb <- Cerebro$new()
   crb$addSpatialData("coordinates", spatial_manifest_data(list()))

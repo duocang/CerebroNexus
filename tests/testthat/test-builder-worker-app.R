@@ -607,7 +607,7 @@ test_that("Build status projection keeps one stable typed host", {
   }
   expect_match(ready_html, ">Build<", fixed = TRUE)
   expect_match(ready_html, "btn btn-action", fixed = TRUE)
-  expect_false(grepl("Choosing output folder…", choosing_html, fixed = TRUE))
+  expect_match(choosing_html, "Choosing output folder…", fixed = TRUE)
   expect_match(queued_html, "Build queued…", fixed = TRUE)
   expect_match(running_html, "Building 3 datasets…", fixed = TRUE)
   expect_match(
@@ -955,50 +955,6 @@ test_that("native pickers can run without blocking the Shiny process", {
     builder_collect_native_picker(started),
     list(status = "selected", path = normalizePath(output))
   )
-})
-
-test_that("native dataset selection returns only supported regular files", {
-  root <- withr::local_tempdir()
-  first <- file.path(root, "first.rds")
-  second <- file.path(root, "second.qs2")
-  unsupported <- file.path(root, "notes.txt")
-  writeBin(charToRaw("first"), first)
-  writeBin(charToRaw("second"), second)
-  writeBin(charToRaw("notes"), unsupported)
-
-  selected <- builder_native_picker_result("dataset_files", function() {
-    c(first, second)
-  })
-  cancelled <- builder_native_picker_result("dataset_files", function() NULL)
-  rejected <- builder_native_picker_result("dataset_files", function() {
-    unsupported
-  })
-
-  expect_identical(selected$status, "selected")
-  expect_identical(selected$paths, normalizePath(c(first, second)))
-  expect_identical(cancelled, list(status = "cancelled", paths = character()))
-  expect_identical(rejected$status, "error")
-  expect_match(rejected$error, "supported dataset", fixed = TRUE)
-})
-
-test_that("native table selection accepts every supported workbook format", {
-  root <- withr::local_tempdir()
-  paths <- file.path(root, c("clinical.csv", "qc.tsv", "atlas.xlsx"))
-  invisible(lapply(paths, function(path) writeLines("value", path)))
-  unsupported <- file.path(root, "notes.pdf")
-  writeLines("notes", unsupported)
-
-  selected <- builder_native_picker_result("table_files", function() paths)
-  cancelled <- builder_native_picker_result("table_files", function() NULL)
-  rejected <- builder_native_picker_result("table_files", function() {
-    unsupported
-  })
-
-  expect_identical(selected$status, "selected")
-  expect_identical(selected$paths, normalizePath(paths))
-  expect_identical(cancelled, list(status = "cancelled", paths = character()))
-  expect_identical(rejected$status, "error")
-  expect_match(rejected$error, "supported table", fixed = TRUE)
 })
 
 test_that("Build flow requires one confirmed lightweight Review snapshot", {

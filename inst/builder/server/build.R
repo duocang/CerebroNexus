@@ -176,6 +176,24 @@ build_stage_status_projection <- reactive({
   )
 })
 
+observeEvent(
+  result(),
+  {
+    value <- result()
+    if (
+      is.list(value) &&
+        (identical(value$state, "failure") ||
+          identical(value$state, "recovery_required"))
+    ) {
+      message(
+        "Builder build failed: ",
+        value$error %||% value$message %||% "Unknown error."
+      )
+    }
+  },
+  ignoreInit = TRUE
+)
+
 output$build_stage_status_content <- renderUI({
   body <- builder_build_stage_status_body_ui(build_stage_status_projection())
   if (is.null(body)) {
@@ -363,13 +381,7 @@ enqueue_build_plan <- function(
     kind = "build",
     plan = plan,
     auth_accounts = parsed_auth$accounts,
-    note = paste0(
-      "Building ",
-      length(plan$items),
-      " dataset",
-      if (length(plan$items) == 1L) "" else "s",
-      "…"
-    )
+    note = builder_build_queue_note(plan)
   ))
   if (!isTRUE(queued)) {
     return(builder_build_attempt_failed(

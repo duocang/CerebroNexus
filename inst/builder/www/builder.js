@@ -63,12 +63,6 @@
     "enhance-point_size",
   ]);
   var coordinateResetMotionTimers = new Map();
-  var datasetFileSource = "local";
-  var tableFileSource = "local";
-  var filePickerRecovery = {
-    datasets: { timer: null, control: null },
-    tables: { timer: null, control: null },
-  };
   var dynamicContentEnhancementFrame = null;
   var dynamicContentEnhancementRoots = new Set();
   var spatialScrollbarFrame = null;
@@ -630,7 +624,6 @@
       builderActivityState.capabilities.mutate_datasets === false;
     var selectors = [
       "#dataset_files",
-      "#enhance-choose_local_tables",
       ".builder-add-datasets",
       ".enhance-table-add-button",
       ".builder-file-trigger",
@@ -1010,7 +1003,8 @@
     spinner.className = "spinner";
     spinner.setAttribute("aria-hidden", "true");
     var label = document.createElement("span");
-    label.textContent = "Preparing build…";
+    var statusText = "Starting build…";
+    label.textContent = statusText;
     waiting.append(spinner, label);
     section.append(heading, waiting);
     host.insertBefore(section, output);
@@ -1018,7 +1012,7 @@
     buildStatusScrollPhase = 1;
     scheduleBuildStatusFocus();
     buildStatusScrollPhase = 2;
-    scheduleStatusAnnouncement("Preparing build.");
+    scheduleStatusAnnouncement(statusText);
   }
 
   function authCopy(accounts) {
@@ -1391,92 +1385,15 @@
     picker.click();
   }
 
-  function finishFilePickerRecovery(kind) {
-    var recovery = filePickerRecovery[kind];
-    if (!recovery) return;
-    if (recovery.timer !== null) window.clearTimeout(recovery.timer);
-    if (recovery.control) recovery.control.remove();
-    recovery.timer = null;
-    recovery.control = null;
+  function addDatasetFiles() {
+    if (datasetMutationsLocked || !activityCapability("add_dataset")) return;
+    openDatasetPicker();
   }
 
-  function useBrowserFilePicker(kind) {
-    finishFilePickerRecovery(kind);
-    send("builder_cancel_file_picker", { kind: kind, nonce: Date.now() });
-    if (kind === "datasets") {
-      datasetFileSource = "upload";
-      showFileUploadFallback(kind);
-      openDatasetPicker();
-      return;
-    }
-    tableFileSource = "upload";
-    showFileUploadFallback(kind);
+  function addTableFiles() {
+    if (datasetMutationsLocked || !activityCapability("edit_dataset")) return;
     var picker = document.getElementById("enhance-table_files");
     if (picker) picker.click();
-  }
-
-  function startFilePickerRecovery(kind, trigger) {
-    finishFilePickerRecovery(kind);
-    var recovery = filePickerRecovery[kind];
-    recovery.timer = window.setTimeout(function () {
-      recovery.timer = null;
-      if (!trigger || !trigger.isConnected) return;
-      var control = document.createElement("button");
-      control.type = "button";
-      control.className = "btn btn-quiet builder-file-upload-fallback";
-      control.textContent = "Can't see the picker? Upload instead";
-      control.addEventListener("click", function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        useBrowserFilePicker(kind);
-      });
-      trigger.insertAdjacentElement("afterend", control);
-      recovery.control = control;
-    }, 2000);
-  }
-
-  function nativePickerAvailable(trigger) {
-    return !trigger || trigger.dataset.nativePicker !== "false";
-  }
-
-  function addDatasetFiles(trigger) {
-    if (datasetMutationsLocked || !activityCapability("add_dataset")) return;
-    if (datasetFileSource === "upload" || !nativePickerAvailable(trigger)) {
-      datasetFileSource = "upload";
-      showFileUploadFallback("datasets");
-      openDatasetPicker();
-      return;
-    }
-    startFilePickerRecovery("datasets", trigger);
-    send("choose_local_datasets", Date.now());
-  }
-
-  function addTableFiles(trigger) {
-    if (datasetMutationsLocked || !activityCapability("edit_dataset")) return;
-    if (tableFileSource === "upload" || !nativePickerAvailable(trigger)) {
-      tableFileSource = "upload";
-      showFileUploadFallback("tables");
-      var picker = document.getElementById("enhance-table_files");
-      if (picker) picker.click();
-      return;
-    }
-    startFilePickerRecovery("tables", trigger);
-    send("enhance-choose_local_tables", Date.now());
-  }
-
-  function showFileUploadFallback(kind) {
-    var selector = kind === "tables"
-      ? ".enhance-table-add-button .builder-add-label"
-      : ".builder-add-datasets .builder-add-label, " +
-        ".builder-dataset-dropzone .builder-add-label";
-    document.querySelectorAll(selector).forEach(function (label) {
-      label.textContent = kind === "tables" ? "Upload tables" : "Upload files";
-    });
-    if (kind === "datasets") {
-      document.querySelectorAll(".builder-add-datasets .rail-add-detail").forEach(
-        function (detail) { detail.textContent = "System picker unavailable"; }
-      );
-    }
   }
 
   function setupDatasetDropzones(roots) {
@@ -3508,8 +3425,6 @@
   function enhanceDynamicContent(roots) {
     syncWorkflowProgressHeight();
     setupDatasetDropzones(roots);
-    if (datasetFileSource === "upload") showFileUploadFallback("datasets");
-    if (tableFileSource === "upload") showFileUploadFallback("tables");
     syncSpatialAlignmentScrollbars(roots);
     updateOptionalAnalysisCount(roots);
     updateExtraMaterialCount(roots);
@@ -4434,19 +4349,6 @@
     });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);
-    });
-    window.Shiny.addCustomMessageHandler("builder_file_source_fallback", function (message) {
-      if (!message || typeof message !== "object") return;
-      finishFilePickerRecovery(message.kind);
-      if (message.kind === "datasets") datasetFileSource = "upload";
-      if (message.kind === "tables") tableFileSource = "upload";
-      showFileUploadFallback(message.kind);
-      scheduleStatusAnnouncement(
-        message.text || "The system picker is unavailable. Click again to upload files."
-      );
-    });
-    window.Shiny.addCustomMessageHandler("builder_file_picker_done", function (message) {
-      if (message && message.kind) finishFilePickerRecovery(message.kind);
     });
     function handleAuthStatus(message) {
       if (

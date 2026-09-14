@@ -64,7 +64,7 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_false(grepl("Plotly", js, fixed = TRUE))
 })
 
-test_that("point rotation does not refit the shared image viewport", {
+test_that("point rotation refits one shared image and coordinate viewport", {
   root <- testthat::test_path("..", "..", "inst", "builder")
   js <- paste(
     readLines(
@@ -79,16 +79,20 @@ test_that("point rotation does not refit the shared image viewport", {
   )
   compact_js <- gsub("[[:space:]]+", " ", js)
 
-  expect_false(grepl(
+  expect_match(
+    compact_js,
     "viewportLayout( scene.bounds, angle",
-    compact_js,
     fixed = TRUE
-  ))
-  expect_false(grepl(
+  )
+  expect_match(
+    compact_js,
     "viewportLayout(bounds, angle",
-    compact_js,
     fixed = TRUE
-  ))
+  )
+  expect_match(js, "drawImage(ctx, scene, screen)", fixed = TRUE)
+  expect_match(js, "drawPoints(ctx, scene, screen)", fixed = TRUE)
+  expect_match(js, "drawImage(ctx, scene, screen, roiImage", fixed = TRUE)
+  expect_false(grepl("pointLayout", compact_js, fixed = TRUE))
   expect_false(grepl(
     "include_coordinate_rotation = TRUE",
     server,
@@ -143,6 +147,38 @@ test_that("same-token scene refreshes preserve browser-local controls", {
   expect_match(js, "viewChanged || resetToken > state.resetToken", fixed = TRUE)
 })
 
+test_that("Canvas scene refreshes reuse image bytes already sent", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  server <- paste(
+    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  js <- paste(
+    readLines(
+      file.path(root, "www", "builder-spatial-canvas.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, "builder_spatial_canvas_cache_sources(", fixed = TRUE)
+  expect_match(js, "image.sourceKey || image.uri", fixed = TRUE)
+})
+
+test_that("Reset image updates browser-local controls immediately", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  js <- paste(
+    readLines(
+      file.path(root, "www", "builder-spatial-canvas.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(js, "resetImageControls", fixed = TRUE)
+  expect_match(js, 'closest("#enhance-reset_align")', fixed = TRUE)
+})
+
 test_that("programmatic Image settings restore cannot commit partial values", {
   root <- testthat::test_path("..", "..", "inst", "builder")
   server <- paste(
@@ -161,24 +197,23 @@ test_that("programmatic Image settings restore cannot commit partial values", {
     fixed = TRUE
   )[[1L]]
   block <- substr(block, expected_start, nchar(block))
-  clear <- regexpr("expected_controls(NULL)", block, fixed = TRUE)[[1L]]
-  stop <- regexpr("return(invisible(FALSE))", block, fixed = TRUE)[[1L]]
-
-  expect_gt(clear, 0L)
-  expect_gt(stop, 0L)
-  expect_lt(clear, stop)
+  expect_match(
+    block,
+    paste0(
+      "if \\(\\s*!isTRUE\\(all.equal\\([\\s\\S]*?\\)\\)\\s*\\) \\{",
+      "\\s*return\\(invisible\\(FALSE\\)\\)\\s*\\}",
+      "\\s*expected_controls\\(NULL\\)"
+    ),
+    perl = TRUE
+  )
   expect_match(
     server,
     "settled_parameters <- shiny::debounce(parameters, millis = 50)",
     fixed = TRUE
   )
   expect_match(
-    server,
-    paste(
-      "parameters <- shiny::reactive({",
-      "current_draft <- shiny::isolate(draft())",
-      sep = "\n"
-    ),
+    gsub("[[:space:]]+", " ", server),
+    "parameters <- shiny::reactive({ current_draft <- shiny::isolate(draft())",
     fixed = TRUE
   )
 })

@@ -2048,7 +2048,7 @@ test_that("same-byte App hard-link swaps fail after parent verification", {
 
     expect_error(
       builder_coordinator_publish(fixture$handle, fixture$result),
-      "changed after parent verification"
+      "Publication verification failed"
     )
     expect_false(dir.exists(fixture$target))
     expect_true(builder_coordinator_abort(fixture$handle)$aborted)
@@ -2083,7 +2083,7 @@ test_that("App metadata races during ownership commit stay unpublished", {
           file.rename(from, to)
         }
       ),
-      "changed during ownership"
+      "Publication verification failed"
     )
     expect_false(dir.exists(fixture$target))
     expect_true(builder_coordinator_abort(fixture$handle)$aborted)
@@ -2184,6 +2184,29 @@ test_that("verified Apps publish with final paths and parent ownership", {
       ) %in%
         member_paths
     ))
+  })
+})
+
+test_that("App publication reuses full release identities", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    original_identity <- .builder_app_tree_identity
+    identity_calls <- 0L
+    .builder_app_tree_identity <- function(...) {
+      identity_calls <<- identity_calls + 1L
+      original_identity(...)
+    }
+
+    published <- builder_coordinator_publish(fixture$handle, fixture$result)
+
+    expect_true(published$published)
+    expect_identical(identity_calls, 6L)
   })
 })
 
@@ -2601,7 +2624,7 @@ test_that("login publication rejects an environment changed after parent verific
           path
         }
       ),
-      "staged App changed after parent verification"
+      "authentication secret file is not private"
     )
     expect_true(dir.exists(fixture$handle$stage))
     expect_false(dir.exists(fixture$handle$target))
@@ -2682,7 +2705,7 @@ test_that("login publication detects same-content inode and hard-link env replac
         unlink(env_file)
         stopifnot(isTRUE(file.link(source, env_file)))
       },
-      "regular file cannot be a hard link"
+      "staged App changed after parent verification"
     )
   })
 })
