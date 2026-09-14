@@ -47,6 +47,47 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
+viewerColourGroupChoices <- function(
+  metadata,
+  groups,
+  main_group
+) {
+  if (missing(metadata)) {
+    metadata <- tryCatch(getMetaData(), error = function(e) NULL)
+  }
+  if (missing(groups)) {
+    groups <- tryCatch(getGroups(), error = function(e) character())
+  }
+  if (missing(main_group)) {
+    parameters <- tryCatch(getParameters(), error = function(e) NULL)
+    main_group <- if (is.list(parameters)) parameters[["main_group"]] else NULL
+  }
+
+  columns <- tryCatch(colnames(metadata), error = function(e) character())
+  groups <- tryCatch(as.character(groups), error = function(e) character())
+  groups <- unique(groups[
+    !is.na(groups) & nzchar(groups) & groups %in% columns
+  ])
+  main_group <- tryCatch(as.character(main_group), error = function(e) {
+    character()
+  })
+  selected <- intersect(
+    main_group[!is.na(main_group) & nzchar(main_group)],
+    groups
+  )
+
+  list(
+    choices = groups,
+    selected = if (length(selected)) {
+      selected[[1L]]
+    } else if (length(groups)) {
+      groups[[1L]]
+    } else {
+      NULL
+    }
+  )
+}
+
 viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
   resolve <- function(key, fallback, minimum, maximum) {
     value <- options[[key]]

@@ -303,10 +303,10 @@
   function groupLabel(g) { return g === 'clone_expansion' ? 'Clone Expansion' : g; }
 
   // ---- colouring sources ---------------------------------------------------
-  // Three of them, mirroring how the Projection tab splits its two boxes:
+  // Shared colouring sources used by Linked and specialist cell views:
   //   D.groups    registered grouping variables — colour AND group filters
-  //   D.cat_extra other categorical meta columns — colour only (no filter)
-  //   D.fields    numeric meta columns + Trekker's physical fields — continuous
+  //   D.cat_extra specialist categorical modes — colour only (no filter)
+  //   D.fields    specialist continuous modes, including Trekker fields
   // Everything that reads a categorical colouring goes through catOf(), so the
   // two categorical sources never have to be special-cased at the call site.
   function catOf(name) {
@@ -390,8 +390,8 @@
 
   // ---- per-space unit normalisation ---------------------------------------
   // Every 2-D layout fills its fluid canvas by normalising x/y independently.
-  // Spatial views recover one physical screen scale through panelDataAspect();
-  // only rotatable 3-D embeddings keep one shared axis scale here.
+  // Spatial views recover one physical screen scale when project() letterboxes
+  // their unit box; only rotatable 3-D embeddings keep one shared axis scale here.
   function deferredUnitOf(space) {
     var xr = space.xRange, yr = space.yRange;
     if (space.z || !Array.isArray(xr) || xr.length !== 2 ||
@@ -495,8 +495,8 @@
     }
     // x0/y0/k/ox/oy let us map ARBITRARY data coords (e.g. image bounds) to the
     // same unit box the points use, so a background image aligns to the cells.
-    // `ky` is retained separately because a spatial canvas follows the data's
-    // own aspect ratio instead of letterboxing it into a square first.
+    // `ky` is retained separately because spatial data is normalised per axis,
+    // then letterboxed inside its canvas without changing the panel geometry.
     //
     // `bx` is where the DATA actually lies inside the unit box. A 3-D cloud can
     // occupy less than [0,1] after its rotation-safe spherical fit, and clampView()
@@ -806,6 +806,20 @@
     var SX = Math.max(1, p.W - padL - padR);
     var SY = Math.max(1, p.H - padT - padB);
     var ox = padL, oy = padT;
+    if (isSpatialSpace(sp) && !u.nz) {
+      var aspect = Number(u.aspect), panelAspect = SX / SY;
+      if (isFinite(aspect) && aspect > 0) {
+        if (panelAspect > aspect) {
+          var fittedWidth = SY * aspect;
+          ox += (SX - fittedWidth) / 2;
+          SX = fittedWidth;
+        } else {
+          var fittedHeight = SX / aspect;
+          oy += (SY - fittedHeight) / 2;
+          SY = fittedHeight;
+        }
+      }
+    }
     p._SX = SX; p._SY = SY; p._S = Math.min(SX, SY);
     p._sox = ox; p._soy = oy;                // for dataToScreen (image bounds)
     if (!forceCpu && gpuCandidate(p)) {
@@ -3928,6 +3942,9 @@
       var key = panelKey(index), low = key.toLowerCase();
       var clone = source.cloneNode(true);
       clone.className = 'cv-pane cv-hidden';
+      clone.querySelectorAll('.cv-gpu-layer').forEach(function (canvas) {
+        canvas.remove();
+      });
       clone.querySelectorAll('[id]').forEach(function (el) {
         el.id = el.id.replace(/-a$/, '-' + low);
       });
@@ -4543,11 +4560,8 @@
     if (value) value.textContent = "Moran's I " + Number(badge.dataset.value).toFixed(3);
     dlg.showModal();
   }
-  // The "Colour by" list mirrors the Projection tab's, which offers EVERY meta
-  // column: registered groups first, then the other categorical columns, then
-  // every continuous field (numeric meta columns — including the QC ones people
-  // actually colour by — plus Trekker's physical fields), then the gene modes.
-  // Grouped into <optgroup>s because the list is now long enough to need them.
+  // Registered groups are the only metadata options. Specialist continuous
+  // fields and gene-expression modes remain available as non-metadata modes.
   function fillColorPicker() {
     var sel = $('cv-pick-color'); if (!sel) return;
     var optsOf = function (keys, prefix, labelOf) {
@@ -5450,9 +5464,13 @@
     var maxSide = pool.reduce(function (largest, candidate) {
       return Math.max(largest, candidate.side);
     }, 0);
-    var balanced = pool.filter(function (candidate) {
-      return candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE;
-    });
+    var balanced = feasible.length
+      ? pool.filter(function (candidate) {
+        return candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE;
+      })
+      : pool.filter(function (candidate) {
+        return candidate.side === maxSide;
+      });
     balanced.sort(function (a, b) {
       if (a.orphan !== b.orphan) return a.orphan ? 1 : -1;
       if (a.fill !== b.fill) return b.fill - a.fill;
@@ -5460,42 +5478,6 @@
       return b.side - a.side;
     });
     return balanced[0];
-  }
-
-  // Spatial axes are normalised independently into a unit box; giving that box
-  // the data's x/y aspect restores one physical screen scale for both axes.
-  // Non-spatial views remain square unless their own layout says otherwise.
-  function panelDataAspect(p) {
-    var sp = p && spaceById[p.spaceId];
-    if (!isSpatialSpace(sp)) return null;
-    if (!sp._unit) sp._unit = unitOf(sp);
-    var aspect = Number(sp._unit.aspect);
-    return isFinite(aspect) && aspect > 0 ? aspect : null;
-  }
-
-  // A row made entirely of physical spatial views shares one height and lets
-  // their data aspects determine width. Mixed rows stay fluid: an FOV keeps its
-  // physical ratio, while UMAP/trajectory/clone panels consume their full slot.
-  function fitAspectRow(vis, availW, availH, chromeX, overhead, gap) {
-    if (!vis.length) return null;
-    var aspects = vis.map(function (p) { return panelDataAspect(p); });
-    if (!aspects.every(Boolean)) return null;
-    var contentW = availW - gap * (vis.length - 1) - chromeX * vis.length;
-    var aspectSum = aspects.reduce(function (sum, aspect) {
-      return sum + aspect;
-    }, 0);
-    var height = Math.min(availH - overhead, contentW / aspectSum);
-    if (!isFinite(height) || height < MIN_SIDE) return null;
-    height = Math.floor(height);
-    var widths = aspects.map(function (aspect) {
-      return Math.max(1, Math.floor(height * aspect));
-    });
-    var tracks = widths.map(function (width) { return width + chromeX; });
-    var used = tracks.reduce(function (sum, width) { return sum + width; }, 0) +
-      gap * (vis.length - 1);
-    var spare = Math.max(0, availW - used) / vis.length;
-    tracks = tracks.map(function (width) { return width + spare; });
-    return { height: height, widths: widths, tracks: tracks };
   }
 
   function resizeAll() {
@@ -5547,17 +5529,14 @@
     var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE : MIN_SIDE;
     var availableCols = Math.max(1,
       Math.floor((usableW + gap) / (columnFloor + chromeX + gap)));
-    var overviewFitsFloor = overview && overview.side >= MIN_SIDE;
     var cols = focusPanel
       ? Math.max(1, Math.min(k + 1, availableCols))
-      : (overviewFitsFloor
-        ? overview.cols : Math.max(1, Math.min(k, availableCols)));
+      : Math.max(1, Math.min(overview ? overview.cols : 1, availableCols));
     var single = cols === 1;
     var colW = (usableW - (cols - 1) * gap) / cols;
     var side = focusPanel
       ? Math.max(FOCUS_CONTEXT_SIDE, Math.floor(colW - chromeX))
-      : (overviewFitsFloor
-        ? overview.side : Math.max(MIN_SIDE, Math.floor(colW - chromeX)));
+      : Math.max(MIN_SIDE, overview ? overview.side : 0);
     if (single && side + chromeX > usableW) {
       side = Math.max(150, usableW - chromeX);
     }
@@ -5609,26 +5588,15 @@
       MIN_SIDE,
       Math.floor((availH - (rows - 1) * gap) / rows - overhead)
     );
-    var rowFit = !focusPanel && rows === 1
-      ? fitAspectRow(vis, usableW, availH, chromeX, overhead, gap)
-      : null;
     var panelWidth = Math.max(150, Math.floor(colW - chromeX));
     var primaryWidth = cols > 1
       ? Math.max(panelWidth, Math.floor(colW * 2 + gap - chromeX))
       : panelWidth;
-    vis.forEach(function (p, index) {
+    vis.forEach(function (p) {
       var primary = !!focusPanel && p.key === focusPanel;
-      var width = rowFit ? rowFit.widths[index]
-        : (primary ? primaryWidth : panelWidth);
-      var height = rowFit ? rowFit.height
-        : (primary ? focusSide : (focusPanel ? side : panelHeight));
-      var paneWidth = rowFit ? rowFit.tracks[index]
-        : (primary ? primaryWidth + chromeX : colW);
-      var aspect = panelDataAspect(p);
-      if (aspect) {
-        if (width / height > aspect) width = Math.round(height * aspect);
-        else height = Math.max(180, Math.round(width / aspect));
-      }
+      var width = primary ? primaryWidth : panelWidth;
+      var height = primary ? focusSide : (focusPanel ? side : panelHeight);
+      var paneWidth = primary ? primaryWidth + chromeX : colW;
       if (keepPlotsSquare) {
         var squareSide = Math.min(width, height);
         width = squareSide;
