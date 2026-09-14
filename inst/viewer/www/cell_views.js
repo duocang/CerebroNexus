@@ -5327,6 +5327,10 @@
   // 300px wide when possible and extra spaces flow onto later rows.
   var MIN_SIDE = 300;
   var VIEWPORT_GUTTER = 7;
+  // Prefer a balanced packing whenever it keeps at least this much of the
+  // largest available panel size. This prevents sparse final rows without
+  // forcing plots into a materially smaller layout.
+  var BALANCED_SIZE_TOLERANCE = 0.85;
   // Context is a persistent orientation aid, not the place for close reading.
   // Let it become slightly smaller while a primary lens is present so a common
   // 1280px workspace can keep both roles in the same visual field.
@@ -5369,11 +5373,12 @@
     ].join('|');
   }
 
-  // Find the rows/columns that produce the largest complete square when BOTH
-  // dimensions are finite. This is deliberately independent of panel order:
-  // adding a linked space changes only the packing, never the visual geometry.
+  // Find a readable, balanced overview for any panel count. First keep layouts
+  // close to the largest feasible panel size, then prefer complete rows, fewer
+  // rows, and no one-panel orphan row. This remains independent of panel order:
+  // adding a linked space changes only the packing, never visual geometry.
   function bestOverviewGrid(panelCount, availW, availH, chromeX, chromeY, gap) {
-    var best = { cols: 1, rows: panelCount, side: 0 };
+    var candidates = [];
     for (var cols = 1; cols <= panelCount; cols++) {
       var rows = Math.ceil(panelCount / cols);
       var widthSide = Math.floor(
@@ -5382,13 +5387,33 @@
       var heightSide = Math.floor(
         (availH - (rows - 1) * gap) / rows - chromeY
       );
-      var candidate = Math.min(widthSide, heightSide);
-      if (candidate > best.side ||
-          (candidate === best.side && rows < best.rows)) {
-        best = { cols: cols, rows: rows, side: candidate };
-      }
+      var side = Math.min(widthSide, heightSide);
+      var lastRow = panelCount - (rows - 1) * cols;
+      candidates.push({
+        cols: cols,
+        rows: rows,
+        side: side,
+        orphan: rows > 1 && cols > 1 && lastRow === 1,
+        fill: panelCount / (rows * cols)
+      });
     }
-    return best;
+    var feasible = candidates.filter(function (candidate) {
+      return candidate.side >= MIN_SIDE;
+    });
+    var pool = feasible.length ? feasible : candidates;
+    var maxSide = pool.reduce(function (largest, candidate) {
+      return Math.max(largest, candidate.side);
+    }, 0);
+    var balanced = pool.filter(function (candidate) {
+      return candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE;
+    });
+    balanced.sort(function (a, b) {
+      if (a.orphan !== b.orphan) return a.orphan ? 1 : -1;
+      if (a.fill !== b.fill) return b.fill - a.fill;
+      if (a.rows !== b.rows) return a.rows - b.rows;
+      return b.side - a.side;
+    });
+    return balanced[0];
   }
 
   // Spatial axes are normalised independently into a unit box; giving that box
