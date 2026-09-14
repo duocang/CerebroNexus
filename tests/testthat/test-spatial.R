@@ -88,7 +88,268 @@ test_that("exportFromSeurat carries the spatial extraction path", {
   # addSpatialData(). Reading the deparsed function body is robust to air reflow.
   fn_text <- paste(deparse(exportFromSeurat), collapse = "\n")
   expect_match(fn_text, ".getSpatialData", fixed = TRUE)
+  expect_match(fn_text, ".getSpatialBoundaries", fixed = TRUE)
   expect_match(fn_text, "addSpatialData", fixed = TRUE)
+})
+
+test_that("Xenium segmentation normalizes to the cell-boundary contract", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("xenium-fov")
+  expect_null(CerebroNexus:::.getSpatialBoundaries(
+    object,
+    "xenium-fov",
+    colnames(object)
+  ))
+  image <- object@images[[1L]]
+  boundaries <- methods::slot(image, "boundaries")
+  cells <- colnames(object)[1:2]
+  boundaries$segmentation <- SeuratObject::CreateSegmentation(data.frame(
+    x = c(0, 1, 1, 0, 2, 3, 3, 2),
+    y = c(0, 0, 1, 1, 2, 2, 3, 3),
+    cell = rep(cells, each = 4L)
+  ))
+  methods::slot(image, "boundaries") <- boundaries
+  methods::slot(image, "molecules") <- list(
+    RNA = SeuratObject::CreateMolecules(data.frame(
+      x = c(0.25, 0.75, 2.25, 2.75),
+      y = c(0.25, 0.75, 2.25, 2.75),
+      gene = c("Gene1", "Gene2", "Gene1", "Gene2")
+    ))
+  )
+  object@images[[1L]] <- image
+
+  result <- CerebroNexus:::.getSpatialBoundaries(
+    object,
+    "xenium-fov",
+    colnames(object)
+  )
+
+  expect_named(result, c("cell_barcode", "x", "y", "part"))
+  expect_setequal(unique(result$cell_barcode), cells)
+  expect_true(all(is.finite(result$x)) && all(is.finite(result$y)))
+  expect_true(all(result$part == "1"))
+
+  molecules <- CerebroNexus:::.getSpatialMolecules(
+    object,
+    "xenium-fov",
+    max_molecules = 3L
+  )
+  expect_named(
+    molecules,
+    c("data", "genes", "total_count", "exported_count", "truncated")
+  )
+  expect_named(molecules$data, c("gene", "x", "y"))
+  expect_identical(molecules$total_count, 4L)
+  expect_identical(molecules$exported_count, 3L)
+  expect_true(molecules$truncated)
+
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+  exportFromSeurat(
+    object = object,
+    assay = "RNA",
+    slot = "counts",
+    file = path,
+    experiment_name = "Xenium boundaries",
+    organism = "hg",
+    groups = c("sample", "seurat_clusters"),
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    projections = "umap",
+    spatial_coordinate_transforms = list(
+      `xenium-fov` = list(rotation_degrees = 90, scale = 2)
+    ),
+    verbose = FALSE
+  )
+  stored <- readRDS(path)$getSpatialData("xenium-fov")
+  expect_named(stored$boundaries, c("cell_barcode", "x", "y", "part"))
+  expect_setequal(unique(stored$boundaries$cell_barcode), cells)
+  pivot <- stored$coordinate_transform$pivot
+  expect_equal(
+    stored$boundaries$x,
+    pivot[["x"]] - 2 * (result$y - pivot[["y"]]),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    stored$boundaries$y,
+    pivot[["y"]] + 2 * (result$x - pivot[["x"]]),
+    tolerance = 1e-10
+  )
+  expect_named(
+    stored$molecules,
+    c("data", "genes", "total_count", "exported_count", "truncated")
+  )
+  expect_equal(
+    stored$molecules$data$x,
+    pivot[["x"]] - 2 * (c(0.25, 2.25, 0.75, 2.75) - pivot[["y"]]),
+    tolerance = 1e-10
+  )
+})
+
+test_that("cell boundary payloads are validated and capped by complete cells", {
+  boundaries <- data.frame(
+    cell_barcode = rep(c("cell-1", "cell-2"), each = 4L),
+    x = c(0, 1, 1, 0, 2, 3, 3, 2),
+    y = c(0, 0, 1, 1, 2, 2, 3, 3),
+    part = "1",
+    stringsAsFactors = FALSE
+  )
+
+  payload <- spatial_cell_boundaries(boundaries, c("cell-1", "cell-2"), 4L)
+  expect_named(payload, c("cell_barcode", "part", "x", "y"))
+  expect_identical(unique(payload$cell_barcode), "cell-1")
+  expect_length(payload$x, 4L)
+  expect_identical(spatial_cell_boundaries(list(), "cell-1"), list())
+  expect_identical(
+    spatial_cell_boundaries(boundaries, "cell-1", Inf),
+    list()
+  )
+})
+
+test_that("spatial hierarchy resolves sample and ROI values by barcode", {
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    sample = c("S1", "S1", "S2"),
+    roi_id = c("R1", "R2", "R3"),
+    stringsAsFactors = FALSE
+  )
+
+  sample <- spatial_metadata_facet(metadata, c("c3", "c1"), "sample")
+  roi <- spatial_metadata_facet(
+    metadata,
+    c("c3", "c1"),
+    c("roi", "roi_id")
+  )
+
+  expect_identical(sample$field, "sample")
+  expect_identical(sample$by_cell, c(c3 = "S2", c1 = "S1"))
+  expect_identical(roi$values, c("R3", "R1"))
+})
+
+test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
+  cells_file <- file.path(
+    system.file("viewer", package = "CerebroNexus"),
+    "spatial",
+    "obj_projection_cells_to_show.R"
+  )
+  metadata <- data.frame(
+    cell_barcode = paste0("c", 1:5),
+    sample = c("S1", "S1", "S1", "S2", "S2"),
+    roi_id = c("R1", "R1", "R2", "R1", "R1"),
+    cluster = "A",
+    stringsAsFactors = FALSE
+  )
+  rownames(metadata) <- metadata$cell_barcode
+  atlas <- list(
+    fov1 = list(
+      coordinates = data.frame(
+        x = 1:3,
+        y = 4:6,
+        row.names = paste0("c", 1:3)
+      )
+    ),
+    fov2 = list(
+      coordinates = data.frame(
+        x = 7:8,
+        y = 9:10,
+        row.names = paste0("c", 4:5)
+      )
+    )
+  )
+  server <- function(input, output, session) {
+    getGroups <- function() character()
+    getMetaData <- function() metadata
+    getSpatialData <- function(name) atlas[[name]]
+    sys.source(cells_file, envir = environment())
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(
+      spatial_projection_percentage_cells_to_show = 100,
+      spatial_projection_to_display = "fov1",
+      spatial_projection_sample = "S1",
+      spatial_projection_roi = "R1"
+    )
+    expect_setequal(spatial_projection_cells_to_show(), 1:2)
+  })
+})
+
+test_that("molecule overlays accept one gene and cap browser points", {
+  molecules <- list(
+    data = data.frame(
+      gene = c("Gene1", "Gene2", "Gene1", "Gene1"),
+      x = c(1, 2, 3, 4),
+      y = c(5, 6, 7, 8),
+      stringsAsFactors = FALSE
+    ),
+    genes = c("Gene1", "Gene2"),
+    total_count = 4L,
+    exported_count = 4L,
+    truncated = FALSE
+  )
+
+  overlay <- spatial_molecule_overlay(molecules, "Gene1", 2L)
+  expect_named(overlay, c("x", "y"))
+  expect_length(overlay$x, 2L)
+  expect_identical(spatial_molecule_overlay(molecules, "missing"), list())
+  expect_identical(
+    spatial_molecule_overlay(molecules, "Gene1", scoped = TRUE),
+    list()
+  )
+})
+
+test_that("exportFromSeurat exports a spatial reduction without an image", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Seurat")
+
+  set.seed(7)
+  counts <- matrix(
+    stats::rpois(12L * 8L, lambda = 3),
+    nrow = 12L,
+    dimnames = list(paste0("Gene", seq_len(12L)), paste0("Cell", seq_len(8L)))
+  )
+  object <- SeuratObject::CreateSeuratObject(
+    counts = methods::as(counts, "CsparseMatrix")
+  )
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object$cluster <- rep(c("A", "B"), each = 4L)
+  make_reduction <- function(key) {
+    values <- matrix(
+      stats::rnorm(16L),
+      nrow = 8L,
+      dimnames = list(colnames(object), paste0(key, seq_len(2L)))
+    )
+    SeuratObject::CreateDimReducObject(
+      embeddings = values,
+      key = key,
+      assay = "RNA"
+    )
+  }
+  object[["umap"]] <- make_reduction("UMAP_")
+  object[["spatial"]] <- make_reduction("SPATIAL_")
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+
+  exportFromSeurat(
+    object = object,
+    assay = "RNA",
+    slot = "data",
+    file = path,
+    experiment_name = "spatial reduction",
+    organism = "hg",
+    groups = "cluster",
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    add_all_meta_data = TRUE,
+    projections = "umap",
+    verbose = FALSE
+  )
+
+  crb <- readRDS(path)
+  expect_identical(crb$availableSpatial(), "spatial")
+  spatial <- crb$getSpatialData("spatial")
+  expect_equal(nrow(spatial$coordinates), ncol(object))
+  expect_identical(rownames(spatial$coordinates), colnames(object))
 })
 
 ##----------------------------------------------------------------------------##
@@ -174,8 +435,23 @@ test_that("background-image selection only recreates image calibration controls"
     perl = TRUE
   )
   expect_match(
+    main_parameters_ui,
+    '"spatial_projection_roi_background_images"',
+    fixed = TRUE
+  )
+  expect_match(main_parameters_ui, "background_control", fixed = TRUE)
+  expect_match(
     projection_ui,
     'uiOutput\\("spatial_projection_background_selector_UI"\\)'
+  )
+  expect_match(
+    projection_ui,
+    paste0(
+      'class = "cerebro-viz-primary",[[:space:]]*',
+      'uiOutput\\("spatial_projection_main_parameters_UI"\\),[[:space:]]*',
+      'uiOutput\\("spatial_projection_background_selector_UI"\\)'
+    ),
+    perl = TRUE
   )
   expect_match(
     projection_ui,
@@ -205,6 +481,12 @@ test_that("background-image selection only recreates image calibration controls"
   expect_match(additional_ui, '"Opacity"', fixed = TRUE)
   expect_no_match(additional_ui, '"Image opacity"', fixed = TRUE)
   expect_match(additional_ui, 'paste0(id, "_num")', fixed = TRUE)
+  expect_match(additional_ui, 'label = "Show % of observations"', fixed = TRUE)
+  expect_match(
+    additional_ui,
+    "the exported molecule records are not assigned to cells or ROIs.",
+    fixed = TRUE
+  )
   expect_match(
     additional_ui,
     'slider_number_input(\n        "spatial_projection_background_opacity"',
@@ -655,12 +937,19 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     envir = renderer
   )
   rendered <- NULL
-  renderer$cerebroCellViewRender <- function(id, meta, data, ...) {
-    rendered <<- list(meta = meta, data = data)
+  renderer$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover = list(),
+    extra = list()
+  ) {
+    rendered <<- list(meta = meta, data = data, extra = extra)
   }
 
   params <- list(
     color_variable = "score",
+    split_by = "",
     background_image = spatial_background_key("external", "Atlas"),
     background_descriptor = list(
       source = "external",
@@ -690,16 +979,32 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     point_size = 5,
     point_opacity = 1,
     draw_border = FALSE,
+    show_cell_boundaries = TRUE,
+    show_molecules = TRUE,
+    molecule_gene = "Gene1",
     hover_info = FALSE
   )
-  call_renderer <- function(plot_parameters) {
+  call_renderer <- function(plot_parameters, assignments = character()) {
     renderer$spatial_projection_update_plot(list(
-      cells_df = data.frame(score = c(1, 2)),
+      cells_df = data.frame(
+        cell_barcode = c("cell-1", "cell-2"),
+        score = c(1, 2),
+        cluster = factor(c("C1", "C2")),
+        sample_roi = c("lesion", "border")
+      ),
       coordinates = data.frame(x = c(20, 80), y = c(30, 70)),
       reset_axes = FALSE,
-      color_assignments = character(),
+      color_assignments = assignments,
       group_hulls = list(),
       hover_columns = list(),
+      hover_info = c("first", "second"),
+      cell_boundaries = list(
+        cell_barcode = rep(c("cell-1", "cell-2"), each = 4L),
+        part = rep("1", 8L),
+        x = c(0, 1, 1, 0, 2, 3, 3, 2),
+        y = c(0, 0, 1, 1, 2, 2, 3, 3)
+      ),
+      molecule_points = list(x = c(1, 2), y = c(3, 4)),
       plot_parameters = plot_parameters
     ))
   }
@@ -714,6 +1019,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(as.numeric(rendered$data$x), c(20, 80))
   expect_identical(as.numeric(rendered$data$y), c(30, 70))
   expect_identical(rendered$meta$background_rotation, 37)
+  expect_length(rendered$extra$cell_boundaries$x, 8L)
+  expect_length(rendered$extra$molecule_points$x, 2L)
   expect_identical(
     rendered$meta$background_identity,
     params$background_identity
@@ -736,6 +1043,110 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(rendered$data$y_range, c(10, 90))
   expect_identical(as.numeric(rendered$data$x), c(20, 80))
   expect_identical(as.numeric(rendered$data$y), c(30, 70))
+
+  params$background_image <- spatial_background_key("external", "Atlas")
+  params$background_descriptor <- list(
+    source = "external",
+    label = "Atlas",
+    path = "spatial-assets/atlas.png",
+    bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+  )
+  params$color_variable <- "cluster"
+  params$plot_type <- "ImageDimPlot"
+  params$split_by <- "sample_roi"
+  call_renderer(params, c(C1 = "#111111", C2 = "#eeeeee"))
+  expect_identical(
+    vapply(rendered$data$panels, `[[`, character(1), "label"),
+    c("lesion", "border")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "selection_key"),
+    list("cell-1", "cell-2")
+  )
+  expect_true(nzchar(rendered$meta$background_image))
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) is.null(panel$background_image),
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) {
+      identical(panel$x_range, c(0, 100)) &&
+        identical(panel$y_range, c(10, 90))
+    },
+    logical(1)
+  )))
+  expect_identical(
+    as.character(rendered$data$selection_key),
+    c("cell-1", "cell-2")
+  )
+  expect_identical(rendered$data$group, c("C1", "C2"))
+  expect_identical(unlist(rendered$meta$traces), c("C1", "C2"))
+  expect_identical(rendered$meta$group_colors, c("#111111", "#eeeeee"))
+
+  panel_preset <- list(
+    flipX = FALSE,
+    flipY = FALSE,
+    scaleX = 1,
+    scaleY = 1,
+    offsetX = 0,
+    offsetY = 0,
+    rotation = 0,
+    opacity = 0.8
+  )
+  panel_config <- function(roi, label, bounds) {
+    list(
+      descriptor = list(
+        source = "external",
+        label = label,
+        path = "spatial-assets/atlas.png",
+        bounds = bounds
+      ),
+      identity = list(
+        dataset = "Atlas",
+        spatial_name = "section",
+        source = "external",
+        label = label,
+        roi = roi
+      ),
+      preset = panel_preset,
+      image_allowlist = "spatial-assets/atlas.png"
+    )
+  }
+  params$background_image <- "none"
+  params$background_descriptor <- NULL
+  params$background_identity <- NULL
+  params$background_image_allowlist <- character()
+  params$roi_mode <- "separate"
+  params$roi_backgrounds <- list(
+    lesion = panel_config(
+      "lesion",
+      "Lesion H&E",
+      c(xmin = 10, xmax = 30, ymin = 20, ymax = 40)
+    ),
+    border = panel_config(
+      "border",
+      "Border H&E",
+      c(xmin = 70, xmax = 90, ymin = 60, ymax = 80)
+    )
+  )
+  call_renderer(params, c(C1 = "#111111", C2 = "#eeeeee"))
+
+  expect_null(rendered$meta$background_image)
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) nzchar(panel$background_image),
+    logical(1)
+  )))
+  expect_identical(
+    vapply(rendered$data$panels, `[[`, character(1), "image_label"),
+    c("Lesion H&E", "Border H&E")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, function(panel) panel$image_identity$roi),
+    list("lesion", "border")
+  )
 })
 
 test_that("external spatial image encoding is cached by file version", {
@@ -806,6 +1217,10 @@ test_that("shared Canvas owns spatial background identity and appearance", {
     fixed = TRUE
   )
   expect_match(engine, "function updateSingleBackground", fixed = TRUE)
+  expect_match(engine, "function drawCellBoundaries", fixed = TRUE)
+  expect_match(engine, "space.cellBoundaries", fixed = TRUE)
+  expect_match(engine, "function drawMolecules", fixed = TRUE)
+  expect_match(engine, "space.molecules", fixed = TRUE)
   expect_match(engine, "stashImgState(space)", fixed = TRUE)
   expect_match(controls, '"cell_view_background"', fixed = TRUE)
 
@@ -813,12 +1228,16 @@ test_that("shared Canvas owns spatial background identity and appearance", {
     readLines(viewer_test_path("spatial", "func_projection_update_plot.R")),
     collapse = "\n"
   )
-  assignments <- gregexpr(
-    "background_identity = plot_parameters",
+  expect_match(
     renderer_src,
+    'plot_parameters[["background_identity"]]',
     fixed = TRUE
-  )[[1L]]
-  expect_length(assignments[assignments > 0L], 1L)
+  )
+  expect_match(
+    renderer_src,
+    "image_identity = rendered$background_identity",
+    fixed = TRUE
+  )
   expect_match(
     renderer_src,
     'payload[["meta"]] <- c(background_meta, payload[["meta"]])',
@@ -833,15 +1252,30 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
   )
   atlas <- list(
     sliceA = list(
-      coordinates = data.frame(x = 1:2, y = 3:4),
+      coordinates = data.frame(
+        x = 1:2,
+        y = 3:4,
+        row.names = c("a1", "a2")
+      ),
       histology_images = list(
         `H&E` = list(histology_image = "data:image/png;base64,HE")
       )
     ),
     sliceB = list(
-      coordinates = data.frame(x = 101:102, y = 203:204),
+      coordinates = data.frame(
+        x = 101:102,
+        y = 203:204,
+        row.names = c("b1", "b2")
+      ),
       histology_images = list(
         IF = list(histology_image = "data:image/png;base64,IF")
+      )
+    ),
+    sliceC = list(
+      coordinates = data.frame(
+        x = 301:302,
+        y = 403:404,
+        row.names = c("c1", "c2")
       )
     )
   )
@@ -849,7 +1283,15 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     data_set <- function() TRUE
     availableSpatial <- function() names(atlas)
     getSpatialData <- function(name) atlas[[name]]
-    getMetaData <- function() data.frame(group = c("a", "b"))
+    getMetaData <- function() {
+      data.frame(
+        cell_barcode = c("a1", "a2", "b1", "b2", "c1", "c2"),
+        sample = c("S1", "S1", "S2", "S2", "S2", "S2"),
+        roi_id = c("A", "B", "C", "D", "E", "F"),
+        group = c("a", "b", "a", "b", "a", "b"),
+        row.names = c("a1", "a2", "b1", "b2", "c1", "c2")
+      )
+    }
     getGroups <- function() "group"
     serverSideGeneSelector <- function(...) invisible(NULL)
     Cerebro.options <- list(
@@ -868,7 +1310,30 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
   }
 
   shiny::testServer(server, {
-    session$setInputs(spatial_projection_to_display = "sliceB")
+    session$flushReact()
+    default_html <- as.character(
+      output$spatial_projection_main_parameters_UI$html
+    )
+    expect_match(default_html, 'value="S1" selected', fixed = TRUE)
+    expect_match(default_html, 'value="sliceA" selected', fixed = TRUE)
+    expect_false(grepl('value="sliceB"', default_html, fixed = TRUE))
+    expect_false(grepl("All samples", default_html, fixed = TRUE))
+    expect_match(
+      default_html,
+      '<option value="__none__" selected>None</option>',
+      fixed = TRUE
+    )
+
+    session$setInputs(
+      spatial_projection_sample = "S2",
+      spatial_projection_to_display = "sliceB"
+    )
+    session$flushReact()
+    expect_length(
+      as.character(output$spatial_projection_background_selector_UI$html),
+      0L
+    )
+    session$setInputs(spatial_projection_roi = "C")
     session$flushReact()
     main_html <- as.character(
       output$spatial_projection_main_parameters_UI$html
@@ -881,6 +1346,15 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     expect_match(background_html, "external::MIBI", fixed = TRUE)
     expect_false(grepl("embedded::H&amp;E", background_html, fixed = TRUE))
     expect_false(grepl("external::DAPI", background_html, fixed = TRUE))
+    expect_match(main_html, 'value="S2" selected', fixed = TRUE)
+    expect_match(main_html, 'value="C"', fixed = TRUE)
+    expect_match(main_html, 'value="D"', fixed = TRUE)
+    expect_match(main_html, 'value="sliceC"', fixed = TRUE)
+    expect_false(grepl('value="sliceA"', main_html, fixed = TRUE))
+    expect_false(grepl('value="A"', main_html, fixed = TRUE))
+    expect_false(grepl('value="B"', main_html, fixed = TRUE))
+    expect_false(grepl('value="E"', main_html, fixed = TRUE))
+    expect_false(grepl('value="F"', main_html, fixed = TRUE))
     expect_identical(getSpatialData("sliceB")$coordinates$x, 101:102)
   })
 })

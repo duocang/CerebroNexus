@@ -18,7 +18,8 @@ output[["spatial_projection_UI"]] <- renderUI({
           class = "cerebro-viz-toolbar",
           div(
             class = "cerebro-viz-primary",
-            uiOutput("spatial_projection_main_parameters_UI")
+            uiOutput("spatial_projection_main_parameters_UI"),
+            uiOutput("spatial_projection_background_selector_UI")
           ),
           cerebroToolbarActions(
             cerebroSettingsButton(
@@ -54,7 +55,6 @@ output[["spatial_projection_UI"]] <- renderUI({
               "Background image",
               div(
                 class = "spatial-image-controls",
-                uiOutput("spatial_projection_background_selector_UI"),
                 uiOutput("spatial_projection_background_parameters_UI")
               )
             ),
