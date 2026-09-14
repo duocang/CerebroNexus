@@ -64,6 +64,38 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_false(grepl("Plotly", js, fixed = TRUE))
 })
 
+test_that("point rotation does not refit the shared image viewport", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  js <- paste(
+    readLines(
+      file.path(root, "www", "builder-spatial-canvas.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  server <- paste(
+    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  compact_js <- gsub("[[:space:]]+", " ", js)
+
+  expect_false(grepl(
+    "viewportLayout( scene.bounds, angle",
+    compact_js,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "viewportLayout(bounds, angle",
+    compact_js,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "include_coordinate_rotation = TRUE",
+    server,
+    fixed = TRUE
+  ))
+})
+
 test_that("Canvas hover coalesces pointer work and reuses rendered screen points", {
   root <- testthat::test_path("..", "..", "inst", "builder")
   js <- paste(

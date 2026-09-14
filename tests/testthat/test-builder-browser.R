@@ -2,6 +2,30 @@ library(shinytest2)
 
 builder_browser_dir <- builder_profile_inst_path("builder")
 
+test_that("Spatial image action label ignores alignment parameter drafts", {
+  source <- paste(
+    readLines(
+      file.path(builder_browser_dir, "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  label_output <- regmatches(
+    source,
+    regexpr(
+      paste0(
+        'output\\[\\["enhance-add_image_label"\\]\\] <- ',
+        'shiny::renderUI\\(\\{[\\s\\S]*?\\n  \\}\\)'
+      ),
+      source,
+      perl = TRUE
+    )
+  )
+
+  expect_match(label_output, "active_image()", fixed = TRUE)
+  expect_false(grepl("draft()", label_output, fixed = TRUE))
+})
+
 test_that("metadata retention and Group actions remain independent", {
   js <- paste(
     readLines(

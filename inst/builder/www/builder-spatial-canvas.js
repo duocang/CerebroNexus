@@ -13,6 +13,7 @@
     images: {},
     dragging: false,
     activeControlId: null,
+    activeTransform: "points",
     releaseGuardId: null,
     controlsHeld: false,
     pendingEventAt: null,
@@ -89,7 +90,10 @@
       state.resetToken = resetToken;
       state.controls = Object.assign({}, message.controls || {});
     }
-    if (viewChanged) state.controlsHeld = false;
+    if (viewChanged) {
+      state.controlsHeld = false;
+      state.activeTransform = "points";
+    }
     loadImage(message.image && message.image.uri);
     loadImages(message.roiImages || {});
     schedule();
@@ -113,6 +117,7 @@
     state.viewKey = null;
     state.controls = null;
     state.controlsHeld = false;
+    state.activeTransform = "points";
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
   function loadImage(uri) {
@@ -249,7 +254,7 @@
     var angle = finite(state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
       scene.bounds,
-      angle,
+      0,
       cssWidth,
       cssHeight,
       pad
@@ -265,11 +270,16 @@
     viewports[viewportKey] = layout.view;
     publishViewports(scene, viewports);
     drawGrid(ctx, cssWidth, cssHeight, pad);
-    drawImage(ctx, scene, screen);
+    var imageGeometry = drawImage(ctx, scene, screen);
     drawPoints(ctx, scene, screen);
+    if (imageGeometry) {
+      drawImageFrame(ctx, imageGeometry, state.activeTransform === "image");
+    }
     drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1);
     drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5);
-    drawReference(ctx, scene.bounds, screen, angle);
+    if (state.activeTransform === "points") {
+      drawReference(ctx, scene.bounds, screen, angle, "Points");
+    }
     updateSummary(node, scene, ".");
   }
   function updateSummary(node, scene, suffix) {
@@ -316,7 +326,7 @@
       };
       if (bounds.xmin === bounds.xmax) { bounds.xmin -= .5; bounds.xmax += .5; }
       if (bounds.ymin === bounds.ymax) { bounds.ymin -= .5; bounds.ymax += .5; }
-      var local = viewportLayout(bounds, angle, panelWidth, plotHeight, 6);
+      var local = viewportLayout(bounds, 0, panelWidth, plotHeight, 6);
       viewports[group] = local.view;
       var screen = function (point) {
         var at = local.screen(point);
@@ -325,12 +335,14 @@
       ctx.fillStyle = "#fafbfa";
       ctx.fillRect(left, top, panelWidth, panelHeight);
       var roiImages = (scene.roiImages || {})[group] || [];
+      var activeImageGeometry = null;
       roiImages.forEach(function (roiImage) {
         var imageControls = Object.assign({}, roiImage.controls || {});
         if (active && roiImage.active) {
           imageControls = Object.assign(imageControls, controls);
         }
-        drawImage(ctx, scene, screen, roiImage, imageControls);
+        var geometry = drawImage(ctx, scene, screen, roiImage, imageControls);
+        if (active && roiImage.active) activeImageGeometry = geometry;
       });
       ctx.globalAlpha = finite(roiControls.point_opacity, .85);
       var radius = Math.max(1, finite(roiControls.point_size, 5) / 2);
@@ -350,9 +362,18 @@
       });
       ctx.globalAlpha = 1;
       if (active) {
+        if (activeImageGeometry) {
+          drawImageFrame(
+            ctx,
+            activeImageGeometry,
+            state.activeTransform === "image"
+          );
+        }
         drawFrame(ctx, bounds, screen, 0, "#9a958d", [4, 4], 1);
         drawFrame(ctx, bounds, screen, angle, "#5f5a54", [], 1.5);
-        drawReference(ctx, bounds, screen, angle);
+        if (state.activeTransform === "points") {
+          drawReference(ctx, bounds, screen, angle, "Points");
+        }
       }
       ctx.strokeStyle = active ? "#d45500" : "#9a958d";
       ctx.lineWidth = active ? 3 : 1;
@@ -377,8 +398,8 @@
   function drawImage(ctx, scene, screen, image, controls) {
     image = image || scene.image;
     var loaded = image === scene.image ? state.image : state.images[image && image.uri];
-    if (!loaded || !image || !image.baseBounds) return;
-    var b = image.baseBounds, c = controls || state.controls;
+    if (!loaded || !image || !image.baseBounds) return null;
+    var b = image.baseBounds, c = controls || state.controls || {};
     var cx = (b.xmin + b.xmax) / 2, cy = (b.ymin + b.ymax) / 2;
     var center = screen({x: cx + finite(c.dx, 0),
       y: cy + finite(c.dy, 0)});
@@ -396,6 +417,12 @@
     ctx.scale(c.flip_x ? -1 : 1, c.flip_y ? -1 : 1);
     ctx.drawImage(loaded, -width / 2, -height / 2, width, height);
     ctx.restore();
+    return {
+      center: center,
+      width: width,
+      height: height,
+      degrees: finite(c.rotation, 0),
+    };
   }
   function drawPoints(ctx, scene, screen) {
     var p = scene.points, c = state.controls;
@@ -435,15 +462,68 @@
     ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash);
     ctx.beginPath(); path(ctx, corners(bounds, degrees), screen); ctx.stroke(); ctx.restore();
   }
-  function drawReference(ctx, bounds, screen, degrees) {
-    var edge = corners(bounds, degrees).slice(0, 2).map(screen);
-    ctx.save(); ctx.strokeStyle = "#d45500"; ctx.fillStyle = "#d45500"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(edge[0].x, edge[0].y); ctx.lineTo(edge[1].x, edge[1].y); ctx.stroke();
-    edge.forEach(function (p) { ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill(); });
-    ctx.font = "12px sans-serif"; ctx.textAlign = "center";
-    var label = (degrees > 0 ? "+" : "") + finite(degrees, 0).toFixed(1) + "°";
-    ctx.fillText(label, (edge[0].x + edge[1].x) / 2, (edge[0].y + edge[1].y) / 2 - 8);
+  function drawAngleReference(ctx, edge, degrees, label) {
+    var centerX = (edge[0].x + edge[1].x) / 2;
+    var centerY = (edge[0].y + edge[1].y) / 2 - 11;
+    var text = label + " " + finite(degrees, 0).toFixed(1) + "°";
+    ctx.save();
+    ctx.strokeStyle = "#167c78";
+    ctx.fillStyle = "#167c78";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(edge[0].x, edge[0].y);
+    ctx.lineTo(edge[1].x, edge[1].y);
+    ctx.stroke();
+    edge.forEach(function (point) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.font = "600 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var labelWidth = ctx.measureText(text).width + 12;
+    ctx.fillStyle = "rgba(255,255,255,.96)";
+    ctx.fillRect(centerX - labelWidth / 2, centerY - 9, labelWidth, 18);
+    ctx.strokeStyle = "#c8ceca";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(centerX - labelWidth / 2, centerY - 9, labelWidth, 18);
+    ctx.fillStyle = "#3f4542";
+    ctx.fillText(text, centerX, centerY);
     ctx.restore();
+  }
+  function drawReference(ctx, bounds, screen, degrees, label) {
+    var edge = corners(bounds, degrees).slice(0, 2).map(screen);
+    drawAngleReference(ctx, edge, degrees, label);
+  }
+  function drawImageFrame(ctx, geometry, active) {
+    var angle = -geometry.degrees * Math.PI / 180;
+    var cosine = Math.cos(angle), sine = Math.sin(angle);
+    var point = function (x, y) {
+      return {
+        x: geometry.center.x + x * cosine - y * sine,
+        y: geometry.center.y + x * sine + y * cosine,
+      };
+    };
+    ctx.save();
+    ctx.translate(geometry.center.x, geometry.center.y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = active ? "#5f5a54" : "#9a958d";
+    ctx.lineWidth = active ? 1.5 : 1;
+    ctx.setLineDash(active ? [] : [4, 4]);
+    ctx.strokeRect(
+      -geometry.width / 2,
+      -geometry.height / 2,
+      geometry.width,
+      geometry.height
+    );
+    ctx.restore();
+    if (active) {
+      drawAngleReference(ctx, [
+        point(-geometry.width / 2, geometry.height / 2),
+        point(geometry.width / 2, geometry.height / 2),
+      ], geometry.degrees, "Image");
+    }
   }
   function controlValue(target, factor) {
     if (target.type === "checkbox") return target.checked;
@@ -456,6 +536,9 @@
     if (spec[0] === "dx" || spec[0] === "dy") {
       target.value = Math.round(finite(target.value, 0));
     }
+    state.activeTransform = spec[0] === "coordinateRotation" ||
+      spec[0] === "point_opacity" || spec[0] === "point_size" ?
+      "points" : "image";
     state.controls[spec[0]] = controlValue(target, spec[1]);
     state.activeControlId = target.id;
     state.pendingEventAt = performance.now();
@@ -511,7 +594,19 @@
       event.stopImmediatePropagation();
     }
   }, true);
+  document.addEventListener("focusin", function (event) {
+    var spec = controlMap[event.target.id];
+    if (!spec) return;
+    state.activeTransform = spec[0] === "coordinateRotation" ||
+      spec[0] === "point_opacity" || spec[0] === "point_size" ?
+      "points" : "image";
+    schedule();
+  }, true);
   document.addEventListener("change", function (event) {
+    if (event.target.id === "enhance-active_image") {
+      state.activeTransform = "image";
+      schedule();
+    }
     if (event.target.id === "enhance-active_section") {
       state.controlsHeld = true;
       return;

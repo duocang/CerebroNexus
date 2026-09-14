@@ -177,7 +177,7 @@ builder_spatial_alignment_server <- function(
 
   output[["enhance-has_image"]] <- shiny::reactive(!is.null(draft()))
   output[["enhance-add_image_label"]] <- shiny::renderUI({
-    if (is.null(draft())) {
+    if (is.null(active_image())) {
       "Add image"
     } else {
       "Add another image"
@@ -567,8 +567,7 @@ builder_spatial_alignment_server <- function(
   }
   alignment_bounds_for <- function(
     preview,
-    roi = active_roi(),
-    include_coordinate_rotation = FALSE
+    roi = active_roi()
   ) {
     roi <- as.character(roi %||% "")[[1L]]
     viewport <- shiny::isolate(canvas_viewports())
@@ -590,15 +589,7 @@ builder_spatial_alignment_server <- function(
     } else {
       bounds <- preview$coordinate_frame %||% preview$bounds
     }
-    if (!isTRUE(include_coordinate_rotation)) {
-      return(bounds)
-    }
-    entry <- entry_of(current())
-    spec <- coordinate_spec_for(entry, active_section(), roi)
-    builder_alignment_rotated_bounds(
-      bounds,
-      spec$rotation_degrees %||% 0
-    )
+    bounds
   }
 
   shiny::observeEvent(
@@ -1614,8 +1605,7 @@ builder_spatial_alignment_server <- function(
     parameters[c("point_opacity", "point_size")] <- appearance
     fit_bounds <- alignment_bounds_for(
       preview,
-      selected_roi,
-      include_coordinate_rotation = TRUE
+      selected_roi
     )
     stored_appearance <- entry$settings$spatial_point_appearance %||% list()
     stored_appearance[[section]] <- appearance
@@ -2463,8 +2453,7 @@ builder_spatial_alignment_server <- function(
       return()
     }
     bounds <- alignment_bounds_for(
-      preview,
-      include_coordinate_rotation = TRUE
+      preview
     )
     centered <- builder_alignment_center(current_draft, bounds)
     draft(centered)
@@ -2479,8 +2468,7 @@ builder_spatial_alignment_server <- function(
       return()
     }
     bounds <- alignment_bounds_for(
-      preview,
-      include_coordinate_rotation = TRUE
+      preview
     )
     reset <- builder_alignment_reset(current_draft)
     image_dimensions <- c(
