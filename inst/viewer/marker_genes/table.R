@@ -194,14 +194,14 @@ output[["marker_genes_table"]] <- DT::renderDataTable({
 ## Alternative text message if no marker genes were found.
 ##----------------------------------------------------------------------------##
 output[["marker_genes_table_no_markers_found"]] <- renderText({
-  "No marker genes were identified for any of the subpopulations of this grouping variable."
+  "No marker genes meet the stored thresholds for this grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##
 ## Alternative text message if data is missing.
 ##----------------------------------------------------------------------------##
 output[["marker_genes_table_no_data"]] <- renderText({
-  "Data not available. Possible reasons: Only 1 group in this data set or data not generated."
+  "No marker-gene table is available for this method and grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##
