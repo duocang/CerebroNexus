@@ -3,12 +3,30 @@
 
   var activeDrawer = null;
   var activeButton = null;
+  var inertBackground = [];
+
+  function isModal() {
+    return window.matchMedia('(max-width: 900px)').matches;
+  }
+
+  function setBackgroundInert(drawer, inert) {
+    inertBackground.forEach(function (item) {
+      if (item.element.isConnected) item.element.inert = item.wasInert;
+    });
+    inertBackground = [];
+    if (!inert) return;
+    Array.prototype.forEach.call(document.body.children, function (element) {
+      if (element === drawer) return;
+      inertBackground.push({ element: element, wasInert: element.inert });
+      element.inert = true;
+    });
+    drawer.inert = false;
+  }
 
   function setModalMode(drawer) {
-    drawer.setAttribute(
-      'aria-modal',
-      window.matchMedia('(max-width: 900px)').matches ? 'true' : 'false'
-    );
+    var modal = isModal();
+    drawer.setAttribute('aria-modal', modal ? 'true' : 'false');
+    setBackgroundInert(drawer, modal);
   }
 
   function restoreDrawer(drawer) {
@@ -26,6 +44,7 @@
     drawer.classList.remove('is-open');
     drawer.setAttribute('aria-hidden', 'true');
     if (button) button.setAttribute('aria-expanded', 'false');
+    setBackgroundInert(drawer, false);
     window.clearTimeout(drawer._cerebroUnmountTimer);
     if (!restoreDrawer(drawer)) {
       if (window.Shiny && window.Shiny.unbindAll) {
@@ -42,7 +61,7 @@
     else drawer._cerebroUnmountTimer = window.setTimeout(unmount, 240);
     activeDrawer = null;
     activeButton = null;
-    if (restoreFocus !== false && button && drawer.contains(document.activeElement)) {
+    if (restoreFocus !== false && button && button.isConnected) {
       button.focus();
     }
   }
@@ -52,13 +71,13 @@
       detail: { owner: 'settings:' + drawer.id }
     }));
     closeDrawer(false);
-    setModalMode(drawer);
     window.clearTimeout(drawer._cerebroUnmountTimer);
     if (drawer.parentNode !== document.body) {
       drawer._cerebroHomeParent = drawer.parentNode;
       drawer._cerebroHomeNext = drawer.nextSibling;
       document.body.appendChild(drawer);
     }
+    setModalMode(drawer);
     drawer.classList.add('is-mounted');
     void drawer.offsetWidth;
     drawer.classList.add('is-open');
@@ -152,6 +171,28 @@
     if (event.key === 'Escape' && activeDrawer) {
       event.preventDefault();
       closeDrawer();
+    }
+    if (event.key === 'Tab' && activeDrawer && isModal()) {
+      var candidates = Array.prototype.filter.call(
+        activeDrawer.querySelectorAll(
+          'button:not([disabled]), a[href], input:not([disabled]), ' +
+          'select:not([disabled]), textarea:not([disabled]), ' +
+          '[tabindex]:not([tabindex="-1"])'
+        ),
+        function (element) { return element.getClientRects().length > 0; }
+      );
+      if (!candidates.length) return;
+      var first = candidates[0];
+      var last = candidates[candidates.length - 1];
+      if (event.shiftKey &&
+          (document.activeElement === first || !activeDrawer.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey &&
+          (document.activeElement === last || !activeDrawer.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     if (event.key === 'Escape') closeGroupFilters();
   });

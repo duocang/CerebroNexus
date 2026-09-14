@@ -101,11 +101,12 @@
   height: var(--c-toolbar-control-height); display: inline-flex; align-items: center; gap: 7px;
   padding: 0 13px; border: 1px solid var(--c-amber);
   border-radius: 6px; background: var(--c-amber);
-  color: #ffffff; font: 750 12px/1 inherit;
+  color: var(--c-text); font: 750 12px/1 inherit;
   white-space: nowrap; cursor: pointer;
 }
 .coordviews-page .cv-config-open:hover:not(:disabled) {
   background: var(--c-amber-700); border-color: var(--c-amber-700);
+  color: var(--c-white);
 }
 .coordviews-page .cv-config-open:disabled {
   opacity: .48; cursor: not-allowed;
@@ -497,6 +498,28 @@
     width: auto;
     min-width: 72px;
   }
+}
+@media (pointer: coarse) {
+  .coordviews-page .cv-tbtn {
+    width: 44px;
+    height: 44px;
+  }
+  .coordviews-page .cv-focus-btn {
+    width: auto;
+    min-width: 72px;
+    height: 44px;
+  }
+  .coordviews-page .cv-pane.cv-narrow .cv-panebar {
+    position: static;
+    flex: 1 1 100%;
+    flex-flow: row wrap;
+    justify-content: flex-end;
+    margin-left: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .coordviews-page .cv-tbtn::after { display: none; }
 }
 .coordviews-page .cv-pane-head select {
   margin-left: auto; padding: 4px 7px; border: 1px solid var(--c-border-2);
@@ -993,7 +1016,7 @@
 .coordviews-page .cv-empty, .coordviews-page .cv-empty-sm {
   color: var(--c-text-2); font-size: 12.5px; line-height: 1.6;
   border: 1px dashed var(--c-border-2); border-radius: 8px;
-  padding: 18px 14px;
+  padding: 18px 14px; background: var(--c-surface-2);
 }
 .coordviews-page .cv-empty-sm { padding: 10px; }
 .coordviews-page .cv-bars { font-size: 12px; }
