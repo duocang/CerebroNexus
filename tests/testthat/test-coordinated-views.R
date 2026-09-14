@@ -411,6 +411,14 @@ test_that("Linked views chooses its grid from both viewport dimensions", {
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
 
   expect_match(js, "function bestOverviewGrid", fixed = TRUE)
+  expect_match(js, "BALANCED_SIZE_TOLERANCE = 0.85", fixed = TRUE)
+  expect_match(js, "lastRow === 1", fixed = TRUE)
+  expect_match(
+    js,
+    "candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE",
+    fixed = TRUE
+  )
+  expect_match(css, "gap: 8px; justify-content: center;", fixed = TRUE)
   expect_match(js, "getComputedStyle(panes).columnGap", fixed = TRUE)
   expect_no_match(js, "var gap = 14", fixed = TRUE)
   expect_match(js, "Math.ceil(panelCount / cols)", fixed = TRUE)
