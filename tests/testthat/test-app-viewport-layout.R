@@ -327,13 +327,13 @@ test_that("IR fill layout survives tab activation and responsive resize", {
       "(() => {",
       "const style = getComputedStyle(document.querySelector('.sidebar-toggle'));",
       "return style.backgroundColor === 'rgb(255, 228, 209)' && ",
-      "style.color === 'rgb(200, 90, 14)';",
+      "style.color === 'rgb(167, 67, 8)';",
       "})()"
     ),
     timeout = 5000
   )
   toggle_hover <- app$get_js(toggle_style_js)
-  expect_identical(toggle_hover$color, "rgb(200, 90, 14)")
+  expect_identical(toggle_hover$color, "rgb(167, 67, 8)")
 
   app$click(selector = '.sidebar-toggle')
   app$wait_for_js(

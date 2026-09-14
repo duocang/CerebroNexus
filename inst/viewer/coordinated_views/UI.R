@@ -135,10 +135,24 @@ cv_pane <- function(key) {
     ## width/height transition for free, instead of being re-measured per frame.
     div(
       class = "cv-canvas-wrap",
-      tags$canvas(id = paste0("cv-cv-", low)),
+      tags$canvas(
+        id = paste0("cv-cv-", low),
+        role = "img",
+        `aria-label` = "Interactive linked cell plot",
+        `aria-describedby` = paste0("cv-description-", low)
+      ),
+      tags$span(
+        id = paste0("cv-description-", low),
+        class = "sr-only",
+        "The linked cell plot is waiting for data."
+      ),
       ## Read-only overview: the whole space in miniature with a frame marking
       ## the visible part. Only shown while the panel is zoomed or panned.
-      tags$canvas(class = "cv-mini", id = paste0("cv-mini-", low)),
+      tags$canvas(
+        class = "cv-mini",
+        id = paste0("cv-mini-", low),
+        `aria-hidden` = "true"
+      ),
       ## Inside the wrapper, so the coordinates the hover code computes (which
       ## are relative to the CANVAS) are the coordinates this is positioned by.
       ## As a child of the pane it was offset by the header's height.

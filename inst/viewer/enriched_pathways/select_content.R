@@ -32,25 +32,11 @@ output[["enriched_pathways_select_method_and_table_UI"]] <- renderUI({
 ## UI element to select from which method the results should be shown.
 ##----------------------------------------------------------------------------##
 output[["enriched_pathways_selected_method_UI"]] <- renderUI({
-  tagList(
-    div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a method:</strong></h2>'
-      )
-    ),
-    fluidRow(
-      column(2),
-      column(
-        8,
-        selectInput(
-          "enriched_pathways_selected_method",
-          label = NULL,
-          choices = getMethodsForEnrichedPathways(),
-          width = "100%"
-        )
-      ),
-      column(2)
-    )
+  selectInput(
+    "enriched_pathways_selected_method",
+    label = "Method",
+    choices = getMethodsForEnrichedPathways(),
+    width = "100%"
   )
 })
 
@@ -59,27 +45,13 @@ output[["enriched_pathways_selected_method_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["enriched_pathways_selected_table_UI"]] <- renderUI({
   req(input[["enriched_pathways_selected_method"]])
-  tagList(
-    div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a table:</strong></h2>'
-      )
-    ),
-    fluidRow(
-      column(2),
-      column(
-        8,
-        selectInput(
-          "enriched_pathways_selected_table",
-          label = NULL,
-          choices = getGroupsWithEnrichedPathways(input[[
-            "enriched_pathways_selected_method"
-          ]]),
-          width = "100%"
-        )
-      ),
-      column(2)
-    )
+  selectInput(
+    "enriched_pathways_selected_table",
+    label = "Grouping variable",
+    choices = getGroupsWithEnrichedPathways(input[[
+      "enriched_pathways_selected_method"
+    ]]),
+    width = "100%"
   )
 })
 
@@ -87,5 +59,5 @@ output[["enriched_pathways_selected_table_UI"]] <- renderUI({
 ## Alternative text message if data is missing.
 ##----------------------------------------------------------------------------##
 output[["enriched_pathways_message_no_method_found"]] <- renderText({
-  "No data available."
+  "Pathway-enrichment results are not included in this data set. Choose a data set that includes enrichment results."
 })

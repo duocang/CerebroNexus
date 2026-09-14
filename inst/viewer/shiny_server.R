@@ -582,17 +582,12 @@ server <- function(input, output, session) {
       if (is.null(selected)) {
         selected <- unname(choices[[1L]])
       }
-      tagList(
-        ## The "Select sample dataset" title already labels this control, so the
-        ## selectInput's own label would just repeat it — drop it.
-        titlePanel("Select sample dataset"),
-        selectInput(
-          inputId = "crb_file_selector",
-          label = NULL,
-          choices = choices,
-          selected = selected,
-          width = '350px'
-        )
+      selectInput(
+        inputId = "crb_file_selector",
+        label = "Sample data set",
+        choices = choices,
+        selected = selected,
+        width = '350px'
       )
     }
   })

@@ -10,24 +10,9 @@ output[["groups_controls_UI"]] <- renderUI({
   req(length(groups) >= 2L)
   selected_group <- groups[[1L]]
   tagList(
-    div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a grouping variable:</strong></h2>'
-      )
-    ),
-    fluidRow(
-      column(2),
-      column(
-        8,
-        selectInput(
-          "groups_selected_group",
-          label = NULL,
-          choices = groups,
-          selected = selected_group,
-          width = "100%"
-        )
-      ),
-      column(2)
+    selectInput(
+      "groups_selected_group", label = "Grouping variable",
+      choices = groups, selected = selected_group, width = "100%"
     ),
     selectInput(
       "groups_by_other_group_second_group",

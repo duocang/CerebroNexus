@@ -142,25 +142,76 @@
 
   ready(function () {
     if (!window.jQuery) return;
+    var busyOutputs = new Set();
+    var updateAnnounced = false;
+    var statusClearTimer = null;
+    function announce(message) {
+      var status = document.getElementById("cerebro-update-status");
+      if (!status) return;
+      window.clearTimeout(statusClearTimer);
+      status.textContent = message;
+      if (message === "Content updated") {
+        statusClearTimer = window.setTimeout(function () {
+          status.textContent = "";
+        }, 1500);
+      }
+    }
+    function pruneBusyOutputs() {
+      busyOutputs.forEach(function (element) {
+        if (element.isConnected && element.getClientRects().length) return;
+        window.clearTimeout(element.__cerebroWaitTimer);
+        element.__cerebroWaitTimer = null;
+        element.classList.remove("cerebro-output-waiting");
+        element.removeAttribute("aria-busy");
+        busyOutputs.delete(element);
+      });
+    }
     function finish(element) {
       if (!element || !element.classList) return;
       window.clearTimeout(element.__cerebroWaitTimer);
       element.__cerebroWaitTimer = null;
       element.classList.remove("cerebro-output-waiting");
+      element.removeAttribute("aria-busy");
+      busyOutputs.delete(element);
+      pruneBusyOutputs();
+      if (updateAnnounced && !busyOutputs.size) {
+        updateAnnounced = false;
+        announce("Content updated");
+      }
     }
     window.jQuery(document)
       .on("shiny:outputinvalidated.cerebroMotion", function (event) {
         var element = event.target;
         if (!element || !element.classList ||
             !element.classList.contains("shiny-bound-output")) return;
-        if (!element.textContent.trim() && !element.children.length) return;
-        finish(element);
+        if (!element.getClientRects().length) {
+          finish(element);
+          return;
+        }
+        window.clearTimeout(element.__cerebroWaitTimer);
+        element.classList.remove("cerebro-output-waiting");
+        element.setAttribute("aria-busy", "true");
+        busyOutputs.add(element);
         element.__cerebroWaitTimer = window.setTimeout(function () {
-          element.classList.add("cerebro-output-waiting");
+          if (element.getAttribute("aria-busy") !== "true") return;
+          if (element.textContent.trim() || element.children.length) {
+            element.classList.add("cerebro-output-waiting");
+          }
+          if (!updateAnnounced) {
+            updateAnnounced = true;
+            announce("Updating content");
+          }
         }, 120);
       })
       .on("shiny:value.cerebroMotion shiny:error.cerebroMotion", function (event) {
         finish(event.target);
+      })
+      .on("shown.bs.tab.cerebroMotion", function () {
+        pruneBusyOutputs();
+        if (updateAnnounced && !busyOutputs.size) {
+          updateAnnounced = false;
+          announce("Content updated");
+        }
       });
   });
 

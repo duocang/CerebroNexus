@@ -13,16 +13,18 @@ output[["preferences_options"]] <- renderUI({
       class = "cerebro-advanced-hint",
       "Optional performance settings — the defaults work well for most users."
     ),
-    shinyWidgets::prettySwitch(
+    checkboxInput(
       "webgl_checkbox",
-      label = "Switch on WebGL for better performance. Note that this might not be compatible with every browser.",
+      label = "Use WebGL rendering",
       value = TRUE
     ),
-    shinyWidgets::prettySwitch(
+    helpText("Improves performance but may not work in every browser."),
+    checkboxInput(
       "hover_info_in_projections_checkbox",
-      label = "Switch on hover info to see additional metadata of each cell when hovering. Note that this increases plotting time.",
+      label = "Show cell details on hover",
       value = Cerebro.options[['projections_show_hover_info']]
-    )
+    ),
+    helpText("Shows additional cell metadata and may increase plotting time.")
   )
 })
 

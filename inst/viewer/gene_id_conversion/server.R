@@ -22,10 +22,9 @@ output[["gene_info"]] <- DT::renderDataTable({
     filter = "none",
     selection = "multiple",
     escape = TRUE,
-    autoHideNavigation = TRUE,
     rownames = FALSE,
     options = list(
-      scrollX = FALSE,
+      scrollX = TRUE,
       dom = "Bfrtip",
       lengthMenu = c(15, 30, 50, 100),
       pageLength = 50
