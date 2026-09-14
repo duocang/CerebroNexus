@@ -111,12 +111,37 @@ test_that("configured images fail closed without leaking neighbouring leaves", {
   expect_identical(configured_spatial_images(NULL, "Atlas", "sliceA"), list())
 })
 
+test_that("Viewer chooses FOV or matching ROI images", {
+  images <- list(
+    Overview = list(path = "overview.png", roi_value = NULL),
+    Lesion = list(path = "lesion.png", roi_value = "lesion"),
+    Border = list(path = "border.png", roi_value = "border")
+  )
+
+  expect_named(spatial_images_for_roi(images, ""), "Overview")
+  expect_named(spatial_images_for_roi(images, "__all__"), "Overview")
+  expect_named(
+    spatial_images_for_roi(images, "__separate__"),
+    c("Overview", "Lesion", "Border")
+  )
+  expect_named(spatial_images_for_roi(images, "lesion"), "Lesion")
+  expect_named(spatial_images_for_roi(images, "normal"), "Overview")
+})
+
 test_that("embedded images expose canonical labels and normalize singular legacy", {
   canonical <- list(
     histology_images = list(
       `H&E` = list(
         histology_image = "data:image/png;base64,HE",
-        histology_image_bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 20)
+        histology_image_bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 20),
+        histology_alignment = list(
+          dx = 12,
+          dy = -4,
+          scale = 1.5,
+          rotation = 90,
+          flip_x = TRUE,
+          image_opacity = 0.7
+        )
       ),
       DAPI = list(histology_image = "data:image/png;base64,DAPI")
     ),
@@ -126,6 +151,27 @@ test_that("embedded images expose canonical labels and normalize singular legacy
   expect_identical(
     embedded_spatial_images(canonical)$DAPI$image,
     "data:image/png;base64,DAPI"
+  )
+  expect_identical(
+    spatial_background_preset(
+      NULL,
+      NULL,
+      NULL,
+      c(
+        list(source = "embedded", key = "H&E", label = "H&E"),
+        embedded_spatial_images(canonical)[["H&E"]]
+      )
+    ),
+    list(
+      offsetX = 12,
+      offsetY = -4,
+      scaleX = 1.5,
+      scaleY = 1.5,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = 90,
+      opacity = 0.7
+    )
   )
 
   legacy <- list(
@@ -274,6 +320,7 @@ test_that("background identity includes its full logical image location", {
       dataset = "Atlas",
       spatial_name = "sliceA",
       source = "embedded",
+      key = "H&E",
       label = "H&E"
     )
   )

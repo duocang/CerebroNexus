@@ -1,6 +1,22 @@
 # Running tests locally
 
-This directory holds the package's automated tests. `R CMD check` and CI (`.github/workflows/R-tests.yaml`, `R-cmd-check.yaml`) run these on every PR.
+This directory holds the package's automated tests. CI runs `R-tests.yaml` and
+`R-cmd-check.yaml` on every PR; `R CMD check` uses `--no-tests` because the
+matrix already owns the complete test suite.
+
+### CI matrix and local equivalent
+
+The shared plan in `scripts/run-test-shard.R` classifies every `test-*.R` file
+once. Logic tests use four fixed shards and browser tests use six fixed shards.
+New ordinary tests join the logic group automatically.
+
+```bash
+# Check formatting without changing files, run logic tests, or run the complete
+# sequential suite with check and pkgdown.
+scripts/precheck.sh air
+scripts/precheck.sh fast
+scripts/precheck.sh full
+```
 
 ## Layout
 
@@ -135,7 +151,7 @@ If you edit `inst/` and want the change reflected:
 Error in <fn>: attempt to apply non-function
 ```
 
-The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms`.
+The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms`. Browser-console errors should be investigated separately; generated-App tests intentionally fail on all warning/error entries instead of maintaining dependency-noise exceptions.
 
 Whenever you add or rename methods on `Cerebro`, regenerate the example fixture by re-exporting from `inst/extdata/examples/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
 
