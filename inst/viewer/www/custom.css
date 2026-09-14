@@ -21,7 +21,7 @@
   --c-border-2:     #e0e0e0;   /* control stroke */
   --c-text:         #1c1c1e;   /* primary text (near-black, warm) */
   --c-text-2:       #6b6b70;   /* secondary text */
-  --c-text-3:       #9a9aa0;   /* tertiary / placeholder */
+  --c-text-3:       #6f6f75;   /* tertiary / placeholder, AA on light surfaces */
 
   /* --- Brand: calm slate-blue for structure/links --------------------- */
   --c-blue-50:  #eef4fb;
@@ -36,7 +36,7 @@
   --c-amber-300: #ffb27a;
   --c-amber:     #f97316;  /* signature warm-orange accent */
   --c-amber-600: #ea6a0f;
-  --c-amber-700: #c85a0e;
+  --c-amber-700: #a74308;
 
   /* --- Status --------------------------------------------------------- */
   --c-success: #16a34a;
@@ -115,6 +115,48 @@ a:hover { color: var(--c-blue-700); text-decoration: underline; text-underline-o
 a:active { color: var(--c-blue-700); }
 
 hr { border-top: 1px solid var(--c-border); }
+
+/* Keyboard navigation helpers. The skip link stays outside the viewport until
+   focused, while programmatic focus on the main landmark does not add a large
+   outline around the whole application. */
+.cerebro-skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2000;
+  padding: 9px 13px;
+  border: 2px solid var(--c-amber-700);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-weight: 700;
+  box-shadow: var(--shadow-3);
+  transform: translateY(calc(-100% - 12px));
+}
+.cerebro-skip-link:focus,
+.cerebro-skip-link:focus-visible {
+  color: var(--c-text);
+  outline: 3px solid var(--c-amber-100);
+  outline-offset: 2px;
+  transform: none;
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+#main-content {
+  min-width: 0;
+  scroll-margin-block-start: 12px;
+}
+#main-content:focus { outline: none; }
 
 code, pre {
   font-family: var(--font-mono);
@@ -280,39 +322,18 @@ body.skin-blue .sidebar-menu > li.active > a:focus {
   border-left: none !important;
 }
 body.skin-blue .sidebar-menu > li > a > i,
+body.skin-blue .sidebar-menu > li > a > .fa,
 body.skin-blue .sidebar-menu > li > a > .glyphicon,
 body.skin-blue .sidebar-menu > li > a > .ion {
   width: 18px; margin-right: 15px; text-align: center; font-size: 14px;
+  color: var(--c-text-2) !important;
   transition: color var(--dur) var(--ease);
 }
 
-/* Per-item icon colours: each menu icon has its own hue so it reads apart
-   from the text and the items are easier to scan. Keyed by tabName
-   via the menuItem's data-value on the anchor. Target the <i> directly so it
-   matches every FontAwesome variant (fas solid, far regular, ...). Text stays
-   neutral; only the glyph is coloured. The active item gets the warm brand tint
-   below, which overrides these so the selection reads clearly. */
-body.skin-blue .sidebar-menu > li > a[data-value="loadData"] > i { color: #3b82f6 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="overview"] > i { color: #f59e0b !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="groups"] > i { color: #10b981 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="markerGenes"] > i { color: #8b5cf6 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="mostExpressedGenes"] > i { color: #ec4899 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="enrichedPathways"] > i { color: #14b8a6 !important; }
-/* Avoid #f97316 here: that is the active/brand amber, so an inactive
-   extra_material icon would look like a selected item. Use a distinct gold. */
-body.skin-blue .sidebar-menu > li > a[data-value="extra_material"] > i { color: #ca8a04 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="immune_repertoire"] > i { color: #ef4444 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="spatial"] > i { color: #0891b2 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="trajectory"] > i { color: #06b6d4 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="geneExpression"] > i { color: #6366f1 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="geneIdConversion"] > i { color: #84cc16 !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="color_management"] > i { color: #d946ef !important; }
-body.skin-blue .sidebar-menu > li > a[data-value="about"] > i { color: #64748b !important; }
-
-/* Active item overrides its per-item colour with the warm brand tint so the
-   selected row reads as one cohesive amber block. Repeats the data-value in the
-   selector so it out-specifies the per-item colours above. */
+/* One neutral icon colour keeps the rail quiet; the current page alone carries
+   the amber accent. */
 body.skin-blue .sidebar-menu > li.active > a > i,
+body.skin-blue .sidebar-menu > li.active > a > .fa,
 body.skin-blue .sidebar-menu > li.active > a[data-value] > i,
 body.skin-blue .sidebar-menu > li.active > a > .glyphicon,
 body.skin-blue .sidebar-menu > li.active > a > .ion {
@@ -339,6 +360,9 @@ body.skin-blue .sidebar-menu > li.header {
    Was min-height:100vh, which let this element GROW past the viewport (so the
    document scrolled and the height was a moving target); height:100vh pins it. */
 body .content-wrapper, body .right-side {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   background: var(--c-bg) !important;
   height: 100vh;
   height: 100dvh;
@@ -443,6 +467,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   gap: 4px 9px;
   margin-bottom: 8px;
 }
+.cerebro-viz-page-heading h1,
 .cerebro-viz-page-heading h3 {
   margin: 0;
   font-size: 18px;
@@ -1129,29 +1154,33 @@ body.skin-blue .main-sidebar,
 body.skin-blue .left-side { min-width: 230px; }
 
 /* -------------------------------------------------------------------------
-   Data info page — welcome hero + de-emphasised advanced settings.
-   With the top bar removed, the welcome message becomes a real page header:
-   it spans the freed-up top strip (pulled out to the content-wrapper edges via
-   negative margins) so that space is used, not left blank.
+   Data info page — compact welcome header + de-emphasised advanced settings.
    ------------------------------------------------------------------------- */
 .cerebro-welcome {
-  margin: -18px -26px 22px;          /* cancel content padding → flush to top */
-  padding: 30px 26px 26px;
-  background: linear-gradient(180deg, var(--c-white), var(--c-bg));
+  margin: 0 0 20px;
+  padding: 4px 0 16px;
+  background: transparent;
   border-bottom: 1px solid var(--c-border);
+}
+.tab-pane[id="shiny-tab-loadData"] > h1 {
+  margin: 0 0 6px;
+  color: var(--c-text);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .cerebro-welcome h3,
 .cerebro-welcome > :first-child {
-  font-size: 26px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.02em;
-  color: var(--c-text) !important;
-  margin: 0 0 4px !important;
+  color: var(--c-text-2) !important;
+  margin: 0 !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.5;
   text-align: left !important;
 }
 /* The default welcome copy is a <p>; give it a calm subheading treatment. */
 .cerebro-welcome p {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--c-text-2);
   margin: 0;
   text-align: left !important;
@@ -1165,10 +1194,8 @@ body.skin-blue .left-side { min-width: 230px; }
   margin-top: 40px;
   padding-top: 18px;
   border-top: 1px dashed var(--c-border-2);
-  opacity: 0.78;
-  transition: opacity var(--dur) var(--ease);
+  color: var(--c-text-2);
 }
-.cerebro-advanced:hover { opacity: 1; }
 .cerebro-advanced h3 {
   color: var(--c-text-2) !important;
   font-size: 14px !important;
@@ -1191,6 +1218,27 @@ body.skin-blue .left-side { min-width: 230px; }
   margin: 2px 0 12px;
   font-size: 12.5px;
   color: var(--c-text-3);
+}
+.cerebro-advanced .checkbox { margin: 10px 0; }
+.cerebro-advanced .checkbox label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding-left: 0;
+  color: var(--c-text-2) !important;
+  font-weight: 450 !important;
+  text-align: left;
+}
+.cerebro-advanced .checkbox input[type="checkbox"] {
+  position: static;
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+}
+.cerebro-advanced .help-block {
+  margin: -4px 0 10px 26px;
+  color: var(--c-text-3);
+  font-size: 12.5px;
+  text-align: left;
 }
 
 /* -------------------------------------------------------------------------
@@ -1423,18 +1471,19 @@ body .btn-default:active, body .btn-default.active {
 body .btn-primary,
 body .btn-primary:focus {
   background: var(--c-amber) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   border-color: var(--c-amber) !important;
 }
 body .btn-primary:hover {
   background: var(--c-amber-600) !important;
   border-color: var(--c-amber-600) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   box-shadow: var(--shadow-1) !important;
 }
 body .btn-primary:active, body .btn-primary.active {
   background: var(--c-amber-700) !important;
   border-color: var(--c-amber-700) !important;
+  color: var(--c-white) !important;
 }
 
 body .btn-success { background: var(--c-success) !important; border-color: var(--c-success) !important; color: var(--c-white) !important; }
@@ -1484,7 +1533,7 @@ body .btn-group-justified > .btn.radiobtn.active,
 body .btn-group > .btn.radiobtn.btn-primary.active,
 body .btn-group-justified > .btn.radiobtn.btn-primary.active {
   background: var(--c-amber) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   border-color: var(--c-amber) !important;
   font-weight: 650;
 }
@@ -1633,7 +1682,12 @@ body label, body .control-label {
   text-transform: none;
   margin-bottom: 5px;
 }
-body .shiny-input-container > label.control-label { font-size: 14px; display: block; }
+body .shiny-input-container > label.control-label {
+  display: block;
+  width: 100%;
+  font-size: 14px;
+  text-align: left;
+}
 body .material-switch label,
 body .shiny-input-checkboxgroup:not(.cv-filt) label,
 body .shiny-input-radiogroup label {
@@ -1646,7 +1700,7 @@ body .irs--shiny .irs-bar { background: var(--c-amber) !important; border-color:
 body .irs--shiny .irs-handle { border: 2px solid var(--c-amber) !important; background: var(--c-white) !important; box-shadow: var(--shadow-1) !important; }
 body .irs--shiny .irs-from, body .irs--shiny .irs-to, body .irs--shiny .irs-single {
   background: var(--c-amber) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   border-radius: var(--r-xs);
   font-family: var(--font-sans);
   font-size: 11.5px;
@@ -1798,14 +1852,14 @@ body .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
 body .dataTables_wrapper .dataTables_paginate .paginate_button.current,
 body .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
   background: var(--c-amber) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   border-color: var(--c-amber) !important;
 }
 body .dataTables_wrapper .pagination > .active > a,
 body .dataTables_wrapper .pagination > .active > a:hover,
 body .dataTables_wrapper .pagination > .active > a:focus {
   background: var(--c-amber) !important;
-  color: var(--c-white) !important;
+  color: var(--c-text) !important;
   border-color: var(--c-amber) !important;
 }
 body .dataTables_wrapper .dataTables_info { color: var(--c-text-2) !important; font-size: 12px !important; }
@@ -1852,6 +1906,37 @@ body .modal-title {
 }
 body .modal-body { padding: 22px 24px; color: var(--c-text); }
 body .modal-footer { border-top: 1px solid var(--c-border); padding: 15px 24px; }
+
+#session-timeout-warning {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 32px));
+  max-width: none;
+  margin: auto;
+  padding: 22px 24px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--shadow-4);
+}
+#session-timeout-warning::backdrop {
+  background: rgba(28, 28, 30, .48);
+}
+#session-timeout-warning h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+#session-timeout-warning p {
+  margin: 0;
+  color: var(--c-text-2);
+  line-height: 1.55;
+}
+#session-timeout-countdown {
+  color: var(--c-amber-700);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+#session-timeout-continue { margin-top: 18px; }
 
 /* -------------------------------------------------------------------------
    Loading / progress / notifications — unified to the warm accent
@@ -2002,6 +2087,20 @@ body .js-plotly-plot .plotly .modebar-btn.disabled {
   }
 }
 
+@media (pointer: coarse) {
+  body .js-plotly-plot .plotly .modebar,
+  body .js-plotly-plot .plotly .modebar-group {
+    flex-flow: row wrap;
+  }
+  body .js-plotly-plot .plotly .modebar {
+    max-width: calc(100% - 8px);
+  }
+  body .js-plotly-plot .plotly .modebar-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 body .shiny-bound-output.recalculating::before,
 body .loading-spinner,
 body .fa-spinner { color: var(--c-amber) !important; }
@@ -2052,7 +2151,10 @@ body .shiny-bound-output {
   transition: opacity var(--dur) var(--ease);
 }
 body .recalculating { opacity: 1; }
-body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
+body .shiny-bound-output.cerebro-output-waiting {
+  opacity: 0.7;
+  box-shadow: inset 0 2px 0 var(--c-amber-200);
+}
 
 /* -------------------------------------------------------------------------
    Responsive
@@ -2062,6 +2164,56 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
     padding: 56px 14px 12px !important;
   }
   body .box-body { padding: 14px 16px; }
+  .cerebro-viz-page-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 10px;
+  }
+  .cerebro-viz-page-heading h1,
+  .cerebro-viz-page-heading h3 {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .cerebro-viz-page-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .cerebro-viz-page-heading .cerebro-page-info-btn {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+  }
+  .cerebro-welcome {
+    margin-bottom: 14px;
+    padding: 0 0 12px;
+  }
+  .cerebro-welcome h3,
+  .cerebro-welcome > :first-child {
+    font-size: 14px !important;
+  }
+  body .small-box {
+    margin-bottom: 10px;
+  }
+  body .small-box > .inner {
+    padding: 12px 14px 10px !important;
+  }
+  body .small-box h3 {
+    margin-bottom: 2px !important;
+    font-size: 24px !important;
+  }
+  body .small-box .icon,
+  body .small-box .icon-large,
+  body .small-box .icon-large > i,
+  body .small-box .icon > i {
+    right: 12px !important;
+    font-size: 32px !important;
+  }
   html body.skin-blue .main-header,
   html body.skin-blue .main-header .navbar {
     display: block !important;
@@ -2171,6 +2323,12 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
    Accessibility: honor reduced-motion
    ------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  body .content-wrapper,
+  body .right-side {
+    scroll-behavior: auto !important;
+  }
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
 
@@ -2297,7 +2455,7 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
   border: 1px solid var(--c-amber);
   border-radius: var(--r-xs);
   background: var(--c-amber);
-  color: #ffffff;
+  color: var(--c-text);
   font: 700 12.5px/1 var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
@@ -2327,6 +2485,7 @@ body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
 .cerebro-config-open:hover:not(:disabled) {
   border-color: var(--c-amber-700);
   background: var(--c-amber-700);
+  color: var(--c-white);
 }
 .cerebro-config-open:disabled {
   opacity: .48;

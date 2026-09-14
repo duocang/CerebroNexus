@@ -15,6 +15,16 @@
   var pendingState = null;
   var syncingSelection = false;
   var shinyBound = false;
+  var reducedMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches: false };
+
+  function withMotion(options, duration) {
+    options.animation = duration && !reducedMotion.matches
+      ? { duration: duration }
+      : false;
+    return options;
+  }
 
   function net() {
     if (!window.HTMLWidgets || !window.HTMLWidgets.find) return null;
@@ -255,16 +265,15 @@
     var network = net();
     if (!network) return;
     var floor = typeof network.hlaMinScale === 'number' ? network.hlaMinScale : 0.02;
-    network.moveTo({
+    network.moveTo(withMotion({
       scale: Math.max(floor, Math.min(6, network.getScale() * factor)),
-      animation: { duration: 200 }
-    });
+    }, 200));
   }
   function resetView() {
     var network = net();
     selectionFocused = false;
     syncModeButtons();
-    if (network) network.fit({ animation: { duration: 300 } });
+    if (network) network.fit(withMotion({}, 300));
   }
   function zoomSelection() {
     var network = net();
@@ -287,11 +296,10 @@
     scale = Math.max(network.hlaMinScale || 0.02, scale);
     selectionFocused = true;
     syncModeButtons();
-    network.moveTo({
+    network.moveTo(withMotion({
       position: { x: (left + right) / 2, y: (top + bottom) / 2 },
       scale: Math.min(3, scale),
-      animation: { duration: 300 }
-    });
+    }, 300));
   }
   function clearSelection(notify) {
     var network = net();
@@ -369,14 +377,13 @@
         frame.clientWidth / (viewport.x1 - viewport.x0),
         frame.clientHeight / (viewport.y1 - viewport.y0)
       );
-      network.moveTo({
+      network.moveTo(withMotion({
         position: {
           x: (viewport.x0 + viewport.x1) / 2,
           y: (viewport.y0 + viewport.y1) / 2
         },
         scale: Math.max(0.02, Math.min(6, scale)),
-        animation: false
-      });
+      }, 0));
     }
     drawOverlay();
   }
