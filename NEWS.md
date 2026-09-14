@@ -1,3 +1,10 @@
+# CerebroNexus 4.6.4
+
+## Viewer
+
+- Refines typography, spacing, navigation, controls, responsive layouts, loading and empty states across the Viewer.
+- Improves keyboard navigation, focus handling, status announcements, labels, and reduced-motion behavior.
+
 # CerebroNexus 4.6.3
 
 ## Viewer
