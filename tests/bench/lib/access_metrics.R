@@ -14,6 +14,7 @@ bench_build_query_plan <- function(m, n_genes = 50L) {
     schema_version = 1L,
     n_cells = ncol(m),
     n_genes = nrow(m),
+    nnz = sum(counts),
     panel = panel,
     reference_row_fingerprint = bench_numeric_fingerprint(first_values),
     reference_block_fingerprint = bench_numeric_fingerprint(block_values)

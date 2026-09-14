@@ -51,6 +51,17 @@ test_that("chunk plans degrade gracefully at the edges", {
   expect_equal(sum(plan$size), 4003)
 })
 
+test_that("sampled feature names match Seurat normalization", {
+  skip_unless_bench()
+  source(bench_lib, local = TRUE)
+
+  genes <- c("Metazoa_SRP.34", "A|B", "A_B", "A-B")
+  expect_identical(
+    bench_seurat_feature_names(genes),
+    c("Metazoa-SRP.34", "A-B", "A-B.1", "A-B.2")
+  )
+})
+
 test_that("within-column ordering is classified correctly", {
   skip_unless_bench()
   source(bench_lib, local = TRUE)

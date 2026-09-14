@@ -1,95 +1,116 @@
 # Real-data expression-backend benchmark
 
-This directory compares the `embedded`, `bpcells`, and `h5` backends on public single-cell matrices. This page explains how to run it. Read [METHODOLOGY.md](METHODOLOGY.md) for the experimental design and [RESULTS.md](RESULTS.md) before interpreting any number.
+This directory compares Cerebro's `embedded`, `bpcells`, and `h5` expression
+backends on two public single-cell matrices. The publication workflow is one
+complete study: A/B, C1, and C2 are acquired on the same machine, filesystem,
+code revision, dependency set, source files, and thread count.
 
-## Million-cell page readiness
+> **Current status:** historical evidence has been removed. No publication
+> result is current until `run_publication_full.sh` completes and publishes a
+> new immutable study.
 
-The page harness uses the official 1M CRB at 100% cells. Because that data set has no immune repertoire, HLA typing, or trajectory, first create a deterministic benchmark-only CRB in the same directory so it can share the expression sidecar:
+Read [METHODOLOGY.md](METHODOLOGY.md) for the design and
+[RESULTS.md](RESULTS.md) before interpreting generated values.
+
+## Publication run
+
+Use a clean checkout, the pinned Nix environment, an exclusive high-memory
+node, persistent checksum-verified source cache, and local scratch storage.
 
 ```bash
-Rscript tests/bench/prepare_viewer_1m_pages.R . /path/to/cerebro_mouse_brain_1m.crb /path/to/cerebro_mouse_brain_1m_pages.crb
-Rscript tests/bench/benchmark_viewer_1m_pages.R current=. /path/to/cerebro_mouse_brain_1m_pages.crb /path/to/viewer_1m_pages.tsv 3
+nix-shell default.nix -A shell
+
+git status --short       # must print nothing
+git rev-parse HEAD       # record the code under test
+
+BENCH_THREADS=1 \
+  BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
+  BENCH_SCRATCH_PARENT=/fast/local/scratch \
+  BENCH_STORAGE_DESCRIPTION="local NVMe; ext4; model=<model>" \
+  tests/bench/run_publication_full.sh
 ```
 
-The harness checks every page exposed by the data set. The enforced first-visit budget is strictly `<2,000 ms` for ordinary pages and `<3,000 ms` for Trajectory and HLA; every repeat visit must be strictly `<500 ms`. Overview, Groups, Gene Expression, Immune Repertoire, Trajectory, HLA, and Coordinated Views are required. Data-dependent pages such as Spatial are optional when unavailable, but every available page with a successful observation must pass its budget. The synthetic additions are performance fixtures only and must not be used for biological conclusions. The fixture does not contain valid Spatial data, so a skipped or historical Spatial row is not evidence about Spatial performance.
+The wrapper owns the exact study design and rejects source-selection overrides.
+It runs:
 
-Every candidate/page/visit row runs in its own Shiny R process and Chrome process. A repeat observation warms that page once inside its otherwise fresh process, returns to Data Info, then measures the second visit. When an event is required, the harness increments a generation, records `performance.now()`, attaches the event listener, and clicks within one synchronous browser script; the event must carry a timestamp from that click generation. Specialist pages wait for the production `cerebro:specialist-state` event emitted after drawing plus their canvas `data-point-count` on both visits. A first Coordinated Views visit, including the warm visit inside a repeat observation, requires a post-click `cerebro:linkedviews-ready` event plus `window.cerebroLinkedViewsState.ready()`. After that warm visit succeeds and the harness leaves the page, the measured repeat uses the persisted bundle and surface and waits for `ready()` because production does not emit another ready event. This exception exists only inside that successfully warmed fresh observation. Specialist pages and Coordinated Views do not wait for global Shiny idle; Groups and non-specialist optional pages continue to do so. The HLA primary frame intentionally does not wait for unrelated secondary Shiny work, but it must still emit the post-click specialist event.
+| phase | cells | backends | builds | access processes | Viewer gates |
+|---|---|---|---:|---:|---:|
+| A/B | 50k and 150k from mouse and human | embedded, bpcells, h5 | 36 | 72 | -- |
+| C1 | mouse 400k; human 300k | embedded, bpcells, h5 | 18 | 36 | -- |
+| C2 | complete mouse and human sources | bpcells, h5 | 12 | 24 | 4 |
 
-The script writes the raw observation TSV, a pre-generated `_schedule.tsv`, and a `_manifest.tsv`. Raw rows include the page correctness result/detail, rendered point count when available, effective renderer backend and adapter diagnostics, a post-timing visible-pixel check, sampled peak RSS for the Shiny R process tree and Chrome process tree at 50 ms intervals, a CDP `JSHeapUsedSize` snapshot, and browser-side WebSocket sent/received payload bytes. The elapsed timer ends at the observable primary-ready boundary. RSS/WebSocket collection covers the click-to-ready interval and stops immediately after the heap snapshot taken at that boundary; renderer and pixel diagnostics run afterward and do not affect elapsed time. The observation-local meter wraps the active Shiny socket's `send` method and listens for `message` events, counts encoded string, ArrayBuffer, typed-view, and Blob payload sizes without copying payloads over CDP, then restores the socket. These byte counts exclude WebSocket framing and TCP/TLS overhead. Specialist primary-ready means the post-draw page event and renderer-state check, not global Shiny idle. Selection keys, hover data, and other progressive auxiliary payloads requested five seconds later are intentionally outside the primary gate and byte/resource window, so these fields must not be described as complete-interaction resources. Coordinated Views remains an exception in scope rather than readiness mechanics: its production `ready()` definition includes the full cell bundle, so the CV primary-ready boundary still includes cells. The correctness contract is limited to Data Info reporting 1,000,000 cells plus observable page state: the four million-cell background canvases must each report exactly 1,000,000 points and a dataset fingerprint, HLA and Spatial canvases must report a positive point count and fingerprint, Groups must expose a visible nonempty Plotly graph, and Coordinated Views must expose a ready summary with a nonempty dataset fingerprint. Canvas pages must also produce non-background pixels in the central rendered area. It does not validate complete scientific identity or statistics. Million-cell page budgets apply only when their effective backend is WebGPU; Canvas fallback rows remain correctness diagnostics and are not comparable WebGPU performance observations. A publication profile refuses to publish when required WebGPU timing is unavailable. The manifest records candidate Git SHA and dirty state, CRB control-file SHA-256, host/OS, R, CerebroNexus, shinytest2, chromote, and Chrome versions. Browser/server errors, failed correctness, missing metrics, and every applicable successful available-page budget are publication gates.
+For every source/tier, a deterministic query plan is prepared in a separate
+process before any timed build; the exact 12-gene panel is retained as CSV.
+For build repeat 1 of each C2 source/backend pair, the harness then runs
+`createShinyApp()` -> `shinytest2::AppDriver`/`runApp()` -> Shiny WebSocket ->
+Canvas. All four rows must complete Canvas hover, box selection, zoom, and
+frozen-gene switching. Their six timings are single-run diagnostics, not
+replicated browser-performance estimates; Vitessce is outside this study.
 
-For a balanced comparison, pass additional `LABEL=REPO_ROOT` candidates after the round count. Candidate position rotates by round. Set `VIEWER_BENCH_PROFILE=publication` and use at least five rounds; shorter publication runs are rejected before launching an app.
+Each phase publishes into private study work; only after all phases, provenance
+checks, correctness checks, tables, and the combined figure succeed is the
+complete bundle copied to
+`result/publication-full/runs/<study-id>/`. `CURRENT` is updated last.
+
+Set `BENCH_STUDY_ID` to resume a stopped study with the same code and settings.
+Completed phases are reused and derived output is rebuilt. Set
+`BENCH_KEEP_STUDY_WORK=1` to retain the private phase directories after a
+successful publication.
+
+For a disconnect-safe remote run:
 
 ```bash
-VIEWER_BENCH_PROFILE=publication Rscript tests/bench/benchmark_viewer_1m_pages.R baseline=/path/to/baseline /path/to/cerebro_mouse_brain_1m_pages.crb /path/to/viewer_1m_pages.tsv 5 candidate=/path/to/candidate
+tmux new-session -d -s cerebro-benchmark \
+  -c /path/to/CerebroNexus \
+  'nix-shell default.nix -A shell --run "BENCH_THREADS=1 BENCH_SOURCE_CACHE=/persistent/cache BENCH_SCRATCH_PARENT=/local/scratch BENCH_STORAGE_DESCRIPTION=local-nvme-ext4 tests/bench/run_publication_full.sh" 2>&1 | tee /path/to/benchmark.log'
 ```
 
-> **Current status:** a complete five-round `publication` profile comparison between clean PR4 and PR5 revisions is recorded in `results/million_cell_pages_pr4_pr5_4_6_3.tsv`. All 140 observations passed status and correctness checks. The overall comparison does not pass the publication gate because both candidates contain budget failures. PR5 itself passes 11/14 page/visit gates; only its first-visit Gene Expression, Immune Repertoire, and Coordinated Views remain over budget. Use the run as a complete diagnostic comparison, not as a passing publication result. The archived pilot is retained for provenance only.
+## Harness development
 
-## Quick start
+These profiles are for correctness and harness development, not the final
+article evidence:
 
 ```bash
-# Smallest correctness and harness check
 BENCH_PROFILE=quick tests/bench/run_sweep.sh
-
-# Repeated local review
 BENCH_PROFILE=standard tests/bench/run_sweep.sh
-
-# Repeated evidence plus staged figures
-BENCH_PROFILE=publication tests/bench/run_sweep.sh
-
-# Explicit memory-boundary experiment; normally rejected on a 32 GiB host
 BENCH_PROFILE=stress tests/bench/run_sweep.sh
 ```
 
-Limit a run to one source when developing the harness:
+Use external result and source-cache directories during development:
 
 ```bash
-BENCH_SOURCES_ONLY=mouse_brain_e18 \
+BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
+  BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
+  BENCH_SOURCES_ONLY=mouse_brain_e18 \
   BENCH_PROFILE=quick tests/bench/run_sweep.sh
 ```
 
-`BENCH_ALLOW_UNSAFE=1` bypasses the resource gate. Use it only for an intentional stress run. Normal runs must not silently skip unsafe tiers.
+`BENCH_ALLOW_UNSAFE=1` is only for an intentional stress experiment. Normal
+runs stop rather than silently omit unsafe tiers.
 
-## What happens before a download
+## Script map
 
-The command first:
-
-1. inspects source dimensions;
-2. records the machine and Git revision;
-3. creates the requested run plan; and
-4. checks estimated memory, sparse-index, and free-disk limits.
-
-If the plan is unsafe, it stops with the source, cell tier, estimated memory, safe budget, and reason. No complete source file or backend export has started at that point.
-
-## Profiles
-
-| profile | purpose | large boundary tiers |
-|---|---|:---:|
-| `quick` | verify the harness and correctness gate | no |
-| `standard` | repeated local comparison | no |
-| `publication` | repeated article evidence and figures | no |
-| `stress` | opt-in host memory-boundary experiment | yes |
-
-## Outputs
-
-Validated runs are immutable under `result/runs/<run-id>/`. `result/CURRENT` contains the run used by report and plotting tools. A failed or interrupted run leaves the previous pointer unchanged.
-
-The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-30/`; it is superseded and cannot support current performance claims.
-
-## Plain-language script map
-
-| script | meaning |
+| script | purpose |
 |---|---|
-| `01_inspect_data.R` | find out how large the sources are |
-| `02_record_environment.R` | record the code and machine under test |
-| `03_plan_runs.R` | list the requested backend runs |
-| `04_check_resources.R` | stop before running a plan that will not fit |
-| `10_export_backend.R` | export one backend in a fresh process |
-| `20_measure_backend.R` | measure and correctness-check one backend |
-| `30_check_measurements.R` | reject incomplete or incorrect measurements |
-| `40_write_report.R` | generate the Markdown result report |
-| `41_draw_figures.R` | generate publication figures |
-| `50_check_outputs.R` | ensure the report package is complete |
+| `run_publication_full.sh` | acquire and publish the complete study |
+| `run_sweep.sh` | run one internal phase or development profile |
+| `01_inspect_data.R` | inspect source dimensions and sparsity |
+| `02_record_environment.R` | record code, machine, storage, and dependencies |
+| `03_plan_runs.R` | write the deterministic schedule |
+| `04_check_resources.R` | gate sampled in-memory tiers |
+| `04_check_full_resources.R` | gate full-source out-of-core tiers |
+| `05_prepare_query_plan.R` | prepare and freeze the untimed query plan |
+| `10_export_backend.R` | build one sampled backend in a fresh process |
+| `11_build_full_backend.R` | build one full-source backend in a fresh process |
+| `20_measure_backend.R` | measure and correctness-check one fresh access process |
+| `21_measure_viewer.R` | drive one C2 standalone App through the Viewer gate |
+| `30_check_measurements.R` | reject incomplete, failed, or inconsistent rows |
+| `40_write_report.R` / `41_draw_figures.R` | write internal phase outputs |
+| `42_write_panel_c_report.R` / `43_draw_panel_c_figure.R` | validate and combine the complete study |
+| `50_check_outputs.R` | validate an internal phase package |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 
-The two default public sources are 10x mouse brain E18 (4.2 GB) and the HBCC human prefrontal-cortex atlas (14.2 GB). The MSSM cohort is opt-in through `BENCH_SOURCES_EXTRA=human_pfc_mssm`.
+The default sources are the 10x 1.3-million-cell mouse brain E18 dataset and
+the 1.49-million-cell PsychAD HBCC human prefrontal-cortex dataset. Stable
+identifiers, landing pages, byte sizes, and acquired SHA-256 values are stored
+with every final study.

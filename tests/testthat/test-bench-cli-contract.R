@@ -21,6 +21,20 @@ test_that("sweep cleanup cannot run twice through signal and exit traps", {
   expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
 })
 
+test_that("BENCH_KEEP retains generated artifacts for diagnosis", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    sweep,
+    'if [ "${BENCH_KEEP:-0}" != "1" ]; then\n      rm -rf -- "$out_dir"',
+    fixed = TRUE
+  )
+})
+
 test_that("sweep stages use plain names in a safe publication order", {
   skip_unless_bench_cli()
   expected <- c(
@@ -30,6 +44,7 @@ test_that("sweep stages use plain names in a safe publication order", {
     "04_check_resources.R",
     "10_export_backend.R",
     "20_measure_backend.R",
+    "21_measure_viewer.R",
     "30_check_measurements.R",
     "40_write_report.R",
     "41_draw_figures.R",
@@ -51,6 +66,296 @@ test_that("sweep stages use plain names in a safe publication order", {
   expect_true(all(diff(positions) > 0))
 })
 
+test_that("sweep supports clean external results and verified source caching", {
+  skip_unless_bench_cli()
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  source_cache <- file.path(bench_root, "lib", "source_cache.sh")
+  cache_helper <- if (file.exists(source_cache)) {
+    readLines(source_cache, warn = FALSE)
+  } else {
+    character()
+  }
+
+  expect_true(any(grepl("BENCH_RESULT_ROOT", sweep, fixed = TRUE)))
+  expect_true(any(grepl("BENCH_SOURCE_CACHE", cache_helper, fixed = TRUE)))
+  expect_true(file.exists(source_cache))
+})
+
+test_that("sweep isolates benchmark R processes from user startup files", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(sweep, "R_ENVIRON_USER=/dev/null", fixed = TRUE)
+  expect_match(sweep, "R_PROFILE_USER=/dev/null", fixed = TRUE)
+  expect_match(sweep, 'R_LIBS_USER="$SCRATCH/r-user-library"', fixed = TRUE)
+  expect_match(sweep, "NOT_CRAN=true", fixed = TRUE)
+})
+
+test_that("Nix HDF5 provides the ROS3 symbol required by rhdf5", {
+  nix <- paste(
+    readLines(file.path(bench_root, "..", "..", "default.nix"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(nix, "-DHDF5_ENABLE_ROS3_VFD=ON", fixed = TRUE)
+  expect_match(nix, "LD_LIBRARY_PATH", fixed = TRUE)
+})
+
+test_that("Panel C2 build CLI uses only the lazy full-source path", {
+  skip_unless_bench_cli()
+  script <- file.path(bench_root, "src", "11_build_full_backend.R")
+
+  expect_true(file.exists(script))
+  if (!file.exists(script)) {
+    return()
+  }
+  body <- paste(readLines(script, warn = FALSE), collapse = "\n")
+  expect_match(body, "bench_open_full_source", fixed = TRUE)
+  expect_match(body, "bench_write_full_backend", fixed = TRUE)
+  expect_match(body, "bench_make_full_shell", fixed = TRUE)
+  expect_match(body, "readRDS(query_plan_path)", fixed = TRUE)
+  expect_false(grepl("bench_build_lazy_query_plan", body, fixed = TRUE))
+  expect_false(grepl("dgCMatrix", body, fixed = TRUE))
+  expect_false(grepl("as.matrix(source_matrix)", body, fixed = TRUE))
+})
+
+test_that("query plans are prepared before any timed backend build", {
+  skip_unless_bench_cli()
+  prepare <- file.path(bench_root, "src", "05_prepare_query_plan.R")
+  expect_true(file.exists(prepare))
+  if (!file.exists(prepare)) {
+    return()
+  }
+
+  prepare_body <- paste(readLines(prepare, warn = FALSE), collapse = "\n")
+  sampled_body <- paste(
+    readLines(
+      file.path(bench_root, "src", "10_export_backend.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+
+  expect_match(prepare_body, "bench_build_query_plan", fixed = TRUE)
+  expect_match(prepare_body, "bench_build_lazy_query_plan", fixed = TRUE)
+  expect_match(prepare_body, "query_panel_result", fixed = TRUE)
+  expect_false(grepl("\\bmatrix\\s*<<-", prepare_body, perl = TRUE))
+  expect_match(sampled_body, "readRDS(query_plan_path)", fixed = TRUE)
+  expect_false(grepl("bench_build_query_plan", sampled_body, fixed = TRUE))
+  expect_lt(
+    grep("05_prepare_query_plan.R", sweep, fixed = TRUE)[1L],
+    grep('"$BENCH_ROOT/src/$BUILD_SCRIPT"', sweep, fixed = TRUE)[1L]
+  )
+})
+
+test_that("publication-full wrapper owns all three study phases", {
+  skip_unless_bench_cli()
+  wrapper <- file.path(bench_root, "run_publication_full.sh")
+  expect_true(file.exists(wrapper))
+  if (!file.exists(wrapper)) {
+    return()
+  }
+
+  body <- paste(readLines(wrapper, warn = FALSE), collapse = "\n")
+  expect_match(body, "BENCH_STUDY_ID", fixed = TRUE)
+  expect_match(body, "run_phase ab publication", fixed = TRUE)
+  expect_match(body, "run_phase c1 panel_c1", fixed = TRUE)
+  expect_match(body, "run_phase c2 panel_c2", fixed = TRUE)
+  expect_match(body, "60_publish_results.R", fixed = TRUE)
+  expect_match(body, "publication-full", fixed = TRUE)
+})
+
+test_that("publication-full figure uses frozen inputs and uncertainty", {
+  skip_unless_bench_cli()
+  script <- file.path(bench_root, "src", "43_draw_panel_c_figure.R")
+  expect_true(file.exists(script))
+  if (!file.exists(script)) {
+    return()
+  }
+
+  body <- paste(readLines(script, warn = FALSE), collapse = "\n")
+  expect_match(body, "study_manifest.csv", fixed = TRUE)
+  expect_match(
+    body,
+    "expression_backend_benchmark_publication_full.png",
+    fixed = TRUE
+  )
+  expect_match(body, "geom_point", fixed = TRUE)
+  expect_match(body, "geom_errorbar", fixed = TRUE)
+  expect_match(body, "not representable", fixed = TRUE)
+  expect_false(grepl("bench_current_result_dir", body, fixed = TRUE))
+})
+
+test_that("shared sweep selects the full-source build and resource paths", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, "04_check_full_resources.R", fixed = TRUE)
+  expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
+})
+
+test_that("C2 sweep runs one Viewer gate per source and backend", {
+  skip_unless_bench_cli()
+  script <- file.path(bench_root, "src", "21_measure_viewer.R")
+  expect_true(file.exists(script))
+
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, 'VIEWER_CSV="$STAGE/21_viewer.csv"', fixed = TRUE)
+  expect_match(sweep, "bundle_secs,launch_secs,hover_secs", fixed = TRUE)
+  expect_match(sweep, '[ "$BENCH_PROFILE" = "panel_c2" ]', fixed = TRUE)
+  expect_match(sweep, '[ "$export_repeat" = "1" ]', fixed = TRUE)
+  expect_match(sweep, "21_measure_viewer.R", fixed = TRUE)
+
+  if (file.exists(script)) {
+    body <- paste(readLines(script, warn = FALSE), collapse = "\n")
+    expect_match(body, "bench_run_viewer_validation", fixed = TRUE)
+    expect_match(body, "readRDS(query_plan_path)", fixed = TRUE)
+    expect_match(body, 'role == "first"', fixed = TRUE)
+  }
+})
+
+test_that("C2 Viewer evidence is required through final publication", {
+  skip_unless_bench_cli()
+  output_check <- paste(
+    readLines(
+      file.path(bench_root, "src", "50_check_outputs.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  wrapper <- paste(
+    readLines(file.path(bench_root, "run_publication_full.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(output_check, 'identical(profile, "panel_c2")', fixed = TRUE)
+  expect_match(output_check, "21_viewer.csv", fixed = TRUE)
+  expect_match(wrapper, "viewer_metrics.csv", fixed = TRUE)
+})
+
+test_that("benchmark docs define the four-row C2 Viewer boundary", {
+  skip_unless_bench_cli()
+  repo <- normalizePath(file.path(bench_root, "..", ".."))
+  paths <- c(
+    file.path(bench_root, "README.md"),
+    file.path(bench_root, "METHODOLOGY.md"),
+    file.path(bench_root, "RESULTS.md"),
+    file.path(repo, "vignettes", "expression_backend_benchmark.Rmd"),
+    file.path(repo, "NEWS.md")
+  )
+  docs <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+
+  expect_match(docs, "createShinyApp()", fixed = TRUE)
+  expect_match(docs, "WebSocket", fixed = TRUE)
+  expect_match(docs, "Canvas hover", fixed = TRUE)
+  expect_match(docs, "box selection", fixed = TRUE)
+  expect_match(docs, "zoom", fixed = TRUE)
+  expect_match(docs, "gene switching", fixed = TRUE)
+  expect_match(docs, "four", fixed = TRUE)
+  expect_match(docs, "single-run diagnostics", fixed = TRUE)
+  expect_match(docs, "Vitessce", fixed = TRUE)
+  expect_false(grepl("not end-to-end biological analysis or Viewer UX", docs))
+  expect_false(grepl("browser experiments are required", docs))
+})
+
+test_that("source cache reuses only checksum-verified files", {
+  skip_unless_bench_cli()
+  helper <- file.path(bench_root, "lib", "source_cache.sh")
+  expect_true(file.exists(helper))
+  if (!file.exists(helper)) {
+    return()
+  }
+
+  root <- tempfile("bench-cache-")
+  origin <- file.path(root, "origin", "fixture.h5")
+  cache <- file.path(root, "cache")
+  scratch <- file.path(root, "scratch")
+  dir.create(dirname(origin), recursive = TRUE)
+  dir.create(scratch)
+  writeBin(charToRaw("benchmark-fixture"), origin)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  command <- file.path(root, "fetch.sh")
+  writeLines(
+    c(
+      "set -euo pipefail",
+      sprintf("source %s", shQuote(helper)),
+      sprintf("export BENCH_SOURCE_CACHE=%s", shQuote(cache)),
+      sprintf(
+        "bench_fetch_source %s %d %s",
+        shQuote(paste0("file://", normalizePath(origin))),
+        file.size(origin),
+        shQuote(scratch)
+      ),
+      "test -f \"$BENCH_FETCHED_FILE\"",
+      "test -n \"$BENCH_FETCHED_SHA256\""
+    ),
+    command
+  )
+  first <- system2("bash", command, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(first, "status"), info = paste(first, collapse = "\n"))
+
+  unlink(origin)
+  second <- system2("bash", command, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(second, "status"), info = paste(second, collapse = "\n"))
+})
+
+test_that("publication sources and cache enforce pinned SHA-256 values", {
+  skip_unless_bench_cli()
+  source(file.path(bench_root, "config", "sources.R"), local = TRUE)
+  pinned <- vapply(
+    BENCH_SOURCES[c("mouse_brain_e18", "human_pfc_hbcc")],
+    `[[`,
+    character(1),
+    "expected_sha256"
+  )
+  expect_true(all(grepl("^[0-9a-f]{64}$", pinned)))
+
+  helper <- file.path(bench_root, "lib", "source_cache.sh")
+  root <- tempfile("bench-pinned-cache-")
+  origin <- file.path(root, "origin", "fixture.h5")
+  cache <- file.path(root, "cache")
+  scratch <- file.path(root, "scratch")
+  dir.create(dirname(origin), recursive = TRUE)
+  dir.create(scratch)
+  writeBin(charToRaw("benchmark-fixture"), origin)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  command <- file.path(root, "fetch-wrong-sha.sh")
+  writeLines(
+    c(
+      "set -euo pipefail",
+      sprintf("source %s", shQuote(helper)),
+      sprintf("export BENCH_SOURCE_CACHE=%s", shQuote(cache)),
+      sprintf(
+        "bench_fetch_source %s %d %s %s",
+        shQuote(paste0("file://", normalizePath(origin))),
+        file.size(origin),
+        shQuote(scratch),
+        shQuote(paste(rep("0", 64), collapse = ""))
+      )
+    ),
+    command
+  )
+  rejected <- suppressWarnings(system2(
+    "bash",
+    command,
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  expect_false(is.null(attr(rejected, "status")))
+  expect_match(paste(rejected, collapse = "\n"), "pinned SHA-256")
+})
+
 run_bench_rscript <- function(script, args = character(), env = character()) {
   out <- tempfile("bench-cli-stdout-")
   err <- tempfile("bench-cli-stderr-")
@@ -68,6 +373,41 @@ run_bench_rscript <- function(script, args = character(), env = character()) {
     stderr = readLines(err, warn = FALSE)
   )
 }
+
+test_that("run provenance quotes Git magic pathspecs", {
+  skip_unless_bench_cli()
+  result <- tempfile(fileext = ".csv")
+  on.exit(unlink(result), add = TRUE)
+
+  run <- run_bench_rscript("02_record_environment.R", result)
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  expect_false(
+    any(grepl("syntax error|unexpected token", run$stderr, ignore.case = TRUE)),
+    info = paste(run$stderr, collapse = "\n")
+  )
+  expect_true(file.exists(result))
+})
+
+test_that("empty Git status remains clean in run provenance", {
+  script <- parse(file.path(bench_root, "src", "02_record_environment.R"))
+  status_assignment <- Filter(
+    function(expression) {
+      is.call(expression) &&
+        identical(expression[[1L]], quote(`<-`)) &&
+        identical(expression[[2L]], quote(status))
+    },
+    as.list(script)
+  )
+  expect_length(status_assignment, 1L)
+
+  environment <- list2env(list(
+    tracked_status = "",
+    untracked_status = ""
+  ))
+  eval(status_assignment[[1L]], envir = environment)
+
+  expect_false(any(nzchar(environment$status)))
+})
 
 test_that("schedule CLI emits a complete quick-profile grid", {
   skip_unless_bench_cli()
@@ -98,6 +438,37 @@ test_that("schedule CLI emits a complete quick-profile grid", {
   expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
 })
 
+test_that("Panel C1 TSV uses canonical integer cell counts", {
+  skip_unless_bench_cli()
+  csv <- tempfile(fileext = ".csv")
+  tsv <- tempfile(fileext = ".tsv")
+  on.exit(unlink(c(csv, tsv)), add = TRUE)
+
+  run <- run_bench_rscript(
+    "03_plan_runs.R",
+    c(csv, tsv),
+    env = "BENCH_PROFILE=panel_c1"
+  )
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+
+  cells <- vapply(
+    strsplit(readLines(tsv, warn = FALSE), "\t", fixed = TRUE),
+    `[[`,
+    character(1),
+    3L
+  )
+  expect_setequal(unique(cells), c("300000", "400000"))
+  expect_false(any(grepl("[eE][+-]", cells)))
+
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, 'if [ ! -f "$crb" ]; then', fixed = TRUE)
+  expect_match(sweep, "export succeeded but artifact is missing", fixed = TRUE)
+  expect_match(sweep, '"export-artifact",1\\n', fixed = TRUE)
+})
+
 test_that("manifest CLI records source revision and runtime", {
   skip_unless_bench_cli()
   result <- tempfile(fileext = ".csv")
@@ -106,16 +477,36 @@ test_that("manifest CLI records source revision and runtime", {
   run <- run_bench_rscript(
     "02_record_environment.R",
     result,
-    env = c("BENCH_PROFILE=quick", "BENCH_RUN_ID=test-run")
+    env = c(
+      "BENCH_PROFILE=quick",
+      "BENCH_STUDY_ID=test-study",
+      "BENCH_RUN_ID=test-run",
+      "BENCH_THREADS=3",
+      "SLURM_JOB_ID=job-42",
+      "SLURM_NODELIST=node-a",
+      "SLURM_CPUS_PER_TASK=3"
+    )
   )
   expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
   manifest <- utils::read.csv(result, stringsAsFactors = FALSE)
   values <- stats::setNames(manifest$value, manifest$key)
+  expect_equal(values[["study_id"]], "test-study")
   expect_equal(values[["run_id"]], "test-run")
   expect_equal(values[["profile"]], "quick")
   expect_match(values[["git_sha"]], "^[0-9a-f]{40}$")
   expect_match(values[["r_version"]], "^R version")
   expect_true(nzchar(values[["cpu"]]))
+  expect_equal(values[["benchmark_threads"]], "3")
+  expect_equal(values[["slurm_job_id"]], "job-42")
+  expect_equal(values[["slurm_node_list"]], "node-a")
+  expect_equal(values[["slurm_cpus_per_task"]], "3")
+  script <- paste(
+    readLines(file.path(bench_root, "src", "02_record_environment.R")),
+    collapse = "\n"
+  )
+  expect_match(script, "--untracked-files=no", fixed = TRUE)
+  expect_match(script, "ls-files", fixed = TRUE)
+  expect_match(script, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
 })
 
 test_that("validator CLI accepts complete results and rejects drift", {
@@ -127,7 +518,12 @@ test_that("validator CLI accepts complete results and rejects drift", {
   source(file.path(bench_root, "lib", "protocol.R"), local = TRUE)
   specs <- list(fixture = list(tiers = 1000, comparison_tiers = 1000))
   schedule <- bench_schedule(specs, "quick", "fixture")
-  exports <- transform(schedule, status = "OK", run_id = "run-1")
+  exports <- transform(
+    schedule,
+    status = "OK",
+    run_id = "run-1",
+    query_plan_fingerprint = "plan"
+  )
   access <- do.call(
     rbind,
     lapply(seq_len(nrow(schedule)), function(i) {
@@ -139,6 +535,8 @@ test_that("validator CLI accepts complete results and rejects drift", {
         backend = schedule$backend[i],
         export_repeat = schedule$export_repeat[i],
         access_repeat = 1L,
+        status = "OK",
+        query_plan_fingerprint = "plan",
         correctness = "OK",
         row_fingerprint = "row",
         reference_row_fingerprint = "row",
@@ -156,6 +554,40 @@ test_that("validator CLI accepts complete results and rejects drift", {
   utils::write.csv(
     exports,
     file.path(stage, "10_export.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      run_id = "run-1",
+      profile = "quick",
+      source = "fixture",
+      n_cells = 1000,
+      n_genes = 100,
+      nnz = 10000,
+      source_prepare_secs = 1,
+      query_plan_secs = 1,
+      peak_rss_mb = 10,
+      query_plan_fingerprint = "plan",
+      status = "OK"
+    ),
+    file.path(stage, "query_plan_manifest.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      run_id = "run-1",
+      profile = "quick",
+      source = "fixture",
+      n_cells = 1000,
+      panel_index = seq_len(12L),
+      gene = paste0("gene_", seq_len(12L)),
+      nnz = seq_len(12L),
+      role = c("first", rep("hot", 11L)),
+      query_plan_fingerprint = "plan",
+      reference_row_fingerprint = "row",
+      reference_block_fingerprint = "block"
+    ),
+    file.path(stage, "query_panel.csv"),
     row.names = FALSE
   )
   utils::write.csv(access, file.path(stage, "20_access.csv"), row.names = FALSE)
@@ -208,6 +640,35 @@ test_that("validator CLI accepts complete results and rejects drift", {
     env = "BENCH_PROFILE=quick"
   )
   expect_equal(ok$status, 0L, info = paste(ok$stderr, collapse = "\n"))
+
+  unlink(file.path(stage, "query_plan_manifest.csv"))
+  missing_plan <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(missing_plan$status, 0L))
+  expect_match(
+    paste(missing_plan$stderr, collapse = "\n"),
+    "query_plan_manifest.csv"
+  )
+  utils::write.csv(
+    data.frame(
+      run_id = "run-1",
+      profile = "quick",
+      source = "fixture",
+      n_cells = 1000,
+      n_genes = 100,
+      nnz = 10000,
+      source_prepare_secs = 1,
+      query_plan_secs = 1,
+      peak_rss_mb = 10,
+      query_plan_fingerprint = "plan",
+      status = "OK"
+    ),
+    file.path(stage, "query_plan_manifest.csv"),
+    row.names = FALSE
+  )
 
   unlink(file.path(stage, "resource_check.csv"))
   missing_resources <- run_bench_rscript(

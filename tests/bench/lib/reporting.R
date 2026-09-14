@@ -87,3 +87,95 @@ bench_current_result_dir <- function(result_root) {
   }
   normalizePath(run_dir)
 }
+
+bench_result_run_dir <- function(result_root, run_id) {
+  if (!grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", run_id)) {
+    stop("unsafe run id", call. = FALSE)
+  }
+  run_dir <- file.path(result_root, "runs", run_id)
+  if (!dir.exists(run_dir)) {
+    stop("benchmark run directory does not exist", call. = FALSE)
+  }
+  normalizePath(run_dir)
+}
+
+bench_manifest_values <- function(manifest) {
+  if (
+    !identical(names(manifest), c("key", "value")) ||
+      anyDuplicated(manifest$key)
+  ) {
+    stop("run manifest must contain unique key/value rows", call. = FALSE)
+  }
+  stats::setNames(as.character(manifest$value), manifest$key)
+}
+
+bench_compare_environments <- function(
+  left,
+  right,
+  keys = c(
+    "r_version",
+    "r_platform",
+    "os",
+    "cpu",
+    "memory_mb",
+    "r_vector_limit_mb",
+    "benchmark_threads",
+    "storage_description",
+    "package_version",
+    "package_Matrix",
+    "package_rhdf5",
+    "package_Seurat",
+    "package_SeuratObject",
+    "package_BPCells",
+    "package_HDF5Array"
+  )
+) {
+  left_values <- left[keys]
+  right_values <- right[keys]
+  missing <- keys[
+    is.na(left_values) |
+      !nzchar(left_values) |
+      is.na(right_values) |
+      !nzchar(right_values)
+  ]
+  different <- keys[
+    !is.na(left_values) &
+      nzchar(left_values) &
+      !is.na(right_values) &
+      nzchar(right_values) &
+      left_values != right_values
+  ]
+  list(
+    comparable = !length(missing) && !length(different),
+    missing = unname(missing),
+    different = unname(different)
+  )
+}
+
+bench_backend_ratios <- function(summary, metric, reference) {
+  required <- c("source", "n_cells", "backend", metric)
+  missing <- setdiff(required, names(summary))
+  if (length(missing)) {
+    stop("missing ratio columns: ", paste(missing, collapse = ", "))
+  }
+  keys <- c("source", "n_cells")
+  references <- summary[summary$backend == reference, c(keys, metric)]
+  names(references)[ncol(references)] <- "reference_value"
+  compared <- merge(summary, references, by = keys, all = FALSE)
+  compared <- compared[compared$backend != reference, , drop = FALSE]
+  compared <- compared[
+    is.finite(compared[[metric]]) &
+      is.finite(compared$reference_value) &
+      compared$reference_value != 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(compared)) {
+    compared$reference_backend <- character()
+    compared$ratio <- numeric()
+    return(compared)
+  }
+  compared$reference_backend <- reference
+  compared$ratio <- compared[[metric]] / compared$reference_value
+  compared
+}

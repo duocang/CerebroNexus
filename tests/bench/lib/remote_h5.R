@@ -101,6 +101,12 @@ bench_read_strings <- function(fid, path, start = NULL, count = NULL) {
   as.character(out)
 }
 
+bench_seurat_feature_names <- function(genes) {
+  genes <- gsub("_", "-", genes, fixed = TRUE)
+  genes <- gsub("|", "-", genes, fixed = TRUE)
+  make.unique(genes)
+}
+
 # One persistent handle per source. H5Fopen() takes the ROS3 driver through a
 # file-access property list rather than the `s3 = TRUE` shortcut that h5ls() and
 # h5read() expose, and reusing the handle avoids re-negotiating the connection
@@ -329,7 +335,7 @@ bench_read_subset <- function(spec, n_take, n_chunks = 4L, verbose = TRUE) {
   }
   rm(ptrs)
 
-  genes <- make.unique(bench_read_strings(fid, lab$genes))
+  genes <- bench_seurat_feature_names(bench_read_strings(fid, lab$genes))
 
   # dgCMatrix requires row indices ascending within each column. The 10x
   # 1.3M-neuron file stores them DESCENDING (measured, not assumed), so the

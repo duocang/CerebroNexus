@@ -133,3 +133,55 @@ test_that("resource checker rejects unsafe plans before a run", {
   expect_true(file.exists(output_path))
   expect_match(paste(output, collapse = "\n"), "unsafe benchmark plan")
 })
+
+test_that("resource checker accepts an unlimited R vector heap", {
+  skip_unless_bench_resources()
+  bench_root <- normalizePath(file.path("..", "bench"))
+  stage <- tempfile("bench-resource-unlimited-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  inventory_path <- file.path(stage, "data_inventory.csv")
+  plan_path <- file.path(stage, "run_plan.csv")
+  manifest_path <- file.path(stage, "run_manifest.csv")
+  output_path <- file.path(stage, "resource_check.csv")
+  utils::write.csv(
+    data.frame(
+      source = "fixture",
+      nnz_per_cell = 100,
+      source_bytes = 1e6
+    ),
+    inventory_path,
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(source = "fixture", n_cells = 1000),
+    plan_path,
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      key = c("memory_mb", "r_vector_limit_mb"),
+      value = c("32768", "Inf")
+    ),
+    manifest_path,
+    row.names = FALSE
+  )
+  output <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "04_check_resources.R"),
+      inventory_path,
+      plan_path,
+      manifest_path,
+      output_path
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = c(
+      paste0("BENCH_ROOT=", bench_root),
+      "BENCH_FREE_DISK_BYTES=100000000000"
+    )
+  ))
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_true(file.exists(output_path))
+})

@@ -15,15 +15,38 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export BENCH_ROOT="$REPO/tests/bench"
-RESULT_ROOT="$BENCH_ROOT/result"
+RESULT_ROOT="${BENCH_RESULT_ROOT:-$BENCH_ROOT/result}"
 export BENCH_PROFILE="${BENCH_PROFILE:-quick}"
+export BENCH_THREADS="${BENCH_THREADS:-1}"
+
+case "$BENCH_THREADS" in
+  ''|*[!0-9]*|0)
+    echo "BENCH_THREADS must be a positive integer" >&2
+    exit 1
+    ;;
+esac
+export OMP_NUM_THREADS="$BENCH_THREADS"
+export OPENBLAS_NUM_THREADS="$BENCH_THREADS"
+export MKL_NUM_THREADS="$BENCH_THREADS"
+export VECLIB_MAXIMUM_THREADS="$BENCH_THREADS"
+export BLIS_NUM_THREADS="$BENCH_THREADS"
+export RCPP_PARALLEL_NUM_THREADS="$BENCH_THREADS"
+
+source "$BENCH_ROOT/lib/source_cache.sh"
 
 SCRATCH_PARENT="${BENCH_SCRATCH_PARENT:-${TMPDIR:-/tmp}}"
 mkdir -p "$SCRATCH_PARENT"
 SCRATCH="$(mktemp -d "$SCRATCH_PARENT/cerebro-bench.XXXXXX")" || exit 1
 SCRATCH_MARKER="$SCRATCH/.cerebro-benchmark-scratch"
 : > "$SCRATCH_MARKER"
+export BENCH_SCRATCH="$SCRATCH"
 export BENCH_LIB="$SCRATCH/rlib"
+# Publication evidence must not load packages or startup hooks from the caller's
+# personal R installation. Nix-provided site libraries remain available.
+export R_ENVIRON_USER=/dev/null
+export R_PROFILE_USER=/dev/null
+export NOT_CRAN=true
+export R_LIBS_USER="$SCRATCH/r-user-library"
 export BENCH_RUN_ID="${BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$REPO" rev-parse --short=12 HEAD)-$BENCH_PROFILE}"
 
 STAGE="$SCRATCH/result"
@@ -32,8 +55,11 @@ SCHEDULE="$STAGE/05_schedule.csv"
 SCHEDULE_TSV="$SCRATCH/05_schedule.tsv"
 EXPORT_CSV="$STAGE/10_export.csv"
 ACCESS_CSV="$STAGE/20_access.csv"
+VIEWER_CSV="$STAGE/21_viewer.csv"
 CRASH_CSV="$STAGE/crashes.csv"
 SOURCE_MANIFEST="$STAGE/source_manifest.csv"
+QUERY_PLAN_MANIFEST="$STAGE/query_plan_manifest.csv"
+QUERY_PANEL="$STAGE/query_panel.csv"
 
 cleanup() {
   local code=$?
@@ -51,23 +77,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-sha256_file() {
-  local path=$1
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$path" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$path" | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$path" | awk '{print $NF}'
-  else
-    echo "no SHA-256 implementation found" >&2
-    return 1
-  fi
-}
-
-mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" "$BENCH_LIB"
+mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
+  "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
+printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,browser,status,correctness,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs' > "$VIEWER_CSV"
 
 echo "==> run:      $BENCH_RUN_ID"
 echo "==> profile:  $BENCH_PROFILE"
@@ -81,8 +95,15 @@ Rscript "$BENCH_ROOT/src/01_inspect_data.R" "$STAGE/00_probe.csv" 2>&1 \
 Rscript "$BENCH_ROOT/src/02_record_environment.R" "$STAGE/run_manifest.csv" || exit 1
 Rscript "$BENCH_ROOT/src/03_plan_runs.R" "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
 
+RESOURCE_SCRIPT="04_check_resources.R"
+BUILD_SCRIPT="10_export_backend.R"
+if [ "$BENCH_PROFILE" = "panel_c2" ]; then
+  RESOURCE_SCRIPT="04_check_full_resources.R"
+  BUILD_SCRIPT="11_build_full_backend.R"
+fi
+
 echo "==> checking whether this machine can run the plan"
-Rscript "$BENCH_ROOT/src/04_check_resources.R" \
+Rscript "$BENCH_ROOT/src/$RESOURCE_SCRIPT" \
   "$STAGE/00_probe.csv" "$SCHEDULE" "$STAGE/run_manifest.csv" \
   "$STAGE/resource_check.csv" || exit 1
 
@@ -98,20 +119,35 @@ SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sour
 
 for src in $SOURCES; do
   url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$url)")
-  file="$SCRATCH/sources/$(basename "${url%%\?*}")"
-  part="$file.part"
+  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
+  expected_sha=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
 
-  echo "==> [$src] fetching $(basename "$file")"
-  if ! curl -fL --retry 3 --retry-delay 5 --continue-at - -o "$part" "$url"; then
+  echo "==> [$src] fetching $(basename "${url%%\?*}")"
+  if ! bench_fetch_source \
+    "$url" "$expected_bytes" "$SCRATCH/sources" "$expected_sha"; then
     echo "!! download failed for $src; validation will preserve the previous run"
     continue
   fi
-  mv "$part" "$file"
-  bytes=$(wc -c < "$file" | tr -d '[:space:]')
-  sha256=$(sha256_file "$file") || exit 1
+  file=$BENCH_FETCHED_FILE
+  bytes=$BENCH_FETCHED_BYTES
+  sha256=$BENCH_FETCHED_SHA256
   printf '"%s","%s","%s",%s,"%s"\n' \
     "$BENCH_RUN_ID" "$src" "$url" "$bytes" "$sha256" >> "$SOURCE_MANIFEST"
   echo "    local copy: $bytes bytes, sha256 ${sha256:0:12}..."
+
+  tiers=$(awk -F '\t' -v source="$src" '$2 == source {print $3}' \
+    "$SCHEDULE_TSV" | sort -n -u)
+  for tier in $tiers; do
+    query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
+    echo "==> [$src / $tier] preparing frozen query plan"
+    Rscript "$BENCH_ROOT/src/05_prepare_query_plan.R" \
+      "$src" "$tier" "$SCRATCH" "$query_plan" "$QUERY_PLAN_MANIFEST" \
+      "$QUERY_PANEL" \
+      > "$LOG_DIR/query_plan_${src}_${tier}.log" 2>&1 || {
+      tail -20 "$LOG_DIR/query_plan_${src}_${tier}.log"
+      exit 1
+    }
+  done
 
   while IFS=$'\t' read -r profile row_source tier comparison export_repeat order_position backend access_repeats; do
     [ "$row_source" = "$src" ] || continue
@@ -120,8 +156,8 @@ for src in $SOURCES; do
     out_dir="$SCRATCH/export/$tag"
     crb="$out_dir/bench.crb"
 
-    echo "==> [$tag] export (position $order_position)"
-    Rscript "$BENCH_ROOT/src/10_export_backend.R" \
+    echo "==> [$tag] build (position $order_position)"
+    Rscript "$BENCH_ROOT/src/$BUILD_SCRIPT" \
       "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
       "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
       > "$LOG_DIR/export_$tag.log" 2>&1
@@ -132,31 +168,59 @@ for src in $SOURCES; do
       printf '"%s","%s","%s",%s,"%s",%s,%s,"export",%s\n' \
         "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
         "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
-      rm -rf -- "$out_dir"
+      if [ "${BENCH_KEEP:-0}" != "1" ]; then
+        rm -rf -- "$out_dir"
+      fi
       continue
     fi
 
-    if [ -f "$crb" ]; then
-      for access_repeat in $(seq 1 "$access_repeats"); do
-        echo "==> [$tag] access repeat $access_repeat/$access_repeats"
-        Rscript "$BENCH_ROOT/src/20_measure_backend.R" \
-          "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
-          "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
-          > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
-        rc=$?
-        tail -2 "$LOG_DIR/access_${tag}_a${access_repeat}.log" | sed 's/^/    /'
-        if [ "$rc" -ne 0 ]; then
-          echo "    !! access process died (exit $rc)"
-          printf '"%s","%s","%s",%s,"%s",%s,%s,"access-%s",%s\n' \
-            "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
-            "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
-        fi
-      done
+    if [ ! -f "$crb" ]; then
+      echo "    !! export succeeded but artifact is missing: $crb" >&2
+      printf '"%s","%s","%s",%s,"%s",%s,%s,"export-artifact",1\n' \
+        "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+        "$export_repeat" "$order_position" >> "$CRASH_CSV"
+      exit 1
     fi
-    rm -rf -- "$out_dir"
+
+    for access_repeat in $(seq 1 "$access_repeats"); do
+      echo "==> [$tag] access repeat $access_repeat/$access_repeats"
+      Rscript "$BENCH_ROOT/src/20_measure_backend.R" \
+        "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
+        "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
+        > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
+      rc=$?
+      tail -2 "$LOG_DIR/access_${tag}_a${access_repeat}.log" | sed 's/^/    /'
+      if [ "$rc" -ne 0 ]; then
+        echo "    !! access process died (exit $rc)"
+        printf '"%s","%s","%s",%s,"%s",%s,%s,"access-%s",%s\n' \
+          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+          "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
+      fi
+    done
+
+    if [ "$BENCH_PROFILE" = "panel_c2" ] && [ "$export_repeat" = "1" ]; then
+      echo "==> [$tag] Viewer interaction gate"
+      Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
+        "$src" "$tier" "$backend" "$export_repeat" "$crb" \
+        "$VIEWER_CSV" "$query_plan" \
+        > "$LOG_DIR/viewer_$tag.log" 2>&1
+      rc=$?
+      tail -3 "$LOG_DIR/viewer_$tag.log" | sed 's/^/    /'
+      if [ "$rc" -ne 0 ]; then
+        echo "    !! Viewer process died (exit $rc)"
+        printf '"%s","%s","%s",%s,"%s",%s,%s,"viewer",%s\n' \
+          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+          "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
+      fi
+    fi
+    if [ "${BENCH_KEEP:-0}" != "1" ]; then
+      rm -rf -- "$out_dir"
+    fi
   done < "$SCHEDULE_TSV"
 
-  rm -f -- "$file"
+  if [ "${BENCH_KEEP:-0}" != "1" ]; then
+    rm -f -- "$file"
+  fi
 done
 
 echo "==> checking measurements"
