@@ -496,3 +496,121 @@ builder_validate_nomenclature <- function(organism, nomenclature) {
   }
   invisible(nomenclature)
 }
+
+.builder_recommend_available <- function(available) {
+  capabilities <- c("bpcells", "h5")
+  blank <- stats::setNames(rep(FALSE, length(capabilities)), capabilities)
+  normalize_side <- function(side) {
+    values <- blank
+    if (!is.list(side) && !(is.logical(side) && !is.null(names(side)))) {
+      return(values)
+    }
+    for (name in capabilities) {
+      value <- side[[name]]
+      values[[name]] <- is.logical(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        isTRUE(value)
+    }
+    values
+  }
+  if (!is.list(available)) {
+    return(list(build = blank, viewer = blank))
+  }
+  list(
+    build = normalize_side(available$build),
+    viewer = normalize_side(available$viewer)
+  )
+}
+
+#' Recommend expression storage from bounded matrix facts and capabilities.
+builder_recommend_backend <- function(matrix_summary, available) {
+  normalized <- .builder_recommend_available(available)
+  storage <- if (is.list(matrix_summary)) {
+    matrix_summary$storage %||% "memory"
+  } else {
+    NULL
+  }
+  valid <- is.list(matrix_summary) &&
+    is.numeric(matrix_summary$estimated_bytes) &&
+    length(matrix_summary$estimated_bytes) == 1L &&
+    !is.na(matrix_summary$estimated_bytes) &&
+    is.finite(matrix_summary$estimated_bytes) &&
+    matrix_summary$estimated_bytes >= 0 &&
+    is.logical(matrix_summary$sparse) &&
+    length(matrix_summary$sparse) == 1L &&
+    !is.na(matrix_summary$sparse) &&
+    .builder_recommend_scalar_text(storage) &&
+    storage %in% c("memory", "bpcells", "h5")
+  if (!valid) {
+    return(.builder_recommend_record(
+      value = NULL,
+      reason = "Matrix size, sparsity, or storage facts are missing or malformed.",
+      confidence = 0,
+      requires_confirmation = TRUE,
+      available = normalized,
+      blocking = "matrix_summary",
+      dependency_actions = "Re-inspect the expression matrix."
+    ))
+  }
+  complete <- function(name) {
+    isTRUE(normalized$build[[name]]) && isTRUE(normalized$viewer[[name]])
+  }
+  if (identical(storage, "bpcells") && complete("bpcells")) {
+    return(.builder_recommend_record(
+      value = "bpcells",
+      reason = "The source already uses BPCells with complete support.",
+      confidence = 1,
+      requires_confirmation = FALSE,
+      available = normalized,
+      blocking = character(),
+      dependency_actions = character()
+    ))
+  }
+  if (matrix_summary$estimated_bytes <= 256 * 1024^2) {
+    return(.builder_recommend_record(
+      value = "embedded",
+      reason = "The measured snapshot size fits the embedded threshold.",
+      confidence = 1,
+      requires_confirmation = FALSE,
+      available = normalized,
+      blocking = character(),
+      dependency_actions = character()
+    ))
+  }
+  if (isTRUE(matrix_summary$sparse) && complete("bpcells")) {
+    return(.builder_recommend_record(
+      value = "bpcells",
+      reason = "A large sparse matrix has complete BPCells support.",
+      confidence = 1,
+      requires_confirmation = FALSE,
+      available = normalized,
+      blocking = character(),
+      dependency_actions = character()
+    ))
+  }
+  if (complete("h5")) {
+    return(.builder_recommend_record(
+      value = "h5",
+      reason = if (isTRUE(matrix_summary$sparse)) {
+        "BPCells is unavailable, so complete H5 support is used."
+      } else {
+        "A large dense matrix uses complete H5 support."
+      },
+      confidence = 1,
+      requires_confirmation = FALSE,
+      available = normalized,
+      blocking = character(),
+      dependency_actions = character()
+    ))
+  }
+  .builder_recommend_record(
+    value = NULL,
+    reason = "No non-embedded backend has complete build and Viewer support.",
+    confidence = 0,
+    requires_confirmation = TRUE,
+    available = normalized,
+    blocking = "expression_backend",
+    dependency_actions = "Enable BPCells or HDF5 support."
+  )
+}

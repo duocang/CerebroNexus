@@ -421,12 +421,14 @@ builder_example_adapter <- function(id, object) {
     progress("validating")
   }
   legacy <- describe_seurat(object, metadata_groups = profile$groups)
+  matrix_summary <- .builder_expression_matrix_summary(object, legacy)
   levels <- profile$groups$legacy$levels[unname(legacy$group_candidates)]
   profile <- builder_profile_workspace_contract(profile)
   list(
     object = object,
     profile = profile,
     legacy_profile = legacy,
+    matrix_summary = matrix_summary,
     levels = levels,
     format = adapter$format,
     source = source,
@@ -1882,6 +1884,10 @@ builder_open_snapshot <- function(snapshot) {
     format = inspected$format,
     levels = inspected$levels,
     source = inspected$source,
+    matrix_summary = c(
+      inspected$matrix_summary,
+      list(estimated_bytes = snapshot$closure_bytes)
+    ),
     snapshot = snapshot,
     previous_snapshot = previous_snapshot
   )
@@ -1895,7 +1901,8 @@ builder_open_snapshot <- function(snapshot) {
           "dataset_profile",
           "format",
           "levels",
-          "source"
+          "source",
+          "matrix_summary"
         )]
       ),
       envir = snapshot_cache

@@ -155,6 +155,36 @@ builder_qc_numeric_values <- function(values) {
   numeric
 }
 
+.builder_expression_matrix_summary <- function(object, profile) {
+  assay <- profile$default_assay
+  layer <- profile$assay_profiles[[assay]]$default_layer
+  assay_object <- object[[assay]]
+  matrix <- tryCatch(
+    if (
+      inherits(assay_object, "Assay") &&
+        layer %in% methods::slotNames(assay_object)
+    ) {
+      methods::slot(assay_object, layer)
+    } else {
+      suppressWarnings(SeuratObject::LayerData(assay_object, layer = layer))
+    },
+    error = function(error) NULL
+  )
+  list(
+    sparse = inherits(
+      matrix,
+      c("sparseMatrix", "IterableMatrix", "SparseArray")
+    ),
+    storage = if (inherits(matrix, "IterableMatrix")) {
+      "bpcells"
+    } else if (inherits(matrix, "HDF5Matrix")) {
+      "h5"
+    } else {
+      "memory"
+    }
+  )
+}
+
 #' Describe a Seurat object in the terms the exporter cares about.
 describe_seurat <- function(object, metadata_groups = NULL) {
   meta <- object@meta.data

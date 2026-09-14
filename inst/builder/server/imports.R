@@ -1797,8 +1797,20 @@ observe({
       "preparing",
       p$import_generation %||% 1L
     )
+    installed_backends <- list(
+      bpcells = requireNamespace("BPCells", quietly = TRUE),
+      h5 = requireNamespace("HDF5Array", quietly = TRUE)
+    )
+    backend_capabilities <- list(
+      build = installed_backends,
+      viewer = installed_backends
+    )
     recommendations <- list(
-      metadata = builder_recommend_metadata(value$dataset_profile)
+      metadata = builder_recommend_metadata(value$dataset_profile),
+      backend = builder_recommend_backend(
+        value$matrix_summary,
+        backend_capabilities
+      )
     )
     settings <- builder_default_settings(
       profile,
@@ -1807,6 +1819,7 @@ observe({
     )
     settings$recommendations <- recommendations
     settings$metadata_policy <- recommendations$metadata
+    settings$expression_backend <- recommendations$backend$value %||% "embedded"
     loaded_path <- value$retained_path %||% p$retained_path %||% p$path
     entry <- list(
       id = p$id,

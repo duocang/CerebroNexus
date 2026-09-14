@@ -169,6 +169,18 @@ test_that("browser uploads expose a distinct retained transport signal", {
   )
 })
 
+test_that("completed imports persist the recommended expression backend", {
+  imports <- builder_browser_pipeline_text("server", "imports.R")
+
+  expect_match(imports, "builder_recommend_backend(", fixed = TRUE)
+  expect_match(imports, "value$matrix_summary", fixed = TRUE)
+  expect_match(
+    imports,
+    "settings$expression_backend <- recommendations$backend$value",
+    fixed = TRUE
+  )
+})
+
 test_that("browser transport handoff is identity checked and advances the queue", {
   js <- builder_browser_pipeline_text("www", "builder.js")
 

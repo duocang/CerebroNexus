@@ -69,6 +69,10 @@ test_that("file and example adapters converge after loading", {
   expect_identical(from_example$format, "Built-in example")
   expect_identical(from_file$source$type, "file")
   expect_identical(from_example$source$type, "example")
+  expect_identical(
+    from_file$matrix_summary,
+    list(sparse = TRUE, storage = "memory")
+  )
 })
 
 test_that("plain RDS and QS2 sources become immutable snapshots without reserialization", {
@@ -289,6 +293,8 @@ test_that("loaded BPCells objects can be saved, adapted and snapshotted", {
     builder_seurat_file_adapter(seurat_path)
   )
   expect_null(.builder_saved_cache(inspected$object))
+  expect_identical(inspected$matrix_summary$storage, "bpcells")
+  expect_true(inspected$matrix_summary$sparse)
   snapshot <- builder_snapshot_seurat(
     inspected$object,
     file.path(root, "snapshot"),
@@ -419,6 +425,10 @@ test_that("registration publishes a snapshot before exposing an object", {
   expect_true(builder_axis_identity_valid(
     result$dataset_profile$identity$cells$axis_identity
   ))
+  expect_identical(
+    result$matrix_summary$estimated_bytes,
+    result$snapshot$closure_bytes
+  )
   expect_s4_class(get("ds1", envir = objects), "Seurat")
   snapshot <- get("ds1", envir = snapshots)
   expect_true(dir.exists(snapshot$path))

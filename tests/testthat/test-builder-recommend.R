@@ -48,6 +48,7 @@ test_that("the live recommendation contract is available", {
   expect_true(all(vapply(
     c(
       "builder_recommend_metadata",
+      "builder_recommend_backend",
       "builder_nomenclature_choices",
       "builder_validate_nomenclature"
     ),
@@ -56,6 +57,60 @@ test_that("the live recommendation contract is available", {
     mode = "function",
     inherits = TRUE
   )))
+})
+
+test_that("backend recommendations keep large sparse exports off embedded", {
+  mib <- 1024^2
+  available <- list(
+    build = list(bpcells = TRUE, h5 = TRUE),
+    viewer = list(bpcells = TRUE, h5 = TRUE)
+  )
+
+  expect_identical(
+    builder_recommend_backend(
+      list(estimated_bytes = 256 * mib, sparse = TRUE, storage = "memory"),
+      available
+    )$value,
+    "embedded"
+  )
+  expect_identical(
+    builder_recommend_backend(
+      list(estimated_bytes = 256 * mib + 1, sparse = TRUE, storage = "memory"),
+      available
+    )$value,
+    "bpcells"
+  )
+  expect_identical(
+    builder_recommend_backend(
+      list(estimated_bytes = 1024, sparse = TRUE, storage = "bpcells"),
+      available
+    )$value,
+    "bpcells"
+  )
+  expect_identical(
+    builder_recommend_backend(
+      list(estimated_bytes = 300 * mib, sparse = TRUE, storage = "memory"),
+      list(
+        build = list(bpcells = FALSE, h5 = TRUE),
+        viewer = list(bpcells = FALSE, h5 = TRUE)
+      )
+    )$value,
+    "h5"
+  )
+})
+
+test_that("backend recommendations fail closed on malformed bounded facts", {
+  recommendation <- builder_recommend_backend(
+    list(estimated_bytes = NA_real_, sparse = TRUE, storage = "memory"),
+    list(
+      build = list(bpcells = TRUE, h5 = TRUE),
+      viewer = list(bpcells = TRUE, h5 = TRUE)
+    )
+  )
+
+  expect_null(recommendation$value)
+  expect_true(recommendation$requires_confirmation)
+  expect_true("matrix_summary" %in% recommendation$blocking)
 })
 
 test_that("metadata profiles record exact missing and distinct facts", {
