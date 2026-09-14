@@ -57,7 +57,7 @@ builder_workflow_progress_ui <- function(
       label <- if (current) {
         tags$span(`aria-label` = labels[[index]], step_label)
       } else if (enabled) {
-        actionLink(
+        actionButton(
           paste0("workflow_stage_", stage_id),
           step_label,
           class = "builder-workflow-stage-link",
@@ -97,15 +97,8 @@ builder_workflow_progress_ui <- function(
 }
 
 builder_stage_header_ui <- function(stage, title, intro) {
-  step <- match(stage, c("Data", "Configure", "Review", "Build"))
-  eyebrow <- if (length(step) && !is.na(step)) {
-    paste("Step", step, "of 4")
-  } else {
-    stage
-  }
   tags$header(
     class = "builder-stage-header",
-    tags$p(class = "builder-stage-eyebrow", eyebrow),
     tags$h2(title),
     tags$p(class = "stage-intro", intro)
   )
@@ -132,10 +125,13 @@ builder_stage_section_ui <- function(
   )
 }
 
-builder_stage_footer_ui <- function(status, ...) {
+builder_stage_footer_ui <- function(status, ..., status_class = NULL) {
   tags$footer(
     class = "builder-stage-footer",
-    tags$p(class = "builder-stage-footer-status", status),
+    tags$p(
+      class = paste("builder-stage-footer-status", status_class),
+      status
+    ),
     tags$div(class = "builder-stage-footer-actions", ...)
   )
 }
@@ -154,12 +150,28 @@ builder_configure_actions_ui <- function(
     length(can_continue) == 1L,
     !is.na(can_continue)
   )
+  review_ready <- remaining < 1L && isTRUE(can_continue)
   builder_stage_footer_ui(
-    message,
+    if (review_ready) {
+      tagList(
+        tags$span(
+          class = "builder-stage-footer-status-icon",
+          `aria-hidden` = "true",
+          "✓"
+        ),
+        tags$span(
+          class = "builder-stage-footer-status-copy",
+          tags$strong("All datasets checked"),
+          tags$small(message)
+        )
+      )
+    } else {
+      message
+    },
     if (remaining < 1L) {
       actionButton(
         "continue_to_review",
-        "✓ Continue to Review →",
+        "Continue to Review",
         class = "btn btn-action builder-review-ready",
         disabled = !isTRUE(can_continue)
       )
@@ -167,15 +179,16 @@ builder_configure_actions_ui <- function(
       actionButton(
         "complete_dataset_check",
         if (isTRUE(dataset_checked)) {
-          "Review next dataset →"
+          "Review Next Dataset"
         } else if (remaining > 1L) {
-          "✓ Mark checked & review next dataset"
+          "Check & Review Next"
         } else {
-          "✓ Finish checking"
+          "Finish Checking"
         },
         class = "btn btn-dataset-check"
       )
-    }
+    },
+    status_class = if (review_ready) "is-review-ready" else NULL
   )
 }
 

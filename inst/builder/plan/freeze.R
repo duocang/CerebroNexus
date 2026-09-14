@@ -755,6 +755,10 @@ builder_freeze_plan <- function(
           index
         ]] %||%
           list(),
+        spatial_point_appearance = .builder_plan_spatial_point_appearance(
+          settings$spatial_point_appearance,
+          alignments$spatial
+        ),
         spatial_roi_settings = settings$spatial_roi_settings %||% list(),
         cell_count = as.integer(
           entry$profile$n_cells %||%

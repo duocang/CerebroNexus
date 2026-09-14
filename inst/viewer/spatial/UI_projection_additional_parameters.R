@@ -6,6 +6,18 @@
 ## sampling choices while moving among backgrounds.
 output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   appearance <- current_scatter_defaults()
+  section_appearance <- spatialPointAppearance(
+    Cerebro.options,
+    viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    ),
+    input[["spatial_projection_to_display"]]
+  )
+  if (!is.null(section_appearance)) {
+    appearance$point_size <- section_appearance$point_size
+    appearance$point_opacity <- section_appearance$point_opacity
+  }
   roi_appearance <- spatialRoiSetting(
     Cerebro.options,
     viewerDatasetName(

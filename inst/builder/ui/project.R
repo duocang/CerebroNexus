@@ -6,12 +6,18 @@ builder_project_toolbar_ui <- function() {
     uiOutput("project_status"),
     actionButton(
       "open_builder_project",
-      tagList(shiny::icon("folder-open"), span("Open")),
+      tagList(
+        span(`aria-hidden` = "true", shiny::icon("folder-open")),
+        span("Open")
+      ),
       class = "btn builder-project-action"
     ),
     actionButton(
       "save_builder_project",
-      tagList(shiny::icon("floppy-disk"), span("Save")),
+      tagList(
+        span(`aria-hidden` = "true", shiny::icon("floppy-disk")),
+        span("Save")
+      ),
       class = "btn builder-project-action"
     )
   )

@@ -90,7 +90,7 @@
   var pointOpacity = 1;         // base draw opacity (no-selection view)
   var bordersOn = false;        // outline cell points in the active view
   var keepPlotsSquare = false;  // fluid rectangles use the workspace by default
-  // Point appearance is dataset-wide; these flags preserve live user edits.
+  // A live user edit overrides Builder's per-spatial-section starting values.
   var pointSizeEdited = false;
   var pointOpacityEdited = false;
   var hidden = new Set();       // hidden level indices for the active group
@@ -1279,9 +1279,17 @@
   // but not of different alphas, so shading by opacity would cost the batching
   // exactly where it matters most.
   function pointSizeOf(p) {
+    var sp = spaceById[p.spaceId];
+    if (!pointSizeEdited && sp && sp.builder_point_size != null) {
+      return Math.max(1, Math.min(20, Number(sp.builder_point_size)));
+    }
     return ps;
   }
   function pointOpacityOf(p) {
+    var sp = spaceById[p.spaceId];
+    if (!pointOpacityEdited && sp && sp.builder_point_opacity != null) {
+      return Math.max(0, Math.min(1, Number(sp.builder_point_opacity)));
+    }
     return pointOpacity;
   }
   function radiusOf(p, i) {
@@ -4598,6 +4606,10 @@
       label: spatialTemplate.label,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
+      x_range: spatialTemplate.x_range,
+      y_range: spatialTemplate.y_range,
+      builder_point_opacity: spatialTemplate.builder_point_opacity,
+      builder_point_size: spatialTemplate.builder_point_size,
       image: spatialTemplate.image,
       images: spatialTemplate.images || []
     }];
@@ -4622,6 +4634,10 @@
         label: sample.label || (sample.name + ' (spatial)'),
         x: sample.x,
         y: sample.y,
+        xRange: sample.x_range || null,
+        yRange: sample.y_range || null,
+        builder_point_opacity: sample.builder_point_opacity,
+        builder_point_size: sample.builder_point_size,
         image: sample.image || null,
         images: images,
         _sampleName: sample.name,

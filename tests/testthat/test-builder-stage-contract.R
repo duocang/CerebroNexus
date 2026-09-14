@@ -101,6 +101,33 @@ test_that("gene lists are visible in Inspect and existing-content summaries", {
   )
 })
 
+test_that("Inspect uses actionable issue labels and removes duplicate content", {
+  expect_identical(
+    builder_inspect_issue_label("settings_organism"),
+    "Choose an organism in Essentials."
+  )
+
+  model <- builder_inspect_model(
+    profile = list(n_cells = 12L, n_genes = 8L),
+    state = list(
+      attention_ids = "settings_organism",
+      blocking_ids = character(),
+      manifest = list(
+        list(id = "spatial", status = "valid"),
+        list(id = "reduction:spatial", status = "valid")
+      )
+    ),
+    format = "RDS",
+    dataset_id = "ds1"
+  )
+  html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
+
+  expect_identical(length(model$content_tags), 1L)
+  expect_match(html, "Choose an organism in Essentials.", fixed = TRUE)
+  expect_false(grepl("settings_organism", html, fixed = TRUE))
+  expect_match(html, "1 content type", fixed = TRUE)
+})
+
 test_that("group catalog lists eligible columns before ineligible columns", {
   metadata <- list(
     score = list(name = "Score", group_eligible = FALSE),

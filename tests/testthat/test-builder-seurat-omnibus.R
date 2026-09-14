@@ -4,13 +4,13 @@ sys.source(
   envir = builder_omnibus_env
 )
 
-test_that("Builder gallery offers both packaged examples through one action", {
+test_that("Builder gallery offers all packaged examples through one action", {
   catalog <- builder_omnibus_env$builder_example_catalog()
   directory <- builder_omnibus_env$builder_example_directory()
 
   expect_identical(
     names(catalog),
-    c("complete_viewer_data", "trekker_spatial")
+    c("complete_viewer_data", "trekker_spatial", "spatial_alignment")
   )
   expect_identical(
     unname(vapply(directory, `[[`, character(1), "id")),
@@ -33,7 +33,54 @@ test_that("Builder gallery offers both packaged examples through one action", {
     catalog$trekker_spatial$serialized_path,
     "trekker_spatial/trekker_4_tissues\\.qs2$"
   )
+  expect_identical(
+    catalog$spatial_alignment$label,
+    "Spatial alignment demo"
+  )
+  expect_identical(catalog$spatial_alignment$provenance, "synthetic")
+  expect_match(
+    catalog$spatial_alignment$serialized_path,
+    "spatial_alignment/arrow_spatial\\.rds$"
+  )
   expect_false(anyDuplicated(names(catalog)) > 0L)
+})
+
+test_that("Spatial alignment demo restores the arrow image and transform", {
+  sys.source(
+    builder_profile_inst_path("builder", "extras.R"),
+    envir = builder_omnibus_env
+  )
+  record <- builder_omnibus_env$builder_example_catalog()$spatial_alignment
+  loaded <- record$make()
+
+  expect_null(loaded$error)
+  expect_s4_class(loaded$object, "Seurat")
+  expect_identical(SeuratObject::Images(loaded$object), "arrow_fov")
+  expect_true("umap" %in% SeuratObject::Reductions(loaded$object))
+  expect_length(record$histology_images, 1L)
+  expect_true(file.exists(file.path(
+    dirname(record$serialized_path),
+    record$histology_images$arrow_background$path
+  )))
+
+  configured <- builder_omnibus_env$builder_example_configure_entry(
+    list(id = record$id, settings = list()),
+    record,
+    loaded$object
+  )
+  image <- configured$settings$images$arrow_fov[["Arrow background"]]
+  expect_identical(image$rotation, 28)
+  expect_identical(image$image_opacity, 0.65)
+  expect_identical(image$point_opacity, 0.6)
+  expect_identical(image$point_size, 7)
+  expect_identical(
+    configured$settings$spatial_coordinate_transforms$arrow_fov,
+    list(schema_version = 1L, rotation_degrees = 28, scale = 1)
+  )
+  expect_identical(
+    configured$settings$spatial_point_appearance$arrow_fov,
+    list(point_opacity = 0.6, point_size = 7)
+  )
 })
 
 test_that("Trekker fixture carries one SlideSeq section and four H&E images", {

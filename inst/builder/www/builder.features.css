@@ -66,6 +66,7 @@
 }
 .spatial-alignment-sidebar-body { min-width: 0; }
 .spatial-alignment-sidebar-scroll { min-width: 0; }
+.spatial-alignment-persistent-scrollbar { display: none; }
 .spatial-coordinate-settings {
   width: 100%;
   min-width: 0;
@@ -380,6 +381,7 @@
     border-color: var(--c-surface-muted);
   }
   .spatial-alignment-persistent-scrollbar {
+    display: block;
     position: fixed;
     z-index: 20;
     width: 10px;
@@ -1931,7 +1933,7 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .builder-auth-backdrop.is-visible { opacity: 1; }
 .builder-auth-dialog {
   width: min(44rem, 100%);
-  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow: auto;
   border: 1px solid var(--c-border-2);
   border-radius: calc(var(--r-md) + .2rem);
@@ -2189,7 +2191,6 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .builder-app-field--wide { grid-column: 1 / -1; }
 .builder-app-field--wide .form-group { max-width: 41rem; }
 .builder-app-opening-fields .selectize-dropdown-content {
-  max-height: min(30rem, calc(100vh - 8rem));
   max-height: min(30rem, calc(100dvh - 8rem));
 }
 .builder-app-toggle {

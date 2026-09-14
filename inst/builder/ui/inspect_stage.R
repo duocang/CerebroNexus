@@ -18,6 +18,16 @@ builder_stage_text_items <- function(values, class = NULL) {
   )
 }
 
+builder_inspect_issue_label <- function(value) {
+  value <- as.character(value %||% "")
+  switch(
+    value,
+    settings_organism = "Choose an organism in Essentials.",
+    dataset = "Review this dataset before continuing.",
+    tools::toTitleCase(gsub("[_:]", " ", value))
+  )
+}
+
 builder_inspect_content_tag <- function(entry) {
   id <- entry$id %||% ""
   if (
@@ -90,6 +100,10 @@ builder_inspect_model <- function(
     Negate(is.null),
     lapply(manifest, builder_inspect_content_tag)
   )
+  if (length(content_tags)) {
+    labels <- tolower(vapply(content_tags, `[[`, character(1), "label"))
+    content_tags <- content_tags[!duplicated(labels)]
+  }
   statistics <- if (exists("builder_stats_frame", mode = "function")) {
     builder_stats_frame(profile, settings)
   } else {
@@ -103,8 +117,16 @@ builder_inspect_model <- function(
       paste(format(profile$n_cells, big.mark = ","), "cells"),
       paste(format(profile$n_genes, big.mark = ","), "genes")
     ),
-    attention = state$attention_ids %||% character(),
-    blockers = state$blocking_ids %||% character(),
+    attention = vapply(
+      state$attention_ids %||% character(),
+      builder_inspect_issue_label,
+      character(1)
+    ),
+    blockers = vapply(
+      state$blocking_ids %||% character(),
+      builder_inspect_issue_label,
+      character(1)
+    ),
     content_tags = content_tags,
     statistics = statistics,
     diagnostics = c(paste("Format", format), paste("Dataset id", dataset_id))
@@ -137,7 +159,21 @@ builder_inspect_stage_ui <- function(id, model) {
       if (length(model$content_tags %||% list())) {
         div(
           class = "builder-detected-content",
-          h4("Detected content"),
+          div(
+            class = "builder-detected-content-head",
+            h4("Detected content"),
+            span(
+              class = "builder-detected-content-count",
+              paste(
+                length(model$content_tags),
+                if (length(model$content_tags) == 1L) {
+                  "content type"
+                } else {
+                  "content types"
+                }
+              )
+            )
+          ),
           div(
             class = "builder-content-tags",
             lapply(model$content_tags, function(tag) {

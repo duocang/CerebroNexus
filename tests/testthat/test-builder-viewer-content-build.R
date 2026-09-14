@@ -122,8 +122,12 @@ builder_viewer_content_plan_entry <- function() {
 }
 
 test_that("BuildPlan freezes the complete Viewer-content selection", {
+  entry <- builder_viewer_content_plan_entry()
+  entry$settings$spatial_point_appearance <- list(
+    fov = list(point_opacity = 0.42, point_size = 8)
+  )
   plan <- builder_make_plan(
-    list(builder_viewer_content_plan_entry()),
+    list(entry),
     withr::local_tempdir(),
     make_app = TRUE
   )
@@ -148,6 +152,10 @@ test_that("BuildPlan freezes the complete Viewer-content selection", {
     list(monocle2 = c("lineage_b", "lineage_a"))
   )
   expect_identical(item$overview_point_size, 8)
+  expect_identical(
+    item$spatial_point_appearance,
+    list(fov = list(point_opacity = 0.42, point_size = 8))
+  )
   expect_identical(item$overview_percentage_cells_to_show, 60)
   expect_identical(item$cell_cycle, "Phase")
   expect_identical(
@@ -236,6 +244,9 @@ test_that("generated-App content freezes defaults for every dataset", {
     withr::local_tempdir(),
     make_app = TRUE
   )$items[[1L]]
+  item$spatial_point_appearance <- list(
+    fov = list(point_opacity = 0.42, point_size = 8)
+  )
 
   frozen <- .builder_app_viewer_content(
     list(item),
@@ -255,6 +266,9 @@ test_that("generated-App content freezes defaults for every dataset", {
         ),
         overview_point_size = 8,
         overview_percentage_cells_to_show = 60,
+        spatial_point_appearance = list(
+          fov = list(point_opacity = 0.42, point_size = 8)
+        ),
         spatial_roi_settings = list()
       )
     )

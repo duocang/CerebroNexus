@@ -442,9 +442,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
       expect_identical(alignment$draft()$point_opacity, 0.65)
       expect_identical(alignment$draft()$point_size, 6)
-      expect_null(current_entry()$settings$spatial_point_appearance[[
-        "section-a"
-      ]])
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["section-a"]],
+        list(point_opacity = 0.65, point_size = 6)
+      )
       expect_named(committed, "section-a")
       expect_identical(commit_count, 1L)
 

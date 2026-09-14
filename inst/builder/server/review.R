@@ -595,6 +595,12 @@ output[["inspect_stage"]] <- renderUI({
   } else {
     state$attention_ids
   }
+  if (
+    identical(input[["core-rendered_for"]], id) &&
+      builder_stage_has_text(input[["core-organism"]])
+  ) {
+    attention <- setdiff(attention, "settings_organism")
+  }
   blockers <- if (inherits(state, "try-error")) {
     "Dataset state could not be validated."
   } else {

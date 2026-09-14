@@ -529,11 +529,10 @@ builder_empty_workbench_ui <- function(
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-dropzone-title",
-    shiny::tags$div(
+    shiny::tags$button(
+      type = "button",
       class = "builder-dataset-dropzone builder-add-datasets",
       `data-native-picker` = tolower(as.character(native_picker)),
-      role = "button",
-      tabindex = "0",
       `aria-labelledby` = "builder-dropzone-title",
       `aria-describedby` = "builder-empty-description builder-empty-formats",
       shiny::tags$div(
@@ -586,11 +585,52 @@ builder_empty_workbench_ui <- function(
         ),
         shiny::actionButton(
           "configure_datasets",
-          "Configure datasets →",
+          "Configure Datasets",
           class = "btn btn-primary"
         )
       )
     }
+  )
+}
+
+builder_importing_workbench_ui <- function(import_count) {
+  import_count <- as.integer(import_count)
+  stopifnot(length(import_count) == 1L, !is.na(import_count), import_count > 0L)
+  noun <- if (identical(import_count, 1L)) "dataset is" else "datasets are"
+  shiny::tags$section(
+    class = "builder-stage builder-loading-state builder-stage-upload",
+    `data-workflow-stage` = "upload",
+    role = "status",
+    `aria-live` = "polite",
+    `aria-busy` = "true",
+    `aria-labelledby` = "builder-loading-title",
+    shiny::tags$div(
+      class = "builder-loading-copy",
+      shiny::tags$h2(id = "builder-loading-title", "Preparing your workspace"),
+      shiny::tags$p(
+        paste(
+          import_count,
+          noun,
+          "loading. Track each file in the dataset list."
+        )
+      )
+    ),
+    shiny::tags$div(
+      class = "builder-loading-skeleton",
+      `aria-hidden` = "true",
+      shiny::tags$span(class = "builder-loading-line is-title"),
+      shiny::tags$div(
+        class = "builder-loading-summary-placeholder",
+        shiny::tags$span(),
+        shiny::tags$span()
+      ),
+      shiny::tags$div(
+        class = "builder-loading-fields-placeholder",
+        lapply(seq_len(4L), function(index) {
+          shiny::tags$span(`data-field` = index)
+        })
+      )
+    )
   )
 }
 
@@ -859,13 +899,7 @@ builder_dataset_rail_row_ui <- function(model) {
             "%s cells \u00b7 %s",
             format(model$cells, big.mark = ","),
             model$format
-          ),
-          if (!identical(model$readiness_label, "Ready")) {
-            shiny::span(
-              class = "rail-readiness-status",
-              model$readiness_label
-            )
-          }
+          )
         ),
         shiny::span(
           class = paste(
@@ -877,7 +911,6 @@ builder_dataset_rail_row_ui <- function(model) {
               "ds-ready-stamp",
               if (model$checked) "is-checked" else "needs-review"
             ),
-            role = "status",
             if (model$checked) {
               "Checked"
             } else {

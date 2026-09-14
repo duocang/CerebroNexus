@@ -160,6 +160,36 @@ builder_resolve_colors <- function(settings, levels) {
   as.integer(length(.builder_plan_flatten_spatial_images(images)))
 }
 
+.builder_plan_spatial_point_appearance <- function(stored, images) {
+  out <- if (is.list(stored) && !is.object(stored)) stored else list()
+  for (record in .builder_plan_flatten_spatial_images(images)) {
+    section <- record$section_id
+    if (!is.null(out[[section]])) {
+      next
+    }
+    opacity <- suppressWarnings(as.numeric(record$point_opacity))
+    size <- suppressWarnings(as.numeric(record$point_size))
+    if (
+      length(opacity) == 1L &&
+        !is.na(opacity) &&
+        is.finite(opacity) &&
+        opacity >= 0 &&
+        opacity <= 1 &&
+        length(size) == 1L &&
+        !is.na(size) &&
+        is.finite(size) &&
+        size > 0 &&
+        size <= 20
+    ) {
+      out[[section]] <- list(
+        point_opacity = unname(opacity),
+        point_size = unname(size)
+      )
+    }
+  }
+  out
+}
+
 builder_default_settings <- function(
   profile,
   name,

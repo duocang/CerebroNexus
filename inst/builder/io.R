@@ -1040,6 +1040,16 @@ builder_example_catalog <- function() {
     character(1),
     "id"
   )
+  alignment_histology_images <- list(
+    arrow_background = list(
+      id = "arrow_background",
+      label = "Arrow background",
+      stain = "Synthetic alignment guide",
+      path = "arrow_background.png",
+      section_id = "arrow_fov",
+      fov_ids = "arrow_fov"
+    )
+  )
   complete_viewer_data <- record(
     "complete_viewer_data",
     "Complete Viewer demo",
@@ -1112,15 +1122,117 @@ builder_example_catalog <- function() {
     )),
     histology_images = trekker_histology_images
   )
+  spatial_alignment <- record(
+    "spatial_alignment",
+    "Spatial alignment demo",
+    paste(
+      "A synthetic arrow-shaped Spatial section with an automatically",
+      "aligned directional background image"
+    ),
+    "synthetic",
+    fixture("spatial_alignment", "arrow_spatial.rds"),
+    expected_dispositions = with_content(
+      core("umap"),
+      spatial = "preserved"
+    ),
+    expected_pages = "spatial",
+    expected_supporting_content = "arrow_background.png",
+    histology_images = alignment_histology_images
+  )
   list(
     complete_viewer_data = complete_viewer_data,
-    trekker_spatial = trekker_spatial
+    trekker_spatial = trekker_spatial,
+    spatial_alignment = spatial_alignment
   )
 }
 
 #' Apply non-image attachment presets for a gallery example.
 builder_example_configure_entry <- function(entry, record, object) {
   example_id <- record$id %||% NULL
+  if (identical(example_id, "spatial_alignment")) {
+    if (
+      !is.list(entry) ||
+        !is.list(entry$settings) ||
+        !methods::is(object, "Seurat") ||
+        !"arrow_fov" %in% SeuratObject::Images(object)
+    ) {
+      stop(
+        "The Spatial alignment example could not be configured.",
+        call. = FALSE
+      )
+    }
+    image_path <- file.path(
+      dirname(record$serialized_path),
+      record$histology_images$arrow_background$path
+    )
+    image <- builder_read_image(image_path, basename(image_path))
+    if (!is.null(image$error)) {
+      stop(image$error, call. = FALSE)
+    }
+    coordinates <- SeuratObject::GetTissueCoordinates(object[["arrow_fov"]])
+    bounds <- list(
+      xmin = min(coordinates$x),
+      xmax = max(coordinates$x),
+      ymin = min(coordinates$y),
+      ymax = max(coordinates$y)
+    )
+    parameters <- utils::modifyList(
+      builder_alignment_defaults(),
+      list(
+        rotation = 28,
+        image_opacity = 0.65,
+        point_opacity = 0.6,
+        point_size = 7
+      )
+    )
+    alignment <- builder_alignment_record(
+      source = list(
+        name = basename(image_path),
+        type = image$mime,
+        size = image$bytes
+      ),
+      source_uri = image$source_uri,
+      uri = image$source_uri,
+      base_bounds = builder_alignment_fit_bounds(
+        bounds,
+        image$source_dimensions
+      ),
+      parameters = parameters,
+      section = list(id = "arrow_fov", kind = "spatial")
+    )
+    alignment$viewport_bounds <- builder_alignment_rotated_bounds(bounds, 28)
+    alignment$image_label <- "Arrow background"
+    facts <- intersect(
+      names(image),
+      c(
+        "bytes",
+        "width",
+        "height",
+        "source_width",
+        "source_height",
+        "extent_width",
+        "extent_height",
+        "display_width",
+        "display_height",
+        "source_content_md5"
+      )
+    )
+    alignment[facts] <- image[facts]
+    entry$settings$images <- list(
+      arrow_fov = list(`Arrow background` = alignment)
+    )
+    entry$settings$spatial_coordinate_transforms <- list(
+      arrow_fov = list(
+        schema_version = 1L,
+        rotation_degrees = 28,
+        scale = 1
+      )
+    )
+    entry$settings$spatial_point_appearance <- list(
+      arrow_fov = list(point_opacity = 0.6, point_size = 7)
+    )
+    return(entry)
+  }
   if (!identical(example_id, "complete_viewer_data")) {
     return(entry)
   }
@@ -1241,13 +1353,14 @@ builder_example_directory <- local({
       id = "complete_viewer_data",
       label = "Load example datasets",
       detail = paste(
-        "Two synthetic Seurat demos: complete Viewer content and",
-        "four-tissue Trekker spatial alignment"
+        "Three synthetic Seurat demos: complete Viewer content,",
+        "four-tissue Trekker, and arrow Spatial alignment"
       ),
       source = "builder/fixtures/complete_viewer/complete_viewer_data.rds",
       examples = list(
         list(id = "complete_viewer_data", label = "Complete Viewer demo"),
-        list(id = "trekker_spatial", label = "Trekker spatial demo")
+        list(id = "trekker_spatial", label = "Trekker spatial demo"),
+        list(id = "spatial_alignment", label = "Spatial alignment demo")
       )
     )
   )

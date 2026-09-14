@@ -653,6 +653,7 @@
               "default_trajectory",
               "overview_point_size",
               "overview_percentage_cells_to_show",
+              "spatial_point_appearance",
               "spatial_roi_settings"
             )
           )
@@ -664,6 +665,7 @@
       trajectory <- item$default_trajectory
       point_size <- item$overview_point_size
       percentage_cells_to_show <- item$overview_percentage_cells_to_show
+      spatial_point_appearance <- item$spatial_point_appearance
       spatial_roi_settings <- item$spatial_roi_settings
       projection_valid <- is.null(projection) ||
         (is.character(projection) &&
@@ -711,7 +713,41 @@
         is.finite(percentage_cells_to_show) &&
         percentage_cells_to_show >= 10 &&
         percentage_cells_to_show <= 100 &&
+        .builder_app_spatial_point_appearance_valid(
+          spatial_point_appearance
+        ) &&
         .builder_app_spatial_roi_settings_valid(spatial_roi_settings)
+    },
+    logical(1)
+  ))
+}
+
+.builder_app_spatial_point_appearance_valid <- function(value) {
+  named_list <- is.list(value) &&
+    !is.object(value) &&
+    (length(value) == 0L ||
+      (!is.null(names(value)) &&
+        !anyNA(names(value)) &&
+        all(nzchar(names(value))) &&
+        !anyDuplicated(names(value))))
+  if (!named_list) {
+    return(FALSE)
+  }
+  all(vapply(
+    value,
+    function(leaf) {
+      fields <- c("point_opacity", "point_size")
+      values <- suppressWarnings(as.numeric(unlist(leaf[fields])))
+      is.list(leaf) &&
+        !is.object(leaf) &&
+        identical(sort(names(leaf)), sort(fields)) &&
+        length(values) == 2L &&
+        !anyNA(values) &&
+        all(is.finite(values)) &&
+        values[[1L]] >= 0 &&
+        values[[1L]] <= 1 &&
+        values[[2L]] > 0 &&
+        values[[2L]] <= 20
     },
     logical(1)
   ))
@@ -828,6 +864,7 @@
       overview_percentage_cells_to_show = as.double(
         percentage_cells_to_show
       ),
+      spatial_point_appearance = item$spatial_point_appearance %||% list(),
       spatial_roi_settings = item$spatial_roi_settings %||% list()
     )
   })

@@ -187,6 +187,41 @@ spatialPlotRotation <- function(options, dataset, spatial_name) {
   }
 }
 
+spatialPointAppearance <- function(options, dataset, spatial_name) {
+  setting <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_point_appearance"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  fields <- c("point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 2L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[1L]] < 0 ||
+      values[[1L]] > 1 ||
+      values[[2L]] <= 0 ||
+      values[[2L]] > 20
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
 spatialRoiSettings <- function(options, dataset, spatial_name) {
   settings <- if (
     is.list(options) &&

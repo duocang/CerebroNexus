@@ -107,7 +107,7 @@ output$workbench <- renderUI({
   switch(
     stage,
     upload = if (length(imports()$entries %||% list())) {
-      NULL
+      builder_importing_workbench_ui(length(imports()$entries))
     } else {
       tagAppendAttributes(
         builder_empty_workbench_ui(

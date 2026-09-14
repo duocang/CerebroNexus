@@ -241,6 +241,20 @@ builder_spatial_alignment_server <- function(
         if (!isTRUE(all.equal(input[[slider_id]], value))) {
           shiny::updateSliderInput(session, slider_id, value = value)
         }
+        if (identical(id, "coordinate_rotation")) {
+          entry <- shiny::isolate(entry_of(current()))
+          section <- shiny::isolate(active_section())
+          if (!is.null(entry) && !is.null(section)) {
+            store_coordinate_draft(
+              spec = list(rotation_degrees = value, scale = 1),
+              dataset = entry$id,
+              section = section,
+              snapshot_identity = .builder_worker_identity(entry$snapshot),
+              force = TRUE,
+              roi = shiny::isolate(coordinate_roi())
+            )
+          }
+        }
       },
       ignoreInit = TRUE
     )
@@ -1603,11 +1617,9 @@ builder_spatial_alignment_server <- function(
       selected_roi,
       include_coordinate_rotation = TRUE
     )
-    if (!length(existing)) {
-      stored_appearance <- entry$settings$spatial_point_appearance %||% list()
-      stored_appearance[[section]] <- NULL
-      entry$settings$spatial_point_appearance <- stored_appearance
-    }
+    stored_appearance <- entry$settings$spatial_point_appearance %||% list()
+    stored_appearance[[section]] <- appearance
+    entry$settings$spatial_point_appearance <- stored_appearance
     record <- builder_alignment_record(
       source = list(
         name = filename,
@@ -2043,11 +2055,14 @@ builder_spatial_alignment_server <- function(
       observed
     )
     draft(next_record)
-    commit_section(
-      shiny::isolate(entry_of(current())),
-      shiny::isolate(active_section()),
-      next_record
-    )
+    entry <- shiny::isolate(entry_of(current()))
+    section <- shiny::isolate(active_section())
+    if (!nzchar(coordinate_roi())) {
+      stored <- entry$settings$spatial_point_appearance %||% list()
+      stored[[section]] <- observed[c("point_opacity", "point_size")]
+      entry$settings$spatial_point_appearance <- stored
+    }
+    commit_section(entry, section, next_record)
     invisible(TRUE)
   }
   shiny::observeEvent(

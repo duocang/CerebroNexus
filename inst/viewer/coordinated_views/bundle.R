@@ -260,11 +260,13 @@ cv_selected_viewer_content <- function() {
   configured[[dataset]]
 }
 
-## Bounds already contain Builder geometry; only background opacity belongs to
-## image alignment. Cell point appearance is dataset-wide.
 cv_alignment_appearance <- function(alignment) {
   if (!is.list(alignment)) {
-    return(list(image_opacity = NULL))
+    return(list(
+      image_opacity = NULL,
+      point_opacity = NULL,
+      point_size = NULL
+    ))
   }
   number <- function(key, lower, upper, lower_open = FALSE) {
     value <- suppressWarnings(as.numeric(alignment[[key]]))
@@ -281,7 +283,34 @@ cv_alignment_appearance <- function(alignment) {
       unname(value)
     }
   }
-  list(image_opacity = number("image_opacity", 0, 1))
+  list(
+    image_opacity = number("image_opacity", 0, 1),
+    point_opacity = number("point_opacity", 0, 1),
+    point_size = number("point_size", 0, 20, lower_open = TRUE)
+  )
+}
+
+cv_viewport_bounds <- function(value) {
+  required <- c("xmin", "xmax", "ymin", "ymax")
+  if (
+    is.null(value) || is.null(names(value)) || !all(required %in% names(value))
+  ) {
+    return(NULL)
+  }
+  numbers <- suppressWarnings(as.numeric(unlist(
+    value[required],
+    use.names = FALSE
+  )))
+  if (
+    length(numbers) != 4L ||
+      anyNA(numbers) ||
+      any(!is.finite(numbers)) ||
+      numbers[[1L]] >= numbers[[2L]] ||
+      numbers[[3L]] >= numbers[[4L]]
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(numbers), required)
 }
 
 ## Convert one public per-image settings leaf to the JavaScript transform
@@ -424,6 +453,12 @@ cv_external_images <- function(spatial_name = NULL) {
         base64enc::base64encode(img_path)
       ),
       bounds = bounds,
+      viewport = if (is.list(descriptor)) {
+        cv_viewport_bounds(descriptor[["viewport_bounds"]])
+      } else {
+        NULL
+      },
+      roi_value = if (is.list(descriptor)) descriptor[["roi_value"]] else NULL,
       preset = cv_image_preset(spatial_name, key)
     )
   }
@@ -880,6 +915,19 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
   }
   alignment <- sd[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
+  section_appearance <- spatialPointAppearance(
+    if (exists("Cerebro.options")) Cerebro.options else NULL,
+    cv_selected_dataset_name(),
+    nm
+  )
+  if (is.null(section_appearance) && isTRUE(alignment$builder_managed)) {
+    if (
+      length(appearance$point_opacity) == 1L &&
+        length(appearance$point_size) == 1L
+    ) {
+      section_appearance <- appearance[c("point_opacity", "point_size")]
+    }
+  }
   for (embedded_index in seq_along(embedded)) {
     entry <- embedded[[embedded_index]]
     embedded_names <- names(embedded)
@@ -889,6 +937,14 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
       embedded_names[[embedded_index]]
     } else {
       ""
+    }
+    roi_value <- if (is.list(entry)) {
+      as.character(entry$roi_value %||% character())
+    } else {
+      character()
+    }
+    if (length(roi_value) == 1L && !is.na(roi_value) && nzchar(roi_value)) {
+      next
     }
     if (is.list(entry)) {
       emb <- entry$histology_image %||%
@@ -958,17 +1014,23 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
         ymin = as.numeric(b[["ymin"]]),
         ymax = as.numeric(b[["ymax"]])
       ),
+      viewport = cv_viewport_bounds(entry_alignment$viewport_bounds),
       preset = preset,
       coord_span = span
     )
   }
   if (allow_external) {
     for (ex in cv_external_images(nm)) {
+      roi_value <- as.character(ex$roi_value %||% character())
+      if (length(roi_value) == 1L && !is.na(roi_value) && nzchar(roi_value)) {
+        next
+      }
       images[[length(images) + 1]] <- list(
         id = ex$id,
         label = ex$label,
         uri = ex$uri,
         bounds = ex$bounds %||% bounds_default,
+        viewport = ex$viewport,
         preset = ex$preset,
         coord_span = span
       )
@@ -984,6 +1046,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
       id = images[[1]]$id,
       label = images[[1]]$label,
       bounds = images[[1]]$bounds,
+      viewport = images[[1]]$viewport,
       preset = images[[1]]$preset,
       coord_span = images[[1]]$coord_span
     )
@@ -991,10 +1054,29 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
     NULL
   }
 
+  viewport <- if (length(images)) images[[1L]]$viewport else NULL
   list(
     name = nm,
-    x = round(as.numeric(co[sidx, 1]), 3),
-    y = round(as.numeric(co[sidx, 2]), 3),
+    x = as.numeric(co[sidx, 1]),
+    y = as.numeric(co[sidx, 2]),
+    x_range = if (is.null(viewport)) {
+      NULL
+    } else {
+      unname(unlist(viewport[c(
+        "xmin",
+        "xmax"
+      )]))
+    },
+    y_range = if (is.null(viewport)) {
+      NULL
+    } else {
+      unname(unlist(viewport[c(
+        "ymin",
+        "ymax"
+      )]))
+    },
+    builder_point_opacity = section_appearance$point_opacity %||% NULL,
+    builder_point_size = section_appearance$point_size %||% NULL,
     ## `image` is the default one, kept so anything reading the older singular
     ## contract still works; `images` is the list the picker is built from.
     image = image,
@@ -1040,6 +1122,12 @@ cv_build_spatial <- function(crb, cells, metadata = NULL) {
   if (!is.null(first$image)) {
     space$image <- first$image
   }
+  if (!is.null(first$x_range)) {
+    space$x_range <- I(first$x_range)
+    space$y_range <- I(first$y_range)
+  }
+  space$builder_point_opacity <- first$builder_point_opacity
+  space$builder_point_size <- first$builder_point_size
   ## Only when there is no `samples` list to hold them: with one, the space's
   ## default section IS samples[[1]] and repeating its images here would send
   ## every one of them twice.
@@ -1053,6 +1141,10 @@ cv_build_spatial <- function(crb, cells, metadata = NULL) {
         label = paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
+        x_range = if (is.null(s$x_range)) NULL else I(s$x_range),
+        y_range = if (is.null(s$y_range)) NULL else I(s$y_range),
+        builder_point_opacity = s$builder_point_opacity,
+        builder_point_size = s$builder_point_size,
         image = s$image,
         images = I(s$images)
       )

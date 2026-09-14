@@ -412,6 +412,9 @@ builder_copy_backend_to_app <- function(fixture, app_dir) {
 
 test_that("App arguments come only from the frozen plan", {
   fixture <- builder_app_bundle_fixture()
+  fixture$plan$items[[2L]]$spatial_point_appearance <- list(
+    "fov-a" = list(point_opacity = 0.42, point_size = 8)
+  )
   fixture$plan$items[[2L]]$spatial_roi_settings <- list(
     "fov-a" = list(
       lesion = list(
@@ -443,6 +446,9 @@ test_that("App arguments come only from the frozen plan", {
       default_trajectory = list(method = "monocle2", name = "lineage"),
       overview_point_size = 7,
       overview_percentage_cells_to_show = 100,
+      spatial_point_appearance = fixture$plan$items[[
+        2L
+      ]]$spatial_point_appearance,
       spatial_roi_settings = fixture$plan$items[[2L]]$spatial_roi_settings
     )
   )

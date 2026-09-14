@@ -1461,10 +1461,18 @@ test_that("coordinator preserves per-dataset Viewer defaults for parent verifica
         )
       )
     )
+    point_appearance <- list(
+      "fov-a" = list(point_opacity = 0.6, point_size = 7)
+    )
+    plan$items[[2L]]$spatial_point_appearance <- point_appearance
     plan$items[[2L]]$spatial_roi_settings <- roi_settings
     plan$items[[2L]]$spatial_image_storage <- "external"
     contract <- .builder_coordinator_app_contract(plan)
 
+    expect_identical(
+      contract$plan$items[[2L]]$spatial_point_appearance,
+      point_appearance
+    )
     expect_identical(
       contract$plan$items[[2L]]$spatial_roi_settings,
       roi_settings
@@ -1539,6 +1547,9 @@ test_that("parent and worker requests retain identical Viewer defaults", {
     plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
     plan$items[[1L]]$overview_percentage_cells_to_show <- 65
     plan$items[[2L]]$overview_percentage_cells_to_show <- 80
+    plan$items[[2L]]$spatial_point_appearance <- list(
+      "fov-a" = list(point_opacity = 0.6, point_size = 7)
+    )
     handle <- builder_coordinator_prepare(plan, "viewer-defaults")
     artifacts <- file.path(
       handle$stage,
@@ -1578,6 +1589,12 @@ test_that("parent and worker requests retain identical Viewer defaults", {
         "overview_percentage_cells_to_show"
       ]],
       80
+    )
+    expect_identical(
+      parent_request$viewer_content[["Dataset B"]][[
+        "spatial_point_appearance"
+      ]],
+      plan$items[[2L]]$spatial_point_appearance
     )
     expect_true(builder_coordinator_abort(handle)$aborted)
   })

@@ -264,7 +264,7 @@ builder_example_buttons_ui <- function(examples = builder_example_directory()) {
       ),
       tags$span(
         class = "builder-data-source-tag is-example",
-        "Load example →"
+        "Load Example"
       )
     )
   }))
@@ -344,11 +344,17 @@ ui <- tagList(
     )),
     tags$title("Cerebro Dataset Builder")
   ),
-  div(
+  tags$a(
+    class = "builder-skip-link",
+    href = "#builder-workspace",
+    "Skip to workspace"
+  ),
+  tags$header(
     class = "topbar builder-project-header",
     div(
       class = "builder-project-brand",
-      div(class = "wordmark", cerebro_wordmark)
+      div(class = "wordmark", cerebro_wordmark),
+      tags$h1(class = "visually-hidden", "CerebroNexus Builder")
     ),
     uiOutput("busy", inline = TRUE),
     builder_project_toolbar_ui()
@@ -356,8 +362,7 @@ ui <- tagList(
   div(
     id = "builder-worker-status",
     class = "builder-worker-status is-starting",
-    role = "status",
-    `aria-live` = "polite",
+    `aria-hidden` = "false",
     span(class = "builder-worker-status-dot", `aria-hidden` = "true"),
     span(
       class = "builder-worker-status-copy",
@@ -433,7 +438,7 @@ ui <- tagList(
         )
       )
     ),
-    div(
+    tags$main(
       id = "builder-workspace",
       class = "builder-content",
       div(

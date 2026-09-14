@@ -705,6 +705,7 @@
         builderWorkerStatusTimer = null;
       }
       status.classList.remove("is-dismissed");
+      status.setAttribute("aria-hidden", "false");
       status.classList.toggle("is-starting", state === "starting");
       status.classList.toggle("is-ready", state === "ready");
       status.classList.toggle("is-error", state === "error");
@@ -712,6 +713,7 @@
       if (state === "ready") {
         builderWorkerStatusTimer = window.setTimeout(function () {
           status.classList.add("is-dismissed");
+          status.setAttribute("aria-hidden", "true");
           builderWorkerStatusTimer = null;
         }, 1500);
       }
@@ -2547,9 +2549,9 @@
 
   function setCurrentStage(stage) {
     document.querySelectorAll(".builder-stage").forEach(function (candidate) {
-      candidate.removeAttribute("aria-current");
+      delete candidate.dataset.currentStage;
     });
-    if (stage) stage.setAttribute("aria-current", "stage");
+    if (stage) stage.dataset.currentStage = "true";
   }
 
   var stageObserver = new IntersectionObserver(
@@ -2593,7 +2595,7 @@
       stageObserver.observe(stage);
       observedStages.add(stage);
     });
-    if (stages.length && !document.querySelector('[aria-current="stage"]')) {
+    if (stages.length && !document.querySelector('[data-current-stage="true"]')) {
       setCurrentStage(stages[0]);
     }
   }
@@ -2622,13 +2624,6 @@
   }
 
   function updateStatusSemantics() {
-    ["busy", "result_card", "review_action_summary"].forEach(function (id) {
-      var output = document.getElementById(id);
-      if (!output) return;
-      output.setAttribute("role", "status");
-      output.setAttribute("aria-live", "polite");
-      output.setAttribute("aria-atomic", "true");
-    });
     var status = ["#busy", "#result_card", "#review_action_summary"]
       .map(function (selector) {
         var node = document.querySelector(selector);
@@ -4021,17 +4016,6 @@
   document.addEventListener("keydown", function (event) {
     if (event.target.closest('[aria-disabled="true"]')) {
       event.preventDefault();
-      return;
-    }
-    var datasetDropzone = event.target.closest(
-      ".builder-dataset-dropzone.builder-add-datasets"
-    );
-    if (
-      datasetDropzone &&
-      (event.key === "Enter" || event.key === " ")
-    ) {
-      event.preventDefault();
-      addDatasetFiles(datasetDropzone);
       return;
     }
     if (event.target.matches(".enhance-attachment-editor input")) {

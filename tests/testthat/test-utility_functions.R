@@ -35,6 +35,24 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("Viewer resolves per-section Spatial point appearance", {
+  options <- list(
+    viewer_content = list(
+      "Dataset A" = list(
+        spatial_point_appearance = list(
+          "fov-a" = list(point_opacity = 0.42, point_size = 8)
+        )
+      )
+    )
+  )
+
+  expect_identical(
+    utils_env$spatialPointAppearance(options, "Dataset A", "fov-a"),
+    list(point_opacity = 0.42, point_size = 8)
+  )
+  expect_null(utils_env$spatialPointAppearance(options, "Dataset A", "missing"))
+})
+
 test_that("Viewer resolves and applies per-ROI spatial settings", {
   options <- list(
     viewer_content = list(

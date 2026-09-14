@@ -11,7 +11,7 @@ builder_data_page_runtime <- function(native_picker = TRUE) {
       ),
       shiny::tags$span(
         class = "builder-data-source-tag is-example",
-        "Load example →"
+        "Load Example"
       )
     )
   }
@@ -43,8 +43,9 @@ test_that("Data page makes the whole dropzone the upload action", {
 
   expect_match(html, "builder-dataset-dropzone-copy", fixed = TRUE)
   expect_match(html, "builder-add-datasets", fixed = TRUE)
-  expect_match(html, 'role="button"', fixed = TRUE)
-  expect_match(html, 'tabindex="0"', fixed = TRUE)
+  expect_match(html, '<button', fixed = TRUE)
+  expect_match(html, 'type="button"', fixed = TRUE)
+  expect_false(grepl('role="button"', html, fixed = TRUE))
   expect_identical(
     lengths(regmatches(html, gregexpr("Add your data", html, fixed = TRUE))),
     1L
@@ -53,9 +54,56 @@ test_that("Data page makes the whole dropzone the upload action", {
   expect_false(grepl(">Add files<", html, fixed = TRUE))
   expect_false(grepl("builder-browse-dataset-files", html, fixed = TRUE))
   expect_false(grepl("builder-local-dataset-files", html, fixed = TRUE))
-  expect_match(html, "Load example →", fixed = TRUE)
+  expect_match(html, "Load Example", fixed = TRUE)
   expect_false(grepl("Start with one dataset", html, fixed = TRUE))
   expect_false(grepl("builder-stage-footer", html, fixed = TRUE))
+})
+
+test_that("Data page keeps the workspace informative while imports run", {
+  withr::local_package("shiny")
+  runtime <- builder_data_page_runtime()
+  html <- htmltools::renderTags(
+    runtime$builder_importing_workbench_ui(2L)
+  )$html
+
+  expect_match(html, "builder-loading-state", fixed = TRUE)
+  expect_match(html, "Preparing your workspace", fixed = TRUE)
+  expect_match(html, "2 datasets are loading", fixed = TRUE)
+  expect_match(html, "builder-loading-skeleton", fixed = TRUE)
+  expect_match(html, 'aria-busy="true"', fixed = TRUE)
+  expect_match(html, 'role="status"', fixed = TRUE)
+  expect_match(html, 'aria-live="polite"', fixed = TRUE)
+  expect_false(grepl('class="spinner"', html, fixed = TRUE))
+})
+
+test_that("Dataset rail presents one concise readiness status", {
+  withr::local_package("shiny")
+  runtime <- builder_data_page_runtime()
+  model <- list(
+    index = 1L,
+    id = "dataset-a",
+    label = "Dataset A",
+    cells = 180L,
+    format = "Built-in example",
+    import_elapsed_ms = 5500,
+    readiness_label = "Blocked",
+    checked = FALSE,
+    selected = TRUE,
+    confirm = FALSE,
+    can_up = FALSE,
+    can_down = TRUE
+  )
+  html <- htmltools::renderTags(
+    runtime$builder_dataset_rail_row_ui(model)
+  )$html
+
+  expect_false(grepl("rail-readiness-status", html, fixed = TRUE))
+  expect_false(grepl(">Blocked<", html, fixed = TRUE))
+  expect_identical(
+    lengths(regmatches(html, gregexpr("Needs check", html, fixed = TRUE))),
+    1L
+  )
+  expect_false(grepl('role="status"', html, fixed = TRUE))
 })
 
 test_that("Data page shows its footer only after a dataset exists", {
@@ -69,7 +117,7 @@ test_that("Data page shows its footer only after a dataset exists", {
 
   expect_match(html, "builder-stage-footer", fixed = TRUE)
   expect_match(html, ">1 dataset<", fixed = TRUE)
-  expect_match(html, "Configure datasets", fixed = TRUE)
+  expect_match(html, "Configure Datasets", fixed = TRUE)
 })
 
 test_that("Data page keeps one upload action without a native picker", {
@@ -91,16 +139,16 @@ test_that("Data page uses the shared local-first fallback state machine", {
   )
 
   expect_match(js, "addDatasetFiles(addDatasets)", fixed = TRUE)
-  expect_match(
-    js,
+  expect_false(grepl(
     '".builder-dataset-dropzone.builder-add-datasets"',
-    fixed = TRUE
-  )
-  expect_match(
     js,
-    "addDatasetFiles(datasetDropzone)",
     fixed = TRUE
-  )
+  ))
+  expect_false(grepl(
+    "addDatasetFiles(datasetDropzone)",
+    js,
+    fixed = TRUE
+  ))
   expect_false(grepl("browseDatasets", js, fixed = TRUE))
   expect_false(grepl("localDatasets", js, fixed = TRUE))
   expect_match(js, "enqueueClientFiles(event.dataTransfer", fixed = TRUE)
@@ -148,7 +196,7 @@ test_that("the real example action uses the approved secondary label", {
     collapse = "\n"
   )
 
-  expect_match(app, '"Load example →"', fixed = TRUE)
+  expect_match(app, '"Load Example"', fixed = TRUE)
   expect_match(app, "data-examples", fixed = TRUE)
 
   js <- paste(
@@ -205,6 +253,30 @@ test_that("Precision Scientific is the final Builder presentation layer", {
     fixed = TRUE
   )
   expect_match(theme, ".builder-stage-header h2", fixed = TRUE)
+  expect_match(theme, "--c-text-3: #68706b", fixed = TRUE)
+  expect_match(theme, "touch-action: manipulation", fixed = TRUE)
+  expect_match(theme, "-webkit-tap-highlight-color", fixed = TRUE)
+  expect_match(theme, ".builder-loading-state", fixed = TRUE)
+  expect_match(theme, ".builder-loading-skeleton", fixed = TRUE)
+  expect_match(
+    theme,
+    paste(
+      ".builder-detected-content .builder-content-tag {",
+      "  border: 0;",
+      "  background: transparent;",
+      sep = "\n"
+    ),
+    fixed = TRUE
+  )
+  expect_match(theme, ".builder-data-source:focus-visible", fixed = TRUE)
+  layout <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.layout.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(layout, "min-height: calc(100dvh - 12rem)", fixed = TRUE)
   expect_match(theme, ".ds.is-active::before", fixed = TRUE)
   expect_match(
     theme,

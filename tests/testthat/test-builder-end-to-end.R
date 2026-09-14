@@ -160,7 +160,11 @@ test_that("Builder release documentation matches the guided workflow", {
 test_that("the Builder example catalog is a stable product contract", {
   expect_true(exists("builder_example_catalog", mode = "function"))
   catalog <- builder_example_catalog()
-  expected_ids <- c("complete_viewer_data", "trekker_spatial")
+  expected_ids <- c(
+    "complete_viewer_data",
+    "trekker_spatial",
+    "spatial_alignment"
+  )
   expect_identical(names(catalog), expected_ids)
   expect_identical(
     unname(vapply(catalog, `[[`, character(1), "id")),
@@ -231,6 +235,8 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
   resources <- c(
     "builder/fixtures/complete_viewer/complete_viewer_data.rds",
     "builder/fixtures/trekker_spatial/trekker_4_tissues.qs2",
+    "builder/fixtures/spatial_alignment/arrow_spatial.rds",
+    "builder/fixtures/spatial_alignment/arrow_background.png",
     "extdata/examples/demo_trekker.crb"
   )
   for (relative in resources) {
@@ -281,6 +287,11 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
     observed_paths <- c(
       catalog$complete_viewer_data$serialized_path,
       catalog$trekker_spatial$serialized_path,
+      catalog$spatial_alignment$serialized_path,
+      file.path(
+        dirname(catalog$spatial_alignment$serialized_path),
+        catalog$spatial_alignment$histology_images$arrow_background$path
+      ),
       runtime$.builder_example_path("extdata/examples/demo_trekker.crb")
     )
     expect_identical(unname(observed_paths), expected_paths, info = case)
@@ -297,6 +308,7 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
       "Seurat"
     )
     expect_s4_class(catalog$trekker_spatial$make()$object, "Seurat")
+    expect_s4_class(catalog$spatial_alignment$make()$object, "Seurat")
   }
 })
 

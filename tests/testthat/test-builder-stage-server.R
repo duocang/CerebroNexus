@@ -263,6 +263,10 @@ test_that("Builder shell and workflow UI separate all four stages", {
   )
   expect_match(shell, 'uiOutput("workflow_progress")', fixed = TRUE)
   expect_match(shell, 'class = "topbar builder-project-header"', fixed = TRUE)
+  expect_match(shell, 'class = "builder-skip-link"', fixed = TRUE)
+  expect_match(shell, 'tags$header(', fixed = TRUE)
+  expect_match(shell, 'tags$main(', fixed = TRUE)
+  expect_match(shell, 'tags$h1(', fixed = TRUE)
   expect_match(shell, 'class = "builder-project-brand"', fixed = TRUE)
   toolbar <- paste(
     readLines(
@@ -302,6 +306,9 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(progress_html, 'data-workflow-confirmed="false"', fixed = TRUE)
   expect_match(progress_html, "Configure", fixed = TRUE)
   expect_match(progress_html, 'id="workflow_stage_upload"', fixed = TRUE)
+  expect_match(progress_html, '<button', fixed = TRUE)
+  expect_false(grepl('<a ', progress_html, fixed = TRUE))
+  expect_false(grepl('href="#"', progress_html, fixed = TRUE))
   expect_match(progress_html, 'aria-disabled="true"', fixed = TRUE)
   expect_match(progress_html, "is-unavailable", fixed = TRUE)
   expect_match(progress_html, "builder-workflow-step-number", fixed = TRUE)
@@ -369,6 +376,7 @@ test_that("Builder shell and workflow UI separate all four stages", {
     1L
   )
   expect_match(actions_html, "Continue to Review", fixed = TRUE)
+  expect_false(grepl("✓|→", actions_html))
   expect_match(actions_html, " disabled", fixed = TRUE)
   expect_false(grepl("make_app", actions_html, fixed = TRUE))
   expect_false(grepl("Create a Viewer app", actions_html, fixed = TRUE))
@@ -377,7 +385,15 @@ test_that("Builder shell and workflow UI separate all four stages", {
     "1 dataset ready",
     can_continue = TRUE
   ))$html
+  expect_match(ready_html, "All datasets checked", fixed = TRUE)
   expect_match(ready_html, "1 dataset ready", fixed = TRUE)
+  expect_match(
+    ready_html,
+    "builder-stage-footer-status is-review-ready",
+    fixed = TRUE
+  )
+  expect_match(ready_html, "builder-stage-footer-status-icon", fixed = TRUE)
+  expect_match(ready_html, 'aria-hidden="true"', fixed = TRUE)
   expect_false(grepl(" disabled", ready_html, fixed = TRUE))
 
   unchecked_html <- htmltools::renderTags(app_env$builder_configure_actions_ui(
@@ -387,8 +403,27 @@ test_that("Builder shell and workflow UI separate all four stages", {
   ))$html
   expect_match(unchecked_html, 'id="complete_dataset_check"', fixed = TRUE)
   expect_false(grepl(" disabled", unchecked_html, fixed = TRUE))
+  expect_false(grepl("is-review-ready", unchecked_html, fixed = TRUE))
   expect_false(
     "can_check" %in% names(formals(app_env$builder_configure_actions_ui))
+  )
+
+  components <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    components,
+    ".builder-stage-footer-status.is-review-ready",
+    fixed = TRUE
+  )
+  expect_match(
+    components,
+    "background: var(--c-success-50)",
+    fixed = TRUE
   )
 
   confirmation_html <- htmltools::renderTags(
@@ -489,12 +524,73 @@ test_that("shared stage layout primitives expose one visual grammar", {
   ))$html
 
   expect_match(html, "builder-stage-header", fixed = TRUE)
-  expect_match(html, "builder-stage-eyebrow", fixed = TRUE)
+  expect_false(grepl("builder-stage-eyebrow", html, fixed = TRUE))
+  expect_false(grepl("Step 2 of 4", html, fixed = TRUE))
   expect_match(html, "builder-stage-section", fixed = TRUE)
   expect_match(html, "builder-stage-footer", fixed = TRUE)
   expect_match(html, "builder-stage-footer-status", fixed = TRUE)
   expect_match(html, "builder-stage-footer-actions", fixed = TRUE)
   expect_match(html, 'id="continue_to_review"', fixed = TRUE)
+})
+
+test_that("Builder content does not use an invalid aria-current token", {
+  javascript <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl(
+    'setAttribute("aria-current", "stage")',
+    javascript,
+    fixed = TRUE
+  ))
+  expect_match(javascript, 'dataset.currentStage = "true"', fixed = TRUE)
+  expect_false(grepl(
+    'output.setAttribute("role", "status")',
+    javascript,
+    fixed = TRUE
+  ))
+  expect_match(
+    javascript,
+    'status.setAttribute("aria-hidden", "true")',
+    fixed = TRUE
+  )
+})
+
+test_that("Project toolbar icons do not pollute button names", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  html <- htmltools::renderTags(app_env$builder_project_toolbar_ui())$html
+
+  expect_identical(
+    lengths(regmatches(
+      html,
+      gregexpr('aria-hidden="true"', html, fixed = TRUE)
+    )),
+    2L
+  )
+})
+
+test_that("Inspect guidance reacts when an organism is selected", {
+  review_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(review_server, 'input[["core-organism"]]', fixed = TRUE)
+  expect_match(
+    review_server,
+    'setdiff(attention, "settings_organism")',
+    fixed = TRUE
+  )
 })
 
 test_that("Build stage exclusively owns its live status projection", {
