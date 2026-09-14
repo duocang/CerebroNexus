@@ -3,6 +3,7 @@
 ##----------------------------------------------------------------------------##
 tab_load_data <- tabItem(
   tabName = "loadData",
+  tags$h1("Data info"),
   ## Order reflects priority: pick a dataset, see its stats, then the low-frequency
   ## preferences sink to the bottom of the page.
   uiOutput("load_data_select_file_UI"),
