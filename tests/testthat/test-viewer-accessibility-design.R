@@ -164,7 +164,7 @@ test_that("empty and welcome states explain the next step", {
     viewer_design_source("enriched_pathways", "table.R")
   )
   app <- paste(
-    readLines(testthat::test_path("../../inst/app.R"), warn = FALSE),
+    readLines(file.path(viewer_app_test_path(), "app.R"), warn = FALSE),
     collapse = "\n"
   )
 
