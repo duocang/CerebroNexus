@@ -406,9 +406,13 @@ test_that("Linked views panel sizing remains automatic", {
 test_that("Linked views chooses its grid from both viewport dimensions", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
+  skip_if_not(
+    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
+  )
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
   expect_match(js, "function bestOverviewGrid", fixed = TRUE)
   expect_match(js, "BALANCED_SIZE_TOLERANCE = 0.85", fixed = TRUE)
