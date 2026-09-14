@@ -431,7 +431,10 @@ spatial_projection_update_plot <- function(input) {
         image_label = configured$descriptor$label,
         image_preset = configured$preset
       )
-      if (!is.null(rendered$viewport_bounds)) {
+      if (
+        !is.null(rendered$viewport_bounds) &&
+          !identical(plot_parameters[["roi_mode"]], "separate")
+      ) {
         result$x_range <- unlist(rendered$viewport_bounds[c("xmin", "xmax")])
         result$y_range <- unlist(rendered$viewport_bounds[c("ymin", "ymax")])
       }

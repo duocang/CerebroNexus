@@ -1,4 +1,4 @@
-test_that("spatial scene choices expose sample and ROI membership", {
+test_that("spatial scene choices show only FOV identifiers", {
   metadata <- data.frame(
     cell_barcode = paste0("cell-", 1:4),
     sample = c("S1", "S1", "S2", "S2"),
@@ -30,13 +30,7 @@ test_that("spatial scene choices expose sample and ROI membership", {
   )
 
   expect_identical(unname(choices), c("fov-a", "fov-b"))
-  expect_identical(
-    names(choices),
-    c(
-      "fov-a · 2 ROIs · 2 observations",
-      "fov-b · ROI: S2_normal · 2 observations"
-    )
-  )
+  expect_identical(names(choices), c("fov-a", "fov-b"))
 })
 
 test_that("Viewer keeps split-by on the shared interactive Canvas", {

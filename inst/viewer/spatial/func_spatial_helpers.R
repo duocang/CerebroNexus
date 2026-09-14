@@ -122,50 +122,7 @@ spatial_split_columns <- function(
 }
 
 spatial_scene_choices <- function(spatial_names, spatial_data, metadata) {
-  labels <- vapply(
-    spatial_names,
-    function(name) {
-      coordinates <- spatial_data[[name]][["coordinates"]]
-      cells <- rownames(coordinates) %||% character()
-      annotations <- list(
-        sample = builder_viewer_spatial_annotation(
-          metadata,
-          cells,
-          c("sample", "sample_id", "orig.ident")
-        ),
-        roi = builder_viewer_spatial_annotation(
-          metadata,
-          cells,
-          c("sample_roi", "roi", "roi_id", "region_of_interest")
-        )
-      )
-      label_annotations <- annotations
-      label_annotations$sample$count <- 0L
-      scene <- builder_viewer_spatial_scene(
-        id = name,
-        label = builder_viewer_spatial_scene_label(name, label_annotations),
-        kind = "spatial",
-        source_id = name,
-        observations = list(
-          kind = "cell_or_spot",
-          count = as.integer(length(unique(cells)))
-        ),
-        annotations = annotations,
-        layers = "points"
-      )
-      count <- scene$observations$count
-      paste(
-        scene$label,
-        paste(
-          format(count, big.mark = ",", scientific = FALSE),
-          if (count == 1L) "observation" else "observations"
-        ),
-        sep = " · "
-      )
-    },
-    character(1)
-  )
-  stats::setNames(spatial_names, labels)
+  stats::setNames(spatial_names, spatial_names)
 }
 
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result

@@ -1101,7 +1101,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
         source = "external",
         label = label,
         path = "spatial-assets/atlas.png",
-        bounds = bounds
+        bounds = bounds,
+        viewport_bounds = c(xmin = 0, xmax = 100, ymin = 10, ymax = 90)
       ),
       identity = list(
         dataset = "Atlas",
@@ -1146,6 +1147,14 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(
     lapply(rendered$data$panels, function(panel) panel$image_identity$roi),
     list("lesion", "border")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "x_range"),
+    list(c(19, 21), c(79, 81))
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "y_range"),
+    list(c(29, 31), c(69, 71))
   )
 })
 
