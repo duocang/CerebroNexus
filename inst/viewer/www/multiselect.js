@@ -77,11 +77,11 @@
     var instance = select.selectize;
     if (!instance) return;
 
-    if (!select.dataset.cerebroDropdownReady) {
+    if (select._cerebroDropdownInstance !== instance) {
       instance.on("dropdown_open", function () { sizeDropdown(instance); });
-      select.dataset.cerebroDropdownReady = "true";
+      select._cerebroDropdownInstance = instance;
     }
-    if (!select.multiple || select.dataset.cerebroMultiSelectReady) return;
+    if (!select.multiple || select._cerebroMultiSelectInstance === instance) return;
 
     select.setAttribute("data-placeholder", placeholder);
     instance.settings.placeholder = placeholder;
@@ -97,7 +97,7 @@
     instance.on("item_remove", function () { syncMultiSelectWidth(instance); });
     instance.on("clear", function () { syncMultiSelectWidth(instance); });
     syncMultiSelectWidth(instance);
-    select.dataset.cerebroMultiSelectReady = "true";
+    select._cerebroMultiSelectInstance = instance;
   }
 
   function enhanceAll(root) {

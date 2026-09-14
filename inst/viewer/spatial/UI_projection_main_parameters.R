@@ -14,25 +14,7 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   ## picker) on every app start — that extra startup work otherwise competes
   ## with other tabs' first render.
   req(length(availableSpatial()) > 0)
-  ## determine which metadata columns to include based on exclude_trivial_metadata
-  exclude_trivial <- FALSE
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[['exclude_trivial_metadata']])
-  ) {
-    exclude_trivial <- Cerebro.options[['exclude_trivial_metadata']]
-  }
-
-  ## build choices based on setting
-  if (exclude_trivial == TRUE) {
-    ## only include groups from getGroups()
-    metadata_cols <- getGroups()
-  } else {
-    ## include all metadata columns except cell_barcode
-    metadata_cols <- colnames(getMetaData())[
-      !colnames(getMetaData()) %in% c("cell_barcode")
-    ]
-  }
+  colour_groups <- viewerColourGroupChoices()
 
   current_spatial <- input[["spatial_projection_to_display"]]
   if (
@@ -59,7 +41,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
       selectInput(
         "spatial_projection_point_color",
         label = "Colour by",
-        choices = metadata_cols
+        choices = colour_groups$choices,
+        selected = colour_groups$selected
       )
     ),
     conditionalPanel(
@@ -243,7 +226,7 @@ spatial_projection_main_parameters_info <- list(
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
       <li><b>Projection:</b> Select here which projection you want to see in the scatter plot on the right.</li>
-      <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
+      <li><b>Colour by:</b> Select one of the data set's registered grouping variables.</li>
     </ul>
     "
   )
