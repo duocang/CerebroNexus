@@ -279,7 +279,7 @@ trekker <- list(
   qc_examples = qc_examples                         # one image per excluded class
 )
 
-crb <- readCerebro("inst/extdata/examples/demo_trekker.crb")
+crb <- readRDS("inst/extdata/examples/demo_trekker.crb")
 crb$addTrekker(trekker)
 saveRDS(crb, "inst/extdata/examples/demo_trekker.crb", compress = "xz")
 ```
