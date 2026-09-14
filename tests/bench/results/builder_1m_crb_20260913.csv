@@ -1,0 +1,4 @@
+candidate,size_mib,write_median_ms,decode_median_ms,hydrated_median_ms,size_reduction_pct,write_speedup,decode_speedup,hydrated_speedup
+legacy_rds,26.8290,7952,1369,1557,0,1,1,1
+thin_rds,13.9202,2955,94,361,48.1153,2.6910,14.5638,4.3130
+thin_qs2,13.2682,235,41,310,50.5453,33.8383,33.3902,5.0226
