@@ -8,63 +8,64 @@
 ##----------------------------------------------------------------------------##
 
 output[["color_assignments_UI"]] <- renderUI({
-  fluidRow(
-    tagList({
-      group_list <- list()
-      for (group_name in getGroups()) {
-        group_list[[group_name]] <- box(
-          title = tagList(
-            boxTitle(group_name),
-            cerebroInfoButton("color_assignments_info")
-          ),
-          status = "primary",
-          solidHeader = TRUE,
-          width = 4,
-          collapsible = TRUE,
-          tagList({
-            color_list <- list()
-            for (group_level in getGroupLevels(group_name)) {
-              color_list[[group_level]] <- colourpicker::colourInput(
-                inputId = color_input_id(group_name, group_level),
-                label = group_level,
-                value = reactive_colors()[[group_name]][group_level]
-              )
-            }
-            color_list
-          })
-        )
-      }
-
-      ## if there are columns with cell cycle info, add color selection elements
-      ## also for those
-      if (length(getCellCycle()) > 0) {
-        for (column in getCellCycle()) {
-          group_list[[column]] <- box(
-            title = tagList(
-              boxTitle(column),
-              cerebroInfoButton("color_assignments_info")
-            ),
+  tagList(
+    cerebroVizPageHeader(
+      "Colour management",
+      "color_assignments_info",
+      "Set the group colours used throughout CerebroNexus."
+    ),
+    fluidRow(
+      tagList({
+        group_list <- list()
+        for (group_name in getGroups()) {
+          group_list[[group_name]] <- box(
+            title = boxTitle(group_name),
             status = "primary",
             solidHeader = TRUE,
             width = 4,
             collapsible = TRUE,
             tagList({
               color_list <- list()
-              for (state in unique(as.character(getMetaData()[[column]]))) {
-                color_list[[state]] <- colourpicker::colourInput(
-                  inputId = color_input_id(column, state),
-                  label = state,
-                  value = reactive_colors()[[column]][state]
+              for (group_level in getGroupLevels(group_name)) {
+                color_list[[group_level]] <- colourpicker::colourInput(
+                  inputId = color_input_id(group_name, group_level),
+                  label = group_level,
+                  value = reactive_colors()[[group_name]][group_level]
                 )
               }
               color_list
             })
           )
         }
-      }
 
-      group_list
-    })
+        ## if there are columns with cell cycle info, add color selection elements
+        ## also for those
+        if (length(getCellCycle()) > 0) {
+          for (column in getCellCycle()) {
+            group_list[[column]] <- box(
+              title = boxTitle(column),
+              status = "primary",
+              solidHeader = TRUE,
+              width = 4,
+              collapsible = TRUE,
+              tagList({
+                color_list <- list()
+                for (state in unique(as.character(getMetaData()[[column]]))) {
+                  color_list[[state]] <- colourpicker::colourInput(
+                    inputId = color_input_id(column, state),
+                    label = state,
+                    value = reactive_colors()[[column]][state]
+                  )
+                }
+                color_list
+              })
+            )
+          }
+        }
+
+        group_list
+      })
+    )
   )
 })
 
