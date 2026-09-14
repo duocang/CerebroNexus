@@ -2,14 +2,7 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_main_parameters_UI"]] <- renderUI({
-  metadata <- viewerProjectionFirstFrameMetadata()
-  color_choices <- setdiff(colnames(metadata), "cell_barcode")
-  parameters <- tryCatch(getParameters(), error = function(e) list())
-  defaults <- viewerProjectionDefaults(
-    metadata,
-    availableProjections(),
-    parameters
-  )
+  colour_groups <- viewerColourGroupChoices()
   tagList(
     selectInput(
       "overview_projection_to_display",
@@ -20,8 +13,8 @@ output[["overview_projection_main_parameters_UI"]] <- renderUI({
     selectInput(
       "overview_projection_point_color",
       label = "Colour by",
-      choices = color_choices,
-      selected = defaults$color_variable
+      choices = colour_groups$choices,
+      selected = colour_groups$selected
     )
   )
 })
@@ -44,7 +37,7 @@ overview_projection_main_parameters_info <- list(
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
       <li><b>Projection:</b> Select here which projection you want to see in the scatter plot on the right.</li>
-      <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
+      <li><b>Colour by:</b> Select one of the data set's registered grouping variables.</li>
     </ul>
     "
   )

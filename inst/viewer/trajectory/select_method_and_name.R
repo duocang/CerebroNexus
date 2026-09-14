@@ -38,12 +38,7 @@ output[["trajectory_primary_controls_UI"]] <- renderUI({
     selected_name <- available_names[[1L]]
   }
 
-  exclude_trivial <- isTRUE(Cerebro.options[["exclude_trivial_metadata"]])
-  metadata_cols <- if (exclude_trivial) {
-    getGroups()
-  } else {
-    setdiff(colnames(viewerProjectionFirstFrameMetadata()), "cell_barcode")
-  }
+  colour_groups <- viewerColourGroupChoices()
 
   tagList(
     selectInput(
@@ -66,7 +61,11 @@ output[["trajectory_primary_controls_UI"]] <- renderUI({
     selectInput(
       "trajectory_point_color",
       label = "Colour by",
-      choices = unique(c("state", "pseudotime", metadata_cols)),
+      choices = list(
+        "Trajectory" = c("State" = "state", "Pseudotime" = "pseudotime"),
+        "Grouping variables" = colour_groups$choices
+      ),
+      selected = colour_groups$selected %||% "state",
       width = "100%"
     )
   )

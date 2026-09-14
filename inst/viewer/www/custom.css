@@ -1616,7 +1616,10 @@ body .selectize-dropdown .selectize-dropdown-content {
 body .selectize-dropdown .option {
   background: var(--c-white) !important;
   color: var(--c-text) !important;
+  overflow: hidden;
   padding: 7px 12px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 body .selectize-dropdown .option.active,
 body .selectize-dropdown .active {

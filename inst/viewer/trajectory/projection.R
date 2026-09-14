@@ -26,7 +26,7 @@ trajectory_projection_main_parameters_info <- list(
     <ul>
       <li><b>Choose a method:</b> Select the trajectory method.</li>
       <li><b>Choose a trajectory:</b> Select the trajectory to display.</li>
-      <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
+      <li><b>Colour by:</b> Select a trajectory measure or one of the data set's registered grouping variables.</li>
     </ul>
     "
   )
