@@ -118,13 +118,14 @@ R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
 }
 
 if [ "$BENCH_PROFILE" = "panel_c2" ]; then
-  echo "==> checking Chromium WebGPU adapter"
+  echo "==> running disposable Viewer smoke test"
   Rscript "$BENCH_ROOT/src/04_check_webgpu.R" \
-    > "$LOG_DIR/webgpu_preflight.log" 2>&1 || {
-    echo "!! WebGPU preflight failed, see $LOG_DIR/webgpu_preflight.log"
-    cat "$LOG_DIR/webgpu_preflight.log"
+    > "$LOG_DIR/viewer_smoke.log" 2>&1 || {
+    echo "!! Viewer smoke test failed, see $LOG_DIR/viewer_smoke.log"
+    cat "$LOG_DIR/viewer_smoke.log"
     exit 1
   }
+  cat "$LOG_DIR/viewer_smoke.log"
 fi
 
 SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sources.R")); cat(bench_active_sources(), sep="\n")')

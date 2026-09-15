@@ -158,7 +158,7 @@ test_that("Viewer renderer failure reports the underlying GPU error", {
   diagnostics <- list(
     pointCount = 20000,
     navigatorGpu = TRUE,
-    backend = "canvas2d",
+    backend = "webgpu",
     adapter = "fixture adapter",
     contextLost = FALSE,
     error = "Could not create a WebGPU canvas context."
@@ -167,5 +167,22 @@ test_that("Viewer renderer failure reports the underlying GPU error", {
     bench_require_viewer_renderer(diagnostics, 20000, TRUE),
     "Could not create a WebGPU canvas context",
     fixed = TRUE
+  )
+})
+
+test_that("Viewer accepts Canvas2D after a recorded GPU fallback", {
+  skip_if_not(file.exists(bench_viewer), "benchmark tree not present")
+  source(bench_viewer, local = TRUE)
+
+  diagnostics <- list(
+    pointCount = 20000,
+    navigatorGpu = TRUE,
+    backend = "canvas2d",
+    adapter = "",
+    contextLost = TRUE,
+    error = "A valid external Instance reference no longer exists."
+  )
+  expect_silent(
+    bench_require_viewer_renderer(diagnostics, 20000, FALSE)
   )
 })

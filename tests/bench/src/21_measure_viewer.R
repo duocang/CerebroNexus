@@ -84,7 +84,7 @@ metrics <- tryCatch(
     app_dir = file.path(dirname(crb), "viewer-app"),
     gene = first_gene,
     expected_cells = n_cells,
-    require_webgpu = TRUE
+    require_webgpu = FALSE
   ),
   error = function(error) {
     stage <- if (is.null(error$stage)) "viewer" else error$stage

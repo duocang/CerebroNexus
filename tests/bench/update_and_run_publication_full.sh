@@ -137,12 +137,21 @@ fi
 
 command -v nix-shell >/dev/null 2>&1 || fail "未找到 nix-shell；旧结果尚未清理"
 
-EMPTY_R_LIBRARY="$STATE_DIR/empty-r-library"
-mkdir -p "$EMPTY_R_LIBRARY"
-run "执行 Viewer WebGPU 真实渲染预检"
+CHECK_LIBRARY="$STATE_DIR/check-rlib"
+CHECK_INSTALL_LOG="$STATE_DIR/check-install.log"
+rm -rf -- "$CHECK_LIBRARY"
+mkdir -p "$CHECK_LIBRARY"
+run "安装当前分支用于一次性 Viewer 小测试"
 nix-shell "$REPO/default.nix" -A shell --run \
-  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$EMPTY_R_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
-ok "Viewer WebGPU 真实渲染预检通过"
+  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' R CMD INSTALL --no-docs --no-byte-compile --library='$CHECK_LIBRARY' '$REPO'" \
+  > "$CHECK_INSTALL_LOG" 2>&1 || {
+  tail -n 30 "$CHECK_INSTALL_LOG" >&2 || true
+  fail "当前分支安装失败；完整日志：$CHECK_INSTALL_LOG"
+}
+run "执行一次性 Viewer 小测试（不写入 benchmark 结果）"
+nix-shell "$REPO/default.nix" -A shell --run \
+  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' BENCH_LIB='$CHECK_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
+ok "Viewer 小测试通过"
 [ "$ACTION" = "run" ] || exit 0
 
 run "清理旧 benchmark 结果"

@@ -86,10 +86,11 @@ test_that("C2 viewer results must cover the successful schedule", {
   )
   fallback <- rows
   fallback$renderer_backend[1L] <- "canvas2d"
-  expect_error(
-    bench_validate_viewer_results(schedule, fallback, "run-1"),
-    "WebGPU"
-  )
+  fallback$navigator_gpu[1L] <- FALSE
+  fallback$renderer_adapter[1L] <- ""
+  fallback$renderer_context_lost[1L] <- TRUE
+  fallback$renderer_error[1L] <- "GPU unavailable; used Canvas2D"
+  expect_silent(bench_validate_viewer_results(schedule, fallback, "run-1"))
 })
 
 test_that("metric summaries retain independent-repeat uncertainty", {

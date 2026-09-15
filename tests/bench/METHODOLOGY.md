@@ -34,7 +34,7 @@ The first getter call is fresh-process but not controlled cold disk; the operati
 
 ## Standalone Viewer workload
 
-Each artifact runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The driver records bundle and launch time, verifies the exact scheduled point count, requires WebGPU, rejects renderer errors and context loss, and records JavaScript heap use.
+Each artifact runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The driver records bundle and launch time, verifies the exact scheduled point count, accepts either WebGPU or the application's Canvas2D fallback, records the actual renderer backend and diagnostics, and records JavaScript heap use. Before source downloads or timed measurements, a disposable small-data Viewer run checks launch, rendering, hover, selection, zoom, gene switching, and linked views without writing benchmark results.
 
 The driver then requires visible Canvas hover feedback, a non-empty box selection with server round-trip, zoom with an active minimap, frozen-gene switching with positive expression, and complete Linked Views readiness. All 12 browser rows are mandatory publication evidence. Vitessce and cross-browser comparison remain outside this study.
 

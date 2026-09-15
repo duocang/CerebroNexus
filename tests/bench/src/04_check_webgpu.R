@@ -1,4 +1,4 @@
-# Fail fast when a C2 publication run cannot obtain a WebGPU adapter.
+# Run a disposable end-to-end Viewer smoke test before the full benchmark.
 
 here <- Sys.getenv("BENCH_ROOT", "")
 if (!nzchar(here)) {
@@ -8,24 +8,30 @@ if (nzchar(Sys.getenv("BENCH_LIB"))) {
   .libPaths(c(Sys.getenv("BENCH_LIB"), .libPaths()))
 }
 source(file.path(here, "lib", "viewer_validation.R"))
+suppressPackageStartupMessages(library(CerebroNexus))
 
-chrome <- chromote::find_chrome()
-chrome_version <- tryCatch(
-  system2(chrome, "--version", stdout = TRUE, stderr = TRUE),
-  error = function(error) conditionMessage(error)
+crb <- system.file(
+  "extdata", "examples", "example.crb", package = "CerebroNexus"
 )
-message("Viewer WebGPU preflight browser: ", chrome)
-message("Viewer WebGPU preflight version: ", paste(chrome_version, collapse = " "))
+if (!file.exists(crb)) {
+  stop("installed Viewer smoke-test fixture is unavailable", call. = FALSE)
+}
 
-probe <- bench_check_webgpu_adapter(
-  file.path(dirname(here), "..", "inst", "viewer", "www", "cell_points_gpu.js")
+smoke_root <- tempfile("cerebro-viewer-smoke-")
+dir.create(smoke_root, recursive = TRUE)
+on.exit(unlink(smoke_root, recursive = TRUE, force = TRUE), add = TRUE)
+
+metrics <- bench_run_viewer_validation(
+  crb = crb,
+  app_dir = file.path(smoke_root, "app"),
+  gene = "MS4A1",
+  require_webgpu = FALSE,
+  timeout = 60000
 )
+if (!identical(metrics$correctness, "OK")) {
+  stop("Viewer smoke test did not complete correctly", call. = FALSE)
+}
 message(
-  "Viewer WebGPU preflight OK: canvas, shader pipeline, and render submission ",
-  "succeeded",
-  if (!is.null(probe$adapter) && nzchar(probe$adapter)) {
-    paste0(" (", probe$adapter, ")")
-  } else {
-    ""
-  }
+  "Viewer smoke test OK: launch, render, hover, selection, zoom, gene, ",
+  "and linked views succeeded (renderer=", metrics$renderer_backend, ")"
 )

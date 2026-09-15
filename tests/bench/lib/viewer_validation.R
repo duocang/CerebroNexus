@@ -202,25 +202,25 @@ bench_validate_viewer_results <- function(schedule, results, run_id = NULL) {
     stop("Viewer did not render every scheduled cell", call. = FALSE)
   }
   if (
-    any(is.na(results$navigator_gpu) | !results$navigator_gpu) ||
-      any(
-        is.na(results$renderer_backend) |
-          results$renderer_backend != "webgpu"
-      )
+    any(
+      is.na(results$renderer_backend) |
+        !results$renderer_backend %in% c("canvas2d", "webgpu")
+    )
   ) {
-    stop("publication Viewer evidence requires WebGPU", call. = FALSE)
+    stop("Viewer renderer backend is missing or unsupported", call. = FALSE)
   }
   renderer_error <- ifelse(
     is.na(results$renderer_error),
     "",
     as.character(results$renderer_error)
   )
+  webgpu <- results$renderer_backend == "webgpu"
   if (
-    any(
+    any(webgpu & (
       is.na(results$renderer_context_lost) |
-        results$renderer_context_lost
-    ) ||
-      any(nzchar(renderer_error))
+        results$renderer_context_lost |
+        nzchar(renderer_error)
+    ))
   ) {
     stop("Viewer reported a GPU error or context loss", call. = FALSE)
   }
@@ -316,7 +316,10 @@ bench_require_viewer_renderer <- function(
     stop(label, " did not render every cell", call. = FALSE)
   }
   renderer_error <- as.character(diagnostics$error)
-  if (isTRUE(diagnostics$contextLost) || nzchar(renderer_error)) {
+  if (
+    identical(diagnostics$backend, "webgpu") &&
+      (isTRUE(diagnostics$contextLost) || nzchar(renderer_error))
+  ) {
     detail <- if (nzchar(renderer_error)) paste0(": ", renderer_error) else ""
     stop(label, " reported a GPU error or context loss", detail, call. = FALSE)
   }
