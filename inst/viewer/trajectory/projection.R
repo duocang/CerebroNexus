@@ -9,8 +9,9 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_projection_UI"]] <- renderUI({
-  available_methods <- getMethodsForTrajectories()
-  available_methods <- available_methods[available_methods %in% c("monocle2")]
+  available_methods <- viewerSupportedTrajectoryMethods(
+    getMethodsForTrajectories()
+  )
 
   if (length(available_methods) == 0) {
     return(
@@ -160,7 +161,7 @@ trajectory_projection_main_parameters_info <- list(
     "
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
-      <li><b>Choose a method:</b> Select the trajectory-inference method.</li>
+      <li><b>Choose a method:</b> Select the trajectory method.</li>
       <li><b>Choose a trajectory:</b> Select the trajectory to display.</li>
       <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
     </ul>

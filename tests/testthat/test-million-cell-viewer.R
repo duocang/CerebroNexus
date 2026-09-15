@@ -28,7 +28,9 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
   )
   expect_equal(unname(configured$point_size[label]), 1)
   expect_equal(unname(configured$point_opacity[label]), 0.5)
-  expect_equal(unname(configured$percentage_cells_to_show[label]), 10)
+  expect_equal(unname(configured$percentage_cells_to_show[label]), 100)
+  expect_equal(unname(configured$expression_point_size[label]), 2)
+  expect_equal(unname(configured$expression_point_opacity[label]), 1)
 
   unlink(file.path(root, "mouse.bpcells", "shape"))
   expect_error(
@@ -53,6 +55,153 @@ test_that("the 1M preparation keeps unique gene symbols", {
   expect_error(
     env$.viewer1mUniqueGeneSymbols(c("Cd3e", ""), 2L),
     "non-empty"
+  )
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    seurat_clusters = c("0", "1", "2"),
+    stringsAsFactors = FALSE
+  )
+  projection <- rbind(
+    c3 = c(1, 3),
+    c1 = c(0, 1),
+    c2 = c(2, 2)
+  )
+  object <- list(
+    getGeneNames = function() c("Sox2", "Dcx", "Rbfox3"),
+    getMeanExpressionForCells = function(cells, genes) {
+      scores <- list(
+        Sox2 = c(c1 = 10, c2 = 2, c3 = 0.5),
+        Dcx = c(c1 = 1, c2 = 10, c3 = 2),
+        Rbfox3 = c(c1 = 0.5, c2 = 2, c3 = 10)
+      )
+      values <- vapply(
+        genes,
+        function(gene) scores[[gene]][cells],
+        numeric(length(cells))
+      )
+      if (is.null(dim(values))) values else rowMeans(values)
+    }
+  )
+  trajectory <- env$.viewer1mMarkerGuidedTrajectory(
+    object,
+    metadata,
+    projection
+  )
+
+  expect_identical(rownames(trajectory$meta), metadata$cell_barcode)
+  expect_true(all(diff(trajectory$meta$pseudotime) > 0))
+  expect_identical(
+    levels(trajectory$meta$state),
+    c("Neural progenitor", "Neuroblast", "Maturing neuron")
+  )
+  expect_equal(nrow(trajectory$edges), 2L)
+  expect_equal(
+    unname(unlist(trajectory$edges[1, ])),
+    c(0, 1, 2, 2)
+  )
+  expect_identical(trajectory$provenance$type, "marker_guided")
+  expect_identical(trajectory$provenance$version, 2L)
+  expect_identical(trajectory$provenance$markers$early, "Sox2")
+  expect_identical(trajectory$provenance$markers$late, "Rbfox3")
+
+  branching <- env$.viewer1mMarkerGuidedEdges(data.frame(
+    state = c(
+      "Neural progenitor",
+      "Neuroblast",
+      "Excitatory neuron",
+      "Inhibitory neuron"
+    ),
+    DR_1 = c(0, 1, 2, 2),
+    DR_2 = c(0, 0, 1, -1),
+    pseudotime = c(0, 0.5, 1, 1)
+  ))
+  terminal_edges <- branching[branching$target_dim_1 == 2, , drop = FALSE]
+  expect_equal(nrow(terminal_edges), 2L)
+  expect_equal(terminal_edges$source_dim_1, c(1, 1))
+  expect_equal(terminal_edges$source_dim_2, c(0, 0))
+  expect_equal(sort(terminal_edges$target_dim_2), c(-1, 1))
+})
+
+test_that("the 1M demo replaces the illustrative path with marker guidance", {
+  script <- testthat::test_path("..", "bench", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    seurat_clusters = c("0", "1", "2"),
+    row.names = c("c1", "c2", "c3"),
+    stringsAsFactors = FALSE
+  )
+  projection <- cbind(x = c(0, 2, 1), y = c(1, 2, 3))
+  rownames(projection) <- metadata$cell_barcode
+  parameters <- list()
+  object <- new.env(parent = emptyenv())
+  object$trajectories <- list(
+    illustrative = list(UMAP_cluster_path = list())
+  )
+  object$getParameters <- function() parameters
+  object$addParameters <- function(field, content) {
+      parameters[[field]] <<- content
+  }
+  object$getMethodsForTrajectories <- function() names(object$trajectories)
+  object$getNamesOfTrajectories <- function(method) {
+    names(object$trajectories[[method]])
+  }
+  object$addTrajectory <- function(method, name, trajectory) {
+    object$trajectories[[method]][[name]] <- trajectory
+  }
+  object$availableProjections <- function() "umap"
+  object$getMetaData <- function() metadata
+  object$getProjection <- function(name) projection
+  object$getGeneNames <- function() c("Sox2", "Dcx", "Rbfox3")
+  object$getMeanExpressionForCells <- function(cells, genes) {
+    scores <- list(
+      Sox2 = c(c1 = 10, c2 = 2, c3 = 0.5),
+      Dcx = c(c1 = 1, c2 = 10, c3 = 2),
+      Rbfox3 = c(c1 = 0.5, c2 = 2, c3 = 10)
+    )
+    values <- vapply(
+      genes,
+      function(gene) scores[[gene]][cells],
+      numeric(length(cells))
+    )
+    if (is.null(dim(values))) values else rowMeans(values)
+  }
+
+  expect_true(env$.viewer1mEnrichDemoObject(object))
+  expect_identical(parameters$main_group, "seurat_clusters")
+  expect_false("illustrative" %in% names(object$trajectories))
+  expect_named(object$trajectories$marker_guided, "E18_neurogenesis")
+  expect_false(env$.viewer1mEnrichDemoObject(object))
+})
+
+test_that("the Viewer uses one supported-method filter in every trajectory UI", {
+  files <- c(
+    viewer_test_path("shiny_server.R"),
+    viewer_test_path("trajectory", "projection.R"),
+    viewer_test_path("trajectory", "select_method_and_name.R")
+  )
+  for (file in files) {
+    expect_match(
+      paste(readLines(file, warn = FALSE), collapse = "\n"),
+      "viewerSupportedTrajectoryMethods(",
+      fixed = TRUE,
+      info = file
+    )
+  }
+  utility <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  expect_identical(
+    utility$viewerSupportedTrajectoryMethods(
+      c("unsupported", "marker_guided", "monocle2", "illustrative")
+    ),
+    c("marker_guided", "monocle2", "illustrative")
   )
 })
 
