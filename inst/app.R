@@ -170,6 +170,7 @@ Cerebro.options <<- list(
   "projections_show_hover_info" = FALSE
 )
 Cerebro.options <<- viewerAddMillionCellDemo(Cerebro.options)
+Cerebro.options <<- viewerAddRenDemo(Cerebro.options)
 
 options(shiny.maxRequestSize = 6 * 1024^2)
 

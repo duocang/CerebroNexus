@@ -9,10 +9,9 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_projection_UI"]] <- renderUI({
-  available_methods <- getMethodsForTrajectories()
-  available_methods <- available_methods[
-    available_methods %in% c("monocle2", "illustrative")
-  ]
+  available_methods <- viewerSupportedTrajectoryMethods(
+    getMethodsForTrajectories()
+  )
 
   if (length(available_methods) == 0) {
     return(
