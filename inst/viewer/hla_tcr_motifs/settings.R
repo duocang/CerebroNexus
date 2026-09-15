@@ -168,6 +168,85 @@ output$hla_more_parameters_ui <- renderUI({
 
 outputOptions(output, "hla_more_parameters_ui", suspendWhenHidden = FALSE)
 
+## ---- Cohort filters (settings drawer) --------------------------------- ##
+## Atlas-scale repertoires open on a deterministic sample subset that stays
+## below the motif graph's hard size guard. Every declared grouping remains
+## available so the initial cohort is transparent and fully editable.
+output$hla_group_filters_ui <- renderUI({
+  groups <- hla_filter_groups()
+  levels <- hla_filter_levels()
+  defaults <- hla_default_filter_selections()
+  if (length(groups) == 0) {
+    return(helpText("No sample or grouping columns are available to filter by."))
+  }
+  filters <- lapply(groups, function(group) {
+    group_levels <- levels[[group]]
+    colors <- tryCatch(
+      unname(reactive_colors()[[group]][group_levels]),
+      error = function(e) NULL
+    )
+    if (is.null(colors) || length(colors) != length(group_levels)) {
+      colors <- cerebro_group_colors(length(group_levels))
+    }
+    groupFilterControl(
+      paste0("hla_group_filter_", group),
+      group,
+      group_levels,
+      colors,
+      selected = defaults[[group]]
+    )
+  })
+  div(
+    class = "cerebro-group-filters",
+    div(class = "cv-filters-row", filters),
+    uiOutput("hla_filter_status", class = "cerebro-settings-full")
+  )
+})
+
+output$hla_filter_status <- renderUI({
+  levels <- hla_filter_levels()
+  selected <- hla_filter_selections()
+  seg <- hla_segments()
+  sample_total <- length(levels[["sample"]] %||% character(0))
+  sample_selected <- length(selected[["sample"]] %||% character(0))
+  unique_cdr3 <- if (is.null(seg)) 0L else length(unique(seg$cdr3))
+  auto_limited <- sample_total > sample_selected &&
+    identical(selected[["sample"]], hla_initial_samples())
+  tags$p(
+    class = if (auto_limited) "text-warning" else "text-muted",
+    style = "font-size: 11px; margin: 8px 0 0;",
+    if (sample_total > 0) {
+      sprintf(
+        "%s%d/%d samples; %s unique CDR3s in the active cohort.",
+        if (auto_limited) "Recommended initial cohort: " else "Active cohort: ",
+        sample_selected,
+        sample_total,
+        format(unique_cdr3, big.mark = ",")
+      )
+    } else {
+      sprintf(
+        "Active cohort: %s unique CDR3s.",
+        format(unique_cdr3, big.mark = ",")
+      )
+    }
+  )
+})
+
+outputOptions(output, "hla_group_filters_ui", suspendWhenHidden = FALSE)
+outputOptions(output, "hla_filter_status", suspendWhenHidden = FALSE)
+
+registerGroupFiltersInfo(
+  input,
+  "hla",
+  title = "Cohort filters for HLA & TCR Motifs",
+  text = HTML(paste(
+    "Select sample or metadata levels to define the cohort used by the motif",
+    "network and HLA Associations. Filters are combined with AND across",
+    "grouping variables. Very large repertoires start with a deterministic",
+    "sample subset because an all-data motif network is too large to interpret."
+  ))
+)
+
 ## Keep the colour-by picker's options current WITHOUT rebuilding the panel.
 ## The choices depend on scope (pair scope swaps "MHC context" for "Pair class")
 ## and on the data; the picker is rendered once from isolate(hla_color_by_choices())

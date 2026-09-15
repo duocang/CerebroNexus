@@ -2,7 +2,14 @@
 ## Shared Linked views-style group filters for projection-style tabs.
 ##----------------------------------------------------------------------------##
 
-groupFilterControl <- function(input_id, label, levels, colors) {
+groupFilterControl <- function(
+  input_id,
+  label,
+  levels,
+  colors,
+  selected = levels
+) {
+  selected <- intersect(as.character(selected), as.character(levels))
   shiny::div(
     id = input_id,
     class = "cv-filt shiny-input-checkboxgroup",
@@ -16,7 +23,7 @@ groupFilterControl <- function(input_id, label, levels, colors) {
       " ",
       shiny::tags$span(
         class = "cv-filt-ct",
-        paste0(length(levels), "/", length(levels))
+        paste0(length(selected), "/", length(levels))
       )
     ),
     shiny::div(
@@ -35,7 +42,7 @@ groupFilterControl <- function(input_id, label, levels, colors) {
             type = "checkbox",
             name = input_id,
             value = level,
-            checked = "checked"
+            checked = if (level %in% selected) "checked" else NULL
           ),
           shiny::tags$span(
             class = "cv-dot",
