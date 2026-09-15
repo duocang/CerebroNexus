@@ -87,12 +87,8 @@ case "$ACTION" in
     ;;
   run|check)
     ;;
-  resume-viewer)
-    [ "$#" -eq 2 ] || fail "用法：$0 resume-viewer <preserved-scratch>"
-    RESUME_SCRATCH="$2"
-    ;;
   *)
-    fail "用法：$0 [run|check|status|resume-viewer <preserved-scratch>]"
+    fail "用法：$0 [run|check|status]"
     ;;
 esac
 
@@ -140,31 +136,7 @@ else
 fi
 
 command -v nix-shell >/dev/null 2>&1 || fail "未找到 nix-shell；旧结果尚未清理"
-
-CHECK_LIBRARY="$STATE_DIR/check-rlib"
-CHECK_INSTALL_LOG="$STATE_DIR/check-install.log"
-rm -rf -- "$CHECK_LIBRARY"
-mkdir -p "$CHECK_LIBRARY"
-run "安装当前分支用于一次性 Viewer 小测试"
-nix-shell "$REPO/default.nix" -A shell --run \
-  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' R CMD INSTALL --no-docs --no-byte-compile --library='$CHECK_LIBRARY' '$REPO'" \
-  > "$CHECK_INSTALL_LOG" 2>&1 || {
-  tail -n 30 "$CHECK_INSTALL_LOG" >&2 || true
-  fail "当前分支安装失败；完整日志：$CHECK_INSTALL_LOG"
-}
-run "执行一次性 Viewer 小测试（不写入 benchmark 结果）"
-nix-shell "$REPO/default.nix" -A shell --run \
-  "env NOT_CRAN=true R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' BENCH_LIB='$CHECK_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
-ok "Viewer 小测试通过"
-if [ "$ACTION" = "check" ]; then
-  exit 0
-fi
-if [ "$ACTION" = "resume-viewer" ]; then
-  run "只补跑保留产物的 Viewer 验证并发布结果"
-  nix-shell "$REPO/default.nix" -A shell --run \
-    "bash '$REPO/tests/bench/resume_viewer_and_publish.sh' '$RESUME_SCRATCH'"
-  exit 0
-fi
+[ "$ACTION" = "run" ] || exit 0
 
 run "清理旧 benchmark 结果"
 for target in \

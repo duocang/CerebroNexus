@@ -4,17 +4,14 @@ The publication workflow compares CerebroNexus on two complete public single-cel
 
 > **Current status:** historical evidence has been retired. No publication result is current until `run_publication_full.sh` completes and publishes a new immutable run.
 
-Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.md) before interpreting generated values.
+Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.md) before interpreting generated values. [PRELIMINARY_BACKEND_RESULTS.md](PRELIMINARY_BACKEND_RESULTS.md) records the rounded backend observations recovered from the last browser-gate-aborted run; it is not publication evidence.
 
 ## Publication run
 
 Use a clean checkout, the pinned Nix environment, an exclusive high-memory node, a persistent checksum-verified source cache, and local scratch storage.
 
-The publication runner enables Chromium WebGPU with
-`--enable-unsafe-webgpu` and verifies that `requestAdapter()` succeeds before
-downloading sources or starting backend measurements. It intentionally does
-not force a Vulkan ANGLE backend. A failed run keeps its scratch directory by
-default; set `BENCH_KEEP_ON_FAILURE=0` only when automatic cleanup is desired.
+A failed run keeps its scratch directory by default; set
+`BENCH_KEEP_ON_FAILURE=0` only when automatic cleanup is desired.
 
 ```bash
 nix-shell default.nix -A shell
@@ -31,16 +28,14 @@ BENCH_THREADS=1 \
 
 The publication wrapper rejects source overrides and runs exactly this grid:
 
-| sources | cells | backends | builds | access processes | Viewer processes |
-|---|---:|---|---:|---:|---:|
-| 10x mouse brain E18 | 1,306,127 | bpcells, h5 | 6 | 12 | 6 |
-| PsychAD HBCC human PFC | 1,486,324 | bpcells, h5 | 6 | 12 | 6 |
+| sources | cells | backends | builds | access processes |
+|---|---:|---|---:|---:|
+| 10x mouse brain E18 | 1,306,127 | bpcells, h5 | 6 | 12 |
+| PsychAD HBCC human PFC | 1,486,324 | bpcells, h5 | 6 | 12 |
 
 `embedded` is recorded as not representable because each complete matrix exceeds the 32-bit non-zero index limit of `Matrix::dgCMatrix`; it is not attempted on a smaller substitute.
 
 Each source has one frozen 12-gene query plan. Runtime measurements cover full-cell single-gene and 12-gene reads plus deterministic reverse-ordered, non-contiguous reads of up to 100,000 cells. CRBs are written with the default qs2 codec, BPCells uses CerebroNexus's production gene-major writer, and fresh-process startup uses `readCerebro()`.
-
-Every build is also exercised by a fresh standalone App/browser process. Publication requires all cells to render with WebGPU, no renderer error or context loss, and successful hover, box selection, zoom, gene switching, and Linked Views. Timings and JavaScript heap use are therefore replicated three times per source/backend pair.
 
 Validated runs are published under `result/publication-full/runs/<run-id>/`; `CURRENT` changes last.
 
@@ -84,7 +79,6 @@ The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_view
 | `05_prepare_query_plan.R` | freeze the untimed query plan and reference fingerprints |
 | `11_build_full_backend.R` | build one complete-source backend and production CRB |
 | `20_measure_backend.R` | measure hydrated startup and expression access |
-| `21_measure_viewer.R` | run one full standalone Viewer observation |
 | `30_check_measurements.R` | reject incomplete, failed, or inconsistent evidence |
 | `40_write_report.R` / `41_draw_figures.R` | generate the report and publication overview |
 | `50_check_outputs.R` | validate the report package |

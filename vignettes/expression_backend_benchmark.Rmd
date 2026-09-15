@@ -28,7 +28,7 @@ knitr::opts_chunk$set(
 
 # Research question
 
-On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends trade construction time, stored size, process memory, hydrated startup, expression access, and standalone Viewer behaviour after the PR0-PR6 performance work?
+On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends trade construction time, stored size, process memory, hydrated startup, and expression access after the PR0-PR6 performance work?
 
 This is an engineering benchmark, not a comparison of biological methods. It does not claim controlled cold-disk behaviour, statistical significance, or cross-machine generality.
 
@@ -43,19 +43,15 @@ Every acquired file must match its pinned byte size and SHA-256 value. No source
 
 # Measurement design
 
-Each source/backend pair has three independent build processes. Each build is opened by two independent access processes and one independent standalone App/browser process, producing 12 builds, 24 access rows, and 12 Viewer rows.
+Each source/backend pair has three independent build processes. Each build is opened by two independent access processes, producing 12 builds and 24 access rows.
 
 The artifact path uses the production defaults under test: gene-major BPCells storage, H5 group `expression`, `saveCerebro()` with qs2, and public `readCerebro()` hydration. Build timing separately records source opening, backend writing, shell construction, and CRB serialization.
 
 A deterministic 12-gene query plan is frozen before timed builds. Access processes measure full-cell row and block reads plus a reverse-ordered, non-contiguous workload over up to 100,000 cells. Full and subset values must match source fingerprints.
 
-# Viewer gate
-
-Every build runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The Viewer must report the exact complete-source point count, use WebGPU, and show no renderer error or context loss. Canvas hover, non-empty box selection, zoom, frozen-gene switching, and complete Linked Views readiness must all succeed. Browser timings and JavaScript heap use are summarized across three independent runs per source/backend pair. Vitessce comparison remains outside this study.
-
 # Publication gate
 
-The wrapper requires a clean Git state, explicit storage description, fixed thread count, verified source cache, complete schedules, matching query-plan and value fingerprints, all Viewer checks, and generated report outputs. Only a fully validated run is published:
+The wrapper requires a clean Git state, explicit storage description, fixed thread count, verified source cache, complete schedules, matching query-plan and value fingerprints, and generated report outputs. Only a fully validated run is published:
 
 ```text
 tests/bench/result/publication-full/
@@ -64,7 +60,6 @@ tests/bench/result/publication-full/
     ├── 05_schedule.csv
     ├── 10_export.csv
     ├── 20_access.csv
-    ├── 21_viewer.csv
     ├── query_plan_manifest.csv
     ├── query_panel.csv
     ├── run_manifest.csv

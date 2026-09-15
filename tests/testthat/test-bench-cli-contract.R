@@ -21,15 +21,18 @@ test_that("sweep cleanup cannot run twice through signal and exit traps", {
   expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
 })
 
-test_that("failed sweeps retain generated artifacts for diagnosis", {
+test_that("BENCH_KEEP retains generated artifacts for diagnosis", {
   skip_unless_bench_cli()
   sweep <- paste(
     readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
-  expect_false(grepl('rm -rf -- "$out_dir"', sweep, fixed = TRUE))
+  expect_match(
+    sweep,
+    'if [ "${BENCH_KEEP:-0}" != "1" ]; then\n      rm -rf -- "$out_dir"',
+    fixed = TRUE
+  )
 })
 
 test_that("sweep stages use plain names in a safe publication order", {
@@ -41,7 +44,6 @@ test_that("sweep stages use plain names in a safe publication order", {
     "04_check_resources.R",
     "10_export_backend.R",
     "20_measure_backend.R",
-    "21_measure_viewer.R",
     "30_check_measurements.R",
     "40_write_report.R",
     "41_draw_figures.R",
@@ -213,55 +215,19 @@ test_that("shared sweep selects the full-source build and resource paths", {
   expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
 })
 
-test_that("full-source sweep runs Viewer checks for every build", {
+test_that("full-source sweep excludes Viewer checks", {
   skip_unless_bench_cli()
-  script <- file.path(bench_root, "src", "21_measure_viewer.R")
-  expect_true(file.exists(script))
-
   sweep <- paste(
     readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
     collapse = "\n"
   )
-  expect_match(sweep, 'VIEWER_CSV="$STAGE/21_viewer.csv"', fixed = TRUE)
-  expect_match(sweep, "bundle_secs,launch_secs,hover_secs", fixed = TRUE)
-  expect_match(sweep, '[ "$BENCH_PROFILE" = "panel_c2" ]', fixed = TRUE)
-  expect_false(grepl('[ "$export_repeat" = "1" ]', sweep, fixed = TRUE))
-  expect_match(sweep, "21_measure_viewer.R", fixed = TRUE)
-  expect_match(sweep, "04_check_webgpu.R", fixed = TRUE)
+  expect_false(grepl("21_viewer.csv", sweep, fixed = TRUE))
+  expect_false(grepl("21_measure_viewer.R", sweep, fixed = TRUE))
+  expect_false(grepl("04_check_webgpu.R", sweep, fixed = TRUE))
   expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
-
-  if (file.exists(script)) {
-    body <- paste(readLines(script, warn = FALSE), collapse = "\n")
-    expect_match(body, "bench_run_viewer_validation", fixed = TRUE)
-    expect_match(body, "readRDS(query_plan_path)", fixed = TRUE)
-    expect_match(body, 'role == "first"', fixed = TRUE)
-  }
 })
 
-test_that("publication runner can resume Viewer from retained artifacts", {
-  skip_unless_bench_cli()
-  wrapper <- paste(
-    readLines(
-      file.path(bench_root, "update_and_run_publication_full.sh"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  resume <- file.path(bench_root, "resume_viewer_and_publish.sh")
-
-  expect_true(file.exists(resume))
-  expect_match(wrapper, "resume-viewer", fixed = TRUE)
-  expect_match(wrapper, "resume_viewer_and_publish.sh", fixed = TRUE)
-  if (file.exists(resume)) {
-    body <- paste(readLines(resume, warn = FALSE), collapse = "\n")
-    expect_match(body, "verified $expected retained CRB artifacts", fixed = TRUE)
-    expect_match(body, "21_measure_viewer.R", fixed = TRUE)
-    expect_match(body, "30_check_measurements.R", fixed = TRUE)
-    expect_match(body, "60_publish_results.R", fixed = TRUE)
-  }
-})
-
-test_that("full-source Viewer evidence and figure are required", {
+test_that("full-source backend figure is required", {
   skip_unless_bench_cli()
   output_check <- paste(
     readLines(
@@ -276,7 +242,7 @@ test_that("full-source Viewer evidence and figure are required", {
   )
 
   expect_match(output_check, 'identical(profile, "panel_c2")', fixed = TRUE)
-  expect_match(output_check, "21_viewer.csv", fixed = TRUE)
+  expect_false(grepl("21_viewer.csv", output_check, fixed = TRUE))
   expect_match(
     output_check,
     "expression_backend_benchmark_overview.png",
@@ -285,7 +251,7 @@ test_that("full-source Viewer evidence and figure are required", {
   expect_match(wrapper, "run_sweep.sh", fixed = TRUE)
 })
 
-test_that("benchmark docs define replicated full-source Viewer evidence", {
+test_that("benchmark docs scope publication evidence to expression backends", {
   skip_unless_bench_cli()
   repo <- normalizePath(file.path(bench_root, "..", ".."))
   paths <- c(
@@ -297,19 +263,11 @@ test_that("benchmark docs define replicated full-source Viewer evidence", {
   )
   docs <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
 
-  expect_match(docs, "createShinyApp()", fixed = TRUE)
-  expect_match(docs, "WebSocket", fixed = TRUE)
-  expect_match(docs, "Canvas hover", fixed = TRUE)
-  expect_match(docs, "box selection", fixed = TRUE)
-  expect_match(docs, "zoom", fixed = TRUE)
-  expect_match(docs, "gene switching", fixed = TRUE)
-  expect_match(docs, "Linked Views", fixed = TRUE)
-  expect_match(docs, "12", fixed = TRUE)
+  expect_match(docs, "backend construction", fixed = TRUE)
+  expect_match(docs, "expression access", fixed = TRUE)
   expect_match(docs, "three independent", fixed = TRUE)
-  expect_match(docs, "WebGPU", fixed = TRUE)
-  expect_match(docs, "Vitessce", fixed = TRUE)
-  expect_false(grepl("not end-to-end biological analysis or Viewer UX", docs))
-  expect_false(grepl("browser experiments are required", docs))
+  expect_false(grepl("21_viewer.csv", docs, fixed = TRUE))
+  expect_false(grepl("Viewer gate", docs, fixed = TRUE))
 })
 
 test_that("source cache reuses only checksum-verified files", {

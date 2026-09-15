@@ -31,7 +31,6 @@ access <- read_if("20_access.csv")
 crashes <- read_if("crashes.csv")
 manifest <- read_if("run_manifest.csv")
 source_manifest <- read_if("source_manifest.csv")
-viewer <- read_if("21_viewer.csv")
 
 if (is.null(manifest)) {
   stop(
@@ -262,47 +261,6 @@ if (!is.null(access) && nrow(access)) {
     ),
     ""
   )
-}
-
-if (!is.null(viewer) && nrow(viewer)) {
-  viewer_summary <- bench_summarise_metrics(
-    viewer,
-    group = c("source", "n_cells", "backend"),
-    metrics = c(
-      "bundle_secs",
-      "launch_secs",
-      "gene_secs",
-      "linked_secs",
-      "js_heap_mb"
-    )
-  )
-  out <- c(
-    out,
-    "## Standalone Viewer",
-    "",
-    "Each source/backend has three independent App and browser processes. Every row must render all cells with WebGPU and pass hover, selection, zoom, gene switching, and Linked Views.",
-    "",
-    "| source | cells | backend | bundle s | launch s | gene s | Linked Views s | JS heap MB |",
-    "|---|---:|---|---:|---:|---:|---:|---:|"
-  )
-  for (i in seq_len(nrow(viewer_summary))) {
-    row <- viewer_summary[i, , drop = FALSE]
-    out <- c(
-      out,
-      sprintf(
-        "| %s | %s | %s | %s | %s | %s | %s | %s |",
-        row$source,
-        format(row$n_cells, big.mark = ","),
-        row$backend,
-        interval(row, "bundle_secs", 2L),
-        interval(row, "launch_secs", 2L),
-        interval(row, "gene_secs", 2L),
-        interval(row, "linked_secs", 2L),
-        interval(row, "js_heap_mb", 0L)
-      )
-    )
-  }
-  out <- c(out, "")
 }
 
 if (

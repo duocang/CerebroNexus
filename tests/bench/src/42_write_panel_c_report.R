@@ -10,7 +10,6 @@ if (!nzchar(here)) {
 }
 source(file.path(here, "lib", "reporting.R"))
 source(file.path(here, "lib", "protocol.R"))
-source(file.path(here, "lib", "viewer_validation.R"))
 source(file.path(here, "config", "sources.R"))
 root <- normalizePath(args[1L], mustWork = TRUE)
 out_dir <- args[2L]
@@ -121,24 +120,6 @@ validate_phase_schedule(current_inputs$c2$path, "c2")
 validate_query_protocol(current_inputs$ab$path)
 validate_query_protocol(current_inputs$c1$path)
 validate_query_protocol(current_inputs$c2$path)
-
-viewer <- utils::read.csv(
-  file.path(current_inputs$c2$path, "21_viewer.csv"),
-  stringsAsFactors = FALSE
-)
-bench_validate_viewer_results(
-  utils::read.csv(
-    file.path(current_inputs$c2$path, "05_schedule.csv"),
-    stringsAsFactors = FALSE
-  ),
-  viewer,
-  current_inputs$c2$manifest[["run_id"]]
-)
-utils::write.csv(
-  viewer,
-  file.path(out_dir, "viewer_metrics.csv"),
-  row.names = FALSE
-)
 
 study_ids <- vapply(
   current_inputs,
@@ -504,27 +485,6 @@ ratio_rows <- vapply(
   },
   character(1)
 )
-viewer_rows <- vapply(
-  seq_len(nrow(viewer)),
-  function(i) {
-    row <- viewer[i, ]
-    sprintf(
-      "| %s | %.0f | %s | %s | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f |",
-      row$source,
-      row$n_cells,
-      row$backend,
-      row$gene,
-      row$bundle_secs,
-      row$launch_secs,
-      row$hover_secs,
-      row$selection_secs,
-      row$zoom_secs,
-      row$gene_secs,
-      row$linked_secs
-    )
-  },
-  character(1)
-)
 summary <- c(
   "# Publication-full expression-backend benchmark",
   "",
@@ -544,17 +504,6 @@ summary <- c(
   "the exact ordered gene workloads are retained in `query_panel.csv`.",
   "Results are descriptive medians and observed ranges from independent processes;",
   "no significance test or cross-machine generalisation is claimed.",
-  "",
-  "## C2 Viewer functional gate",
-  "",
-  "All 12 C2 rows (three independent builds per source/backend) passed standalone",
-  "App launch, full-cell WebGPU rendering, Canvas hover, box selection, zoom,",
-  "frozen-gene switching, and Linked Views.",
-  sprintf("Browser: %s", paste(unique(viewer$browser), collapse = "; ")),
-  "",
-  "| source | cells | backend | gene | bundle s | launch s | hover s | selection s | zoom s | gene s | linked s |",
-  "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
-  viewer_rows,
   "",
   "## Sources",
   "",

@@ -2,7 +2,7 @@
 
 ## Research question
 
-On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends compare in backend construction, stored size, memory, hydrated startup, expression access, and standalone Viewer behaviour after the PR0-PR6 performance work?
+On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpcells` and `h5` backends compare in backend construction, stored size, memory, hydrated startup, and expression access after the PR0-PR6 performance work?
 
 This is descriptive engineering evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
 
@@ -14,7 +14,7 @@ Neither source is sampled or cropped. `embedded` is excluded because both comple
 
 ## Experimental units
 
-For each source/backend pair, three fresh R processes independently open the complete source, stream the backend, construct the Cerebro shell, and serialize the CRB. Backend order alternates across repeats. Each artifact is opened by two fresh access processes, yielding six access observations per source/backend. Every artifact is also passed through one fresh standalone App and browser process, yielding three Viewer observations per source/backend and 12 Viewer rows overall.
+For each source/backend pair, three fresh R processes independently open the complete source, stream the backend, construct the Cerebro shell, and serialize the CRB. Backend order alternates across repeats. Each artifact is opened by two fresh access processes, yielding six access observations per source/backend.
 
 Processes run sequentially with a fixed thread count on an exclusive node. Reports show medians, observed minima/maxima, and independent-process `n`; no significance test is performed.
 
@@ -32,21 +32,14 @@ The access workload measures hydrated startup, the first full-cell single-gene r
 
 The first getter call is fresh-process but not controlled cold disk; the operating-system page cache may be warm. Every result is fingerprinted outside the timed expression. Any full or subset mismatch invalidates the run.
 
-## Standalone Viewer workload
-
-Each artifact runs through `createShinyApp()`, `runApp()`, the Shiny WebSocket, and Chrome. The driver records bundle and launch time, verifies the exact scheduled point count, accepts either WebGPU or the application's Canvas2D fallback, records the actual renderer backend and diagnostics, and records JavaScript heap use. Before source downloads or timed measurements, a disposable small-data Viewer run checks launch, rendering, hover, selection, zoom, gene switching, and linked views without writing benchmark results.
-
-The driver then requires visible Canvas hover feedback, a non-empty box selection with server round-trip, zoom with an active minimap, frozen-gene switching with positive expression, and complete Linked Views readiness. All 12 browser rows are mandatory publication evidence. Vitessce and cross-browser comparison remain outside this study.
-
 ## Provenance and publication gate
 
-The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed processes, mismatched plans, incorrect values, Canvas fallback, incomplete point counts, GPU failures, missing figures, or dirty publication state reject the run before immutable publication.
+The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed processes, mismatched plans, incorrect values, missing figures, or dirty publication state reject the run before immutable publication.
 
 Validated evidence is published under `result/publication-full/runs/<run-id>/`, and `CURRENT` is updated only after all checks pass.
 
 ## Interpretation limits
 
-- Synthetic metadata and sinusoidal projection coordinates isolate backend and Viewer engineering; they are not biological results.
+- Synthetic metadata and sinusoidal projection coordinates make the serialized shell structurally complete; they are not biological results.
 - The 100,000-cell access subset is a query workload, not a sampled study cohort.
-- Browser timings describe the recorded host and Chrome build only.
 - Historical one-million-cell fixtures remain reproducibility artifacts for earlier PR comparisons and do not contribute to the paper benchmark.

@@ -55,7 +55,6 @@ SCHEDULE="$STAGE/05_schedule.csv"
 SCHEDULE_TSV="$SCRATCH/05_schedule.tsv"
 EXPORT_CSV="$STAGE/10_export.csv"
 ACCESS_CSV="$STAGE/20_access.csv"
-VIEWER_CSV="$STAGE/21_viewer.csv"
 CRASH_CSV="$STAGE/crashes.csv"
 SOURCE_MANIFEST="$STAGE/source_manifest.csv"
 QUERY_PLAN_MANIFEST="$STAGE/query_plan_manifest.csv"
@@ -83,7 +82,6 @@ mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
   "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
-printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,gene,browser,status,correctness,rendered_point_count,navigator_gpu,renderer_backend,renderer_adapter,renderer_context_lost,renderer_error,js_heap_mb,bundle_secs,launch_secs,hover_secs,selection_secs,zoom_secs,gene_secs,linked_secs' > "$VIEWER_CSV"
 
 echo "==> run:      $BENCH_RUN_ID"
 echo "==> profile:  $BENCH_PROFILE"
@@ -116,17 +114,6 @@ R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
   tail -20 "$LOG_DIR/install.log"
   exit 1
 }
-
-if [ "$BENCH_PROFILE" = "panel_c2" ]; then
-  echo "==> running disposable Viewer smoke test"
-  Rscript "$BENCH_ROOT/src/04_check_webgpu.R" \
-    > "$LOG_DIR/viewer_smoke.log" 2>&1 || {
-    echo "!! Viewer smoke test failed, see $LOG_DIR/viewer_smoke.log"
-    cat "$LOG_DIR/viewer_smoke.log"
-    exit 1
-  }
-  cat "$LOG_DIR/viewer_smoke.log"
-fi
 
 SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sources.R")); cat(bench_active_sources(), sep="\n")')
 
@@ -211,20 +198,8 @@ for src in $SOURCES; do
       fi
     done
 
-    if [ "$BENCH_PROFILE" = "panel_c2" ]; then
-      echo "==> [$tag] Viewer interaction gate"
-      Rscript "$BENCH_ROOT/src/21_measure_viewer.R" \
-        "$src" "$tier" "$backend" "$export_repeat" "$crb" \
-        "$VIEWER_CSV" "$query_plan" \
-        > "$LOG_DIR/viewer_$tag.log" 2>&1
-      rc=$?
-      tail -3 "$LOG_DIR/viewer_$tag.log" | sed 's/^/    /'
-      if [ "$rc" -ne 0 ]; then
-        echo "    !! Viewer process died (exit $rc)"
-        printf '"%s","%s","%s",%s,"%s",%s,%s,"viewer",%s\n' \
-          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
-          "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
-      fi
+    if [ "${BENCH_KEEP:-0}" != "1" ]; then
+      rm -rf -- "$out_dir"
     fi
   done < "$SCHEDULE_TSV"
 

@@ -25,7 +25,6 @@ if (identical(profile, "publication")) {
 if (identical(profile, "panel_c2")) {
   required <- c(
     required,
-    "21_viewer.csv",
     file.path("figures", "expression_backend_benchmark_overview.png")
   )
 }

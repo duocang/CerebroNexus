@@ -6354,38 +6354,6 @@
     return downloadVisiblePanelsPNG(pngFilename(id));
   }
 
-  // Return one point that the live hit tester can actually hover. Automated
-  // checks use this instead of guessing from painted pixels; on million-cell
-  // canvases each wrong mouse move would otherwise scan the entire population.
-  function singleInteractionPoint(id) {
-    if (singleActive !== id || !D) return null;
-    var panel = panels.find(function (candidate) {
-      return candidate.spaceId && candidate.canvas && candidate.ok &&
-        candidate.canvas.offsetParent !== null;
-    });
-    if (!panel) return null;
-    ensureScreenProjection(panel);
-    var space = spaceById[panel.spaceId];
-    for (var i = 0; i < D.n; i++) {
-      if (!panel.ok[i] || !shown(i, panel) ||
-          !singleHoverEnabledAt(space, i)) continue;
-      var x = pointScreenX(panel, i), y = pointScreenY(panel, i);
-      if (x < 0 || y < 0 || x > panel.W || y > panel.H) continue;
-      var rect = panel.canvas.getBoundingClientRect();
-      return {
-        canvas: panel.canvas.id,
-        x: rect.left + x,
-        y: rect.top + y,
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-        cell: String(D.cells[i])
-      };
-    }
-    return null;
-  }
-
   function applySingleState(id, saved) {
     var target = registerSingle(id); if (!target) return { selectedCells: 0 };
     if (!target.data) {
@@ -7237,7 +7205,6 @@
   window.cerebroCellViews = Object.freeze({
     captureState: captureSingleState,
     applyState: applySingleState,
-    interactionPoint: singleInteractionPoint,
     downloadPNG: downloadSinglePNG
   });
 

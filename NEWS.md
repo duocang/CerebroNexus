@@ -85,7 +85,7 @@
 
 ## Benchmark
 
-- The publication benchmark now uses every cell in both public million-scale sources, with no 50k, 150k, or one-million-cell publication subset. BPCells and H5 each receive three independent builds, six fresh access processes, and three standalone Viewer processes per source. The Viewer gate requires exact full-cell WebGPU rendering, Canvas hover, box selection, zoom, frozen-gene switching, and Linked Views; Vitessce remains outside this benchmark.
+- The publication benchmark now uses every cell in both public million-scale sources, with no 50k, 150k, or one-million-cell publication subset. BPCells and H5 each receive three independent builds and six fresh access processes per source.
 
 ## Viewer
 

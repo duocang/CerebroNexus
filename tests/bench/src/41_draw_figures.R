@@ -135,7 +135,7 @@ p_hot <- panel_line(
   access_summary,
   "hot_p50_secs",
   "Interactive single-gene latency",
-  "warmed Viewer gene lookup; median and range; log scale",
+  "warmed expression lookup; median and range; log scale",
   "seconds"
 )
 p_block <- panel_line(

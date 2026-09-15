@@ -13,9 +13,8 @@ Start with:
 3. `05_schedule.csv` and `resource_check.csv` for the exact complete-source grid;
 4. `10_export.csv` for build observations;
 5. `20_access.csv` for hydrated startup and expression access;
-6. `21_viewer.csv` for the 12 standalone Viewer observations;
-7. `query_plan_manifest.csv` and `query_panel.csv` for the frozen workload and correctness references;
-8. `figures/expression_backend_benchmark_overview.png` for the publication overview.
+6. `query_plan_manifest.csv` and `query_panel.csv` for the frozen workload and correctness references;
+7. `figures/expression_backend_benchmark_overview.png` for the publication overview.
 
 ## Interpret metrics
 
@@ -35,13 +34,10 @@ A value such as `2.4 [2.2-2.9], n=6` is a median of 2.4, an observed process ran
 | `hot_p50_secs`, `hot_p95_secs` | warmed full-cell single-gene distribution |
 | `block_secs` | deterministic 12-gene-by-all-cells read |
 | `subset_row_secs`, `subset_block_secs` | reverse-ordered non-contiguous access over up to 100,000 cells |
-| Viewer `bundle_secs`, `launch_secs` | standalone App construction and first complete overview |
-| `hover_secs`, `selection_secs`, `zoom_secs`, `gene_secs`, `linked_secs` | required browser interaction steps |
-| `js_heap_mb` | browser JavaScript heap after the workload |
 
 ## Correctness requirements
 
-Every successful access row must have `status = OK`, `correctness = OK`, and matching full-row, full-block, subset-row, subset-block, and query-plan fingerprints. Every Viewer row must render exactly `n_cells` points with `renderer_backend = webgpu`, no context loss, no renderer error, and successful interaction checks.
+Every successful access row must have `status = OK`, `correctness = OK`, and matching full-row, full-block, subset-row, subset-block, and query-plan fingerprints.
 
 `embedded` has no complete-source observation because neither source is representable as `dgCMatrix`. This is a feasibility boundary, not zero performance or a failed attempt.
 
@@ -51,8 +47,6 @@ Every successful access row must have `status = OK`, `correctness = OK`, and mat
 - universal or cross-machine performance;
 - statistical significance from three builds;
 - biological-method quality;
-- concurrent-user or cross-browser performance;
-- comparison with Vitessce;
 - full-source `embedded` support.
 
-The study supports the narrower claim that two complete public million-scale matrices were processed and viewed through CerebroNexus's production out-of-core paths on one fully recorded host.
+The study supports the narrower claim that two complete public million-scale matrices were processed through CerebroNexus's production out-of-core paths on one fully recorded host.

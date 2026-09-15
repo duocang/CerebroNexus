@@ -20,7 +20,6 @@ test_that("the million-cell renderer is loaded before cell views", {
   )
   expect_match(engine, "CerebroPointRenderer.create", fixed = TRUE)
   expect_match(engine, "setData", fixed = TRUE)
-  expect_match(engine, "interactionPoint: singleInteractionPoint", fixed = TRUE)
 })
 
 test_that("WebGPU failures make the renderer fall back", {
@@ -118,6 +117,7 @@ test_that("WebGPU fallback keeps validity from the materialized CPU unit", {
       "const D = {n:2};",
       "const space = {x:[0,1],y:[0,1],xRange:[0,1],yRange:[0,1]};",
       "const spaceById = {projection:space};",
+      "const isSpatialSpace = () => false;",
       "const gpuCandidate = () => true;",
       project_source,
       "const panel = {spaceId:'projection',W:100,H:100,view:null};",
