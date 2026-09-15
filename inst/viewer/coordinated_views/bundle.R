@@ -1620,11 +1620,20 @@ cv_build_clone <- function(crb, cells, n) {
 ## Separators and case are irrelevant; a short edit-distance fallback catches
 ## common transpositions such as "Cell Tyep". Cell type wins over sample, and a
 ## data set with neither starts on one randomly selected categorical field.
-cv_default_group <- function(available) {
+cv_default_group <- function(available, preferred = NULL) {
   available <- unique(as.character(available))
   available <- available[!is.na(available) & nzchar(available)]
   if (!length(available)) {
     return(NULL)
+  }
+  preferred <- tryCatch(as.character(preferred), error = function(e) {
+    character()
+  })
+  preferred <- preferred[
+    !is.na(preferred) & nzchar(preferred) & preferred %in% available
+  ]
+  if (length(preferred)) {
+    return(preferred[[1L]])
   }
 
   normalized <- tolower(gsub("[^[:alnum:]]", "", available))
@@ -1661,9 +1670,84 @@ cv_default_group <- function(available) {
   sample(available, 1L)
 }
 
+cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
+  group_candidates <- group_names[vapply(
+    group_names,
+    function(name) {
+      value <- md[[name]]
+      if (is.null(value)) {
+        return(FALSE)
+      }
+      levels <- if (is.factor(value)) {
+        levels(value)
+      } else {
+        unique(as.character(value))
+      }
+      any(!is.na(levels))
+    },
+    logical(1)
+  )]
+  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
+  extra_candidates <- character()
+  skipped <- list()
+  for (name in setdiff(colnames(md), c("cell_barcode", group_names))) {
+    value <- md[[name]]
+    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
+      next
+    }
+    levels <- if (is.factor(value)) {
+      levels(value)
+    } else {
+      unique(as.character(value))
+    }
+    levels <- levels[!is.na(levels)]
+    if (!length(levels)) {
+      next
+    }
+    if (length(levels) > max_levels) {
+      skipped[[name]] <- length(levels)
+    } else {
+      extra_candidates <- c(extra_candidates, name)
+    }
+  }
+  parameters <- tryCatch(crb$getParameters(), error = function(e) list())
+  default_group <- cv_default_group(
+    c(group_candidates, extra_candidates),
+    parameters[["main_group"]]
+  )
+  groups <- list()
+  cat_extra <- list()
+  fields <- list()
+  if (!is.null(default_group) && default_group %in% group_candidates) {
+    groups <- cv_build_groups(crb, md, colors_fn, default_group)
+  } else if (!is.null(default_group)) {
+    cat_extra <- cv_build_extra_groups(
+      md,
+      group_names,
+      colors_fn,
+      default_group
+    )$groups
+  } else {
+    for (name in setdiff(colnames(md), "cell_barcode")) {
+      fields <- cv_build_fields(md, only = name)
+      if (length(fields)) {
+        default_group <- paste0(cv_field_mode, names(fields)[1L])
+        break
+      }
+    }
+  }
+  list(
+    groups = groups,
+    cat_extra = cat_extra,
+    cat_skipped = skipped,
+    fields = fields,
+    default_group = default_group
+  )
+}
+
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
-cv_build_bundle <- function(crb) {
+cv_build_bundle <- function(crb, primary_only = FALSE) {
   md <- cv_canonical_metadata(crb$getMetaData())
   if (is.null(md)) {
     return(NULL)
@@ -1687,11 +1771,28 @@ cv_build_bundle <- function(crb) {
   ##   cat_extra — other categorical columns: colour only
   ##   fields    — numeric columns (+ Trekker's physical fields): continuous
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
-  groups <- cv_build_groups(crb, md, cv_group_colors)
-  extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
-  cat_extra <- extra$groups
-  cat_skipped <- extra$skipped
-  fields <- cv_build_fields(md)
+  parameters <- tryCatch(crb$getParameters(), error = function(e) list())
+  preferred_group <- parameters[["main_group"]]
+  if (isTRUE(primary_only)) {
+    primary_colours <- cv_build_primary_colours(
+      crb,
+      md,
+      group_names,
+      cv_group_colors
+    )
+    groups <- primary_colours$groups
+    cat_extra <- primary_colours$cat_extra
+    cat_skipped <- primary_colours$cat_skipped
+    fields <- primary_colours$fields
+    default_group <- primary_colours$default_group
+  } else {
+    groups <- cv_build_groups(crb, md, cv_group_colors)
+    extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
+    cat_extra <- extra$groups
+    cat_skipped <- extra$skipped
+    fields <- cv_build_fields(md)
+    default_group <- NULL
+  }
 
   ## Every modality is independently useful. Linked views adds a coordinated
   ## workspace without changing the dedicated Projection/Spatial/Trekker pages.
@@ -1767,10 +1868,12 @@ cv_build_bundle <- function(crb) {
   ## Default colouring: prefer a cell-type-like name, then a sample-like name,
   ## then any categorical field. If no categorical field exists, use the first
   ## continuous field; with no colourable metadata the panels draw one colour.
-  available_groups <- c(names(groups), names(cat_extra))
-  default_group <- cv_default_group(available_groups)
-  if (is.null(default_group) && length(fields)) {
-    default_group <- paste0(cv_field_mode, names(fields)[1])
+  if (!isTRUE(primary_only)) {
+    available_groups <- c(names(groups), names(cat_extra))
+    default_group <- cv_default_group(available_groups, preferred_group)
+    if (is.null(default_group) && length(fields)) {
+      default_group <- paste0(cv_field_mode, names(fields)[1])
+    }
   }
 
   list(
