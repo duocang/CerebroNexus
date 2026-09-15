@@ -62,49 +62,6 @@ authorized_spatial_image_path <- function(
   image_path
 }
 
-spatialBackgroundDataUri <- local({
-  cache <- new.env(parent = emptyenv())
-  function(path, encode = NULL) {
-    info <- file.info(path)
-    if (is.na(info$size) || is.na(info$mtime)) {
-      return(NULL)
-    }
-    version <- paste(info$size, sprintf("%.9f", as.numeric(info$mtime)))
-    cached <- get0(path, envir = cache, inherits = FALSE)
-    if (!is.null(cached) && identical(cached$version, version)) {
-      return(cached$value)
-    }
-    if (is.null(encode)) {
-      if (!requireNamespace("base64enc", quietly = TRUE)) {
-        warning(
-          "[spatial] base64enc package not available, cannot encode background image"
-        )
-        return(NULL)
-      }
-      encode <- base64enc::base64encode
-    }
-    mime_type <- switch(
-      tolower(tools::file_ext(path)),
-      "jpg" = "image/jpeg",
-      "jpeg" = "image/jpeg",
-      "png" = "image/png",
-      "svg" = "image/svg+xml",
-      "image/jpeg"
-    )
-    value <- tryCatch(
-      paste0("data:", mime_type, ";base64,", encode(path)),
-      error = function(error) {
-        warning("[spatial] Failed to encode background image: ", error$message)
-        NULL
-      }
-    )
-    if (!is.null(value)) {
-      assign(path, list(version = version, value = value), envir = cache)
-    }
-    value
-  }
-})
-
 spatial_background_render_payload <- function(
   descriptor,
   allowlist,
@@ -178,7 +135,7 @@ spatial_background_render_payload <- function(
         )
       }
       image_bounds <- as.list(bounds[c("xmin", "xmax", "ymin", "ymax")])
-      image_data <- spatialBackgroundDataUri(image_path)
+      image_data <- viewerPrivateImageUrl(image_path)
     }
   }
   list(
@@ -261,14 +218,12 @@ spatial_projection_update_plot <- function(input) {
       }
     )
   )
-  ## Builder-managed images carry the exact coordinate viewport in which the
-  ## user aligned them. Reuse it instead of deriving a second fit from the cells.
+  ## The Builder viewport describes the camera used while aligning an image,
+  ## not the final Viewer camera. Keep the image bounds and transform for exact
+  ## alignment, but fit the Viewer to its current cell/ROI scope so a viewport
+  ## saved in a differently shaped Builder canvas cannot shrink the plot.
   x_range_out <- plot_parameters[["x_range"]]
   y_range_out <- plot_parameters[["y_range"]]
-  if (!is.null(background_meta$viewport_bounds)) {
-    x_range_out <- unlist(background_meta$viewport_bounds[c("xmin", "xmax")])
-    y_range_out <- unlist(background_meta$viewport_bounds[c("ymin", "ymax")])
-  }
   point_line <- if (plot_parameters[["draw_border"]]) {
     list(color = "rgb(196,196,196)", width = 1)
   } else {
@@ -387,9 +342,16 @@ spatial_projection_update_plot <- function(input) {
   if (nzchar(split_by) && split_by %in% colnames(metadata)) {
     panel_labels <- as.character(metadata[[split_by]])
     panel_labels[is.na(panel_labels) | !nzchar(panel_labels)] <- "N/A"
+    panel_order <- unique(as.character(
+      plot_parameters[["roi_order"]] %||% character()
+    ))
+    panel_order <- panel_order[
+      !is.na(panel_order) & nzchar(panel_order) & panel_order %in% panel_labels
+    ]
+    panel_order <- c(panel_order, setdiff(unique(panel_labels), panel_order))
     panel_indices <- split(
       seq_along(panel_labels),
-      factor(panel_labels, levels = unique(panel_labels)),
+      factor(panel_labels, levels = panel_order),
       drop = TRUE
     )
     panel_range <- function(values) {
@@ -431,13 +393,6 @@ spatial_projection_update_plot <- function(input) {
         image_label = configured$descriptor$label,
         image_preset = configured$preset
       )
-      if (
-        !is.null(rendered$viewport_bounds) &&
-          !identical(plot_parameters[["roi_mode"]], "separate")
-      ) {
-        result$x_range <- unlist(rendered$viewport_bounds[c("xmin", "xmax")])
-        result$y_range <- unlist(rendered$viewport_bounds[c("ymin", "ymax")])
-      }
       result
     }
     payload$data$panels <- lapply(seq_along(panel_indices), function(index) {

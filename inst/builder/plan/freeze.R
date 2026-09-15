@@ -793,7 +793,7 @@ builder_freeze_plan <- function(
           settings$marker_imports %||% list()
         ),
         images = alignments$spatial,
-        spatial_image_storage = settings$spatial_image_storage %||% "embedded",
+        spatial_image_storage = "external",
         trekker_alignment = alignments$trekker,
         colors = builder_resolve_colors(settings, entry$levels %||% list()),
         group_color_overrides = selected_color_overrides,

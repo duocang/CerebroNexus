@@ -197,7 +197,7 @@ builder_marker_import_ui <- function(id, groups, draft = NULL) {
           ns("marker_import_files"),
           "Marker gene tables",
           multiple = TRUE,
-          accept = c(".csv", ".tsv", ".xlsx")
+          accept = builder_file_accept(builder_table_extensions())
         )
       )
     } else {

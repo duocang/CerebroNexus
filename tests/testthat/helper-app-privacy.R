@@ -323,21 +323,29 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
   entries[[2L]]$settings$included_projections <- c("umap", "tsne")
   entries[[2L]]$settings$default_projection <- "tsne"
   entries[[2L]]$settings$initial_projections <- "tsne"
-  entries[[2L]]$settings$spatial_image_storage <- "embedded"
+  entries[[2L]]$settings$spatial_image_storage <- "external"
   section <- entries[[2L]]$dataset_profile$spatial$sections[[1L]]
   image_file <- write_dummy_png(file.path(root, "builder-histology.png"))
-  encoded <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(image_file)
-  )
+  inspected <- runtime$builder_read_image(image_file)
   snapshot <- runtime$builder_open_snapshot(entries[[2L]]$snapshot)
   coordinates <- runtime$builder_spatial_contract(
     snapshot,
     image = section
   )$coordinates
   bounds <- privacy_spatial_image_bounds(coordinates)
+  record <- runtime$builder_alignment_record(
+    source = list(
+      name = basename(image_file),
+      type = inspected$mime,
+      size = inspected$bytes
+    ),
+    base_bounds = bounds,
+    section = list(id = section, kind = "spatial"),
+    source_path = inspected$source_path
+  )
+  record$source_content_md5 <- inspected$source_content_md5
   entries[[2L]]$settings$images <- stats::setNames(
-    list(list(uri = encoded, bounds = bounds)),
+    list(record),
     section
   )
   release <- file.path(root, "release")
@@ -412,7 +420,7 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     app_dir = result$app_dir,
     release = release,
     section = section,
-    image_uri = encoded,
+    image_path = image_file,
     image_bounds = bounds
   )
 }

@@ -321,7 +321,8 @@ cv_image_preset <- function(spatial_name, image_label) {
 ## Resolve EXTERNAL histology images for one spatial entry of the selected data
 ## set. createShinyApp() stores them as dataset -> FOV -> image, with each leaf
 ## either a relative path or a descriptor containing path + coordinate bounds.
-## The output is base64-encoded so the browser never receives a filesystem path.
+## The output uses a private session URL: neither a filesystem path nor a
+## duplicated Base64 payload enters the browser bundle.
 cv_external_images <- function(spatial_name = NULL) {
   if (
     !exists("Cerebro.options") ||
@@ -384,33 +385,6 @@ cv_external_images <- function(spatial_name = NULL) {
     stats::setNames(as.list(numbers), required)
   }
   out <- list()
-  image_mime <- function(image_path) {
-    if (!isTRUE(file_test("-f", image_path))) {
-      return(NULL)
-    }
-    ext <- tolower(tools::file_ext(image_path))
-    if (!(ext %in% c("png", "jpg", "jpeg"))) {
-      return(NULL)
-    }
-    bytes <- tryCatch(
-      readBin(image_path, what = "raw", n = 8L),
-      error = function(error) raw()
-    )
-    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
-    if (identical(ext, "png") && identical(bytes, png_magic)) {
-      return("image/png")
-    }
-    if (
-      ext %in%
-        c("jpg", "jpeg") &&
-        length(bytes) >= length(jpeg_magic) &&
-        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
-    ) {
-      return("image/jpeg")
-    }
-    NULL
-  }
   for (i in seq_along(configured)) {
     descriptor <- configured[[i]]
     path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
@@ -420,11 +394,11 @@ cv_external_images <- function(spatial_name = NULL) {
       NULL
     }
     img_path <- cv_authorized_external_image_path(path, root)
-    if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
+    if (is.null(img_path)) {
       next
     }
-    mime <- image_mime(img_path)
-    if (is.null(mime)) {
+    private_url <- viewerPrivateImageUrl(img_path)
+    if (is.null(private_url)) {
       next
     }
     base <- basename(path)
@@ -439,12 +413,7 @@ cv_external_images <- function(spatial_name = NULL) {
       ## different FOVs distinct, while remaining stable across bundle pushes.
       id = paste0("external:", spatial_name, ":", i, ":", key),
       label = label,
-      uri = paste0(
-        "data:",
-        mime,
-        ";base64,",
-        base64enc::base64encode(img_path)
-      ),
+      uri = private_url,
       bounds = bounds,
       viewport = if (is.list(descriptor)) {
         cv_viewport_bounds(descriptor[["viewport_bounds"]])
@@ -1021,7 +990,7 @@ cv_build_projections <- function(crb, cells, only = NULL) {
 }
 
 ## One spatial SAMPLE: its per-cell x/y (aligned to `cells`, NA off-sample) plus
-## its histology image. Two image sources, ONE contract: a base64 data URI + the
+## its histology image. Two image sources, ONE contract: an image reference + the
 ## data-space bounds it covers + an alignment preset (offset in DATA units, scale
 ## unitless, flip). The client maps the bounds to screen with the same transform
 ## as the cells, so the image aligns; preset/user transforms adjust on top.
@@ -1196,7 +1165,8 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, metadata = NULL) {
     }
   }
   ## The default background, as a REFERENCE rather than a copy. A histology
-  ## image is megabytes of base64; carrying the same one under both `image` and
+  ## image reference can point to a multi-megabyte payload; carrying the same one
+  ## under both `image` and
   ## `images[1]` doubled it, and once more again for the space's own default --
   ## measured at 1.6 MB per copy on the Xenium demo, in a 3.6 MB bundle. Older
   ## readers of the singular field get the id and can look it up.
@@ -1341,7 +1311,9 @@ cv_build_trekker <- function(crb, cells, md) {
   )
   alignment <- tk[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
-  histology <- tk[["histology_image", exact = TRUE]]
+  external_histology <- viewerTrekkerExternalImage()
+  histology <- external_histology$uri %||%
+    tk[["histology_image", exact = TRUE]]
   if (
     is.character(histology) &&
       length(histology) == 1L &&
@@ -1362,7 +1334,8 @@ cv_build_trekker <- function(crb, cells, md) {
       centre <- if (length(finite_y)) finite_y[[1L]] else 0
       yr <- c(centre - 0.5, centre + 0.5)
     }
-    bounds <- tk[["histology_image_bounds", exact = TRUE]]
+    bounds <- external_histology$bounds %||%
+      tk[["histology_image_bounds", exact = TRUE]]
     required_bounds <- c("xmin", "xmax", "ymin", "ymax")
     valid_bounds <- !is.null(bounds) &&
       !is.null(names(bounds)) &&
@@ -1384,20 +1357,33 @@ cv_build_trekker <- function(crb, cells, md) {
     } else {
       character()
     }
-    label <- if (length(source) == 1L && !is.na(source) && nzchar(source)) {
+    label <- if (
+      is.character(external_histology$label) &&
+        length(external_histology$label) == 1L &&
+        !is.na(external_histology$label) &&
+        nzchar(external_histology$label)
+    ) {
+      external_histology$label
+    } else if (length(source) == 1L && !is.na(source) && nzchar(source)) {
       basename(source)
     } else {
       "Trekker background"
     }
-    preset <- cv_image_preset("trekker", label)
-    if (length(appearance$image_opacity) == 1L) {
+    preset <- external_histology$preset %||%
+      cv_image_preset("trekker", label)
+    if (is.null(external_histology) && length(appearance$image_opacity) == 1L) {
       preset$opacity <- appearance$image_opacity
     }
     image_entry <- list(
-      id = "trekker-embedded",
+      id = if (is.null(external_histology)) {
+        "trekker-embedded"
+      } else {
+        "trekker-external"
+      },
       label = label,
       uri = histology,
       bounds = as.list(bounds),
+      viewport = cv_viewport_bounds(external_histology$viewport_bounds),
       preset = preset,
       coord_span = c(diff(xr), diff(yr))
     )
@@ -1405,6 +1391,7 @@ cv_build_trekker <- function(crb, cells, md) {
       "id",
       "label",
       "bounds",
+      "viewport",
       "preset",
       "coord_span"
     )]

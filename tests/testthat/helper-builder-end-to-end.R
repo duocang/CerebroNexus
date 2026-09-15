@@ -356,44 +356,23 @@ builder_e2e_validate_complete_viewer_data <- function(
       identical(output$coordinate_source, "object.GetTissueCoordinates"),
       paste(section, "coordinate source")
     )
+    check(
+      !length(output$histology_images %||% list()) &&
+        is.null(output[["histology_image", exact = TRUE]]) &&
+        is.null(output[["histology_image_bounds", exact = TRUE]]),
+      paste(section, "contains no embedded histology bytes")
+    )
     if (section %in% expected_images) {
-      bound_names <- c("xmin", "xmax", "ymin", "ymax")
-      configured <- settings$images[[section]]
-      configured <- if (!is.null(configured$uri)) {
-        list(configured)
-      } else {
-        unname(configured)
-      }
-      matches <- vapply(
-        configured,
-        function(image) {
-          payload <- list(
-            histology_image = image$uri,
-            histology_image_bounds = stats::setNames(
-              as.numeric(unlist(image$bounds[bound_names], use.names = FALSE)),
-              bound_names
-            )
-          )
-          any(vapply(
-            output$histology_images %||% list(),
-            function(observed) {
-              identical(observed$histology_image, payload$histology_image) &&
-                same(
-                  observed$histology_image_bounds,
-                  payload$histology_image_bounds
-                )
-            },
-            logical(1)
-          ))
-        },
-        logical(1)
+      configured <- builder_image_collection_normalize(settings$images)[[section]]
+      active_label <- utils::tail(names(configured), 1L)
+      expected_alignment <- builder_alignment_payload(
+        configured[[active_label]]
       )
+      expected_alignment$source <- active_label
       check(
-        all(matches),
-        paste(section, "histology image")
+        identical(output$histology_alignment, expected_alignment),
+        paste(section, "external histology alignment")
       )
-    } else {
-      check(!length(output$histology_images), "patient C has no image")
     }
   }
   invisible(TRUE)

@@ -58,7 +58,7 @@ test_that("build preparation normalizes numeric-like QC metadata", {
   )
 })
 
-test_that("build preparation embeds configured Trekker metadata", {
+test_that("build preparation keeps Trekker image bytes external", {
   object <- SeuratObject::pbmc_small
   barcodes <- colnames(object)[1:2]
   object@misc$trekker <- list(
@@ -69,11 +69,10 @@ test_that("build preparation embeds configured Trekker metadata", {
   )
   alignment <- builder_alignment_record(
     source = list(name = "trekker.png", type = "image/png"),
-    source_uri = "data:image/png;base64,AA==",
-    uri = "data:image/png;base64,BB==",
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
     parameters = list(dx = 2, dy = -1, scale = 1.25, rotation = 90),
-    section = list(id = "trekker", kind = "trekker")
+    section = list(id = "trekker", kind = "trekker"),
+    source_path = "C:/private/trekker.png"
   )
   item <- list(
     default_group = "groups",
@@ -90,8 +89,8 @@ test_that("build preparation embeds configured Trekker metadata", {
     trekker$builder_group_values,
     as.character(object@meta.data[barcodes, "groups", drop = TRUE])
   )
-  expect_identical(trekker$histology_image, alignment$source_uri)
-  expect_identical(trekker$histology_image_bounds, alignment$base_bounds)
+  expect_null(trekker$histology_image)
+  expect_null(trekker$histology_image_bounds)
   expect_identical(
     trekker$histology_alignment,
     builder_alignment_payload(alignment)
@@ -657,26 +656,11 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   object$extra_material <- list()
   object$immune_repertoire <- list()
   object$trajectories <- list()
-  image <- list(
-    uri = "data:image/png;base64,AA==",
-    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10)
-  )
   object$spatial <- list(
     `slice-a` = list(
       coordinates = data.frame(x = 1, y = 2),
       expression = matrix(1),
-      histology_images = list(
-        `Embedded tissue image` = list(
-          histology_image = image$uri,
-          histology_image_bounds = c(
-            xmin = 0,
-            xmax = 10,
-            ymin = 0,
-            ymax = 10
-          ),
-          image_label = "Embedded tissue image"
-        )
-      )
+      histology_images = list()
     )
   )
   object$trekker <- NULL
@@ -686,10 +670,7 @@ test_that("CRB read-back matches exact frozen artifact identity", {
 
   item <- builder_build_test_plan()$items[[1L]]
   item$artifact_identity$spatial_sections <- "slice-a"
-  expected_image <- image
-  expected_image$bounds$xmax <- image$bounds$xmax + 2^-46
-  expect_false(identical(expected_image$bounds$xmax, image$bounds$xmax))
-  item$images <- list(`slice-a` = expected_image)
+  item$images <- list()
   item$viewer_page_expectations$visible_conditional <- "spatial"
   observed <- builder_verify_crb(crb, item)
   expect_true(observed$valid)
@@ -712,7 +693,7 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     observed$spatial_sections,
     item$artifact_identity$spatial_sections
   )
-  expect_identical(observed$image_sections, "slice-a")
+  expect_identical(observed$image_sections, character())
 
   compact_item <- item
   compact_item$artifact_identity$cells <- builder_axis_identity(
@@ -798,7 +779,7 @@ test_that("CRB read-back accepts sub-picounit transform serialization drift", {
   expect_true(builder_verify_crb(crb, item)$valid)
 })
 
-test_that("Spatial and Trekker alignments persist without upload paths", {
+test_that("CRB stores alignment only while image bytes remain external", {
   crb_path <- tempfile(fileext = ".crb")
   on.exit(unlink(crb_path), add = TRUE)
 
@@ -834,8 +815,6 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
         name = "/private/tmp/shiny-upload/tissue.png",
         type = "image/png"
       ),
-      source_uri = "data:image/png;base64,AA==",
-      uri = "data:image/png;base64,BB==",
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
       parameters = list(
         dx = 2,
@@ -848,7 +827,8 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
         point_opacity = 0.8,
         point_size = 3
       ),
-      section = list(id = section_id, kind = section_kind)
+      section = list(id = section_id, kind = section_kind),
+      source_path = "/private/tmp/shiny-upload/tissue.png"
     )
   }
   spatial_alignment <- make_alignment("slice-a", "spatial")
@@ -857,9 +837,11 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
 
   result <- builder_attach_crb_extras(
     crb_path,
-    images = list(`slice-a` = spatial_alignment),
     trekker = trekker,
-    trekker_alignment = trekker_alignment
+    trekker_alignment = trekker_alignment,
+    external_images = list(
+      `slice-a` = list(`tissue.png` = spatial_alignment)
+    )
   )
 
   expect_null(result$error)
@@ -869,23 +851,15 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
     builder_alignment_payload(spatial_alignment)
   )
   expect_identical(
-    observed$spatial[["slice-a"]]$histology_images[["tissue.png"]],
-    builder_histology_image_payload(spatial_alignment)
-  )
-  expect_true(
-    "Existing" %in%
-      names(
-        observed$spatial[["slice-a"]]$histology_images
-      )
+    names(observed$spatial[["slice-a"]]$histology_images),
+    character()
   )
   expect_identical(
     observed$trekker$histology_alignment,
     builder_alignment_payload(trekker_alignment)
   )
-  expect_identical(
-    observed$trekker$histology_image,
-    trekker_alignment$source_uri
-  )
+  expect_null(observed$trekker$histology_image)
+  expect_null(observed$trekker$histology_image_bounds)
   serialized <- paste(capture.output(str(observed)), collapse = "\n")
   expect_false(grepl("/private/tmp/shiny-upload", serialized, fixed = TRUE))
   expect_false(grepl("source_uri", serialized, fixed = TRUE))
@@ -944,7 +918,7 @@ test_that("Trekker-only extras do not rewrite an exported CRB", {
     default_group = "groups",
     colors = list(groups = c(`0` = "#000000", `1` = "#ffffff")),
     trekker_alignment = NULL,
-    spatial_image_storage = "embedded",
+    spatial_image_storage = "external",
     images = list()
   )
 
@@ -955,11 +929,13 @@ test_that("Trekker-only extras do not rewrite an exported CRB", {
 })
 
 test_that("external Spatial images materialize without entering CRB payloads", {
+  skip_if_not_installed("png")
   root <- withr::local_tempdir()
+  source_path <- file.path(root, "source.png")
+  png::writePNG(matrix(seq(0, 1, length.out = 24L), nrow = 4L), source_path)
+  inspected <- builder_read_image(source_path)
   record <- builder_alignment_record(
-    source = list(name = "H&E.jpg", type = "image/jpeg"),
-    source_uri = "data:image/png;base64,iVBORw0KGgo=",
-    uri = "data:image/png;base64,iVBORw0KGgo=",
+    source = list(name = "H&E.png", type = "image/png"),
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
     parameters = list(
       dx = 2,
@@ -970,8 +946,10 @@ test_that("external Spatial images materialize without entering CRB payloads", {
       flip_y = FALSE,
       image_opacity = 0.8
     ),
-    section = list(id = "slice-a", kind = "spatial")
+    section = list(id = "slice-a", kind = "spatial"),
+    source_path = inspected$source_path
   )
+  record$source_content_md5 <- inspected$source_content_md5
   record$roi_field <- "sample_roi"
   record$roi_value <- "lesion"
   item <- list(
@@ -995,181 +973,11 @@ test_that("external Spatial images materialize without entering CRB payloads", {
   expect_identical(setting$scale_y, 1.25)
   expect_identical(descriptor$roi_field, "sample_roi")
   expect_identical(descriptor$roi_value, "lesion")
-})
-
-test_that("Builder image attachment is exact, collision-safe, and idempotent", {
-  withr::local_options(warnPartialMatchDollar = TRUE)
-  embedded <- list(
-    histology_image = "data:image/png;base64,AA==",
-    histology_image_bounds = c(xmin = 0, xmax = 4, ymin = 0, ymax = 4)
-  )
-  spatial <- list(
-    histology_images = list(`tissue.png` = embedded),
-    ## An imported CRB may already own a canonical image and alignment. Without
-    ## an explicit Builder marker it is user data, not ours to replace.
-    histology_alignment = list(source = "tissue.png", image_opacity = 0.4)
-  )
-  make_record <- function(uri, dx) {
-    builder_alignment_record(
-      source = list(name = "tissue.png", type = "image/png"),
-      source_uri = uri,
-      uri = uri,
-      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
-      parameters = list(dx = dx, image_opacity = 0.7),
-      section = list(id = "slice-a", kind = "spatial")
-    )
-  }
-
-  first <- expect_no_warning(builder_attach_spatial_image(
-    spatial,
-    make_record("data:image/png;base64,BB==", 1)
-  ))
   expect_identical(
-    names(first$histology_images),
-    c("tissue.png", "tissue.png.1")
+    unname(as.character(tools::md5sum(descriptor$path))),
+    inspected$source_content_md5
   )
-  expect_identical(first$histology_alignment$source, "tissue.png.1")
-  expect_true(first$histology_alignment$builder_managed)
-  expect_identical(first$histology_images[["tissue.png"]], embedded)
-
-  second <- expect_no_warning(builder_attach_spatial_image(
-    first,
-    make_record("data:image/png;base64,CC==", 2)
-  ))
-  expect_identical(
-    names(second$histology_images),
-    c("tissue.png", "tissue.png.1")
-  )
-  expect_identical(second$histology_alignment$source, "tissue.png.1")
-  expect_identical(
-    second$histology_images[["tissue.png.1"]]$histology_image,
-    "data:image/png;base64,CC=="
-  )
-  expect_identical(second$histology_images[["tissue.png"]], embedded)
-})
-
-test_that("one embedded FOV keeps every label and active appearance", {
-  spatial <- list(
-    coordinates = data.frame(x = 1:2, y = 2:1, row.names = c("a", "b")),
-    histology_images = list()
-  )
-  make_record <- function(name, opacity, point_size) {
-    builder_alignment_record(
-      source = list(name = paste0(name, ".png"), type = "image/png"),
-      source_uri = paste0("data:image/png;base64,", name),
-      uri = paste0("data:image/png;base64,", name),
-      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 6),
-      parameters = list(image_opacity = opacity, point_size = point_size),
-      section = list(id = "FOV_A", kind = "spatial")
-    )
-  }
-  spatial <- builder_attach_spatial_image(
-    spatial,
-    make_record("axes", 0.6, 8),
-    label = "Axes",
-    replace_managed = TRUE
-  )
-  spatial <- builder_attach_spatial_image(
-    spatial,
-    make_record("layers", 0.4, 4),
-    label = "Layers",
-    replace_managed = FALSE
-  )
-
-  expect_identical(names(spatial$histology_images), c("Axes", "Layers"))
-  expect_equal(
-    spatial$histology_alignment$image_opacity,
-    0.4
-  )
-  expect_equal(
-    spatial$histology_alignment$point_size,
-    4
-  )
-})
-
-test_that("legacy singular Builder images migrate without leaving a duplicate", {
-  old <- "data:image/png;base64,OLD="
-  spatial <- list(
-    histology_image = old,
-    histology_image_bounds = c(xmin = 0, xmax = 4, ymin = 0, ymax = 4),
-    histology_alignment = list(
-      source = "tissue.png",
-      dx = 0,
-      dy = 0,
-      scale = 1,
-      rotation = 0,
-      flip_x = FALSE,
-      flip_y = FALSE,
-      image_opacity = 0.8,
-      point_opacity = 0.85,
-      point_size = 5
-    )
-  )
-  record <- builder_alignment_record(
-    source = list(name = "tissue.png", type = "image/png"),
-    source_uri = "data:image/png;base64,NEW=",
-    uri = "data:image/png;base64,NEW=",
-    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
-    section = list(id = "slice-a", kind = "spatial")
-  )
-
-  migrated <- builder_attach_spatial_image(spatial, record)
-  expect_identical(names(migrated$histology_images), "tissue.png")
-  expect_identical(
-    migrated$histology_images[["tissue.png"]]$histology_image,
-    "data:image/png;base64,NEW="
-  )
-  expect_true(migrated$histology_alignment$builder_managed)
-  expect_null(migrated[["histology_image", exact = TRUE]])
-  expect_null(migrated[["histology_image_bounds", exact = TRUE]])
-})
-
-test_that("unowned or malformed legacy singular images are preserved", {
-  old <- "data:image/png;base64,OLD="
-  bounds <- c(xmin = 0, xmax = 4, ymin = 0, ymax = 4)
-  record <- builder_alignment_record(
-    source = list(name = "new.png", type = "image/png"),
-    source_uri = "data:image/png;base64,NEW=",
-    uri = "data:image/png;base64,NEW=",
-    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
-    section = list(id = "slice-a", kind = "spatial")
-  )
-  cases <- list(
-    plain = NULL,
-    malformed = list(
-      source = NULL,
-      dx = 0,
-      dy = 0,
-      scale = 1,
-      rotation = 0,
-      flip_x = FALSE,
-      flip_y = FALSE,
-      image_opacity = 0.8,
-      point_opacity = 0.85,
-      point_size = 5
-    )
-  )
-
-  for (case in names(cases)) {
-    spatial <- list(
-      histology_image = old,
-      histology_image_bounds = bounds
-    )
-    if (!is.null(cases[[case]])) {
-      spatial$histology_alignment <- cases[[case]]
-    }
-    attached <- builder_attach_spatial_image(spatial, record)
-    expect_identical(
-      names(attached$histology_images),
-      c("Tissue background", "new.png"),
-      info = case
-    )
-    expect_identical(
-      attached$histology_images[["Tissue background"]]$histology_image,
-      old,
-      info = case
-    )
-  }
+  expect_identical(unname(file.size(descriptor$path)), unname(file.size(source_path)))
 })
 
 test_that("read-back verifies frozen H5 and BPCells sidecars", {

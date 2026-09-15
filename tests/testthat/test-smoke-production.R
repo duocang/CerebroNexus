@@ -53,7 +53,6 @@ get_builder_real_contract_app <- function() {
 
 test_that("Builder dormant app path publishes one verified private bundle", {
   skip_if_not_installed("callr")
-  skip_if_not_installed("base64enc")
   skip_if_not_installed("rhdf5")
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("httpuv")
@@ -74,16 +73,20 @@ test_that("Builder dormant app path publishes one verified private bundle", {
   object <- readRDS(second)
   spatial <- object$getSpatialData(built$section)
   images <- spatial[["histology_images", exact = TRUE]]
-  expect_length(images, 1L)
-  image <- images[[1L]]
-  expect_identical(image$histology_image, built$image_uri)
+  expect_length(images, 0L)
+  expect_null(spatial[["histology_image", exact = TRUE]])
+  expect_null(spatial[["histology_image_bounds", exact = TRUE]])
+  configured <- config$spatial_images[["Dataset B"]][[built$section]][[1L]]
+  external <- file.path(built$app_dir, configured$path)
+  expect_true(file.exists(external))
+  expect_identical(
+    unname(as.character(tools::md5sum(external))),
+    unname(as.character(tools::md5sum(built$image_path)))
+  )
   expect_equal(
-    unlist(image$histology_image_bounds, use.names = TRUE),
+    unlist(configured$bounds, use.names = TRUE),
     unlist(built$image_bounds, use.names = TRUE)
   )
-  expect_null(spatial[["histology_image", exact = TRUE]])
-  expect_match(image$histology_image, "^data:image/png;base64,")
-  expect_false(grepl("https?://|^/|^file:", image$histology_image))
 
   first_relative <- config$crb_file_to_load[[1L]]
   backend <- config$.bundle_backend_plan$entries[[first_relative]]

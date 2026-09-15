@@ -22,6 +22,7 @@ if (is.null(getOption("shiny.maxRequestSize"))) {
 
 source("prerequisite.R", local = TRUE)
 builder_activate_source_package()
+builder_runtime_version <- builder_runtime_package_version()
 runtime_capability <- builder_runtime_capability()
 if (!isTRUE(runtime_capability$available)) {
   stop(runtime_capability$reason, call. = FALSE)
@@ -354,6 +355,13 @@ ui <- tagList(
     div(
       class = "builder-project-brand",
       div(class = "wordmark", cerebro_wordmark),
+      if (!is.null(builder_runtime_version)) {
+        tags$span(
+          class = "builder-runtime-version",
+          `aria-label` = paste("CerebroNexus version", builder_runtime_version),
+          paste0("v", builder_runtime_version)
+        )
+      },
       tags$h1(class = "visually-hidden", "CerebroNexus Builder")
     ),
     uiOutput("busy", inline = TRUE),
@@ -430,7 +438,7 @@ ui <- tagList(
           name = "dataset_files",
           class = "shiny-input-file builder-upload-transport",
           type = "file",
-          accept = paste0(".", builder_dataset_extensions(), collapse = ","),
+          accept = builder_file_accept(builder_dataset_extensions()),
           hidden = "hidden"
         )
       )
@@ -456,7 +464,7 @@ ui <- tagList(
     id = "builder-operation-overlay",
     class = "builder-operation-overlay",
     role = "status",
-    `aria-live` = "assertive",
+    `aria-live` = "polite",
     `aria-hidden` = "true",
     `aria-labelledby` = "builder-operation-overlay-title",
     `aria-describedby` = paste(
@@ -486,6 +494,22 @@ ui <- tagList(
         span(
           id = "builder-operation-overlay-detail",
           class = "builder-operation-overlay-detail"
+        ),
+        tags$div(
+          id = "builder-build-progress",
+          class = "builder-build-progress",
+          hidden = "hidden",
+          tags$ol(
+            class = "builder-build-progress-steps",
+            tags$li(`data-build-phase` = "prepare", "Prepare release"),
+            tags$li(`data-build-phase` = "datasets", "Build datasets"),
+            tags$li(`data-build-phase` = "viewer", "Package Viewer"),
+            tags$li(`data-build-phase` = "publish", "Verify & publish")
+          ),
+          tags$progress(
+            class = "builder-build-progress-activity",
+            `aria-label` = "Build activity"
+          )
         )
       ),
       div(

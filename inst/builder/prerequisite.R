@@ -61,6 +61,37 @@ builder_source_package_root <- function(
   NULL
 }
 
+builder_runtime_package_version <- function(
+  source_root = builder_source_package_root(),
+  .installed_version = function() {
+    as.character(utils::packageVersion("CerebroNexus"))
+  }
+) {
+  version <- NULL
+  if (!is.null(source_root)) {
+    version <- tryCatch(
+      read.dcf(
+        file.path(source_root, "DESCRIPTION"),
+        fields = "Version"
+      )[[1L]],
+      error = function(error) NULL
+    )
+  }
+  valid <- is.character(version) &&
+    length(version) == 1L &&
+    !is.na(version) &&
+    grepl("^[0-9]+([.][0-9]+)+$", version)
+  if (isTRUE(valid)) {
+    return(version)
+  }
+  version <- tryCatch(.installed_version(), error = function(error) NULL)
+  valid <- is.character(version) &&
+    length(version) == 1L &&
+    !is.na(version) &&
+    grepl("^[0-9]+([.][0-9]+)+$", version)
+  if (isTRUE(valid)) version else NULL
+}
+
 builder_source_app_contract_version <- function(
   source_root = builder_source_package_root()
 ) {

@@ -955,7 +955,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
       source = "external",
       label = "Atlas",
       path = "spatial-assets/atlas.png",
-      bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+      bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120),
+      viewport_bounds = c(xmin = -50, xmax = 150, ymin = -90, ymax = 190)
     ),
     background_identity = list(
       dataset = "Atlas",
@@ -1120,6 +1121,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   params$background_identity <- NULL
   params$background_image_allowlist <- character()
   params$roi_mode <- "separate"
+  params$roi_order <- c("border", "lesion")
   params$roi_backgrounds <- list(
     lesion = panel_config(
       "lesion",
@@ -1142,45 +1144,53 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   )))
   expect_identical(
     vapply(rendered$data$panels, `[[`, character(1), "image_label"),
-    c("Lesion H&E", "Border H&E")
+    c("Border H&E", "Lesion H&E")
   )
   expect_identical(
     lapply(rendered$data$panels, function(panel) panel$image_identity$roi),
-    list("lesion", "border")
+    list("border", "lesion")
   )
   expect_identical(
     lapply(rendered$data$panels, `[[`, "x_range"),
-    list(c(19, 21), c(79, 81))
+    list(c(79, 81), c(19, 21))
   )
   expect_identical(
     lapply(rendered$data$panels, `[[`, "y_range"),
-    list(c(29, 31), c(69, 71))
+    list(c(69, 71), c(29, 31))
   )
 })
 
-test_that("external spatial image encoding is cached by file version", {
+test_that("external spatial images are served as raw session-private bytes", {
   renderer <- new.env(parent = globalenv())
   sys.source(
-    viewer_test_path("spatial", "func_projection_update_plot.R"),
+    viewer_test_path("utility_functions.R"),
     envir = renderer
   )
   image <- tempfile(fileext = ".png")
   withr::defer(unlink(image))
-  writeBin(as.raw(1:4), image)
-  calls <- 0L
-  encode <- function(path) {
-    calls <<- calls + 1L
-    paste0("encoded-", file.info(path)$size)
+  bytes <- c(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    as.raw(1:12)
+  )
+  writeBin(bytes, image)
+  callback <- NULL
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$registerDataObj <- function(name, data, handler) {
+    callback <<- function() handler(data, NULL)
+    paste0("session/", name)
   }
 
-  first <- renderer$spatialBackgroundDataUri(image, encode)
-  second <- renderer$spatialBackgroundDataUri(image, encode)
-  writeBin(as.raw(1:5), image)
-  third <- renderer$spatialBackgroundDataUri(image, encode)
+  first <- renderer$viewerPrivateImageUrl(image, session)
+  second <- renderer$viewerPrivateImageUrl(image, session)
+  response <- callback()
 
   expect_identical(first, second)
-  expect_false(identical(second, third))
-  expect_identical(calls, 2L)
+  expect_match(first, "^session/cerebro-image-")
+  expect_identical(response$status, 200L)
+  expect_identical(response$content_type, "image/png")
+  expect_identical(response$content, bytes)
+  expect_false(startsWith(first, "data:"))
 })
 
 test_that("spatial hull geometry is prepared outside the renderer", {

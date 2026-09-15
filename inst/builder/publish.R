@@ -20,6 +20,90 @@
   length(linked) == 1L && (is.na(linked) || isTRUE(unname(linked)))
 }
 
+.builder_release_io_path <- function(
+  path,
+  os_type = .Platform$OS.type
+) {
+  if (!identical(os_type, "windows")) {
+    return(path)
+  }
+  slash_path <- gsub("\\", "/", path, fixed = TRUE)
+  if (grepl("^//[?.]/", slash_path)) {
+    return(gsub("/", "\\", slash_path, fixed = TRUE))
+  }
+  if (grepl("^[A-Za-z]:/", slash_path)) {
+    return(paste0("\\\\?\\", gsub("/", "\\", slash_path, fixed = TRUE)))
+  }
+  if (grepl("^//[^/]+/[^/]+($|/)", slash_path)) {
+    return(paste0(
+      "\\\\?\\UNC\\",
+      gsub("/", "\\", substring(slash_path, 3L), fixed = TRUE)
+    ))
+  }
+  path
+}
+
+.builder_release_remove_stage <- function(
+  stage,
+  .unlink = unlink,
+  os_type = .Platform$OS.type
+) {
+  exists <- function(path) file.exists(path) || dir.exists(path)
+  if (!exists(stage)) {
+    return(invisible(TRUE))
+  }
+  suppressWarnings(.unlink(stage, recursive = TRUE, force = TRUE))
+  if (!exists(stage)) {
+    return(invisible(TRUE))
+  }
+  if (identical(os_type, "windows")) {
+    remove_entry <- function(path) {
+      io_path <- .builder_release_io_path(path, os_type = os_type)
+      linked <- tryCatch(
+        fs::is_link(path),
+        error = function(error) NA
+      )
+      if (isTRUE(unname(linked)) || !dir.exists(path)) {
+        suppressWarnings(.unlink(io_path, recursive = FALSE, force = TRUE))
+        return(invisible(NULL))
+      }
+      entries <- list.files(
+        path,
+        all.files = TRUE,
+        no.. = TRUE,
+        full.names = TRUE
+      )
+      for (entry in entries) {
+        remove_entry(entry)
+      }
+      suppressWarnings(.unlink(io_path, recursive = FALSE, force = TRUE))
+      if (dir.exists(path) && !identical(path, stage)) {
+        # R 4.3 cannot always remove an empty near-MAX_PATH directory even
+        # through the device prefix. Rename it to a short sibling while its
+        # parent is still addressable, then remove that bounded path.
+        isolated <- tempfile(pattern = ".delete-", tmpdir = dirname(path))
+        renamed <- suppressWarnings(file.rename(path, isolated))
+        if (isTRUE(renamed)) {
+          suppressWarnings(.unlink(isolated, recursive = TRUE, force = TRUE))
+        }
+      }
+      invisible(NULL)
+    }
+    remove_entry(stage)
+    # Once extended-path leaves have gone, the bounded stage root is again
+    # removable by R's ordinary recursive implementation.
+    suppressWarnings(.unlink(stage, recursive = TRUE, force = TRUE))
+  }
+  removed <- !exists(stage)
+  if (!removed) {
+    stop(
+      "The assigned build stage could not be removed safely; recovery is required.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .builder_release_token <- function(prefix = "owner") {
   paste(
     prefix,
@@ -1420,14 +1504,29 @@ builder_prepare_release <- function(
   target,
   build_id,
   expected_prior = NULL,
-  expected_prior_state = NULL
+  expected_prior_state = NULL,
+  .stage_guard = function(stage) invisible(TRUE)
 ) {
   target <- .builder_release_path(target)
   if (!.builder_release_text(build_id)) {
     stop("A release build id is required.", call. = FALSE)
   }
-  stage_id <- gsub("[^A-Za-z0-9._-]", "-", build_id)
-  stage_id <- .portableBundlePath(stage_id, "The release build id")
+  .portableBundlePath(
+    gsub("[^A-Za-z0-9._-]", "-", build_id),
+    "The release build id"
+  )
+  if (!is.function(.stage_guard)) {
+    stop("The release stage guard is invalid.", call. = FALSE)
+  }
+  control <- builder_release_control_path(target)
+  stages <- file.path(control, "stages")
+  stage <- gsub(
+    "\\",
+    "/",
+    tempfile(pattern = "stage-", tmpdir = stages),
+    fixed = TRUE
+  )
+  .stage_guard(stage)
   control <- .builder_release_ensure_control(target)
   recovery <- builder_discover_recovery(target)
   if (identical(recovery$state, "stale_lock")) {
@@ -1435,6 +1534,26 @@ builder_prepare_release <- function(
     recovery <- builder_discover_recovery(target)
   }
   completed_journal <- recovery$journal
+  if (
+    identical(recovery$state, "ready") &&
+      is.list(completed_journal) &&
+      identical(completed_journal$phase, "aborted") &&
+      .builder_release_text(completed_journal$stage) &&
+      dir.exists(completed_journal$stage)
+  ) {
+    abandoned_stage <- .canonicalTargetPath(completed_journal$stage)
+    owned_stages <- .canonicalTargetPath(file.path(control, "stages"))
+    if (
+      !identical(dirname(abandoned_stage), owned_stages) ||
+        .builder_release_link(abandoned_stage)
+    ) {
+      stop(
+        "The aborted release stage is outside its owned registry; manual recovery is required.",
+        call. = FALSE
+      )
+    }
+    .builder_release_remove_stage(abandoned_stage)
+  }
   completed_backup <- if (is.null(completed_journal)) {
     NULL
   } else {
@@ -1471,7 +1590,6 @@ builder_prepare_release <- function(
     },
     add = TRUE
   )
-  stages <- file.path(control, "stages")
   if (!dir.exists(stages) && !dir.create(stages, mode = "0700")) {
     stop("The release stage registry could not be created.", call. = FALSE)
   }
@@ -1480,7 +1598,9 @@ builder_prepare_release <- function(
   ) {
     stop("The release stage registry is unsafe.", call. = FALSE)
   }
-  stage <- file.path(stages, paste0(stage_id, "-", token))
+  # The build id and owner token belong in the journal, not in every payload
+  # path. A short, bounded stage name preserves substantially more of the
+  # legacy Windows MAX_PATH budget for real dataset and Viewer files.
   if (.builder_release_exists(stage) || !dir.create(stage, mode = "0700")) {
     stop("The assigned release stage could not be created.", call. = FALSE)
   }
@@ -1547,7 +1667,117 @@ builder_prepare_release <- function(
   handle
 }
 
+.builder_release_root_names <- function(root) {
+  if (!dir.exists(root) || .builder_release_link(root)) {
+    return(character())
+  }
+  roots <- list.files(root, all.files = TRUE, no.. = TRUE)
+  roots <- unique(as.character(roots))
+  if (any(
+    is.na(roots) |
+      !nzchar(roots) |
+      roots %in% c(".", "..") |
+      grepl("[/\\\\]", roots)
+  )) {
+    stop("A release root entry has an unsafe name.", call. = FALSE)
+  }
+  roots
+}
+
+.builder_release_move_roots <- function(from, to, roots, .move = file.rename) {
+  roots <- unique(as.character(if (is.null(roots)) character() else roots))
+  moved <- character()
+  for (root in roots) {
+    source <- file.path(from, root)
+    destination <- file.path(to, root)
+    if (!.builder_release_exists(source)) {
+      next
+    }
+    if (
+      .builder_release_exists(destination) ||
+        !isTRUE(tryCatch(
+          suppressWarnings(.move(source, destination)),
+          error = function(error) FALSE
+        ))
+    ) {
+      return(list(ok = FALSE, moved = moved, failed = root))
+    }
+    moved <- c(moved, root)
+  }
+  list(ok = TRUE, moved = moved, failed = NULL)
+}
+
+.builder_release_restore_in_place <- function(
+  handle,
+  detail,
+  .move = file.rename
+) {
+  phase <- if (is.null(handle$record$phase)) "" else handle$record$phase
+  origin <- handle$record$in_place_recovery_from
+  if (is.null(origin)) {
+    origin <- handle$record$recovery_from
+  }
+  if (is.null(origin)) {
+    origin <- phase
+  }
+  move_new_back <- origin %in% c(
+    "new_moving_in_place",
+    "new_published",
+    "complete",
+    "recovery_required"
+  )
+  if (!dir.exists(handle$target) && !dir.create(handle$target)) {
+    handle$record$in_place_recovery_from <- origin
+    handle <- .builder_release_write_phase(handle, "recovery_required", detail)
+    return(list(handle = handle, restored = FALSE))
+  }
+  if (!dir.exists(handle$stage) && !dir.create(handle$stage, mode = "0700")) {
+    handle$record$in_place_recovery_from <- origin
+    handle <- .builder_release_write_phase(handle, "recovery_required", detail)
+    return(list(handle = handle, restored = FALSE))
+  }
+  if (move_new_back) {
+    moved_new <- .builder_release_move_roots(
+      handle$target,
+      handle$stage,
+      handle$record$new_roots,
+      .move = .move
+    )
+    if (!isTRUE(moved_new$ok)) {
+      handle$record$in_place_recovery_from <- origin
+      handle <- .builder_release_write_phase(handle, "recovery_required", detail)
+      return(list(handle = handle, restored = FALSE))
+    }
+  }
+  restored_prior <- .builder_release_move_roots(
+    handle$backup,
+    handle$target,
+    handle$record$prior_roots,
+    .move = .move
+  )
+  if (
+    !isTRUE(restored_prior$ok) ||
+      !identical(
+        builder_release_identity(handle$target),
+        handle$expected_prior
+      )
+  ) {
+    handle$record$in_place_recovery_from <- origin
+    handle <- .builder_release_write_phase(handle, "recovery_required", detail)
+    return(list(handle = handle, restored = FALSE))
+  }
+  if (dir.exists(handle$backup)) {
+    unlink(handle$backup, recursive = TRUE, force = TRUE)
+  }
+  handle$record$in_place_recovery_from <- NULL
+  handle <- .builder_release_write_phase(handle, "prepared", detail)
+  list(handle = handle, restored = TRUE)
+}
+
 .builder_release_restore <- function(handle, detail, .move = file.rename) {
+  if (identical(handle$record$publication_mode, "in_place")) {
+    return(.builder_release_restore_in_place(handle, detail, .move = .move))
+  }
   target_exists <- .builder_release_exists(handle$target)
   backup_exists <- dir.exists(handle$backup)
   if (target_exists) {
@@ -1582,7 +1812,9 @@ builder_publish_release <- function(
   .after_phase = function(phase) invisible(NULL),
   .after_move = function(move) invisible(NULL),
   .verify_payload = function(root, phase) TRUE,
-  .digest_cache = NULL
+  .digest_cache = NULL,
+  .allow_in_place = identical(.Platform$OS.type, "windows") &&
+    identical(.move, file.rename)
 ) {
   if (is.null(.digest_cache)) {
     .digest_cache <- new.env(parent = emptyenv())
@@ -1647,14 +1879,54 @@ builder_publish_release <- function(
       call. = FALSE
     )
   }
+  in_place <- FALSE
   if (isTRUE(current$exists)) {
     handle <- .builder_release_write_phase(handle, "old_moving")
     .after_phase("old_moving")
     moved <- tryCatch(
-      .move(handle$target, handle$backup),
+      suppressWarnings(.move(handle$target, handle$backup)),
       error = function(error) FALSE
     )
     if (!isTRUE(moved)) {
+      if (
+        isTRUE(.allow_in_place) &&
+          dir.exists(handle$target) &&
+          !.builder_release_link(handle$target)
+      ) {
+        handle$record$publication_mode <- "in_place"
+        handle$record$prior_roots <- .builder_release_root_names(handle$target)
+        handle$record$prior_roots <- handle$record$prior_roots[
+          !.builder_release_ignorable_metadata(handle$record$prior_roots)
+        ]
+        handle$record$new_roots <- .builder_release_root_names(handle$stage)
+        handle <- .builder_release_write_phase(handle, "old_moving_in_place")
+        if (!dir.exists(handle$backup) && !dir.create(handle$backup, mode = "0700")) {
+          stop("The prior release backup could not be created.", call. = FALSE)
+        }
+        protected <- .builder_release_move_roots(
+          handle$target,
+          handle$backup,
+          handle$record$prior_roots,
+          .move = .move
+        )
+        if (!isTRUE(protected$ok)) {
+          restored <- .builder_release_restore_in_place(
+            handle,
+            "The prior release entries could not be protected.",
+            .move = .move
+          )
+          if (!isTRUE(restored$restored)) {
+            stop(
+              "The prior release entries could not be protected or restored.",
+              call. = FALSE
+            )
+          }
+          stop("The prior release entries could not be protected.", call. = FALSE)
+        }
+        in_place <- TRUE
+      }
+    }
+    if (!isTRUE(moved) && !isTRUE(in_place)) {
       prior_unchanged <-
         !.builder_release_exists(handle$backup) &&
         identical(
@@ -1682,10 +1954,24 @@ builder_publish_release <- function(
   handle <- .builder_release_write_phase(handle, "old_moved")
   .after_phase("old_moved")
   verify_or_restore(handle$stage, "before_rename")
-  moved <- tryCatch(
-    .move(handle$stage, handle$target),
-    error = function(error) FALSE
-  )
+  if (isTRUE(in_place)) {
+    handle <- .builder_release_write_phase(handle, "new_moving_in_place")
+    installed <- .builder_release_move_roots(
+      handle$stage,
+      handle$target,
+      handle$record$new_roots,
+      .move = .move
+    )
+    moved <- isTRUE(installed$ok)
+    if (isTRUE(moved) && !length(.builder_release_root_names(handle$stage))) {
+      unlink(handle$stage, recursive = TRUE, force = TRUE)
+    }
+  } else {
+    moved <- tryCatch(
+      .move(handle$stage, handle$target),
+      error = function(error) FALSE
+    )
+  }
   if (!isTRUE(moved)) {
     restored <- .builder_release_restore(
       handle,
@@ -1702,7 +1988,10 @@ builder_publish_release <- function(
     stop("Publication failed; the prior release was restored.", call. = FALSE)
   }
   .after_move("new_to_target")
-  verify_or_restore(handle$target, "after_rename")
+  verify_or_restore(
+    handle$target,
+    if (isTRUE(in_place)) "after_in_place" else "after_rename"
+  )
   handle <- .builder_release_write_phase(handle, "new_published")
   .after_phase("new_published")
   handle <- .builder_release_write_phase(handle, "complete")
@@ -1760,7 +2049,7 @@ builder_abort_release <- function(handle) {
     stop("This release requires recovery and cannot be aborted.", call. = FALSE)
   }
   if (dir.exists(handle$stage)) {
-    unlink(handle$stage, recursive = TRUE, force = TRUE)
+    .builder_release_remove_stage(handle$stage)
   }
   handle <- .builder_release_write_phase(handle, "aborted")
   .builder_release_release_lock(handle$control, handle$lock, handle$token)
@@ -1861,7 +2150,34 @@ builder_recover_release <- function(target, action = c("restore", "abort")) {
   )
   target <- recovery$target
   backup <- recovery$backup
-  if (identical(action, "restore")) {
+  in_place <- identical(journal$publication_mode, "in_place")
+  if (identical(action, "restore") && in_place) {
+    already_restored <-
+      .builder_release_exists(target) &&
+      identical(builder_release_identity(target), journal$expected_prior)
+    if (!already_restored) {
+      recovery_handle <- structure(
+        c(journal, list(record = journal)),
+        class = c("builder_release_handle", "list")
+      )
+      restored <- .builder_release_restore_in_place(
+        recovery_handle,
+        "The interrupted in-place release could not be restored."
+      )
+      if (!isTRUE(restored$restored)) {
+        stop(
+          "The interrupted in-place release could not be restored.",
+          call. = FALSE
+        )
+      }
+      journal <- restored$handle$record
+    } else if (
+      dir.exists(backup) &&
+        !length(.builder_release_root_names(backup))
+    ) {
+      unlink(backup, recursive = TRUE, force = TRUE)
+    }
+  } else if (identical(action, "restore")) {
     if (!dir.exists(backup)) {
       already_restored <-
         .builder_release_exists(target) &&

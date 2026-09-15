@@ -1,6 +1,7 @@
 ## Spatial/Trekker alignment observers kept out of app.R so the workbench has
 ## one explicit boundary: bounded coordinate models enter, canonical alignment
-## records leave. The Seurat object and local upload paths never enter state.
+## records leave. The Seurat object and image bytes never enter Builder state;
+## image records retain only the canonical external source path and metadata.
 
 builder_spatial_preview_cache_key <- function(id, section) {
   stopifnot(
@@ -136,6 +137,107 @@ builder_spatial_alignment_server <- function(
   spatial_coords
 ) {
   stopifnot(is.function(spatial_previews))
+  session_image_dir <- tempfile("cerebro-builder-images-")
+  dir.create(
+    session_image_dir,
+    recursive = TRUE,
+    mode = "0700",
+    showWarnings = FALSE
+  )
+  session_image_dir <- normalizePath(
+    session_image_dir,
+    winslash = "/",
+    mustWork = TRUE
+  )
+  session$onSessionEnded(function() {
+    unlink(session_image_dir, recursive = TRUE, force = TRUE)
+  })
+  session_image_urls <- new.env(parent = emptyenv())
+  session_image_url <- function(record) {
+    record <- builder_alignment_normalize(record)
+    if (is.null(record)) {
+      return(NULL)
+    }
+    path <- tryCatch(
+      normalizePath(record$source_path, winslash = "/", mustWork = TRUE),
+      error = function(error) NULL
+    )
+    if (is.null(path) || !isTRUE(file_test("-f", path))) {
+      return(NULL)
+    }
+    md5 <- tryCatch(
+      unname(as.character(tools::md5sum(path))),
+      error = function(error) NA_character_
+    )
+    if (
+      is.na(md5) ||
+        (!is.null(record$source_content_md5) &&
+          !identical(record$source_content_md5, md5))
+    ) {
+      return(NULL)
+    }
+    cached <- get0(md5, envir = session_image_urls, inherits = FALSE)
+    if (!is.null(cached)) {
+      return(cached)
+    }
+    mime <- as.character(record$source$type %||% character())
+    if (
+      length(mime) != 1L ||
+        is.na(mime) ||
+        !mime %in% c("image/png", "image/jpeg")
+    ) {
+      mime <- if (tolower(tools::file_ext(path)) == "png") {
+        "image/png"
+      } else {
+        "image/jpeg"
+      }
+    }
+    data <- list(path = path, mime = mime, md5 = md5)
+    url <- session$registerDataObj(
+      paste0("builder-image-", md5),
+      data,
+      function(data, request) {
+        current_md5 <- tryCatch(
+          unname(as.character(tools::md5sum(data$path))),
+          error = function(error) NA_character_
+        )
+        if (!identical(current_md5, data$md5)) {
+          return(shiny::httpResponse(404L, "text/plain", "Not found"))
+        }
+        bytes <- tryCatch(
+          readBin(data$path, what = "raw", n = file.size(data$path)),
+          error = function(error) NULL
+        )
+        if (is.null(bytes)) {
+          return(shiny::httpResponse(404L, "text/plain", "Not found"))
+        }
+        shiny::httpResponse(
+          200L,
+          data$mime,
+          bytes,
+          headers = list(
+            "Cache-Control" = "private, max-age=31536000, immutable",
+            "ETag" = paste0('"', data$md5, '"'),
+            "X-Content-Type-Options" = "nosniff"
+          )
+        )
+      }
+    )
+    assign(md5, url, envir = session_image_urls)
+    url
+  }
+  record_for_canvas <- function(record) {
+    if (is.null(record)) {
+      return(NULL)
+    }
+    url <- session_image_url(record)
+    if (is.null(url)) {
+      return(NULL)
+    }
+    record$source_uri <- url
+    record$uri <- url
+    record
+  }
   draft <- shiny::reactiveVal(NULL)
   coordinate_draft <- shiny::reactiveVal(list(rotation_degrees = 0, scale = 1))
   coordinate_baseline <- shiny::reactiveVal(list(
@@ -1379,11 +1481,11 @@ builder_spatial_alignment_server <- function(
     observed <- parameters()
     record <- builder_alignment_record(
       source = current_draft$source,
-      source_uri = current_draft$source_uri,
-      uri = current_draft$source_uri,
       base_bounds = current_draft$base_bounds,
       parameters = observed,
-      section = list(id = active_section(), kind = preview$section$kind)
+      section = list(id = active_section(), kind = preview$section$kind),
+      source_path = current_draft$source_path %||% NULL,
+      project_asset = current_draft$project_asset %||% NULL
     )
     record$roi_field <- current_draft$roi_field %||% NULL
     record$roi_value <- current_draft$roi_value %||% NULL
@@ -1587,6 +1689,35 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(image$error, type = "error", duration = 8)
       return(invisible(FALSE))
     }
+    extension <- if (identical(image$mime, "image/png")) "png" else "jpg"
+    session_source <- file.path(
+      session_image_dir,
+      paste0(image$source_content_md5, ".", extension)
+    )
+    if (
+      !file.exists(session_source) &&
+        !file.copy(image$source_path, session_source, overwrite = FALSE)
+    ) {
+      shiny::showNotification(
+        "The uploaded image could not be retained for this Builder session.",
+        type = "error",
+        duration = 8
+      )
+      return(invisible(FALSE))
+    }
+    retained <- builder_read_image(session_source, filename = filename)
+    if (
+      !is.null(retained$error) ||
+        !identical(retained$source_content_md5, image$source_content_md5)
+    ) {
+      shiny::showNotification(
+        "The uploaded image failed its integrity check.",
+        type = "error",
+        duration = 8
+      )
+      return(invisible(FALSE))
+    }
+    image <- retained
     previous_label <- active_image()
     previous <- if (is.null(previous_label)) {
       NULL
@@ -1618,8 +1749,6 @@ builder_spatial_alignment_server <- function(
         type = image$mime,
         size = image$bytes
       ),
-      source_uri = image$source_uri,
-      uri = image$source_uri,
       base_bounds = builder_alignment_fit_bounds(
         fit_bounds,
         c(
@@ -1628,7 +1757,8 @@ builder_spatial_alignment_server <- function(
         )
       ),
       parameters = parameters,
-      section = preview$section
+      section = preview$section,
+      source_path = image$source_path
     )
     record$viewport_bounds <- fit_bounds
     if (nzchar(selected_roi)) {
@@ -1887,7 +2017,7 @@ builder_spatial_alignment_server <- function(
     scene <- builder_spatial_canvas_scene(
       preview = preview,
       colors = colors(),
-      record = draft(),
+      record = record_for_canvas(draft()),
       point_appearance = point_appearance_for(
         entry,
         section,
@@ -1929,7 +2059,7 @@ builder_spatial_alignment_server <- function(
               )
               record$active <- identical(roi, active_roi()) &&
                 identical(label, active_image())
-              record
+              record_for_canvas(record)
             }),
             labels
           )

@@ -196,6 +196,7 @@ spatial_projection_parameters_plot <- reactive({
     color_variable = color_variable,
     plot_type = plot_type,
     split_by = split_by,
+    roi_order = separate_roi_values,
     feature_to_display = feature_to_display,
     coexpr_r = input[["spatial_projection_coexpr_r"]],
     coexpr_g = input[["spatial_projection_coexpr_g"]],

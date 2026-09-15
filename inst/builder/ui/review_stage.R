@@ -451,12 +451,7 @@ builder_review_model <- function(plan, verification = NULL) {
     if (!is.null(spatial_alignment)) {
       image_count <- as.integer(spatial_alignment$image_count %||% 0L)
       spatial_alignment$storage <- if (image_count > 0L) {
-        switch(
-          item$spatial_image_storage %||% "embedded",
-          external = "External spatial-assets",
-          embedded = "Embedded in CRB",
-          item$spatial_image_storage
-        )
+        "External spatial-assets"
       } else {
         NULL
       }

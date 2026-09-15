@@ -212,15 +212,21 @@ generated_app_e2e_stop <- function() {
   if (!length(fixture$attachments)) {
     return(list())
   }
-  lapply(fixture$attachments, function(attachment) {
-    list(
-      uri = paste0(
-        "data:image/png;base64,",
-        base64enc::base64encode(attachment$path)
+  Map(function(attachment, section) {
+    inspected <- builder_read_image(attachment$path)
+    record <- builder_alignment_record(
+      source = list(
+        name = basename(attachment$path),
+        type = inspected$mime,
+        size = inspected$bytes
       ),
-      bounds = attachment$bounds
+      base_bounds = as.list(attachment$bounds),
+      section = list(id = section, kind = "spatial"),
+      source_path = inspected$source_path
     )
-  })
+    record$source_content_md5 <- inspected$source_content_md5
+    record
+  }, fixture$attachments, names(fixture$attachments))
 }
 
 .generated_app_e2e_entry <- function(name, fixture, snapshot_root) {
@@ -239,7 +245,7 @@ generated_app_e2e_stop <- function() {
   entry$settings$analyses <- character()
   entry$settings$tables <- list()
   entry$settings$images <- .generated_app_e2e_images(fixture)
-  entry$settings$spatial_image_storage <- "embedded"
+  entry$settings$spatial_image_storage <- "external"
   snapshot <- builder_snapshot_seurat(
     fixture$object,
     file.path(snapshot_root, record$id),

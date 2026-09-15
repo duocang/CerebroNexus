@@ -79,10 +79,11 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     current_cells,
     c("sample_roi", "roi", "roi_id", "region_of_interest")
   )$values
-  selected_roi <- input[["spatial_projection_roi"]] %||% "__all__"
+  selected_roi <- input[["spatial_projection_roi"]] %||%
+    spatial_default_roi_selection(roi_values)
   roi_modes <- c("__all__", if (length(roi_values) > 1L) "__separate__")
   if (!selected_roi %in% c(roi_modes, roi_values)) {
-    selected_roi <- "__all__"
+    selected_roi <- spatial_default_roi_selection(roi_values)
   }
   split_columns <- intersect(
     metadata_cols,
@@ -223,7 +224,6 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     getSpatialData(current_spatial),
     error = function(e) NULL
   )
-  selected_roi <- input[["spatial_projection_roi"]] %||% "__all__"
   current_cells <- rownames(current_sd[["coordinates"]]) %||% character()
   selected_sample <- input[["spatial_projection_sample"]] %||% ""
   if (nzchar(selected_sample)) {
@@ -242,9 +242,11 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     current_cells,
     c("sample_roi", "roi", "roi_id", "region_of_interest")
   )$values
+  selected_roi <- input[["spatial_projection_roi"]] %||%
+    spatial_default_roi_selection(roi_values)
   roi_modes <- c("__all__", if (length(roi_values) > 1L) "__separate__")
   if (!selected_roi %in% c(roi_modes, roi_values)) {
-    selected_roi <- "__all__"
+    selected_roi <- spatial_default_roi_selection(roi_values)
   }
   embedded_images <- if (is.null(current_sd)) {
     list()
@@ -283,6 +285,16 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   } else if (length(roi_background_groups)) {
     input_id <- "spatial_projection_roi_background_images"
     selected_input <- isolate(input[[input_id]])
+    if (is.null(selected_input)) {
+      selected_input <- unname(vapply(
+        roi_background_groups,
+        function(group) {
+          choice <- normalize_spatial_background_choice(NULL, group$choices)
+          group$tokens[[choice]]
+        },
+        character(1)
+      ))
+    }
     selected_tokens <- intersect(
       unlist(lapply(roi_background_groups, `[[`, "tokens"), use.names = FALSE),
       selected_input %||% character()

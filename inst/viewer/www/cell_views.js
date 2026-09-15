@@ -4804,8 +4804,8 @@
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
-    // Multi-section bundles keep the large image payload on each sample rather
-    // than duplicating the opening sample's base64 data at the space level.
+    // Multi-section bundles keep the image reference on each sample rather than
+    // duplicating the opening sample's image data at the space level.
     // Before the picker has changed section, `_sampleName` is unset and the
     // opening sample is the active one.
     var samples = sp.samples || [];

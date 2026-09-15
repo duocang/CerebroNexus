@@ -743,19 +743,22 @@ test_that("project payload preserves saved Spatial FOV controls", {
 })
 
 test_that("project spatial assets are externalized per dataset and FOV", {
-  skip_if_not_installed("base64enc")
+  skip_if_not_installed("png")
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
-  image_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(charToRaw("project-image-bytes"))
-  )
+  source_path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source_path)
+  inspected <- runtime$builder_read_image(source_path)
   image_record <- function(section) {
     list(
-      source = list(name = "tissue.png", type = "image/png"),
-      source_uri = image_uri,
-      uri = image_uri,
-      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      source = list(
+        name = "tissue.png",
+        type = "image/png",
+        size = inspected$bytes
+      ),
+      source_path = inspected$source_path,
+      source_content_md5 = inspected$source_content_md5,
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
       section_id = section
     )
   }
@@ -770,21 +773,16 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   )
 
   payload_entry <- runtime$builder_project_stage_spatial_assets(entry, root)
-  adopted <- runtime$builder_project_adopt_spatial_assets(entry, payload_entry)
-  expect_identical(
-    adopted$settings$images[["section/a"]][["H&E"]]$source_uri,
-    image_uri
-  )
+  adopted <- runtime$builder_project_adopt_spatial_assets(entry, payload_entry, root)
+  expect_true(file.exists(
+    adopted$settings$images[["section/a"]][["H&E"]]$source_path
+  ))
   expect_identical(
     adopted$settings$images[["section/a"]][["H&E"]]$project_asset,
     payload_entry$settings$images[["section/a"]][["H&E"]]$project_asset
   )
-  original_decode <- runtime$.builder_project_decode_image_uri
   original_fingerprint <- runtime$builder_project_file_fingerprint
   fingerprint_content <- logical()
-  runtime$.builder_project_decode_image_uri <- function(...) {
-    stop("an adopted immutable asset must not decode its URI")
-  }
   runtime$builder_project_file_fingerprint <- function(..., content = FALSE) {
     fingerprint_content <<- c(fingerprint_content, content)
     original_fingerprint(..., content = content)
@@ -806,7 +804,6 @@ test_that("project spatial assets are externalized per dataset and FOV", {
     payload_entry = restaged,
     root = root
   )
-  runtime$.builder_project_decode_image_uri <- original_decode
   runtime$builder_project_file_fingerprint <- original_fingerprint
   payload <- runtime$builder_project_read_dataset_config(record, root)
   first <- payload$settings$images[["section/a"]][["H&E"]]
@@ -820,13 +817,13 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   expect_null(record$configuration$payload)
 
   restored <- runtime$builder_project_restore_entry(record, root)
+  restored_source <- restored$settings$images[["section/a"]][["H&E"]]$source_path
+  expect_true(file.exists(restored_source))
+  expect_null(restored$settings$images[["section/a"]][["H&E"]]$source_uri)
+  expect_null(restored$settings$images[["section-a"]][["H&E"]]$uri)
   expect_identical(
-    restored$settings$images[["section/a"]][["H&E"]]$source_uri,
-    image_uri
-  )
-  expect_identical(
-    restored$settings$images[["section-a"]][["H&E"]]$uri,
-    image_uri
+    unname(as.character(tools::md5sum(restored_source))),
+    inspected$source_content_md5
   )
   expect_identical(
     runtime$builder_project_configuration_digest(restored),
@@ -1014,22 +1011,22 @@ test_that("project table save signature changes with manifest or configuration",
 })
 
 test_that("missing project spatial assets identify the affected FOV and image", {
-  skip_if_not_installed("base64enc")
+  skip_if_not_installed("png")
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
-  image_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(charToRaw("missing-image"))
-  )
+  source_path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source_path)
+  inspected <- runtime$builder_read_image(source_path)
   entry <- list(
     id = "ds1",
     settings = list(
       images = list(
         fov_1 = list(
           DAPI = list(
-            source_uri = image_uri,
-            uri = image_uri,
-            bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+            source = list(name = "DAPI.png", type = "image/png"),
+            source_path = inspected$source_path,
+            source_content_md5 = inspected$source_content_md5,
+            base_bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
           )
         )
       )
@@ -1053,12 +1050,6 @@ test_that("missing project spatial assets identify the affected FOV and image", 
   expect_false(status$spatial_assets_ready)
   expect_false(status$restorable)
   expect_identical(status$label, "Needs check · spatial image missing")
-  lightweight <- runtime$builder_project_restore_entry(
-    record,
-    root,
-    hydrate_spatial_assets = FALSE
-  )
-  expect_null(lightweight$settings$images$fov_1$DAPI$source_uri)
 })
 
 test_that("spatial asset status validates descriptors without hydrating image payloads", {
@@ -1262,14 +1253,14 @@ test_that("restore status snapshots are reused without weakening default validat
   expect_gte(calls, 4L)
 })
 
-test_that("checkpoint entries embed spatial images without mutating live settings", {
+test_that("checkpoint entries keep spatial images external", {
   runtime <- builder_project_test_runtime()
   entry <- list(
     id = "ds1",
     settings = list(
       spatial_image_storage = "external",
       images = list(
-        fov_1 = list(image = list(uri = "data:image/png;base64,AA=="))
+        fov_1 = list(image = list(source_path = "C:/external/image.png"))
       )
     )
   )
@@ -1278,7 +1269,7 @@ test_that("checkpoint entries embed spatial images without mutating live setting
 
   expect_identical(
     checkpoint[[1L]]$settings$spatial_image_storage,
-    "embedded"
+    "external"
   )
   expect_identical(entry$settings$spatial_image_storage, "external")
   expect_identical(checkpoint[[1L]]$settings$images, entry$settings$images)
@@ -3316,7 +3307,7 @@ test_that("manifest revision commits are serialized by an owned project lock", {
   expect_gt(read_disk, acquire)
 })
 
-test_that("project input and inline image payloads are bounded before decoding", {
+test_that("project input is bounded and Builder has no inline image decoder", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   oversized <- file.path(root, "oversized.json")
@@ -3330,22 +3321,12 @@ test_that("project input and inline image payloads are bounded before decoding",
     "size limit",
     fixed = TRUE
   )
-  expect_error(
-    runtime$.builder_project_decode_image_uri(
-      paste0("data:image/png;base64,", strrep("A", 12L)),
-      max_encoded_bytes = 8L
-    ),
-    "encoded size limit",
-    fixed = TRUE
+  implementation <- paste(
+    readLines(testthat::test_path("..", "..", "inst", "builder", "project.R")),
+    collapse = "\n"
   )
-
-  formerly_oversized <- paste0(
-    "data:image/png;base64,",
-    strrep("A", 8L * 1024L^2 + 4L)
-  )
-  expect_no_error(
-    runtime$.builder_project_decode_image_uri(formerly_oversized)
-  )
+  expect_false(grepl("base64decode", implementation, fixed = TRUE))
+  expect_false(grepl("builder_project_decode_image_uri", implementation, fixed = TRUE))
 })
 
 test_that("restored source identity requires the recorded content fingerprint", {
@@ -3641,30 +3622,17 @@ test_that("configuration identity reuses a spatial source content digest", {
       images = list(
         section = list(
           image = list(
-            source_uri = "data:image/png;base64,AAAA",
-            uri = "data:image/png;base64,AAAA",
+            source_path = "C:/private/image.png",
             source_content_md5 = content_md5
           )
         )
       )
     )
   )
-  original_decode <- runtime$.builder_project_decode_image_uri
-  on.exit(
-    runtime$.builder_project_decode_image_uri <- original_decode,
-    add = TRUE
-  )
-  decode_calls <- 0L
-  runtime$.builder_project_decode_image_uri <- function(...) {
-    decode_calls <<- decode_calls + 1L
-    original_decode(...)
-  }
-
   expect_match(
     runtime$builder_project_configuration_digest(entry),
     "^[[:xdigit:]]{32}$"
   )
-  expect_identical(decode_calls, 0L)
 })
 
 test_that("configuration identity cache bounds variants", {

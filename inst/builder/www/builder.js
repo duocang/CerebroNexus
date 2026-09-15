@@ -89,6 +89,7 @@
     busy_title: null,
     busy_message: null,
     busy_detail: null,
+    busy_phase: null,
     has_project: false,
     open_cancelable: false,
     warn_before_unload: false,
@@ -314,8 +315,25 @@
       title: document.getElementById("builder-operation-overlay-title"),
       message: document.getElementById("builder-operation-overlay-message"),
       detail: document.getElementById("builder-operation-overlay-detail"),
+      progress: document.getElementById("builder-build-progress"),
       actions: document.getElementById("builder-operation-overlay-actions"),
     };
+  }
+
+  function updateBuildOperationProgress(active, phase) {
+    var elements = builderOperationElements();
+    if (!elements.progress) return;
+    var phases = ["prepare", "datasets", "viewer", "publish"];
+    var activeIndex = phases.indexOf(phase);
+    elements.progress.hidden = !active || activeIndex < 0;
+    elements.progress.querySelectorAll("[data-build-phase]").forEach(function (step) {
+      var index = phases.indexOf(step.dataset.buildPhase);
+      var current = index === activeIndex;
+      step.classList.toggle("is-complete", index < activeIndex);
+      step.classList.toggle("is-current", current);
+      if (current) step.setAttribute("aria-current", "step");
+      else step.removeAttribute("aria-current");
+    });
   }
 
   function setBuilderOperationCopy(title, message, detail) {
@@ -626,6 +644,7 @@
       "#dataset_files",
       ".builder-add-datasets",
       ".enhance-table-add-button",
+      ".enhance-tissue-file-button",
       ".builder-file-trigger",
       ".example-btn",
       ".builder-reorder",
@@ -843,6 +862,12 @@
     if (detail && !builderProjectSaveResultOpen) {
       var busyDetail = builderActivityState.busy_detail || "";
       if (detail.textContent !== busyDetail) detail.textContent = busyDetail;
+    }
+    if (!builderProjectSaveResultOpen) {
+      updateBuildOperationProgress(
+        nextBuildOperationActive,
+        builderActivityState.busy_phase
+      );
     }
     if (!builderProjectSaveResultOpen) {
       if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
@@ -1393,7 +1418,11 @@
   function addTableFiles() {
     if (datasetMutationsLocked || !activityCapability("edit_dataset")) return;
     var picker = document.getElementById("enhance-table_files");
-    if (picker) picker.click();
+    if (!picker) return;
+    // A browser does not emit `change` when the same file is chosen twice.
+    // Clear only the transport value; retained attachment state lives in R.
+    picker.value = "";
+    picker.click();
   }
 
   function setupDatasetDropzones(roots) {
@@ -3949,7 +3978,9 @@
       }
       return;
     }
-    var fileTrigger = event.target.closest(".builder-file-trigger");
+    var fileTrigger = event.target.closest(
+      ".builder-file-trigger, .enhance-tissue-file-button"
+    );
     if (
       fileTrigger &&
       (event.key === "Enter" || event.key === " ")
@@ -4242,6 +4273,7 @@
           busy_title: message.busy_title || null,
           busy_message: message.busy_message || null,
           busy_detail: message.busy_detail || null,
+          busy_phase: message.busy_phase || null,
           has_project: message.has_project === true,
           open_cancelable: message.open_cancelable === true,
           warn_before_unload: message.warn_before_unload === true,

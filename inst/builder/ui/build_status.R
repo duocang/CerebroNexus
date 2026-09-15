@@ -853,8 +853,22 @@ builder_build_operation_overlay_model <- function(
     result = result
   )
   active <- model$state %in% c("preparing", "queued", "building")
+  phase <- if (!active) {
+    NULL
+  } else if (identical(model$state, "preparing")) {
+    "prepare"
+  } else if (grepl("Verifying and publishing", model$message %||% "", fixed = TRUE)) {
+    "publish"
+  } else if (grepl("Packaging Viewer", model$message %||% "", fixed = TRUE)) {
+    "viewer"
+  } else if (identical(model$state, "queued")) {
+    "prepare"
+  } else {
+    "datasets"
+  }
   list(
     active = active,
+    phase = phase,
     title = if (active) "Building output" else NULL,
     message = if (active) {
       paste(

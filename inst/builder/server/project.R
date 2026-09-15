@@ -266,6 +266,7 @@ builder_activity_message <- function(
     busy_title = title,
     busy_message = message,
     busy_detail = detail,
+    busy_phase = if (build_active) build_overlay$phase %||% NULL else NULL,
     has_project = isTRUE(activity$has_project),
     open_cancelable = identical(phase, "opening") &&
       identical(restore_progress$mode %||% NULL, "opening"),
@@ -843,7 +844,8 @@ builder_project_build_manifest <- function(entries, project) {
     current_digest <- builder_project_configuration_digest(configuration_entry)
     staged$entry <- builder_project_adopt_spatial_assets(
       staged$entry,
-      configuration_entry
+      configuration_entry,
+      project$root
     )
     staged$entry <- builder_project_adopt_table_assets(
       staged$entry,

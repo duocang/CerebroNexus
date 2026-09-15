@@ -47,6 +47,167 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
+viewerSelectedDatasetName <- function() {
+  if (!exists("available_crb_files", inherits = TRUE)) {
+    return(NULL)
+  }
+  available <- get("available_crb_files", inherits = TRUE)
+  viewerDatasetName(available$files, available$selected)
+}
+
+viewerImageMime <- function(path) {
+  if (!isTRUE(file_test("-f", path))) {
+    return(NULL)
+  }
+  ext <- tolower(tools::file_ext(path))
+  if (!ext %in% c("png", "jpg", "jpeg")) {
+    return(NULL)
+  }
+  bytes <- tryCatch(
+    readBin(path, what = "raw", n = 8L),
+    error = function(error) raw()
+  )
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+  if (identical(ext, "png") && identical(bytes, png_magic)) {
+    return("image/png")
+  }
+  if (
+    ext %in% c("jpg", "jpeg") &&
+      length(bytes) >= length(jpeg_magic) &&
+      identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+  ) {
+    return("image/jpeg")
+  }
+  NULL
+}
+
+# Serve trusted image bytes through a session-scoped route. Filesystem paths and
+# Base64 payloads never enter the browser response model.
+viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
+  if (is.null(session)) {
+    session <- get0("session", envir = parent.frame(), inherits = TRUE)
+  }
+  if (is.null(session) || !is.function(session$registerDataObj)) {
+    return(NULL)
+  }
+  path <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  mime <- if (is.null(path)) NULL else viewerImageMime(path)
+  if (is.null(path) || is.null(mime)) {
+    return(NULL)
+  }
+  md5 <- tryCatch(
+    unname(as.character(tools::md5sum(path))),
+    error = function(error) NA_character_
+  )
+  if (
+    is.na(md5) ||
+      (!is.null(expected_md5) && !identical(as.character(expected_md5), md5))
+  ) {
+    return(NULL)
+  }
+  if (is.null(session$userData$cerebro_private_image_urls)) {
+    session$userData$cerebro_private_image_urls <- new.env(parent = emptyenv())
+  }
+  cache <- session$userData$cerebro_private_image_urls
+  cached <- get0(md5, envir = cache, inherits = FALSE)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+  data <- list(path = path, mime = mime, md5 = md5)
+  url <- session$registerDataObj(
+    paste0("cerebro-image-", md5),
+    data,
+    function(data, request) {
+      current_md5 <- tryCatch(
+        unname(as.character(tools::md5sum(data$path))),
+        error = function(error) NA_character_
+      )
+      if (!identical(current_md5, data$md5)) {
+        return(shiny::httpResponse(404L, "text/plain", "Not found"))
+      }
+      bytes <- tryCatch(
+        readBin(data$path, what = "raw", n = file.size(data$path)),
+        error = function(error) NULL
+      )
+      if (is.null(bytes)) {
+        return(shiny::httpResponse(404L, "text/plain", "Not found"))
+      }
+      shiny::httpResponse(
+        200L,
+        data$mime,
+        bytes,
+        headers = list(
+          "Cache-Control" = "private, max-age=31536000, immutable",
+          "ETag" = paste0('"', data$md5, '"'),
+          "X-Content-Type-Options" = "nosniff"
+        )
+      )
+    }
+  )
+  assign(md5, url, envir = cache)
+  url
+}
+
+viewerTrekkerExternalImage <- function() {
+  if (!exists("Cerebro.options", inherits = TRUE)) {
+    return(NULL)
+  }
+  options <- get("Cerebro.options", inherits = TRUE)
+  dataset <- viewerSelectedDatasetName()
+  images <- options[["spatial_images"]]
+  if (
+    is.null(dataset) ||
+      !is.list(images) ||
+      !dataset %in% names(images) ||
+      !is.list(images[[dataset]])
+  ) {
+    return(NULL)
+  }
+  configured <- images[[dataset]][["trekker"]]
+  if (!is.list(configured) || !length(configured)) {
+    return(NULL)
+  }
+  configured_names <- names(configured)
+  descriptor <- configured[[1L]]
+  relative <- if (is.list(descriptor)) descriptor$path else descriptor
+  label <- if (
+    !is.null(configured_names) &&
+      length(configured_names) >= 1L &&
+      !is.na(configured_names[[1L]]) &&
+      nzchar(configured_names[[1L]])
+  ) {
+    configured_names[[1L]]
+  } else if (is.character(relative) && length(relative) == 1L) {
+    basename(relative)
+  } else {
+    "Trekker background"
+  }
+  root <- options[["cerebro_root"]]
+  path <- authorized_spatial_image_path(relative, relative, root)
+  if (is.null(path)) {
+    return(NULL)
+  }
+  url <- viewerPrivateImageUrl(path)
+  if (is.null(url)) {
+    return(NULL)
+  }
+  list(
+    uri = url,
+    bounds = if (is.list(descriptor)) descriptor$bounds else NULL,
+    viewport_bounds = if (is.list(descriptor)) {
+      descriptor$viewport_bounds
+    } else {
+      NULL
+    },
+    preset = spatialImagePreset(options, dataset, "trekker", label),
+    label = if (is.list(descriptor)) descriptor$label %||% label else label
+  )
+}
+
 viewerColourGroupChoices <- function(
   metadata,
   groups,

@@ -232,26 +232,26 @@ test_that("alignment projection prefers UMAP then the current default then PCA",
   expect_null(builder_alignment_projection("tsne", "missing"))
 })
 
-test_that("external Builder images reject active or forged payloads", {
-  skip_if_not_installed("base64enc")
-  png_bytes <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-  png_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(png_bytes)
+test_that("Builder runtime has no data-URI image materialization path", {
+  extras <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "extras.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
   )
-  expect_identical(builder_parse_image_uri(png_uri)$mime, "image/png")
-  expect_error(
-    builder_parse_image_uri("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
-    "unsupported MIME"
+  server <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
   )
-  expect_error(
-    builder_parse_image_uri("data:image/png;base64,PHN2Zz48L3N2Zz4="),
-    "does not match"
-  )
-  expect_error(
-    builder_materialize_image_uri(png_uri, tempfile(fileext = ".svg")),
-    "extension does not match"
-  )
+
+  expect_false(grepl("builder_parse_image_uri", extras, fixed = TRUE))
+  expect_false(grepl("builder_materialize_image_uri", extras, fixed = TRUE))
+  expect_false(grepl("base64encode", extras, fixed = TRUE))
+  expect_false(grepl("base64encode", server, fixed = TRUE))
 })
 
 test_that("alignment server does not subscribe to Plotly selection events", {
@@ -344,7 +344,6 @@ test_that("pending tissue image requires its matching preview and snapshot", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
 
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
@@ -439,7 +438,8 @@ test_that("pending tissue image requires its matching preview and snapshot", {
 
       expect_identical(alignment$draft()$source$name, "section-a.png")
       expect_false("saved" %in% names(alignment$draft()))
-      expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
+      expect_true(file.exists(alignment$draft()$source_path))
+      expect_false("source_uri" %in% names(alignment$draft()))
       expect_identical(alignment$draft()$point_opacity, 0.65)
       expect_identical(alignment$draft()$point_size, 6)
       expect_identical(
@@ -489,7 +489,6 @@ test_that("alignment controls auto-commit before dataset switches", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
 
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
@@ -498,12 +497,12 @@ test_that("alignment controls auto-commit before dataset switches", {
   expect_null(image$error)
   record <- builder_alignment_record(
     source = list(name = "section-a.png", type = "image/png"),
-    source_uri = image$source_uri,
-    uri = image$source_uri,
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
     image_geometry = image,
-    section = list(id = "section-a", kind = "spatial")
+    section = list(id = "section-a", kind = "spatial"),
+    source_path = image$source_path
   )
+  record$source_content_md5 <- image$source_content_md5
   entry <- list(
     id = "dataset-a",
     snapshot = list(
@@ -639,7 +638,6 @@ test_that("new images inherit the active image appearance", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
 
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
@@ -650,12 +648,12 @@ test_that("new images inherit the active image appearance", {
   parameters[c("point_opacity", "point_size")] <- list(0.65, 6)
   existing_record <- builder_alignment_record(
     source = list(name = "duplicate.png", type = "image/png"),
-    source_uri = image$source_uri,
-    uri = image$source_uri,
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
     parameters = parameters,
-    section = list(id = "section-a", kind = "spatial")
+    section = list(id = "section-a", kind = "spatial"),
+    source_path = image$source_path
   )
+  existing_record$source_content_md5 <- image$source_content_md5
   active_record <- existing_record
   active_record$source$name <- "DAPI.png"
   active_record[c("point_opacity", "point_size")] <- list(0.7, 7)
@@ -2216,7 +2214,7 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
   expect_false("datapath" %in% names(payload))
 })
 
-test_that("Builder image payload retains its ROI scope", {
+test_that("Builder alignment payload retains its ROI scope", {
   record <- builder_alignment_record(
     source = list(name = "roi-lesion.png", type = "image/png"),
     source_uri = "data:image/png;base64,SOURCE",
@@ -2228,7 +2226,7 @@ test_that("Builder image payload retains its ROI scope", {
   record$roi_value <- "lesion"
 
   expect_identical(
-    builder_histology_image_payload(record)[c("roi_field", "roi_value")],
+    builder_alignment_payload(record)[c("roi_field", "roi_value")],
     list(roi_field = "sample_roi", roi_value = "lesion")
   )
 })
@@ -2591,7 +2589,6 @@ test_that("PNG and JPEG read while TIFF variants give conversion guidance", {
 test_that("image headers are read without raster decoding", {
   skip_if_not_installed("png")
   skip_if_not_installed("jpeg")
-  skip_if_not_installed("base64enc")
   directory <- withr::local_tempdir()
   rgb <- array(seq(0, 1, length.out = 27L), dim = c(3L, 3L, 3L))
   png_path <- file.path(directory, "budget.png")
@@ -2608,24 +2605,11 @@ test_that("image headers are read without raster decoding", {
     c(width = 3L, height = 3L)
   )
   expect_match(
-    builder_read_image(png_path, max_encoded_bytes = 8L)$error,
-    "1 GiB file limit",
-    fixed = TRUE
-  )
-  uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(png_path)
-  )
-  expect_match(
-    builder_read_image_uri(uri, max_encoded_bytes = 8L)$error,
+    builder_read_image(png_path, max_bytes = 8L)$error,
     "1 GiB file limit",
     fixed = TRUE
   )
   expect_false(grepl("readPNG|readJPEG", deparse1(body(builder_read_image))))
-  expect_false(grepl(
-    "readPNG|readJPEG",
-    deparse1(body(builder_read_image_uri))
-  ))
 })
 
 test_that("JPEG metadata scanning reports a missing frame", {
@@ -2648,8 +2632,7 @@ test_that("JPEG metadata scanning reports a missing frame", {
   expect_false(grepl("as.integer(bytes)", parser, fixed = TRUE))
 })
 
-test_that("malformed PNG metadata is rejected", {
-  skip_if_not_installed("base64enc")
+test_that("incomplete PNG files are rejected", {
   malformed <- c(
     as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
     as.raw(c(0x00, 0x00, 0x00, 0x0c)),
@@ -2657,16 +2640,13 @@ test_that("malformed PNG metadata is rejected", {
     as.raw(c(0x00, 0x00, 0x00, 0x03)),
     as.raw(c(0x00, 0x00, 0x00, 0x03))
   )
-  uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(malformed)
-  )
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(malformed, path)
 
-  expect_null(.builder_png_dimensions(malformed))
-  expect_match(
-    builder_read_image_uri(uri)$error,
-    "metadata",
-    ignore.case = TRUE
+  expect_identical(.builder_png_dimensions(malformed), c(width = 3L, height = 3L))
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file is incomplete or truncated."
   )
 })
 

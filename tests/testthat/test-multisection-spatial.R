@@ -13,6 +13,7 @@ builder_multisection_source_extras <- function(local = parent.frame()) {
   sys.source(core, envir = local)
   builder_repo_source("spatial.R", local = local)
   builder_repo_source("extras.R", local = local)
+  builder_repo_source("build.R", local = local)
 }
 ## Objects holding several tissue sections.
 ##
@@ -69,10 +70,9 @@ test_that("export keeps one spatial entry per tissue section", {
   expect_equal(anyDuplicated(all_cells), 0L)
 })
 
-test_that("histology is attached per section, not once for all of them", {
+test_that("external histology remains scoped to its own section", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
 
   local({
     builder_multisection_source_extras(environment())
@@ -86,32 +86,38 @@ test_that("histology is attached per section, not once for all of them", {
     ## this guards -- would put one slide behind every other slide's cells.
     sections <- c("sectionA1", "sectionA2", "sectionB1")
     images <- list()
-    image_path <- withr::local_tempfile(fileext = ".png")
     for (i in seq_along(sections)) {
+      image_path <- file.path(dir, paste0(sections[[i]], ".png"))
       arr <- array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3))
       png::writePNG(arr, image_path)
       image <- builder_read_image(image_path)
       expect_null(image$error)
-      images[[sections[i]]] <- list(
-        uri = image$source_uri,
-        bounds = list(
+      images[[sections[i]]] <- builder_alignment_record(
+        source = list(name = basename(image_path), type = image$mime),
+        base_bounds = list(
           xmin = (i - 1) * 500,
           xmax = (i - 1) * 500 + 100,
           ymin = 0,
           ymax = 80
-        )
+        ),
+        section = list(id = sections[[i]], kind = "spatial"),
+        source_path = image$source_path
       )
     }
 
-    applied <- builder_attach_crb_extras(crb_path, images)
+    applied <- builder_attach_crb_extras(crb_path, external_images = images)
     expect_null(applied$error)
     expect_setequal(applied$applied, sections)
 
     crb <- readRDS(crb_path)
+    external <- .builder_build_materialize_spatial_images(
+      list(id = "dataset", name = "Dataset", images = images),
+      dir
+    )$images$Dataset
     bounds <- lapply(sections, function(nm) {
-      records <- crb$getSpatialData(nm)$histology_images
+      records <- external[[nm]]
       expect_length(records, 1L)
-      records[[1L]]$histology_image_bounds
+      records[[1L]]$bounds
     })
     names(bounds) <- sections
 
@@ -122,11 +128,7 @@ test_that("histology is attached per section, not once for all of them", {
     )
     for (nm in sections) {
       sd <- crb$getSpatialData(nm)
-      record <- sd$histology_images[[1L]]
-      expect_true(
-        grepl("^data:image/png;base64,", record$histology_image),
-        info = nm
-      )
+      expect_length(sd$histology_images, 0L, info = nm)
       expect_true(
         all(
           sd$coordinates[, 1] >= bounds[[nm]][["xmin"]] &
@@ -136,12 +138,10 @@ test_that("histology is attached per section, not once for all of them", {
       )
     }
 
-    ## The four documented bound keys, per section.
+    ## The four documented bound keys live in the external manifest.
     for (nm in sections) {
       expect_setequal(
-        names(
-          crb$getSpatialData(nm)$histology_images[[1L]]$histology_image_bounds
-        ),
+        names(external[[nm]][[1L]]$bounds),
         c("xmin", "xmax", "ymin", "ymax")
       )
     }
@@ -151,7 +151,6 @@ test_that("histology is attached per section, not once for all of them", {
 test_that("attaching to some sections leaves the others without an image", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
 
   local({
     builder_multisection_source_extras(environment())
@@ -164,21 +163,22 @@ test_that("attaching to some sections leaves the others without an image", {
     png::writePNG(array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3)), image_path)
     image <- builder_read_image(image_path)
     expect_null(image$error)
+    record <- builder_alignment_record(
+      source = list(name = basename(image_path), type = image$mime),
+      base_bounds = list(xmin = 500, xmax = 600, ymin = 0, ymax = 80),
+      section = list(id = "sectionA2", kind = "spatial"),
+      source_path = image$source_path
+    )
     applied <- builder_attach_crb_extras(
       crb_path,
-      list(
-        sectionA2 = list(
-          uri = image$source_uri,
-          bounds = list(xmin = 500, xmax = 600, ymin = 0, ymax = 80)
-        )
-      )
+      external_images = list(sectionA2 = record)
     )
     expect_equal(applied$applied, "sectionA2")
 
     ## A partial attachment is legitimate -- the viewer simply offers no
     ## background for the bare sections -- but it must not bleed across.
     crb <- readRDS(crb_path)
-    expect_length(crb$getSpatialData("sectionA2")$histology_images, 1L)
+    expect_length(crb$getSpatialData("sectionA2")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionA1")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionB1")$histology_images, 0L)
   })
@@ -200,13 +200,13 @@ test_that("attaching nothing, or to a section that is absent, is handled", {
       character()
     )
 
-    ## A name that is not in the object is a mistake worth reporting.
+    ## The legacy positional image argument is rejected rather than embedded.
     bad <- builder_attach_crb_extras(
       crb_path,
       list(
         nosuchsection = list(uri = "data:image/png;base64,AA", bounds = list())
       )
     )
-    expect_false(is.null(bad$error))
+    expect_match(bad$error, "no longer embeds", fixed = TRUE)
   })
 })

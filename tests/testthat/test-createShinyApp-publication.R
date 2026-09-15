@@ -68,6 +68,96 @@ test_that("bundle copies use platform clones with a portable fallback", {
   expect_identical(fallbacks, 1L)
 })
 
+test_that("Windows bundle copies use extended-length filesystem paths", {
+  expect_identical(
+    .bundleWindowsExtendedPath("C:/source/image.jpg", os_type = "windows"),
+    "\\\\?\\C:\\source\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath("\\\\server\\share\\image.jpg", os_type = "windows"),
+    "\\\\?\\UNC\\server\\share\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath("/source/image.jpg", os_type = "unix"),
+    "/source/image.jpg"
+  )
+
+  copied <- NULL
+  expect_true(.bundleCopyPath(
+    "C:/source/image.jpg",
+    "C:/stage/spatial-assets/image.jpg",
+    .sysname = "Windows",
+    .fallback = function(from, to, ...) {
+      copied <<- c(from, to)
+      TRUE
+    }
+  ))
+  expect_identical(
+    copied,
+    c(
+      "\\\\?\\C:\\source\\image.jpg",
+      "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+    )
+  )
+  observed <- NULL
+  expect_true(.bundleCopiedTargetExists(
+    "C:/stage/spatial-assets/image.jpg",
+    os_type = "windows",
+    .file_exists = function(path) {
+      observed <<- path
+      TRUE
+    },
+    .dir_exists = function(path) FALSE
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+  )
+
+  observed <- NULL
+  expect_true(.bundleCreateDirectory(
+    "C:/stage/spatial-assets/long-directory",
+    recursive = TRUE,
+    os_type = "windows",
+    .dir_create = function(path, ...) {
+      observed <<- path
+      TRUE
+    }
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\long-directory"
+  )
+})
+
+test_that("Windows recursive bundle copies materialize every directory entry", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  root <- withr::local_tempdir()
+  source <- file.path(root, "viewer")
+  destination <- file.path(root, "stage")
+  dir.create(file.path(source, "nested", "empty"), recursive = TRUE)
+  dir.create(destination)
+  writeBin(as.raw(1:32), file.path(source, "root.R"))
+  writeBin(as.raw(33:64), file.path(source, "nested", "module.R"))
+
+  expect_true(.bundleCopyPath(
+    source,
+    destination,
+    recursive = TRUE,
+    .sysname = "Windows"
+  ))
+  copied <- file.path(destination, "viewer")
+  expect_true(dir.exists(file.path(copied, "nested", "empty")))
+  expect_identical(
+    readBin(file.path(copied, "root.R"), "raw", n = 32L),
+    as.raw(1:32)
+  )
+  expect_identical(
+    readBin(file.path(copied, "nested", "module.R"), "raw", n = 32L),
+    as.raw(33:64)
+  )
+})
+
 test_that("bundle clone failures fall back to ordinary copies", {
   fallback_calls <- 0L
   expect_true(.bundleCopyPath(

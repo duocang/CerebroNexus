@@ -95,7 +95,7 @@
   unname(tools::md5sum(path))
 }
 
-.builder_app_spatial_path_component <- function(value, maximum_bytes = 40L) {
+.builder_app_spatial_path_field <- function(value) {
   if (
     !is.character(value) ||
       length(value) != 1L ||
@@ -108,36 +108,25 @@
     )
   }
   bytes <- charToRaw(enc2utf8(value))
-  encoded <- paste0(
-    "u",
-    paste(sprintf("%02x", as.integer(bytes)), collapse = "")
-  )
-  if (nchar(encoded, type = "bytes") <= maximum_bytes) {
-    return(encoded)
-  }
-  digest <- .builder_app_spatial_path_digest(bytes)
-  prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
-  paste0(substr(encoded, 1L, prefix_length), "-", digest)
+  c(charToRaw(sprintf("%08x:", length(bytes))), bytes)
 }
 
 .builder_app_spatial_target <- function(dataset, section, label, path) {
   filename <- basename(path)
+  fields <- lapply(
+    list(dataset, section, label, filename),
+    .builder_app_spatial_path_field
+  )
+  digest <- .builder_app_spatial_path_digest(c(
+    charToRaw("cerebro-spatial-image-v1:"),
+    do.call(c, fields)
+  ))
   extension <- tools::file_ext(filename)
   extension_is_safe <- grepl("^[A-Za-z0-9]{1,16}$", extension)
-  encoded_filename <- .builder_app_spatial_path_component(
-    filename,
-    40L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
-  )
-  if (extension_is_safe) {
-    encoded_filename <- paste0(encoded_filename, ".", extension)
-  }
-  target <- paste(
-    "spatial-assets",
-    .builder_app_spatial_path_component(dataset),
-    .builder_app_spatial_path_component(section),
-    .builder_app_spatial_path_component(label),
-    encoded_filename,
-    sep = "/"
+  target <- paste0(
+    "spatial-assets/u",
+    digest,
+    if (extension_is_safe) paste0(".", extension) else ""
   )
   if (!.builder_app_safe_relative(target)) {
     stop("The spatial image bundle target is unsafe.", call. = FALSE)
@@ -146,26 +135,25 @@
 }
 
 .builder_app_spatial_target_valid <- function(path, dataset, section, label) {
-  parts <- strsplit(path, "/", fixed = TRUE)[[1L]]
-  if (
-    length(parts) != 5L ||
-      !identical(
-        parts[1:4],
-        c(
-          "spatial-assets",
-          .builder_app_spatial_path_component(dataset),
-          .builder_app_spatial_path_component(section),
-          .builder_app_spatial_path_component(label)
-        )
+  fields_are_valid <- tryCatch(
+    {
+      lapply(
+        list(dataset, section, label),
+        .builder_app_spatial_path_field
       )
-  ) {
-    return(FALSE)
-  }
-  filename <- parts[[5L]]
-  stem <- sub("[.][A-Za-z0-9]{1,16}$", "", filename)
-  nzchar(filename) &&
-    nchar(filename, type = "bytes") <= 57L &&
-    grepl("^u(?:[0-9a-f]{2})+(?:-[0-9a-f]{32})?$", stem)
+      TRUE
+    },
+    error = function(error) FALSE
+  )
+  parts <- strsplit(path, "/", fixed = TRUE)[[1L]]
+  isTRUE(fields_are_valid) &&
+    length(parts) == 2L &&
+    identical(parts[[1L]], "spatial-assets") &&
+    nchar(parts[[2L]], type = "bytes") <= 50L &&
+    grepl(
+      "^u[0-9a-f]{32}([.][A-Za-z0-9]{1,16})?$",
+      parts[[2L]]
+    )
 }
 
 .builder_app_spatial_roi_scope_valid <- function(descriptor) {
@@ -1130,14 +1118,19 @@
   stop("The generated-App request contract is invalid.", call. = FALSE)
 }
 
-.builder_app_permissions_valid <- function(value) {
+.builder_app_permissions_valid <- function(
+  value,
+  .os_type = .Platform$OS.type
+) {
+  pattern <- if (identical(.os_type, "windows")) {
+    "^[r-][w-][xsS-]$"
+  } else {
+    "^[r-][w-][xsS-][r-][w-][xsS-][r-][w-][xtT-]$"
+  }
   is.character(value) &&
     length(value) == 1L &&
     !is.na(value) &&
-    grepl(
-      "^[r-][w-][xsS-][r-][w-][xsS-][r-][w-][xtT-]$",
-      value
-    )
+    grepl(pattern, value)
 }
 
 .builder_app_identity_valid <- function(identity, label, path) {

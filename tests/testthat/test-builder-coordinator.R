@@ -534,6 +534,59 @@ test_that("the coordinator preregisters an owner-only assigned stage", {
   })
 })
 
+test_that("Windows path budget fails before a stage is created", {
+  local({
+    builder_task9_source()
+    plan <- list(items = list(list(
+      filename = paste0(strrep("d", 96L), ".crb"),
+      sidecars = character()
+    )))
+    short_stage <- "C:/CerebroBuild/control/stages/stage-123456789abc"
+    expect_true(.builder_coordinator_assert_windows_path_budget(
+      plan,
+      short_stage,
+      app_expected = TRUE,
+      os_type = "windows"
+    ))
+
+    deep_stage <- paste0(
+      "C:/",
+      paste(rep("deep-output-folder", 14L), collapse = "/"),
+      "/stage-123456789abc"
+    )
+    expect_error(
+      .builder_coordinator_assert_windows_path_budget(
+        plan,
+        deep_stage,
+        app_expected = TRUE,
+        os_type = "windows"
+      ),
+      "selected output folder is too deep"
+    )
+    expect_true(.builder_coordinator_assert_windows_path_budget(
+      plan,
+      deep_stage,
+      app_expected = TRUE,
+      os_type = "unix"
+    ))
+
+    plan$items[[1L]]$id <- "dataset-a"
+    plan$items[[1L]]$spatial_image_storage <- "external"
+    plan$items[[1L]]$images <- list(section = list(image = list(
+      source = list(name = paste0(strrep("histology", 22L), ".jpg"))
+    )))
+    expect_error(
+      .builder_coordinator_assert_windows_path_budget(
+        plan,
+        short_stage,
+        app_expected = TRUE,
+        os_type = "windows"
+      ),
+      "selected output folder is too deep"
+    )
+  })
+})
+
 test_that("coordinator rejects a dangling release-root link before prepare", {
   local({
     builder_task9_source()
@@ -1687,6 +1740,43 @@ test_that("App publication requires exact parent-bound evidence", {
   })
 })
 
+test_that("Windows App publication accepts canonical slash variants", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    plan <- builder_app_coordinator_plan_fixture(target)
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      target = target,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    fixture$result$app_dir <- gsub(
+      "/",
+      "\\\\",
+      fixture$result$app_dir,
+      fixed = TRUE
+    )
+
+    published <- builder_coordinator_publish(
+      fixture$handle,
+      fixture$result
+    )
+    expect_true(published$published)
+    expect_true(dir.exists(published$app_dir))
+  })
+})
+
 test_that("coordinator requires exact scalar authentication evidence", {
   local({
     builder_task9_source()
@@ -2207,6 +2297,117 @@ test_that("App publication reuses full release identities", {
 
     expect_true(published$published)
     expect_identical(identity_calls, 6L)
+  })
+})
+
+test_that("in-place App publication tolerates only root relocation metadata", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    stage <- file.path(root, "stage")
+    app_stage <- file.path(stage, "cerebro_app")
+    dir.create(app_stage, recursive = TRUE)
+    writeLines("same bytes", file.path(app_stage, "app.R"))
+
+    parent <- .builder_app_tree_identity(app_stage)
+    portable <- .builder_app_tree_summary(parent)
+    current <- parent
+    current$root_fingerprint$change_time <-
+      current$root_fingerprint$change_time + 1
+
+    expect_identical(.builder_app_tree_summary(current), portable)
+    expect_false(identical(current, parent))
+    expect_true(.builder_coordinator_publication_tree_matches(
+      current,
+      parent,
+      portable,
+      "after_in_place"
+    ))
+    expect_false(.builder_coordinator_publication_tree_matches(
+      current,
+      parent,
+      portable,
+      "after_rename"
+    ))
+
+    swapped <- current
+    swapped$entries[[1L]]$inode <- swapped$entries[[1L]]$inode + 1024
+    expect_identical(.builder_app_tree_summary(swapped), portable)
+    expect_false(.builder_coordinator_publication_tree_matches(
+      swapped,
+      parent,
+      portable,
+      "after_in_place"
+    ))
+
+    writeLines("changed", file.path(app_stage, "app.R"))
+    changed <- .builder_app_tree_identity(app_stage)
+    expect_false(.builder_coordinator_publication_tree_matches(
+      changed,
+      parent,
+      portable,
+      "after_in_place"
+    ))
+  })
+})
+
+test_that("a verified App publishes through a locked output root", {
+  local({
+    builder_task9_source()
+    .builder_app_package_path <- function(...) builder_profile_inst_path(...)
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    plan <- builder_app_coordinator_plan_fixture(target)
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      target = target,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    locked_root <- function(from, to) {
+      if (
+        identical(.builder_release_path(from), .builder_release_path(target)) &&
+          identical(
+            .builder_release_path(to),
+            .builder_release_path(fixture$handle$backup)
+          )
+      ) {
+        return(FALSE)
+      }
+      file.rename(from, to)
+    }
+    publish <- function(handle, .verify_payload, .digest_cache) {
+      builder_publish_release(
+        handle,
+        .move = locked_root,
+        .verify_payload = .verify_payload,
+        .digest_cache = .digest_cache,
+        .allow_in_place = TRUE
+      )
+    }
+
+    published <- builder_coordinator_publish(
+      fixture$handle,
+      fixture$result,
+      .publish = publish
+    )
+
+    expect_true(published$published)
+    expect_true(dir.exists(file.path(target, "cerebro_app")))
+    expect_true(file.exists(file.path(target, "build-report.json")))
+    expect_identical(
+      readRDS(fixture$handle$journal)$publication_mode,
+      "in_place"
+    )
   })
 })
 

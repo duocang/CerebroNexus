@@ -92,7 +92,71 @@ builder_server_path_resolve <- function(
   path
 }
 
-builder_macos_picker_script <- function(command) {
+builder_native_picker_kinds <- function() {
+  c("output_directory", "project_directory", "project_manifest")
+}
+
+builder_native_picker_contract <- function(
+  kind = builder_native_picker_kinds()
+) {
+  kind <- match.arg(kind)
+  switch(
+    kind,
+    output_directory = list(
+      kind = kind,
+      type = "directory",
+      prompt = "Choose where to save the build output.",
+      unavailable = "The selected folder is not available."
+    ),
+    project_directory = list(
+      kind = kind,
+      type = "directory",
+      prompt = "Choose a folder for the Builder project.",
+      unavailable = "The selected folder is not available."
+    ),
+    project_manifest = list(
+      kind = kind,
+      type = "file",
+      prompt = "Open a Builder project.",
+      windows_filter = "Builder project (*.json)|*.json|All files (*.*)|*.*",
+      macos_types = "json",
+      zenity_filter = "Builder project | *.json",
+      kdialog_filter = "Builder project (*.json)",
+      unavailable = "The selected project file is not available."
+    )
+  )
+}
+
+builder_macos_picker_script <- function(kind) {
+  contract <- builder_native_picker_contract(kind)
+  quote_applescript <- function(value) {
+    value <- gsub("\\", "\\\\", value, fixed = TRUE)
+    paste0('"', gsub('"', '\\"', value, fixed = TRUE), '"')
+  }
+  command <- if (identical(contract$type, "directory")) {
+    paste0(
+      "POSIX path of (choose folder with prompt ",
+      quote_applescript(contract$prompt),
+      ")"
+    )
+  } else {
+    types <- paste0(
+      '{',
+      paste(vapply(
+        contract$macos_types,
+        quote_applescript,
+        character(1)
+      ), collapse = ", "),
+      '}'
+    )
+    paste0(
+      "POSIX path of (choose file with prompt ",
+      quote_applescript(contract$prompt),
+      " of type ",
+      types,
+      ")"
+    )
+  }
   paste(
     "try",
     command,
@@ -103,30 +167,177 @@ builder_macos_picker_script <- function(command) {
   )
 }
 
-builder_windows_picker_script <- function() {
+builder_windows_folder_picker_source <- function() {
   paste(
-    "args <- commandArgs(trailingOnly = TRUE)",
-    "kind <- args[[1L]]",
-    "prompt <- args[[2L]]",
-    "chosen <- tryCatch(",
-    "  switch(",
-    "    kind,",
-    "    output_directory = utils::choose.dir(caption = prompt),",
-    "    project_directory = utils::choose.dir(caption = prompt),",
-    paste0(
-      "    project_manifest = utils::choose.files(caption = prompt, ",
-      "multi = FALSE, filters = matrix(c('Builder project', '*.json', ",
-      "'All files', '*.*'), ncol = 2L, byrow = TRUE))"
-    ),
-    "  ),",
-    "  error = function(error) {",
-    "    writeLines(conditionMessage(error), con = stderr())",
-    "    quit(save = 'no', status = 1L, runLast = FALSE)",
-    "  }",
-    ")",
-    "chosen <- as.character(chosen)",
-    "chosen <- chosen[!is.na(chosen) & nzchar(chosen)]",
-    "if (length(chosen)) writeLines(enc2utf8(chosen), useBytes = TRUE)",
+    "using System;",
+    "using System.Runtime.InteropServices;",
+    "",
+    "[ComImport]",
+    "[Guid(\"DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7\")]",
+    "internal class FileOpenDialogClass {}",
+    "",
+    "[Flags]",
+    "internal enum FileOpenOptions : uint",
+    "{",
+    "    PickFolders = 0x00000020,",
+    "    ForceFileSystem = 0x00000040,",
+    "    NoChangeDirectory = 0x00000008,",
+    "    PathMustExist = 0x00000800",
+    "}",
+    "",
+    "internal enum ShellDisplayName : uint",
+    "{",
+    "    FileSystemPath = 0x80058000",
+    "}",
+    "",
+    "[ComImport]",
+    "[Guid(\"43826D1E-E718-42EE-BC55-A1E261C37BFE\")]",
+    "[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]",
+    "internal interface IShellItem",
+    "{",
+    "    void BindToHandler(IntPtr bindingContext, ref Guid handler,",
+    "        ref Guid interfaceId, out IntPtr result);",
+    "    void GetParent(out IShellItem parent);",
+    "    void GetDisplayName(ShellDisplayName name, out IntPtr value);",
+    "    void GetAttributes(uint mask, out uint attributes);",
+    "    void Compare(IShellItem other, uint hint, out int order);",
+    "}",
+    "",
+    "[ComImport]",
+    "[Guid(\"D57C7288-D4AD-4768-BE02-9D969532D960\")]",
+    "[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]",
+    "internal interface IFileOpenDialog",
+    "{",
+    "    [PreserveSig] int Show(IntPtr owner);",
+    "    void SetFileTypes(uint count, IntPtr filters);",
+    "    void SetFileTypeIndex(uint index);",
+    "    void GetFileTypeIndex(out uint index);",
+    "    void Advise(IntPtr events, out uint cookie);",
+    "    void Unadvise(uint cookie);",
+    "    void SetOptions(FileOpenOptions options);",
+    "    void GetOptions(out FileOpenOptions options);",
+    "    void SetDefaultFolder(IShellItem item);",
+    "    void SetFolder(IShellItem item);",
+    "    void GetFolder(out IShellItem item);",
+    "    void GetCurrentSelection(out IShellItem item);",
+    "    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);",
+    "    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string name);",
+    "    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);",
+    "    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string text);",
+    "    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);",
+    "    void GetResult(out IShellItem item);",
+    "    void AddPlace(IShellItem item, int alignment);",
+    "    void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);",
+    "    void Close(int result);",
+    "    void SetClientGuid(ref Guid guid);",
+    "    void ClearClientData();",
+    "    void SetFilter(IntPtr filter);",
+    "    void GetResults(out IntPtr items);",
+    "    void GetSelectedItems(out IntPtr items);",
+    "}",
+    "",
+    "public static class BuilderModernFolderPicker",
+    "{",
+    "    private const int Cancelled = unchecked((int)0x800704C7);",
+    "",
+    "    public static string Pick(string title, IntPtr owner)",
+    "    {",
+    "        IFileOpenDialog dialog =",
+    "            (IFileOpenDialog)new FileOpenDialogClass();",
+    "        IShellItem item = null;",
+    "        IntPtr value = IntPtr.Zero;",
+    "        try",
+    "        {",
+    "            FileOpenOptions options;",
+    "            dialog.GetOptions(out options);",
+    "            dialog.SetOptions(options | FileOpenOptions.PickFolders |",
+    "                FileOpenOptions.ForceFileSystem |",
+    "                FileOpenOptions.NoChangeDirectory |",
+    "                FileOpenOptions.PathMustExist);",
+    "            dialog.SetTitle(title);",
+    "            int result = dialog.Show(owner);",
+    "            if (result == Cancelled) return null;",
+    "            Marshal.ThrowExceptionForHR(result);",
+    "            dialog.GetResult(out item);",
+    "            item.GetDisplayName(ShellDisplayName.FileSystemPath, out value);",
+    "            return Marshal.PtrToStringUni(value);",
+    "        }",
+    "        finally",
+    "        {",
+    "            if (value != IntPtr.Zero) Marshal.FreeCoTaskMem(value);",
+    "            if (item != null) Marshal.FinalReleaseComObject(item);",
+    "            Marshal.FinalReleaseComObject(dialog);",
+    "        }",
+    "    }",
+    "}",
+    sep = "\n"
+  )
+}
+
+builder_windows_picker_script <- function(kind) {
+  contract <- builder_native_picker_contract(kind)
+  quote_powershell <- function(value) {
+    paste0("'", gsub("'", "''", value, fixed = TRUE), "'")
+  }
+  directory <- identical(contract$type, "directory")
+  setup <- if (directory) {
+    paste(
+      "$folderPickerSource = @'",
+      builder_windows_folder_picker_source(),
+      "'@",
+      "Add-Type -TypeDefinition $folderPickerSource",
+      sep = "\n"
+    )
+  } else {
+    character()
+  }
+  dialog <- if (directory) {
+    paste(
+      paste0(
+        "$selected = [BuilderModernFolderPicker]::Pick(",
+        quote_powershell(contract$prompt),
+        ", $owner.Handle)"
+      ),
+      "if ($null -ne $selected) {",
+      "  [Console]::WriteLine($selected)",
+      "}",
+      sep = "\n"
+    )
+  } else {
+    paste(
+      "$dialog = New-Object System.Windows.Forms.OpenFileDialog",
+      paste0("$dialog.Title = ", quote_powershell(contract$prompt)),
+      paste0("$dialog.Filter = ", quote_powershell(contract$windows_filter)),
+      "$dialog.AutoUpgradeEnabled = $true",
+      "$dialog.Multiselect = $false",
+      "$result = $dialog.ShowDialog($owner)",
+      "if ($result -eq [System.Windows.Forms.DialogResult]::OK) {",
+      "  [Console]::WriteLine($dialog.FileName)",
+      "}",
+      sep = "\n"
+    )
+  }
+  paste(
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    setup,
+    "$owner = New-Object System.Windows.Forms.Form",
+    "$owner.ShowInTaskbar = $false",
+    "$owner.StartPosition = 'CenterScreen'",
+    "$owner.Size = New-Object System.Drawing.Size(1, 1)",
+    "$owner.Opacity = 0",
+    "$owner.TopMost = $true",
+    "$owner.Show()",
+    "$owner.Activate()",
+    "$dialog = $null",
+    "try {",
+    paste0("  ", gsub("\n", "\n  ", dialog, fixed = TRUE)),
+    "} finally {",
+    "  if ($null -ne $dialog) { $dialog.Dispose() }",
+    "  $owner.Close()",
+    "  $owner.Dispose()",
+    "}",
     sep = "\n"
   )
 }
@@ -139,6 +350,16 @@ builder_table_extensions <- function() {
   c("csv", "tsv", "txt", "xls", "xlsx", "xlsm")
 }
 
+builder_image_extensions <- function() {
+  c("png", "jpg", "jpeg")
+}
+
+builder_file_accept <- function(extensions) {
+  extensions <- unique(tolower(as.character(extensions)))
+  extensions <- extensions[!is.na(extensions) & nzchar(extensions)]
+  paste0(".", extensions, collapse = ",")
+}
+
 builder_native_picker_spec <- function(
   kind = c(
     "output_directory",
@@ -146,48 +367,47 @@ builder_native_picker_spec <- function(
     "project_manifest"
   ),
   .system = Sys.info()[["sysname"]] %||% "",
-  .rscript = NULL,
+  .powershell = NULL,
   .which = Sys.which
 ) {
   kind <- match.arg(kind)
-  directory <- kind %in% c("output_directory", "project_directory")
-  prompt <- switch(
-    kind,
-    output_directory = "Choose where to save the build output.",
-    project_directory = "Choose a folder for the Builder project.",
-    project_manifest = "Open a Builder project."
-  )
+  contract <- builder_native_picker_contract(kind)
+  directory <- identical(contract$type, "directory")
+  prompt <- contract$prompt
   if (identical(.system, "Windows")) {
-    rscript <- .rscript %||% file.path(R.home("bin"), "Rscript.exe")
+    powershell <- .powershell %||% .which("powershell.exe")
+    if (!nzchar(powershell)) {
+      powershell <- .which("powershell")
+    }
+    if (!nzchar(powershell)) {
+      powershell <- .which("pwsh.exe")
+    }
+    if (!nzchar(powershell)) {
+      powershell <- .which("pwsh")
+    }
+    if (!nzchar(powershell)) {
+      stop("Windows PowerShell is required for the system picker.", call. = FALSE)
+    }
     return(list(
-      command = rscript,
+      command = unname(powershell),
       args = c(
-        "--vanilla",
-        "-e",
-        builder_windows_picker_script(),
-        kind,
-        prompt
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-STA",
+        "-Command",
+        builder_windows_picker_script(kind)
       ),
-      cancel_status = integer()
+      cancel_status = integer(),
+      encoding = "UTF-8"
     ))
   }
   if (identical(.system, "Darwin")) {
-    script <- if (directory) {
-      builder_macos_picker_script(paste0(
-        "POSIX path of (choose folder with prompt \"",
-        prompt,
-        "\")"
-      ))
-    } else {
-      builder_macos_picker_script(paste0(
-        "POSIX path of (choose file with prompt ",
-        "\"Open a Builder project.\" of type {\"public.json\"})"
-      ))
-    }
     return(list(
       command = "osascript",
-      args = c("-e", script),
-      cancel_status = integer()
+      args = c("-e", builder_macos_picker_script(kind)),
+      cancel_status = integer(),
+      encoding = "UTF-8"
     ))
   }
   zenity <- .which("zenity")
@@ -202,19 +422,40 @@ builder_native_picker_spec <- function(
       c(
         "--file-selection",
         paste0("--title=", prompt),
-        "--file-filter=Builder project | *.json"
+        paste0("--file-filter=", contract$zenity_filter)
       )
     }
-    return(list(command = unname(zenity), args = args, cancel_status = 1L))
+    return(list(
+      command = unname(zenity),
+      args = args,
+      cancel_status = 1L,
+      encoding = "UTF-8"
+    ))
   }
   kdialog <- .which("kdialog")
   if (nzchar(kdialog)) {
     args <- if (directory) {
-      c("--getexistingdirectory", path.expand("~"))
+      c(
+        "--getexistingdirectory",
+        path.expand("~"),
+        "--title",
+        prompt
+      )
     } else {
-      c("--getopenfilename", path.expand("~"), "*.json")
+      c(
+        "--getopenfilename",
+        path.expand("~"),
+        contract$kdialog_filter,
+        "--title",
+        prompt
+      )
     }
-    return(list(command = unname(kdialog), args = args, cancel_status = 1L))
+    return(list(
+      command = unname(kdialog),
+      args = args,
+      cancel_status = 1L,
+      encoding = "UTF-8"
+    ))
   }
   stop("No system picker is available.", call. = FALSE)
 }
@@ -267,14 +508,7 @@ builder_native_picker_output <- function(
 }
 
 builder_native_picker_result <- function(kind, select) {
-  kind <- match.arg(
-    kind,
-    c(
-      "output_directory",
-      "project_directory",
-      "project_manifest"
-    )
-  )
+  contract <- builder_native_picker_contract(kind)
   result <- function(
     status,
     error = NULL,
@@ -313,21 +547,15 @@ builder_native_picker_result <- function(kind, select) {
     )),
     error = identity
   )
-  valid <- !inherits(paths, "condition") &&
-    switch(
-      kind,
-      output_directory = dir.exists(paths[[1L]]),
-      project_directory = dir.exists(paths[[1L]]),
-      project_manifest = file.exists(paths[[1L]]) && !dir.exists(paths[[1L]])
-    )
+  valid <- !inherits(paths, "condition") && if (
+    identical(contract$type, "directory")
+  ) {
+    dir.exists(paths[[1L]])
+  } else {
+    file.exists(paths[[1L]]) && !dir.exists(paths[[1L]])
+  }
   if (!isTRUE(valid)) {
-    message <- switch(
-      kind,
-      output_directory = "The selected folder is not available.",
-      project_directory = "The selected folder is not available.",
-      project_manifest = "The selected project file is not available."
-    )
-    return(result("error", error = message))
+    return(result("error", error = contract$unavailable))
   }
   list(status = "selected", path = paths[[1L]])
 }
@@ -368,7 +596,8 @@ builder_start_native_picker <- function(
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE
+      cleanup_tree = TRUE,
+      encoding = spec$encoding %||% ""
     ),
     error = identity
   )
@@ -1078,14 +1307,13 @@ builder_example_configure_entry <- function(entry, record, object) {
         type = image$mime,
         size = image$bytes
       ),
-      source_uri = image$source_uri,
-      uri = image$source_uri,
       base_bounds = builder_alignment_fit_bounds(
         bounds,
         image$source_dimensions
       ),
       parameters = parameters,
-      section = list(id = "arrow_fov", kind = "spatial")
+      section = list(id = "arrow_fov", kind = "spatial"),
+      source_path = image$source_path
     )
     alignment$viewport_bounds <- builder_alignment_rotated_bounds(bounds, 28)
     alignment$image_label <- "Arrow background"

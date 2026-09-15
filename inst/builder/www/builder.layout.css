@@ -17,7 +17,26 @@
   max-width: none;
   margin: var(--space-3) auto 0;
 }
-.builder-project-brand { display: flex; min-width: 0; align-items: center; gap: .8rem; }
+.builder-project-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .8rem;
+  position: relative;
+}
+.builder-runtime-version {
+  position: absolute;
+  right: 0;
+  bottom: -.62rem;
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: .56rem;
+  font-weight: 500;
+  line-height: 1;
+  opacity: .78;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .topbar .wordmark { display: flex; align-items: center; gap: .7rem; }
 .topbar .wordmark svg { height: 17px; width: auto; display: block; }
 .topbar h1 {

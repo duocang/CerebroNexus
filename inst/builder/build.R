@@ -454,12 +454,28 @@ builder_verify_crb <- function(path, item) {
       call. = FALSE
     )
   }
-  expected_images <- if (identical(item$spatial_image_storage, "external")) {
-    list()
-  } else {
-    item$images %||% list()
-  }
   spatial <- .builder_build_field(object, "spatial")
+  embedded_sections <- names(spatial)[vapply(
+    spatial,
+    function(section) {
+      is.list(section) &&
+        (
+          length(section$histology_images %||% list()) > 0L ||
+            !is.null(section[["histology_image", exact = TRUE]]) ||
+            !is.null(section[["histology_image_bounds", exact = TRUE]])
+        )
+    },
+    logical(1)
+  )]
+  if (length(embedded_sections)) {
+    stop(
+      "The staged CRB contains embedded Spatial images; Builder supports ",
+      "external Spatial images only: ",
+      paste(embedded_sections, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
   expected_coordinate_transforms <- item$spatial_coordinate_transforms %||%
     list()
   for (section in names(expected_coordinate_transforms)) {
@@ -538,103 +554,13 @@ builder_verify_crb <- function(path, item) {
       )
     }
   }
-  for (section in names(expected_images)) {
-    observed_image <- spatial[[section]]
-    expected_image <- expected_images[[section]]
-    expected_records <- if (
-      !is.null(builder_alignment_normalize(
-        expected_image,
-        section_id = section
-      ))
-    ) {
-      list(expected_image)
-    } else {
-      expected_image
-    }
-    expected_record_labels <- names(expected_records)
-    expected_payloads <- lapply(seq_along(expected_records), function(index) {
-      record <- expected_records[[index]]
-      payload <- builder_histology_image_payload(record)
-      if (
-        !any(
-          c("dx", "rotation", "image_opacity", "point_opacity") %in%
-            names(record)
-        )
-      ) {
-        payload$histology_alignment <- NULL
-      } else if (!is.null(expected_record_labels)) {
-        payload$histology_alignment$source <- expected_record_labels[[index]]
-      }
-      payload
-    })
-    observed_images <- if (is.list(observed_image)) {
-      observed_image$histology_images %||% list()
-    } else {
-      list()
-    }
-    matching_image <- all(vapply(
-      expected_payloads,
-      function(expected_payload) {
-        any(vapply(
-          observed_images,
-          .builder_build_value_equal,
-          logical(1),
-          right = expected_payload
-        ))
-      },
-      logical(1)
-    ))
-    if (
-      !is.list(observed_image) ||
-        !matching_image
-    ) {
-      stop(
-        "The staged CRB histology image differs from BuildPlan: ",
-        section,
-        call. = FALSE
-      )
-    }
-    expected_alignment <- utils::tail(expected_records, 1L)[[1L]]
-    expected_alignment_payload <- builder_alignment_payload(expected_alignment)
-    if (!is.null(expected_record_labels) && length(expected_record_labels)) {
-      expected_alignment_payload$source <- utils::tail(
-        expected_record_labels,
-        1L
-      )[[1L]]
-    }
-    has_canonical_alignment <- any(
-      c("dx", "rotation", "image_opacity", "point_opacity") %in%
-        names(expected_alignment)
-    )
-    if (
-      has_canonical_alignment &&
-        !.builder_build_value_equal(
-          observed_image$histology_alignment,
-          expected_alignment_payload
-        )
-    ) {
-      stop(
-        "The staged CRB spatial alignment differs from BuildPlan: ",
-        section,
-        call. = FALSE
-      )
-    }
-  }
   expected_trekker_alignment <- item$trekker_alignment %||% NULL
   if (!is.null(expected_trekker_alignment)) {
     observed_trekker <- .builder_build_field(object, "trekker")
     if (
       !is.list(observed_trekker) ||
-        !identical(
-          observed_trekker$histology_image,
-          expected_trekker_alignment$source_uri %||%
-            expected_trekker_alignment$uri
-        ) ||
-        !.builder_build_value_equal(
-          observed_trekker$histology_image_bounds,
-          expected_trekker_alignment$base_bounds %||%
-            expected_trekker_alignment$bounds
-        ) ||
+        !is.null(observed_trekker$histology_image) ||
+        !is.null(observed_trekker$histology_image_bounds) ||
         !.builder_build_value_equal(
           observed_trekker$histology_alignment,
           builder_alignment_payload(expected_trekker_alignment)
@@ -714,7 +640,7 @@ builder_verify_crb <- function(path, item) {
     projections = projections,
     metadata = metadata,
     spatial_sections = spatial_sections,
-    image_sections = names(expected_images),
+    image_sections = character(),
     backend = backend,
     file_fingerprint = file_fingerprint,
     bundle_preflight = bundle_preflight,
@@ -982,9 +908,9 @@ builder_verify_crb <- function(path, item) {
     section_id = "trekker",
     section_kind = "trekker"
   )
+  trekker$histology_image <- NULL
+  trekker$histology_image_bounds <- NULL
   if (!is.null(alignment)) {
-    trekker$histology_image <- alignment$source_uri
-    trekker$histology_image_bounds <- alignment$base_bounds
     trekker$histology_alignment <- builder_alignment_payload(alignment)
   }
   object@misc$trekker <- trekker
@@ -1091,32 +1017,18 @@ builder_verify_crb <- function(path, item) {
     stop("Trekker data must be a list.", call. = FALSE)
   }
   trekker_applied <- is.list(trekker) && length(trekker) > 0L
-  embedded_images <- if (identical(item$spatial_image_storage, "external")) {
-    list()
-  } else {
-    item$images %||% list()
-  }
   result <- builder_attach_crb_extras(
     crb_path = path,
-    images = embedded_images,
-    external_images = if (identical(item$spatial_image_storage, "external")) {
-      item$images %||% list()
-    } else {
-      list()
-    }
+    images = list(),
+    external_images = item$images %||% list()
   )
   if (!is.null(result$error)) {
     stop(result$error, call. = FALSE)
   }
   result$trekker <- trekker_applied
-  if (identical(item$spatial_image_storage, "external")) {
-    external <- .builder_build_materialize_spatial_images(item, dirname(path))
-    result$external_images <- external$images
-    result$external_settings <- external$settings
-  } else {
-    result$external_images <- list()
-    result$external_settings <- list()
-  }
+  external <- .builder_build_materialize_spatial_images(item, dirname(path))
+  result$external_images <- external$images
+  result$external_settings <- external$settings
   result
 }
 
@@ -1133,7 +1045,11 @@ builder_verify_crb <- function(path, item) {
   }
   images <- list()
   settings <- list()
-  collection <- builder_image_collection_normalize(item$images %||% list())
+  collection_input <- item$images %||% list()
+  if (!is.null(item$trekker_alignment)) {
+    collection_input[["trekker"]] <- item$trekker_alignment
+  }
+  collection <- builder_image_collection_normalize(collection_input)
   for (section_id in names(collection)) {
     section_dir <- file.path(
       stage,
@@ -1149,14 +1065,41 @@ builder_verify_crb <- function(path, item) {
     )
     for (label in names(collection[[section_id]])) {
       record <- collection[[section_id]][[label]]
-      parsed <- builder_parse_image_uri(record$source_uri)
+      source_path <- tryCatch(
+        normalizePath(record$source_path, winslash = "/", mustWork = TRUE),
+        error = function(error) NULL
+      )
+      if (is.null(source_path) || !isTRUE(file_test("-f", source_path))) {
+        stop("A Builder Spatial image asset is missing.", call. = FALSE)
+      }
+      source <- record[["source", exact = TRUE]]
+      inspected <- builder_read_image(
+        source_path,
+        filename = if (is.list(source)) {
+          source$name %||% source_path
+        } else {
+          source_path
+        }
+      )
+      if (!is.null(inspected$error)) {
+        stop(inspected$error, call. = FALSE)
+      }
+      if (
+        !is.null(record$source_content_md5) &&
+          !identical(record$source_content_md5, inspected$source_content_md5)
+      ) {
+        stop("A Builder Spatial image failed its integrity check.", call. = FALSE)
+      }
       extension <- switch(
-        parsed$mime,
+        inspected$mime,
         `image/png` = "png",
         `image/jpeg` = "jpg",
-        stop("Builder image URI has an unsupported MIME type.", call. = FALSE)
+        stop("Builder image has an unsupported MIME type.", call. = FALSE)
       )
-      filename <- builder_safe_file_name(record$source$name, label)
+      filename <- builder_safe_file_name(
+        if (is.list(source)) source$name else NULL,
+        label
+      )
       filename <- paste0(
         tools::file_path_sans_ext(filename),
         ".",
@@ -1184,9 +1127,32 @@ builder_verify_crb <- function(path, item) {
         )
         filename <- paste0(stem, ".", extension)
       }
-      materialized <- builder_materialize_image_uri(
-        record$source_uri,
-        file.path(section_dir, filename)
+      materialized <- file.path(section_dir, filename)
+      if (!file.copy(
+        source_path,
+        materialized,
+        overwrite = TRUE,
+        copy.mode = TRUE
+      )) {
+        stop("A Builder Spatial image could not be copied.", call. = FALSE)
+      }
+      if (
+        !identical(unname(file.size(materialized)), inspected$bytes) ||
+          !identical(
+            unname(as.character(tools::md5sum(materialized))),
+            inspected$source_content_md5
+          )
+      ) {
+        unlink(materialized, force = TRUE)
+        stop(
+          "A Builder Spatial image copy failed its integrity check.",
+          call. = FALSE
+        )
+      }
+      materialized <- normalizePath(
+        materialized,
+        winslash = "/",
+        mustWork = TRUE
       )
       descriptor <- list(
         path = materialized,
@@ -1391,6 +1357,22 @@ builder_execute_plan <- function(
           "Artifact verification did not return a valid result."
         }
         return(.builder_build_failure(paste0(item$name, ": ", message)))
+      }
+      external <- tryCatch(
+        .builder_build_materialize_spatial_images(item, stage),
+        error = function(error) error
+      )
+      if (inherits(external, "condition")) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": ",
+          conditionMessage(external)
+        )))
+      }
+      if (length(external$images[[item$name]] %||% list())) {
+        result$spatial_images[[item$name]] <- external$images[[item$name]]
+        result$spatial_image_settings[[item$name]] <-
+          external$settings[[item$name]]
       }
       result$built <- c(result$built, stats::setNames(target, item$name))
       result$labels <- c(result$labels, item$name)

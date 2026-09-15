@@ -499,21 +499,25 @@ builder_alignment_oriented_bounds <- function(base_bounds, image_geometry) {
 #' Create the canonical per-section alignment record.
 builder_alignment_record <- function(
   source,
-  source_uri,
-  uri,
+  source_uri = NULL,
+  uri = NULL,
   base_bounds,
   parameters = list(),
   image_geometry = NULL,
-  section = list()
+  section = list(),
+  source_path = NULL,
+  project_asset = NULL
 ) {
   parameters <- .builder_alignment_parameters(parameters)
   oriented_bounds <- builder_alignment_oriented_bounds(
     base_bounds,
     image_geometry
   )
-  c(
+  record <- c(
     list(
       source = source,
+      source_path = source_path,
+      project_asset = project_asset,
       source_uri = source_uri,
       uri = uri,
       base_bounds = base_bounds,
@@ -525,6 +529,8 @@ builder_alignment_record <- function(
       section_kind = as.character(section$kind %||% "spatial")[[1L]]
     )
   )
+  record[vapply(record, is.null, logical(1))] <- NULL
+  record
 }
 
 .builder_alignment_roi_scope <- function(record) {
@@ -562,23 +568,44 @@ builder_alignment_normalize <- function(
   section_id = NULL,
   section_kind = NULL
 ) {
-  if (!is.list(record) || is.null(record$uri) || is.null(record$bounds)) {
+  if (!is.list(record)) {
+    return(NULL)
+  }
+  source_path <- record[["source_path", exact = TRUE]]
+  project_asset <- record[["project_asset", exact = TRUE]]
+  legacy_uri <- record[["source_uri", exact = TRUE]] %||%
+    record[["uri", exact = TRUE]]
+  source <- record[["source", exact = TRUE]]
+  has_file <- is.character(source_path) &&
+    length(source_path) == 1L &&
+    !is.na(source_path) &&
+    nzchar(source_path)
+  has_project_asset <- is.list(project_asset)
+  has_legacy_uri <- is.character(legacy_uri) &&
+    length(legacy_uri) == 1L &&
+    !is.na(legacy_uri) &&
+    nzchar(legacy_uri)
+  if (
+    is.null(record$base_bounds %||% record$bounds) ||
+      !(has_file || has_project_asset || has_legacy_uri)
+  ) {
     return(NULL)
   }
   parameters <- .builder_alignment_parameters(record)
   base_bounds <- record$base_bounds %||% record$bounds
   normalized <- builder_alignment_record(
-    source = record$source %||%
-      list(name = "Embedded tissue image", type = "image/png"),
-    source_uri = record$source_uri %||% record$uri,
-    uri = record$uri,
+    source = source %||% list(name = "Tissue image", type = "image/png"),
+    source_uri = legacy_uri,
+    uri = record[["uri", exact = TRUE]],
     base_bounds = base_bounds,
     parameters = parameters,
     image_geometry = record,
     section = list(
       id = section_id %||% record$section_id %||% "",
       kind = section_kind %||% record$section_kind %||% "spatial"
-    )
+    ),
+    source_path = source_path %||% NULL,
+    project_asset = project_asset %||% NULL
   )
   carried <- setdiff(names(record), c(names(normalized), "saved"))
   normalized[carried] <- record[carried]
@@ -609,7 +636,9 @@ builder_alignment_reset <- function(record) {
     section = list(
       id = normalized$section_id,
       kind = normalized$section_kind
-    )
+    ),
+    source_path = normalized$source_path %||% NULL,
+    project_asset = normalized$project_asset %||% NULL
   )
   carried <- intersect(
     c(
@@ -675,136 +704,6 @@ builder_alignment_payload <- function(record) {
   payload
 }
 
-#' Convert one Builder alignment to the canonical multi-image leaf contract.
-builder_histology_image_payload <- function(record) {
-  normalized <- builder_alignment_normalize(record)
-  if (is.null(normalized)) {
-    return(NULL)
-  }
-  required <- c("xmin", "xmax", "ymin", "ymax")
-  bounds <- stats::setNames(
-    as.numeric(unlist(normalized$base_bounds[required], use.names = FALSE)),
-    required
-  )
-  payload <- list(
-    histology_image = normalized$source_uri,
-    histology_image_bounds = bounds
-  )
-  scope <- intersect(c("roi_field", "roi_value"), names(normalized))
-  payload[scope] <- normalized[scope]
-  payload$image_label <- normalized$image_label %||%
-    basename(as.character(normalized$source$name %||% "Tissue image"))
-  payload$histology_alignment <- builder_alignment_payload(normalized)
-  payload
-}
-
-#' Store one Builder background in the canonical multi-image CRB contract.
-#'
-#' The Builder currently aligns one uploaded background per spatial section,
-#' while a CRB may already contain several embedded images. Preserve those and
-#' add the Builder image under its source filename instead of reviving the
-#' removed singular `histology_image` fields.
-builder_attach_spatial_image <- function(
-  spatial,
-  record,
-  label = NULL,
-  replace_managed = TRUE
-) {
-  normalized <- builder_alignment_normalize(record)
-  if (is.null(normalized)) {
-    return(NULL)
-  }
-  images <- spatial[["histology_images", exact = TRUE]] %||% list()
-  legacy_image <- spatial[["histology_image", exact = TRUE]]
-  legacy_bounds <- spatial[["histology_image_bounds", exact = TRUE]]
-  previous_alignment <- spatial[["histology_alignment", exact = TRUE]]
-  previous_label <- if (is.list(previous_alignment)) {
-    source <- as.character(previous_alignment[["source"]] %||% character())
-    if (length(source) == 1L && !is.na(source) && nzchar(source)) {
-      basename(source)
-    } else {
-      NULL
-    }
-  } else {
-    NULL
-  }
-  previous_builder_label <- if (
-    is.list(previous_alignment) &&
-      isTRUE(previous_alignment[["builder_managed"]])
-  ) {
-    previous_label
-  } else {
-    NULL
-  }
-  valid_legacy_image <- is.character(legacy_image) &&
-    length(legacy_image) == 1L &&
-    !is.na(legacy_image) &&
-    grepl("^data:image/", legacy_image)
-  if (!length(images) && valid_legacy_image) {
-    legacy_builder_fields <- c(
-      "source",
-      "dx",
-      "dy",
-      "scale",
-      "rotation",
-      "flip_x",
-      "flip_y",
-      "image_opacity",
-      "point_opacity",
-      "point_size"
-    )
-    legacy_parameters_valid <- isTRUE(tryCatch(
-      {
-        .builder_alignment_parameters(previous_alignment)
-        TRUE
-      },
-      error = function(error) FALSE
-    ))
-    legacy_was_builder_managed <- is.list(previous_alignment) &&
-      !is.null(previous_label) &&
-      all(legacy_builder_fields %in% names(previous_alignment)) &&
-      legacy_parameters_valid
-    ## The previous Builder wrote its managed upload into the singular fields.
-    ## Replace that value during canonical migration. A plain legacy image with
-    ## no Builder alignment is user data and remains as an embedded background.
-    if (!legacy_was_builder_managed) {
-      images <- list(
-        `Tissue background` = list(
-          histology_image = legacy_image,
-          histology_image_bounds = legacy_bounds
-        )
-      )
-    }
-  }
-  ## Rebuilding or re-aligning replaces the one image managed by the previous
-  ## Builder run. Other embedded images remain untouched.
-  if (
-    isTRUE(replace_managed) &&
-      !is.null(previous_builder_label) &&
-      previous_builder_label %in% names(images)
-  ) {
-    images[[previous_builder_label]] <- NULL
-  }
-  label <- builder_safe_file_name(
-    label %||% normalized$source$name,
-    fallback = "Builder tissue image"
-  )
-  if (label %in% names(images)) {
-    label <- utils::tail(make.unique(c(names(images), label)), 1L)
-  }
-  payload <- builder_histology_image_payload(normalized)
-  payload$image_label <- normalized$image_label %||% label
-  payload$histology_alignment$source <- label
-  images[[label]] <- payload
-  alignment <- builder_alignment_payload(normalized)
-  alignment$source <- label
-  spatial[["histology_images"]] <- images
-  spatial[["histology_image"]] <- NULL
-  spatial[["histology_image_bounds"]] <- NULL
-  spatial[["histology_alignment"]] <- alignment
-  spatial
-}
-
 #' Keep Trekker's physical image out of Seurat spatial section matching.
 builder_image_collection_normalize <- function(images) {
   images <- images %||% list()
@@ -827,8 +726,8 @@ builder_image_collection_normalize <- function(images) {
     legacy <- builder_alignment_normalize(section, section_id = section_id)
     if (!is.null(legacy)) {
       label <- builder_safe_file_name(
-        legacy$source$name %||% "Embedded tissue image",
-        fallback = "Embedded tissue image"
+        legacy$source$name %||% "Tissue image",
+        fallback = "Tissue image"
       )
       legacy$image_label <- label
       normalized[[section_id]] <- stats::setNames(list(legacy), label)
@@ -862,7 +761,7 @@ builder_image_collection_normalize <- function(images) {
       )
       if (is.null(record)) {
         stop(
-          "Spatial image records must contain an image URI and bounds.",
+          "Spatial image records must contain an image file and bounds.",
           call. = FALSE
         )
       }
@@ -1288,7 +1187,7 @@ builder_partition_alignments <- function(images) {
   )
 }
 
-BUILDER_IMAGE_MAX_ENCODED_BYTES <- 1024^3
+BUILDER_IMAGE_MAX_BYTES <- 1024^3
 
 .builder_image_uint32_be <- function(bytes) {
   if (length(bytes) != 4L) {
@@ -1419,27 +1318,52 @@ builder_image_file_dimensions <- function(path, filename = path) {
   .builder_jpeg_dimensions(header)
 }
 
-#' Read PNG/JPEG metadata while retaining the original bytes.
+.builder_image_has_complete_terminator <- function(path, mime) {
+  size <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
+  if (!is.finite(size) || size < 12) {
+    return(FALSE)
+  }
+  connection <- file(path, open = "rb")
+  on.exit(close(connection), add = TRUE)
+  if (identical(mime, "image/png")) {
+    seek(connection, where = size - 12, origin = "start")
+    tail <- readBin(connection, what = "raw", n = 12L)
+    return(
+      length(tail) == 12L &&
+        identical(tail[1:4], as.raw(c(0x00, 0x00, 0x00, 0x00))) &&
+        identical(tail[5:8], charToRaw("IEND"))
+    )
+  }
+  tail_size <- min(size, 65536)
+  seek(connection, where = size - tail_size, origin = "start")
+  tail <- readBin(connection, what = "raw", n = tail_size)
+  if (length(tail) < 2L) {
+    return(FALSE)
+  }
+  any(tail[-length(tail)] == as.raw(0xff) & tail[-1L] == as.raw(0xd9))
+}
+
+#' Validate PNG/JPEG metadata while retaining its canonical source path.
 builder_read_image <- function(
   path,
   filename = path,
-  max_encoded_bytes = BUILDER_IMAGE_MAX_ENCODED_BYTES
+  max_bytes = BUILDER_IMAGE_MAX_BYTES
 ) {
-  valid_budget <- is.numeric(max_encoded_bytes) &&
-    length(max_encoded_bytes) == 1L &&
-    !is.na(max_encoded_bytes) &&
-    is.finite(max_encoded_bytes) &&
-    max_encoded_bytes >= 1
+  valid_budget <- is.numeric(max_bytes) &&
+    length(max_bytes) == 1L &&
+    !is.na(max_bytes) &&
+    is.finite(max_bytes) &&
+    max_bytes >= 1
   if (!valid_budget) {
     return(list(error = "The image file-size limit is invalid."))
   }
   ext <- tolower(tools::file_ext(filename))
   if (ext %in% c("png", "jpg", "jpeg")) {
-    encoded_bytes <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
-    if (!is.finite(encoded_bytes)) {
+    source_bytes <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
+    if (!is.finite(source_bytes)) {
       return(list(error = "Could not read this image."))
     }
-    if (encoded_bytes > max_encoded_bytes) {
+    if (source_bytes > max_bytes) {
       return(list(error = "This image is larger than the 1 GiB file limit."))
     }
     dimensions <- builder_image_file_dimensions(path, filename)
@@ -1476,24 +1400,24 @@ builder_read_image <- function(
       )
     ))
   }
-  if (!requireNamespace("base64enc", quietly = TRUE)) {
-    return(list(error = "Reading tissue images requires base64enc."))
-  }
   mime <- if (identical(ext, "png")) "image/png" else "image/jpeg"
+  if (!.builder_image_has_complete_terminator(path, mime)) {
+    return(list(error = "The image file is incomplete or truncated."))
+  }
   width <- unname(dimensions[["width"]])
   height <- unname(dimensions[["height"]])
-  source_uri <- paste0(
-    "data:",
-    mime,
-    ";base64,",
-    base64enc::base64encode(path)
+  canonical_path <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
   )
+  if (is.null(canonical_path) || !isTRUE(file_test("-f", canonical_path))) {
+    return(list(error = "Could not read this image."))
+  }
   list(
     mime = mime,
-    source_uri = source_uri,
-    uri = source_uri,
-    source_content_md5 = unname(as.character(tools::md5sum(path))),
-    bytes = unname(file.size(path)),
+    source_path = canonical_path,
+    source_content_md5 = unname(as.character(tools::md5sum(canonical_path))),
+    bytes = unname(file.size(canonical_path)),
     width = width,
     height = height,
     source_width = width,
@@ -1504,127 +1428,6 @@ builder_read_image <- function(
     display_height = height,
     source_dimensions = c(width = width, height = height)
   )
-}
-
-#' Read source-image metadata retained in Builder state.
-builder_read_image_uri <- function(
-  uri,
-  max_encoded_bytes = BUILDER_IMAGE_MAX_ENCODED_BYTES
-) {
-  if (
-    !is.character(uri) ||
-      length(uri) != 1L ||
-      is.na(uri) ||
-      !grepl("^data:image/(png|jpeg);base64,", uri)
-  ) {
-    return(list(
-      error = "The saved tissue image is not a supported PNG or JPEG payload."
-    ))
-  }
-  valid_limits <- is.numeric(max_encoded_bytes) &&
-    length(max_encoded_bytes) == 1L &&
-    !is.na(max_encoded_bytes) &&
-    is.finite(max_encoded_bytes) &&
-    max_encoded_bytes >= 1
-  if (!valid_limits) {
-    return(list(error = "The saved image file-size limit is invalid."))
-  }
-  payload <- substring(uri, regexpr(",", uri, fixed = TRUE)[[1L]] + 1L)
-  padding <- if (endsWith(payload, "==")) {
-    2L
-  } else if (endsWith(payload, "=")) {
-    1L
-  } else {
-    0L
-  }
-  decoded_size <- nchar(payload, type = "bytes") * 3 / 4 - padding
-  if (decoded_size > max_encoded_bytes) {
-    return(list(
-      error = "The saved tissue image is larger than the 1 GiB file limit."
-    ))
-  }
-  parsed <- tryCatch(
-    builder_parse_image_uri(uri),
-    error = function(error) NULL
-  )
-  if (is.null(parsed)) {
-    return(list(error = "The saved tissue image could not be decoded."))
-  }
-  dimensions <- if (identical(parsed$mime, "image/png")) {
-    .builder_png_dimensions(parsed$bytes)
-  } else {
-    .builder_jpeg_dimensions(parsed$bytes)
-  }
-  if (is.list(dimensions) || is.null(dimensions)) {
-    return(list(
-      error = "The saved tissue image has invalid or unsafe image metadata."
-    ))
-  }
-  list(
-    width = unname(dimensions[["width"]]),
-    height = unname(dimensions[["height"]])
-  )
-}
-
-builder_parse_image_uri <- function(uri) {
-  if (
-    !is.character(uri) ||
-      length(uri) != 1L ||
-      is.na(uri) ||
-      !grepl("^data:image/[^;,]+;base64,", uri)
-  ) {
-    stop("Builder image URI is invalid.", call. = FALSE)
-  }
-  separator <- regexpr(",", uri, fixed = TRUE)[[1L]]
-  header <- substring(uri, 6L, separator - 1L)
-  mime <- sub(";base64$", "", header)
-  payload <- substring(uri, separator + 1L)
-  if (!requireNamespace("base64enc", quietly = TRUE)) {
-    stop("Materializing Builder images requires base64enc.", call. = FALSE)
-  }
-  bytes <- tryCatch(
-    base64enc::base64decode(payload),
-    error = function(error) NULL
-  )
-  if (is.null(bytes) || !is.raw(bytes)) {
-    stop("Builder image URI could not be decoded.", call. = FALSE)
-  }
-  if (!mime %in% c("image/png", "image/jpeg")) {
-    stop("Builder image URI has an unsupported MIME type.", call. = FALSE)
-  }
-  png_signature <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-  jpeg_signature <- as.raw(c(0xff, 0xd8, 0xff))
-  valid_signature <- if (identical(mime, "image/png")) {
-    length(bytes) >= length(png_signature) &&
-      identical(bytes[seq_along(png_signature)], png_signature)
-  } else {
-    length(bytes) >= length(jpeg_signature) &&
-      identical(bytes[seq_along(jpeg_signature)], jpeg_signature)
-  }
-  if (!valid_signature) {
-    stop(
-      "Builder image URI content does not match its MIME type.",
-      call. = FALSE
-    )
-  }
-  list(mime = mime, bytes = bytes)
-}
-
-builder_materialize_image_uri <- function(uri, path) {
-  parsed <- builder_parse_image_uri(uri)
-  expected_extension <- if (identical(parsed$mime, "image/png")) {
-    "png"
-  } else {
-    c("jpg", "jpeg")
-  }
-  if (!tolower(tools::file_ext(path)) %in% expected_extension) {
-    stop(
-      "Builder image target extension does not match its MIME type.",
-      call. = FALSE
-    )
-  }
-  writeBin(parsed$bytes, path)
-  normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
 #' Where the image sits, in the same coordinate space as the cells.
@@ -1693,11 +1496,11 @@ builder_bounds_cover <- function(bounds, coords) {
 #' at different offsets in the coordinate space. An earlier version of "apply to
 #' all" copied the whole entry, extent included, so four slides out of five were
 #' written thousands of units from their own cells -- selectable in the viewer,
-#' invisible on screen, and reported as done. Only `uri` and the picture's own
+#' invisible on screen, and reported as done. Only the source file and its own
 #' dimensions may be shared; `bounds` and the coverage count belong to the
 #' section.
 #'
-#' @param picture The encoded image: `uri`, `bytes`, `width`, `height`.
+#' @param picture The validated image file metadata and canonical source path.
 #' @param per_section Named list, one entry per section, each `list(bounds =,
 #'   cover = list(outside =, total =))`.
 builder_pair_sections <- function(picture, per_section) {
@@ -1705,7 +1508,8 @@ builder_pair_sections <- function(picture, per_section) {
   for (nm in names(per_section)) {
     got <- per_section[[nm]]
     out[[nm]] <- list(
-      uri = picture$uri,
+      source_path = picture$source_path,
+      project_asset = picture$project_asset,
       bounds = got$bounds,
       bytes = picture$bytes,
       width = picture$width,
@@ -1731,34 +1535,36 @@ builder_pair_sections <- function(picture, per_section) {
 #' the original with rollback.
 .builder_apply_external_spatial_appearance <- function(crb, images) {
   collection <- builder_image_collection_normalize(images)
-  if (!length(collection)) {
-    return(list(object = crb, applied = character()))
-  }
   available <- try(crb$availableSpatial(), silent = TRUE)
   if (inherits(available, "try-error")) {
-    return(list(error = "The .crb contains no spatial data."))
+    if (length(collection)) {
+      return(list(error = "The .crb contains no spatial data."))
+    }
+    available <- character()
   }
   applied <- intersect(names(collection), available)
-  for (section_id in applied) {
+  changed <- character()
+  for (section_id in available) {
     spatial <- crb$getSpatialData(section_id)
-    previous <- spatial$histology_alignment %||% list()
-    embedded <- spatial$histology_images %||% list()
-    if (
-      isTRUE(previous$builder_managed) && previous$source %in% names(embedded)
-    ) {
-      embedded[[previous$source]] <- NULL
-    }
-    active_label <- utils::tail(names(collection[[section_id]]), 1L)
-    active <- collection[[section_id]][[active_label]]
-    alignment <- builder_alignment_payload(active)
-    alignment$source <- active_label
-    spatial$histology_images <- embedded
+    has_embedded <- length(spatial$histology_images %||% list()) > 0L ||
+      !is.null(spatial[["histology_image", exact = TRUE]]) ||
+      !is.null(spatial[["histology_image_bounds", exact = TRUE]])
+    spatial$histology_images <- list()
     spatial$histology_image <- NULL
     spatial$histology_image_bounds <- NULL
-    spatial$histology_alignment <- alignment
-    crb$addSpatialData(section_id, spatial)
+    if (section_id %in% applied) {
+      active_label <- utils::tail(names(collection[[section_id]]), 1L)
+      active <- collection[[section_id]][[active_label]]
+      alignment <- builder_alignment_payload(active)
+      alignment$source <- active_label
+      spatial$histology_alignment <- alignment
+    }
+    if (has_embedded || section_id %in% applied) {
+      crb$addSpatialData(section_id, spatial)
+      changed <- c(changed, section_id)
+    }
   }
-  list(object = crb, applied = applied)
+  list(object = crb, applied = applied, changed = changed)
 }
 
 builder_attach_crb_extras <- function(
@@ -1769,12 +1575,10 @@ builder_attach_crb_extras <- function(
   external_images = list(),
   .open_gz = gzfile
 ) {
-  if (
-    !length(images) &&
-      (is.null(trekker) || !length(trekker)) &&
-      !length(external_images)
-  ) {
-    return(list(applied = character(), trekker = FALSE))
+  if (length(images)) {
+    return(list(
+      error = "Builder no longer embeds Spatial image bytes in CRB files."
+    ))
   }
   if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
     return(list(error = "Trekker data must be a list."))
@@ -1787,51 +1591,6 @@ builder_attach_crb_extras <- function(
   }
 
   applied <- character()
-  if (length(images)) {
-    available <- try(crb$availableSpatial(), silent = TRUE)
-    if (inherits(available, "try-error") || !length(available)) {
-      return(list(error = "The .crb contains no spatial data."))
-    }
-    applied <- intersect(names(images), available)
-    if (!length(applied)) {
-      return(list(
-        error = "Configured image sections are absent from the .crb."
-      ))
-    }
-    for (name in applied) {
-      spatial <- crb$getSpatialData(name)
-      records <- images[[name]]
-      if (!is.null(builder_alignment_normalize(records, section_id = name))) {
-        records <- list(records)
-      }
-      record_labels <- names(records)
-      for (record_index in seq_along(records)) {
-        record <- records[[record_index]]
-        record_label <- if (!is.null(record_labels)) {
-          record_labels[[record_index]]
-        } else {
-          NULL
-        }
-        spatial <- builder_attach_spatial_image(
-          spatial,
-          record,
-          label = record_label,
-          replace_managed = identical(record_index, 1L)
-        )
-        if (is.null(spatial)) {
-          return(list(
-            error = paste0(
-              "The configured image for spatial section `",
-              name,
-              "` is invalid."
-            )
-          ))
-        }
-      }
-      crb$addSpatialData(name, spatial)
-    }
-  }
-
   trekker_applied <- FALSE
   if (!is.null(trekker) && length(trekker)) {
     alignment <- builder_alignment_normalize(
@@ -1839,9 +1598,9 @@ builder_attach_crb_extras <- function(
       section_id = "trekker",
       section_kind = "trekker"
     )
+    trekker$histology_image <- NULL
+    trekker$histology_image_bounds <- NULL
     if (!is.null(alignment)) {
-      trekker$histology_image <- alignment$source_uri
-      trekker$histology_image_bounds <- alignment$base_bounds
       trekker$histology_alignment <- builder_alignment_payload(alignment)
     }
     added <- try(crb$addTrekker(trekker), silent = TRUE)
@@ -1861,6 +1620,10 @@ builder_attach_crb_extras <- function(
     return(list(error = external$error))
   }
   crb <- external$object
+  applied <- external$applied
+  if (!isTRUE(trekker_applied) && !length(external$changed)) {
+    return(list(applied = applied, trekker = FALSE))
+  }
 
   temporary <- tempfile(
     paste0(".", basename(crb_path), "-"),

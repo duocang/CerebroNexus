@@ -89,10 +89,6 @@ builder_plan_requires_app <- function(entries) {
     if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
       next
     }
-    storage <- entry$settings$spatial_image_storage %||% "embedded"
-    if (!identical(storage, "external")) {
-      next
-    }
     alignments <- .builder_plan_partition_alignments(
       entry$settings$images %||% list()
     )
@@ -134,15 +130,15 @@ builder_plan_requires_app <- function(entries) {
     if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
       next
     }
-    storage <- entry$settings$spatial_image_storage %||% "embedded"
+    storage <- entry$settings$spatial_image_storage %||% "external"
     if (
       !is.character(storage) ||
         length(storage) != 1L ||
         is.na(storage) ||
-        !storage %in% c("embedded", "external")
+        !identical(storage, "external")
     ) {
       return(builder_plan_error(
-        "Spatial image storage must be embedded or external.",
+        "Builder Spatial images must use external storage.",
         "invalid_spatial_image_storage"
       ))
     }
@@ -179,9 +175,45 @@ builder_plan_requires_app <- function(entries) {
         ))
       )
     }
+    for (image in images) {
+      source_path <- image[["source_path", exact = TRUE]]
+      valid_path <- is.character(source_path) &&
+        length(source_path) == 1L &&
+        !is.na(source_path) &&
+        nzchar(source_path) &&
+        file.exists(source_path) &&
+        !dir.exists(source_path)
+      expected_md5 <- image[["source_content_md5", exact = TRUE]]
+      observed_md5 <- if (valid_path) {
+        unname(as.character(tools::md5sum(source_path)))
+      } else {
+        NULL
+      }
+      valid_md5 <- is.character(expected_md5) &&
+        length(expected_md5) == 1L &&
+        !is.na(expected_md5) &&
+        grepl("^[[:xdigit:]]{32}$", expected_md5) &&
+        identical(
+          expected_md5,
+          observed_md5
+        )
+      if (!isTRUE(valid_path) || !isTRUE(valid_md5)) {
+        return(builder_plan_error(
+          paste0(
+            "Dataset “",
+            entry$settings$name,
+            "”, section “",
+            image$section_id,
+            "”, image “",
+            image$image_label,
+            "” has no valid external source file. Re-upload it before building."
+          ),
+          "invalid_external_spatial_image"
+        ))
+      }
+    }
     if (
-      identical(storage, "external") &&
-        length(images) &&
+      length(images) &&
         !isTRUE(make_app)
     ) {
       return(builder_plan_error(

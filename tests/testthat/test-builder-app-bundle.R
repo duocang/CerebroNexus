@@ -88,6 +88,16 @@ builder_app_bundle_fixture <- function(
   list(stage = stage, paths = paths, labels = labels, plan = plan)
 }
 
+test_that("App identity permissions follow the host filesystem format", {
+  expect_true(.builder_app_permissions_valid("rw-", .os_type = "windows"))
+  expect_false(.builder_app_permissions_valid(
+    "rw-r--r--",
+    .os_type = "windows"
+  ))
+  expect_true(.builder_app_permissions_valid("rw-r--r--", .os_type = "unix"))
+  expect_false(.builder_app_permissions_valid("rw-", .os_type = "unix"))
+})
+
 test_that("App request carries only the fixed safe login summary", {
   fixture <- builder_app_bundle_fixture()
   fixture$plan$app_auth <- list(
@@ -337,6 +347,8 @@ test_that("Builder spatial targets match the package canonical target", {
   first <- .builder_app_spatial_target("Dataset", "FOV", "H&E", "same.png")
   second <- .builder_app_spatial_target("Dataset", "FOV", "DAPI", "same.png")
   expect_false(identical(first, second))
+  expect_match(first, "^spatial-assets/u[0-9a-f]{32}\\.png$")
+  expect_lte(nchar(first, type = "bytes"), 64L)
   expect_true(.builder_app_safe_relative(first))
   expect_true(.builder_app_safe_relative(second))
 })

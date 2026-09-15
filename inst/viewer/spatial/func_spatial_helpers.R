@@ -125,6 +125,12 @@ spatial_scene_choices <- function(spatial_names, spatial_data, metadata) {
   stats::setNames(spatial_names, spatial_names)
 }
 
+spatial_default_roi_selection <- function(roi_values) {
+  roi_values <- unique(as.character(roi_values %||% character()))
+  roi_values <- roi_values[!is.na(roi_values) & nzchar(roi_values)]
+  if (length(roi_values) > 1L) "__separate__" else "__all__"
+}
+
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
 ## is a descriptor so its display label is never confused with a filesystem
 ## path, and descriptor bounds survive all the way to the renderer.
@@ -320,11 +326,14 @@ spatial_roi_background_groups <- function(
 }
 
 spatial_roi_background_selections <- function(groups, selected_tokens) {
+  use_defaults <- is.null(selected_tokens)
   selected_tokens <- as.character(selected_tokens %||% character())
   selections <- lapply(groups, function(group) {
     selected <- intersect(unname(group$tokens), selected_tokens)
     selected_choice <- if (length(selected)) {
       names(group$tokens)[match(selected[[1L]], group$tokens)]
+    } else if (use_defaults) {
+      normalize_spatial_background_choice(NULL, group$choices)
     } else {
       NULL
     }

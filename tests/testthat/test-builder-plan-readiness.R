@@ -1,4 +1,5 @@
 builder_plan_contract_source_runtime(environment())
+builder_repo_source("extras.R", local = environment())
 
 test_that("rail Review and BuildPlan share manifest readiness", {
   local({
@@ -64,35 +65,41 @@ test_that("new datasets require an explicit organism selection", {
   })
 })
 
-test_that("legacy alignment saved flags do not affect freezing", {
+test_that("external alignment diagnostics gate freezing", {
   local({
     builder_repo_source("preview.R")
     builder_repo_source("recommend.R")
     builder_repo_source("plan.R")
 
     entry <- builder_task6_entry()
-    entry$settings$images$fov <- list(
-      uri = "data:image/png;base64,AAAA",
-      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      saved = FALSE,
-      outside = 0L
+    image_path <- withr::local_tempfile(fileext = ".png")
+    write_dummy_png(image_path)
+    inspected <- builder_read_image(image_path)
+    entry$settings$images$fov <- builder_alignment_record(
+      source = list(name = "image.png", type = "image/png"),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      section = list(id = "fov", kind = "spatial"),
+      source_path = inspected$source_path
     )
-    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    entry$settings$images$fov$source_content_md5 <-
+      inspected$source_content_md5
+    entry$settings$images$fov$outside <- 0L
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_null(ready$error)
 
     entry$settings$images$fov$outside <- 1L
-    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_identical(blocked$error_code, "spatial_alignment_outside")
     expect_match(blocked$error, "fov")
     expect_match(blocked$error, "outside")
 
     entry$settings$images$fov$outside <- 0L
-    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_null(ready$error)
 
     for (invalid in list("invalid", NA_integer_, c(0L, 1L), -1L, 1.5)) {
       entry$settings$images$fov$outside <- invalid
-      blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+      blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
       expect_identical(
         blocked$error_code,
         "invalid_spatial_alignment_diagnostics"
@@ -100,7 +107,7 @@ test_that("legacy alignment saved flags do not affect freezing", {
     }
 
     entry$settings$images$fov <- "corrupt image record"
-    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_identical(
       blocked$error_code,
       "invalid_spatial_alignment_diagnostics"
@@ -118,28 +125,20 @@ test_that("spatial image storage and nested image counts freeze exactly", {
     builder_repo_source("plan.R")
 
     entry <- builder_task6_entry()
-    record <- list(
-      source = list(name = "H&E.png", type = "image/png", size = 4),
-      source_uri = "data:image/png;base64,AAAA",
-      uri = "data:image/png;base64,AAAA",
+    image_path <- withr::local_tempfile(fileext = ".png")
+    write_dummy_png(image_path)
+    inspected <- builder_read_image(image_path)
+    record <- builder_alignment_record(
+      source = list(name = "H&E.png", type = "image/png", size = inspected$bytes),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      dx = 0,
-      dy = 0,
-      scale = 1,
-      rotation = 0,
-      flip_x = FALSE,
-      flip_y = FALSE,
-      image_opacity = 0.8,
-      point_opacity = 0.85,
-      point_size = 5,
-      section_id = "fov",
-      section_kind = "spatial"
+      section = list(id = "fov", kind = "spatial"),
+      source_path = inspected$source_path
     )
+    record$source_content_md5 <- inspected$source_content_md5
     record$outside <- 0L
     entry$dataset_profile$spatial <- list(sections = "fov")
     entry$settings$images <- list(fov = list(`H&E` = record))
-    expect_false(builder_plan_requires_app(list(entry)))
+    expect_true(builder_plan_requires_app(list(entry)))
 
     entry$settings$spatial_image_storage <- "external"
     expect_true(builder_plan_requires_app(list(entry)))
@@ -193,7 +192,7 @@ test_that("spatial image storage and nested image counts freeze exactly", {
     invalid_image_entry$settings$images <- list(fov = "corrupt image record")
     expect_error(
       builder_plan_requires_app(list(invalid_image_entry)),
-      "invalid for atomic vectors",
+      "named image records",
       fixed = TRUE
     )
     expect_error(
@@ -201,7 +200,7 @@ test_that("spatial image storage and nested image counts freeze exactly", {
         valid_external_entry,
         invalid_image_entry
       )),
-      "invalid for atomic vectors",
+      "named image records",
       fixed = TRUE
     )
 

@@ -71,8 +71,7 @@ builder_release_runtime_files <- function() {
         )
       },
       expression_backend = .subset2(item, "expression_backend"),
-      spatial_image_storage = .subset2(item, "spatial_image_storage") %||%
-        "embedded",
+      spatial_image_storage = "external",
       spatial_alignment = {
         alignment <- .subset2(item, "spatial_alignment") %||% list()
         list(
@@ -444,6 +443,222 @@ builder_release_runtime_files <- function() {
   .builder_app_tree_summary(list(entries = entries))
 }
 
+.builder_coordinator_utf16_length <- function(path) {
+  vapply(path, function(value) {
+    encoded <- tryCatch(
+      iconv(value, from = "", to = "UTF-16LE", toRaw = TRUE)[[1L]],
+      error = function(error) NULL
+    )
+    if (is.null(encoded)) {
+      return(as.double(nchar(value, type = "chars")))
+    }
+    as.double(length(encoded) / 2L)
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+.builder_coordinator_windows_path_candidates <- function(
+  plan,
+  stage,
+  app_expected,
+  .tempfile = tempfile
+) {
+  items <- .subset2(plan, "items") %||% list()
+  artifacts <- unique(unlist(lapply(items, function(item) {
+    c(
+      .subset2(item, "filename") %||% character(),
+      .subset2(item, "sidecars") %||% character()
+    )
+  }), use.names = FALSE))
+  artifacts <- artifacts[
+    !is.na(artifacts) & nzchar(artifacts) & !grepl("[/\\\\]", artifacts)
+  ]
+  export_stage <- .tempfile(pattern = ".crb-stage-", tmpdir = stage)
+  report_temporary <- .tempfile(
+    pattern = ".build-report-",
+    tmpdir = stage,
+    fileext = ".json"
+  )
+  stages <- dirname(stage)
+  control <- dirname(stages)
+  release_token_reserve <- strrep("t", 64L)
+  atomic_token_reserve <- strrep("a", 64L)
+  candidates <- c(
+    stage,
+    file.path(stage, artifacts),
+    file.path(export_stage, artifacts),
+    file.path(stage, "build-report.json"),
+    report_temporary,
+    file.path(
+      stage,
+      paste0(
+        ".",
+        .builder_release_record_name,
+        ".",
+        release_token_reserve,
+        ".tmp"
+      )
+    ),
+    file.path(
+      control,
+      "diagnostics",
+      paste0(
+        ".owner.rds.",
+        release_token_reserve,
+        ".",
+        atomic_token_reserve,
+        ".tmp"
+      )
+    ),
+    file.path(
+      control,
+      "diagnostics",
+      paste0(
+        "released-lock-",
+        release_token_reserve,
+        "-",
+        atomic_token_reserve
+      )
+    )
+  )
+  safe_spatial_component <- function(value, fallback) {
+    value <- tolower(iconv(
+      as.character(value %||% ""),
+      to = "ASCII//TRANSLIT",
+      sub = ""
+    ))
+    value <- gsub("[^a-z0-9]+", "-", value)
+    value <- gsub("(^-+|-+$)", "", value)
+    if (!nzchar(value)) fallback else substr(value, 1L, 48L)
+  }
+  for (item in items) {
+    images <- .subset2(item, "images") %||% list()
+    for (section_id in names(images)) {
+      records <- images[[section_id]] %||% list()
+      for (label in names(records)) {
+        record <- records[[label]] %||% list()
+        source <- .subset2(record, "source") %||% list()
+        filename <- .subset2(source, "name") %||% label
+        filename <- basename(gsub("\\", "/", filename, fixed = TRUE))
+        stem <- tools::file_path_sans_ext(filename)
+        if (!nzchar(stem)) {
+          stem <- "image"
+        }
+        # Materialization normalizes to png/jpg and may append a make.unique()
+        # suffix when labels share a file name. Reserve that bounded suffix.
+        filename <- paste0(stem, ".duplicate-0000000000.jpeg")
+        candidates <- c(candidates, file.path(
+          stage,
+          ".builder-spatial-assets",
+          safe_spatial_component(.subset2(item, "id"), "dataset"),
+          safe_spatial_component(section_id, "section"),
+          filename
+        ))
+      }
+    }
+  }
+  sidecars <- unique(unlist(lapply(items, function(item) {
+    if (!identical(.subset2(item, "expression_backend"), "bpcells")) {
+      return(character())
+    }
+    .subset2(item, "sidecars") %||% character()
+  }), use.names = FALSE))
+  sidecars <- sidecars[
+    !is.na(sidecars) & nzchar(sidecars) & !grepl("[/\\\\]", sidecars)
+  ]
+  if (length(sidecars)) {
+    # BPCells controls the names below its sidecar directory. Reserve room for
+    # those implementation-owned entries without guessing their exact names.
+    candidates <- c(
+      candidates,
+      file.path(export_stage, sidecars, strrep("x", 96L))
+    )
+  }
+  if (isTRUE(app_expected)) {
+    app_dir <- file.path(stage, "cerebro_app")
+    app_stage <- .tempfile(
+      pattern = ".cerebro_app-stage-",
+      tmpdir = stage
+    )
+    app_relative <- c(
+      "app.R",
+      "config.yml",
+      "build-manifest.rds",
+      file.path("private-data", artifacts),
+      file.path("spatial-assets", paste0("u", strrep("f", 32L), ".tiff")),
+      # Current Viewer paths are shorter; this reserve makes future packaged
+      # resource growth fail during preflight instead of halfway through copy.
+      file.path("viewer-resource", strrep("x", 96L))
+    )
+    candidates <- c(
+      candidates,
+      file.path(app_dir, app_relative),
+      file.path(app_stage, app_relative)
+    )
+  }
+  unique(gsub("\\", "/", candidates, fixed = TRUE))
+}
+
+.builder_coordinator_assert_windows_path_budget <- function(
+  plan,
+  stage,
+  app_expected,
+  os_type = .Platform$OS.type,
+  limit = 259L,
+  .tempfile = tempfile
+) {
+  if (!identical(os_type, "windows")) {
+    return(invisible(TRUE))
+  }
+  candidates <- .builder_coordinator_windows_path_candidates(
+    plan,
+    stage,
+    app_expected,
+    .tempfile = .tempfile
+  )
+  lengths <- .builder_coordinator_utf16_length(candidates)
+  longest <- which.max(lengths)
+  if (lengths[[longest]] > as.double(limit)) {
+    stop(
+      "The selected output folder is too deep for this Windows R runtime. ",
+      "The longest planned Builder path is ", lengths[[longest]],
+      " UTF-16 characters (supported limit: ", limit, "). ",
+      "Choose a shorter output folder, for example C:/CerebroBuild, or ",
+      "shorten the dataset/spatial image name shown below. ",
+      "Planned path: ", candidates[[longest]],
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+.builder_coordinator_publication_tree_matches <- function(
+  current,
+  parent,
+  portable,
+  phase
+) {
+  if (
+    is.null(current) ||
+      !identical(.builder_app_tree_summary(current), portable)
+  ) {
+    return(FALSE)
+  }
+  if (identical(phase, "after_in_place")) {
+    current_relocated <- current
+    parent_relocated <- parent
+    current_relocated$root_fingerprint[c(
+      "modification_time",
+      "change_time"
+    )] <- NULL
+    parent_relocated$root_fingerprint[c(
+      "modification_time",
+      "change_time"
+    )] <- NULL
+    return(identical(current_relocated, parent_relocated))
+  }
+  identical(current, parent)
+}
+
 builder_coordinator_output_preflight <- function(plan, prior_state = NULL) {
   plan_class <- attr(plan, "class", exact = TRUE)
   if (
@@ -551,7 +766,14 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
     out_dir,
     build_id,
     expected_prior = prior,
-    expected_prior_state = prior_state
+    expected_prior_state = prior_state,
+    .stage_guard = function(stage) {
+      .builder_coordinator_assert_windows_path_budget(
+        plan,
+        stage,
+        app_expected = isTRUE(app_contract$expectation$expected)
+      )
+    }
   )
   handle$expected_payload_targets <- expected
   handle$transient_app_inputs <- if (
@@ -821,16 +1043,24 @@ builder_coordinator_publish <- function(
         call. = FALSE
       )
     }
+    returned_app_dir <- tryCatch(
+      .canonicalTargetPath(build_result$app_dir),
+      error = function(error) ""
+    )
+    expected_app_dir <- .canonicalTargetPath(
+      handle$app_expectation$app_dir
+    )
     if (
-      !identical(build_result$app_dir, handle$app_expectation$app_dir) ||
-        !dir.exists(build_result$app_dir) ||
-        .builder_release_link(build_result$app_dir)
+      !identical(returned_app_dir, expected_app_dir) ||
+        !dir.exists(returned_app_dir) ||
+        .builder_release_link(returned_app_dir)
     ) {
       stop(
         "The build result did not return the assigned App directory.",
         call. = FALSE
       )
     }
+    build_result$app_dir <- returned_app_dir
     worker_verification <- .builder_coordinator_app_verification(
       build_result$app_verification,
       handle$app_expectation
@@ -1161,7 +1391,12 @@ builder_coordinator_publish <- function(
       file.path(artifact_root, verification_relative)
     )
     isTRUE(paired) &&
-      identical(current, parent_tree_identity) &&
+      .builder_coordinator_publication_tree_matches(
+        current,
+        parent_tree_identity,
+        parent_verification$diagnostic_tree_identity,
+        phase
+      ) &&
       identical(current_env, parent_env_identity) &&
       !anyNA(artifact_paths) &&
       all(file.exists(artifact_paths))

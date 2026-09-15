@@ -33,6 +33,12 @@ test_that("spatial scene choices show only FOV identifiers", {
   expect_identical(names(choices), c("fov-a", "fov-b"))
 })
 
+test_that("Viewer opens multiple ROIs in the Builder's separate layout", {
+  expect_identical(spatial_default_roi_selection(c("ROI1", "ROI2")), "__separate__")
+  expect_identical(spatial_default_roi_selection("ROI1"), "__all__")
+  expect_identical(spatial_default_roi_selection(character()), "__all__")
+})
+
 test_that("Viewer keeps split-by on the shared interactive Canvas", {
   root <- testthat::test_path("..", "..", "inst", "viewer", "spatial")
   controls <- paste(
@@ -214,6 +220,15 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
   )
   expect_identical(
     spatial_roi_background_selections(groups, NULL),
+    list(
+      ROI1 = "embedded::ROI1-A",
+      ROI2 = "embedded::ROI2-A",
+      ROI3 = "embedded::ROI3-A",
+      ROI4 = "embedded::ROI4-A"
+    )
+  )
+  expect_identical(
+    spatial_roi_background_selections(groups, character()),
     list(
       ROI1 = "none",
       ROI2 = "none",

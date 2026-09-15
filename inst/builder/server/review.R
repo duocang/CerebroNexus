@@ -202,7 +202,7 @@ freeze_plan_for_output <- function(
   }
   explicit_output <- inherits(output_options, "builder_build_options")
   make_app <- if (explicit_output) {
-    isTRUE(output_options$make_app)
+    isTRUE(output_options$make_app) || builder_plan_requires_app(all)
   } else {
     builder_plan_requires_app(all)
   }

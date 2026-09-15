@@ -147,18 +147,13 @@ test_that("pending project hydration isolates a corrupt dataset", {
 
 test_that("configuration identity is stable across Spatial asset hydration", {
   runtime <- builder_project_hydration_runtime()
-  source_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(charToRaw("same-source-image"))
-  )
-  transformed_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(charToRaw("derived-rotated-image"))
-  )
+  source_md5 <- unclass(as.character(openssl::md5(charToRaw(
+    "same-source-image"
+  ))))
   image <- list(
     source = list(name = "H&E"),
-    source_uri = source_uri,
-    uri = transformed_uri,
+    source_path = "C:/session/same-source-image.png",
+    source_content_md5 = source_md5,
     base_bounds = list(xmin = 0, xmax = 100, ymin = 0, ymax = 80),
     bounds = list(xmin = 306, xmax = 406, ymin = -25, ymax = 55),
     dx = 306,
@@ -180,7 +175,8 @@ test_that("configuration identity is stable across Spatial asset hydration", {
     )
   )
   after <- before
-  after$settings$images[["fov-a"]][["H&E"]]$uri <- source_uri
+  after$settings$images[["fov-a"]][["H&E"]]$source_path <-
+    "C:/project/spatial-assets/same-source-image.png"
 
   expect_identical(
     runtime$builder_project_configuration_digest(before),
@@ -188,10 +184,8 @@ test_that("configuration identity is stable across Spatial asset hydration", {
   )
 
   changed <- after
-  changed$settings$images[["fov-a"]][["H&E"]]$source_uri <- paste0(
-    "data:image/png;base64,",
-    base64enc::base64encode(charToRaw("different-source-image"))
-  )
+  changed$settings$images[["fov-a"]][["H&E"]]$source_content_md5 <-
+    unclass(as.character(openssl::md5(charToRaw("different-source-image"))))
   expect_false(identical(
     runtime$builder_project_configuration_digest(before),
     runtime$builder_project_configuration_digest(changed)

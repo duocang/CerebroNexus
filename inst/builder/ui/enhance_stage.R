@@ -215,7 +215,7 @@ builder_enhance_model <- function(
           0,
         controls = controls,
         images = spatial_images,
-        spatial_image_storage = settings$spatial_image_storage %||% "embedded",
+        spatial_image_storage = "external",
         selected = names(settings$images %||% list()) %||% character(),
         replacement_policy = "Named images remain separate within each FOV.",
         skip_consequence = paste(
@@ -750,29 +750,13 @@ builder_spatial_alignment_ui <- function(id, model) {
                 ns = ns
               ),
               div(
-                class = "spatial-image-storage-control",
-                selectInput(
-                  ns("spatial_image_storage"),
-                  "Image storage",
-                  choices = c(
-                    "External files in App (spatial-assets/)" = "external",
-                    "Embedded in CRB" = "embedded"
-                  ),
-                  selected = model$spatial_image_storage %||% "embedded"
-                ),
-                p(
-                  class = "hint",
-                  "Applies to all images in this dataset."
-                )
-              ),
-              div(
                 class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact",
                 tags$input(
                   id = ns("tissue_image_file"),
                   name = ns("tissue_image_file"),
                   class = "shiny-input-file enhance-tissue-file-input builder-file-input",
                   type = "file",
-                  accept = ".png,.jpg,.jpeg",
+                  accept = builder_file_accept(builder_image_extensions()),
                   `tabindex` = "-1"
                 ),
                 tags$label(
@@ -1051,7 +1035,7 @@ builder_enhance_stage_ui <- function(
                 class = "shiny-input-file enhance-table-file-input builder-file-input",
                 type = "file",
                 multiple = "multiple",
-                accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm",
+                accept = builder_file_accept(builder_table_extensions()),
                 `tabindex` = "-1"
               )
             ),

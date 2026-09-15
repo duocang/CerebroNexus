@@ -10,19 +10,23 @@ skip_backend_if_unavailable <- function(backend) {
   invisible(backend)
 }
 
-builder_storage_parity_record <- function(section, label) {
-  uri <- paste0(
-    "data:image/png;base64,",
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC",
-    "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+builder_storage_parity_record <- function(section, label, root) {
+  source_path <- file.path(
+    root,
+    paste0(section, "-", gsub("[^A-Za-z0-9]", "-", label), ".png")
   )
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source_path)
+  inspected <- builder_read_image(source_path)
   builder_alignment_record(
-    source = list(name = paste0(label, ".png"), type = "image/png", size = 68),
-    source_uri = uri,
-    uri = uri,
+    source = list(
+      name = paste0(label, ".png"),
+      type = "image/png",
+      size = inspected$bytes
+    ),
     base_bounds = list(xmin = -1e6, xmax = 1e6, ymin = -1e6, ymax = 1e6),
     parameters = list(image_opacity = 0.8),
-    section = list(id = section, kind = "spatial")
+    section = list(id = section, kind = "spatial"),
+    source_path = inspected$source_path
   )
 }
 
@@ -46,13 +50,14 @@ builder_storage_parity_entry <- function(
   }
   images <- stats::setNames(
     lapply(sections, function(section) {
-      list(`H&E` = builder_storage_parity_record(section, "H&E"))
+      list(`H&E` = builder_storage_parity_record(section, "H&E", root))
     }),
     sections
   )
   images[[sections[[1L]]]]$DAPI <- builder_storage_parity_record(
     sections[[1L]],
-    "DAPI"
+    "DAPI",
+    root
   )
 
   entries <- list()
@@ -185,12 +190,16 @@ for (backend in c("embedded", "h5", "bpcells")) {
   })
 }
 
-test_that("embedded image storage remains independent of expression storage", {
-  result <- build_storage_parity_fixture(
+test_that("embedded spatial image storage is rejected", {
+  skip_if_not_installed("png")
+  root <- withr::local_tempdir()
+  fixture <- builder_storage_parity_entry(
+    root,
     expression_backend = "embedded",
     spatial_image_storage = "embedded"
   )
-  expect_identical(result$backend$type, "embedded")
-  expect_true(result$builder_images_embedded)
-  expect_true(all(result$image_paths_exist))
+  preflight <- .builder_plan_preflight_entries(fixture$entries, make_app = TRUE)
+
+  expect_identical(preflight$error_code, "invalid_spatial_image_storage")
+  expect_match(preflight$error, "external storage", fixed = TRUE)
 })

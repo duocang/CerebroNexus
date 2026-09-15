@@ -55,8 +55,7 @@
         list(),
       expression_backend = .subset2(item, "expression_backend"),
       sidecars = .subset2(item, "sidecars"),
-      spatial_image_storage = .subset2(item, "spatial_image_storage") %||%
-        "embedded",
+      spatial_image_storage = "external",
       external_images = .subset2(item, "external_images") %||% list(),
       external_image_settings = .subset2(item, "external_image_settings") %||%
         list()
@@ -247,7 +246,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
       is.character(storage) &&
         length(storage) == 1L &&
         !is.na(storage) &&
-        storage %in% c("embedded", "external") &&
+        identical(storage, "external") &&
         is.list(images) &&
         !is.object(images) &&
         is.list(settings) &&

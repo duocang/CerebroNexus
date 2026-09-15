@@ -132,8 +132,16 @@ builder_resolve_colors <- function(settings, levels) {
   flattened <- list()
   for (section_id in names(images)) {
     section <- images[[section_id]]
-    records <- if (is.list(section) && !is.null(section$uri)) {
-      stats::setNames(list(section), section$source$name %||% section_id)
+    legacy_record <- is.list(section) && any(
+      c("source_path", "project_asset", "source_uri", "uri") %in%
+        names(section)
+    )
+    records <- if (legacy_record) {
+      source <- section[["source", exact = TRUE]]
+      stats::setNames(
+        list(section),
+        if (is.list(source)) source$name %||% section_id else section_id
+      )
     } else {
       section
     }

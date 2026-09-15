@@ -7,7 +7,6 @@
 .builder_project_config_schema_version <- 1L
 .builder_project_configuration_contract_version <- 1L
 .builder_project_manifest_max_bytes <- 10L * 1024L^2
-.builder_project_inline_image_max_encoded_bytes <- 4 * ceiling(1024^3 / 3)
 
 .builder_project_phases <- c(
   "none",
@@ -2169,50 +2168,6 @@ builder_project_read_dataset_config <- function(record, root) {
   paste0(readable, "-", substr(digest, 1L, 10L))
 }
 
-.builder_project_decode_image_uri <- function(
-  uri,
-  max_encoded_bytes = .builder_project_inline_image_max_encoded_bytes
-) {
-  if (!.builder_project_text(uri)) {
-    stop("A Spatial image payload is missing.", call. = FALSE)
-  }
-  if (
-    !is.numeric(max_encoded_bytes) ||
-      length(max_encoded_bytes) != 1L ||
-      is.na(max_encoded_bytes) ||
-      !is.finite(max_encoded_bytes) ||
-      max_encoded_bytes < 1
-  ) {
-    stop("The Spatial image encoded size limit is invalid.", call. = FALSE)
-  }
-  separator <- regexpr(",", uri, fixed = TRUE)[[1L]]
-  if (separator < 1L) {
-    stop("A Spatial image payload is not a supported data URI.", call. = FALSE)
-  }
-  header <- substring(uri, 1L, separator)
-  matched <- regexec("^data:([^;,]+);base64,$", header, perl = TRUE)
-  parts <- regmatches(header, matched)[[1L]]
-  if (length(parts) != 2L) {
-    stop("A Spatial image payload is not a supported data URI.", call. = FALSE)
-  }
-  encoded_bytes <- nchar(uri, type = "bytes") - separator
-  if (encoded_bytes > max_encoded_bytes) {
-    stop(
-      "A Spatial image payload exceeds its encoded size limit.",
-      call. = FALSE
-    )
-  }
-  payload <- substring(uri, separator + 1L)
-  bytes <- tryCatch(
-    base64enc::base64decode(payload),
-    error = function(error) NULL
-  )
-  if (is.null(bytes) || !length(bytes)) {
-    stop("A Spatial image payload could not be decoded.", call. = FALSE)
-  }
-  list(mime = parts[[2L]], bytes = bytes)
-}
-
 .builder_project_map_spatial_images <- function(entry, transform) {
   images <- entry$settings$images %||% list()
   if (!is.list(images) || !length(images)) {
@@ -2222,7 +2177,8 @@ builder_project_read_dataset_config <- function(record, root) {
     collection <- images[[section]]
     legacy_record <- is.list(collection) &&
       any(
-        c("source_uri", "uri", "project_asset") %in% names(collection)
+        c("source_path", "source_uri", "uri", "project_asset") %in%
+          names(collection)
       )
     if (legacy_record) {
       label <- collection$source$name %||% "image"
@@ -2255,8 +2211,8 @@ builder_project_stage_spatial_assets <- function(entry, root) {
       return(record)
     }
     field_order <- names(record)
-    payload <- record$source_uri %||% record$uri %||% NULL
-    asset <- record$project_asset %||% NULL
+    source_path <- record[["source_path", exact = TRUE]]
+    asset <- record[["project_asset", exact = TRUE]]
     fail <- function(reason) {
       stop(
         paste0(
@@ -2273,36 +2229,61 @@ builder_project_stage_spatial_assets <- function(entry, root) {
         call. = FALSE
       )
     }
-    if (is.list(asset)) {
-      path <- tryCatch(
+    asset_path <- if (is.list(asset)) {
+      tryCatch(
         builder_project_resolve_path(asset$path %||% "", root, "managed"),
         error = function(error) NULL
       )
-      if (
-        !.builder_project_text(path) || !file.exists(path) || dir.exists(path)
-      ) {
-        fail("is missing")
-      }
-      if (!builder_project_managed_file_matches(asset$fingerprint, path)) {
-        fail("failed its integrity check")
-      }
+    } else {
+      NULL
+    }
+    valid_asset <- .builder_project_text(asset_path) &&
+      file.exists(asset_path) &&
+      !dir.exists(asset_path) &&
+      builder_project_managed_file_matches(asset$fingerprint, asset_path)
+    canonical_source <- if (
+      .builder_project_text(source_path) &&
+        file.exists(source_path) &&
+        !dir.exists(source_path)
+    ) {
+      normalizePath(source_path, winslash = "/", mustWork = TRUE)
+    } else {
+      NULL
+    }
+    canonical_asset <- if (isTRUE(valid_asset)) {
+      normalizePath(asset_path, winslash = "/", mustWork = TRUE)
+    } else {
+      NULL
+    }
+    if (
+      isTRUE(valid_asset) &&
+        (is.null(canonical_source) || identical(canonical_source, canonical_asset))
+    ) {
       record$source_content_md5 <- asset$fingerprint$md5 %||%
         record$source_content_md5 %||%
         NULL
+      record$source_path <- NULL
       record$source_uri <- NULL
       record$uri <- NULL
       return(record)
     }
-    parsed <- .builder_project_decode_image_uri(
-      payload
-    )
-    extension <- switch(
-      tolower(parsed$mime),
-      "image/jpeg" = "jpg",
-      "image/webp" = "webp",
-      "png"
-    )
-    asset_id <- unclass(as.character(openssl::md5(parsed$bytes)))
+    if (!is.null(canonical_source)) {
+      source <- record[["source", exact = TRUE]]
+      inspected <- builder_read_image(
+        canonical_source,
+        filename = if (is.list(source)) source$name %||% canonical_source else canonical_source
+      )
+      if (!is.null(inspected$error)) {
+        fail(paste0("is invalid: ", inspected$error))
+      }
+      mime <- inspected$mime
+      asset_id <- inspected$source_content_md5
+      extension <- if (identical(mime, "image/png")) "png" else "jpg"
+    } else {
+      fail(
+        "has no external source file; re-upload images saved by an older Builder"
+      )
+    }
     target_dir <- builder_project_resolve_path(
       paste(
         "spatial-assets",
@@ -2333,9 +2314,10 @@ builder_project_stage_spatial_assets <- function(entry, root) {
         fileext = ".part"
       )
       on.exit(unlink(part, force = TRUE), add = TRUE)
-      writeBin(parsed$bytes, part)
+      copied <- builder_project_copy_file(canonical_source, part)
       if (
-        !identical(unname(as.character(tools::md5sum(part))), asset_id) ||
+        !isTRUE(copied) ||
+          !identical(unname(as.character(tools::md5sum(part))), asset_id) ||
           !file.rename(part, target)
       ) {
         stop(
@@ -2347,25 +2329,29 @@ builder_project_stage_spatial_assets <- function(entry, root) {
     record$project_asset <- list(
       schema_version = 1L,
       path = builder_project_relative_path(target, root),
-      mime = parsed$mime,
+      mime = mime,
       fingerprint = builder_project_file_fingerprint_with_md5(target, asset_id),
       field_order = field_order
     )
     record$source_content_md5 <- asset_id
+    record$source_path <- NULL
     record$source_uri <- NULL
     record$uri <- NULL
     record
   })
 }
 
-builder_project_adopt_spatial_assets <- function(entry, staged) {
+builder_project_adopt_spatial_assets <- function(entry, staged, root = NULL) {
   if (!is.list(entry) || !is.list(staged)) {
     return(entry)
   }
   staged_record <- function(section, label) {
     collection <- staged$settings$images[[section]] %||% NULL
     legacy <- is.list(collection) &&
-      any(c("source_uri", "uri", "project_asset") %in% names(collection))
+      any(
+        c("source_path", "source_uri", "uri", "project_asset") %in%
+          names(collection)
+      )
     if (legacy) collection else collection[[label]] %||% NULL
   }
   .builder_project_map_spatial_images(entry, function(record, section, label) {
@@ -2376,6 +2362,18 @@ builder_project_adopt_spatial_assets <- function(entry, staged) {
         is.list(saved$project_asset %||% NULL)
     ) {
       record$project_asset <- saved$project_asset
+      if (!is.null(root)) {
+        record$source_path <- tryCatch(
+          builder_project_resolve_path(
+            saved$project_asset$path %||% "",
+            root,
+            "managed"
+          ),
+          error = function(error) NULL
+        )
+      }
+      record$source_uri <- NULL
+      record$uri <- NULL
     }
     record
   })
@@ -2426,18 +2424,12 @@ builder_project_restore_spatial_assets <- function(
     ) {
       fail("failed its integrity check")
     }
-    mime <- as.character(asset$mime %||% "image/png")[[1L]]
-    uri <- paste0(
-      "data:",
-      mime,
-      ";base64,",
-      base64enc::base64encode(path)
-    )
     record$source_content_md5 <- asset$fingerprint$md5 %||%
       record$source_content_md5 %||%
       NULL
-    record$source_uri <- uri
-    record$uri <- uri
+    record$source_path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    record$source_uri <- NULL
+    record$uri <- NULL
     field_order <- as.character(asset$field_order %||% character())
     if (length(field_order)) {
       record <- record[c(
@@ -2452,7 +2444,7 @@ builder_project_restore_spatial_assets <- function(
 builder_project_checkpoint_entries <- function(entries) {
   lapply(entries, function(entry) {
     if (length(entry$settings$images %||% list())) {
-      entry$settings$spatial_image_storage <- "embedded"
+      entry$settings$spatial_image_storage <- "external"
     }
     entry
   })
@@ -2580,18 +2572,20 @@ builder_project_configuration_digest <- function(entry) {
           !.builder_project_text(source_md5) ||
             !grepl("^[[:xdigit:]]{32}$", source_md5)
         ) {
-          source_md5 <- tryCatch(
-            {
-              parsed <- .builder_project_decode_image_uri(
-                record$source_uri %||% record$uri %||% NULL
-              )
-              unclass(as.character(openssl::md5(parsed$bytes)))
-            },
-            error = function(error) NULL
-          )
+          source_path <- record[["source_path", exact = TRUE]]
+          source_md5 <- if (
+            .builder_project_text(source_path) &&
+              file.exists(source_path) &&
+              !dir.exists(source_path)
+          ) {
+            unname(as.character(tools::md5sum(source_path)))
+          } else {
+            NULL
+          }
         }
         # Digest-only content identity; never serialized as project UI state.
         record$source_content_md5 <- source_md5
+        record$source_path <- NULL
         record$source_uri <- NULL
         record$uri <- NULL
         record$project_asset <- NULL
@@ -2763,13 +2757,11 @@ builder_project_restore_entry <- function(
   entry$levels <- entry$levels %||% list()
   entry$format <- entry$format %||% record$format %||% NULL
   entry$load_state <- "reload_required"
-  if (isTRUE(hydrate_spatial_assets)) {
-    entry <- builder_project_restore_spatial_assets(
-      entry,
-      root,
-      validate = !trusted_status
-    )
-  }
+  entry <- builder_project_restore_spatial_assets(
+    entry,
+    root,
+    validate = !trusted_status
+  )
   entry <- builder_project_restore_table_assets(entry, root)
   source <- record$source %||% list()
   entry$source_origin <- source$origin %||%

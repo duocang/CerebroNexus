@@ -29,8 +29,6 @@
   gap: var(--space-2);
   min-width: 0;
 }
-.spatial-image-storage-control .form-group { margin-bottom: var(--space-1); }
-.spatial-image-storage-control .hint { margin: 0; }
 .spatial-alignment-sidebar-fixed .form-group { margin-bottom: 0; }
 .builder-spatial-scene-inventory {
   max-height: 18rem;

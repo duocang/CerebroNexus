@@ -2689,7 +2689,7 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )))
 })
 
-test_that("spatial image bundle targets use encoded portable components", {
+test_that("spatial image bundle targets use one bounded opaque path", {
   target <- .spatialImageBundleTarget(
     "Dataset",
     "section",
@@ -2697,10 +2697,19 @@ test_that("spatial image bundle targets use encoded portable components", {
     "image.png"
   )
 
+  expect_match(
+    target,
+    "^spatial-assets/u[0-9a-f]{32}\\.png$"
+  )
   expect_identical(
     target,
-    "spatial-assets/u44617461736574/u73656374696f6e/u496d616765/u696d6167652e706e67.png"
+    .spatialImageBundleTarget("Dataset", "section", "Image", "image.png")
   )
+  expect_false(identical(
+    target,
+    .spatialImageBundleTarget("Dataset", "section", "Other", "image.png")
+  ))
+  expect_lte(nchar(target, type = "bytes"), 64L)
   expect_false(grepl("\\\\", target))
 })
 

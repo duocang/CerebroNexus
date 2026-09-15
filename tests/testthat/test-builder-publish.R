@@ -824,6 +824,231 @@ test_that("compare-and-swap rejects a release changed after Review", {
   })
 })
 
+test_that("release stages use bounded names and guard before payload creation", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    handle <- builder_prepare_release(
+      target,
+      paste(rep("long-build-identity", 20L), collapse = "-")
+    )
+
+    expect_match(basename(handle$stage), "^stage-[[:xdigit:]]+$")
+    expect_lte(nchar(basename(handle$stage), type = "bytes"), 32L)
+    expect_false(grepl("\\\\", handle$stage))
+    expect_true(builder_abort_release(handle)$aborted)
+
+    guarded_target <- file.path(root, "guarded")
+    control <- builder_release_control_path(guarded_target)
+    expect_error(
+      builder_prepare_release(
+        guarded_target,
+        "guarded-build",
+        .stage_guard = function(stage) {
+          stop("path-budget-sentinel", call. = FALSE)
+        }
+      ),
+      "path-budget-sentinel"
+    )
+    expect_false(dir.exists(file.path(control, "lock")))
+    expect_length(
+      list.files(file.path(control, "stages"), all.files = TRUE, no.. = TRUE),
+      0L
+    )
+  })
+})
+
+test_that("stage removal is verified and uses extended Windows paths", {
+  local({
+    builder_publish_source()
+    expect_identical(
+      .builder_release_io_path("C:/stage/payload", os_type = "windows"),
+      "\\\\?\\C:\\stage\\payload"
+    )
+    expect_error(
+      {
+        stage <- file.path(withr::local_tempdir(), "stage")
+        dir.create(stage)
+        writeLines("payload", file.path(stage, "payload.txt"))
+        .builder_release_remove_stage(
+          stage,
+          .unlink = function(...) 1L,
+          os_type = "windows"
+        )
+      },
+      "could not be removed safely"
+    )
+  })
+})
+
+test_that("prepare removes a journal-owned aborted stage", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    abandoned <- builder_prepare_release(target, "abandoned-build")
+    writeLines("partial", file.path(abandoned$stage, "partial.crb"))
+    abandoned <- .builder_release_write_phase(abandoned, "aborted")
+    .builder_release_release_lock(
+      abandoned$control,
+      abandoned$lock,
+      abandoned$token
+    )
+
+    replacement <- builder_prepare_release(target, "replacement-build")
+    expect_false(dir.exists(abandoned$stage))
+    expect_true(dir.exists(replacement$stage))
+    expect_true(builder_abort_release(replacement)$aborted)
+  })
+})
+
+test_that("a locked Windows release root publishes in place and can be rebuilt", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+
+    publish_with_locked_root <- function(value, build_id) {
+      handle <- builder_prepare_release(
+        target,
+        build_id,
+        builder_release_identity(target)
+      )
+      writeLines(value, file.path(handle$stage, "dataset.crb"))
+      locked_root <- function(from, to) {
+        if (
+          identical(.canonicalTargetPath(from), .canonicalTargetPath(target)) &&
+            identical(.canonicalTargetPath(to), .canonicalTargetPath(handle$backup))
+        ) {
+          return(FALSE)
+        }
+        file.rename(from, to)
+      }
+      phases <- character()
+      published <- builder_publish_release(
+        handle,
+        .move = locked_root,
+        .allow_in_place = TRUE,
+        .verify_payload = function(root, phase) {
+          phases <<- c(phases, phase)
+          TRUE
+        }
+      )
+      published$verification_phases <- phases
+      published
+    }
+
+    first <- publish_with_locked_root("first", "build-locked-first")
+    expect_true(first$published)
+    expect_identical(readLines(file.path(target, "dataset.crb")), "first")
+    first_journal <- readRDS(first$journal)
+    expect_identical(first_journal$publication_mode, "in_place")
+    expect_identical(first_journal$phase, "complete")
+    expect_identical(
+      first$verification_phases,
+      c("before_rename", "after_in_place")
+    )
+
+    second <- publish_with_locked_root("second", "build-locked-second")
+    expect_true(second$published)
+    expect_identical(readLines(file.path(target, "dataset.crb")), "second")
+    expect_identical(
+      second$verification_phases,
+      c("before_rename", "after_in_place")
+    )
+    expect_false(dir.exists(file.path(
+      builder_release_control_path(target),
+      "backup"
+    )))
+  })
+})
+
+test_that("failed in-place publication restores the prior release", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    handle <- builder_prepare_release(
+      target,
+      "build-locked-restore",
+      builder_release_identity(target)
+    )
+    writeLines("new", file.path(handle$stage, "dataset.crb"))
+    locked_and_fail_install <- function(from, to) {
+      if (
+        identical(.canonicalTargetPath(from), .canonicalTargetPath(target)) &&
+          identical(.canonicalTargetPath(to), .canonicalTargetPath(handle$backup))
+      ) {
+        return(FALSE)
+      }
+      if (
+        identical(dirname(.canonicalTargetPath(from)), handle$stage) &&
+          identical(dirname(.canonicalTargetPath(to)), handle$target)
+      ) {
+        return(FALSE)
+      }
+      file.rename(from, to)
+    }
+
+    expect_error(
+      builder_publish_release(
+        handle,
+        .move = locked_and_fail_install,
+        .allow_in_place = TRUE
+      ),
+      "prior release was restored"
+    )
+    expect_identical(readLines(file.path(target, "dataset.crb")), "old")
+    expect_false(dir.exists(handle$backup))
+  })
+})
+
+test_that("failed post-install verification restores an in-place release", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    handle <- builder_prepare_release(
+      target,
+      "build-in-place-guard",
+      builder_release_identity(target)
+    )
+    writeLines("new", file.path(handle$stage, "dataset.crb"))
+    locked_root <- function(from, to) {
+      if (
+        identical(.canonicalTargetPath(from), .canonicalTargetPath(target)) &&
+          identical(
+            .canonicalTargetPath(to),
+            .canonicalTargetPath(handle$backup)
+          )
+      ) {
+        return(FALSE)
+      }
+      file.rename(from, to)
+    }
+
+    expect_error(
+      builder_publish_release(
+        handle,
+        .move = locked_root,
+        .allow_in_place = TRUE,
+        .verify_payload = function(root, phase) {
+          !identical(phase, "after_in_place")
+        }
+      ),
+      "verification failed"
+    )
+    expect_identical(readLines(file.path(target, "dataset.crb")), "old")
+    expect_identical(readLines(file.path(handle$stage, "dataset.crb")), "new")
+  })
+})
+
 test_that("process death between renames leaves exact recoverable evidence", {
   skip_if_not_installed("callr")
   local({

@@ -525,6 +525,20 @@ builder_empty_workbench_ui <- function(
   formats = get0("builder_formats", inherits = TRUE),
   examples = builder_example_directory()
 ) {
+  format_labels <- if (is.list(formats) && length(formats)) {
+    unique(vapply(formats, function(format) {
+      as.character(format$label %||% toupper(format$id %||% ""))[1L]
+    }, character(1)))
+  } else {
+    character()
+  }
+  format_labels <- toupper(
+    format_labels[!is.na(format_labels) & nzchar(format_labels)]
+  )
+  format_labels <- c(
+    format_labels[format_labels == "RDS"],
+    sort(format_labels[format_labels != "RDS"])
+  )
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-dropzone-title",
@@ -548,7 +562,7 @@ builder_empty_workbench_ui <- function(
         shiny::p(
           id = "builder-empty-formats",
           class = "builder-dataset-dropzone-formats",
-          "RDS, QS, QS2, H5AD and supported bundles"
+          paste(format_labels, collapse = ", ")
         )
       )
     ),

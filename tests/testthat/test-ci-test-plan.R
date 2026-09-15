@@ -88,7 +88,7 @@ test_that("precheck only checks formatting", {
   expect_match(precheck, "CEREBRO_PRECHECK_LOGIC_SHARDS", fixed = TRUE)
 })
 
-test_that("the CI workflow includes the Builder process-sensitive group", {
+test_that("the CI workflow includes Builder process and platform groups", {
   workflow <- readLines(
     test_path("..", "..", ".github", "workflows", "R-tests.yaml"),
     warn = FALSE
@@ -96,7 +96,18 @@ test_that("the CI workflow includes the Builder process-sensitive group", {
   text <- paste(workflow, collapse = "\n")
 
   expect_true(any(grepl("^  process_sensitive:$", workflow)))
-  expect_match(text, "needs: [logic, process_sensitive, browser]", fixed = TRUE)
+  expect_true(any(grepl("^  builder_platform:$", workflow)))
+  expect_match(
+    text,
+    "os: [ubuntu-latest, windows-latest, macos-latest]",
+    fixed = TRUE
+  )
+  expect_match(text, "scripts/check-builder-platform-pickers.R", fixed = TRUE)
+  expect_match(
+    text,
+    "needs: [builder_platform, logic, process_sensitive, browser]",
+    fixed = TRUE
+  )
 })
 
 test_that("manual pkgdown validation never deploys the site", {

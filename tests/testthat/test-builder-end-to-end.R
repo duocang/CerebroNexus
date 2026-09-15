@@ -22,7 +22,7 @@ test_that("new and restored projects use explicit spatial image storage", {
   legacy <- list(settings = list(viewer_content_schema_version = 1L))
   expect_identical(
     builder_upgrade_viewer_content_entry(legacy)$settings$spatial_image_storage,
-    "embedded"
+    "external"
   )
 })
 
@@ -756,7 +756,7 @@ test_that("valid Seurat content blockers stop before staging or publication", {
   expect_false(file.exists(control))
 })
 
-test_that("the exact 18 artifact combinations build, publish, and relocate", {
+test_that("the 15 valid external-image artifact combinations build and relocate", {
   root <- withr::local_tempdir()
   hermetic_library <- privacy_hermetic_library(root)
   expect_true(
@@ -770,7 +770,12 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     output = c("crb_only", "generated_app"),
     stringsAsFactors = FALSE
   )
-  expect_identical(nrow(matrix), 18L)
+  matrix <- matrix[
+    !(matrix$content == "histology" & matrix$output == "crb_only"),
+    ,
+    drop = FALSE
+  ]
+  expect_identical(nrow(matrix), 15L)
   expect_identical(anyDuplicated(matrix), 0L)
 
   records <- builder_example_catalog()
@@ -833,18 +838,24 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
           coordinates <- SeuratObject::GetTissueCoordinates(
             object[[image_sections[[i]]]]
           )
-          list(
-            uri = paste0(
-              "data:image/png;base64,",
-              base64enc::base64encode(image)
+          inspected <- builder_read_image(image)
+          record <- builder_alignment_record(
+            source = list(
+              name = basename(image),
+              type = inspected$mime,
+              size = inspected$bytes
             ),
-            bounds = list(
+            base_bounds = list(
               xmin = min(coordinates$x),
               xmax = max(coordinates$x),
               ymin = min(coordinates$y),
               ymax = max(coordinates$y)
-            )
+            ),
+            section = list(id = image_sections[[i]], kind = "spatial"),
+            source_path = inspected$source_path
           )
+          record$source_content_md5 <- inspected$source_content_md5
+          record
         }),
         image_sections
       )
@@ -867,11 +878,7 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     entry$settings$expression_backend <- coordinate$backend
     make_app <- identical(coordinate$output, "generated_app")
     if (identical(coordinate$content, "histology")) {
-      entry$settings$spatial_image_storage <- if (make_app) {
-        "external"
-      } else {
-        "embedded"
-      }
+      entry$settings$spatial_image_storage <- "external"
     }
     release <- file.path(root, paste0("release-", index))
     plan <- builder_freeze_plan(
@@ -936,23 +943,12 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
       )
       for (section in names(entry$settings$images)) {
         expected <- entry$settings$images[[section]]
-        image_label <- builder_alignment_payload(expected)$source
-        observed <- spatial[[section]]$histology_images[[image_label]]
-        if (make_app) {
-          expect_null(observed$histology_image, info = image_label)
-          expect_null(observed$histology_image_bounds, info = image_label)
-        } else {
-          expect_identical(
-            observed$histology_image,
-            expected$uri,
-            info = image_label
-          )
-          expect_identical(
-            observed$histology_image_bounds,
-            builder_histology_image_payload(expected)$histology_image_bounds,
-            info = image_label
-          )
-        }
+        expect_length(spatial[[section]]$histology_images, 0L, info = section)
+        expect_identical(
+          spatial[[section]]$histology_alignment,
+          builder_alignment_payload(expected),
+          info = section
+        )
       }
       points_only <- setdiff(names(spatial), names(entry$settings$images))
       expect_setequal(

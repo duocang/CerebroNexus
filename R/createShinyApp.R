@@ -1052,6 +1052,39 @@ dedent <- function(string) {
     if (is.null(images)) character() else names(images)
   })
   names(catalog) <- available
+  trekker <- if (
+    exists("getTrekker", envir = object, inherits = FALSE) &&
+      !bindingIsActive("getTrekker", object) &&
+      !isTRUE(rlang::env_binding_are_lazy(object, "getTrekker")) &&
+      is.function(object[["getTrekker"]])
+  ) {
+    tryCatch(
+      object$getTrekker(),
+      error = function(error) {
+        stop(
+          "Could not read dataset `",
+          dataset,
+          "` Trekker data: ",
+          conditionMessage(error),
+          call. = FALSE
+        )
+      }
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(trekker)) {
+    if ("trekker" %in% available) {
+      stop(
+        "Dataset `",
+        dataset,
+        "` uses reserved spatial entry name `trekker` while also containing ",
+        "Trekker data.",
+        call. = FALSE
+      )
+    }
+    catalog[["trekker"]] <- character()
+  }
   catalog
 }
 
@@ -1243,7 +1276,7 @@ dedent <- function(string) {
   unname(tools::md5sum(path))
 }
 
-.spatialImageBundlePathComponent <- function(value, maximum_bytes = 40L) {
+.spatialImageBundlePathField <- function(value) {
   if (
     !is.character(value) ||
       length(value) != 1L ||
@@ -1256,16 +1289,7 @@ dedent <- function(string) {
     )
   }
   bytes <- charToRaw(enc2utf8(value))
-  encoded <- paste0(
-    "u",
-    paste(sprintf("%02x", as.integer(bytes)), collapse = "")
-  )
-  if (nchar(encoded, type = "bytes") <= maximum_bytes) {
-    return(encoded)
-  }
-  digest <- .spatialImageBundlePathDigest(bytes)
-  prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
-  paste0(substr(encoded, 1L, prefix_length), "-", digest)
+  c(charToRaw(sprintf("%08x:", length(bytes))), bytes)
 }
 
 .spatialImageBundleTarget <- function(
@@ -1274,22 +1298,20 @@ dedent <- function(string) {
   image_label,
   filename
 ) {
+  fields <- lapply(
+    list(dataset, spatial_name, image_label, filename),
+    .spatialImageBundlePathField
+  )
+  digest <- .spatialImageBundlePathDigest(c(
+    charToRaw("cerebro-spatial-image-v1:"),
+    do.call(c, fields)
+  ))
   extension <- tools::file_ext(filename)
   extension_is_safe <- grepl("^[A-Za-z0-9]{1,16}$", extension)
-  encoded_filename <- .spatialImageBundlePathComponent(
-    filename,
-    40L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
-  )
-  if (extension_is_safe) {
-    encoded_filename <- paste0(encoded_filename, ".", extension)
-  }
-  target <- paste(
-    "spatial-assets",
-    .spatialImageBundlePathComponent(dataset),
-    .spatialImageBundlePathComponent(spatial_name),
-    .spatialImageBundlePathComponent(image_label),
-    encoded_filename,
-    sep = "/"
+  target <- paste0(
+    "spatial-assets/u",
+    digest,
+    if (extension_is_safe) paste0(".", extension) else ""
   )
   .portableBundlePath(
     target,
@@ -1463,6 +1485,182 @@ dedent <- function(string) {
   )
 }
 
+.bundleWindowsExtendedPath <- function(
+  path,
+  os_type = .Platform$OS.type
+) {
+  if (
+    !identical(os_type, "windows") ||
+      !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path)
+  ) {
+    return(path)
+  }
+  path <- gsub("/", "\\", path, fixed = TRUE)
+  if (startsWith(path, "\\\\?\\")) {
+    return(path)
+  }
+  if (startsWith(path, "\\\\")) {
+    return(paste0("\\\\?\\UNC\\", substring(path, 3L)))
+  }
+  if (grepl("^[A-Za-z]:\\\\", path)) {
+    return(paste0("\\\\?\\", path))
+  }
+  path
+}
+
+.bundleCreateDirectory <- function(
+  path,
+  recursive = FALSE,
+  mode = "0777",
+  showWarnings = TRUE,
+  os_type = .Platform$OS.type,
+  .dir_create = dir.create
+) {
+  .dir_create(
+    .bundleWindowsExtendedPath(path, os_type = os_type),
+    recursive = recursive,
+    mode = mode,
+    showWarnings = showWarnings
+  )
+}
+
+.bundleCopiedTargetExists <- function(
+  path,
+  directory = FALSE,
+  os_type = .Platform$OS.type,
+  .file_exists = file.exists,
+  .dir_exists = dir.exists
+) {
+  path <- .bundleWindowsExtendedPath(path, os_type = os_type)
+  if (isTRUE(directory)) {
+    .dir_exists(path)
+  } else {
+    .file_exists(path) && !.dir_exists(path)
+  }
+}
+
+.bundleCopyWindowsDirectory <- function(
+  from,
+  to,
+  overwrite = TRUE,
+  copy.mode = TRUE,
+  copy.date = FALSE,
+  .fallback = file.copy
+) {
+  source <- tryCatch(
+    normalizePath(from, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (is.null(source) || !dir.exists(source)) {
+    return(FALSE)
+  }
+  destination <- if (.bundleCopiedTargetExists(to, directory = TRUE)) {
+    file.path(to, basename(source))
+  } else {
+    to
+  }
+  if (
+    .bundleCopiedTargetExists(destination) ||
+      (.bundleCopiedTargetExists(destination, directory = TRUE) &&
+        !isTRUE(overwrite))
+  ) {
+    return(FALSE)
+  }
+  if (
+    !.bundleCopiedTargetExists(destination, directory = TRUE) &&
+      !.bundleCreateDirectory(destination, recursive = TRUE)
+  ) {
+    return(FALSE)
+  }
+  entries <- tryCatch(
+    as.character(fs::dir_ls(
+      source,
+      all = TRUE,
+      recurse = TRUE,
+      type = "any",
+      fail = TRUE
+    )),
+    error = function(error) NULL
+  )
+  if (is.null(entries)) {
+    return(FALSE)
+  }
+  if (!length(entries)) {
+    return(TRUE)
+  }
+  linked <- tryCatch(fs::is_link(entries), error = function(error) NULL)
+  if (
+    is.null(linked) ||
+      length(linked) != length(entries) ||
+      anyNA(linked) ||
+      any(linked)
+  ) {
+    return(FALSE)
+  }
+  entries <- gsub("\\", "/", entries, fixed = TRUE)
+  source_prefix <- paste0(source, "/")
+  if (any(!startsWith(entries, source_prefix))) {
+    return(FALSE)
+  }
+  relative <- substring(entries, nchar(source_prefix) + 1L)
+  if (
+    any(!nzchar(relative)) ||
+      any(startsWith(relative, "/")) ||
+      any(grepl("(^|/)\\.\\.?(/|$)", relative))
+  ) {
+    return(FALSE)
+  }
+  directories <- vapply(entries, function(path) {
+    .bundleCopiedTargetExists(path, directory = TRUE)
+  }, logical(1))
+  regular_files <- vapply(entries, function(path) {
+    .bundleCopiedTargetExists(path)
+  }, logical(1))
+  if (any(directories == regular_files)) {
+    return(FALSE)
+  }
+  directory_targets <- file.path(destination, relative[directories])
+  if (
+    length(directory_targets) &&
+      !all(vapply(directory_targets, function(path) {
+        .bundleCopiedTargetExists(path, directory = TRUE) ||
+          .bundleCreateDirectory(path, recursive = TRUE)
+      }, logical(1)))
+  ) {
+    return(FALSE)
+  }
+  file_sources <- entries[regular_files]
+  file_targets <- file.path(destination, relative[regular_files])
+  if (!length(file_sources)) {
+    return(TRUE)
+  }
+  copied <- mapply(
+    function(source_file, target_file) {
+      if (!.bundleCopiedTargetExists(dirname(target_file), directory = TRUE)) {
+        if (!.bundleCreateDirectory(dirname(target_file), recursive = TRUE)) {
+          return(FALSE)
+        }
+      }
+      result <- .fallback(
+        .bundleWindowsExtendedPath(source_file),
+        .bundleWindowsExtendedPath(target_file),
+        overwrite = overwrite,
+        recursive = FALSE,
+        copy.mode = copy.mode,
+        copy.date = copy.date
+      )
+      isTRUE(result) && .bundleCopiedTargetExists(target_file)
+    },
+    file_sources,
+    file_targets,
+    SIMPLIFY = TRUE,
+    USE.NAMES = FALSE
+  )
+  isTRUE(all(copied))
+}
+
 .bundleCopyPath <- function(
   from,
   to,
@@ -1501,6 +1699,35 @@ dedent <- function(string) {
   }
   destination_existed <- scalar &&
     (file.exists(destination) || nzchar(Sys.readlink(destination)))
+  if (
+    scalar &&
+      identical(.sysname, "Windows") &&
+      isTRUE(recursive) &&
+      dir.exists(from)
+  ) {
+    return(.bundleCopyWindowsDirectory(
+      from,
+      to,
+      overwrite = overwrite,
+      copy.mode = copy.mode,
+      copy.date = copy.date,
+      .fallback = .fallback
+    ))
+  }
+  if (scalar && identical(.sysname, "Windows")) {
+    extended_from <- .bundleWindowsExtendedPath(from, os_type = "windows")
+    extended_to <- .bundleWindowsExtendedPath(to, os_type = "windows")
+    if (!identical(extended_from, from) || !identical(extended_to, to)) {
+      return(.fallback(
+        extended_from,
+        extended_to,
+        overwrite = overwrite,
+        recursive = recursive,
+        copy.mode = copy.mode,
+        copy.date = copy.date
+      ))
+    }
+  }
   if (length(command_args) && nzchar(copy_command)) {
     status <- suppressWarnings(tryCatch(
       .command(
@@ -1686,7 +1913,7 @@ dedent <- function(string) {
   prospective_parent <- .canonicalTargetPath(parent)
   .assertOutsideBundleLockNamespace(prospective_parent)
   if (!dir.exists(prospective_parent)) {
-    created <- dir.create(
+    created <- .bundleCreateDirectory(
       prospective_parent,
       recursive = TRUE,
       showWarnings = FALSE
@@ -1729,7 +1956,11 @@ dedent <- function(string) {
   if (!dir.exists(dirname(lock_path))) {
     stop("The build-lock parent directory does not exist.", call. = FALSE)
   }
-  if (!dir.create(lock_path, mode = "0700", showWarnings = FALSE)) {
+  if (!.bundleCreateDirectory(
+    lock_path,
+    mode = "0700",
+    showWarnings = FALSE
+  )) {
     if (.bundlePathExists(lock_path)) {
       stop(
         "The app target '",
@@ -2263,8 +2494,9 @@ dedent <- function(string) {
 #' \code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
 #' Spatial background images are the deliberate exception: files explicitly
 #' supplied through \code{spatial_images} are copied verbatim under
-#' \code{spatial-assets/}. The server-side renderer reads these files and embeds
-#' them as data URIs; the directory is not registered as an HTTP resource.
+#' \code{spatial-assets/}. The server exposes each selected file through a
+#' private, session-scoped URL; image bytes are not Base64-encoded and the
+#' directory is not registered as a public HTTP resource.
 #' Callers must provide trusted image files. Preflight requires a minimum
 #' stable runtime API and reads the ordinary \code{expression_backend} field
 #' without invoking serialized methods or its getter. The generated
@@ -3271,7 +3503,11 @@ createShinyApp <- function(
     pattern = paste0(".", basename(result_dir), "-stage-"),
     tmpdir = result_parent
   )
-  if (!dir.create(stage_result_dir, mode = "0700", showWarnings = FALSE)) {
+  if (!.bundleCreateDirectory(
+    stage_result_dir,
+    mode = "0700",
+    showWarnings = FALSE
+  )) {
     stop("Failed to create a private app staging directory.", call. = FALSE)
   }
   bundle_cleanup$stage <- stage_result_dir
@@ -3282,7 +3518,11 @@ createShinyApp <- function(
   if (verbose) {
     cat("Creating staged directory structure...\n")
   }
-  dir.create(private_data_dir, recursive = TRUE, showWarnings = FALSE)
+  .bundleCreateDirectory(
+    private_data_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
   extra_table_bundle <- .materializeExtraTables(
     extra_table_plan,
     stage_result_dir,
@@ -3301,22 +3541,41 @@ createShinyApp <- function(
   }
   for (entry in copy_plan) {
     target <- file.path(stage_result_dir, entry$target)
-    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    .bundleCreateDirectory(
+      dirname(target),
+      recursive = TRUE,
+      showWarnings = FALSE
+    )
     copied <- if (isTRUE(entry$directory)) {
       build_ops$copy(entry$source, dirname(target), recursive = TRUE)
     } else {
       build_ops$copy(entry$source, target, overwrite = FALSE)
     }
-    copied_target_exists <- if (isTRUE(entry$directory)) {
-      dir.exists(target)
-    } else {
-      file.exists(target) && !dir.exists(target)
-    }
+    copied_target_exists <- .bundleCopiedTargetExists(
+      target,
+      directory = entry$directory
+    )
     if (!isTRUE(copied) || !copied_target_exists) {
       stop(
         "Failed to copy ",
         entry$artifact,
         ": ",
+        entry$target,
+        call. = FALSE
+      )
+    }
+    if (
+      identical(entry$artifact, "spatial image") &&
+        (
+          !identical(unname(file.size(target)), unname(file.size(entry$source))) ||
+            !identical(
+              unname(as.character(tools::md5sum(target))),
+              unname(as.character(tools::md5sum(entry$source)))
+            )
+        )
+    ) {
+      stop(
+        "The copied spatial image failed its byte-integrity check: ",
         entry$target,
         call. = FALSE
       )
@@ -3359,7 +3618,7 @@ createShinyApp <- function(
   extdata_files <- extdata_files[file.info(extdata_files)$isdir %in% FALSE]
   if (
     !length(extdata_files) ||
-      !isTRUE(dir.create(extdata_target)) ||
+      !isTRUE(.bundleCreateDirectory(extdata_target)) ||
       !isTRUE(all(build_ops$copy(extdata_files, extdata_target)))
   ) {
     stop("Failed to copy extdata files.", call. = FALSE)
