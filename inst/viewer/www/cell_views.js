@@ -6373,6 +6373,7 @@
       if (x < 0 || y < 0 || x > panel.W || y > panel.H) continue;
       var rect = panel.canvas.getBoundingClientRect();
       return {
+        canvas: panel.canvas.id,
         x: rect.left + x,
         y: rect.top + y,
         left: rect.left,

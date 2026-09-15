@@ -441,24 +441,26 @@ bench_run_viewer_validation <- function(
     if (is.null(geometry) || !is.finite(as.numeric(geometry$x))) {
       stop("Viewer exposed no hoverable rendered point", call. = FALSE)
     }
-    mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
-    mouse(
-      type = "mouseMoved",
-      x = geometry$x,
-      y = geometry$y,
-      button = "none",
-      buttons = 0
-    )
+    app$run_js(sprintf(
+      paste0(
+        "document.getElementById(%s).dispatchEvent(new MouseEvent(",
+        "'mousemove',{clientX:%s,clientY:%s,bubbles:true}))"
+      ),
+      jsonlite::toJSON(geometry$canvas, auto_unbox = TRUE),
+      format(as.numeric(geometry$x), scientific = FALSE, trim = TRUE),
+      format(as.numeric(geometry$y), scientific = FALSE, trim = TRUE)
+    ))
     app$wait_for_js(paste0(
       "Array.from(document.querySelectorAll(",
       "'#overview_projection_cell_view_host .cv-tip')).some(",
       "tip => Number(getComputedStyle(tip).opacity) > 0 && ",
       "tip.textContent.trim().length > 0)"
-    ), timeout = timeout)
+    ), timeout = min(timeout, 15000))
     hover_secs <- now() - started
 
     stage <<- "selection"
     started <- now()
+    mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
     app$get_js(paste0(
       "(() => { const host = document.getElementById(",
       "'overview_projection_cell_view_host'); ",
