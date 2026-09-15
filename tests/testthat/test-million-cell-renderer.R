@@ -40,7 +40,7 @@ test_that("WebGPU failures make the renderer fall back", {
       "  lost: new Promise(() => {}),",
       "  addEventListener: (name, handler) => { if (name === 'uncapturederror') uncaptured = handler; },",
       "  createShaderModule: () => ({}),",
-      "  createRenderPipelineAsync: async () => ({ getBindGroupLayout: () => ({}) }),",
+      "  createRenderPipeline: () => ({ getBindGroupLayout: () => ({}) }),",
       "  createBuffer: () => ({ destroy() {} }),",
       "  createBindGroup: () => ({})",
       "};",

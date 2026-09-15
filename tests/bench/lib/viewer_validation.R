@@ -2,7 +2,7 @@
 
 bench_enable_chromium_webgpu <- function() {
   flag <- "--enable-unsafe-webgpu"
-  args <- chromote::get_chrome_args()
+  args <- setdiff(chromote::get_chrome_args(), "--disable-gpu")
   if (!flag %in% args) {
     chromote::set_chrome_args(c(args, flag))
   }

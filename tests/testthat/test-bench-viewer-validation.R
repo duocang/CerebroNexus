@@ -44,7 +44,11 @@ test_that("Chromium WebGPU flag is added without forcing Vulkan ANGLE", {
   args <- bench_enable_chromium_webgpu()
 
   expect_true("--enable-unsafe-webgpu" %in% args)
-  expect_setequal(setdiff(args, old), "--enable-unsafe-webgpu")
+  expect_false("--disable-gpu" %in% args)
+  expect_setequal(
+    setdiff(args, setdiff(old, "--disable-gpu")),
+    "--enable-unsafe-webgpu"
+  )
 })
 
 test_that("WebGPU preflight exercises the actual Viewer renderer", {

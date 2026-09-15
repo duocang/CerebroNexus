@@ -87,7 +87,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
       var device = await adapter.requestDevice();
       var format = navigator.gpu.getPreferredCanvasFormat();
       var module = device.createShaderModule({ code: SHADER_SOURCE });
-      var pipeline = await device.createRenderPipelineAsync({
+      var pipeline = device.createRenderPipeline({
         layout: 'auto',
         vertex: {
           module: module,
