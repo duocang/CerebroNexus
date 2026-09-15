@@ -200,12 +200,14 @@ bench_viewer_renderer <- function(app, root_selector) {
   app$get_js(sprintf(
     paste0(
       "(() => {const root=document.querySelector(%s);",
-      "const canvases=Array.from(root?.querySelectorAll(",
-      "'canvas:not(.cv-mini)')||[]).filter(canvas=>",
+      "const all=Array.from(root?.querySelectorAll(",
+      "'canvas:not(.cv-mini)')||[]);",
+      "const canvases=all.filter(canvas=>",
       "canvas.offsetParent!==null&&canvas.width>0&&canvas.height>0);",
-      "const gpu=canvases.find(canvas=>canvas.classList.contains(",
-      "'cv-gpu-layer')&&canvas.style.display!=='none');",
-      "const renderer=gpu?._cerebroPointRenderer;",
+      "const gpuCanvas=all.find(canvas=>canvas.classList.contains(",
+      "'cv-gpu-layer'));const gpu=gpuCanvas&&",
+      "gpuCanvas.offsetParent!==null&&gpuCanvas.style.display!=='none'",
+      "?gpuCanvas:null;const renderer=gpuCanvas?._cerebroPointRenderer;",
       "const stats=renderer?.stats?.()||{};",
       "const points=(gpu||canvases.find(canvas=>canvas.dataset.pointCount))",
       "?.dataset.pointCount;return {navigatorGpu:!!navigator.gpu,",
@@ -234,15 +236,20 @@ bench_wait_viewer_renderer <- function(
     sprintf(
       paste0(
         "(() => {const root=document.querySelector(%s);",
-        "const canvases=Array.from(root?.querySelectorAll(",
-        "'canvas:not(.cv-mini)')||[]).filter(canvas=>",
+        "const all=Array.from(root?.querySelectorAll(",
+        "'canvas:not(.cv-mini)')||[]);",
+        "const canvases=all.filter(canvas=>",
         "canvas.offsetParent!==null&&canvas.width>0&&canvas.height>0);",
-        "const gpu=canvases.find(canvas=>canvas.classList.contains(",
-        "'cv-gpu-layer')&&canvas.style.display!=='none');",
+        "const gpuCanvas=all.find(canvas=>canvas.classList.contains(",
+        "'cv-gpu-layer'));const gpu=gpuCanvas&&",
+        "gpuCanvas.offsetParent!==null&&gpuCanvas.style.display!=='none'",
+        "?gpuCanvas:null;const stats=gpuCanvas?._cerebroPointRenderer",
+        "?.stats?.()||{};const settled=stats.ready===true||",
+        "!!stats.contextLost||String(stats.error||'').length>0;",
         "const points=(gpu||canvases.find(canvas=>canvas.dataset.pointCount))",
         "?.dataset.pointCount;const count=Number(points);",
         "return Number.isFinite(count)&&(%s===null||count===%s)&&",
-        "(!%s||!!gpu);})()"
+        "(!%s||!!gpu||settled);})()"
       ),
       jsonlite::toJSON(root_selector, auto_unbox = TRUE),
       expected,
@@ -274,18 +281,19 @@ bench_require_viewer_renderer <- function(
   ) {
     stop(label, " did not render every cell", call. = FALSE)
   }
+  renderer_error <- as.character(diagnostics$error)
+  if (isTRUE(diagnostics$contextLost) || nzchar(renderer_error)) {
+    detail <- if (nzchar(renderer_error)) paste0(": ", renderer_error) else ""
+    stop(label, " reported a GPU error or context loss", detail, call. = FALSE)
+  }
   if (
     isTRUE(require_webgpu) &&
       (!isTRUE(diagnostics$navigatorGpu) ||
         !identical(diagnostics$backend, "webgpu"))
   ) {
-    stop(label, " did not use WebGPU", call. = FALSE)
-  }
-  if (
-    isTRUE(diagnostics$contextLost) ||
-      nzchar(as.character(diagnostics$error))
-  ) {
-    stop(label, " reported a GPU error or context loss", call. = FALSE)
+    adapter <- as.character(diagnostics$adapter)
+    detail <- if (nzchar(adapter)) paste0(" (adapter: ", adapter, ")") else ""
+    stop(label, " did not use WebGPU", detail, call. = FALSE)
   }
   invisible(diagnostics)
 }

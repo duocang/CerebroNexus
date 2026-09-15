@@ -143,3 +143,22 @@ test_that("Viewer log validation catches standard Shiny errors", {
 
   expect_true(bench_viewer_bad_logs(logs))
 })
+
+test_that("Viewer renderer failure reports the underlying GPU error", {
+  skip_if_not(file.exists(bench_viewer), "benchmark tree not present")
+  source(bench_viewer, local = TRUE)
+
+  diagnostics <- list(
+    pointCount = 20000,
+    navigatorGpu = TRUE,
+    backend = "canvas2d",
+    adapter = "fixture adapter",
+    contextLost = FALSE,
+    error = "Could not create a WebGPU canvas context."
+  )
+  expect_error(
+    bench_require_viewer_renderer(diagnostics, 20000, TRUE),
+    "Could not create a WebGPU canvas context",
+    fixed = TRUE
+  )
+})
