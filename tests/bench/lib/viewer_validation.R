@@ -435,78 +435,26 @@ bench_run_viewer_validation <- function(
 
     stage <<- "hover"
     started <- now()
-    geometry <- app$get_js(sprintf(
-      paste0(
-        "(() => { const canvas = document.querySelector('%s'); ",
-        "const r = canvas.getBoundingClientRect(); ",
-        "const pixels = canvas.getContext('2d').getImageData(",
-        "0, 0, canvas.width, canvas.height).data; ",
-        "const hits = []; ",
-        "for (let gy = 0; gy < 8; gy++) { ",
-        "for (let gx = 0; gx < 10; gx++) { ",
-        "let found = false; ",
-        "for (let py = Math.floor(gy*canvas.height/8); ",
-        "py < Math.floor((gy+1)*canvas.height/8) && !found; py += 2) { ",
-        "for (let px = Math.floor(gx*canvas.width/10); ",
-        "px < Math.floor((gx+1)*canvas.width/10); px += 2) { ",
-        "const i=(py*canvas.width+px)*4; ",
-        "if (pixels[i+3] > 0 && ",
-        "(Math.max(pixels[i],pixels[i+1],pixels[i+2])-",
-        "Math.min(pixels[i],pixels[i+1],pixels[i+2]) > 40 || ",
-        "Math.max(Math.abs(pixels[i]-pixels[0]),",
-        "Math.abs(pixels[i+1]-pixels[1]),",
-        "Math.abs(pixels[i+2]-pixels[2])) > 40)) { ",
-        "hits.push([r.left+px/canvas.width*r.width,",
-        "r.top+py/canvas.height*r.height]); found = true; break; } } } } } ",
-        "hits.sort((a,b) => ",
-        "Math.hypot(a[0]-r.left-r.width/2,a[1]-r.top-r.height/2) - ",
-        "Math.hypot(b[0]-r.left-r.width/2,b[1]-r.top-r.height/2)); ",
-        "return {left:r.left,top:r.top,width:r.width,height:r.height,",
-        "hits:hits}; })()"
-      ),
-      canvas
-    ))
-    mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
-    pixel_points <- do.call(rbind, lapply(geometry$hits, unlist))
-    points <- rbind(
-      pixel_points,
-      c(
-        geometry$left + geometry$width * .5,
-        geometry$top + geometry$height * .5
-      ),
-      c(
-        geometry$left + geometry$width * .35,
-        geometry$top + geometry$height * .35
-      ),
-      c(
-        geometry$left + geometry$width * .65,
-        geometry$top + geometry$height * .65
-      )
+    geometry <- app$get_js(
+      "window.cerebroCellViews.interactionPoint('overview_projection')"
     )
-    hovered <- FALSE
-    hover_point <- NULL
-    for (i in seq_len(nrow(points))) {
-      mouse(
-        type = "mouseMoved",
-        x = points[i, 1],
-        y = points[i, 2],
-        button = "none",
-        buttons = 0
-      )
-      hovered <- isTRUE(app$get_js(paste0(
-        "Array.from(document.querySelectorAll(",
-        "'#overview_projection_cell_view_host .cv-tip')).some(",
-        "tip => Number(getComputedStyle(tip).opacity) > 0 && ",
-        "tip.textContent.trim().length > 0)"
-      )))
-      if (hovered) {
-        hover_point <- points[i, ]
-        break
-      }
+    if (is.null(geometry) || !is.finite(as.numeric(geometry$x))) {
+      stop("Viewer exposed no hoverable rendered point", call. = FALSE)
     }
-    if (!hovered) {
-      stop("Canvas hover did not show a tooltip", call. = FALSE)
-    }
+    mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
+    mouse(
+      type = "mouseMoved",
+      x = geometry$x,
+      y = geometry$y,
+      button = "none",
+      buttons = 0
+    )
+    app$wait_for_js(paste0(
+      "Array.from(document.querySelectorAll(",
+      "'#overview_projection_cell_view_host .cv-tip')).some(",
+      "tip => Number(getComputedStyle(tip).opacity) > 0 && ",
+      "tip.textContent.trim().length > 0)"
+    ), timeout = timeout)
     hover_secs <- now() - started
 
     stage <<- "selection"

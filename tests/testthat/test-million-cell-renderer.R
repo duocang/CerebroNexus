@@ -20,6 +20,7 @@ test_that("the million-cell renderer is loaded before cell views", {
   )
   expect_match(engine, "CerebroPointRenderer.create", fixed = TRUE)
   expect_match(engine, "setData", fixed = TRUE)
+  expect_match(engine, "interactionPoint: singleInteractionPoint", fixed = TRUE)
 })
 
 test_that("WebGPU failures make the renderer fall back", {
