@@ -79,15 +79,22 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
   function prepare() {
     if (sharedResources) return sharedResources;
     sharedResources = (async function () {
-      if (!navigator.gpu) throw new Error('WebGPU is unavailable.');
-      var adapter = await navigator.gpu.requestAdapter({
-        powerPreference: 'high-performance'
-      });
-      if (!adapter) throw new Error('No WebGPU adapter is available.');
-      var device = await adapter.requestDevice();
-      var format = navigator.gpu.getPreferredCanvasFormat();
-      var module = device.createShaderModule({ code: SHADER_SOURCE });
-      var pipeline = device.createRenderPipeline({
+      var stage = 'navigator.gpu';
+      try {
+        if (!navigator.gpu) throw new Error('WebGPU is unavailable.');
+        stage = 'requestAdapter';
+        var adapter = await navigator.gpu.requestAdapter({
+          powerPreference: 'high-performance'
+        });
+        if (!adapter) throw new Error('No WebGPU adapter is available.');
+        stage = 'requestDevice';
+        var device = await adapter.requestDevice();
+        stage = 'getPreferredCanvasFormat';
+        var format = navigator.gpu.getPreferredCanvasFormat();
+        stage = 'createShaderModule';
+        var module = device.createShaderModule({ code: SHADER_SOURCE });
+        stage = 'createRenderPipeline';
+        var pipeline = device.createRenderPipeline({
         layout: 'auto',
         vertex: {
           module: module,
@@ -130,8 +137,12 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
           }]
         },
         primitive: { topology: 'triangle-strip' }
-      });
-      return { adapter: adapter, device: device, format: format, pipeline: pipeline };
+        });
+        return { adapter: adapter, device: device, format: format, pipeline: pipeline };
+      } catch (error) {
+        var detail = error && error.message ? error.message : String(error);
+        throw new Error('WebGPU ' + stage + ' failed: ' + detail);
+      }
     })();
     return sharedResources;
   }
