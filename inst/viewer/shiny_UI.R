@@ -668,6 +668,10 @@ ui <- dashboardPage(
       cerebro_js("settings_drawer.js", defer = TRUE),
       cerebro_js("specialist-view-state.js", defer = TRUE)
     ),
+    tags$script(HTML(
+      "if (!$.fn.slimScroll) $.fn.slimScroll = function() { return this; };",
+      '$("body").addClass("fixed");'
+    )),
     tags$main(
       id = "main-content",
       tabindex = "-1",
