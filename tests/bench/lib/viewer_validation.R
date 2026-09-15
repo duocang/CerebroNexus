@@ -11,18 +11,38 @@ bench_enable_chromium_webgpu <- function() {
 
 bench_check_webgpu_adapter <- function() {
   bench_enable_chromium_webgpu()
+  port <- httpuv::randomPort()
+  server <- httpuv::startServer(
+    "127.0.0.1",
+    port,
+    list(call = function(request) {
+      list(
+        status = 200L,
+        headers = list("Content-Type" = "text/html; charset=utf-8"),
+        body = "<!doctype html><title>WebGPU preflight</title>"
+      )
+    }),
+    quiet = TRUE
+  )
+  on.exit(httpuv::stopServer(server), add = TRUE)
   session <- chromote::ChromoteSession$new()
   on.exit(session$close(), add = TRUE)
+  session$go_to(sprintf("http://127.0.0.1:%d/", port))
   probe <- session$Runtime$evaluate(
     paste0(
       "navigator.gpu ? navigator.gpu.requestAdapter().then(",
-      "adapter => ({navigatorGpu:true,adapter:!!adapter})) : ",
-      "Promise.resolve({navigatorGpu:false,adapter:false})"
+      "adapter => ({secureContext:isSecureContext,navigatorGpu:true,",
+      "adapter:!!adapter})) : Promise.resolve({",
+      "secureContext:isSecureContext,navigatorGpu:false,adapter:false})"
     ),
     awaitPromise = TRUE,
     returnByValue = TRUE
   )$result$value
-  if (!isTRUE(probe$navigatorGpu) || !isTRUE(probe$adapter)) {
+  if (
+    !isTRUE(probe$secureContext) ||
+      !isTRUE(probe$navigatorGpu) ||
+      !isTRUE(probe$adapter)
+  ) {
     stop(
       paste(
         "Chromium WebGPU preflight failed:",
