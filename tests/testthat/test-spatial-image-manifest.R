@@ -38,6 +38,90 @@ test_that("Cerebro stores multiple named spatial images canonically", {
   expect_null(stored[["histology_image_bounds"]])
 })
 
+test_that("spatial image manifests preserve ROI applicability", {
+  crb <- Cerebro$new()
+  embedded <- spatial_manifest_payload()
+  embedded$image_label <- "Shared stain"
+  embedded$roi_field <- "sample_roi"
+  embedded$roi_value <- "lesion"
+  crb$addSpatialData(
+    "section 1",
+    spatial_manifest_data(list(Lesion = embedded))
+  )
+
+  expect_identical(
+    crb$getSpatialData("section 1")$histology_images$Lesion[
+      c("roi_field", "roi_value")
+    ],
+    list(roi_field = "sample_roi", roi_value = "lesion")
+  )
+  expect_identical(
+    crb$getSpatialData("section 1")$histology_images$Lesion$image_label,
+    "Shared stain"
+  )
+
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)
+  normalized <- .normalizeAppSpatialImages(
+    list(
+      Dataset = list(
+        `section 1` = list(
+          Lesion = list(
+            path = path,
+            label = "Shared stain",
+            roi_field = "sample_roi",
+            roi_value = "lesion"
+          )
+        )
+      )
+    ),
+    list(Dataset = list(`section 1` = character()))
+  )
+  expect_identical(
+    normalized$Dataset[["section 1"]]$Lesion[c("roi_field", "roi_value")],
+    list(roi_field = "sample_roi", roi_value = "lesion")
+  )
+  expect_identical(
+    normalized$Dataset[["section 1"]]$Lesion$label,
+    "Shared stain"
+  )
+})
+
+test_that("ROI-scoped spatial images may cover only part of a section", {
+  payload <- spatial_manifest_payload()
+  payload$histology_image_bounds <- c(
+    xmin = 0,
+    xmax = 20,
+    ymin = 0,
+    ymax = 20
+  )
+  payload$roi_field <- "sample_roi"
+  payload$roi_value <- "lesion"
+  data <- spatial_manifest_data(list(Lesion = payload))
+
+  crb <- Cerebro$new()
+  expect_no_error(crb$addSpatialData("section 1", data))
+
+  crb$spatial[["section 2"]] <- data
+  expect_no_error(crb$getSpatialData("section 2"))
+
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), path)
+  descriptor <- list(
+    path = path,
+    bounds = payload$histology_image_bounds,
+    roi_field = payload$roi_field,
+    roi_value = payload$roi_value
+  )
+  expect_no_error(
+    .encodeSpatialImageDescriptor(
+      descriptor,
+      spatial_manifest_coordinates(),
+      "section 3 image `Lesion`"
+    )
+  )
+})
+
 test_that("Cerebro accepts coordinates-only spatial entries", {
   crb <- Cerebro$new()
   crb$addSpatialData("coordinates", spatial_manifest_data(list()))
