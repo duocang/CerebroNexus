@@ -226,9 +226,6 @@ for src in $SOURCES; do
           "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
       fi
     fi
-    if [ "${BENCH_KEEP:-0}" != "1" ]; then
-      rm -rf -- "$out_dir"
-    fi
   done < "$SCHEDULE_TSV"
 
   if [ "${BENCH_KEEP:-0}" != "1" ]; then
