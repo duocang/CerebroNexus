@@ -12,19 +12,46 @@ bench_enable_chromium_webgpu <- function() {
 bench_check_webgpu_adapter <- function() {
   bench_enable_chromium_webgpu()
   port <- httpuv::randomPort()
-  server <- httpuv::startServer(
-    "127.0.0.1",
-    port,
-    list(call = function(request) {
-      list(
-        status = 200L,
-        headers = list("Content-Type" = "text/html; charset=utf-8"),
-        body = "<!doctype html><title>WebGPU preflight</title>"
+  server <- callr::r_bg(
+    function(port) {
+      httpuv::runServer(
+        "127.0.0.1",
+        port,
+        list(call = function(request) {
+          list(
+            status = 200L,
+            headers = list("Content-Type" = "text/html; charset=utf-8"),
+            body = "<!doctype html><title>WebGPU preflight</title>"
+          )
+        })
       )
-    }),
-    quiet = TRUE
+    },
+    args = list(port = port),
+    supervise = TRUE
   )
-  on.exit(httpuv::stopServer(server), add = TRUE)
+  on.exit(server$kill(), add = TRUE)
+  deadline <- Sys.time() + 15
+  repeat {
+    connection <- tryCatch(
+      suppressWarnings(socketConnection(
+          "127.0.0.1",
+          port,
+          open = "r+b",
+          blocking = TRUE,
+          timeout = 0.2
+        )),
+      error = function(error) NULL
+    )
+    if (!is.null(connection)) {
+      close(connection)
+      break
+    }
+    if (!server$is_alive() || Sys.time() > deadline) {
+      detail <- paste(server$read_error(), collapse = " | ")
+      stop("WebGPU preflight HTTP server failed: ", detail, call. = FALSE)
+    }
+    Sys.sleep(0.05)
+  }
   session <- chromote::ChromoteSession$new()
   on.exit(session$close(), add = TRUE)
   session$go_to(sprintf("http://127.0.0.1:%d/", port))
