@@ -1,5 +1,7 @@
 # Run a disposable end-to-end Viewer smoke test before the full benchmark.
 
+Sys.setenv(NOT_CRAN = "true")
+
 here <- Sys.getenv("BENCH_ROOT", "")
 if (!nzchar(here)) {
   here <- normalizePath("tests/bench")

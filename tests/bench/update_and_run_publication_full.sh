@@ -150,7 +150,7 @@ nix-shell "$REPO/default.nix" -A shell --run \
 }
 run "执行一次性 Viewer 小测试（不写入 benchmark 结果）"
 nix-shell "$REPO/default.nix" -A shell --run \
-  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' BENCH_LIB='$CHECK_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
+  "env NOT_CRAN=true R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' BENCH_LIB='$CHECK_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
 ok "Viewer 小测试通过"
 [ "$ACTION" = "run" ] || exit 0
 
