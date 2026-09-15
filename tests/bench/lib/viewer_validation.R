@@ -9,24 +9,45 @@ bench_enable_chromium_webgpu <- function() {
   invisible(chromote::get_chrome_args())
 }
 
-bench_check_webgpu_adapter <- function() {
+bench_check_webgpu_adapter <- function(renderer_script) {
   bench_enable_chromium_webgpu()
+  if (!file.exists(renderer_script)) {
+    stop(
+      "Viewer WebGPU renderer script not found: ",
+      renderer_script,
+      call. = FALSE
+    )
+  }
+  renderer_source <- paste(
+    readLines(renderer_script, warn = FALSE),
+    collapse = "\n"
+  )
+  page <- paste0(
+    "<!doctype html><meta charset='utf-8'><title>WebGPU preflight</title>",
+    "<canvas id='gpu' style='width:640px;height:360px'></canvas>",
+    "<script src='/cell_points_gpu.js'></script>"
+  )
   port <- httpuv::randomPort()
   server <- callr::r_bg(
-    function(port) {
+    function(port, page, renderer_source) {
       httpuv::runServer(
         "127.0.0.1",
         port,
         list(call = function(request) {
+          is_script <- identical(request$PATH_INFO, "/cell_points_gpu.js")
           list(
             status = 200L,
-            headers = list("Content-Type" = "text/html; charset=utf-8"),
-            body = "<!doctype html><title>WebGPU preflight</title>"
+            headers = list("Content-Type" = if (is_script) {
+              "application/javascript; charset=utf-8"
+            } else {
+              "text/html; charset=utf-8"
+            }),
+            body = if (is_script) renderer_source else page
           )
         })
       )
     },
-    args = list(port = port),
+    args = list(port = port, page = page, renderer_source = renderer_source),
     supervise = TRUE
   )
   on.exit(server$kill(), add = TRUE)
@@ -57,23 +78,36 @@ bench_check_webgpu_adapter <- function() {
   session$go_to(sprintf("http://127.0.0.1:%d/", port))
   probe <- session$Runtime$evaluate(
     paste0(
-      "navigator.gpu ? navigator.gpu.requestAdapter().then(",
-      "adapter => ({secureContext:isSecureContext,navigatorGpu:true,",
-      "adapter:!!adapter})) : Promise.resolve({",
-      "secureContext:isSecureContext,navigatorGpu:false,adapter:false})"
+      "(async()=>{try{",
+      "const renderer=window.CerebroPointRenderer.create(",
+      "document.getElementById('gpu'));",
+      "await renderer.ready;renderer.resize(640,360,1);",
+      "renderer.clear();await renderer.idle();const stats=renderer.stats();",
+      "return {ok:renderer.isReady()&&stats.ready===true,",
+      "secureContext:isSecureContext,navigatorGpu:!!navigator.gpu,",
+      "backend:stats.backend||'',adapter:stats.adapter||'',",
+      "contextLost:!!stats.contextLost,error:stats.error||''};",
+      "}catch(error){return {ok:false,secureContext:isSecureContext,",
+      "navigatorGpu:!!navigator.gpu,error:String(error?.message||error)}}})()"
     ),
     awaitPromise = TRUE,
     returnByValue = TRUE
   )$result$value
+  probe_error <- if (is.null(probe$error)) "" else as.character(probe$error)
   if (
     !isTRUE(probe$secureContext) ||
       !isTRUE(probe$navigatorGpu) ||
-      !isTRUE(probe$adapter)
+      !isTRUE(probe$ok) ||
+      !identical(probe$backend, "webgpu") ||
+      isTRUE(probe$contextLost) ||
+      nzchar(probe_error)
   ) {
     stop(
       paste(
-        "Chromium WebGPU preflight failed:",
-        "navigator.gpu is unavailable or requestAdapter() returned null"
+        "Chromium Viewer WebGPU preflight failed:",
+        if (nzchar(probe_error)) probe_error else {
+          "adapter, canvas, shader pipeline, or render submission failed"
+        }
       ),
       call. = FALSE
     )

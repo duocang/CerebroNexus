@@ -9,5 +9,15 @@ if (nzchar(Sys.getenv("BENCH_LIB"))) {
 }
 source(file.path(here, "lib", "viewer_validation.R"))
 
-bench_check_webgpu_adapter()
-message("WebGPU preflight OK: Chromium returned an adapter")
+probe <- bench_check_webgpu_adapter(
+  file.path(dirname(here), "..", "inst", "viewer", "www", "cell_points_gpu.js")
+)
+message(
+  "Viewer WebGPU preflight OK: canvas, shader pipeline, and render submission ",
+  "succeeded",
+  if (!is.null(probe$adapter) && nzchar(probe$adapter)) {
+    paste0(" (", probe$adapter, ")")
+  } else {
+    ""
+  }
+)

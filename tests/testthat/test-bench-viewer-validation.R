@@ -47,7 +47,7 @@ test_that("Chromium WebGPU flag is added without forcing Vulkan ANGLE", {
   expect_setequal(setdiff(args, old), "--enable-unsafe-webgpu")
 })
 
-test_that("WebGPU preflight probes an independent local HTTP origin", {
+test_that("WebGPU preflight exercises the actual Viewer renderer", {
   skip_if_not(file.exists(bench_viewer), "benchmark tree not present")
   source(bench_viewer, local = TRUE)
   body <- paste(deparse(body(bench_check_webgpu_adapter)), collapse = "\n")
@@ -56,6 +56,9 @@ test_that("WebGPU preflight probes an independent local HTTP origin", {
   expect_match(body, "httpuv::runServer", fixed = TRUE)
   expect_match(body, "http://127.0.0.1", fixed = TRUE)
   expect_match(body, "isSecureContext", fixed = TRUE)
+  expect_match(body, "cell_points_gpu.js", fixed = TRUE)
+  expect_match(body, "renderer.clear()", fixed = TRUE)
+  expect_match(body, "renderer.idle()", fixed = TRUE)
 })
 
 test_that("Viewer validation drives a standalone App end to end", {
