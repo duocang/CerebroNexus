@@ -75,7 +75,8 @@ worker() {
   exit "$code"
 }
 
-case "${1:-run}" in
+ACTION="${1:-run}"
+case "$ACTION" in
   status)
     mkdir -p "$STATE_DIR"
     show_status
@@ -84,10 +85,10 @@ case "${1:-run}" in
   _worker)
     worker
     ;;
-  run)
+  run|check)
     ;;
   *)
-    fail "用法：$0 [run|status]"
+    fail "用法：$0 [run|check|status]"
     ;;
 esac
 
@@ -135,6 +136,14 @@ else
 fi
 
 command -v nix-shell >/dev/null 2>&1 || fail "未找到 nix-shell；旧结果尚未清理"
+
+EMPTY_R_LIBRARY="$STATE_DIR/empty-r-library"
+mkdir -p "$EMPTY_R_LIBRARY"
+run "执行 Viewer WebGPU 真实渲染预检"
+nix-shell "$REPO/default.nix" -A shell --run \
+  "env R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$EMPTY_R_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
+ok "Viewer WebGPU 真实渲染预检通过"
+[ "$ACTION" = "run" ] || exit 0
 
 run "清理旧 benchmark 结果"
 for target in \
