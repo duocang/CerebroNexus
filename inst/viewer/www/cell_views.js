@@ -93,7 +93,7 @@
   var pointOpacity = 1;         // base draw opacity (no-selection view)
   var bordersOn = false;        // outline cell points in the active view
   var keepPlotsSquare = false;  // fluid rectangles use the workspace by default
-  // Point appearance is dataset-wide; these flags preserve live user edits.
+  // A live user edit overrides Builder's per-spatial-section starting values.
   var pointSizeEdited = false;
   var pointOpacityEdited = false;
   var hidden = new Set();       // hidden level indices for the active group
@@ -1022,29 +1022,6 @@
   // Draw the histology image behind the points of the spatial panel. The image's
   // data-space bounds are mapped to screen with the SAME transform as the cells,
   // so it aligns; opacity/offset/scale/flip/rotate then adjust it on top.
-  function imageRenderState(img, state) {
-    var pr = (img && img.preset) || {};
-    if (!pr.geometryBaked) return state;
-    var baseScaleX = Number(pr.scaleX) || 1;
-    var baseScaleY = Number(pr.scaleY) || baseScaleX;
-    return {
-      show: state.show,
-      opacity: state.opacity,
-      offsetX: state.offsetX - (Number(pr.offsetX) || 0),
-      offsetY: state.offsetY - (Number(pr.offsetY) || 0),
-      scaleX: state.scaleX / baseScaleX,
-      scaleY: state.scaleY / baseScaleY,
-      flipX: !!state.flipX !== !!pr.flipX,
-      flipY: !!state.flipY !== !!pr.flipY,
-      rotate: state.rotate - (Number(pr.rotation) || 0)
-    };
-  }
-  function rotateDataPoint(x, y, degrees) {
-    if (!degrees) return [x, y];
-    var theta = degrees * Math.PI / 180;
-    return [x * Math.cos(theta) - y * Math.sin(theta),
-      x * Math.sin(theta) + y * Math.cos(theta)];
-  }
   function drawImage(p) {
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
@@ -1052,15 +1029,13 @@
     if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
-    state = imageRenderState(cimg, state);
-    var tlData = rotateDataPoint(b.xmin, b.ymax, state.rotate);
-    var trData = rotateDataPoint(b.xmax, b.ymax, state.rotate);
-    var blData = rotateDataPoint(b.xmin, b.ymin, state.rotate);
-    var centerData = rotateDataPoint(
+    var tlData = [b.xmin, b.ymax];
+    var trData = [b.xmax, b.ymax];
+    var blData = [b.xmin, b.ymin];
+    var centerData = [
       (Number(b.xmin) + Number(b.xmax)) / 2,
-      (Number(b.ymin) + Number(b.ymax)) / 2,
-      state.rotate
-    );
+      (Number(b.ymin) + Number(b.ymax)) / 2
+    ];
     var tl = dataToScreen(p, tlData[0], tlData[1]);
     var tr = dataToScreen(p, trData[0], trData[1]);
     var bl = dataToScreen(p, blData[0], blData[1]);
@@ -1076,6 +1051,7 @@
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(center[0] + offSX, center[1] + offSY);
+    c.rotate(-state.rotate * Math.PI / 180);
     c.scale(state.scaleX * (state.flipX ? -1 : 1),
       state.scaleY * (state.flipY ? -1 : 1));
     c.transform(tr[0] - tl[0], tr[1] - tl[1],
@@ -1113,6 +1089,45 @@
       }
     }
     c.stroke();
+    c.restore();
+  }
+
+  function drawCellBoundaries(p) {
+    var sp = spaceById[p.spaceId];
+    if (!sp || !sp.cellBoundaries || !sp.cellBoundaries.length) return;
+    var c = p.ctx;
+    c.save();
+    c.globalAlpha = 0.58;
+    c.strokeStyle = '#374151';
+    c.lineWidth = 0.75;
+    sp.cellBoundaries.forEach(function (boundary) {
+      if (!boundary || !Array.isArray(boundary.points) ||
+        boundary.points.length < 3) return;
+      c.beginPath();
+      boundary.points.forEach(function (point, index) {
+        var screen = dataToScreen(p, point[0], point[1]);
+        if (!screen) return;
+        if (index) c.lineTo(screen[0], screen[1]);
+        else c.moveTo(screen[0], screen[1]);
+      });
+      c.closePath();
+      c.stroke();
+    });
+    c.restore();
+  }
+
+  function drawMolecules(p) {
+    var sp = spaceById[p.spaceId];
+    if (!sp || !sp.molecules || !sp.molecules.length) return;
+    var c = p.ctx;
+    c.save();
+    c.globalAlpha = 0.78;
+    c.fillStyle = '#f43f5e';
+    sp.molecules.forEach(function (point) {
+      var screen = dataToScreen(p, point[0], point[1]);
+      if (!screen) return;
+      c.fillRect(screen[0] - 1, screen[1] - 1, 2, 2);
+    });
     c.restore();
   }
 
@@ -1401,9 +1416,17 @@
   // but not of different alphas, so shading by opacity would cost the batching
   // exactly where it matters most.
   function pointSizeOf(p) {
+    var sp = spaceById[p.spaceId];
+    if (!pointSizeEdited && sp && sp.builder_point_size != null) {
+      return Math.max(1, Math.min(20, Number(sp.builder_point_size)));
+    }
     return ps;
   }
   function pointOpacityOf(p) {
+    var sp = spaceById[p.spaceId];
+    if (!pointOpacityEdited && sp && sp.builder_point_opacity != null) {
+      return Math.max(0, Math.min(1, Number(sp.builder_point_opacity)));
+    }
     return pointOpacity;
   }
   function radiusOf(p, i) {
@@ -1760,6 +1783,8 @@
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
+    drawCellBoundaries(p);
+    drawMolecules(p);
     drawHulls(p);
     drawTrajectory(p);
     drawAxes(p);
@@ -4234,9 +4259,73 @@
     }
   }
 
+  function trekkerStatsGrid(q) {
+    var pass2p = q.pct_2plus < 20;
+    return [
+      ['Total nuclei', fmt(q.total_nuclei), 'single-nuclei library', ''],
+      ['In Trekker library', q.pct_in_lib.toFixed(2) + '%', fmt(q.in_lib) + ' nuclei · ref >95%', q.pct_in_lib > 95 ? 'ok' : 'warn'],
+      ['Valid spatial barcodes', q.pct_valid_sb.toFixed(2) + '%', 'ref >95%', q.pct_valid_sb > 95 ? 'ok' : 'warn'],
+      ['At least 1 location', q.pct_positioned.toFixed(2) + '%', fmt(q.positioned) + ' nuclei · ref >60%', q.pct_positioned > 60 ? 'ok' : 'warn'],
+      ['Confidently positioned', q.pct_conf.toFixed(2) + '%', fmt(q.conf) + ' nuclei · ref >40%', q.pct_conf > 40 ? 'ok' : 'warn'],
+      ['2+ locations', q.pct_2plus.toFixed(2) + '%', 'ref <20% ' + (pass2p ? '' : '← over'), pass2p ? 'ok' : 'warn']
+    ].map(function (r) {
+      return '<div class="tk-stat ' + r[3] + '"><div class="tk-k">' + r[0] + '</div><div class="tk-v">' +
+        r[1] + '</div><div class="tk-m">' + r[2] + '</div></div>';
+    }).join('');
+  }
+
+  function trekkerPositionTable(q) {
+    var total = q.total_nuclei;
+    return [
+      ['0 (unpositioned)', q.n_0, 'Excluded · coordinate is the <code>0,0</code> sentinel'],
+      ['1', q.n_1, '<b>Imported</b> (incl. salvaged)'],
+      ['2', q.n_2, 'Excluded'], ['3', q.n_3, 'Excluded'], ['≥4', q.n_4p, 'Excluded']
+    ].map(function (r) {
+      return '<tr><td>' + r[0] + '</td><td class="num">' + fmt(r[1]) + '</td><td class="num">' +
+        (r[1] / total * 100).toFixed(2) + '%</td><td class="tk-muted">' + r[2] + '</td></tr>';
+    }).join('');
+  }
+
+  function trekkerSalvageFlag(q) {
+    var salvaged = q.salv_2 + q.salv_3;
+    return '<b>Confidently positioned ≠ exactly one location.</b> The ' +
+      fmt(q.n_1) + ' imported nuclei = native single-location ' + fmt(q.o_1) +
+      ' + vendor-salvaged from 2 (' + q.salv_2 + ') + from 3 (' + q.salv_3 + '), i.e. <b>' + salvaged +
+      ' (' + (salvaged / q.n_1 * 100).toFixed(2) + '%)</b> are upstream-salvaged multi-location nuclei. ' +
+      'The label must be <code>vendor_confidently_positioned</code>.';
+  }
+
+  function trekkerProvenance(q) {
+    return [
+      ['Platform / assay', esc(q.assay)], ['Sample ID', esc(q.sample_id)], ['Tile ID', esc(q.tile_id)],
+      ['Pipeline version', '<span class="tk-muted">missing (metric absent)</span>'],
+      ['Coordinate source', 'Location CSV (canonical)'],
+      ['Coordinate unit', 'µm <span class="tk-muted">(per manual; not declared in file)</span>'],
+      ['DBSCAN eps', esc(q.eps)], ['minPts', esc(q.min_sb)],
+      ['Histology image', '<span class="tk-muted">none (not provided in bundle)</span>'],
+      ['Moran\'s I source', '<span class="tk-badge tk-badge-soft" style="font-size:10px">Upstream</span>']
+    ].map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('');
+  }
+
+  function trekkerRangeFlag(q) {
+    return '<b>The vendor\'s own demo crosses the vendor\'s own reference line.</b> ' +
+      'The 2+ location rate ' + q.pct_2plus + '% > the manual\'s suggested <20%. The app should only show ' +
+      '"below vendor reference range" and must not adjudicate sample usability for the user.';
+  }
+
+  function trekkerMoranRows(moran, linkable) {
+    return moran.map(function (r) {
+      var link = linkable
+        ? '<td><a href="#" class="tk-link" data-g="' + esc(r.gene) + '">Show in plot →</a></td>'
+        : '';
+      return '<tr><td class="num tk-muted">' + r.rank + '</td>' +
+        '<td style="font-weight:600">' + esc(r.gene) + '</td><td class="num">' + r.I.toFixed(4) + '</td>' +
+        link + '</tr>';
+    }).join('');
+  }
+
   function fillTrekkerInsights() {
-    var CT = window.CerebroTrekker;
-    if (!CT || !D || !D.trekker) return;
+    if (!D || !D.trekker) return;
     var q = D.trekker.qc || {};
     // Each box is filled independently. The builders read a couple of dozen QC
     // fields and throw on one that is absent, so a .crb carrying a partial QC
@@ -4246,17 +4335,17 @@
       var el = $(id); if (!el) return;
       try { el.innerHTML = build(q); } catch (err) { el.innerHTML = ''; }
     };
-    fill('cv-tk-stats', CT.buildStatsGrid);
-    fill('cv-tk-postbl', CT.buildPositionTable);
-    fill('cv-tk-salvflag', CT.buildSalvFlag);
-    fill('cv-tk-prov', CT.buildProvenanceDl);
-    fill('cv-tk-rangeflag', CT.buildRangeFlag);
+    fill('cv-tk-stats', trekkerStatsGrid);
+    fill('cv-tk-postbl', trekkerPositionTable);
+    fill('cv-tk-salvflag', trekkerSalvageFlag);
+    fill('cv-tk-prov', trekkerProvenance);
+    fill('cv-tk-rangeflag', trekkerRangeFlag);
     // Linkable: the table names the genes whose expression is spatially
     // structured, and this workspace can colour by a gene, so each row is one
     // click from the map that makes the number mean something. It was built
     // unlinked back when there was no gene mode here to send it to.
     $('cv-tk-morantbl').innerHTML = D.trekker.moran
-      ? CT.buildMoranRows(D.trekker.moran, true) : '';
+      ? trekkerMoranRows(D.trekker.moran, true) : '';
     Array.prototype.forEach.call(
       $('cv-tk-morantbl').querySelectorAll('a[data-g]'),
       function (a) {
@@ -4761,8 +4850,8 @@
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
-    // Multi-section bundles keep the large image payload on each sample rather
-    // than duplicating the opening sample's base64 data at the space level.
+    // Multi-section bundles keep the image reference on each sample rather than
+    // duplicating the opening sample's image data at the space level.
     // Before the picker has changed section, `_sampleName` is unset and the
     // opening sample is the active one.
     var samples = sp.samples || [];
@@ -5065,6 +5154,10 @@
       label: spatialTemplate.label,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
+      x_range: spatialTemplate.x_range,
+      y_range: spatialTemplate.y_range,
+      builder_point_opacity: spatialTemplate.builder_point_opacity,
+      builder_point_size: spatialTemplate.builder_point_size,
       image: spatialTemplate.image,
       images: spatialTemplate.images || []
     }];
@@ -5089,6 +5182,10 @@
         label: sample.label || (sample.name + ' (spatial)'),
         x: sample.x,
         y: sample.y,
+        xRange: sample.x_range || null,
+        yRange: sample.y_range || null,
+        builder_point_opacity: sample.builder_point_opacity,
+        builder_point_size: sample.builder_point_size,
         image: sample.image || null,
         images: images,
         _sampleName: sample.name,
@@ -5947,6 +6044,40 @@
       return [Number(shape.x0), Number(shape.y0), Number(shape.x1), Number(shape.y1)];
     });
   }
+  function singleCellBoundaries(extra) {
+    var raw = extra && extra.cell_boundaries;
+    if (!raw || !Array.isArray(raw.cell_barcode) ||
+      !Array.isArray(raw.part) || !Array.isArray(raw.x) ||
+      !Array.isArray(raw.y)) return [];
+    var n = Math.min(raw.cell_barcode.length, raw.part.length,
+      raw.x.length, raw.y.length);
+    var boundaries = [], current = null, currentKey = null;
+    for (var i = 0; i < n; i++) {
+      var x = Number(raw.x[i]), y = Number(raw.y[i]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      var cell = String(raw.cell_barcode[i]);
+      var key = cell + '\u0000' + String(raw.part[i]);
+      if (key !== currentKey) {
+        current = { cell: cell, points: [] };
+        boundaries.push(current);
+        currentKey = key;
+      }
+      current.points.push([x, y]);
+    }
+    return boundaries.filter(function (boundary) {
+      return boundary.points.length >= 3;
+    });
+  }
+  function singleMolecules(extra) {
+    var raw = extra && extra.molecule_points;
+    if (!raw || !Array.isArray(raw.x) || !Array.isArray(raw.y)) return [];
+    var n = Math.min(raw.x.length, raw.y.length), points = [];
+    for (var i = 0; i < n; i++) {
+      var x = Number(raw.x[i]), y = Number(raw.y[i]);
+      if (isFinite(x) && isFinite(y)) points.push([x, y]);
+    }
+    return points;
+  }
   function singleHulls(extra) {
     var raw = extra && extra.group_hulls;
     if (!raw || !Array.isArray(raw.x) || !Array.isArray(raw.y)) return [];
@@ -5966,9 +6097,11 @@
     return out;
   }
   function buildSpecialistPanels(id, payload) {
-    var meta = payload.meta || {}, data = payload.data || {};
+    var meta = payload.meta || {}, data = payload.data || {},
+      extra = payload.extra || {};
     if (!Array.isArray(data.panels) || !data.panels.length) return null;
     var keys = Array.isArray(data.selection_key) ? data.selection_key : [];
+    var cellBoundaries = singleCellBoundaries(extra);
     var spaces = [], modes = {}, mode;
     if (meta.color_type === 'categorical') {
       var levels = Array.isArray(meta.traces) ? meta.traces.map(String) : [];
@@ -6019,6 +6152,12 @@
         _hoverEnabled: true,
         _hoverMask: emptyVector(true)
       };
+      if (cellBoundaries.length) {
+        var panelCells = new Set(panelKeys.map(String));
+        space.cellBoundaries = cellBoundaries.filter(function (boundary) {
+          return panelCells.has(boundary.cell);
+        });
+      }
       if (Array.isArray(panel.from_x) && Array.isArray(panel.to_x)) {
         var fromX = alignFlatValues(panelKeys, panel.from_x, null);
         var fromY = alignFlatValues(panelKeys, panel.from_y, null);
@@ -6037,14 +6176,32 @@
       if (panel.spatial) {
         space.background_scope = panel.label || 'Trekker';
         space._sampleName = panel.label || 'Trekker';
+        space._preserveAspect = !!panel.preserve_aspect;
       }
-      if (panel.background_image && panel.image_bounds) {
+      space.xRange = panel.x_range;
+      space.yRange = panel.y_range;
+      var panelImage = panel.background_image || meta.background_image;
+      var panelBounds = panel.image_bounds || meta.image_bounds;
+      if (panelImage && panelBounds) {
+        var opacity = Number(meta.background_opacity);
         space.images = [{
-          id: panel.image_id || 'trekker-background',
-          label: panel.image_label || 'Trekker background',
-          uri: panel.background_image,
-          bounds: panel.image_bounds,
-          preset: panel.image_preset || {}
+          id: panel.image_id || (panel.image_identity
+            ? JSON.stringify(panel.image_identity)
+            : meta.background_identity
+            ? JSON.stringify(meta.background_identity) : 'trekker-background'),
+          label: panel.image_label || meta.image_label || 'Tissue background',
+          uri: panelImage,
+          bounds: panelBounds,
+          preset: panel.image_preset || {
+            opacity: isFinite(opacity) ? opacity : 0.6,
+            offsetX: Number(meta.background_offset_x) || 0,
+            offsetY: Number(meta.background_offset_y) || 0,
+            scaleX: Number(meta.background_scale_x) || 1,
+            scaleY: Number(meta.background_scale_y) || 1,
+            flipX: !!meta.background_flip_x,
+            flipY: !!meta.background_flip_y,
+            rotation: Number(meta.background_rotation) || 0
+          }
         }];
         space._customImageId = space.images[0].id;
       }
@@ -6070,6 +6227,8 @@
         data.point_sizes,
         null
       ) : null;
+    var cellBoundaries = singleCellBoundaries(extra);
+    var molecules = singleMolecules(extra);
     var hasZ = aligned.z !== null;
     var hasHover = aligned.hoverEnabled.some(Boolean);
     var makeSpace = function (spaceId, label) {
@@ -6098,6 +6257,8 @@
       }
       if (pointSizes) space.pointSizes = pointSizes;
       if (hulls.length) space.hulls = hulls;
+      if (cellBoundaries.length) space.cellBoundaries = cellBoundaries;
+      if (molecules.length) space.molecules = molecules;
       if (meta.is_spatial) {
         space.background_scope = id;
         space._sampleName = meta.image_label || 'Spatial';
@@ -6361,6 +6522,12 @@
     var previous = registerSingle(id); if (!previous) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
+    var host = singleHost(id), keys = data.selection_key || [];
+    if (host) {
+      host.dataset.pointCount = String(Array.isArray(keys[0])
+        ? keys.reduce(function (total, values) { return total + values.length; }, 0)
+        : keys.length);
+    }
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
     singleViews[id] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
@@ -6643,7 +6810,16 @@
       }
     });
     var projectionNames = D.projections ? Object.keys(D.projections) : [];
-    selectedProjections = dataChanged ? [] : previousProjections.filter(function (name) {
+    var configuredInitialProjections = Array.isArray(D.initial_projections)
+      ? D.initial_projections
+      : (typeof D.initial_projections === 'string' ? [D.initial_projections] : []);
+    configuredInitialProjections = configuredInitialProjections.filter(function (name, index) {
+      return projectionNames.indexOf(name) >= 0 &&
+        configuredInitialProjections.indexOf(name) === index;
+    });
+    selectedProjections = dataChanged
+      ? configuredInitialProjections
+      : previousProjections.filter(function (name) {
       return projectionNames.indexOf(name) >= 0;
     });
     if (!selectedProjections.length && projectionNames.length) {
