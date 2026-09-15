@@ -1,6 +1,6 @@
 viewer_auth_runtime_environment <- function() {
   runtime <- new.env(parent = globalenv())
-  source_file <- file.path("inst", "viewer", "auth.R")
+  source_file <- test_path("..", "..", "inst", "viewer", "auth.R")
   if (!file.exists(source_file)) {
     source_file <- system.file(
       "viewer/auth.R",
@@ -71,6 +71,35 @@ test_that("Viewer accepts read-only credentials and requires its secret", {
     ),
     "CEREBRO_AUTH_TEST_KEY is not set"
   )
+})
+
+test_that("Viewer authentication loads only its app-local secret", {
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  app_dir <- file.path(root, "cerebro_app")
+  dir.create(app_dir)
+  env_name <- "CEREBRO_AUTH_TEST_KEY"
+  app_secret <- strrep("a", 64L)
+  parent_secret <- strrep("b", 64L)
+  app_env <- file.path(app_dir, "viewer-auth.env")
+  parent_env <- file.path(root, "viewer-auth.env")
+  writeLines(paste0(env_name, "=", app_secret), app_env)
+  writeLines(paste0(env_name, "=", parent_secret), parent_env)
+  Sys.chmod(c(app_env, parent_env), mode = "0600", use_umask = FALSE)
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = NA)
+  load_passphrase <- get(
+    ".viewer_auth_load_local_passphrase",
+    envir = runtime,
+    inherits = FALSE
+  )
+
+  expect_true(load_passphrase(app_dir, env_name))
+  expect_identical(Sys.getenv(env_name), app_secret)
+
+  Sys.unsetenv(env_name)
+  unlink(app_env)
+  expect_false(load_passphrase(app_dir, env_name))
+  expect_identical(Sys.getenv(env_name, unset = NA_character_), NA_character_)
 })
 
 test_that("Viewer authentication supplies bundled CerebroNexus branding", {

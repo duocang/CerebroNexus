@@ -222,6 +222,7 @@ test_that("Linked views treats projections as a multi-panel selection", {
   expect_match(js, "function rebuildProjectionInstances()", fixed = TRUE)
   expect_match(js, "function setSelectedProjections(names)", fixed = TRUE)
   expect_match(js, "selectedProjections.forEach", fixed = TRUE)
+  expect_match(js, "D.initial_projections", fixed = TRUE)
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
 })
 
@@ -239,6 +240,7 @@ test_that("Linked views delegates menu height to the shared viewport sizing", {
   js_file <- file.path(dirname(bundle_file), "..", "www", "multiselect.js")
   skip_if_not(file.exists(css_file))
   css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
   expect_false(grepl(
     "#cv-pick-color + .selectize-control .selectize-dropdown-content",
@@ -1400,6 +1402,7 @@ test_that("Linked views consumes the selected dataset point appearance", {
     viewer_content = list(
       ds = list(
         default_projection = "tsne",
+        initial_projections = c("tsne", "umap"),
         default_trajectory = NULL
       )
     )
@@ -1418,6 +1421,7 @@ test_that("Linked views consumes the selected dataset point appearance", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expect_identical(bundle$default_projection, "tsne")
+  expect_identical(bundle$initial_projections, c("tsne", "umap"))
   expect_identical(bundle$default_group, "region")
   expect_identical(bundle$default_point_size, 5)
   expect_identical(bundle$default_point_opacity, 0.7)
@@ -1917,7 +1921,8 @@ test_that("each section offers only its own configured backgrounds", {
         `section-a` = list(
           `H&E` = list(
             path = "spatial-assets/a/he.png",
-            bounds = c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
+            bounds = c(xmin = 1, xmax = 11, ymin = 2, ymax = 12),
+            viewport_bounds = c(xmin = -5, xmax = 15, ymin = -2, ymax = 14)
           )
         ),
         `section-b` = c(`H&E` = "spatial-assets/b/he.png")
@@ -1965,6 +1970,10 @@ test_that("each section offers only its own configured backgrounds", {
     unlist(first[[1L]]$bounds, use.names = TRUE),
     c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
   )
+  expect_equal(
+    unlist(first[[1L]]$viewport, use.names = TRUE),
+    c(xmin = -5, xmax = 15, ymin = -2, ymax = 14)
+  )
   expect_identical(
     first[[1L]]$preset,
     list(
@@ -1986,7 +1995,7 @@ test_that("each section offers only its own configured backgrounds", {
   expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
   expect_match(
     js,
-    "rotateDataPoint(b.xmin, b.ymax, state.rotate)",
+    "c.rotate(-state.rotate * Math.PI / 180)",
     fixed = TRUE
   )
 })
@@ -1997,8 +2006,8 @@ test_that("per-image settings also apply to embedded backgrounds", {
   crb <- list(getSpatialData = function(name) {
     list(
       coordinates = data.frame(
-        x = c(1, 2),
-        y = c(3, 4),
+        x = c(1.123456789, 2.987654321),
+        y = c(3.246813579, 4.135792468),
         row.names = cells
       ),
       histology_images = list(
@@ -2020,8 +2029,20 @@ test_that("per-image settings also apply to embedded backgrounds", {
             flip_y = FALSE,
             image_opacity = 0.7,
             point_opacity = 0.35,
-            point_size = 9
+            point_size = 9,
+            viewport_bounds = list(
+              xmin = -2,
+              xmax = 4,
+              ymin = -1,
+              ymax = 6
+            )
           )
+        ),
+        `ROI only` = list(
+          histology_image = "data:image/png;base64,AA==",
+          histology_image_bounds = c(xmin = 0, xmax = 1, ymin = 0, ymax = 1),
+          roi_field = "sample_roi",
+          roi_value = "lesion"
         )
       ),
       histology_alignment = list(
@@ -2033,6 +2054,13 @@ test_that("per-image settings also apply to embedded backgrounds", {
     )
   })
   cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(
+        spatial_point_appearance = list(
+          fov = list(point_opacity = 0.42, point_size = 8)
+        )
+      )
+    ),
     spatial_image_settings = list(
       ds = list(
         fov = list(
@@ -2054,6 +2082,13 @@ test_that("per-image settings also apply to embedded backgrounds", {
   )
 
   built <- cv_env$cv_spatial_one(crb, cells, "fov", allow_external = TRUE)
+  expect_length(built$images, 1L)
+  expect_identical(built$x, c(1.123456789, 2.987654321))
+  expect_identical(built$y, c(3.246813579, 4.135792468))
+  expect_identical(built$x_range, c(-2, 4))
+  expect_identical(built$y_range, c(-1, 6))
+  expect_identical(built$builder_point_opacity, 0.42)
+  expect_identical(built$builder_point_size, 8)
   expect_identical(
     built$images[[1L]]$preset,
     list(
@@ -2064,16 +2099,24 @@ test_that("per-image settings also apply to embedded backgrounds", {
       flipX = TRUE,
       flipY = FALSE,
       rotation = -32,
-      opacity = 0.7,
-      geometryBaked = TRUE
+      opacity = 0.7
     )
   )
   js <- paste(
     readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
     collapse = "\n"
   )
-  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
-  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
+  expect_match(js, "xRange: sample.x_range || null", fixed = TRUE)
+  expect_match(
+    js,
+    "!pointSizeEdited && sp && sp.builder_point_size",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "!pointOpacityEdited && sp && sp.builder_point_opacity",
+    fixed = TRUE
+  )
 })
 
 test_that("legacy spatial images share identity and point appearance", {
@@ -2131,6 +2174,60 @@ test_that("legacy spatial images share identity and point appearance", {
       percentage_cells_to_show = 100
     )
   )
+})
+
+test_that("Linked views keeps the all-ROI coordinate layout unchanged", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  crb <- list(getSpatialData = function(name) {
+    list(
+      coordinates = data.frame(
+        x = c(0, 2),
+        y = c(0, 0),
+        row.names = cells
+      )
+    )
+  })
+  cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(
+        spatial_roi_settings = list(
+          fov = list(
+            roi = list(
+              rotation_degrees = 90,
+              point_opacity = 0.8,
+              point_size = 5
+            )
+          )
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  built <- cv_env$cv_spatial_one(
+    crb,
+    cells,
+    "fov",
+    allow_external = FALSE,
+    metadata = data.frame(
+      cell_barcode = cells,
+      sample_roi = rep("roi", 2)
+    )
+  )
+
+  expect_identical(built$x, c(0, 2))
+  expect_identical(built$y, c(0, 0))
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {

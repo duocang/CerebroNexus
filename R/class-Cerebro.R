@@ -1265,8 +1265,9 @@ Cerebro <- R6::R6Class(
     #' @param data \code{list} containing 'coordinates' (data.frame) and
     #'   'expression' (sparse matrix). Embedded backgrounds are stored in
     #'   'histology_images', a uniquely named list of image payloads. Each
-    #'   payload contains 'histology_image' (a base64 \code{data:} URI) and
-    #'   'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space).
+    #'   payload contains 'histology_image' (a base64 \code{data:} URI),
+    #'   'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space), and
+    #'   may contain a declarative 'histology_alignment'.
     #'   Bounds omitted from a payload are derived from the coordinates. Legacy
     #'   singular image fields are accepted and normalized as 'Tissue
     #'   background'.
@@ -1350,7 +1351,12 @@ Cerebro <- R6::R6Class(
         self$spatial[[name]] <- data
       }
       context <- paste0("Spatial data `", name, "`")
-      normalize_bounds <- function(bounds, coordinates, image_context) {
+      normalize_bounds <- function(
+        bounds,
+        coordinates,
+        image_context,
+        allow_outside = FALSE
+      ) {
         valid_coordinates <- is.data.frame(coordinates) &&
           all(c("x", "y") %in% colnames(coordinates)) &&
           is.numeric(coordinates[["x"]]) &&
@@ -1411,7 +1417,7 @@ Cerebro <- R6::R6Class(
           coordinates[["x"]] > bounds[["xmax"]] |
           coordinates[["y"]] < bounds[["ymin"]] |
           coordinates[["y"]] > bounds[["ymax"]]
-        if (any(outside)) {
+        if (!isTRUE(allow_outside) && any(outside)) {
           stop(
             image_context,
             " has coordinates outside its declared bounds.",
@@ -1506,7 +1512,14 @@ Cerebro <- R6::R6Class(
           label <- image_names[[i]]
           payload <- images[[i]]
           image_context <- paste0(context, " image `", label, "`")
-          valid_fields <- c("histology_image", "histology_image_bounds")
+          valid_fields <- c(
+            "histology_image",
+            "histology_image_bounds",
+            "histology_alignment",
+            "image_label",
+            "roi_field",
+            "roi_value"
+          )
           if (
             !is.list(payload) ||
               is.null(names(payload)) ||
@@ -1536,14 +1549,79 @@ Cerebro <- R6::R6Class(
               call. = FALSE
             )
           }
-          list(
-            histology_image = image,
-            histology_image_bounds = normalize_bounds(
-              payload[["histology_image_bounds"]],
-              data[["coordinates"]],
-              image_context
+          alignment <- payload[["histology_alignment"]]
+          if (
+            !is.null(alignment) &&
+              (!is.list(alignment) ||
+                is.null(names(alignment)) ||
+                anyDuplicated(names(alignment)))
+          ) {
+            stop(
+              image_context,
+              " alignment must be a named list.",
+              call. = FALSE
             )
+          }
+          scope_fields <- c("roi_field", "roi_value")
+          scope_present <- scope_fields %in% names(payload)
+          if (any(scope_present) && !all(scope_present)) {
+            stop(
+              image_context,
+              " must declare both `roi_field` and `roi_value`.",
+              call. = FALSE
+            )
+          }
+          if (all(scope_present)) {
+            valid_scope <- vapply(
+              payload[scope_fields],
+              function(value) {
+                is.character(value) &&
+                  length(value) == 1L &&
+                  !is.na(value) &&
+                  nzchar(value)
+              },
+              logical(1)
+            )
+            if (!all(valid_scope)) {
+              stop(
+                image_context,
+                " ROI scope must contain non-empty strings.",
+                call. = FALSE
+              )
+            }
+          }
+          result <- c(
+            list(
+              histology_image = image,
+              histology_image_bounds = normalize_bounds(
+                payload[["histology_image_bounds"]],
+                data[["coordinates"]],
+                image_context,
+                allow_outside = all(scope_present)
+              )
+            ),
+            payload[scope_fields[scope_present]]
           )
+          if (!is.null(payload[["image_label"]])) {
+            display_label <- payload[["image_label"]]
+            if (
+              !is.character(display_label) ||
+                length(display_label) != 1L ||
+                is.na(display_label) ||
+                !nzchar(display_label)
+            ) {
+              stop(
+                image_context,
+                " display label must be non-empty.",
+                call. = FALSE
+              )
+            }
+            result$image_label <- display_label
+          }
+          if (!is.null(alignment)) {
+            result$histology_alignment <- alignment
+          }
+          result
         })
         names(normalized) <- image_names
         images <- normalized
