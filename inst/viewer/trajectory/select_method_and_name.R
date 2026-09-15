@@ -11,9 +11,9 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_select_method_and_name_UI"]] <- renderUI({
-  ## currently, only trajectories from monocle2 are supported
-  available_methods <- getMethodsForTrajectories()
-  available_methods <- available_methods[available_methods %in% c('monocle2')]
+  available_methods <- viewerSupportedTrajectoryMethods(
+    getMethodsForTrajectories()
+  )
 
   if (length(available_methods) == 0) {
     textOutput("trajectory_missing")
@@ -30,14 +30,22 @@ output[["trajectory_select_method_and_name_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_selected_method_UI"]] <- renderUI({
-  ## currently, only trajectories from monocle2 are supported
-  available_methods <- getMethodsForTrajectories()
-  available_methods <- available_methods[available_methods %in% c('monocle2')]
+  available_methods <- viewerSupportedTrajectoryMethods(
+    getMethodsForTrajectories()
+  )
+  method_labels <- c(
+    monocle2 = "Monocle 2",
+    marker_guided = "Marker-guided",
+    illustrative = "Illustrative"
+  )
 
   selectInput(
     "trajectory_selected_method",
     label = "Choose a method",
-    choices = available_methods,
+    choices = stats::setNames(
+      available_methods,
+      unname(method_labels[available_methods])
+    ),
     width = "100%"
   )
 })
