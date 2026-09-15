@@ -1551,11 +1551,20 @@ cv_build_clone <- function(crb, cells, n) {
 ## Separators and case are irrelevant; a short edit-distance fallback catches
 ## common transpositions such as "Cell Tyep". Cell type wins over sample, and a
 ## data set with neither starts on one randomly selected categorical field.
-cv_default_group <- function(available) {
+cv_default_group <- function(available, preferred = NULL) {
   available <- unique(as.character(available))
   available <- available[!is.na(available) & nzchar(available)]
   if (!length(available)) {
     return(NULL)
+  }
+  preferred <- tryCatch(as.character(preferred), error = function(e) {
+    character()
+  })
+  preferred <- preferred[
+    !is.na(preferred) & nzchar(preferred) & preferred %in% available
+  ]
+  if (length(preferred)) {
+    return(preferred[[1L]])
   }
 
   normalized <- tolower(gsub("[^[:alnum:]]", "", available))
@@ -1632,7 +1641,11 @@ cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
       extra_candidates <- c(extra_candidates, name)
     }
   }
-  default_group <- cv_default_group(c(group_candidates, extra_candidates))
+  parameters <- tryCatch(crb$getParameters(), error = function(e) list())
+  default_group <- cv_default_group(
+    c(group_candidates, extra_candidates),
+    parameters[["main_group"]]
+  )
   groups <- list()
   cat_extra <- list()
   fields <- list()
@@ -1689,6 +1702,8 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   ##   cat_extra — other categorical columns: colour only
   ##   fields    — numeric columns (+ Trekker's physical fields): continuous
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
+  parameters <- tryCatch(crb$getParameters(), error = function(e) list())
+  preferred_group <- parameters[["main_group"]]
   if (isTRUE(primary_only)) {
     primary_colours <- cv_build_primary_colours(
       crb,
@@ -1817,7 +1832,7 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   ## continuous field; with no colourable metadata the panels draw one colour.
   if (!isTRUE(primary_only)) {
     available_groups <- c(names(groups), names(cat_extra))
-    default_group <- cv_default_group(available_groups)
+    default_group <- cv_default_group(available_groups, preferred_group)
     if (is.null(default_group) && length(fields)) {
       default_group <- paste0(cv_field_mode, names(fields)[1])
     }

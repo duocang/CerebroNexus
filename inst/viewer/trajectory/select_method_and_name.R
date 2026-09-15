@@ -11,9 +11,11 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_select_method_and_name_UI"]] <- renderUI({
-  ## currently, only trajectories from monocle2 are supported
+  ## currently, monocle2 and explicitly illustrative trajectories are supported
   available_methods <- getMethodsForTrajectories()
-  available_methods <- available_methods[available_methods %in% c('monocle2')]
+  available_methods <- available_methods[
+    available_methods %in% c("monocle2", "illustrative")
+  ]
 
   if (length(available_methods) == 0) {
     textOutput("trajectory_missing")

@@ -636,9 +636,14 @@ server <- function(input, output, session) {
   )
   toggleConditionalTab(
     "trajectory",
-    ## Only supported methods (monocle2) should surface the tab; an unsupported
+    ## Only supported methods should surface the tab; an unsupported
     ## method would otherwise render a blank tab instead of the empty state.
-    function() intersect(getMethodsForTrajectories(), c("monocle2"))
+    function() {
+      intersect(
+        getMethodsForTrajectories(),
+        c("monocle2", "illustrative")
+      )
+    }
   )
   toggleConditionalTab(
     "spatial",

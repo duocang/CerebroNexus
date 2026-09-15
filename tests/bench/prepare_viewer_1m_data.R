@@ -81,6 +81,131 @@
   make.unique(symbols)
 }
 
+.viewer1mIllustrativeTrajectory <- function(metadata, projection) {
+  required_metadata <- c("cell_barcode", "seurat_clusters")
+  if (
+    !is.data.frame(metadata) ||
+      !all(required_metadata %in% colnames(metadata)) ||
+      is.null(dim(projection)) ||
+      ncol(projection) < 2L
+  ) {
+    stop(
+      "The 1M demo trajectory requires cell barcodes, clusters, and a 2-D projection.",
+      call. = FALSE
+    )
+  }
+
+  cells <- as.character(metadata$cell_barcode)
+  projection <- as.matrix(projection[, seq_len(2L), drop = FALSE])
+  projection_cells <- rownames(projection)
+  if (!is.null(projection_cells)) {
+    projection <- projection[match(cells, projection_cells), , drop = FALSE]
+  } else if (nrow(projection) != length(cells)) {
+    stop("The 1M demo projection does not match its metadata.", call. = FALSE)
+  }
+
+  clusters <- as.character(metadata$seurat_clusters)
+  coordinates <- data.frame(
+    DR_1 = as.numeric(projection[, 1L]),
+    DR_2 = as.numeric(projection[, 2L])
+  )
+  keep <- !is.na(cells) &
+    nzchar(cells) &
+    !is.na(clusters) &
+    nzchar(clusters) &
+    stats::complete.cases(coordinates)
+  if (sum(keep) < 2L) {
+    stop(
+      "The 1M demo trajectory needs at least two valid cells.",
+      call. = FALSE
+    )
+  }
+
+  coordinates <- coordinates[keep, , drop = FALSE]
+  cells <- cells[keep]
+  clusters <- clusters[keep]
+  axis_range <- range(coordinates$DR_1)
+  pseudotime <- if (diff(axis_range) > 0) {
+    (coordinates$DR_1 - axis_range[[1L]]) / diff(axis_range)
+  } else {
+    rep(0, nrow(coordinates))
+  }
+  state_levels <- sort(unique(clusters), method = "radix")
+  trajectory_meta <- data.frame(
+    DR_1 = coordinates$DR_1,
+    DR_2 = coordinates$DR_2,
+    pseudotime = pseudotime,
+    state = factor(clusters, levels = state_levels),
+    row.names = cells
+  )
+
+  centers <- stats::aggregate(
+    trajectory_meta[c("DR_1", "DR_2")],
+    list(state = trajectory_meta$state),
+    mean
+  )
+  centers <- centers[order(centers$DR_1, centers$DR_2, centers$state), ]
+  trajectory_edges <- data.frame(
+    source_dim_1 = utils::head(centers$DR_1, -1L),
+    source_dim_2 = utils::head(centers$DR_2, -1L),
+    target_dim_1 = utils::tail(centers$DR_1, -1L),
+    target_dim_2 = utils::tail(centers$DR_2, -1L)
+  )
+
+  list(meta = trajectory_meta, edges = trajectory_edges)
+}
+
+.viewer1mEnrichDemoObject <- function(object) {
+  changed <- FALSE
+  parameters <- tryCatch(object$getParameters(), error = function(e) list())
+  if (!identical(parameters[["main_group"]], "seurat_clusters")) {
+    object$addParameters("main_group", "seurat_clusters")
+    changed <- TRUE
+  }
+
+  method <- "illustrative"
+  trajectory_name <- "UMAP_cluster_path"
+  methods <- tryCatch(
+    object$getMethodsForTrajectories(),
+    error = function(e) character()
+  )
+  names_for_method <- if (method %in% methods) {
+    tryCatch(
+      object$getNamesOfTrajectories(method),
+      error = function(e) character()
+    )
+  } else {
+    character()
+  }
+  if (!trajectory_name %in% names_for_method) {
+    projection_names <- object$availableProjections()
+    if (!length(projection_names)) {
+      stop("The 1M demo needs a projection for Linked Views.", call. = FALSE)
+    }
+    object$addTrajectory(
+      method,
+      trajectory_name,
+      .viewer1mIllustrativeTrajectory(
+        object$getMetaData(),
+        object$getProjection(projection_names[[1L]])
+      )
+    )
+    changed <- TRUE
+  }
+  changed
+}
+
+.viewer1mEnrichDemoCrb <- function(file) {
+  object <- readCerebro(file)
+  if (.viewer1mEnrichDemoObject(object)) {
+    message(
+      "Adding the 1M Linked Views trajectory and seurat_clusters default."
+    )
+    saveCerebro(object, file)
+  }
+  file
+}
+
 .viewer1mGeneSymbols <- function(source, n_genes) {
   listing <- rhdf5::h5ls(source, recursive = TRUE)
   hit <- which(listing$name == "gene_names" & listing$otype == "H5I_DATASET")
@@ -202,7 +327,7 @@ prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
   paths <- .viewer1mPaths(cache_dir)
   .viewer1mRequire("BPCells")
   if (.viewer1mComplete(paths$crb, paths$crb_sidecar)) {
-    return(paths$crb)
+    return(.viewer1mEnrichDemoCrb(paths$crb))
   }
 
   .viewer1mRequire(c("Seurat", "SeuratObject", "rhdf5"))
@@ -230,5 +355,5 @@ prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
   if (!.viewer1mComplete(paths$crb, paths$crb_sidecar)) {
     stop("The 1M benchmark CRB is incomplete.", call. = FALSE)
   }
-  paths$crb
+  .viewer1mEnrichDemoCrb(paths$crb)
 }
