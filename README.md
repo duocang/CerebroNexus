@@ -26,7 +26,7 @@ Automated tests run in a reproducible Nix environment.
 remotes::install_github('mihem/CerebroNexus')
 ```
 
-## 2. Run the complete demo (including 1M cells)
+## 2. Run the complete large-data demo
 
 ```bash
 git clone https://github.com/mihem/CerebroNexus.git
@@ -35,12 +35,24 @@ Rscript -e "remotes::install_local('.', dependencies = TRUE)"
 Rscript run-demo.R
 ```
 
-The first run downloads the official 10x one-million-neuron matrix, prepares it,
-and caches the several-gigabyte result outside the repository. Later runs reuse
-the cache. Its UMAP cluster path is clearly labelled as illustrative and lets
-you test Linked Views at one-million-cell scale; it is not a biological
-trajectory inference. The same app also includes the bundled PBMC,
-immune-repertoire, trajectory, spatial, Trekker, and HLA/TCR demos.
+The first run downloads and prepares both the official 10x one-million-neuron
+matrix and the Ren et al. [COVID-19 immune atlas](https://explore.data.humancellatlas.org/projects/5f607e50-ba22-4598-b1e9-f3d9d7a35dcc)
+([GEO GSE158055](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE158055);
+1,462,702 cells). Source and prepared files are cached outside the repository,
+so later runs reuse them. The initial compressed downloads total about 18 GB.
+Allow at least 100 GB of free cache space for the extracted matrices and
+BPCells artifacts.
+The Ren demo includes all 64 published cell populations, sample/patient
+clinical metadata, and the published 220,968 paired-TCR plus 282,464 paired-BCR
+cells.
+
+The 10x marker-guided E18 neurogenesis path excludes endothelial,
+microglial, and oligodendrocyte programs, orders the remaining neural lineage
+with early, transitional, and late markers, and separates excitatory and
+inhibitory terminal branches. It is clearly labelled as a marker-guided demo
+rather than a formal trajectory-inference result. The same app also includes
+the bundled PBMC, immune-repertoire, trajectory, spatial, Trekker, and HLA/TCR
+demos.
 
 ## 3. Build an app for your own data
 
