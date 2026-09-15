@@ -517,12 +517,18 @@ bench_run_viewer_validation <- function(
       "host.querySelector('.cv-tbtn[data-act=\"box\"]').click(); ",
       "return true; })()"
     ))
-    padding <- min(20, geometry$width / 20, geometry$height / 20)
     drag <- list(
-      x1 = max(geometry$left + 1, hover_point[[1L]] - padding),
-      y1 = max(geometry$top + 1, hover_point[[2L]] - padding),
-      x2 = min(geometry$left + geometry$width - 1, hover_point[[1L]] + padding),
-      y2 = min(geometry$top + geometry$height - 1, hover_point[[2L]] + padding)
+      x1 = geometry$left + geometry$width * .1,
+      y1 = geometry$top + geometry$height * .1,
+      x2 = geometry$left + geometry$width * .9,
+      y2 = geometry$top + geometry$height * .9
+    )
+    mouse(
+      type = "mouseMoved",
+      x = drag$x1,
+      y = drag$y1,
+      button = "none",
+      buttons = 0
     )
     mouse(
       type = "mousePressed",
@@ -532,13 +538,15 @@ bench_run_viewer_validation <- function(
       buttons = 1,
       clickCount = 1
     )
-    mouse(
-      type = "mouseMoved",
-      x = drag$x2,
-      y = drag$y2,
-      button = "left",
-      buttons = 1
-    )
+    for (fraction in c(.25, .5, .75, 1)) {
+      mouse(
+        type = "mouseMoved",
+        x = drag$x1 + (drag$x2 - drag$x1) * fraction,
+        y = drag$y1 + (drag$y2 - drag$y1) * fraction,
+        button = "left",
+        buttons = 1
+      )
+    }
     mouse(
       type = "mouseReleased",
       x = drag$x2,
