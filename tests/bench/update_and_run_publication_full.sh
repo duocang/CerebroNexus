@@ -87,8 +87,12 @@ case "$ACTION" in
     ;;
   run|check)
     ;;
+  resume-viewer)
+    [ "$#" -eq 2 ] || fail "用法：$0 resume-viewer <preserved-scratch>"
+    RESUME_SCRATCH="$2"
+    ;;
   *)
-    fail "用法：$0 [run|check|status]"
+    fail "用法：$0 [run|check|status|resume-viewer <preserved-scratch>]"
     ;;
 esac
 
@@ -152,7 +156,15 @@ run "执行一次性 Viewer 小测试（不写入 benchmark 结果）"
 nix-shell "$REPO/default.nix" -A shell --run \
   "env NOT_CRAN=true R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null R_LIBS_USER='$CHECK_LIBRARY' BENCH_LIB='$CHECK_LIBRARY' BENCH_ROOT='$REPO/tests/bench' Rscript '$REPO/tests/bench/src/04_check_webgpu.R'"
 ok "Viewer 小测试通过"
-[ "$ACTION" = "run" ] || exit 0
+if [ "$ACTION" = "check" ]; then
+  exit 0
+fi
+if [ "$ACTION" = "resume-viewer" ]; then
+  run "只补跑保留产物的 Viewer 验证并发布结果"
+  nix-shell "$REPO/default.nix" -A shell --run \
+    "bash '$REPO/tests/bench/resume_viewer_and_publish.sh' '$RESUME_SCRATCH'"
+  exit 0
+fi
 
 run "清理旧 benchmark 结果"
 for target in \
