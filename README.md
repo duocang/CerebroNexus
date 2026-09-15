@@ -26,7 +26,23 @@ Automated tests run in a reproducible Nix environment.
 remotes::install_github('mihem/CerebroNexus')
 ```
 
-## 2. Quick Start
+## 2. Run the complete demo (including 1M cells)
+
+```bash
+git clone https://github.com/mihem/CerebroNexus.git
+cd CerebroNexus
+Rscript -e "remotes::install_local('.', dependencies = TRUE)"
+Rscript run-demo.R
+```
+
+The first run downloads the official 10x one-million-neuron matrix, prepares it,
+and caches the several-gigabyte result outside the repository. Later runs reuse
+the cache. Its UMAP cluster path is clearly labelled as illustrative and lets
+you test Linked Views at one-million-cell scale; it is not a biological
+trajectory inference. The same app also includes the bundled PBMC,
+immune-repertoire, trajectory, spatial, Trekker, and HLA/TCR demos.
+
+## 3. Build an app for your own data
 
 ```r
 library(CerebroNexus)

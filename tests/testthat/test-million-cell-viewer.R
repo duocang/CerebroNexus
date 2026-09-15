@@ -56,6 +56,83 @@ test_that("the 1M preparation keeps unique gene symbols", {
     env$.viewer1mUniqueGeneSymbols(c("Cd3e", ""), 2L),
     "non-empty"
   )
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    seurat_clusters = c("0", "1", "0"),
+    stringsAsFactors = FALSE
+  )
+  projection <- rbind(
+    c3 = c(1, 3),
+    c1 = c(0, 1),
+    c2 = c(2, 2)
+  )
+  trajectory <- env$.viewer1mIllustrativeTrajectory(metadata, projection)
+
+  expect_identical(rownames(trajectory$meta), metadata$cell_barcode)
+  expect_equal(trajectory$meta$pseudotime, c(0, 1, 0.5))
+  expect_identical(levels(trajectory$meta$state), c("0", "1"))
+  expect_equal(nrow(trajectory$edges), 1L)
+  expect_equal(
+    unname(unlist(trajectory$edges[1, ])),
+    c(0.5, 2, 2, 2)
+  )
+})
+
+test_that("the 1M demo adds an honest linked trajectory only once", {
+  script <- testthat::test_path("..", "bench", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    seurat_clusters = c("0", "1", "0"),
+    row.names = c("c1", "c2", "c3"),
+    stringsAsFactors = FALSE
+  )
+  projection <- cbind(x = c(0, 2, 1), y = c(1, 2, 3))
+  rownames(projection) <- metadata$cell_barcode
+  parameters <- list()
+  trajectories <- list()
+  object <- list(
+    getParameters = function() parameters,
+    addParameters = function(field, content) {
+      parameters[[field]] <<- content
+    },
+    getMethodsForTrajectories = function() names(trajectories),
+    getNamesOfTrajectories = function(method) names(trajectories[[method]]),
+    addTrajectory = function(method, name, trajectory) {
+      trajectories[[method]][[name]] <<- trajectory
+    },
+    availableProjections = function() "umap",
+    getMetaData = function() metadata,
+    getProjection = function(name) projection
+  )
+
+  expect_true(env$.viewer1mEnrichDemoObject(object))
+  expect_identical(parameters$main_group, "seurat_clusters")
+  expect_named(trajectories$illustrative, "UMAP_cluster_path")
+  expect_false(env$.viewer1mEnrichDemoObject(object))
+})
+
+test_that("the Viewer exposes explicitly illustrative trajectories", {
+  files <- c(
+    viewer_test_path("shiny_server.R"),
+    viewer_test_path("trajectory", "projection.R"),
+    viewer_test_path("trajectory", "select_method_and_name.R")
+  )
+  for (file in files) {
+    expect_match(
+      paste(readLines(file, warn = FALSE), collapse = "\n"),
+      '"illustrative"',
+      fixed = TRUE,
+      info = file
+    )
+  }
 })
 
 test_that("million-cell hover stays columnar until the browser needs it", {
