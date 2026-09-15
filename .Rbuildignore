@@ -13,6 +13,7 @@ LICENSE.md
 TODO.md
 ^create_env\.R$
 ^default\.nix$
+^run-demo\.R$
 ^other_documents$
 ^pkgdown$
 ^result$
