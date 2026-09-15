@@ -213,29 +213,111 @@ test_that("login capability identifies only missing package requirements", {
 
 test_that("Builder runtime capability blocks startup with exact guidance", {
   capability <- builder_runtime_capability(
-    function(package) identical(package, "callr")
+    function(package) identical(package, "callr"),
+    requirements = c("callr", "openssl")
   )
 
   expect_false(capability$available)
   expect_identical(capability$missing, "openssl")
-  expect_identical(
+  expect_match(
     capability$reason,
-    paste(
-      "Builder cannot start because this required R package is missing: openssl.",
-      'Run install.packages("openssl"), then start Builder again.'
-    )
+    "Builder cannot start because required R dependencies failed to load",
+    fixed = TRUE
   )
+  expect_match(capability$reason, "openssl", fixed = TRUE)
 
-  unavailable <- builder_runtime_capability(function(package) FALSE)
+  unavailable <- builder_runtime_capability(
+    function(package) FALSE,
+    requirements = c("callr", "openssl")
+  )
   expect_identical(
     unavailable$missing,
     c("callr", "openssl")
   )
   expect_match(
     unavailable$reason,
-    'install.packages(c("callr", "openssl"))',
+    "Repair or install the listed packages",
     fixed = TRUE
   )
+})
+
+test_that("runtime dependency preflight actually loads every hard dependency", {
+  requirements <- builder_runtime_package_requirements(
+    source_root = testthat::test_path("..", "..")
+  )
+
+  expect_true(all(c("qs2", "scRepertoire", "callr", "openssl") %in%
+    requirements))
+  expect_false(any(grepl("\\(", requirements)))
+
+  loaded <- character()
+  capability <- builder_runtime_capability(
+    .available = function(package) {
+      loaded <<- c(loaded, package)
+      if (identical(package, "qs2")) {
+        stop(
+          "unable to load shared object 'qs2.dll': LoadLibrary failure",
+          call. = FALSE
+        )
+      }
+      TRUE
+    },
+    requirements = c("callr", "qs2", "openssl")
+  )
+
+  expect_identical(loaded, c("callr", "qs2", "openssl"))
+  expect_false(capability$available)
+  expect_identical(capability$missing, "qs2")
+  expect_match(capability$reason, "qs2.dll", fixed = TRUE)
+  expect_match(capability$reason, "LoadLibrary failure", fixed = TRUE)
+})
+
+test_that("Build dependency preflight includes conditional plan requirements", {
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = normalizePath(
+    testthat::test_path("..", ".."),
+    winslash = "/",
+    mustWork = TRUE
+  ))
+  plan <- list(
+    items = list(list(
+      expression_backend = "bpcells",
+      reused_artifact = NULL,
+      source_snapshot_identity = list(
+        snapshot = list(serialization = "qs")
+      )
+    )),
+    app_auth = list(enabled = TRUE)
+  )
+  requirements <- builder_build_package_requirements(plan)
+
+  expect_true(all(c(
+    "qs2",
+    "Seurat (>= 3.0.0)",
+    "SeuratObject",
+    "BPCells",
+    "qs",
+    "shinymanager (>= 1.1.0)",
+    "openssl"
+  ) %in% requirements))
+})
+
+test_that("dependency preflight reports every load and version failure", {
+  capability <- builder_dependency_capability(
+    c("healthy", "native", "old (>= 2.0.0)"),
+    context = "Build cannot start",
+    .load = function(package) {
+      if (identical(package, "native")) {
+        stop("LoadLibrary failure for native.dll", call. = FALSE)
+      }
+      TRUE
+    },
+    .version = function(package) base::package_version("1.0.0")
+  )
+
+  expect_false(capability$available)
+  expect_identical(capability$missing, c("native", "old (>= 2.0.0)"))
+  expect_match(capability$reason, "native.dll", fixed = TRUE)
+  expect_match(capability$reason, "installed version 1.0.0", fixed = TRUE)
 })
 
 test_that("CRB-only plans remain available by default", {
@@ -417,6 +499,32 @@ test_that("worker rechecks the current active App contract", {
 
     expect_match(result$error, "private app publication", ignore.case = TRUE)
     expect_false(create_called)
+  })
+})
+
+test_that("Build dependency preflight executes in the worker process", {
+  local({
+    builder_repo_source("session.R")
+    required <- NULL
+    builder_worker_require_capability <- function(name) {
+      required <<- name
+      invisible(TRUE)
+    }
+    builder_build_dependency_capability <- function(plan) {
+      list(
+        available = FALSE,
+        missing = "nativePackage",
+        failures = "nativePackage: LoadLibrary failure",
+        reason = "Build cannot start: nativePackage LoadLibrary failure"
+      )
+    }
+    rs <- list(run = function(fun, args) do.call(fun, args))
+
+    capability <- builder_session_build_capability(rs, list(items = list()))
+
+    expect_identical(required, "build")
+    expect_false(capability$available)
+    expect_match(capability$reason, "LoadLibrary failure", fixed = TRUE)
   })
 })
 

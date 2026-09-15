@@ -1809,6 +1809,30 @@ test_that("Build enqueue retains auth after failure and resets only after succes
       },
       envir = fn_env
     )
+    assign(
+      "builder_session_build_capability",
+      function(worker, plan) {
+        list(
+          available = FALSE,
+          reason = "Build cannot start: native dependency failed to load."
+        )
+      },
+      envir = fn_env
+    )
+    worker(structure(
+      list(alive = TRUE),
+      class = c("builder_worker", "list")
+    ))
+    expect_false(enqueue_build_plan(plan, auth_accounts = accounts))
+    expect_null(queued_payload)
+    expect_identical(auth_accounts(), accounts)
+
+    assign(
+      "builder_session_build_capability",
+      function(worker, plan) list(available = TRUE, reason = NULL),
+      envir = fn_env
+    )
+    worker(list(alive = TRUE))
     changed_output <- plan
     changed_output$app_options$welcome_message <- "Changed before enqueue"
     expect_false(enqueue_build_plan(

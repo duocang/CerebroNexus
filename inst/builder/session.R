@@ -604,6 +604,34 @@ builder_session_section_bounds <- function(
   NULL
 }
 
+#' Probe a frozen plan's dependencies inside its actual worker process.
+builder_session_build_capability <- function(worker, plan) {
+  rs <- .builder_session_process(worker)
+  invoke <- if (is.function(rs$run)) rs$run else rs$call
+  invoke(
+    function(plan) {
+      tryCatch(
+        {
+          builder_worker_require_capability("build")
+          builder_build_dependency_capability(plan)
+        },
+        error = function(error) {
+          list(
+            available = FALSE,
+            missing = character(),
+            failures = conditionMessage(error),
+            reason = paste0(
+              "Build cannot start because dependency preflight failed: ",
+              conditionMessage(error)
+            )
+          )
+        }
+      )
+    },
+    args = list(plan = plan)
+  )
+}
+
 #' Execute a frozen plan inside a coordinator-assigned private stage.
 builder_session_build <- function(
   worker,
@@ -720,6 +748,17 @@ builder_session_build <- function(
       tryCatch(
         {
           builder_worker_require_capability("build")
+          dependency_capability <- if (isTRUE(validate_snapshots)) {
+            builder_build_dependency_capability(plan)
+          } else {
+            list(available = TRUE, reason = NULL)
+          }
+          if (!isTRUE(dependency_capability$available)) {
+            return(builder_worker_response(
+              request,
+              error = dependency_capability$reason
+            ))
+          }
           registry <- if (isTRUE(validate_snapshots)) {
             snapshot_environment <- get(
               ".builder_snapshots",

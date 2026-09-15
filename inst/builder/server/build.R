@@ -376,6 +376,33 @@ enqueue_build_plan <- function(
   ) {
     return(invisible(FALSE))
   }
+  if (inherits(rs, "builder_worker")) {
+    dependency_capability <- tryCatch(
+      builder_session_build_capability(rs, plan),
+      error = identity
+    )
+    if (inherits(dependency_capability, "condition")) {
+      return(builder_build_attempt_failed(paste0(
+        "Build cannot start because dependency preflight failed: ",
+        conditionMessage(dependency_capability)
+      )))
+    }
+    if (
+      !is.list(dependency_capability) ||
+        !is.logical(dependency_capability$available) ||
+        length(dependency_capability$available) != 1L
+    ) {
+      return(builder_build_attempt_failed(
+        "Build cannot start because dependency preflight returned an invalid result."
+      ))
+    }
+    if (!isTRUE(dependency_capability$available)) {
+      return(builder_build_attempt_failed(
+        dependency_capability$reason %||%
+          "Build cannot start because a required R dependency is unavailable."
+      ))
+    }
+  }
   result(NULL)
   queued <- enqueue(list(
     kind = "build",
