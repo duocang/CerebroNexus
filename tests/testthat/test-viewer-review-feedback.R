@@ -169,9 +169,11 @@ test_that("Informational Canvas text uses the readable secondary token", {
   }
 })
 
-test_that("Projection defaults to cell type when available", {
+test_that("Projection honours main group before its cell-type fallback", {
   ui <- viewer_source("overview", "UI_projection_main_parameters.R")
 
+  expect_match(ui, 'parameters[["main_group"]]', fixed = TRUE)
+  expect_match(ui, "main_group %in% color_choices", fixed = TRUE)
   expect_match(ui, '"cell_type" %in% color_choices', fixed = TRUE)
 })
 
@@ -285,7 +287,7 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
   )
 })
 
-test_that("cell scatter pages share one dataset point appearance", {
+test_that("cell scatter pages share defaults with a Gene Expression override", {
   server <- viewer_source("shiny_server.R")
   pages <- list(
     viewer_source("overview", "UI_projection_additional_parameters.R"),
@@ -297,11 +299,18 @@ test_that("cell scatter pages share one dataset point appearance", {
   expect_match(server, "current_scatter_defaults", fixed = TRUE)
   expect_match(server, "cell_point_size", fixed = TRUE)
   expect_match(server, "cell_point_opacity", fixed = TRUE)
-  for (page in pages) {
+  for (page in pages[-3L]) {
     expect_match(page, "current_scatter_defaults()", fixed = TRUE)
     expect_match(page, 'preferences[["cell_point_size"]]', fixed = TRUE)
     expect_match(page, 'preferences[["cell_point_opacity"]]', fixed = TRUE)
   }
+  expect_match(
+    pages[[3L]],
+    "current_expression_scatter_defaults()",
+    fixed = TRUE
+  )
+  expect_match(pages[[3L]], 'preferences[["cell_point_size"]]', fixed = TRUE)
+  expect_match(pages[[3L]], 'preferences[["cell_point_opacity"]]', fixed = TRUE)
 })
 
 test_that("Projection pages use automatic ranges instead of axis sliders", {
