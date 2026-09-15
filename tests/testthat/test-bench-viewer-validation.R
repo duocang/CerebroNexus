@@ -33,6 +33,20 @@ viewer_ring_fixture <- function(
   crb
 }
 
+test_that("Chromium WebGPU flag is added without forcing Vulkan ANGLE", {
+  skip_if_not(file.exists(bench_viewer), "benchmark tree not present")
+  skip_if_not_installed("chromote")
+  source(bench_viewer, local = TRUE)
+  old <- chromote::get_chrome_args()
+  on.exit(chromote::set_chrome_args(old), add = TRUE)
+
+  chromote::set_chrome_args(setdiff(old, "--enable-unsafe-webgpu"))
+  args <- bench_enable_chromium_webgpu()
+
+  expect_true("--enable-unsafe-webgpu" %in% args)
+  expect_setequal(setdiff(args, old), "--enable-unsafe-webgpu")
+})
+
 test_that("Viewer validation drives a standalone App end to end", {
   skip_if_not(file.exists(bench_viewer), "benchmark tree not present")
   skip_if_not_installed("shinytest2")

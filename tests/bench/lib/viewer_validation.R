@@ -1,5 +1,39 @@
 # End-to-end Viewer validation helpers for full-source C2 runs.
 
+bench_enable_chromium_webgpu <- function() {
+  flag <- "--enable-unsafe-webgpu"
+  args <- chromote::get_chrome_args()
+  if (!flag %in% args) {
+    chromote::set_chrome_args(c(args, flag))
+  }
+  invisible(chromote::get_chrome_args())
+}
+
+bench_check_webgpu_adapter <- function() {
+  bench_enable_chromium_webgpu()
+  session <- chromote::ChromoteSession$new()
+  on.exit(session$close(), add = TRUE)
+  probe <- session$Runtime$evaluate(
+    paste0(
+      "navigator.gpu ? navigator.gpu.requestAdapter().then(",
+      "adapter => ({navigatorGpu:true,adapter:!!adapter})) : ",
+      "Promise.resolve({navigatorGpu:false,adapter:false})"
+    ),
+    awaitPromise = TRUE,
+    returnByValue = TRUE
+  )$result$value
+  if (!isTRUE(probe$navigatorGpu) || !isTRUE(probe$adapter)) {
+    stop(
+      paste(
+        "Chromium WebGPU preflight failed:",
+        "navigator.gpu is unavailable or requestAdapter() returned null"
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(probe)
+}
+
 bench_viewer_schedule <- function(schedule) {
   required <- c("profile", "source", "n_cells", "backend", "export_repeat")
   if (!all(required %in% names(schedule))) {
@@ -242,6 +276,7 @@ bench_run_viewer_validation <- function(
   now <- function() unname(proc.time()[["elapsed"]])
   stage <- "bundle"
   run <- function() {
+    bench_enable_chromium_webgpu()
     chrome <- chromote::find_chrome()
     browser <- paste(
       suppressWarnings(system2(

@@ -10,6 +10,12 @@ Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.
 
 Use a clean checkout, the pinned Nix environment, an exclusive high-memory node, a persistent checksum-verified source cache, and local scratch storage.
 
+The publication runner enables Chromium WebGPU with
+`--enable-unsafe-webgpu` and verifies that `requestAdapter()` succeeds before
+downloading sources or starting backend measurements. It intentionally does
+not force a Vulkan ANGLE backend. A failed run keeps its scratch directory by
+default; set `BENCH_KEEP_ON_FAILURE=0` only when automatic cleanup is desired.
+
 ```bash
 nix-shell default.nix -A shell
 

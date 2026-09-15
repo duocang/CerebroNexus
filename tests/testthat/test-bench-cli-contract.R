@@ -230,6 +230,8 @@ test_that("full-source sweep runs Viewer checks for every build", {
   expect_match(sweep, '[ "$BENCH_PROFILE" = "panel_c2" ]', fixed = TRUE)
   expect_false(grepl('[ "$export_repeat" = "1" ]', sweep, fixed = TRUE))
   expect_match(sweep, "21_measure_viewer.R", fixed = TRUE)
+  expect_match(sweep, "04_check_webgpu.R", fixed = TRUE)
+  expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
 
   if (file.exists(script)) {
     body <- paste(readLines(script, warn = FALSE), collapse = "\n")

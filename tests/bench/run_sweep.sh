@@ -66,6 +66,8 @@ cleanup() {
   trap - EXIT INT TERM
   if [ "${BENCH_KEEP:-0}" = "1" ]; then
     echo "==> keeping scratch at $SCRATCH (BENCH_KEEP=1)"
+  elif [ "$code" -ne 0 ] && [ "${BENCH_KEEP_ON_FAILURE:-1}" = "1" ]; then
+    echo "==> keeping failed-run scratch at $SCRATCH (BENCH_KEEP_ON_FAILURE=1)"
   elif [ -f "$SCRATCH_MARKER" ] && [[ "$(basename "$SCRATCH")" == cerebro-bench.* ]]; then
     echo "==> removing scratch $SCRATCH"
     rm -rf -- "$SCRATCH"
@@ -114,6 +116,16 @@ R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
   tail -20 "$LOG_DIR/install.log"
   exit 1
 }
+
+if [ "$BENCH_PROFILE" = "panel_c2" ]; then
+  echo "==> checking Chromium WebGPU adapter"
+  Rscript "$BENCH_ROOT/src/04_check_webgpu.R" \
+    > "$LOG_DIR/webgpu_preflight.log" 2>&1 || {
+    echo "!! WebGPU preflight failed, see $LOG_DIR/webgpu_preflight.log"
+    cat "$LOG_DIR/webgpu_preflight.log"
+    exit 1
+  }
+fi
 
 SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sources.R")); cat(bench_active_sources(), sep="\n")')
 
