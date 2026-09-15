@@ -3749,6 +3749,19 @@ selectedCellMask <- function(selection_key, identifier, selection) {
 ## names_for_method: trajectory names for `method` in the current dataset
 ##   (getNamesOfTrajectories(method)); pass character(0) when method is absent.
 ##----------------------------------------------------------------------------##
+viewerSupportedTrajectoryMethods <- function(available_methods) {
+  available_methods <- unique(as.character(available_methods))
+  available_methods[
+    !is.na(available_methods) &
+      nzchar(available_methods) &
+      available_methods %in% c(
+        "monocle2",
+        "marker_guided",
+        "illustrative"
+      )
+  ]
+}
+
 trajectorySelectionValid <- function(
   method,
   name,
