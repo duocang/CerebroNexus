@@ -1046,7 +1046,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   overflow: visible;
   padding-right: 0;
 }
-.enhance-table-list > h5 {
+.enhance-table-list > h4 {
   margin: 0;
   color: var(--c-text-muted);
   font-size: .82rem;
@@ -1140,7 +1140,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .enhance-attachment-cancel,
 .enhance-table-remove,
 .enhance-workbook-remove {
-  min-height: 1.9rem;
+  min-height: 2.75rem;
   padding: .28rem .5rem;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
@@ -1148,6 +1148,13 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   font-size: .8rem;
   font-weight: 650;
   cursor: pointer;
+}
+.enhance-attachment-error {
+  display: block;
+  margin-top: .3rem;
+  color: var(--c-error);
+  font-size: .75rem;
+  font-weight: 650;
 }
 .enhance-attachment-edit,
 .enhance-attachment-cancel { background: var(--c-surface); border-color: var(--c-border); color: var(--c-text); }
@@ -1765,6 +1772,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   border-radius: var(--r-lg);
   background: var(--c-surface);
   box-shadow: var(--shadow-4);
+  overscroll-behavior: contain;
 }
 .builder-dialog {
   opacity: 0;

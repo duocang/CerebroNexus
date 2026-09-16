@@ -1,6 +1,10 @@
 builder_project_test_runtime <- function() {
   runtime <- new.env(parent = globalenv())
   sys.source(
+    testthat::test_path("..", "..", "inst", "builder", "prerequisite.R"),
+    envir = runtime
+  )
+  runtime$builder_source_utf8(
     testthat::test_path(
       "..",
       "..",
@@ -13,9 +17,29 @@ builder_project_test_runtime <- function() {
   )
   for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
     path <- testthat::test_path("..", "..", "inst", "builder", file)
-    sys.source(path, envir = runtime)
+    runtime$builder_source_utf8(path, envir = runtime)
   }
   runtime
+}
+
+## Direct test_file() runs on Windows can start in the C locale. Keep static
+## source assertions on the same UTF-8 contract as the Builder runtime.
+readLines <- function(
+  con,
+  n = -1L,
+  ok = TRUE,
+  warn = TRUE,
+  encoding = "UTF-8",
+  skipNul = FALSE
+) {
+  base::readLines(
+    con,
+    n = n,
+    ok = ok,
+    warn = warn,
+    encoding = encoding,
+    skipNul = skipNul
+  )
 }
 
 builder_project_test_manifest <- function(ids = character()) {
@@ -118,8 +142,8 @@ test_that("browser uploads are retained by the background loader", {
     }
   )
 
-  expect_identical(loaded$retained_path, normalizePath(retained))
-  expect_identical(loaded$adapter$path, normalizePath(retained))
+  expect_identical(loaded$retained_path, normalizePath(retained, winslash = "/"))
+  expect_identical(loaded$adapter$path, normalizePath(retained, winslash = "/"))
   expect_identical(
     readBin(retained, "raw", n = 100L),
     charToRaw("uploaded-bytes")
@@ -133,7 +157,7 @@ test_that("browser uploads are retained by the background loader", {
     .adapter = function(path) list(path = path),
     .register = function(adapter, id, progress) list(adapter = adapter, id = id)
   )
-  expect_identical(retried$retained_path, normalizePath(retained))
+  expect_identical(retried$retained_path, normalizePath(retained, winslash = "/"))
 })
 
 test_that("failed background retention removes its partial file", {
@@ -1360,6 +1384,7 @@ test_that("the project status only declares safe close after source sync", {
 
   expect_match(source, "Project fully saved · Safe to close", fixed = TRUE)
   expect_match(source, "Saving source files · ", fixed = TRUE)
+  expect_match(source, "Stopping previous source copy", fixed = TRUE)
 })
 
 test_that("source synchronization warns on close without locking the workspace", {
@@ -1396,6 +1421,172 @@ test_that("project server uses a dedicated callr source copy process", {
   expect_match(source, "later::later", fixed = TRUE)
   expect_match(source, "shiny::withReactiveDomain(session, {", fixed = TRUE)
   expect_match(source, "builder_project_apply_source_results", fixed = TRUE)
+})
+
+test_that("source sync keeps queued jobs until its worker starts", {
+  path <- testthat::test_path(
+    "..", "..", "inst", "builder", "server", "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  start <- regexpr(
+    "builder_project_start_source_sync <- function()",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  finish <- regexpr(
+    "builder_project_poll_source_sync <- function()",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  block <- substr(source, start, finish - 1L)
+
+  spawn <- regexpr("callr::r_bg(", block, fixed = TRUE)[[1L]]
+  dequeue <- regexpr(
+    "builder_project_source_queue(queued)",
+    block,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(spawn, 0L)
+  expect_gt(dequeue, spawn)
+  expect_false(grepl(
+    "builder_project_source_queue(list())",
+    block,
+    fixed = TRUE
+  ))
+  expect_match(block, 'inherits(process, "condition")', fixed = TRUE)
+})
+
+test_that("source sync cancellation owns and terminates its process", {
+  path <- testthat::test_path(
+    "..", "..", "inst", "builder", "server", "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    source,
+    "builder_project_stop_source_sync_process <- function(kill = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(source, "process$kill_tree()", fixed = TRUE)
+  expect_match(
+    source,
+    "invalidate_builder_project_source_sync(kill = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(source, "source_sync_started <-", fixed = TRUE)
+})
+
+test_that("source sync retains ownership when process termination is unconfirmed", {
+  path <- testthat::test_path(
+    "..", "..", "inst", "builder", "server", "project.R"
+  )
+  lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
+  first <- grep(
+    "builder_project_stop_source_sync_process <- function(kill = TRUE)",
+    lines,
+    fixed = TRUE
+  )[[1L]]
+  last <- grep(
+    "invalidate_builder_project_source_sync <- function(kill = TRUE)",
+    lines,
+    fixed = TRUE
+  )[[1L]]
+  runtime <- new.env(parent = baseenv())
+  runtime$isolate <- function(value) value
+  holder <- function(initial) {
+    value <- initial
+    function(next_value) {
+      if (!missing(next_value)) {
+        value <<- next_value
+      }
+      value
+    }
+  }
+  alive <- TRUE
+  fake_process <- list(
+    is_alive = function() alive,
+    kill_tree = function() invisible(FALSE),
+    kill = function() invisible(FALSE),
+    wait = function(timeout) invisible(FALSE)
+  )
+  progress <- withr::local_tempfile(fileext = ".rds")
+  writeBin(charToRaw("progress"), progress)
+  runtime$builder_project_source_process <- holder(fake_process)
+  runtime$builder_project_source_run <- holder(list(owner = "project-a"))
+  runtime$builder_project_source_progress <- holder(progress)
+  runtime$.builder_project_text <- function(value) {
+    is.character(value) && length(value) == 1L && nzchar(value)
+  }
+  eval(parse(text = paste(lines[first:(last - 1L)], collapse = "\n")), runtime)
+
+  expect_false(runtime$builder_project_stop_source_sync_process(kill = TRUE))
+  expect_identical(runtime$builder_project_source_process(), fake_process)
+  expect_identical(
+    runtime$builder_project_source_run(),
+    list(owner = "project-a")
+  )
+  expect_identical(runtime$builder_project_source_progress(), progress)
+  expect_true(file.exists(progress))
+
+  alive <- FALSE
+  expect_true(runtime$builder_project_stop_source_sync_process(kill = FALSE))
+  expect_null(runtime$builder_project_source_process())
+  expect_null(runtime$builder_project_source_run())
+  expect_null(runtime$builder_project_source_progress())
+  expect_false(file.exists(progress))
+})
+
+test_that("source sync invalidation remains cancelling after a failed stop", {
+  path <- testthat::test_path(
+    "..", "..", "inst", "builder", "server", "project.R"
+  )
+  lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
+  first <- grep(
+    "invalidate_builder_project_source_sync <- function(kill = TRUE)",
+    lines,
+    fixed = TRUE
+  )[[1L]]
+  last <- grep(
+    "builder_project_start_source_sync <- function()",
+    lines,
+    fixed = TRUE
+  )[[1L]]
+  runtime <- new.env(parent = baseenv())
+  runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+  runtime$isolate <- function(value) value
+  holder <- function(initial) {
+    value <- initial
+    function(next_value) {
+      if (!missing(next_value)) {
+        value <<- next_value
+      }
+      value
+    }
+  }
+  runtime$builder_project_source_generation <- holder(3)
+  runtime$builder_project_source_queue <- holder(list(old = list(id = "old")))
+  runtime$builder_project_source_run <- holder(list(owner = "project-a"))
+  runtime$builder_project_source_sync <- holder(list(
+    status = "syncing",
+    completed = 1L,
+    total = 2L,
+    failed = 0L
+  ))
+  runtime$builder_project_stop_source_sync_process <- function(kill) FALSE
+  scheduled <- 0L
+  runtime$builder_project_schedule_source_sync_poll <- function(delay) {
+    scheduled <<- scheduled + 1L
+    invisible(TRUE)
+  }
+  eval(parse(text = paste(lines[first:(last - 1L)], collapse = "\n")), runtime)
+
+  expect_false(runtime$invalidate_builder_project_source_sync(kill = TRUE))
+  expect_identical(runtime$builder_project_source_generation(), 4)
+  expect_length(runtime$builder_project_source_queue(), 0L)
+  expect_identical(runtime$builder_project_source_sync()$status, "cancelling")
+  expect_true(runtime$builder_project_source_run()$cancelling)
+  expect_identical(runtime$builder_project_source_run()$owner, "project-a")
+  expect_identical(scheduled, 1L)
 })
 
 test_that("a finished source process remains owned until its result is collected", {
@@ -1712,7 +1903,7 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
     "ui",
     "project.R"
   )
-  sys.source(ui_path, envir = runtime)
+  runtime$builder_source_utf8(ui_path, envir = runtime)
   root <- withr::local_tempdir()
   source_path <- file.path(root, "source.rds")
   artifact_path <- file.path(root, "artifact.crb")
@@ -1818,7 +2009,7 @@ test_that("project autosave waits for both import queues to drain", {
 
 test_that("terminal retry rows do not block autosave after another import succeeds", {
   runtime <- builder_project_test_runtime()
-  sys.source(
+  runtime$builder_source_utf8(
     testthat::test_path("..", "..", "inst", "builder", "loading.R"),
     envir = runtime
   )
@@ -1976,12 +2167,13 @@ test_that("project folders distinguish empty, existing, and unrelated content", 
 
 test_that("non-empty project folders require explicit confirmation", {
   skip_if_not_installed("shiny")
-  runtime <- new.env(parent = globalenv())
+  runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
   runtime$modalDialog <- shiny::modalDialog
+  runtime$modalButton <- shiny::modalButton
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
-  sys.source(
+  runtime$builder_source_utf8(
     testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
     envir = runtime
   )
@@ -2003,12 +2195,13 @@ test_that("non-empty project folders require explicit confirmation", {
 
 test_that("existing Builder projects require update confirmation", {
   skip_if_not_installed("shiny")
-  runtime <- new.env(parent = globalenv())
+  runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
   runtime$modalDialog <- shiny::modalDialog
+  runtime$modalButton <- shiny::modalButton
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
-  sys.source(
+  runtime$builder_source_utf8(
     testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
     envir = runtime
   )
@@ -2151,6 +2344,44 @@ test_that("Open remains available for switching an idle workspace", {
     )
     expect_true(
       runtime$builder_activity_capabilities(activity)$open_project,
+      info = phase
+    )
+  }
+})
+
+test_that("Open confirms before replacing unsaved workspace state", {
+  runtime <- builder_project_test_runtime()
+
+  expect_false(runtime$builder_activity_requires_open_confirmation(
+    runtime$builder_activity_state()
+  ))
+  expect_false(runtime$builder_activity_requires_open_confirmation(
+    runtime$builder_activity_state(
+      project_phase = "clean",
+      has_project = TRUE,
+      has_datasets = TRUE
+    )
+  ))
+  expect_true(runtime$builder_activity_requires_open_confirmation(
+    runtime$builder_activity_state(has_datasets = TRUE)
+  ))
+  expect_true(runtime$builder_activity_requires_open_confirmation(
+    runtime$builder_activity_state(
+      project_phase = "clean",
+      spatial_dirty = TRUE,
+      has_project = TRUE,
+      has_datasets = TRUE
+    )
+  ))
+  for (phase in c("dirty", "save_failed", "conflict")) {
+    expect_true(
+      runtime$builder_activity_requires_open_confirmation(
+        runtime$builder_activity_state(
+          project_phase = phase,
+          has_project = TRUE,
+          has_datasets = TRUE
+        )
+      ),
       info = phase
     )
   }
@@ -2341,12 +2572,12 @@ test_that("ready CRB confirmation validates the complete state before committing
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
   start <- regexpr(
-    "observeEvent(input$confirm_builder_project_open, {",
+    "complete_builder_project_open <- function(actions = NULL) {",
     source,
     fixed = TRUE
   )[[1L]]
   finish <- regexpr(
-    "\nobserve({\n  pending <- builder_project_pending_entries()",
+    "\nobserveEvent(input$confirm_builder_project_open, {",
     source,
     fixed = TRUE
   )[[1L]]
@@ -2983,7 +3214,12 @@ test_that("deferred project saves keep the Shiny session domain", {
 
   expect_match(
     source,
-    "later::later(\n    function() {\n      shiny::withReactiveDomain(session, {",
+    "builder_project_schedule_source_sync_poll <- function(delay = 0.2)",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "shiny::withReactiveDomain(session, {",
     fixed = TRUE
   )
 })
@@ -3119,19 +3355,17 @@ test_that("spatial canvas is cleared before switching datasets", {
 
   expect_match(
     server_source,
-    'session$sendCustomMessage("builder_spatial_canvas_clear", list())',
+    'send_canvas_clear <- function() {',
     fixed = TRUE
   )
+  expect_match(server_source, '"builder_spatial_canvas_clear"', fixed = TRUE)
   expect_match(
     client_source,
-    paste0(
-      'Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", ',
-      'function (message) {\n',
-      '      clear();\n',
-      '    });'
-    ),
+    'Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", function (message) {',
     fixed = TRUE
   )
+  expect_match(client_source, "generation < state.generation", fixed = TRUE)
+  expect_match(client_source, "clear();", fixed = TRUE)
 })
 
 test_that("dataset config generations survive manifest backups and stale writers", {
@@ -3262,7 +3496,10 @@ test_that("manifest restore failure reports the retained backup", {
       expected_revision = first$manifest$project$revision,
       .move = move
     ),
-    paste("Recover it from:", normalizePath(backup, mustWork = FALSE)),
+    paste(
+      "Recover it from:",
+      normalizePath(backup, winslash = "/", mustWork = FALSE)
+    ),
     fixed = TRUE
   )
   expect_false(file.exists(target))

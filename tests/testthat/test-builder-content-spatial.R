@@ -757,7 +757,7 @@ test_that("the complete current Trekker demo stays valid and profiles small", {
     "examples",
     "demo_trekker.crb"
   )
-  payload <- readRDS(path)$getTrekker()
+  payload <- qs2::qs_read(path)$getTrekker()
   context <- list(
     cells = payload$barcodes,
     features = vapply(

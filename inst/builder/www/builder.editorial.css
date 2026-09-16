@@ -346,6 +346,14 @@ body {
   letter-spacing: .12em;
 }
 
+.rail-head #undo_remove,
+.shiny-notification #undo_remove_notice {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding-inline: .6rem;
+}
+
 .ds {
   margin: .12rem .5rem;
   border: 0;
