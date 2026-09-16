@@ -2937,7 +2937,23 @@ builder_spatial_alignment_server <- function(
     }
     roi <- as.character(shiny::isolate(active_roi()) %||% "")[[1L]]
     key <- if (nzchar(roi)) roi else "__section__"
-    .builder_alignment_valid_bounds(viewport$viewports[[key]])
+    bounds <- viewport$viewports[[key]]
+    if (!.builder_alignment_valid_bounds(bounds)) {
+      return(FALSE)
+    }
+    records <- collection_for(entry)[[section]] %||% list()
+    all(vapply(
+      labels,
+      function(label) {
+        record <- records[[label]]
+        is.list(record) && isTRUE(all.equal(
+          record$viewport_bounds,
+          bounds,
+          check.attributes = FALSE
+        ))
+      },
+      logical(1)
+    ))
   }
 
   materialize_coordinate_drafts <- function(

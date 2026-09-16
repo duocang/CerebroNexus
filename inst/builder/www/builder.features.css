@@ -131,6 +131,11 @@
   white-space: nowrap;
 }
 .spatial-image-file-summary .builder-file-list { margin-top: 0; }
+.spatial-image-file-summary .builder-file-list--single {
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
 .spatial-image-file-summary .enhance-tissue-file-action-row {
   margin-top: var(--space-2);
 }

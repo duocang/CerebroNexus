@@ -37,6 +37,7 @@ Imports:
   ggplot2 (>= 3.2.1),
   glue (>= 1.4.0),
   GSVA (>= 1.30.0),
+  htmltools,
   htmlwidgets,
   httr (>= 1.4.0),
   igraph,
@@ -78,11 +79,11 @@ Suggests:
   ggtree,
   HDF5Array (>= 1.18.1),
   httpuv,
+  jpeg,
   knitr,
   monocle,
   png,
   qs,
-  readxl,
   reshape2,
   rhdf5,
   rmarkdown,
@@ -93,7 +94,8 @@ Suggests:
   SummarizedExperiment,
   testthat (>= 3.0.0),
   shinytest2 (>= 0.2.0),
-  withr
+  withr,
+  writexl
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr

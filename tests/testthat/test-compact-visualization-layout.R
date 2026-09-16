@@ -149,6 +149,10 @@ test_that("specialized controls live in More settings", {
     source_expressions("spatial/UI_projection.R"),
     "cerebro-viz-toolbar"
   )
+  spatial_primary <- find_call_by_class(
+    spatial_toolbar,
+    "cerebro-viz-primary"
+  )
 
   expect_false(
     contains_call(
@@ -160,7 +164,7 @@ test_that("specialized controls live in More settings", {
   expect_true(
     contains_call(
       spatial_background,
-      "selectInput",
+      "selectizeInput",
       "spatial_projection_background_image"
     )
   )
@@ -171,6 +175,7 @@ test_that("specialized controls live in More settings", {
       "spatial_projection_background_selector_UI"
     )
   )
+  expect_true(contains_call(spatial_primary, "cerebroToolbarActions"))
 
   hla_settings <- source_expressions("hla_tcr_motifs/settings.R")
   hla_main <- find_assignment_rhs(hla_settings, "output$hla_parameters_ui")

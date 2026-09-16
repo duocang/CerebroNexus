@@ -221,6 +221,17 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
   expect_match(
     css,
     paste0(
+      ".spatial-image-file-summary .builder-file-list--single {\n",
+      "  max-height: none;\n",
+      "  overflow: visible;\n",
+      "  overscroll-behavior: auto;\n",
+      "}"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
       ".spatial-image-flips .checkbox label {\n",
       "  display: flex;\n",
       "  justify-content: center;\n",
