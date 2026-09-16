@@ -700,7 +700,7 @@ builder_project_file_fingerprint <- function(path, content = FALSE) {
       "%Y-%m-%dT%H:%M:%OS3Z",
       tz = "UTC"
     ),
-    changed_at = as.double(info$ctime[[1L]]),
+    changed_at = sprintf("%.17g", as.double(info$ctime[[1L]])),
     md5 = if (isTRUE(content)) unname(tools::md5sum(path)) else NULL
   )
 }
@@ -760,18 +760,14 @@ builder_project_managed_file_matches <- function(recorded, path) {
     metadata
   )
   recorded_md5 <- recorded$md5 %||% NULL
-  recorded_changed <- suppressWarnings(as.double(
-    recorded$changed_at %||% NA_real_
-  ))
-  current_changed <- suppressWarnings(as.double(
-    metadata$changed_at %||% NA_real_
-  ))
+  recorded_changed <- as.character(recorded$changed_at %||% "")
+  current_changed <- as.character(metadata$changed_at %||% "")
   if (
     metadata_matches &&
       (!.builder_project_text(recorded_md5) ||
         (!identical(.Platform$OS.type, "windows") &&
-          is.finite(recorded_changed) &&
-          is.finite(current_changed) &&
+          nzchar(recorded_changed) &&
+          nzchar(current_changed) &&
           identical(recorded_changed, current_changed)))
   ) {
     return(TRUE)
