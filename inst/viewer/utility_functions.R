@@ -73,7 +73,8 @@ viewerImageMime <- function(path) {
     return("image/png")
   }
   if (
-    ext %in% c("jpg", "jpeg") &&
+    ext %in%
+      c("jpg", "jpeg") &&
       length(bytes) >= length(jpeg_magic) &&
       identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
   ) {
@@ -512,11 +513,32 @@ rotateSpatialCoordinates <- function(coordinates, degrees, pivot = c(0, 0)) {
   coordinates
 }
 
+spatialRoiPivots <- function(coordinates, roi_values, degrees = 0) {
+  coordinates <- rotateSpatialCoordinates(coordinates, degrees)
+  if (is.null(coordinates) || length(roi_values) != nrow(coordinates)) {
+    return(list())
+  }
+  rois <- unique(as.character(roi_values))
+  rois <- rois[!is.na(rois) & nzchar(rois)]
+  pivots <- lapply(rois, function(roi) {
+    selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    pivot <- vapply(
+      coordinates[selected, 1:2, drop = FALSE],
+      function(values) mean(range(values, na.rm = TRUE)),
+      numeric(1)
+    )
+    if (any(!is.finite(pivot))) NULL else pivot
+  })
+  valid <- !vapply(pivots, is.null, logical(1))
+  stats::setNames(pivots[valid], rois[valid])
+}
+
 rotateSpatialCoordinatesByRoi <- function(
   coordinates,
   roi_values,
   settings,
-  degrees = 0
+  degrees = 0,
+  pivots = NULL
 ) {
   coordinates <- rotateSpatialCoordinates(coordinates, degrees)
   if (
@@ -527,6 +549,12 @@ rotateSpatialCoordinatesByRoi <- function(
   ) {
     return(coordinates)
   }
+  if (is.null(pivots)) {
+    pivots <- spatialRoiPivots(coordinates, roi_values)
+  }
+  if (!is.list(pivots)) {
+    pivots <- list()
+  }
   for (roi in intersect(unique(as.character(roi_values)), names(settings))) {
     rotation <- suppressWarnings(as.numeric(
       settings[[roi]][["rotation_degrees"]]
@@ -536,12 +564,13 @@ rotateSpatialCoordinatesByRoi <- function(
     }
     selected <- !is.na(roi_values) & as.character(roi_values) == roi
     roi_coordinates <- coordinates[selected, , drop = FALSE]
-    pivot <- vapply(
-      roi_coordinates[, 1:2, drop = FALSE],
-      function(values) mean(range(values, na.rm = TRUE)),
-      numeric(1)
-    )
-    if (any(!is.finite(pivot))) {
+    pivot <- pivots[[roi]]
+    if (
+      !is.numeric(pivot) ||
+        length(pivot) != 2L ||
+        anyNA(pivot) ||
+        any(!is.finite(pivot))
+    ) {
       next
     }
     coordinates[selected, ] <- rotateSpatialCoordinates(
@@ -4106,11 +4135,12 @@ viewerSupportedTrajectoryMethods <- function(available_methods) {
   available_methods[
     !is.na(available_methods) &
       nzchar(available_methods) &
-      available_methods %in% c(
-        "monocle2",
-        "marker_guided",
-        "illustrative"
-      )
+      available_methods %in%
+        c(
+          "monocle2",
+          "marker_guided",
+          "illustrative"
+        )
   ]
 }
 
