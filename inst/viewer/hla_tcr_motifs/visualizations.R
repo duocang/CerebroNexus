@@ -734,10 +734,11 @@ output$hla_motif_note <- renderUI({
   )
 })
 
-## ---- Legend, above the plot in one row -------------------------------- ##
+## ---- Legend, above the plot -------------------------------------------- ##
 ## Drawn as flowing HTML rather than visLegend: visLegend can only sit left or
-## right and reserves 15% of the canvas whether it needs it or not. The row
-## scrolls horizontally when the levels exceed the available width.
+## right and reserves 15% of the canvas whether it needs it or not. Long keys
+## wrap above the canvas and the shared fill-height sizing gives the plot the
+## remaining vertical space.
 output$hla_legend_ui <- renderUI({
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$legend) || nrow(vn$legend) == 0) {
@@ -747,7 +748,8 @@ output$hla_legend_ui <- renderUI({
     tags$span(
       style = paste0(
         "display:inline-flex;align-items:center;gap:5px;",
-        "margin:0 12px 0 0;font-size:11px;color:#33333a;white-space:nowrap;"
+        "max-width:100%;margin:0 12px 0 0;font-size:11px;color:#33333a;",
+        "overflow-wrap:anywhere;"
       ),
       tags$span(
         style = paste0(
@@ -761,13 +763,22 @@ output$hla_legend_ui <- renderUI({
     )
   })
   tags$div(
-    style = "display:flex;align-items:center;min-width:max-content;margin:0;",
+    style = paste0(
+      "display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;",
+      "min-width:0;max-width:100%;margin:0;"
+    ),
     tags$span(
-      style = "font-size:11px;font-weight:700;color:#1c1c1e;margin-right:10px;",
+      style = paste0(
+        "font-size:11px;font-weight:700;color:#1c1c1e;",
+        "margin-right:10px;overflow-wrap:anywhere;"
+      ),
       vn$legend_title
     ),
     tags$div(
-      style = "display:flex;flex-wrap:nowrap;align-items:center;margin:0;",
+      style = paste0(
+        "display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;",
+        "min-width:0;gap:4px 0;margin:0;"
+      ),
       items
     )
   )
