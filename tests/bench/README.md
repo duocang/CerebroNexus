@@ -23,7 +23,7 @@ For a balanced comparison, pass additional `LABEL=REPO_ROOT` candidates after th
 VIEWER_BENCH_PROFILE=publication Rscript tests/bench/benchmark_viewer_1m_pages.R baseline=/path/to/baseline /path/to/cerebro_mouse_brain_1m_pages.crb /path/to/viewer_1m_pages.tsv 5 candidate=/path/to/candidate
 ```
 
-> **Current status:** the harness is ready for code review, but no complete `publication` run has been performed on this branch. The archived pilot is retained for provenance only and must not be cited as final evidence.
+> **Current status:** a complete five-round `publication` profile comparison between clean PR4 and PR5 revisions is recorded in `results/million_cell_pages_pr4_pr5_4_6_3.tsv`. All 140 observations passed status and correctness checks. The overall comparison does not pass the publication gate because both candidates contain budget failures. PR5 itself passes 11/14 page/visit gates; only its first-visit Gene Expression, Immune Repertoire, and Coordinated Views remain over budget. Use the run as a complete diagnostic comparison, not as a passing publication result. The archived pilot is retained for provenance only.
 
 ## Quick start
 

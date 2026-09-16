@@ -138,6 +138,38 @@ The focused HLA/Trajectory pass then removed the HLA metadata/parsing bottleneck
 
 The HLA focused result waits for the shared Canvas renderer to finish drawing every node and edge instead of waiting for unrelated page-level Shiny work to become idle. It is the user-visible completed-first-frame metric; the old PR3 HLA number used the broader idle gate, so its percentage is directional rather than a publication-grade same-harness estimate. Raw exploratory observations are in `tests/bench/results/million_cell_bpcells_quick_pr4.tsv`, `tests/bench/results/million_cell_pages_quick_pr3_pr4.tsv`, and `tests/bench/results/million_cell_hla_trajectory_focused_pr4.tsv`.
 
+## PR5 final page comparison
+
+The final page run compares clean PR4 revision `68945d0d` (4.6.2) with clean PR5 revision `940001b0` (4.6.3) using the same prepared CRB (`sha256:0c4c99ac995586561cbfb7ab29d6777ef6aa398fbd7a4d63390ae877a6a8efde`). It contains five balanced rounds, 140 independent fresh R/Chrome observations, post-click production readiness events, and the current correctness contract. All 140 observations completed with `status=ok` and passed correctness. Medians below are therefore valid diagnostic comparisons, but the complete comparison does not pass the publication gate because both candidates contain budget failures.
+
+| Page | PR4 first | PR5 first | Change | PR4 repeat | PR5 repeat | Change | PR5 budget |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Groups | 1,166 ms | 1,199 ms | +2.8% | 112 ms | 112 ms | 0.0% | pass / pass |
+| Overview | 1,481 ms | 1,349 ms | -8.9% | 68 ms | 11 ms | -83.8% | pass / pass |
+| Gene Expression | 3,061 ms | 3,025 ms | -1.2% | 614 ms | 9 ms | -98.5% | fail / pass |
+| Immune Repertoire | 13,516 ms | 3,810 ms | -71.8% | 596 ms | 14 ms | -97.7% | fail / pass |
+| Trajectory | 2,088 ms | 2,087 ms | 0.0% | 597 ms | 21 ms | -96.5% | pass / pass |
+| HLA & TCR Motifs | 2,378 ms | 2,378 ms | 0.0% | 18 ms | 20 ms | +2 ms | pass / pass |
+| Coordinated Views | 9,275 ms | 8,556 ms | -7.8% | 8 ms | 8 ms | 0.0% | fail / pass |
+
+PR5 raises the page-budget score from PR4's 8/14 page/visit gates to 11/14. Every PR5 repeat visit is below 500 ms. The remaining PR5 failures are first-visit Gene Expression (1.025 s above its 2 s target), Immune Repertoire (1.810 s above its 2 s target), and Coordinated Views (6.556 s above its 2 s target). PR4 additionally fails the repeat budgets for Gene Expression, Immune Repertoire, and Trajectory.
+
+The resource table reports medians at the first-visible-ready boundary. RSS is sampled peak resident memory for each observation's R and Chrome process trees; heap is Chrome's `JSHeapUsedSize`; WebSocket receive bytes exclude framing and later progressive auxiliary payloads.
+
+| Page | R RSS PR4 -> PR5 | Chrome RSS PR4 -> PR5 | JS heap PR4 -> PR5 | WebSocket receive PR4 -> PR5 |
+| --- | ---: | ---: | ---: | ---: |
+| Groups | 1,819 -> 1,816 MiB | 1,901 -> 1,902 MiB | 17.9 -> 17.3 MiB | 0.6 -> 0.6 MiB |
+| Overview | 1,856 -> 1,871 MiB | 1,951 -> 1,969 MiB | 8.8 -> 10.3 MiB | 7.7 -> 7.7 MiB |
+| Gene Expression | 2,135 -> 2,123 MiB | 1,930 -> 1,921 MiB | 9.2 -> 8.5 MiB | 11.5 -> 11.5 MiB |
+| Immune Repertoire | 2,318 -> 1,976 MiB | 1,881 -> 1,997 MiB | 43.3 -> 43.2 MiB | 7.7 -> 7.7 MiB |
+| Trajectory | 1,889 -> 1,875 MiB | 2,004 -> 1,998 MiB | 45.6 -> 45.6 MiB | 7.7 -> 7.7 MiB |
+| HLA & TCR Motifs | 1,963 -> 1,964 MiB | 1,844 -> 1,842 MiB | 5.9 -> 6.4 MiB | 1.8 -> 1.8 MiB |
+| Coordinated Views | 2,733 -> 2,528 MiB | 2,282 -> 2,232 MiB | 85.7 -> 39.9 MiB | 67.3 -> 60.8 MiB |
+
+The major resource gains are a 14.7% lower R peak for Immune Repertoire and a 53.4% smaller JS heap plus 9.6% less received payload for Coordinated Views. The table also preserves the measured regressions, notably Overview heap (+16.5%) and Immune Repertoire Chrome RSS (+6.2%), rather than hiding them behind the latency gains.
+
+Raw observations, the pre-generated order, and provenance are in `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3.tsv`, `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3_schedule.tsv`, and `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3_manifest.tsv`.
+
 ## Environment
 
 - Apple M1 Pro, 32 GiB RAM
