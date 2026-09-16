@@ -275,6 +275,8 @@ test_that("Builder runtime has no data-URI image materialization path", {
   expect_false(grepl("builder_materialize_image_uri", extras, fixed = TRUE))
   expect_false(grepl("base64encode", extras, fixed = TRUE))
   expect_false(grepl("base64encode", server, fixed = TRUE))
+  expect_false(grepl("readBin(data$path", server, fixed = TRUE))
+  expect_match(server, "list(file = data$path, owned = FALSE)", fixed = TRUE)
 })
 
 test_that("alignment server does not subscribe to Plotly selection events", {

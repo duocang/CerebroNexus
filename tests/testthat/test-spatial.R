@@ -1194,7 +1194,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   )
 })
 
-test_that("external spatial images are served as raw session-private bytes", {
+test_that("external spatial images are streamed from session-private files", {
   renderer <- new.env(parent = globalenv())
   sys.source(
     viewer_test_path("utility_functions.R"),
@@ -1223,7 +1223,13 @@ test_that("external spatial images are served as raw session-private bytes", {
   expect_match(first, "^session/cerebro-image-")
   expect_identical(response$status, 200L)
   expect_identical(response$content_type, "image/png")
-  expect_identical(response$content, bytes)
+  expect_identical(
+    response$content,
+    list(
+      file = normalizePath(image, winslash = "/", mustWork = TRUE),
+      owned = FALSE
+    )
+  )
   expect_false(startsWith(first, "data:"))
 })
 

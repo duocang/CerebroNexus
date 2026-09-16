@@ -130,17 +130,10 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
       if (!identical(current_md5, data$md5)) {
         return(shiny::httpResponse(404L, "text/plain", "Not found"))
       }
-      bytes <- tryCatch(
-        readBin(data$path, what = "raw", n = file.size(data$path)),
-        error = function(error) NULL
-      )
-      if (is.null(bytes)) {
-        return(shiny::httpResponse(404L, "text/plain", "Not found"))
-      }
       shiny::httpResponse(
         200L,
         data$mime,
-        bytes,
+        list(file = data$path, owned = FALSE),
         headers = list(
           "Cache-Control" = "private, max-age=31536000, immutable",
           "ETag" = paste0('"', data$md5, '"'),

@@ -3161,7 +3161,17 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   response <- get(sub("^session/", "", url), envir = callbacks)()
   expect_identical(response$status, 200L)
   expect_identical(response$content_type, "image/png")
-  expect_identical(response$content, image_bytes)
+  expect_identical(
+    response$content,
+    list(
+      file = normalizePath(
+        file.path(app, stored),
+        winslash = "/",
+        mustWork = TRUE
+      ),
+      owned = FALSE
+    )
+  )
 })
 
 test_that("forged spatial backgrounds cannot read unconfigured files", {
