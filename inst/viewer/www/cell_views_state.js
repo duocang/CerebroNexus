@@ -40,5 +40,24 @@
     return !preserveTarget || activeView !== targetView;
   };
 
+  // Project the live client-side selection into the state that may safely be
+  // published to Shiny. Specialist canvases can paint before their deferred
+  // stable cell identities arrive; during that window the local selection is
+  // real, but downstream selected-cell results are not ready yet.
+  S.specialistSelectionReport = function (selection, cells, cellCount) {
+    var indices = selection ? Array.from(selection) : [];
+    var hasSelection = indices.length > 0;
+    var stableKeysReady = Array.isArray(cells) && cells.length === cellCount;
+    return {
+      hasSelection: hasSelection,
+      selectedCells: indices.length,
+      stableKeysReady: stableKeysReady,
+      pending: hasSelection && !stableKeysReady,
+      ids: hasSelection && stableKeysReady
+        ? indices.map(function (index) { return cells[index]; })
+        : null
+    };
+  };
+
   window.CBViewState = S;
 })();

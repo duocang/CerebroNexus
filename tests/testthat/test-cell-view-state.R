@@ -101,3 +101,45 @@ test_that("specialist restore does not overwrite a saved state on its active pag
     fixed = TRUE
   )
 })
+
+test_that("specialist selected-cell results wait for stable identities", {
+  output <- run_state_node(paste0(
+    "const S = window.CBViewState;",
+    "const pendingA = S.specialistSelectionReport(new Set([0,2]), [], 3);",
+    "const readyA = S.specialistSelectionReport(new Set([0,2]),",
+    "  ['cell-a','cell-b','cell-c'],3);",
+    "const cleared = S.specialistSelectionReport(null,",
+    "  ['cell-a','cell-b','cell-c'],3);",
+    "const latest = S.specialistSelectionReport(new Set([1]),",
+    "  ['cell-a','cell-b','cell-c'],3);",
+    "const readyNow = S.specialistSelectionReport(new Set([2]),",
+    "  ['cell-a','cell-b','cell-c'],3);",
+    "console.log(JSON.stringify({pendingA,readyA,cleared,latest,readyNow}));"
+  ))
+
+  expect_equal(attr(output, "status"), NULL)
+  state <- jsonlite::fromJSON(output, simplifyVector = FALSE)
+
+  ## A: local selection/count exist immediately, while results remain gated.
+  expect_true(state$pendingA$hasSelection)
+  expect_identical(state$pendingA$selectedCells, 2L)
+  expect_true(state$pendingA$pending)
+  expect_null(state$pendingA$ids)
+
+  ## B: aux readiness publishes the same current selection with stable IDs.
+  expect_false(state$readyA$pending)
+  expect_identical(unlist(state$readyA$ids), c("cell-a", "cell-c"))
+
+  ## C: clearing before aux stays cleared when identities become available.
+  expect_false(state$cleared$hasSelection)
+  expect_identical(state$cleared$selectedCells, 0L)
+  expect_null(state$cleared$ids)
+
+  ## D: recomputing at aux time uses only the latest live selection.
+  expect_identical(unlist(state$latest$ids), "cell-b")
+
+  ## E: an already-ready specialist selection publishes immediately.
+  expect_true(state$readyNow$stableKeysReady)
+  expect_false(state$readyNow$pending)
+  expect_identical(unlist(state$readyNow$ids), "cell-c")
+})

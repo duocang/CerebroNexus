@@ -2572,12 +2572,18 @@
   }
   function reportSelection() {
     var hasSelection = !!(sel && sel.size);
-    var stableKeysReady = !singleActive || (
-      D && Array.isArray(D.cells) && D.cells.length === D.n
-    );
-    var pendingStableSelection = singleActive && hasSelection && !stableKeysReady;
+    var specialistReport = singleActive
+      ? window.CBViewState.specialistSelectionReport(
+        sel,
+        D && D.cells,
+        D && D.n
+      )
+      : null;
+    var pendingStableSelection = !!(specialistReport && specialistReport.pending);
     var arr = null;
-    if (hasSelection && stableKeysReady) {
+    if (specialistReport) {
+      arr = specialistReport.ids;
+    } else if (hasSelection) {
       arr = [];
       sel.forEach(function (i) { arr.push(D.cells[i]); });
     }
@@ -2588,13 +2594,12 @@
           x.push(sp.x[i]); y.push(sp.y[i]);
         });
         // Large specialist views paint before their stable cell IDs arrive.
-        // Do not send undefined IDs (or float32 coordinates as identity) during
-        // that window. onSingleAuxBinary() reports the still-active selection
-        // as soon as the deferred IDs have been attached.
-        if (!pendingStableSelection) {
-          Shiny.setInputValue(singleActive + '_persistent_selection', arr
-            ? { x: x, y: y, ids: arr } : null);
-        }
+        // Publish null during that window so every selected-cell result UI is
+        // gated off instead of retaining stale/empty Plot and Table shells.
+        // onSingleAuxBinary() reports only the then-current selection as soon
+        // as the deferred IDs have been attached.
+        Shiny.setInputValue(singleActive + '_persistent_selection',
+          pendingStableSelection ? null : (arr ? { x: x, y: y, ids: arr } : null));
       } else {
         Shiny.setInputValue('coordviews_selection', arr);
       }
@@ -2610,7 +2615,9 @@
       { detail: singleActive
         ? {
           viewId: singleActive,
-          selectedCells: hasSelection ? sel.size : 0,
+          selectedCells: specialistReport
+            ? specialistReport.selectedCells
+            : (hasSelection ? sel.size : 0),
           datasetFingerprint: configFingerprint()
         }
         : { selectedCells: arr ? arr.length : 0 } }
