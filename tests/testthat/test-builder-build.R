@@ -438,6 +438,65 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
   expect_null(result$auth_env_file)
 })
 
+test_that("build execution reports dataset and Viewer phases in order", {
+  stage <- withr::local_tempdir()
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  plan <- builder_build_test_plan()
+  plan$make_app <- TRUE
+  plan$app_contract_version <- 1L
+  plan$app_options$enabled <- TRUE
+  hooks <- builder_build_test_hooks()
+  hooks$verify <- function(path, item) {
+    list(
+      valid = TRUE,
+      path = path,
+      file_fingerprint = .bundlePreflightFingerprint(path),
+      bundle_preflight = list(
+        backend = list(type = "embedded", location = NULL, legacy = FALSE),
+        spatial_catalog = list()
+      )
+    )
+  }
+  hooks$build_app <- function(request, stage, auth_material = NULL) {
+    app_dir <- file.path(stage, "cerebro_app")
+    dir.create(app_dir)
+    app_dir
+  }
+  hooks$verify_app <- function(app_dir, request, auth_env_file = NULL) {
+    structure(
+      list(valid = TRUE, app_dir = app_dir),
+      class = c("builder_app_verification", "list")
+    )
+  }
+  phases <- character()
+
+  result <- builder_execute_plan(
+    plan,
+    stage,
+    snapshots = list(`dataset-a` = list()),
+    hooks = hooks,
+    on_progress = function(phase) phases <<- c(phases, phase)
+  )
+
+  expect_identical(result$state, "success")
+  expect_identical(phases, c("datasets", "viewer"))
+})
+
+test_that("build progress records reject unsupported phases", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, ".build-progress-test.rds")
+
+  expect_true(builder_build_progress_write(path, "viewer"))
+  expect_identical(builder_build_progress_read(path), "viewer")
+  expect_error(
+    builder_build_progress_write(path, "invented"),
+    "unsupported build phase",
+    fixed = TRUE
+  )
+  expect_true(builder_build_progress_remove(path))
+  expect_false(file.exists(path))
+})
+
 test_that("App execution rejects non-inert or non-exact verification evidence", {
   evidence <- list(
     structure(
