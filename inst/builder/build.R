@@ -429,11 +429,17 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
 }
 
 #' Reopen and compare one staged CRB with its frozen expectation.
-builder_verify_crb <- function(path, item) {
+builder_verify_crb <- function(
+  path,
+  item,
+  .read_payload = .builder_build_runtime_function(".readCerebroPayload"),
+  .backend_descriptor = .builder_build_runtime_function(".cerebroBackend"),
+  .read_crb = .builder_build_runtime_function("readCerebro")
+) {
   if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
     stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
   }
-  if (length(item$sidecars)) {
+  if (item$expression_backend %in% c("bpcells", "h5")) {
     .builder_build_sidecar_path(
       path,
       item,
@@ -443,13 +449,47 @@ builder_verify_crb <- function(path, item) {
         "file"
       }
     )
+  } else if (length(item$sidecars)) {
+    stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
   }
   fingerprint_file <- .builder_build_runtime_function(
     ".bundlePreflightFingerprint"
   )
   file_fingerprint <- fingerprint_file(path)
-  read_crb <- .builder_build_runtime_function("readCerebro")
-  object <- tryCatch(read_crb(path), error = function(error) error)
+  serialized <- tryCatch(.read_payload(path), error = function(error) error)
+  backend_descriptor <- if (inherits(serialized, "condition")) {
+    serialized
+  } else {
+    tryCatch(
+      .backend_descriptor(serialized),
+      error = function(error) error
+    )
+  }
+  if (inherits(backend_descriptor, "condition")) {
+    stop(
+      "The staged CRB cannot be reopened: ",
+      conditionMessage(backend_descriptor),
+      call. = FALSE
+    )
+  }
+  if (!identical(backend_descriptor$type, item$expression_backend)) {
+    stop(
+      "The staged CRB expression backend differs from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  expected_location <- if (length(item$sidecars) == 1L) {
+    item$sidecars[[1L]]
+  } else {
+    NULL
+  }
+  if (!identical(backend_descriptor$location, expected_location)) {
+    stop(
+      "The staged CRB sidecar location differs from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  object <- tryCatch(.read_crb(path), error = function(error) error)
   if (inherits(object, "condition")) {
     stop(
       "The staged CRB cannot be reopened: ",

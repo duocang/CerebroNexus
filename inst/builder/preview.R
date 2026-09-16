@@ -150,9 +150,10 @@ builder_alignment_layer_cells <- function(object, assay, layer) {
 #'
 #' Both frames are sampled with one shared index after joining by canonical
 #' cell barcode. That makes linked selection exact and prevents row-order drift.
-#' Full-data physical bounds are retained for deterministic image fitting. The
-#' worker returns raw sampled spatial coordinates; draft rotation belongs to the
-#' persistent browser renderer and canonical transformation remains an R concern.
+#' Full-data physical bounds are retained for deterministic image fitting.
+#' All-ROI previews stay raw for live section transforms in the browser; ROI
+#' previews receive the section transform first so the browser only applies the
+#' ROI-local transform, matching the built Viewer.
 builder_alignment_preview_model <- function(
   object,
   default_projection = NULL,
@@ -161,7 +162,7 @@ builder_alignment_preview_model <- function(
   section_id = NULL,
   assay = NULL,
   layer = "data",
-  coordinate_transforms = NULL,
+  base_coordinate_transform = NULL,
   max_cells = BUILDER_PREVIEW_MAX
 ) {
   roi <- as.character(roi %||% "")
@@ -321,6 +322,12 @@ builder_alignment_preview_model <- function(
       c("cell_barcode", "x", "y"),
       drop = FALSE
     ]
+    if (nrow(physical) && !is.null(base_coordinate_transform)) {
+      physical <- .spx_apply_coordinate_transform(
+        physical,
+        base_coordinate_transform
+      )
+    }
   }
   if (is.null(transcriptome_full) || is.null(physical) || !nrow(physical)) {
     return(.builder_alignment_unavailable(

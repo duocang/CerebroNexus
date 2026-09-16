@@ -1042,6 +1042,9 @@ builder_project_build_manifest <- function(entries, project) {
       project$root
     )
     current_digest <- builder_project_configuration_digest(configuration_entry)
+    artifact_digest <- builder_project_artifact_configuration_digest(
+      configuration_entry
+    )
     staged$entry <- builder_project_adopt_spatial_assets(
       staged$entry,
       configuration_entry,
@@ -1061,7 +1064,7 @@ builder_project_build_manifest <- function(entries, project) {
         !identical(entry$load_state %||% "loaded", "artifact_ready") &&
           !identical(
             artifact$built_from_configuration %||% "",
-            current_digest
+            artifact_digest
           )
       ) {
         artifact$status <- "stale"
@@ -3047,7 +3050,9 @@ observe({
                 NULL
               },
               built_from_configuration = if (!is.na(entry_index)) {
-                builder_project_configuration_digest(entries[[entry_index]])
+                builder_project_artifact_configuration_digest(
+                  entries[[entry_index]]
+                )
               } else {
                 NULL
               },
