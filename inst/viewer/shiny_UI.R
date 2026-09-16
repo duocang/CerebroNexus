@@ -671,6 +671,26 @@ ui <- dashboardPage(
     tags$main(
       id = "main-content",
       tabindex = "-1",
+      tags$div(
+        id = "cerebro-page-loader",
+        class = "cerebro-page-loader",
+        role = "status",
+        `aria-live` = "polite",
+        `aria-atomic` = "true",
+        hidden = "hidden",
+        tags$span(
+          class = "cerebro-page-loader-spinner",
+          `aria-hidden` = "true"
+        ),
+        tags$span(
+          class = "cerebro-page-loader-copy",
+          tags$strong("Loading view"),
+          tags$span(
+            id = "cerebro-page-loader-detail",
+            "Preparing data and visualisation…"
+          )
+        )
+      ),
       tabItems(
         tab_load_data,
         tab_overview,
