@@ -143,6 +143,31 @@
   list(type = backend$type, location = backend$location)
 }
 
+.readPublishedSpatialBackend <- function(final_file) {
+  if (!file.exists(final_file) || dir.exists(final_file)) {
+    return(NULL)
+  }
+  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) NULL)
+  if (
+    !is.environment(object) ||
+      !exists("spatial_molecule_backend", envir = object, inherits = FALSE) ||
+      bindingIsActive("spatial_molecule_backend", object) ||
+      isTRUE(rlang::env_binding_are_lazy(object, "spatial_molecule_backend"))
+  ) {
+    return(NULL)
+  }
+  backend <- object[["spatial_molecule_backend"]]
+  valid <- is.list(backend) &&
+    identical(backend$type, "directory") &&
+    is.character(backend$location) &&
+    length(backend$location) == 1L &&
+    !is.na(backend$location) &&
+    nzchar(backend$location) &&
+    !backend$location %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$location)
+  if (!valid) NULL else backend[c("type", "location")]
+}
+
 .publishCerebroExport <- function(
   export,
   final_file,
@@ -173,8 +198,11 @@
     )
   }
   previous_backend <- .readPublishedExportBackend(final_file)
+  previous_spatial_backend <- .readPublishedSpatialBackend(final_file)
   stage_sidecar <- NULL
   final_sidecar <- NULL
+  stage_spatial <- NULL
+  final_spatial <- NULL
   if (!identical(backend$type, "embedded")) {
     .validateExportSidecarName(backend$location)
     expected_location <- .exportSidecarName(final_file, backend$type)
@@ -206,6 +234,7 @@
 
   old_crb_backup <- NULL
   old_sidecar_backup <- NULL
+  old_spatial_backup <- NULL
   retired_sidecar <- NULL
   if (
     !is.null(previous_backend) &&
@@ -226,6 +255,7 @@
   }
   installed_crb <- FALSE
   installed_sidecar <- FALSE
+  installed_spatial <- FALSE
   committed <- FALSE
   on.exit(
     {
@@ -258,6 +288,19 @@
               "Export rollback could not restore the previous expression ",
               "sidecar from: ",
               old_sidecar_backup,
+              call. = FALSE
+            )
+          }
+        }
+        if (installed_spatial && dir.exists(final_spatial)) {
+          unlink(final_spatial, recursive = TRUE, force = TRUE)
+        }
+        if (!is.null(old_spatial_backup) && dir.exists(old_spatial_backup)) {
+          if (!file.rename(old_spatial_backup, final_spatial)) {
+            warning(
+              "Export rollback could not restore the previous spatial ",
+              "molecule sidecar from: ",
+              old_spatial_backup,
               call. = FALSE
             )
           }
@@ -351,6 +394,39 @@
   } else {
     export
   }
+  spatial <- .stageSpatialMolecules(payload, stage_crb, codec)
+  payload <- spatial$payload
+  stage_spatial <- spatial$stage
+  if (!is.null(spatial$location)) {
+    final_spatial <- file.path(final_dir, spatial$location)
+    if (.pathIsSymbolicLink(final_spatial)) {
+      stop("Refusing to replace a symbolic-link spatial sidecar.", call. = FALSE)
+    }
+    if (dir.exists(final_spatial)) {
+      owns_target <- !is.null(previous_spatial_backend) &&
+        identical(previous_spatial_backend$location, spatial$location)
+      if (!owns_target) {
+        stop(
+          "Refusing to replace an existing spatial sidecar that is not owned ",
+          "by the published CRB: ",
+          final_spatial,
+          call. = FALSE
+        )
+      }
+      old_spatial_backup <- tempfile(
+        pattern = paste0(".", basename(final_spatial), "-backup-"),
+        tmpdir = final_dir
+      )
+      if (!file.rename(final_spatial, old_spatial_backup)) {
+        stop("Failed to preserve the previous spatial sidecar.", call. = FALSE)
+      }
+    }
+    .setExportArtifactMode(stage_spatial, "0700", "the spatial sidecar")
+    if (!file.rename(stage_spatial, final_spatial)) {
+      stop("Failed to install the staged spatial sidecar.", call. = FALSE)
+    }
+    installed_spatial <- TRUE
+  }
   .writeCerebroPayload(payload, stage_crb, codec)
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
@@ -377,7 +453,7 @@
   )
   committed <- TRUE
 
-  for (backup in c(old_crb_backup, old_sidecar_backup)) {
+  for (backup in c(old_crb_backup, old_sidecar_backup, old_spatial_backup)) {
     if (
       !is.null(backup) &&
         (file.exists(backup) || dir.exists(backup))

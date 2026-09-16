@@ -1063,8 +1063,10 @@ dedent <- function(string) {
   release_object = function(object) invisible(NULL)
 ) {
   backends <- vector("list", length(cerebro_data))
+  spatial_backends <- vector("list", length(cerebro_data))
   spatial_catalogs <- vector("list", length(cerebro_data))
   names(backends) <- names(cerebro_data)
+  names(spatial_backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
     object <- read_object(cerebro_data[[index]])
@@ -1073,6 +1075,14 @@ dedent <- function(string) {
     tryCatch(
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
+        spatial_backends[[index]] <- .spatialMoleculeBackend(
+          object,
+          cerebro_data[[index]]
+        )
+        object <- .attachCerebroSpatialMolecules(
+          object,
+          cerebro_data[[index]]
+        )
         spatial_catalogs[[index]] <- inspect_spatial(
           object,
           names(cerebro_data)[[index]]
@@ -1096,7 +1106,11 @@ dedent <- function(string) {
       stop(release_error)
     }
   }
-  list(backends = backends, spatial_catalogs = spatial_catalogs)
+  list(
+    backends = backends,
+    spatial_backends = spatial_backends,
+    spatial_catalogs = spatial_catalogs
+  )
 }
 
 .spatialImageBundlePathDigest <- function(bytes) {
@@ -2589,6 +2603,7 @@ createShinyApp <- function(
   private_data_root <- "private-data"
   preflight_data <- .preflightBundleData(cerebro_data)
   backends <- preflight_data$backends
+  spatial_backends <- preflight_data$spatial_backends
   spatial_catalogs <- preflight_data$spatial_catalogs
   spatial_plot_rotation <- .normalizeAppSpatialPlotRotation(
     spatial_plot_rotation,
@@ -2694,6 +2709,20 @@ createShinyApp <- function(
       crb_targets[[index]],
       resolved_crb_sources[[index]],
       "Cerebro data file"
+    )
+  }
+
+  for (index in seq_along(cerebro_data)) {
+    backend <- spatial_backends[[index]]
+    if (is.null(backend)) {
+      next
+    }
+    source <- normalizePath(backend$root, winslash = "/", mustWork = TRUE)
+    claim_target(
+      paste0(private_data_root, "/", backend$location),
+      source,
+      "spatial molecule sidecar",
+      directory = TRUE
     )
   }
 
