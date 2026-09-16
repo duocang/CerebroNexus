@@ -381,7 +381,7 @@ server <- function(input, output, session) {
         label = "Sample data set",
         choices = choices,
         selected = selected,
-        width = '350px'
+        width = "72ch"
       )
     }
   })
