@@ -112,6 +112,17 @@ test_that("clonal projection bounds the contextual background before rendering",
 
   expect_lte(nrow(out), 13L)
   expect_setequal(out$barcode[!is.na(out$expansion)], cells[1:3])
+
+  sampled <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    percentage = 34,
+    max_background = 10L
+  )
+  expect_false(any(
+    cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
+  ))
 })
 
 # --- ir_parse_segments -----------------------------------------------------

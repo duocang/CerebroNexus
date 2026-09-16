@@ -40,7 +40,6 @@
   ".validateRuntimeBackendEntry",
   ".configuredRuntimeBackendPlan",
   ".runtimeBackendCacheIdentity",
-  "get_or_load_crb",
   ".attachSpatialMoleculeBackend",
   ".readRuntimeCrbSchema",
   ".bpcellsCellNamesChecksum",

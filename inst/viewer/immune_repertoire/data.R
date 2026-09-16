@@ -475,6 +475,11 @@ ir_clonal_umap_data <- function(
       include.lowest = TRUE
     )
   }
+  receptor_barcodes <- if (has_receptor) {
+    unique(rows$barcode)
+  } else {
+    character()
+  }
 
   # Coloured layer: receptor cells with an expansion level, joined to coords.
   if (has_receptor) {
@@ -515,8 +520,7 @@ ir_clonal_umap_data <- function(
   # renderer can draw them in grey. Only when show_all is requested.
   background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- !(coord_bc %in%
-      (if (length(idx) > 0) rows$barcode else character(0)))
+    bg_mask <- !(coord_bc %in% receptor_barcodes)
     if (any(bg_mask)) {
       bg_idx <- which(bg_mask)
       target <- min(

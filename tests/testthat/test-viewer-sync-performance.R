@@ -294,6 +294,10 @@ test_that("viewer source reuses process-safe utility functions", {
   cache_env$viewerSource(viewer_test_path("utility_functions.R"), second)
 
   expect_identical(first$read_cerebro_file, second$read_cerebro_file)
-  expect_identical(first$get_or_load_crb, second$get_or_load_crb)
+  expect_false(identical(first$get_or_load_crb, second$get_or_load_crb))
+  expect_identical(
+    environment(first$get_or_load_crb),
+    first
+  )
   expect_false(identical(first$cachePlot, second$cachePlot))
 })
