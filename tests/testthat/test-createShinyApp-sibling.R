@@ -3428,6 +3428,70 @@ test_that("a bundled real BPCells backend attaches with exact data", {
   expect_real_backend_bundle_roundtrip("bpcells")
 })
 
+test_that("process cache clones keep thin BPCells expression lazy", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("Matrix")
+
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  dir.create(source)
+  sidecar <- file.path(source, "dataset.bpcells")
+  expected <- matrix(
+    c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(
+      c("GeneA", "GeneB", "GeneC"),
+      c("Cell1", "Cell2", "Cell3", "Cell4")
+    )
+  )
+  sparse <- methods::as(
+    Matrix::Matrix(expected, sparse = TRUE),
+    "CsparseMatrix"
+  )
+  BPCells::write_matrix_dir(
+    mat = methods::as(sparse, "IterableMatrix"),
+    dir = sidecar
+  )
+  object <- Cerebro$new()
+  object$setMetaData(data.frame(
+    cell_barcode = colnames(expected),
+    group = c("A", "A", "B", "B"),
+    row.names = colnames(expected)
+  ))
+  object$setExpression(
+    BPCells::open_matrix_dir(dir = sidecar),
+    backend = "external"
+  )
+  object$setExpressionBackend(type = "bpcells", location = basename(sidecar))
+  crb <- file.path(source, "dataset.crb")
+  saveCerebro(object, crb)
+
+  app <- file.path(root, "app")
+  build_test_app(c(Dataset = crb), app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+
+  first <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+  second <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+
+  expect_false(identical(first, second))
+  expect_true(rlang::env_binding_are_lazy(first, "expression"))
+  expect_true(rlang::env_binding_are_lazy(second, "expression"))
+  expect_attached_matrix(first, expected)
+  expect_true(rlang::env_binding_are_lazy(second, "expression"))
+})
+
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
   runtime <- new.env(parent = globalenv())
