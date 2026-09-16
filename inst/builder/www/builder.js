@@ -890,11 +890,9 @@
 
   function activityCapability(name) {
     var importSensitive = [
-      "check_dataset",
       "save_project",
       "open_project",
       "prepare_crbs",
-      "navigate_workflow",
       "build",
     ].indexOf(name) >= 0;
     var workerSensitive = [
