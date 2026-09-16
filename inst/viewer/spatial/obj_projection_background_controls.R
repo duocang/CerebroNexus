@@ -256,8 +256,8 @@ local({
 ## Copy alignment as preset.
 ##
 ## Reads the exact current dataset / spatial / image identity and renders one
-## canonical spatial_image_settings leaf. No Background has no image identity,
-## so it deliberately produces no snippet.
+## canonical spatial_image_settings leaf. An empty selection has no image
+## identity, so it deliberately produces no snippet.
 ##----------------------------------------------------------------------------##
 spatial_preset_code <- reactiveVal(NULL)
 
