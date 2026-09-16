@@ -204,3 +204,31 @@ test_that("large specialist views send their first frame before hover data", {
   expect_identical(auxiliary$id, "overview_projection")
   expect_identical(unlist(auxiliary$selection_key, use.names = FALSE), keys)
 })
+
+test_that("specialist selections wait for stable IDs and replay after aux", {
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    javascript,
+    "pendingStableSelection = singleActive && hasSelection && !stableKeysReady",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "if (!pendingStableSelection)",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "onSingleAuxBinary[\\s\\S]+D.cells = cells;[\\s\\S]+reportSelection\\(\\);",
+    perl = TRUE
+  )
+  expect_match(
+    javascript,
+    "selectedCells: hasSelection ? sel.size : 0",
+    fixed = TRUE
+  )
+})
