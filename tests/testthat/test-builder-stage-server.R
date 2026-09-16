@@ -583,6 +583,17 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(unchecked_html, 'id="complete_dataset_check"', fixed = TRUE)
   expect_false(grepl(" disabled", unchecked_html, fixed = TRUE))
   expect_false(grepl("is-review-ready", unchecked_html, fixed = TRUE))
+  settling_html <- htmltools::renderTags(app_env$builder_configure_actions_ui(
+    "Waiting for the spatial preview to finish.",
+    can_continue = FALSE,
+    remaining = 1L,
+    check_ready = FALSE
+  ))$html
+  expect_match(settling_html, 'id="complete_dataset_check"', fixed = TRUE)
+  expect_match(settling_html, " disabled", fixed = TRUE)
+  expect_true(
+    "check_ready" %in% names(formals(app_env$builder_configure_actions_ui))
+  )
   expect_false(
     "can_check" %in% names(formals(app_env$builder_configure_actions_ui))
   )
