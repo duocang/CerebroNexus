@@ -269,6 +269,7 @@ builder_spatial_alignment_server <- function(
   client_interaction <- shiny::reactiveVal(NULL)
   control_event_sequences <- new.env(parent = emptyenv())
   control_owner_views <- new.env(parent = emptyenv())
+  active_control_owner_key <- NULL
   canvas_generation <- shiny::reactiveVal(0L)
   canvas_reset_token <- shiny::reactiveVal(0L)
   canvas_source_keys <- character()
@@ -276,6 +277,7 @@ builder_spatial_alignment_server <- function(
   canvas_viewports <- shiny::reactiveVal(NULL)
   image_collection_cache <- new.env(parent = emptyenv())
   send_canvas_clear <- function() {
+    active_control_owner_key <<- NULL
     contract <- shiny::isolate(canvas_contract())
     session$sendCustomMessage(
       "builder_spatial_canvas_clear",
@@ -325,10 +327,16 @@ builder_spatial_alignment_server <- function(
       collapse = "|"
     )
   }
-  register_control_owner_view <- function(owner, view_key, generation) {
+  register_control_owner_view <- function(
+    owner,
+    view_key,
+    generation,
+    reset_token
+  ) {
     owner_key <- control_owner_key(owner)
     view_key <- as.character(view_key %||% "")
     generation <- suppressWarnings(as.numeric(generation))
+    reset_token <- suppressWarnings(as.numeric(reset_token))
     if (
       is.null(owner_key) ||
         length(view_key) != 1L ||
@@ -336,7 +344,12 @@ builder_spatial_alignment_server <- function(
         !nzchar(view_key) ||
         length(generation) != 1L ||
         is.na(generation) ||
-        !is.finite(generation)
+        !is.finite(generation) ||
+        generation < 0 ||
+        length(reset_token) != 1L ||
+        is.na(reset_token) ||
+        !is.finite(reset_token) ||
+        reset_token < 0
     ) {
       return(invisible(FALSE))
     }
@@ -346,16 +359,25 @@ builder_spatial_alignment_server <- function(
       inherits = FALSE,
       ifnotfound = NULL
     )
-    if (is.null(current_view) || generation >= current_view$generation) {
-      assign(
-        owner_key,
-        list(
-          view_key = view_key,
-          generation = generation
-        ),
-        envir = control_owner_views
+    same_activation <- identical(active_control_owner_key, owner_key) &&
+      !is.null(current_view) &&
+      identical(current_view$view_key, view_key) &&
+      isTRUE(current_view$reset_token == reset_token)
+    if (same_activation) {
+      current_view$latest_generation <- max(
+        current_view$latest_generation %||% current_view$generation,
+        generation
+      )
+    } else {
+      current_view <- list(
+        view_key = view_key,
+        generation = generation,
+        latest_generation = generation,
+        reset_token = reset_token
       )
     }
+    assign(owner_key, current_view, envir = control_owner_views)
+    active_control_owner_key <<- owner_key
     invisible(TRUE)
   }
   active_control_owner <- function() {
@@ -1707,6 +1729,7 @@ builder_spatial_alignment_server <- function(
     sequence <- suppressWarnings(as.numeric(event$sequence))
     view_key <- as.character(event$viewKey %||% "")
     generation <- suppressWarnings(as.numeric(event$generation))
+    reset_token <- suppressWarnings(as.numeric(event$resetToken))
     if (
       is.null(owner) ||
         is.null(values) ||
@@ -1720,7 +1743,11 @@ builder_spatial_alignment_server <- function(
         length(generation) != 1L ||
         is.na(generation) ||
         !is.finite(generation) ||
-        generation < 0
+        generation < 0 ||
+        length(reset_token) != 1L ||
+        is.na(reset_token) ||
+        !is.finite(reset_token) ||
+        reset_token < 0
     ) {
       return(invisible(FALSE))
     }
@@ -1731,10 +1758,16 @@ builder_spatial_alignment_server <- function(
       inherits = FALSE,
       ifnotfound = NULL
     )
+    if (is.null(owner_view)) {
+      return(invisible(FALSE))
+    }
+    latest_generation <- owner_view$latest_generation %||%
+      owner_view$generation
     if (
-      is.null(owner_view) ||
-        !identical(owner_view$view_key, view_key) ||
-        !isTRUE(generation == owner_view$generation)
+      !identical(owner_view$view_key, view_key) ||
+        !isTRUE(reset_token == owner_view$reset_token) ||
+        !isTRUE(generation >= owner_view$generation) ||
+        !isTRUE(generation <= latest_generation)
     ) {
       return(invisible(FALSE))
     }
@@ -2645,7 +2678,8 @@ builder_spatial_alignment_server <- function(
         active_image()
       ),
       scene$viewKey,
-      scene$generation
+      scene$generation,
+      scene$resetToken
     )
     session$sendCustomMessage("builder_spatial_canvas_scene", scene)
     finish_switch(contract$id, section)

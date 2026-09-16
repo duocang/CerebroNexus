@@ -44,9 +44,9 @@ test_that("Linked views renders both retained spatial sections and images", {
     expect_true(any(grepl(section, titles, fixed = TRUE)), info = section)
   }
 
-  ## Each FOV owns its own embedded image. Activate its background scope and
-  ## assert that the compatibility picker exposes one embedded image;
-  ## this exercises the generated CRB -> bundle -> Linked views image contract.
+  ## Each FOV owns its own external image asset. Activate its background scope
+  ## and assert that the picker exposes that section's asset; this exercises the
+  ## generated asset -> app config -> Linked views image contract.
   for (section in fixture$expected$spatial_sections) {
     section_js <- .generated_app_e2e_js_value(section)
     driver$run_js(paste0(
@@ -56,7 +56,7 @@ test_that("Linked views renders both retained spatial sections and images", {
       section_js,
       ";});if(tab)tab.click();})()"
     ))
-    expected_label <- "Embedded tissue image"
+    expected_label <- basename(fixture$attachments[[section]]$path)
     expected_label_js <- .generated_app_e2e_js_value(expected_label)
     driver$wait_for_js(
       paste0(
