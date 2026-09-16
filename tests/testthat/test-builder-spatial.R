@@ -1872,6 +1872,8 @@ test_that("reset preserves the section image identity", {
   expect_identical(reset$base_bounds, first$base_bounds)
   expect_identical(reset$dx, 0)
   expect_identical(reset$rotation, 0)
+  expect_identical(reset$point_opacity, first$point_opacity)
+  expect_identical(reset$point_size, first$point_size)
   expect_identical(reset$bounds, first$base_bounds)
   expect_false("saved" %in% names(reset))
 })
