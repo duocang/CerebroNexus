@@ -537,10 +537,12 @@ test_that("the coordinator preregisters an owner-only assigned stage", {
 test_that("Windows path budget fails before a stage is created", {
   local({
     builder_task9_source()
-    plan <- list(items = list(list(
-      filename = paste0(strrep("d", 96L), ".crb"),
-      sidecars = character()
-    )))
+    plan <- list(
+      items = list(list(
+        filename = paste0(strrep("d", 96L), ".crb"),
+        sidecars = character()
+      ))
+    )
     short_stage <- "C:/CerebroBuild/control/stages/stage-123456789abc"
     expect_true(.builder_coordinator_assert_windows_path_budget(
       plan,
@@ -572,9 +574,13 @@ test_that("Windows path budget fails before a stage is created", {
 
     plan$items[[1L]]$id <- "dataset-a"
     plan$items[[1L]]$spatial_image_storage <- "external"
-    plan$items[[1L]]$images <- list(section = list(image = list(
-      source = list(name = paste0(strrep("histology", 22L), ".jpg"))
-    )))
+    plan$items[[1L]]$images <- list(
+      section = list(
+        image = list(
+          source = list(name = paste0(strrep("histology", 22L), ".jpg"))
+        )
+      )
+    )
     expect_error(
       .builder_coordinator_assert_windows_path_budget(
         plan,
@@ -1536,7 +1542,7 @@ test_that("coordinator preserves per-dataset Viewer defaults for parent verifica
     )
     expect_identical(
       contract$plan$items[[1L]]$spatial_image_storage,
-      "embedded"
+      "external"
     )
     expect_identical(
       contract$plan$items[[1L]]$default_projection,
@@ -2598,7 +2604,7 @@ test_that("coordinator freezes only the portable report-plan projection", {
     )
     expect_identical(
       handle$report_plan$items[[1L]]$spatial_image_storage,
-      plan$items[[1L]]$spatial_image_storage %||% "embedded"
+      plan$items[[1L]]$spatial_image_storage %||% "external"
     )
     expect_identical(
       handle$report_plan$items[[1L]]$spatial_alignment,

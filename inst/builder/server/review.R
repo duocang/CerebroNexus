@@ -221,6 +221,13 @@ freeze_plan_for_output <- function(
   if (!isTRUE(parsed_auth$ok)) {
     return(builder_plan_error(parsed_auth$error, "invalid_auth_accounts"))
   }
+  build_entries <- if (
+    exists("builder_project_build_entries", mode = "function")
+  ) {
+    builder_project_build_entries(all)
+  } else {
+    all
+  }
   app_options <- if (make_app && explicit_output) {
     builder_review_options_for_plan(
       output_options$app,
@@ -230,7 +237,7 @@ freeze_plan_for_output <- function(
     builder_review_options_for_plan(builder_review_options())
   }
   builder_freeze_plan(
-    entries = all,
+    entries = build_entries,
     out_dir = out_dir,
     make_app = make_app,
     overwrite = isTRUE(overwrite),
@@ -494,21 +501,30 @@ output[["enhance-table_list"]] <- renderUI({
                 type = "button",
                 class = "enhance-attachment-edit enhance-workbook-edit",
                 `data-workbook-key` = filename,
-                `aria-label` = paste("Edit Viewer workbook name for", workbook_name),
+                `aria-label` = paste(
+                  "Edit Viewer workbook name for",
+                  workbook_name
+                ),
                 "Edit"
               ),
               tags$button(
                 type = "button",
                 class = "enhance-attachment-save enhance-workbook-save",
                 `data-workbook-key` = filename,
-                `aria-label` = paste("Save Viewer workbook name for", workbook_name),
+                `aria-label` = paste(
+                  "Save Viewer workbook name for",
+                  workbook_name
+                ),
                 hidden = NA,
                 "Save"
               ),
               tags$button(
                 type = "button",
                 class = "enhance-attachment-cancel enhance-workbook-cancel",
-                `aria-label` = paste("Cancel editing Viewer workbook name for", workbook_name),
+                `aria-label` = paste(
+                  "Cancel editing Viewer workbook name for",
+                  workbook_name
+                ),
                 hidden = NA,
                 "Cancel"
               ),
@@ -560,21 +576,30 @@ output[["enhance-table_list"]] <- renderUI({
                   type = "button",
                   class = "enhance-attachment-edit enhance-table-edit",
                   `data-table-key` = key,
-                  `aria-label` = paste("Edit Viewer table name for", display_name),
+                  `aria-label` = paste(
+                    "Edit Viewer table name for",
+                    display_name
+                  ),
                   "Edit"
                 ),
                 tags$button(
                   type = "button",
                   class = "enhance-attachment-save enhance-table-save",
                   `data-table-key` = key,
-                  `aria-label` = paste("Save Viewer table name for", display_name),
+                  `aria-label` = paste(
+                    "Save Viewer table name for",
+                    display_name
+                  ),
                   hidden = NA,
                   "Save"
                 ),
                 tags$button(
                   type = "button",
                   class = "enhance-attachment-cancel enhance-table-cancel",
-                  `aria-label` = paste("Cancel editing Viewer table name for", display_name),
+                  `aria-label` = paste(
+                    "Cancel editing Viewer table name for",
+                    display_name
+                  ),
                   hidden = NA,
                   "Cancel"
                 ),

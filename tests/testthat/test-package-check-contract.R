@@ -35,11 +35,11 @@ test_that("retired share databases stay out of Git and package builds", {
   )
 })
 
-test_that("pkgdown output directory has no tracked source files", {
+test_that("configured pkgdown output has no tracked source files", {
   skip_if_not_source_tree()
   tracked_docs <- system2(
     "git",
-    c("-C", shQuote(source_file()), "ls-files", "--", "docs"),
+    c("-C", shQuote(source_file()), "ls-files", "--", "pkgdown-site"),
     stdout = TRUE
   )
 

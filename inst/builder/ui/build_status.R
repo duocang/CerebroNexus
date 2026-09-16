@@ -208,7 +208,7 @@ builder_build_options_ui <- function(
       if (isTRUE(app_required)) {
         p(
           class = "hint builder-app-required-reason",
-          "External spatial images require CRB files + Viewer App output."
+          "Spatial images or ROI settings require CRB files + Viewer App output."
         )
       },
       if (!isTRUE(app_available)) {
@@ -857,7 +857,9 @@ builder_build_operation_overlay_model <- function(
     NULL
   } else if (identical(model$state, "preparing")) {
     "prepare"
-  } else if (grepl("Verifying and publishing", model$message %||% "", fixed = TRUE)) {
+  } else if (
+    grepl("Verifying and publishing", model$message %||% "", fixed = TRUE)
+  ) {
     "publish"
   } else if (grepl("Packaging Viewer", model$message %||% "", fixed = TRUE)) {
     "viewer"
