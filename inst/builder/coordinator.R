@@ -566,11 +566,28 @@ builder_release_runtime_files <- function() {
     !is.na(sidecars) & nzchar(sidecars) & !grepl("[/\\\\]", sidecars)
   ]
   if (length(sidecars)) {
-    # BPCells controls the names below its sidecar directory. Reserve room for
-    # those implementation-owned entries without guessing their exact names.
+    # BPCells matrix directories use this fixed set of implementation-owned
+    # entries. An earlier 96-character placeholder rejected otherwise safe
+    # Windows paths even though BPCells never created such a component.
+    bpcells_entries <- c(
+      "col_names",
+      "idxptr",
+      "index_data",
+      "index_idx",
+      "index_idx_offsets",
+      "index_starts",
+      "row_names",
+      "shape",
+      "storage_order",
+      "val",
+      "version"
+    )
     candidates <- c(
       candidates,
-      file.path(export_stage, sidecars, strrep("x", 96L))
+      unlist(lapply(
+        sidecars,
+        function(sidecar) file.path(export_stage, sidecar, bpcells_entries)
+      ), use.names = FALSE)
     )
   }
   if (isTRUE(app_expected)) {

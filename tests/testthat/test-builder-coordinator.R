@@ -599,6 +599,33 @@ test_that("Windows path budget fails before a stage is created", {
       os_type = "windows"
     ))
 
+    bpcells_plan <- list(items = list(list(
+      id = "ds3",
+      filename = "03-17-0-durafibro-sample-roi-2-ds3.crb",
+      sidecars = "03-17-0-durafibro-sample-roi-2-ds3.bpcells",
+      expression_backend = "bpcells"
+    )))
+    realistic_stage <- paste0(
+      "C:/Users/example/Projects/spatial-project/",
+      ".output.cerebro-control/stages/stage-764819176784"
+    )
+    bpcells_candidates <- .builder_coordinator_windows_path_candidates(
+      bpcells_plan,
+      realistic_stage,
+      app_expected = FALSE,
+      .tempfile = function(pattern, tmpdir, fileext = "") {
+        file.path(tmpdir, paste0(pattern, "76481c31183a", fileext))
+      }
+    )
+    expect_true(any(endsWith(bpcells_candidates, "/index_idx_offsets")))
+    expect_false(any(endsWith(bpcells_candidates, strrep("x", 96L))))
+    expect_true(.builder_coordinator_assert_windows_path_budget(
+      bpcells_plan,
+      realistic_stage,
+      app_expected = TRUE,
+      os_type = "windows"
+    ))
+
     deep_stage <- paste0(
       "C:/",
       paste(rep("deep-output-folder", 14L), collapse = "/"),
