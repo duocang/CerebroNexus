@@ -162,6 +162,36 @@ test_that("motif network exposes a stable selected-node detail panel", {
   expect_no_match(js, "hla-refresh-node-details", fixed = TRUE)
 })
 
+test_that("HLA cohort filters are visible and drive every graph cache", {
+  ui <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(ui, 'cerebroSettingsSection\\(\\s*"Filters"', perl = TRUE)
+  expect_match(ui, 'uiOutput\\("hla_group_filters_ui"\\)')
+  expect_match(settings, "groupFilterControl(", fixed = TRUE)
+  expect_match(settings, "hla_default_filter_selections", fixed = TRUE)
+  expect_match(data_src, "hla_ir_filtered <- reactive", fixed = TRUE)
+  expect_match(
+    data_src,
+    "hla_segments <- reactive\\(\\{[\\s\\S]{0,120}hla_ir_filtered\\(\\)",
+    perl = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(data_src, gregexpr("hla_filter_key\\(\\)", data_src))),
+    4L
+  )
+})
+
 test_that("core shim binds locally without polluting globalenv", {
   local_env <- new.env(parent = globalenv())
   # The shim reads Cerebro.options[["cerebro_root"]] to locate its bundled core/

@@ -293,6 +293,51 @@ test_that("total size guard trips with a guard message (not a usable graph)", {
   expect_true(grepl("unique CDR3", attr(g, "guard")))
 })
 
+test_that("large repertoires get a deterministic initial sample cohort", {
+  small <- data.frame(
+    sample = rep(c("s1", "s2"), each = 2),
+    cdr3 = paste0("CASS", seq_len(4)),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      small,
+      c("s1", "s2"),
+      target = 2L,
+      max_total = 10L
+    ),
+    c("s1", "s2")
+  )
+
+  large <- data.frame(
+    sample = rep(c("s1", "s2", "s3"), c(8, 7, 6)),
+    cdr3 = paste0("CASS", seq_len(21)),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      large,
+      c("s3", "s2", "s1"),
+      target = 12L,
+      max_total = 10L,
+      bin_target = 100L,
+      max_bin = 100L
+    ),
+    "s1"
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      large,
+      c("s3", "s2", "s1"),
+      target = 20L,
+      max_total = 10L,
+      bin_target = 100L,
+      max_bin = 100L
+    ),
+    c("s2", "s1")
+  )
+})
+
 ## ---- draw layout ------------------------------------------------------- ##
 
 test_that("the graph carries igraph-computed draw coordinates", {
