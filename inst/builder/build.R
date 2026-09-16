@@ -332,6 +332,17 @@ builder_verify_crb <- function(path, item) {
   if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
     stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
   }
+  if (length(item$sidecars)) {
+    .builder_build_sidecar_path(
+      path,
+      item,
+      if (identical(item$expression_backend, "bpcells")) {
+        "directory"
+      } else {
+        "file"
+      }
+    )
+  }
   fingerprint_file <- .builder_build_runtime_function(
     ".bundlePreflightFingerprint"
   )
@@ -459,11 +470,9 @@ builder_verify_crb <- function(path, item) {
     spatial,
     function(section) {
       is.list(section) &&
-        (
-          length(section$histology_images %||% list()) > 0L ||
-            !is.null(section[["histology_image", exact = TRUE]]) ||
-            !is.null(section[["histology_image_bounds", exact = TRUE]])
-        )
+        (length(section$histology_images %||% list()) > 0L ||
+          !is.null(section[["histology_image", exact = TRUE]]) ||
+          !is.null(section[["histology_image_bounds", exact = TRUE]]))
     },
     logical(1)
   )]
@@ -588,12 +597,6 @@ builder_verify_crb <- function(path, item) {
         call. = FALSE
       )
     }
-    expected_directory <- identical(item$expression_backend, "bpcells")
-    .builder_build_sidecar_path(
-      path,
-      item,
-      if (expected_directory) "directory" else "file"
-    )
   }
   visible <- .builder_crb_visible_pages(object)
   expected_visible <- item$viewer_page_expectations$visible_conditional %||%
@@ -1088,7 +1091,10 @@ builder_verify_crb <- function(path, item) {
         !is.null(record$source_content_md5) &&
           !identical(record$source_content_md5, inspected$source_content_md5)
       ) {
-        stop("A Builder Spatial image failed its integrity check.", call. = FALSE)
+        stop(
+          "A Builder Spatial image failed its integrity check.",
+          call. = FALSE
+        )
       }
       extension <- switch(
         inspected$mime,
@@ -1128,12 +1134,14 @@ builder_verify_crb <- function(path, item) {
         filename <- paste0(stem, ".", extension)
       }
       materialized <- file.path(section_dir, filename)
-      if (!file.copy(
-        source_path,
-        materialized,
-        overwrite = TRUE,
-        copy.mode = TRUE
-      )) {
+      if (
+        !file.copy(
+          source_path,
+          materialized,
+          overwrite = TRUE,
+          copy.mode = TRUE
+        )
+      ) {
         stop("A Builder Spatial image could not be copied.", call. = FALSE)
       }
       if (

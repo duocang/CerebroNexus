@@ -982,10 +982,14 @@ test_that("external Spatial images materialize without entering CRB payloads", {
     unname(as.character(tools::md5sum(descriptor$path))),
     inspected$source_content_md5
   )
-  expect_identical(unname(file.size(descriptor$path)), unname(file.size(source_path)))
+  expect_identical(
+    unname(file.size(descriptor$path)),
+    unname(file.size(source_path))
+  )
 })
 
 test_that("read-back verifies frozen H5 and BPCells sidecars", {
+  skip_if_not_installed("BPCells")
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("Matrix")
   root <- tempfile("builder-sidecars-")
@@ -1052,7 +1056,20 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
         group = "expression"
       )
     } else {
-      dir.create(sidecar)
+      BPCells::write_matrix_dir(
+        Matrix::Matrix(
+          matrix(
+            seq_len(4L),
+            nrow = 2L,
+            dimnames = list(
+              item$artifact_identity$features,
+              item$artifact_identity$cells
+            )
+          ),
+          sparse = TRUE
+        ),
+        dir = sidecar
+      )
     }
     saveRDS(object, crb)
     observed <- builder_verify_crb(crb, item)
