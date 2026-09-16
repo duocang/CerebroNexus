@@ -169,6 +169,68 @@ test_that("project picker permissions update immediately after selection", {
   })
 })
 
+test_that("Build reuses current project CRBs after preserving review identity", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this reuse test.")
+  }
+  captured <- NULL
+  app_env$builder_freeze_plan <- function(entries, review_identity, ...) {
+    captured <<- list(entries = entries, review_identity = review_identity)
+    captured
+  }
+
+  shiny::testServer(app_env$server, {
+    root <- withr::local_tempdir()
+    artifact_path <- file.path(root, "dataset-a.crb")
+    writeLines("ready", artifact_path)
+    entry <- list(
+      id = "dataset-a",
+      revision = 0L,
+      load_state = "loaded",
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a", extras = list()),
+      settings = list(name = "Dataset A"),
+      acknowledgements = character(),
+      spatial_drafts = list()
+    )
+    use_state_only_fixture(list(entry))
+    original_identity <- app_env$builder_review_configuration_identity(
+      list(entry),
+      builder_configuration_identity_cache
+    )
+    artifact <- list(
+      status = "ready",
+      reusable = TRUE,
+      path = basename(artifact_path),
+      fingerprint = app_env$builder_project_file_fingerprint(
+        artifact_path,
+        content = TRUE
+      ),
+      members = list(),
+      built_from_configuration = app_env$builder_project_configuration_digest(
+        entry
+      )
+    )
+    builder_project(list(root = root, manifest = list(datasets = list())))
+    builder_project_artifacts(list(`dataset-a` = artifact))
+
+    freeze_plan_for_output(tempfile("reuse-project-crb-"))
+
+    expect_identical(captured$review_identity, original_identity)
+    expect_identical(captured$entries[[1L]]$load_state, "artifact_ready")
+    expect_identical(isolate(sets())[[1L]]$load_state, "loaded")
+  })
+})
+
 test_that("Projection cards distinguish inclusion from initial display", {
   ui <- paste(
     readLines(
@@ -242,17 +304,37 @@ test_that("dataset-scoped browser actions retain their current entry owner", {
     "builder_content_action_owner_is_current(",
     fixed = TRUE
   )
-  expect_match(enhancements, "marker_dialog_owner <- reactiveVal(NULL)", fixed = TRUE)
+  expect_match(
+    enhancements,
+    "marker_dialog_owner <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
   marker_guards <- gregexpr(
     "if (!marker_dialog_is_current())",
     enhancements,
     fixed = TRUE
   )[[1L]]
   expect_identical(sum(marker_guards > 0L), 6L)
-  expect_match(foundation, "refresh_marker_dialog_owner(owner$project_epoch)", fixed = TRUE)
-  expect_match(review, "`data-generation` = table_action_owner$generation", fixed = TRUE)
-  expect_match(review, "`data-project-epoch` = table_action_owner$project_epoch", fixed = TRUE)
-  expect_match(review, "`data-owner-token` = table_action_owner$owner_token", fixed = TRUE)
+  expect_match(
+    foundation,
+    "refresh_marker_dialog_owner(owner$project_epoch)",
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    "`data-generation` = table_action_owner$generation",
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    "`data-project-epoch` = table_action_owner$project_epoch",
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    "`data-owner-token` = table_action_owner$owner_token",
+    fixed = TRUE
+  )
   epoch_updates <- gregexpr(
     "send_dataset_action_owner(project_epoch = generation)",
     project,
@@ -1500,11 +1582,14 @@ test_that("incomplete datasets focus their first unresolved setting", {
 
     expect_length(dataset_check_marks(), 0L)
     expect_length(checked_dataset_ids(), 0L)
-    expect_identical(messages, list(list(
-      dataset = "dataset-a",
-      generation = 0L,
-      blocker = "settings_organism"
-    )))
+    expect_identical(
+      messages,
+      list(list(
+        dataset = "dataset-a",
+        generation = 0L,
+        blocker = "settings_organism"
+      ))
+    )
   })
 })
 

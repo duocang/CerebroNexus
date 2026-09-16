@@ -2266,7 +2266,8 @@ builder_project_stage_spatial_assets <- function(entry, root) {
     }
     if (
       isTRUE(valid_asset) &&
-        (is.null(canonical_source) || identical(canonical_source, canonical_asset))
+        (is.null(canonical_source) ||
+          identical(canonical_source, canonical_asset))
     ) {
       record$source_content_md5 <- asset$fingerprint$md5 %||%
         record$source_content_md5 %||%
@@ -2280,7 +2281,11 @@ builder_project_stage_spatial_assets <- function(entry, root) {
       source <- record[["source", exact = TRUE]]
       inspected <- builder_read_image(
         canonical_source,
-        filename = if (is.list(source)) source$name %||% canonical_source else canonical_source
+        filename = if (is.list(source)) {
+          source$name %||% canonical_source
+        } else {
+          canonical_source
+        }
       )
       if (!is.null(inspected$error)) {
         fail(paste0("is invalid: ", inspected$error))
@@ -3231,6 +3236,26 @@ builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
     },
     entries
   )
+}
+
+builder_project_entries_for_build <- function(entries, artifacts, root) {
+  required <- tryCatch(
+    builder_project_entries_requiring_crb(entries, artifacts, root),
+    error = function(error) entries
+  )
+  required_ids <- vapply(required, `[[`, character(1), "id")
+  lapply(entries, function(entry) {
+    if (
+      identical(entry$load_state %||% "loaded", "artifact_ready") ||
+        entry$id %in% required_ids
+    ) {
+      return(entry)
+    }
+    tryCatch(
+      builder_project_artifact_entry(entry, artifacts[[entry$id]], root),
+      error = function(error) entry
+    )
+  })
 }
 
 builder_project_spatial_assets_status <- function(record, root) {
