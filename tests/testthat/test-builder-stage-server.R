@@ -647,7 +647,7 @@ test_that("Build output UI locks CRB-only when external images require an App", 
 
   expect_match(
     html,
-    "External spatial images require CRB files + Viewer App output.",
+    "Spatial images or ROI settings require CRB files + Viewer App output.",
     fixed = TRUE
   )
   expect_match(
@@ -1300,25 +1300,21 @@ test_that("external spatial images carry required App output through Review", {
   }
   shiny::testServer(app_env$server, {
     entry <- builder_task6_entry()
-    image <- list(
-      source = list(name = "H&E.png", type = "image/png", size = 4),
-      source_uri = "data:image/png;base64,AAAA",
-      uri = "data:image/png;base64,AAAA",
+    source_path <- tempfile(fileext = ".png")
+    png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source_path)
+    inspected <- app_env$builder_read_image(source_path)
+    image <- app_env$builder_alignment_record(
+      source = list(
+        name = "H&E.png",
+        type = inspected$mime,
+        size = inspected$bytes
+      ),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      dx = 0,
-      dy = 0,
-      scale = 1,
-      rotation = 0,
-      flip_x = FALSE,
-      flip_y = FALSE,
-      image_opacity = 0.8,
-      point_opacity = 0.85,
-      point_size = 5,
-      outside = 0L,
-      section_id = "fov",
-      section_kind = "spatial"
+      parameters = list(),
+      section = list(id = "fov", kind = "spatial"),
+      source_path = inspected$source_path
     )
+    image$source_content_md5 <- inspected$source_content_md5
     entry$dataset_profile$spatial <- list(sections = "fov")
     entry$snapshot <- builder_task6_snapshot_identity()
     entry$settings$images <- list(fov = list(`H&E` = image))
@@ -1363,11 +1359,11 @@ test_that("external spatial images carry required App output through Review", {
     session$flushReact()
     expect_false(build_mode())
 
-    blocked <- freeze_plan_for_output(
+    required <- freeze_plan_for_output(
       tempfile("external-images-crb-"),
       output_options = builder_build_options(make_app = FALSE)
     )
-    expect_identical(blocked$error_code, "external_images_require_app")
+    expect_true(required$make_app)
   })
 })
 

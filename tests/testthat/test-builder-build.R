@@ -789,10 +789,11 @@ test_that("CRB stores alignment only while image bytes remain external", {
   crb$spatial <- list(
     `slice-a` = list(
       coordinates = data.frame(x = 1, y = 2),
+      expression = Matrix::Matrix(1, nrow = 1L, ncol = 1L, sparse = TRUE),
       histology_images = list(
         Existing = list(
           histology_image = "data:image/png;base64,AA==",
-          histology_image_bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 2)
+          histology_image_bounds = c(xmin = 0, xmax = 1, ymin = 0, ymax = 2)
         )
       )
     )
@@ -853,10 +854,7 @@ test_that("CRB stores alignment only while image bytes remain external", {
     observed$spatial[["slice-a"]]$histology_alignment,
     builder_alignment_payload(spatial_alignment)
   )
-  expect_identical(
-    names(observed$spatial[["slice-a"]]$histology_images),
-    character()
-  )
+  expect_length(observed$spatial[["slice-a"]]$histology_images, 0L)
   expect_identical(
     observed$trekker$histology_alignment,
     builder_alignment_payload(trekker_alignment)

@@ -17,7 +17,7 @@ builder_storage_parity_record <- function(section, label, root) {
   )
   png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source_path)
   inspected <- builder_read_image(source_path)
-  builder_alignment_record(
+  record <- builder_alignment_record(
     source = list(
       name = paste0(label, ".png"),
       type = "image/png",
@@ -28,6 +28,8 @@ builder_storage_parity_record <- function(section, label, root) {
     section = list(id = section, kind = "spatial"),
     source_path = inspected$source_path
   )
+  record$source_content_md5 <- inspected$source_content_md5
+  record
 }
 
 builder_storage_parity_entry <- function(
@@ -130,7 +132,7 @@ build_storage_parity_fixture <- function(
   )
   expect_identical(result$state, "success", info = result$error)
   config <- readRDS(file.path(result$app_dir, "cerebro_config.rds"))
-  crb <- readRDS(file.path(
+  crb <- readCerebro(file.path(
     result$app_dir,
     "private-data",
     plan$items[[1L]]$filename
