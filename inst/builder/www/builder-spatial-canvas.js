@@ -34,10 +34,11 @@
     resizeObserver: null,
     observedCanvas: null,
     viewportSignature: null,
+    viewportGeometry: null,
   };
   window.__builderSpatialCanvasMetrics = window.__builderSpatialCanvasMetrics || {
     sceneMessages: 0, renders: 0, latestCoordinateRotation: 0,
-    eventToRenderMs: [], renderTimes: [], longTasks: 0,
+    eventToRenderMs: [], renderTimes: [], longTasks: 0, viewerFrames: [],
   };
   var controlMap = {
     "enhance-coordinate_rotation": ["coordinateRotation", 1],
@@ -53,11 +54,11 @@
   };
   var POINT_EDGE_PADDING = 18;
   var IMAGE_EDGE_PADDING = POINT_EDGE_PADDING / 2;
+  var VIEWER_FRAME_PADDING = 10;
+  var VIEWER_POINT_PADDING = POINT_EDGE_PADDING;
   var ROI_PANEL_GAP = 8;
-  var LEGACY_VIEWPORT_PADDING = 2;
   var LEGACY_ROI_PANEL_GAP = 10;
   var LEGACY_ROI_HEADER = 24;
-  var LEGACY_ROI_VIEWPORT_PADDING = 6;
   var NONPOSITIVE_SCALE_FALLBACK = 0.02;
 
   function canvas() {
@@ -128,6 +129,7 @@
       state.activeControlId = null;
       state.releaseGuardId = null;
       state.activeTransform = "points";
+      state.viewportGeometry = null;
     }
     if (controlsAdopted) syncAuthoritativeScaleControl();
     loadImage(message.image);
@@ -153,6 +155,7 @@
     state.hoverPoint = null;
     state.hoverNode = null;
     state.viewportSignature = null;
+    state.viewportGeometry = null;
     if (state.hoverFrame) window.cancelAnimationFrame(state.hoverFrame);
     state.hoverFrame = 0;
     state.viewKey = null;
@@ -291,6 +294,36 @@
     state.viewportSignature = signature;
     Shiny.setInputValue("builder_spatial_viewports", payload, {priority: "event"});
   }
+  function drawViewerFrame(ctx, view, screen) {
+    var topLeft = screen({x: view.xmin, y: view.ymax});
+    var bottomRight = screen({x: view.xmax, y: view.ymin});
+    var left = Math.min(topLeft.x, bottomRight.x);
+    var top = Math.min(topLeft.y, bottomRight.y);
+    var width = Math.abs(bottomRight.x - topLeft.x);
+    var height = Math.abs(bottomRight.y - topLeft.y);
+    if (width < 2 || height < 2) return;
+    ctx.save();
+    ctx.strokeStyle = "#246f87";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(left + 1, top + 1, width - 2, height - 2);
+    var label = "View area";
+    ctx.font = "600 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    var labelWidth = ctx.measureText(label).width + 10;
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.fillRect(left + 5, top + 5, labelWidth, 18);
+    ctx.fillStyle = "#18576b";
+    ctx.fillText(label, left + 10, top + 14);
+    ctx.restore();
+    window.__builderSpatialCanvasMetrics.viewerFrames.push({
+      left: left,
+      top: top,
+      right: left + width,
+      bottom: top + height,
+    });
+  }
   function draw() {
     state.frame = 0;
     var node = canvas(), scene = state.scene;
@@ -309,6 +342,11 @@
     );
     var cssWidth = Math.max(node.clientWidth, 1);
     var cssHeight = Math.max(node.clientHeight, 1);
+    if (!state.viewportGeometry) {
+      state.viewportGeometry = {width: cssWidth, height: cssHeight};
+    }
+    var viewportWidth = state.viewportGeometry.width;
+    var viewportHeight = state.viewportGeometry.height;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var width = Math.round(cssWidth * dpr), height = Math.round(cssHeight * dpr);
     if (node.width !== width || node.height !== height) {
@@ -319,32 +357,41 @@
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     ctx.fillStyle = "#fafbfa"; ctx.fillRect(0, 0, cssWidth, cssHeight);
     state.screenPoints = [];
+    window.__builderSpatialCanvasMetrics.viewerFrames = [];
     if (!scene.available || !scene.bounds) return;
     if (scene.layout === "separate") {
-      drawSeparate(ctx, scene, cssWidth, cssHeight);
+      drawSeparate(
+        ctx,
+        scene,
+        cssWidth,
+        cssHeight,
+        viewportWidth,
+        viewportHeight
+      );
       updateSummary(node, scene, " across separate ROI panels.");
       return;
     }
-    var pad = POINT_EDGE_PADDING;
+    var pad = VIEWER_FRAME_PADDING;
     var angle = finite(state.controls && state.controls.coordinateRotation, 0);
     var pointScale = coordinateScale(state.controls);
-    var layout = viewportLayout(
+    var persistedLayout = viewportLayout(
       scene.bounds,
       angle,
+      viewportWidth,
+      viewportHeight,
+      VIEWER_POINT_PADDING,
+      0,
+      pointScale
+    );
+    var persistedView = persistedLayout.imageFitView;
+    var layout = viewportLayout(
+      persistedView,
+      0,
       cssWidth,
       cssHeight,
       pad,
       IMAGE_EDGE_PADDING,
-      pointScale
-    );
-    var persistedLayout = viewportLayout(
-      scene.bounds,
-      angle,
-      cssWidth,
-      cssHeight,
-      LEGACY_VIEWPORT_PADDING,
-      LEGACY_VIEWPORT_PADDING,
-      pointScale
+      1
     );
     var scale = layout.scale, screen = layout.screen;
     window.__builderSpatialCanvasMetrics.latestViewport = {
@@ -355,7 +402,7 @@
     var viewportKey = scene.activeRoi || "__section__";
     var viewports = {};
     var imageFitViewports = {};
-    viewports[viewportKey] = persistedLayout.view;
+    viewports[viewportKey] = persistedView;
     imageFitViewports[viewportKey] = layout.imageFitView;
     publishViewports(scene, viewports, imageFitViewports);
     drawGrid(ctx, cssWidth, cssHeight, pad);
@@ -366,6 +413,7 @@
     }
     drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1, 1);
     drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5, pointScale);
+    drawViewerFrame(ctx, persistedView, screen);
     if (state.activeTransform === "points") {
       drawReference(ctx, scene.bounds, screen, angle, "Points", pointScale);
     }
@@ -377,7 +425,14 @@
       (scene.points.x || []).length + " sampled points" +
       (scene.capped ? " from a bounded sample" : "") + suffix;
   }
-  function drawSeparate(ctx, scene, width, height) {
+  function drawSeparate(
+    ctx,
+    scene,
+    width,
+    height,
+    viewportWidth,
+    viewportHeight
+  ) {
     var p = scene.points, groups = [];
     (p.group || []).forEach(function (group) {
       if (groups.indexOf(group) < 0) groups.push(group);
@@ -394,10 +449,10 @@
     var panelWidth = (width - gap * (columns + 1)) / columns;
     var panelHeight = (height - gap * (rows + 1)) / rows;
     var legacyPanelWidth = (
-      width - LEGACY_ROI_PANEL_GAP * (columns + 1)
+      viewportWidth - LEGACY_ROI_PANEL_GAP * (columns + 1)
     ) / columns;
     var legacyPanelHeight = (
-      height - LEGACY_ROI_PANEL_GAP * (rows + 1)
+      viewportHeight - LEGACY_ROI_PANEL_GAP * (rows + 1)
     ) / rows;
     var legacyPlotHeight = Math.max(legacyPanelHeight - LEGACY_ROI_HEADER, 1);
     var controls = state.controls || {};
@@ -428,25 +483,26 @@
       };
       if (bounds.xmin === bounds.xmax) { bounds.xmin -= .5; bounds.xmax += .5; }
       if (bounds.ymin === bounds.ymax) { bounds.ymin -= .5; bounds.ymax += .5; }
-      var local = viewportLayout(
-        bounds,
-        angle,
-        panelWidth,
-        panelHeight,
-        POINT_EDGE_PADDING,
-        IMAGE_EDGE_PADDING,
-        pointScale
-      );
       var persisted = viewportLayout(
         bounds,
         angle,
         legacyPanelWidth,
         legacyPlotHeight,
-        LEGACY_ROI_VIEWPORT_PADDING,
-        LEGACY_ROI_VIEWPORT_PADDING,
+        VIEWER_POINT_PADDING,
+        0,
         pointScale
       );
-      viewports[group] = persisted.view;
+      var persistedView = persisted.imageFitView;
+      var local = viewportLayout(
+        persistedView,
+        0,
+        panelWidth,
+        panelHeight,
+        VIEWER_FRAME_PADDING,
+        IMAGE_EDGE_PADDING,
+        1
+      );
+      viewports[group] = persistedView;
       imageFitViewports[group] = local.imageFitView;
       var screen = function (point) {
         var at = local.screen(point);
@@ -495,6 +551,7 @@
           drawReference(ctx, bounds, screen, angle, "Points", pointScale);
         }
       }
+      drawViewerFrame(ctx, persistedView, screen);
       ctx.strokeStyle = active ? "#d45500" : "#9a958d";
       ctx.lineWidth = active ? 3 : 1;
       ctx.strokeRect(left, top, panelWidth, panelHeight);

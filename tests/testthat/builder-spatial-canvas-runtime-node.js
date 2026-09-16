@@ -182,6 +182,12 @@ const overlay = {
 };
 custom.builder_spatial_canvas_scene(overlay);
 frames.shift()();
+const overlayViewerFrames = window.__builderSpatialCanvasMetrics.viewerFrames.map(
+  function (frame) { return Object.assign({}, frame); }
+);
+const overlayPoints = arcs.slice(0, 2).map(function (point) {
+  return Object.assign({}, point);
+});
 Array.from(timers.entries()).forEach(function (entry) {
   timers.delete(entry[0]);
   entry[1]();
@@ -189,6 +195,14 @@ Array.from(timers.entries()).forEach(function (entry) {
 const overlayViewport = inputs.filter(function (entry) {
   return entry.id === "builder_spatial_viewports";
 }).slice(-1)[0].value;
+
+canvas.clientWidth = 540;
+custom.builder_spatial_canvas_scene(Object.assign({}, overlay, {generation: 2}));
+frames.shift()();
+const resizedOverlayViewport = inputs.filter(function (entry) {
+  return entry.id === "builder_spatial_viewports";
+}).slice(-1)[0].value;
+canvas.clientWidth = 500;
 
 slider.value = "0.01";
 let stopped = 0;
@@ -239,7 +253,7 @@ const separate = {
   dataset: "dataset-a",
   snapshotIdentity: "snapshot-a",
   section: "section-a",
-  generation: 2,
+  generation: 3,
   resetToken: 0,
   layout: "separate",
   activeRoi: "A",
@@ -267,6 +281,9 @@ number.step = "0.02";
 arcs.length = 0;
 custom.builder_spatial_canvas_scene(separate);
 frames.shift()();
+const separateViewerFrames = window.__builderSpatialCanvasMetrics.viewerFrames.map(
+  function (frame) { return Object.assign({}, frame); }
+);
 Array.from(timers.entries()).forEach(function (entry) {
   timers.delete(entry[0]);
   entry[1]();
@@ -291,7 +308,7 @@ nativeHandlers.input.forEach(function (handler) {
   });
 });
 custom.builder_spatial_canvas_scene(Object.assign({}, separate, {
-  generation: 3,
+  generation: 4,
   resetToken: 1,
   controls: Object.assign({}, separate.controls, {scale: 0.001}),
 }));
@@ -304,7 +321,7 @@ Array.from(timers.entries()).forEach(function (entry) {
   entry[1]();
 });
 
-custom.builder_spatial_canvas_clear({viewKey: "separate", generation: 3});
+custom.builder_spatial_canvas_clear({viewKey: "separate", generation: 4});
 delegated.input.call(slider, {
   type: "input",
   currentTarget: slider,
@@ -313,7 +330,7 @@ delegated.input.call(slider, {
 });
 custom.builder_spatial_canvas_scene(Object.assign({}, overlay, {
   viewKey: "null-controls",
-  generation: 4,
+  generation: 5,
   resetToken: 1,
   controls: controls,
 }));
@@ -328,7 +345,11 @@ Array.from(timers.entries()).forEach(function (entry) {
 
 console.log(JSON.stringify({
   overlay: overlayViewport,
+  resizedOverlay: resizedOverlayViewport,
+  overlayViewerFrames: overlayViewerFrames,
+  overlayPoints: overlayPoints,
   separate: separateViewport,
+  separateViewerFrames: separateViewerFrames,
   separateFirstPoint: separateFirstPoint,
   nullControlsViewKey: nullControlsViewport.viewKey,
   numberValue: numberValueAfterIon,

@@ -286,22 +286,12 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     list()
   }
   background_control <- if (
-    !length(roi_background_groups) && length(background_choices) <= 1L
+    !length(roi_background_groups) && !length(background_choices)
   ) {
     NULL
   } else if (length(roi_background_groups)) {
     input_id <- "spatial_projection_roi_background_images"
-    selected_input <- isolate(input[[input_id]])
-    if (is.null(selected_input)) {
-      selected_input <- unname(vapply(
-        roi_background_groups,
-        function(group) {
-          choice <- normalize_spatial_background_choice(NULL, group$choices)
-          group$tokens[[choice]]
-        },
-        character(1)
-      ))
-    }
+    selected_input <- isolate(input[[input_id]]) %||% character()
     selected_tokens <- intersect(
       unlist(lapply(roi_background_groups, `[[`, "tokens"), use.names = FALSE),
       selected_input %||% character()
@@ -335,13 +325,22 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
       role = "group"
     )
   } else {
-    selectInput(
+    selected_background <- normalize_spatial_background_choice(
+      isolate(input[["spatial_projection_background_image"]]),
+      background_choices
+    )
+    selectizeInput(
       "spatial_projection_background_image",
       label = "Background image",
-      choices = background_choices,
-      selected = normalize_spatial_background_choice(
-        isolate(input[["spatial_projection_background_image"]]),
-        background_choices
+      choices = c("Select..." = "", background_choices),
+      selected = if (identical(selected_background, "none")) {
+        ""
+      } else {
+        selected_background
+      },
+      options = list(
+        plugins = list("remove_button"),
+        placeholder = "Select..."
       )
     )
   }
