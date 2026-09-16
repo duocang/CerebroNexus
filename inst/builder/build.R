@@ -1191,37 +1191,19 @@ builder_verify_crb <- function(path, item) {
         `image/jpeg` = "jpg",
         stop("Builder image has an unsupported MIME type.", call. = FALSE)
       )
-      filename <- builder_safe_file_name(
-        if (is.list(source)) source$name else NULL,
-        label
-      )
       filename <- paste0(
-        tools::file_path_sans_ext(filename),
+        safe_component(
+          paste(
+            label,
+            if (is.list(source)) source$name %||% "" else "",
+            inspected$source_content_md5,
+            sep = "::"
+          ),
+          "image"
+        ),
         ".",
         extension
       )
-      existing_paths <- unlist(
-        lapply(images[[item$name]][[section_id]] %||% list(), `[[`, "path"),
-        use.names = FALSE
-      )
-      existing_names <- if (length(existing_paths)) {
-        basename(existing_paths)
-      } else {
-        character()
-      }
-      if (filename %in% existing_names) {
-        existing_stems <- tools::file_path_sans_ext(existing_names[
-          tolower(tools::file_ext(existing_names)) == extension
-        ])
-        stem <- utils::tail(
-          make.unique(c(
-            existing_stems,
-            tools::file_path_sans_ext(filename)
-          )),
-          1L
-        )
-        filename <- paste0(stem, ".", extension)
-      }
       materialized <- file.path(section_dir, filename)
       if (materialized %in% materialized_paths || file.exists(materialized)) {
         stop("Builder Spatial image asset paths must be unique.", call. = FALSE)
