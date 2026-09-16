@@ -539,7 +539,7 @@ test_that("IR fill layout survives tab activation and responsive resize", {
 
   app$click(selector = 'a[href="#shiny-tab-overview"]')
   app$wait_for_js(
-    "document.getElementById('overview_projection_point_color')?.value === 'sample'",
+    "document.getElementById('overview_projection_point_color')?.value === 'seurat_clusters'",
     timeout = 30000
   )
   expect_true(isTRUE(app$get_js(
