@@ -412,7 +412,7 @@
       var angle = finite(roiControls.coordinateRotation, 0);
       var xs = indices.map(function (index) { return p.x[index]; });
       var ys = indices.map(function (index) { return p.y[index]; });
-      var bounds = {
+      var bounds = (scene.roiBounds || {})[group] || {
         xmin: Math.min.apply(null, xs), xmax: Math.max.apply(null, xs),
         ymin: Math.min.apply(null, ys), ymax: Math.max.apply(null, ys),
       };
