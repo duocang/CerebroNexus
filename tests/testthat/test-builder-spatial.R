@@ -1136,6 +1136,7 @@ test_that("browser control ownership rejects retired views but accepts an old ow
           image = scene$activeImage %||% "",
           viewKey = scene$viewKey,
           generation = scene$generation,
+          resetToken = scene$resetToken,
           sequence = sequence,
           controls = controls
         )
@@ -1155,6 +1156,69 @@ test_that("browser control ownership rejects retired views but accepts an old ow
         current_entry()$settings$images[["section-a"]]$A$scale,
         0.6
       )
+      ## The server may publish a replacement scene before the browser receives
+      ## it. A second complete control snapshot from the same active view still
+      ## belongs to that activation epoch even though it carries the old render
+      ## generation.
+      session$setInputs(
+        builder_spatial_alignment_controls = control_event(
+          initial_scene,
+          2,
+          0.7,
+          20
+        )
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.7
+      )
+      expect_identical(
+        alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
+          "section-a"
+        ]]$lesion$spec$rotation_degrees,
+        20
+      )
+      missing_reset_token <- control_event(initial_scene, 3, 0.8, 30)
+      missing_reset_token$resetToken <- NULL
+      session$setInputs(
+        builder_spatial_alignment_controls = missing_reset_token
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.7
+      )
+      expect_identical(
+        alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
+          "section-a"
+        ]]$lesion$spec$rotation_degrees,
+        20
+      )
+      pre_reset_scene <- alignment$canvas_contract()
+      session$setInputs(`enhance-reset_coordinate_transform` = 1L)
+      session$flushReact()
+      reset_scene <- alignment$canvas_contract()
+      expect_gt(reset_scene$resetToken, pre_reset_scene$resetToken)
+      session$setInputs(
+        builder_spatial_alignment_controls = control_event(
+          pre_reset_scene,
+          3,
+          0.8,
+          30
+        )
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.7
+      )
+      expect_identical(
+        alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
+          "section-a"
+        ]]$lesion$spec$rotation_degrees,
+        0
+      )
       separate_scene <- alignment$canvas_contract()
       expect_identical(separate_scene$viewKey, initial_scene$viewKey)
       expect_gte(separate_scene$generation, initial_scene$generation)
@@ -1167,14 +1231,14 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       single_scene <- alignment$canvas_contract()
       expect_false(identical(single_scene$viewKey, separate_scene$viewKey))
 
-      stale_different_view <- control_event(separate_scene, 2, 0.7, 20)
+      stale_different_view <- control_event(separate_scene, 4, 0.9, 40)
       session$setInputs(
         builder_spatial_alignment_controls = stale_different_view
       )
       session$flushReact()
       expect_identical(
         current_entry()$settings$images[["section-a"]]$A$scale,
-        0.6
+        0.7
       )
 
       ## Returning to a deterministic viewKey starts a new generation epoch;
@@ -1186,12 +1250,12 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       returned_scene <- alignment$canvas_contract()
       expect_identical(returned_scene$viewKey, separate_scene$viewKey)
       expect_gt(returned_scene$generation, separate_scene$generation)
-      stale_same_key <- control_event(separate_scene, 3, 0.8, 30)
+      stale_same_key <- control_event(separate_scene, 5, 1, 45)
       session$setInputs(builder_spatial_alignment_controls = stale_same_key)
       session$flushReact()
       expect_identical(
         current_entry()$settings$images[["section-a"]]$A$scale,
-        0.6
+        0.7
       )
 
       ## A pre-switch flush belongs to a different owner after ROI selection.
@@ -1209,7 +1273,7 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       session$setInputs(builder_spatial_roi_select = roi_event)
       session$flushReact()
       expect_identical(alignment$active_roi(), "border")
-      delayed_old_owner <- control_event(returned_scene, 4, 0.9, 45)
+      delayed_old_owner <- control_event(returned_scene, 6, 1, 50)
       session$setInputs(
         builder_spatial_alignment_controls = delayed_old_owner
       )
@@ -1217,13 +1281,13 @@ test_that("browser control ownership rejects retired views but accepts an old ow
 
       expect_identical(
         current_entry()$settings$images[["section-a"]]$A$scale,
-        0.9
+        1
       )
       expect_identical(
         alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
           "section-a"
         ]]$lesion$spec$rotation_degrees,
-        45
+        50
       )
       expect_identical(alignment$canvas_contract()$activeRoi, "border")
       expect_identical(
@@ -1253,7 +1317,7 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       session$setInputs(
         builder_spatial_alignment_controls = control_event(
           returned_scene,
-          5,
+          7,
           1.1,
           90
         )
@@ -1261,13 +1325,13 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       session$flushReact()
       expect_identical(
         current_entry()$settings$images[["section-a"]]$A$scale,
-        0.9
+        1
       )
       expect_identical(
         alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
           "section-a"
         ]]$lesion$spec$rotation_degrees,
-        45
+        50
       )
     }
   )
@@ -1637,6 +1701,7 @@ test_that("Trekker full-control commits preserve images without coordinate draft
           image = scene$activeImage,
           viewKey = scene$viewKey,
           generation = scene$generation,
+          resetToken = scene$resetToken,
           sequence = 1,
           controls = controls
         )
@@ -2333,6 +2398,7 @@ test_that("points-only Spatial FOV appearance persists without an image", {
           image = "",
           viewKey = scene$viewKey,
           generation = scene$generation,
+          resetToken = scene$resetToken,
           sequence = 1,
           controls = controls
         )
