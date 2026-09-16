@@ -473,7 +473,12 @@ ir_guide_tab_content <- function(tab) {
 ## the .ir-guide CSS (below), so the modal reads like a small doc site.
 observeEvent(input$ir_visualizations_info, {
   panels <- lapply(IR_GUIDE_TABS, function(tab) {
-    tabPanel(tab, div(class = "ir-guide-pane", ir_guide_tab_content(tab)))
+    label <- if (identical(tab, "Clonal UMAP")) "Clonal projection" else tab
+    tabPanel(
+      label,
+      value = tab,
+      div(class = "ir-guide-pane", ir_guide_tab_content(tab))
+    )
   })
   showModal(modalDialog(
     title = "Immune Repertoire visualizations — guide",

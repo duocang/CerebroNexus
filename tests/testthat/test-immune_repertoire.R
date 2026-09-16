@@ -458,6 +458,24 @@ test_that("Clonal UMAP waits for its raw grouping input", {
   expect_no_match(block, 'ir_param\\("ir_p_umap_group_by"')
 })
 
+test_that("Clonal projection builds traces without grouped frame copies", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "## Draw the non-faceted Clonal UMAP[\\s\\S]*?## ---- Clonal UMAP selection summaries",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_match(block, "background_cells <- which\\(is.na\\(df\\$expansion\\)\\)")
+  expect_match(block, "cells <- which\\(df\\$expansion == lvl\\)")
+  expect_no_match(block, "bg <- df[", fixed = TRUE)
+  expect_no_match(block, "fg <- df[", fixed = TRUE)
+  expect_match(block, "ir_projection_axis_names\\(projection\\)")
+})
+
 test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
   skip_if_not(file.exists(viz))

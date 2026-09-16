@@ -6,6 +6,7 @@
 - Inactive page work is deferred, HLA motif processing avoids dense adjacency matrices, and the HLA and Trajectory first frames meet the three-second million-cell target.
 - Specialist Canvas views resend their payload whenever remounted, so returning from Linked Views no longer leaves Projection, Gene Expression, Spatial, Trajectory, or HLA blank.
 - Specialist readiness reports the loaded data set's persisted cell fingerprint, and the initial Clonal UMAP host waits for its dynamic grouping input before mounting.
+- Immune repertoire views join only the active metadata columns, vectorize receptor matching, and cap contextual background points before allocating plot payloads; projection labels now follow UMAP, t-SNE, or PCA correctly.
 
 # CerebroNexus 4.6.1
 
