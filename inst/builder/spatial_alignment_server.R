@@ -774,6 +774,11 @@ builder_spatial_alignment_server <- function(
       default_projection = entry$settings$default_projection %||% NULL,
       group = roi_field %||% entry$settings$default_group %||% NULL,
       roi = if (identical(roi_view(), "__separate__")) "" else active_roi(),
+      base_coordinate_transform = if (identical(roi_view(), "")) {
+        NULL
+      } else {
+        coordinate_spec_for(entry, section, "")
+      },
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data"
     )
@@ -1002,6 +1007,7 @@ builder_spatial_alignment_server <- function(
       default_projection = entry$settings$default_projection %||% NULL,
       group = contract$group,
       roi = contract$roi,
+      base_coordinate_transform = contract$base_coordinate_transform,
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data",
       replaces = "spatial_alignment",
