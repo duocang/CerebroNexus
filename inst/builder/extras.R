@@ -1245,6 +1245,36 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   sum(values * c(256^3, 256^2, 256, 1))
 }
 
+.builder_png_crc32 <- local({
+  table <- integer(256L)
+  polynomial <- -306674912L
+  for (index in 0:255) {
+    value <- as.integer(index)
+    for (bit in 1:8) {
+      value <- if (bitwAnd(value, 1L)) {
+        bitwXor(bitwShiftR(value, 1L), polynomial)
+      } else {
+        bitwShiftR(value, 1L)
+      }
+    }
+    table[[index + 1L]] <- value
+  }
+  function(bytes) {
+    value <- -1L
+    for (byte in as.integer(bytes)) {
+      index <- bitwAnd(bitwXor(value, byte), 255L) + 1L
+      value <- bitwXor(bitwShiftR(value, 8L), table[[index]])
+    }
+    value <- bitwXor(value, -1L)
+    as.raw(c(
+      bitwAnd(bitwShiftR(value, 24L), 255L),
+      bitwAnd(bitwShiftR(value, 16L), 255L),
+      bitwAnd(bitwShiftR(value, 8L), 255L),
+      bitwAnd(value, 255L)
+    ))
+  }
+})
+
 .builder_png_dimensions <- function(bytes) {
   signature <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
   if (
@@ -1266,6 +1296,18 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   c(width = width, height = height)
 }
 
+.builder_png_zlib_header_valid <- function(bytes) {
+  if (length(bytes) != 2L) {
+    return(FALSE)
+  }
+  compression <- as.integer(bytes[[1L]])
+  flags <- as.integer(bytes[[2L]])
+  bitwAnd(compression, 0x0fL) == 8L &&
+    bitwShiftR(compression, 4L) <= 7L &&
+    bitwAnd(flags, 0x20L) == 0L &&
+    (compression * 256L + flags) %% 31L == 0L
+}
+
 .builder_png_has_pixel_data <- function(path) {
   size <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
   if (!is.finite(size) || size < 45) {
@@ -1279,6 +1321,9 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   }
   position <- 8
   has_pixel_data <- FALSE
+  seen_idat <- FALSE
+  ended_idat <- FALSE
+  zlib_header <- raw()
   repeat {
     header <- readBin(connection, what = "raw", n = 8L)
     if (length(header) != 8L) {
@@ -1289,13 +1334,60 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       return(FALSE)
     }
     chunk_type <- header[5:8]
-    if (identical(chunk_type, charToRaw("IDAT")) && chunk_length > 0) {
-      has_pixel_data <- TRUE
+    is_idat <- identical(chunk_type, charToRaw("IDAT"))
+    if (
+      (position == 8 && !identical(chunk_type, charToRaw("IHDR"))) ||
+        (position != 8 && identical(chunk_type, charToRaw("IHDR"))) ||
+        (is_idat && ended_idat)
+    ) {
+      return(FALSE)
     }
-    if (identical(chunk_type, charToRaw("IEND"))) {
-      return(chunk_length == 0 && has_pixel_data && position + 12 == size)
+    if (seen_idat && !is_idat) {
+      ended_idat <- TRUE
     }
-    seek(connection, where = chunk_length + 4, origin = "current")
+    if (identical(chunk_type, charToRaw("IHDR"))) {
+      if (chunk_length != 13) {
+        return(FALSE)
+      }
+      chunk_data <- readBin(connection, what = "raw", n = chunk_length)
+      checksum <- readBin(connection, what = "raw", n = 4L)
+      if (
+        length(chunk_data) != chunk_length ||
+          !identical(
+            checksum,
+            .builder_png_crc32(c(chunk_type, chunk_data))
+          )
+      ) {
+        return(FALSE)
+      }
+    } else if (is_idat) {
+      seen_idat <- TRUE
+      take <- min(2L - length(zlib_header), chunk_length)
+      if (take > 0L) {
+        zlib_header <- c(
+          zlib_header,
+          readBin(connection, what = "raw", n = take)
+        )
+      }
+      seek(connection, where = chunk_length - take + 4L, origin = "current")
+      if (
+        length(zlib_header) == 2L &&
+          !.builder_png_zlib_header_valid(zlib_header)
+      ) {
+        return(FALSE)
+      }
+      has_pixel_data <- length(zlib_header) == 2L
+    } else if (identical(chunk_type, charToRaw("IEND"))) {
+      checksum <- readBin(connection, what = "raw", n = 4L)
+      return(
+        chunk_length == 0 &&
+          has_pixel_data &&
+          position + 12 == size &&
+          identical(checksum, .builder_png_crc32(chunk_type))
+      )
+    } else {
+      seek(connection, where = chunk_length + 4, origin = "current")
+    }
     position <- position + chunk_length + 12
   }
 }
@@ -1351,7 +1443,7 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   NULL
 }
 
-.builder_jpeg_dimensions <- function(bytes) {
+.builder_jpeg_dimensions_from_connection <- function(connection, total) {
   unsafe <- function() {
     list(
       error = "JPEG metadata could not be read. Check that the file is valid."
@@ -1363,14 +1455,45 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   incomplete <- function() {
     list(error = "The image file is incomplete or truncated.")
   }
+  read_bytes <- function(size) {
+    readBin(connection, what = "raw", n = size)
+  }
+  read_uint16 <- function() {
+    bytes <- read_bytes(2L)
+    if (length(bytes) != 2L) {
+      return(NA_integer_)
+    }
+    as.integer(bytes[[1L]]) * 256L + as.integer(bytes[[2L]])
+  }
+  quantization_tables <- function(segment) {
+    tables <- integer()
+    cursor <- 1L
+    while (cursor <= length(segment)) {
+      descriptor <- as.integer(segment[[cursor]])
+      precision <- bitwShiftR(descriptor, 4L)
+      table <- bitwAnd(descriptor, 0x0fL)
+      values <- if (precision == 0L) {
+        64L
+      } else if (precision == 1L) {
+        128L
+      } else {
+        0L
+      }
+      if (table > 3L || values == 0L || cursor + values > length(segment)) {
+        return(NULL)
+      }
+      tables <- c(tables, table)
+      cursor <- cursor + values + 1L
+    }
+    if (length(tables)) unique(tables) else NULL
+  }
   if (
-    length(bytes) < 2L ||
-      !identical(bytes[1:2], as.raw(c(0xff, 0xd8)))
+    !is.finite(total) ||
+      total < 2L ||
+      !identical(read_bytes(2L), as.raw(c(0xff, 0xd8)))
   ) {
     return(NULL)
   }
-  value_at <- function(index) as.integer(bytes[[index]])
-  total <- length(bytes)
   start_of_frame <- c(
     0xc0,
     0xc1,
@@ -1386,37 +1509,140 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
     0xce,
     0xcf
   )
+  dct_frame <- c(0xc0, 0xc1, 0xc2, 0xc5, 0xc6, 0xc9, 0xca, 0xcd, 0xce)
   standalone <- c(0x01, 0xd8, 0xd9, 0xd0:0xd7)
   orientation <- 1L
   width <- NULL
   height <- NULL
-  has_pixel_data <- FALSE
-  cursor <- 3L
-  while (cursor <= total) {
-    while (cursor <= total && value_at(cursor) != 0xffL) {
-      cursor <- cursor + 1L
+  frame_marker <- NULL
+  frame_components <- NULL
+  available_quantization_tables <- integer()
+  repeat {
+    marker_prefix <- read_bytes(1L)
+    if (length(marker_prefix) != 1L) {
+      return(if (!is.null(width)) incomplete() else unsafe())
     }
-    if (cursor > total) {
+    if (!identical(marker_prefix, as.raw(0xff))) {
       return(unsafe())
     }
-    marker_index <- cursor + 1L
-    while (marker_index <= total && value_at(marker_index) == 0xffL) {
-      marker_index <- marker_index + 1L
+    marker_raw <- read_bytes(1L)
+    while (length(marker_raw) == 1L && identical(marker_raw, as.raw(0xff))) {
+      marker_raw <- read_bytes(1L)
     }
-    if (marker_index > total) {
+    if (length(marker_raw) != 1L) {
       return(unsafe())
     }
-    marker <- value_at(marker_index)
+    marker <- as.integer(marker_raw)
     if (marker == 0L) {
-      cursor <- marker_index + 1L
-      next
+      return(unsafe())
     }
     if (marker == 0xd9L) {
-      if (is.null(width) || is.null(height)) {
+      return(
+        if (is.null(width) || is.null(height)) unsafe() else missing_pixels()
+      )
+    }
+    if (marker %in% standalone) {
+      next
+    }
+    segment_length <- read_uint16()
+    payload_length <- segment_length - 2L
+    position <- seek(connection, where = NA, origin = "current")
+    if (
+      !is.finite(segment_length) ||
+        segment_length < 2L ||
+        position + payload_length > total
+    ) {
+      return(unsafe())
+    }
+    if (marker == 0xe1L) {
+      segment <- read_bytes(payload_length)
+      orientation <- .builder_jpeg_exif_orientation(
+        segment
+      ) %||%
+        orientation
+      next
+    } else if (marker == 0xdbL) {
+      tables <- quantization_tables(read_bytes(payload_length))
+      if (is.null(tables)) {
+        return(missing_pixels())
+      }
+      available_quantization_tables <- unique(c(
+        available_quantization_tables,
+        tables
+      ))
+      next
+    } else if (marker %in% start_of_frame) {
+      if (payload_length < 6L) {
         return(unsafe())
       }
-      if (!has_pixel_data) {
+      frame <- read_bytes(payload_length)
+      if (length(frame) != payload_length) {
+        return(unsafe())
+      }
+      height <- as.integer(frame[[2L]]) * 256L + as.integer(frame[[3L]])
+      width <- as.integer(frame[[4L]]) * 256L + as.integer(frame[[5L]])
+      frame_marker <- marker
+      component_count <- as.integer(frame[[6L]])
+      expected_length <- 6L + component_count * 3L
+      if (
+        !all(is.finite(c(width, height))) ||
+          width < 1 ||
+          height < 1 ||
+          component_count < 1L ||
+          payload_length != expected_length
+      ) {
+        return(unsafe())
+      }
+      component_starts <- seq.int(7L, by = 3L, length.out = component_count)
+      component_ids <- as.integer(frame[component_starts])
+      component_tables <- as.integer(frame[component_starts + 2L])
+      if (
+        anyDuplicated(component_ids) ||
+          any(component_tables < 0L | component_tables > 3L)
+      ) {
+        return(unsafe())
+      }
+      frame_components <- stats::setNames(
+        component_tables,
+        as.character(component_ids)
+      )
+      next
+    } else if (marker == 0xdaL) {
+      scan <- read_bytes(payload_length)
+      scan_component_count <- if (length(scan)) as.integer(scan[[1L]]) else 0L
+      expected_length <- 1L + scan_component_count * 2L + 3L
+      scan_starts <- if (scan_component_count > 0L) {
+        seq.int(2L, by = 2L, length.out = scan_component_count)
+      } else {
+        integer()
+      }
+      scan_components <- as.character(as.integer(scan[scan_starts]))
+      if (
+        is.null(width) ||
+          is.null(height) ||
+          is.null(frame_components) ||
+          scan_component_count < 1L ||
+          payload_length != expected_length ||
+          anyDuplicated(scan_components) ||
+          !all(scan_components %in% names(frame_components)) ||
+          (frame_marker %in%
+            dct_frame &&
+            !all(
+              unname(frame_components[scan_components]) %in%
+                available_quantization_tables
+            ))
+      ) {
+        return(
+          if (is.null(width) || is.null(height)) unsafe() else missing_pixels()
+        )
+      }
+      entropy_start <- seek(connection, where = NA, origin = "current")
+      if (total - entropy_start < 3L) {
         return(missing_pixels())
+      }
+      seek(connection, where = total - 2L, origin = "start")
+      if (!identical(read_bytes(2L), as.raw(c(0xff, 0xd9)))) {
+        return(incomplete())
       }
       if (orientation %in% 5:8) {
         swap <- width
@@ -1424,78 +1650,19 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
         height <- swap
       }
       return(c(width = as.integer(width), height = as.integer(height)))
+    } else {
+      seek(connection, where = payload_length, origin = "current")
     }
-    if (marker %in% standalone) {
-      cursor <- marker_index + 1L
-      next
-    }
-    if (marker_index + 2L > total) {
-      return(unsafe())
-    }
-    segment_length <- value_at(marker_index + 1L) *
-      256 +
-      value_at(marker_index + 2L)
-    if (
-      !is.finite(segment_length) ||
-        segment_length < 2L ||
-        marker_index + segment_length > total
-    ) {
-      return(unsafe())
-    }
-    if (marker == 0xe1L && segment_length >= 16L) {
-      orientation <- .builder_jpeg_exif_orientation(
-        bytes[(marker_index + 3L):(marker_index + segment_length)]
-      ) %||%
-        orientation
-    }
-    if (marker %in% start_of_frame) {
-      if (segment_length < 7L || marker_index + 7L > total) {
-        return(unsafe())
-      }
-      height <- value_at(marker_index + 4L) * 256 + value_at(marker_index + 5L)
-      width <- value_at(marker_index + 6L) * 256 + value_at(marker_index + 7L)
-      if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
-        return(unsafe())
-      }
-    }
-    if (marker == 0xdaL) {
-      if (is.null(width) || segment_length < 6L) {
-        return(unsafe())
-      }
-      cursor <- marker_index + segment_length + 1L
-      while (cursor <= total) {
-        if (value_at(cursor) != 0xffL) {
-          has_pixel_data <- TRUE
-          cursor <- cursor + 1L
-          next
-        }
-        scan_marker <- cursor + 1L
-        while (scan_marker <= total && value_at(scan_marker) == 0xffL) {
-          scan_marker <- scan_marker + 1L
-        }
-        if (scan_marker > total) {
-          return(incomplete())
-        }
-        scan_code <- value_at(scan_marker)
-        if (scan_code == 0L) {
-          has_pixel_data <- TRUE
-          cursor <- scan_marker + 1L
-          next
-        }
-        if (scan_code %in% 0xd0:0xd7) {
-          cursor <- scan_marker + 1L
-          next
-        }
-        break
-      }
-      if (cursor > total) {
-        return(incomplete())
-      }
-      next
-    }
-    cursor <- marker_index + segment_length + 1L
   }
-  if (!is.null(width)) incomplete() else unsafe()
+}
+
+.builder_jpeg_dimensions <- function(bytes) {
+  if (!is.raw(bytes)) {
+    return(NULL)
+  }
+  connection <- rawConnection(bytes, open = "rb")
+  on.exit(close(connection), add = TRUE)
+  .builder_jpeg_dimensions_from_connection(connection, length(bytes))
 }
 
 #' Read PNG/JPEG dimensions without decoding the raster.
@@ -1511,8 +1678,7 @@ builder_image_file_dimensions <- function(path, filename = path) {
     header <- readBin(connection, what = "raw", n = 24L)
     return(.builder_png_dimensions(header))
   }
-  header <- readBin(connection, what = "raw", n = file.size(path))
-  .builder_jpeg_dimensions(header)
+  .builder_jpeg_dimensions_from_connection(connection, file.size(path))
 }
 
 .builder_image_has_complete_terminator <- function(path, mime) {
@@ -1531,13 +1697,8 @@ builder_image_file_dimensions <- function(path, filename = path) {
         identical(tail[5:8], charToRaw("IEND"))
     )
   }
-  tail_size <- min(size, 65536)
-  seek(connection, where = size - tail_size, origin = "start")
-  tail <- readBin(connection, what = "raw", n = tail_size)
-  if (length(tail) < 2L) {
-    return(FALSE)
-  }
-  any(tail[-length(tail)] == as.raw(0xff) & tail[-1L] == as.raw(0xd9))
+  seek(connection, where = size - 2L, origin = "start")
+  identical(readBin(connection, what = "raw", n = 2L), as.raw(c(0xff, 0xd9)))
 }
 
 #' Validate PNG/JPEG metadata while retaining its canonical source path.

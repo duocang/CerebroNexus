@@ -1185,15 +1185,16 @@ test_that("restore status snapshots are reused without weakening default validat
   writeBin(charToRaw("source"), source)
   writeBin(charToRaw("artifact"), artifact_path)
   entry <- list(id = "ds1", settings = list(name = "Dataset"))
+  source_fingerprint <- runtime$builder_project_file_fingerprint(
+    source,
+    content = TRUE
+  )
   record <- runtime$builder_project_dataset_record(
     entry,
     source = list(
       kind = "managed",
       path = runtime$builder_project_relative_path(source, root),
-      fingerprint = runtime$builder_project_file_fingerprint(
-        source,
-        content = TRUE
-      )
+      fingerprint = source_fingerprint
     ),
     artifact = list(
       status = "ready",
@@ -1202,7 +1203,19 @@ test_that("restore status snapshots are reused without weakening default validat
         artifact_path,
         content = TRUE
       ),
-      members = list()
+      members = list(),
+      built_from_revision = 0L,
+      built_from_source_fingerprint = paste(
+        "builder-snapshot-v2",
+        "source.rds",
+        source_fingerprint$bytes,
+        source_fingerprint$modified_at,
+        source_fingerprint$md5,
+        sep = ":"
+      ),
+      built_from_configuration = runtime$builder_project_configuration_digest(
+        entry
+      )
     ),
     checked = TRUE,
     root = root
@@ -1696,6 +1709,28 @@ test_that("reusable artifacts are staged without replacing existing files", {
   expect_identical(readBin(target, "raw", n = 100L), charToRaw("existing"))
 })
 
+test_that("reusable artifact copies are verified after staging", {
+  runtime <- builder_project_test_runtime()
+  source <- withr::local_tempfile(fileext = ".crb")
+  target <- withr::local_tempfile(fileext = ".crb")
+  writeBin(charToRaw("original"), source)
+  unlink(target)
+  fingerprint <- list(md5 = unname(tools::md5sum(source)))
+  mutating_copy <- function(source, target) {
+    copied <- file.copy(source, target)
+    writeBin(charToRaw("mutated!"), target)
+    copied
+  }
+
+  expect_false(runtime$.builder_build_copy_verified(
+    source,
+    target,
+    fingerprint,
+    .copy = mutating_copy
+  ))
+  expect_false(file.exists(target))
+})
+
 test_that("reusable artifact staging uses portable clone fallbacks", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -1957,7 +1992,11 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
         artifact_path,
         content = TRUE
       ),
-      members = list()
+      members = list(),
+      built_from_revision = 0L,
+      built_from_configuration = runtime$builder_project_configuration_digest(
+        entry
+      )
     ),
     root = root
   )
@@ -2962,6 +3001,8 @@ test_that("reusable CRB preparation skips current artifacts", {
   writeLines("ready", artifact_path)
   entry <- list(
     id = "ds1",
+    revision = 4L,
+    snapshot = list(source_fingerprint = "source-a"),
     settings = list(name = "Dataset"),
     acknowledgements = character(),
     spatial_drafts = list()
@@ -2975,6 +3016,8 @@ test_that("reusable CRB preparation skips current artifacts", {
       content = TRUE
     ),
     members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
     built_from_configuration = runtime$builder_project_configuration_digest(
       entry
     )
@@ -3011,7 +3054,9 @@ test_that("current project CRBs replace only temporary Build entries", {
   writeLines("ready", artifact_path)
   entry <- list(
     id = "ds1",
+    revision = 4L,
     load_state = "loaded",
+    snapshot = list(source_fingerprint = "source-a"),
     settings = list(name = "Dataset"),
     acknowledgements = character(),
     spatial_drafts = list()
@@ -3025,6 +3070,8 @@ test_that("current project CRBs replace only temporary Build entries", {
       content = TRUE
     ),
     members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
     built_from_configuration = runtime$builder_project_configuration_digest(
       entry
     )
@@ -3054,6 +3101,18 @@ test_that("current project CRBs replace only temporary Build entries", {
     list(changed)
   )
 
+  changed <- entry
+  changed$revision <- 5L
+  changed$snapshot$source_fingerprint <- "source-b"
+  expect_identical(
+    runtime$builder_project_entries_for_build(
+      list(changed),
+      list(ds1 = artifact),
+      root
+    ),
+    list(changed)
+  )
+
   unlink(artifact_path)
   expect_identical(
     runtime$builder_project_entries_for_build(
@@ -3062,6 +3121,106 @@ test_that("current project CRBs replace only temporary Build entries", {
       root
     ),
     list(entry)
+  )
+})
+
+test_that("re-registered artifacts retain their source identity", {
+  runtime <- builder_project_test_runtime()
+  previous <- list(built_from_source_fingerprint = "source-a")
+  reused <- list(reused_artifact = list(path = "dataset.crb"))
+
+  expect_identical(
+    runtime$builder_project_artifact_source_fingerprint(
+      list(snapshot = NULL),
+      reused,
+      previous
+    ),
+    "source-a"
+  )
+  expect_identical(
+    runtime$builder_project_artifact_source_fingerprint(
+      list(snapshot = list(source_fingerprint = "source-b")),
+      reused,
+      previous
+    ),
+    "source-b"
+  )
+  expect_null(runtime$builder_project_artifact_source_fingerprint(
+    list(snapshot = NULL),
+    list(),
+    previous
+  ))
+})
+
+test_that("reopened projects reject artifacts from an older source", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source_path <- file.path(root, "sources", "ds1", "source.rds")
+  artifact_path <- file.path(root, "artifacts", "ds1", "dataset.crb")
+  dir.create(dirname(source_path), recursive = TRUE)
+  dir.create(dirname(artifact_path), recursive = TRUE)
+  writeBin(charToRaw("new-source"), source_path)
+  writeBin(charToRaw("old-artifact"), artifact_path)
+  source_fingerprint <- runtime$builder_project_file_fingerprint(
+    source_path,
+    content = TRUE
+  )
+  entry <- list(
+    id = "ds1",
+    revision = 5L,
+    settings = list(name = "Dataset"),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = runtime$builder_project_relative_path(artifact_path, root),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      artifact_path,
+      content = TRUE
+    ),
+    members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
+    built_from_configuration = runtime$builder_project_configuration_digest(
+      entry
+    )
+  )
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(
+      kind = "managed",
+      path = runtime$builder_project_relative_path(source_path, root),
+      fingerprint = source_fingerprint
+    ),
+    artifact = artifact,
+    checked = TRUE,
+    root = root
+  )
+
+  expect_false(
+    runtime$builder_project_dataset_status(record, root)$artifact_ready
+  )
+  reopened <- runtime$builder_project_prepare_open_selection(
+    list(datasets = list(record)),
+    root,
+    list(ds1 = "reuse")
+  )
+  expect_length(reopened$reusable_entries, 0L)
+  expect_identical(reopened$skipped_ids, "ds1")
+
+  record$artifact$built_from_revision <- 5L
+  record$artifact$built_from_source_fingerprint <- paste(
+    "builder-snapshot-v2",
+    "source.rds",
+    source_fingerprint$bytes,
+    source_fingerprint$modified_at,
+    source_fingerprint$md5,
+    sep = ":"
+  )
+  expect_true(
+    runtime$builder_project_dataset_status(record, root)$artifact_ready
   )
 })
 
@@ -3693,6 +3852,96 @@ test_that("restored source identity requires the recorded content fingerprint", 
   expect_false(status$checked)
 })
 
+test_that("content-addressed sources detect same-metadata tampering", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  staged <- file.path(root, "source.rds")
+  writeBin(charToRaw("AAAA"), staged)
+  source_md5 <- unname(tools::md5sum(staged))
+  relative <- paste(
+    "sources",
+    "ds1",
+    "blobs",
+    source_md5,
+    "source.rds",
+    sep = "/"
+  )
+  source <- file.path(root, relative)
+  dir.create(dirname(source), recursive = TRUE)
+  expect_true(file.rename(staged, source))
+  recorded_time <- file.info(source)$mtime[[1L]]
+  record <- runtime$builder_project_dataset_record(
+    list(id = "ds1", settings = list(name = "Dataset")),
+    source = list(
+      kind = "managed",
+      path = relative,
+      status = "ready",
+      fingerprint = runtime$builder_project_file_fingerprint(
+        source,
+        content = TRUE
+      )
+    ),
+    checked = TRUE,
+    root = root
+  )
+
+  writeBin(charToRaw("BBBB"), source)
+  Sys.setFileTime(source, recorded_time)
+  status <- runtime$builder_project_dataset_status(record, root)
+
+  expect_false(status$source_matches)
+  expect_false(status$checked)
+})
+
+test_that("persisted fingerprints retain the unchanged-file fast path", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  path <- withr::local_tempfile()
+  writeBin(charToRaw("artifact"), path)
+  recorded <- runtime$builder_project_file_fingerprint(path, content = TRUE)
+  persisted <- jsonlite::unserializeJSON(jsonlite::serializeJSON(
+    recorded,
+    digits = NA
+  ))
+  content_reads <- 0L
+  fingerprint <- runtime$builder_project_file_fingerprint
+  runtime$builder_project_file_fingerprint <- function(path, content = FALSE) {
+    if (isTRUE(content)) {
+      content_reads <<- content_reads + 1L
+    }
+    fingerprint(path, content = content)
+  }
+
+  expect_true(runtime$builder_project_managed_file_matches(persisted, path))
+  expect_identical(content_reads, 0L)
+  expect_identical(persisted$changed_at, recorded$changed_at)
+})
+
+test_that("invalid change times fall back to content validation", {
+  runtime <- builder_project_test_runtime()
+  path <- withr::local_tempfile()
+  writeBin(charToRaw("AAAA"), path)
+  recorded_time <- file.info(path)$mtime[[1L]]
+  recorded <- runtime$builder_project_file_fingerprint(path, content = TRUE)
+  recorded$changed_at <- "NA"
+  writeBin(charToRaw("BBBB"), path)
+  Sys.setFileTime(path, recorded_time)
+  content_reads <- 0L
+  fingerprint <- runtime$builder_project_file_fingerprint
+  runtime$builder_project_file_fingerprint <- function(path, content = FALSE) {
+    value <- fingerprint(path, content = content)
+    if (isTRUE(content)) {
+      content_reads <<- content_reads + 1L
+    } else {
+      value$changed_at <- "NA"
+    }
+    value
+  }
+
+  expect_false(runtime$builder_project_managed_file_matches(recorded, path))
+  expect_identical(content_reads, 1L)
+})
+
 test_that("artifact availability validates the primary file and every member", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -3719,6 +3968,20 @@ test_that("artifact availability validates the primary file and every member", {
     ))
   )
 
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
+  primary_time <- file.info(primary)$mtime[[1L]]
+  writeBin(charToRaw("altered"), primary)
+  Sys.setFileTime(primary, primary_time)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+  writeBin(charToRaw("primary"), primary)
+  Sys.setFileTime(primary, primary_time)
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
+  member_time <- file.info(member)$mtime[[1L]]
+  writeBin(charToRaw("tamper"), member)
+  Sys.setFileTime(member, member_time)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+  writeBin(charToRaw("member"), member)
+  Sys.setFileTime(member, member_time)
   expect_true(runtime$builder_project_artifact_available(artifact, root))
   writeBin(charToRaw("changed"), member)
   expect_false(runtime$builder_project_artifact_available(artifact, root))

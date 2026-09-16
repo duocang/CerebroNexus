@@ -86,6 +86,44 @@ spatial_projection_parameters_plot <- reactive({
     if (exists("available_crb_files")) available_crb_files$files else NULL,
     if (exists("available_crb_files")) available_crb_files$selected else NULL
   )
+  roi_point_appearance <- list()
+  if (identical(selected_roi, "__separate__")) {
+    default_appearance <- current_scatter_defaults()
+    section_appearance <- spatialPointAppearance(
+      Cerebro.options,
+      dataset,
+      spatial_name
+    )
+    if (!is.null(section_appearance)) {
+      default_appearance[names(section_appearance)] <- section_appearance
+    }
+    keep_size <- isTRUE(all.equal(
+      as.numeric(input[["spatial_projection_point_size"]]),
+      as.numeric(default_appearance$point_size)
+    ))
+    keep_opacity <- isTRUE(all.equal(
+      as.numeric(input[["spatial_projection_point_opacity"]]),
+      as.numeric(default_appearance$point_opacity)
+    ))
+    roi_point_appearance <- stats::setNames(
+      lapply(separate_roi_values, function(roi) {
+        setting <- spatialRoiSetting(
+          Cerebro.options,
+          dataset,
+          spatial_name,
+          roi
+        )
+        if (is.null(setting)) {
+          return(list())
+        }
+        setting[c(
+          if (keep_opacity) "point_opacity",
+          if (keep_size) "point_size"
+        )]
+      }),
+      separate_roi_values
+    )
+  }
   roi_backgrounds <- list()
   if (identical(selected_roi, "__separate__")) {
     groups <- spatial_roi_background_groups(
@@ -197,6 +235,7 @@ spatial_projection_parameters_plot <- reactive({
     plot_type = plot_type,
     split_by = split_by,
     roi_order = separate_roi_values,
+    roi_point_appearance = roi_point_appearance,
     feature_to_display = feature_to_display,
     coexpr_r = input[["spatial_projection_coexpr_r"]],
     coexpr_g = input[["spatial_projection_coexpr_g"]],

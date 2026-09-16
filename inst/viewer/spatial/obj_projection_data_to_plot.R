@@ -30,43 +30,6 @@ spatial_projection_full_ranges <- reactive({
   )
 })
 
-spatial_projection_group_hulls <- reactive({
-  if (
-    !isTRUE(input[["spatial_projection_show_region_outlines"]]) ||
-      !identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")
-  ) {
-    return(list())
-  }
-  color_variable <- input[["spatial_projection_point_color"]]
-  metadata <- spatial_projection_metadata()
-  req(color_variable, color_variable %in% colnames(metadata))
-  color_input <- metadata[[color_variable]]
-  if (is.numeric(color_input)) {
-    return(list())
-  }
-  coordinates <- spatial_projection_coordinates()
-  dataset <- spatial_dataset_name(
-    available_crb_files$files,
-    available_crb_files$selected
-  )
-  coordinates <- rotateSpatialCoordinates(
-    coordinates,
-    spatialPlotRotation(
-      Cerebro.options,
-      dataset,
-      input[["spatial_projection_to_display"]]
-    )
-  )
-  if (ncol(coordinates) != 2L) {
-    return(list())
-  }
-  compute_group_hulls(
-    coordinates[[1]],
-    coordinates[[2]],
-    as.character(color_input)
-  )
-})
-
 spatial_projection_data_to_plot_raw <- reactive({
   req(
     spatial_projection_metadata(),
@@ -159,40 +122,26 @@ spatial_projection_data_to_plot_raw <- reactive({
   full_coordinate_frame <- getSpatialData(
     plot_parameters[["projection"]]
   )$coordinates
-  full_coordinate_cells <- rownames(full_coordinate_frame) %||% character()
-  full_roi_facet <- spatial_metadata_facet(
-    getMetaData(),
-    full_coordinate_cells,
-    c(
-      plot_parameters[["split_by"]],
-      "sample_roi",
-      "roi",
-      "roi_id",
-      "region_of_interest"
-    )
-  )
-  full_roi_values <- as.character(
-    full_roi_facet$by_cell[full_coordinate_cells]
-  )
-  roi_pivots <- spatialRoiPivots(
+  roi_context <- spatial_roi_transform_context(
     full_coordinate_frame,
-    full_roi_values,
+    getMetaData(),
+    input[["spatial_projection_sample"]] %||% "",
     rotation_angle
   )
+  roi_pivots <- roi_context$pivots
   selected_roi <- spatial_roi_value(plot_parameters[["roi_selection"]])
+  displayed_coordinates <- spatial_projection_coordinates()
+  displayed_cells <- rownames(displayed_coordinates) %||% character()
   roi_values <- if (nzchar(selected_roi)) {
     rep(selected_roi, nrow(metadata))
-  } else if (
-    identical(plot_parameters[["roi_mode"]], "separate") &&
-      plot_parameters[["split_by"]] %in% colnames(metadata)
-  ) {
-    as.character(metadata[[plot_parameters[["split_by"]]]])
+  } else if (identical(plot_parameters[["roi_mode"]], "separate")) {
+    as.character(roi_context$roi_by_cell[displayed_cells])
   } else {
     rep(NA_character_, nrow(metadata))
   }
   ## Apply rotation to the displayed (subset) coordinates.
   coordinates <- rotateSpatialCoordinatesByRoi(
-    spatial_projection_coordinates(),
+    displayed_coordinates,
     roi_values,
     roi_settings,
     rotation_angle,
@@ -211,20 +160,10 @@ spatial_projection_data_to_plot_raw <- reactive({
       cells
     )
     if (length(cell_boundaries)) {
-      metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
-        as.character(metadata[["cell_barcode"]])
-      } else {
-        rownames(metadata)
-      }
       boundary_roi <- if (nzchar(selected_roi)) {
         rep(selected_roi, length(cell_boundaries$x))
-      } else if (
-        identical(plot_parameters[["roi_mode"]], "separate") &&
-          plot_parameters[["split_by"]] %in% colnames(metadata)
-      ) {
-        as.character(metadata[[plot_parameters[["split_by"]]]])[
-          match(cell_boundaries$cell_barcode, metadata_cells)
-        ]
+      } else if (identical(plot_parameters[["roi_mode"]], "separate")) {
+        as.character(roi_context$roi_by_cell[cell_boundaries$cell_barcode])
       } else {
         rep(NA_character_, length(cell_boundaries$x))
       }
@@ -262,55 +201,61 @@ spatial_projection_data_to_plot_raw <- reactive({
       molecule_points$y <- rotated_molecules[[2L]]
     }
   }
+  group_hulls <- if (
+    isTRUE(plot_parameters[["show_region_outlines"]]) &&
+      identical(plot_parameters[["plot_type"]], "ImageDimPlot") &&
+      !is.numeric(metadata[[plot_parameters[["color_variable"]]]]) &&
+      ncol(coordinates) == 2L
+  ) {
+    compute_group_hulls(
+      coordinates[[1L]],
+      coordinates[[2L]],
+      as.character(metadata[[plot_parameters[["color_variable"]]]])
+    )
+  } else {
+    list()
+  }
 
   ## Pin the axes to the FULL cell extent, not the currently displayed subset.
   ## Otherwise, changing "Show % of observations" rescales the axes to whatever subset
   ## is plotted and the plot visibly jitters. We compute the range over ALL cells
   ## (in the same rotated frame) and pass it as an explicit x/y range. A small
   ## margin keeps edge points off the frame.
+  full_cells <- roi_context$scoped_cells
+  if (nzchar(selected_roi)) {
+    full_cells <- full_cells[
+      !is.na(roi_context$roi_by_cell[full_cells]) &
+        roi_context$roi_by_cell[full_cells] == selected_roi
+    ]
+  }
+  full_coords <- full_coordinate_frame[full_cells, , drop = FALSE]
+  full_roi <- if (
+    nzchar(selected_roi) ||
+      identical(plot_parameters[["roi_mode"]], "separate")
+  ) {
+    as.character(roi_context$roi_by_cell[full_cells])
+  } else {
+    rep(NA_character_, nrow(full_coords))
+  }
+  full_coords <- rotateSpatialCoordinatesByRoi(
+    full_coords,
+    full_roi,
+    roi_settings,
+    rotation_angle,
+    pivots = roi_pivots
+  )
+  if (identical(plot_parameters[["roi_mode"]], "separate")) {
+    plot_parameters[["roi_extents"]] <- spatial_roi_extents(
+      full_coords,
+      full_roi
+    )
+  }
   if (
     is.null(plot_parameters[["x_range"]]) ||
       length(plot_parameters[["x_range"]]) < 2 ||
       is.null(plot_parameters[["y_range"]]) ||
       length(plot_parameters[["y_range"]]) < 2
   ) {
-    full_coords <- full_coordinate_frame
-    full_cells <- rownames(full_coords) %||% character()
-    scope <- list(
-      list(
-        value = input[["spatial_projection_sample"]] %||% "",
-        fields = c("sample", "sample_id", "orig.ident")
-      ),
-      list(
-        value = spatial_roi_value(plot_parameters[["roi_selection"]]),
-        fields = c("sample_roi", "roi", "roi_id", "region_of_interest")
-      )
-    )
-    for (item in scope) {
-      if (nzchar(item$value)) {
-        facet <- spatial_metadata_facet(getMetaData(), full_cells, item$fields)
-        allowed <- names(facet$by_cell)[
-          !is.na(facet$by_cell) & facet$by_cell == item$value
-        ]
-        full_coords <- full_coords[full_cells %in% allowed, , drop = FALSE]
-        full_cells <- rownames(full_coords) %||% character()
-      }
-    }
-    full_roi <- if (
-      nzchar(selected_roi) ||
-        identical(plot_parameters[["roi_mode"]], "separate")
-    ) {
-      as.character(full_roi_facet$by_cell[full_cells])
-    } else {
-      rep(NA_character_, nrow(full_coords))
-    }
-    full_coords <- rotateSpatialCoordinatesByRoi(
-      full_coords,
-      full_roi,
-      roi_settings,
-      rotation_angle,
-      pivots = roi_pivots
-    )
     x_full <- range(full_coords[[1]], na.rm = TRUE)
     y_full <- range(full_coords[[2]], na.rm = TRUE)
     x_margin <- diff(x_full) * 0.02
@@ -346,7 +291,7 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    group_hulls = spatial_projection_group_hulls(),
+    group_hulls = group_hulls,
     hover_columns = if (isTRUE(plot_parameters[["hover_info"]])) {
       cerebroProjectionHoverColumns(metadata)
     } else {
