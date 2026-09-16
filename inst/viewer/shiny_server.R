@@ -397,20 +397,18 @@ server <- function(input, output, session) {
           selected = selected,
           width = "100%",
           options = list(
-            render = list(
-              item = I(paste0(
-                "function(item, escape) {",
+            render = I(paste0(
+              "{",
+              "item: function(item, escape) {",
                 "return '<div title=\"' + escape(item.label) + '\">' + ",
                 "escape(item.label) + '</div>';",
-                "}"
-              )),
-              option = I(paste0(
-                "function(item, escape) {",
+              "},",
+              "option: function(item, escape) {",
                 "return '<div title=\"' + escape(item.label) + '\">' + ",
                 "escape(item.label) + '</div>';",
-                "}"
-              ))
-            )
+              "}",
+              "}"
+            ))
           )
         )
       )
