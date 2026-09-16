@@ -393,7 +393,7 @@
   // their unit box; only rotatable 3-D embeddings keep one shared axis scale here.
   function deferredUnitOf(space) {
     var xr = space.xRange, yr = space.yRange;
-    if (space.z || !Array.isArray(xr) || xr.length !== 2 ||
+    if (space._fitToData || space.z || !Array.isArray(xr) || xr.length !== 2 ||
         !Array.isArray(yr) || yr.length !== 2) return null;
     var x0 = Math.min(Number(xr[0]), Number(xr[1]));
     var x1 = Math.max(Number(xr[0]), Number(xr[1]));
@@ -413,10 +413,16 @@
   function unitOf(space) {
     var xs = space.x, ys = space.y, zs = space.z || null, n = xs.length;
     var xr = space.xRange, yr = space.yRange;
-    var fixedX = Array.isArray(xr) && xr.length === 2 &&
+    // A linked spatial lens must use the current section's occupied extent as
+    // its initial camera. Builder/editor viewports can still travel with the
+    // data as coordinate metadata, but a viewport saved in a differently
+    // shaped canvas must not shrink the tissue inside this panel. Dedicated
+    // page adapters keep their explicit ranges because those are plot ranges,
+    // not linked-workspace camera state.
+    var fixedX = !space._fitToData && Array.isArray(xr) && xr.length === 2 &&
       isFinite(Number(xr[0])) && isFinite(Number(xr[1])) &&
       Number(xr[0]) !== Number(xr[1]);
-    var fixedY = Array.isArray(yr) && yr.length === 2 &&
+    var fixedY = !space._fitToData && Array.isArray(yr) && yr.length === 2 &&
       isFinite(Number(yr[0])) && isFinite(Number(yr[1])) &&
       Number(yr[0]) !== Number(yr[1]);
     var x0 = fixedX ? Math.min(Number(xr[0]), Number(xr[1])) : Infinity;
@@ -5107,6 +5113,7 @@
         images: images,
         _sampleName: sample.name,
         _spatialSample: true,
+        _fitToData: true,
         _customImageId: custom,
         _unit: null
       };
