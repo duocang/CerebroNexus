@@ -769,7 +769,8 @@ builder_project_managed_file_matches <- function(recorded, path) {
   if (
     metadata_matches &&
       (!.builder_project_text(recorded_md5) ||
-        (is.finite(recorded_changed) &&
+        (!identical(.Platform$OS.type, "windows") &&
+          is.finite(recorded_changed) &&
           is.finite(current_changed) &&
           identical(recorded_changed, current_changed)))
   ) {
@@ -3541,10 +3542,7 @@ builder_project_dataset_status <- function(record, root) {
   }
   managed_source_unchanged <- identical(source$kind, "managed") &&
     builder_project_content_addressed_source(source$path, record$id) &&
-    builder_project_fingerprint_metadata_matches(
-      recorded_fingerprint,
-      current_metadata
-    )
+    builder_project_managed_file_matches(recorded_fingerprint, source_path)
   current_fingerprint <- if (
     source_ready &&
       !identical(source$kind, "example") &&
