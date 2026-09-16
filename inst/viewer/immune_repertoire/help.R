@@ -146,10 +146,10 @@ ir_tab_help <- list(
     )
   ),
   "Clonal UMAP" = list(
-    short = "Clonal expansion on the cell UMAP",
+    short = "Clonal expansion on the selected cell projection",
     summary = "Overlays each cell's clone-expansion level onto the existing cell projection (UMAP/tSNE), so you can see where expanded T/B clones sit.",
     detail = paste(
-      "This reuses the cell projection you already computed (the same UMAP as the other tabs) and colours each cell by how large its clonotype is.",
+      "This reuses the selected cell projection and colours each cell by how large its clonotype is.",
       "",
       "Clones are binned into expansion levels by the number of cells sharing them:",
       "• Single (0 < X <= 1)      — the clonotype appears in one cell",

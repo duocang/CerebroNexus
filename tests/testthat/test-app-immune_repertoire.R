@@ -352,7 +352,7 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
     "(function(){
       var as = document.querySelectorAll('#ir_tabs > li > a');
       for (var i=0;i<as.length;i++){
-        if (as[i].textContent.trim() === 'Clonal UMAP') return true;
+        if (as[i].textContent.trim() === 'Clonal projection') return true;
       }
       return false;
     })();"

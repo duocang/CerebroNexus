@@ -33,12 +33,8 @@ output$ir_main_params_UI <- renderUI({
   # joined onto the IR data by barcode (see ir_data_annotated), so users can
   # group by ANY metadata column (sample, condition, treatment, cell type, ...)
   # rather than only columns embedded in the IR table itself.
-  annotated <- ir_data_annotated()
-  data_cols <- if (!is.null(annotated)) {
-    names(annotated[[1]])
-  } else {
-    names(raw[[1]])
-  }
+  metadata_cols <- tryCatch(colnames(getMetaData()), error = function(e) character())
+  data_cols <- union(names(raw[[1]]), metadata_cols)
   groups <- tryCatch(getGroups(), error = function(e) character(0))
   available_groups <- intersect(groups, data_cols)
 
@@ -573,7 +569,7 @@ output$ir_group_filters_UI <- renderUI({
     return(NULL)
   }
   if (!identical(input$ir_tabs, "Clonal UMAP")) {
-    return(helpText("Group filters apply to the Clonal UMAP tab."))
+    return(helpText("Group filters apply to the Clonal projection tab."))
   }
   groups <- tryCatch(getGroups(), error = function(e) character(0))
   if (length(groups) == 0) {
