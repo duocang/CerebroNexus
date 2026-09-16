@@ -1865,6 +1865,19 @@ builder_read_image <- function(
   if (identical(mime, "image/png") && !.builder_png_has_pixel_data(path)) {
     return(list(error = "The image file has no valid encoded pixel data."))
   }
+  if (
+    identical(mime, "image/png") &&
+      requireNamespace("png", quietly = TRUE) &&
+      !isTRUE(tryCatch(
+        {
+          suppressWarnings(png::readPNG(path, native = TRUE))
+          TRUE
+        },
+        error = function(error) FALSE
+      ))
+  ) {
+    return(list(error = "The image file has no valid encoded pixel data."))
+  }
   canonical_path <- tryCatch(
     normalizePath(path, winslash = "/", mustWork = TRUE),
     error = function(error) NULL
