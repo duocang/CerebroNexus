@@ -1052,7 +1052,168 @@ dedent <- function(string) {
     if (is.null(images)) character() else names(images)
   })
   names(catalog) <- available
+  trekker <- if (
+    exists("getTrekker", envir = object, inherits = FALSE) &&
+      !bindingIsActive("getTrekker", object) &&
+      !isTRUE(rlang::env_binding_are_lazy(object, "getTrekker")) &&
+      is.function(object[["getTrekker"]])
+  ) {
+    tryCatch(
+      object$getTrekker(),
+      error = function(error) {
+        stop(
+          "Could not read dataset `",
+          dataset,
+          "` Trekker data: ",
+          conditionMessage(error),
+          call. = FALSE
+        )
+      }
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(trekker)) {
+    if ("trekker" %in% available) {
+      stop(
+        "Dataset `",
+        dataset,
+        "` uses reserved spatial entry name `trekker` while also containing ",
+        "Trekker data.",
+        call. = FALSE
+      )
+    }
+    catalog[["trekker"]] <- character()
+  }
   catalog
+}
+
+# Builder verification may populate this one-shot cache. Reuse requires the
+# same path, inode, timestamps (including ctime), permissions, and size; every
+# miss keeps the ordinary CRB preflight path.
+.bundlePreflightCache <- new.env(parent = emptyenv())
+
+.bundlePreflightFingerprint <- function(path) {
+  info <- tryCatch(
+    fs::file_info(path, fail = TRUE, follow = FALSE),
+    error = function(error) NULL
+  )
+  canonical <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (
+    is.null(info) ||
+      nrow(info) != 1L ||
+      !identical(as.character(info$type), "file") ||
+      is.null(canonical)
+  ) {
+    return(NULL)
+  }
+  fingerprint <- list(
+    path = canonical,
+    size = as.double(info$size),
+    permissions = as.character(info$permissions),
+    device_id = as.double(info$device_id),
+    inode = as.double(info$inode),
+    hard_links = as.double(info$hard_links),
+    modification_time = as.double(info$modification_time),
+    change_time = as.double(info$change_time)
+  )
+  scalar <- vapply(fingerprint, length, integer(1)) == 1L
+  missing <- vapply(fingerprint, function(value) anyNA(value), logical(1))
+  numeric_fields <- setdiff(names(fingerprint), c("path", "permissions"))
+  finite <- vapply(
+    fingerprint[numeric_fields],
+    function(value) is.finite(value),
+    logical(1)
+  )
+  if (
+    !all(scalar) ||
+      any(missing) ||
+      !all(finite) ||
+      !nzchar(fingerprint$path) ||
+      !nzchar(fingerprint$permissions) ||
+      fingerprint$size < 0 ||
+      fingerprint$device_id < 0 ||
+      fingerprint$inode < 0 ||
+      fingerprint$hard_links < 1
+  ) {
+    return(NULL)
+  }
+  fingerprint
+}
+
+.bundlePreflightCacheKey <- function(path, dataset) {
+  paste(dataset, path, sep = "\r")
+}
+
+.clearBundlePreflightCache <- function() {
+  keys <- ls(.bundlePreflightCache, all.names = TRUE)
+  if (length(keys)) {
+    rm(list = keys, envir = .bundlePreflightCache)
+  }
+  invisible(TRUE)
+}
+
+.cacheBundlePreflightData <- function(
+  cerebro_data,
+  preflight_data,
+  fingerprints
+) {
+  labels <- names(cerebro_data)
+  valid <- is.character(cerebro_data) &&
+    length(cerebro_data) > 0L &&
+    !is.null(labels) &&
+    !anyNA(labels) &&
+    all(nzchar(labels)) &&
+    is.list(preflight_data) &&
+    identical(names(preflight_data), c("backends", "spatial_catalogs")) &&
+    identical(names(preflight_data$backends), labels) &&
+    identical(names(preflight_data$spatial_catalogs), labels) &&
+    is.list(fingerprints) &&
+    identical(names(fingerprints), labels)
+  if (!valid) {
+    return(FALSE)
+  }
+
+  entries <- vector("list", length(cerebro_data))
+  for (index in seq_along(cerebro_data)) {
+    observed <- .bundlePreflightFingerprint(cerebro_data[[index]])
+    if (is.null(observed) || !identical(observed, fingerprints[[index]])) {
+      return(FALSE)
+    }
+    entries[[index]] <- list(
+      key = .bundlePreflightCacheKey(observed$path, labels[[index]]),
+      fingerprint = observed,
+      backend = preflight_data$backends[[index]],
+      spatial_catalog = preflight_data$spatial_catalogs[[index]]
+    )
+  }
+  for (entry in entries) {
+    assign(entry$key, entry, envir = .bundlePreflightCache)
+  }
+  TRUE
+}
+
+.takeBundlePreflightData <- function(path, dataset) {
+  observed <- .bundlePreflightFingerprint(path)
+  if (is.null(observed)) {
+    return(NULL)
+  }
+  key <- .bundlePreflightCacheKey(observed$path, dataset)
+  entry <- get0(key, envir = .bundlePreflightCache, inherits = FALSE)
+  if (is.null(entry)) {
+    return(NULL)
+  }
+  rm(list = key, envir = .bundlePreflightCache)
+  if (!identical(entry$fingerprint, observed)) {
+    return(NULL)
+  }
+  list(
+    backend = entry$backend,
+    spatial_catalog = entry$spatial_catalog
+  )
 }
 
 .preflightBundleData <- function(
@@ -1069,6 +1230,15 @@ dedent <- function(string) {
   names(spatial_backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
+    cached <- .takeBundlePreflightData(
+      cerebro_data[[index]],
+      names(cerebro_data)[[index]]
+    )
+    if (!is.null(cached)) {
+      backends[[index]] <- cached$backend
+      spatial_catalogs[[index]] <- cached$spatial_catalog
+      next
+    }
     object <- read_object(cerebro_data[[index]])
     inspection_error <- NULL
     release_error <- NULL
@@ -1122,7 +1292,7 @@ dedent <- function(string) {
   unname(tools::md5sum(path))
 }
 
-.spatialImageBundlePathComponent <- function(value, maximum_bytes = 40L) {
+.spatialImageBundlePathField <- function(value) {
   if (
     !is.character(value) ||
       length(value) != 1L ||
@@ -1135,16 +1305,7 @@ dedent <- function(string) {
     )
   }
   bytes <- charToRaw(enc2utf8(value))
-  encoded <- paste0(
-    "u",
-    paste(sprintf("%02x", as.integer(bytes)), collapse = "")
-  )
-  if (nchar(encoded, type = "bytes") <= maximum_bytes) {
-    return(encoded)
-  }
-  digest <- .spatialImageBundlePathDigest(bytes)
-  prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
-  paste0(substr(encoded, 1L, prefix_length), "-", digest)
+  c(charToRaw(sprintf("%08x:", length(bytes))), bytes)
 }
 
 .spatialImageBundleTarget <- function(
@@ -1153,22 +1314,20 @@ dedent <- function(string) {
   image_label,
   filename
 ) {
+  fields <- lapply(
+    list(dataset, spatial_name, image_label, filename),
+    .spatialImageBundlePathField
+  )
+  digest <- .spatialImageBundlePathDigest(c(
+    charToRaw("cerebro-spatial-image-v1:"),
+    do.call(c, fields)
+  ))
   extension <- tools::file_ext(filename)
   extension_is_safe <- grepl("^[A-Za-z0-9]{1,16}$", extension)
-  encoded_filename <- .spatialImageBundlePathComponent(
-    filename,
-    40L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
-  )
-  if (extension_is_safe) {
-    encoded_filename <- paste0(encoded_filename, ".", extension)
-  }
-  target <- paste(
-    "spatial-assets",
-    .spatialImageBundlePathComponent(dataset),
-    .spatialImageBundlePathComponent(spatial_name),
-    .spatialImageBundlePathComponent(image_label),
-    encoded_filename,
-    sep = "/"
+  target <- paste0(
+    "spatial-assets/u",
+    digest,
+    if (extension_is_safe) paste0(".", extension) else ""
   )
   .portableBundlePath(
     target,
@@ -1342,16 +1501,309 @@ dedent <- function(string) {
   )
 }
 
+.bundleWindowsExtendedPath <- function(
+  path,
+  os_type = .Platform$OS.type
+) {
+  if (
+    !identical(os_type, "windows") ||
+      !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path)
+  ) {
+    return(path)
+  }
+  path <- gsub("/", "\\", path, fixed = TRUE)
+  if (startsWith(path, "\\\\?\\")) {
+    return(path)
+  }
+  if (startsWith(path, "\\\\")) {
+    return(paste0("\\\\?\\UNC\\", substring(path, 3L)))
+  }
+  if (grepl("^[A-Za-z]:\\\\", path)) {
+    return(paste0("\\\\?\\", path))
+  }
+  path
+}
+
+.bundleCreateDirectory <- function(
+  path,
+  recursive = FALSE,
+  mode = "0777",
+  showWarnings = TRUE,
+  os_type = .Platform$OS.type,
+  .dir_create = dir.create
+) {
+  .dir_create(
+    .bundleWindowsExtendedPath(path, os_type = os_type),
+    recursive = recursive,
+    mode = mode,
+    showWarnings = showWarnings
+  )
+}
+
+.bundleCopiedTargetExists <- function(
+  path,
+  directory = FALSE,
+  os_type = .Platform$OS.type,
+  .file_exists = file.exists,
+  .dir_exists = dir.exists
+) {
+  path <- .bundleWindowsExtendedPath(path, os_type = os_type)
+  if (isTRUE(directory)) {
+    .dir_exists(path)
+  } else {
+    .file_exists(path) && !.dir_exists(path)
+  }
+}
+
+.bundleCopyWindowsDirectory <- function(
+  from,
+  to,
+  overwrite = TRUE,
+  copy.mode = TRUE,
+  copy.date = FALSE,
+  .fallback = file.copy
+) {
+  source <- tryCatch(
+    normalizePath(from, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (is.null(source) || !dir.exists(source)) {
+    return(FALSE)
+  }
+  destination <- if (.bundleCopiedTargetExists(to, directory = TRUE)) {
+    file.path(to, basename(source))
+  } else {
+    to
+  }
+  if (
+    .bundleCopiedTargetExists(destination) ||
+      (.bundleCopiedTargetExists(destination, directory = TRUE) &&
+        !isTRUE(overwrite))
+  ) {
+    return(FALSE)
+  }
+  if (
+    !.bundleCopiedTargetExists(destination, directory = TRUE) &&
+      !.bundleCreateDirectory(destination, recursive = TRUE)
+  ) {
+    return(FALSE)
+  }
+  entries <- tryCatch(
+    as.character(fs::dir_ls(
+      source,
+      all = TRUE,
+      recurse = TRUE,
+      type = "any",
+      fail = TRUE
+    )),
+    error = function(error) NULL
+  )
+  if (is.null(entries)) {
+    return(FALSE)
+  }
+  if (!length(entries)) {
+    return(TRUE)
+  }
+  linked <- tryCatch(fs::is_link(entries), error = function(error) NULL)
+  if (
+    is.null(linked) ||
+      length(linked) != length(entries) ||
+      anyNA(linked) ||
+      any(linked)
+  ) {
+    return(FALSE)
+  }
+  entries <- gsub("\\", "/", entries, fixed = TRUE)
+  source_prefix <- paste0(source, "/")
+  if (any(!startsWith(entries, source_prefix))) {
+    return(FALSE)
+  }
+  relative <- substring(entries, nchar(source_prefix) + 1L)
+  if (
+    any(!nzchar(relative)) ||
+      any(startsWith(relative, "/")) ||
+      any(grepl("(^|/)\\.\\.?(/|$)", relative))
+  ) {
+    return(FALSE)
+  }
+  directories <- vapply(entries, function(path) {
+    .bundleCopiedTargetExists(path, directory = TRUE)
+  }, logical(1))
+  regular_files <- vapply(entries, function(path) {
+    .bundleCopiedTargetExists(path)
+  }, logical(1))
+  if (any(directories == regular_files)) {
+    return(FALSE)
+  }
+  directory_targets <- file.path(destination, relative[directories])
+  if (
+    length(directory_targets) &&
+      !all(vapply(directory_targets, function(path) {
+        .bundleCopiedTargetExists(path, directory = TRUE) ||
+          .bundleCreateDirectory(path, recursive = TRUE)
+      }, logical(1)))
+  ) {
+    return(FALSE)
+  }
+  file_sources <- entries[regular_files]
+  file_targets <- file.path(destination, relative[regular_files])
+  if (!length(file_sources)) {
+    return(TRUE)
+  }
+  copied <- mapply(
+    function(source_file, target_file) {
+      if (!.bundleCopiedTargetExists(dirname(target_file), directory = TRUE)) {
+        if (!.bundleCreateDirectory(dirname(target_file), recursive = TRUE)) {
+          return(FALSE)
+        }
+      }
+      result <- .fallback(
+        .bundleWindowsExtendedPath(source_file),
+        .bundleWindowsExtendedPath(target_file),
+        overwrite = overwrite,
+        recursive = FALSE,
+        copy.mode = copy.mode,
+        copy.date = copy.date
+      )
+      isTRUE(result) && .bundleCopiedTargetExists(target_file)
+    },
+    file_sources,
+    file_targets,
+    SIMPLIFY = TRUE,
+    USE.NAMES = FALSE
+  )
+  isTRUE(all(copied))
+}
+
+.bundleCopyPath <- function(
+  from,
+  to,
+  overwrite = recursive,
+  recursive = FALSE,
+  copy.mode = TRUE,
+  copy.date = FALSE,
+  .sysname = unname(Sys.info()[["sysname"]]),
+  .command = system2,
+  .fallback = file.copy
+) {
+  scalar <- is.character(from) &&
+    length(from) == 1L &&
+    !is.na(from) &&
+    is.character(to) &&
+    length(to) == 1L &&
+    !is.na(to)
+  command_args <- if (scalar && identical(.sysname, "Darwin")) {
+    c("-c", if (isTRUE(recursive)) "-R", "--", shQuote(from), shQuote(to))
+  } else if (scalar && identical(.sysname, "Linux")) {
+    c(
+      if (isTRUE(recursive)) "-R",
+      "--reflink=auto",
+      "--",
+      shQuote(from),
+      shQuote(to)
+    )
+  } else {
+    NULL
+  }
+  copy_command <- unname(Sys.which("cp"))
+  destination <- if (scalar && dir.exists(from) && dir.exists(to)) {
+    file.path(to, basename(from))
+  } else {
+    to
+  }
+  destination_existed <- scalar &&
+    (file.exists(destination) || nzchar(Sys.readlink(destination)))
+  if (
+    scalar &&
+      identical(.sysname, "Windows") &&
+      isTRUE(recursive) &&
+      dir.exists(from)
+  ) {
+    return(.bundleCopyWindowsDirectory(
+      from,
+      to,
+      overwrite = overwrite,
+      copy.mode = copy.mode,
+      copy.date = copy.date,
+      .fallback = .fallback
+    ))
+  }
+  if (scalar && identical(.sysname, "Windows")) {
+    extended_from <- .bundleWindowsExtendedPath(from, os_type = "windows")
+    extended_to <- .bundleWindowsExtendedPath(to, os_type = "windows")
+    if (!identical(extended_from, from) || !identical(extended_to, to)) {
+      return(.fallback(
+        extended_from,
+        extended_to,
+        overwrite = overwrite,
+        recursive = recursive,
+        copy.mode = copy.mode,
+        copy.date = copy.date
+      ))
+    }
+  }
+  if (length(command_args) && nzchar(copy_command)) {
+    status <- suppressWarnings(tryCatch(
+      .command(
+        copy_command,
+        command_args,
+        stdout = FALSE,
+        stderr = FALSE
+      ),
+      error = function(error) 1L
+    ))
+    if (isTRUE(status == 0L)) {
+      return(TRUE)
+    }
+    if (!destination_existed) {
+      unlink(destination, recursive = TRUE, force = TRUE)
+    }
+  }
+  .fallback(
+    from,
+    to,
+    overwrite = overwrite,
+    recursive = recursive,
+    copy.mode = copy.mode,
+    copy.date = copy.date
+  )
+}
+
 .bundleBuildOps <- function() {
   list(
     access = function(path, mode) file.access(path, mode = mode),
     chmod = function(path, mode) Sys.chmod(path, mode = mode),
-    copy = function(from, to, ...) file.copy(from, to, ...),
+    copy = .bundleCopyPath,
     mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
     save_extra_rds = function(object, file) .saveExtraTableRDS(object, file),
     write_lines = function(text, connection) writeLines(text, connection)
   )
+}
+
+.removeBundleSystemMetadata <- function(root) {
+  metadata <- list.files(
+    root,
+    pattern = "^(\\.DS_Store|\\._.*)$",
+    all.files = TRUE,
+    full.names = TRUE,
+    recursive = TRUE,
+    include.dirs = FALSE,
+    no.. = TRUE
+  )
+  if (!length(metadata)) {
+    return(invisible(TRUE))
+  }
+  unlink(metadata, recursive = FALSE, force = TRUE)
+  if (any(vapply(metadata, .bundlePathExists, logical(1)))) {
+    stop(
+      "Failed to remove filesystem metadata from the staged App.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 .attemptBundleOperation <- function(operation) {
@@ -1477,7 +1929,7 @@ dedent <- function(string) {
   prospective_parent <- .canonicalTargetPath(parent)
   .assertOutsideBundleLockNamespace(prospective_parent)
   if (!dir.exists(prospective_parent)) {
-    created <- dir.create(
+    created <- .bundleCreateDirectory(
       prospective_parent,
       recursive = TRUE,
       showWarnings = FALSE
@@ -1520,7 +1972,11 @@ dedent <- function(string) {
   if (!dir.exists(dirname(lock_path))) {
     stop("The build-lock parent directory does not exist.", call. = FALSE)
   }
-  if (!dir.create(lock_path, mode = "0700", showWarnings = FALSE)) {
+  if (!.bundleCreateDirectory(
+    lock_path,
+    mode = "0700",
+    showWarnings = FALSE
+  )) {
     if (.bundlePathExists(lock_path)) {
       stop(
         "The app target '",
@@ -1569,7 +2025,7 @@ dedent <- function(string) {
     if (any(regular_files)) {
       file.remove(metadata_paths[regular_files])
     }
-    file.remove(lock_path)
+    unlink(lock_path, recursive = TRUE, force = TRUE)
     if (.bundlePathExists(lock_path)) {
       stop(
         "Failed to initialize the build lock. An incomplete lock remains at '",
@@ -1735,7 +2191,7 @@ dedent <- function(string) {
   }
 
   remove_dir_attempt <- .attemptBundleOperation(function() {
-    file.remove(release_path)
+    unlink(release_path, recursive = TRUE, force = TRUE)
   })
   if (.bundlePathExists(release_path)) {
     warning(
@@ -1991,6 +2447,52 @@ dedent <- function(string) {
 
 # Public API ---------------------------------------------------------------
 
+.cerebroSourceRoot <- function() {
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (
+    nzchar(source_root) &&
+      file.exists(file.path(source_root, "DESCRIPTION")) &&
+      dir.exists(file.path(source_root, "R")) &&
+      length(list.files(
+        file.path(source_root, "R"),
+        pattern = "[.][Rr]$"
+      )) >
+        0L
+  ) {
+    normalizePath(source_root, winslash = "/", mustWork = TRUE)
+  } else {
+    NULL
+  }
+}
+
+.cerebroPackageResource <- function(...) {
+  relative <- file.path(...)
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    source_resource <- file.path(source_root, "inst", relative)
+    return(normalizePath(
+      source_resource,
+      winslash = "/",
+      mustWork = FALSE
+    ))
+  }
+  system.file(..., package = "CerebroNexus")
+}
+
+.cerebroRuntimeVersion <- function() {
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    description <- tryCatch(
+      read.dcf(file.path(source_root, "DESCRIPTION"), fields = "Version"),
+      error = function(e) NULL
+    )
+    if (!is.null(description) && nzchar(description[[1L]])) {
+      return(as.character(description[[1L]]))
+    }
+  }
+  as.character(utils::packageVersion("CerebroNexus"))
+}
+
 #' Create a self-contained CerebroNexus Shiny app folder
 #'
 #' Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the
@@ -2008,8 +2510,9 @@ dedent <- function(string) {
 #' \code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
 #' Spatial background images are the deliberate exception: files explicitly
 #' supplied through \code{spatial_images} are copied verbatim under
-#' \code{spatial-assets/}. The server-side renderer reads these files and embeds
-#' them as data URIs; the directory is not registered as an HTTP resource.
+#' \code{spatial-assets/}. The server exposes each selected file through a
+#' private, session-scoped URL; image bytes are not Base64-encoded and the
+#' directory is not registered as a public HTTP resource.
 #' Callers must provide trusted image files. Preflight requires a minimum
 #' stable runtime API and reads the ordinary \code{expression_backend} field
 #' without invoking serialized methods or its getter. The generated
@@ -2098,6 +2601,9 @@ dedent <- function(string) {
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui One non-missing logical controlling whether users may
 #'   upload their own data; defaults to \code{FALSE}.
+#' @param initial_dataset Optional exact data set label to load initially. This
+#'   does not change the order of \code{cerebro_data}. URL selection and a
+#'   session's current selection take precedence.
 #' @param initial_page Optional initial Viewer page. Supported stable IDs are
 #'   \code{"data_info"}, \code{"projection"}, \code{"linked_views"},
 #'   \code{"groups"}, \code{"marker_genes"},
@@ -2165,6 +2671,10 @@ dedent <- function(string) {
 #' @param extra_tables_sheets Optional named list of Excel sheet renames keyed
 #'   by \code{extra_tables} labels. Each entry maps displayed names to source
 #'   sheet names; unmapped sheets remain available.
+#' @param initial_projections Optional projection names to show when Linked
+#'   views first opens. A character vector applies to every data set. A named
+#'   list configures individual \code{cerebro_data} labels; omitted labels keep
+#'   the Viewer's default single-projection behavior.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
 #'   during the build, warns and returns the frozen absolute publication path.
@@ -2221,7 +2731,9 @@ createShinyApp <- function(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  initial_page = NULL
+  initial_page = NULL,
+  initial_projections = NULL,
+  initial_dataset = NULL
 ) {
   # Validate inputs ----------------------------------------------------------##
   if (is.list(cerebro_data)) {
@@ -2304,6 +2816,85 @@ createShinyApp <- function(
     10,
     100
   )
+  validate_initial_projections <- function(value, context) {
+    if (
+      !is.character(value) ||
+        is.object(value) ||
+        !length(value) ||
+        anyNA(value) ||
+        any(!nzchar(trimws(value))) ||
+        anyDuplicated(value)
+    ) {
+      stop(
+        context,
+        " must contain unique, non-empty projection names.",
+        call. = FALSE
+      )
+    }
+    unname(value)
+  }
+  initial_projections_by_dataset <- NULL
+  if (is.character(initial_projections)) {
+    shared_initial_projections <- validate_initial_projections(
+      initial_projections,
+      "'initial_projections'"
+    )
+    initial_projections_by_dataset <- setNames(
+      rep(list(shared_initial_projections), length(data_labels)),
+      data_labels
+    )
+  } else if (!is.null(initial_projections)) {
+    projection_labels <- names(initial_projections)
+    if (
+      !is.list(initial_projections) ||
+        is.object(initial_projections) ||
+        !length(initial_projections) ||
+        is.null(projection_labels) ||
+        anyNA(projection_labels) ||
+        any(!nzchar(projection_labels)) ||
+        anyDuplicated(projection_labels) ||
+        any(!projection_labels %in% data_labels)
+    ) {
+      stop(
+        paste0(
+          "'initial_projections' must be NULL, a character vector, or a ",
+          "named list keyed by cerebro_data labels."
+        ),
+        call. = FALSE
+      )
+    }
+    initial_projections_by_dataset <- lapply(
+      projection_labels,
+      function(label) {
+        validate_initial_projections(
+          initial_projections[[label]],
+          paste0("initial_projections[[", sQuote(label), "]]")
+        )
+      }
+    )
+    names(initial_projections_by_dataset) <- projection_labels
+  }
+  if (!is.null(initial_projections_by_dataset)) {
+    viewer_content <- cerebro_options[["viewer_content"]] %||% list()
+    if (!is.list(viewer_content) || is.object(viewer_content)) {
+      stop(
+        "cerebro_options[['viewer_content']] must be an ordinary list.",
+        call. = FALSE
+      )
+    }
+    for (dataset in names(initial_projections_by_dataset)) {
+      item <- viewer_content[[dataset]] %||% list()
+      if (!is.list(item) || is.object(item)) {
+        stop(
+          "Each cerebro_options[['viewer_content']] entry must be an ordinary list.",
+          call. = FALSE
+        )
+      }
+      item[["initial_projections"]] <- initial_projections_by_dataset[[dataset]]
+      viewer_content[[dataset]] <- item
+    }
+    cerebro_options[["viewer_content"]] <- viewer_content
+  }
   builder_spatial_options <- c(
     "spatial_images",
     "spatial_image_settings",
@@ -2353,6 +2944,18 @@ createShinyApp <- function(
       is.na(show_upload_ui)
   ) {
     stop("'show_upload_ui' must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (
+    !is.null(initial_dataset) &&
+      (!is.character(initial_dataset) ||
+        length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !initial_dataset %in% data_labels)
+  ) {
+    stop(
+      "'initial_dataset' must be NULL or exactly one cerebro_data label.",
+      call. = FALSE
+    )
   }
   initial_pages <- .viewerInitialPageTabs()
   if (
@@ -2580,23 +3183,33 @@ createShinyApp <- function(
     }
     x[matching]
   }
-  if (!requireNamespace("CerebroNexus", quietly = TRUE)) {
+  if (
+    is.null(.cerebroSourceRoot()) &&
+      !requireNamespace("CerebroNexus", quietly = TRUE)
+  ) {
     stop(
       "Package 'CerebroNexus' is required but not installed.",
       call. = FALSE
     )
   }
-  shiny_source <- system.file("viewer", package = "CerebroNexus")
+  shiny_source <- .cerebroPackageResource("viewer")
   if (!dir.exists(shiny_source)) {
     stop(
       "Shiny source files not found in CerebroNexus package.",
       call. = FALSE
     )
   }
-  extdata_source <- system.file("extdata", package = "CerebroNexus")
+  extdata_source <- .cerebroPackageResource("extdata")
   if (!dir.exists(extdata_source)) {
     stop(
       "extdata source files not found in CerebroNexus package.",
+      call. = FALSE
+    )
+  }
+  app_template_source <- .cerebroPackageResource("viewer", "_bundle_app.R")
+  if (!file.exists(app_template_source)) {
+    stop(
+      "The package-owned App entrypoint template is missing.",
       call. = FALSE
     )
   }
@@ -2928,7 +3541,11 @@ createShinyApp <- function(
     pattern = paste0(".", basename(result_dir), "-stage-"),
     tmpdir = result_parent
   )
-  if (!dir.create(stage_result_dir, mode = "0700", showWarnings = FALSE)) {
+  if (!.bundleCreateDirectory(
+    stage_result_dir,
+    mode = "0700",
+    showWarnings = FALSE
+  )) {
     stop("Failed to create a private app staging directory.", call. = FALSE)
   }
   bundle_cleanup$stage <- stage_result_dir
@@ -2939,7 +3556,11 @@ createShinyApp <- function(
   if (verbose) {
     cat("Creating staged directory structure...\n")
   }
-  dir.create(private_data_dir, recursive = TRUE, showWarnings = FALSE)
+  .bundleCreateDirectory(
+    private_data_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
   extra_table_bundle <- .materializeExtraTables(
     extra_table_plan,
     stage_result_dir,
@@ -2958,22 +3579,41 @@ createShinyApp <- function(
   }
   for (entry in copy_plan) {
     target <- file.path(stage_result_dir, entry$target)
-    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    .bundleCreateDirectory(
+      dirname(target),
+      recursive = TRUE,
+      showWarnings = FALSE
+    )
     copied <- if (isTRUE(entry$directory)) {
       build_ops$copy(entry$source, dirname(target), recursive = TRUE)
     } else {
       build_ops$copy(entry$source, target, overwrite = FALSE)
     }
-    copied_target_exists <- if (isTRUE(entry$directory)) {
-      dir.exists(target)
-    } else {
-      file.exists(target) && !dir.exists(target)
-    }
+    copied_target_exists <- .bundleCopiedTargetExists(
+      target,
+      directory = entry$directory
+    )
     if (!isTRUE(copied) || !copied_target_exists) {
       stop(
         "Failed to copy ",
         entry$artifact,
         ": ",
+        entry$target,
+        call. = FALSE
+      )
+    }
+    if (
+      identical(entry$artifact, "spatial image") &&
+        (
+          !identical(unname(file.size(target)), unname(file.size(entry$source))) ||
+            !identical(
+              unname(as.character(tools::md5sum(target))),
+              unname(as.character(tools::md5sum(entry$source)))
+            )
+        )
+    ) {
+      stop(
+        "The copied spatial image failed its byte-integrity check: ",
         entry$target,
         call. = FALSE
       )
@@ -3011,9 +3651,17 @@ createShinyApp <- function(
   if (verbose) {
     cat("Copying extdata files...\n")
   }
-  if (!build_ops$copy(extdata_source, stage_result_dir, recursive = TRUE)) {
+  extdata_target <- file.path(stage_result_dir, "extdata")
+  extdata_files <- list.files(extdata_source, full.names = TRUE)
+  extdata_files <- extdata_files[file.info(extdata_files)$isdir %in% FALSE]
+  if (
+    !length(extdata_files) ||
+      !isTRUE(.bundleCreateDirectory(extdata_target)) ||
+      !isTRUE(all(build_ops$copy(extdata_files, extdata_target)))
+  ) {
     stop("Failed to copy extdata files.", call. = FALSE)
   }
+  .removeBundleSystemMetadata(stage_result_dir)
 
   # Build Cerebro.options ----------------------------------------------------##
   if (verbose) {
@@ -3029,15 +3677,14 @@ createShinyApp <- function(
   ## Resolve the version while the package is present, then serialize it into
   ## the generated app. The standalone bundle never needs CerebroNexus at
   ## runtime merely to render its About page.
-  cerebro_options[["cerebro_version"]] <- as.character(
-    utils::packageVersion("CerebroNexus")
-  )
+  cerebro_options[["cerebro_version"]] <- .cerebroRuntimeVersion()
   cerebro_options[["crb_file_to_load"]] <- crb_files
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
     ".bundle_backend_plan",
     ".bundle_run_options",
     ".viewer_auth",
+    "initial_dataset",
     "initial_page",
     "extra_tables"
   )
@@ -3064,6 +3711,9 @@ createShinyApp <- function(
   }
   if (!is.null(show_upload_ui)) {
     cerebro_options[["show_upload_ui"]] <- show_upload_ui
+  }
+  if (!is.null(initial_dataset)) {
+    cerebro_options[["initial_dataset"]] <- initial_dataset
   }
   if (!is.null(initial_page)) {
     cerebro_options[["initial_page"]] <- initial_page
@@ -3099,58 +3749,10 @@ createShinyApp <- function(
   )
 
   # Generate app.R -----------------------------------------------------------##
-  app_content <- dedent(
-    '
-    library(dplyr)
-    library(DT)
-    library(plotly)
-    library(shiny)
-    library(shinydashboard)
-    library(shinyWidgets)
-
-    cerebro_root <- "."
-
-    if (file.exists("cerebro_config.rds")) {
-      Cerebro.options <<- readRDS("cerebro_config.rds")
-    } else {
-      stop("cerebro_config.rds not found!")
-    }
-
-    if (!is.null(Cerebro.options$colors)) {
-      colors <- Cerebro.options$colors
-    }
-
-    bundle_run_options <- Cerebro.options$.bundle_run_options
-    shiny_options <- bundle_run_options$shiny_app_options
-
-    source(file.path(cerebro_root, "viewer/shiny_UI.R"))
-    source(file.path(cerebro_root, "viewer/shiny_server.R"))
-    source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
-
-    viewer_app <- viewer_auth_apply(
-      ui,
-      server,
-      Cerebro.options[[".viewer_auth"]],
-      Cerebro.options[["cerebro_root"]]
-    )
-
-    shiny::shinyApp(
-      ui = viewer_app$ui,
-      server = viewer_app$server,
-      onStart = function() {
-        previous <- options(
-          shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
-        )
-        shiny::onStop(function() {
-          options(previous)
-        })
-      },
-      options = shiny_options
-    )
-  '
+  build_ops$write_lines(
+    readLines(app_template_source, warn = FALSE),
+    app_file
   )
-
-  build_ops$write_lines(app_content, app_file)
   tryCatch(
     parse(file = app_file, keep.source = FALSE),
     error = function(error_condition) {
