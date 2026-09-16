@@ -156,6 +156,29 @@ spatial_projection_data_to_plot_raw <- reactive({
     current_name,
     plot_parameters[["projection"]]
   )
+  full_coordinate_frame <- getSpatialData(
+    plot_parameters[["projection"]]
+  )$coordinates
+  full_coordinate_cells <- rownames(full_coordinate_frame) %||% character()
+  full_roi_facet <- spatial_metadata_facet(
+    getMetaData(),
+    full_coordinate_cells,
+    c(
+      plot_parameters[["split_by"]],
+      "sample_roi",
+      "roi",
+      "roi_id",
+      "region_of_interest"
+    )
+  )
+  full_roi_values <- as.character(
+    full_roi_facet$by_cell[full_coordinate_cells]
+  )
+  roi_pivots <- spatialRoiPivots(
+    full_coordinate_frame,
+    full_roi_values,
+    rotation_angle
+  )
   selected_roi <- spatial_roi_value(plot_parameters[["roi_selection"]])
   roi_values <- if (nzchar(selected_roi)) {
     rep(selected_roi, nrow(metadata))
@@ -172,7 +195,8 @@ spatial_projection_data_to_plot_raw <- reactive({
     spatial_projection_coordinates(),
     roi_values,
     roi_settings,
-    rotation_angle
+    rotation_angle,
+    pivots = roi_pivots
   )
   cell_boundaries <- list()
   if (isTRUE(plot_parameters[["show_cell_boundaries"]])) {
@@ -208,7 +232,8 @@ spatial_projection_data_to_plot_raw <- reactive({
         data.frame(x = cell_boundaries$x, y = cell_boundaries$y),
         boundary_roi,
         roi_settings,
-        rotation_angle
+        rotation_angle,
+        pivots = roi_pivots
       )
       cell_boundaries$x <- rotated_boundaries[[1L]]
       cell_boundaries$y <- rotated_boundaries[[2L]]
@@ -249,7 +274,7 @@ spatial_projection_data_to_plot_raw <- reactive({
       is.null(plot_parameters[["y_range"]]) ||
       length(plot_parameters[["y_range"]]) < 2
   ) {
-    full_coords <- getSpatialData(plot_parameters[["projection"]])$coordinates
+    full_coords <- full_coordinate_frame
     full_cells <- rownames(full_coords) %||% character()
     scope <- list(
       list(
@@ -271,15 +296,11 @@ spatial_projection_data_to_plot_raw <- reactive({
         full_cells <- rownames(full_coords) %||% character()
       }
     }
-    full_roi <- if (nzchar(selected_roi)) {
-      rep(selected_roi, nrow(full_coords))
-    } else if (identical(plot_parameters[["roi_mode"]], "separate")) {
-      facet <- spatial_metadata_facet(
-        getMetaData(),
-        full_cells,
-        c("sample_roi", "roi", "roi_id", "region_of_interest")
-      )
-      as.character(facet$by_cell[full_cells])
+    full_roi <- if (
+      nzchar(selected_roi) ||
+        identical(plot_parameters[["roi_mode"]], "separate")
+    ) {
+      as.character(full_roi_facet$by_cell[full_cells])
     } else {
       rep(NA_character_, nrow(full_coords))
     }
@@ -287,7 +308,8 @@ spatial_projection_data_to_plot_raw <- reactive({
       full_coords,
       full_roi,
       roi_settings,
-      rotation_angle
+      rotation_angle,
+      pivots = roi_pivots
     )
     x_full <- range(full_coords[[1]], na.rm = TRUE)
     y_full <- range(full_coords[[2]], na.rm = TRUE)
