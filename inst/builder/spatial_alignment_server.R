@@ -2950,7 +2950,9 @@ builder_spatial_alignment_server <- function(
     ) {
       return(FALSE)
     }
-    TRUE
+    interaction <- client_interaction()
+    is.null(interaction) ||
+      !identical(interaction$owner, active_control_owner())
   })
 
   materialize_coordinate_drafts <- function(

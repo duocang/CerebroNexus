@@ -321,6 +321,12 @@ test_that("finishing a check waits for persisted spatial viewport bounds", {
     "active_alignment_settled <- shiny::reactive({",
     fixed = TRUE
   )
+  expect_match(server, "interaction <- client_interaction()", fixed = TRUE)
+  expect_match(
+    server,
+    "!identical(interaction$owner, active_control_owner())",
+    fixed = TRUE
+  )
   expect_match(
     server,
     "alignment_settled = active_alignment_settled",
