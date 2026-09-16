@@ -1045,6 +1045,43 @@ test_that("external Spatial images materialize without entering CRB payloads", {
   )
 })
 
+test_that("external Spatial paths cannot collide after normalization", {
+  skip_if_not_installed("png")
+  root <- withr::local_tempdir()
+  sources <- file.path(root, c("first.png", "second.png"))
+  png::writePNG(matrix(0, nrow = 2L, ncol = 2L), sources[[1L]])
+  png::writePNG(matrix(1, nrow = 2L, ncol = 2L), sources[[2L]])
+  make_record <- function(section, path) {
+    inspected <- builder_read_image(path)
+    record <- builder_alignment_record(
+      source = list(name = "image.png", type = "image/png"),
+      base_bounds = list(xmin = 0, xmax = 2, ymin = 0, ymax = 2),
+      section = list(id = section, kind = "spatial"),
+      source_path = inspected$source_path
+    )
+    record$source_content_md5 <- inspected$source_content_md5
+    record
+  }
+  item <- list(
+    id = "dataset a",
+    name = "Dataset A",
+    images = list(
+      `fov 1` = list(image = make_record("fov 1", sources[[1L]])),
+      `fov-1` = list(image = make_record("fov-1", sources[[2L]]))
+    )
+  )
+
+  external <- .builder_build_materialize_spatial_images(item, root)
+  first <- external$images[["Dataset A"]][["fov 1"]]$image$path
+  second <- external$images[["Dataset A"]][["fov-1"]]$image$path
+
+  expect_false(identical(first, second))
+  expect_identical(
+    unname(as.character(tools::md5sum(c(first, second)))),
+    unname(as.character(tools::md5sum(sources)))
+  )
+})
+
 test_that("read-back verifies frozen H5 and BPCells sidecars", {
   skip_if_not_installed("BPCells")
   skip_if_not_installed("HDF5Array")
