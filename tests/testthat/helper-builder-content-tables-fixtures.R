@@ -29,47 +29,43 @@ builder_table_object <- function(misc = list()) {
 }
 
 builder_table_marker <- function(group = "cell_type") {
-  data.frame(
+  stats::setNames(data.frame(
     group = c("B", "T"),
     gene = c("MS4A1", "CD3D"),
     avg_log2FC = c(2.1, 1.7),
     stringsAsFactors = FALSE,
     check.names = FALSE
-  ) |>
-    stats::setNames(c(group, "gene", "avg_log2FC"))
+  ), c(group, "gene", "avg_log2FC"))
 }
 
 builder_table_most <- function(group = "cell_type") {
-  data.frame(
+  stats::setNames(data.frame(
     group = c("B", "T"),
     gene = c("MS4A1", "CD3D"),
     pct = c(90, 85),
     stringsAsFactors = FALSE,
     check.names = FALSE
-  ) |>
-    stats::setNames(c(group, "gene", "pct"))
+  ), c(group, "gene", "pct"))
 }
 
 builder_table_mean <- function(group = "cell_type") {
-  data.frame(
+  stats::setNames(data.frame(
     group = c("B", "T"),
     gene = c("MS4A1", "CD3D"),
     mean_expr = c(2.5, 1.8),
     stringsAsFactors = FALSE,
     check.names = FALSE
-  ) |>
-    stats::setNames(c(group, "gene", "mean_expr"))
+  ), c(group, "gene", "mean_expr"))
 }
 
 builder_table_enrichment <- function(group = "cell_type") {
-  data.frame(
+  stats::setNames(data.frame(
     group = c("B", "T"),
     term = c("BCR signaling", "TCR signaling"),
     score = c(8.2, 7.5),
     stringsAsFactors = FALSE,
     check.names = FALSE
-  ) |>
-    stats::setNames(c(group, "Term", "Combined.Score"))
+  ), c(group, "Term", "Combined.Score"))
 }
 
 builder_table_trajectory <- function(cells = c("cell1", "cell3")) {

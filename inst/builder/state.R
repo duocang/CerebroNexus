@@ -1,6 +1,23 @@
 ## Builder state loader. Files are evaluated in order in the caller's
 ## environment so the public and internal API remains identical.
 
+.builder_state_source_utf8 <- get0(
+  "builder_source_utf8",
+  mode = "function",
+  inherits = TRUE
+)
+if (!is.function(.builder_state_source_utf8)) {
+  .builder_state_source_utf8 <- function(file, envir) {
+    ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+    lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+    expressions <- parse(text = lines, encoding = "UTF-8")
+    for (index in seq_along(expressions)) {
+      eval(expressions[[index]], envir = envir)
+    }
+    invisible(TRUE)
+  }
+}
+
 .builder_state_explicit_dir <- get0(
   "dir",
   envir = environment(),
@@ -50,7 +67,7 @@ for (.builder_state_source_name in c(
   "dataset.R",
   "build.R"
 )) {
-  sys.source(
+  .builder_state_source_utf8(
     file.path(.builder_state_source_dir, .builder_state_source_name),
     envir = environment()
   )
@@ -62,5 +79,6 @@ rm(
   .builder_state_source_dir,
   .builder_state_source_candidates,
   .builder_state_source_matches,
-  .builder_state_source_name
+  .builder_state_source_name,
+  .builder_state_source_utf8
 )

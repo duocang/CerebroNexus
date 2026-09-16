@@ -283,7 +283,10 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
     expected_root <- cases[[case]][[3L]]
     runtime <- load_io(loader, io_path)
     catalog <- runtime$builder_example_catalog()
-    expected_paths <- normalizePath(file.path(expected_root, resources))
+    expected_paths <- normalizePath(
+      file.path(expected_root, resources),
+      winslash = "/"
+    )
     observed_paths <- c(
       catalog$complete_viewer_data$serialized_path,
       catalog$trekker_spatial$serialized_path,
@@ -299,7 +302,7 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
     expect_true(
       all(startsWith(
         observed_paths,
-        paste0(normalizePath(expected_root), "/")
+        paste0(normalizePath(expected_root, winslash = "/"), "/")
       )),
       info = case
     )
@@ -650,7 +653,7 @@ test_that("all valid examples build and reopen", {
         file.path("private-data", basename(result$built[[1L]]))
       )
     }
-    reopened <- readRDS(result$built[[1L]])
+    reopened <- qs2::qs_read(result$built[[1L]])
     expect_setequal(
       .builder_crb_visible_pages(reopened),
       record$expected_pages
@@ -912,7 +915,7 @@ test_that("the 15 valid external-image artifact combinations build and relocate"
     )
 
     crb <- published$built[[1L]]
-    reopened <- readRDS(crb)
+    reopened <- qs2::qs_read(crb)
     descriptor <- reopened$getExpressionBackend()
     expect_identical(descriptor$type, coordinate$backend, info = label)
     if (identical(coordinate$backend, "embedded")) {

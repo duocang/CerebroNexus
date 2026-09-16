@@ -564,15 +564,16 @@ builder_start_build_output_preflight_process <- function(path, expected_roots) {
       runtime$`%||%` <- function(left, right) {
         if (is.null(left)) right else left
       }
-      sys.source(contract_file, envir = runtime)
-      sys.source(publish_file, envir = runtime)
+      source_utf8(contract_file, runtime)
+      source_utf8(publish_file, runtime)
       runtime$builder_release_output_preflight(path, expected_roots)
     }),
     list(
       path = path,
       expected_roots = expected_roots,
       contract_file = runtime_files$contract,
-      publish_file = runtime_files$publish
+      publish_file = runtime_files$publish,
+      source_utf8 = builder_source_utf8
     )
   )
 }
@@ -949,7 +950,7 @@ remove_dataset <- function(
   showNotification(
     tagList(
       paste0("Removed ", entry$settings$name, ". "),
-      actionLink("undo_remove", "Undo")
+      actionLink("undo_remove_notice", "Undo")
     ),
     type = "message",
     duration = 10

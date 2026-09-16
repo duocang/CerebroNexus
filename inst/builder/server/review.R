@@ -393,6 +393,10 @@ output[["enhance-table_list"]] <- renderUI({
   req(id)
   entry <- isolate(entry_of(id))
   req(entry)
+  table_action_owner <- builder_content_action_owner(
+    entry,
+    isolate(builder_project_open_generation())
+  )
   tables <- entry$settings$tables %||% list()
   if (!length(tables)) {
     return(NULL)
@@ -404,7 +408,10 @@ output[["enhance-table_list"]] <- renderUI({
   ))
   div(
     class = "enhance-table-list",
-    h5(paste(
+    `data-generation` = table_action_owner$generation,
+    `data-project-epoch` = table_action_owner$project_epoch,
+    `data-owner-token` = table_action_owner$owner_token,
+    h4(paste(
       length(files),
       if (length(files) == 1L) "workbook" else "workbooks",
       "·",
@@ -457,6 +464,8 @@ output[["enhance-table_list"]] <- renderUI({
                 class = "enhance-workbook-display-name",
                 value = workbook_name,
                 `data-workbook-key` = filename,
+                autocomplete = "off",
+                spellcheck = "false",
                 `aria-label` = paste("Viewer workbook name for", filename)
               )
             ),
@@ -485,18 +494,21 @@ output[["enhance-table_list"]] <- renderUI({
                 type = "button",
                 class = "enhance-attachment-edit enhance-workbook-edit",
                 `data-workbook-key` = filename,
+                `aria-label` = paste("Edit Viewer workbook name for", workbook_name),
                 "Edit"
               ),
               tags$button(
                 type = "button",
                 class = "enhance-attachment-save enhance-workbook-save",
                 `data-workbook-key` = filename,
+                `aria-label` = paste("Save Viewer workbook name for", workbook_name),
                 hidden = NA,
                 "Save"
               ),
               tags$button(
                 type = "button",
                 class = "enhance-attachment-cancel enhance-workbook-cancel",
+                `aria-label` = paste("Cancel editing Viewer workbook name for", workbook_name),
                 hidden = NA,
                 "Cancel"
               ),
@@ -504,6 +516,7 @@ output[["enhance-table_list"]] <- renderUI({
                 type = "button",
                 class = "enhance-workbook-remove",
                 `data-workbook-key` = filename,
+                `aria-label` = paste("Remove workbook", workbook_name),
                 "Remove workbook"
               )
             )
@@ -531,6 +544,8 @@ output[["enhance-table_list"]] <- renderUI({
                     class = "enhance-table-display-name",
                     value = display_name,
                     `data-table-key` = key,
+                    autocomplete = "off",
+                    spellcheck = "false",
                     `aria-label` = paste("Viewer table name for", sheet_name)
                   )
                 ),
@@ -545,18 +560,21 @@ output[["enhance-table_list"]] <- renderUI({
                   type = "button",
                   class = "enhance-attachment-edit enhance-table-edit",
                   `data-table-key` = key,
+                  `aria-label` = paste("Edit Viewer table name for", display_name),
                   "Edit"
                 ),
                 tags$button(
                   type = "button",
                   class = "enhance-attachment-save enhance-table-save",
                   `data-table-key` = key,
+                  `aria-label` = paste("Save Viewer table name for", display_name),
                   hidden = NA,
                   "Save"
                 ),
                 tags$button(
                   type = "button",
                   class = "enhance-attachment-cancel enhance-table-cancel",
+                  `aria-label` = paste("Cancel editing Viewer table name for", display_name),
                   hidden = NA,
                   "Cancel"
                 ),
@@ -564,6 +582,7 @@ output[["enhance-table_list"]] <- renderUI({
                   type = "button",
                   class = "enhance-table-remove",
                   `data-table-key` = key,
+                  `aria-label` = paste("Remove table", display_name),
                   "Remove"
                 )
               )
@@ -710,7 +729,8 @@ observeEvent(input$complete_dataset_check, {
   }
   materialized <- isolate(alignment_server$materialize_coordinate_drafts(
     dataset = id,
-    notify = TRUE
+    notify = TRUE,
+    require_settled = TRUE
   ))
   if (!isTRUE(materialized$ok)) {
     return()
@@ -744,7 +764,11 @@ observeEvent(input$complete_dataset_check, {
   if (length(unresolved)) {
     session$sendCustomMessage(
       "builder_focus_incomplete_setting",
-      list(blocker = unresolved[[1L]])
+      list(
+        dataset = id,
+        generation = as.integer(entries[[index]]$revision %||% 0L),
+        blocker = unresolved[[1L]]
+      )
     )
     return()
   }
@@ -776,7 +800,10 @@ observeEvent(input$complete_dataset_check, {
     result(NULL)
     session$sendCustomMessage(
       "builder_focus_dataset_start",
-      list(dataset = target)
+      list(
+        dataset = target,
+        generation = as.integer(isolate(entry_of(target))$revision %||% 0L)
+      )
     )
   })
 })
@@ -811,6 +838,15 @@ render_configure_workbench <- function() {
   }
   if (!inherits(state, "try-error")) {
     entry <- state$entry
+  }
+  content_action_owner <- builder_content_action_owner(
+    entry,
+    isolate(builder_project_open_generation())
+  )
+  metadata_record <- if (inherits(state, "try-error")) {
+    list()
+  } else {
+    state$manifest$metadata_policy %||% list()
   }
   settings <- entry$settings
   assay_profile <- entry$profile$assay_profiles[[settings$assay]] %||%
@@ -874,6 +910,7 @@ render_configure_workbench <- function() {
         entry$profile$content$immune_repertoire %||%
         list(),
       content_sources = settings$content_sources %||% list(),
+      content_action_owner = content_action_owner,
       analysis_acknowledgements = if (inherits(state, "try-error")) {
         character()
       } else {
@@ -916,9 +953,24 @@ render_configure_workbench <- function() {
         "BPCells" = "bpcells"
       ),
       metadata_attention = if (length(attention)) {
-        paste("Metadata needs attention:", paste(attention, collapse = ", "))
+        if ("metadata_policy" %in% attention) {
+          "Review the suggested metadata retention choices before continuing."
+        } else {
+          ""
+        }
       } else {
         ""
+      },
+      metadata_acknowledgement = if (inherits(state, "try-error")) {
+        NULL
+      } else {
+        builder_acknowledgement_action(
+          metadata_record,
+          state$acknowledgements %||% character(),
+          entry$id,
+          "metadata_policy",
+          content_action_owner
+        )
       }
     )
   )

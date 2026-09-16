@@ -70,6 +70,15 @@ launchCerebroBuilder <- function(
   old_request_size <- getOption("shiny.maxRequestSize")
   on.exit(options(shiny.maxRequestSize = old_request_size), add = TRUE)
   options(shiny.maxRequestSize = max_file_size * 1024^2)
+  shiny_was_attached <- "package:shiny" %in% search()
+  on.exit({
+    if (!shiny_was_attached && "package:shiny" %in% search()) {
+      try(
+        detach("package:shiny", unload = FALSE, character.only = TRUE),
+        silent = TRUE
+      )
+    }
+  }, add = TRUE)
 
   shiny::runApp(
     appDir = app_dir,

@@ -1,5 +1,25 @@
 ## Guided Core stage loader.
 
+.builder_core_stage_source_utf8 <- get0(
+  "builder_source_utf8",
+  mode = "function",
+  inherits = TRUE
+)
+if (!is.function(.builder_core_stage_source_utf8)) {
+  .builder_core_stage_source_utf8 <- function(file, envir) {
+    ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+    lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+    if (length(lines)) {
+      lines[[1L]] <- sub("^\ufeff", "", lines[[1L]])
+    }
+    expressions <- parse(text = lines, encoding = "UTF-8")
+    for (index in seq_along(expressions)) {
+      eval(expressions[[index]], envir = envir)
+    }
+    invisible(TRUE)
+  }
+}
+
 .builder_core_stage_source_files <- unlist(lapply(
   sys.frames(),
   function(frame) get0("ofile", envir = frame, inherits = FALSE)
@@ -50,7 +70,7 @@ for (.builder_core_stage_source_name in c(
   "specialized.R",
   "stage.R"
 )) {
-  sys.source(
+  .builder_core_stage_source_utf8(
     file.path(
       .builder_core_stage_source_dir,
       .builder_core_stage_source_name
@@ -59,6 +79,7 @@ for (.builder_core_stage_source_name in c(
   )
 }
 rm(
+  .builder_core_stage_source_utf8,
   .builder_core_stage_sibling_dir,
   .builder_core_stage_source_candidates,
   .builder_core_stage_source_dir,

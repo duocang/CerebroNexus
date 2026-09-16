@@ -50,6 +50,11 @@ builder_marker_dialog_ui <- function() {
     div(
       id = "builder-marker-dialog",
       class = "builder-dialog builder-marker-dialog",
+      role = "dialog",
+      `aria-modal` = "true",
+      `aria-labelledby` = "builder-marker-dialog-title",
+      `aria-describedby` = "enhance-marker_dialog_body",
+      tabindex = "-1",
       h2(id = "builder-marker-dialog-title", "Add Marker genes"),
       uiOutput("enhance-marker_dialog_body"),
       div(

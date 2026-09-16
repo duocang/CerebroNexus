@@ -1,5 +1,9 @@
 builder_omnibus_env <- new.env(parent = globalenv())
 sys.source(
+  builder_profile_inst_path("builder", "prerequisite.R"),
+  envir = builder_omnibus_env
+)
+builder_omnibus_env$builder_source_utf8(
   builder_profile_inst_path("builder", "io.R"),
   envir = builder_omnibus_env
 )
@@ -46,7 +50,7 @@ test_that("Builder gallery offers all packaged examples through one action", {
 })
 
 test_that("Spatial alignment demo restores the arrow image and transform", {
-  sys.source(
+  builder_omnibus_env$builder_source_utf8(
     builder_profile_inst_path("builder", "extras.R"),
     envir = builder_omnibus_env
   )
@@ -230,7 +234,7 @@ test_that("omnibus Trekker payload satisfies the Builder content contract", {
     "builder/spatial.R",
     "builder/content_spatial.R"
   )) {
-    sys.source(
+    builder_omnibus_env$builder_source_utf8(
       builder_profile_inst_path(relative),
       envir = builder_omnibus_env
     )
@@ -316,7 +320,7 @@ test_that("omnibus fixture declares section-owned multi-image histology sidecars
 
 test_that("gallery examples leave tissue images for manual upload", {
   for (relative in c("extras.R", "marker_import.R")) {
-    sys.source(
+    builder_omnibus_env$builder_source_utf8(
       builder_profile_inst_path("builder", relative),
       envir = builder_omnibus_env
     )
@@ -395,7 +399,7 @@ test_that("complete fixture regenerates with stable semantic content", {
   command_output <- withr::with_dir(repo, {
     system2(
       "Rscript",
-      c("data-raw/build_builder_fixtures.R", output),
+      c("--encoding=UTF-8", "data-raw/build_builder_fixtures.R", output),
       stdout = TRUE,
       stderr = TRUE
     )

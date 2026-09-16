@@ -1,5 +1,22 @@
 ## Deterministic Builder plan loader.
 
+.builder_plan_source_utf8 <- get0(
+  "builder_source_utf8",
+  mode = "function",
+  inherits = TRUE
+)
+if (!is.function(.builder_plan_source_utf8)) {
+  .builder_plan_source_utf8 <- function(file, envir) {
+    ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+    lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+    expressions <- parse(text = lines, encoding = "UTF-8")
+    for (index in seq_along(expressions)) {
+      eval(expressions[[index]], envir = envir)
+    }
+    invisible(TRUE)
+  }
+}
+
 .builder_plan_source_files <- unlist(lapply(
   sys.frames(),
   function(frame) get0("ofile", envir = frame, inherits = FALSE)
@@ -38,7 +55,7 @@ for (.builder_plan_source_name in c(
   "preflight.R",
   "freeze.R"
 )) {
-  sys.source(
+  .builder_plan_source_utf8(
     file.path(.builder_plan_source_dir, .builder_plan_source_name),
     envir = environment()
   )
@@ -49,5 +66,6 @@ rm(
   .builder_plan_source_dir,
   .builder_plan_source_files,
   .builder_plan_source_matches,
-  .builder_plan_source_name
+  .builder_plan_source_name,
+  .builder_plan_source_utf8
 )
