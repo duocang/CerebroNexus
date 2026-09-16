@@ -61,6 +61,51 @@ test_that("legacy RDS CRBs rebuild the current Cerebro class", {
   )
 })
 
+test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
+  skip_if_not_installed("qs2")
+  root <- withr::local_tempdir()
+  path <- file.path(root, "spatial.crb")
+  molecules <- data.frame(
+    x = c(1, 2, 3),
+    y = c(4, 5, 6),
+    gene = c("A", "B", "A")
+  )
+  object <- Cerebro$new()
+  object$spatial <- list(
+    fov1 = list(
+      coordinates = data.frame(x = c(0, 10), y = c(0, 10)),
+      expression = matrix(numeric(), nrow = 0L, ncol = 2L),
+      molecules = molecules
+    )
+  )
+
+  saveCerebro(object, path)
+  payload <- .readCerebroPayload(path)
+  expect_s3_class(
+    payload$spatial$fov1$molecules,
+    "CerebroSpatialMoleculeRef"
+  )
+  expect_true(dir.exists(file.path(root, "spatial.spatial")))
+
+  restored <- readCerebro(path)
+  expect_s3_class(
+    restored$spatial$fov1$molecules,
+    "CerebroSpatialMoleculeRef"
+  )
+  expect_identical(restored$getSpatialData("fov1")$molecules, molecules)
+  expect_identical(restored$spatial$fov1$molecules, molecules)
+
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime_object <- runtime$read_cerebro_file(path)
+  runtime_object <- runtime$.attachSpatialMoleculeBackend(runtime_object, path)
+  expect_s3_class(
+    runtime_object$spatial$fov1$molecules,
+    "CerebroSpatialMoleculeRef"
+  )
+  expect_identical(runtime_object$getSpatialData("fov1")$molecules, molecules)
+})
+
 test_that("bundled demo CRBs use the current qs2 codec", {
   demo_dir <- file.path(viewer_app_test_path(), "extdata", "examples")
   demos <- list.files(
