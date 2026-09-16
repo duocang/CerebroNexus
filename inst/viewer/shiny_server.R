@@ -116,37 +116,32 @@ server <- function(input, output, session) {
     )
   )
 
-  ## Outputs inside collapsed boxes may stay active, but only after their
-  ## owning sidebar page has been visited once.
+  ## Outputs inside collapsed boxes may stay active while their owning sidebar
+  ## page is current. Re-suspend them on every page switch so inactive modules
+  ## cannot initialise expensive data or expression backends in the background.
   viewer_hidden_output_options <- list()
-  viewer_enabled_output_tabs <- character()
   outputOptions <- function(output, x, ...) {
     options <- list(...)
     owner <- viewerOutputTab(x)
-    if (
-      identical(options$suspendWhenHidden, FALSE) &&
-        !is.na(owner) &&
-        !owner %in% viewer_enabled_output_tabs
-    ) {
+    if (identical(options$suspendWhenHidden, FALSE) && !is.na(owner)) {
       viewer_hidden_output_options[[x]] <<- options
-      return(invisible(NULL))
+      options$suspendWhenHidden <- !identical(
+        isolate(input[["sidebar"]]),
+        owner
+      )
     }
     do.call(shiny::outputOptions, c(list(x = output, name = x), options))
   }
   observeEvent(input[["sidebar"]], {
     tab <- input[["sidebar"]]
-    viewer_enabled_output_tabs <<- union(viewer_enabled_output_tabs, tab)
     ids <- names(viewer_hidden_output_options)
-    ids <- ids[viewerOutputTab(ids) == tab]
     for (id in ids) {
+      options <- viewer_hidden_output_options[[id]]
+      options$suspendWhenHidden <- !identical(viewerOutputTab(id), tab)
       do.call(
         shiny::outputOptions,
-        c(
-          list(x = output, name = id),
-          viewer_hidden_output_options[[id]]
-        )
+        c(list(x = output, name = id), options)
       )
-      viewer_hidden_output_options[[id]] <<- NULL
     }
   })
 

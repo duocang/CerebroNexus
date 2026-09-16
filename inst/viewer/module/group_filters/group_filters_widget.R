@@ -95,7 +95,7 @@ registerGroupFiltersUI <- function(output, prefix, getGroups, getGroupLevels) {
           function() {
             if (!domain$isClosed()) {
               shiny::withReactiveDomain(domain, {
-                shiny::outputOptions(
+                outputOptions(
                   output,
                   output_id,
                   suspendWhenHidden = FALSE

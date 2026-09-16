@@ -93,7 +93,11 @@ observeEvent(
     )) {
       local({
         id <- input_id
-        serverSideGeneSelector(session, id)
+        serverSideGeneSelector(
+          session,
+          id,
+          active = function() identical(input[["sidebar"]], "geneExpression")
+        )
       })
     }
   },

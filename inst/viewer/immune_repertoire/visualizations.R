@@ -64,7 +64,8 @@ output$ir_visualizations_UI <- renderUI({
     tabPanel(
       # Clonal expansion overlaid on the cell UMAP — the default landing tab,
       # so the first thing the user sees is where expanded clones sit.
-      "Clonal UMAP",
+      "Clonal projection",
+      value = "Clonal UMAP",
       # Reserve a viewport-proportional placeholder for the spinner so the
       # container does not collapse to the ~400px default and snap up when the
       # plot arrives. 60vh matches the non-faceted plotly's own placeholder (and
@@ -428,7 +429,31 @@ ir_umap_split_output_height <- function(group_by) {
   ceiling(layout$height)
 }
 
-ir_clonal_umap_ggplot <- function(df, group_by, point_size, alpha, ncol) {
+ir_projection_display_name <- function(projection) {
+  key <- tolower(as.character(projection %||% "projection"))
+  switch(
+    key,
+    tsne = "t-SNE",
+    umap = "UMAP",
+    pca = "PCA",
+    as.character(projection %||% "projection")
+  )
+}
+
+ir_projection_axis_names <- function(projection) {
+  label <- toupper(gsub("[^[:alnum:]]+", "", ir_projection_display_name(projection)))
+  paste0(label, "_", 1:2)
+}
+
+ir_clonal_umap_ggplot <- function(
+  df,
+  group_by,
+  point_size,
+  alpha,
+  ncol,
+  projection
+) {
+  axes <- ir_projection_axis_names(projection)
   bg <- df[is.na(df$expansion), , drop = FALSE]
   fg <- df[!is.na(df$expansion), , drop = FALSE]
   ggplot2::ggplot() +
@@ -452,7 +477,7 @@ ir_clonal_umap_ggplot <- function(df, group_by, point_size, alpha, ncol) {
       name = "Clonotype"
     ) +
     ggplot2::coord_equal() +
-    ggplot2::labs(x = "UMAP_1", y = "UMAP_2") +
+    ggplot2::labs(x = axes[[1]], y = axes[[2]]) +
     ggplot2::theme_classic() +
     ggplot2::theme(aspect.ratio = 1)
 }
@@ -496,7 +521,7 @@ output[["ir_selection_status_UI"]] <- renderUI({
           ),
           tags$span(
             class = "cerebro-selection-status-text",
-            "Selection is available in Clonal UMAP."
+            "Selection is available in Clonal projection."
           )
         )
       )
@@ -543,20 +568,16 @@ observe({
   clone_call <- "gene"
   show_all <- isTRUE(show_all)
   cells <- ir_umap_cells_to_show()
+  dp <- tryCatch(ir_display_params(), error = function(e) list())
   df <- ir_clonal_umap_data(
     projection,
     receptor,
     clone_call,
     show_all = show_all,
-    cells = cells
+    cells = cells,
+    percentage = dp[["ir_d_percentage_cells_to_show"]] %||% 100
   )
   req(!is.null(df) && nrow(df) > 0)
-
-  dp <- tryCatch(ir_display_params(), error = function(e) list())
-  df <- randomlySubsetCells(
-    df,
-    dp[["ir_d_percentage_cells_to_show"]] %||% 100
-  )
   point_size <- suppressWarnings(as.numeric(dp[["ir_d_point_size"]]))
   if (length(point_size) != 1 || is.na(point_size)) {
     point_size <- 1
@@ -568,9 +589,6 @@ observe({
   ## Grey background = cells without the selected receptor (expansion = NA);
   ## coloured foreground = receptor cells with an expansion level. One trace per
   ## expansion level, in canonical order, so each keeps its turbo colour.
-  bg <- df[is.na(df$expansion), , drop = FALSE]
-  fg <- df[!is.na(df$expansion), , drop = FALSE]
-
   traces <- list()
   data_x <- list()
   data_y <- list()
@@ -578,47 +596,45 @@ observe({
   data_color <- list()
   hover_info <- list()
   hover_text <- list()
+  axes <- ir_projection_axis_names(projection)
 
-  if (nrow(bg) > 0) {
+  background_cells <- which(is.na(df$expansion))
+  if (length(background_cells)) {
     traces[[length(traces) + 1]] <- "Other cells"
-    data_x[[length(data_x) + 1]] <- bg$x
-    data_y[[length(data_y) + 1]] <- bg$y
-    data_key[[length(data_key) + 1]] <- bg$barcode
+    data_x[[length(data_x) + 1]] <- df$x[background_cells]
+    data_y[[length(data_y) + 1]] <- df$y[background_cells]
+    data_key[[length(data_key) + 1]] <- df$barcode[background_cells]
     data_color[[length(data_color) + 1]] <- "#D9D9D9"
     ## Background cells skip hover (per-trace hoverinfo, honoured by shared JS).
     hover_info[[length(hover_info) + 1]] <- "skip"
     hover_text[[length(hover_text) + 1]] <- ""
   }
   for (lvl in names(IR_EXPANSION_COLORS)) {
-    sub <- fg[
-      !is.na(fg$expansion) & as.character(fg$expansion) == lvl,
-      ,
-      drop = FALSE
-    ]
-    if (nrow(sub) == 0) {
+    cells <- which(df$expansion == lvl)
+    if (!length(cells)) {
       next
     }
     traces[[length(traces) + 1]] <- lvl
-    data_x[[length(data_x) + 1]] <- sub$x
-    data_y[[length(data_y) + 1]] <- sub$y
-    data_key[[length(data_key) + 1]] <- sub$barcode
+    data_x[[length(data_x) + 1]] <- df$x[cells]
+    data_y[[length(data_y) + 1]] <- df$y[cells]
+    data_key[[length(data_key) + 1]] <- df$barcode[cells]
     data_color[[length(data_color) + 1]] <- unname(IR_EXPANSION_COLORS[[lvl]])
     hover_info[[length(hover_info) + 1]] <- "text"
     hover_text[[length(hover_text) + 1]] <- paste0(
-      sub$barcode,
+      df$barcode[cells],
       "<br>",
       lvl,
-      "<br>UMAP_1: ",
-      formatC(sub$x, format = "f", digits = 2),
-      "<br>UMAP_2: ",
-      formatC(sub$y, format = "f", digits = 2)
+      "<br>", axes[[1]], ": ",
+      formatC(df$x[cells], format = "f", digits = 2),
+      "<br>", axes[[2]], ": ",
+      formatC(df$y[cells], format = "f", digits = 2)
     )
   }
   req(length(traces) > 0)
 
   output_meta <- list(
     color_type = "categorical",
-    space_label = "Clonal UMAP",
+    space_label = paste("Clonal", ir_projection_display_name(projection)),
     traces = traces,
     color_variable = "expansion",
     appearance = list(
@@ -657,12 +673,12 @@ observe({
 ## ---- Clonal UMAP selection summaries ----------------------------------- ##
 output[["ir_clonalUMAP_number_of_selected_cells"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  cerebroSelectionSummary(sel, "Clonal UMAP")
+  cerebroSelectionSummary(sel, "Clonal projection")
 })
 
 output[["ir_clonalUMAP_projection_composition"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  cerebroSelectionSummary(sel, "Clonal UMAP", composition = TRUE)
+  cerebroSelectionSummary(sel, "Clonal projection", composition = TRUE)
 })
 
 output$ir_plot_clonalUMAP_static <- renderImage(
@@ -674,14 +690,15 @@ output$ir_plot_clonalUMAP_static <- renderImage(
     clone_call <- "gene"
     show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
     cells <- ir_umap_cells_to_show()
+    dp <- tryCatch(ir_display_params(), error = function(e) list())
     df <- ir_clonal_umap_data(
       projection,
       receptor,
       clone_call,
       show_all = show_all,
-      cells = cells
+      cells = cells,
+      percentage = dp[["ir_d_percentage_cells_to_show"]] %||% 100
     )
-    dp <- tryCatch(ir_display_params(), error = function(e) list())
 
     plot <- safeRenderPlot(
       {
@@ -693,7 +710,7 @@ output$ir_plot_clonalUMAP_static <- renderImage(
                 x = 0,
                 y = 0,
                 label = paste0(
-                  "No clonal UMAP to display.\n",
+                  "No clonal projection to display.\n",
                   "Needs a cell projection and ",
                   if (is.null(receptor)) "TCR/BCR" else receptor,
                   " clonotypes whose barcodes match the cells."
@@ -704,10 +721,6 @@ output$ir_plot_clonalUMAP_static <- renderImage(
               ggplot2::theme_void()
           )
         }
-        df <- randomlySubsetCells(
-          df,
-          dp[["ir_d_percentage_cells_to_show"]] %||% 100
-        )
         df <- ir_umap_grouped_data(df, group_by)
         validate(need(
           !is.null(df) && nrow(df) > 0,
@@ -732,7 +745,8 @@ output$ir_plot_clonalUMAP_static <- renderImage(
           group_by = group_by,
           point_size = point_size,
           alpha = alpha,
-          ncol = layout$ncol
+          ncol = layout$ncol,
+          projection = projection
         )
       },
       "clonalUMAP"
@@ -753,7 +767,7 @@ output$ir_plot_clonalUMAP_static <- renderImage(
       contentType = "image/png",
       width = layout$width,
       height = layout$height,
-      alt = "Clonal UMAP grouped by the selected cell metadata"
+      alt = "Clonal projection grouped by the selected cell metadata"
     )
   },
   deleteFile = TRUE
