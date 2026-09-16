@@ -109,7 +109,9 @@ builder_activity_capabilities <- function(activity) {
     add_dataset = mutable,
     edit_dataset = mutable,
     mutate_datasets = mutable,
-    check_dataset = stable,
+    ## Completed datasets remain configurable/checkable while another import
+    ## is queued. Review/build still use the stable capability below.
+    check_dataset = mutable,
     create_project = mutable &&
       !isTRUE(activity$has_project) &&
       isTRUE(activity$has_datasets),
@@ -119,7 +121,7 @@ builder_activity_capabilities <- function(activity) {
         c("clean", "dirty", "save_failed"),
     open_project = open_safe,
     prepare_crbs = stable && isTRUE(activity$has_project),
-    navigate_workflow = stable,
+    navigate_workflow = mutable,
     build = stable,
     page_inert = connected &&
       activity$project_phase %in%
