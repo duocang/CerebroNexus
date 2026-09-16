@@ -225,7 +225,39 @@ test_that("shared cell-view chrome keeps only compact plot gutters", {
   )
 })
 
-test_that("legends use one scrolling row outside the visualization", {
+test_that("viewer legends wrap outside their visualizations", {
+  cell_view_helper <- paste(
+    readLines(viewer_test_path("shiny_UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(
+    cell_view_helper,
+    'class = "coordviews-page cerebro-cell-view-host"',
+    fixed = TRUE
+  )
+
+  single_view_files <- c(
+    "overview/UI_projection.R",
+    "gene_expression/UI_projection.R",
+    "spatial/UI_projection.R",
+    "trajectory/projection.R",
+    "trekker/UI.R",
+    "immune_repertoire/visualizations.R",
+    "hla_tcr_motifs/UI.R"
+  )
+  for (view_file in single_view_files) {
+    view_source <- paste(
+      readLines(viewer_test_path(view_file), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_match(
+      view_source,
+      "cerebroCellViewOutput(",
+      fixed = TRUE,
+      info = view_file
+    )
+  }
+
   linked <- source_expressions("coordinated_views/UI.R")
   linked_text <- paste(deparse(linked), collapse = "\n")
   linked_panes <- find_call_by_class(linked, "cv-panes")
@@ -259,30 +291,69 @@ test_that("legends use one scrolling row outside the visualization", {
     contains_call(hla_tab, "cerebroCellViewOutput", "hla_motif_network")
   )
 
-  css <- paste(
-    c(
-      readLines(viewer_test_path("www/coordviews.css"), warn = FALSE),
-      readLines(viewer_test_path("www/hla_motifs.css"), warn = FALSE)
-    ),
+  linked_css <- paste(
+    readLines(viewer_test_path("www/coordviews.css"), warn = FALSE),
     collapse = "\n"
   )
-  expect_match(css, "flex-wrap: nowrap", fixed = TRUE)
-  expect_match(css, "overflow-x: auto", fixed = TRUE)
-  expect_match(css, ".hla-legend-row:not(:empty)", fixed = TRUE)
+  hla_css <- paste(
+    readLines(viewer_test_path("www/hla_motifs.css"), warn = FALSE),
+    collapse = "\n"
+  )
   expect_match(
-    css,
+    linked_css,
+    "\\.cv-legend \\{[^}]*flex-wrap: wrap",
+    perl = TRUE
+  )
+  expect_match(
+    linked_css,
+    "\\.cv-legend:not\\(:empty\\) \\{[^}]*min-height: 26px",
+    perl = TRUE
+  )
+  expect_false(grepl(
+    "\\.cv-legend \\{[^}]*overflow-x: auto",
+    linked_css,
+    perl = TRUE
+  ))
+  expect_match(
+    hla_css,
+    "\\.hla-legend-row:not\\(:empty\\) \\{[^}]*min-height: 26px",
+    perl = TRUE
+  )
+  expect_false(grepl(
+    "\\.hla-legend-row:not\\(:empty\\) \\{[^}]*overflow-x: auto",
+    hla_css,
+    perl = TRUE
+  ))
+  expect_match(
+    hla_css,
     "\\.hla-plot-wrap \\{[^}]*background: var\\(--c-surface\\)",
     perl = TRUE
   )
-  expect_false(grepl(".cv-legend-overlay", css, fixed = TRUE))
-  expect_false(grepl(".hla-legend-overlay", css, fixed = TRUE))
-  expect_match(css, ".spatial-moran-overlay", fixed = TRUE)
+  expect_false(grepl(".cv-legend-overlay", linked_css, fixed = TRUE))
+  expect_false(grepl(".hla-legend-overlay", hla_css, fixed = TRUE))
+  expect_match(linked_css, ".spatial-moran-overlay", fixed = TRUE)
 
   js <- paste(
     readLines(viewer_test_path("www/cell_views.js"), warn = FALSE),
     collapse = "\n"
   )
   expect_match(js, "cerebro-cell-view-legend", fixed = TRUE)
+  expect_match(
+    js,
+    "'cv-workspace-guide', 'cv-selbar', 'cv-legend', 'cv-cbar'",
+    fixed = TRUE
+  )
+
+  hla_renderer <- paste(
+    readLines(
+      viewer_test_path("hla_tcr_motifs/visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(hla_renderer, "flex:1 1 auto;flex-wrap:wrap", fixed = TRUE)
+  expect_false(grepl("min-width:max-content", hla_renderer, fixed = TRUE))
+  expect_false(grepl("flex-wrap:nowrap", hla_renderer, fixed = TRUE))
 })
 
 test_that("Immune repertoire keeps its status row across subtabs", {

@@ -16,14 +16,10 @@
   border-radius: 10px;
 }
 .hla-legend-row:not(:empty) {
-  height: 30px;
+  min-height: 26px;
   box-sizing: border-box;
   margin: 0 0 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
 }
-.hla-legend-row::-webkit-scrollbar { height: 4px; }
 .hla-modebar {
   position: absolute; top: 8px; right: 8px; z-index: 6;
   display: flex; align-items: center; gap: 4px; padding: 3px;
