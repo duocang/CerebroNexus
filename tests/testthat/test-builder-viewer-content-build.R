@@ -74,6 +74,7 @@ builder_viewer_content_plan_entry <- function() {
         name = "lineage_b"
       ),
       overview_point_size = 8,
+      overview_point_opacity = 0.55,
       overview_percentage_cells_to_show = 60,
       cell_cycle_columns = "Phase",
       analyses = character(),
@@ -154,6 +155,7 @@ test_that("BuildPlan freezes the complete Viewer-content selection", {
     list(monocle2 = c("lineage_b", "lineage_a"))
   )
   expect_identical(item$overview_point_size, 8)
+  expect_identical(item$overview_point_opacity, 0.55)
   expect_identical(
     item$spatial_point_appearance,
     list(fov = list(point_opacity = 0.42, point_size = 8))
@@ -174,7 +176,7 @@ test_that("BuildPlan freezes the complete Viewer-content selection", {
     plan$app_options$point_size,
     list(
       overview_projection_point_size = 8,
-      projection_point_opacity = 1
+      projection_point_opacity = 0.55
     )
   )
 })
@@ -359,6 +361,7 @@ test_that("generated-App content freezes defaults for every dataset", {
           name = "lineage_b"
         ),
         overview_point_size = 8,
+        overview_point_opacity = 0.55,
         overview_percentage_cells_to_show = 60,
         spatial_point_appearance = list(
           fov = list(point_opacity = 0.42, point_size = 8)
@@ -384,7 +387,7 @@ test_that("an explicit legacy App point-size option still wins", {
     plan$app_options$point_size,
     list(
       overview_projection_point_size = 6,
-      projection_point_opacity = 1
+      projection_point_opacity = 0.55
     )
   )
 })
@@ -415,7 +418,7 @@ test_that("normal Review options keep the dataset point-size default", {
     plan$app_options$point_size,
     list(
       overview_projection_point_size = 8,
-      projection_point_opacity = 1
+      projection_point_opacity = 0.55
     )
   )
 })

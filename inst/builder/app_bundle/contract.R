@@ -640,6 +640,7 @@
               "initial_projections",
               "default_trajectory",
               "overview_point_size",
+              "overview_point_opacity",
               "overview_percentage_cells_to_show",
               "spatial_point_appearance",
               "spatial_roi_settings"
@@ -652,6 +653,7 @@
       initial_projections <- item$initial_projections
       trajectory <- item$default_trajectory
       point_size <- item$overview_point_size
+      point_opacity <- item$overview_point_opacity
       percentage_cells_to_show <- item$overview_percentage_cells_to_show
       spatial_point_appearance <- item$spatial_point_appearance
       spatial_roi_settings <- item$spatial_roi_settings
@@ -695,6 +697,12 @@
         is.finite(point_size) &&
         point_size >= 0 &&
         point_size <= 20 &&
+        is.numeric(point_opacity) &&
+        length(point_opacity) == 1L &&
+        !is.na(point_opacity) &&
+        is.finite(point_opacity) &&
+        point_opacity >= 0.1 &&
+        point_opacity <= 1 &&
         is.numeric(percentage_cells_to_show) &&
         length(percentage_cells_to_show) == 1L &&
         !is.na(percentage_cells_to_show) &&
@@ -775,6 +783,7 @@
 
 .builder_app_viewer_content <- function(items, labels, fallback_point_size) {
   fallback <- fallback_point_size$overview_projection_point_size
+  fallback_opacity <- fallback_point_size$projection_point_opacity %||% 1
   values <- lapply(items, function(item) {
     point_size <- item$overview_point_size
     if (
@@ -786,6 +795,17 @@
         point_size > 20
     ) {
       point_size <- fallback
+    }
+    point_opacity <- item$overview_point_opacity
+    if (
+      !is.numeric(point_opacity) ||
+        length(point_opacity) != 1L ||
+        is.na(point_opacity) ||
+        !is.finite(point_opacity) ||
+        point_opacity < 0.1 ||
+        point_opacity > 1
+    ) {
+      point_opacity <- fallback_opacity
     }
     percentage_cells_to_show <- item$overview_percentage_cells_to_show
     if (
@@ -849,6 +869,7 @@
       initial_projections = initial_projections,
       default_trajectory = trajectory,
       overview_point_size = as.double(point_size),
+      overview_point_opacity = as.double(point_opacity),
       overview_percentage_cells_to_show = as.double(
         percentage_cells_to_show
       ),
