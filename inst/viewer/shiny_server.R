@@ -376,12 +376,43 @@ server <- function(input, output, session) {
       if (is.null(selected)) {
         selected <- choices[1]
       }
-      selectInput(
-        inputId = "crb_file_selector",
-        label = "Sample data set",
-        choices = choices,
-        selected = selected,
-        width = '350px'
+      labels <- names(choices)
+      longest_label <- if (length(labels)) {
+        max(nchar(labels, type = "width"), na.rm = TRUE)
+      } else {
+        0L
+      }
+      selector_width <- max(24L, min(72L, longest_label + 5L))
+      tags$div(
+        class = "cerebro-dataset-selector",
+        style = paste0(
+          "--cerebro-dataset-selector-width:",
+          selector_width,
+          "ch;"
+        ),
+        selectizeInput(
+          inputId = "crb_file_selector",
+          label = "Sample data set",
+          choices = choices,
+          selected = selected,
+          width = "100%",
+          options = list(
+            render = list(
+              item = I(paste0(
+                "function(item, escape) {",
+                "return '<div title=\"' + escape(item.label) + '\">' + ",
+                "escape(item.label) + '</div>';",
+                "}"
+              )),
+              option = I(paste0(
+                "function(item, escape) {",
+                "return '<div title=\"' + escape(item.label) + '\">' + ",
+                "escape(item.label) + '</div>';",
+                "}"
+              ))
+            )
+          )
+        )
       )
     }
   })

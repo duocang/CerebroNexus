@@ -79,6 +79,11 @@ test_that("legacy result selectors use real visible labels", {
 
   server <- viewer_design_source("shiny_server.R")
   expect_match(server, 'label = "Sample data set"', fixed = TRUE)
+  expect_match(server, "cerebro-dataset-selector", fixed = TRUE)
+  expect_match(server, "longest_label", fixed = TRUE)
+  css <- viewer_design_source("www", "custom.css")
+  expect_match(css, ".cerebro-dataset-selector", fixed = TRUE)
+  expect_match(css, "text-overflow: ellipsis", fixed = TRUE)
 })
 
 test_that("canvas views expose a text alternative and hide minimaps", {

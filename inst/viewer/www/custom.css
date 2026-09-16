@@ -1634,6 +1634,33 @@ body .selectize-control.single .selectize-input > .item {
   padding: 0 !important;
   font-size: 14px;
 }
+
+/* The generated App keeps full dataset labels. Size this one selector from
+   its longest label, but never let an imported filename widen the page. */
+.cerebro-dataset-selector {
+  inline-size: min(100%, var(--cerebro-dataset-selector-width, 350px));
+  max-inline-size: 100%;
+}
+.cerebro-dataset-selector .shiny-input-container,
+.cerebro-dataset-selector .selectize-control {
+  inline-size: 100% !important;
+  max-inline-size: 100%;
+}
+.cerebro-dataset-selector .selectize-control.single .selectize-input > .item {
+  display: block;
+  max-inline-size: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cerebro-dataset-selector .selectize-dropdown {
+  inline-size: min(
+    var(--cerebro-dataset-selector-width, 350px),
+    calc(100vw - 32px)
+  ) !important;
+  min-inline-size: 100%;
+  max-inline-size: calc(100vw - 32px);
+}
 /* Multi-select: each chosen value is a warm removable chip. */
 body .selectize-control.multi .selectize-input > .item {
   background: var(--c-amber-50) !important;
