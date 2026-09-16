@@ -593,7 +593,7 @@ server <- function(input, output, session) {
   toggleConditionalTab(
     "immune_repertoire",
     function() {
-      getImmuneRepertoire()
+      getImmuneRepertoireSummary()$available
     }
   )
   toggleConditionalTab(
@@ -629,12 +629,16 @@ server <- function(input, output, session) {
     ## Bound into this scope by the module's core_shim, which is sourced before
     ## this closure is ever evaluated.
     function() {
-      any(
-        tryCatch(
+      summary <- getImmuneRepertoireSummary()
+      chains <- summary$chains
+      if (!length(chains) && summary$available) {
+        chains <- tryCatch(
           hla_detect_chains(getImmuneRepertoire()),
           error = function(e) character(0)
-        ) %in%
-          c("TRA", "TRB")
+        )
+      }
+      any(
+        chains %in% c("TRA", "TRB")
       )
     }
   )

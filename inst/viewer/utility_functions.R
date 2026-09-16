@@ -2244,11 +2244,66 @@ get_or_load_crb <- function(
   ))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
+  obj <- .attachImmuneRepertoireBackend(obj)
   obj <- .attachSpatialMoleculeBackend(obj, path)
   .crb_cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
+  obj
+}
+
+.attachImmuneRepertoireBackend <- function(obj) {
+  field <- "immune_repertoire_backend"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(obj)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend <- obj[[field]]
+  if (is.null(backend)) {
+    return(obj)
+  }
+  valid <- is.list(backend) &&
+    identical(backend$type, "bpcells-file") &&
+    is.character(backend$file) &&
+    length(backend$file) == 1L &&
+    !is.na(backend$file) &&
+    nzchar(backend$file) &&
+    !backend$file %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$file) &&
+    is.character(backend$md5) &&
+    length(backend$md5) == 1L &&
+    !is.na(backend$md5) &&
+    grepl("^[[:xdigit:]]{32}$", backend$md5)
+  expression_backend <- tryCatch(obj$getExpressionBackend(), error = function(e) NULL)
+  valid <- valid &&
+    is.list(expression_backend) &&
+    identical(expression_backend$type, "bpcells")
+  if (!valid) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- unique(as.character(backend$samples %||% character()))
+  backend$chains <- unique(as.character(backend$chains %||% character()))
+  if (anyNA(backend$samples) || anyNA(backend$chains)) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- backend$samples[nzchar(backend$samples)]
+  backend$chains <- backend$chains[nzchar(backend$chains)]
+  root <- tryCatch(obj$expression@dir, error = function(e) NULL)
+  if (!is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)) {
+    stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
+  }
+  repertoire_file <- file.path(root, backend$file)
+  if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
+    stop("The immune repertoire sidecar is missing: ", repertoire_file, call. = FALSE)
+  }
+  backend$root <- root
+  obj[[field]] <- backend
   obj
 }
 
@@ -2977,6 +3032,27 @@ getImmuneRepertoire <- function() {
     return(list())
   }
   tryCatch(ds$getImmuneRepertoire(), error = function(e) list())
+}
+
+getImmuneRepertoireSummary <- function() {
+  ds <- data_set()
+  if (is.null(ds)) {
+    return(list(available = FALSE, samples = character(), chains = character()))
+  }
+  backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
+  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+    return(list(
+      available = TRUE,
+      samples = as.character(backend$samples %||% character()),
+      chains = as.character(backend$chains %||% character())
+    ))
+  }
+  repertoire <- tryCatch(ds$getImmuneRepertoire(), error = function(e) list())
+  list(
+    available = is.list(repertoire) && length(repertoire) > 0L,
+    samples = names(repertoire) %||% character(),
+    chains = character()
+  )
 }
 
 ## ---- What one row of this data set is ---------------------------------- ##
