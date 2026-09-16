@@ -369,7 +369,7 @@ spatial_projection_update_plot <- function(input) {
     } else {
       unname(hover_info)
     }
-    panel_background <- function(label, cells) {
+    panel_background <- function(label, panel_coordinates) {
       configured <- plot_parameters[["roi_backgrounds"]][[label]]
       if (is.null(configured) || is.null(configured$descriptor)) {
         return(list())
@@ -379,7 +379,7 @@ spatial_projection_update_plot <- function(input) {
         configured$image_allowlist,
         configured$identity,
         configured$preset,
-        coordinates[cells, , drop = FALSE],
+        panel_coordinates,
         if (exists("Cerebro.options")) {
           Cerebro.options[["cerebro_root"]]
         } else {
@@ -398,6 +398,21 @@ spatial_projection_update_plot <- function(input) {
     payload$data$panels <- lapply(seq_along(panel_indices), function(index) {
       cells <- panel_indices[[index]]
       label <- names(panel_indices)[[index]]
+      point_appearance <- plot_parameters[["roi_point_appearance"]][[
+        label
+      ]] %||%
+        list()
+      panel_coordinates <- coordinates[cells, , drop = FALSE]
+      extent <- plot_parameters[["roi_extents"]][[label]]
+      if (
+        identical(plot_parameters[["roi_mode"]], "separate") &&
+          is.list(extent) &&
+          length(extent$x) == 2L &&
+          length(extent$y) == 2L &&
+          all(is.finite(c(extent$x, extent$y)))
+      ) {
+        panel_coordinates <- data.frame(x = extent$x, y = extent$y)
+      }
       utils::modifyList(
         list(
           id = paste0("split-", index),
@@ -407,22 +422,24 @@ spatial_projection_update_plot <- function(input) {
           y = as.numeric(coordinates[[2]][cells]),
           hover = panel_hover[cells],
           spatial = TRUE,
+          builder_point_size = point_appearance$point_size,
+          builder_point_opacity = point_appearance$point_opacity,
           preserve_aspect = identical(
             plot_parameters[["roi_mode"]],
             "separate"
           ),
           x_range = if (identical(plot_parameters[["roi_mode"]], "separate")) {
-            panel_range(coordinates[[1]][cells])
+            panel_range(panel_coordinates[[1L]])
           } else {
             panel_x_range
           },
           y_range = if (identical(plot_parameters[["roi_mode"]], "separate")) {
-            panel_range(coordinates[[2]][cells])
+            panel_range(panel_coordinates[[2L]])
           } else {
             panel_y_range
           }
         ),
-        panel_background(label, cells)
+        panel_background(label, panel_coordinates)
       )
     })
     payload$data$selection_key <- selection_keys
