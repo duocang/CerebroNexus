@@ -120,7 +120,7 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
   expect_false(grepl("maxItems", controls, fixed = TRUE))
   expect_match(
     controls,
-    "!length(roi_background_groups) && length(background_choices) <= 1L",
+    "!length(roi_background_groups) && !length(background_choices)",
     fixed = TRUE
   )
 })
@@ -448,7 +448,6 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
       identical(
         names(group$choices),
         c(
-          "No Background",
           paste0(group$roi, "-A"),
           paste0(group$roi, "-B")
         )
@@ -459,7 +458,6 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
 
   selected <- c(
     groups$ROI1$tokens[["embedded::ROI1-B"]],
-    groups$ROI2$tokens[["none"]],
     groups$ROI3$tokens[["embedded::ROI3-A"]],
     groups$ROI3$tokens[["embedded::ROI3-B"]],
     "invalid"
@@ -485,10 +483,10 @@ test_that("Separate ROIs groups and normalizes one background per ROI", {
   expect_identical(
     spatial_roi_background_selections(groups, NULL),
     list(
-      ROI1 = "embedded::ROI1-A",
-      ROI2 = "embedded::ROI2-A",
-      ROI3 = "embedded::ROI3-A",
-      ROI4 = "embedded::ROI4-A"
+      ROI1 = "none",
+      ROI2 = "none",
+      ROI3 = "none",
+      ROI4 = "none"
     )
   )
   expect_identical(

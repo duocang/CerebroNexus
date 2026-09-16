@@ -614,10 +614,6 @@ ui <- tagList(
             tags$li(`data-build-phase` = "datasets", "Build datasets"),
             tags$li(`data-build-phase` = "viewer", "Package Viewer"),
             tags$li(`data-build-phase` = "publish", "Verify & publish")
-          ),
-          tags$progress(
-            class = "builder-build-progress-activity",
-            `aria-label` = "Build activity"
           )
         )
       ),
