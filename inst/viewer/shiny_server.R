@@ -30,6 +30,13 @@ source(
 ## sessions. The complete msigdbr table is discarded after each public query.
 .msigdb_process_cache <- new.env(parent = emptyenv())
 
+## Immutable CRB prototypes are shared by all sessions in this R process.
+## get_or_load_crb() always returns a shallow R6 clone, so session-local lazy
+## hydration (for example one spatial FOV's molecules) cannot leak to another
+## browser session while the large immutable fields and on-disk handles remain
+## shared through R's copy-on-modify semantics.
+.crb_process_cache <- new.env(parent = emptyenv())
+
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.

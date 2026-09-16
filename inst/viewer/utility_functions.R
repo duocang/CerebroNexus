@@ -2350,14 +2350,26 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Session-scoped cache for loaded .crb files (B8).
+## Process-scoped cache for loaded .crb files (B8).
 ##
-## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
-## file path and backend configuration. Changing the backend configuration for
-## an already loaded path fails closed; overwriting a .crb in place is NOT
-## detected -- start a new app session to pick up either change.
+## shiny_server.R owns this environment. The fallback keeps utility_functions.R
+## independently sourceable in tests and tools. Cached objects are prototypes;
+## callers receive shallow R6 clones so per-session lazy fields stay isolated.
 ##----------------------------------------------------------------------------##
-.crb_cache <- new.env(parent = emptyenv())
+if (!exists(".crb_process_cache", inherits = TRUE)) {
+  .crb_process_cache <- new.env(parent = emptyenv())
+}
+
+.cloneCachedCrb <- function(object) {
+  if (
+    is.environment(object) &&
+      exists("clone", envir = object, inherits = FALSE) &&
+      is.function(object[["clone"]])
+  ) {
+    return(object$clone(deep = FALSE))
+  }
+  object
+}
 
 .crbLogLabel <- function(path) {
   basename(path)
@@ -2541,7 +2553,7 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_cache[[path]]
+  cached <- .crb_process_cache[[path]]
   if (!is.null(cached)) {
     if (!identical(cached$backend_identity, cache_identity)) {
       stop(
@@ -2553,7 +2565,7 @@ get_or_load_crb <- function(
       )
     }
     print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
-    return(cached$object)
+    return(.cloneCachedCrb(cached$object))
   }
   print(glue::glue(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
@@ -2561,11 +2573,11 @@ get_or_load_crb <- function(
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   obj <- .attachSpatialMoleculeBackend(obj, path)
-  .crb_cache[[path]] <- list(
+  .crb_process_cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
-  obj
+  .cloneCachedCrb(obj)
 }
 
 .attachSpatialMoleculeBackend <- function(obj, crb_path) {
