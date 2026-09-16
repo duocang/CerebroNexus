@@ -3327,7 +3327,10 @@ test_that("image headers are read without raster decoding", {
     "1 GiB file limit",
     fixed = TRUE
   )
-  expect_false(grepl("readPNG|readJPEG", deparse1(body(builder_read_image))))
+  expect_false(grepl(
+    "readPNG|readJPEG",
+    deparse1(body(builder_image_file_dimensions))
+  ))
 })
 
 test_that("JPEG EXIF orientations 5 through 8 swap display dimensions", {
