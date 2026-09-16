@@ -36,7 +36,7 @@ test_that("export keeps one spatial entry per tissue section", {
 
   dir <- withr::local_tempdir()
   crb_path <- convert_synthetic_to_crb(obj, dir, "multisection")
-  crb <- readRDS(crb_path)
+  crb <- readCerebro(crb_path)
 
   expect_equal(
     crb$availableSpatial(),
@@ -109,7 +109,7 @@ test_that("external histology remains scoped to its own section", {
     expect_null(applied$error)
     expect_setequal(applied$applied, sections)
 
-    crb <- readRDS(crb_path)
+    crb <- readCerebro(crb_path)
     external <- .builder_build_materialize_spatial_images(
       list(id = "dataset", name = "Dataset", images = images),
       dir
@@ -128,7 +128,7 @@ test_that("external histology remains scoped to its own section", {
     )
     for (nm in sections) {
       sd <- crb$getSpatialData(nm)
-      expect_length(sd$histology_images, 0L, info = nm)
+      expect_length(sd$histology_images, 0L)
       expect_true(
         all(
           sd$coordinates[, 1] >= bounds[[nm]][["xmin"]] &
@@ -177,7 +177,7 @@ test_that("attaching to some sections leaves the others without an image", {
 
     ## A partial attachment is legitimate -- the viewer simply offers no
     ## background for the bare sections -- but it must not bleed across.
-    crb <- readRDS(crb_path)
+    crb <- readCerebro(crb_path)
     expect_length(crb$getSpatialData("sectionA2")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionA1")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionB1")$histology_images, 0L)
