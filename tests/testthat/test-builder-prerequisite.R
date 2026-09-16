@@ -293,11 +293,13 @@ test_that("runtime dependency preflight actually loads every hard dependency", {
 })
 
 test_that("Build dependency preflight includes conditional plan requirements", {
-  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = normalizePath(
-    testthat::test_path("..", ".."),
-    winslash = "/",
-    mustWork = TRUE
-  ))
+  withr::local_envvar(
+    CEREBRO_PACKAGE_SOURCE = normalizePath(
+      testthat::test_path("..", ".."),
+      winslash = "/",
+      mustWork = TRUE
+    )
+  )
   plan <- list(
     items = list(list(
       expression_backend = "bpcells",
@@ -310,15 +312,18 @@ test_that("Build dependency preflight includes conditional plan requirements", {
   )
   requirements <- builder_build_package_requirements(plan)
 
-  expect_true(all(c(
-    "qs2",
-    "Seurat (>= 3.0.0)",
-    "SeuratObject",
-    "BPCells",
-    "qs",
-    "shinymanager (>= 1.1.0)",
-    "openssl"
-  ) %in% requirements))
+  expect_true(all(
+    c(
+      "qs2",
+      "Seurat (>= 3.0.0)",
+      "SeuratObject",
+      "BPCells",
+      "qs",
+      "shinymanager (>= 1.1.0)",
+      "openssl"
+    ) %in%
+      requirements
+  ))
 })
 
 test_that("dependency preflight reports every load and version failure", {
@@ -569,13 +574,18 @@ test_that("session binds successful App results to the dispatched build id", {
     builder_repo_source("session.R")
     builder_app_capability <- function(...) list(version = 1L)
     builder_worker_require_capability <- function(name) invisible(TRUE)
+    .builder_build_progress_callback <- function(path) {
+      function(...) invisible(NULL)
+    }
     builder_execute_plan <- function(
       plan,
       stage,
       registry,
       auth_material = NULL,
-      objects = list()
+      objects = list(),
+      on_progress = NULL
     ) {
+      expect_true(is.function(on_progress))
       list(state = "success", publishable = TRUE, stage = stage)
     }
     builder_worker_response <- function(request, value = NULL, error = NULL) {
