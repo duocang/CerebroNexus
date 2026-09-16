@@ -119,7 +119,7 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   expect_equal(
     as_numeric_bounds(result$overlay$viewports$`__section__`),
     legacy_view(
-      list(xmin = 0, xmax = 10, ymin = 0, ymax = 20),
+      list(xmin = -5, xmax = 15, ymin = -10, ymax = 30),
       500,
       400,
       2

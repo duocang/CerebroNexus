@@ -146,6 +146,7 @@ vm.runInThisContext(fs.readFileSync(canvasSource, "utf8"), {
 
 const controls = {
   coordinateRotation: 0,
+  coordinateScale: 2,
   dx: 0,
   dy: 0,
   scale: 0.001,

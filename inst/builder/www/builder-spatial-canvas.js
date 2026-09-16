@@ -67,6 +67,10 @@
     value = Number(value);
     return Number.isFinite(value) ? value : fallback;
   }
+  function coordinateScale(controls) {
+    var value = finite(controls && controls.coordinateScale, 1);
+    return value > 0 ? value : 1;
+  }
   function schedule() {
     if (!state.frame) state.frame = window.requestAnimationFrame(draw);
   }
@@ -209,18 +213,20 @@
       });
     });
   }
-  function rotated(point, bounds, degrees) {
+  function rotated(point, bounds, degrees, scale) {
     var cx = (bounds.xmin + bounds.xmax) / 2;
     var cy = (bounds.ymin + bounds.ymax) / 2;
     var angle = finite(degrees, 0) * Math.PI / 180;
     var x = point.x - cx, y = point.y - cy;
-    return {x: cx + x * Math.cos(angle) - y * Math.sin(angle),
-      y: cy + x * Math.sin(angle) + y * Math.cos(angle)};
+    scale = finite(scale, 1);
+    if (scale <= 0) scale = 1;
+    return {x: cx + scale * (x * Math.cos(angle) - y * Math.sin(angle)),
+      y: cy + scale * (x * Math.sin(angle) + y * Math.cos(angle))};
   }
-  function viewport(bounds, degrees) {
+  function viewport(bounds, degrees, scale) {
     var cx = (bounds.xmin + bounds.xmax) / 2;
     var cy = (bounds.ymin + bounds.ymax) / 2;
-    var frame = corners(bounds, degrees);
+    var frame = corners(bounds, degrees, scale);
     var width = Math.max.apply(null, frame.map(function (p) { return p.x; })) -
       Math.min.apply(null, frame.map(function (p) { return p.x; }));
     var height = Math.max.apply(null, frame.map(function (p) { return p.y; })) -
@@ -230,8 +236,8 @@
     return {xmin: cx - width / 2, xmax: cx + width / 2,
       ymin: cy - height / 2, ymax: cy + height / 2};
   }
-  function viewportLayout(bounds, degrees, width, height, pad, imagePad) {
-    var view = viewport(bounds, degrees);
+  function viewportLayout(bounds, degrees, width, height, pad, imagePad, scale) {
+    var view = viewport(bounds, degrees, scale);
     var viewWidth = view.xmax - view.xmin;
     var viewHeight = view.ymax - view.ymin;
     var plotWidth = Math.max(width - pad * 2, 1);
@@ -321,13 +327,15 @@
     }
     var pad = POINT_EDGE_PADDING;
     var angle = finite(state.controls && state.controls.coordinateRotation, 0);
+    var pointScale = coordinateScale(state.controls);
     var layout = viewportLayout(
       scene.bounds,
       angle,
       cssWidth,
       cssHeight,
       pad,
-      IMAGE_EDGE_PADDING
+      IMAGE_EDGE_PADDING,
+      pointScale
     );
     var persistedLayout = viewportLayout(
       scene.bounds,
@@ -335,7 +343,8 @@
       cssWidth,
       cssHeight,
       LEGACY_VIEWPORT_PADDING,
-      LEGACY_VIEWPORT_PADDING
+      LEGACY_VIEWPORT_PADDING,
+      pointScale
     );
     var scale = layout.scale, screen = layout.screen;
     window.__builderSpatialCanvasMetrics.latestViewport = {
@@ -355,10 +364,10 @@
     if (imageGeometry) {
       drawImageFrame(ctx, imageGeometry, state.activeTransform === "image");
     }
-    drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1);
-    drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5);
+    drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1, 1);
+    drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5, pointScale);
     if (state.activeTransform === "points") {
-      drawReference(ctx, scene.bounds, screen, angle, "Points");
+      drawReference(ctx, scene.bounds, screen, angle, "Points", pointScale);
     }
     updateSummary(node, scene, ".");
   }
@@ -410,6 +419,7 @@
         (scene.roiCoordinateTransforms || {})[group] || {});
       if (active) roiControls = Object.assign(roiControls, controls);
       var angle = finite(roiControls.coordinateRotation, 0);
+      var pointScale = coordinateScale(roiControls);
       var xs = indices.map(function (index) { return p.x[index]; });
       var ys = indices.map(function (index) { return p.y[index]; });
       var bounds = (scene.roiBounds || {})[group] || {
@@ -424,7 +434,8 @@
         panelWidth,
         panelHeight,
         POINT_EDGE_PADDING,
-        IMAGE_EDGE_PADDING
+        IMAGE_EDGE_PADDING,
+        pointScale
       );
       var persisted = viewportLayout(
         bounds,
@@ -432,7 +443,8 @@
         legacyPanelWidth,
         legacyPlotHeight,
         LEGACY_ROI_VIEWPORT_PADDING,
-        LEGACY_ROI_VIEWPORT_PADDING
+        LEGACY_ROI_VIEWPORT_PADDING,
+        pointScale
       );
       viewports[group] = persisted.view;
       imageFitViewports[group] = local.imageFitView;
@@ -460,8 +472,8 @@
       var cosine = Math.cos(radians), sine = Math.sin(radians);
       indices.forEach(function (index) {
         var x = p.x[index] - cx, y = p.y[index] - cy;
-        var at = screen({x: cx + x * cosine - y * sine,
-          y: cy + x * sine + y * cosine});
+        var at = screen({x: cx + pointScale * (x * cosine - y * sine),
+          y: cy + pointScale * (x * sine + y * cosine)});
         state.screenPoints[index] = at;
         ctx.beginPath();
         ctx.fillStyle = p.color[index] || "#777";
@@ -477,10 +489,10 @@
             state.activeTransform === "image"
           );
         }
-        drawFrame(ctx, bounds, screen, 0, "#9a958d", [4, 4], 1);
-        drawFrame(ctx, bounds, screen, angle, "#5f5a54", [], 1.5);
+        drawFrame(ctx, bounds, screen, 0, "#9a958d", [4, 4], 1, 1);
+        drawFrame(ctx, bounds, screen, angle, "#5f5a54", [], 1.5, pointScale);
         if (state.activeTransform === "points") {
-          drawReference(ctx, bounds, screen, angle, "Points");
+          drawReference(ctx, bounds, screen, angle, "Points", pointScale);
         }
       }
       ctx.strokeStyle = active ? "#d45500" : "#9a958d";
@@ -537,14 +549,15 @@
     var cx = (bounds.xmin + bounds.xmax) / 2;
     var cy = (bounds.ymin + bounds.ymax) / 2;
     var angle = finite(c.coordinateRotation, 0) * Math.PI / 180;
+    var pointScale = coordinateScale(c);
     var cosine = Math.cos(angle), sine = Math.sin(angle);
     state.screenPoints = new Array(p.x.length);
     Object.keys(state.colorGroups).forEach(function (color) {
       ctx.beginPath(); ctx.fillStyle = color;
       state.colorGroups[color].forEach(function (index) {
         var x = p.x[index] - cx, y = p.y[index] - cy;
-        var at = screen({x: cx + x * cosine - y * sine,
-          y: cy + x * sine + y * cosine});
+        var at = screen({x: cx + pointScale * (x * cosine - y * sine),
+          y: cy + pointScale * (x * sine + y * cosine)});
         state.screenPoints[index] = at;
         ctx.moveTo(at.x + radius, at.y);
         ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
@@ -553,19 +566,19 @@
     });
     ctx.globalAlpha = 1;
   }
-  function corners(bounds, degrees) {
+  function corners(bounds, degrees, scale) {
     return [{x: bounds.xmin, y: bounds.ymin}, {x: bounds.xmax, y: bounds.ymin},
       {x: bounds.xmax, y: bounds.ymax}, {x: bounds.xmin, y: bounds.ymax}]
-      .map(function (p) { return rotated(p, bounds, degrees); });
+      .map(function (p) { return rotated(p, bounds, degrees, scale); });
   }
   function path(ctx, points, screen) {
     points.forEach(function (p, i) { p = screen(p); if (i) ctx.lineTo(p.x, p.y);
       else ctx.moveTo(p.x, p.y); });
     var first = screen(points[0]); ctx.lineTo(first.x, first.y);
   }
-  function drawFrame(ctx, bounds, screen, degrees, color, dash, width) {
+  function drawFrame(ctx, bounds, screen, degrees, color, dash, width, scale) {
     ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash);
-    ctx.beginPath(); path(ctx, corners(bounds, degrees), screen); ctx.stroke(); ctx.restore();
+    ctx.beginPath(); path(ctx, corners(bounds, degrees, scale), screen); ctx.stroke(); ctx.restore();
   }
   function drawAngleReference(ctx, edge, degrees, label) {
     var centerX = (edge[0].x + edge[1].x) / 2;
@@ -597,8 +610,8 @@
     ctx.fillText(text, centerX, centerY);
     ctx.restore();
   }
-  function drawReference(ctx, bounds, screen, degrees, label) {
-    var edge = corners(bounds, degrees).slice(0, 2).map(screen);
+  function drawReference(ctx, bounds, screen, degrees, label, scale) {
+    var edge = corners(bounds, degrees, scale).slice(0, 2).map(screen);
     drawAngleReference(ctx, edge, degrees, label);
   }
   function drawImageFrame(ctx, geometry, active) {
