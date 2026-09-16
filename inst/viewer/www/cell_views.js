@@ -2571,16 +2571,30 @@
     );
   }
   function reportSelection() {
+    var hasSelection = !!(sel && sel.size);
+    var stableKeysReady = !singleActive || (
+      D && Array.isArray(D.cells) && D.cells.length === D.n
+    );
+    var pendingStableSelection = singleActive && hasSelection && !stableKeysReady;
     var arr = null;
-    if (sel && sel.size) { arr = []; sel.forEach(function (i) { arr.push(D.cells[i]); }); }
+    if (hasSelection && stableKeysReady) {
+      arr = [];
+      sel.forEach(function (i) { arr.push(D.cells[i]); });
+    }
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
       if (singleActive) {
         var sp = spaceById[singleSpaceIds[0]], x = [], y = [];
         if (arr && sp) sel.forEach(function (i) {
           x.push(sp.x[i]); y.push(sp.y[i]);
         });
-        Shiny.setInputValue(singleActive + '_persistent_selection', arr
-          ? { x: x, y: y, ids: arr } : null);
+        // Large specialist views paint before their stable cell IDs arrive.
+        // Do not send undefined IDs (or float32 coordinates as identity) during
+        // that window. onSingleAuxBinary() reports the still-active selection
+        // as soon as the deferred IDs have been attached.
+        if (!pendingStableSelection) {
+          Shiny.setInputValue(singleActive + '_persistent_selection', arr
+            ? { x: x, y: y, ids: arr } : null);
+        }
       } else {
         Shiny.setInputValue('coordviews_selection', arr);
       }
@@ -2588,15 +2602,15 @@
     if (singleActive) {
       var guide = $(singleActive + '_selection_guide');
       var active = $(singleActive + '_selection_active');
-      if (guide) guide.classList.toggle('cerebro-selection-status-hidden', !!arr);
-      if (active) active.classList.toggle('cerebro-selection-status-hidden', !arr);
+      if (guide) guide.classList.toggle('cerebro-selection-status-hidden', hasSelection);
+      if (active) active.classList.toggle('cerebro-selection-status-hidden', !hasSelection);
     }
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
       { detail: singleActive
         ? {
           viewId: singleActive,
-          selectedCells: arr ? arr.length : 0,
+          selectedCells: hasSelection ? sel.size : 0,
           datasetFingerprint: configFingerprint()
         }
         : { selectedCells: arr ? arr.length : 0 } }
@@ -6358,6 +6372,9 @@
       if (cells.length !== D.n) return;
       D.cells = cells;
       singleIndexCells = null; singleIndexMap = null;
+      // A user may select immediately after the fast first frame. Complete
+      // that deferred report now that stable cell identities are available.
+      reportSelection();
       var nested = view.meta && view.meta.color_type === 'categorical';
       var offsets = null;
       if (nested) {
