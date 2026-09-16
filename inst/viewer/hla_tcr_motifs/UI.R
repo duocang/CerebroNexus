@@ -38,6 +38,11 @@ tab_hla_tcr_motifs <- tabItem(
         cerebroSettingsDrawer(
           "hla_more",
           cerebroSettingsSection(
+            "Filters",
+            uiOutput("hla_group_filters_ui"),
+            cerebroInfoButton("hla_group_filters_info")
+          ),
+          cerebroSettingsSection(
             "Appearance",
             uiOutput("hla_additional_params_ui"),
             cerebroInfoButton("hla_additional_parameters_info")
