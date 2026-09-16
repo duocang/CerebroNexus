@@ -76,22 +76,84 @@ test_that("Builder rejects images without encoded pixel data", {
   jpeg_path <- file.path(directory, "empty.jpeg")
   writeBin(
     as.raw(c(
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-      0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
-      0x00, 0x00, 0x00, 0x00
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      0x00,
+      0x00,
+      0x00,
+      0x0d,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x08,
+      0x02,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4e,
+      0x44,
+      0x00,
+      0x00,
+      0x00,
+      0x00
     )),
     png_path
   )
   writeBin(
     as.raw(c(
-      0xff, 0xd8,
-      0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x01, 0x00, 0x01,
-      0x01, 0x01, 0x11, 0x00,
-      0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00,
-      0xff, 0xd9
+      0xff,
+      0xd8,
+      0xff,
+      0xc0,
+      0x00,
+      0x0b,
+      0x08,
+      0x00,
+      0x01,
+      0x00,
+      0x01,
+      0x01,
+      0x01,
+      0x11,
+      0x00,
+      0xff,
+      0xda,
+      0x00,
+      0x08,
+      0x01,
+      0x01,
+      0x00,
+      0x00,
+      0x3f,
+      0x00,
+      0x01,
+      0xff,
+      0xd9
     )),
     jpeg_path
   )
@@ -105,16 +167,249 @@ test_that("Builder rejects images without encoded pixel data", {
   }
 })
 
+test_that("Builder rejects PNG chunks with invalid checksums", {
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(
+    as.raw(c(
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      0x00,
+      0x00,
+      0x00,
+      0x0d,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x08,
+      0x02,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x49,
+      0x44,
+      0x41,
+      0x54,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4e,
+      0x44,
+      0x00,
+      0x00,
+      0x00,
+      0x00
+    )),
+    path
+  )
+
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
+test_that("Builder rejects corrupt PNG image data", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  marker <- charToRaw("IDAT")
+  starts <- which(vapply(
+    seq_len(length(bytes) - length(marker) + 1L),
+    function(index) {
+      identical(
+        bytes[seq.int(index, length.out = length(marker))],
+        marker
+      )
+    },
+    logical(1)
+  ))
+  expect_true(length(starts) >= 1L)
+  payload <- starts[[1L]] + length(marker)
+  bytes[[payload]] <- as.raw(bitwXor(as.integer(bytes[[payload]]), 0x01L))
+  writeBin(bytes, path)
+
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
+test_that("PNG zlib headers may span consecutive IDAT chunks", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  marker <- charToRaw("IDAT")
+  start <- which(vapply(
+    seq_len(length(bytes) - length(marker) + 1L),
+    function(index) {
+      identical(
+        bytes[seq.int(index, length.out = length(marker))],
+        marker
+      )
+    },
+    logical(1)
+  ))[[1L]]
+  chunk_length <- .builder_image_uint32_be(bytes[(start - 4L):(start - 1L)])
+  payload <- bytes[(start + 4L):(start + 3L + chunk_length)]
+  uint32 <- function(value) {
+    as.raw(c(
+      bitwAnd(bitwShiftR(value, 24L), 255L),
+      bitwAnd(bitwShiftR(value, 16L), 255L),
+      bitwAnd(bitwShiftR(value, 8L), 255L),
+      bitwAnd(value, 255L)
+    ))
+  }
+  split_chunks <- c(
+    uint32(1L),
+    marker,
+    payload[[1L]],
+    .builder_png_crc32(c(marker, payload[[1L]])),
+    uint32(length(payload) - 1L),
+    marker,
+    payload[-1L],
+    .builder_png_crc32(c(marker, payload[-1L]))
+  )
+  after <- start + 4L + chunk_length + 4L
+  bytes <- c(
+    bytes[seq_len(start - 5L)],
+    split_chunks,
+    bytes[after:length(bytes)]
+  )
+  writeBin(bytes, path)
+
+  expect_null(builder_read_image(path)$error)
+  expect_silent(png::readPNG(path, native = TRUE))
+})
+
+test_that("Builder rejects malformed JPEG quantization tables", {
+  path <- withr::local_tempfile(fileext = ".jpeg")
+  writeBin(
+    as.raw(c(
+      0xff,
+      0xd8,
+      0xff,
+      0xdb,
+      0x00,
+      0x03,
+      0x04,
+      0xff,
+      0xc0,
+      0x00,
+      0x0b,
+      0x08,
+      0x00,
+      0x01,
+      0x00,
+      0x01,
+      0x01,
+      0x01,
+      0x11,
+      0x00,
+      0xff,
+      0xda,
+      0x00,
+      0x08,
+      0x01,
+      0x01,
+      0x00,
+      0x00,
+      0x3f,
+      0x00,
+      0x01,
+      0xff,
+      0xd9
+    )),
+    path
+  )
+
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
 test_that("Builder enforces the decoded-pixel budget", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(
     as.raw(c(
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-      0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x10, 0x01,
-      0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
-      0x00, 0x00, 0x00, 0x00
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      0x00,
+      0x00,
+      0x00,
+      0x0d,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x20,
+      0x00,
+      0x00,
+      0x00,
+      0x10,
+      0x01,
+      0x08,
+      0x02,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4e,
+      0x44,
+      0x00,
+      0x00,
+      0x00,
+      0x00
     )),
     path
   )
@@ -185,6 +480,8 @@ test_that("truncated JPEG uploads are rejected before they enter a project", {
     builder_read_image(truncated)$error,
     "The image file is incomplete or truncated."
   )
+  reader <- paste(deparse(body(builder_image_file_dimensions)), collapse = "\n")
+  expect_false(grepl("n = file.size(path)", reader, fixed = TRUE))
 })
 
 test_that("Builder image upload no longer re-encodes display pixels", {
