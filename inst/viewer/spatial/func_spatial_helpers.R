@@ -120,6 +120,30 @@ spatial_roi_transform_context <- function(
   )
 }
 
+spatial_roi_extents <- function(coordinates, roi_values) {
+  if (
+    !(is.data.frame(coordinates) || is.matrix(coordinates)) ||
+      ncol(coordinates) < 2L ||
+      length(roi_values) != nrow(coordinates)
+  ) {
+    return(list())
+  }
+  x <- coordinates[, 1L]
+  y <- coordinates[, 2L]
+  roi_values <- as.character(roi_values)
+  valid <- !is.na(roi_values) & nzchar(roi_values) & is.finite(x) & is.finite(y)
+  stats::setNames(
+    lapply(unique(roi_values[valid]), function(roi) {
+      rows <- valid & roi_values == roi
+      list(
+        x = range(x[rows]),
+        y = range(y[rows])
+      )
+    }),
+    unique(roi_values[valid])
+  )
+}
+
 spatial_split_columns <- function(
   metadata,
   cells,
