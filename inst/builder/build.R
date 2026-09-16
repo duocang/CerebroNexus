@@ -98,6 +98,22 @@ builder_build_progress_remove <- function(path) {
   !file.exists(path)
 }
 
+builder_build_progress_finish <- function(plan, path, current_note = NULL) {
+  phase <- builder_build_progress_read(path)
+  builder_build_progress_remove(path)
+  note <- if (is.null(phase)) {
+    NULL
+  } else {
+    builder_build_progress_note(plan, phase)
+  }
+  list(
+    phase = phase,
+    note = note,
+    defer_settlement = identical(phase, "viewer") &&
+      !identical(current_note, note)
+  )
+}
+
 .builder_build_progress_callback <- function(path) {
   function(phase) {
     if (is.null(path)) {
