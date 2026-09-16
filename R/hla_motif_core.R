@@ -116,9 +116,13 @@ hla_choose_initial_samples <- function(
     ## Prefer the richest sample that fits the hard per-bin guard. If none do,
     ## keep the sample with the smallest worst bin so the UI lands as close to
     ## a drawable cohort as the source data permits.
-    worst_bin <- vapply(sample_cdr3, function(cdr3) {
-      if (length(cdr3) == 0) 0L else max(table(nchar(cdr3)))
-    }, integer(1))
+    worst_bin <- vapply(
+      sample_cdr3,
+      function(cdr3) {
+        if (length(cdr3) == 0) 0L else max(table(nchar(cdr3)))
+      },
+      integer(1)
+    )
     eligible <- ordered[worst_bin[ordered] <= max_bin]
     keep <- if (length(eligible)) eligible[1] else names(which.min(worst_bin))
   }
@@ -255,7 +259,7 @@ hla_parse_ir_segments <- function(data, chain) {
     aa_parts <- strsplit(as.character(df$CTaa), "_", fixed = TRUE)
     aa_lengths <- lengths(aa_parts)
     aa_flat <- unlist(aa_parts, use.names = FALSE)
-    aa_starts <- cumsum(c(1L, head(aa_lengths, -1L)))
+    aa_starts <- cumsum(c(1L, utils::head(aa_lengths, -1L)))
     cdr3 <- rep(NA_character_, length(selected_rows))
     has_aa <- selected_slots <= aa_lengths[selected_rows]
     aa_index <- aa_starts[selected_rows[has_aa]] + selected_slots[has_aa] - 1L
