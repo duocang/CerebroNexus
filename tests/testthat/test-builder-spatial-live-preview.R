@@ -168,6 +168,7 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   expect_identical(result$numberValue, "0.01")
   expect_length(result$commits, 1L)
   expect_identical(as.numeric(result$commits[[1L]]$value$controls$scale), 0.01)
+  expect_identical(as.numeric(result$commits[[1L]]$value$resetToken), 0)
   expect_identical(as.numeric(result$commits[[1L]]$value$sequence), 1)
   expect_identical(result$tinyNumberValue, "0.001")
   expect_identical(result$tinySliderValue, "0.001")
@@ -181,6 +182,19 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   expect_identical(
     as.numeric(result$tinyScaleCommits[[1L]]$value$sequence),
     2
+  )
+  expect_length(result$resetRaceCommits, 1L)
+  expect_identical(
+    as.numeric(result$resetRaceCommits[[1L]]$value$controls$scale),
+    0.02
+  )
+  expect_identical(
+    as.numeric(result$resetRaceCommits[[1L]]$value$generation),
+    3
+  )
+  expect_identical(
+    as.numeric(result$resetRaceCommits[[1L]]$value$resetToken),
+    0
   )
   expect_identical(as.integer(result$stopped), 2L)
   expect_identical(as.integer(result$pendingTimers), 0L)
@@ -401,6 +415,7 @@ test_that("control commits carry a complete spatial owner and flush on switch", 
   expect_match(js, '"builder_spatial_alignment_controls"', fixed = TRUE)
   expect_match(js, "snapshotIdentity: scene.snapshotIdentity", fixed = TRUE)
   expect_match(js, "image: scene.activeImage", fixed = TRUE)
+  expect_match(js, "resetToken: state.resetToken", fixed = TRUE)
   expect_match(js, "window.setTimeout(flushControlCommit, 50)", fixed = TRUE)
   expect_match(server, "event_control_owner <- function(event)", fixed = TRUE)
   expect_match(

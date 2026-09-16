@@ -150,19 +150,37 @@ test_that("generated CRBs preserve source identities, values, and page causes", 
 
   spatial <- bundle$crbs$spatial
   expect_identical(spatial$availableSpatial(), c("section_a", "section_b"))
+  source_images <- builder_image_collection_normalize(
+    bundle$entries$spatial$settings$images
+  )
+  configured_images <- bundle$config$spatial_images[[
+    bundle$fixtures$spatial$expected$dataset_name
+  ]]
   for (section in spatial$availableSpatial()) {
     value <- spatial$getSpatialData(section)
     contract <- bundle$fixtures$spatial$expected$image_alignment[[section]]
-    images <- value[["histology_images", exact = TRUE]]
-    expect_length(images, 1L)
-    image <- images[[1L]]
-    expect_identical(
-      image$histology_image_bounds,
-      unlist(contract$bounds, use.names = TRUE)
+    image_label <- names(source_images[[section]])[[1L]]
+    expected_alignment <- builder_alignment_payload(
+      source_images[[section]][[image_label]]
     )
-    expect_match(image$histology_image, "^data:image/png;base64,")
+    expected_alignment$source <- image_label
+
+    expect_identical(value[["histology_images", exact = TRUE]], list())
     expect_null(value[["histology_image", exact = TRUE]])
     expect_null(value[["histology_image_bounds", exact = TRUE]])
+    expect_identical(value$histology_alignment, expected_alignment)
+
+    descriptors <- configured_images[[section]]
+    expect_identical(names(descriptors), image_label)
+    descriptor <- descriptors[[image_label]]
+    expect_identical(descriptor$label, image_label)
+    expect_identical(
+      descriptor$bounds,
+      unlist(contract$bounds, use.names = TRUE)
+    )
+    expect_true(.builder_app_safe_relative(descriptor$path))
+    expect_false(startsWith(descriptor$path, "data:"))
+    expect_true(file.exists(file.path(bundle$app_dir, descriptor$path)))
   }
 
   expect_false(is.null(bundle$crbs$immune_tcr_hla$getImmuneRepertoire()))

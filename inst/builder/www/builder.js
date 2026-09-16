@@ -1470,7 +1470,6 @@
           return candidate !== dialog && !candidate.closest("[hidden]") &&
             candidate.getClientRects().length > 0;
         });
-      if (otherModal) return;
       var active = document.activeElement;
       var focusWasLost = !active || active === document.body ||
         active === document.documentElement ||
@@ -1481,8 +1480,14 @@
       // leaving document.body active again.
       if (!focusWasLost) return;
       var nextTarget = canRestoreFocus(target) ? target : null;
+      if (nextTarget && otherModal && !otherModal.contains(nextTarget)) {
+        nextTarget = null;
+      }
       if (!nextTarget && typeof fallback === "function") {
         nextTarget = fallback();
+        if (nextTarget && otherModal && !otherModal.contains(nextTarget)) {
+          nextTarget = null;
+        }
       }
       if (canRestoreFocus(nextTarget)) {
         nextTarget.focus();
