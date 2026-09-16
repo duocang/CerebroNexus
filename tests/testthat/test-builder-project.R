@@ -2075,7 +2075,8 @@ test_that("project lifecycle capabilities lock only conflicting operations", {
   import_capabilities <- runtime$builder_activity_capabilities(importing)
   expect_true(import_capabilities$add_dataset)
   expect_true(import_capabilities$edit_dataset)
-  expect_false(import_capabilities$check_dataset)
+  expect_true(import_capabilities$check_dataset)
+  expect_true(import_capabilities$navigate_workflow)
   expect_false(import_capabilities$save_project)
   expect_false(import_capabilities$build)
 
@@ -2249,7 +2250,8 @@ test_that("a project folder can be chosen while another dataset is importing", {
 
   expect_true(capabilities$create_project)
   expect_true(capabilities$add_dataset)
-  expect_false(capabilities$check_dataset)
+  expect_true(capabilities$check_dataset)
+  expect_true(capabilities$navigate_workflow)
   expect_false(capabilities$save_project)
   expect_false(capabilities$build)
 })
