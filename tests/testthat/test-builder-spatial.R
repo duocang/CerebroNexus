@@ -3247,6 +3247,69 @@ test_that("image headers are read without raster decoding", {
   expect_false(grepl("readPNG|readJPEG", deparse1(body(builder_read_image))))
 })
 
+test_that("JPEG EXIF orientations 5 through 8 swap display dimensions", {
+  skip_if_not_installed("jpeg")
+  directory <- withr::local_tempdir()
+  source <- file.path(directory, "source.jpeg")
+  jpeg::writeJPEG(
+    array(seq(0, 1, length.out = 4L * 6L * 3L), dim = c(4L, 6L, 3L)),
+    source
+  )
+  source_bytes <- readBin(source, what = "raw", n = file.size(source))
+
+  for (orientation in 5:8) {
+    exif <- as.raw(c(
+      0xff,
+      0xe1,
+      0x00,
+      0x22,
+      0x45,
+      0x78,
+      0x69,
+      0x66,
+      0x00,
+      0x00,
+      0x4d,
+      0x4d,
+      0x00,
+      0x2a,
+      0x00,
+      0x00,
+      0x00,
+      0x08,
+      0x00,
+      0x01,
+      0x01,
+      0x12,
+      0x00,
+      0x03,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      orientation,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00
+    ))
+    path <- file.path(directory, paste0("orientation-", orientation, ".jpeg"))
+    writeBin(c(source_bytes[1:2], exif, source_bytes[-c(1:2)]), path)
+
+    image <- builder_read_image(path)
+
+    expect_null(image$error, info = as.character(orientation))
+    expect_identical(
+      image$source_dimensions,
+      c(width = 4L, height = 6L),
+      info = as.character(orientation)
+    )
+  }
+})
+
 test_that("JPEG metadata scanning reports a missing frame", {
   path <- withr::local_tempfile(fileext = ".jpeg")
   writeBin(
