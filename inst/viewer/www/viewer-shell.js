@@ -216,6 +216,178 @@
   });
 
   ready(function () {
+    if (!window.jQuery) return;
+    var loader = document.getElementById("cerebro-page-loader");
+    var detail = document.getElementById("cerebro-page-loader-detail");
+    if (!loader || !detail) return;
+
+    var activePane = null;
+    var slowTimer = null;
+    var hideTimer = null;
+    var settleToken = 0;
+    var shinyBusy = false;
+    var canvasTabs = new Set([
+      "overview",
+      "coordinated_views",
+      "geneExpression",
+      "trajectory",
+      "spatial",
+      "trekker",
+      "hla_tcr_motifs"
+    ]);
+
+    function paneName(pane) {
+      return pane && pane.id ? pane.id.replace(/^shiny-tab-/, "") : "";
+    }
+    function currentPane() {
+      return document.querySelector('.tab-pane.active[id^="shiny-tab-"]');
+    }
+    function setBusy(pane, busy) {
+      if (!pane) return;
+      if (busy) pane.setAttribute("aria-busy", "true");
+      else pane.removeAttribute("aria-busy");
+    }
+    function cancelScheduledFinish() {
+      settleToken += 1;
+    }
+    function finish(pane) {
+      if (!pane) return;
+      cancelScheduledFinish();
+      pane.dataset.cerebroPageReady = "true";
+      setBusy(pane, false);
+      if (pane !== activePane) return;
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(hideTimer);
+      loader.classList.remove("is-visible");
+      hideTimer = window.setTimeout(function () {
+        if (!loader.classList.contains("is-visible")) loader.hidden = true;
+      }, 150);
+      activePane = null;
+    }
+    function begin(pane) {
+      if (!pane) return;
+      cancelScheduledFinish();
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(hideTimer);
+      if (pane.dataset.cerebroPageReady === "true") {
+        if (activePane && activePane !== pane) setBusy(activePane, false);
+        activePane = pane;
+        finish(pane);
+        return;
+      }
+      if (activePane && activePane !== pane) setBusy(activePane, false);
+      activePane = pane;
+      setBusy(pane, true);
+      detail.textContent = "Preparing data and visualisation…";
+      loader.hidden = false;
+      loader.classList.add("is-visible");
+      slowTimer = window.setTimeout(function () {
+        if (pane === activePane) {
+          detail.textContent = "Still preparing this view…";
+        }
+      }, 15000);
+    }
+    function scheduleFinish(pane) {
+      if (!pane || pane !== currentPane() ||
+          canvasTabs.has(paneName(pane))) return;
+      var token = ++settleToken;
+      // Shiny can emit several values for one page. Wait for a short quiet
+      // period, then cross two browser paint boundaries, so the overlay never
+      // disappears between the first small output and the final chart/table.
+      window.setTimeout(function () {
+        if (token !== settleToken || shinyBusy || pane !== currentPane()) return;
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () {
+            if (token !== settleToken || shinyBusy || pane !== currentPane()) return;
+            finish(pane);
+          });
+        });
+      }, 180);
+    }
+    function resetPages() {
+      document.querySelectorAll('.tab-pane[id^="shiny-tab-"]').forEach(
+        function (pane) {
+          delete pane.dataset.cerebroPageReady;
+          pane.removeAttribute("aria-busy");
+        }
+      );
+      begin(currentPane());
+    }
+    function paneFor(element) {
+      return element && element.closest
+        ? element.closest('.tab-pane[id^="shiny-tab-"]')
+        : null;
+    }
+
+    window.jQuery(document)
+      .on("shown.bs.tab.cerebroPageLoader", function () {
+        var pane = currentPane();
+        begin(pane);
+        if (!shinyBusy) scheduleFinish(pane);
+      })
+      .on("shiny:inputchanged.cerebroPageLoader", function (event) {
+        if (event.name === "crb_file_selector") resetPages();
+      })
+      .on("shiny:busy.cerebroPageLoader", function () {
+        shinyBusy = true;
+        cancelScheduledFinish();
+      })
+      .on("shiny:idle.cerebroPageLoader", function () {
+        shinyBusy = false;
+        var pane = currentPane();
+        if (!pane || canvasTabs.has(paneName(pane))) return;
+        scheduleFinish(pane);
+      })
+      .on("shiny:value.cerebroPageLoader", function (event) {
+        var pane = paneFor(event.target);
+        if (pane && pane === currentPane() && !canvasTabs.has(paneName(pane))) {
+          cancelScheduledFinish();
+          if (!shinyBusy) scheduleFinish(pane);
+        }
+      })
+      .on("shiny:error.cerebroPageLoader", function (event) {
+        var pane = paneFor(event.target);
+        if (pane && pane === currentPane()) {
+          cancelScheduledFinish();
+          if (!shinyBusy) scheduleFinish(pane);
+        }
+      })
+      .on("shiny:connected.cerebroPageLoader", function () {
+        begin(currentPane());
+      });
+
+    window.addEventListener("cerebro:cell-view-ready", function (event) {
+      if (!event.detail || !event.detail.painted) return;
+      var id = event.detail && event.detail.id;
+      var host = id && document.getElementById(id + "_cell_view_host");
+      var pane = paneFor(host);
+      if (pane && pane === currentPane()) finish(pane);
+    });
+    window.addEventListener("cerebro:linkedviews-ready", function (event) {
+      if (!event.detail || !event.detail.ready || !event.detail.painted) return;
+      var pane = document.getElementById("shiny-tab-coordinated_views");
+      if (pane && pane === currentPane()) finish(pane);
+    });
+
+    var content = document.getElementById("main-content");
+    if (content && window.MutationObserver) {
+      new MutationObserver(function (records) {
+        var pane = activePane;
+        if (!pane || shinyBusy || canvasTabs.has(paneName(pane))) return;
+        var changed = records.some(function (record) {
+          return pane.contains(record.target) && !loader.contains(record.target);
+        });
+        if (changed) scheduleFinish(pane);
+      }).observe(content, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true
+      });
+    }
+  });
+
+  ready(function () {
     var HANDLE = ".cerebro-selection-composition-drag";
     var HEADER = ".cerebro-selection-composition-head";
     var SLOT = ".cerebro-selection-composition-slot";
