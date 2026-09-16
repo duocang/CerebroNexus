@@ -275,6 +275,8 @@ test_that("Builder runtime has no data-URI image materialization path", {
   expect_false(grepl("builder_materialize_image_uri", extras, fixed = TRUE))
   expect_false(grepl("base64encode", extras, fixed = TRUE))
   expect_false(grepl("base64encode", server, fixed = TRUE))
+  expect_false(grepl("readBin(data$path", server, fixed = TRUE))
+  expect_match(server, "list(file = data$path, owned = FALSE)", fixed = TRUE)
 })
 
 test_that("alignment server does not subscribe to Plotly selection events", {
@@ -1870,6 +1872,8 @@ test_that("reset preserves the section image identity", {
   expect_identical(reset$base_bounds, first$base_bounds)
   expect_identical(reset$dx, 0)
   expect_identical(reset$rotation, 0)
+  expect_identical(reset$point_opacity, first$point_opacity)
+  expect_identical(reset$point_size, first$point_size)
   expect_identical(reset$bounds, first$base_bounds)
   expect_false("saved" %in% names(reset))
 })

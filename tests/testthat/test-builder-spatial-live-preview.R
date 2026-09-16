@@ -333,6 +333,11 @@ test_that("Reset image waits for server-authoritative controls", {
 
   expect_false(grepl("function resetImageControls", js, fixed = TRUE))
   expect_match(js, 'closest("#enhance-reset_align")', fixed = TRUE)
+  expect_match(
+    js,
+    'closest("#enhance-reset_coordinate_transform")',
+    fixed = TRUE
+  )
   expect_match(js, "pendingAuthoritativeControls", fixed = TRUE)
   expect_match(js, "flushControlCommit();", fixed = TRUE)
 })
@@ -445,7 +450,7 @@ test_that("image replacement clears stale decoded pixels", {
   expect_match(js, "state.imageKey = null;", fixed = TRUE)
 })
 
-test_that("Spatial preview worker contract does not include coordinate drafts", {
+test_that("Spatial preview worker receives only the ROI base transform", {
   root <- testthat::test_path("..", "..", "inst", "builder")
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
@@ -455,6 +460,14 @@ test_that("Spatial preview worker contract does not include coordinate drafts", 
     readLines(file.path(root, "preview.R"), warn = FALSE),
     collapse = "\n"
   )
+  worker_session <- paste(
+    readLines(file.path(root, "session.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  imports <- paste(
+    readLines(file.path(root, "server", "imports.R"), warn = FALSE),
+    collapse = "\n"
+  )
 
   expect_false(grepl("coordinate_preview_transforms", server, fixed = TRUE))
   expect_false(grepl(
@@ -462,5 +475,16 @@ test_that("Spatial preview worker contract does not include coordinate drafts", 
     server,
     fixed = TRUE
   ))
-  expect_match(preview, "raw sampled spatial coordinates", fixed = TRUE)
+  expect_match(
+    server,
+    "base_coordinate_transform = if (identical(roi_view(), \"\"))",
+    fixed = TRUE
+  )
+  expect_match(preview, "All-ROI previews stay raw", fixed = TRUE)
+  expect_match(
+    worker_session,
+    "base_coordinate_transform = base_coordinate_transform",
+    fixed = TRUE
+  )
+  expect_match(imports, "nxt$base_coordinate_transform", fixed = TRUE)
 })

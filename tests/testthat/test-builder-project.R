@@ -1803,6 +1803,44 @@ test_that("configuration digests are plain JSON strings", {
   expect_silent(jsonlite::toJSON(list(digest = digest), auto_unbox = TRUE))
 })
 
+test_that("current projects upgrade only matching legacy artifact digests", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  entry <- list(
+    id = "ds1",
+    revision = 3L,
+    settings = list(name = "Dataset", overview_point_size = 8),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(kind = "missing", path = NULL),
+    root = root
+  )
+  full_digest <- record$configuration$digest
+  artifact_digest <- runtime$builder_project_artifact_configuration_digest(
+    entry
+  )
+  expect_false(identical(full_digest, artifact_digest))
+  record$artifact <- list(built_from_configuration = full_digest)
+  manifest <- runtime$builder_project_new_manifest(root)
+  manifest$datasets <- list(record)
+
+  migrated <- runtime$builder_project_migrate_manifest(manifest, root)
+  expect_identical(
+    migrated$datasets[[1L]]$artifact$built_from_configuration,
+    artifact_digest
+  )
+
+  manifest$datasets[[1L]]$artifact$built_from_configuration <- "other"
+  untouched <- runtime$builder_project_migrate_manifest(manifest, root)
+  expect_identical(
+    untouched$datasets[[1L]]$artifact$built_from_configuration,
+    "other"
+  )
+})
+
 test_that("build execution rejects a reusable CRB changed after checkpoint", {
   runtime <- builder_project_test_runtime()
   artifact <- withr::local_tempfile(fileext = ".crb")
@@ -3045,6 +3083,123 @@ test_that("reusable CRB preparation skips current artifacts", {
     ),
     "ds1"
   )
+})
+
+test_that("CRB inputs and source identity still invalidate artifacts", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  artifact_path <- file.path(root, "dataset.crb")
+  writeLines("ready", artifact_path)
+  source_a <- paste(
+    "builder-snapshot-v2",
+    "source.rds",
+    "10",
+    "1",
+    strrep("a", 32L),
+    sep = ":"
+  )
+  entry <- list(
+    id = "ds1",
+    revision = 4L,
+    snapshot = list(source_fingerprint = source_a),
+    settings = list(
+      name = "Dataset",
+      layer = "data",
+      reductions = c("umap", "pca"),
+      default_projection = "umap",
+      spatial_coordinate_transforms = list(
+        fov = list(rotation_degrees = 0, scale = 1)
+      ),
+      images = list(
+        fov = list(
+          histology = list(
+            source_content_md5 = strrep("b", 32L),
+            scale = 1,
+            dx = 0,
+            dy = 0
+          )
+        )
+      )
+    ),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = basename(artifact_path),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      artifact_path,
+      content = TRUE
+    ),
+    members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = source_a,
+    built_from_configuration = runtime$builder_project_artifact_configuration_digest(
+      entry
+    )
+  )
+  viewer_changed <- entry
+  viewer_changed$revision <- 5L
+  viewer_changed$settings$spatial_point_appearance <- list(
+    fov = list(point_opacity = 0.6, point_size = 7)
+  )
+  viewer_changed$settings$images$fov$histology$point_opacity <- 0.6
+  viewer_changed$settings$images$fov$histology$point_size <- 7
+  expect_length(
+    runtime$builder_project_entries_requiring_crb(
+      list(viewer_changed),
+      list(ds1 = artifact),
+      root
+    ),
+    0L
+  )
+
+  changes <- list(
+    layer = function(value) {
+      value$settings$layer <- "counts"
+      value
+    },
+    default_projection = function(value) {
+      value$settings$default_projection <- "pca"
+      value
+    },
+    coordinate_transform = function(value) {
+      value$settings$spatial_coordinate_transforms$fov$rotation_degrees <- 90
+      value
+    },
+    image_alignment = function(value) {
+      value$settings$images$fov$histology$dx <- 12
+      value
+    },
+    image_source_md5 = function(value) {
+      value$settings$images$fov$histology$source_content_md5 <- strrep("c", 32L)
+      value
+    },
+    source_identity = function(value) {
+      value$snapshot$source_fingerprint <- sub(
+        paste0(strrep("a", 32L), "$"),
+        strrep("d", 32L),
+        value$snapshot$source_fingerprint
+      )
+      value
+    }
+  )
+
+  for (name in names(changes)) {
+    changed <- changes[[name]](entry)
+    changed$revision <- 5L
+    required <- runtime$builder_project_entries_requiring_crb(
+      list(changed),
+      list(ds1 = artifact),
+      root
+    )
+    expect_identical(
+      vapply(required, `[[`, character(1), "id"),
+      "ds1",
+      info = name
+    )
+  }
 })
 
 test_that("current project CRBs replace only temporary Build entries", {

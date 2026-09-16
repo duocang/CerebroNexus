@@ -266,6 +266,77 @@ test_that("Builder rejects corrupt PNG image data", {
   )
 })
 
+test_that("Builder rejects PNG payloads that cannot be decoded", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 64L), nrow = 8L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  marker <- charToRaw("IDAT")
+  start <- which(vapply(
+    seq_len(length(bytes) - length(marker) + 1L),
+    function(index) {
+      identical(
+        bytes[seq.int(index, length.out = length(marker))],
+        marker
+      )
+    },
+    logical(1)
+  ))[[1L]]
+  chunk_length <- .builder_image_uint32_be(bytes[(start - 4L):(start - 1L)])
+  payload_start <- start + length(marker)
+  payload_end <- payload_start + chunk_length - 1L
+  bytes[[payload_start + 2L]] <- as.raw(bitwXor(
+    as.integer(bytes[[payload_start + 2L]]),
+    0xffL
+  ))
+  bytes[(payload_end + 1L):(payload_end + 4L)] <- .builder_png_crc32(c(
+    marker,
+    bytes[payload_start:payload_end]
+  ))
+  writeBin(bytes, path)
+
+  expect_error(png::readPNG(path, native = TRUE))
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
+test_that("Builder rejects invalid PNG header semantics", {
+  skip_if_not_installed("png")
+  source <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source)
+  original <- readBin(source, what = "raw", n = file.size(source))
+  rewrite_ihdr <- function(offset, value) {
+    bytes <- original
+    bytes[[16L + offset]] <- as.raw(value)
+    bytes[30:33] <- .builder_png_crc32(c(
+      charToRaw("IHDR"),
+      bytes[17:29]
+    ))
+    path <- tempfile(fileext = ".png")
+    withr::defer(unlink(path), envir = parent.frame())
+    writeBin(bytes, path)
+    path
+  }
+  invalid <- list(
+    bit_depth = rewrite_ihdr(9L, 3L),
+    color_type = rewrite_ihdr(10L, 1L),
+    compression = rewrite_ihdr(11L, 1L),
+    filter = rewrite_ihdr(12L, 1L),
+    interlace = rewrite_ihdr(13L, 2L),
+    indexed_without_palette = rewrite_ihdr(10L, 3L)
+  )
+
+  for (name in names(invalid)) {
+    expect_identical(
+      builder_read_image(invalid[[name]])$error,
+      "The image file has no valid encoded pixel data.",
+      info = name
+    )
+  }
+})
+
 test_that("PNG zlib headers may span consecutive IDAT chunks", {
   skip_if_not_installed("png")
   path <- withr::local_tempfile(fileext = ".png")
@@ -354,6 +425,79 @@ test_that("Builder rejects malformed JPEG quantization tables", {
     )),
     path
   )
+
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
+test_that("Builder rejects invalid JPEG tables and sampling factors", {
+  jpeg_bytes <- function(quantization, sampling) {
+    as.raw(c(
+      0xff,
+      0xd8,
+      0xff,
+      0xdb,
+      0x00,
+      0x43,
+      0x00,
+      quantization,
+      0xff,
+      0xc0,
+      0x00,
+      0x0b,
+      0x08,
+      0x00,
+      0x01,
+      0x00,
+      0x01,
+      0x01,
+      0x01,
+      sampling,
+      0x00,
+      0xff,
+      0xda,
+      0x00,
+      0x08,
+      0x01,
+      0x01,
+      0x00,
+      0x00,
+      0x3f,
+      0x00,
+      0x01,
+      0xff,
+      0xd9
+    ))
+  }
+  invalid <- list(
+    zero_quantization = jpeg_bytes(c(0L, rep(1L, 63L)), 0x11),
+    zero_sampling = jpeg_bytes(rep(1L, 64L), 0x00)
+  )
+
+  for (name in names(invalid)) {
+    path <- withr::local_tempfile(fileext = ".jpeg")
+    writeBin(invalid[[name]], path)
+    expect_identical(
+      builder_read_image(path)$error,
+      "The image file has no valid encoded pixel data.",
+      info = name
+    )
+  }
+})
+
+test_that("Builder rejects unsupported JPEG sample precision", {
+  skip_if_not_installed("jpeg")
+  path <- withr::local_tempfile(fileext = ".jpeg")
+  jpeg::writeJPEG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  frame <- which(
+    as.integer(bytes[-length(bytes)]) == 0xffL &
+      as.integer(bytes[-1L]) %in% c(0xc0L, 0xc1L, 0xc2L)
+  )[[1L]]
+  bytes[[frame + 4L]] <- as.raw(0L)
+  writeBin(bytes, path)
 
   expect_identical(
     builder_read_image(path)$error,
