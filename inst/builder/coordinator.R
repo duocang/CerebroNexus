@@ -456,11 +456,34 @@ builder_release_runtime_files <- function() {
   }, numeric(1), USE.NAMES = FALSE)
 }
 
+.builder_coordinator_viewer_relative_paths <- function() {
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  candidates <- c(
+    if (nzchar(source_root)) file.path(source_root, "inst", "viewer"),
+    system.file("viewer", package = "CerebroNexus")
+  )
+  candidates <- unique(candidates[nzchar(candidates)])
+  viewer <- candidates[dir.exists(candidates)][1L]
+  if (!length(viewer) || is.na(viewer)) {
+    return(file.path("viewer", "shiny_server.R"))
+  }
+  relative <- list.files(
+    viewer,
+    all.files = TRUE,
+    recursive = TRUE,
+    include.dirs = TRUE,
+    no.. = TRUE
+  )
+  relative <- relative[!is.na(relative) & nzchar(relative)]
+  unique(file.path("viewer", relative))
+}
+
 .builder_coordinator_windows_path_candidates <- function(
   plan,
   stage,
   app_expected,
-  .tempfile = tempfile
+  .tempfile = tempfile,
+  .viewer_relative = NULL
 ) {
   items <- .subset2(plan, "items") %||% list()
   artifacts <- unique(unlist(lapply(items, function(item) {
@@ -596,15 +619,16 @@ builder_release_runtime_files <- function() {
       pattern = ".cerebro_app-stage-",
       tmpdir = stage
     )
+    if (is.null(.viewer_relative)) {
+      .viewer_relative <- .builder_coordinator_viewer_relative_paths()
+    }
     app_relative <- c(
       "app.R",
       "config.yml",
       "build-manifest.rds",
       file.path("private-data", artifacts),
       file.path("spatial-assets", paste0("u", strrep("f", 32L), ".tiff")),
-      # Current Viewer paths are shorter; this reserve makes future packaged
-      # resource growth fail during preflight instead of halfway through copy.
-      file.path("viewer-resource", strrep("x", 96L))
+      .viewer_relative
     )
     candidates <- c(
       candidates,
@@ -621,7 +645,8 @@ builder_release_runtime_files <- function() {
   app_expected,
   os_type = .Platform$OS.type,
   limit = 259L,
-  .tempfile = tempfile
+  .tempfile = tempfile,
+  .viewer_relative = NULL
 ) {
   if (!identical(os_type, "windows")) {
     return(invisible(TRUE))
@@ -630,7 +655,8 @@ builder_release_runtime_files <- function() {
     plan,
     stage,
     app_expected,
-    .tempfile = .tempfile
+    .tempfile = .tempfile,
+    .viewer_relative = .viewer_relative
   )
   lengths <- .builder_coordinator_utf16_length(candidates)
   longest <- which.max(lengths)
