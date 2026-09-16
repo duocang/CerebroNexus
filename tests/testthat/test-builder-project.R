@@ -3893,6 +3893,30 @@ test_that("content-addressed sources detect same-metadata tampering", {
   expect_false(status$checked)
 })
 
+test_that("persisted fingerprints retain the unchanged-file fast path", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  path <- withr::local_tempfile()
+  writeBin(charToRaw("artifact"), path)
+  recorded <- runtime$builder_project_file_fingerprint(path, content = TRUE)
+  persisted <- jsonlite::unserializeJSON(jsonlite::serializeJSON(
+    recorded,
+    digits = NA
+  ))
+  content_reads <- 0L
+  fingerprint <- runtime$builder_project_file_fingerprint
+  runtime$builder_project_file_fingerprint <- function(path, content = FALSE) {
+    if (isTRUE(content)) {
+      content_reads <<- content_reads + 1L
+    }
+    fingerprint(path, content = content)
+  }
+
+  expect_true(runtime$builder_project_managed_file_matches(persisted, path))
+  expect_identical(content_reads, 0L)
+  expect_identical(persisted$changed_at, recorded$changed_at)
+})
+
 test_that("artifact availability validates the primary file and every member", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
