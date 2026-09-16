@@ -44,6 +44,50 @@ test_that("persistent spatial scrollbar is inert outside wide layout", {
   )
 })
 
+test_that("spatial workbench uses a compact wide-screen gutter", {
+  css <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "www", "builder.features.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    css,
+    paste0(
+      "@media \\(min-width: 81rem\\) \\{[\\s\\S]*",
+      "\\.spatial-alignment-layout \\{[\\s\\S]*",
+      "column-gap: var\\(--space-3\\);"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    "\\.spatial-alignment-sidebar-body \\{[\\s\\S]*padding-right: var\\(--space-2\\);",
+    perl = TRUE
+  )
+})
+
+test_that("coordinate number fields fit signed decimal values", {
+  css <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "www", "builder.features.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-coordinate-control \\{[\\s\\S]*",
+      "grid-template-columns: 4rem minmax\\(0, 1fr\\) 5rem;"
+    ),
+    perl = TRUE
+  )
+})
+
 test_that("frozen section appearance falls back to image records", {
   record <- builder_alignment_record(
     source = list(name = "histology.png"),

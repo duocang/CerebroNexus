@@ -216,6 +216,176 @@ builder_apply_immune_source_choice <- function(entry, selector, value) {
   entry
 }
 
+builder_content_action_owner_is_valid <- function(owner) {
+  valid_counter <- function(value) {
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 0 &&
+      identical(as.double(value), floor(as.double(value)))
+  }
+  is.list(owner) &&
+    valid_counter(owner$generation) &&
+    valid_counter(owner$project_epoch) &&
+    builder_stage_has_text(owner$owner_token %||% "")
+}
+
+builder_content_action_owner <- function(entry, project_epoch) {
+  snapshot <- if (is.list(entry)) entry$snapshot else NULL
+  owner <- list(
+    generation = if (is.list(entry)) entry$revision else NULL,
+    project_epoch = project_epoch,
+    owner_token = if (is.list(snapshot)) snapshot$owner_token else NULL
+  )
+  if (
+    !builder_content_action_owner_is_valid(owner)
+  ) {
+    return(NULL)
+  }
+  list(
+    generation = as.double(owner$generation),
+    project_epoch = as.double(owner$project_epoch),
+    owner_token = owner$owner_token
+  )
+}
+
+builder_content_action_owner_is_current <- function(
+  request,
+  entry,
+  project_epoch
+) {
+  expected <- builder_content_action_owner(entry, project_epoch)
+  if (is.null(expected) || !is.list(request)) {
+    return(FALSE)
+  }
+  received <- list(
+    generation = request$generation,
+    project_epoch = request$project_epoch,
+    owner_token = request$owner_token
+  )
+  if (!builder_content_action_owner_is_valid(received)) {
+    return(FALSE)
+  }
+  identical(as.double(received$generation), expected$generation) &&
+    identical(as.double(received$project_epoch), expected$project_epoch) &&
+    identical(received$owner_token, expected$owner_token)
+}
+
+builder_acknowledgement_action <- function(
+  record,
+  acknowledgements,
+  dataset,
+  id,
+  owner = NULL
+) {
+  action <- record$required_action %||% list()
+  token <- action$token %||% ""
+  if (
+    !identical(record$status %||% "", "attention") ||
+      !identical(action$type %||% "", "acknowledge") ||
+      !builder_stage_has_text(token) ||
+      token %in% acknowledgements ||
+      !builder_stage_has_text(dataset %||% "") ||
+      !builder_stage_has_text(id %||% "") ||
+      !builder_content_action_owner_is_valid(owner)
+  ) {
+    return(NULL)
+  }
+  c(
+    list(dataset = dataset, capability = id, token = token),
+    owner[c("generation", "project_epoch", "owner_token")]
+  )
+}
+
+builder_acknowledgement_button <- function(
+  id,
+  action,
+  label = "Acknowledge and continue"
+) {
+  if (!is.list(action)) {
+    return(NULL)
+  }
+  ns <- if (is.null(id)) identity else NS(id)
+  tags$button(
+    type = "button",
+    class = "btn btn-default builder-acknowledgement-action",
+    `data-builder-acknowledge` = "true",
+    `data-input-id` = ns("acknowledge_content"),
+    `data-dataset` = action$dataset,
+    `data-capability` = action$capability,
+    `data-token` = action$token,
+    `data-generation` = action$generation,
+    `data-project-epoch` = action$project_epoch,
+    `data-owner-token` = action$owner_token,
+    label
+  )
+}
+
+builder_content_disposition_action <- function(
+  record,
+  dataset,
+  id,
+  owner = NULL
+) {
+  if (
+    !is.list(record) ||
+      !builder_stage_has_text(dataset %||% "") ||
+      !builder_stage_has_text(id %||% "") ||
+      !builder_content_action_owner_is_valid(owner)
+  ) {
+    return(NULL)
+  }
+  disposition <- record$disposition %||% ""
+  if (disposition %in% c("filtered", "stored_only")) {
+    return(list(
+      dataset = dataset,
+      capability = id,
+      disposition = "auto",
+      label = "Include in CRB",
+      generation = owner$generation,
+      project_epoch = owner$project_epoch,
+      owner_token = owner$owner_token
+    ))
+  }
+  if (
+    isTRUE(record$evidence$detected) &&
+      ((record$status %||% "") %in% c("attention", "blocking") ||
+        identical(disposition, "rejected"))
+  ) {
+    return(list(
+      dataset = dataset,
+      capability = id,
+      disposition = "filtered",
+      label = "Exclude from CRB",
+      generation = owner$generation,
+      project_epoch = owner$project_epoch,
+      owner_token = owner$owner_token
+    ))
+  }
+  NULL
+}
+
+builder_content_disposition_button <- function(id, action) {
+  if (!is.list(action)) {
+    return(NULL)
+  }
+  ns <- if (is.null(id)) identity else NS(id)
+  tags$button(
+    type = "button",
+    class = "btn btn-default builder-content-disposition-action",
+    `data-builder-content-disposition` = "true",
+    `data-input-id` = ns("content_disposition"),
+    `data-dataset` = action$dataset,
+    `data-capability` = action$capability,
+    `data-disposition` = action$disposition,
+    `data-generation` = action$generation,
+    `data-project-epoch` = action$project_epoch,
+    `data-owner-token` = action$owner_token,
+    action$label
+  )
+}
+
 builder_specialized_content_model <- function(model) {
   manifest <- model$content_manifest %||%
     model$analysis_manifest %||%
@@ -225,6 +395,8 @@ builder_specialized_content_model <- function(model) {
     model$analysis_acknowledgements %||%
     model$acknowledgements %||%
     character()
+  dataset <- model$id %||% NULL
+  action_owner <- model$content_action_owner %||% NULL
   count_value <- function(value) {
     if (
       is.numeric(value) &&
@@ -301,13 +473,37 @@ builder_specialized_content_model <- function(model) {
     } else if (identical(state, "not_included")) {
       message <- "This content will not be retained in the CRB."
     }
+    action_token <- record$required_action$token %||% ""
+    action_capability <- names(Filter(
+      function(candidate) {
+        is.list(candidate) &&
+          identical(candidate$required_action$token %||% "", action_token)
+      },
+      manifest
+    ))
+    if (length(action_capability) != 1L || !builder_stage_has_text(action_token)) {
+      action_capability <- id
+    }
     list(
       id = id,
       label = label,
       state = state,
       metrics = metrics,
       message = message,
-      directory = directory
+      directory = directory,
+      acknowledgement = builder_acknowledgement_action(
+        record,
+        acknowledgements,
+        dataset,
+        action_capability,
+        action_owner
+      ),
+      disposition_action = builder_content_disposition_action(
+        record,
+        dataset,
+        action_capability,
+        action_owner
+      )
     )
   }
   spatial_record <- manifest$spatial %||% list()
@@ -607,7 +803,12 @@ builder_specialized_content_ui <- function(model, id = NULL) {
         lapply(item$directory, function(line) {
           p(class = "viewer-specialized-directory", line)
         }),
-        p(class = "viewer-specialized-page", item$message)
+        p(class = "viewer-specialized-page", item$message),
+        div(
+          class = "builder-content-actions",
+          builder_acknowledgement_button(id, item$acknowledgement),
+          builder_content_disposition_button(id, item$disposition_action)
+        )
       )
     }),
     lapply(model$immune_source_selectors %||% list(), function(selector) {
@@ -627,7 +828,10 @@ builder_specialized_content_ui <- function(model, id = NULL) {
           choices = if (isTRUE(selector$resolved)) {
             selector$choices
           } else {
-            c("Choose a source…" = "", selector$choices)
+            c(
+              stats::setNames("", "Choose a source\u2026"),
+              selector$choices
+            )
           },
           selected = selector$selected,
           width = "100%"
@@ -642,6 +846,8 @@ builder_analysis_results_model <- function(model) {
   acknowledgements <- model$analysis_acknowledgements %||%
     model$acknowledgements %||%
     character()
+  dataset <- model$id %||% NULL
+  action_owner <- model$content_action_owner %||% NULL
   specs <- list(
     marker_genes = list(
       label = "Marker genes",
@@ -757,7 +963,20 @@ builder_analysis_results_model <- function(model) {
       status = status,
       method_count = as.integer(method_count),
       group_count = as.integer(length(group_names)),
-      table_count = count_tables(leaves)
+      table_count = count_tables(leaves),
+      acknowledgement = builder_acknowledgement_action(
+        record,
+        acknowledgements,
+        dataset,
+        id,
+        action_owner
+      ),
+      disposition_action = builder_content_disposition_action(
+        record,
+        dataset,
+        id,
+        action_owner
+      )
     )
   }
   items <- Filter(
@@ -779,7 +998,7 @@ builder_analysis_results_model <- function(model) {
   )
 }
 
-builder_analysis_results_ui <- function(model) {
+builder_analysis_results_ui <- function(model, id = NULL) {
   plural <- function(value, singular) {
     paste0(value, " ", singular, if (identical(value, 1L)) "" else "s")
   }
@@ -835,6 +1054,11 @@ builder_analysis_results_ui <- function(model) {
         p(
           class = "viewer-analysis-result-page",
           item$page_message
+        ),
+        div(
+          class = "builder-content-actions",
+          builder_acknowledgement_button(id, item$acknowledgement),
+          builder_content_disposition_button(id, item$disposition_action)
         )
       )
     })

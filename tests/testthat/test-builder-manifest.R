@@ -374,7 +374,7 @@ test_that("builder and worker source shared pages before the manifest", {
 
   worker_core <- grep("viewer_content_contract.R", session_lines, fixed = TRUE)
   worker_manifest <- grep(
-    'source(file.path(dir, "manifest.R"))',
+    'source_utf8(file.path(dir, "manifest.R"), globalenv())',
     session_lines,
     fixed = TRUE
   )

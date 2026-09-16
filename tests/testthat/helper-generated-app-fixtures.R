@@ -148,11 +148,13 @@ generated_app_fixture_pages <- function(conditional = character()) {
 }
 
 .generated_app_fixture_projection_contract <- function(object) {
-  lapply(SeuratObject::Reductions(object), function(reduction) {
-    coordinates <- SeuratObject::Embeddings(object, reduction)
-    coordinates[c(1L, nrow(coordinates)), , drop = FALSE]
-  }) |>
-    stats::setNames(SeuratObject::Reductions(object))
+  stats::setNames(
+    lapply(SeuratObject::Reductions(object), function(reduction) {
+      coordinates <- SeuratObject::Embeddings(object, reduction)
+      coordinates[c(1L, nrow(coordinates)), , drop = FALSE]
+    }),
+    SeuratObject::Reductions(object)
+  )
 }
 
 .generated_app_fixture_counts <- function(object, groups) {

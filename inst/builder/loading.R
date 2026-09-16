@@ -170,11 +170,10 @@ builder_import_find <- function(queue, id) {
 
 builder_import_active_ids <- function(queue) {
   .builder_import_queue_assert(queue)
-  names(Filter(
+  .builder_import_or(names(Filter(
     function(entry) entry$load_state %in% .builder_import_active_states,
     queue$entries
-  )) |>
-    .builder_import_or(character())
+  )), character())
 }
 
 builder_import_focus_id <- function(queue) {
