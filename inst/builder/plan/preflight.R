@@ -89,6 +89,9 @@ builder_plan_requires_app <- function(entries) {
     if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
       next
     }
+    if (length(entry$settings$spatial_roi_settings %||% list())) {
+      requires_app <- TRUE
+    }
     alignments <- .builder_plan_partition_alignments(
       entry$settings$images %||% list()
     )
@@ -219,6 +222,15 @@ builder_plan_requires_app <- function(entries) {
       return(builder_plan_error(
         "External spatial images require CRB files + Viewer App output.",
         "external_images_require_app"
+      ))
+    }
+    if (
+      length(entry$settings$spatial_roi_settings %||% list()) &&
+        !isTRUE(make_app)
+    ) {
+      return(builder_plan_error(
+        "Spatial ROI settings require CRB files + Viewer App output.",
+        "spatial_roi_settings_require_app"
       ))
     }
     outside_counts <- vapply(

@@ -946,7 +946,7 @@ test_that("the 15 valid external-image artifact combinations build and relocate"
       )
       for (section in names(entry$settings$images)) {
         expected <- entry$settings$images[[section]]
-        expect_length(spatial[[section]]$histology_images, 0L, info = section)
+        expect_length(spatial[[section]]$histology_images, 0L)
         expect_identical(
           spatial[[section]]$histology_alignment,
           builder_alignment_payload(expected),

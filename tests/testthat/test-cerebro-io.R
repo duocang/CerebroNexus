@@ -199,6 +199,9 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   saveCerebro(fixture$object, rds, codec = "rds")
   saveCerebro(fixture$object, qs)
 
+  expect_identical(.cerebroPayloadCodec(rds), "rds")
+  expect_identical(.cerebroPayloadCodec(qs), "qs2")
+
   payload <- .readCerebroPayload(rds)
   expect_null(payload$expression)
   expect_false("cell_barcode" %in% names(payload$meta_data))

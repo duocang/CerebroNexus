@@ -62,6 +62,18 @@ if (have_bundle) {
   sys.source(bundle_file, envir = cv_env)
 }
 
+new_cv_image_session <- function() {
+  callbacks <- new.env(parent = emptyenv())
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$callbacks <- callbacks
+  session$registerDataObj <- function(name, data, handler) {
+    assign(name, function() handler(data, NULL), envir = callbacks)
+    paste0("session/", name)
+  }
+  session
+}
+
 test_that("bundle.R parses and defines the builder API", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
   expect_no_error(parse(file = bundle_file))
@@ -1910,10 +1922,10 @@ test_that("each section offers only its own configured backgrounds", {
   writeBin(px, png)
   writeBin(px, png2)
   skip_if_not(file.exists(png) && file.exists(png2))
-  skip_if_not_installed("base64enc")
 
   ## The builders read these two app-scope objects when they exist; this is the
   ## same shape the running app provides.
+  cv_env$session <- new_cv_image_session()
   cv_env$Cerebro.options <- list(
     cerebro_root = tmp,
     spatial_images = list(
@@ -1953,6 +1965,7 @@ test_that("each section offers only its own configured backgrounds", {
   )
   on.exit(
     {
+      rm("session", envir = cv_env)
       rm("Cerebro.options", envir = cv_env)
       rm("available_crb_files", envir = cv_env)
     },
@@ -1966,6 +1979,14 @@ test_that("each section offers only its own configured backgrounds", {
   expect_identical(first[[1L]]$label, "H&E")
   expect_identical(second[[1L]]$label, "H&E")
   expect_false(identical(first[[1L]]$id, second[[1L]]$id))
+  urls <- vapply(c(first, second), `[[`, character(1), "uri")
+  expect_true(all(grepl("^session/cerebro-image-", urls)))
+  expect_false(any(startsWith(urls, "data:")))
+  callback <- get(
+    sub("^session/", "", urls[[1L]]),
+    envir = cv_env$session$callbacks
+  )
+  expect_identical(callback()$content, px)
   expect_equal(
     unlist(first[[1L]]$bounds, use.names = TRUE),
     c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
@@ -2509,7 +2530,6 @@ test_that("Linked views stylesheet has balanced rule blocks", {
 
 test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   skip_if_not(have_bundle)
-  skip_if_not_installed("base64enc")
   tmp <- file.path(tempdir(), "cv_external_magic")
   unlink(tmp, recursive = TRUE)
   assets <- file.path(tmp, "spatial-assets")
@@ -2520,6 +2540,7 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   writeBin(jpeg_magic, file.path(assets, "valid.jpg"))
   writeLines("not an image", file.path(assets, "text.png"))
   writeBin(png_magic, file.path(assets, "mismatch.jpg"))
+  cv_env$session <- new_cv_image_session()
   cv_env$Cerebro.options <- list(
     cerebro_root = tmp,
     spatial_images = list(
@@ -2539,6 +2560,7 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   )
   on.exit(
     {
+      rm("session", envir = cv_env)
       rm("Cerebro.options", envir = cv_env)
       rm("available_crb_files", envir = cv_env)
     },
@@ -2550,8 +2572,14 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
     vapply(images, `[[`, character(1), "label"),
     c("png", "jpeg")
   )
-  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
-  expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
+  urls <- vapply(images, `[[`, character(1), "uri")
+  expect_true(all(grepl("^session/cerebro-image-", urls)))
+  expect_false(any(startsWith(urls, "data:")))
+  responses <- lapply(urls, function(url) {
+    get(sub("^session/", "", url), envir = cv_env$session$callbacks)()
+  })
+  expect_identical(responses[[1L]]$content, png_magic)
+  expect_identical(responses[[2L]]$content, jpeg_magic)
 })
 
 test_that("background state keys namespace FOV and direct modalities", {

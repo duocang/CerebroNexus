@@ -493,6 +493,7 @@ builder_spatial_canvas_scene <- function(
     capped = isTRUE(preview$capped),
     layout = layout,
     activeRoi = active_roi,
+    roiBounds = preview$roi_bounds %||% list(),
     roiPointAppearance = roi_point_appearance,
     roiCoordinateTransforms = roi_coordinate_transforms,
     roiImages = roi_images,
@@ -516,7 +517,10 @@ builder_spatial_canvas_scene <- function(
       )
     },
     controls = utils::modifyList(
-      list(coordinateRotation = coordinate_transform$rotation_degrees %||% 0),
+      list(
+        coordinateRotation = coordinate_transform$rotation_degrees %||% 0,
+        coordinateScale = coordinate_transform$scale %||% 1
+      ),
       as.list(
         if (is.null(record)) {
           utils::modifyList(

@@ -227,7 +227,8 @@
   final_file,
   stage_dir,
   expression_matrix_mode,
-  codec = "rds"
+  codec = "rds",
+  .open_gz = gzfile
 ) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -481,7 +482,12 @@
     }
     installed_spatial <- TRUE
   }
-  .writeCerebroPayload(payload, stage_crb, codec)
+  if (identical(codec, "rds")) {
+    connection <- .open_gz(stage_crb, open = "wb", compression = 1L)
+    tryCatch(saveRDS(payload, connection), finally = close(connection))
+  } else {
+    .writeCerebroPayload(payload, stage_crb, codec)
+  }
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
   }
