@@ -146,7 +146,12 @@ test_that("Spatial Viewer reuses canonical ROI pivots across render paths", {
   projection <- paste(readLines(projection_file, warn = FALSE), collapse = "\n")
   reuse <- gregexpr("pivots = roi_pivots", projection, fixed = TRUE)[[1L]]
 
-  expect_match(projection, "roi_pivots <- spatialRoiPivots(", fixed = TRUE)
+  expect_match(
+    projection,
+    "roi_context <- spatial_roi_transform_context(",
+    fixed = TRUE
+  )
+  expect_match(projection, "roi_pivots <- roi_context$pivots", fixed = TRUE)
   expect_length(reuse[reuse > 0L], 3L)
 })
 
