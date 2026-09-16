@@ -214,7 +214,7 @@ test_that("Builder export freezes selected cell-cycle annotations into CRB", {
 
   expect_no_error(.builder_build_export(object, item, path))
 
-  exported <- readRDS(path)
+  exported <- readCerebro(path)
   expect_identical(exported$getCellCycle(), "Phase")
   expect_contains(colnames(exported$getMetaData()), "Phase")
   expect_contains(colnames(exported$getMetaData()), "batch")
@@ -422,6 +422,6 @@ test_that("exportFromSeurat preserves Builder-selected PCA beside UMAP", {
     verbose = FALSE
   ))
 
-  exported <- readRDS(path)
+  exported <- readCerebro(path)
   expect_identical(names(exported$projections), c("pca", "umap"))
 })

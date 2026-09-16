@@ -412,10 +412,14 @@ render_bundle_spatial_background <- function(
   app,
   config,
   background_image,
-  background_image_allowlist
+  background_image_allowlist,
+  session = NULL
 ) {
   renderer <- new.env(parent = globalenv())
   renderer$Cerebro.options <- config
+  if (!is.null(session)) {
+    renderer$session <- session
+  }
   sys.source(
     file.path(app, "viewer", "utility_functions.R"),
     envir = renderer
@@ -3111,11 +3115,11 @@ test_that("one spatial image can be shared by multiple data sets", {
 })
 
 test_that("external spatial images render from disk without an HTTP mapping", {
-  skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
-  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  image_bytes <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  writeBin(image_bytes, image)
   app <- file.path(root, "app")
 
   build_test_app(
@@ -3138,15 +3142,28 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
   expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
 
+  callbacks <- new.env(parent = emptyenv())
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$registerDataObj <- function(name, data, handler) {
+    assign(name, function() handler(data, NULL), envir = callbacks)
+    paste0("session/", name)
+  }
   rendered_meta <- render_bundle_spatial_background(
     app,
     config,
     stored,
-    stored
+    stored,
+    session
   )
 
-  expect_match(rendered_meta$background_image, "^data:image/png;base64,")
-  expect_gt(nchar(rendered_meta$background_image), 22L)
+  url <- rendered_meta$background_image
+  expect_match(url, "^session/cerebro-image-")
+  expect_false(startsWith(url, "data:"))
+  response <- get(sub("^session/", "", url), envir = callbacks)()
+  expect_identical(response$status, 200L)
+  expect_identical(response$content_type, "image/png")
+  expect_identical(response$content, image_bytes)
 })
 
 test_that("forged spatial backgrounds cannot read unconfigured files", {

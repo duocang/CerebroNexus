@@ -40,6 +40,18 @@ builder_project_restore_progress <- reactiveVal(list(
 ))
 builder_project_phase <- reactiveVal("none")
 
+builder_project_build_entries <- function(entries) {
+  project <- isolate(builder_project())
+  if (is.null(project)) {
+    return(entries)
+  }
+  builder_project_entries_for_build(
+    entries,
+    isolate(builder_project_artifacts()),
+    project$root
+  )
+}
+
 builder_project_record_map <- function(manifest) {
   records <- manifest$datasets %||% list()
   ids <- vapply(records, function(record) as.character(record$id), character(1))

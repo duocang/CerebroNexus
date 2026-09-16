@@ -376,6 +376,22 @@ enqueue_build_plan <- function(
   ) {
     return(invisible(FALSE))
   }
+  progress_path <- NULL
+  snapshot_root <- if (is.list(rs)) rs$snapshot_root %||% NULL else NULL
+  if (builder_has_text(snapshot_root) && dir.exists(snapshot_root)) {
+    candidate <- try(
+      builder_import_progress_path(
+        snapshot_root,
+        paste0("build-progress-", request_sequence() + 1L),
+        1L
+      ),
+      silent = TRUE
+    )
+    if (!inherits(candidate, "try-error")) {
+      builder_build_progress_remove(candidate)
+      progress_path <- candidate
+    }
+  }
   if (inherits(rs, "builder_worker")) {
     dependency_capability <- tryCatch(
       builder_session_build_capability(rs, plan),
@@ -408,6 +424,7 @@ enqueue_build_plan <- function(
     kind = "build",
     plan = plan,
     auth_accounts = parsed_auth$accounts,
+    progress_path = progress_path,
     note = builder_build_queue_note(plan)
   ))
   if (!isTRUE(queued)) {

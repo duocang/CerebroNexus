@@ -438,6 +438,65 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
   expect_null(result$auth_env_file)
 })
 
+test_that("build execution reports dataset and Viewer phases in order", {
+  stage <- withr::local_tempdir()
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  plan <- builder_build_test_plan()
+  plan$make_app <- TRUE
+  plan$app_contract_version <- 1L
+  plan$app_options$enabled <- TRUE
+  hooks <- builder_build_test_hooks()
+  hooks$verify <- function(path, item) {
+    list(
+      valid = TRUE,
+      path = path,
+      file_fingerprint = .bundlePreflightFingerprint(path),
+      bundle_preflight = list(
+        backend = list(type = "embedded", location = NULL, legacy = FALSE),
+        spatial_catalog = list()
+      )
+    )
+  }
+  hooks$build_app <- function(request, stage, auth_material = NULL) {
+    app_dir <- file.path(stage, "cerebro_app")
+    dir.create(app_dir)
+    app_dir
+  }
+  hooks$verify_app <- function(app_dir, request, auth_env_file = NULL) {
+    structure(
+      list(valid = TRUE, app_dir = app_dir),
+      class = c("builder_app_verification", "list")
+    )
+  }
+  phases <- character()
+
+  result <- builder_execute_plan(
+    plan,
+    stage,
+    snapshots = list(`dataset-a` = list()),
+    hooks = hooks,
+    on_progress = function(phase) phases <<- c(phases, phase)
+  )
+
+  expect_identical(result$state, "success")
+  expect_identical(phases, c("datasets", "viewer"))
+})
+
+test_that("build progress records reject unsupported phases", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, ".build-progress-test.rds")
+
+  expect_true(builder_build_progress_write(path, "viewer"))
+  expect_identical(builder_build_progress_read(path), "viewer")
+  expect_error(
+    builder_build_progress_write(path, "invented"),
+    "unsupported build phase",
+    fixed = TRUE
+  )
+  expect_true(builder_build_progress_remove(path))
+  expect_false(file.exists(path))
+})
+
 test_that("App execution rejects non-inert or non-exact verification evidence", {
   evidence <- list(
     structure(
@@ -666,6 +725,7 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   item <- builder_build_test_plan()$items[[1L]]
@@ -763,6 +823,7 @@ test_that("CRB read-back accepts sub-picounit transform serialization drift", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   item <- builder_build_test_plan()$items[[1L]]
@@ -787,10 +848,11 @@ test_that("CRB stores alignment only while image bytes remain external", {
   crb$spatial <- list(
     `slice-a` = list(
       coordinates = data.frame(x = 1, y = 2),
+      expression = Matrix::Matrix(1, nrow = 1L, ncol = 1L, sparse = TRUE),
       histology_images = list(
         Existing = list(
           histology_image = "data:image/png;base64,AA==",
-          histology_image_bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 2)
+          histology_image_bounds = c(xmin = 0, xmax = 1, ymin = 0, ymax = 2)
         )
       )
     )
@@ -807,6 +869,7 @@ test_that("CRB stores alignment only while image bytes remain external", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path)
 
   make_alignment <- function(section_id, section_kind) {
@@ -850,10 +913,7 @@ test_that("CRB stores alignment only while image bytes remain external", {
     observed$spatial[["slice-a"]]$histology_alignment,
     builder_alignment_payload(spatial_alignment)
   )
-  expect_identical(
-    names(observed$spatial[["slice-a"]]$histology_images),
-    character()
-  )
+  expect_length(observed$spatial[["slice-a"]]$histology_images, 0L)
   expect_identical(
     observed$trekker$histology_alignment,
     builder_alignment_payload(trekker_alignment)
@@ -876,6 +936,7 @@ test_that("CRB extras use the fast gzip compression level", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path)
 
   observed_compression <- NULL
@@ -904,6 +965,7 @@ test_that("Trekker-only extras do not rewrite an exported CRB", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path, compress = FALSE)
   before <- unname(tools::md5sum(crb_path))
 
@@ -977,10 +1039,14 @@ test_that("external Spatial images materialize without entering CRB payloads", {
     unname(as.character(tools::md5sum(descriptor$path))),
     inspected$source_content_md5
   )
-  expect_identical(unname(file.size(descriptor$path)), unname(file.size(source_path)))
+  expect_identical(
+    unname(file.size(descriptor$path)),
+    unname(file.size(source_path))
+  )
 })
 
 test_that("read-back verifies frozen H5 and BPCells sidecars", {
+  skip_if_not_installed("BPCells")
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("Matrix")
   root <- tempfile("builder-sidecars-")
@@ -1026,6 +1092,7 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
     item$sidecars <- location
     object <- unserialize(serialize(base_object, NULL))
     object$expression_backend <- list(type = mode, location = location)
+    lockEnvironment(object, bindings = FALSE)
     crb <- file.path(root, paste0(mode, ".crb"))
     sidecar <- file.path(root, location)
     if (mode == "h5") {
@@ -1046,7 +1113,20 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
         group = "expression"
       )
     } else {
-      dir.create(sidecar)
+      BPCells::write_matrix_dir(
+        Matrix::Matrix(
+          matrix(
+            seq_len(4L),
+            nrow = 2L,
+            dimnames = list(
+              item$artifact_identity$features,
+              item$artifact_identity$cells
+            )
+          ),
+          sparse = TRUE
+        ),
+        dir = sidecar
+      )
     }
     saveRDS(object, crb)
     observed <- builder_verify_crb(crb, item)
@@ -1093,6 +1173,7 @@ test_that("H5 sidecar identity is independent of CRB fallback fields", {
   object$hla_typing <- NULL
   object$expression_backend <- list(type = "h5", location = item$sidecars)
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   crb <- file.path(root, "dataset-a.crb")
   saveRDS(object, crb)
 
@@ -1170,6 +1251,7 @@ test_that("H5 sidecars reject links and escapes before opening", {
   object$hla_typing <- NULL
   object$expression_backend <- list(type = "h5", location = item$sidecars)
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   crb <- file.path(root, "dataset-a.crb")
   saveRDS(object, crb)
 
@@ -1221,6 +1303,7 @@ test_that("read-back rejects a Viewer page-gate mismatch", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   expect_error(

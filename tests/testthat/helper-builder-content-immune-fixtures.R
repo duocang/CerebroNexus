@@ -134,7 +134,7 @@ builder_immune_fixture_viewer_demo <- function() {
   if (!file.exists(path)) {
     return(NULL)
   }
-  readRDS(path)
+  readCerebro(path)
 }
 
 builder_immune_expect_record_contract <- function(record) {

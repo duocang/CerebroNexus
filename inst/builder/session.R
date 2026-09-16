@@ -638,7 +638,8 @@ builder_session_build <- function(
   plan,
   request = NULL,
   coordinator = NULL,
-  auth_material = NULL
+  auth_material = NULL,
+  progress_path = NULL
 ) {
   on.exit(auth_material <- NULL, add = TRUE)
   rs <- .builder_session_process(worker)
@@ -742,7 +743,8 @@ builder_session_build <- function(
       request,
       validate_snapshots,
       snapshot_validator,
-      auth_material
+      auth_material,
+      progress_path
     ) {
       on.exit(auth_material <- NULL, add = TRUE)
       tryCatch(
@@ -805,7 +807,8 @@ builder_session_build <- function(
             stage,
             registry,
             auth_material = auth_material,
-            objects = objects
+            objects = objects,
+            on_progress = .builder_build_progress_callback(progress_path)
           )
           if (
             isTRUE(plan$make_app) &&
@@ -827,7 +830,8 @@ builder_session_build <- function(
       request = request,
       validate_snapshots = validate_snapshots,
       snapshot_validator = .builder_session_plan_snapshot_error,
-      auth_material = auth_material
+      auth_material = auth_material,
+      progress_path = progress_path
     )
   )
 }
