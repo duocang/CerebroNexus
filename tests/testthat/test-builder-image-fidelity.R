@@ -361,6 +361,61 @@ test_that("Builder rejects malformed JPEG quantization tables", {
   )
 })
 
+test_that("Builder rejects invalid JPEG tables and sampling factors", {
+  jpeg_bytes <- function(quantization, sampling) {
+    as.raw(c(
+      0xff,
+      0xd8,
+      0xff,
+      0xdb,
+      0x00,
+      0x43,
+      0x00,
+      quantization,
+      0xff,
+      0xc0,
+      0x00,
+      0x0b,
+      0x08,
+      0x00,
+      0x01,
+      0x00,
+      0x01,
+      0x01,
+      0x01,
+      sampling,
+      0x00,
+      0xff,
+      0xda,
+      0x00,
+      0x08,
+      0x01,
+      0x01,
+      0x00,
+      0x00,
+      0x3f,
+      0x00,
+      0x01,
+      0xff,
+      0xd9
+    ))
+  }
+  invalid <- list(
+    zero_quantization = jpeg_bytes(c(0L, rep(1L, 63L)), 0x11),
+    zero_sampling = jpeg_bytes(rep(1L, 64L), 0x00)
+  )
+
+  for (name in names(invalid)) {
+    path <- withr::local_tempfile(fileext = ".jpeg")
+    writeBin(invalid[[name]], path)
+    expect_identical(
+      builder_read_image(path)$error,
+      "The image file has no valid encoded pixel data.",
+      info = name
+    )
+  }
+})
+
 test_that("Builder enforces the decoded-pixel budget", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(
