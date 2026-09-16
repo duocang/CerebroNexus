@@ -1108,17 +1108,21 @@ builder_verify_crb <- function(path, item) {
 
 .builder_build_materialize_spatial_images <- function(item, stage) {
   safe_component <- function(value, fallback) {
+    original <- enc2utf8(as.character(value)[[1L]])
+    digest <- substr(as.character(openssl::md5(charToRaw(original))), 1L, 12L)
     value <- tolower(iconv(
-      as.character(value),
+      original,
       to = "ASCII//TRANSLIT",
       sub = ""
     ))
     value <- gsub("[^a-z0-9]+", "-", value)
     value <- gsub("(^-+|-+$)", "", value)
-    if (!nzchar(value)) fallback else substr(value, 1L, 48L)
+    value <- if (is.na(value) || !nzchar(value)) fallback else value
+    paste0(substr(value, 1L, 35L), "-", digest)
   }
   images <- list()
   settings <- list()
+  materialized_paths <- character()
   collection_input <- item$images %||% list()
   if (!is.null(item$trekker_alignment)) {
     collection_input[["trekker"]] <- item$trekker_alignment
@@ -1205,11 +1209,14 @@ builder_verify_crb <- function(path, item) {
         filename <- paste0(stem, ".", extension)
       }
       materialized <- file.path(section_dir, filename)
+      if (materialized %in% materialized_paths || file.exists(materialized)) {
+        stop("Builder Spatial image asset paths must be unique.", call. = FALSE)
+      }
       if (
         !file.copy(
           source_path,
           materialized,
-          overwrite = TRUE,
+          overwrite = FALSE,
           copy.mode = TRUE
         )
       ) {
@@ -1228,6 +1235,7 @@ builder_verify_crb <- function(path, item) {
           call. = FALSE
         )
       }
+      materialized_paths <- c(materialized_paths, materialized)
       materialized <- normalizePath(
         materialized,
         winslash = "/",
