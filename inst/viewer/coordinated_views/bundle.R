@@ -534,95 +534,10 @@ cv_wire_pack_bundle <- function(
   min_length = 4096L,
   include_cells = TRUE
 ) {
-  chunks <- list()
-  data_size <- 0L
-  pack <- function(values, type) {
-    if (length(values) < min_length) {
-      return(values)
-    }
-    bytes <- if (identical(type, "json")) {
-      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-        as.character(values),
-        auto_unbox = FALSE,
-        na = "null"
-      ))))
-    } else if (identical(type, "f32")) {
-      writeBin(
-        as.numeric(values),
-        raw(),
-        size = 4L,
-        endian = "little"
-      )
-    } else {
-      writeBin(
-        as.integer(values),
-        raw(),
-        size = switch(type, i8 = 1L, i16 = 2L, 4L),
-        endian = "little"
-      )
-    }
-    alignment <- switch(type, i8 = 1L, i16 = 2L, json = 1L, 4L)
-    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
-    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
-    data_size <<- offset + length(bytes)
-    list(
-      `__cv_wire__` = type,
-      length = length(values),
-      offset = offset,
-      bytes = length(bytes)
-    )
+  if (!isTRUE(include_cells)) {
+    bundle$cells <- NULL
   }
-  pack_space <- function(space) {
-    for (axis in intersect(c("x", "y", "z"), names(space))) {
-      space[[axis]] <- pack(space[[axis]], "f32")
-    }
-    if (length(space$samples)) {
-      space$samples <- lapply(space$samples, pack_space)
-    }
-    space
-  }
-
-  bundle$cells <- if (isTRUE(include_cells)) {
-    pack(bundle$cells, "json")
-  } else {
-    NULL
-  }
-  bundle$groups <- lapply(bundle$groups, function(group) {
-    group$values <- pack(group$values, cv_wire_integer_type(group$values))
-    group
-  })
-  bundle$cat_extra <- lapply(bundle$cat_extra, function(group) {
-    group$values <- pack(group$values, cv_wire_integer_type(group$values))
-    group
-  })
-  bundle$fields <- lapply(bundle$fields, function(field) {
-    field$v <- pack(field$v, cv_wire_integer_type(field$v))
-    field
-  })
-  bundle$projections <- lapply(bundle$projections, pack_space)
-  bundle$spaces <- lapply(bundle$spaces, pack_space)
-  bundle$wire_format <- "binary-v1"
-  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-    bundle,
-    auto_unbox = TRUE,
-    null = "null",
-    na = "null"
-  ))))
-  header_padding <- (4L - length(header) %% 4L) %% 4L
-  data_start <- 4L + length(header) + header_padding
-  payload <- raw(data_start + data_size)
-  payload[seq_len(4L)] <- writeBin(
-    as.integer(length(header)),
-    raw(),
-    size = 4L,
-    endian = "little"
-  )
-  payload[4L + seq_along(header)] <- header
-  for (chunk in chunks) {
-    first <- data_start + chunk$offset + 1L
-    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
-  }
-  payload
+  cv_wire_pack_message(bundle, min_length = min_length)
 }
 
 cv_wire_pack_cells <- function(dataset_id, cells) {
@@ -953,8 +868,11 @@ cv_clone <- function(
 }
 
 ## Categorical groupings: each md group column -> {values, levels, colors}.
-cv_build_groups <- function(crb, md, colors_fn) {
+cv_build_groups <- function(crb, md, colors_fn, only = NULL) {
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
+  if (!is.null(only)) {
+    group_names <- intersect(group_names, only)
+  }
   groups <- list()
   for (g in group_names) {
     v <- md[[g]]
@@ -982,9 +900,14 @@ cv_build_groups <- function(crb, md, colors_fn) {
 ## "colour the embedding by percent.mt and see which blob is junk" is one of the
 ## most-used actions on that page. Constant and all-NA columns are skipped —
 ## there is no colouring to build from them.
-cv_build_fields <- function(md, skip = "cell_barcode") {
+cv_build_fields <- function(md, skip = "cell_barcode", only = NULL) {
   fields <- list()
-  for (mc in colnames(md)) {
+  field_names <- if (is.null(only)) {
+    colnames(md)
+  } else {
+    intersect(only, colnames(md))
+  }
+  for (mc in field_names) {
     if (mc %in% skip) {
       next
     }
@@ -1018,12 +941,17 @@ cv_build_fields <- function(md, skip = "cell_barcode") {
 ## instead of dropped — `skipped` is name -> level count, which the client shows
 ## greyed out in the picker. Silently omitting them left the two tabs offering
 ## different lists with no way to tell why.
-cv_build_extra_groups <- function(md, group_names, colors_fn) {
+cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
   n <- nrow(md)
   max_levels <- max(2L, min(60L, as.integer(n / 2)))
   extra <- list()
   skipped <- list()
-  for (mc in colnames(md)) {
+  extra_names <- if (is.null(only)) {
+    colnames(md)
+  } else {
+    intersect(only, colnames(md))
+  }
+  for (mc in extra_names) {
     if (mc == "cell_barcode" || mc %in% group_names) {
       next
     }
@@ -1056,8 +984,11 @@ cv_build_extra_groups <- function(md, group_names, colors_fn) {
 ## A 3-D embedding also sends its third dimension, so the client can orbit it
 ## rather than show a flattened shadow of it. `ndim` travels either way — the
 ## client needs to know which panels can rotate and which are flat.
-cv_build_projections <- function(crb, cells) {
+cv_build_projections <- function(crb, cells, only = NULL) {
   proj_names <- tryCatch(crb$availableProjections(), error = function(e) NULL)
+  if (!is.null(only)) {
+    proj_names <- intersect(proj_names, only)
+  }
   projections <- list()
   for (pn in proj_names) {
     pj <- tryCatch(crb$getProjection(pn), error = function(e) NULL)
@@ -1556,15 +1487,14 @@ cv_build_clone <- function(crb, cells, n) {
   K <- length(clone_keys)
   cx <- rep(NA_real_, n)
   cy <- rep(NA_real_, n)
-  counter <- integer(K)
-  for (i in seq_len(n)) {
-    ci <- cell_clone[i]
-    if (is.na(ci)) {
-      next
-    }
-    counter[ci] <- counter[ci] + 1L
-    cx[i] <- ci
-    cy[i] <- counter[ci] - 1L
+  present_cells <- which(!is.na(cell_clone))
+  if (length(present_cells)) {
+    cx[present_cells] <- cell_clone[present_cells]
+    cy[present_cells] <- ave(
+      cell_clone[present_cells],
+      cell_clone[present_cells],
+      FUN = seq_along
+    ) - 1L
   }
   maxstack <- max(clone_size)
   na_cells <- which(is.na(cell_clone))
@@ -1796,9 +1726,7 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
 
   ## Every modality is independently useful. Linked views adds a coordinated
   ## workspace without changing the dedicated Projection/Spatial/Trekker pages.
-  projections <- cv_build_projections(crb, cells)
   viewer_content <- cv_selected_viewer_content()
-  default_projection <- NULL
   appearance <- viewerScatterDefaults(
     if (exists("Cerebro.options")) Cerebro.options else list(),
     cv_selected_dataset_name()
@@ -1806,9 +1734,38 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   default_point_size <- appearance$point_size
   default_percentage_cells_to_show <- appearance$percentage_cells_to_show
   default_point_opacity <- appearance$point_opacity
+  projection_names <- tryCatch(
+    crb$availableProjections(),
+    error = function(e) character()
+  )
+  configured_projection <- viewer_content[["default_projection"]]
+  preferred_projection <- if (
+    is.character(configured_projection) &&
+      length(configured_projection) == 1L &&
+      !is.na(configured_projection) &&
+      configured_projection %in% projection_names
+  ) {
+    configured_projection
+  } else if ("umap" %in% projection_names) {
+    "umap"
+  } else {
+    projection_names[1L]
+  }
+  projections <- if (isTRUE(primary_only)) {
+    built <- list()
+    for (projection_name in unique(c(preferred_projection, projection_names))) {
+      built <- cv_build_projections(crb, cells, projection_name)
+      if (length(built)) {
+        break
+      }
+    }
+    built
+  } else {
+    cv_build_projections(crb, cells)
+  }
+  default_projection <- NULL
   spaces <- list()
   if (length(projections)) {
-    configured_projection <- viewer_content[["default_projection"]]
     default_projection <- if (
       is.character(configured_projection) &&
         length(configured_projection) == 1L &&
@@ -1831,34 +1788,35 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     spaces[[length(spaces) + 1L]] <- expression_space
   }
 
-  trajectories <- cv_build_trajectories(crb, cells)
-  if (length(trajectories)) {
-    spaces <- c(spaces, trajectories)
-  }
-
-  ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
-  ## add each whenever the object carries it. An object with both gets both panels
-  ## (the right-panel switch flips between them); neither is dropped.
-  sp <- cv_build_spatial(crb, cells)
-  if (!is.null(sp)) {
-    spaces[[length(spaces) + 1]] <- sp
-  }
+  trajectories <- list()
   trekker_bundle <- NULL
-  tk <- cv_build_trekker(crb, cells, md)
-  if (!is.null(tk)) {
-    spaces[[length(spaces) + 1]] <- tk$space
-    trekker_bundle <- tk$bundle
-    fields <- c(fields, tk$fields)
-  }
-
-  ## immune axis: adds a clone space + a clone_expansion group when receptors
-  ## are present.
   clone_bundle <- NULL
-  cl <- cv_build_clone(crb, cells, n)
-  if (!is.null(cl)) {
-    spaces[[length(spaces) + 1]] <- cl$space
-    groups[["clone_expansion"]] <- cl$group
-    clone_bundle <- cl$bundle
+  if (!isTRUE(primary_only)) {
+    trajectories <- cv_build_trajectories(crb, cells)
+    if (length(trajectories)) {
+      spaces <- c(spaces, trajectories)
+    }
+
+    ## Standard spatial and the Trekker physical mapping are independent spaces.
+    sp <- cv_build_spatial(crb, cells)
+    if (!is.null(sp)) {
+      spaces[[length(spaces) + 1]] <- sp
+    }
+    tk <- cv_build_trekker(crb, cells, md)
+    if (!is.null(tk)) {
+      spaces[[length(spaces) + 1]] <- tk$space
+      trekker_bundle <- tk$bundle
+      fields <- c(fields, tk$fields)
+    }
+
+    ## Immune data is the largest optional payload in the Ren atlas. Build it
+    ## only after the primary projection has painted and requested a supplement.
+    cl <- cv_build_clone(crb, cells, n)
+    if (!is.null(cl)) {
+      spaces[[length(spaces) + 1]] <- cl$space
+      groups[["clone_expansion"]] <- cl$group
+      clone_bundle <- cl$bundle
+    }
   }
 
   if (!length(spaces)) {
@@ -1911,9 +1869,13 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     cat_extra = cat_extra,
     cat_skipped = cat_skipped,
     fields = fields,
-    genes = I(enc2utf8(tryCatch(crb$getGeneNames(), error = function(e) {
-      character()
-    }))),
+    genes = I(
+      if (isTRUE(primary_only)) {
+        character()
+      } else {
+        enc2utf8(tryCatch(crb$getGeneNames(), error = function(e) character()))
+      }
+    ),
     default_group = default_group,
     default_point_size = default_point_size,
     default_percentage_cells_to_show = default_percentage_cells_to_show,
@@ -1924,5 +1886,28 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
     spaces = spaces,
     clone = clone_bundle,
     trekker = trekker_bundle
+  )
+}
+
+cv_bundle_supplement <- function(primary, full) {
+  missing_named <- function(all, initial) {
+    all[setdiff(names(all), names(initial))]
+  }
+  primary_space_ids <- vapply(primary$spaces, `[[`, character(1), "id")
+  list(
+    dataset_id = full$dataset_id,
+    dataset_fingerprint = full$dataset_fingerprint,
+    progressive_token = primary$progressive_token,
+    groups = missing_named(full$groups, primary$groups),
+    cat_extra = missing_named(full$cat_extra, primary$cat_extra),
+    fields = missing_named(full$fields, primary$fields),
+    cat_skipped = full$cat_skipped,
+    projections = missing_named(full$projections, primary$projections),
+    spaces = Filter(
+      function(space) !space$id %in% primary_space_ids,
+      full$spaces
+    ),
+    clone = full$clone,
+    trekker = full$trekker
   )
 }

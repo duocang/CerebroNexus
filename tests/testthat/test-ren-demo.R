@@ -94,6 +94,25 @@ test_that("the Ren h5ad selectors accept standard AnnData paths", {
   projection <- env$.viewerRenProjection(h5ad, c("c1", "c2", "c3"))
   expect_identical(rownames(projection), c("c1", "c2", "c3"))
   expect_identical(attr(projection, "source"), "/obsm/X_umap")
+  expect_identical(env$.viewerRenProjectionName(projection), "umap")
+
+  rhdf5::h5delete(h5ad, "obsm/X_umap")
+  rhdf5::h5write(matrix(7:12, nrow = 3), h5ad, "obsm/X_tsne")
+  projection <- env$.viewerRenProjection(h5ad, c("c1", "c2", "c3"))
+  expect_identical(attr(projection, "source"), "/obsm/X_tsne")
+  expect_identical(env$.viewerRenProjectionName(projection), "tsne")
+})
+
+test_that("the Ren preparation keeps large categorical and repertoire data lazy", {
+  script <- ren_demo_script()
+  skip_if_not(file.exists(script), "benchmark tree not present")
+  source <- paste(readLines(script), collapse = "\n")
+
+  expect_match(source, ".viewerRenVersion <- 2L", fixed = TRUE)
+  expect_match(source, "metadata[categorical] <- lapply", fixed = TRUE)
+  expect_match(source, "immune_repertoire.qs2", fixed = TRUE)
+  expect_match(source, "immune_repertoire_backend", fixed = TRUE)
+  expect_false(grepl("addImmuneRepertoire(repertoire)", source, fixed = TRUE))
 })
 
 test_that("run-demo prepares both full-scale datasets", {
