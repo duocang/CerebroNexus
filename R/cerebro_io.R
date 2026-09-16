@@ -95,6 +95,57 @@
   checksum
 }
 
+.immuneRepertoireBackend <- function(object, file) {
+  field <- "immune_repertoire_backend"
+  if (!exists(field, envir = object, inherits = FALSE)) {
+    return(NULL)
+  }
+  if (!.storedCerebroField(object, field)) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  descriptor <- object[[field]]
+  if (is.null(descriptor)) {
+    return(NULL)
+  }
+  valid <- is.list(descriptor) &&
+    identical(descriptor$type, "bpcells-file") &&
+    is.character(descriptor$file) &&
+    length(descriptor$file) == 1L &&
+    !is.na(descriptor$file) &&
+    nzchar(descriptor$file) &&
+    !descriptor$file %in% c(".", "..") &&
+    !grepl("[/\\\\]", descriptor$file) &&
+    is.character(descriptor$md5) &&
+    length(descriptor$md5) == 1L &&
+    !is.na(descriptor$md5) &&
+    grepl("^[[:xdigit:]]{32}$", descriptor$md5)
+  if (!valid) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  samples <- as.character(descriptor$samples %||% character())
+  chains <- as.character(descriptor$chains %||% character())
+  if (anyNA(samples) || anyNA(chains)) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  expression_backend <- .cerebroBackend(object)
+  if (!identical(expression_backend$type, "bpcells")) {
+    stop("An immune repertoire sidecar requires a BPCells backend.", call. = FALSE)
+  }
+  root <- .cerebroSidecar(file, expression_backend)
+  repertoire_file <- file.path(root, descriptor$file)
+  if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
+    stop("The immune repertoire sidecar is missing: ", repertoire_file, call. = FALSE)
+  }
+  list(
+    type = "bpcells-file",
+    file = descriptor$file,
+    md5 = descriptor$md5,
+    samples = unique(samples[nzchar(samples)]),
+    chains = unique(chains[nzchar(chains)]),
+    root = root
+  )
+}
+
 .compactCountColumn <- function(values) {
   if (
     is.double(values) &&
@@ -116,6 +167,15 @@
   backend <- .cerebroBackend(object)
   payload <- .currentCerebroCopy(object)
   payload$crb_schema <- NULL
+  immune_backend <- .immuneRepertoireBackend(object, file)
+  if (!is.null(immune_backend)) {
+    payload$immune_repertoire <- list()
+    payload$bcr_data <- list()
+    payload$tcr_data <- list()
+    payload$immune_repertoire_backend <- immune_backend[c(
+      "type", "file", "md5", "samples", "chains"
+    )]
+  }
   if (identical(backend$type, "embedded")) {
     return(payload)
   }
@@ -431,6 +491,15 @@
   object
 }
 
+.attachCerebroImmuneRepertoire <- function(object, file) {
+  backend <- .immuneRepertoireBackend(object, file)
+  if (is.null(backend)) {
+    return(object)
+  }
+  object$immune_repertoire_backend <- backend
+  object
+}
+
 .installCerebroPayload <- function(stage, file, spatial_stage = NULL, spatial = NULL) {
   backup <- NULL
   spatial_backup <- NULL
@@ -551,7 +620,8 @@ readCerebro <- function(file) {
   object <- .currentCerebroCopy(serialized)
   object <- .attachCerebroExpression(object, file, backend)
   object <- .hydrateThinCerebro(object, file, backend, schema)
-  .attachCerebroSpatialMolecules(object, file)
+  object <- .attachCerebroSpatialMolecules(object, file)
+  .attachCerebroImmuneRepertoire(object, file)
 }
 
 #' Convert a Cerebro data file

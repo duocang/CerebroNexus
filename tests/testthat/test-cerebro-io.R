@@ -106,6 +106,42 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_identical(runtime_object$getSpatialData("fov1")$molecules, molecules)
 })
 
+test_that("immune repertoires can load lazily from a BPCells sidecar", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("Matrix")
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  fixture <- make_bpcells_cerebro(root)
+  path <- file.path(root, "immune-lazy.crb")
+  repertoire <- list(sample_a = data.frame(
+    barcode = fixture$cells[1:2],
+    CTgene = c("TRB1", "TRB2"),
+    stringsAsFactors = FALSE
+  ))
+  repertoire_file <- file.path(fixture$sidecar, "immune_repertoire.qs2")
+  qs2::qs_save(repertoire, repertoire_file)
+  fixture$object$immune_repertoire_backend <- list(
+    type = "bpcells-file",
+    file = basename(repertoire_file),
+    md5 = unname(tools::md5sum(repertoire_file)),
+    samples = names(repertoire),
+    chains = "TRB"
+  )
+
+  saveCerebro(fixture$object, path)
+  payload <- .readCerebroPayload(path)
+  expect_length(payload$immune_repertoire, 0L)
+  expect_false("root" %in% names(payload$immune_repertoire_backend))
+  expect_identical(payload$immune_repertoire_backend$samples, "sample_a")
+  expect_identical(payload$immune_repertoire_backend$chains, "TRB")
+
+  restored <- readCerebro(path)
+  expect_length(restored$immune_repertoire, 0L)
+  expect_identical(restored$getImmuneRepertoire(), repertoire)
+  expect_identical(restored$immune_repertoire, repertoire)
+})
+
 test_that("bundled demo CRBs use the current qs2 codec", {
   demo_dir <- file.path(viewer_app_test_path(), "extdata", "examples")
   demos <- list.files(

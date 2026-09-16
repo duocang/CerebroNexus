@@ -71,6 +71,12 @@ Cerebro <- R6::R6Class(
     #' legacy CRBs with embedded molecule tables.
     spatial_molecule_backend = NULL,
 
+    #' @field immune_repertoire_backend Descriptor for a large immune
+    #' repertoire stored inside a BPCells expression sidecar. The runtime-only
+    #' `root` member is attached when the CRB is opened; legacy CRBs continue to
+    #' use the embedded `immune_repertoire` field.
+    immune_repertoire_backend = NULL,
+
     #' @field meta_data \code{data.frame} that contains cell meta data.
     meta_data = data.frame(),
 
@@ -1112,6 +1118,51 @@ Cerebro <- R6::R6Class(
       if (length(self$immune_repertoire) > 0) {
         return(self$immune_repertoire)
       }
+      backend <- tryCatch(self$immune_repertoire_backend, error = function(e) NULL)
+      if (!is.null(backend)) {
+        valid <- is.list(backend) &&
+          identical(backend$type, "bpcells-file") &&
+          is.character(backend$root) &&
+          length(backend$root) == 1L &&
+          !is.na(backend$root) &&
+          nzchar(backend$root) &&
+          is.character(backend$file) &&
+          length(backend$file) == 1L &&
+          !is.na(backend$file) &&
+          nzchar(backend$file) &&
+          !backend$file %in% c(".", "..") &&
+          !grepl("[/\\\\]", backend$file) &&
+          is.character(backend$md5) &&
+          length(backend$md5) == 1L &&
+          !is.na(backend$md5) &&
+          grepl("^[[:xdigit:]]{32}$", backend$md5)
+        if (!valid) {
+          stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+        }
+        repertoire_file <- file.path(backend$root, backend$file)
+        if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
+          stop("The immune repertoire sidecar is missing.", call. = FALSE)
+        }
+        checksum <- unname(tools::md5sum(repertoire_file))
+        if (!identical(checksum, backend$md5)) {
+          stop("The immune repertoire sidecar checksum does not match.", call. = FALSE)
+        }
+        connection <- file(repertoire_file, open = "rb")
+        magic <- readBin(connection, "raw", n = 4L)
+        close(connection)
+        repertoire <- if (
+          identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))
+        ) {
+          qs2::qs_read(repertoire_file)
+        } else {
+          readRDS(repertoire_file)
+        }
+        if (!is.list(repertoire)) {
+          stop("The immune repertoire sidecar is invalid.", call. = FALSE)
+        }
+        self$immune_repertoire <- repertoire
+        return(repertoire)
+      }
       # Backward compatibility: merge legacy bcr + tcr
       merged <- c(self$bcr_data, self$tcr_data)
       return(merged)
@@ -1124,6 +1175,7 @@ Cerebro <- R6::R6Class(
     #'   scRepertoire columns.
     addImmuneRepertoire = function(data) {
       self$immune_repertoire <- data
+      self$immune_repertoire_backend <- NULL
     },
 
     #' @description
