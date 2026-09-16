@@ -471,7 +471,7 @@ builder_spatial_alignment_server <- function(
           section <- shiny::isolate(active_section())
           if (!is.null(entry) && !is.null(section)) {
             store_coordinate_draft(
-              spec = list(rotation_degrees = value, scale = 1),
+              spec = list(rotation_degrees = value),
               dataset = entry$id,
               section = section,
               snapshot_identity = .builder_worker_identity(entry$snapshot),
@@ -661,18 +661,6 @@ builder_spatial_alignment_server <- function(
     ))
     invisible(images)
   }
-  coordinate_transforms_for <- function(entry) {
-    transforms <- entry$settings$spatial_coordinate_transforms %||% list()
-    if (is.null(names(transforms))) {
-      return(list())
-    }
-    for (section in names(transforms)) {
-      if (is.list(transforms[[section]])) {
-        transforms[[section]]$scale <- 1
-      }
-    }
-    transforms
-  }
   coordinate_roi <- function(view = roi_view(), roi = active_roi()) {
     if (identical(view, "")) "" else as.character(roi %||% "")[[1L]]
   }
@@ -735,7 +723,7 @@ builder_spatial_alignment_server <- function(
     )
   }
   coordinate_spec_for <- function(entry, section, roi = coordinate_roi()) {
-    if (!builder_spatial_section_is_spatial(kind_for(section))) {
+    if (!builder_spatial_section_is_spatial(kind_for_entry(entry, section))) {
       return(list(rotation_degrees = 0, scale = 1))
     }
     if (nzchar(roi)) {
@@ -769,7 +757,9 @@ builder_spatial_alignment_server <- function(
     ) {
       return(session_record$spec)
     }
-    stored <- coordinate_transforms_for(entry)[[section]]
+    stored <- (entry$settings$spatial_coordinate_transforms %||% list())[[
+      section
+    ]]
     .spx_coordinate_transform_spec_normalize(
       stored,
       context = paste0("spatial_coordinate_transforms$", section)
@@ -1569,6 +1559,9 @@ builder_spatial_alignment_server <- function(
     ) {
       return(invisible(FALSE))
     }
+    if (is.list(spec) && is.null(spec$scale)) {
+      spec$scale <- coordinate_spec_for(entry, section, roi)$scale
+    }
     if (nzchar(roi)) {
       record <- list(
         dataset = dataset,
@@ -1635,8 +1628,7 @@ builder_spatial_alignment_server <- function(
         return()
       }
       spec <- list(
-        rotation_degrees = event$rotationDegrees,
-        scale = 1
+        rotation_degrees = event$rotationDegrees
       )
       store_coordinate_draft(
         spec = spec,
@@ -1772,8 +1764,7 @@ builder_spatial_alignment_server <- function(
     coordinate <- list(
       rotation_degrees = suppressWarnings(
         as.numeric(event$controls$coordinateRotation %||% 0)
-      ),
-      scale = 1
+      )
     )
     if (
       length(coordinate$rotation_degrees) != 1L ||
@@ -2590,7 +2581,10 @@ builder_spatial_alignment_server <- function(
       roi_coordinate_transforms = stats::setNames(
         lapply(preview$roi$values %||% character(), function(roi) {
           spec <- coordinate_spec_for(entry, section, roi)
-          list(coordinateRotation = spec$rotation_degrees %||% 0)
+          list(
+            coordinateRotation = spec$rotation_degrees %||% 0,
+            coordinateScale = spec$scale %||% 1
+          )
         }),
         preview$roi$values %||% character()
       ),
