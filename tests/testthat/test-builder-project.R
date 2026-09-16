@@ -3917,6 +3917,31 @@ test_that("persisted fingerprints retain the unchanged-file fast path", {
   expect_identical(persisted$changed_at, recorded$changed_at)
 })
 
+test_that("invalid change times fall back to content validation", {
+  runtime <- builder_project_test_runtime()
+  path <- withr::local_tempfile()
+  writeBin(charToRaw("AAAA"), path)
+  recorded_time <- file.info(path)$mtime[[1L]]
+  recorded <- runtime$builder_project_file_fingerprint(path, content = TRUE)
+  recorded$changed_at <- "NA"
+  writeBin(charToRaw("BBBB"), path)
+  Sys.setFileTime(path, recorded_time)
+  content_reads <- 0L
+  fingerprint <- runtime$builder_project_file_fingerprint
+  runtime$builder_project_file_fingerprint <- function(path, content = FALSE) {
+    value <- fingerprint(path, content = content)
+    if (isTRUE(content)) {
+      content_reads <<- content_reads + 1L
+    } else {
+      value$changed_at <- "NA"
+    }
+    value
+  }
+
+  expect_false(runtime$builder_project_managed_file_matches(recorded, path))
+  expect_identical(content_reads, 1L)
+})
+
 test_that("artifact availability validates the primary file and every member", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()

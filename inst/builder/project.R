@@ -693,6 +693,7 @@ builder_project_file_fingerprint <- function(path, content = FALSE) {
     return(NULL)
   }
   info <- file.info(path)
+  changed_at <- as.double(info$ctime[[1L]])
   list(
     bytes = as.double(info$size[[1L]]),
     modified_at = format(
@@ -700,7 +701,11 @@ builder_project_file_fingerprint <- function(path, content = FALSE) {
       "%Y-%m-%dT%H:%M:%OS3Z",
       tz = "UTC"
     ),
-    changed_at = sprintf("%.17g", as.double(info$ctime[[1L]])),
+    changed_at = if (is.finite(changed_at)) {
+      sprintf("%.17g", changed_at)
+    } else {
+      NULL
+    },
     md5 = if (isTRUE(content)) unname(tools::md5sum(path)) else NULL
   )
 }
@@ -762,12 +767,16 @@ builder_project_managed_file_matches <- function(recorded, path) {
   recorded_md5 <- recorded$md5 %||% NULL
   recorded_changed <- as.character(recorded$changed_at %||% "")
   current_changed <- as.character(metadata$changed_at %||% "")
+  recorded_changed_value <- suppressWarnings(as.double(recorded_changed))
+  current_changed_value <- suppressWarnings(as.double(current_changed))
   if (
     metadata_matches &&
       (!.builder_project_text(recorded_md5) ||
         (!identical(.Platform$OS.type, "windows") &&
           nzchar(recorded_changed) &&
           nzchar(current_changed) &&
+          is.finite(recorded_changed_value) &&
+          is.finite(current_changed_value) &&
           identical(recorded_changed, current_changed)))
   ) {
     return(TRUE)
