@@ -666,6 +666,7 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   item <- builder_build_test_plan()$items[[1L]]
@@ -763,6 +764,7 @@ test_that("CRB read-back accepts sub-picounit transform serialization drift", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   item <- builder_build_test_plan()$items[[1L]]
@@ -807,6 +809,7 @@ test_that("CRB stores alignment only while image bytes remain external", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path)
 
   make_alignment <- function(section_id, section_kind) {
@@ -876,6 +879,7 @@ test_that("CRB extras use the fast gzip compression level", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path)
 
   observed_compression <- NULL
@@ -904,6 +908,7 @@ test_that("Trekker-only extras do not rewrite an exported CRB", {
     invisible(value)
   }
   class(crb) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(crb, bindings = FALSE)
   saveRDS(crb, crb_path, compress = FALSE)
   before <- unname(tools::md5sum(crb_path))
 
@@ -1026,6 +1031,7 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
     item$sidecars <- location
     object <- unserialize(serialize(base_object, NULL))
     object$expression_backend <- list(type = mode, location = location)
+    lockEnvironment(object, bindings = FALSE)
     crb <- file.path(root, paste0(mode, ".crb"))
     sidecar <- file.path(root, location)
     if (mode == "h5") {
@@ -1093,6 +1099,7 @@ test_that("H5 sidecar identity is independent of CRB fallback fields", {
   object$hla_typing <- NULL
   object$expression_backend <- list(type = "h5", location = item$sidecars)
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   crb <- file.path(root, "dataset-a.crb")
   saveRDS(object, crb)
 
@@ -1170,6 +1177,7 @@ test_that("H5 sidecars reject links and escapes before opening", {
   object$hla_typing <- NULL
   object$expression_backend <- list(type = "h5", location = item$sidecars)
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   crb <- file.path(root, "dataset-a.crb")
   saveRDS(object, crb)
 
@@ -1221,6 +1229,7 @@ test_that("read-back rejects a Viewer page-gate mismatch", {
   object$trekker <- NULL
   object$hla_typing <- NULL
   class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
   saveRDS(object, crb)
 
   expect_error(
