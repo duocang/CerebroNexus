@@ -1,7 +1,6 @@
 .builder_app_scatter_options <- function(request) {
   labels <- request$selector_order
   viewer_content <- request$viewer_content[labels]
-  opacity <- request$point_size[["projection_point_opacity"]] %||% 1
   list(
     point_size = vapply(
       viewer_content,
@@ -9,9 +8,11 @@
       numeric(1),
       "overview_point_size"
     ),
-    point_opacity = stats::setNames(
-      rep(as.double(opacity), length(labels)),
-      labels
+    point_opacity = vapply(
+      viewer_content,
+      `[[`,
+      numeric(1),
+      "overview_point_opacity"
     ),
     percentage_cells_to_show = vapply(
       viewer_content,

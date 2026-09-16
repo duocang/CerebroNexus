@@ -634,6 +634,19 @@ builder_freeze_plan <- function(
         ) {
           stop("invalid_reusable_artifact", call. = FALSE)
         }
+        saved$initial_projections <- initial_projections[[index]]
+        saved$overview_point_size <- settings$overview_point_size %||% 5
+        saved$overview_point_opacity <- settings$overview_point_opacity %||% 1
+        saved$overview_percentage_cells_to_show <- settings[[
+          "overview_percentage_cells_to_show"
+        ]] %||%
+          100
+        saved$spatial_point_appearance <-
+          .builder_plan_spatial_point_appearance(
+            settings$spatial_point_appearance,
+            saved$images %||% list()
+          )
+        saved$spatial_roi_settings <- settings$spatial_roi_settings %||% list()
         saved$reused_artifact <- list(
           path = artifact$resolved_path,
           fingerprint = artifact$fingerprint %||% list(),
