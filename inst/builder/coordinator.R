@@ -982,6 +982,53 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
   invisible(TRUE)
 }
 
+.builder_coordinator_register_spatial_molecule_inputs <- function(
+  handle,
+  built,
+  app_expected
+) {
+  identities <- lapply(
+    unname(built),
+    .builder_app_capture_spatial_molecule_identity
+  )
+  locations <- vapply(identities, function(identity) {
+    if (is.null(identity)) "" else basename(identity$root)
+  }, character(1))
+  locations <- sort(unique(locations[nzchar(locations)]), method = "radix")
+  if (!length(locations)) {
+    return(handle)
+  }
+  if (
+    anyDuplicated(tolower(locations)) ||
+      any(grepl("[/\\\\]", locations)) ||
+      any(locations %in% c(".", ".."))
+  ) {
+    stop(
+      "The staged spatial molecule sidecar closure is invalid.",
+      call. = FALSE
+    )
+  }
+  if (isTRUE(app_expected)) {
+    handle$transient_app_inputs <- sort(
+      unique(c(handle$transient_app_inputs, locations)),
+      method = "radix"
+    )
+  } else {
+    handle$expected_payload_targets <- sort(
+      unique(c(handle$expected_payload_targets, locations)),
+      method = "radix"
+    )
+  }
+  handle$expected_build_targets <- sort(
+    unique(c(
+      handle$expected_payload_targets,
+      handle$transient_app_inputs
+    )),
+    method = "radix"
+  )
+  handle
+}
+
 builder_coordinator_publish <- function(
   handle,
   build_result,
@@ -1023,6 +1070,11 @@ builder_coordinator_publish <- function(
     stop("Verified build artifacts escaped the assigned stage.", call. = FALSE)
   }
   app_expected <- isTRUE(handle$app_expectation$expected)
+  handle <- .builder_coordinator_register_spatial_molecule_inputs(
+    handle,
+    built,
+    app_expected
+  )
   parent_verification <- NULL
   staged_app <- file.path(handle$stage, "cerebro_app")
   if (!app_expected) {
@@ -1466,6 +1518,22 @@ builder_coordinator_publish <- function(
             file.path(published$target, relative)
           }
         }
+        if (
+          is.list(verification) &&
+            .builder_release_text(verification$spatial_molecule_path)
+        ) {
+          location <- basename(verification$spatial_molecule_path)
+          verification$spatial_molecule_path <- if (app_expected) {
+            file.path(
+              published$target,
+              "cerebro_app",
+              "private-data",
+              location
+            )
+          } else {
+            file.path(published$target, location)
+          }
+        }
         verification
       }
     )
@@ -1487,6 +1555,13 @@ builder_coordinator_publish <- function(
     character()
   }
   mapped_paths <- c(unname(build_result$built), verification_paths)
+  spatial_molecule_paths <- unlist(lapply(
+    build_result$verifications,
+    function(verification) {
+      verification$spatial_molecule_path %||% character()
+    }
+  ), use.names = FALSE)
+  mapped_paths <- c(mapped_paths, spatial_molecule_paths)
   if (
     !length(mapped_paths) ||
       anyNA(mapped_paths) ||

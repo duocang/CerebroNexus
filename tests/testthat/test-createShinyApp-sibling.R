@@ -172,6 +172,7 @@ test_that("CRB preflight consumes matching Builder verification once", {
         legacy = FALSE
       )
     ),
+    spatial_backends = list(First = NULL),
     spatial_catalogs = list(First = list(section = "H&E"))
   )
   fingerprints <- list(First = .bundlePreflightFingerprint(path))
@@ -210,6 +211,7 @@ test_that("CRB preflight rejects a same-size cache substitution", {
         legacy = FALSE
       )
     ),
+    spatial_backends = list(First = NULL),
     spatial_catalogs = list(First = list())
   )
   fingerprints <- list(First = .bundlePreflightFingerprint(path))
@@ -232,6 +234,48 @@ test_that("CRB preflight rejects a same-size cache substitution", {
 
   expect_identical(reads, 1L)
   expect_identical(observed, cached)
+})
+
+test_that("cached CRB preflight preserves spatial molecule sidecars", {
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  object <- Cerebro$new()
+  object$expression <- matrix(
+    1:4,
+    nrow = 2L,
+    dimnames = list(c("gene-1", "gene-2"), c("cell-1", "cell-2"))
+  )
+  object$spatial <- list(fov1 = list(
+    coordinates = data.frame(
+      x = c(0, 1),
+      y = c(0, 1),
+      row.names = c("cell-1", "cell-2")
+    ),
+    expression = object$expression,
+    molecules = data.frame(x = 1, y = 2, gene = "A")
+  ))
+  saveCerebro(object, crb, codec = "rds")
+  data <- c(Dataset = crb)
+  preflight <- .preflightBundleData(data)
+  fingerprints <- list(Dataset = .bundlePreflightFingerprint(crb))
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+
+  expect_true(.cacheBundlePreflightData(data, preflight, fingerprints))
+  app <- file.path(root, "app")
+  createShinyApp(
+    cerebro_data = data,
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  expect_true(dir.exists(file.path(app, "private-data", "dataset.spatial")))
+  expect_true(file.exists(file.path(
+    app,
+    "private-data",
+    "dataset.spatial",
+    "0001.rds"
+  )))
 })
 
 write_spatial_bundle_crb <- function(

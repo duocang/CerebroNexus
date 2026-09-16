@@ -187,6 +187,94 @@
   )
 }
 
+.builder_app_runtime_function <- function(name) {
+  value <- get0(name, mode = "function", inherits = TRUE)
+  if (is.null(value) && requireNamespace("CerebroNexus", quietly = TRUE)) {
+    value <- get0(
+      name,
+      envir = asNamespace("CerebroNexus"),
+      mode = "function",
+      inherits = FALSE
+    )
+  }
+  if (!is.function(value)) {
+    stop("The Cerebro runtime is unavailable.", call. = FALSE)
+  }
+  value
+}
+
+.builder_app_capture_spatial_molecule_identity <- function(crb_path) {
+  object <- tryCatch(
+    .builder_app_runtime_function(".readCerebroPayload")(crb_path),
+    error = function(error) NULL
+  )
+  if (!is.environment(object)) {
+    return(NULL)
+  }
+  backend <- .builder_app_runtime_function(".spatialMoleculeBackend")(
+    object,
+    crb_path
+  )
+  object <- NULL
+  if (is.null(backend)) {
+    return(NULL)
+  }
+  expected <- paste0(
+    tools::file_path_sans_ext(basename(crb_path)),
+    ".spatial"
+  )
+  if (
+    !identical(backend$type, "directory") ||
+      !identical(backend$location, expected)
+  ) {
+    stop(
+      "A verified spatial molecule sidecar has an invalid location.",
+      call. = FALSE
+    )
+  }
+  .builder_app_capture_backend_identity(
+    list(type = "bpcells", mode = "bundled", location = backend$location),
+    crb_path
+  )
+}
+
+.builder_app_spatial_molecule_identities_valid <- function(
+  identities,
+  cerebro_data,
+  relative_crbs
+) {
+  if (
+    !is.list(identities) ||
+      is.object(identities) ||
+      !identical(names(identities), relative_crbs)
+  ) {
+    return(FALSE)
+  }
+  all(vapply(seq_along(identities), function(index) {
+    closure <- identities[[index]]
+    if (is.null(closure)) {
+      return(TRUE)
+    }
+    location <- paste0(
+      tools::file_path_sans_ext(basename(cerebro_data[[index]])),
+      ".spatial"
+    )
+    plan <- list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(type = "bpcells", mode = "bundled", location = location)),
+        relative_crbs[[index]]
+      )
+    )
+    candidate <- stats::setNames(list(closure), relative_crbs[[index]])
+    .builder_app_backend_identities_valid(
+      candidate,
+      plan,
+      cerebro_data[[index]]
+    )
+  }, logical(1)))
+}
+
 .builder_app_fingerprint_valid <- function(fingerprint, expected_type) {
   if (
     !is.list(fingerprint) ||
@@ -479,6 +567,11 @@
         plain$backend_plan,
         plain$cerebro_data
       ) ||
+      !.builder_app_spatial_molecule_identities_valid(
+        plain$spatial_molecule_identities,
+        plain$cerebro_data,
+        names(plain$backend_plan$entries)
+      ) ||
       !.builder_app_spatial_manifest_valid(
         plain$spatial_images,
         plain$spatial_image_settings,
@@ -507,7 +600,8 @@
     .builder_app_content_identities(
       plain$crb_identities,
       plain$backend_identities,
-      plain$backend_plan
+      plain$backend_plan,
+      plain$spatial_molecule_identities
     ),
     error = function(error) NULL
   )
@@ -563,9 +657,34 @@
   invisible(TRUE)
 }
 
+.builder_app_capture_spatial_molecule_identities <- function(request) {
+  current <- lapply(
+    request$cerebro_data,
+    .builder_app_capture_spatial_molecule_identity
+  )
+  names(current) <- names(request$backend_plan$entries)
+  current
+}
+
 .builder_app_assert_input_identities <- function(request) {
   .builder_app_assert_crb_identities(request)
   .builder_app_assert_backend_identities(request)
+  current_molecules <- tryCatch(
+    .builder_app_capture_spatial_molecule_identities(request),
+    error = function(error) NULL
+  )
+  if (
+    is.null(current_molecules) ||
+      !identical(
+        current_molecules,
+        request$spatial_molecule_identities
+      )
+  ) {
+    stop(
+      "A verified input spatial molecule closure changed after request creation.",
+      call. = FALSE
+    )
+  }
   current_spatial <- tryCatch(
     .builder_app_capture_spatial_identities(request$spatial_images),
     error = function(error) NULL
