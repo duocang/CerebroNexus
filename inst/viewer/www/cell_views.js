@@ -4045,8 +4045,10 @@
     }
     // Only flow chrome changes the available panel height. More is an overlay,
     // and observing it would make an innocuous settings click re-fit the grid.
+    // The legend wraps as categories are added or the workspace narrows, so its
+    // live height must participate in the same fit as the cohort status row.
     if (!resizeObserver._cvChromeObserved) {
-      ['cv-workspace-guide', 'cv-selbar'].forEach(function (id) {
+      ['cv-workspace-guide', 'cv-selbar', 'cv-legend', 'cv-cbar'].forEach(function (id) {
         var el = $(id);
         if (el) resizeObserver.observe(el);
       });
