@@ -6,6 +6,8 @@
 - Repeated visits to million-cell Canvas pages reuse the prepared CPU view while preserving current selection, remount, and stale-payload behavior.
 - Overview keeps full-data cells in canonical order, and Immune Repertoire joins metadata once and vectorizes receptor-chain matching.
 - Linked Views uses the existing recursive binary packer for trajectory, clone, and Trekker vectors instead of leaving long arrays in its JSON header.
+- Large Linked Views opens progressively with its published projection before loading optional spaces, clone data, and cell identifiers; clone-stack coordinates are vectorized.
+- The Ren atlas preserves its published t-SNE name, stores repeated metadata as factors, and keeps the paired TCR/BCR repertoire in a lazy sidecar.
 
 # CerebroNexus 4.6.2
 
