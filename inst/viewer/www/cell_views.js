@@ -2604,12 +2604,13 @@
         // Do not send undefined IDs (or float32 coordinates as identity) during
         // that window. onSingleAuxBinary() reports the still-active selection
         // as soon as the deferred IDs have been attached.
-        var singleView = singleViews[singleActive];
-        if (!pendingStableSelection &&
-            (arr || (singleView && singleView._selectionReported))) {
-          Shiny.setInputValue(singleActive + '_persistent_selection', arr
-            ? { x: x, y: y, ids: arr } : null);
-          if (singleView) singleView._selectionReported = true;
+        if (!pendingStableSelection) {
+          var singleView = singleViews[singleActive];
+          if (arr || (singleView && singleView._selectionReported)) {
+            Shiny.setInputValue(singleActive + '_persistent_selection', arr
+              ? { x: x, y: y, ids: arr } : null);
+            if (singleView) singleView._selectionReported = true;
+          }
         }
       } else {
         Shiny.setInputValue('coordviews_selection', arr);
