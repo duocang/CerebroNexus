@@ -43,6 +43,87 @@ HLA_BCR_CHAINS <- c("IGH", "IGK", "IGL")
 ## ---- Motif size guards (conservative; widen only with benchmarks) ------ ##
 HLA_MOTIF_MAX_BIN <- 2500L # unique CDR3 in one length bin
 HLA_MOTIF_MAX_TOTAL <- 20000L # unique CDR3 across all bins
+HLA_MOTIF_INITIAL_TARGET <- floor(HLA_MOTIF_MAX_TOTAL * 0.6)
+HLA_MOTIF_INITIAL_BIN_TARGET <- floor(HLA_MOTIF_MAX_BIN * 0.7)
+
+#' Choose a deterministic initial sample cohort for a large repertoire
+#'
+#' Keeps all samples when the complete repertoire fits the graph guard. For an
+#' atlas-scale repertoire, samples with the most unique CDR3s are added until a
+#' conservative target is reached. Per-sample counts deliberately overestimate
+#' the union, so shared clonotypes cannot push the result over the budget.
+#'
+#' @param segments Parsed receptor segments with `sample` and `cdr3` columns.
+#' @param samples Sample levels in display order.
+#' @param target Conservative sum-of-per-sample unique-CDR3 budget.
+#' @param max_total Hard all-cohort unique-CDR3 guard.
+#' @param bin_target Conservative per-length-bin budget.
+#' @param max_bin Hard per-length-bin guard.
+#' @return A character vector of selected sample levels.
+#' @keywords internal
+hla_choose_initial_samples <- function(
+  segments,
+  samples,
+  target = HLA_MOTIF_INITIAL_TARGET,
+  max_total = HLA_MOTIF_MAX_TOTAL,
+  bin_target = HLA_MOTIF_INITIAL_BIN_TARGET,
+  max_bin = HLA_MOTIF_MAX_BIN
+) {
+  samples <- as.character(samples)
+  if (
+    length(samples) == 0 ||
+      is.null(segments) ||
+      nrow(segments) == 0 ||
+      !all(c("sample", "cdr3") %in% colnames(segments))
+  ) {
+    return(samples)
+  }
+  unique_cdr3 <- unique(as.character(segments$cdr3))
+  if (
+    length(unique_cdr3) <= max_total &&
+      max(table(nchar(unique_cdr3))) <= max_bin
+  ) {
+    return(samples)
+  }
+  sample_cdr3 <- lapply(samples, function(sample) {
+    unique(as.character(
+      segments$cdr3[as.character(segments$sample) == sample]
+    ))
+  })
+  names(sample_cdr3) <- samples
+  counts <- vapply(sample_cdr3, length, integer(1))
+  ordered <- samples[order(-counts, samples)]
+  keep <- character(0)
+  total_used <- 0L
+  bins_used <- integer(0)
+  for (sample in ordered) {
+    sample_bins <- table(nchar(sample_cdr3[[sample]]))
+    bin_names <- union(names(bins_used), names(sample_bins))
+    next_bins <- stats::setNames(integer(length(bin_names)), bin_names)
+    next_bins[names(bins_used)] <- bins_used
+    next_bins[names(sample_bins)] <-
+      next_bins[names(sample_bins)] + as.integer(sample_bins)
+    if (
+      total_used + counts[[sample]] <= target &&
+        (length(next_bins) == 0 || max(next_bins) <= bin_target)
+    ) {
+      keep <- c(keep, sample)
+      total_used <- total_used + counts[[sample]]
+      bins_used <- next_bins
+    }
+  }
+  if (length(keep) == 0) {
+    ## Prefer the richest sample that fits the hard per-bin guard. If none do,
+    ## keep the sample with the smallest worst bin so the UI lands as close to
+    ## a drawable cohort as the source data permits.
+    worst_bin <- vapply(sample_cdr3, function(cdr3) {
+      if (length(cdr3) == 0) 0L else max(table(nchar(cdr3)))
+    }, integer(1))
+    eligible <- ordered[worst_bin[ordered] <= max_bin]
+    keep <- if (length(eligible)) eligible[1] else names(which.min(worst_bin))
+  }
+  samples[samples %in% keep]
+}
 HLA_MOTIF_MAX_RENDER <- 5000L # rendered nodes before physics is disabled
 
 ## Label for a CDR3 seen in more than one sample. Cross-sample recurrence is the
@@ -781,7 +862,10 @@ hla_build_motif_graph_raw <- function(
   # Total-size guard across all unique CDR3.
   if (nrow(agg) > HLA_MOTIF_MAX_TOTAL) {
     return(guard(sprintf(
-      "Too many unique CDR3s (%s > %s). Filter by sample or group first.",
+      paste(
+        "Too many unique CDR3s (%s > %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
       format(nrow(agg), big.mark = ","),
       format(HLA_MOTIF_MAX_TOTAL, big.mark = ",")
     )))
@@ -796,7 +880,10 @@ hla_build_motif_graph_raw <- function(
   bin_sizes <- table(bin_key)
   if (max(bin_sizes) > HLA_MOTIF_MAX_BIN) {
     return(guard(sprintf(
-      "A CDR3-length bin has %s unique sequences (> %s). Filter first.",
+      paste(
+        "A CDR3-length bin has %s unique sequences (> %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
       format(max(bin_sizes), big.mark = ","),
       format(HLA_MOTIF_MAX_BIN, big.mark = ",")
     )))
