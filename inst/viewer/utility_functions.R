@@ -2361,11 +2361,21 @@ if (!exists(".crb_process_cache", inherits = TRUE)) {
 }
 
 .cloneCachedCrb <- function(object) {
-  if (
+  can_clone <-
     is.environment(object) &&
       exists("clone", envir = object, inherits = FALSE) &&
-      is.function(object[["clone"]])
-  ) {
+      is.function(object[["clone"]]) &&
+      is.environment(environment(object[["clone"]])) &&
+      exists(
+        "self",
+        envir = environment(object[["clone"]]),
+        inherits = FALSE
+      ) &&
+      identical(
+        get("self", envir = environment(object[["clone"]]), inherits = FALSE),
+        object
+      )
+  if (can_clone) {
     return(object$clone(deep = FALSE))
   }
   object
