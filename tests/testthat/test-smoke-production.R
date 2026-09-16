@@ -70,7 +70,7 @@ test_that("Builder dormant app path publishes one verified private bundle", {
   expect_false(config$show_upload_ui)
 
   second <- file.path(built$app_dir, config$crb_file_to_load[[2L]])
-  object <- readRDS(second)
+  object <- readCerebro(second)
   spatial <- object$getSpatialData(built$section)
   images <- spatial[["histology_images", exact = TRUE]]
   expect_length(images, 0L)
@@ -199,7 +199,7 @@ test_that("Builder app selection keeps initial URL and user priority", {
     paste0(
       "Array.from(document.getElementById('cv-bg-image-select').options)",
       ".some(function(option) { return option.textContent.indexOf(",
-      "'Embedded tissue image') >= 0; });"
+      "'builder-histology.png') >= 0; });"
     ),
     timeout = 30000
   )

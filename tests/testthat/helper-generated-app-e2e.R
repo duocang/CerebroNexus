@@ -212,21 +212,25 @@ generated_app_e2e_stop <- function() {
   if (!length(fixture$attachments)) {
     return(list())
   }
-  Map(function(attachment, section) {
-    inspected <- builder_read_image(attachment$path)
-    record <- builder_alignment_record(
-      source = list(
-        name = basename(attachment$path),
-        type = inspected$mime,
-        size = inspected$bytes
-      ),
-      base_bounds = as.list(attachment$bounds),
-      section = list(id = section, kind = "spatial"),
-      source_path = inspected$source_path
-    )
-    record$source_content_md5 <- inspected$source_content_md5
-    record
-  }, fixture$attachments, names(fixture$attachments))
+  Map(
+    function(attachment, section) {
+      inspected <- builder_read_image(attachment$path)
+      record <- builder_alignment_record(
+        source = list(
+          name = basename(attachment$path),
+          type = inspected$mime,
+          size = inspected$bytes
+        ),
+        base_bounds = as.list(attachment$bounds),
+        section = list(id = section, kind = "spatial"),
+        source_path = inspected$source_path
+      )
+      record$source_content_md5 <- inspected$source_content_md5
+      record
+    },
+    fixture$attachments,
+    names(fixture$attachments)
+  )
 }
 
 .generated_app_e2e_entry <- function(name, fixture, snapshot_root) {
@@ -312,7 +316,7 @@ generated_app_e2e_stop <- function() {
     character(1)
   )
   built_by_label <- stats::setNames(published$built, labels)
-  crbs <- lapply(unname(built_by_label), readRDS)
+  crbs <- lapply(unname(built_by_label), readCerebro)
   names(crbs) <- names(fixtures)
   config_path <- file.path(published$app_dir, "cerebro_config.rds")
   if (!file.exists(config_path)) {
