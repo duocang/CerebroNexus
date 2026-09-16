@@ -36,7 +36,9 @@ createShinyApp(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  initial_page = NULL
+  initial_page = NULL,
+  initial_projections = NULL,
+  initial_dataset = NULL
 )
 }
 \arguments{
@@ -89,6 +91,10 @@ directory is rejected before any files are written.}
 
 \item{show_upload_ui}{One non-missing logical controlling whether users may
 upload their own data; defaults to \code{FALSE}.}
+
+\item{initial_dataset}{Optional exact data set label to load initially. This
+does not change the order of \code{cerebro_data}. URL selection and a
+session's current selection take precedence.}
 
 \item{initial_page}{Optional initial Viewer page. Supported stable IDs are
 \code{"data_info"}, \code{"projection"}, \code{"linked_views"},
@@ -172,6 +178,11 @@ are listed separately and loaded only when selected in the Viewer.}
 \item{extra_tables_sheets}{Optional named list of Excel sheet renames keyed
 by \code{extra_tables} labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.}
+
+\item{initial_projections}{Optional projection names to show when Linked
+views first opens. A character vector applies to every data set. A named
+list configures individual \code{cerebro_data} labels; omitted labels keep
+the Viewer's default single-projection behavior.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution
