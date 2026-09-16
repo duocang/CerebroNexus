@@ -2964,6 +2964,36 @@ builder_project_hydrate_pending_entries <- function(entries, pending, root) {
   )
 }
 
+builder_project_verified_spatial_sidecar <- function(built, verification) {
+  path <- verification$spatial_molecule_path %||% NULL
+  if (is.null(path)) {
+    return(NULL)
+  }
+  if (
+    !.builder_project_text(path) ||
+      !dir.exists(path) ||
+      nzchar(Sys.readlink(path))
+  ) {
+    stop("The verified spatial molecule sidecar is unavailable.", call. = FALSE)
+  }
+  built <- normalizePath(built, winslash = "/", mustWork = TRUE)
+  path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  expected <- paste0(
+    tools::file_path_sans_ext(basename(built)),
+    ".spatial"
+  )
+  if (
+    !identical(dirname(path), dirname(built)) ||
+      !identical(basename(path), expected)
+  ) {
+    stop(
+      "The verified spatial molecule sidecar does not match its CRB.",
+      call. = FALSE
+    )
+  }
+  basename(path)
+}
+
 builder_project_store_artifact_bundle <- function(
   built,
   sidecars = character(),
@@ -3238,6 +3268,36 @@ builder_project_store_artifact_bundle <- function(
   read_existing_generation()
 }
 
+builder_project_artifact_spatial_closure_available <- function(path, members) {
+  capture <- get0(
+    ".builder_app_capture_spatial_molecule_identity",
+    mode = "function",
+    inherits = TRUE
+  )
+  if (!is.function(capture)) {
+    return(TRUE)
+  }
+  identity <- tryCatch(capture(path), error = function(error) error)
+  if (inherits(identity, "condition")) {
+    return(FALSE)
+  }
+  if (is.null(identity)) {
+    return(TRUE)
+  }
+  entries <- identity$entries %||% list()
+  required <- vapply(
+    Filter(function(entry) identical(entry$type, "file"), entries),
+    function(entry) gsub("\\\\", "/", entry$path),
+    character(1)
+  )
+  recorded <- vapply(
+    members,
+    function(member) gsub("\\\\", "/", member$target %||% ""),
+    character(1)
+  )
+  length(required) > 0L && all(required %in% recorded)
+}
+
 builder_project_artifact_available <- function(artifact, root) {
   if (
     !is.list(artifact) ||
@@ -3260,7 +3320,7 @@ builder_project_artifact_available <- function(artifact, root) {
   if (!is.list(members)) {
     return(FALSE)
   }
-  all(vapply(
+  members_available <- all(vapply(
     members,
     function(member) {
       member_path <- tryCatch(
@@ -3278,6 +3338,8 @@ builder_project_artifact_available <- function(artifact, root) {
     },
     logical(1)
   ))
+  isTRUE(members_available) &&
+    builder_project_artifact_spatial_closure_available(path, members)
 }
 
 builder_project_artifact_matches_entry <- function(

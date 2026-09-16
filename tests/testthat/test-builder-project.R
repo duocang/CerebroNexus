@@ -4146,6 +4146,76 @@ test_that("artifact availability validates the primary file and every member", {
   expect_false(runtime$builder_project_artifact_available(artifact, root))
 })
 
+test_that("artifact availability rejects an untracked spatial molecule closure", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  primary <- file.path(root, "artifacts", "ds1", "bundle", "ds1.crb")
+  sidecar <- file.path(dirname(primary), "ds1.spatial", "0001.qs2")
+  dir.create(dirname(sidecar), recursive = TRUE)
+  writeBin(charToRaw("primary"), primary)
+  writeBin(charToRaw("molecules"), sidecar)
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = "artifacts/ds1/bundle/ds1.crb",
+    fingerprint = runtime$builder_project_file_fingerprint(
+      primary,
+      content = TRUE
+    ),
+    members = list()
+  )
+  runtime$.builder_app_capture_spatial_molecule_identity <- function(path) {
+    list(entries = list(list(
+      path = "ds1.spatial/0001.qs2",
+      type = "file"
+    )))
+  }
+
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+
+  artifact$members <- list(list(
+    target = "ds1.spatial/0001.qs2",
+    path = "artifacts/ds1/bundle/ds1.spatial/0001.qs2",
+    fingerprint = runtime$builder_project_file_fingerprint(
+      sidecar,
+      content = TRUE
+    )
+  ))
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
+
+  unlink(sidecar)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+})
+
+test_that("verified spatial molecule sidecars stay paired with their CRB", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  sidecar <- file.path(root, "dataset.spatial")
+  dir.create(sidecar)
+  writeBin(charToRaw("dataset"), crb)
+
+  expect_identical(
+    runtime$builder_project_verified_spatial_sidecar(
+      crb,
+      list(spatial_molecule_path = sidecar)
+    ),
+    "dataset.spatial"
+  )
+  expect_null(runtime$builder_project_verified_spatial_sidecar(crb, list()))
+
+  wrong <- file.path(root, "other.spatial")
+  dir.create(wrong)
+  expect_error(
+    runtime$builder_project_verified_spatial_sidecar(
+      crb,
+      list(spatial_molecule_path = wrong)
+    ),
+    "does not match its CRB",
+    fixed = TRUE
+  )
+})
+
 test_that("managed writes reject symlink ancestors before creating external files", {
   skip_on_os("windows")
   runtime <- builder_project_test_runtime()

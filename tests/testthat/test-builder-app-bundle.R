@@ -90,6 +90,21 @@ builder_app_bundle_fixture <- function(
   list(stage = stage, paths = paths, labels = labels, plan = plan)
 }
 
+test_that("spatial molecule identity capture does not hide CRB read failures", {
+  withr::local_options(list(warn = 1))
+  testthat::local_mocked_bindings(
+    .builder_app_runtime_function = function(name) {
+      function(...) stop("payload read failed", call. = FALSE)
+    }
+  )
+
+  expect_error(
+    .builder_app_capture_spatial_molecule_identity("dataset.crb"),
+    "payload read failed",
+    fixed = TRUE
+  )
+})
+
 test_that("App identity permissions follow the host filesystem format", {
   expect_true(.builder_app_permissions_valid("rw-", .os_type = "windows"))
   expect_false(.builder_app_permissions_valid(

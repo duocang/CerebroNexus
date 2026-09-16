@@ -204,12 +204,12 @@
 }
 
 .builder_app_capture_spatial_molecule_identity <- function(crb_path) {
-  object <- tryCatch(
-    .builder_app_runtime_function(".readCerebroPayload")(crb_path),
-    error = function(error) NULL
-  )
+  object <- .builder_app_runtime_function(".readCerebroPayload")(crb_path)
   if (!is.environment(object)) {
-    return(NULL)
+    stop(
+      "A verified spatial molecule CRB payload is invalid.",
+      call. = FALSE
+    )
   }
   backend <- .builder_app_runtime_function(".spatialMoleculeBackend")(
     object,

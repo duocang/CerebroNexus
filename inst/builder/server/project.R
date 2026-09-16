@@ -3012,21 +3012,20 @@ observe({
               )
               break
             }
-            spatial_molecules <- tryCatch(
-              .builder_app_capture_spatial_molecule_identity(built),
+            spatial_sidecar <- tryCatch(
+              builder_project_verified_spatial_sidecar(
+                built,
+                value$verifications[[item$id]] %||% list()
+              ),
               error = function(error) error
             )
-            if (inherits(spatial_molecules, "condition")) {
-              registration_error <- conditionMessage(spatial_molecules)
+            if (inherits(spatial_sidecar, "condition")) {
+              registration_error <- conditionMessage(spatial_sidecar)
               break
             }
             artifact_sidecars <- c(
               item$sidecars %||% character(),
-              if (is.null(spatial_molecules)) {
-                character()
-              } else {
-                basename(spatial_molecules$root)
-              }
+              spatial_sidecar %||% character()
             )
             bundle <- tryCatch(
               builder_project_store_artifact_bundle(
