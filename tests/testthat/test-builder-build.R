@@ -1025,7 +1025,7 @@ test_that("external Spatial images materialize without entering CRB payloads", {
   setting <- external$settings[["Dataset A"]][["slice-a"]][["H&E"]]
 
   expect_true(file.exists(descriptor$path))
-  expect_identical(basename(descriptor$path), "H&E.png")
+  expect_match(basename(descriptor$path), "^h-e-.*\\.png$")
   expect_identical(
     unname(descriptor$bounds),
     c(0, 10, 0, 8)
@@ -1078,6 +1078,59 @@ test_that("external Spatial paths cannot collide after normalization", {
   expect_false(identical(first, second))
   expect_identical(
     unname(as.character(tools::md5sum(c(first, second)))),
+    unname(as.character(tools::md5sum(sources)))
+  )
+})
+
+test_that("external Spatial filenames are portable and collision-safe", {
+  skip_if_not_installed("png")
+  root <- withr::local_tempdir()
+  sources <- file.path(root, paste0("source-", seq_len(5L), ".png"))
+  for (index in seq_along(sources)) {
+    png::writePNG(matrix(index / 5, nrow = 2L, ncol = 2L), sources[[index]])
+  }
+  source_names <- c(
+    "Image.png",
+    "image.png",
+    "\u00e9.png",
+    "e\u0301.png",
+    paste0(strrep("a", 251L), ".png")
+  )
+  labels <- c("Image", "image", "\u00e9", "e\u0301", "long")
+  records <- lapply(seq_along(sources), function(index) {
+    inspected <- builder_read_image(sources[[index]])
+    record <- builder_alignment_record(
+      source = list(name = source_names[[index]], type = "image/png"),
+      base_bounds = list(xmin = 0, xmax = 2, ymin = 0, ymax = 2),
+      section = list(id = "fov", kind = "spatial"),
+      source_path = inspected$source_path
+    )
+    record$source_content_md5 <- inspected$source_content_md5
+    record
+  })
+  names(records) <- labels
+
+  external <- .builder_build_materialize_spatial_images(
+    list(
+      id = "dataset-a",
+      name = "Dataset A",
+      images = list(fov = records)
+    ),
+    root
+  )
+  paths <- vapply(
+    external$images[["Dataset A"]]$fov,
+    `[[`,
+    character(1),
+    "path"
+  )
+  filenames <- basename(paths)
+
+  expect_true(all(grepl("^[a-z0-9-]+\\.png$", filenames)))
+  expect_length(unique(tolower(filenames)), length(filenames))
+  expect_true(all(nchar(filenames, type = "bytes") <= 255L))
+  expect_identical(
+    unname(as.character(tools::md5sum(paths))),
     unname(as.character(tools::md5sum(sources)))
   )
 })
