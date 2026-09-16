@@ -283,3 +283,17 @@ test_that("viewer source parsing is cached but evaluation stays local", {
   expect_identical(second$value, 1L)
   expect_identical(length(cache_env$.viewer_source_cache), 1L)
 })
+
+test_that("viewer source reuses process-safe utility functions", {
+  cache_env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("source_cache.R"), envir = cache_env)
+  first <- new.env(parent = globalenv())
+  second <- new.env(parent = globalenv())
+
+  cache_env$viewerSource(viewer_test_path("utility_functions.R"), first)
+  cache_env$viewerSource(viewer_test_path("utility_functions.R"), second)
+
+  expect_identical(first$read_cerebro_file, second$read_cerebro_file)
+  expect_identical(first$get_or_load_crb, second$get_or_load_crb)
+  expect_false(identical(first$cachePlot, second$cachePlot))
+})
