@@ -91,7 +91,7 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
   expect_false(grepl("maxItems", controls, fixed = TRUE))
   expect_match(
     controls,
-    'identical(selected_roi, "__all__")',
+    "!length(roi_background_groups) && length(background_choices) <= 1L",
     fixed = TRUE
   )
 })

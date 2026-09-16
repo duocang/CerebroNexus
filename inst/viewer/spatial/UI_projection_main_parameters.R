@@ -278,8 +278,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     list()
   }
   background_control <- if (
-    identical(selected_roi, "__all__") ||
-      (!length(roi_background_groups) && length(background_choices) <= 1L)
+    !length(roi_background_groups) && length(background_choices) <= 1L
   ) {
     NULL
   } else if (length(roi_background_groups)) {
