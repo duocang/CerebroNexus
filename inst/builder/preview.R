@@ -493,6 +493,7 @@ builder_spatial_canvas_scene <- function(
     capped = isTRUE(preview$capped),
     layout = layout,
     activeRoi = active_roi,
+    roiBounds = preview$roi_bounds %||% list(),
     roiPointAppearance = roi_point_appearance,
     roiCoordinateTransforms = roi_coordinate_transforms,
     roiImages = roi_images,

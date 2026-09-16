@@ -658,11 +658,13 @@ test_that("alignment controls auto-commit before dataset switches", {
         0.001
       )
 
-      expect_false(alignment$materialize_coordinate_drafts(
-        dataset = "dataset-a",
-        notify = FALSE,
-        require_settled = TRUE
-      )$ok)
+      expect_false(
+        alignment$materialize_coordinate_drafts(
+          dataset = "dataset-a",
+          notify = FALSE,
+          require_settled = TRUE
+        )$ok
+      )
       scene <- alignment$canvas_contract()
       session$setInputs(
         builder_spatial_viewports = list(
@@ -685,11 +687,13 @@ test_that("alignment controls auto-commit before dataset switches", {
         )
       )
       session$flushReact()
-      expect_true(alignment$materialize_coordinate_drafts(
-        dataset = "dataset-a",
-        notify = FALSE,
-        require_settled = TRUE
-      )$ok)
+      expect_true(
+        alignment$materialize_coordinate_drafts(
+          dataset = "dataset-a",
+          notify = FALSE,
+          require_settled = TRUE
+        )$ok
+      )
 
       switch_accepted <- alignment$request_dataset_switch(
         "dataset-b",
@@ -1229,15 +1233,17 @@ test_that("browser control ownership rejects retired views but accepts an old ow
       ## view key. Its newer generation is the exact high-water mark, so the
       ## retired generation must no longer be accepted.
       border_scene <- alignment$canvas_contract()
-      session$setInputs(builder_spatial_roi_select = list(
-        roi = "lesion",
-        dataset = border_scene$dataset,
-        snapshotIdentity = border_scene$snapshotIdentity,
-        section = border_scene$section,
-        viewKey = border_scene$viewKey,
-        generation = border_scene$generation,
-        nonce = 2
-      ))
+      session$setInputs(
+        builder_spatial_roi_select = list(
+          roi = "lesion",
+          dataset = border_scene$dataset,
+          snapshotIdentity = border_scene$snapshotIdentity,
+          section = border_scene$section,
+          viewKey = border_scene$viewKey,
+          generation = border_scene$generation,
+          nonce = 2
+        )
+      )
       session$flushReact()
       reactivated_scene <- alignment$canvas_contract()
       expect_identical(reactivated_scene$viewKey, returned_scene$viewKey)
@@ -1305,6 +1311,10 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_lte(nrow(preview$spatial), 2L)
   expect_false("coverage" %in% names(preview))
   expect_equal(preview$total_cells, ncol(object))
+  preview$roi_bounds <- list(
+    A = list(xmin = -100, xmax = 10, ymin = 0, ymax = 200),
+    B = list(xmin = 20, xmax = 30, ymin = 0, ymax = 20)
+  )
 
   roi_image <- function(name, opacity) {
     builder_alignment_record(
@@ -1340,6 +1350,7 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_identical(scene$controls$point_size, 6)
   expect_identical(scene$layout, "separate")
   expect_identical(scene$activeRoi, "A")
+  expect_identical(scene$roiBounds, preview$roi_bounds)
   expect_named(scene$roiImages, c("A", "B"))
   expect_identical(scene$roiImages$B[[1L]]$controls$image_opacity, 0.7)
 })
@@ -1479,10 +1490,12 @@ test_that("Trekker full-control commits preserve images without coordinate draft
     ),
     settings = list(
       name = "Dataset A",
-      images = list(trekker = list(
-        Histology = record,
-        Alternate = alternate
-      )),
+      images = list(
+        trekker = list(
+          Histology = record,
+          Alternate = alternate
+        )
+      ),
       default_group = "cluster",
       default_projection = "umap",
       palette = "cerebro"
@@ -3341,7 +3354,10 @@ test_that("incomplete PNG files are rejected", {
   path <- withr::local_tempfile(fileext = ".png")
   writeBin(malformed, path)
 
-  expect_identical(.builder_png_dimensions(malformed), c(width = 3L, height = 3L))
+  expect_identical(
+    .builder_png_dimensions(malformed),
+    c(width = 3L, height = 3L)
+  )
   expect_identical(
     builder_read_image(path)$error,
     "The image file is incomplete or truncated."
