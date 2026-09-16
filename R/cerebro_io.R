@@ -359,6 +359,9 @@
 }
 
 .stageSpatialMolecules <- function(object, file, codec) {
+  if (!.recognizedCerebroObject(object)) {
+    return(list(payload = object, stage = NULL, location = NULL))
+  }
   payload <- .currentCerebroCopy(object)
   spatial <- payload$spatial
   if (!is.list(spatial) || !length(spatial)) {
