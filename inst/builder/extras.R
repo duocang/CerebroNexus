@@ -1234,6 +1234,8 @@ builder_partition_alignments <- function(images) {
 }
 
 BUILDER_IMAGE_MAX_BYTES <- 1024^3
+# Match the conservative cross-browser canvas budget used by Viewer exports.
+BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
 
 .builder_image_uint32_be <- function(bytes) {
   if (length(bytes) != 4L) {
@@ -1262,6 +1264,40 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
     return(c(width = as.integer(width), height = as.integer(height)))
   }
   c(width = width, height = height)
+}
+
+.builder_png_has_pixel_data <- function(path) {
+  size <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
+  if (!is.finite(size) || size < 45) {
+    return(FALSE)
+  }
+  connection <- file(path, open = "rb")
+  on.exit(close(connection), add = TRUE)
+  signature <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  if (!identical(readBin(connection, what = "raw", n = 8L), signature)) {
+    return(FALSE)
+  }
+  position <- 8
+  has_pixel_data <- FALSE
+  repeat {
+    header <- readBin(connection, what = "raw", n = 8L)
+    if (length(header) != 8L) {
+      return(FALSE)
+    }
+    chunk_length <- .builder_image_uint32_be(header[1:4])
+    if (!is.finite(chunk_length) || chunk_length > size - position - 12) {
+      return(FALSE)
+    }
+    chunk_type <- header[5:8]
+    if (identical(chunk_type, charToRaw("IDAT")) && chunk_length > 0) {
+      has_pixel_data <- TRUE
+    }
+    if (identical(chunk_type, charToRaw("IEND"))) {
+      return(chunk_length == 0 && has_pixel_data && position + 12 == size)
+    }
+    seek(connection, where = chunk_length + 4, origin = "current")
+    position <- position + chunk_length + 12
+  }
 }
 
 .builder_jpeg_exif_orientation <- function(segment) {
@@ -1321,6 +1357,12 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
       error = "JPEG metadata could not be read. Check that the file is valid."
     )
   }
+  missing_pixels <- function() {
+    list(error = "The image file has no valid encoded pixel data.")
+  }
+  incomplete <- function() {
+    list(error = "The image file is incomplete or truncated.")
+  }
   if (
     length(bytes) < 2L ||
       !identical(bytes[1:2], as.raw(c(0xff, 0xd8)))
@@ -1346,6 +1388,9 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
   )
   standalone <- c(0x01, 0xd8, 0xd9, 0xd0:0xd7)
   orientation <- 1L
+  width <- NULL
+  height <- NULL
+  has_pixel_data <- FALSE
   cursor <- 3L
   while (cursor <= total) {
     while (cursor <= total && value_at(cursor) != 0xffL) {
@@ -1366,11 +1411,25 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
       cursor <- marker_index + 1L
       next
     }
+    if (marker == 0xd9L) {
+      if (is.null(width) || is.null(height)) {
+        return(unsafe())
+      }
+      if (!has_pixel_data) {
+        return(missing_pixels())
+      }
+      if (orientation %in% 5:8) {
+        swap <- width
+        width <- height
+        height <- swap
+      }
+      return(c(width = as.integer(width), height = as.integer(height)))
+    }
     if (marker %in% standalone) {
       cursor <- marker_index + 1L
       next
     }
-    if (marker == 0xdaL || marker_index + 2L > total) {
+    if (marker_index + 2L > total) {
       return(unsafe())
     }
     segment_length <- value_at(marker_index + 1L) *
@@ -1398,16 +1457,45 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
       if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
         return(unsafe())
       }
-      if (orientation %in% 5:8) {
-        swap <- width
-        width <- height
-        height <- swap
+    }
+    if (marker == 0xdaL) {
+      if (is.null(width) || segment_length < 6L) {
+        return(unsafe())
       }
-      return(c(width = as.integer(width), height = as.integer(height)))
+      cursor <- marker_index + segment_length + 1L
+      while (cursor <= total) {
+        if (value_at(cursor) != 0xffL) {
+          has_pixel_data <- TRUE
+          cursor <- cursor + 1L
+          next
+        }
+        scan_marker <- cursor + 1L
+        while (scan_marker <= total && value_at(scan_marker) == 0xffL) {
+          scan_marker <- scan_marker + 1L
+        }
+        if (scan_marker > total) {
+          return(incomplete())
+        }
+        scan_code <- value_at(scan_marker)
+        if (scan_code == 0L) {
+          has_pixel_data <- TRUE
+          cursor <- scan_marker + 1L
+          next
+        }
+        if (scan_code %in% 0xd0:0xd7) {
+          cursor <- scan_marker + 1L
+          next
+        }
+        break
+      }
+      if (cursor > total) {
+        return(incomplete())
+      }
+      next
     }
     cursor <- marker_index + segment_length + 1L
   }
-  unsafe()
+  if (!is.null(width)) incomplete() else unsafe()
 }
 
 #' Read PNG/JPEG dimensions without decoding the raster.
@@ -1456,7 +1544,8 @@ builder_image_file_dimensions <- function(path, filename = path) {
 builder_read_image <- function(
   path,
   filename = path,
-  max_bytes = BUILDER_IMAGE_MAX_BYTES
+  max_bytes = BUILDER_IMAGE_MAX_BYTES,
+  max_pixels = BUILDER_IMAGE_MAX_PIXELS
 ) {
   valid_budget <- is.numeric(max_bytes) &&
     length(max_bytes) == 1L &&
@@ -1465,6 +1554,14 @@ builder_read_image <- function(
     max_bytes >= 1
   if (!valid_budget) {
     return(list(error = "The image file-size limit is invalid."))
+  }
+  valid_pixel_budget <- is.numeric(max_pixels) &&
+    length(max_pixels) == 1L &&
+    !is.na(max_pixels) &&
+    is.finite(max_pixels) &&
+    max_pixels >= 1
+  if (!valid_pixel_budget) {
+    return(list(error = "The decoded-pixel limit is invalid."))
   }
   ext <- tolower(tools::file_ext(filename))
   if (ext %in% c("png", "jpg", "jpeg")) {
@@ -1510,11 +1607,17 @@ builder_read_image <- function(
     ))
   }
   mime <- if (identical(ext, "png")) "image/png" else "image/jpeg"
+  width <- unname(dimensions[["width"]])
+  height <- unname(dimensions[["height"]])
+  if (width > max_pixels / height) {
+    return(list(error = "This image exceeds the decoded-pixel limit."))
+  }
   if (!.builder_image_has_complete_terminator(path, mime)) {
     return(list(error = "The image file is incomplete or truncated."))
   }
-  width <- unname(dimensions[["width"]])
-  height <- unname(dimensions[["height"]])
+  if (identical(mime, "image/png") && !.builder_png_has_pixel_data(path)) {
+    return(list(error = "The image file has no valid encoded pixel data."))
+  }
   canonical_path <- tryCatch(
     normalizePath(path, winslash = "/", mustWork = TRUE),
     error = function(error) NULL
