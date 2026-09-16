@@ -295,6 +295,29 @@ test_that("alignment server does not subscribe to Plotly selection events", {
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
 })
 
+test_that("finishing a check waits for persisted spatial viewport bounds", {
+  server <- paste(
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "spatial_alignment_server.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    "record$viewport_bounds,\n          bounds,\n          check.attributes = FALSE",
+    fixed = TRUE
+  )
+  expect_match(server, "if (!.builder_alignment_valid_bounds(bounds))", fixed = TRUE)
+})
+
 test_that("alignment preview requeues when its render contract changes", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

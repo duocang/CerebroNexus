@@ -232,11 +232,10 @@ test_that("background choices keep labels separate from source-tagged identity",
   external <- configured_spatial_images(spatial_options, "Atlas", "sliceA")
   choices <- spatial_background_choices(embedded, external)
 
-  expect_identical(names(choices), c("No Background", "H&E", "H&E", "DAPI"))
+  expect_identical(names(choices), c("H&E", "H&E", "DAPI"))
   expect_identical(
     unname(choices),
     c(
-      "none",
       spatial_background_key("embedded", "H&E"),
       spatial_background_key("external", "H&E"),
       spatial_background_key("external", "DAPI")
@@ -251,7 +250,37 @@ test_that("background choices keep labels separate from source-tagged identity",
   ))
 })
 
-test_that("stale selections reset to the first current image or none", {
+test_that("background choices hide image suffixes without changing identity", {
+  choices <- spatial_background_choices(
+    list(
+      `section.preview.TIFF` = list(
+        image = "data:image/tiff;base64,PREVIEW"
+      )
+    ),
+    list(
+      `2019-042.jpg` = list(path = "spatial-assets/2019-042.jpg"),
+      original = list(
+        path = "spatial-assets/original.png",
+        label = "2525-12.jpeg"
+      )
+    )
+  )
+
+  expect_identical(
+    names(choices),
+    c("section.preview", "2019-042", "2525-12")
+  )
+  expect_identical(
+    unname(choices),
+    c(
+      "embedded::section.preview.TIFF",
+      "external::2019-042.jpg",
+      "external::original"
+    )
+  )
+})
+
+test_that("missing and stale selections resolve to no background", {
   slice_a_choices <- spatial_background_choices(
     list(),
     configured_spatial_images(spatial_options, "Atlas", "sliceA")
@@ -269,7 +298,7 @@ test_that("stale selections reset to the first current image or none", {
   )
   expect_identical(
     normalize_spatial_background_choice(old, slice_b_choices),
-    spatial_background_key("external", "IF")
+    "none"
   )
   expect_identical(
     normalize_spatial_background_choice(old, slice_c_choices),

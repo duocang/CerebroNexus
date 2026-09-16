@@ -53,5 +53,8 @@ test_that("All ROIs keeps the background selector for multiple images", {
     )
     expect_match(selector, "external::H&amp;E", fixed = TRUE)
     expect_match(selector, "external::DAPI", fixed = TRUE)
+    expect_false(grepl("No Background", selector, fixed = TRUE))
+    expect_match(selector, 'option value="" selected', fixed = TRUE)
+    expect_match(selector, '"remove_button"', fixed = TRUE)
   })
 })
