@@ -199,7 +199,7 @@ test_that("Builder app selection keeps initial URL and user priority", {
     paste0(
       "Array.from(document.getElementById('cv-bg-image-select').options)",
       ".some(function(option) { return option.textContent.indexOf(",
-      "'Embedded tissue image') >= 0; });"
+      "'builder-histology.png') >= 0; });"
     ),
     timeout = 30000
   )
