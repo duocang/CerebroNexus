@@ -221,35 +221,41 @@ spatial_projection_data_to_plot_raw <- reactive({
   ## is plotted and the plot visibly jitters. We compute the range over ALL cells
   ## (in the same rotated frame) and pass it as an explicit x/y range. A small
   ## margin keeps edge points off the frame.
+  full_cells <- roi_context$scoped_cells
+  if (nzchar(selected_roi)) {
+    full_cells <- full_cells[
+      !is.na(roi_context$roi_by_cell[full_cells]) &
+        roi_context$roi_by_cell[full_cells] == selected_roi
+    ]
+  }
+  full_coords <- full_coordinate_frame[full_cells, , drop = FALSE]
+  full_roi <- if (
+    nzchar(selected_roi) ||
+      identical(plot_parameters[["roi_mode"]], "separate")
+  ) {
+    as.character(roi_context$roi_by_cell[full_cells])
+  } else {
+    rep(NA_character_, nrow(full_coords))
+  }
+  full_coords <- rotateSpatialCoordinatesByRoi(
+    full_coords,
+    full_roi,
+    roi_settings,
+    rotation_angle,
+    pivots = roi_pivots
+  )
+  if (identical(plot_parameters[["roi_mode"]], "separate")) {
+    plot_parameters[["roi_extents"]] <- spatial_roi_extents(
+      full_coords,
+      full_roi
+    )
+  }
   if (
     is.null(plot_parameters[["x_range"]]) ||
       length(plot_parameters[["x_range"]]) < 2 ||
       is.null(plot_parameters[["y_range"]]) ||
       length(plot_parameters[["y_range"]]) < 2
   ) {
-    full_cells <- roi_context$scoped_cells
-    if (nzchar(selected_roi)) {
-      full_cells <- full_cells[
-        !is.na(roi_context$roi_by_cell[full_cells]) &
-          roi_context$roi_by_cell[full_cells] == selected_roi
-      ]
-    }
-    full_coords <- full_coordinate_frame[full_cells, , drop = FALSE]
-    full_roi <- if (
-      nzchar(selected_roi) ||
-        identical(plot_parameters[["roi_mode"]], "separate")
-    ) {
-      as.character(roi_context$roi_by_cell[full_cells])
-    } else {
-      rep(NA_character_, nrow(full_coords))
-    }
-    full_coords <- rotateSpatialCoordinatesByRoi(
-      full_coords,
-      full_roi,
-      roi_settings,
-      rotation_angle,
-      pivots = roi_pivots
-    )
     x_full <- range(full_coords[[1]], na.rm = TRUE)
     y_full <- range(full_coords[[2]], na.rm = TRUE)
     x_margin <- diff(x_full) * 0.02
