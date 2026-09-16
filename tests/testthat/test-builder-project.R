@@ -2962,6 +2962,8 @@ test_that("reusable CRB preparation skips current artifacts", {
   writeLines("ready", artifact_path)
   entry <- list(
     id = "ds1",
+    revision = 4L,
+    snapshot = list(source_fingerprint = "source-a"),
     settings = list(name = "Dataset"),
     acknowledgements = character(),
     spatial_drafts = list()
@@ -2975,6 +2977,8 @@ test_that("reusable CRB preparation skips current artifacts", {
       content = TRUE
     ),
     members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
     built_from_configuration = runtime$builder_project_configuration_digest(
       entry
     )
@@ -3011,7 +3015,9 @@ test_that("current project CRBs replace only temporary Build entries", {
   writeLines("ready", artifact_path)
   entry <- list(
     id = "ds1",
+    revision = 4L,
     load_state = "loaded",
+    snapshot = list(source_fingerprint = "source-a"),
     settings = list(name = "Dataset"),
     acknowledgements = character(),
     spatial_drafts = list()
@@ -3025,6 +3031,8 @@ test_that("current project CRBs replace only temporary Build entries", {
       content = TRUE
     ),
     members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
     built_from_configuration = runtime$builder_project_configuration_digest(
       entry
     )
@@ -3054,6 +3062,18 @@ test_that("current project CRBs replace only temporary Build entries", {
     list(changed)
   )
 
+  changed <- entry
+  changed$revision <- 5L
+  changed$snapshot$source_fingerprint <- "source-b"
+  expect_identical(
+    runtime$builder_project_entries_for_build(
+      list(changed),
+      list(ds1 = artifact),
+      root
+    ),
+    list(changed)
+  )
+
   unlink(artifact_path)
   expect_identical(
     runtime$builder_project_entries_for_build(
@@ -3063,6 +3083,34 @@ test_that("current project CRBs replace only temporary Build entries", {
     ),
     list(entry)
   )
+})
+
+test_that("re-registered artifacts retain their source identity", {
+  runtime <- builder_project_test_runtime()
+  previous <- list(built_from_source_fingerprint = "source-a")
+  reused <- list(reused_artifact = list(path = "dataset.crb"))
+
+  expect_identical(
+    runtime$builder_project_artifact_source_fingerprint(
+      list(snapshot = NULL),
+      reused,
+      previous
+    ),
+    "source-a"
+  )
+  expect_identical(
+    runtime$builder_project_artifact_source_fingerprint(
+      list(snapshot = list(source_fingerprint = "source-b")),
+      reused,
+      previous
+    ),
+    "source-b"
+  )
+  expect_null(runtime$builder_project_artifact_source_fingerprint(
+    list(snapshot = NULL),
+    list(),
+    previous
+  ))
 })
 
 test_that("a ready project CRB remains separate from the checked flag", {
