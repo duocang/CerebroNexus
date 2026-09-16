@@ -559,6 +559,27 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   min-width: 180px;
   max-width: 240px;
 }
+.cerebro-viz-toolbar .shiny-panel-conditional:has(> .spatial-image-dim-controls) {
+  flex: 0 1 calc(2 * var(--c-control-width) + 10px);
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls .form-group {
+  flex: 0 1 var(--c-control-width);
+}
+.cerebro-viz-toolbar .spatial-roi-background-picker {
+  flex: 0 1 var(--c-control-width);
+  width: var(--c-control-width);
+  min-width: min(var(--c-select-min-width), 100%);
+}
+.hla-node-details {
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
 .cerebro-viz-toolbar .control-label,
 .coordviews-page .cv-ctl > label {
   margin-bottom: 5px;

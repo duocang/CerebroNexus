@@ -16,6 +16,7 @@ TODO.md
 ^run-demo\.R$
 ^other_documents$
 ^pkgdown$
+^pkgdown-site$
 ^result$
 ^_pkgdown\.yml$
 ^docs$

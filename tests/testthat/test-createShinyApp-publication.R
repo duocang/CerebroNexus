@@ -24,6 +24,155 @@ publication_build_ops <- function(...) {
   utils::modifyList(defaults, overrides)
 }
 
+test_that("bundle copies use platform clones with a portable fallback", {
+  commands <- list()
+  fallbacks <- 0L
+  command <- function(command, args, stdout, stderr) {
+    commands[[length(commands) + 1L]] <<- c(command, args)
+    0L
+  }
+  fallback <- function(from, to, ...) {
+    fallbacks <<- fallbacks + 1L
+    TRUE
+  }
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    recursive = TRUE,
+    .sysname = "Darwin",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("-c" %in% commands[[1L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("--reflink=auto" %in% commands[[2L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Windows",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_identical(length(commands), 2L)
+  expect_identical(fallbacks, 1L)
+})
+
+test_that("Windows bundle copies use extended-length filesystem paths", {
+  expect_identical(
+    .bundleWindowsExtendedPath("C:/source/image.jpg", os_type = "windows"),
+    "\\\\?\\C:\\source\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath("\\\\server\\share\\image.jpg", os_type = "windows"),
+    "\\\\?\\UNC\\server\\share\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath("/source/image.jpg", os_type = "unix"),
+    "/source/image.jpg"
+  )
+
+  copied <- NULL
+  expect_true(.bundleCopyPath(
+    "C:/source/image.jpg",
+    "C:/stage/spatial-assets/image.jpg",
+    .sysname = "Windows",
+    .fallback = function(from, to, ...) {
+      copied <<- c(from, to)
+      TRUE
+    }
+  ))
+  expect_identical(
+    copied,
+    c(
+      "\\\\?\\C:\\source\\image.jpg",
+      "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+    )
+  )
+  observed <- NULL
+  expect_true(.bundleCopiedTargetExists(
+    "C:/stage/spatial-assets/image.jpg",
+    os_type = "windows",
+    .file_exists = function(path) {
+      observed <<- path
+      TRUE
+    },
+    .dir_exists = function(path) FALSE
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+  )
+
+  observed <- NULL
+  expect_true(.bundleCreateDirectory(
+    "C:/stage/spatial-assets/long-directory",
+    recursive = TRUE,
+    os_type = "windows",
+    .dir_create = function(path, ...) {
+      observed <<- path
+      TRUE
+    }
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\long-directory"
+  )
+})
+
+test_that("Windows recursive bundle copies materialize every directory entry", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  root <- withr::local_tempdir()
+  source <- file.path(root, "viewer")
+  destination <- file.path(root, "stage")
+  dir.create(file.path(source, "nested", "empty"), recursive = TRUE)
+  dir.create(destination)
+  writeBin(as.raw(1:32), file.path(source, "root.R"))
+  writeBin(as.raw(33:64), file.path(source, "nested", "module.R"))
+
+  expect_true(.bundleCopyPath(
+    source,
+    destination,
+    recursive = TRUE,
+    .sysname = "Windows"
+  ))
+  copied <- file.path(destination, "viewer")
+  expect_true(dir.exists(file.path(copied, "nested", "empty")))
+  expect_identical(
+    readBin(file.path(copied, "root.R"), "raw", n = 32L),
+    as.raw(1:32)
+  )
+  expect_identical(
+    readBin(file.path(copied, "nested", "module.R"), "raw", n = 32L),
+    as.raw(33:64)
+  )
+})
+
+test_that("bundle clone failures fall back to ordinary copies", {
+  fallback_calls <- 0L
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = function(...) 1L,
+    .fallback = function(from, to, ...) {
+      fallback_calls <<- fallback_calls + 1L
+      TRUE
+    }
+  ))
+  expect_identical(fallback_calls, 1L)
+})
+
 publication_test_tree <- function(root) {
   result <- file.path(root, "app")
   stage <- file.path(root, ".app-stage")

@@ -1,0 +1,1651 @@
+##----------------------------------------------------------------------------##
+## Frozen BuildPlan execution and staged-artifact verification.
+##
+## The coordinator creates the stage. This module never chooses a publication
+## target and never moves an artifact into the final release directory.
+##----------------------------------------------------------------------------##
+
+.builder_build_text <- function(value) {
+  is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+}
+
+builder_build_queue_note <- function(plan) {
+  items <- plan$items %||% list()
+  reused <- sum(vapply(
+    items,
+    function(item) is.list(item$reused_artifact %||% NULL),
+    logical(1)
+  ))
+  rebuilding <- length(items) - reused
+  parts <- character()
+  if (reused > 0L) {
+    parts <- c(parts, paste("Reusing", reused, "CRBs"))
+  }
+  if (rebuilding > 0L) {
+    parts <- c(
+      parts,
+      paste(
+        "Building",
+        rebuilding,
+        if (rebuilding == 1L) "dataset" else "datasets"
+      )
+    )
+  } else if (isTRUE(plan$make_app)) {
+    parts <- c(parts, "Packaging Viewer")
+  }
+  paste0(paste(parts, collapse = " · "), "…")
+}
+
+.builder_build_copy_file <- function(
+  source,
+  target,
+  .sysname = unname(Sys.info()[["sysname"]]),
+  .command = system2,
+  .fallback = file.copy
+) {
+  if (
+    !.builder_build_text(source) ||
+      !.builder_build_text(target) ||
+      !file.exists(source) ||
+      dir.exists(source) ||
+      file.exists(target) ||
+      dir.exists(target)
+  ) {
+    return(FALSE)
+  }
+  cloned <- FALSE
+  command_args <- if (identical(.sysname, "Darwin")) {
+    c("-c", "--", shQuote(source), shQuote(target))
+  } else if (identical(.sysname, "Linux")) {
+    c("--reflink=auto", "--", shQuote(source), shQuote(target))
+  } else {
+    NULL
+  }
+  copy_command <- unname(Sys.which("cp"))
+  if (length(command_args) && nzchar(copy_command)) {
+    status <- suppressWarnings(tryCatch(
+      .command(
+        copy_command,
+        command_args,
+        stdout = FALSE,
+        stderr = FALSE
+      ),
+      error = function(error) 1L
+    ))
+    cloned <- isTRUE(status == 0L) && file.exists(target)
+    if (!cloned) {
+      unlink(target, force = TRUE)
+    }
+  }
+  cloned ||
+    .fallback(
+      source,
+      target,
+      overwrite = FALSE,
+      copy.mode = TRUE
+    )
+}
+
+.builder_build_number_equal <- function(left, right, tolerance = 1e-12) {
+  is.numeric(left) &&
+    is.numeric(right) &&
+    !is.object(left) &&
+    !is.object(right) &&
+    length(left) == 1L &&
+    length(right) == 1L &&
+    is.finite(left) &&
+    is.finite(right) &&
+    abs(as.numeric(left) - as.numeric(right)) <= tolerance
+}
+
+.builder_build_value_equal <- function(left, right, tolerance = 1e-12) {
+  isTRUE(all.equal(
+    left,
+    right,
+    tolerance = tolerance,
+    check.attributes = TRUE
+  ))
+}
+
+.builder_build_stage <- function(stage) {
+  if (!.builder_build_text(stage) || !dir.exists(stage)) {
+    stop("Build execution requires an existing assigned stage.", call. = FALSE)
+  }
+  if (nzchar(Sys.readlink(stage))) {
+    stop("The assigned stage cannot be a symbolic link.", call. = FALSE)
+  }
+  normalizePath(stage, winslash = "/", mustWork = TRUE)
+}
+
+.builder_build_path_within <- function(path, stage, must_exist = TRUE) {
+  if (!.builder_build_text(path)) {
+    return(FALSE)
+  }
+  canonical <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = must_exist),
+    error = function(error) NULL
+  )
+  if (is.null(canonical)) {
+    return(FALSE)
+  }
+  identical(canonical, stage) || startsWith(canonical, paste0(stage, "/"))
+}
+
+.builder_build_safe_relative <- function(path) {
+  if (!.builder_build_text(path) || grepl("\\", path, fixed = TRUE)) {
+    return(FALSE)
+  }
+  if (
+    startsWith(path, "/") ||
+      startsWith(path, "//") ||
+      grepl("^[A-Za-z]:", path)
+  ) {
+    return(FALSE)
+  }
+  components <- strsplit(path, "/", fixed = TRUE)[[1L]]
+  length(components) > 0L &&
+    all(nzchar(components)) &&
+    !any(components %in% c(".", ".."))
+}
+
+.builder_build_fingerprint_matches <- function(path, fingerprint) {
+  if (
+    !.builder_build_text(path) ||
+      !file.exists(path) ||
+      dir.exists(path) ||
+      !is.list(fingerprint) ||
+      !.builder_build_text(fingerprint$md5 %||% NULL)
+  ) {
+    return(FALSE)
+  }
+  observed <- tryCatch(
+    unname(tools::md5sum(path)),
+    error = function(error) NA_character_
+  )
+  length(observed) == 1L &&
+    !is.na(observed) &&
+    identical(as.character(observed), as.character(fingerprint$md5))
+}
+
+.builder_build_failure <- function(message, failures = character()) {
+  list(
+    state = "failure",
+    publishable = FALSE,
+    error = message,
+    failures = failures,
+    built = character(),
+    labels = character(),
+    verifications = list(),
+    analysis_log = character(),
+    failed_analyses = character(),
+    retry_closure = character(),
+    spatial_images = list(),
+    spatial_image_settings = list(),
+    app_dir = NULL,
+    app_verification = NULL
+  )
+}
+
+.builder_build_cleanup_spatial_assets <- function(stage) {
+  path <- file.path(stage, ".builder-spatial-assets")
+  exists <- function(value) {
+    file.exists(value) || dir.exists(value) || .builder_app_is_link(value)
+  }
+  if (!exists(path)) {
+    return(invisible(TRUE))
+  }
+  if (
+    .builder_app_is_link(path) ||
+      !.builder_build_path_within(path, stage, must_exist = TRUE)
+  ) {
+    stop("Builder spatial asset staging is unsafe to clean.", call. = FALSE)
+  }
+  unlink(path, recursive = TRUE, force = TRUE)
+  if (exists(path)) {
+    stop("Builder spatial asset staging could not be cleaned.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.builder_build_field <- function(object, name) {
+  if (is.environment(object)) {
+    return(get0(name, envir = object, inherits = FALSE))
+  }
+  if (is.list(object)) {
+    return(object[[name]])
+  }
+  NULL
+}
+
+.builder_build_runtime_function <- function(name) {
+  value <- get0(name, mode = "function", inherits = TRUE)
+  if (is.null(value)) {
+    value <- get(name, envir = asNamespace("CerebroNexus"), inherits = FALSE)
+  }
+  value
+}
+
+.builder_build_identity <- function(object, axis) {
+  expression <- .builder_build_field(object, "expression")
+  ids <- if (identical(axis, "cells")) {
+    colnames(expression)
+  } else {
+    rownames(expression)
+  }
+  if (length(ids)) {
+    return(as.character(ids))
+  }
+  fallback <- if (identical(axis, "cells")) {
+    metadata <- .builder_build_field(object, "meta_data")
+    if (
+      is.data.frame(metadata) &&
+        "cell_barcode" %in% colnames(metadata)
+    ) {
+      metadata[["cell_barcode"]]
+    } else {
+      rownames(metadata)
+    }
+  } else {
+    rownames(.builder_build_field(object, "gene_data"))
+  }
+  as.character(fallback %||% character())
+}
+
+.builder_build_sidecar_path <- function(path, item, expected_type) {
+  if (
+    length(item$sidecars) != 1L ||
+      !.builder_build_safe_relative(item$sidecars[[1L]]) ||
+      !expected_type %in% c("file", "directory")
+  ) {
+    stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+  }
+  root <- normalizePath(dirname(path), winslash = "/", mustWork = TRUE)
+  sidecar <- file.path(dirname(path), item$sidecars[[1L]])
+  info <- tryCatch(
+    fs::file_info(sidecar, fail = TRUE, follow = FALSE),
+    error = function(error) NULL
+  )
+  if (
+    nzchar(Sys.readlink(sidecar)) ||
+      is.null(info) ||
+      !identical(as.character(info$type), expected_type) ||
+      !.builder_build_path_within(sidecar, root, must_exist = TRUE)
+  ) {
+    stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+  }
+  normalizePath(sidecar, winslash = "/", mustWork = TRUE)
+}
+
+.builder_build_h5_identities <- function(path, item) {
+  if (!identical(item$expression_backend, "h5")) {
+    return(NULL)
+  }
+  if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+    stop(
+      "HDF5Array is required to verify the staged H5 sidecar.",
+      call. = FALSE
+    )
+  }
+  sidecar <- .builder_build_sidecar_path(path, item, "file")
+  matrix <- tryCatch(
+    DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression")),
+    error = function(error) NULL
+  )
+  if (is.null(matrix)) {
+    stop("The staged H5 sidecar cannot be reopened.", call. = FALSE)
+  }
+  list(
+    cells = as.character(colnames(matrix) %||% character()),
+    features = as.character(rownames(matrix) %||% character())
+  )
+}
+
+.builder_crb_visible_pages <- function(object) {
+  present <- function(field) {
+    value <- .builder_build_field(object, field)
+    !is.null(value) && length(value) > 0L
+  }
+  extra <- .builder_build_field(object, "extra_material")
+  immune <- .builder_build_field(object, "immune_repertoire")
+  tcr_chains <- tryCatch(
+    hla_detect_chains(immune),
+    error = function(error) character()
+  )
+  pages <- c(
+    if (present("marker_genes")) "marker_genes",
+    if (present("most_expressed_genes")) "most_expressed_genes",
+    if (present("enriched_pathways")) "enriched_pathways",
+    if (!is.null(extra) && length(extra$tables) > 0L) "extra_material",
+    if (present("immune_repertoire")) "immune_repertoire",
+    if (present("trajectories")) "trajectory",
+    if (present("spatial")) "spatial",
+    if (present("trekker")) "trekker",
+    if (any(tcr_chains %in% c("TRA", "TRB"))) {
+      "hla_tcr_motifs"
+    }
+  )
+  as.character(pages)
+}
+
+#' Reopen and compare one staged CRB with its frozen expectation.
+builder_verify_crb <- function(path, item) {
+  if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
+    stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
+  }
+  fingerprint_file <- .builder_build_runtime_function(
+    ".bundlePreflightFingerprint"
+  )
+  file_fingerprint <- fingerprint_file(path)
+  read_crb <- .builder_build_runtime_function("readCerebro")
+  object <- tryCatch(read_crb(path), error = function(error) error)
+  if (inherits(object, "condition")) {
+    stop(
+      "The staged CRB cannot be reopened: ",
+      conditionMessage(object),
+      call. = FALSE
+    )
+  }
+  expectation <- item$artifact_identity
+  expected_axis <- function(value) {
+    compact <- builder_axis_identity_normalize(value)
+    if (!is.null(compact)) {
+      return(compact)
+    }
+    if (is.character(value) && !anyNA(value)) {
+      return(builder_axis_identity(value))
+    }
+    NULL
+  }
+  expected_cells <- expected_axis(expectation$cells)
+  expected_features <- expected_axis(expectation$features)
+  if (is.null(expected_cells) || is.null(expected_features)) {
+    stop("BuildPlan contains an invalid dataset identity.", call. = FALSE)
+  }
+  cells <- .builder_build_identity(object, "cells")
+  features <- .builder_build_identity(object, "features")
+  h5_identity <- .builder_build_h5_identities(path, item)
+  if (!is.null(h5_identity)) {
+    if (
+      !identical(
+        builder_axis_identity(h5_identity$cells),
+        expected_cells
+      )
+    ) {
+      stop(
+        "The staged H5 sidecar cell identity differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+    if (
+      !identical(
+        builder_axis_identity(h5_identity$features),
+        expected_features
+      )
+    ) {
+      stop(
+        "The staged H5 sidecar feature identity differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
+  if (!length(cells)) {
+    cells <- h5_identity$cells %||% character()
+  }
+  if (!length(features)) {
+    features <- h5_identity$features %||% character()
+  }
+  cell_identity <- builder_axis_identity(cells)
+  feature_identity <- builder_axis_identity(features)
+  if (!identical(cell_identity, expected_cells)) {
+    stop("The staged CRB cell identity differs from BuildPlan.", call. = FALSE)
+  }
+  if (!identical(feature_identity, expected_features)) {
+    stop(
+      "The staged CRB feature identity differs from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  groups_value <- .builder_build_field(object, "groups")
+  groups <- names(groups_value)
+  expected_groups <- names(expectation$group_levels)
+  if (!identical(groups, expected_groups)) {
+    stop(
+      "The staged CRB grouping variables differ from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  for (group in expected_groups) {
+    if (
+      !identical(
+        as.character(groups_value[[group]]),
+        expectation$group_levels[[group]]
+      )
+    ) {
+      stop(
+        "The staged CRB group levels differ from BuildPlan: ",
+        group,
+        call. = FALSE
+      )
+    }
+  }
+  projections <- names(.builder_build_field(object, "projections"))
+  if (!identical(projections, expectation$projections)) {
+    stop("The staged CRB projections differ from BuildPlan.", call. = FALSE)
+  }
+  if (!is.null(expectation$trajectories)) {
+    trajectories <- .builder_build_field(object, "trajectories")
+    trajectory_identity <- lapply(trajectories %||% list(), names)
+    if (!identical(trajectory_identity, expectation$trajectories)) {
+      stop(
+        "The staged CRB trajectories differ from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
+  metadata <- colnames(.builder_build_field(object, "meta_data"))
+  if (!identical(metadata, expectation$metadata)) {
+    stop("The staged CRB metadata differs from BuildPlan.", call. = FALSE)
+  }
+  spatial_sections <- names(.builder_build_field(object, "spatial"))
+  spatial_sections <- spatial_sections %||% character()
+  if (!identical(spatial_sections, expectation$spatial_sections)) {
+    stop(
+      "The staged CRB spatial sections differ from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  spatial <- .builder_build_field(object, "spatial")
+  embedded_sections <- names(spatial)[vapply(
+    spatial,
+    function(section) {
+      is.list(section) &&
+        (
+          length(section$histology_images %||% list()) > 0L ||
+            !is.null(section[["histology_image", exact = TRUE]]) ||
+            !is.null(section[["histology_image_bounds", exact = TRUE]])
+        )
+    },
+    logical(1)
+  )]
+  if (length(embedded_sections)) {
+    stop(
+      "The staged CRB contains embedded Spatial images; Builder supports ",
+      "external Spatial images only: ",
+      paste(embedded_sections, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  expected_coordinate_transforms <- item$spatial_coordinate_transforms %||%
+    list()
+  for (section in names(expected_coordinate_transforms)) {
+    observed_spatial <- spatial[[section]]
+    coordinates <- if (is.list(observed_spatial)) {
+      observed_spatial$coordinates
+    } else {
+      NULL
+    }
+    valid_coordinates <- is.data.frame(coordinates) &&
+      all(c("x", "y") %in% names(coordinates)) &&
+      is.numeric(coordinates$x) &&
+      is.numeric(coordinates$y) &&
+      !is.object(coordinates$x) &&
+      !is.object(coordinates$y) &&
+      all(is.finite(coordinates$x)) &&
+      all(is.finite(coordinates$y))
+    if (!isTRUE(valid_coordinates)) {
+      stop(
+        "The staged CRB spatial coordinates are invalid for transformed FOV: ",
+        section,
+        call. = FALSE
+      )
+    }
+    observed_transform <- observed_spatial$coordinate_transform
+    expected_transform <- expected_coordinate_transforms[[section]]
+    valid_pivot <- is.numeric(observed_transform$pivot) &&
+      !is.object(observed_transform$pivot) &&
+      identical(names(observed_transform$pivot), c("x", "y")) &&
+      length(observed_transform$pivot) == 2L &&
+      all(is.finite(observed_transform$pivot))
+    observed_fingerprint <- tryCatch(
+      .spx_coordinate_transform_fingerprint(coordinates),
+      error = function(error) NULL
+    )
+    # A floating-point rotation is not losslessly invertible, so hashing the
+    # inverse can reject an otherwise exact staged export. The source hash is
+    # provenance; staged integrity is bound to the actual transformed values
+    # below, while the frozen plan still binds the rotation and scale.
+    valid_source_fingerprint <-
+      is.character(observed_transform$source_coordinate_fingerprint) &&
+      !is.object(observed_transform$source_coordinate_fingerprint) &&
+      length(observed_transform$source_coordinate_fingerprint) == 1L &&
+      !is.na(observed_transform$source_coordinate_fingerprint) &&
+      grepl(
+        "^[0-9a-f]{32}$",
+        observed_transform$source_coordinate_fingerprint
+      )
+    if (
+      !is.list(observed_transform) ||
+        !identical(observed_transform$schema_version, 1L) ||
+        !.builder_build_number_equal(
+          observed_transform$rotation_degrees %||% NA_real_,
+          expected_transform$rotation_degrees
+        ) ||
+        !.builder_build_number_equal(
+          observed_transform$scale %||% NA_real_,
+          expected_transform$scale
+        ) ||
+        !isTRUE(valid_pivot) ||
+        !identical(observed_transform$pivot_method, "bounds_center") ||
+        !identical(
+          observed_transform$convention,
+          "counterclockwise_degrees"
+        ) ||
+        !identical(
+          observed_transform$transformed_coordinate_fingerprint,
+          observed_fingerprint
+        ) ||
+        !isTRUE(valid_source_fingerprint)
+    ) {
+      stop(
+        "The staged CRB spatial coordinate transform differs from BuildPlan: ",
+        section,
+        call. = FALSE
+      )
+    }
+  }
+  expected_trekker_alignment <- item$trekker_alignment %||% NULL
+  if (!is.null(expected_trekker_alignment)) {
+    observed_trekker <- .builder_build_field(object, "trekker")
+    if (
+      !is.list(observed_trekker) ||
+        !is.null(observed_trekker$histology_image) ||
+        !is.null(observed_trekker$histology_image_bounds) ||
+        !.builder_build_value_equal(
+          observed_trekker$histology_alignment,
+          builder_alignment_payload(expected_trekker_alignment)
+        )
+    ) {
+      stop(
+        "The staged CRB Trekker alignment differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
+  backend <- .builder_build_field(object, "expression_backend")
+  backend_type <- if (is.null(backend)) "embedded" else backend$type
+  if (!identical(backend_type, item$expression_backend)) {
+    stop(
+      "The staged CRB expression backend differs from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  if (length(item$sidecars)) {
+    expected_location <- item$sidecars[[1L]]
+    if (!identical(backend$location, expected_location)) {
+      stop(
+        "The staged CRB sidecar location differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+    expected_directory <- identical(item$expression_backend, "bpcells")
+    .builder_build_sidecar_path(
+      path,
+      item,
+      if (expected_directory) "directory" else "file"
+    )
+  }
+  visible <- .builder_crb_visible_pages(object)
+  expected_visible <- item$viewer_page_expectations$visible_conditional %||%
+    character()
+  if (!setequal(visible, expected_visible)) {
+    stop(
+      "The staged CRB Viewer page contract differs from BuildPlan.",
+      call. = FALSE
+    )
+  }
+  bundle_preflight <- if (is.null(file_fingerprint)) {
+    NULL
+  } else {
+    tryCatch(
+      list(
+        backend = .builder_build_runtime_function(".readBundleBackend")(
+          path,
+          object
+        ),
+        spatial_catalog = .builder_build_runtime_function(
+          ".readBundleSpatialCatalog"
+        )(
+          object,
+          item$name %||% basename(path)
+        )
+      ),
+      error = function(error) NULL
+    )
+  }
+  if (
+    !is.null(file_fingerprint) &&
+      !identical(file_fingerprint, fingerprint_file(path))
+  ) {
+    stop("The staged CRB changed while it was verified.", call. = FALSE)
+  }
+  list(
+    valid = TRUE,
+    path = path,
+    cell_count = as.integer(cell_identity$count),
+    feature_count = as.integer(feature_identity$count),
+    cell_identity = cell_identity,
+    feature_identity = feature_identity,
+    groups = groups,
+    projections = projections,
+    metadata = metadata,
+    spatial_sections = spatial_sections,
+    image_sections = character(),
+    backend = backend,
+    file_fingerprint = file_fingerprint,
+    bundle_preflight = bundle_preflight,
+    page_contract = list(visible_conditional = visible)
+  )
+}
+
+.builder_build_prepare_immune <- function(object, item) {
+  if (!methods::is(object, "Seurat")) {
+    return(object)
+  }
+  immune_record <- item$manifest[["immune_repertoire"]]
+  motif_record <- item$manifest[["hla_tcr_motifs"]]
+  if (is.null(immune_record) && is.null(motif_record)) {
+    return(object)
+  }
+  clear_sources <- function(value) {
+    value@misc$immune_repertoire <- NULL
+    value@misc$bcr_data <- NULL
+    value@misc$tcr_data <- NULL
+    value
+  }
+  included_selection <- function(record) {
+    if (
+      !is.list(record) ||
+        !(record$disposition %||% "") %in%
+          c("preserved", "converted", "attached")
+    ) {
+      return(character())
+    }
+    record$evidence$selected_sources %||% character()
+  }
+  hidden <- function(record) {
+    is.list(record) &&
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+  }
+  selected_candidates <- function(record, selected) {
+    candidates <- record$evidence$selected_candidates %||% list()
+    if (!is.list(candidates)) {
+      return(list())
+    }
+    candidates[intersect(selected, names(candidates))]
+  }
+  candidate_flag <- function(record, selected, flag) {
+    candidates <- selected_candidates(record, selected)
+    if (!length(selected) || length(candidates) != length(selected)) {
+      return(NA)
+    }
+    flags <- vapply(
+      candidates,
+      function(candidate) isTRUE(candidate[[flag]]),
+      logical(1)
+    )
+    any(flags)
+  }
+  full_selected <- included_selection(immune_record)
+  motif_selected <- included_selection(motif_record)
+  if (
+    length(full_selected) &&
+      length(motif_selected) &&
+      !all(motif_selected %in% full_selected)
+  ) {
+    stop(
+      "The frozen immune sources cannot be realized by one frozen immune payload.",
+      call. = FALSE
+    )
+  }
+  motif_exportable <- candidate_flag(
+    motif_record,
+    motif_selected,
+    "full_ir_ready"
+  )
+  if (length(motif_selected) && !isTRUE(motif_exportable)) {
+    stop(
+      "The frozen motif source cannot be exported as one immune payload.",
+      call. = FALSE
+    )
+  }
+  if (length(motif_selected) && !length(full_selected)) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (
+    length(motif_selected) &&
+      hidden(immune_record)
+  ) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (length(full_selected) && hidden(motif_record)) {
+    full_has_motif <- candidate_flag(
+      immune_record,
+      full_selected,
+      "hla_tcr_ready"
+    )
+    if (is.na(full_has_motif) || isTRUE(full_has_motif)) {
+      stop(
+        "The frozen immune payload cannot hide only one Viewer page.",
+        call. = FALSE
+      )
+    }
+  }
+  selected <- if (length(full_selected)) full_selected else motif_selected
+  selected_record <- if (length(full_selected)) immune_record else motif_record
+  filtered <- vapply(
+    Filter(Negate(is.null), list(immune_record, motif_record)),
+    function(record) {
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+    },
+    logical(1)
+  )
+  if (!length(selected) && length(filtered) && any(filtered)) {
+    return(clear_sources(object))
+  }
+  if (!length(selected)) {
+    return(object)
+  }
+  if (identical(selected, "unified_misc")) {
+    object@misc$bcr_data <- NULL
+    object@misc$tcr_data <- NULL
+    return(object)
+  }
+  if (identical(selected, "metadata")) {
+    candidate <- selected_record$evidence$selected_candidates[["metadata"]]
+    sample_column <- candidate$normalized$sample_column %||% NULL
+    object <- clear_sources(object)
+    return(addImmuneRepertoire(
+      object,
+      sample_col = sample_column,
+      groups = item$included_groups,
+      from_metadata = TRUE,
+      verbose = FALSE
+    ))
+  }
+  supported_legacy <- c("legacy_bcr", "legacy_tcr")
+  if (length(setdiff(selected, supported_legacy))) {
+    stop(
+      "The frozen immune source is not supported at build time.",
+      call. = FALSE
+    )
+  }
+  bcr <- if ("legacy_bcr" %in% selected) object@misc$bcr_data else NULL
+  tcr <- if ("legacy_tcr" %in% selected) object@misc$tcr_data else NULL
+  object <- clear_sources(object)
+  addImmuneRepertoire(
+    object,
+    tcr = tcr,
+    bcr = bcr,
+    from_metadata = FALSE,
+    verbose = FALSE
+  )
+}
+
+.builder_build_select_trajectories <- function(
+  trajectories,
+  included,
+  default = NULL
+) {
+  # A missing field identifies a legacy BuildPlan. Preserve its historical
+  # payload; an explicit empty list means the user chose no trajectories.
+  if (is.null(included)) {
+    return(trajectories)
+  }
+  if (!is.list(trajectories) || !is.list(included)) {
+    stop("The frozen trajectory selection is invalid.", call. = FALSE)
+  }
+  missing_methods <- setdiff(names(included), names(trajectories))
+  missing_names <- unlist(
+    lapply(names(included), function(method) {
+      setdiff(included[[method]], names(trajectories[[method]]))
+    }),
+    use.names = FALSE
+  )
+  if (length(missing_methods) || length(missing_names)) {
+    stop(
+      "A frozen included trajectory is missing from the built object.",
+      call. = FALSE
+    )
+  }
+  if (
+    is.list(default) &&
+      .builder_build_text(default$method) &&
+      .builder_build_text(default$name) &&
+      default$method %in% names(included) &&
+      default$name %in% included[[default$method]]
+  ) {
+    method <- default$method
+    included[[method]] <- c(
+      default$name,
+      included[[method]][included[[method]] != default$name]
+    )
+    included <- c(included[method], included[names(included) != method])
+  }
+  selected <- lapply(names(included), function(method) {
+    trajectories[[method]][included[[method]]]
+  })
+  names(selected) <- names(included)
+  selected
+}
+
+.builder_build_prepare_qc <- function(object, item) {
+  fields <- unique(c(item$nUMI, item$nGene))
+  fields <- fields[vapply(fields, .builder_build_text, logical(1))]
+  missing <- setdiff(fields, colnames(object@meta.data))
+  if (length(missing)) {
+    stop(
+      "The source object is missing selected QC metadata: ",
+      paste(missing, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  for (field in fields) {
+    values <- builder_qc_numeric_values(object@meta.data[[field]])
+    if (is.null(values)) {
+      stop(
+        "Selected QC metadata `",
+        field,
+        "` must contain only numeric values.",
+        call. = FALSE
+      )
+    }
+    object@meta.data[[field]] <- values
+  }
+  object
+}
+
+.builder_build_prepare_trekker <- function(object, item) {
+  if (!methods::is(object, "Seurat")) {
+    return(object)
+  }
+  trekker <- object@misc$trekker
+  if (is.null(trekker) || !length(trekker)) {
+    return(object)
+  }
+  if (!is.list(trekker)) {
+    stop("Trekker data must be a list.", call. = FALSE)
+  }
+
+  group <- item$default_group %||% NULL
+  trekker$builder_group <- group
+  trekker$builder_colors <- if (is.null(group)) {
+    NULL
+  } else {
+    (item$colors %||% list())[[group]] %||% NULL
+  }
+  barcodes <- as.character(trekker$barcodes %||% character())
+  if (
+    !is.null(group) &&
+      length(barcodes) &&
+      group %in% colnames(object@meta.data) &&
+      all(barcodes %in% rownames(object@meta.data))
+  ) {
+    trekker$builder_group_values <- as.character(
+      object@meta.data[barcodes, group, drop = TRUE]
+    )
+  }
+
+  alignment <- builder_alignment_normalize(
+    item$trekker_alignment %||% NULL,
+    section_id = "trekker",
+    section_kind = "trekker"
+  )
+  trekker$histology_image <- NULL
+  trekker$histology_image_bounds <- NULL
+  if (!is.null(alignment)) {
+    trekker$histology_alignment <- builder_alignment_payload(alignment)
+  }
+  object@misc$trekker <- trekker
+  object
+}
+
+.builder_build_prepare <- function(object, item) {
+  if (methods::is(object, "Seurat")) {
+    object@reductions <- object@reductions[item$included_projections]
+    object@misc$trajectories <- .builder_build_select_trajectories(
+      object@misc$trajectories %||% list(),
+      item$included_trajectories,
+      item$default_trajectory
+    )
+    object <- builder_prepare_export_layer(object, item$assay, item$layer)
+    object <- .builder_build_prepare_qc(object, item)
+    object <- .builder_build_prepare_immune(object, item)
+    for (group in names(item$artifact_identity$group_levels)) {
+      values <- object@meta.data[[group]]
+      object@meta.data[[group]] <- factor(
+        as.character(values),
+        levels = item$artifact_identity$group_levels[[group]]
+      )
+    }
+    object <- .builder_build_prepare_trekker(object, item)
+    if (length(item$tables %||% list())) {
+      object <- builder_attach_tables(
+        object,
+        builder_materialize_tables(item$tables)
+      )
+    }
+    if (length(item$marker_imports %||% list())) {
+      object <- builder_attach_marker_imports(object, item$marker_imports)
+    }
+  }
+  object
+}
+
+.builder_build_apply_metadata_policy <- function(object, item) {
+  if (!methods::is(object, "Seurat")) {
+    return(object)
+  }
+  retained <- unique(c(
+    item$included_groups,
+    item$cell_cycle %||% character(),
+    item$nUMI,
+    item$nGene,
+    item$metadata_policy$retained %||% item$metadata_policy$included,
+    item$artifact_identity$source_metadata
+  ))
+  retained <- setdiff(retained, "cell_barcode")
+  missing <- setdiff(retained, colnames(object@meta.data))
+  if (length(missing)) {
+    stop(
+      "The source object is missing retained metadata: ",
+      paste(missing, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  object@meta.data <- object@meta.data[, retained, drop = FALSE]
+  object
+}
+
+.builder_build_export <- function(object, item, path) {
+  object <- .builder_build_apply_metadata_policy(object, item)
+  coordinate_transforms <- item$spatial_coordinate_transforms %||% NULL
+  if (
+    is.list(coordinate_transforms) &&
+      !is.object(coordinate_transforms) &&
+      !length(coordinate_transforms)
+  ) {
+    coordinate_transforms <- NULL
+  }
+  exportFromSeurat(
+    object = object,
+    assay = item$assay,
+    slot = item$layer,
+    file = path,
+    experiment_name = item$name,
+    organism = item$organism,
+    groups = item$included_groups,
+    main_group = item$default_group,
+    cell_cycle = item$cell_cycle %||% NULL,
+    nUMI = item$nUMI,
+    nGene = item$nGene,
+    add_all_meta_data = TRUE,
+    projections = item$included_projections,
+    expression_matrix_mode = item$expression_backend,
+    codec = "qs2",
+    spatial_coordinate_transforms = coordinate_transforms,
+    verbose = FALSE
+  )
+  path
+}
+
+.builder_build_attach_extras <- function(path, object, item) {
+  trekker <- if (methods::is(object, "Seurat")) {
+    tryCatch(object@misc$trekker, error = function(error) NULL)
+  } else {
+    NULL
+  }
+  if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
+    stop("Trekker data must be a list.", call. = FALSE)
+  }
+  trekker_applied <- is.list(trekker) && length(trekker) > 0L
+  result <- builder_attach_crb_extras(
+    crb_path = path,
+    images = list(),
+    external_images = item$images %||% list()
+  )
+  if (!is.null(result$error)) {
+    stop(result$error, call. = FALSE)
+  }
+  result$trekker <- trekker_applied
+  external <- .builder_build_materialize_spatial_images(item, dirname(path))
+  result$external_images <- external$images
+  result$external_settings <- external$settings
+  result
+}
+
+.builder_build_materialize_spatial_images <- function(item, stage) {
+  safe_component <- function(value, fallback) {
+    value <- tolower(iconv(
+      as.character(value),
+      to = "ASCII//TRANSLIT",
+      sub = ""
+    ))
+    value <- gsub("[^a-z0-9]+", "-", value)
+    value <- gsub("(^-+|-+$)", "", value)
+    if (!nzchar(value)) fallback else substr(value, 1L, 48L)
+  }
+  images <- list()
+  settings <- list()
+  collection_input <- item$images %||% list()
+  if (!is.null(item$trekker_alignment)) {
+    collection_input[["trekker"]] <- item$trekker_alignment
+  }
+  collection <- builder_image_collection_normalize(collection_input)
+  for (section_id in names(collection)) {
+    section_dir <- file.path(
+      stage,
+      ".builder-spatial-assets",
+      safe_component(item$id, "dataset"),
+      safe_component(section_id, "section")
+    )
+    dir.create(
+      section_dir,
+      recursive = TRUE,
+      mode = "0700",
+      showWarnings = FALSE
+    )
+    for (label in names(collection[[section_id]])) {
+      record <- collection[[section_id]][[label]]
+      source_path <- tryCatch(
+        normalizePath(record$source_path, winslash = "/", mustWork = TRUE),
+        error = function(error) NULL
+      )
+      if (is.null(source_path) || !isTRUE(file_test("-f", source_path))) {
+        stop("A Builder Spatial image asset is missing.", call. = FALSE)
+      }
+      source <- record[["source", exact = TRUE]]
+      inspected <- builder_read_image(
+        source_path,
+        filename = if (is.list(source)) {
+          source$name %||% source_path
+        } else {
+          source_path
+        }
+      )
+      if (!is.null(inspected$error)) {
+        stop(inspected$error, call. = FALSE)
+      }
+      if (
+        !is.null(record$source_content_md5) &&
+          !identical(record$source_content_md5, inspected$source_content_md5)
+      ) {
+        stop("A Builder Spatial image failed its integrity check.", call. = FALSE)
+      }
+      extension <- switch(
+        inspected$mime,
+        `image/png` = "png",
+        `image/jpeg` = "jpg",
+        stop("Builder image has an unsupported MIME type.", call. = FALSE)
+      )
+      filename <- builder_safe_file_name(
+        if (is.list(source)) source$name else NULL,
+        label
+      )
+      filename <- paste0(
+        tools::file_path_sans_ext(filename),
+        ".",
+        extension
+      )
+      existing_paths <- unlist(
+        lapply(images[[item$name]][[section_id]] %||% list(), `[[`, "path"),
+        use.names = FALSE
+      )
+      existing_names <- if (length(existing_paths)) {
+        basename(existing_paths)
+      } else {
+        character()
+      }
+      if (filename %in% existing_names) {
+        existing_stems <- tools::file_path_sans_ext(existing_names[
+          tolower(tools::file_ext(existing_names)) == extension
+        ])
+        stem <- utils::tail(
+          make.unique(c(
+            existing_stems,
+            tools::file_path_sans_ext(filename)
+          )),
+          1L
+        )
+        filename <- paste0(stem, ".", extension)
+      }
+      materialized <- file.path(section_dir, filename)
+      if (!file.copy(
+        source_path,
+        materialized,
+        overwrite = TRUE,
+        copy.mode = TRUE
+      )) {
+        stop("A Builder Spatial image could not be copied.", call. = FALSE)
+      }
+      if (
+        !identical(unname(file.size(materialized)), inspected$bytes) ||
+          !identical(
+            unname(as.character(tools::md5sum(materialized))),
+            inspected$source_content_md5
+          )
+      ) {
+        unlink(materialized, force = TRUE)
+        stop(
+          "A Builder Spatial image copy failed its integrity check.",
+          call. = FALSE
+        )
+      }
+      materialized <- normalizePath(
+        materialized,
+        winslash = "/",
+        mustWork = TRUE
+      )
+      descriptor <- list(
+        path = materialized,
+        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")])
+      )
+      if (.builder_alignment_valid_bounds(record$viewport_bounds)) {
+        descriptor$viewport_bounds <- unlist(record$viewport_bounds[c(
+          "xmin",
+          "xmax",
+          "ymin",
+          "ymax"
+        )])
+      }
+      descriptor$label <- record$image_label %||% label
+      scope <- intersect(c("roi_field", "roi_value"), names(record))
+      descriptor[scope] <- record[scope]
+      images[[item$name]][[section_id]][[label]] <- descriptor
+      settings[[item$name]][[section_id]][[label]] <- list(
+        flip_x = record$flip_x,
+        flip_y = record$flip_y,
+        scale_x = record$scale,
+        scale_y = record$scale,
+        offset_x = record$dx,
+        offset_y = record$dy,
+        rotation = record$rotation,
+        image_opacity = record$image_opacity,
+        point_opacity = record$point_opacity,
+        point_size = record$point_size
+      )
+    }
+  }
+  list(images = images, settings = settings)
+}
+
+builder_build_hooks <- function() {
+  list(
+    open_snapshot = builder_open_snapshot,
+    prepare = .builder_build_prepare,
+    run_analyses = function(object, item) {
+      settings <- item
+      settings$groups <- item$included_groups
+      builder_run_analyses(object, item$analyses, settings)
+    },
+    export = .builder_build_export,
+    attach_extras = .builder_build_attach_extras,
+    verify = builder_verify_crb,
+    build_app = builder_build_app,
+    verify_app = builder_verify_app
+  )
+}
+
+#' Execute one frozen BuildPlan without publishing its outputs.
+builder_execute_plan <- function(
+  plan,
+  stage,
+  snapshots,
+  hooks = builder_build_hooks(),
+  auth_material = NULL,
+  objects = list()
+) {
+  on.exit(auth_material <- NULL, add = TRUE)
+  if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
+    stop("Build execution requires a frozen BuildPlan.", call. = FALSE)
+  }
+  stage <- .builder_build_stage(stage)
+  auth_enabled <- isTRUE(plan$app_auth$enabled)
+  cleanup_complete <- !auth_enabled
+  on.exit(
+    {
+      if (!cleanup_complete && auth_enabled) {
+        cleaned <- try(
+          .builder_auth_remove_partial_material(stage),
+          silent = TRUE
+        )
+        if (inherits(cleaned, "try-error") || !isTRUE(cleaned)) {
+          stop(
+            "The authentication files could not be cleaned up.",
+            call. = FALSE
+          )
+        }
+      }
+    },
+    add = TRUE
+  )
+  if (auth_enabled) {
+    auth_material <- tryCatch(
+      builder_auth_validate_material(auth_material, stage),
+      error = function(error) error
+    )
+    if (inherits(auth_material, "condition")) {
+      return(.builder_build_failure(conditionMessage(auth_material)))
+    }
+  } else if (!is.null(auth_material)) {
+    return(.builder_build_failure(
+      "A public build cannot use authentication material."
+    ))
+  }
+  if (isTRUE(plan$make_app) && !identical(plan$app_contract_version, 1L)) {
+    return(.builder_build_failure(
+      "Generated-app execution requires frozen contract version 1."
+    ))
+  }
+  if (!is.list(snapshots)) {
+    stop("Build execution requires a snapshot registry.", call. = FALSE)
+  }
+  required_hooks <- c(
+    "open_snapshot",
+    "prepare",
+    "run_analyses",
+    "export",
+    "attach_extras",
+    "verify"
+  )
+  if (!all(vapply(hooks[required_hooks], is.function, logical(1)))) {
+    stop("Build execution hooks are incomplete.", call. = FALSE)
+  }
+
+  result <- list(
+    state = "success",
+    publishable = FALSE,
+    error = NULL,
+    failures = character(),
+    built = character(),
+    labels = character(),
+    verifications = list(),
+    analysis_log = character(),
+    failed_analyses = character(),
+    retry_closure = character(),
+    app_dir = NULL,
+    app_verification = NULL,
+    stage = stage
+  )
+  for (item in plan$items) {
+    reused <- item$reused_artifact %||% NULL
+    if (is.list(reused)) {
+      if (
+        !.builder_build_safe_relative(item$filename) ||
+          !is.character(reused$path) ||
+          length(reused$path) != 1L ||
+          is.na(reused$path) ||
+          !file.exists(reused$path) ||
+          dir.exists(reused$path) ||
+          !.builder_build_fingerprint_matches(
+            reused$path,
+            reused$fingerprint %||% list()
+          )
+      ) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": the reusable CRB is unavailable or has changed."
+        )))
+      }
+      target <- file.path(stage, item$filename)
+      if (
+        !.builder_build_path_within(target, stage, must_exist = FALSE) ||
+          !.builder_build_copy_file(reused$path, target)
+      ) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": the reusable CRB could not be staged."
+        )))
+      }
+      members <- reused$members %||% list()
+      for (member in members) {
+        member_source <- member$resolved_path %||% NULL
+        member_target <- member$target %||% NULL
+        if (
+          !is.character(member_source) ||
+            length(member_source) != 1L ||
+            is.na(member_source) ||
+            !file.exists(member_source) ||
+            !.builder_build_fingerprint_matches(
+              member_source,
+              member$fingerprint %||% list()
+            ) ||
+            !.builder_build_safe_relative(member_target %||% "")
+        ) {
+          return(.builder_build_failure(paste0(
+            item$name,
+            ": a reusable CRB companion file is unavailable."
+          )))
+        }
+        destination <- file.path(stage, member_target)
+        dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
+        if (
+          !.builder_build_path_within(destination, stage, must_exist = FALSE) ||
+            !.builder_build_copy_file(member_source, destination)
+        ) {
+          return(.builder_build_failure(paste0(
+            item$name,
+            ": a reusable CRB companion file could not be staged."
+          )))
+        }
+      }
+      verified <- tryCatch(hooks$verify(target, item), error = function(error) {
+        error
+      })
+      if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
+        message <- if (inherits(verified, "condition")) {
+          conditionMessage(verified)
+        } else {
+          "Artifact verification did not return a valid result."
+        }
+        return(.builder_build_failure(paste0(item$name, ": ", message)))
+      }
+      external <- tryCatch(
+        .builder_build_materialize_spatial_images(item, stage),
+        error = function(error) error
+      )
+      if (inherits(external, "condition")) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": ",
+          conditionMessage(external)
+        )))
+      }
+      if (length(external$images[[item$name]] %||% list())) {
+        result$spatial_images[[item$name]] <- external$images[[item$name]]
+        result$spatial_image_settings[[item$name]] <-
+          external$settings[[item$name]]
+      }
+      result$built <- c(result$built, stats::setNames(target, item$name))
+      result$labels <- c(result$labels, item$name)
+      result$verifications[[item$id]] <- verified
+      next
+    }
+    snapshot <- snapshots[[item$id]]
+    object <- objects[[item$id]] %||% NULL
+    if (is.null(snapshot) && is.null(object)) {
+      return(.builder_build_failure(paste0(
+        "The frozen snapshot is missing for ",
+        item$name,
+        "."
+      )))
+    }
+    object <- if (!is.null(object)) {
+      object
+    } else {
+      tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
+        error
+      })
+    }
+    if (inherits(object, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(object)
+      )))
+    }
+    object <- tryCatch(hooks$prepare(object, item), error = function(error) {
+      error
+    })
+    if (inherits(object, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(object)
+      )))
+    }
+    analyses <- tryCatch(
+      hooks$run_analyses(object, item),
+      error = function(error) error
+    )
+    if (inherits(analyses, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(analyses)
+      )))
+    }
+    if (length(analyses$log)) {
+      result$analysis_log <- c(
+        result$analysis_log,
+        paste0(item$name, ": ", analyses$log)
+      )
+    }
+    if (length(analyses$failed)) {
+      failed <- analyses$failed[[1L]]
+      graph <- item$analysis_dependency_graph
+      if (is.null(graph) || !failed %in% names(graph)) {
+        graph <- builder_analysis_graph(item$analyses)
+      }
+      result$state <- "needs_decision"
+      result$failed_analyses <- failed
+      result$failed_dataset_id <- item$id
+      result$retry_closure <- builder_retry_closure(graph, failed)
+      result$failures <- paste0(item$name, ": analysis `", failed, "` failed.")
+      return(result)
+    }
+    object <- analyses$object
+    if (!.builder_build_safe_relative(item$filename)) {
+      return(.builder_build_failure(
+        "A build artifact target is outside the assigned stage."
+      ))
+    }
+    target <- file.path(stage, item$filename)
+    if (!.builder_build_path_within(target, stage, must_exist = FALSE)) {
+      return(.builder_build_failure(
+        "A build artifact target is outside the assigned stage."
+      ))
+    }
+    exported <- tryCatch(
+      hooks$export(object, item, target),
+      error = function(error) error
+    )
+    if (inherits(exported, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(exported)
+      )))
+    }
+    if (!.builder_build_path_within(exported, stage, must_exist = TRUE)) {
+      return(.builder_build_failure(
+        "A build artifact was written outside the assigned stage."
+      ))
+    }
+    extras <- tryCatch(
+      hooks$attach_extras(exported, object, item),
+      error = function(error) error
+    )
+    if (inherits(extras, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(extras)
+      )))
+    }
+    if (length(extras$external_images %||% list())) {
+      result$spatial_images[[item$name]] <- extras$external_images[[item$name]]
+      result$spatial_image_settings[[item$name]] <-
+        extras$external_settings[[item$name]]
+    }
+    objects[[item$id]] <- NULL
+    object <- NULL
+    analyses <- NULL
+    extras <- NULL
+    invisible(gc(FALSE))
+    verified <- tryCatch(hooks$verify(exported, item), error = function(error) {
+      error
+    })
+    if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
+      message <- if (inherits(verified, "condition")) {
+        conditionMessage(verified)
+      } else {
+        "Artifact verification did not return a valid result."
+      }
+      return(.builder_build_failure(paste0(item$name, ": ", message)))
+    }
+    result$built <- c(result$built, stats::setNames(exported, item$name))
+    result$labels <- c(result$labels, item$name)
+    result$verifications[[item$id]] <- verified
+  }
+  if (isTRUE(plan$make_app)) {
+    app_hooks <- c("build_app", "verify_app")
+    if (!all(vapply(hooks[app_hooks], is.function, logical(1)))) {
+      return(.builder_build_failure(
+        "Generated-App build hooks are incomplete."
+      ))
+    }
+    app_plan <- plan
+    for (index in seq_along(app_plan$items)) {
+      dataset <- app_plan$items[[index]]$name
+      app_plan$items[[index]]$external_images <-
+        result$spatial_images[[dataset]] %||% list()
+      app_plan$items[[index]]$external_image_settings <-
+        result$spatial_image_settings[[dataset]] %||% list()
+    }
+    request <- tryCatch(
+      builder_app_bundle_request(app_plan, result$built, result$labels),
+      error = function(error) error
+    )
+    if (inherits(request, "condition")) {
+      return(.builder_build_failure(conditionMessage(request)))
+    }
+    verified_preflight <- lapply(app_plan$items, function(item) {
+      result$verifications[[item$id]] %||% list()
+    })
+    cacheable <- all(vapply(
+      verified_preflight,
+      function(verification) {
+        is.list(verification$bundle_preflight) &&
+          is.list(verification$file_fingerprint)
+      },
+      logical(1)
+    ))
+    clear_preflight <- .builder_build_runtime_function(
+      ".clearBundlePreflightCache"
+    )
+    cache_preflight <- .builder_build_runtime_function(
+      ".cacheBundlePreflightData"
+    )
+    clear_preflight()
+    on.exit(clear_preflight(), add = TRUE)
+    if (cacheable) {
+      preflight_data <- list(
+        backends = stats::setNames(
+          lapply(verified_preflight, function(x) x$bundle_preflight$backend),
+          result$labels
+        ),
+        spatial_catalogs = stats::setNames(
+          lapply(
+            verified_preflight,
+            function(x) x$bundle_preflight$spatial_catalog
+          ),
+          result$labels
+        )
+      )
+      fingerprints <- stats::setNames(
+        lapply(verified_preflight, `[[`, "file_fingerprint"),
+        result$labels
+      )
+      cache_preflight(
+        request$cerebro_data,
+        preflight_data,
+        fingerprints
+      )
+    }
+    app_dir <- tryCatch(
+      hooks$build_app(request, stage, auth_material = auth_material),
+      error = function(error) error
+    )
+    if (inherits(app_dir, "condition")) {
+      return(.builder_build_failure(conditionMessage(app_dir)))
+    }
+    auth_env_file <- if (auth_enabled) {
+      file.path(app_dir, "viewer-auth.env")
+    } else {
+      NULL
+    }
+    app_verification <- tryCatch(
+      hooks$verify_app(
+        app_dir,
+        request,
+        auth_env_file = auth_env_file
+      ),
+      error = function(error) error
+    )
+    valid_app_verification <-
+      !inherits(app_verification, "condition") &&
+      identical(typeof(app_verification), "list") &&
+      identical(
+        attr(app_verification, "class", exact = TRUE),
+        c("builder_app_verification", "list")
+      ) &&
+      !.builder_app_has_reference(app_verification)
+    plain_app_verification <- if (valid_app_verification) {
+      .builder_app_plain_value(app_verification)
+    } else {
+      NULL
+    }
+    if (
+      !valid_app_verification ||
+        !isTRUE(plain_app_verification[["valid"]])
+    ) {
+      message <- if (inherits(app_verification, "condition")) {
+        conditionMessage(app_verification)
+      } else {
+        "App verification did not return valid inert evidence."
+      }
+      return(.builder_build_failure(message))
+    }
+    result$app_dir <- app_dir
+    result$app_verification <- app_verification
+    cleaned_assets <- tryCatch(
+      .builder_build_cleanup_spatial_assets(stage),
+      error = function(error) error
+    )
+    if (inherits(cleaned_assets, "condition")) {
+      return(.builder_build_failure(conditionMessage(cleaned_assets)))
+    }
+  }
+  if (auth_enabled) {
+    cleaned <- try(
+      builder_auth_cleanup_material(
+        auth_material,
+        stage,
+        keep_env = FALSE
+      ),
+      silent = TRUE
+    )
+    if (inherits(cleaned, "try-error")) {
+      return(.builder_build_failure(
+        "The authentication files could not be cleaned up."
+      ))
+    }
+    cleanup_complete <- TRUE
+    result$auth_enabled <- TRUE
+    result$auth_env_file <- auth_env_file
+  } else {
+    result$auth_enabled <- FALSE
+    result$auth_env_file <- NULL
+  }
+  result$publishable <- length(result$built) == length(plan$items)
+  result
+}
