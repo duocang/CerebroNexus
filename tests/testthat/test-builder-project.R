@@ -1185,15 +1185,16 @@ test_that("restore status snapshots are reused without weakening default validat
   writeBin(charToRaw("source"), source)
   writeBin(charToRaw("artifact"), artifact_path)
   entry <- list(id = "ds1", settings = list(name = "Dataset"))
+  source_fingerprint <- runtime$builder_project_file_fingerprint(
+    source,
+    content = TRUE
+  )
   record <- runtime$builder_project_dataset_record(
     entry,
     source = list(
       kind = "managed",
       path = runtime$builder_project_relative_path(source, root),
-      fingerprint = runtime$builder_project_file_fingerprint(
-        source,
-        content = TRUE
-      )
+      fingerprint = source_fingerprint
     ),
     artifact = list(
       status = "ready",
@@ -1202,7 +1203,19 @@ test_that("restore status snapshots are reused without weakening default validat
         artifact_path,
         content = TRUE
       ),
-      members = list()
+      members = list(),
+      built_from_revision = 0L,
+      built_from_source_fingerprint = paste(
+        "builder-snapshot-v2",
+        "source.rds",
+        source_fingerprint$bytes,
+        source_fingerprint$modified_at,
+        source_fingerprint$md5,
+        sep = ":"
+      ),
+      built_from_configuration = runtime$builder_project_configuration_digest(
+        entry
+      )
     ),
     checked = TRUE,
     root = root
@@ -1979,7 +1992,11 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
         artifact_path,
         content = TRUE
       ),
-      members = list()
+      members = list(),
+      built_from_revision = 0L,
+      built_from_configuration = runtime$builder_project_configuration_digest(
+        entry
+      )
     ),
     root = root
   )
@@ -3133,6 +3150,78 @@ test_that("re-registered artifacts retain their source identity", {
     list(),
     previous
   ))
+})
+
+test_that("reopened projects reject artifacts from an older source", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source_path <- file.path(root, "sources", "ds1", "source.rds")
+  artifact_path <- file.path(root, "artifacts", "ds1", "dataset.crb")
+  dir.create(dirname(source_path), recursive = TRUE)
+  dir.create(dirname(artifact_path), recursive = TRUE)
+  writeBin(charToRaw("new-source"), source_path)
+  writeBin(charToRaw("old-artifact"), artifact_path)
+  source_fingerprint <- runtime$builder_project_file_fingerprint(
+    source_path,
+    content = TRUE
+  )
+  entry <- list(
+    id = "ds1",
+    revision = 5L,
+    settings = list(name = "Dataset"),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = runtime$builder_project_relative_path(artifact_path, root),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      artifact_path,
+      content = TRUE
+    ),
+    members = list(),
+    built_from_revision = 4L,
+    built_from_source_fingerprint = "source-a",
+    built_from_configuration = runtime$builder_project_configuration_digest(
+      entry
+    )
+  )
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(
+      kind = "managed",
+      path = runtime$builder_project_relative_path(source_path, root),
+      fingerprint = source_fingerprint
+    ),
+    artifact = artifact,
+    checked = TRUE,
+    root = root
+  )
+
+  expect_false(
+    runtime$builder_project_dataset_status(record, root)$artifact_ready
+  )
+  reopened <- runtime$builder_project_prepare_open_selection(
+    list(datasets = list(record)),
+    root,
+    list(ds1 = "reuse")
+  )
+  expect_length(reopened$reusable_entries, 0L)
+  expect_identical(reopened$skipped_ids, "ds1")
+
+  record$artifact$built_from_revision <- 5L
+  record$artifact$built_from_source_fingerprint <- paste(
+    "builder-snapshot-v2",
+    "source.rds",
+    source_fingerprint$bytes,
+    source_fingerprint$modified_at,
+    source_fingerprint$md5,
+    sep = ":"
+  )
+  expect_true(
+    runtime$builder_project_dataset_status(record, root)$artifact_ready
+  )
 })
 
 test_that("a ready project CRB remains separate from the checked flag", {

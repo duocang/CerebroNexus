@@ -780,8 +780,7 @@ builder_project_example_source <- function(example_id, catalog) {
   )
 }
 
-builder_project_snapshot_source_md5 <- function(entry) {
-  fingerprint <- entry$snapshot$source_fingerprint %||% NULL
+builder_project_source_fingerprint_md5 <- function(fingerprint) {
   if (
     !.builder_project_text(fingerprint) ||
       !startsWith(as.character(fingerprint), "builder-snapshot-v2:")
@@ -790,6 +789,12 @@ builder_project_snapshot_source_md5 <- function(entry) {
   }
   md5 <- sub("^.*:", "", as.character(fingerprint))
   if (grepl("^[[:xdigit:]]{32}$", md5)) tolower(md5) else NULL
+}
+
+builder_project_snapshot_source_md5 <- function(entry) {
+  builder_project_source_fingerprint_md5(
+    entry$snapshot$source_fingerprint %||% NULL
+  )
 }
 
 builder_project_source_job <- function(entry, root) {
@@ -3223,33 +3228,61 @@ builder_project_artifact_available <- function(artifact, root) {
   ))
 }
 
+builder_project_artifact_matches_entry <- function(
+  artifact,
+  entry,
+  source = NULL
+) {
+  if (!is.list(artifact) || !is.list(entry)) {
+    return(FALSE)
+  }
+  artifact_revision <- suppressWarnings(as.integer(
+    artifact$built_from_revision %||% NA_integer_
+  ))
+  entry_revision <- suppressWarnings(as.integer(entry$revision %||% 0L))
+  if (
+    length(artifact_revision) != 1L ||
+      is.na(artifact_revision) ||
+      length(entry_revision) != 1L ||
+      is.na(entry_revision) ||
+      !identical(artifact_revision, entry_revision) ||
+      !identical(
+        as.character(artifact$built_from_configuration %||% ""),
+        builder_project_configuration_digest(entry)
+      )
+  ) {
+    return(FALSE)
+  }
+  artifact_source <- artifact$built_from_source_fingerprint %||% NULL
+  current_source <- entry$snapshot$source_fingerprint %||% NULL
+  current_md5 <- builder_project_source_fingerprint_md5(current_source)
+  if (
+    is.null(current_md5) &&
+      is.list(source$fingerprint %||% NULL) &&
+      .builder_project_text(source$fingerprint$md5 %||% NULL)
+  ) {
+    current_md5 <- tolower(as.character(source$fingerprint$md5))
+  }
+  if (!is.null(current_md5)) {
+    return(identical(
+      builder_project_source_fingerprint_md5(artifact_source),
+      current_md5
+    ))
+  }
+  !.builder_project_text(current_source) ||
+    identical(
+      as.character(artifact_source %||% ""),
+      as.character(current_source)
+    )
+}
+
 builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
   Filter(
     function(entry) {
       artifact <- artifacts[[entry$id]] %||% NULL
-      artifact_revision <- suppressWarnings(as.integer(
-        artifact$built_from_revision %||% NA_integer_
-      ))
-      entry_revision <- suppressWarnings(as.integer(
-        entry$revision %||% 0L
-      ))
-      source_fingerprint <- entry$snapshot$source_fingerprint %||% NULL
       !is.list(artifact) ||
         !builder_project_artifact_available(artifact, root) ||
-        length(artifact_revision) != 1L ||
-        is.na(artifact_revision) ||
-        length(entry_revision) != 1L ||
-        is.na(entry_revision) ||
-        !identical(artifact_revision, entry_revision) ||
-        !.builder_project_text(source_fingerprint) ||
-        !identical(
-          as.character(artifact$built_from_source_fingerprint %||% ""),
-          as.character(source_fingerprint)
-        ) ||
-        !identical(
-          as.character(artifact$built_from_configuration %||% ""),
-          builder_project_configuration_digest(entry)
-        )
+        !builder_project_artifact_matches_entry(artifact, entry)
     },
     entries
   )
@@ -3459,8 +3492,14 @@ builder_project_dataset_status <- function(record, root) {
   ) {
     return(record$runtime_restore_status)
   }
-  artifact_ready <- builder_project_artifact_available(record$artifact, root)
   spatial_assets <- builder_project_spatial_assets_status(record, root)
+  artifact_ready <- isTRUE(spatial_assets$ready) &&
+    builder_project_artifact_available(record$artifact, root) &&
+    builder_project_artifact_matches_entry(
+      record$artifact,
+      spatial_assets$entry,
+      record$source %||% list()
+    )
   source <- record$source %||% list()
   source_path <- if (identical(source$kind, "example")) {
     source$example %||% NULL
