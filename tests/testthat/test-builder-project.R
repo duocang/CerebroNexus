@@ -1696,6 +1696,28 @@ test_that("reusable artifacts are staged without replacing existing files", {
   expect_identical(readBin(target, "raw", n = 100L), charToRaw("existing"))
 })
 
+test_that("reusable artifact copies are verified after staging", {
+  runtime <- builder_project_test_runtime()
+  source <- withr::local_tempfile(fileext = ".crb")
+  target <- withr::local_tempfile(fileext = ".crb")
+  writeBin(charToRaw("original"), source)
+  unlink(target)
+  fingerprint <- list(md5 = unname(tools::md5sum(source)))
+  mutating_copy <- function(source, target) {
+    copied <- file.copy(source, target)
+    writeBin(charToRaw("mutated!"), target)
+    copied
+  }
+
+  expect_false(runtime$.builder_build_copy_verified(
+    source,
+    target,
+    fingerprint,
+    .copy = mutating_copy
+  ))
+  expect_false(file.exists(target))
+})
+
 test_that("reusable artifact staging uses portable clone fallbacks", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
