@@ -266,6 +266,42 @@ test_that("Builder rejects corrupt PNG image data", {
   )
 })
 
+test_that("Builder rejects PNG payloads that cannot be decoded", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 64L), nrow = 8L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  marker <- charToRaw("IDAT")
+  start <- which(vapply(
+    seq_len(length(bytes) - length(marker) + 1L),
+    function(index) {
+      identical(
+        bytes[seq.int(index, length.out = length(marker))],
+        marker
+      )
+    },
+    logical(1)
+  ))[[1L]]
+  chunk_length <- .builder_image_uint32_be(bytes[(start - 4L):(start - 1L)])
+  payload_start <- start + length(marker)
+  payload_end <- payload_start + chunk_length - 1L
+  bytes[[payload_start + 2L]] <- as.raw(bitwXor(
+    as.integer(bytes[[payload_start + 2L]]),
+    0xffL
+  ))
+  bytes[(payload_end + 1L):(payload_end + 4L)] <- .builder_png_crc32(c(
+    marker,
+    bytes[payload_start:payload_end]
+  ))
+  writeBin(bytes, path)
+
+  expect_error(png::readPNG(path, native = TRUE))
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
+})
+
 test_that("Builder rejects invalid PNG header semantics", {
   skip_if_not_installed("png")
   source <- withr::local_tempfile(fileext = ".png")
