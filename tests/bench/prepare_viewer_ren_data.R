@@ -1,4 +1,4 @@
-.viewerRenVersion <- 1L
+.viewerRenVersion <- 2L
 
 .viewerRenCacheDir <- function(path = NULL) {
   if (!is.null(path)) {
@@ -325,7 +325,7 @@
     stop("The Ren cell annotations reference an unknown clinical sample.", call. = FALSE)
   }
   clinical <- clinical[clinical_index, , drop = FALSE]
-  data.frame(
+  metadata <- data.frame(
     cell_barcode = cells,
     sample = as.character(annotation$sampleID),
     geo_accession = clinical$geo_accession,
@@ -348,6 +348,9 @@
     check.names = FALSE,
     stringsAsFactors = FALSE
   )
+  categorical <- setdiff(names(metadata), "cell_barcode")
+  metadata[categorical] <- lapply(metadata[categorical], factor)
+  metadata
 }
 
 .viewerRenProjection <- function(h5ad, cells) {
@@ -379,6 +382,31 @@
   )
   attr(projection, "source") <- selected
   projection
+}
+
+.viewerRenProjectionName <- function(projection) {
+  source <- attr(projection, "source", exact = TRUE)
+  name <- if (
+    is.character(source) && length(source) == 1L && !is.na(source)
+  ) {
+    sub("^/obsm/X_", "", source)
+  } else {
+    ""
+  }
+  if (!name %in% c("umap", "tsne", "pca")) {
+    stop("The Ren projection source is not supported.", call. = FALSE)
+  }
+  name
+}
+
+.viewerRenRepertoireChains <- function(repertoire) {
+  genes <- unlist(lapply(repertoire, function(table) {
+    as.character(table$CTgene)
+  }), use.names = FALSE)
+  supported <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
+  supported[vapply(supported, function(chain) {
+    any(grepl(chain, genes, fixed = TRUE), na.rm = TRUE)
+  }, logical(1))]
 }
 
 .viewerRenReadTable <- function(path, columns) {
@@ -571,6 +599,8 @@
   projection <- .viewerRenProjection(paths$h5ad, cells)
   message("Reading 503,432 published paired TCR/BCR records...")
   repertoire <- .viewerRenRepertoire(paths$tcr, paths$bcr, cells)
+  repertoire_file <- file.path(paths$sidecar, "immune_repertoire.qs2")
+  qs2::qs_save(repertoire, repertoire_file)
 
   object <- Cerebro$new()
   object$setVersion(utils::packageVersion("CerebroNexus"))
@@ -598,8 +628,14 @@
     values <- sort(values[!is.na(values) & nzchar(values)], method = "radix")
     object$addGroup(group, values)
   }
-  object$addProjection("umap", projection)
-  object$addImmuneRepertoire(repertoire)
+  object$addProjection(.viewerRenProjectionName(projection), projection)
+  object$immune_repertoire_backend <- list(
+    type = "bpcells-file",
+    file = basename(repertoire_file),
+    md5 = unname(tools::md5sum(repertoire_file)),
+    samples = names(repertoire),
+    chains = .viewerRenRepertoireChains(repertoire)
+  )
   object$addExtraTable(
     "data_provenance",
     data.frame(
@@ -634,6 +670,7 @@
     !dir.exists(paths$crb) &&
     dir.exists(paths$sidecar) &&
     length(list.files(paths$sidecar, all.files = TRUE, no.. = TRUE)) > 0L &&
+    file.exists(file.path(paths$sidecar, "immune_repertoire.qs2")) &&
     file.exists(paths$stamp) &&
     identical(readLines(paths$stamp, warn = FALSE), as.character(.viewerRenVersion))
 }

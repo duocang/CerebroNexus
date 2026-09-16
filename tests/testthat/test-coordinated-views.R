@@ -561,7 +561,14 @@ test_that("large linked-view vectors use a lossless compact wire format", {
     projections = list(
       umap = list(x = I(c(1.25, NA_real_)), y = I(c(-2.5, 3.75)), ndim = 2L)
     ),
-    spaces = list(cv_env$cv_space("spatial", "Spatial", c(4, 5), c(6, 7)))
+    spaces = list(cv_env$cv_space("spatial", "Spatial", c(4, 5), c(6, 7))),
+    clone = cv_env$cv_clone(
+      c(0L, 1L),
+      c("clone-a", "clone-b"),
+      c(3L, 2L),
+      2L,
+      2L
+    )
   )
   packed <- cv_env$cv_wire_pack_bundle(bundle, min_length = 1L)
 
@@ -605,6 +612,9 @@ test_that("large linked-view vectors use a lossless compact wire format", {
   expect_equal(decode(header$projections$umap$y), c(-2.5, 3.75))
   expect_equal(decode(header$spaces[[1L]]$x), c(4, 5))
   expect_equal(decode(header$spaces[[1L]]$y), c(6, 7))
+  expect_identical(decode(header$clone$id), c(0L, 1L))
+  expect_identical(decode(header$clone$label), c("clone-a", "clone-b"))
+  expect_identical(decode(header$clone$size), c(3L, 2L))
 })
 
 test_that("Linked views negotiates compact transport with a legacy fallback", {
@@ -625,12 +635,16 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(server, '"coordviews_binary"', fixed = TRUE)
   expect_match(server, '"coordviews_cells"', fixed = TRUE)
   expect_match(server, "include_cells = FALSE", fixed = TRUE)
-  expect_match(server, "cv_wire_pack_bundle(bundle", fixed = TRUE)
+  expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(server, '"coordviews_supplement"', fixed = TRUE)
   expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
   expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
   expect_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
   expect_match(client, "coordviews_wire_supported", fixed = TRUE)
   expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
+  expect_match(client, "coordviews_primary_ready", fixed = TRUE)
+  expect_match(client, "onBinarySupplement", fixed = TRUE)
   expect_equal(
     sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
     1L
@@ -720,6 +734,106 @@ test_that("Linked views does not duplicate immutable bundle data", {
   expect_null(bundle$cell_fingerprint)
 })
 
+test_that("primary bundle materializes only the first visible projection and colour", {
+  skip_if_not(have_bundle)
+  cells <- paste0("c", 1:4)
+  metadata <- data.frame(
+    cell_barcode = cells,
+    cell_type = c("B", "T", "B", "T"),
+    sample = c("s1", "s1", "s2", "s2"),
+    donor = c("d1", "d2", "d1", "d2"),
+    score = c(1, 2, 3, 4),
+    identifier = cells,
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  calls <- new.env(parent = emptyenv())
+  calls$projections <- character()
+  calls$genes <- 0L
+  calls$immune <- 0L
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() c("cell_type", "sample"),
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() c("umap", "tsne"),
+    getProjection = function(name) {
+      calls$projections <- c(calls$projections, name)
+      matrix(seq_len(8), nrow = 4, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() {
+      calls$immune <- calls$immune + 1L
+      NULL
+    },
+    getGeneNames = function() {
+      calls$genes <- calls$genes + 1L
+      c("CD3D", "MS4A1")
+    }
+  )
+
+  primary <- cv_env$cv_build_bundle(crb, primary_only = TRUE)
+
+  expect_named(primary$groups, "cell_type")
+  expect_length(primary$cat_extra, 0L)
+  expect_length(primary$fields, 0L)
+  expect_length(primary$genes, 0L)
+  expect_named(primary$projections, "umap")
+  expect_identical(calls$projections, "umap")
+  expect_identical(calls$genes, 0L)
+  expect_identical(calls$immune, 0L)
+
+  full <- cv_env$cv_build_bundle(crb)
+  expect_identical(calls$immune, 1L)
+  primary$dataset_fingerprint <- "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  primary$progressive_token <- 4L
+  full$dataset_fingerprint <- primary$dataset_fingerprint
+  supplement <- cv_env$cv_bundle_supplement(primary, full)
+
+  expect_named(supplement$groups, "sample")
+  expect_named(supplement$cat_extra, "donor")
+  expect_named(supplement$fields, "meta:score")
+  expect_named(supplement$projections, "tsne")
+  expect_identical(supplement$cat_skipped, full$cat_skipped)
+})
+
+test_that("progressive supplement carries identity and only missing data", {
+  skip_if_not(have_bundle)
+  primary <- list(
+    dataset_id = "brain.crb",
+    dataset_fingerprint = "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    progressive_token = 3L,
+    groups = list(cluster = list()),
+    cat_extra = list(),
+    fields = list(score = list()),
+    cat_skipped = list(),
+    projections = list(umap = list()),
+    spaces = list(list(id = "projection::umap")),
+    clone = NULL,
+    trekker = NULL
+  )
+  full <- primary
+  full$groups$sample <- list()
+  full$cat_skipped$barcode <- 100L
+  full$projections$tsne <- list()
+  full$spaces <- c(full$spaces, list(list(id = "trajectory::slingshot")))
+  full$clone <- list(ids = 1L)
+
+  supplement <- cv_env$cv_bundle_supplement(primary, full)
+
+  expect_identical(supplement$dataset_id, full$dataset_id)
+  expect_identical(
+    supplement$dataset_fingerprint,
+    full$dataset_fingerprint
+  )
+  expect_identical(supplement$progressive_token, primary$progressive_token)
+  expect_named(supplement$groups, "sample")
+  expect_identical(supplement$cat_skipped, full$cat_skipped)
+  expect_named(supplement$projections, "tsne")
+  expect_identical(supplement$spaces[[1L]]$id, "trajectory::slingshot")
+  expect_identical(supplement$clone, full$clone)
+})
+
 test_that("Linked views reuses the saved-view fingerprint", {
   server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(
@@ -761,7 +875,7 @@ test_that("saved-view startup identity does not materialize cell names", {
   )
   expect_match(
     server,
-    "req(cv_saved_view_identity()$cell_count >= 200000L)",
+    "progressive <- cv_saved_view_identity()$cell_count >= 200000L",
     fixed = TRUE
   )
 })
@@ -774,7 +888,7 @@ test_that("colour observation starts only after a bundle is sent", {
   )
 
   sent <- regexpr(
-    "coordviews_build_log$sent_n <- coordviews_build_log$n",
+    "coordviews_build_log$sent_n <- bundle_n",
     server,
     fixed = TRUE
   )[[1]]
@@ -792,9 +906,9 @@ test_that("large-dataset work stays off the initial response", {
   server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
-  expect_match(server, "later::later(", fixed = TRUE)
-  expect_match(server, "isolate(coordviews_bundle())", fixed = TRUE)
+  expect_no_match(server, "later::later(", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(server, "cv_bundle_supplement(primary, bundle)", fixed = TRUE)
   expect_match(
     server,
     "coordviews_background_ready <- reactiveVal(FALSE)",
