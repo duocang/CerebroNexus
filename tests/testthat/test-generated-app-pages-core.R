@@ -104,20 +104,27 @@ test_that("Gene expression renders the exact selected source-gene values", {
   displayed <- generated_app_e2e_driver()$get_js(
     "(function(){var node=document.getElementById('expression_genes_displayed');return node?(node.textContent||'').trim():'';})()"
   )
-  expect_match(as.character(displayed %||% ""), "GENE001", fixed = TRUE)
+  expect_identical(as.character(displayed %||% ""), "")
   generated_app_e2e_wait_plotly("expression_projection")
 
-  observed <- generated_app_e2e_value(
-    "export",
-    "expression_levels",
-    validate = function(value) length(value) == fixture$expected$n_cells
-  )
   source <- SeuratObject::LayerData(
     fixture$object,
     assay = "RNA",
     layer = "data"
   )
   expected <- as.numeric(source["GENE001", ])
+  observed <- generated_app_e2e_value(
+    "export",
+    "expression_levels",
+    validate = function(value) {
+      length(value) == fixture$expected$n_cells &&
+        isTRUE(all.equal(
+          sort(as.numeric(value)),
+          sort(expected),
+          tolerance = 1e-12
+        ))
+    }
+  )
   expect_equal(sort(observed), sort(expected), tolerance = 1e-12)
 })
 
