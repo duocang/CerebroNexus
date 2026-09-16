@@ -65,6 +65,12 @@ Cerebro <- R6::R6Class(
     #' leave this as \code{NULL}.
     crb_schema = NULL,
 
+    #' @field spatial_molecule_backend Descriptor for molecule tables stored in
+    #' a sibling spatial sidecar. The runtime-only `root` member is populated
+    #' by `readCerebro()` or the generated Viewer and is never required for
+    #' legacy CRBs with embedded molecule tables.
+    spatial_molecule_backend = NULL,
+
     #' @field meta_data \code{data.frame} that contains cell meta data.
     meta_data = data.frame(),
 
@@ -1240,6 +1246,57 @@ Cerebro <- R6::R6Class(
         )
       }
       data <- self$spatial[[name]]
+      molecules <- data[["molecules"]]
+      if (inherits(molecules, "CerebroSpatialMoleculeRef")) {
+        backend <- self$spatial_molecule_backend
+        valid_backend <- is.list(backend) &&
+          identical(backend$type, "directory") &&
+          is.character(backend$root) &&
+          length(backend$root) == 1L &&
+          !is.na(backend$root) &&
+          nzchar(backend$root)
+        valid_ref <- is.list(molecules) &&
+          is.character(molecules$file) &&
+          length(molecules$file) == 1L &&
+          !is.na(molecules$file) &&
+          nzchar(molecules$file) &&
+          !grepl("[/\\\\]", molecules$file) &&
+          is.character(molecules$md5) &&
+          length(molecules$md5) == 1L &&
+          grepl("^[[:xdigit:]]{32}$", molecules$md5)
+        if (!valid_backend || !valid_ref) {
+          stop("Spatial molecule sidecar descriptor is invalid.", call. = FALSE)
+        }
+        molecule_file <- file.path(backend$root, molecules$file)
+        if (!file.exists(molecule_file) || dir.exists(molecule_file)) {
+          stop(
+            "Spatial molecule sidecar is missing for `",
+            name,
+            "`.",
+            call. = FALSE
+          )
+        }
+        checksum <- unname(tools::md5sum(molecule_file))
+        if (!identical(checksum, molecules$md5)) {
+          stop(
+            "Spatial molecule sidecar checksum does not match for `",
+            name,
+            "`.",
+            call. = FALSE
+          )
+        }
+        connection <- file(molecule_file, open = "rb")
+        magic <- readBin(connection, "raw", n = 4L)
+        close(connection)
+        data[["molecules"]] <- if (
+          identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))
+        ) {
+          qs2::qs_read(molecule_file)
+        } else {
+          readRDS(molecule_file)
+        }
+        self$spatial[[name]] <- data
+      }
       context <- paste0("Spatial data `", name, "`")
       normalize_bounds <- function(bounds, coordinates, image_context) {
         valid_coordinates <- is.data.frame(coordinates) &&

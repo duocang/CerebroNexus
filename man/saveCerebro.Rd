@@ -18,6 +18,7 @@ saveCerebro(object, file, codec = c("qs2", "rds"))
 The output path, invisibly.
 }
 \description{
-Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar. The
-input object and expression sidecar are not modified.
+Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar and
+stores spatial molecule tables in a sibling per-FOV sidecar. The input
+object and existing sidecars are not modified.
 }

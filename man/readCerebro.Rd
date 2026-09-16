@@ -13,6 +13,7 @@ readCerebro(file)
 A current Cerebro object.
 }
 \description{
-Auto-detects legacy RDS, thin RDS, and thin qs2 CRBs. Thin CRBs are
-hydrated from their sibling expression sidecar.
+Auto-detects legacy RDS, thin RDS, and thin qs2 CRBs. Thin expression data
+are hydrated from their sibling sidecar; spatial molecule tables stay lazy
+until their FOV is requested.
 }

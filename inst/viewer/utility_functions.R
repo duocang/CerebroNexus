@@ -2244,10 +2244,49 @@ get_or_load_crb <- function(
   ))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
+  obj <- .attachSpatialMoleculeBackend(obj, path)
   .crb_cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
+  obj
+}
+
+.attachSpatialMoleculeBackend <- function(obj, crb_path) {
+  field <- "spatial_molecule_backend"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(obj)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
+  }
+  backend <- obj[[field]]
+  if (is.null(backend)) {
+    return(obj)
+  }
+  valid <- is.list(backend) &&
+    identical(backend$type, "directory") &&
+    is.character(backend$location) &&
+    length(backend$location) == 1L &&
+    !is.na(backend$location) &&
+    nzchar(backend$location) &&
+    !backend$location %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$location)
+  if (!valid) {
+    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
+  }
+  root <- file.path(
+    dirname(normalizePath(crb_path, mustWork = FALSE)),
+    backend$location
+  )
+  if (!dir.exists(root)) {
+    stop("The spatial molecule sidecar is missing: ", root, call. = FALSE)
+  }
+  backend$root <- root
+  obj[[field]] <- backend
   obj
 }
 
