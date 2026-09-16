@@ -397,7 +397,7 @@ builder_session_spatial_preview <- function(
   section_id = NULL,
   assay = NULL,
   layer = "data",
-  coordinate_transforms = NULL,
+  base_coordinate_transform = NULL,
   max_cells = BUILDER_PREVIEW_MAX,
   request = NULL
 ) {
@@ -411,7 +411,7 @@ builder_session_spatial_preview <- function(
       section_id,
       assay,
       layer,
-      coordinate_transforms,
+      base_coordinate_transform,
       max_cells,
       request
     ) {
@@ -433,7 +433,7 @@ builder_session_spatial_preview <- function(
               section_id = section_id,
               assay = assay,
               layer = layer,
-              coordinate_transforms = coordinate_transforms,
+              base_coordinate_transform = base_coordinate_transform,
               max_cells = max_cells
             )
           )
@@ -451,7 +451,7 @@ builder_session_spatial_preview <- function(
       section_id = section_id,
       assay = assay,
       layer = layer,
-      coordinate_transforms = coordinate_transforms,
+      base_coordinate_transform = base_coordinate_transform,
       max_cells = max_cells,
       request = request
     )

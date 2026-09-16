@@ -661,18 +661,23 @@ builder_alignment_normalize <- function(
   normalized
 }
 
-#' Reset one section to its deterministic default fit and appearance.
+#' Reset one image to its deterministic fit without changing point appearance.
 builder_alignment_reset <- function(record) {
   normalized <- builder_alignment_normalize(record)
   if (is.null(normalized)) {
     return(NULL)
   }
+  parameters <- builder_alignment_defaults()
+  parameters[c("point_opacity", "point_size")] <- normalized[c(
+    "point_opacity",
+    "point_size"
+  )]
   reset <- builder_alignment_record(
     source = normalized$source,
     source_uri = normalized$source_uri,
     uri = normalized$source_uri,
     base_bounds = normalized$base_bounds,
-    parameters = builder_alignment_defaults(),
+    parameters = parameters,
     image_geometry = list(
       source_width = normalized$source_width,
       source_height = normalized$source_height,
@@ -1323,6 +1328,9 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   has_pixel_data <- FALSE
   seen_idat <- FALSE
   ended_idat <- FALSE
+  bit_depth <- NULL
+  color_type <- NULL
+  seen_palette <- FALSE
   zlib_header <- raw()
   repeat {
     header <- readBin(connection, what = "raw", n = 8L)
@@ -1360,7 +1368,53 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       ) {
         return(FALSE)
       }
+      bit_depth <- as.integer(chunk_data[[9L]])
+      color_type <- as.integer(chunk_data[[10L]])
+      allowed_depths <- switch(
+        as.character(color_type),
+        `0` = c(1L, 2L, 4L, 8L, 16L),
+        `2` = c(8L, 16L),
+        `3` = c(1L, 2L, 4L, 8L),
+        `4` = c(8L, 16L),
+        `6` = c(8L, 16L),
+        integer()
+      )
+      if (
+        !bit_depth %in% allowed_depths ||
+          as.integer(chunk_data[[11L]]) != 0L ||
+          as.integer(chunk_data[[12L]]) != 0L ||
+          !as.integer(chunk_data[[13L]]) %in% 0:1
+      ) {
+        return(FALSE)
+      }
+    } else if (identical(chunk_type, charToRaw("PLTE"))) {
+      if (
+        seen_palette ||
+          seen_idat ||
+          color_type %in% c(0L, 4L) ||
+          chunk_length < 3L ||
+          chunk_length > 768L ||
+          chunk_length %% 3L != 0L ||
+          (color_type == 3L && chunk_length / 3L > 2^bit_depth)
+      ) {
+        return(FALSE)
+      }
+      chunk_data <- readBin(connection, what = "raw", n = chunk_length)
+      checksum <- readBin(connection, what = "raw", n = 4L)
+      if (
+        length(chunk_data) != chunk_length ||
+          !identical(
+            checksum,
+            .builder_png_crc32(c(chunk_type, chunk_data))
+          )
+      ) {
+        return(FALSE)
+      }
+      seen_palette <- TRUE
     } else if (is_idat) {
+      if (color_type == 3L && !seen_palette) {
+        return(FALSE)
+      }
       seen_idat <- TRUE
       take <- min(2L - length(zlib_header), chunk_length)
       if (take > 0L) {
@@ -1482,6 +1536,21 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       if (table > 3L || values == 0L || cursor + values > length(segment)) {
         return(NULL)
       }
+      payload <- as.integer(segment[seq.int(
+        cursor + 1L,
+        length.out = values
+      )])
+      invalid_value <- if (precision == 0L) {
+        any(payload == 0L)
+      } else {
+        any(
+          payload[seq.int(1L, values, by = 2L)] == 0L &
+            payload[seq.int(2L, values, by = 2L)] == 0L
+        )
+      }
+      if (invalid_value) {
+        return(NULL)
+      }
       tables <- c(tables, table)
       cursor <- cursor + values + 1L
     }
@@ -1582,6 +1651,7 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       height <- as.integer(frame[[2L]]) * 256L + as.integer(frame[[3L]])
       width <- as.integer(frame[[4L]]) * 256L + as.integer(frame[[5L]])
       frame_marker <- marker
+      sample_precision <- as.integer(frame[[1L]])
       component_count <- as.integer(frame[[6L]])
       expected_length <- 6L + component_count * 3L
       if (
@@ -1593,14 +1663,25 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       ) {
         return(unsafe())
       }
+      if (
+        !marker %in% c(0xc0L, 0xc1L, 0xc2L) ||
+          sample_precision != 8L
+      ) {
+        return(missing_pixels())
+      }
       component_starts <- seq.int(7L, by = 3L, length.out = component_count)
       component_ids <- as.integer(frame[component_starts])
+      component_sampling <- as.integer(frame[component_starts + 1L])
+      horizontal_sampling <- bitwShiftR(component_sampling, 4L)
+      vertical_sampling <- bitwAnd(component_sampling, 0x0fL)
       component_tables <- as.integer(frame[component_starts + 2L])
       if (
         anyDuplicated(component_ids) ||
+          any(horizontal_sampling < 1L | horizontal_sampling > 4L) ||
+          any(vertical_sampling < 1L | vertical_sampling > 4L) ||
           any(component_tables < 0L | component_tables > 3L)
       ) {
-        return(unsafe())
+        return(missing_pixels())
       }
       frame_components <- stats::setNames(
         component_tables,
@@ -1617,6 +1698,9 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
         integer()
       }
       scan_components <- as.character(as.integer(scan[scan_starts]))
+      scan_tables <- as.integer(scan[scan_starts + 1L])
+      dc_tables <- bitwShiftR(scan_tables, 4L)
+      ac_tables <- bitwAnd(scan_tables, 0x0fL)
       if (
         is.null(width) ||
           is.null(height) ||
@@ -1625,6 +1709,8 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
           payload_length != expected_length ||
           anyDuplicated(scan_components) ||
           !all(scan_components %in% names(frame_components)) ||
+          any(dc_tables > 3L) ||
+          any(ac_tables > 3L) ||
           (frame_marker %in%
             dct_frame &&
             !all(
@@ -1777,6 +1863,19 @@ builder_read_image <- function(
     return(list(error = "The image file is incomplete or truncated."))
   }
   if (identical(mime, "image/png") && !.builder_png_has_pixel_data(path)) {
+    return(list(error = "The image file has no valid encoded pixel data."))
+  }
+  if (
+    identical(mime, "image/png") &&
+      requireNamespace("png", quietly = TRUE) &&
+      !isTRUE(tryCatch(
+        {
+          suppressWarnings(png::readPNG(path, native = TRUE))
+          TRUE
+        },
+        error = function(error) FALSE
+      ))
+  ) {
     return(list(error = "The image file has no valid encoded pixel data."))
   }
   canonical_path <- tryCatch(
