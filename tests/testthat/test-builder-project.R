@@ -3852,6 +3852,47 @@ test_that("restored source identity requires the recorded content fingerprint", 
   expect_false(status$checked)
 })
 
+test_that("content-addressed sources detect same-metadata tampering", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  staged <- file.path(root, "source.rds")
+  writeBin(charToRaw("AAAA"), staged)
+  source_md5 <- unname(tools::md5sum(staged))
+  relative <- paste(
+    "sources",
+    "ds1",
+    "blobs",
+    source_md5,
+    "source.rds",
+    sep = "/"
+  )
+  source <- file.path(root, relative)
+  dir.create(dirname(source), recursive = TRUE)
+  expect_true(file.rename(staged, source))
+  recorded_time <- file.info(source)$mtime[[1L]]
+  record <- runtime$builder_project_dataset_record(
+    list(id = "ds1", settings = list(name = "Dataset")),
+    source = list(
+      kind = "managed",
+      path = relative,
+      status = "ready",
+      fingerprint = runtime$builder_project_file_fingerprint(
+        source,
+        content = TRUE
+      )
+    ),
+    checked = TRUE,
+    root = root
+  )
+
+  writeBin(charToRaw("BBBB"), source)
+  Sys.setFileTime(source, recorded_time)
+  status <- runtime$builder_project_dataset_status(record, root)
+
+  expect_false(status$source_matches)
+  expect_false(status$checked)
+})
+
 test_that("artifact availability validates the primary file and every member", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
