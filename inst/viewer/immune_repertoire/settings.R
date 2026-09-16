@@ -3,7 +3,7 @@
 ## group-by (shown only on tabs they apply to) plus the current tab's
 ## function-specific analysis parameters (IR_PARAM_SPEC). Scatter / Compare
 ## sample selectors live here too, scoped to their tabs.
-output$ir_main_params_UI <- renderUI({
+output$ir_main_params_UI <- shiny::bindEvent(renderUI({
   if (!has_scRepertoire()) {
     return(ir_scRepertoire_missing_ui())
   }
@@ -130,7 +130,7 @@ output$ir_main_params_UI <- renderUI({
       )
     )
   )
-})
+}), input$ir_tabs, data_set())
 
 ## ---- Appearance controls (settings drawer) ---------------------------- ##
 ## Only render the section when the active plot has effective controls.
@@ -347,6 +347,11 @@ ir_analysis_panel <- function(more = FALSE) {
   genes <- ir_gene_families()
 
   controls <- lapply(spec, function(p) {
+    # Dynamic UI can be rebuilt when related repertoire outputs invalidate.
+    # Preserve a live selection when it is still valid instead of resetting
+    # the control to its specification default. isolate() deliberately avoids
+    # making the panel depend on the inputs it creates.
+    current <- isolate(input[[p$id]])
     if (identical(p$type, "numeric")) {
       return(numericInput(
         p$id,
@@ -391,6 +396,14 @@ ir_analysis_panel <- function(more = FALSE) {
         selected <- if (length(choices) > 0) choices[1] else NULL
       }
     }
+    choice_values <- unname(as.character(unlist(choices, use.names = FALSE)))
+    if (
+      !is.null(current) &&
+        length(current) > 0L &&
+        all(as.character(current) %in% choice_values)
+    ) {
+      selected <- current
+    }
     selectInput(
       p$id,
       p$label,
@@ -407,9 +420,9 @@ ir_analysis_panel <- function(more = FALSE) {
   }
 }
 
-output$ir_primary_param_panel <- renderUI({
+output$ir_primary_param_panel <- shiny::bindEvent(renderUI({
   ir_analysis_panel(more = FALSE)
-})
+}), input$ir_tabs, data_set())
 
 output$ir_more_analysis_UI <- renderUI({
   if (!has_scRepertoire() || is.null(ir_data_raw())) {
@@ -420,7 +433,10 @@ output$ir_more_analysis_UI <- renderUI({
 
 ## ---- Reactive: number of samples -------------------------------------- ##
 n_samples <- reactive({
-  data <- ir_data()
+  # Sample count is structural and does not require metadata annotation.
+  # Keeping it on the raw sidecar prevents grouping inputs from invalidating
+  # and rebuilding the visualization tabset.
+  data <- ir_data_raw()
   if (is.null(data)) 0L else length(data)
 })
 
