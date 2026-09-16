@@ -316,6 +316,30 @@ test_that("finishing a check waits for persisted spatial viewport bounds", {
     fixed = TRUE
   )
   expect_match(server, "if (!.builder_alignment_valid_bounds(bounds))", fixed = TRUE)
+  expect_match(
+    server,
+    "active_alignment_settled <- shiny::reactive({",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "alignment_settled = active_alignment_settled",
+    fixed = TRUE
+  )
+
+  review <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    review,
+    "alignment_settled <- isTRUE(alignment_server$alignment_settled())",
+    fixed = TRUE
+  )
+  expect_match(review, "check_ready = alignment_settled", fixed = TRUE)
 })
 
 test_that("alignment preview requeues when its render contract changes", {
