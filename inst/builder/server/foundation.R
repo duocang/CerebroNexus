@@ -860,6 +860,9 @@ settle_failed_builds <- function(recovery, reason) {
     recovery$failed %||% list()
   )
   for (request in failed) {
+    builder_build_progress_remove(
+      request$payload$progress_path %||% ""
+    )
     release <- isolate(active_release())
     release_result <- builder_result_failure(reason)
     if (!is.null(release) && identical(release$id, request$build_id)) {

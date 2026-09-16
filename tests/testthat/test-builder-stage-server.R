@@ -23,7 +23,11 @@ test_that("build progress distinguishes reused and rebuilt datasets", {
   plan$items[[3L]]$reused_artifact <- list(path = "c.crb")
   expect_identical(
     app_env$builder_build_queue_note(plan),
-    "Reusing 3 CRBs · Packaging Viewer…"
+    "Reusing 3 CRBs…"
+  )
+  expect_identical(
+    app_env$builder_build_progress_note(plan, "viewer"),
+    "Packaging Viewer…"
   )
 })
 
@@ -2000,8 +2004,21 @@ test_that("Build enqueue retains auth after failure and resets only after succes
     expect_identical(messages[[1L]]$message, list(action = "close"))
 
     messages <- list()
-    assign("enqueue", function(payload) TRUE, envir = fn_env)
+    progress_root <- withr::local_tempdir()
+    worker(list(alive = TRUE, snapshot_root = progress_root))
+    assign(
+      "enqueue",
+      function(payload) {
+        queued_payload <<- payload
+        TRUE
+      },
+      envir = fn_env
+    )
     expect_true(enqueue_build_plan(plan, auth_accounts = accounts))
+    expect_identical(
+      normalizePath(dirname(queued_payload$progress_path)),
+      normalizePath(progress_root)
+    )
     expect_s3_class(auth_accounts(), "builder_auth_accounts")
     expect_length(auth_accounts(), 0L)
     expect_false(auth_validation()$ok)
