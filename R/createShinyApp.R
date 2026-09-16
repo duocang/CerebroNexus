@@ -2604,7 +2604,10 @@ createShinyApp <- function(
   preflight_data <- .preflightBundleData(cerebro_data)
   backends <- preflight_data$backends
   spatial_backends <- preflight_data$spatial_backends
-  if (is.null(spatial_backends)) {
+  if (
+    !is.list(spatial_backends) ||
+      length(spatial_backends) != length(cerebro_data)
+  ) {
     spatial_backends <- vector("list", length(cerebro_data))
     names(spatial_backends) <- names(cerebro_data)
   }
