@@ -161,7 +161,7 @@ test_that("Xenium segmentation normalizes to the cell-boundary contract", {
     ),
     verbose = FALSE
   )
-  stored <- readRDS(path)$getSpatialData("xenium-fov")
+  stored <- readCerebro(path)$getSpatialData("xenium-fov")
   expect_named(stored$boundaries, c("cell_barcode", "x", "y", "part"))
   expect_setequal(unique(stored$boundaries$cell_barcode), cells)
   pivot <- stored$coordinate_transform$pivot
@@ -376,7 +376,7 @@ test_that("exportFromSeurat exports a spatial reduction without an image", {
     verbose = FALSE
   )
 
-  crb <- readRDS(path)
+  crb <- readCerebro(path)
   expect_identical(crb$availableSpatial(), "spatial")
   spatial <- crb$getSpatialData("spatial")
   expect_equal(nrow(spatial$coordinates), ncol(object))
@@ -967,6 +967,9 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     ),
     envir = renderer
   )
+  renderer$viewerPrivateImageUrl <- function(path) {
+    paste0("session/", basename(path))
+  }
   rendered <- NULL
   renderer$cerebroCellViewRender <- function(
     id,
@@ -1380,10 +1383,17 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
       spatial_projection_to_display = "sliceB"
     )
     session$flushReact()
-    expect_length(
-      as.character(output$spatial_projection_background_selector_UI$html),
-      0L
+    all_roi_background_html <- as.character(
+      output$spatial_projection_background_selector_UI$html
     )
+    expect_match(all_roi_background_html, ">IF</option>", fixed = TRUE)
+    expect_match(all_roi_background_html, ">MIBI</option>", fixed = TRUE)
+    expect_false(grepl(
+      ">H&amp;E</option>",
+      all_roi_background_html,
+      fixed = TRUE
+    ))
+    expect_false(grepl(">DAPI</option>", all_roi_background_html, fixed = TRUE))
     session$setInputs(spatial_projection_roi = "C")
     session$flushReact()
     main_html <- as.character(
