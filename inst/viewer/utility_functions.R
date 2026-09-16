@@ -47,6 +47,167 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
+viewerSelectedDatasetName <- function() {
+  if (!exists("available_crb_files", inherits = TRUE)) {
+    return(NULL)
+  }
+  available <- get("available_crb_files", inherits = TRUE)
+  viewerDatasetName(available$files, available$selected)
+}
+
+viewerImageMime <- function(path) {
+  if (!isTRUE(file_test("-f", path))) {
+    return(NULL)
+  }
+  ext <- tolower(tools::file_ext(path))
+  if (!ext %in% c("png", "jpg", "jpeg")) {
+    return(NULL)
+  }
+  bytes <- tryCatch(
+    readBin(path, what = "raw", n = 8L),
+    error = function(error) raw()
+  )
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+  if (identical(ext, "png") && identical(bytes, png_magic)) {
+    return("image/png")
+  }
+  if (
+    ext %in% c("jpg", "jpeg") &&
+      length(bytes) >= length(jpeg_magic) &&
+      identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+  ) {
+    return("image/jpeg")
+  }
+  NULL
+}
+
+# Serve trusted image bytes through a session-scoped route. Filesystem paths and
+# Base64 payloads never enter the browser response model.
+viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
+  if (is.null(session)) {
+    session <- get0("session", envir = parent.frame(), inherits = TRUE)
+  }
+  if (is.null(session) || !is.function(session$registerDataObj)) {
+    return(NULL)
+  }
+  path <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  mime <- if (is.null(path)) NULL else viewerImageMime(path)
+  if (is.null(path) || is.null(mime)) {
+    return(NULL)
+  }
+  md5 <- tryCatch(
+    unname(as.character(tools::md5sum(path))),
+    error = function(error) NA_character_
+  )
+  if (
+    is.na(md5) ||
+      (!is.null(expected_md5) && !identical(as.character(expected_md5), md5))
+  ) {
+    return(NULL)
+  }
+  if (is.null(session$userData$cerebro_private_image_urls)) {
+    session$userData$cerebro_private_image_urls <- new.env(parent = emptyenv())
+  }
+  cache <- session$userData$cerebro_private_image_urls
+  cached <- get0(md5, envir = cache, inherits = FALSE)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+  data <- list(path = path, mime = mime, md5 = md5)
+  url <- session$registerDataObj(
+    paste0("cerebro-image-", md5),
+    data,
+    function(data, request) {
+      current_md5 <- tryCatch(
+        unname(as.character(tools::md5sum(data$path))),
+        error = function(error) NA_character_
+      )
+      if (!identical(current_md5, data$md5)) {
+        return(shiny::httpResponse(404L, "text/plain", "Not found"))
+      }
+      bytes <- tryCatch(
+        readBin(data$path, what = "raw", n = file.size(data$path)),
+        error = function(error) NULL
+      )
+      if (is.null(bytes)) {
+        return(shiny::httpResponse(404L, "text/plain", "Not found"))
+      }
+      shiny::httpResponse(
+        200L,
+        data$mime,
+        bytes,
+        headers = list(
+          "Cache-Control" = "private, max-age=31536000, immutable",
+          "ETag" = paste0('"', data$md5, '"'),
+          "X-Content-Type-Options" = "nosniff"
+        )
+      )
+    }
+  )
+  assign(md5, url, envir = cache)
+  url
+}
+
+viewerTrekkerExternalImage <- function() {
+  if (!exists("Cerebro.options", inherits = TRUE)) {
+    return(NULL)
+  }
+  options <- get("Cerebro.options", inherits = TRUE)
+  dataset <- viewerSelectedDatasetName()
+  images <- options[["spatial_images"]]
+  if (
+    is.null(dataset) ||
+      !is.list(images) ||
+      !dataset %in% names(images) ||
+      !is.list(images[[dataset]])
+  ) {
+    return(NULL)
+  }
+  configured <- images[[dataset]][["trekker"]]
+  if (!is.list(configured) || !length(configured)) {
+    return(NULL)
+  }
+  configured_names <- names(configured)
+  descriptor <- configured[[1L]]
+  relative <- if (is.list(descriptor)) descriptor$path else descriptor
+  label <- if (
+    !is.null(configured_names) &&
+      length(configured_names) >= 1L &&
+      !is.na(configured_names[[1L]]) &&
+      nzchar(configured_names[[1L]])
+  ) {
+    configured_names[[1L]]
+  } else if (is.character(relative) && length(relative) == 1L) {
+    basename(relative)
+  } else {
+    "Trekker background"
+  }
+  root <- options[["cerebro_root"]]
+  path <- authorized_spatial_image_path(relative, relative, root)
+  if (is.null(path)) {
+    return(NULL)
+  }
+  url <- viewerPrivateImageUrl(path)
+  if (is.null(url)) {
+    return(NULL)
+  }
+  list(
+    uri = url,
+    bounds = if (is.list(descriptor)) descriptor$bounds else NULL,
+    viewport_bounds = if (is.list(descriptor)) {
+      descriptor$viewport_bounds
+    } else {
+      NULL
+    },
+    preset = spatialImagePreset(options, dataset, "trekker", label),
+    label = if (is.list(descriptor)) descriptor$label %||% label else label
+  )
+}
+
 viewerColourGroupChoices <- function(
   metadata,
   groups,
@@ -204,6 +365,34 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
   )
 }
 
+spatialEmbeddedImagePreset <- function(preset, alignment) {
+  if (!is.list(alignment)) {
+    return(preset)
+  }
+  number <- function(key, fallback) {
+    value <- suppressWarnings(as.numeric(alignment[[key]]))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      fallback
+    } else {
+      unname(value)
+    }
+  }
+  preset$offsetX <- number("dx", preset$offsetX)
+  preset$offsetY <- number("dy", preset$offsetY)
+  embedded_scale <- number("scale", preset$scaleX)
+  preset$scaleX <- embedded_scale
+  preset$scaleY <- embedded_scale
+  preset$rotation <- number("rotation", preset$rotation)
+  if (!is.null(alignment[["flip_x"]])) {
+    preset$flipX <- isTRUE(alignment[["flip_x"]])
+  }
+  if (!is.null(alignment[["flip_y"]])) {
+    preset$flipY <- isTRUE(alignment[["flip_y"]])
+  }
+  preset$opacity <- number("image_opacity", preset$opacity)
+  preset
+}
+
 spatialPlotRotation <- function(options, dataset, spatial_name) {
   configured <- if (is.list(options)) {
     options[["spatial_plot_rotation"]]
@@ -229,15 +418,138 @@ spatialPlotRotation <- function(options, dataset, spatial_name) {
   }
 }
 
-rotateSpatialCoordinates <- function(coordinates, degrees) {
+spatialPointAppearance <- function(options, dataset, spatial_name) {
+  setting <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_point_appearance"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  fields <- c("point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 2L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[1L]] < 0 ||
+      values[[1L]] > 1 ||
+      values[[2L]] <= 0 ||
+      values[[2L]] > 20
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
+spatialRoiSettings <- function(options, dataset, spatial_name) {
+  settings <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_roi_settings"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  if (is.list(settings) && !is.object(settings)) settings else list()
+}
+
+spatialRoiSetting <- function(options, dataset, spatial_name, roi) {
+  if (
+    !is.character(roi) ||
+      length(roi) != 1L ||
+      is.na(roi) ||
+      !nzchar(roi)
+  ) {
+    return(NULL)
+  }
+  setting <- spatialRoiSettings(options, dataset, spatial_name)[[roi]]
+  fields <- c("rotation_degrees", "point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 3L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[2L]] < 0 ||
+      values[[2L]] > 1 ||
+      values[[3L]] <= 0
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
+rotateSpatialCoordinates <- function(coordinates, degrees, pivot = c(0, 0)) {
   if (is.null(coordinates) || identical(degrees, 0)) {
     return(coordinates)
   }
   theta <- degrees * pi / 180
-  x <- coordinates[, 1]
-  y <- coordinates[, 2]
-  coordinates[, 1] <- x * cos(theta) - y * sin(theta)
-  coordinates[, 2] <- x * sin(theta) + y * cos(theta)
+  x <- coordinates[, 1] - pivot[[1L]]
+  y <- coordinates[, 2] - pivot[[2L]]
+  coordinates[, 1] <- x * cos(theta) - y * sin(theta) + pivot[[1L]]
+  coordinates[, 2] <- x * sin(theta) + y * cos(theta) + pivot[[2L]]
+  coordinates
+}
+
+rotateSpatialCoordinatesByRoi <- function(
+  coordinates,
+  roi_values,
+  settings,
+  degrees = 0
+) {
+  coordinates <- rotateSpatialCoordinates(coordinates, degrees)
+  if (
+    is.null(coordinates) ||
+      !is.list(settings) ||
+      !length(settings) ||
+      length(roi_values) != nrow(coordinates)
+  ) {
+    return(coordinates)
+  }
+  for (roi in intersect(unique(as.character(roi_values)), names(settings))) {
+    rotation <- suppressWarnings(as.numeric(
+      settings[[roi]][["rotation_degrees"]]
+    ))
+    if (length(rotation) != 1L || is.na(rotation) || !is.finite(rotation)) {
+      next
+    }
+    selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    roi_coordinates <- coordinates[selected, , drop = FALSE]
+    pivot <- vapply(
+      roi_coordinates[, 1:2, drop = FALSE],
+      function(values) mean(range(values, na.rm = TRUE)),
+      numeric(1)
+    )
+    if (any(!is.finite(pivot))) {
+      next
+    }
+    coordinates[selected, ] <- rotateSpatialCoordinates(
+      roi_coordinates,
+      rotation,
+      pivot
+    )
+  }
   coordinates
 }
 
@@ -310,12 +622,18 @@ viewerOutputTab <- function(ids) {
 }
 
 ## Apply the shared projection filters and sample original metadata row ids.
-viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
-  groups <- getGroups()
-  percentage <- input[[paste0(prefix, "_percentage_cells_to_show")]]
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  canonical_full = FALSE,
+  include = NULL,
+  groups = getGroups(),
+  input_values = input
+) {
+  percentage <- input_values[[paste0(prefix, "_percentage_cells_to_show")]]
   filters <- stats::setNames(
     lapply(groups, function(group) {
-      value <- input[[paste0(prefix, "_group_filter_", group)]]
+      value <- input_values[[paste0(prefix, "_group_filter_", group)]]
       if (is.null(value)) getGroupLevels(group) else value
     }),
     groups
@@ -341,7 +659,7 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       logical(1)
     )
   ]
-  if (!length(filters)) {
+  if (!length(filters) && is.null(include)) {
     cell_count <- nrow(metadata)
     if (!cell_count) {
       return(integer())
@@ -350,9 +668,21 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       size <- ceiling(cell_count * percentage / 100)
       return(sample.int(cell_count, size))
     }
+    if (canonical_full) {
+      return(seq_len(cell_count))
+    }
     return(sample.int(cell_count))
   }
-  indices <- which(cerebroGroupFilterMask(metadata, filters))
+  keep <- if (length(filters)) {
+    cerebroGroupFilterMask(metadata, filters)
+  } else {
+    rep(TRUE, nrow(metadata))
+  }
+  if (!is.null(include)) {
+    stopifnot(is.logical(include), length(include) == nrow(metadata))
+    keep <- keep & include
+  }
+  indices <- which(keep)
   if (!length(indices)) {
     return(indices)
   }
@@ -484,6 +814,12 @@ viewerExpressionValues <- function(data_set, cells, genes) {
   values[!vapply(values, is.null, logical(1))]
 }
 
+.runtimeDiagnostic <- function(x) {
+  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) {
+    print(x)
+  }
+}
+
 cerebroCellViewMessage <- function(
   id,
   meta,
@@ -577,6 +913,23 @@ cerebroCellViewMessage <- function(
   if (is.list(extra$edges)) {
     for (field in intersect(c("x0", "y0", "x1", "y1"), names(extra$edges))) {
       extra$edges[[field]] <- wire_array(extra$edges[[field]])
+    }
+  }
+  if (is.list(extra$cell_boundaries)) {
+    for (field in intersect(
+      c("cell_barcode", "part", "x", "y"),
+      names(extra$cell_boundaries)
+    )) {
+      extra$cell_boundaries[[field]] <- wire_array(
+        extra$cell_boundaries[[field]]
+      )
+    }
+  }
+  if (is.list(extra$molecule_points)) {
+    for (field in intersect(c("x", "y"), names(extra$molecule_points))) {
+      extra$molecule_points[[field]] <- wire_array(
+        extra$molecule_points[[field]]
+      )
     }
   }
 
@@ -2714,10 +3067,12 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
+    .runtimeDiagnostic(glue::glue(
+      "[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"
+    ))
     return(.cloneCachedCrb(cached$object))
   }
-  print(glue::glue(
+  .runtimeDiagnostic(glue::glue(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
   obj <- read_cerebro_file(path)
@@ -3299,7 +3654,7 @@ get_or_load_crb <- function(
               call. = FALSE
             )
           }
-          print(glue::glue(
+          .runtimeDiagnostic(glue::glue(
             "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
           ))
           BPCells::open_matrix_dir(dir = loc_abs)
@@ -3314,7 +3669,9 @@ get_or_load_crb <- function(
           call. = FALSE
         )
       }
-      print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
+      .runtimeDiagnostic(glue::glue(
+        "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
+      ))
       obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
     }
   } else if (be$type == "h5") {
@@ -3340,7 +3697,7 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue(
+    .runtimeDiagnostic(glue::glue(
       "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
     ))
 
