@@ -1075,14 +1075,16 @@ dedent <- function(string) {
     tryCatch(
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
-        spatial_backends[[index]] <- .spatialMoleculeBackend(
-          object,
-          cerebro_data[[index]]
-        )
-        object <- .attachCerebroSpatialMolecules(
-          object,
-          cerebro_data[[index]]
-        )
+        if (.isRecognizedCerebroObject(object)) {
+          spatial_backends[[index]] <- .spatialMoleculeBackend(
+            object,
+            cerebro_data[[index]]
+          )
+          object <- .attachCerebroSpatialMolecules(
+            object,
+            cerebro_data[[index]]
+          )
+        }
         spatial_catalogs[[index]] <- inspect_spatial(
           object,
           names(cerebro_data)[[index]]
