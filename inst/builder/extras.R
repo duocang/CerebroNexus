@@ -1264,6 +1264,57 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
   c(width = width, height = height)
 }
 
+.builder_jpeg_exif_orientation <- function(segment) {
+  signature <- c(charToRaw("Exif"), raw(2L))
+  if (length(segment) < 14L || !identical(segment[1:6], signature)) {
+    return(NULL)
+  }
+  tiff <- segment[-seq_len(6L)]
+  little_endian <- if (identical(tiff[1:2], charToRaw("II"))) {
+    TRUE
+  } else if (identical(tiff[1:2], charToRaw("MM"))) {
+    FALSE
+  } else {
+    return(NULL)
+  }
+  uint <- function(index, size) {
+    if (
+      !is.finite(index) ||
+        index < 1 ||
+        index + size - 1 > length(tiff)
+    ) {
+      return(NA_real_)
+    }
+    values <- as.numeric(as.integer(tiff[seq.int(index, length.out = size)]))
+    powers <- if (little_endian) seq_len(size) - 1L else rev(seq_len(size)) - 1L
+    sum(values * 256^powers)
+  }
+  if (!identical(uint(3L, 2L), 42)) {
+    return(NULL)
+  }
+  ifd_index <- uint(5L, 4L) + 1
+  entry_count <- uint(ifd_index, 2L)
+  entry_start <- ifd_index + 2
+  available_entries <- floor((length(tiff) - entry_start + 1) / 12)
+  if (!is.finite(entry_count) || available_entries < 1L) {
+    return(NULL)
+  }
+  for (entry_index in seq_len(min(entry_count, available_entries))) {
+    entry <- entry_start + (entry_index - 1L) * 12L
+    if (
+      identical(uint(entry, 2L), 0x0112) &&
+        identical(uint(entry + 2L, 2L), 3) &&
+        identical(uint(entry + 4L, 4L), 1)
+    ) {
+      orientation <- uint(entry + 8L, 2L)
+      if (orientation %in% 1:8) {
+        return(as.integer(orientation))
+      }
+    }
+  }
+  NULL
+}
+
 .builder_jpeg_dimensions <- function(bytes) {
   unsafe <- function() {
     list(
@@ -1294,6 +1345,7 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
     0xcf
   )
   standalone <- c(0x01, 0xd8, 0xd9, 0xd0:0xd7)
+  orientation <- 1L
   cursor <- 3L
   while (cursor <= total) {
     while (cursor <= total && value_at(cursor) != 0xffL) {
@@ -1331,6 +1383,12 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
     ) {
       return(unsafe())
     }
+    if (marker == 0xe1L && segment_length >= 16L) {
+      orientation <- .builder_jpeg_exif_orientation(
+        bytes[(marker_index + 3L):(marker_index + segment_length)]
+      ) %||%
+        orientation
+    }
     if (marker %in% start_of_frame) {
       if (segment_length < 7L || marker_index + 7L > total) {
         return(unsafe())
@@ -1339,6 +1397,11 @@ BUILDER_IMAGE_MAX_BYTES <- 1024^3
       width <- value_at(marker_index + 6L) * 256 + value_at(marker_index + 7L)
       if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
         return(unsafe())
+      }
+      if (orientation %in% 5:8) {
+        swap <- width
+        width <- height
+        height <- swap
       }
       return(c(width = as.integer(width), height = as.integer(height)))
     }
