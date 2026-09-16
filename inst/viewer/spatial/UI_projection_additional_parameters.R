@@ -69,8 +69,16 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
   } else {
     character()
   }
-  molecule_scope <- nzchar(input[["spatial_projection_sample"]] %||% "") ||
-    spatial_roi_is_specific(input[["spatial_projection_roi"]] %||% "")
+  molecule_split <- input[["spatial_projection_split_by"]] %||% ""
+  molecule_scope <- identical(
+    input[["spatial_projection_roi"]],
+    "__separate__"
+  ) ||
+    nzchar(input[["spatial_projection_sample"]] %||% "") ||
+    spatial_roi_is_specific(input[["spatial_projection_roi"]] %||% "") ||
+    (identical(input[["spatial_projection_plot_type"]], "ImageDimPlot") &&
+      nzchar(molecule_split) &&
+      !identical(molecule_split, "__none__"))
 
   tagList(
     sliderInput(
@@ -96,7 +104,8 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
     },
     if (length(molecule_genes) && molecule_scope) {
       helpText(
-        "Molecules are hidden while Sample or ROI filtering is active because ",
+        "Molecules are hidden while Sample, ROI, or Split by filtering is active ",
+        "because ",
         "the exported molecule records are not assigned to cells or ROIs."
       )
     } else if (length(molecule_genes)) {

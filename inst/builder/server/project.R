@@ -3025,8 +3025,9 @@ observe({
             }
             stored_item <- item
             stored_item$reused_artifact <- NULL
-            revision <- if (item$id %in% entry_ids) {
-              entries[[match(item$id, entry_ids)]]$revision %||% 0L
+            entry_index <- match(item$id, entry_ids)
+            revision <- if (!is.na(entry_index)) {
+              entries[[entry_index]]$revision %||% 0L
             } else {
               0L
             }
@@ -3036,11 +3037,17 @@ observe({
               path = bundle$path,
               fingerprint = bundle$fingerprint,
               built_from_revision = as.integer(revision),
-              built_from_configuration = if (item$id %in% entry_ids) {
-                builder_project_configuration_digest(entries[[match(
-                  item$id,
-                  entry_ids
-                )]])
+              built_from_source_fingerprint = if (!is.na(entry_index)) {
+                builder_project_artifact_source_fingerprint(
+                  entries[[entry_index]],
+                  item,
+                  previous_artifacts[[item$id]] %||% NULL
+                )
+              } else {
+                NULL
+              },
+              built_from_configuration = if (!is.na(entry_index)) {
+                builder_project_configuration_digest(entries[[entry_index]])
               } else {
                 NULL
               },

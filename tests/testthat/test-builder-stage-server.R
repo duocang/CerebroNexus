@@ -199,7 +199,8 @@ test_that("Build reuses current project CRBs after preserving review identity", 
       snapshot = list(
         path = "/private/dataset-a",
         owner_token = "owner-a",
-        object_md5 = strrep("a", 32L)
+        object_md5 = strrep("a", 32L),
+        source_fingerprint = "source-a"
       ),
       profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A"),
@@ -220,6 +221,8 @@ test_that("Build reuses current project CRBs after preserving review identity", 
         content = TRUE
       ),
       members = list(),
+      built_from_revision = 0L,
+      built_from_source_fingerprint = "source-a",
       built_from_configuration = app_env$builder_project_configuration_digest(
         entry
       )

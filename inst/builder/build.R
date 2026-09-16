@@ -98,6 +98,22 @@ builder_build_progress_remove <- function(path) {
   !file.exists(path)
 }
 
+builder_build_progress_finish <- function(plan, path, current_note = NULL) {
+  phase <- builder_build_progress_read(path)
+  builder_build_progress_remove(path)
+  note <- if (is.null(phase)) {
+    NULL
+  } else {
+    builder_build_progress_note(plan, phase)
+  }
+  list(
+    phase = phase,
+    note = note,
+    defer_settlement = identical(phase, "viewer") &&
+      !identical(current_note, note)
+  )
+}
+
 .builder_build_progress_callback <- function(path) {
   function(phase) {
     if (is.null(path)) {
@@ -236,6 +252,20 @@ builder_build_progress_remove <- function(path) {
   length(observed) == 1L &&
     !is.na(observed) &&
     identical(as.character(observed), as.character(fingerprint$md5))
+}
+
+.builder_build_copy_verified <- function(
+  source,
+  target,
+  fingerprint,
+  .copy = .builder_build_copy_file
+) {
+  copied <- is.function(.copy) && isTRUE(.copy(source, target))
+  valid <- copied && .builder_build_fingerprint_matches(target, fingerprint)
+  if (!valid && file.exists(target)) {
+    unlink(target, force = TRUE)
+  }
+  valid
 }
 
 .builder_build_failure <- function(message, failures = character()) {
@@ -1108,17 +1138,21 @@ builder_verify_crb <- function(path, item) {
 
 .builder_build_materialize_spatial_images <- function(item, stage) {
   safe_component <- function(value, fallback) {
+    original <- enc2utf8(as.character(value)[[1L]])
+    digest <- substr(as.character(openssl::md5(charToRaw(original))), 1L, 12L)
     value <- tolower(iconv(
-      as.character(value),
+      original,
       to = "ASCII//TRANSLIT",
       sub = ""
     ))
     value <- gsub("[^a-z0-9]+", "-", value)
     value <- gsub("(^-+|-+$)", "", value)
-    if (!nzchar(value)) fallback else substr(value, 1L, 48L)
+    value <- if (is.na(value) || !nzchar(value)) fallback else value
+    paste0(substr(value, 1L, 35L), "-", digest)
   }
   images <- list()
   settings <- list()
+  materialized_paths <- character()
   collection_input <- item$images %||% list()
   if (!is.null(item$trekker_alignment)) {
     collection_input[["trekker"]] <- item$trekker_alignment
@@ -1173,43 +1207,28 @@ builder_verify_crb <- function(path, item) {
         `image/jpeg` = "jpg",
         stop("Builder image has an unsupported MIME type.", call. = FALSE)
       )
-      filename <- builder_safe_file_name(
-        if (is.list(source)) source$name else NULL,
-        label
-      )
       filename <- paste0(
-        tools::file_path_sans_ext(filename),
+        safe_component(
+          paste(
+            label,
+            if (is.list(source)) source$name %||% "" else "",
+            inspected$source_content_md5,
+            sep = "::"
+          ),
+          "image"
+        ),
         ".",
         extension
       )
-      existing_paths <- unlist(
-        lapply(images[[item$name]][[section_id]] %||% list(), `[[`, "path"),
-        use.names = FALSE
-      )
-      existing_names <- if (length(existing_paths)) {
-        basename(existing_paths)
-      } else {
-        character()
-      }
-      if (filename %in% existing_names) {
-        existing_stems <- tools::file_path_sans_ext(existing_names[
-          tolower(tools::file_ext(existing_names)) == extension
-        ])
-        stem <- utils::tail(
-          make.unique(c(
-            existing_stems,
-            tools::file_path_sans_ext(filename)
-          )),
-          1L
-        )
-        filename <- paste0(stem, ".", extension)
-      }
       materialized <- file.path(section_dir, filename)
+      if (materialized %in% materialized_paths || file.exists(materialized)) {
+        stop("Builder Spatial image asset paths must be unique.", call. = FALSE)
+      }
       if (
         !file.copy(
           source_path,
           materialized,
-          overwrite = TRUE,
+          overwrite = FALSE,
           copy.mode = TRUE
         )
       ) {
@@ -1228,6 +1247,7 @@ builder_verify_crb <- function(path, item) {
           call. = FALSE
         )
       }
+      materialized_paths <- c(materialized_paths, materialized)
       materialized <- normalizePath(
         materialized,
         winslash = "/",
@@ -1395,7 +1415,11 @@ builder_execute_plan <- function(
       target <- file.path(stage, item$filename)
       if (
         !.builder_build_path_within(target, stage, must_exist = FALSE) ||
-          !.builder_build_copy_file(reused$path, target)
+          !.builder_build_copy_verified(
+            reused$path,
+            target,
+            reused$fingerprint %||% list()
+          )
       ) {
         return(.builder_build_failure(paste0(
           item$name,
@@ -1426,7 +1450,11 @@ builder_execute_plan <- function(
         dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
         if (
           !.builder_build_path_within(destination, stage, must_exist = FALSE) ||
-            !.builder_build_copy_file(member_source, destination)
+            !.builder_build_copy_verified(
+              member_source,
+              destination,
+              member$fingerprint %||% list()
+            )
         ) {
           return(.builder_build_failure(paste0(
             item$name,

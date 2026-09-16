@@ -963,9 +963,9 @@ observe({
         nxt$section,
         nxt$assay,
         nxt$layer,
-        nxt$coordinate_transforms,
-        BUILDER_PREVIEW_MAX,
-        request
+        base_coordinate_transform = nxt$base_coordinate_transform,
+        max_cells = BUILDER_PREVIEW_MAX,
+        request = request
       ),
       align_all = builder_session_section_bounds(
         current_worker,
@@ -1653,8 +1653,26 @@ observe({
     }
     return()
   }
+  terminal_progress <- NULL
   if (identical(p$kind, "build")) {
-    builder_build_progress_remove(p$progress_path %||% "")
+    terminal_progress <- builder_build_progress_finish(
+      p$plan,
+      p$progress_path %||% "",
+      current_note = isolate(busy_note())
+    )
+    if (isTRUE(terminal_progress$defer_settlement)) {
+      busy_note(terminal_progress$note)
+    }
+  }
+  settle_completed_build <- function(release, value) {
+    settle <- function() {
+      start_builder_release_settlement(release, value, request)
+    }
+    if (isTRUE(terminal_progress$defer_settlement)) {
+      session$onFlushed(settle, once = TRUE)
+      return(invisible(TRUE))
+    }
+    settle()
   }
   if (!is.null(got$result$error)) {
     worker_error <- if (identical(p$kind, "load")) {
@@ -1697,7 +1715,9 @@ observe({
     return()
   }
   protocol(completed$protocol)
-  busy_note(NULL)
+  if (!isTRUE(terminal_progress$defer_settlement)) {
+    busy_note(NULL)
+  }
   if (!isTRUE(completed$accepted)) {
     if (identical(request$kind, "build")) {
       release <- isolate(active_release())
@@ -1707,12 +1727,11 @@ observe({
       ) {
         release <- NULL
       }
-      start_builder_release_settlement(
+      settle_completed_build(
         release,
         builder_result_failure(
           "A stale Build result was rejected. Retry the action."
-        ),
-        request
+        )
       )
       return()
     }
@@ -1756,10 +1775,9 @@ observe({
       ) {
         release <- NULL
       }
-      start_builder_release_settlement(
+      settle_completed_build(
         release,
-        builder_result_failure(completed$error),
-        request
+        builder_result_failure(completed$error)
       )
       return()
     } else if (identical(p$kind, "load") && !cancelled) {
@@ -2111,7 +2129,7 @@ observe({
     ) {
       release <- NULL
     }
-    start_builder_release_settlement(release, value, request)
+    settle_completed_build(release, value)
   } else if (identical(p$kind, "drop")) {
     active_state <- store()
     retained <- active_state$datasets
