@@ -383,11 +383,17 @@ builder_spatial_alignment_server <- function(
     token <- shiny::isolate(expected_controls_token()) + 1L
     expected_controls_token(token)
     expected_controls(parameters)
-    later::later(function() {
-      if (identical(shiny::isolate(expected_controls_token()), token)) {
-        expected_controls(NULL)
-      }
-    }, delay = 1)
+    later::later(
+      function() {
+        if (isTRUE(session$isClosed())) {
+          return(invisible(NULL))
+        }
+        if (identical(shiny::isolate(expected_controls_token()), token)) {
+          expected_controls(NULL)
+        }
+      },
+      delay = 1
+    )
     invisible(token)
   }
 
@@ -1665,11 +1671,13 @@ builder_spatial_alignment_server <- function(
     section <- scalar_text(event$section)
     roi <- scalar_text(event$roi, empty = TRUE)
     image <- scalar_text(event$image, empty = TRUE)
-    if (any(vapply(
-      list(dataset, snapshot_identity, section, roi, image),
-      is.null,
-      logical(1)
-    ))) {
+    if (
+      any(vapply(
+        list(dataset, snapshot_identity, section, roi, image),
+        is.null,
+        logical(1)
+      ))
+    ) {
       return(NULL)
     }
     list(
@@ -1774,7 +1782,9 @@ builder_spatial_alignment_server <- function(
     ) {
       return(invisible(FALSE))
     }
-    images <- builder_image_collection_normalize(entry$settings$images %||% list())
+    images <- builder_image_collection_normalize(
+      entry$settings$images %||% list()
+    )
     changed <- FALSE
     active_record <- NULL
     if (nzchar(owner$image)) {
@@ -1786,18 +1796,22 @@ builder_spatial_alignment_server <- function(
         return(invisible(FALSE))
       }
     }
-    if (builder_spatial_section_is_spatial(
-      kind_for_entry(entry, owner$section)
-    )) {
-      if (!isTRUE(store_coordinate_draft(
-        spec = coordinate,
-        dataset = owner$dataset,
-        section = owner$section,
-        snapshot_identity = owner$snapshot_identity,
-        sequence = sequence,
-        force = TRUE,
-        roi = owner$roi
-      ))) {
+    if (
+      builder_spatial_section_is_spatial(
+        kind_for_entry(entry, owner$section)
+      )
+    ) {
+      if (
+        !isTRUE(store_coordinate_draft(
+          spec = coordinate,
+          dataset = owner$dataset,
+          section = owner$section,
+          snapshot_identity = owner$snapshot_identity,
+          sequence = sequence,
+          force = TRUE,
+          roi = owner$roi
+        ))
+      ) {
         return(invisible(FALSE))
       }
     }
@@ -1824,11 +1838,13 @@ builder_spatial_alignment_server <- function(
         ),
         next_record
       )
-      if (!isTRUE(all.equal(
-        next_record,
-        active_record,
-        check.attributes = FALSE
-      ))) {
+      if (
+        !isTRUE(all.equal(
+          next_record,
+          active_record,
+          check.attributes = FALSE
+        ))
+      ) {
         images[[owner$section]][[owner$image]] <- next_record
         active_record <- next_record
         changed <- TRUE
@@ -1839,10 +1855,12 @@ builder_spatial_alignment_server <- function(
     if (nzchar(owner$roi)) {
       drafts <- shiny::isolate(roi_point_appearance_drafts())
       appearance_record <- c(owner, appearance)
-      if (!identical(
-        drafts[[owner$dataset]][[owner$section]][[owner$roi]],
-        appearance_record
-      )) {
+      if (
+        !identical(
+          drafts[[owner$dataset]][[owner$section]][[owner$roi]],
+          appearance_record
+        )
+      ) {
         drafts[[owner$dataset]][[owner$section]][[owner$roi]] <-
           appearance_record
         next_roi_drafts <- drafts
@@ -2392,7 +2410,7 @@ builder_spatial_alignment_server <- function(
     }
     if (
       !preview_matches_owner(preview, entry, section) ||
-      !isTRUE(preview$available) ||
+        !isTRUE(preview$available) ||
         !.builder_alignment_valid_bounds(preview$bounds)
     ) {
       pending_upload(NULL)
@@ -2524,7 +2542,7 @@ builder_spatial_alignment_server <- function(
     }
     if (
       is.null(preview) ||
-      is.null(contract) ||
+        is.null(contract) ||
         is.null(entry) ||
         is.null(section) ||
         !preview_matches_owner(preview, entry, section)
