@@ -626,6 +626,42 @@ test_that("Windows path budget fails before a stage is created", {
       os_type = "windows"
     ))
 
+    project_checkpoint_stage <- paste0(
+      "C:/Users/example/Projects/2026_09_14_cerebroNexus/saved/checkpoints/",
+      ".20260916T154023.cerebro-control/stages/stage-9c6019424fd8"
+    )
+    actual_viewer_paths <- file.path(
+      "viewer",
+      c(
+        "gene_expression/UI_projection_genes_separate_panels.R",
+        "www/custom.css"
+      )
+    )
+    project_candidates <- .builder_coordinator_windows_path_candidates(
+      bpcells_plan,
+      project_checkpoint_stage,
+      app_expected = TRUE,
+      .tempfile = function(pattern, tmpdir, fileext = "") {
+        file.path(tmpdir, paste0(pattern, "9c60742a6a1b", fileext))
+      },
+      .viewer_relative = actual_viewer_paths
+    )
+    expect_false(any(grepl("viewer-resource", project_candidates, fixed = TRUE)))
+    expect_true(any(endsWith(
+      project_candidates,
+      actual_viewer_paths[[1L]]
+    )))
+    expect_true(.builder_coordinator_assert_windows_path_budget(
+      bpcells_plan,
+      project_checkpoint_stage,
+      app_expected = TRUE,
+      os_type = "windows",
+      .tempfile = function(pattern, tmpdir, fileext = "") {
+        file.path(tmpdir, paste0(pattern, "9c60742a6a1b", fileext))
+      },
+      .viewer_relative = actual_viewer_paths
+    ))
+
     deep_stage <- paste0(
       "C:/",
       paste(rep("deep-output-folder", 14L), collapse = "/"),
