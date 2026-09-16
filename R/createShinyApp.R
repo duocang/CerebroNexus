@@ -1162,14 +1162,31 @@ dedent <- function(string) {
   fingerprints
 ) {
   labels <- names(cerebro_data)
+  legacy_preflight <- is.list(preflight_data) &&
+    identical(names(preflight_data), c("backends", "spatial_catalogs"))
+  if (legacy_preflight) {
+    preflight_data$spatial_backends <- stats::setNames(
+      vector("list", length(cerebro_data)),
+      labels
+    )
+    preflight_data <- preflight_data[c(
+      "backends",
+      "spatial_backends",
+      "spatial_catalogs"
+    )]
+  }
   valid <- is.character(cerebro_data) &&
     length(cerebro_data) > 0L &&
     !is.null(labels) &&
     !anyNA(labels) &&
     all(nzchar(labels)) &&
     is.list(preflight_data) &&
-    identical(names(preflight_data), c("backends", "spatial_catalogs")) &&
+    identical(
+      names(preflight_data),
+      c("backends", "spatial_backends", "spatial_catalogs")
+    ) &&
     identical(names(preflight_data$backends), labels) &&
+    identical(names(preflight_data$spatial_backends), labels) &&
     identical(names(preflight_data$spatial_catalogs), labels) &&
     is.list(fingerprints) &&
     identical(names(fingerprints), labels)
@@ -1187,6 +1204,7 @@ dedent <- function(string) {
       key = .bundlePreflightCacheKey(observed$path, labels[[index]]),
       fingerprint = observed,
       backend = preflight_data$backends[[index]],
+      spatial_backend = preflight_data$spatial_backends[[index]],
       spatial_catalog = preflight_data$spatial_catalogs[[index]]
     )
   }
@@ -1212,6 +1230,7 @@ dedent <- function(string) {
   }
   list(
     backend = entry$backend,
+    spatial_backend = entry$spatial_backend,
     spatial_catalog = entry$spatial_catalog
   )
 }
@@ -1236,6 +1255,7 @@ dedent <- function(string) {
     )
     if (!is.null(cached)) {
       backends[[index]] <- cached$backend
+      spatial_backends[index] <- list(cached$spatial_backend)
       spatial_catalogs[[index]] <- cached$spatial_catalog
       next
     }
@@ -1246,10 +1266,10 @@ dedent <- function(string) {
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
         if (.isRecognizedCerebroObject(object)) {
-          spatial_backends[[index]] <- .spatialMoleculeBackend(
+          spatial_backends[index] <- list(.spatialMoleculeBackend(
             object,
             cerebro_data[[index]]
-          )
+          ))
           object <- .attachCerebroSpatialMolecules(
             object,
             cerebro_data[[index]]

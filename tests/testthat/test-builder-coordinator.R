@@ -165,6 +165,54 @@ builder_crb_coordinator_result <- function(handle, artifacts, labels = NULL) {
   )
 }
 
+test_that("CRB publication owns descriptor-backed spatial molecule sidecars", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
+    handle <- builder_coordinator_prepare(plan, "spatial-molecule-release")
+    sidecar <- file.path(handle$stage, "dataset.spatial")
+    dir.create(sidecar)
+    molecule_file <- file.path(sidecar, "0001.rds")
+    molecules <- data.frame(x = 1, y = 2, gene = "A")
+    saveRDS(molecules, molecule_file)
+    object <- Cerebro$new()
+    object$spatial <- list(fov1 = list(
+      coordinates = data.frame(x = 0, y = 0),
+      expression = matrix(numeric(), nrow = 0L, ncol = 1L),
+      molecules = structure(
+        list(
+          file = basename(molecule_file),
+          md5 = unname(tools::md5sum(molecule_file))
+        ),
+        class = "CerebroSpatialMoleculeRef"
+      )
+    ))
+    object$spatial_molecule_backend <- list(
+      type = "directory",
+      location = basename(sidecar)
+    )
+    crb <- file.path(handle$stage, "dataset.crb")
+    saveRDS(object, crb)
+
+    result <- builder_crb_coordinator_result(
+      handle,
+      c(`Dataset 1` = crb)
+    )
+    result$verifications[[1L]]$spatial_molecule_path <- sidecar
+    published <- builder_coordinator_publish(handle, result)
+
+    expect_true(file.exists(file.path(target, "dataset.crb")))
+    expect_true(dir.exists(file.path(target, "dataset.spatial")))
+    expect_true(file.exists(file.path(target, "dataset.spatial", "0001.rds")))
+    expect_identical(
+      published$verifications[[1L]]$spatial_molecule_path,
+      file.path(target, "dataset.spatial")
+    )
+  })
+})
+
 test_that("coordinator contract inspection never dispatches plan methods", {
   local({
     builder_task9_source()

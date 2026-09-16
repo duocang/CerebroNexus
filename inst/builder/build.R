@@ -489,6 +489,57 @@ builder_verify_crb <- function(
       call. = FALSE
     )
   }
+  spatial_backend_descriptor <- tryCatch(
+    .builder_build_runtime_function(".spatialMoleculeBackend")(
+      serialized,
+      path
+    ),
+    error = function(error) error
+  )
+  if (inherits(spatial_backend_descriptor, "condition")) {
+    stop(
+      "The staged CRB spatial molecule backend is invalid: ",
+      conditionMessage(spatial_backend_descriptor),
+      call. = FALSE
+    )
+  }
+  spatial_backend_path <- NULL
+  if (!is.null(spatial_backend_descriptor)) {
+    expected_spatial_location <- paste0(
+      tools::file_path_sans_ext(basename(path)),
+      ".spatial"
+    )
+    spatial_backend_path <- spatial_backend_descriptor$root
+    spatial_info <- tryCatch(
+      fs::file_info(spatial_backend_path, fail = TRUE, follow = FALSE),
+      error = function(error) NULL
+    )
+    if (
+      !identical(spatial_backend_descriptor$type, "directory") ||
+        !identical(
+          spatial_backend_descriptor$location,
+          expected_spatial_location
+        ) ||
+        is.null(spatial_info) ||
+        !identical(as.character(spatial_info$type), "directory") ||
+        nzchar(Sys.readlink(spatial_backend_path)) ||
+        !.builder_build_path_within(
+          spatial_backend_path,
+          dirname(path),
+          must_exist = TRUE
+        )
+    ) {
+      stop(
+        "The staged CRB spatial molecule sidecar does not match its descriptor.",
+        call. = FALSE
+      )
+    }
+    spatial_backend_path <- normalizePath(
+      spatial_backend_path,
+      winslash = "/",
+      mustWork = TRUE
+    )
+  }
   object <- tryCatch(.read_crb(path), error = function(error) error)
   if (inherits(object, "condition")) {
     stop(
@@ -762,7 +813,8 @@ builder_verify_crb <- function(
         )(
           object,
           item$name %||% basename(path)
-        )
+        ),
+        spatial_backend = spatial_backend_descriptor
       ),
       error = function(error) NULL
     )
@@ -786,6 +838,12 @@ builder_verify_crb <- function(
     spatial_sections = spatial_sections,
     image_sections = character(),
     backend = backend,
+    spatial_molecule_backend = if (is.null(spatial_backend_descriptor)) {
+      NULL
+    } else {
+      spatial_backend_descriptor[c("type", "location")]
+    },
+    spatial_molecule_path = spatial_backend_path,
     file_fingerprint = file_fingerprint,
     bundle_preflight = bundle_preflight,
     page_contract = list(visible_conditional = visible)
@@ -1707,6 +1765,13 @@ builder_execute_plan <- function(
       preflight_data <- list(
         backends = stats::setNames(
           lapply(verified_preflight, function(x) x$bundle_preflight$backend),
+          result$labels
+        ),
+        spatial_backends = stats::setNames(
+          lapply(
+            verified_preflight,
+            function(x) x$bundle_preflight$spatial_backend
+          ),
           result$labels
         ),
         spatial_catalogs = stats::setNames(

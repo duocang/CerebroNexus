@@ -643,7 +643,29 @@
       }
       list(type = plan_entry$type, root = root, entries = entries)
     }
-    list(crb = crb, backend = backend)
+    spatial_plan <- request$spatial_molecule_identities[[relative_crb]]
+    spatial_molecules <- if (is.null(spatial_plan)) {
+      list(type = "none", root = NULL, entries = list())
+    } else {
+      root <- paste0("private-data/", basename(spatial_plan$root))
+      prefix <- paste0(root, "/")
+      paths <- names(identity$entries)
+      paths <- paths[startsWith(paths, prefix)]
+      entries <- lapply(paths, function(path) {
+        entry <- identity$entries[[path]]
+        if (identical(entry$type, "directory")) {
+          return(list(path = path, type = "directory"))
+        }
+        .builder_app_portable_file(path, entry$size, entry$md5)
+      })
+      names(entries) <- paths
+      list(type = "directory", root = root, entries = entries)
+    }
+    list(
+      crb = crb,
+      backend = backend,
+      spatial_molecules = spatial_molecules
+    )
   })
   names(content) <- relative_crbs
   content
@@ -658,6 +680,13 @@
       expected[[backend$root]] <- "directory"
     }
     for (entry in backend$entries) {
+      expected[[entry$path]] <- entry$type
+    }
+    spatial_molecules <- content$spatial_molecules
+    if (identical(spatial_molecules$type, "directory")) {
+      expected[[spatial_molecules$root]] <- "directory"
+    }
+    for (entry in spatial_molecules$entries) {
       expected[[entry$path]] <- entry$type
     }
   }

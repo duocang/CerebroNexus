@@ -494,6 +494,7 @@ test_that("App arguments come only from the frozen plan", {
       "crb_pick_smallest_file",
       "backend_plan",
       "backend_identities",
+      "spatial_molecule_identities",
       "content_identities",
       "spatial_images",
       "spatial_image_settings",
@@ -532,9 +533,58 @@ test_that("App requests freeze portable copied-content identities", {
   expect_identical(content$crb$md5, request$crb_identities[[1L]]$md5)
   expect_identical(content$backend$type, "bpcells")
   expect_identical(content$backend$root, "private-data/dataset-a.bpcells")
+  expect_identical(
+    content$spatial_molecules,
+    list(type = "none", root = NULL, entries = list())
+  )
   expect_true(
     "private-data/dataset-a.bpcells/empty" %in%
       names(content$backend$entries)
+  )
+})
+
+test_that("App requests freeze spatial molecule sidecar identities", {
+  fixture <- builder_app_bundle_fixture()
+  crb <- fixture$paths[[1L]]
+  sidecar <- file.path(fixture$stage, "dataset-a.spatial")
+  dir.create(sidecar)
+  molecule_file <- file.path(sidecar, "0001.rds")
+  molecules <- data.frame(x = 1, y = 2, gene = "A")
+  saveRDS(molecules, molecule_file)
+  object <- Cerebro$new()
+  object$spatial <- list(fov1 = list(
+    coordinates = data.frame(x = 0, y = 0),
+    expression = matrix(numeric(), nrow = 0L, ncol = 1L),
+    molecules = structure(
+      list(
+        file = basename(molecule_file),
+        md5 = unname(tools::md5sum(molecule_file))
+      ),
+      class = "CerebroSpatialMoleculeRef"
+    )
+  ))
+  object$spatial_molecule_backend <- list(
+    type = "directory",
+    location = basename(sidecar)
+  )
+  saveRDS(object, crb)
+
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  relative_crb <- "private-data/dataset-a.crb"
+  identity <- request$spatial_molecule_identities[[relative_crb]]
+  content <- request$content_identities[[relative_crb]]$spatial_molecules
+
+  expect_identical(identity$type, "bpcells")
+  expect_identical(basename(identity$root), "dataset-a.spatial")
+  expect_true("dataset-a.spatial/0001.rds" %in% names(identity$entries))
+  expect_identical(content$type, "directory")
+  expect_identical(content$root, "private-data/dataset-a.spatial")
+  expect_true(
+    "private-data/dataset-a.spatial/0001.rds" %in% names(content$entries)
   )
 })
 
@@ -1040,6 +1090,13 @@ test_that("Builder and verifier share an exact request-v1 schema", {
     ),
     structure(
       unclass(request)[setdiff(names(request), "backend_identities")],
+      class = class(request)
+    ),
+    structure(
+      unclass(request)[setdiff(
+        names(request),
+        "spatial_molecule_identities"
+      )],
       class = class(request)
     ),
     structure(
