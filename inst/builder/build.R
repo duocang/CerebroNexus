@@ -238,6 +238,20 @@ builder_build_progress_remove <- function(path) {
     identical(as.character(observed), as.character(fingerprint$md5))
 }
 
+.builder_build_copy_verified <- function(
+  source,
+  target,
+  fingerprint,
+  .copy = .builder_build_copy_file
+) {
+  copied <- is.function(.copy) && isTRUE(.copy(source, target))
+  valid <- copied && .builder_build_fingerprint_matches(target, fingerprint)
+  if (!valid && file.exists(target)) {
+    unlink(target, force = TRUE)
+  }
+  valid
+}
+
 .builder_build_failure <- function(message, failures = character()) {
   list(
     state = "failure",
@@ -1403,7 +1417,11 @@ builder_execute_plan <- function(
       target <- file.path(stage, item$filename)
       if (
         !.builder_build_path_within(target, stage, must_exist = FALSE) ||
-          !.builder_build_copy_file(reused$path, target)
+          !.builder_build_copy_verified(
+            reused$path,
+            target,
+            reused$fingerprint %||% list()
+          )
       ) {
         return(.builder_build_failure(paste0(
           item$name,
@@ -1434,7 +1452,11 @@ builder_execute_plan <- function(
         dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
         if (
           !.builder_build_path_within(destination, stage, must_exist = FALSE) ||
-            !.builder_build_copy_file(member_source, destination)
+            !.builder_build_copy_verified(
+              member_source,
+              destination,
+              member$fingerprint %||% list()
+            )
         ) {
           return(.builder_build_failure(paste0(
             item$name,
