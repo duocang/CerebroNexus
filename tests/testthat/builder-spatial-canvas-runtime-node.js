@@ -277,6 +277,33 @@ const separateViewport = inputs.filter(function (entry) {
 const separateFirstPoint = arcs[0];
 const authoritativeStep = String(slider.step);
 
+const resetRaceCommitStart = inputs.filter(function (entry) {
+  return entry.id === "builder_spatial_alignment_controls";
+}).length;
+nativeHandlers.pointerdown.forEach(function (handler) {
+  handler({target: slider});
+});
+slider.value = "0.02";
+nativeHandlers.input.forEach(function (handler) {
+  handler({
+    target: slider,
+    stopImmediatePropagation: function () {},
+  });
+});
+custom.builder_spatial_canvas_scene(Object.assign({}, separate, {
+  generation: 3,
+  resetToken: 1,
+  controls: Object.assign({}, separate.controls, {scale: 0.001}),
+}));
+nativeHandlers.pointerup.forEach(function (handler) { handler({}); });
+const resetRaceCommits = inputs.filter(function (entry) {
+  return entry.id === "builder_spatial_alignment_controls";
+}).slice(resetRaceCommitStart);
+Array.from(timers.entries()).forEach(function (entry) {
+  timers.delete(entry[0]);
+  entry[1]();
+});
+
 custom.builder_spatial_canvas_clear({viewKey: "separate", generation: 3});
 delegated.input.call(slider, {
   type: "input",
@@ -287,12 +314,17 @@ delegated.input.call(slider, {
 custom.builder_spatial_canvas_scene(Object.assign({}, overlay, {
   viewKey: "null-controls",
   generation: 4,
+  resetToken: 1,
   controls: controls,
 }));
 frames.shift()();
 const nullControlsViewport = inputs.filter(function (entry) {
   return entry.id === "builder_spatial_viewports";
 }).slice(-1)[0].value;
+Array.from(timers.entries()).forEach(function (entry) {
+  timers.delete(entry[0]);
+  entry[1]();
+});
 
 console.log(JSON.stringify({
   overlay: overlayViewport,
@@ -306,6 +338,7 @@ console.log(JSON.stringify({
   authoritativeStep: authoritativeStep,
   tinyScaleCommits: tinyScaleCommits,
   commits: commits,
+  resetRaceCommits: resetRaceCommits,
   stopped: stopped,
   pendingTimers: timers.size,
 }));
