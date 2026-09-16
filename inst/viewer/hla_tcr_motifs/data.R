@@ -42,6 +42,82 @@ hla_ir_annotated <- reactive({
   )
 })
 
+## ---- Analysis cohort filters ----------------------------------------- ##
+## Motif construction is quadratic within CDR3-length bins, so an atlas-scale
+## repertoire cannot sensibly open on every sample. Keep the full annotated
+## tables above for filter choices / metadata discovery, but feed the graph and
+## descriptive association layers from this explicitly filtered cohort.
+hla_filter_groups <- reactive({
+  available <- hla_available_cols()
+  declared <- tryCatch(getGroups(), error = function(e) character(0))
+  unique(intersect(c("sample", declared), available))
+})
+
+hla_filter_levels <- reactive({
+  data <- hla_ir_annotated()
+  groups <- hla_filter_groups()
+  if (is.null(data) || length(groups) == 0) {
+    return(stats::setNames(list(), character(0)))
+  }
+  stats::setNames(lapply(groups, function(group) {
+    values <- unlist(lapply(data, function(df) {
+      if (group %in% colnames(df)) as.character(df[[group]]) else character(0)
+    }), use.names = FALSE)
+    sort(unique(values[!is.na(values) & nzchar(values)]))
+  }), groups)
+})
+
+## Parse once without cohort filtering to size a safe initial sample set. This
+## is linear work; the expensive Hamming graph is built only after filtering.
+hla_unfiltered_segments <- reactive({
+  hla_parse_ir_segments(hla_ir_annotated(), hla_active_chain())
+})
+
+hla_initial_samples <- reactive({
+  levels <- hla_filter_levels()[["sample"]]
+  seg <- hla_unfiltered_segments()
+  if (is.null(levels) || length(levels) == 0 || is.null(seg) || nrow(seg) == 0) {
+    return(levels %||% character(0))
+  }
+  hla_choose_initial_samples(seg, levels)
+})
+
+hla_default_filter_selections <- reactive({
+  levels <- hla_filter_levels()
+  if ("sample" %in% names(levels)) {
+    levels$sample <- hla_initial_samples()
+  }
+  levels
+})
+
+hla_filter_selections <- reactive({
+  levels <- hla_filter_levels()
+  defaults <- hla_default_filter_selections()
+  stats::setNames(lapply(names(levels), function(group) {
+    selected <- input[[paste0("hla_group_filter_", group)]]
+    if (is.null(selected)) defaults[[group]] else as.character(selected)
+  }), names(levels))
+})
+
+hla_filter_key <- reactive({
+  selections <- hla_filter_selections()
+  paste(vapply(names(selections), function(group) {
+    paste0(group, "=", paste(sort(selections[[group]]), collapse = ","))
+  }, character(1)), collapse = "|")
+})
+
+hla_ir_filtered <- reactive({
+  data <- hla_ir_annotated()
+  filters <- hla_filter_selections()
+  if (is.null(data) || length(filters) == 0) {
+    return(data)
+  }
+  out <- lapply(data, function(df) {
+    df[cerebroGroupFilterMask(df, filters), , drop = FALSE]
+  })
+  out[vapply(out, nrow, integer(1)) > 0L]
+})
+
 ## ---- TCR chains available (TRA / TRB only for this page) --------------- ##
 hla_tcr_chains <- reactive({
   intersect(
@@ -426,7 +502,7 @@ hla_celltype_col_declared <- reactive({
 
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
 hla_segments <- reactive({
-  data <- hla_ir_annotated()
+  data <- hla_ir_filtered()
   chain <- hla_active_chain()
   if (is.null(data)) {
     return(NULL)
@@ -834,6 +910,7 @@ hla_motif_graph_raw_cached <- reactive({
     hla_param("hla_by_v", hla_by_v_default()),
     paste(hla_node_meta_cols(), collapse = ","),
     hla_scope_key(),
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -854,6 +931,7 @@ hla_motif_graph_cached <- reactive({
     hla_param("hla_show_isolated", FALSE),
     paste(hla_node_meta_cols(), collapse = ","),
     hla_scope_key(),
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -898,6 +976,7 @@ hla_global_motif_graph_raw_cached <- reactive({
     hla_param("hla_by_v", hla_by_v_default()),
     paste(hla_node_meta_cols(), collapse = ","),
     "all",
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -916,6 +995,7 @@ hla_global_motif_graph_cached <- reactive({
     hla_param("hla_show_isolated", FALSE),
     paste(hla_node_meta_cols(), collapse = ","),
     "all",
+    hla_filter_key(),
     available_crb_files$selected
   )
 

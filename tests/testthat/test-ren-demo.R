@@ -97,7 +97,12 @@ test_that("the Ren h5ad selectors accept standard AnnData paths", {
 })
 
 test_that("run-demo prepares both full-scale datasets", {
-  script <- paste(readLines(testthat::test_path("..", "..", "run-demo.R")), collapse = "\n")
+  launcher <- testthat::test_path("..", "..", "run-demo.R")
+  skip_if_not(
+    file.exists(launcher),
+    "repository-only demo launcher is not included in the built package"
+  )
+  script <- paste(readLines(launcher), collapse = "\n")
   expect_match(script, "prepareViewer1mBenchmarkData()", fixed = TRUE)
   expect_match(script, "prepareViewerRenDemoData()", fixed = TRUE)
   expect_match(script, "CEREBRO_REN_DEMO_CRB", fixed = TRUE)
