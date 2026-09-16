@@ -29,12 +29,89 @@ builder_session_lines <- function() {
 test_that("Builder app preserves the launch request-size limit", {
   configured <- as.double(1024^2)
   withr::local_options(list(shiny.maxRequestSize = configured))
+  original_encoding <- getOption("encoding")
+  original_source <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = NA_character_)
+  original_search <- search()
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
 
   sys.source("app.R", envir = app_env)
 
   expect_identical(getOption("shiny.maxRequestSize"), configured)
+  expect_identical(getOption("encoding"), original_encoding)
+  expect_identical(
+    Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = NA_character_),
+    original_source
+  )
+  expect_identical(search(), original_search)
+})
+
+test_that("Builder restores process settings after its App lifecycle", {
+  withr::local_options(list(shiny.maxRequestSize = NULL))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = NA_character_)
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  expect_true(app_env$builder_app_start(list(available = TRUE, reason = NULL)))
+  expect_identical(getOption("shiny.maxRequestSize"), 10 * 1024^3)
+  if (!is.null(app_env$builder_source_package)) {
+    expect_identical(
+      Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = NA_character_),
+      app_env$builder_source_package
+    )
+  }
+
+  expect_true(app_env$builder_app_restore_process_state())
+  expect_null(getOption("shiny.maxRequestSize"))
+  expect_true(is.na(Sys.getenv(
+    "CEREBRO_PACKAGE_SOURCE",
+    unset = NA_character_
+  )))
+})
+
+test_that("Builder runApp restores default process settings on stop", {
+  skip_if_not_installed("httpuv")
+  withr::local_options(list(shiny.maxRequestSize = NULL))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = "original-source-root")
+  original_search <- search()
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  app <- base::source("app.R", local = app_env)$value
+  app_env$builder_runtime_capability <- function(...) {
+    list(available = TRUE, reason = NULL)
+  }
+  during <- NULL
+  later::later(
+    function() {
+      during <<- list(
+        request_size = getOption("shiny.maxRequestSize"),
+        source_package = Sys.getenv(
+          "CEREBRO_PACKAGE_SOURCE",
+          unset = NA_character_
+        )
+      )
+      shiny::stopApp()
+    },
+    delay = 0.1
+  )
+
+  shiny::runApp(
+    app,
+    host = "127.0.0.1",
+    port = httpuv::randomPort(),
+    launch.browser = FALSE,
+    quiet = TRUE
+  )
+
+  expect_identical(during$request_size, 10 * 1024^3)
+  expect_identical(during$source_package, app_env$builder_source_package)
+  expect_null(getOption("shiny.maxRequestSize"))
+  expect_identical(
+    Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = NA_character_),
+    "original-source-root"
+  )
+  expect_identical(search(), original_search)
 })
 
 builder_app_block <- function(lines, start, finish) {
@@ -393,7 +470,8 @@ test_that("workflow server exclusively owns loading and stage rendering", {
   expect_match(
     workbench,
     paste0(
-      "NULL\n    } else {\n      tagAppendAttributes(\n",
+      "builder_importing_workbench_ui(length(imports()$entries))\n",
+      "    } else {\n      tagAppendAttributes(\n",
       "        builder_empty_workbench_ui("
     ),
     fixed = TRUE
@@ -925,7 +1003,10 @@ test_that("native output directory selection normalizes selection and preserves 
   })
 
   expect_identical(selected$status, "selected")
-  expect_identical(selected$path, normalizePath(file.path(root, "output")))
+  expect_identical(
+    selected$path,
+    normalizePath(file.path(root, "output"), winslash = "/")
+  )
   expect_identical(cancelled, list(status = "cancelled", path = NULL))
   expect_identical(failed$status, "error")
   expect_match(failed$error, "picker unavailable", fixed = TRUE)
@@ -953,7 +1034,10 @@ test_that("native pickers can run without blocking the Shiny process", {
   expect_false(builder_native_picker_is_alive(started))
   expect_identical(
     builder_collect_native_picker(started),
-    list(status = "selected", path = normalizePath(output))
+    list(
+      status = "selected",
+      path = normalizePath(output, winslash = "/")
+    )
   )
 })
 
@@ -1738,6 +1822,11 @@ test_that("session shutdown stops the worker before releasing snapshots", {
     ),
     collapse = "\n"
   )
+  shutdown <- substr(
+    shutdown,
+    regexpr("session$onSessionEnded(function() {", shutdown, fixed = TRUE)[[1L]],
+    nchar(shutdown)
+  )
   stopped <- regexpr("builder_worker_stop", shutdown, fixed = TRUE)[1L]
   confirmed <- regexpr("isTRUE(stopped$stopped)", shutdown, fixed = TRUE)[1L]
   cleanup_safe <- regexpr(
@@ -1746,17 +1835,106 @@ test_that("session shutdown stops the worker before releasing snapshots", {
     fixed = TRUE
   )[1L]
   released <- regexpr(".builder_snapshot_release", shutdown, fixed = TRUE)[1L]
+  settlement_stop <- regexpr(
+    "stop_builder_release_settlement()",
+    shutdown,
+    fixed = TRUE
+  )[[1L]]
+  release_abort <- regexpr(
+    "builder_abort_active_release()",
+    shutdown,
+    fixed = TRUE
+  )[[1L]]
 
+  expect_gt(settlement_stop, 0L)
+  expect_lt(settlement_stop, stopped)
+  expect_gt(release_abort, 0L)
   expect_gt(stopped, 0L)
   expect_gt(confirmed, stopped)
   expect_gt(cleanup_safe, confirmed)
   expect_gt(released, cleanup_safe)
+  expect_gt(release_abort, released)
   expect_match(
     shutdown,
     "unlink(current_worker$snapshot_root, recursive = TRUE, force = TRUE)",
     fixed = TRUE
   )
   expect_false(grepl("process$close()", shutdown, fixed = TRUE))
+  expect_match(
+    shutdown,
+    "if (isTRUE(settlement_stopped))",
+    fixed = TRUE
+  )
+  expect_false(grepl("on.exit({\n    release <-", shutdown, fixed = TRUE))
+})
+
+test_that("release stop failure retains its process and cancellation lock", {
+  path <- builder_profile_inst_path("builder", "server", "imports.R")
+  lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
+  first <- grep(
+    "stop_builder_release_settlement <- function()",
+    lines,
+    fixed = TRUE
+  )[[1L]]
+  last <- grep("consume_transport_retained <- function", lines, fixed = TRUE)[[1L]]
+  runtime <- new.env(parent = baseenv())
+  runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+  runtime$isolate <- function(value) value
+  holder <- function(initial) {
+    value <- initial
+    function(next_value) {
+      if (!missing(next_value)) {
+        value <<- next_value
+      }
+      value
+    }
+  }
+  alive <- TRUE
+  process <- list(
+    is_alive = function() alive,
+    kill_tree = function() invisible(FALSE),
+    kill = function() invisible(FALSE),
+    wait = function(timeout) invisible(FALSE)
+  )
+  context <- list(
+    release = list(handle = list(), id = "build-1"),
+    build_id = "build-1",
+    request_id = "request-1",
+    status = "settling"
+  )
+  runtime$release_settlement_process <- holder(process)
+  runtime$release_settlement_context <- holder(context)
+  runtime$build_state <- holder(list(id = "build-1", status = "running"))
+  note <- NULL
+  runtime$busy_note <- function(value) {
+    if (!missing(value)) note <<- value
+    note
+  }
+  actions <- list()
+  runtime$update_build_state <- function(action) {
+    actions[[length(actions) + 1L]] <<- action
+    invisible(TRUE)
+  }
+  scheduled <- 0L
+  runtime$schedule_builder_release_settlement_poll <- function(delay) {
+    scheduled <<- scheduled + 1L
+    invisible(TRUE)
+  }
+  runtime$finish_builder_release_cancellation <- function() TRUE
+  eval(parse(text = paste(lines[first:(last - 1L)], collapse = "\n")), runtime)
+
+  expect_false(runtime$stop_builder_release_settlement())
+  expect_identical(runtime$release_settlement_process(), process)
+  expect_identical(
+    runtime$release_settlement_context()$status,
+    "cancelling"
+  )
+  expect_identical(actions[[1L]]$type, "cancel")
+  expect_match(note, "Stopping release finalization", fixed = TRUE)
+  expect_identical(scheduled, 1L)
+
+  alive <- FALSE
+  expect_true(runtime$stop_builder_release_settlement())
 })
 
 test_that("session build validates frozen snapshots before execution", {

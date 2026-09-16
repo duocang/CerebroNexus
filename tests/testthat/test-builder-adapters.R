@@ -512,12 +512,12 @@ test_that("application and worker source adapters after profile contracts", {
   app_profile <- grep('source("profile.R"', app, fixed = TRUE)[1L]
   app_adapters <- grep('source("adapters.R"', app, fixed = TRUE)[1L]
   worker_profile <- grep(
-    'source(file.path(dir, "profile.R"',
+    'source_utf8(file.path(dir, "profile.R"',
     worker,
     fixed = TRUE
   )[1L]
   worker_adapters <- grep(
-    'source(file.path(dir, "adapters.R"',
+    'source_utf8(file.path(dir, "adapters.R"',
     worker,
     fixed = TRUE
   )[1L]

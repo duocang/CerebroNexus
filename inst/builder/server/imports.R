@@ -1107,7 +1107,8 @@ builder_start_release_settlement_process <- function(release, value) {
       value,
       runtime_files,
       package_source,
-      package_files
+      package_files,
+      source_utf8
     ) {
       runtime <- new.env(parent = globalenv())
       runtime$`%||%` <- function(left, right) {
@@ -1118,7 +1119,7 @@ builder_start_release_settlement_process <- function(release, value) {
       } else {
         Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
         for (path in package_files) {
-          sys.source(path, envir = runtime)
+          source_utf8(path, envir = runtime)
         }
       }
       for (name in c(
@@ -1128,7 +1129,7 @@ builder_start_release_settlement_process <- function(release, value) {
         "report",
         "coordinator"
       )) {
-        sys.source(runtime_files[[name]], envir = runtime)
+        source_utf8(runtime_files[[name]], envir = runtime)
       }
       if (!is.null(package_source)) {
         validator <- get0(
@@ -1161,7 +1162,8 @@ builder_start_release_settlement_process <- function(release, value) {
       value = value,
       runtime_files = runtime_files,
       package_source = package_runtime$source_root,
-      package_files = package_runtime$files
+      package_files = package_runtime$files,
+      source_utf8 = builder_source_utf8
     ),
     supervise = TRUE,
     stdout = "|",
@@ -1237,6 +1239,10 @@ acknowledge_builder_build <- function(request_id) {
 
 finish_builder_release_settlement <- function(settled) {
   context <- isolate(release_settlement_context())
+  release_settlement_poll_generation(
+    as.double(isolate(release_settlement_poll_generation())) + 1
+  )
+  release_settlement_poll_scheduled(FALSE)
   release_settlement_process(NULL)
   release_settlement_context(NULL)
   if (!is.list(context) || !is.list(context$release)) {
@@ -1267,26 +1273,158 @@ finish_builder_release_settlement <- function(settled) {
   invisible(TRUE)
 }
 
-poll_builder_release_settlement <- function() {
-  process <- isolate(release_settlement_process())
-  if (is.null(process) || builder_session_closed()) {
+schedule_builder_release_settlement_poll <- function(delay = 0.1) {
+  if (isTRUE(isolate(release_settlement_poll_scheduled()))) {
     return(invisible(FALSE))
   }
-  alive <- tryCatch(process$is_alive(), error = identity)
-  if (inherits(alive, "condition")) {
-    return(finish_builder_release_settlement(alive))
+  generation <- as.double(isolate(release_settlement_poll_generation()))
+  release_settlement_poll_scheduled(TRUE)
+  scheduled <- tryCatch(
+    {
+      later::later(
+        function() {
+          if (!identical(
+            generation,
+            as.double(isolate(release_settlement_poll_generation()))
+          )) {
+            return(invisible(FALSE))
+          }
+          release_settlement_poll_scheduled(FALSE)
+          shiny::withReactiveDomain(
+            builder_lifecycle_session,
+            poll_builder_release_settlement()
+          )
+        },
+        delay = max(0, as.numeric(delay))
+      )
+      TRUE
+    },
+    error = identity
+  )
+  if (inherits(scheduled, "condition")) {
+    release_settlement_poll_scheduled(FALSE)
+    context <- isolate(release_settlement_context())
+    if (is.list(context)) {
+      context$error <- paste0(
+        "Release cleanup could not be scheduled: ",
+        conditionMessage(scheduled)
+      )
+      release_settlement_context(context)
+    }
+    return(invisible(FALSE))
   }
-  if (isTRUE(alive)) {
-    later::later(
-      function() {
-        shiny::withReactiveDomain(
-          builder_lifecycle_session,
-          poll_builder_release_settlement()
+  invisible(TRUE)
+}
+
+builder_abort_active_release <- function(expected_id = NULL) {
+  active <- isolate(active_release())
+  if (is.null(active)) {
+    return(invisible(TRUE))
+  }
+  if (!is.null(expected_id) && !identical(active$id, expected_id)) {
+    return(invisible(FALSE))
+  }
+  aborted <- try(builder_coordinator_abort(active$handle), silent = TRUE)
+  if (inherits(aborted, "try-error") || !isTRUE(aborted$aborted)) {
+    return(invisible(FALSE))
+  }
+  active_release(NULL)
+  invisible(TRUE)
+}
+
+finish_builder_release_cancellation <- function() {
+  context <- isolate(release_settlement_context())
+  release_settlement_poll_generation(
+    as.double(isolate(release_settlement_poll_generation())) + 1
+  )
+  release_settlement_process(NULL)
+  release_settlement_poll_scheduled(FALSE)
+  if (!is.list(context) || !is.list(context$release)) {
+    context <- list(
+      status = "cancel_failed",
+      error = "The stopped release process lost its coordinator context."
+    )
+    release_settlement_context(context)
+    busy_note("Release recovery is required.")
+    return(invisible(FALSE))
+  }
+  aborted <- builder_abort_active_release(context$build_id)
+  if (!isTRUE(aborted)) {
+    context$status <- "cancel_failed"
+    context$error <- paste(
+      "The release process stopped, but its coordinator could not be aborted.",
+      "The release remains locked for recovery."
+    )
+    release_settlement_context(context)
+    busy_note("Release recovery is required.")
+    if (!builder_session_closed()) {
+      add_error(context$error)
+    }
+    return(invisible(FALSE))
+  }
+  release_settlement_context(NULL)
+  state <- isolate(build_state())
+  if (
+    is.list(state) &&
+      identical(state$id, context$build_id) &&
+      state$status %in% c("running", "cancelling")
+  ) {
+    if (identical(state$status, "running")) {
+      update_build_state(list(type = "cancel", id = context$build_id))
+    }
+    update_build_state(list(type = "cancelled", id = context$build_id))
+  }
+  acknowledge_builder_build(context$request_id)
+  busy_note(NULL)
+  build_flow(list(stage = "idle", plan = NULL))
+  invisible(TRUE)
+}
+
+poll_builder_release_settlement <- function() {
+  process <- isolate(release_settlement_process())
+  if (is.null(process)) {
+    return(invisible(FALSE))
+  }
+  context <- isolate(release_settlement_context())
+  cancelling <- is.list(context) && identical(context$status, "cancelling")
+  alive <- tryCatch(process$is_alive(), error = identity)
+  if (inherits(alive, "condition") || !is.logical(alive) || length(alive) != 1L || is.na(alive)) {
+    if (is.list(context)) {
+      context$error <- if (inherits(alive, "condition")) {
+        paste0(
+          "The release process state could not be confirmed: ",
+          conditionMessage(alive)
         )
-      },
-      delay = 0.1
+      } else {
+        "The release process returned an invalid liveness state."
+      }
+      release_settlement_context(context)
+    }
+    schedule_builder_release_settlement_poll(
+      delay = if (cancelling) 0.5 else 0.1
     )
     return(invisible(TRUE))
+  }
+  if (isTRUE(alive)) {
+    if (cancelling) {
+      try(process$kill_tree(), silent = TRUE)
+      try(process$kill(), silent = TRUE)
+      if (Sys.time() >= (context$cancel_deadline %||% Sys.time())) {
+        context$error <- paste(
+          "The release process has not stopped yet.",
+          "Its coordinator remains locked while cleanup continues."
+        )
+        release_settlement_context(context)
+        busy_note("Still stopping release finalization…")
+      }
+    }
+    schedule_builder_release_settlement_poll(
+      delay = if (cancelling) 0.5 else 0.1
+    )
+    return(invisible(TRUE))
+  }
+  if (cancelling) {
+    return(finish_builder_release_cancellation())
   }
   settled <- tryCatch(process$get_result(), error = identity)
   finish_builder_release_settlement(settled)
@@ -1331,7 +1469,8 @@ start_builder_release_settlement <- function(release, value, request) {
   release_settlement_context(list(
     release = release,
     build_id = request$build_id,
-    request_id = request$request_id
+    request_id = request$request_id,
+    status = "settling"
   ))
   process <- tryCatch(
     builder_start_release_settlement_process(release, value),
@@ -1358,46 +1497,52 @@ start_builder_release_settlement <- function(release, value, request) {
     return(invisible(FALSE))
   }
   release_settlement_process(process)
-  later::later(
-    function() {
-      shiny::withReactiveDomain(
-        builder_lifecycle_session,
-        poll_builder_release_settlement()
-      )
-    },
-    delay = 0
-  )
+  schedule_builder_release_settlement_poll(delay = 0)
   invisible(TRUE)
 }
 
 stop_builder_release_settlement <- function() {
   process <- isolate(release_settlement_process())
   if (is.null(process)) {
-    return(TRUE)
+    return(is.null(isolate(release_settlement_context())))
   }
   context <- isolate(release_settlement_context())
-  alive <- tryCatch(process$is_alive(), error = function(error) NA)
+  if (!is.list(context)) {
+    context <- list()
+  }
+  context$status <- "cancelling"
+  context$cancel_started <- context$cancel_started %||% Sys.time()
+  context$cancel_deadline <- context$cancel_deadline %||% (Sys.time() + 10)
+  context$error <- NULL
+  release_settlement_context(context)
+  busy_note("Stopping release finalization…")
+  state <- isolate(build_state())
+  if (
+    is.list(state) &&
+      identical(state$id, context$build_id) &&
+      identical(state$status, "running")
+  ) {
+    update_build_state(list(type = "cancel", id = context$build_id))
+  }
+  alive <- tryCatch(process$is_alive(), error = identity)
   if (isTRUE(alive)) {
+    try(process$kill_tree(), silent = TRUE)
     try(process$kill(), silent = TRUE)
     try(process$wait(timeout = 5000L), silent = TRUE)
-    alive <- tryCatch(process$is_alive(), error = function(error) NA)
+    alive <- tryCatch(process$is_alive(), error = identity)
   }
-  safe <- identical(alive, FALSE)
-  if (safe) {
-    if (is.list(context) && is.list(context$release$handle)) {
-      try(builder_coordinator_abort(context$release$handle), silent = TRUE)
-      active <- isolate(active_release())
-      if (
-        is.list(active) &&
-          identical(active$id, context$build_id)
-      ) {
-        active_release(NULL)
-      }
-    }
-    release_settlement_process(NULL)
-    release_settlement_context(NULL)
+  if (identical(alive, FALSE)) {
+    return(isTRUE(finish_builder_release_cancellation()))
   }
-  safe
+  if (inherits(alive, "condition")) {
+    context$error <- paste0(
+      "The release process state could not be confirmed: ",
+      conditionMessage(alive)
+    )
+    release_settlement_context(context)
+  }
+  schedule_builder_release_settlement_poll(delay = 0.5)
+  FALSE
 }
 
 consume_transport_retained <- function(payload) {
@@ -1909,7 +2054,13 @@ observe({
     cache_key <- p$preview_cache_key %||%
       builder_spatial_preview_cache_key(p$id, p$section)
     cache <- isolate(spatial_previews())
-    if (is.list(p$preview_contract)) {
+    contract_matches <- is.list(p$preview_contract) &&
+      builder_spatial_preview_cache_hit(
+        cache,
+        cache_key,
+        p$preview_contract
+      )
+    if (contract_matches) {
       cache <- builder_spatial_preview_cache_store_if_match(
         cache,
         cache_key,
@@ -1919,6 +2070,7 @@ observe({
       spatial_previews(cache)
     }
     if (
+      contract_matches &&
       identical(current(), p$id) &&
         identical(active_slice(), p$section)
     ) {

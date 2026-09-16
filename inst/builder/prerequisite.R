@@ -2,6 +2,38 @@
 ## Gate app publication on the installed viewer's private-data contract.
 ##----------------------------------------------------------------------------##
 
+builder_source_utf8 <- function(file, envir = parent.frame(), chdir = FALSE) {
+  if (!is.character(file) || length(file) != 1L || !file.exists(file)) {
+    stop("A readable UTF-8 runtime source file is required.", call. = FALSE)
+  }
+  if (!is.environment(envir)) {
+    stop("A runtime source environment is required.", call. = FALSE)
+  }
+  ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+  lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+  if (length(lines)) {
+    lines[[1L]] <- sub("^\ufeff", "", lines[[1L]])
+  }
+  expressions <- parse(
+    text = lines,
+    srcfile = srcfilecopy(ofile, lines, isFile = TRUE),
+    encoding = "UTF-8",
+    keep.source = FALSE
+  )
+  previous <- NULL
+  if (isTRUE(chdir)) {
+    previous <- getwd()
+    setwd(dirname(ofile))
+    on.exit(setwd(previous), add = TRUE)
+  }
+  value <- NULL
+  for (index in seq_along(expressions)) {
+    value <- eval(expressions[[index]], envir = envir)
+  }
+  invisible(value)
+}
+environment(builder_source_utf8) <- baseenv()
+
 builder_installed_app_contract_version <- function(namespace = NULL) {
   if (is.null(namespace)) {
     namespace <- tryCatch(
@@ -199,7 +231,7 @@ builder_runtime_package_requirements <- function(
     character()
   }
   packages <- sub("[[:space:]]*\\(.*$", "", parsed)
-  .builder_prerequisite_requirements(c(packages, "callr", "openssl"))
+  .builder_prerequisite_requirements(packages)
 }
 
 .builder_prerequisite_requirement <- function(requirement) {

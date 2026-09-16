@@ -112,12 +112,17 @@ builder_auth_dialog_ui <- function() {
       role = "dialog",
       `aria-modal` = "true",
       `aria-labelledby` = "builder-auth-title",
+      `aria-describedby` = paste(
+        "builder-auth-description",
+        "builder-auth-password-note"
+      ),
       tabindex = "-1",
       div(
         class = "builder-auth-header",
         div(
           h2(id = "builder-auth-title", "Login accounts"),
           p(
+            id = "builder-auth-description",
             "Only these accounts can open the Viewer App."
           )
         ),
@@ -134,10 +139,12 @@ builder_auth_dialog_ui <- function() {
           id = "builder-auth-error",
           class = "builder-auth-error",
           role = "alert",
+          tabindex = "-1",
           hidden = "hidden"
         ),
         div(class = "builder-auth-rows", `data-auth-rows` = "true"),
         p(
+          id = "builder-auth-password-note",
           class = "builder-auth-password-note",
           "Passwords must contain at least 8 characters."
         )
@@ -703,7 +710,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 if (viewer_content$metadata$total_count > 0L) {
                   div(
                     class = "review-viewer-content-item review-viewer-metadata",
-                    h5("Metadata"),
+                    h4("Metadata"),
                     p(paste0(
                       viewer_content$metadata$kept_count,
                       " retained · ",
@@ -723,12 +730,12 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 },
                 div(
                   class = "review-viewer-content-item review-expression-storage",
-                  h5("Expression storage"),
+                  h4("Expression storage"),
                   p(dataset$expression_storage)
                 ),
                 div(
                   class = "review-viewer-content-item review-viewer-groups",
-                  h5("Groups"),
+                  h4("Groups"),
                   p(paste0(
                     viewer_content$groups$included_count,
                     " included · Default: ",
@@ -745,7 +752,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 if (!is.null(viewer_content$cell_cycle)) {
                   div(
                     class = "review-viewer-content-item review-viewer-cell-cycle",
-                    h5("Cell cycle"),
+                    h4("Cell cycle"),
                     p(paste(
                       viewer_content$cell_cycle$included,
                       collapse = ", "
@@ -754,7 +761,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 },
                 div(
                   class = "review-viewer-content-item review-viewer-projections",
-                  h5("Projections"),
+                  h4("Projections"),
                   p(paste(
                     viewer_content$projections$included,
                     collapse = ", "
@@ -783,7 +790,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 if (!is.null(viewer_content$trajectories)) {
                   div(
                     class = "review-viewer-content-item review-viewer-trajectories",
-                    h5("Trajectories"),
+                    h4("Trajectories"),
                     p(paste0(
                       viewer_content$trajectories$included_count,
                       " included · Default: ",
@@ -797,7 +804,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                       "review-viewer-content-item",
                       "review-viewer-analysis-results"
                     ),
-                    h5("Analysis results"),
+                    h4("Analysis results"),
                     p(paste(
                       c(
                         if (
@@ -855,7 +862,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                       "review-viewer-content-item",
                       "review-viewer-specialized-content"
                     ),
-                    h5("Specialized content"),
+                    h4("Specialized content"),
                     p(viewer_content$specialized$summary),
                     p(
                       class = "hint",
@@ -909,7 +916,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
               },
               div(
                 class = "review-dataset-pages",
-                h5("Viewer pages"),
+                h4("Viewer pages"),
                 page_tags(shown_pages),
                 if (length(more_pages)) {
                   tags$details(

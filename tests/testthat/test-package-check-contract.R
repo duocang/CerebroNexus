@@ -107,14 +107,14 @@ test_that("later remains declared because bundled runtime code uses it", {
 
 test_that("isolated Builder worker dependencies are declared", {
   skip_if_not_source_tree()
-  suggests <- read.dcf(source_file("DESCRIPTION"), fields = "Suggests")[[1]]
-  declared <- trimws(strsplit(suggests, ",", fixed = TRUE)[[1]])
+  imports <- read.dcf(source_file("DESCRIPTION"), fields = "Imports")[[1]]
+  declared <- trimws(strsplit(imports, ",", fixed = TRUE)[[1]])
   worker_source <- paste(
     readLines(source_file("inst", "builder", "worker.R"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_true(all(c("callr", "processx", "ps") %in% declared))
+  expect_true(all(c("callr", "openssl", "processx", "ps") %in% declared))
   expect_match(worker_source, 'requireNamespace("callr"', fixed = TRUE)
   expect_match(worker_source, 'requireNamespace("ps"', fixed = TRUE)
 })

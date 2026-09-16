@@ -22,6 +22,25 @@
     value == floor(value)
 }
 
+.builder_worker_source_utf8 <- function(file, envir = globalenv()) {
+  ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+  lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+  if (length(lines)) {
+    lines[[1L]] <- sub("^\ufeff", "", lines[[1L]])
+  }
+  expressions <- parse(
+    text = lines,
+    encoding = "UTF-8",
+    keep.source = FALSE
+  )
+  value <- NULL
+  for (index in seq_along(expressions)) {
+    value <- eval(expressions[[index]], envir = envir)
+  }
+  invisible(value)
+}
+environment(.builder_worker_source_utf8) <- baseenv()
+
 builder_worker_capability_registry <- function(loaders) {
   if (
     !is.list(loaders) || is.null(names(loaders)) || any(!nzchar(names(loaders)))
@@ -1022,7 +1041,8 @@ builder_worker_start <- function(
     root,
     registry,
     package_source,
-    bootstrap
+    bootstrap,
+    source_utf8
   ) {
     if (is.function(bootstrap)) {
       return(bootstrap(dir, root, registry, package_source))
@@ -1054,34 +1074,34 @@ builder_worker_start <- function(
         stop("The source-tree worker runtime is incomplete.")
       }
       for (runtime_file in runtime_files) {
-        sys.source(runtime_file, envir = globalenv())
+        source_utf8(runtime_file, globalenv())
       }
     } else {
       suppressMessages(library(CerebroNexus))
     }
-    source(file.path(dir, "io.R"))
-    source(file.path(dir, "loading.R"))
-    source(file.path(
+    source_utf8(file.path(dir, "io.R"), globalenv())
+    source_utf8(file.path(dir, "loading.R"), globalenv())
+    source_utf8(file.path(
       dir,
       "..",
       "viewer",
       "core",
       "viewer_content_contract.R"
-    ))
-    source(file.path(dir, "manifest.R"))
-    source(file.path(dir, "spatial.R"))
-    source(file.path(dir, "content_tables.R"))
-    source(file.path(dir, "content.R"))
-    source(file.path(dir, "profile.R"))
-    source(file.path(dir, "inspect.R"))
-    source(file.path(dir, "adapters.R"))
-    source(file.path(dir, "prerequisite.R"))
-    source(file.path(dir, "state.R"))
-    source(file.path(dir, "plan.R"))
-    source(file.path(dir, "worker.R"))
+    ), globalenv())
+    source_utf8(file.path(dir, "manifest.R"), globalenv())
+    source_utf8(file.path(dir, "spatial.R"), globalenv())
+    source_utf8(file.path(dir, "content_tables.R"), globalenv())
+    source_utf8(file.path(dir, "content.R"), globalenv())
+    source_utf8(file.path(dir, "profile.R"), globalenv())
+    source_utf8(file.path(dir, "inspect.R"), globalenv())
+    source_utf8(file.path(dir, "adapters.R"), globalenv())
+    source_utf8(file.path(dir, "prerequisite.R"), globalenv())
+    source_utf8(file.path(dir, "state.R"), globalenv())
+    source_utf8(file.path(dir, "plan.R"), globalenv())
+    source_utf8(file.path(dir, "worker.R"), globalenv())
     source_files <- function(paths) {
       for (path in paths) {
-        sys.source(path, envir = globalenv())
+        source_utf8(path, globalenv())
       }
       invisible(TRUE)
     }
@@ -1179,7 +1199,8 @@ builder_worker_start <- function(
     root = normalizePath(snapshot_root, mustWork = TRUE),
     registry = snapshot_registry,
     package_source = .builder_worker_package_source(builder_dir),
-    bootstrap = .bootstrap
+    bootstrap = .bootstrap,
+    source_utf8 = .builder_worker_source_utf8
   )
   setup <- try(
     if (isTRUE(.async)) {
@@ -1442,7 +1463,7 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
       call. = FALSE
     )
   }
-  as.integer(min(as.numeric(grace_ms), 5000))
+  as.integer(min(as.numeric(grace_ms), .Machine$integer.max))
 }
 
 .builder_worker_cleanup_safe <- function(worker) {
@@ -1458,10 +1479,11 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 }
 
 .builder_worker_remaining_ms <- function(deadline) {
-  as.integer(max(
+  remaining <- max(
     0,
     floor(as.numeric(difftime(deadline, Sys.time(), units = "secs")) * 1000)
-  ))
+  )
+  as.integer(min(remaining, .Machine$integer.max))
 }
 
 .builder_worker_tree_handles <- function(process) {
@@ -1490,8 +1512,20 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 
 .builder_worker_handle_alive <- function(handle) {
   tryCatch(
-    ps::ps_is_running(handle),
-    error = function(error) FALSE
+    {
+      if (!isTRUE(ps::ps_is_running(handle))) {
+        return(FALSE)
+      }
+      status <- tryCatch(ps::ps_status(handle), error = identity)
+      if (inherits(status, "no_such_process")) {
+        return(FALSE)
+      }
+      if (inherits(status, "condition")) {
+        return(TRUE)
+      }
+      !tolower(as.character(status)[[1L]]) %in% c("zombie", "dead")
+    },
+    error = function(error) !inherits(error, "no_such_process")
   )
 }
 
@@ -1556,16 +1590,20 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 builder_worker_stop <- function(worker, grace_ms = 5000L) {
   .builder_worker_assert(worker)
   grace_ms <- .builder_worker_grace_ms(grace_ms)
-  deadline <- Sys.time() + grace_ms / 1000
+  graceful_deadline <- Sys.time() + grace_ms / 1000
+  force_ms <- max(2000L, min(grace_ms, 5000L))
+  force_deadline <- graceful_deadline + force_ms / 1000
   cleanup_safe <- .builder_worker_cleanup_safe(worker)
   alive <- try(worker$process$is_alive(), silent = TRUE)
   if (inherits(alive, "try-error")) {
+    worker$ready <- FALSE
+    worker$cleanup_safe <- FALSE
     return(list(
       worker = worker,
       stopped = FALSE,
       tree_verified = FALSE,
       restart_allowed = FALSE,
-      quarantined = !cleanup_safe,
+      quarantined = TRUE,
       error = "The background worker state could not be inspected.",
       cleanup = NULL
     ))
@@ -1590,12 +1628,14 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
 
   tree <- .builder_worker_tree_handles(worker$process)
   if (!is.null(tree$error)) {
+    worker$ready <- FALSE
+    worker$cleanup_safe <- FALSE
     return(list(
       worker = worker,
       stopped = FALSE,
       tree_verified = FALSE,
       restart_allowed = FALSE,
-      quarantined = !cleanup_safe,
+      quarantined = TRUE,
       error = tree$error,
       cleanup = NULL
     ))
@@ -1616,16 +1656,25 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
     try(worker$process$interrupt(), silent = TRUE)
     repeat {
       alive_now <- try(worker$process$is_alive(), silent = TRUE)
-      if (inherits(alive_now, "try-error") || !isTRUE(alive_now)) {
+      if (inherits(alive_now, "try-error")) {
         tree_verified <- FALSE
+        break
+      }
+      if (!isTRUE(alive_now)) {
         break
       }
       refreshed <- .builder_worker_refresh_tree(worker$process, handles)
       handles <- refreshed$handles
       if (!is.null(refreshed$error)) {
-        tree_verified <- FALSE
+        parent_alive <- try(
+          worker$process$is_alive(),
+          silent = TRUE
+        )
+        if (isTRUE(parent_alive)) {
+          tree_verified <- FALSE
+        }
       }
-      remaining_ms <- .builder_worker_remaining_ms(deadline)
+      remaining_ms <- .builder_worker_remaining_ms(graceful_deadline)
       if (remaining_ms <= 0L) {
         break
       }
@@ -1639,13 +1688,18 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
           refreshed <- .builder_worker_refresh_tree(worker$process, handles)
           handles <- refreshed$handles
           if (!is.null(refreshed$error)) {
-            tree_verified <- FALSE
+            parent_alive <- try(
+              worker$process$is_alive(),
+              silent = TRUE
+            )
+            if (isTRUE(parent_alive)) {
+              tree_verified <- FALSE
+            }
           }
           try(worker$process$close(), silent = TRUE)
           break
         }
       } else if (identical(process_state, "closed")) {
-        tree_verified <- FALSE
         break
       }
     }
@@ -1662,21 +1716,27 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
       refreshed <- .builder_worker_refresh_tree(worker$process, handles)
       handles <- refreshed$handles
       if (!is.null(refreshed$error)) {
-        tree_verified <- FALSE
+        parent_alive <- try(
+          worker$process$is_alive(),
+          silent = TRUE
+        )
+        if (isTRUE(parent_alive)) {
+          tree_verified <- FALSE
+        }
       }
       try(worker$process$kill_tree(), silent = TRUE)
     }
     .builder_worker_kill_handles(handles)
-    try(
-      worker$process$wait(
-        timeout = .builder_worker_remaining_ms(deadline)
-      ),
-      silent = TRUE
-    )
+    try(worker$process$wait(
+      timeout = .builder_worker_remaining_ms(force_deadline)
+    ), silent = TRUE)
   }
 
+  try(worker$process$wait(
+    timeout = .builder_worker_remaining_ms(force_deadline)
+  ), silent = TRUE)
   alive <- try(worker$process$is_alive(), silent = TRUE)
-  tree_stopped <- .builder_worker_wait_tree(handles, deadline)
+  tree_stopped <- .builder_worker_wait_tree(handles, force_deadline)
   parent_stopped <- !inherits(alive, "try-error") && !isTRUE(alive)
   stopped <- parent_stopped && tree_stopped && tree_verified
   if (!isTRUE(stopped)) {
