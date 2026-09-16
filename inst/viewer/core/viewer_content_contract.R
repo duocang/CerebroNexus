@@ -130,7 +130,7 @@ builder_viewer_spatial_scene_label <- function(id, annotations) {
       describe(annotations$sample, "sample", "samples"),
       describe(annotations$roi, "ROI", "ROIs")
     ),
-    collapse = " · "
+    collapse = " \u00b7 "
   )
 }
 
