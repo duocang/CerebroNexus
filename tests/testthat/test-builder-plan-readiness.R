@@ -274,6 +274,34 @@ test_that("artifact entries bypass editable Spatial image validation", {
   })
 })
 
+test_that("artifact ROI settings still require Viewer App output", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    roi_settings <- list(
+      fov = list(
+        lesion = list(
+          rotation_degrees = 90,
+          point_opacity = 0.8,
+          point_size = 6
+        )
+      )
+    )
+    entry <- builder_task6_entry()
+    entry$load_state <- "artifact_ready"
+    entry$settings$spatial_roi_settings <- roi_settings
+    expect_true(builder_plan_requires_app(list(entry)))
+
+    entry$settings$spatial_roi_settings <- list()
+    entry$project_artifact <- list(
+      plan_item = list(spatial_roi_settings = roi_settings)
+    )
+    expect_true(builder_plan_requires_app(list(entry)))
+  })
+})
+
 test_that("artifact preflight reuses saved identity without loading source", {
   local({
     builder_repo_source("preview.R")

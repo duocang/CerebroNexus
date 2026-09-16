@@ -86,11 +86,16 @@ builder_plan_requires_app <- function(entries) {
     if (!is.list(entry) || !is.list(entry$settings)) {
       next
     }
+    roi_settings <- entry$settings$spatial_roi_settings %||% list()
+    if (!length(roi_settings)) {
+      roi_settings <- entry$project_artifact$plan_item$spatial_roi_settings %||%
+        list()
+    }
+    if (length(roi_settings)) {
+      requires_app <- TRUE
+    }
     if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
       next
-    }
-    if (length(entry$settings$spatial_roi_settings %||% list())) {
-      requires_app <- TRUE
     }
     alignments <- .builder_plan_partition_alignments(
       entry$settings$images %||% list()
