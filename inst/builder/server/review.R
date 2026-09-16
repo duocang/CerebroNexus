@@ -677,12 +677,18 @@ observe({
   checked <- checked_dataset_ids()
   unchecked <- setdiff(ids, checked)
   current_checked <- current() %in% checked
+  alignment_settled <- isTRUE(alignment_server$alignment_settled())
   readiness <- if (length(unchecked)) {
     list(can_continue = FALSE, message = NULL)
   } else {
     configure_readiness()
   }
-  message <- if (length(unchecked)) {
+  message <- if (!alignment_settled) {
+    paste(
+      "Waiting for the spatial preview to finish.",
+      "This action will unlock automatically."
+    )
+  } else if (length(unchecked)) {
     paste0(
       length(ids) - length(unchecked),
       " of ",
@@ -711,7 +717,10 @@ observe({
   state <- list(
     mode = mode,
     message = message,
-    can_continue = readiness$can_continue && !length(unchecked),
+    can_continue = readiness$can_continue &&
+      !length(unchecked) &&
+      alignment_settled,
+    check_ready = alignment_settled,
     dataset_checked = current_checked,
     remaining = length(unchecked)
   )
@@ -733,7 +742,8 @@ output$configure_actions <- renderUI({
     state$message,
     state$can_continue,
     dataset_checked = state$dataset_checked,
-    remaining = state$remaining
+    remaining = state$remaining,
+    check_ready = state$check_ready
   )
 })
 

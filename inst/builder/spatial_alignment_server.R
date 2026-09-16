@@ -2893,30 +2893,31 @@ builder_spatial_alignment_server <- function(
     ignoreInit = TRUE
   )
 
-  active_alignment_settled <- function(dataset = NULL) {
-    id <- shiny::isolate(current())
+  active_alignment_settled <- shiny::reactive({
+    id <- current()
     if (
       is.null(id) ||
-        (!is.null(dataset) && !id %in% as.character(dataset))
+        length(id) != 1L ||
+        is.na(id)
     ) {
       return(TRUE)
     }
-    entry <- shiny::isolate(entry_of(id))
-    section <- shiny::isolate(active_section())
+    entry <- entry_of(id)
+    section <- active_section()
     if (is.null(entry) || is.null(section)) {
       return(TRUE)
     }
     labels <- image_labels_for(
       entry,
       section,
-      shiny::isolate(active_roi())
+      active_roi()
     )
     if (!length(labels)) {
       return(TRUE)
     }
-    preview <- shiny::isolate(alignment_preview())
-    contract <- shiny::isolate(canvas_contract())
-    viewport <- shiny::isolate(canvas_viewports())
+    preview <- alignment_preview()
+    contract <- canvas_contract()
+    viewport <- canvas_viewports()
     if (
       !isTRUE(preview$available) ||
         !preview_matches_owner(preview, entry, section) ||
@@ -2935,7 +2936,7 @@ builder_spatial_alignment_server <- function(
     ) {
       return(FALSE)
     }
-    roi <- as.character(shiny::isolate(active_roi()) %||% "")[[1L]]
+    roi <- as.character(active_roi() %||% "")[[1L]]
     key <- if (nzchar(roi)) roi else "__section__"
     bounds <- viewport$viewports[[key]]
     if (!.builder_alignment_valid_bounds(bounds)) {
@@ -2954,7 +2955,7 @@ builder_spatial_alignment_server <- function(
       },
       logical(1)
     ))
-  }
+  })
 
   materialize_coordinate_drafts <- function(
     dataset = NULL,
@@ -2982,7 +2983,13 @@ builder_spatial_alignment_server <- function(
       }
       all
     }
-    if (isTRUE(require_settled) && !active_alignment_settled(dataset)) {
+    settlement_applies <- is.null(dataset) ||
+      shiny::isolate(current()) %in% as.character(dataset)
+    if (
+      isTRUE(require_settled) &&
+        isTRUE(settlement_applies) &&
+        !isTRUE(shiny::isolate(active_alignment_settled()))
+    ) {
       message <- paste0(
         "The spatial preview is still settling. Wait for the image preview ",
         "to finish, then try again."
@@ -3496,6 +3503,7 @@ builder_spatial_alignment_server <- function(
     fail_preview_switch = fail_preview_switch,
     restore_project_settings = restore_project_settings,
     restore_project_selection = restore_project_selection,
+    alignment_settled = active_alignment_settled,
     materialize_coordinate_drafts = materialize_coordinate_drafts,
     current_record = current_record
   )

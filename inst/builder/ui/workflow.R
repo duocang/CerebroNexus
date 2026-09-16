@@ -140,7 +140,8 @@ builder_configure_actions_ui <- function(
   message,
   can_continue,
   dataset_checked = FALSE,
-  remaining = 0L
+  remaining = 0L,
+  check_ready = TRUE
 ) {
   stopifnot(
     is.character(message),
@@ -148,7 +149,10 @@ builder_configure_actions_ui <- function(
     !is.na(message),
     is.logical(can_continue),
     length(can_continue) == 1L,
-    !is.na(can_continue)
+    !is.na(can_continue),
+    is.logical(check_ready),
+    length(check_ready) == 1L,
+    !is.na(check_ready)
   )
   review_ready <- remaining < 1L && isTRUE(can_continue)
   builder_stage_footer_ui(
@@ -185,7 +189,8 @@ builder_configure_actions_ui <- function(
         } else {
           "Finish Checking"
         },
-        class = "btn btn-dataset-check"
+        class = "btn btn-dataset-check",
+        disabled = !isTRUE(check_ready)
       )
     },
     status_class = if (review_ready) "is-review-ready" else NULL
