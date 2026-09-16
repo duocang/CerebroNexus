@@ -142,6 +142,15 @@ builder_activity_capabilities <- function(activity) {
   )
 }
 
+builder_activity_requires_open_confirmation <- function(activity) {
+  if (!inherits(activity, "builder_activity_state")) {
+    stop("A Builder activity state is required.", call. = FALSE)
+  }
+  isTRUE(activity$spatial_dirty) ||
+    activity$project_phase %in% c("dirty", "save_failed", "conflict") ||
+    (isTRUE(activity$has_datasets) && !isTRUE(activity$has_project))
+}
+
 builder_activity_reason <- function(activity, operation) {
   capabilities <- builder_activity_capabilities(activity)
   if (isTRUE(capabilities[[operation]])) {

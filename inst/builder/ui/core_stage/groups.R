@@ -21,7 +21,10 @@ builder_group_colors_model <- function(
   )
   distribution_counts <- vapply(
     distribution,
-    function(value) as.numeric(value$count %||% 0),
+    function(value) {
+      count <- suppressWarnings(as.numeric(value$count %||% 0))
+      if (length(count) != 1L || !is.finite(count) || count < 0) 0 else count
+    },
     numeric(1)
   )
   items <- lapply(seq_along(levels), function(index) {
@@ -58,7 +61,13 @@ builder_group_colors_ui <- function(id, model) {
     ))
   }
   searchable <- model$total > 30L
-  largest <- max(vapply(model$items, `[[`, numeric(1), "count"), 1)
+  largest <- max(c(
+    vapply(model$items, function(item) {
+      count <- suppressWarnings(as.numeric(item$count %||% 0))
+      if (length(count) != 1L || !is.finite(count) || count < 0) 0 else count
+    }, numeric(1)),
+    1
+  ))
   div(
     class = "builder-group-colors",
     `data-group` = model$group,
@@ -488,7 +497,10 @@ builder_cell_cycle_catalog_ui <- function(id, catalog) {
     ),
     checkboxGroupInput(
       ns("cell_cycle"),
-      label = NULL,
+      label = tags$span(
+        class = "visually-hidden",
+        "Cell cycle metadata columns"
+      ),
       choices = values,
       selected = catalog$included
     )
@@ -602,7 +614,10 @@ builder_group_detail_ui <- function(id, model) {
   )
   distribution <- item$distribution %||% list()
   largest <- if (length(distribution)) {
-    max(vapply(distribution, function(value) value$count, numeric(1)))
+    max(c(vapply(distribution, function(value) {
+      count <- suppressWarnings(as.numeric(value$count %||% 0))
+      if (length(count) != 1L || !is.finite(count) || count < 0) 0 else count
+    }, numeric(1)), 1))
   } else {
     1
   }
@@ -658,7 +673,10 @@ builder_group_detail_ui <- function(id, model) {
           tagList(
             h5("Distribution"),
             tagList(lapply(distribution, function(value) {
-              count <- as.numeric(value$count)
+              count <- suppressWarnings(as.numeric(value$count %||% 0))
+              if (length(count) != 1L || !is.finite(count) || count < 0) {
+                count <- 0
+              }
               width <- max(3, 100 * count / largest)
               div(
                 class = "viewer-group-distribution-row",

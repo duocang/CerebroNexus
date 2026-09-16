@@ -3,6 +3,24 @@ builder_repo_source("profile.R")
 builder_repo_source("state.R")
 builder_plan_contract_source_runtime(environment())
 
+test_that("runtime files retain UTF-8 text in the Windows C locale", {
+  withr::local_locale(c(LC_CTYPE = "C"))
+  payload <- as.raw(c(0xe2, 0x80, 0xa6))
+  path <- withr::local_tempfile(fileext = ".R")
+  writeBin(
+    c(charToRaw('loaded <- "'), payload, charToRaw('"\n')),
+    path
+  )
+  runtime <- new.env(parent = baseenv())
+
+  builder_source_utf8(path, runtime)
+
+  expect_identical(
+    as.integer(charToRaw(enc2utf8(runtime$loaded))),
+    as.integer(payload)
+  )
+})
+
 test_that("the app privacy marker must be the exact integer contract", {
   namespace <- new.env(parent = emptyenv())
 
@@ -246,8 +264,10 @@ test_that("runtime dependency preflight actually loads every hard dependency", {
     source_root = testthat::test_path("..", "..")
   )
 
-  expect_true(all(c("qs2", "scRepertoire", "callr", "openssl") %in%
-    requirements))
+  expect_true(all(
+    c("qs2", "scRepertoire", "callr", "openssl", "processx", "ps") %in%
+      requirements
+  ))
   expect_false(any(grepl("\\(", requirements)))
 
   loaded <- character()
@@ -382,7 +402,7 @@ test_that("builder UI loads the prerequisite before its plan", {
   lines <- builder_app_source_lines()
   text <- paste(lines, collapse = "\n")
   prerequisite_source <- grep(
-    'source("prerequisite.R", local = TRUE)',
+    '"prerequisite.R"',
     lines,
     fixed = TRUE
   )
@@ -391,16 +411,24 @@ test_that("builder UI loads the prerequisite before its plan", {
   expect_length(prerequisite_source, 1L)
   expect_length(plan_source, 1L)
   expect_lt(prerequisite_source, plan_source)
+  expect_match(text, "base::source(", fixed = TRUE)
+  expect_match(text, 'encoding = "UTF-8"', fixed = TRUE)
   expect_match(
     text,
     "app_capability <- builder_app_capability\\(\\)"
   )
 })
 
-test_that("builder UI activates source before loading App verification", {
+test_that("builder UI activates source only for the running App", {
   lines <- builder_app_source_lines()
+  text <- paste(lines, collapse = "\n")
+  lifecycle_start <- grep(
+    "builder_app_start <- function(",
+    lines,
+    fixed = TRUE
+  )
   activate_source <- grep(
-    "builder_activate_source_package()",
+    "builder_activate_source_package(builder_source_package)",
     lines,
     fixed = TRUE
   )
@@ -412,7 +440,15 @@ test_that("builder UI activates source before loading App verification", {
 
   expect_length(activate_source, 1L)
   expect_length(app_bundle_source, 1L)
-  expect_lt(activate_source, app_bundle_source)
+  expect_length(lifecycle_start, 1L)
+  expect_gt(activate_source, lifecycle_start)
+  expect_match(text, "builder_app_restore_process_state", fixed = TRUE)
+  expect_match(text, 'Sys.unsetenv("CEREBRO_PACKAGE_SOURCE")', fixed = TRUE)
+  expect_match(
+    text,
+    "shinyApp(ui, server, onStart = builder_app_start)",
+    fixed = TRUE
+  )
 })
 
 test_that("worker setup loads the app prerequisite before planning", {
@@ -431,12 +467,12 @@ test_that("worker setup loads the app prerequisite before planning", {
   }
   lines <- readLines(session_path, warn = FALSE)
   prerequisite_source <- grep(
-    'source(file.path(dir, "prerequisite.R"))',
+    'source_utf8(file.path(dir, "prerequisite.R"), globalenv())',
     lines,
     fixed = TRUE
   )
   plan_source <- grep(
-    'source(file.path(dir, "plan.R"))',
+    'source_utf8(file.path(dir, "plan.R"), globalenv())',
     lines,
     fixed = TRUE
   )

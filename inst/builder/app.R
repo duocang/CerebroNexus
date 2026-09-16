@@ -10,22 +10,105 @@
 ## untrusted users.
 ##----------------------------------------------------------------------------##
 
-library(shiny)
-
-## Serialized Seurat objects can be substantially larger than Shiny's default
-## 5 MiB upload limit. Accept up to 10 GiB unless the launcher supplied a cap.
-if (is.null(getOption("shiny.maxRequestSize"))) {
-  options(shiny.maxRequestSize = 10 * 1024^3)
+.builder_app_shiny_was_attached <- "package:shiny" %in% search()
+if (!requireNamespace("shiny", quietly = TRUE)) {
+  stop("The shiny package is required to run Builder.", call. = FALSE)
 }
+## Import Shiny's public API into this App environment without attaching the
+## package to the caller's search path.
+.builder_app_environment <- environment()
+for (.builder_shiny_export in getNamespaceExports("shiny")) {
+  if (!exists(
+    .builder_shiny_export,
+    envir = .builder_app_environment,
+    inherits = FALSE
+  )) {
+    assign(
+      .builder_shiny_export,
+      getExportedValue("shiny", .builder_shiny_export),
+      envir = .builder_app_environment
+    )
+  }
+}
+rm(.builder_shiny_export, .builder_app_environment)
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
-source("prerequisite.R", local = TRUE)
-builder_activate_source_package()
+## Bootstrap the UTF-8 loader without changing the caller's process-wide
+## encoding option. launchCerebroBuilder() runs in the user's R session, so a
+## global option change here would survive after the App stops.
+base::source(
+  "prerequisite.R",
+  local = TRUE,
+  encoding = "UTF-8"
+)
+source <- function(file, local = FALSE, ...) {
+  envir <- if (isTRUE(local)) {
+    parent.frame()
+  } else if (is.environment(local)) {
+    local
+  } else {
+    globalenv()
+  }
+  builder_source_utf8(file, envir = envir)
+}
+builder_source_package <- builder_source_package_root()
 builder_runtime_version <- builder_runtime_package_version()
-runtime_capability <- builder_runtime_capability()
-if (!isTRUE(runtime_capability$available)) {
-  stop(runtime_capability$reason, call. = FALSE)
+runtime_capability <- NULL
+
+.builder_app_process_state <- new.env(parent = emptyenv())
+.builder_app_process_state$active <- FALSE
+
+builder_app_restore_process_state <- function() {
+  if (!isTRUE(.builder_app_process_state$active)) {
+    return(invisible(FALSE))
+  }
+  options(.builder_app_process_state$request_size)
+  source_package <- .builder_app_process_state$source_package
+  if (is.na(source_package)) {
+    Sys.unsetenv("CEREBRO_PACKAGE_SOURCE")
+  } else {
+    do.call(
+      Sys.setenv,
+      stats::setNames(list(source_package), "CEREBRO_PACKAGE_SOURCE")
+    )
+  }
+  if (
+    !isTRUE(.builder_app_process_state$shiny_was_attached) &&
+      "package:shiny" %in% search()
+  ) {
+    try(detach("package:shiny", unload = FALSE, character.only = TRUE), silent = TRUE)
+  }
+  .builder_app_process_state$active <- FALSE
+  invisible(TRUE)
+}
+
+builder_app_start <- function(.capability = builder_runtime_capability()) {
+  if (isTRUE(.builder_app_process_state$active)) {
+    return(invisible(FALSE))
+  }
+  if (!isTRUE(.capability$available)) {
+    stop(.capability$reason, call. = FALSE)
+  }
+  runtime_capability <<- .capability
+  .builder_app_process_state$request_size <- options("shiny.maxRequestSize")
+  .builder_app_process_state$source_package <- Sys.getenv(
+    "CEREBRO_PACKAGE_SOURCE",
+    unset = NA_character_
+  )
+  .builder_app_process_state$shiny_was_attached <-
+    .builder_app_shiny_was_attached
+  .builder_app_process_state$active <- TRUE
+  shiny::onStop(builder_app_restore_process_state)
+  ## Serialized Seurat objects can be substantially larger than Shiny's
+  ## default 5 MiB upload limit. Respect a launcher-supplied cap.
+  if (is.null(getOption("shiny.maxRequestSize"))) {
+    options(shiny.maxRequestSize = 10 * 1024^3)
+  }
+  if (!is.null(builder_source_package)) {
+    builder_activate_source_package(builder_source_package)
+  }
+  invisible(TRUE)
 }
 
 source(
@@ -146,6 +229,38 @@ builder_trajectory_preview_contract <- function(entry, trajectories) {
     dataset = entry$id,
     snapshot_identity = .builder_worker_identity(entry$snapshot),
     trajectories = trajectories
+  )
+}
+
+builder_table_inventory_owner <- function(entry, project_epoch) {
+  if (!is.list(entry) || !builder_has_text(entry$id)) {
+    return(NULL)
+  }
+  snapshot_identity <- .builder_worker_identity(entry$snapshot)
+  epoch <- suppressWarnings(as.double(project_epoch))
+  if (
+    !builder_has_text(snapshot_identity) ||
+      length(epoch) != 1L ||
+      is.na(epoch) ||
+      !is.finite(epoch)
+  ) {
+    return(NULL)
+  }
+  list(
+    dataset = as.character(entry$id),
+    snapshot_identity = snapshot_identity,
+    project_epoch = epoch
+  )
+}
+
+builder_table_inventory_owner_is_current <- function(
+  owner,
+  entry,
+  project_epoch
+) {
+  !is.null(owner) && identical(
+    owner,
+    builder_table_inventory_owner(entry, project_epoch)
   )
 }
 
@@ -329,7 +444,6 @@ ui <- tagList(
   tags$head(
     builder_stylesheet_tags(),
     tags$script(src = paste0("icons.js", asset_stamp("www/icons.js"))),
-    tags$script(src = paste0("stats.js", asset_stamp("www/stats.js"))),
     tags$script(
       src = paste0(
         "builder-spatial-canvas.js",
@@ -337,12 +451,6 @@ ui <- tagList(
       )
     ),
     tags$script(src = paste0("builder.js", asset_stamp("www/builder.js"))),
-    tags$script(HTML(
-      paste0(
-        "Shiny.addCustomMessageHandler('builder_copy_text', function(message) { navigator.clipboard.writeText(message.text); });",
-        "Shiny.addCustomMessageHandler('builder_click', function(message) { var el = document.getElementById(message.id); if (el && !el.disabled) el.click(); });"
-      )
-    )),
     tags$title("Cerebro Dataset Builder")
   ),
   tags$a(
@@ -376,11 +484,11 @@ ui <- tagList(
       class = "builder-worker-status-copy",
       strong(
         id = "builder-worker-status-title",
-        "Starting background workspace…"
+        "Starting background workspace\u2026"
       ),
       span(
         id = "builder-worker-status-detail",
-        "Loading dataset readers and analysis tools…"
+        "Loading dataset readers and analysis tools\u2026"
       )
     )
   ),
@@ -446,6 +554,7 @@ ui <- tagList(
     tags$main(
       id = "builder-workspace",
       class = "builder-content",
+      tabindex = "-1",
       div(
         id = "pane",
         div(
@@ -478,7 +587,7 @@ ui <- tagList(
         class = "builder-operation-overlay-icon",
         `aria-hidden` = "true",
         span(class = "spinner"),
-        span(class = "builder-operation-success-mark", "✓"),
+        span(class = "builder-operation-success-mark", "\u2713"),
         span(class = "builder-operation-error-mark", "!")
       ),
       div(
@@ -546,4 +655,4 @@ server <- function(input, output, session) {
   rm(.builder_server_source)
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server, onStart = builder_app_start)

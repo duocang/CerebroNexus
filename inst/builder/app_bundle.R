@@ -1,5 +1,22 @@
 ## Private generated-App assembly contract loader.
 
+.builder_app_bundle_source_utf8 <- get0(
+  "builder_source_utf8",
+  mode = "function",
+  inherits = TRUE
+)
+if (!is.function(.builder_app_bundle_source_utf8)) {
+  .builder_app_bundle_source_utf8 <- function(file, envir) {
+    ofile <- normalizePath(file, winslash = "/", mustWork = TRUE)
+    lines <- readLines(ofile, encoding = "UTF-8", warn = FALSE)
+    expressions <- parse(text = lines, encoding = "UTF-8")
+    for (index in seq_along(expressions)) {
+      eval(expressions[[index]], envir = envir)
+    }
+    invisible(TRUE)
+  }
+}
+
 .builder_app_bundle_source_files <- unlist(lapply(
   sys.frames(),
   function(frame) get0("ofile", envir = frame, inherits = FALSE)
@@ -49,7 +66,7 @@ for (.builder_app_bundle_source_name in c(
   "topology.R",
   "build.R"
 )) {
-  sys.source(
+  .builder_app_bundle_source_utf8(
     file.path(
       .builder_app_bundle_source_dir,
       .builder_app_bundle_source_name
@@ -63,5 +80,6 @@ rm(
   .builder_app_bundle_source_dir,
   .builder_app_bundle_source_files,
   .builder_app_bundle_source_matches,
-  .builder_app_bundle_source_name
+  .builder_app_bundle_source_name,
+  .builder_app_bundle_source_utf8
 )

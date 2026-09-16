@@ -101,6 +101,117 @@ test_that("gene lists are visible in Inspect and existing-content summaries", {
   )
 })
 
+test_that("attention content exposes a scoped acknowledgement action", {
+  token <- "builder:extra_material:attention-v1:review"
+  owner <- list(
+    generation = 4,
+    project_epoch = 7,
+    owner_token = "snapshot-owner-a"
+  )
+  record <- list(
+    status = "attention",
+    disposition = "preserved",
+    required_action = list(type = "acknowledge", token = token),
+    evidence = list(
+      detected = TRUE,
+      normalized = list(tables = list(), plots = list())
+    )
+  )
+  pending <- builder_specialized_content_model(list(
+    id = "ds1",
+    content_manifest = list(extra_material = record),
+    content_acknowledgements = character(),
+    content_action_owner = owner
+  ))
+  html <- builder_stage_html(builder_specialized_content_ui(pending, "core"))
+
+  expect_identical(pending$attention_count, 1L)
+  expect_match(html, "data-builder-acknowledge=\"true\"", fixed = TRUE)
+  expect_match(html, "data-dataset=\"ds1\"", fixed = TRUE)
+  expect_match(html, "data-capability=\"extra_material\"", fixed = TRUE)
+  expect_match(html, "data-token=\"builder:extra_material", fixed = TRUE)
+  expect_match(html, "data-generation=\"4\"", fixed = TRUE)
+  expect_match(html, "data-project-epoch=\"7\"", fixed = TRUE)
+  expect_match(html, "data-owner-token=\"snapshot-owner-a\"", fixed = TRUE)
+  expect_match(html, "data-builder-content-disposition=\"true\"", fixed = TRUE)
+  expect_match(html, "data-disposition=\"filtered\"", fixed = TRUE)
+
+  acknowledged <- builder_specialized_content_model(list(
+    id = "ds1",
+    content_manifest = list(extra_material = record),
+    content_acknowledgements = token,
+    content_action_owner = owner
+  ))
+  acknowledged_html <- builder_stage_html(
+    builder_specialized_content_ui(acknowledged, "core")
+  )
+  expect_identical(acknowledged$included_count, 1L)
+  expect_false(grepl("data-builder-acknowledge", acknowledged_html, fixed = TRUE))
+
+  excluded <- record
+  excluded$status <- "valid"
+  excluded$disposition <- "filtered"
+  excluded$required_action <- NULL
+  excluded_model <- builder_specialized_content_model(list(
+    id = "ds1",
+    content_manifest = list(extra_material = excluded),
+    content_action_owner = owner
+  ))
+  excluded_html <- builder_stage_html(
+    builder_specialized_content_ui(excluded_model, "core")
+  )
+  expect_match(excluded_html, "data-disposition=\"auto\"", fixed = TRUE)
+  expect_match(excluded_html, "Include in CRB", fixed = TRUE)
+})
+
+test_that("content actions reject stale same-id dataset owners", {
+  project_a <- list(
+    id = "ds1",
+    revision = 4L,
+    snapshot = list(owner_token = "snapshot-owner-a")
+  )
+  request <- builder_content_action_owner(project_a, 7)
+  expect_true(builder_content_action_owner_is_current(request, project_a, 7))
+
+  revised <- project_a
+  revised$revision <- 5L
+  expect_false(builder_content_action_owner_is_current(request, revised, 7))
+
+  same_id_project_b <- project_a
+  same_id_project_b$snapshot$owner_token <- "snapshot-owner-b"
+  expect_false(builder_content_action_owner_is_current(
+    request,
+    same_id_project_b,
+    7
+  ))
+  expect_false(builder_content_action_owner_is_current(request, project_a, 8))
+  expect_false(builder_content_action_owner_is_current(
+    request[names(request) != "owner_token"],
+    project_a,
+    7
+  ))
+
+  datasets_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "datasets.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  guards <- gregexpr(
+    "builder_content_action_owner_is_current(",
+    datasets_server,
+    fixed = TRUE
+  )[[1L]]
+  expect_identical(sum(guards > 0L), 2L)
+  refreshes <- gregexpr(
+    "configure_workbench_surface(NULL)",
+    datasets_server,
+    fixed = TRUE
+  )[[1L]]
+  expect_identical(sum(refreshes > 0L), 2L)
+})
+
 test_that("Inspect uses actionable issue labels and removes duplicate content", {
   expect_identical(
     builder_inspect_issue_label("settings_organism"),

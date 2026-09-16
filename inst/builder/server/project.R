@@ -23,9 +23,12 @@ builder_project_source_generation <- reactiveVal(0)
 builder_project_source_run <- reactiveVal(NULL)
 builder_project_source_queue <- reactiveVal(list())
 builder_project_source_progress <- reactiveVal(NULL)
+builder_project_source_poll_scheduled <- reactiveVal(FALSE)
 builder_project_open_task <- reactiveVal(NULL)
 builder_project_open_generation <- reactiveVal(0)
 builder_project_open_previous_phase <- reactiveVal("idle")
+builder_project_open_actions <- reactiveVal(NULL)
+builder_project_open_discard_confirmed <- reactiveVal(FALSE)
 builder_project_table_asset_process <- reactiveVal(NULL)
 builder_project_table_asset_generation <- reactiveVal(0)
 builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
@@ -124,7 +127,8 @@ builder_activity <- reactive({
     server_imports = !is.null(import_focus_id()),
     project_phase = builder_project_phase(),
     spatial_dirty = builder_spatial_drafts_dirty(),
-    source_syncing = identical(builder_project_source_sync()$status, "syncing"),
+    source_syncing = builder_project_source_sync()$status %in%
+      c("syncing", "cancelling"),
     build_locked = builder_mutations_locked(build_flow(), protocol()),
     has_project = !is.null(project),
     has_datasets = isTRUE(workflow_has_datasets())
@@ -295,7 +299,8 @@ observe({
       status = progress$status %||% "idle",
       completed = as.integer(progress$completed %||% 0L),
       total = as.integer(progress$total %||% 0L),
-      failed = as.integer(progress$failed %||% 0L)
+      failed = as.integer(progress$failed %||% 0L),
+      error = progress$error %||% NULL
     )
   )
 })
@@ -353,6 +358,37 @@ builder_project_open_is_current <- function(generation) {
   )
 }
 
+builder_project_open_needs_confirmation <- function() {
+  activity <- isolate(builder_activity())
+  activity$project_phase <- isolate(builder_current_project_phase())
+  builder_activity_requires_open_confirmation(activity)
+}
+
+builder_project_open_discard_dialog <- function() {
+  shiny::modalDialog(
+    title = "Discard unsaved workspace changes?",
+    shiny::tags$p(
+      paste(
+        "Opening this project will replace the datasets and settings in the",
+        "current workspace. Unsaved changes cannot be recovered."
+      )
+    ),
+    footer = shiny::tagList(
+      shiny::actionButton(
+        "cancel_discard_builder_project_open",
+        "Keep current workspace",
+        class = "btn-default"
+      ),
+      shiny::actionButton(
+        "confirm_discard_builder_project_open",
+        "Discard and open",
+        class = "btn-danger"
+      )
+    ),
+    easyClose = FALSE
+  )
+}
+
 builder_project_reset_open_state <- function(
   generation = NULL,
   restore_previous = FALSE
@@ -364,6 +400,8 @@ builder_project_reset_open_state <- function(
     return(invisible(FALSE))
   }
   builder_project_open_task(NULL)
+  builder_project_open_actions(NULL)
+  builder_project_open_discard_confirmed(FALSE)
   builder_project_restore_progress(list(
     mode = "idle",
     total = 0L,
@@ -414,10 +452,12 @@ builder_project_fail_open <- function(generation, error) {
 
 invalidate_builder_project_open <- function(kill = TRUE) {
   task <- isolate(builder_project_open_task())
-  builder_project_open_generation(
-    as.double(isolate(builder_project_open_generation())) + 1
-  )
+  generation <- as.double(isolate(builder_project_open_generation())) + 1
+  builder_project_open_generation(generation)
+  send_dataset_action_owner(project_epoch = generation)
   builder_project_open_task(NULL)
+  builder_project_open_actions(NULL)
+  builder_project_open_discard_confirmed(FALSE)
   if (!is.null(task) && isTRUE(kill)) {
     builder_async_cancel(task)
   }
@@ -454,6 +494,7 @@ builder_project_start_open <- function(selected_path, external_roots = NULL) {
   builder_project_operation_phase("opening")
   generation <- as.double(isolate(builder_project_open_generation())) + 1
   builder_project_open_generation(generation)
+  send_dataset_action_owner(project_epoch = generation)
   builder_project_restore(NULL)
   task <- tryCatch(
     builder_async_submit(
@@ -463,7 +504,7 @@ builder_project_start_open <- function(selected_path, external_roots = NULL) {
           if (is.null(left)) right else left
         }
         for (runtime_file in runtime_files) {
-          sys.source(runtime_file, envir = runtime)
+          source_utf8(runtime_file, runtime)
         }
         runtime$builder_project_open_snapshot(
           selected_path,
@@ -475,7 +516,8 @@ builder_project_start_open <- function(selected_path, external_roots = NULL) {
         runtime_files = builder_project_open_runtime_files(
           include_server_paths = !is.null(external_roots)
         ),
-        external_roots = external_roots
+        external_roots = external_roots,
+        source_utf8 = builder_source_utf8
       )
     ),
     error = identity
@@ -540,18 +582,102 @@ builder_project_finish_open <- function(generation, opened) {
   invisible(TRUE)
 }
 
-invalidate_builder_project_source_sync <- function() {
+builder_project_schedule_source_sync_poll <- function(delay = 0.2) {
+  if (isTRUE(isolate(builder_project_source_poll_scheduled()))) {
+    return(invisible(FALSE))
+  }
+  builder_project_source_poll_scheduled(TRUE)
+  scheduled <- tryCatch(
+    {
+      later::later(
+        function() {
+          builder_project_source_poll_scheduled(FALSE)
+          if (builder_session_closed()) {
+            builder_project_poll_source_sync()
+          } else {
+            shiny::withReactiveDomain(session, {
+              builder_project_poll_source_sync()
+            })
+          }
+        },
+        delay = max(0, as.numeric(delay))
+      )
+      TRUE
+    },
+    error = identity
+  )
+  if (inherits(scheduled, "condition")) {
+    builder_project_source_poll_scheduled(FALSE)
+    stop(scheduled)
+  }
+  invisible(TRUE)
+}
+
+builder_project_stop_source_sync_process <- function(kill = TRUE) {
+  process <- isolate(builder_project_source_process())
+  progress_path <- isolate(builder_project_source_progress())
+  alive <- if (is.null(process)) {
+    FALSE
+  } else {
+    tryCatch(process$is_alive(), error = identity)
+  }
+  if (!is.null(process) && isTRUE(kill) && isTRUE(alive)) {
+    try(process$kill_tree(), silent = TRUE)
+    try(process$wait(timeout = 5000L), silent = TRUE)
+    alive <- tryCatch(process$is_alive(), error = identity)
+    if (isTRUE(alive)) {
+      try(process$kill(), silent = TRUE)
+      try(process$wait(timeout = 1000L), silent = TRUE)
+      alive <- tryCatch(process$is_alive(), error = identity)
+    }
+  }
+  if (!identical(alive, FALSE)) {
+    return(invisible(FALSE))
+  }
+  if (.builder_project_text(progress_path)) {
+    unlink(progress_path, force = TRUE)
+    unlink(paste0(progress_path, ".tmp"), force = TRUE)
+  }
+  builder_project_source_process(NULL)
+  builder_project_source_run(NULL)
+  builder_project_source_progress(NULL)
+  invisible(TRUE)
+}
+
+invalidate_builder_project_source_sync <- function(kill = TRUE) {
   builder_project_source_generation(
     as.double(isolate(builder_project_source_generation())) + 1
   )
   builder_project_source_queue(list())
+  stopped <- builder_project_stop_source_sync_process(kill = kill)
+  if (isTRUE(stopped)) {
+    builder_project_source_sync(list(
+      status = "idle",
+      completed = 0L,
+      total = 0L,
+      failed = 0L
+    ))
+    return(invisible(TRUE))
+  }
+  source_run <- isolate(builder_project_source_run())
+  if (!is.list(source_run)) {
+    source_run <- list()
+  }
+  source_run$cancelling <- TRUE
+  source_run$cancel_started <- source_run$cancel_started %||% Sys.time()
+  source_run$cancel_deadline <- source_run$cancel_deadline %||%
+    (Sys.time() + 10)
+  builder_project_source_run(source_run)
+  progress <- isolate(builder_project_source_sync())
   builder_project_source_sync(list(
-    status = "idle",
-    completed = 0L,
-    total = 0L,
-    failed = 0L
+    status = "cancelling",
+    completed = as.integer(progress$completed %||% 0L),
+    total = as.integer(progress$total %||% 0L),
+    failed = as.integer(progress$failed %||% 0L),
+    error = "The previous source copy is still stopping. Keep this page open."
   ))
-  invisible(TRUE)
+  builder_project_schedule_source_sync_poll(delay = 0.2)
+  invisible(FALSE)
 }
 
 builder_project_start_source_sync <- function() {
@@ -564,14 +690,19 @@ builder_project_start_source_sync <- function() {
     return(invisible(FALSE))
   }
   if (!requireNamespace("callr", quietly = TRUE)) {
+    message <- paste(
+      "Source files could not be saved in the background because",
+      "callr is unavailable."
+    )
     builder_project_source_sync(list(
       status = "failed",
       completed = 0L,
       total = length(jobs),
-      failed = length(jobs)
+      failed = length(jobs),
+      error = message
     ))
     showNotification(
-      "Source files could not be saved in the background because callr is unavailable.",
+      message,
       type = "error",
       duration = 8
     )
@@ -595,12 +726,12 @@ builder_project_start_source_sync <- function() {
       status = "failed",
       completed = 0L,
       total = length(jobs),
-      failed = length(jobs)
+      failed = length(jobs),
+      error = conditionMessage(source_run)
     ))
     showNotification(conditionMessage(source_run), type = "error", duration = 8)
     return(invisible(FALSE))
   }
-  builder_project_source_queue(list())
   progress_path <- tempfile(
     pattern = ".builder-source-sync-",
     tmpdir = project$root,
@@ -609,18 +740,19 @@ builder_project_start_source_sync <- function() {
   builder_project_source_progress(progress_path)
   process <- tryCatch(
     callr::r_bg(
-      function(jobs, progress_path, runtime_file) {
+      function(jobs, progress_path, runtime_file, source_utf8) {
         runtime <- new.env(parent = globalenv())
         runtime$`%||%` <- function(left, right) {
           if (is.null(left)) right else left
         }
-        sys.source(runtime_file, envir = runtime)
+        source_utf8(runtime_file, runtime)
         runtime$builder_project_copy_source_jobs(jobs, progress_path)
       },
       args = list(
         jobs = unname(jobs),
         progress_path = progress_path,
-        runtime_file = builder_project_source_runtime_file()
+        runtime_file = builder_project_source_runtime_file(),
+        source_utf8 = builder_source_utf8
       ),
       supervise = TRUE,
       stdout = "|",
@@ -628,18 +760,27 @@ builder_project_start_source_sync <- function() {
     ),
     error = identity
   )
-  if (inherits(process, "error")) {
+  if (inherits(process, "condition")) {
+    unlink(progress_path, force = TRUE)
     builder_project_source_progress(NULL)
     builder_project_source_run(NULL)
     builder_project_source_sync(list(
       status = "failed",
       completed = 0L,
       total = length(jobs),
-      failed = length(jobs)
+      failed = length(jobs),
+      error = conditionMessage(process)
     ))
     showNotification(conditionMessage(process), type = "error", duration = 8)
     return(invisible(FALSE))
   }
+  queued <- isolate(builder_project_source_queue())
+  for (id in names(jobs)) {
+    if (identical(queued[[id]], jobs[[id]])) {
+      queued[[id]] <- NULL
+    }
+  }
+  builder_project_source_queue(queued)
   builder_project_source_process(process)
   builder_project_source_run(source_run)
   builder_project_source_sync(list(
@@ -648,14 +789,7 @@ builder_project_start_source_sync <- function() {
     total = length(jobs),
     failed = 0L
   ))
-  later::later(
-    function() {
-      shiny::withReactiveDomain(session, {
-        builder_project_poll_source_sync()
-      })
-    },
-    delay = 0.2
-  )
+  builder_project_schedule_source_sync_poll(delay = 0.2)
   invisible(TRUE)
 }
 
@@ -687,20 +821,70 @@ builder_project_poll_source_sync <- function() {
       ))
     }
   }
-  if (isTRUE(process$is_alive())) {
-    later::later(
-      function() {
-        shiny::withReactiveDomain(session, {
-          builder_project_poll_source_sync()
-        })
-      },
-      delay = 0.2
+  alive <- tryCatch(process$is_alive(), error = identity)
+  cancelling <- is.list(source_run) && isTRUE(source_run$cancelling)
+  if (inherits(alive, "condition")) {
+    progress <- isolate(builder_project_source_sync())
+    builder_project_source_sync(list(
+      status = if (cancelling) "cancelling" else "syncing",
+      completed = as.integer(progress$completed %||% 0L),
+      total = as.integer(progress$total %||% 0L),
+      failed = as.integer(progress$failed %||% 0L),
+      error = paste0(
+        "The source copy process state could not be confirmed: ",
+        conditionMessage(alive)
+      )
+    ))
+    builder_project_schedule_source_sync_poll(
+      delay = if (cancelling) 0.5 else 0.2
+    )
+    return(invisible(TRUE))
+  }
+  if (!is.logical(alive) || length(alive) != 1L || is.na(alive)) {
+    progress <- isolate(builder_project_source_sync())
+    builder_project_source_sync(list(
+      status = if (cancelling) "cancelling" else "syncing",
+      completed = as.integer(progress$completed %||% 0L),
+      total = as.integer(progress$total %||% 0L),
+      failed = as.integer(progress$failed %||% 0L),
+      error = "The source copy process returned an invalid liveness state."
+    ))
+    builder_project_schedule_source_sync_poll(
+      delay = if (cancelling) 0.5 else 0.2
+    )
+    return(invisible(TRUE))
+  }
+  if (isTRUE(alive)) {
+    if (cancelling) {
+      try(process$kill_tree(), silent = TRUE)
+      try(process$kill(), silent = TRUE)
+      cancel_deadline <- source_run$cancel_deadline %||% Sys.time()
+      if (Sys.time() >= cancel_deadline) {
+        progress <- isolate(builder_project_source_sync())
+        builder_project_source_sync(list(
+          status = "cancelling",
+          completed = as.integer(progress$completed %||% 0L),
+          total = as.integer(progress$total %||% 0L),
+          failed = as.integer(progress$failed %||% 0L),
+          error = paste(
+            "The previous source copy has not stopped yet.",
+            "Its process remains owned and will continue to be reaped."
+          )
+        ))
+      }
+    }
+    builder_project_schedule_source_sync_poll(
+      delay = if (cancelling) 0.5 else 0.2
     )
     return(invisible(TRUE))
   }
   results <- tryCatch(process$get_result(), error = identity)
-  active_ids <- source_run$active_ids %||% character()
-  if (inherits(results, "error")) {
+  active_ids <- if (is.list(source_run)) {
+    source_run$active_ids %||% character()
+  } else {
+    character()
+  }
+  if (inherits(results, "condition")) {
     results <- lapply(active_ids, function(id) {
       list(
         id = id,
@@ -733,6 +917,7 @@ builder_project_poll_source_sync <- function() {
     }
   }
   unlink(progress_path %||% "", force = TRUE)
+  unlink(paste0(progress_path %||% "", ".tmp"), force = TRUE)
   builder_project_source_process(NULL)
   builder_project_source_run(NULL)
   builder_project_source_progress(NULL)
@@ -809,7 +994,10 @@ request_builder_project_source_sync <- function(jobs) {
     queued[[job$id]] <- job
   }
   builder_project_source_queue(queued)
-  builder_project_start_source_sync()
+  if (!is.null(isolate(builder_project_source_process()))) {
+    return(invisible(TRUE))
+  }
+  invisible(isTRUE(builder_project_start_source_sync()))
 }
 
 builder_project_build_manifest <- function(entries, project) {
@@ -1092,7 +1280,21 @@ save_builder_project_state <- function(
   project$path <- written$path
   project$name <- written$manifest$project$name
   builder_project(project)
-  request_builder_project_source_sync(built$jobs)
+  source_sync_started <- if (length(built$jobs)) {
+    request_builder_project_source_sync(built$jobs)
+  } else {
+    TRUE
+  }
+  if (length(built$jobs) && !isTRUE(source_sync_started)) {
+    source_sync <- isolate(builder_project_source_sync())
+    return(save_failed(
+      source_sync$error %||%
+        paste(
+          "Project settings were saved, but source files could not be saved.",
+          "Use Save project to retry."
+        )
+    ))
+  }
   builder_project_last_save_error(NULL)
   if (isTRUE(manage_lifecycle)) {
     builder_project_operation_phase("idle")
@@ -1231,18 +1433,19 @@ start_builder_project_table_asset_save <- function(
   builder_project_table_asset_generation(generation)
   process <- tryCatch(
     callr::r_bg(
-      function(jobs, root, runtime_file) {
+      function(jobs, root, runtime_file, source_utf8) {
         runtime <- new.env(parent = baseenv())
         runtime$`%||%` <- function(left, right) {
           if (is.null(left)) right else left
         }
-        sys.source(runtime_file, envir = runtime)
+        source_utf8(runtime_file, runtime)
         runtime$builder_project_stage_table_asset_jobs(jobs, root)
       },
       args = list(
         jobs = jobs,
         root = signature$root,
-        runtime_file = builder_project_source_runtime_file()
+        runtime_file = builder_project_source_runtime_file(),
+        source_utf8 = builder_source_utf8
       ),
       supervise = TRUE,
       stdout = "|",
@@ -1668,6 +1871,7 @@ observeEvent(input$cancel_builder_project_folder, {
 
 session$onSessionEnded(function() {
   builder_project_pending_folder(NULL)
+  invalidate_builder_project_source_sync(kill = TRUE)
   invalidate_builder_project_table_asset_save(kill = TRUE)
   invalidate_builder_project_open(kill = TRUE)
 })
@@ -1827,7 +2031,7 @@ start_builder_project_record_load <- function(record, root) {
   invisible(TRUE)
 }
 
-observeEvent(input$confirm_builder_project_open, {
+complete_builder_project_open <- function(actions = NULL) {
   pending <- isolate(builder_project_restore())
   operation <- isolate(builder_project_operation_phase())
   if (
@@ -1839,9 +2043,11 @@ observeEvent(input$confirm_builder_project_open, {
   manifest <- pending$manifest
   root <- pending$root
   records <- builder_project_record_map(manifest)
-  actions <- lapply(records, function(record) {
-    input[[paste0("project_restore_", record$id)]] %||% "skip"
-  })
+  if (is.null(actions)) {
+    actions <- lapply(records, function(record) {
+      input[[paste0("project_restore_", record$id)]] %||% "skip"
+    })
+  }
   prepared <- tryCatch(
     builder_project_prepare_open_selection(manifest, root, actions),
     error = identity
@@ -1904,6 +2110,8 @@ observeEvent(input$confirm_builder_project_open, {
   ))
   restore_builder_project_preferences(manifest)
   builder_project_restore(NULL)
+  builder_project_open_actions(NULL)
+  builder_project_open_discard_confirmed(FALSE)
   shiny::removeModal()
   restore_total <- length(pending_entries)
   if (!restore_total) {
@@ -1970,6 +2178,43 @@ observeEvent(input$confirm_builder_project_open, {
     },
     once = TRUE
   )
+}
+
+observeEvent(input$confirm_builder_project_open, {
+  pending <- isolate(builder_project_restore())
+  if (is.null(pending)) {
+    return()
+  }
+  records <- builder_project_record_map(pending$manifest)
+  actions <- lapply(records, function(record) {
+    input[[paste0("project_restore_", record$id)]] %||% "skip"
+  })
+  if (
+    builder_project_open_needs_confirmation() &&
+      !isTRUE(isolate(builder_project_open_discard_confirmed()))
+  ) {
+    builder_project_open_actions(actions)
+    shiny::showModal(builder_project_open_discard_dialog(), session = session)
+    return()
+  }
+  complete_builder_project_open(actions)
+})
+
+observeEvent(input$confirm_discard_builder_project_open, {
+  pending <- isolate(builder_project_restore())
+  actions <- isolate(builder_project_open_actions())
+  if (is.null(pending) || is.null(actions)) {
+    return()
+  }
+  builder_project_open_discard_confirmed(TRUE)
+  complete_builder_project_open(actions)
+})
+
+observeEvent(input$cancel_discard_builder_project_open, {
+  builder_project_open_actions(NULL)
+  builder_project_open_discard_confirmed(FALSE)
+  builder_project_restore(NULL)
+  shiny::removeModal()
 })
 
 observe({

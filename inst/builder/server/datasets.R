@@ -152,6 +152,127 @@ observe({
   replace_entry(entry)
 })
 
+observeEvent(
+  input[["core-acknowledge_content"]],
+  {
+    request <- input[["core-acknowledge_content"]]
+    scalar_text <- function(value) {
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(value)
+    }
+    if (
+      !is.list(request) ||
+        !scalar_text(request$dataset) ||
+        !scalar_text(request$capability) ||
+        !scalar_text(request$token) ||
+        !identical(request$dataset, isolate(current())) ||
+        !identical(input[["core-rendered_for"]], request$dataset)
+    ) {
+      return()
+    }
+    entry <- isolate(entry_of(request$dataset))
+    if (
+      !builder_content_action_owner_is_current(
+        request,
+        entry,
+        isolate(builder_project_open_generation())
+      )
+    ) {
+      return()
+    }
+    entry <- builder_upgrade_viewer_content_entry(entry)
+    state <- try(builder_dataset_state(entry), silent = TRUE)
+    if (inherits(state, "try-error")) {
+      return()
+    }
+    record <- state$manifest[[request$capability]] %||% list()
+    action <- record$required_action %||% list()
+    if (
+      !identical(record$status %||% "", "attention") ||
+        !identical(action$type %||% "", "acknowledge") ||
+        !identical(action$token %||% "", request$token)
+    ) {
+      return()
+    }
+    entry$settings$acknowledgements <- unique(c(
+      entry$settings$acknowledgements %||% character(),
+      request$token
+    ))
+    if (isTRUE(replace_entry(entry))) {
+      configure_workbench_surface(NULL)
+    }
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["core-content_disposition"]],
+  {
+    request <- input[["core-content_disposition"]]
+    scalar_text <- function(value) {
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(value)
+    }
+    allowed_capabilities <- c(
+      .builder_profile_content_ids(),
+      "hla_tcr_motifs"
+    )
+    if (
+      !is.list(request) ||
+        !scalar_text(request$dataset) ||
+        !scalar_text(request$capability) ||
+        !request$capability %in% allowed_capabilities ||
+        !scalar_text(request$disposition) ||
+        !request$disposition %in% c("filtered", "auto") ||
+        !identical(request$dataset, isolate(current())) ||
+        !identical(input[["core-rendered_for"]], request$dataset)
+    ) {
+      return()
+    }
+    entry <- isolate(entry_of(request$dataset))
+    if (
+      !builder_content_action_owner_is_current(
+        request,
+        entry,
+        isolate(builder_project_open_generation())
+      )
+    ) {
+      return()
+    }
+    entry <- builder_upgrade_viewer_content_entry(entry)
+    dispositions <- entry$settings$content_dispositions %||% list()
+    if (!is.list(dispositions) || is.object(dispositions)) {
+      dispositions <- list()
+    }
+    state <- try(builder_dataset_state(entry), silent = TRUE)
+    record <- if (inherits(state, "try-error")) {
+      list()
+    } else {
+      state$manifest[[request$capability]] %||% list()
+    }
+    if (
+      identical(request$disposition, "filtered") &&
+        (!is.list(record) || !isTRUE(record$evidence$detected))
+    ) {
+      return()
+    }
+    if (identical(request$disposition, "auto")) {
+      dispositions[[request$capability]] <- NULL
+    } else {
+      dispositions[[request$capability]] <- request$disposition
+    }
+    entry$settings$content_dispositions <- dispositions
+    if (isTRUE(replace_entry(entry))) {
+      configure_workbench_surface(NULL)
+    }
+  },
+  ignoreInit = TRUE
+)
+
 group_catalog_for_entry <- function(entry) {
   builder_group_catalog_model(list(
     metadata_catalog = entry$dataset_profile$viewer_content$metadata %||%
@@ -173,10 +294,12 @@ group_catalog_for_entry <- function(entry) {
 }
 
 send_group_state <- function(entry, message = NULL) {
+  current_entry <- isolate(entry_of(entry$id)) %||% entry
   session$sendCustomMessage(
     "builder_group_state",
     list(
       dataset = entry$id,
+      generation = as.integer(current_entry$revision %||% entry$revision %||% 0L),
       included = unname(entry$settings$included_groups %||% character()),
       default = entry$settings$default_group %||% NULL,
       message = message
@@ -236,10 +359,12 @@ selectable_trajectory_selection <- function(catalog) {
 }
 
 send_projection_state <- function(entry, message = NULL) {
+  current_entry <- isolate(entry_of(entry$id)) %||% entry
   session$sendCustomMessage(
     "builder_projection_state",
     list(
       dataset = entry$id,
+      generation = as.integer(current_entry$revision %||% entry$revision %||% 0L),
       included = unname(
         entry$settings$included_projections %||% character()
       ),
@@ -261,6 +386,7 @@ send_projection_state <- function(entry, message = NULL) {
 }
 
 send_trajectory_state <- function(entry, message = NULL) {
+  current_entry <- isolate(entry_of(entry$id)) %||% entry
   included <- list()
   for (method in names(entry$settings$included_trajectories %||% list())) {
     for (name in entry$settings$included_trajectories[[method]]) {
@@ -274,6 +400,7 @@ send_trajectory_state <- function(entry, message = NULL) {
     "builder_trajectory_state",
     list(
       dataset = entry$id,
+      generation = as.integer(current_entry$revision %||% entry$revision %||% 0L),
       included = included,
       default = entry$settings$default_trajectory %||% NULL,
       message = message

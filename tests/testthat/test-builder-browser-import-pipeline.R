@@ -59,6 +59,185 @@ builder_browser_pipeline_run_node <- function(functions, body) {
   system2("node", runner, stdout = TRUE, stderr = TRUE)
 }
 
+test_that("opening another project resets same-id dataset message generations", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  reset <- builder_browser_pipeline_js_function(
+    js,
+    "resetDatasetMessageGenerationsForActivity"
+  )
+  freshness <- builder_browser_pipeline_js_function(
+    js,
+    "datasetMessageGenerationIsFresh"
+  )
+  out <- builder_browser_pipeline_run_node(
+    c(reset, freshness),
+    c(
+      "const assert = require('assert');",
+      "const datasetMessageGenerations = new Map();",
+      "let builderActivityState = {phase: 'none'};",
+      "assert.strictEqual(datasetMessageGenerationIsFresh({dataset: 'ds1', generation: 12}), true);",
+      "assert.strictEqual(datasetMessageGenerationIsFresh({dataset: 'ds1', generation: 2}), false);",
+      "resetDatasetMessageGenerationsForActivity({phase: 'opening'});",
+      "assert.strictEqual(datasetMessageGenerationIsFresh({dataset: 'ds1', generation: 2}), true);",
+      "builderActivityState = {phase: 'opening'};",
+      "assert.strictEqual(datasetMessageGenerationIsFresh({dataset: 'ds1', generation: 3}), true);",
+      "resetDatasetMessageGenerationsForActivity({phase: 'opening'});",
+      "assert.strictEqual(datasetMessageGenerationIsFresh({dataset: 'ds1', generation: 2}), false);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+})
+
+test_that("top workflow navigation flushes pending text edits", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  predicate <- builder_browser_pipeline_js_function(
+    js,
+    "shouldFlushPendingTextEdits"
+  )
+  out <- builder_browser_pipeline_run_node(
+    predicate,
+    c(
+      "const assert = require('assert');",
+      "function target(selector) {",
+      "  return {closest: function(list) {",
+      "    return list.split(',').map(function(value) { return value.trim(); }).includes(selector) ? {} : null;",
+      "  }};",
+      "}",
+      "assert.strictEqual(shouldFlushPendingTextEdits(target('.builder-workflow-stage-link')), true);",
+      "assert.strictEqual(shouldFlushPendingTextEdits(target('.builder-pick')), true);",
+      "assert.strictEqual(shouldFlushPendingTextEdits(target('#confirm_review')), true);",
+      "assert.strictEqual(shouldFlushPendingTextEdits(target('.unrelated-control')), false);",
+      "assert.strictEqual(shouldFlushPendingTextEdits(null), false);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  expect_match(
+    js,
+    "if (shouldFlushPendingTextEdits(event.target))",
+    fixed = TRUE
+  )
+})
+
+test_that("content actions carry a complete dataset owner", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  owner <- builder_browser_pipeline_js_function(js, "contentActionOwner")
+  out <- builder_browser_pipeline_run_node(
+    owner,
+    c(
+      "const assert = require('assert');",
+      "function control(generation, projectEpoch, ownerToken) {",
+      "  return {dataset: {generation, projectEpoch, ownerToken}};",
+      "}",
+      "assert.deepStrictEqual(contentActionOwner(control('4', '7', 'owner-a')), {",
+      "  generation: 4, project_epoch: 7, owner_token: 'owner-a'",
+      "});",
+      "assert.strictEqual(contentActionOwner(control('4.5', '7', 'owner-a')), null);",
+      "assert.strictEqual(contentActionOwner(control('4', '-1', 'owner-a')), null);",
+      "assert.strictEqual(contentActionOwner(control('4', '7', '')), null);",
+      "assert.strictEqual(contentActionOwner({dataset: {generation: '4'}}), null);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  expect_match(js, "generation: acknowledgeOwner.generation", fixed = TRUE)
+  expect_match(js, "project_epoch: acknowledgeOwner.project_epoch", fixed = TRUE)
+  expect_match(js, "owner_token: acknowledgeOwner.owner_token", fixed = TRUE)
+  expect_match(js, "generation: dispositionOwner.generation", fixed = TRUE)
+  expect_match(js, "project_epoch: dispositionOwner.project_epoch", fixed = TRUE)
+  expect_match(js, "owner_token: dispositionOwner.owner_token", fixed = TRUE)
+})
+
+test_that("dataset revisions refresh only matching action owners", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  apply_owner <- builder_browser_pipeline_js_function(
+    js,
+    "applyDatasetActionOwner"
+  )
+  out <- builder_browser_pipeline_run_node(
+    apply_owner,
+    c(
+      "const assert = require('assert');",
+      "function owned(generation, projectEpoch, ownerToken) {",
+      "  return {dataset: {generation, projectEpoch, ownerToken}};",
+      "}",
+      "const current = owned('4', '7', 'owner-a');",
+      "const otherProject = owned('4', '8', 'owner-a');",
+      "const otherSnapshot = owned('4', '7', 'owner-b');",
+      "const newer = owned('9', '7', 'owner-a');",
+      "function renderedDatasetId() { return 'ds1'; }",
+      "const document = {querySelectorAll: function() {",
+      "  return [current, otherProject, otherSnapshot, newer];",
+      "}};",
+      "applyDatasetActionOwner({",
+      "  dataset: 'ds1', generation: 5, project_epoch: 7, owner_token: 'owner-a'",
+      "});",
+      "assert.strictEqual(current.dataset.generation, '5');",
+      "assert.strictEqual(otherProject.dataset.generation, '4');",
+      "assert.strictEqual(otherSnapshot.dataset.generation, '4');",
+      "assert.strictEqual(newer.dataset.generation, '9');",
+      "applyDatasetActionOwner({",
+      "  dataset: 'ds1', generation: 6, project_epoch: 8, owner_token: 'owner-a'",
+      "});",
+      "assert.strictEqual(current.dataset.projectEpoch, '8');",
+      "assert.strictEqual(current.dataset.generation, '6');",
+      "assert.strictEqual(otherProject.dataset.generation, '6');",
+      "assert.strictEqual(otherSnapshot.dataset.generation, '4');",
+      "applyDatasetActionOwner({",
+      "  dataset: 'ds2', generation: 7, project_epoch: 8, owner_token: 'owner-a'",
+      "});",
+      "assert.strictEqual(current.dataset.generation, '6');",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  expect_match(js, '"builder_dataset_action_owner"', fixed = TRUE)
+  expect_gte(
+    lengths(regmatches(
+      js,
+      gregexpr("generation: actionOwner.generation", js, fixed = TRUE)
+    )),
+    2L
+  )
+})
+
+test_that("saving an unchanged attachment name closes without a server write", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  commit <- builder_browser_pipeline_js_function(js, "commitAttachmentName")
+  out <- builder_browser_pipeline_run_node(
+    commit,
+    c(
+      "const assert = require('assert');",
+      "const input = {value: '  Clinical data  ', dataset: {originalValue: 'Clinical data'}};",
+      "const row = {querySelector: function(selector) {",
+      "  assert.strictEqual(selector, '.enhance-attachment-editor input');",
+      "  return input;",
+      "}};",
+      "let editing = null;",
+      "let writes = 0;",
+      "function setAttachmentEditing(target, value) { assert.strictEqual(target, row); editing = value; }",
+      "function send() { writes += 1; }",
+      "commitAttachmentName(row);",
+      "assert.strictEqual(input.value, 'Clinical data');",
+      "assert.strictEqual(editing, false);",
+      "assert.strictEqual(writes, 0);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+})
+
 test_that("retained loader publishes its marker before registration", {
   runtime <- builder_browser_pipeline_runtime()
   root <- withr::local_tempdir()
@@ -99,14 +278,20 @@ test_that("retained loader publishes its marker before registration", {
       expect_true(file.exists(marker))
       expect_identical(
         runtime$builder_project_transport_retained_read(marker, id),
-        list(id = id, retained_path = normalizePath(retained))
+        list(
+          id = id,
+          retained_path = normalizePath(retained, winslash = "/")
+        )
       )
       list(adapter = adapter, id = id)
     }
   )
 
   expect_identical(events, c("copy", "marker", "register"))
-  expect_identical(loaded$retained_path, normalizePath(retained))
+  expect_identical(
+    loaded$retained_path,
+    normalizePath(retained, winslash = "/")
+  )
   expect_identical(readBin(retained, "raw", n = 100L), bytes)
   expect_true(file.exists(source))
   expect_identical(readBin(source, "raw", n = 100L), bytes)

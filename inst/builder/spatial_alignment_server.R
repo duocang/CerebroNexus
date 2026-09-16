@@ -271,12 +271,125 @@ builder_spatial_alignment_server <- function(
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
+  expected_controls_token <- shiny::reactiveVal(0L)
+  browser_control_state <- shiny::reactiveVal(NULL)
+  client_interaction <- shiny::reactiveVal(NULL)
+  control_event_sequences <- new.env(parent = emptyenv())
+  control_owner_views <- new.env(parent = emptyenv())
   canvas_generation <- shiny::reactiveVal(0L)
   canvas_reset_token <- shiny::reactiveVal(0L)
   canvas_source_keys <- character()
   canvas_contract <- shiny::reactiveVal(NULL)
   canvas_viewports <- shiny::reactiveVal(NULL)
   image_collection_cache <- new.env(parent = emptyenv())
+  send_canvas_clear <- function() {
+    contract <- shiny::isolate(canvas_contract())
+    session$sendCustomMessage(
+      "builder_spatial_canvas_clear",
+      list(
+        dataset = contract$dataset %||% shiny::isolate(current()),
+        viewKey = contract$viewKey %||% NULL,
+        generation = shiny::isolate(canvas_generation())
+      )
+    )
+  }
+
+  control_owner_for <- function(
+    entry,
+    section,
+    roi = if (identical(roi_view(), "")) "" else active_roi(),
+    image = active_image()
+  ) {
+    if (is.null(entry) || is.null(section)) {
+      return(NULL)
+    }
+    list(
+      dataset = entry$id,
+      snapshot_identity = .builder_worker_identity(entry$snapshot),
+      section = as.character(section)[[1L]],
+      roi = as.character(roi %||% "")[[1L]],
+      image = as.character(image %||% "")[[1L]]
+    )
+  }
+  control_owner_key <- function(owner) {
+    if (!is.list(owner)) {
+      return(NULL)
+    }
+    fields <- c("dataset", "snapshot_identity", "section", "roi", "image")
+    values <- owner[fields]
+    if (any(vapply(values, is.null, logical(1)))) {
+      return(NULL)
+    }
+    paste(
+      vapply(
+        values,
+        function(value) {
+          value <- as.character(value)[[1L]]
+          paste0(nchar(value, type = "bytes"), ":", value)
+        },
+        character(1)
+      ),
+      collapse = "|"
+    )
+  }
+  register_control_owner_view <- function(owner, view_key, generation) {
+    owner_key <- control_owner_key(owner)
+    view_key <- as.character(view_key %||% "")
+    generation <- suppressWarnings(as.numeric(generation))
+    if (
+      is.null(owner_key) ||
+        length(view_key) != 1L ||
+        is.na(view_key) ||
+        !nzchar(view_key) ||
+        length(generation) != 1L ||
+        is.na(generation) ||
+        !is.finite(generation)
+    ) {
+      return(invisible(FALSE))
+    }
+    current_view <- get0(
+      owner_key,
+      envir = control_owner_views,
+      inherits = FALSE,
+      ifnotfound = NULL
+    )
+    if (is.null(current_view) || generation >= current_view$generation) {
+      assign(
+        owner_key,
+        list(
+          view_key = view_key,
+          generation = generation
+        ),
+        envir = control_owner_views
+      )
+    }
+    invisible(TRUE)
+  }
+  active_control_owner <- function() {
+    id <- shiny::isolate(current())
+    entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
+    control_owner_for(
+      entry,
+      shiny::isolate(active_section()),
+      if (identical(shiny::isolate(roi_view()), "")) {
+        ""
+      } else {
+        shiny::isolate(active_roi())
+      },
+      shiny::isolate(active_image())
+    )
+  }
+  set_expected_controls <- function(parameters) {
+    token <- shiny::isolate(expected_controls_token()) + 1L
+    expected_controls_token(token)
+    expected_controls(parameters)
+    later::later(function() {
+      if (identical(shiny::isolate(expected_controls_token()), token)) {
+        expected_controls(NULL)
+      }
+    }, delay = 1)
+    invisible(token)
+  }
 
   output[["enhance-has_image"]] <- shiny::reactive(!is.null(draft()))
   output[["enhance-add_image_label"]] <- shiny::renderUI({
@@ -334,7 +447,10 @@ builder_spatial_alignment_server <- function(
         if (!is.null(min)) {
           value <- pmax(min, value)
         }
-        if (!is.null(max)) {
+        if (identical(id, "img_scale") && value <= 0) {
+          value <- 0.02
+        }
+        if (!is.null(max) && !identical(id, "img_scale")) {
           value <- pmin(max, value)
         }
         if (!isTRUE(all.equal(input[[number_id]], value))) {
@@ -357,22 +473,6 @@ builder_spatial_alignment_server <- function(
               roi = shiny::isolate(coordinate_roi())
             )
           }
-        }
-      },
-      ignoreInit = TRUE
-    )
-    shiny::observeEvent(
-      input[[slider_id]],
-      {
-        value <- suppressWarnings(as.numeric(input[[slider_id]]))
-        if (
-          length(value) == 1L &&
-            !is.na(value) &&
-            is.finite(value) &&
-            !isTRUE(all.equal(input[[number_id]], value))
-        ) {
-          shiny::freezeReactiveValue(input, number_id)
-          shiny::updateNumericInput(session, number_id, value = value)
         }
       },
       ignoreInit = TRUE
@@ -450,9 +550,7 @@ builder_spatial_alignment_server <- function(
   roi_values_for <- function(entry, section) {
     scene_for(entry, section)$annotations$roi$values %||% character()
   }
-  kind_for <- function(section) {
-    id <- shiny::isolate(current())
-    entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
+  kind_for_entry <- function(entry, section) {
     if (identical(section, "trekker")) {
       "trekker"
     } else if (
@@ -463,6 +561,11 @@ builder_spatial_alignment_server <- function(
     } else {
       "spatial"
     }
+  }
+  kind_for <- function(section) {
+    id <- shiny::isolate(current())
+    entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
+    kind_for_entry(entry, section)
   }
   collection_for <- function(entry) {
     stored <- builder_image_collection_normalize(
@@ -592,10 +695,21 @@ builder_spatial_alignment_server <- function(
       }
       stored <- entry$settings$spatial_roi_settings[[section]][[roi]] %||%
         list()
-      return(utils::modifyList(
-        defaults[c("point_opacity", "point_size")],
-        stored[c("point_opacity", "point_size")]
-      ))
+      if (length(intersect(names(stored), c("point_opacity", "point_size")))) {
+        return(utils::modifyList(
+          defaults[c("point_opacity", "point_size")],
+          stored[c("point_opacity", "point_size")]
+        ))
+      }
+      ## A newly separated ROI inherits the selected image appearance until
+      ## that ROI has its own saved or session-local appearance.
+      if (!is.null(record)) {
+        return(.builder_alignment_parameters(record)[c(
+          "point_opacity",
+          "point_size"
+        )])
+      }
+      return(defaults[c("point_opacity", "point_size")])
     }
     from_record <- if (is.null(record)) {
       NULL
@@ -668,14 +782,34 @@ builder_spatial_alignment_server <- function(
       layer = entry$settings$layer %||% "data"
     )
   }
+  preview_matches_owner <- function(preview, entry, section) {
+    is.list(preview) &&
+      is.list(entry) &&
+      is.character(section) &&
+      length(section) == 1L &&
+      !is.na(section) &&
+      identical(preview$section$id %||% NULL, section) &&
+      identical(
+        shiny::isolate(preview_contract()),
+        preview_contract_for(entry, section)
+      )
+  }
   alignment_bounds_for <- function(
     preview,
-    roi = active_roi()
+    roi = active_roi(),
+    image_fit = FALSE
   ) {
     roi <- as.character(roi %||% "")[[1L]]
     viewport <- shiny::isolate(canvas_viewports())
     contract <- shiny::isolate(canvas_contract())
     key <- if (nzchar(roi)) roi else "__section__"
+    viewport_set <- viewport$viewports
+    if (
+      isTRUE(image_fit) &&
+        .builder_alignment_valid_bounds(viewport$imageFitViewports[[key]])
+    ) {
+      viewport_set <- viewport$imageFitViewports
+    }
     if (
       is.list(viewport) &&
         is.list(contract) &&
@@ -683,9 +817,9 @@ builder_spatial_alignment_server <- function(
         isTRUE(
           as.integer(viewport$generation) == as.integer(contract$generation)
         ) &&
-        .builder_alignment_valid_bounds(viewport$viewports[[key]])
+        .builder_alignment_valid_bounds(viewport_set[[key]])
     ) {
-      return(viewport$viewports[[key]])
+      return(viewport_set[[key]])
     }
     if (nzchar(roi)) {
       bounds <- preview$roi_bounds[[roi]] %||% preview$bounds
@@ -700,9 +834,26 @@ builder_spatial_alignment_server <- function(
     {
       event <- input[["builder_spatial_viewports"]]
       contract <- shiny::isolate(canvas_contract())
+      entry <- if (is.list(contract)) {
+        shiny::isolate(entry_of(contract$dataset))
+      } else {
+        NULL
+      }
       if (
         !is.list(event) ||
           !is.list(contract) ||
+          is.null(entry) ||
+          !identical(shiny::isolate(current()), contract$dataset) ||
+          !identical(
+            .builder_worker_identity(entry$snapshot),
+            contract$snapshotIdentity
+          ) ||
+          !identical(shiny::isolate(active_section()), contract$section) ||
+          !identical(shiny::isolate(active_roi()), contract$activeRoi) ||
+          !identical(
+            as.character(shiny::isolate(active_image()) %||% "")[[1L]],
+            contract$activeImage
+          ) ||
           !identical(event$viewKey, contract$viewKey) ||
           !isTRUE(
             as.integer(event$generation) == as.integer(contract$generation)
@@ -717,8 +868,17 @@ builder_spatial_alignment_server <- function(
         logical(1)
       )
       event$viewports <- event$viewports[valid]
+      image_fit_viewports <- event$imageFitViewports %||% list()
+      if (!is.list(image_fit_viewports)) {
+        image_fit_viewports <- list()
+      }
+      image_fit_valid <- vapply(
+        image_fit_viewports,
+        .builder_alignment_valid_bounds,
+        logical(1)
+      )
+      event$imageFitViewports <- image_fit_viewports[image_fit_valid]
       canvas_viewports(event)
-      entry <- shiny::isolate(entry_of(current()))
       section <- contract$section
       if (is.null(entry) || is.null(section)) {
         return()
@@ -808,6 +968,13 @@ builder_spatial_alignment_server <- function(
   }
   request_preview <- function(entry, section) {
     contract <- preview_contract_for(entry, section)
+    if (!identical(contract, shiny::isolate(preview_contract()))) {
+      send_canvas_clear()
+      alignment_preview(NULL)
+      spatial_coords(NULL)
+      canvas_contract(NULL)
+      canvas_viewports(NULL)
+    }
     cache_key <- builder_spatial_preview_cache_key(entry$id, section)
     cache <- shiny::isolate(spatial_previews())
     record <- cache[[cache_key]] %||% NULL
@@ -870,8 +1037,11 @@ builder_spatial_alignment_server <- function(
     if (!is.null(point_appearance)) {
       parameters[c("point_opacity", "point_size")] <- point_appearance
     }
-    expected_controls(parameters)
+    browser_control_state(NULL)
+    set_expected_controls(parameters)
     ranges <- builder_alignment_control_ranges(record, bounds)
+    scale_max <- max(10, parameters$scale)
+    scale_step <- builder_alignment_scale_step(parameters$scale)
     ids <- c(
       "enhance-img_dx",
       "enhance-img_dy",
@@ -912,12 +1082,18 @@ builder_spatial_alignment_server <- function(
     shiny::updateSliderInput(
       session,
       "enhance-img_scale",
-      value = parameters$scale
+      value = parameters$scale,
+      min = 0,
+      max = scale_max,
+      step = scale_step
     )
     shiny::updateNumericInput(
       session,
       "enhance-img_scale_number",
-      value = parameters$scale
+      value = parameters$scale,
+      min = 0,
+      max = scale_max,
+      step = scale_step
     )
     shiny::updateSliderInput(
       session,
@@ -970,6 +1146,19 @@ builder_spatial_alignment_server <- function(
       value = parameters$point_size
     )
   }
+  update_position_steps <- function(record = NULL, bounds = NULL) {
+    ranges <- builder_alignment_control_ranges(record, bounds)
+    shiny::updateNumericInput(
+      session,
+      "enhance-img_dx",
+      step = ranges$dx$step
+    )
+    shiny::updateNumericInput(
+      session,
+      "enhance-img_dy",
+      step = ranges$dy$step
+    )
+  }
   restore <- function(entry, section, label = active_image()) {
     stored <- if (is.null(label)) {
       NULL
@@ -984,9 +1173,14 @@ builder_spatial_alignment_server <- function(
     appearance <- point_appearance_for(entry, section, stored)
     point_appearance_baseline(appearance)
     point_appearance_input_ready(FALSE)
+    preview <- shiny::isolate(alignment_preview())
     update_controls(
       stored,
-      alignment_preview()$bounds %||% NULL,
+      if (preview_matches_owner(preview, entry, section)) {
+        preview$bounds
+      } else {
+        NULL
+      },
       appearance
     )
   }
@@ -995,6 +1189,7 @@ builder_spatial_alignment_server <- function(
     coordinate_draft(spec)
     coordinate_baseline(spec)
     shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
+    shiny::freezeReactiveValue(input, "enhance-coordinate_rotation_number")
     shiny::updateSliderInput(
       session,
       "enhance-coordinate_rotation",
@@ -1008,6 +1203,15 @@ builder_spatial_alignment_server <- function(
   }
   switch_to <- function(entry, section, label = NULL) {
     pending_upload(NULL)
+    alignment_preview(NULL)
+    spatial_coords(NULL)
+    preview_contract(NULL)
+    canvas_contract(NULL)
+    canvas_viewports(NULL)
+    browser_control_state(NULL)
+    client_interaction(NULL)
+    expected_controls(NULL)
+    send_canvas_clear()
     active_dataset(entry$id)
     samples <- samples_for(entry)
     sample <- active_sample()
@@ -1055,7 +1259,11 @@ builder_spatial_alignment_server <- function(
     ## to the replacement select without generating a second server event.
     session$sendCustomMessage(
       "builder_spatial_section_state",
-      list(value = section)
+      list(
+        value = section,
+        dataset = entry$id,
+        generation = as.integer(entry$revision %||% 0L)
+      )
     )
     shiny::updateSelectInput(
       session,
@@ -1194,7 +1402,7 @@ builder_spatial_alignment_server <- function(
       shiny::isolate(active_dataset()),
       id
     )
-    session$sendCustomMessage("builder_spatial_canvas_clear", list())
+    send_canvas_clear()
     canvas_source_keys <<- character()
     draft(NULL)
     coordinate_draft(list(rotation_degrees = 0, scale = 1))
@@ -1205,6 +1413,10 @@ builder_spatial_alignment_server <- function(
     spatial_coords(NULL)
     preview_contract(NULL)
     canvas_contract(NULL)
+    canvas_viewports(NULL)
+    browser_control_state(NULL)
+    client_interaction(NULL)
+    expected_controls(NULL)
     pending_upload(NULL)
     entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
     artifact_ready <- !is.null(entry) &&
@@ -1273,16 +1485,36 @@ builder_spatial_alignment_server <- function(
   })
 
   parameters <- shiny::reactive({
+    browser <- browser_control_state()
+    owner <- active_control_owner()
+    if (
+      is.list(browser) &&
+        identical(browser$owner, owner) &&
+        is.list(browser$parameters)
+    ) {
+      return(.builder_alignment_parameters(browser$parameters))
+    }
     current_draft <- shiny::isolate(draft())
     defaults <- if (is.null(current_draft)) {
       builder_alignment_defaults()
     } else {
       current_draft
     }
+    scale <- suppressWarnings(as.numeric(
+      input[["enhance-img_scale"]] %||% defaults$scale
+    ))
+    if (
+      length(scale) != 1L ||
+        is.na(scale) ||
+        !is.finite(scale) ||
+        scale <= 0
+    ) {
+      scale <- 0.02
+    }
     .builder_alignment_parameters(list(
       dx = input[["enhance-img_dx"]] %||% defaults$dx,
       dy = input[["enhance-img_dy"]] %||% defaults$dy,
-      scale = input[["enhance-img_scale"]] %||% defaults$scale,
+      scale = scale,
       rotation = input[["enhance-img_rotate"]] %||% defaults$rotation,
       flip_x = input[["enhance-image_flip_x"]] %||% defaults$flip_x,
       flip_y = input[["enhance-image_flip_y"]] %||% defaults$flip_y,
@@ -1310,7 +1542,7 @@ builder_spatial_alignment_server <- function(
     if (
       is.null(entry) ||
         !section %in% sections_for(entry) ||
-        !builder_spatial_section_is_spatial(kind_for(section)) ||
+        !builder_spatial_section_is_spatial(kind_for_entry(entry, section)) ||
         !identical(
           snapshot_identity,
           .builder_worker_identity(entry$snapshot)
@@ -1354,8 +1586,13 @@ builder_spatial_alignment_server <- function(
       }
       drafts[[dataset]][[section]][[roi]] <- record
       roi_coordinate_session_drafts(drafts)
-      coordinate_draft(record$spec)
-      coordinate_baseline(record$spec)
+      is_active <- identical(dataset, shiny::isolate(current())) &&
+        identical(section, shiny::isolate(active_section())) &&
+        identical(roi, shiny::isolate(coordinate_roi()))
+      if (is_active) {
+        coordinate_draft(record$spec)
+        coordinate_baseline(record$spec)
+      }
       return(invisible(TRUE))
     }
     stored <- tryCatch(
@@ -1375,7 +1612,8 @@ builder_spatial_alignment_server <- function(
     }
     coordinate_session_drafts(stored$drafts)
     is_active <- identical(dataset, shiny::isolate(current())) &&
-      identical(section, shiny::isolate(active_section()))
+      identical(section, shiny::isolate(active_section())) &&
+      identical("", shiny::isolate(coordinate_roi()))
     if (is_active) {
       coordinate_draft(stored$record$spec)
       coordinate_baseline(stored$record$spec)
@@ -1403,6 +1641,283 @@ builder_spatial_alignment_server <- function(
         generation = event$generation %||% NULL,
         roi = as.character(event$roi %||% "")[[1L]]
       )
+    },
+    ignoreInit = TRUE
+  )
+
+  event_control_owner <- function(event) {
+    if (!is.list(event)) {
+      return(NULL)
+    }
+    scalar_text <- function(value, empty = FALSE) {
+      value <- as.character(value %||% "")
+      if (
+        length(value) != 1L ||
+          is.na(value) ||
+          (!isTRUE(empty) && !nzchar(value))
+      ) {
+        return(NULL)
+      }
+      value
+    }
+    dataset <- scalar_text(event$dataset)
+    snapshot_identity <- scalar_text(event$snapshotIdentity)
+    section <- scalar_text(event$section)
+    roi <- scalar_text(event$roi, empty = TRUE)
+    image <- scalar_text(event$image, empty = TRUE)
+    if (any(vapply(
+      list(dataset, snapshot_identity, section, roi, image),
+      is.null,
+      logical(1)
+    ))) {
+      return(NULL)
+    }
+    list(
+      dataset = dataset,
+      snapshot_identity = snapshot_identity,
+      section = section,
+      roi = roi,
+      image = image
+    )
+  }
+  event_alignment_parameters <- function(controls) {
+    if (!is.list(controls)) {
+      return(NULL)
+    }
+    tryCatch(
+      .builder_alignment_parameters(list(
+        dx = controls$dx,
+        dy = controls$dy,
+        scale = controls$scale,
+        rotation = controls$rotation,
+        flip_x = controls$flip_x,
+        flip_y = controls$flip_y,
+        image_opacity = controls$image_opacity,
+        point_opacity = controls$point_opacity,
+        point_size = controls$point_size
+      )),
+      error = function(error) NULL
+    )
+  }
+  apply_browser_controls <- function(event) {
+    if (!is.list(event)) {
+      return(invisible(FALSE))
+    }
+    owner <- event_control_owner(event)
+    values <- event_alignment_parameters(event$controls)
+    sequence <- suppressWarnings(as.numeric(event$sequence))
+    view_key <- as.character(event$viewKey %||% "")
+    generation <- suppressWarnings(as.numeric(event$generation))
+    if (
+      is.null(owner) ||
+        is.null(values) ||
+        length(sequence) != 1L ||
+        is.na(sequence) ||
+        !is.finite(sequence) ||
+        sequence < 1 ||
+        length(view_key) != 1L ||
+        is.na(view_key) ||
+        !nzchar(view_key) ||
+        length(generation) != 1L ||
+        is.na(generation) ||
+        !is.finite(generation) ||
+        generation < 0
+    ) {
+      return(invisible(FALSE))
+    }
+    owner_key <- control_owner_key(owner)
+    owner_view <- get0(
+      owner_key,
+      envir = control_owner_views,
+      inherits = FALSE,
+      ifnotfound = NULL
+    )
+    if (
+      is.null(owner_view) ||
+        !identical(owner_view$view_key, view_key) ||
+        !isTRUE(generation == owner_view$generation)
+    ) {
+      return(invisible(FALSE))
+    }
+    previous_sequence <- get0(
+      owner_key,
+      envir = control_event_sequences,
+      inherits = FALSE,
+      ifnotfound = 0
+    )
+    if (sequence <= previous_sequence) {
+      return(invisible(FALSE))
+    }
+    entry <- shiny::isolate(entry_of(owner$dataset))
+    if (
+      is.null(entry) ||
+        !identical(
+          owner$snapshot_identity,
+          .builder_worker_identity(entry$snapshot)
+        ) ||
+        !owner$section %in% sections_for(entry) ||
+        (nzchar(owner$roi) &&
+          !owner$roi %in% roi_values_for(entry, owner$section))
+    ) {
+      return(invisible(FALSE))
+    }
+    coordinate <- list(
+      rotation_degrees = suppressWarnings(
+        as.numeric(event$controls$coordinateRotation %||% 0)
+      ),
+      scale = 1
+    )
+    if (
+      length(coordinate$rotation_degrees) != 1L ||
+        is.na(coordinate$rotation_degrees) ||
+        !is.finite(coordinate$rotation_degrees)
+    ) {
+      return(invisible(FALSE))
+    }
+    images <- builder_image_collection_normalize(entry$settings$images %||% list())
+    changed <- FALSE
+    active_record <- NULL
+    if (nzchar(owner$image)) {
+      active_record <- builder_alignment_normalize(
+        images[[owner$section]][[owner$image]],
+        section_id = owner$section
+      )
+      if (is.null(active_record)) {
+        return(invisible(FALSE))
+      }
+    }
+    if (builder_spatial_section_is_spatial(
+      kind_for_entry(entry, owner$section)
+    )) {
+      if (!isTRUE(store_coordinate_draft(
+        spec = coordinate,
+        dataset = owner$dataset,
+        section = owner$section,
+        snapshot_identity = owner$snapshot_identity,
+        sequence = sequence,
+        force = TRUE,
+        roi = owner$roi
+      ))) {
+        return(invisible(FALSE))
+      }
+    }
+    if (nzchar(owner$image)) {
+      next_record <- active_record
+      image_fields <- c(
+        "dx",
+        "dy",
+        "scale",
+        "rotation",
+        "flip_x",
+        "flip_y",
+        "image_opacity"
+      )
+      next_record[image_fields] <- values[image_fields]
+      if (!nzchar(owner$roi)) {
+        next_record[c("point_opacity", "point_size")] <-
+          values[c("point_opacity", "point_size")]
+      }
+      next_record$bounds <- builder_alignment_transform_bounds(
+        builder_alignment_oriented_bounds(
+          next_record$base_bounds,
+          next_record
+        ),
+        next_record
+      )
+      if (!isTRUE(all.equal(
+        next_record,
+        active_record,
+        check.attributes = FALSE
+      ))) {
+        images[[owner$section]][[owner$image]] <- next_record
+        active_record <- next_record
+        changed <- TRUE
+      }
+    }
+    appearance <- values[c("point_opacity", "point_size")]
+    next_roi_drafts <- NULL
+    if (nzchar(owner$roi)) {
+      drafts <- shiny::isolate(roi_point_appearance_drafts())
+      appearance_record <- c(owner, appearance)
+      if (!identical(
+        drafts[[owner$dataset]][[owner$section]][[owner$roi]],
+        appearance_record
+      )) {
+        drafts[[owner$dataset]][[owner$section]][[owner$roi]] <-
+          appearance_record
+        next_roi_drafts <- drafts
+      }
+    } else {
+      stored <- entry$settings$spatial_point_appearance %||% list()
+      if (!identical(stored[[owner$section]], appearance)) {
+        stored[[owner$section]] <- appearance
+        entry$settings$spatial_point_appearance <- stored
+        changed <- TRUE
+      }
+    }
+    if (changed) {
+      committed <- commit_images(entry, images)
+      if (identical(committed, FALSE)) {
+        return(invisible(FALSE))
+      }
+    }
+    if (!is.null(next_roi_drafts)) {
+      roi_point_appearance_drafts(next_roi_drafts)
+    }
+    assign(owner_key, sequence, envir = control_event_sequences)
+    is_active <- identical(owner, active_control_owner())
+    if (is_active) {
+      if (nzchar(owner$image)) {
+        draft(active_record)
+      }
+      point_appearance_baseline(appearance)
+      point_appearance_input_ready(TRUE)
+      browser_control_state(list(
+        owner = owner,
+        parameters = values,
+        coordinate_rotation = coordinate$rotation_degrees,
+        view_key = view_key,
+        generation = generation
+      ))
+      expected_controls(NULL)
+      if (changed) {
+        image_collection_cache$dataset <- owner$dataset
+        image_collection_cache$images <- images
+        image_collection_cache$known_sections <- unique(c(
+          image_collection_cache$known_sections %||% character(),
+          owner$section,
+          names(images)
+        ))
+      }
+    }
+    invisible(TRUE)
+  }
+  shiny::observeEvent(
+    input[["builder_spatial_alignment_controls"]],
+    apply_browser_controls(input[["builder_spatial_alignment_controls"]]),
+    ignoreInit = TRUE
+  )
+
+  shiny::observeEvent(
+    input[["builder_spatial_interaction_state"]],
+    {
+      event <- input[["builder_spatial_interaction_state"]]
+      owner <- event_control_owner(event)
+      if (is.null(owner)) {
+        return()
+      }
+      if (isTRUE(event$active)) {
+        client_interaction(list(
+          owner = owner,
+          view_key = as.character(event$viewKey %||% ""),
+          generation = event$generation %||% NULL
+        ))
+      } else {
+        active <- shiny::isolate(client_interaction())
+        if (is.null(active) || identical(active$owner, owner)) {
+          client_interaction(NULL)
+        }
+      }
     },
     ignoreInit = TRUE
   )
@@ -1559,6 +2074,9 @@ builder_spatial_alignment_server <- function(
       return()
     }
     pending_project_selection(NULL)
+    canvas_contract(NULL)
+    canvas_viewports(NULL)
+    browser_control_state(NULL)
     active_image(label)
     restore(entry, section, label)
   })
@@ -1574,10 +2092,14 @@ builder_spatial_alignment_server <- function(
         is.null(section) ||
         length(view) != 1L ||
         is.na(view) ||
+        !view %in% c("", "__separate__", rois) ||
         identical(view, shiny::isolate(roi_view()))
     ) {
       return()
     }
+    canvas_contract(NULL)
+    canvas_viewports(NULL)
+    browser_control_state(NULL)
     roi_view(view)
     if (identical(view, "__separate__")) {
       roi <- shiny::isolate(active_roi())
@@ -1603,10 +2125,24 @@ builder_spatial_alignment_server <- function(
       }
       entry <- shiny::isolate(entry_of(current()))
       section <- shiny::isolate(active_section())
-      roi <- as.character(input[["builder_spatial_roi_select"]]$roi %||% "")
+      event <- input[["builder_spatial_roi_select"]]
+      contract <- shiny::isolate(canvas_contract())
+      roi <- as.character(event$roi %||% "")
       if (
-        is.null(entry) ||
+        !is.list(event) ||
+          !is.list(contract) ||
+          is.null(entry) ||
           is.null(section) ||
+          !identical(event$dataset, entry$id) ||
+          !identical(
+            event$snapshotIdentity,
+            .builder_worker_identity(entry$snapshot)
+          ) ||
+          !identical(event$section, section) ||
+          !identical(event$viewKey, contract$viewKey) ||
+          !isTRUE(
+            as.integer(event$generation) == as.integer(contract$generation)
+          ) ||
           length(roi) != 1L ||
           is.na(roi) ||
           !roi %in% roi_values_for(entry, section) ||
@@ -1614,6 +2150,9 @@ builder_spatial_alignment_server <- function(
       ) {
         return()
       }
+      canvas_contract(NULL)
+      canvas_viewports(NULL)
+      browser_control_state(NULL)
       active_roi(roi)
       labels <- update_image_choices(entry, section)
       active_image(if (length(labels)) labels[[1L]] else NULL)
@@ -1738,8 +2277,10 @@ builder_spatial_alignment_server <- function(
     parameters[c("point_opacity", "point_size")] <- appearance
     fit_bounds <- alignment_bounds_for(
       preview,
-      selected_roi
+      selected_roi,
+      image_fit = TRUE
     )
+    viewport_bounds <- alignment_bounds_for(preview, selected_roi)
     stored_appearance <- entry$settings$spatial_point_appearance %||% list()
     stored_appearance[[section]] <- appearance
     entry$settings$spatial_point_appearance <- stored_appearance
@@ -1760,7 +2301,7 @@ builder_spatial_alignment_server <- function(
       section = preview$section,
       source_path = image$source_path
     )
-    record$viewport_bounds <- fit_bounds
+    record$viewport_bounds <- viewport_bounds
     if (nzchar(selected_roi)) {
       record$roi_field <- preview$roi$field
       record$roi_value <- selected_roi
@@ -1850,6 +2391,7 @@ builder_spatial_alignment_server <- function(
       return()
     }
     if (
+      !preview_matches_owner(preview, entry, section) ||
       !isTRUE(preview$available) ||
         !.builder_alignment_valid_bounds(preview$bounds)
     ) {
@@ -1912,7 +2454,7 @@ builder_spatial_alignment_server <- function(
     if (isTRUE(preview$available)) {
       entry <- entry_of(current())
       section <- active_section()
-      if (!is.null(entry) && !is.null(section)) {
+      if (preview_matches_owner(preview, entry, section)) {
         rois <- preview$roi$values %||% character()
         shiny::updateSelectInput(
           session,
@@ -1924,23 +2466,10 @@ builder_spatial_alignment_server <- function(
           ),
           selected = roi_view()
         )
-        appearance <- point_appearance_for(entry, section, draft())
-        expected <- shiny::isolate(expected_controls())
-        if (
-          is.null(draft()) &&
-            !is.null(expected) &&
-            identical(
-              expected[c("point_opacity", "point_size")],
-              appearance[c("point_opacity", "point_size")]
-            )
-        ) {
-          return()
-        }
-        update_controls(
-          draft(),
-          preview$bounds,
-          appearance
-        )
+        ## A preview may settle while the user is dragging. Only the X/Y step
+        ## depends on its bounds; restoring all values here used to overwrite
+        ## an in-flight image or point edit and cause the visible scale jump.
+        update_position_steps(draft(), preview$bounds)
       }
     }
   })
@@ -1995,10 +2524,10 @@ builder_spatial_alignment_server <- function(
     }
     if (
       is.null(preview) ||
-        is.null(contract) ||
+      is.null(contract) ||
         is.null(entry) ||
         is.null(section) ||
-        !identical(preview$section$id, section)
+        !preview_matches_owner(preview, entry, section)
     ) {
       return()
     }
@@ -2079,6 +2608,7 @@ builder_spatial_alignment_server <- function(
       snapshot_identity = contract$snapshot_identity,
       section = section
     )
+    scene$activeImage <- as.character(active_image() %||% "")[[1L]]
     cached_scene <- builder_spatial_canvas_cache_sources(
       scene,
       canvas_source_keys
@@ -2092,8 +2622,20 @@ builder_spatial_alignment_server <- function(
       "dataset",
       "snapshotIdentity",
       "section",
+      "activeRoi",
+      "activeImage",
       "controls"
     )])
+    register_control_owner_view(
+      control_owner_for(
+        entry,
+        section,
+        if (identical(roi_view(), "")) "" else active_roi(),
+        active_image()
+      ),
+      scene$viewKey,
+      scene$generation
+    )
     session$sendCustomMessage("builder_spatial_canvas_scene", scene)
     finish_switch(contract$id, section)
   })
@@ -2150,6 +2692,10 @@ builder_spatial_alignment_server <- function(
     }
     expected <- shiny::isolate(expected_controls())
     if (!is.null(expected)) {
+      ## One complete debounced snapshot is the restore barrier. Clear it even
+      ## when an older browser reports a partial mismatch so later user input
+      ## can never remain permanently suppressed.
+      expected_controls(NULL)
       if (
         !isTRUE(all.equal(
           observed,
@@ -2159,7 +2705,6 @@ builder_spatial_alignment_server <- function(
       ) {
         return(invisible(FALSE))
       }
-      expected_controls(NULL)
       return(invisible(FALSE))
     }
     draft_parameters <- .builder_alignment_parameters(current_draft)
@@ -2236,6 +2781,7 @@ builder_spatial_alignment_server <- function(
       )
       expected <- shiny::isolate(expected_controls())
       if (!is.null(expected)) {
+        expected_controls(NULL)
         if (
           !identical(
             list(
@@ -2261,9 +2807,6 @@ builder_spatial_alignment_server <- function(
           ) {
             return()
           }
-          expected_controls(NULL)
-        } else {
-          expected_controls(NULL)
         }
       }
       point_appearance_input_ready(TRUE)
@@ -2305,10 +2848,58 @@ builder_spatial_alignment_server <- function(
     ignoreInit = TRUE
   )
 
+  active_alignment_settled <- function(dataset = NULL) {
+    id <- shiny::isolate(current())
+    if (
+      is.null(id) ||
+        (!is.null(dataset) && !id %in% as.character(dataset))
+    ) {
+      return(TRUE)
+    }
+    entry <- shiny::isolate(entry_of(id))
+    section <- shiny::isolate(active_section())
+    if (is.null(entry) || is.null(section)) {
+      return(TRUE)
+    }
+    labels <- image_labels_for(
+      entry,
+      section,
+      shiny::isolate(active_roi())
+    )
+    if (!length(labels)) {
+      return(TRUE)
+    }
+    preview <- shiny::isolate(alignment_preview())
+    contract <- shiny::isolate(canvas_contract())
+    viewport <- shiny::isolate(canvas_viewports())
+    if (
+      !isTRUE(preview$available) ||
+        !preview_matches_owner(preview, entry, section) ||
+        !is.list(contract) ||
+        !is.list(viewport) ||
+        !identical(contract$dataset, entry$id) ||
+        !identical(
+          contract$snapshotIdentity,
+          .builder_worker_identity(entry$snapshot)
+        ) ||
+        !identical(contract$section, section) ||
+        !identical(viewport$viewKey, contract$viewKey) ||
+        !isTRUE(
+          as.integer(viewport$generation) == as.integer(contract$generation)
+        )
+    ) {
+      return(FALSE)
+    }
+    roi <- as.character(shiny::isolate(active_roi()) %||% "")[[1L]]
+    key <- if (nzchar(roi)) roi else "__section__"
+    .builder_alignment_valid_bounds(viewport$viewports[[key]])
+  }
+
   materialize_coordinate_drafts <- function(
     dataset = NULL,
     section = NULL,
-    notify = TRUE
+    notify = TRUE,
+    require_settled = FALSE
   ) {
     collect_latest_entries <- function(updated = list()) {
       all <- if (is.function(entries)) {
@@ -2329,6 +2920,21 @@ builder_spatial_alignment_server <- function(
         }
       }
       all
+    }
+    if (isTRUE(require_settled) && !active_alignment_settled(dataset)) {
+      message <- paste0(
+        "The spatial preview is still settling. Wait for the image preview ",
+        "to finish, then try again."
+      )
+      if (isTRUE(notify)) {
+        shiny::showNotification(message, type = "warning", duration = 5)
+      }
+      return(list(
+        ok = FALSE,
+        entries = list(),
+        all_entries = collect_latest_entries(),
+        error = message
+      ))
     }
     pending <- shiny::isolate(coordinate_session_drafts())
     roi_pending <- shiny::isolate(roi_coordinate_session_drafts())
@@ -2508,6 +3114,8 @@ builder_spatial_alignment_server <- function(
       session$sendCustomMessage(
         "builder_coordinate_reset_motion",
         list(
+          dataset = entry$id,
+          generation = as.integer(entry$revision %||% 0L),
           ids = c(
             "enhance-coordinate_rotation",
             "enhance-point_opacity",
@@ -2547,11 +3155,22 @@ builder_spatial_alignment_server <- function(
         draft(current_draft)
         commit_section(entry, section, current_draft)
       }
+      browser_control_state(NULL)
+      reset_parameters <- if (is.null(current_draft)) {
+        builder_alignment_defaults()
+      } else {
+        .builder_alignment_parameters(current_draft)
+      }
+      reset_parameters[names(appearance)] <- appearance
+      set_expected_controls(reset_parameters)
       point_appearance_baseline(appearance)
       point_appearance_input_ready(FALSE)
       shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
+      shiny::freezeReactiveValue(input, "enhance-coordinate_rotation_number")
       shiny::freezeReactiveValue(input, "enhance-point_opacity")
+      shiny::freezeReactiveValue(input, "enhance-point_opacity_number")
       shiny::freezeReactiveValue(input, "enhance-point_size")
+      shiny::freezeReactiveValue(input, "enhance-point_size_number")
       shiny::updateSliderInput(
         session,
         "enhance-coordinate_rotation",
@@ -2586,9 +3205,19 @@ builder_spatial_alignment_server <- function(
     }
   )
   shiny::observeEvent(input[["enhance-center_image"]], {
-    current_draft <- draft()
-    preview <- alignment_preview()
-    if (is.null(current_draft) || !isTRUE(preview$available)) {
+    entry <- shiny::isolate(entry_of(current()))
+    section <- shiny::isolate(active_section())
+    label <- shiny::isolate(active_image())
+    current_draft <- shiny::isolate(draft())
+    preview <- shiny::isolate(alignment_preview())
+    if (
+      is.null(current_draft) ||
+        is.null(entry) ||
+        is.null(section) ||
+        is.null(label) ||
+        !isTRUE(preview$available) ||
+        !preview_matches_owner(preview, entry, section)
+    ) {
       return()
     }
     bounds <- alignment_bounds_for(
@@ -2598,17 +3227,26 @@ builder_spatial_alignment_server <- function(
     draft(centered)
     canvas_reset_token(canvas_reset_token() + 1L)
     update_controls(centered, bounds)
-    commit_section(entry_of(current()), active_section(), centered)
+    commit_section(entry, section, centered, label = label)
   })
   shiny::observeEvent(input[["enhance-reset_align"]], {
-    current_draft <- draft()
-    preview <- alignment_preview()
-    if (is.null(current_draft) || !isTRUE(preview$available)) {
+    entry <- shiny::isolate(entry_of(current()))
+    section <- shiny::isolate(active_section())
+    label <- shiny::isolate(active_image())
+    current_draft <- shiny::isolate(draft())
+    preview <- shiny::isolate(alignment_preview())
+    if (
+      is.null(current_draft) ||
+        is.null(entry) ||
+        is.null(section) ||
+        is.null(label) ||
+        !isTRUE(preview$available) ||
+        !preview_matches_owner(preview, entry, section)
+    ) {
       return()
     }
-    bounds <- alignment_bounds_for(
-      preview
-    )
+    bounds <- alignment_bounds_for(preview)
+    fit_bounds <- alignment_bounds_for(preview, image_fit = TRUE)
     reset <- builder_alignment_reset(current_draft)
     image_dimensions <- c(
       width = reset$source_width %||%
@@ -2617,14 +3255,14 @@ builder_spatial_alignment_server <- function(
         (reset$base_bounds$ymax - reset$base_bounds$ymin)
     )
     reset$base_bounds <- builder_alignment_fit_bounds(
-      bounds,
+      fit_bounds,
       image_dimensions
     )
     reset <- builder_alignment_center(reset, bounds)
     draft(reset)
     canvas_reset_token(canvas_reset_token() + 1L)
     update_controls(reset, bounds)
-    commit_section(entry_of(current()), active_section(), reset)
+    commit_section(entry, section, reset, label = label)
   })
   show_remove_image <- function() {
     entry <- entry_of(current())

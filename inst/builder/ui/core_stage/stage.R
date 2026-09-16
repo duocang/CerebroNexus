@@ -156,13 +156,17 @@ builder_core_stage_ui <- function(id, model) {
           ),
           div(
             class = "builder-viewer-card-body",
-            builder_analysis_results_ui(analysis_results)
+            builder_analysis_results_ui(analysis_results, id)
           )
         )
       }
     ),
     if (builder_stage_has_text(model$metadata_attention %||% "")) {
-      div(class = "notice warn", model$metadata_attention)
+      div(
+        class = "notice warn",
+        p(model$metadata_attention),
+        builder_acknowledgement_button(id, model$metadata_acknowledgement)
+      )
     },
     if (builder_stage_has_text(model$layer_attention %||% "")) {
       div(class = "notice bad", model$layer_attention)
@@ -215,6 +219,13 @@ builder_views_stage_ui <- function(id, model, spatial = NULL) {
   } else {
     "None"
   }
+  if (
+    !length(trajectory_catalog$items) &&
+      !length(projection_catalog$items) &&
+      is.null(spatial)
+  ) {
+    return(NULL)
+  }
 
   tags$section(
     class = "builder-stage-section builder-stage-views builder-viewer-content",
@@ -249,26 +260,28 @@ builder_views_stage_ui <- function(id, model, spatial = NULL) {
         )
       )
     },
-    tags$details(
-      class = "builder-viewer-card builder-viewer-projections",
-      `data-disclosure-key` = "viewer-projections",
-      tags$summary(
-        span(class = "builder-viewer-card-title", "Projections"),
-        span(
-          class = "builder-viewer-card-count",
-          `data-viewer-projection-count` = "true",
-          paste0(
-            projection_catalog$included_count,
-            " included · Default: ",
-            projection_default_label
+    if (length(projection_catalog$items)) {
+      tags$details(
+        class = "builder-viewer-card builder-viewer-projections",
+        `data-disclosure-key` = "viewer-projections",
+        tags$summary(
+          span(class = "builder-viewer-card-title", "Projections"),
+          span(
+            class = "builder-viewer-card-count",
+            `data-viewer-projection-count` = "true",
+            paste0(
+              projection_catalog$included_count,
+              " included · Default: ",
+              projection_default_label
+            )
           )
+        ),
+        div(
+          class = "builder-viewer-card-body",
+          uiOutput(ns("projection_gallery"))
         )
-      ),
-      div(
-        class = "builder-viewer-card-body",
-        uiOutput(ns("projection_gallery"))
       )
-    ),
+    },
     spatial
   )
 }

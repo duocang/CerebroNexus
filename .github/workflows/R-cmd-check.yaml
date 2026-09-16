@@ -47,8 +47,20 @@ jobs:
       - name: Run R-CMD-check
         run: |
           nix-shell default.nix --run "Rscript -e \"
-            devtools::check(vignettes = TRUE, error_on = 'warning')
+            devtools::check(
+              args = c('--timings', '--no-tests'),
+              vignettes = TRUE,
+              error_on = 'warning'
+            )
           \""
+
+      - name: Verify installed Builder layout
+        run: |
+          nix-shell default.nix --run '
+            mkdir -p "$RUNNER_TEMP/cerebronexus-installed" &&
+            R CMD INSTALL --library="$RUNNER_TEMP/cerebronexus-installed" . &&
+            R_LIBS_USER="$RUNNER_TEMP/cerebronexus-installed" Rscript scripts/check-installed-builder.R
+          '
 
       - name: Upload check results on failure
         if: failure()

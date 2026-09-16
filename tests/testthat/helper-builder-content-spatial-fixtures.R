@@ -120,7 +120,8 @@ builder_content_spatial_context <- function(object) {
       "examples",
       "demo_trekker.crb"
     )
-    object <- readRDS(path)
+    ## Bundled demo CRBs use the current qs2 codec.
+    object <- qs2::qs_read(path)
     payload <- object$getTrekker()
     evidence_index <- payload$evidence[[1L]]$cell + 1L
     keep <- unique(c(seq_len(4L), evidence_index))

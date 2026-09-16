@@ -696,7 +696,7 @@ test_that("the repository monocle2 example satisfies the same contract", {
     "demo_full_tcr_bcr.crb"
   )
   skip_if_not(file.exists(file))
-  cerebro <- readRDS(file)
+  cerebro <- qs2::qs_read(file)
   trajectories <- get("trajectories", envir = cerebro, inherits = FALSE)
   metadata <- get("meta_data", envir = cerebro, inherits = FALSE)
   object <- builder_table_object(list(trajectories = trajectories))
