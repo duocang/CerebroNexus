@@ -266,6 +266,41 @@ test_that("Builder rejects corrupt PNG image data", {
   )
 })
 
+test_that("Builder rejects invalid PNG header semantics", {
+  skip_if_not_installed("png")
+  source <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), source)
+  original <- readBin(source, what = "raw", n = file.size(source))
+  rewrite_ihdr <- function(offset, value) {
+    bytes <- original
+    bytes[[16L + offset]] <- as.raw(value)
+    bytes[30:33] <- .builder_png_crc32(c(
+      charToRaw("IHDR"),
+      bytes[17:29]
+    ))
+    path <- tempfile(fileext = ".png")
+    withr::defer(unlink(path), envir = parent.frame())
+    writeBin(bytes, path)
+    path
+  }
+  invalid <- list(
+    bit_depth = rewrite_ihdr(9L, 3L),
+    color_type = rewrite_ihdr(10L, 1L),
+    compression = rewrite_ihdr(11L, 1L),
+    filter = rewrite_ihdr(12L, 1L),
+    interlace = rewrite_ihdr(13L, 2L),
+    indexed_without_palette = rewrite_ihdr(10L, 3L)
+  )
+
+  for (name in names(invalid)) {
+    expect_identical(
+      builder_read_image(invalid[[name]])$error,
+      "The image file has no valid encoded pixel data.",
+      info = name
+    )
+  }
+})
+
 test_that("PNG zlib headers may span consecutive IDAT chunks", {
   skip_if_not_installed("png")
   path <- withr::local_tempfile(fileext = ".png")
@@ -414,6 +449,24 @@ test_that("Builder rejects invalid JPEG tables and sampling factors", {
       info = name
     )
   }
+})
+
+test_that("Builder rejects unsupported JPEG sample precision", {
+  skip_if_not_installed("jpeg")
+  path <- withr::local_tempfile(fileext = ".jpeg")
+  jpeg::writeJPEG(matrix(seq(0, 1, length.out = 16L), nrow = 4L), path)
+  bytes <- readBin(path, what = "raw", n = file.size(path))
+  frame <- which(
+    as.integer(bytes[-length(bytes)]) == 0xffL &
+      as.integer(bytes[-1L]) %in% c(0xc0L, 0xc1L, 0xc2L)
+  )[[1L]]
+  bytes[[frame + 4L]] <- as.raw(0L)
+  writeBin(bytes, path)
+
+  expect_identical(
+    builder_read_image(path)$error,
+    "The image file has no valid encoded pixel data."
+  )
 })
 
 test_that("Builder enforces the decoded-pixel budget", {
