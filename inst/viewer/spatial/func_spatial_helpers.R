@@ -314,6 +314,16 @@ spatial_background_key <- function(source, label) {
   paste0(source, "::", label)
 }
 
+spatial_background_display_label <- function(label) {
+  stripped <- sub(
+    "[.](png|jpe?g|tiff?|webp|bmp|gif|svg)$",
+    "",
+    label,
+    ignore.case = TRUE
+  )
+  if (nzchar(stripped)) stripped else label
+}
+
 spatial_background_choices <- function(embedded_images, external_images) {
   labels <- function(images) {
     keys <- names(images) %||% character()
@@ -327,16 +337,15 @@ spatial_background_choices <- function(embedded_images, external_images) {
             !is.na(label) &&
             nzchar(label)
         ) {
-          label
+          spatial_background_display_label(label)
         } else {
-          keys[[index]]
+          spatial_background_display_label(keys[[index]])
         }
       },
       character(1)
     )
   }
   c(
-    "No Background" = "none",
     if (length(embedded_images) > 0L) {
       stats::setNames(
         paste0("embedded::", names(embedded_images)),
@@ -390,14 +399,11 @@ spatial_roi_background_groups <- function(
 }
 
 spatial_roi_background_selections <- function(groups, selected_tokens) {
-  use_defaults <- is.null(selected_tokens)
   selected_tokens <- as.character(selected_tokens %||% character())
   selections <- lapply(groups, function(group) {
     selected <- intersect(unname(group$tokens), selected_tokens)
     selected_choice <- if (length(selected)) {
       names(group$tokens)[match(selected[[1L]], group$tokens)]
-    } else if (use_defaults) {
-      normalize_spatial_background_choice(NULL, group$choices)
     } else {
       NULL
     }
@@ -420,7 +426,7 @@ normalize_spatial_background_choice <- function(background_image, choices) {
   ) {
     return(background_image)
   }
-  if (length(values) > 1L) values[[2L]] else "none"
+  "none"
 }
 
 resolve_spatial_background <- function(

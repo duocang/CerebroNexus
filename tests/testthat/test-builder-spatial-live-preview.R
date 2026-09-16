@@ -75,6 +75,14 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_match(js, "loadImages", fixed = TRUE)
   expect_match(js, "drawImage(ctx, scene, screen, roiImage", fixed = TRUE)
   expect_match(js, "imageFitViewports", fixed = TRUE)
+  expect_match(js, "drawViewerFrame", fixed = TRUE)
+  expect_match(js, 'var label = "View area";', fixed = TRUE)
+  expect_match(js, "var VIEWER_FRAME_PADDING = 10;", fixed = TRUE)
+  expect_match(
+    js,
+    "var VIEWER_POINT_PADDING = POINT_EDGE_PADDING;",
+    fixed = TRUE
+  )
   expect_false(grepl("ctx.fillText(group", js, fixed = TRUE))
   expect_match(js, '"builder_spatial_roi_select"', fixed = TRUE)
   expect_match(js, "if (!groups.length)", fixed = TRUE)
@@ -89,7 +97,7 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_false(grepl("Plotly", js, fixed = TRUE))
 })
 
-test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion events", {
+test_that("Canvas runtime persists point-safe View areas and deduplicates Ion events", {
   result <- builder_spatial_canvas_node()
 
   legacy_view <- function(bounds, width, height, padding) {
@@ -112,18 +120,35 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
       ymax = centre_y + view_height / 2
     )
   }
+  point_safe_view <- function(bounds, width, height, padding) {
+    fitted <- legacy_view(bounds, width, height, padding)
+    plot_width <- width - padding * 2
+    scale <- plot_width / (fitted$xmax - fitted$xmin)
+    expansion <- padding / scale
+    list(
+      xmin = fitted$xmin - expansion,
+      xmax = fitted$xmax + expansion,
+      ymin = fitted$ymin - expansion,
+      ymax = fitted$ymax + expansion
+    )
+  }
   as_numeric_bounds <- function(value) {
     lapply(value, as.numeric)
   }
 
   expect_equal(
     as_numeric_bounds(result$overlay$viewports$`__section__`),
-    legacy_view(
+    point_safe_view(
       list(xmin = -5, xmax = 15, ymin = -10, ymax = 30),
       500,
       400,
-      2
+      18
     ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as_numeric_bounds(result$resizedOverlay$viewports$`__section__`),
+    as_numeric_bounds(result$overlay$viewports$`__section__`),
     tolerance = 1e-12
   )
   expect_equal(
@@ -160,6 +185,32 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   )
   expect_equal(as.numeric(result$separateFirstPoint$x), 127, tolerance = 1e-12)
   expect_equal(as.numeric(result$separateFirstPoint$y), 200, tolerance = 1e-12)
+  expect_length(result$overlayViewerFrames, 1L)
+  expect_length(result$separateViewerFrames, 2L)
+  overlay_frame <- result$overlayViewerFrames[[1L]]
+  expect_length(result$overlayPoints, 2L)
+  expect_true(all(vapply(
+    result$overlayPoints,
+    function(point) {
+      x <- as.numeric(point$x)
+      y <- as.numeric(point$y)
+      x - as.numeric(overlay_frame$left) >= 16 &&
+        as.numeric(overlay_frame$right) - x >= 16 &&
+        y - as.numeric(overlay_frame$top) >= 16 &&
+        as.numeric(overlay_frame$bottom) - y >= 16
+    },
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    result$separateViewerFrames,
+    function(frame) {
+      as.numeric(frame$left) > 0 &&
+        as.numeric(frame$top) > 0 &&
+        as.numeric(frame$right) < 500 &&
+        as.numeric(frame$bottom) < 400
+    },
+    logical(1)
+  )))
   expect_identical(result$nullControlsViewKey, "null-controls")
   expect_false(isTRUE(all.equal(
     result$overlay$viewports$`__section__`,
@@ -190,7 +241,7 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   )
   expect_identical(
     as.numeric(result$resetRaceCommits[[1L]]$value$generation),
-    3
+    4
   )
   expect_identical(
     as.numeric(result$resetRaceCommits[[1L]]$value$resetToken),

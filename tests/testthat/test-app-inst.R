@@ -187,7 +187,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "''"
     ),
     timeout = 30000
   )
@@ -208,12 +208,23 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       )),
       use.names = FALSE
     ),
-    c("none", "external::Tissue background")
+    c("", "external::Tissue background")
   )
   app$wait_for_js(
     paste0(
       "document.querySelector(",
       "'#spatial_projection_cell_view_host canvas:not(.cv-mini)')"
+    ),
+    timeout = 30000
+  )
+  app$run_js(paste0(
+    "document.getElementById('spatial_projection_background_image').",
+    "selectize.setValue('external::Tissue background');"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background_image').value === ",
+      "'external::Tissue background'"
     ),
     timeout = 30000
   )
@@ -244,7 +255,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "''"
     ),
     timeout = 30000
   )
@@ -252,7 +263,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Pink stain'"
+      "''"
     ),
     timeout = 30000
   )
@@ -264,7 +275,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       )),
       use.names = FALSE
     ),
-    c("none", "external::Pink stain", "external::Fluorescent yellow")
+    c("", "external::Pink stain", "external::Fluorescent yellow")
   )
   app$set_inputs(
     spatial_projection_background_image = "external::Fluorescent yellow",
