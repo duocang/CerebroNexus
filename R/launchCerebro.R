@@ -157,6 +157,7 @@ launchCerebro <- function(
     ),
     "expression_matrix_mode" = expression_matrix_mode,
     "crb_file_to_load" = crb_file_to_load,
+    ".dataset_catalog" = .datasetCatalogFromFiles(crb_file_to_load),
     "expression_matrix_h5" = expression_matrix_h5,
     "expression_matrix_BPCells" = expression_matrix_BPCells,
     "welcome_message" = welcome_message,

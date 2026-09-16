@@ -1055,6 +1055,56 @@ dedent <- function(string) {
   catalog
 }
 
+.datasetInfoScalar <- function(value) {
+  if (is.null(value) || length(value) != 1L || is.na(value)) {
+    return(NA_character_)
+  }
+  as.character(value)
+}
+
+.readBundleDatasetInfo <- function(object, label, path) {
+  if (!.isRecognizedCerebroObject(object)) {
+    stop(
+      "Dataset information requires a recognized Cerebro object.",
+      call. = FALSE
+    )
+  }
+  experiment <- object$getExperiment()
+  metadata <- object$getMetaData()
+  list(
+    label = as.character(label),
+    path = as.character(path),
+    cells = as.integer(nrow(metadata)),
+    organism = .datasetInfoScalar(experiment$organism),
+    date = .datasetInfoScalar(experiment$date_of_export)
+  )
+}
+
+.datasetCatalogFromFiles <- function(files) {
+  if (is.null(files) || !is.character(files) || !length(files)) {
+    return(list())
+  }
+  labels <- names(files)
+  if (is.null(labels) || length(labels) != length(files)) {
+    labels <- basename(files)
+  }
+  catalog <- list()
+  for (index in seq_along(files)) {
+    path <- files[[index]]
+    if (!file.exists(path) || dir.exists(path)) {
+      next
+    }
+    object <- .readCerebroPayload(path)
+    catalog[[path]] <- .readBundleDatasetInfo(
+      object,
+      labels[[index]],
+      path
+    )
+    object <- NULL
+  }
+  catalog
+}
+
 .preflightBundleData <- function(
   cerebro_data,
   read_object = .readCerebroPayload,
@@ -1065,9 +1115,11 @@ dedent <- function(string) {
   backends <- vector("list", length(cerebro_data))
   spatial_backends <- vector("list", length(cerebro_data))
   spatial_catalogs <- vector("list", length(cerebro_data))
+  dataset_catalog <- vector("list", length(cerebro_data))
   names(backends) <- names(cerebro_data)
   names(spatial_backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
+  names(dataset_catalog) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
     object <- read_object(cerebro_data[[index]])
     inspection_error <- NULL
@@ -1076,6 +1128,11 @@ dedent <- function(string) {
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
         if (.isRecognizedCerebroObject(object)) {
+          dataset_catalog[index] <- list(.readBundleDatasetInfo(
+            object,
+            names(cerebro_data)[[index]],
+            cerebro_data[[index]]
+          ))
           spatial_backends[[index]] <- .spatialMoleculeBackend(
             object,
             cerebro_data[[index]]
@@ -1111,7 +1168,8 @@ dedent <- function(string) {
   list(
     backends = backends,
     spatial_backends = spatial_backends,
-    spatial_catalogs = spatial_catalogs
+    spatial_catalogs = spatial_catalogs,
+    dataset_catalog = dataset_catalog
   )
 }
 
@@ -2605,6 +2663,7 @@ createShinyApp <- function(
   private_data_root <- "private-data"
   preflight_data <- .preflightBundleData(cerebro_data)
   backends <- preflight_data$backends
+  dataset_catalog <- preflight_data$dataset_catalog
   spatial_backends <- preflight_data$spatial_backends
   if (
     !is.list(spatial_backends) ||
@@ -2648,6 +2707,12 @@ createShinyApp <- function(
     )
   }
   crb_targets <- paste0(private_data_root, "/", basename(cerebro_data))
+  for (index in seq_along(dataset_catalog)) {
+    if (!is.null(dataset_catalog[[index]])) {
+      dataset_catalog[[index]]$path <- crb_targets[[index]]
+    }
+  }
+  names(dataset_catalog) <- crb_targets
   copy_plan <- list()
   claimed_targets <- character()
   claimed_keys <- character()
@@ -3037,6 +3102,7 @@ createShinyApp <- function(
   internal_option_names <- c(
     ".bundle_backend_plan",
     ".bundle_run_options",
+    ".dataset_catalog",
     ".viewer_auth",
     "initial_page",
     "extra_tables"
@@ -3051,6 +3117,7 @@ createShinyApp <- function(
     schema_version = 1L,
     entries = effective_backend_entries
   )
+  cerebro_options[[".dataset_catalog"]] <- dataset_catalog
   cerebro_options[[".bundle_run_options"]] <- bundle_run_options
   if (!is.null(viewer_auth)) {
     cerebro_options[[".viewer_auth"]] <- viewer_auth[c(

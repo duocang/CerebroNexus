@@ -598,6 +598,57 @@ test_that("launchCerebro loads the installed Viewer", {
   )
 })
 
+test_that("launchCerebro builds dataset information for configured files", {
+  had_options <- exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+  previous_options <- if (had_options) {
+    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+  on.exit(
+    {
+      if (had_options) {
+        assign("Cerebro.options", previous_options, envir = .GlobalEnv)
+      } else if (
+        exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+      ) {
+        rm("Cerebro.options", envir = .GlobalEnv)
+      }
+    },
+    add = TRUE
+  )
+  cells <- c("cell-1", "cell-2", "cell-3")
+  object <- Cerebro$new()
+  object$setMetaData(data.frame(cell_barcode = cells, row.names = cells))
+  object$addExperiment("organism", "Homo sapiens")
+  object$addExperiment("date_of_export", as.Date("2026-09-17"))
+  crb <- tempfile(fileext = ".crb")
+  saveRDS(object, crb)
+
+  app <- launchCerebro(
+    mode = "closed",
+    crb_file_to_load = c(Ren = crb, Missing = paste0(crb, ".missing"))
+  )
+  catalog <- get(
+    "Cerebro.options",
+    envir = .GlobalEnv,
+    inherits = FALSE
+  )[[".dataset_catalog"]]
+
+  expect_s3_class(app, "shiny.appobj")
+  expect_named(catalog, crb)
+  expect_identical(
+    catalog[[crb]],
+    list(
+      label = "Ren",
+      path = crb,
+      cells = 3L,
+      organism = "Homo sapiens",
+      date = "2026-09-17"
+    )
+  )
+})
+
 ## ---------------------------------------------------------------------------
 ## .getExpressionMatrix same-semantic fallback guard
 ##

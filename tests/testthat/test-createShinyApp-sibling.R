@@ -332,6 +332,50 @@ test_that("createShinyApp stores dataset scatter defaults directly", {
   )
 })
 
+test_that("createShinyApp freezes compact dataset information", {
+  root <- withr::local_tempdir()
+  paths <- vapply(
+    list(
+      Human = list(cells = c("cell-1", "cell-2"), organism = "Homo sapiens"),
+      Mouse = list(cells = c("cell-a", "cell-b", "cell-c"), organism = "Mouse")
+    ),
+    function(info) {
+      object <- Cerebro$new()
+      object$setMetaData(data.frame(
+        cell_barcode = info$cells,
+        row.names = info$cells
+      ))
+      object$addExperiment("organism", info$organism)
+      object$addExperiment("date_of_export", as.Date("2026-09-17"))
+      path <- file.path(root, paste0(tolower(info$organism), ".crb"))
+      saveRDS(object, path)
+      path
+    },
+    character(1)
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(paths, app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured <- unname(config$crb_file_to_load)
+
+  expect_named(config[[".dataset_catalog"]], configured)
+  expect_identical(
+    config[[".dataset_catalog"]][[configured[[1L]]]],
+    list(
+      label = "Human",
+      path = configured[[1L]],
+      cells = 2L,
+      organism = "Homo sapiens",
+      date = "2026-09-17"
+    )
+  )
+  expect_identical(
+    config[[".dataset_catalog"]][[configured[[2L]]]]$cells,
+    3L
+  )
+})
+
 render_bundle_spatial_background <- function(
   app,
   config,
