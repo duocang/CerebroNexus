@@ -282,12 +282,8 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background_image').value ",
-      "=== 'none'"
-    ),
+    "document.getElementById('spatial_projection_background_image') === null",
     timeout = 30000
   )
   expect_identical(
@@ -298,16 +294,6 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       validate = function(value) identical(value, "image")
     ),
     "image"
-  )
-  expect_identical(
-    unlist(
-      app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
-      )),
-      use.names = FALSE
-    ),
-    "none"
   )
   app$wait_for_js(
     paste0(

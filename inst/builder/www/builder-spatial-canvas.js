@@ -741,6 +741,7 @@
       image: scene.activeImage || "",
       viewKey: scene.viewKey,
       generation: scene.generation,
+      resetToken: state.resetToken,
       sequence: state.controlSequence,
       controls: Object.assign({}, state.controls || {}),
     };

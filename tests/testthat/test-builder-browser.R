@@ -63,6 +63,10 @@ test_that("metadata search reveals matching unavailable rows", {
 test_that("Spatial editor exposes named images and dynamic action boundaries", {
   environment <- new.env(parent = globalenv())
   sys.source(
+    file.path(builder_browser_dir, "io.R"),
+    envir = environment
+  )
+  sys.source(
     file.path(builder_browser_dir, "extras.R"),
     envir = environment
   )
@@ -102,11 +106,8 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
           layers = c("points", "raster", "boundaries", "molecules")
         )
       ),
-      images = list(
-        section_a = list(`H&E` = list(), DAPI = list()),
-        section_b = list(`H&E` = list())
-      ),
-      spatial_image_storage = "external"
+      image_choices = c(`H&E` = "H&E", DAPI = "DAPI"),
+      active_image = "H&E"
     )
   ))$html
   minimal_html <- htmltools::renderTags(
@@ -120,9 +121,6 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
   )$html
 
   for (text in c(
-    "Image storage",
-    "External files in App (spatial-assets/)",
-    "Embedded in CRB",
     "section_a · sample: S1 · 2 ROIs",
     "section_b · sample: S2 · ROI: S2_normal",
     "ROI view",
@@ -349,9 +347,9 @@ test_that("builder interaction reflows and preserves accessible state", {
     app$click(selector = ".example-btn[data-ex=complete_viewer_data]")
     app$wait_for_js(
       paste0(
-        "document.querySelectorAll('.ds.ds--ready[data-ds]').length === 2 && ",
+        "document.querySelectorAll('.ds.ds--ready[data-ds]').length === 3 && ",
         "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
-        "document.querySelector('[aria-current=stage]') !== null && ",
+        "document.querySelector('[aria-current=step]') !== null && ",
         "document.getElementById('complete_dataset_check') !== null"
       ),
       timeout = 60000
@@ -444,7 +442,7 @@ test_that("builder interaction reflows and preserves accessible state", {
     "document.getElementById('review-stage').textContent"
   )
   expect_match(review_text, "Creates CRB files", fixed = TRUE)
-  expect_match(review_text, "2 datasets", fixed = TRUE)
+  expect_match(review_text, "3 datasets", fixed = TRUE)
   expect_false(grepl("Creates Shiny App", review_text, fixed = TRUE))
   expect_false(grepl(
     "Creates CRB files + private App",
