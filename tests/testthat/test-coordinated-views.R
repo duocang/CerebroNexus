@@ -2007,7 +2007,10 @@ test_that("each section offers only its own configured backgrounds", {
     sub("^session/", "", urls[[1L]]),
     envir = cv_env$session$callbacks
   )
-  expect_identical(callback()$content, px)
+  expect_identical(
+    callback()$content,
+    list(file = normalizePath(png, mustWork = TRUE), owned = FALSE)
+  )
   expect_equal(
     unlist(first[[1L]]$bounds, use.names = TRUE),
     c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
@@ -2599,8 +2602,20 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   responses <- lapply(urls, function(url) {
     get(sub("^session/", "", url), envir = cv_env$session$callbacks)()
   })
-  expect_identical(responses[[1L]]$content, png_magic)
-  expect_identical(responses[[2L]]$content, jpeg_magic)
+  expect_identical(
+    responses[[1L]]$content,
+    list(
+      file = normalizePath(file.path(assets, "valid.png"), mustWork = TRUE),
+      owned = FALSE
+    )
+  )
+  expect_identical(
+    responses[[2L]]$content,
+    list(
+      file = normalizePath(file.path(assets, "valid.jpg"), mustWork = TRUE),
+      owned = FALSE
+    )
+  )
 })
 
 test_that("background state keys namespace FOV and direct modalities", {
