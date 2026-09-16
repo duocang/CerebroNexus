@@ -49,7 +49,12 @@ output$ir_visualizations_UI <- renderUI({
   if (!has_scRepertoire()) {
     return(ir_scRepertoire_missing_ui())
   }
-  data <- ir_data()
+  # Building the tab strip only needs to know whether repertoire data exists.
+  # Do not depend on ir_data(): that reactive follows the active grouping
+  # controls so it can join only requested metadata. Rebuilding the whole
+  # tabset on every grouping change resets the selected tab before the
+  # corresponding controls/output can update.
+  data <- ir_data_raw()
   if (is.null(data)) {
     return(div(
       class = "alert alert-warning",

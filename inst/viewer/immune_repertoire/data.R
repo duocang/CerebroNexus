@@ -334,7 +334,11 @@ IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 ## are the labels shown to the user; values feed ir_umap_chains().
 ir_receptor_types <- reactive({
   present <- tryCatch(
-    cerebro_receptors_present(ir_data()),
+    # Receptor availability is structural. Using the metadata-annotated
+    # reactive here makes the parameter panel depend on its own grouping
+    # select input; changing that input then rebuilds the panel and resets the
+    # selection before the grouped plot can render.
+    cerebro_receptors_present(ir_data_raw()),
     error = function(e) character(0)
   )
   stats::setNames(present, present)
