@@ -1296,6 +1296,18 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   c(width = width, height = height)
 }
 
+.builder_png_zlib_header_valid <- function(bytes) {
+  if (length(bytes) != 2L) {
+    return(FALSE)
+  }
+  compression <- as.integer(bytes[[1L]])
+  flags <- as.integer(bytes[[2L]])
+  bitwAnd(compression, 0x0fL) == 8L &&
+    bitwShiftR(compression, 4L) <= 7L &&
+    bitwAnd(flags, 0x20L) == 0L &&
+    (compression * 256L + flags) %% 31L == 0L
+}
+
 .builder_png_has_pixel_data <- function(path) {
   size <- suppressWarnings(as.numeric(file.info(path)$size[[1L]]))
   if (!is.finite(size) || size < 45) {
@@ -1309,6 +1321,9 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   }
   position <- 8
   has_pixel_data <- FALSE
+  seen_idat <- FALSE
+  ended_idat <- FALSE
+  zlib_header <- raw()
   repeat {
     header <- readBin(connection, what = "raw", n = 8L)
     if (length(header) != 8L) {
@@ -1319,14 +1334,16 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       return(FALSE)
     }
     chunk_type <- header[5:8]
+    is_idat <- identical(chunk_type, charToRaw("IDAT"))
     if (
       (position == 8 && !identical(chunk_type, charToRaw("IHDR"))) ||
-        (position != 8 && identical(chunk_type, charToRaw("IHDR")))
+        (position != 8 && identical(chunk_type, charToRaw("IHDR"))) ||
+        (is_idat && ended_idat)
     ) {
       return(FALSE)
     }
-    if (identical(chunk_type, charToRaw("IDAT")) && chunk_length > 0) {
-      has_pixel_data <- TRUE
+    if (seen_idat && !is_idat) {
+      ended_idat <- TRUE
     }
     if (identical(chunk_type, charToRaw("IHDR"))) {
       if (chunk_length != 13) {
@@ -1343,6 +1360,23 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       ) {
         return(FALSE)
       }
+    } else if (is_idat) {
+      seen_idat <- TRUE
+      take <- min(2L - length(zlib_header), chunk_length)
+      if (take > 0L) {
+        zlib_header <- c(
+          zlib_header,
+          readBin(connection, what = "raw", n = take)
+        )
+      }
+      seek(connection, where = chunk_length - take + 4L, origin = "current")
+      if (
+        length(zlib_header) == 2L &&
+          !.builder_png_zlib_header_valid(zlib_header)
+      ) {
+        return(FALSE)
+      }
+      has_pixel_data <- length(zlib_header) == 2L
     } else if (identical(chunk_type, charToRaw("IEND"))) {
       checksum <- readBin(connection, what = "raw", n = 4L)
       return(
@@ -1431,6 +1465,28 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
     }
     as.integer(bytes[[1L]]) * 256L + as.integer(bytes[[2L]])
   }
+  quantization_tables <- function(segment) {
+    tables <- integer()
+    cursor <- 1L
+    while (cursor <= length(segment)) {
+      descriptor <- as.integer(segment[[cursor]])
+      precision <- bitwShiftR(descriptor, 4L)
+      table <- bitwAnd(descriptor, 0x0fL)
+      values <- if (precision == 0L) {
+        64L
+      } else if (precision == 1L) {
+        128L
+      } else {
+        0L
+      }
+      if (table > 3L || values == 0L || cursor + values > length(segment)) {
+        return(NULL)
+      }
+      tables <- c(tables, table)
+      cursor <- cursor + values + 1L
+    }
+    if (length(tables)) unique(tables) else NULL
+  }
   if (
     !is.finite(total) ||
       total < 2L ||
@@ -1459,7 +1515,8 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
   width <- NULL
   height <- NULL
   frame_marker <- NULL
-  has_quantization_table <- FALSE
+  frame_components <- NULL
+  available_quantization_tables <- integer()
   repeat {
     marker_prefix <- read_bytes(1L)
     if (length(marker_prefix) != 1L) {
@@ -1505,37 +1562,80 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
         orientation
       next
     } else if (marker == 0xdbL) {
-      has_quantization_table <- payload_length > 0L
-      seek(connection, where = payload_length, origin = "current")
+      tables <- quantization_tables(read_bytes(payload_length))
+      if (is.null(tables)) {
+        return(missing_pixels())
+      }
+      available_quantization_tables <- unique(c(
+        available_quantization_tables,
+        tables
+      ))
       next
     } else if (marker %in% start_of_frame) {
       if (payload_length < 6L) {
         return(unsafe())
       }
-      frame <- read_bytes(5L)
-      if (length(frame) != 5L) {
+      frame <- read_bytes(payload_length)
+      if (length(frame) != payload_length) {
         return(unsafe())
       }
       height <- as.integer(frame[[2L]]) * 256L + as.integer(frame[[3L]])
       width <- as.integer(frame[[4L]]) * 256L + as.integer(frame[[5L]])
       frame_marker <- marker
-      if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
+      component_count <- as.integer(frame[[6L]])
+      expected_length <- 6L + component_count * 3L
+      if (
+        !all(is.finite(c(width, height))) ||
+          width < 1 ||
+          height < 1 ||
+          component_count < 1L ||
+          payload_length != expected_length
+      ) {
         return(unsafe())
       }
-      seek(connection, where = payload_length - 5L, origin = "current")
+      component_starts <- seq.int(7L, by = 3L, length.out = component_count)
+      component_ids <- as.integer(frame[component_starts])
+      component_tables <- as.integer(frame[component_starts + 2L])
+      if (
+        anyDuplicated(component_ids) ||
+          any(component_tables < 0L | component_tables > 3L)
+      ) {
+        return(unsafe())
+      }
+      frame_components <- stats::setNames(
+        component_tables,
+        as.character(component_ids)
+      )
       next
     } else if (marker == 0xdaL) {
+      scan <- read_bytes(payload_length)
+      scan_component_count <- if (length(scan)) as.integer(scan[[1L]]) else 0L
+      expected_length <- 1L + scan_component_count * 2L + 3L
+      scan_starts <- if (scan_component_count > 0L) {
+        seq.int(2L, by = 2L, length.out = scan_component_count)
+      } else {
+        integer()
+      }
+      scan_components <- as.character(as.integer(scan[scan_starts]))
       if (
         is.null(width) ||
           is.null(height) ||
-          payload_length < 4L ||
-          (frame_marker %in% dct_frame && !has_quantization_table)
+          is.null(frame_components) ||
+          scan_component_count < 1L ||
+          payload_length != expected_length ||
+          anyDuplicated(scan_components) ||
+          !all(scan_components %in% names(frame_components)) ||
+          (frame_marker %in%
+            dct_frame &&
+            !all(
+              unname(frame_components[scan_components]) %in%
+                available_quantization_tables
+            ))
       ) {
         return(
           if (is.null(width) || is.null(height)) unsafe() else missing_pixels()
         )
       }
-      seek(connection, where = payload_length, origin = "current")
       entropy_start <- seek(connection, where = NA, origin = "current")
       if (total - entropy_start < 3L) {
         return(missing_pixels())
