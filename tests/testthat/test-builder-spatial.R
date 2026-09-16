@@ -31,6 +31,29 @@ builder_spatial_test_source("worker.R")
 builder_spatial_test_source("plan/defaults.R")
 builder_spatial_test_source("spatial_alignment_server.R")
 
+test_that("image alignment scale remains strictly positive", {
+  expect_error(
+    .builder_alignment_parameters(list(scale = 0)),
+    "outside its range",
+    fixed = TRUE
+  )
+  expect_identical(
+    .builder_alignment_parameters(list(scale = 0.02))$scale,
+    0.02
+  )
+  expect_identical(
+    .builder_alignment_parameters(list(scale = 0.001))$scale,
+    0.001
+  )
+  expect_identical(
+    .builder_alignment_parameters(list(scale = 0.01))$scale,
+    0.01
+  )
+  expect_identical(builder_alignment_scale_step(0.001), 0.001)
+  expect_identical(builder_alignment_scale_step(0.01), 0.01)
+  expect_identical(builder_alignment_scale_step(1), 0.02)
+})
+
 test_that("alignment capability is limited to Spatial and Trekker datasets", {
   skip_if_not_installed("SeuratObject")
   spatial <- builder_content_spatial_example_object(c("section-a", "section-b"))
@@ -495,14 +518,28 @@ test_that("alignment controls auto-commit before dataset switches", {
   write_dummy_png(image_path)
   image <- builder_read_image(image_path)
   expect_null(image$error)
+  section_a_parameters <- builder_alignment_defaults()
+  section_a_parameters$scale <- 0.001
   record <- builder_alignment_record(
     source = list(name = "section-a.png", type = "image/png"),
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = section_a_parameters,
     image_geometry = image,
     section = list(id = "section-a", kind = "spatial"),
     source_path = image$source_path
   )
   record$source_content_md5 <- image$source_content_md5
+  section_b_parameters <- builder_alignment_defaults()
+  section_b_parameters$scale <- 0.01
+  record_b <- builder_alignment_record(
+    source = list(name = "section-b.png", type = "image/png"),
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = section_b_parameters,
+    image_geometry = image,
+    section = list(id = "section-b", kind = "spatial"),
+    source_path = image$source_path
+  )
+  record_b$source_content_md5 <- image$source_content_md5
   entry <- list(
     id = "dataset-a",
     snapshot = list(
@@ -510,10 +547,13 @@ test_that("alignment controls auto-commit before dataset switches", {
       owner_token = "owner-a",
       object_md5 = strrep("a", 32L)
     ),
-    profile = list(images = "section-a", extras = list()),
+    profile = list(images = c("section-a", "section-b"), extras = list()),
     settings = list(
       name = "Dataset A",
-      images = list(`section-a` = list(`H&E` = record)),
+      images = list(
+        `section-a` = list(`H&E` = record),
+        `section-b` = list(`H&E` = record_b)
+      ),
       default_group = "cluster",
       default_projection = "umap",
       palette = "cerebro"
@@ -538,14 +578,24 @@ test_that("alignment controls auto-commit before dataset switches", {
       group = c("A", "B")
     )
   )
+  preview_b <- preview
+  preview_b$section$id <- "section-b"
   current_entry <- shiny::reactiveVal(entry)
   current <- shiny::reactiveVal(entry$id)
   alignment_preview <- shiny::reactiveVal(preview)
   spatial_coords <- shiny::reactiveVal(NULL)
   switched <- character()
+  input_messages <- list()
 
   shiny::testServer(
     function(input, output, session) {
+      session$sendInputMessage <- function(input_id, message) {
+        input_messages[[length(input_messages) + 1L]] <<- list(
+          id = input_id,
+          message = message
+        )
+        invisible()
+      }
       alignment <- builder_spatial_alignment_server(
         input = input,
         output = output,
@@ -568,6 +618,79 @@ test_that("alignment controls auto-commit before dataset switches", {
       alignment_preview(preview)
       session$flushReact()
 
+      expect_identical(alignment$draft()$scale, 0.001)
+      initial_scale_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      expect_identical(
+        as.numeric(tail(initial_scale_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+
+      session$setInputs(`enhance-active_section` = "section-b")
+      session$flushReact()
+      alignment_preview(preview_b)
+      session$flushReact()
+      expect_identical(alignment$active_section(), "section-b")
+      expect_identical(alignment$draft()$scale, 0.01)
+      section_b_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      expect_identical(
+        as.numeric(tail(section_b_updates, 1L)[[1L]]$message$value),
+        0.01
+      )
+
+      session$setInputs(`enhance-active_section` = "section-a")
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      expect_identical(alignment$active_section(), "section-a")
+      expect_identical(alignment$draft()$scale, 0.001)
+      section_a_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      expect_identical(
+        as.numeric(tail(section_a_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+
+      expect_false(alignment$materialize_coordinate_drafts(
+        dataset = "dataset-a",
+        notify = FALSE,
+        require_settled = TRUE
+      )$ok)
+      scene <- alignment$canvas_contract()
+      session$setInputs(
+        builder_spatial_viewports = list(
+          viewKey = scene$viewKey,
+          generation = scene$generation,
+          viewports = list(`__section__` = preview$bounds),
+          imageFitViewports = list(`__section__` = preview$bounds)
+        )
+      )
+      session$flushReact()
+      ## Persisting the first viewport updates the active record and produces
+      ## one replacement scene; the browser then publishes that generation.
+      scene <- alignment$canvas_contract()
+      session$setInputs(
+        builder_spatial_viewports = list(
+          viewKey = scene$viewKey,
+          generation = scene$generation,
+          viewports = list(`__section__` = preview$bounds),
+          imageFitViewports = list(`__section__` = preview$bounds)
+        )
+      )
+      session$flushReact()
+      expect_true(alignment$materialize_coordinate_drafts(
+        dataset = "dataset-a",
+        notify = FALSE,
+        require_settled = TRUE
+      )$ok)
+
       switch_accepted <- alignment$request_dataset_switch(
         "dataset-b",
         function() {
@@ -578,9 +701,11 @@ test_that("alignment controls auto-commit before dataset switches", {
       expect_identical(switched, "immediate")
 
       session$setInputs(`enhance-img_dx` = 0)
+      session$elapse(60)
       session$flushReact()
 
       session$setInputs(`enhance-img_dx` = 2)
+      session$elapse(60)
       session$flushReact()
       expect_identical(alignment$draft()$dx, 2)
       expect_false("outside" %in% names(alignment$draft()))
@@ -595,6 +720,7 @@ test_that("alignment controls auto-commit before dataset switches", {
       expect_identical(alignment$draft()$dx, 2)
 
       session$setInputs(`enhance-img_rotate` = 90)
+      session$elapse(60)
       session$flushReact()
       expect_identical(alignment$draft()$rotation, 90)
       expect_identical(
@@ -603,6 +729,7 @@ test_that("alignment controls auto-commit before dataset switches", {
       )
 
       session$setInputs(`enhance-image_flip_x` = TRUE)
+      session$elapse(60)
       session$flushReact()
       expect_true(alignment$draft()$flip_x)
       expect_true(
@@ -610,6 +737,7 @@ test_that("alignment controls auto-commit before dataset switches", {
       )
 
       session$setInputs(`enhance-img_dx` = 1)
+      session$elapse(60)
       session$flushReact()
       canonical <- alignment$current_record()
       expect_identical(alignment$draft()$uri, canonical$uri)
@@ -784,13 +912,32 @@ test_that("new images inherit the active image appearance", {
         utils::tail(preview_requests, 1L)[[1L]]$group,
         "sample_roi"
       )
+      alignment_preview(preview)
+      session$flushReact()
+      roi_event <- function(roi, nonce) {
+        contract <- alignment$canvas_contract()
+        list(
+          roi = roi,
+          dataset = contract$dataset,
+          snapshotIdentity = contract$snapshotIdentity,
+          section = contract$section,
+          viewKey = contract$viewKey,
+          generation = contract$generation,
+          nonce = nonce
+        )
+      }
+      stale_roi_event <- roi_event("border", 0)
+      stale_roi_event$snapshotIdentity <- "stale snapshot"
+      session$setInputs(builder_spatial_roi_select = stale_roi_event)
+      session$flushReact()
+      expect_identical(alignment$active_roi(), "lesion")
       session$setInputs(
-        builder_spatial_roi_select = list(roi = "border", nonce = 1)
+        builder_spatial_roi_select = roi_event("border", 1)
       )
       session$flushReact()
       expect_identical(alignment$active_roi(), "border")
       session$setInputs(
-        builder_spatial_roi_select = list(roi = "lesion", nonce = 2)
+        builder_spatial_roi_select = roi_event("lesion", 2)
       )
       session$flushReact()
       expect_identical(alignment$active_roi(), "lesion")
@@ -862,6 +1009,258 @@ test_that("new images inherit the active image appearance", {
         list(point_opacity = 0.7, point_size = 7)
       )
       expect_identical(commit_count, 2L)
+    }
+  )
+})
+
+test_that("browser control ownership rejects retired views but accepts an old owner flush", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("png")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+  image <- builder_read_image(image_path)
+  expect_null(image$error)
+  record <- builder_alignment_record(
+    source = list(name = "image-a.png", type = "image/png"),
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    image_geometry = image,
+    section = list(id = "section-a", kind = "spatial"),
+    source_path = image$source_path
+  )
+  record$source_content_md5 <- image$source_content_md5
+  second <- record
+  second$source$name <- "image-b.png"
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(
+      images = "section-a",
+      spatial_scenes = list(list(
+        id = "section-a",
+        annotations = list(
+          roi = list(
+            field = "sample_roi",
+            count = 2L,
+            values = c("lesion", "border")
+          )
+        )
+      )),
+      extras = list()
+    ),
+    settings = list(
+      name = "Dataset A",
+      images = list(`section-a` = list(A = record, B = second)),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "section-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    roi = list(
+      field = "sample_roi",
+      values = c("lesion", "border"),
+      selected = NULL
+    ),
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_barcode = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("lesion", "border"),
+      stringsAsFactors = FALSE
+    ),
+    spatial = data.frame(
+      cell_barcode = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("lesion", "border"),
+      stringsAsFactors = FALSE
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(preview)
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(updated, images) {
+          updated$settings$images <- images
+          current_entry(updated)
+          invisible(updated)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      expect_identical(alignment$roi_view(), "__separate__")
+      expect_identical(alignment$active_roi(), "lesion")
+      expect_identical(alignment$active_image(), "A")
+
+      control_event <- function(scene, sequence, scale, rotation) {
+        controls <- scene$controls
+        controls$scale <- scale
+        controls$coordinateRotation <- rotation
+        list(
+          dataset = scene$dataset,
+          snapshotIdentity = scene$snapshotIdentity,
+          section = scene$section,
+          roi = scene$activeRoi %||% "",
+          image = scene$activeImage %||% "",
+          viewKey = scene$viewKey,
+          generation = scene$generation,
+          sequence = sequence,
+          controls = controls
+        )
+      }
+
+      initial_scene <- alignment$canvas_contract()
+      session$setInputs(
+        builder_spatial_alignment_controls = control_event(
+          initial_scene,
+          1,
+          0.6,
+          10
+        )
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.6
+      )
+      separate_scene <- alignment$canvas_contract()
+      expect_identical(separate_scene$viewKey, initial_scene$viewKey)
+      expect_gte(separate_scene$generation, initial_scene$generation)
+
+      ## The owner stays (ROI lesion + image A), but the view is replaced.
+      session$setInputs(`enhance-active_roi` = "lesion")
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      single_scene <- alignment$canvas_contract()
+      expect_false(identical(single_scene$viewKey, separate_scene$viewKey))
+
+      stale_different_view <- control_event(separate_scene, 2, 0.7, 20)
+      session$setInputs(
+        builder_spatial_alignment_controls = stale_different_view
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.6
+      )
+
+      ## Returning to a deterministic viewKey starts a new generation epoch;
+      ## an event from the retired incarnation must still be rejected.
+      session$setInputs(`enhance-active_roi` = "__separate__")
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      returned_scene <- alignment$canvas_contract()
+      expect_identical(returned_scene$viewKey, separate_scene$viewKey)
+      expect_gt(returned_scene$generation, separate_scene$generation)
+      stale_same_key <- control_event(separate_scene, 3, 0.8, 30)
+      session$setInputs(builder_spatial_alignment_controls = stale_same_key)
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.6
+      )
+
+      ## A pre-switch flush belongs to a different owner after ROI selection.
+      ## It remains valid for persistence, but must not replace the active
+      ## border ROI's coordinate reactive state.
+      roi_event <- list(
+        roi = "border",
+        dataset = returned_scene$dataset,
+        snapshotIdentity = returned_scene$snapshotIdentity,
+        section = returned_scene$section,
+        viewKey = returned_scene$viewKey,
+        generation = returned_scene$generation,
+        nonce = 1
+      )
+      session$setInputs(builder_spatial_roi_select = roi_event)
+      session$flushReact()
+      expect_identical(alignment$active_roi(), "border")
+      delayed_old_owner <- control_event(returned_scene, 4, 0.9, 45)
+      session$setInputs(
+        builder_spatial_alignment_controls = delayed_old_owner
+      )
+      session$flushReact()
+
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.9
+      )
+      expect_identical(
+        alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
+          "section-a"
+        ]]$lesion$spec$rotation_degrees,
+        45
+      )
+      expect_identical(alignment$canvas_contract()$activeRoi, "border")
+      expect_identical(
+        alignment$canvas_contract()$controls$coordinateRotation,
+        0
+      )
+
+      ## Reactivating the same owner can reproduce the same deterministic
+      ## view key. Its newer generation is the exact high-water mark, so the
+      ## retired generation must no longer be accepted.
+      border_scene <- alignment$canvas_contract()
+      session$setInputs(builder_spatial_roi_select = list(
+        roi = "lesion",
+        dataset = border_scene$dataset,
+        snapshotIdentity = border_scene$snapshotIdentity,
+        section = border_scene$section,
+        viewKey = border_scene$viewKey,
+        generation = border_scene$generation,
+        nonce = 2
+      ))
+      session$flushReact()
+      reactivated_scene <- alignment$canvas_contract()
+      expect_identical(reactivated_scene$viewKey, returned_scene$viewKey)
+      expect_gt(reactivated_scene$generation, returned_scene$generation)
+      session$setInputs(
+        builder_spatial_alignment_controls = control_event(
+          returned_scene,
+          5,
+          1.1,
+          90
+        )
+      )
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images[["section-a"]]$A$scale,
+        0.9
+      )
+      expect_identical(
+        alignment$pending_drafts()$roi_coordinates[["dataset-a"]][[
+          "section-a"
+        ]]$lesion$spec$rotation_degrees,
+        45
+      )
     }
   )
 })
@@ -1037,6 +1436,221 @@ test_that("Trekker alignment preview uses its physical and transcriptome spaces"
   )
   expect_lte(nrow(model$spatial), 4L)
   expect_false(anyNA(model$spatial[, c("x", "y", "group")]))
+})
+
+test_that("Trekker full-control commits preserve images without coordinate drafts", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("png")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+  image <- builder_read_image(image_path)
+  expect_null(image$error)
+  parameters <- builder_alignment_defaults()
+  parameters$scale <- 0.001
+  record <- builder_alignment_record(
+    source = list(name = "trekker.png", type = "image/png"),
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = parameters,
+    image_geometry = image,
+    section = list(id = "trekker", kind = "trekker"),
+    source_path = image$source_path
+  )
+  record$source_content_md5 <- image$source_content_md5
+  alternate <- record
+  alternate$source$name <- "trekker-alternate.png"
+  alternate$image_label <- "Alternate"
+  alternate$scale <- 0.01
+  alternate$bounds <- builder_alignment_transform_bounds(
+    alternate$base_bounds,
+    .builder_alignment_parameters(alternate)
+  )
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(
+      images = character(),
+      extras = list(list(key = "trekker", found = TRUE))
+    ),
+    settings = list(
+      name = "Dataset A",
+      images = list(trekker = list(
+        Histology = record,
+        Alternate = alternate
+      )),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "trekker", kind = "trekker", unit = "microns"),
+    projection_name = "Trekker UMAP",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_barcode = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    ),
+    spatial = data.frame(
+      cell_barcode = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(preview)
+  input_messages <- list()
+
+  shiny::testServer(
+    function(input, output, session) {
+      session$sendInputMessage <- function(input_id, message) {
+        input_messages[[length(input_messages) + 1L]] <<- list(
+          id = input_id,
+          message = message
+        )
+        invisible()
+      }
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(updated, images) {
+          updated$settings$images <- images
+          current_entry(updated)
+          invisible(updated)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      scene <- alignment$canvas_contract()
+      expect_identical(alignment$draft()$scale, 0.001)
+      expect_identical(alignment$active_image(), "Histology")
+
+      slider_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      number_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale_number"),
+        input_messages
+      )
+      expect_gt(length(slider_updates), 0L)
+      expect_gt(length(number_updates), 0L)
+      expect_identical(
+        as.numeric(tail(slider_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+      expect_identical(
+        as.numeric(tail(number_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+
+      session$setInputs(`enhance-active_image` = "Alternate")
+      session$flushReact()
+      expect_identical(alignment$active_image(), "Alternate")
+      expect_identical(alignment$draft()$scale, 0.01)
+      alternate_slider_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      alternate_number_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale_number"),
+        input_messages
+      )
+      expect_identical(
+        as.numeric(tail(alternate_slider_updates, 1L)[[1L]]$message$value),
+        0.01
+      )
+      expect_identical(
+        as.numeric(tail(alternate_number_updates, 1L)[[1L]]$message$value),
+        0.01
+      )
+
+      session$setInputs(`enhance-active_image` = "Histology")
+      session$flushReact()
+      expect_identical(alignment$active_image(), "Histology")
+      expect_identical(alignment$draft()$scale, 0.001)
+      restored_slider_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale"),
+        input_messages
+      )
+      restored_number_updates <- Filter(
+        function(item) identical(item$id, "enhance-img_scale_number"),
+        input_messages
+      )
+      expect_identical(
+        as.numeric(tail(restored_slider_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+      expect_identical(
+        as.numeric(tail(restored_number_updates, 1L)[[1L]]$message$value),
+        0.001
+      )
+
+      scene <- alignment$canvas_contract()
+      controls <- scene$controls
+      controls$scale <- 0.01
+      controls$coordinateRotation <- 72
+      session$setInputs(
+        builder_spatial_alignment_controls = list(
+          dataset = scene$dataset,
+          snapshotIdentity = scene$snapshotIdentity,
+          section = scene$section,
+          roi = "",
+          image = scene$activeImage,
+          viewKey = scene$viewKey,
+          generation = scene$generation,
+          sequence = 1,
+          controls = controls
+        )
+      )
+      session$flushReact()
+
+      expect_identical(
+        current_entry()$settings$images$trekker$Histology$scale,
+        0.01
+      )
+      expect_length(alignment$coordinate_drafts(), 0L)
+      expect_false("roi_coordinates" %in% names(alignment$pending_drafts()))
+      expect_identical(
+        alignment$canvas_contract()$controls$coordinateRotation,
+        0
+      )
+
+      ## A late Shiny echo from IonRangeSlider must not replace the browser's
+      ## accepted full-control state with the slider's coarser/default value.
+      session$setInputs(`enhance-img_scale` = 0.02)
+      session$elapse(300)
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$images$trekker$Histology$scale,
+        0.01
+      )
+      expect_identical(alignment$draft()$scale, 0.01)
+    }
+  )
 })
 
 test_that("alignment preview fails safely when no paired spaces exist", {
@@ -1688,7 +2302,24 @@ test_that("points-only Spatial FOV appearance persists without an image", {
         alignment$canvas_contract()$generation,
         scene_generation
       )
-      session$setInputs(`enhance-point_opacity` = 70)
+      scene <- alignment$canvas_contract()
+      controls <- scene$controls
+      controls$point_opacity <- 0.7
+      session$setInputs(
+        builder_spatial_alignment_controls = list(
+          dataset = "dataset-a",
+          snapshotIdentity = .builder_worker_identity(
+            current_entry()$snapshot
+          ),
+          section = "fov-a",
+          roi = "",
+          image = "",
+          viewKey = scene$viewKey,
+          generation = scene$generation,
+          sequence = 1,
+          controls = controls
+        )
+      )
       session$flushReact()
 
       expect_identical(
@@ -2063,6 +2694,10 @@ test_that("project restore replaces default coordinate drafts authoritatively", 
         0
       )
       alignment$restore_project_settings("ds1")
+      ## Restoring Project settings retires the initialization scene. Mirror
+      ## the current worker response before asserting its replacement scene.
+      alignment_preview(preview)
+      session$flushReact()
       session$setInputs(
         builder_spatial_coordinate_draft = list(
           dataset = "ds1",
@@ -2635,7 +3270,7 @@ test_that("JPEG metadata scanning reports a missing frame", {
 test_that("incomplete PNG files are rejected", {
   malformed <- c(
     as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
-    as.raw(c(0x00, 0x00, 0x00, 0x0c)),
+    as.raw(c(0x00, 0x00, 0x00, 0x0d)),
     charToRaw("IHDR"),
     as.raw(c(0x00, 0x00, 0x00, 0x03)),
     as.raw(c(0x00, 0x00, 0x00, 0x03))
@@ -2742,7 +3377,8 @@ test_that("alignment records propagate transformed extent facts", {
 
 test_that("one slide applied to every section keeps each section's own extent", {
   picture <- list(
-    uri = "data:image/png;base64,AAAA",
+    source_path = "session-images/slide.png",
+    project_asset = "assets/slide.png",
     bytes = 4L,
     width = 300L,
     height = 240L
@@ -2763,7 +3399,14 @@ test_that("one slide applied to every section keeps each section's own extent", 
   )
 
   got <- builder_pair_sections(picture, per_section)
-  expect_identical(unique(vapply(got, function(x) x$uri, "")), picture$uri)
+  expect_identical(
+    unique(vapply(got, function(x) x$source_path, "")),
+    picture$source_path
+  )
+  expect_identical(
+    unique(vapply(got, function(x) x$project_asset, "")),
+    picture$project_asset
+  )
   expect_identical(
     vapply(got, function(x) x$bounds$xmin, numeric(1)),
     c(A = 0, B = 500, C = 2000)

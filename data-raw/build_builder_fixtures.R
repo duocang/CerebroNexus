@@ -26,6 +26,15 @@ stabilize_fixture <- function(object) {
   object
 }
 
+make_overview_plot <- function() {
+  plot_data <- data.frame(
+    condition = c("baseline", "treated"),
+    n = c(120, 60)
+  )
+  ggplot2::ggplot(plot_data, ggplot2::aes(condition, n)) +
+    ggplot2::geom_col()
+}
+
 add_fixture_section <- function(object, name, cells, origin, span) {
   coordinates <- data.frame(
     x = stats::runif(length(cells), 0, span[1L]) + origin[1L],
@@ -96,7 +105,7 @@ make_immune_repertoire <- function(cells, samples) {
     TRB = "TRBV7-9.TRBJ2-7",
     IGH = "IGHV3-23.IGHJ4"
   )
-  lapply(seq_along(split_cells), function(sample_index) {
+  stats::setNames(lapply(seq_along(split_cells), function(sample_index) {
     sample_cells <- split_cells[[sample_index]]
     chain <- rep(chains, length.out = length(sample_cells))
     data.frame(
@@ -112,8 +121,7 @@ make_immune_repertoire <- function(cells, samples) {
       ),
       stringsAsFactors = FALSE
     )
-  }) |>
-    stats::setNames(names(split_cells))
+  }), names(split_cells))
 }
 
 make_hla_typing <- function(samples, donors) {
@@ -333,11 +341,7 @@ make_complete_viewer_data_fixture <- function() {
       )
     ),
     plots = list(
-      overview = ggplot2::ggplot(
-        data.frame(condition = c("baseline", "treated"), n = c(120, 60)),
-        ggplot2::aes(condition, n)
-      ) +
-        ggplot2::geom_col()
+      overview = make_overview_plot()
     )
   )
   object@misc$immune_repertoire <- make_immune_repertoire(cells, sample_id)

@@ -137,11 +137,204 @@
     saving: false,
     rollbackRequireLogin: false,
   };
+  var datasetMessageGenerations = new Map();
 
   function send(name, value) {
-    if (!window.Shiny) return false;
+    if (!name || !window.Shiny) return false;
     window.Shiny.setInputValue(name, value, { priority: "event" });
     return true;
+  }
+
+  function contentActionOwner(control) {
+    if (!control || !control.dataset) return null;
+    var ownerControl = typeof control.closest === "function"
+      ? control.closest(
+        "[data-generation][data-project-epoch][data-owner-token]"
+      ) || control
+      : control;
+    var generation = Number(ownerControl.dataset.generation);
+    var projectEpoch = Number(ownerControl.dataset.projectEpoch);
+    var ownerToken = ownerControl.dataset.ownerToken;
+    if (
+      !Number.isFinite(generation) ||
+      generation < 0 ||
+      generation !== Math.floor(generation) ||
+      !Number.isFinite(projectEpoch) ||
+      projectEpoch < 0 ||
+      projectEpoch !== Math.floor(projectEpoch) ||
+      typeof ownerToken !== "string" ||
+      !ownerToken
+    ) return null;
+    return {
+      generation: generation,
+      project_epoch: projectEpoch,
+      owner_token: ownerToken,
+    };
+  }
+
+  function messageValues(value) {
+    if (value === null || typeof value === "undefined") return [];
+    return Array.isArray(value) ? value : [value];
+  }
+
+  function renderedDatasetId() {
+    var rendered = document.querySelector(
+      "#builder-workspace .builder-rendered-for-input"
+    );
+    if (rendered && rendered.value) return rendered.value;
+    var selected = document.querySelector(
+      "#ds_ready_list .builder-pick[aria-current=true]"
+    );
+    return selected && selected.dataset.ds ? selected.dataset.ds : null;
+  }
+
+  function datasetIdForElement(element) {
+    var stage = element && element.closest && element.closest(
+      ".builder-stage, .builder-enhancement-stack, #builder-workspace"
+    );
+    var rendered = stage && stage.querySelector(".builder-rendered-for-input");
+    return rendered && rendered.value ? rendered.value : renderedDatasetId();
+  }
+
+  function datasetMessageGenerationIsFresh(message) {
+    if (!message || typeof message.dataset !== "string" || !message.dataset) {
+      return false;
+    }
+    var generation = Number(message.generation);
+    if (!Number.isFinite(generation)) return false;
+    var previous = datasetMessageGenerations.get(message.dataset);
+    if (Number.isFinite(previous) && generation < previous) return false;
+    datasetMessageGenerations.set(
+      message.dataset,
+      Number.isFinite(previous) ? Math.max(previous, generation) : generation
+    );
+    return true;
+  }
+
+  function datasetMessageIsCurrent(message) {
+    if (!message || typeof message.dataset !== "string" || !message.dataset) {
+      return false;
+    }
+    if (
+      datasetSwitchState.target &&
+      message.dataset !== datasetSwitchState.target
+    ) return false;
+    var rendered = renderedDatasetId();
+    if (!rendered || message.dataset !== rendered) return false;
+    return datasetMessageGenerationIsFresh(message);
+  }
+
+  function resetDatasetMessageGenerationsForActivity(message) {
+    if (
+      message && message.phase === "opening" &&
+      builderActivityState.phase !== "opening"
+    ) {
+      // Entry revisions restart when another saved project replaces the
+      // workspace. Do not let a same-named dataset inherit the prior
+      // project's generation floor.
+      datasetMessageGenerations.clear();
+    }
+  }
+
+  function applyDatasetActionOwner(message) {
+    if (
+      !message ||
+      typeof message.dataset !== "string" ||
+      message.dataset !== renderedDatasetId() ||
+      typeof message.owner_token !== "string" ||
+      !message.owner_token
+    ) return;
+    var generation = Number(message.generation);
+    var projectEpoch = Number(message.project_epoch);
+    if (
+      !Number.isFinite(generation) ||
+      generation < 0 ||
+      generation !== Math.floor(generation) ||
+      !Number.isFinite(projectEpoch) ||
+      projectEpoch < 0 ||
+      projectEpoch !== Math.floor(projectEpoch)
+    ) return;
+    document.querySelectorAll(
+      "[data-generation][data-project-epoch][data-owner-token]"
+    ).forEach(function (control) {
+      if (control.dataset.ownerToken !== message.owner_token) return;
+      var currentProjectEpoch = Number(control.dataset.projectEpoch);
+      var currentGeneration = Number(control.dataset.generation);
+      if (
+        !Number.isFinite(currentProjectEpoch) ||
+        projectEpoch < currentProjectEpoch ||
+        (projectEpoch === currentProjectEpoch &&
+        Number.isFinite(currentGeneration) &&
+        generation < currentGeneration
+        )
+      ) return;
+      control.dataset.generation = String(generation);
+      control.dataset.projectEpoch = String(projectEpoch);
+    });
+  }
+
+  function flushPendingTextEdits() {
+    if (!window.Shiny) return;
+    document.querySelectorAll(
+      "#builder-workspace input.shiny-bound-input[type=text]" +
+        "[data-builder-dirty=true], " +
+        "#builder-workspace textarea.shiny-bound-input" +
+        "[data-builder-dirty=true]"
+    ).forEach(function (control) {
+      if (!control.id || control.disabled || control.readOnly) return;
+      window.Shiny.setInputValue(control.id, control.value, {
+        priority: "event",
+      });
+      delete control.dataset.builderDirty;
+    });
+  }
+
+  function shouldFlushPendingTextEdits(target) {
+    if (!target || typeof target.closest !== "function") return false;
+    return Boolean(target.closest(
+      ".builder-pick, .builder-workflow-stage-link, " +
+        "#complete_dataset_check, #continue_to_review, " +
+        "#back_to_settings, #confirm_review, #back_to_review, #build, " +
+        "#save_builder_project, #open_builder_project"
+    ));
+  }
+
+  function legacyCopyText(text) {
+    var active = document.activeElement;
+    var textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.className = "visually-hidden";
+    document.body.appendChild(textarea);
+    textarea.select();
+    var copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch (error) {
+      copied = false;
+    }
+    textarea.remove();
+    if (canRestoreFocus(active)) active.focus({ preventScroll: true });
+    return copied;
+  }
+
+  function copyTextToClipboard(message) {
+    var value = message && typeof message.text === "string" ? message.text : "";
+    if (!value) return;
+    function announce(copied) {
+      scheduleStatusAnnouncement(
+        copied ? "Copied to clipboard." : "Could not copy. Select and copy the value manually."
+      );
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(function () {
+        announce(true);
+      }).catch(function () {
+        announce(legacyCopyText(value));
+      });
+      return;
+    }
+    announce(legacyCopyText(value));
   }
 
   function matchingDynamicElements(roots, selector) {
@@ -231,6 +424,7 @@
       selected.dataset.ds === target
     ) return false;
 
+    flushPendingTextEdits();
     if (!datasetSwitchState.target) {
       var selectedId = selected ? selected.dataset.ds : null;
       datasetSwitchState.authoritative = selectedId;
@@ -521,6 +715,20 @@
       showBuilderProjectSaveCompletion(status);
       return;
     }
+    if (status === "cancelling") {
+      var stoppingElements = builderOperationElements();
+      if (stoppingElements.card) {
+        stoppingElements.card.classList.add("is-result");
+        stoppingElements.card.classList.remove("is-success", "is-error", "has-actions");
+      }
+      setBuilderOperationActions([]);
+      setBuilderOperationCopy(
+        "Stopping source copy",
+        "The previous Project source copy is still stopping.",
+        (message && message.error) || "Keep this page open."
+      );
+      return;
+    }
     if (status !== "syncing") return;
     var completed = Number(message.completed || 0);
     var total = Number(message.total || 0);
@@ -652,6 +860,7 @@
       ".builder-retry-import",
       ".builder-remove-import",
       "#undo_remove",
+      "#undo_remove_notice",
     ].join(", ");
     matchingDynamicElements(roots, selectors).forEach(function (control) {
       var restoreControl = control.matches(
@@ -948,7 +1157,7 @@
     var attempts = 0;
     function apply() {
       if (token !== buildOperationFocusToken) return;
-      var heading = document.querySelector(".result-card h2");
+      var heading = document.querySelector(".result-card h3");
       var action = document.querySelector(
         ".result-card .builder-result-actions button, " +
           ".result-card .builder-recovery-action button"
@@ -1050,6 +1259,8 @@
     var row = document.createElement("div");
     row.className = "builder-auth-row";
     row.dataset.authId = account.id;
+    var safeId = String(account.id || authEditor.nextId)
+      .replace(/[^a-zA-Z0-9_-]/g, "-");
     [["Username", "text", "builder-auth-username", "username", account.username],
       ["Password", "password", "builder-auth-password", "new-password", account.password]
     ].forEach(function (spec) {
@@ -1058,15 +1269,25 @@
       var input = document.createElement("input");
       input.type = spec[1];
       input.className = spec[2];
+      input.id = "builder-auth-" + safeId + "-" + spec[3];
+      input.name = spec[3] + "-" + safeId;
       input.autocomplete = spec[3];
+      if (spec[3] === "username") input.spellcheck = false;
+      if (spec[3] === "new-password") {
+        input.setAttribute("aria-describedby", "builder-auth-password-note");
+      }
       input.value = spec[4];
+      label.htmlFor = input.id;
       label.appendChild(input);
       row.appendChild(label);
     });
     var remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn builder-auth-remove";
-    remove.setAttribute("aria-label", "Remove account");
+    remove.setAttribute(
+      "aria-label",
+      "Remove account" + (account.username ? " " + account.username : "")
+    );
     remove.title = "Remove account";
     remove.textContent = "×";
     row.appendChild(remove);
@@ -1111,6 +1332,26 @@
     if (!error) return;
     error.textContent = "";
     error.hidden = true;
+    document.querySelectorAll(".builder-auth-row input").forEach(function (input) {
+      input.removeAttribute("aria-invalid");
+      var descriptions = (input.getAttribute("aria-describedby") || "")
+        .split(/\s+/)
+        .filter(function (id) { return id && id !== "builder-auth-error"; });
+      if (descriptions.length) input.setAttribute("aria-describedby", descriptions.join(" "));
+      else input.removeAttribute("aria-describedby");
+    });
+  }
+
+  function markAuthInvalid(input) {
+    if (!input) return;
+    input.setAttribute("aria-invalid", "true");
+    var descriptions = (input.getAttribute("aria-describedby") || "")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!descriptions.includes("builder-auth-error")) {
+      descriptions.push("builder-auth-error");
+    }
+    input.setAttribute("aria-describedby", descriptions.join(" "));
   }
 
   function restoreAuthSnapshot() {
@@ -1157,6 +1398,7 @@
     var dialog = document.getElementById("builder-auth-dialog");
     if (!backdrop || !dialog) return;
     authEditor.open = false;
+    dialog.removeEventListener("keydown", trapDialogKeydown);
     backdrop.classList.remove("is-visible");
     dialog.classList.remove("is-visible");
     backdrop.hidden = true;
@@ -1182,7 +1424,14 @@
       cancelAuthDialog,
       authOpenFocusFallback
     );
+    backdrop.onclick = function (event) {
+      if (event.target === backdrop) cancelAuthDialog();
+    };
     showTransientLayer(backdrop, dialog);
+    window.setTimeout(function () {
+      var username = dialog.querySelector(".builder-auth-username");
+      if (authEditor.open && username) username.focus({ preventScroll: true });
+    }, 0);
   }
 
   function focusableElements(root) {
@@ -1216,6 +1465,12 @@
     var attempts = 0;
     function attempt() {
       if (dialog && dialog.__builderFocusRestoreToken !== restoreToken) return;
+      var otherModal = Array.from(document.querySelectorAll('[aria-modal="true"]'))
+        .find(function (candidate) {
+          return candidate !== dialog && !candidate.closest("[hidden]") &&
+            candidate.getClientRects().length > 0;
+        });
+      if (otherModal) return;
       var active = document.activeElement;
       var focusWasLost = !active || active === document.body ||
         active === document.documentElement ||
@@ -2036,6 +2291,122 @@
     showTransientLayer(backdrop, dialog);
   }
 
+  function setupBootstrapModalEvents() {
+    if (!window.jQuery || document.documentElement.dataset.builderModalEvents === "true") {
+      return;
+    }
+    document.documentElement.dataset.builderModalEvents = "true";
+    window.jQuery(document)
+      .on("show.bs.modal.builderA11y", ".modal", function () {
+        this.__builderRestoreFocus = document.activeElement;
+      })
+      .on("shown.bs.modal.builderA11y", ".modal", function () {
+        var modal = this;
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("tabindex", "-1");
+        var title = modal.querySelector(".modal-title");
+        if (title) {
+          title.id = title.id || "builder-modal-title-" + Date.now().toString(36);
+          modal.setAttribute("aria-labelledby", title.id);
+        } else if (!modal.hasAttribute("aria-label")) {
+          modal.setAttribute("aria-label", "Builder dialog");
+        }
+        var preferred = modal.querySelector(
+          ".modal-body input:not([type=hidden]):not([disabled]), " +
+            ".modal-body select:not([disabled]), .modal-body textarea:not([disabled]), " +
+            ".modal-footer .btn-primary:not([disabled]), .modal-footer button:not([disabled])"
+        );
+        (preferred || modal).focus({ preventScroll: true });
+      })
+      .on("hidden.bs.modal.builderA11y", ".modal", function () {
+        this.removeAttribute("aria-modal");
+        restoreFocus(this);
+      });
+  }
+
+  function showAttachmentRemoveConfirmation(control, kind) {
+    if (document.querySelector(".builder-attachment-remove-backdrop")) return;
+    var actionOwner = contentActionOwner(control);
+    if (!actionOwner) return;
+    var row = control.closest(".enhance-sheet-item, .enhance-workbook-item");
+    var fallbackRow = row && (row.nextElementSibling || row.previousElementSibling);
+    var label = row && row.querySelector(".enhance-attachment-name");
+    var displayName = label ? label.textContent.trim() :
+      (kind === "workbook" ? "this workbook" : "this table");
+    var backdrop = document.createElement("div");
+    backdrop.className = "builder-confirm-backdrop builder-attachment-remove-backdrop";
+    var dialog = document.createElement("div");
+    dialog.className = "builder-dialog builder-confirm-dialog";
+    var title = document.createElement("h2");
+    title.id = "builder-attachment-remove-title";
+    title.textContent = kind === "workbook" ? "Remove workbook?" : "Remove table?";
+    var message = document.createElement("p");
+    message.id = "builder-attachment-remove-description";
+    message.textContent = "Remove “" + displayName + "” from Extra material?";
+    var actions = document.createElement("div");
+    actions.className = "builder-dialog-actions builder-confirm-actions";
+    var cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn";
+    cancel.textContent = "Keep " + kind;
+    var confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "btn btn-remove-soft";
+    confirm.textContent = "Remove " + kind;
+    actions.append(cancel, confirm);
+    dialog.append(title, message, actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    dialog.setAttribute("aria-labelledby", title.id);
+    dialog.setAttribute("aria-describedby", message.id);
+
+    var closed = false;
+    function close(remove) {
+      if (closed) return;
+      closed = true;
+      if (remove) {
+        send("enhance-table_action", {
+          action: kind === "workbook" ? "remove_workbook" : "remove",
+          key: kind === "workbook"
+            ? control.dataset.workbookKey
+            : control.dataset.tableKey,
+          dataset: datasetIdForElement(control),
+          generation: actionOwner.generation,
+          project_epoch: actionOwner.project_epoch,
+          owner_token: actionOwner.owner_token,
+          nonce: Date.now(),
+        });
+      }
+      removeTransientLayer(backdrop, dialog, "is-visible", function () {
+        updateDialogLock();
+        restoreFocus(dialog);
+      });
+    }
+    cancel.addEventListener("click", function () { close(false); });
+    confirm.addEventListener("click", function () { close(true); });
+    backdrop.addEventListener("click", function (event) {
+      if (event.target === backdrop) close(false);
+    });
+    prepareDialog(
+      dialog,
+      control,
+      function () { close(false); },
+      function () {
+        if (fallbackRow && fallbackRow.isConnected) {
+          var adjacent = focusableElements(fallbackRow);
+          if (adjacent.length) return adjacent[0];
+        }
+        var addTables = document.querySelector(".enhance-table-add-button");
+        if (canRestoreFocus(addTables)) return addTables;
+        var stage = document.querySelector(".builder-stage");
+        var stageControls = stage ? focusableElements(stage) : [];
+        return stageControls.length ? stageControls[0] : null;
+      }
+    );
+    showTransientLayer(backdrop, dialog);
+  }
+
   function datasetRailFocusIdentity(element) {
     var row = element && element.closest && element.closest(".ds[data-ds]");
     if (!row) return null;
@@ -2377,6 +2748,7 @@
   }
 
   function setMarkerDialog(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var backdrop = document.getElementById("builder-marker-dialog-backdrop");
     var dialog = document.getElementById("builder-marker-dialog");
     var title = document.getElementById("builder-marker-dialog-title");
@@ -2385,6 +2757,7 @@
 
     function close() {
       if (backdrop.hidden) return;
+      delete dialog.dataset.builderMarkerNeedsBodyFocus;
       dialog.removeEventListener("keydown", trapDialogKeydown);
       removeTransientLayer(backdrop, dialog, "is-visible", function () {
         backdrop.hidden = true;
@@ -2399,6 +2772,7 @@
     }
     if (title && message.title) title.textContent = message.title;
     backdrop.hidden = false;
+    dialog.dataset.builderMarkerNeedsBodyFocus = "true";
     closeButton.onclick = close;
     backdrop.onclick = function (event) {
       if (event.target === backdrop) close();
@@ -2410,6 +2784,30 @@
       close
     );
     showTransientLayer(backdrop, dialog);
+    window.setTimeout(focusMarkerDialogBody, 0);
+  }
+
+  function focusMarkerDialogBody() {
+    var backdrop = document.getElementById("builder-marker-dialog-backdrop");
+    var dialog = document.getElementById("builder-marker-dialog");
+    if (!backdrop || backdrop.hidden || !dialog) return;
+    var needsInitialFocus = dialog.dataset.builderMarkerNeedsBodyFocus === "true";
+    var active = document.activeElement;
+    if (
+      !needsInitialFocus && active && active !== document.body &&
+      active !== dialog && dialog.contains(active)
+    ) {
+      return;
+    }
+    var body = document.getElementById("enhance-marker_dialog_body");
+    var target = body && body.querySelector(
+      "input:not([type=hidden]):not([disabled]), select:not([disabled]), " +
+        "textarea:not([disabled]), button:not([disabled])"
+    );
+    if (target) {
+      delete dialog.dataset.builderMarkerNeedsBodyFocus;
+      target.focus({ preventScroll: true });
+    }
   }
 
   function showBuildDialog(message) {
@@ -2570,7 +2968,7 @@
   }
 
   function updateStatusSemantics() {
-    var status = ["#busy", "#result_card", "#review_action_summary"]
+    var status = ["#busy", ".result-card", "#review_action_summary"]
       .map(function (selector) {
         var node = document.querySelector(selector);
         return node ? node.textContent : "";
@@ -2902,6 +3300,7 @@
   }
 
   function applyViewerGroupState(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var root = document.querySelector(".viewer-group-workspace");
     if (!root) return;
     var included = new Set(messageValues(message && message.included));
@@ -3129,6 +3528,7 @@
   }
 
   function applyViewerProjectionState(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var root = document.querySelector(".viewer-projection-workspace");
     if (!root) return;
     var included = new Set(messageValues(message && message.included));
@@ -3166,6 +3566,7 @@
   }
 
   function applyViewerTrajectoryState(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var root = document.querySelector(".viewer-trajectory-workspace");
     if (!root) return;
     var included = new Set(messageValues(message && message.included).map(function (record) {
@@ -3488,6 +3889,7 @@
     }
     updateDialogLock();
     setupPersistentDisclosures(roots);
+    focusMarkerDialogBody();
     setupViewerGroupCatalogs(roots);
     setupViewerContentCatalogs(roots);
     setupCreatableSelects(roots);
@@ -3582,15 +3984,21 @@
       cancel.hidden = false;
       input.focus();
     } else {
+      input.removeAttribute("aria-invalid");
+      input.removeAttribute("aria-describedby");
+      var error = row.querySelector(".enhance-attachment-error");
+      if (error) error.remove();
       name.hidden = false;
       editor.hidden = true;
       edit.hidden = false;
       save.hidden = true;
       cancel.hidden = true;
+      edit.focus({ preventScroll: true });
     }
   }
 
   function announceAddedTables(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var workbooks = message && Array.isArray(message.workbooks)
       ? message.workbooks.filter(function (workbook) {
         return workbook && workbook.key && Number(workbook.count) > 0;
@@ -3627,17 +4035,63 @@
 
   function commitAttachmentName(row) {
     var input = row.querySelector(".enhance-attachment-editor input");
-    if (!input || !input.value.trim()) return;
+    if (!input) return;
+    var name = input.value.trim();
+    var originalName = String(input.dataset.originalValue || "").trim();
+    if (name && name === originalName) {
+      input.value = input.dataset.originalValue;
+      setAttachmentEditing(row, false);
+      return;
+    }
     var isWorkbook = Boolean(input.dataset.workbookKey);
+    var error = row.querySelector(".enhance-attachment-error");
+    if (!error) {
+      error = document.createElement("span");
+      error.className = "enhance-attachment-error";
+      error.id = "enhance-attachment-error-" + Date.now().toString(36);
+      error.setAttribute("role", "alert");
+      input.insertAdjacentElement("afterend", error);
+    }
+    if (!name) {
+      error.textContent = "Enter a non-empty Viewer name.";
+      input.setAttribute("aria-invalid", "true");
+      input.setAttribute("aria-describedby", error.id);
+      input.focus({ preventScroll: true });
+      return;
+    }
+    var actionOwner = contentActionOwner(row);
+    if (!actionOwner) return;
+    if (isWorkbook) {
+      var duplicate = Array.from(document.querySelectorAll(
+        ".enhance-workbook-display-name"
+      )).some(function (candidate) {
+        return candidate !== input && candidate.value.trim() === name;
+      });
+      if (duplicate) {
+        error.textContent = "Use a unique Viewer workbook name.";
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", error.id);
+        input.focus({ preventScroll: true });
+        return;
+      }
+    }
+    error.textContent = "";
+    input.removeAttribute("aria-invalid");
+    input.removeAttribute("aria-describedby");
     send("enhance-table_action", {
       action: isWorkbook ? "rename_workbook" : "rename",
       key: isWorkbook ? input.dataset.workbookKey : input.dataset.tableKey,
-      name: input.value.trim(),
+      dataset: datasetIdForElement(row),
+      name: name,
+      generation: actionOwner.generation,
+      project_epoch: actionOwner.project_epoch,
+      owner_token: actionOwner.owner_token,
       nonce: Date.now(),
     });
   }
 
   function applyAttachmentSaved(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     if (!message || !message.kind || !message.key || !message.name) return;
     var selector = message.kind === "workbook"
       ? ".enhance-workbook-item[data-workbook-key]"
@@ -3654,10 +4108,28 @@
     input.value = message.name;
     input.dataset.originalValue = message.name;
     if (name) name.textContent = message.name;
+    var labels = message.kind === "workbook"
+      ? [
+        [".enhance-attachment-edit", "Edit Viewer workbook name for "],
+        [".enhance-attachment-save", "Save Viewer workbook name for "],
+        [".enhance-attachment-cancel", "Cancel editing Viewer workbook name for "],
+        [".enhance-workbook-remove", "Remove workbook "],
+      ]
+      : [
+        [".enhance-attachment-edit", "Edit Viewer table name for "],
+        [".enhance-attachment-save", "Save Viewer table name for "],
+        [".enhance-attachment-cancel", "Cancel editing Viewer table name for "],
+        [".enhance-table-remove", "Remove table "],
+      ];
+    labels.forEach(function (specification) {
+      var control = row.querySelector(specification[0]);
+      if (control) control.setAttribute("aria-label", specification[1] + message.name);
+    });
     setAttachmentEditing(row, false);
   }
 
   function reopenWorkbookAfterRename(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var key = message && message.key;
     if (!key) return;
     document.querySelectorAll(".enhance-workbook-item[data-workbook-key]").forEach(
@@ -3668,7 +4140,54 @@
   }
 
   document.addEventListener("click", function (event) {
+    if (shouldFlushPendingTextEdits(event.target)) {
+      flushPendingTextEdits();
+    }
+  }, true);
+
+  document.addEventListener("click", function (event) {
     var target = event.target;
+    var undoNotice = target.closest("#undo_remove_notice");
+    if (undoNotice) {
+      event.preventDefault();
+      var undoControl = document.getElementById("undo_remove");
+      if (undoControl && undoControl.getAttribute("aria-disabled") !== "true") {
+        undoControl.click();
+      }
+      return;
+    }
+    var acknowledgeContent = target.closest("[data-builder-acknowledge]");
+    if (acknowledgeContent) {
+      event.preventDefault();
+      var acknowledgeOwner = contentActionOwner(acknowledgeContent);
+      if (!acknowledgeOwner) return;
+      send(acknowledgeContent.dataset.inputId, {
+        dataset: acknowledgeContent.dataset.dataset,
+        capability: acknowledgeContent.dataset.capability,
+        token: acknowledgeContent.dataset.token,
+        generation: acknowledgeOwner.generation,
+        project_epoch: acknowledgeOwner.project_epoch,
+        owner_token: acknowledgeOwner.owner_token,
+        nonce: Date.now(),
+      });
+      return;
+    }
+    var contentDisposition = target.closest("[data-builder-content-disposition]");
+    if (contentDisposition) {
+      event.preventDefault();
+      var dispositionOwner = contentActionOwner(contentDisposition);
+      if (!dispositionOwner) return;
+      send(contentDisposition.dataset.inputId, {
+        dataset: contentDisposition.dataset.dataset,
+        capability: contentDisposition.dataset.capability,
+        disposition: contentDisposition.dataset.disposition,
+        generation: dispositionOwner.generation,
+        project_epoch: dispositionOwner.project_epoch,
+        owner_token: dispositionOwner.owner_token,
+        nonce: Date.now(),
+      });
+      return;
+    }
     var spatialImageTrigger = target.closest(".enhance-tissue-file-button");
     if (spatialImageTrigger) {
       var spatialImageInput = document.getElementById(
@@ -3700,7 +4219,15 @@
     var authRemove = target.closest(".builder-auth-remove");
     if (authRemove) {
       event.preventDefault();
-      authRemove.closest(".builder-auth-row").remove();
+      var removedRow = authRemove.closest(".builder-auth-row");
+      var nextFocus = removedRow && (removedRow.nextElementSibling || removedRow.previousElementSibling);
+      if (removedRow) removedRow.remove();
+      var nextUsername = nextFocus && nextFocus.querySelector(".builder-auth-username");
+      var addAccount = document.querySelector(".builder-auth-add");
+      if (nextUsername || addAccount) {
+        (nextUsername || addAccount).focus({ preventScroll: true });
+      }
+      clearAuthError();
       return;
     }
     if (target.closest(".builder-auth-cancel")) {
@@ -3713,14 +4240,39 @@
       if (authEditor.saving) return;
       var accounts = authRows();
       var users = accounts.map(function (account) { return account.username.trim(); });
-      var valid = accounts.length && users.every(Boolean) &&
-        new Set(users).size === users.length &&
-        accounts.every(function (account) { return account.password.length >= 8; });
       var authError = document.getElementById("builder-auth-error");
-      if (!valid) {
+      clearAuthError();
+      var rows = Array.from(document.querySelectorAll(".builder-auth-row"));
+      var seenUsers = new Map();
+      var firstInvalid = null;
+      rows.forEach(function (row, index) {
+        var username = row.querySelector(".builder-auth-username");
+        var password = row.querySelector(".builder-auth-password");
+        var normalized = users[index];
+        var usernameInvalid = !normalized || seenUsers.has(normalized);
+        if (normalized && !seenUsers.has(normalized)) seenUsers.set(normalized, index);
+        if (usernameInvalid) {
+          markAuthInvalid(username);
+          if (!firstInvalid) firstInvalid = username;
+          if (normalized && seenUsers.has(normalized)) {
+            var firstRow = rows[seenUsers.get(normalized)];
+            markAuthInvalid(firstRow && firstRow.querySelector(".builder-auth-username"));
+          }
+        }
+        if (!password || password.value.length < 8) {
+          markAuthInvalid(password);
+          if (!firstInvalid) firstInvalid = password;
+        }
+      });
+      if (!accounts.length || firstInvalid) {
         if (authError) {
           authError.textContent = "Add unique usernames and passwords of at least 8 characters.";
           authError.hidden = false;
+        }
+        if (firstInvalid) firstInvalid.focus({ preventScroll: true });
+        else {
+          var addButton = document.querySelector(".builder-auth-add");
+          if (addButton) addButton.focus({ preventScroll: true });
         }
         return;
       }
@@ -3793,21 +4345,14 @@
     if (removeWorkbook) {
       event.preventDefault();
       event.stopPropagation();
-      send("enhance-table_action", {
-        action: "remove_workbook",
-        key: removeWorkbook.dataset.workbookKey,
-        nonce: Date.now(),
-      });
+      showAttachmentRemoveConfirmation(removeWorkbook, "workbook");
       return;
     }
     var removeTable = target.closest(".enhance-table-remove");
     if (removeTable) {
       event.preventDefault();
-      send("enhance-table_action", {
-        action: "remove",
-        key: removeTable.dataset.tableKey,
-        nonce: Date.now(),
-      });
+      event.stopPropagation();
+      showAttachmentRemoveConfirmation(removeTable, "table");
       return;
     }
     var confirmMarkerSource = target.closest(".marker-source-confirm");
@@ -4035,6 +4580,43 @@
   });
 
   document.addEventListener("input", function (event) {
+    if (event.target.matches(
+      "#builder-workspace input.shiny-bound-input[type=text], " +
+        "#builder-workspace textarea.shiny-bound-input"
+    )) {
+      event.target.dataset.builderDirty = "true";
+    }
+    if (event.target.matches(".enhance-attachment-editor input")) {
+      event.target.removeAttribute("aria-invalid");
+      event.target.removeAttribute("aria-describedby");
+      var attachmentRow = event.target.closest(
+        ".enhance-sheet-item, .enhance-workbook-item"
+      );
+      var attachmentError = attachmentRow && attachmentRow.querySelector(
+        ".enhance-attachment-error"
+      );
+      if (attachmentError) attachmentError.remove();
+    }
+    if (event.target.matches(".builder-auth-row input")) {
+      event.target.removeAttribute("aria-invalid");
+      var describedBy = (event.target.getAttribute("aria-describedby") || "")
+        .split(/\s+/)
+        .filter(function (id) { return id && id !== "builder-auth-error"; });
+      if (describedBy.length) {
+        event.target.setAttribute("aria-describedby", describedBy.join(" "));
+      } else {
+        event.target.removeAttribute("aria-describedby");
+      }
+      var accountRow = event.target.closest(".builder-auth-row");
+      var removeAccount = accountRow && accountRow.querySelector(".builder-auth-remove");
+      var accountUsername = accountRow && accountRow.querySelector(".builder-auth-username");
+      if (removeAccount && accountUsername) {
+        removeAccount.setAttribute(
+          "aria-label",
+          "Remove account" + (accountUsername.value.trim() ? " " + accountUsername.value.trim() : "")
+        );
+      }
+    }
     if (event.target.matches(".viewer-point-size-input")) {
       updateProjectionPointSize(event.target, false);
       return;
@@ -4162,7 +4744,10 @@
 
   function focusDatasetStart(message) {
     var dataset = message && message.dataset;
-    if (typeof dataset !== "string" || !dataset) return;
+    if (
+      typeof dataset !== "string" || !dataset ||
+      !datasetMessageGenerationIsFresh(message)
+    ) return;
     datasetStartFocusToken += 1;
     var token = datasetStartFocusToken;
     var attempts = 0;
@@ -4174,9 +4759,12 @@
       var row = selected && selected.closest(".ds[data-ds]");
       var stage = document.querySelector('[data-workflow-stage="configure"]');
       var heading = stage && stage.querySelector("h2");
-      if (!row || row.dataset.ds !== dataset || !heading) {
+      if (
+        !row || row.dataset.ds !== dataset ||
+        renderedDatasetId() !== dataset || !heading
+      ) {
         attempts += 1;
-        if (attempts < 12) window.setTimeout(apply, 50);
+        if (attempts < 40) window.setTimeout(apply, 50);
         return;
       }
       window.scrollTo({
@@ -4190,6 +4778,7 @@
   }
 
   function focusIncompleteSetting(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var selectors = {
       settings_organism: "#core-organism",
       settings_groups: "#core-groups",
@@ -4227,6 +4816,7 @@
   }
 
   function animateCoordinateResetSliders(message) {
+    if (!datasetMessageIsCurrent(message)) return;
     var ids = message && Array.isArray(message.ids) ? message.ids : [];
     ids.forEach(function (id) {
       if (!coordinateResetSliderIds.has(id)) return;
@@ -4247,6 +4837,7 @@
 
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler("builder_copy_text", copyTextToClipboard);
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
     window.Shiny.addCustomMessageHandler(
       "builder_dataset_rail_patch",
@@ -4267,6 +4858,7 @@
       "builder_activity_state",
       function (message) {
         if (!message || typeof message !== "object") return;
+        resetDatasetMessageGenerationsForActivity(message);
         builderActivityState = {
           phase: message.phase || "none",
           capabilities: message.capabilities || {},
@@ -4281,6 +4873,10 @@
         };
         applyBuilderActivityState();
       }
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_action_owner",
+      applyDatasetActionOwner
     );
     window.Shiny.addCustomMessageHandler(
       "builder_worker_status",
@@ -4399,8 +4995,9 @@
         authEditor.rollbackRequireLogin = false;
         closeAuthDialog(true);
       } else if (error) {
-        error.textContent = "Login accounts could not be saved.";
+        error.textContent = "Login accounts could not be saved. Review the account details and try again.";
         error.hidden = false;
+        error.focus({ preventScroll: true });
       }
     }
     window.__builderHandleAuthStatus = handleAuthStatus;
@@ -4509,7 +5106,7 @@
       window.Shiny.addCustomMessageHandler(
         "builder_spatial_section_state",
         function (message) {
-          if (!message || !message.value) return;
+          if (!datasetMessageIsCurrent(message) || !message.value) return;
           spatialSectionGeneration += 1;
           var generation = spatialSectionGeneration;
           spatialSectionTimers.forEach(window.clearTimeout);
@@ -4591,6 +5188,7 @@
     event.returnValue = "";
   });
   function initializeBuilder() {
+    setupBootstrapModalEvents();
     registerBuildDialogHandler();
     registerClientImportHandlers();
     registerViewerGroupHandler();

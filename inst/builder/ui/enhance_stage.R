@@ -547,7 +547,7 @@ builder_spatial_scene_inventory_ui <- function(scenes) {
       return(NULL)
     }
     field <- value$field %||% "metadata"
-    suffix <- if (isTRUE(value$truncated)) ", ..." else ""
+    suffix <- if (isTRUE(value$truncated)) ", …" else ""
     p(
       class = "builder-spatial-scene-annotation",
       paste0(
@@ -654,6 +654,9 @@ builder_spatial_alignment_ui <- function(id, model) {
     }
   }
   controls <- model$controls %||% builder_alignment_defaults()
+  scale_value <- .builder_alignment_parameters(controls)$scale
+  scale_max <- max(10, scale_value)
+  scale_step <- builder_alignment_scale_step(scale_value)
   samples <- model$samples %||% "Sample"
   tagList(
     if (length(sections)) {
@@ -823,9 +826,9 @@ builder_spatial_alignment_ui <- function(id, model) {
                         "img_scale",
                         "Scale",
                         0,
-                        10,
-                        controls$scale %||% 1,
-                        0.02
+                        scale_max,
+                        scale_value,
+                        scale_step
                       ),
                       div(
                         class = "spatial-image-position",

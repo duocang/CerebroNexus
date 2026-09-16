@@ -28,6 +28,7 @@ biocViews:
 Imports:
   base64enc,
   biomaRt (>= 2.38.0),
+  callr,
   colourpicker (>= 1.0),
   dplyr (>= 1.0.0),
   DT (>= 0.14.0),
@@ -44,8 +45,11 @@ Imports:
   Matrix (>= 1.2),
   methods,
   msigdbr (>= 6.2.1),
+  openssl,
   pbapply (>= 1.4),
   plotly (>= 4.9.0),
+  processx,
+  ps,
   qvalue (>= 2.14.0),
   qs2,
   R6 (>= 2.4.0),
@@ -68,7 +72,6 @@ Imports:
   visNetwork
 Suggests:
   BPCells,
-  callr,
   codetools,
   DelayedArray,
   formattable (>= 0.2.0.1),
@@ -78,8 +81,6 @@ Suggests:
   knitr,
   monocle,
   png,
-  processx,
-  ps,
   qs,
   readxl,
   reshape2,

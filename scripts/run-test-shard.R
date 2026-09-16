@@ -11,6 +11,15 @@ ci_browser_test_files <- function() {
     "test-app-viewport-layout.R",
     "test-builder-browser.R",
     "test-gene-expression-panel-modes.R",
+    "test-generated-app-multidataset.R",
+    "test-generated-app-pages-analysis.R",
+    "test-generated-app-pages-core.R",
+    "test-generated-app-pages-immune.R",
+    "test-generated-app-pages-spatial.R",
+    "test-generated-app-pages-trekker.R",
+    "test-generated-app-pipeline.R",
+    "test-generated-app-security.R",
+    "test-generated-app-server.R",
     "test-plotly-toolbar-contract.R",
     "test-smoke-production.R"
   )
