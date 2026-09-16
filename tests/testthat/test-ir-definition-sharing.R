@@ -65,6 +65,66 @@ ir_build_definition_plot <- ir_env$ir_build_definition_plot
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
 
+test_that("immune metadata joins only requested columns in one aligned pass", {
+  data <- list(
+    a = data.frame(barcode = c("c3", "c1"), CTgene = c("x", "y")),
+    b = data.frame(barcode = "c2", CTgene = "z")
+  )
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    group = c("g1", "g2", "g3"),
+    unused = c("u1", "u2", "u3"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- ir_env$ir_annotate_metadata(data, metadata, "group")
+
+  expect_identical(out$a$group, c("g3", "g1"))
+  expect_identical(out$b$group, "g2")
+  expect_false("unused" %in% names(out$a))
+})
+
+test_that("clonal projection bounds the contextual background before rendering", {
+  cells <- paste0("c", seq_len(1000L))
+  coords <- matrix(
+    seq_len(2000L),
+    ncol = 2L,
+    dimnames = list(cells, c("x", "y"))
+  )
+  ir_env$availableProjections <- function() "tsne"
+  ir_env$getProjection <- function(...) coords
+  ir_env$ir_data_annotated <- function() {
+    list(sample = data.frame(
+      barcode = cells[1:3],
+      CTgene = c("TRB-a", "TRB-a", "TRB-b"),
+      stringsAsFactors = FALSE
+    ))
+  }
+  ir_env$ir_clonecall_col <- function(...) "CTgene"
+  ir_env$ir_umap_chains <- function(...) "TRB"
+
+  out <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    max_background = 10L
+  )
+
+  expect_lte(nrow(out), 13L)
+  expect_setequal(out$barcode[!is.na(out$expansion)], cells[1:3])
+
+  sampled <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    percentage = 34,
+    max_background = 10L
+  )
+  expect_false(any(
+    cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
+  ))
+})
+
 # --- ir_parse_segments -----------------------------------------------------
 
 test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {

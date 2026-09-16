@@ -23,49 +23,78 @@ ir_scr_cols <- c(
   "cloneType"
 )
 
-## ---- Join cell metadata onto every IR row by barcode ------------------ ##
-## The IR data.frames carry only scRepertoire columns (barcode, CT*). Any
-## biological grouping (sample, condition, treatment, cell type, ...) lives in
-## the data set's cell metadata. We attach it here by `cell_barcode` so the
-## module can group/split by ANY metadata column, not just whatever columns a
-## data producer happened to embed in the IR table.
+## ---- Join only requested metadata onto IR rows by barcode -------------- ##
+## Most repertoire views do not group by cell metadata. Copying every metadata
+## column onto 500k receptor rows therefore wastes both time and memory. Track
+## the active grouping controls and attach just those columns, using one match
+## over the concatenated barcode vector rather than rebuilding a 1M-cell lookup
+## for every sample.
+ir_requested_metadata_columns <- reactive({
+  requested <- c(
+    input[["ir_groupBy"]],
+    input[["ir_p_umap_group_by"]]
+  )
+  requested <- as.character(requested)
+  unique(requested[!is.na(requested) & nzchar(requested)])
+})
+
+ir_annotate_metadata <- function(data, metadata, columns = character()) {
+  if (
+    is.null(metadata) ||
+      !("cell_barcode" %in% colnames(metadata)) ||
+      !length(columns)
+  ) {
+    return(data)
+  }
+  columns <- intersect(unique(columns), setdiff(colnames(metadata), "cell_barcode"))
+  add <- lapply(data, function(df) {
+    if (is.null(df) || !("barcode" %in% colnames(df))) {
+      return(character())
+    }
+    setdiff(columns, colnames(df))
+  })
+  join <- lengths(add) > 0L
+  if (!any(join)) {
+    return(data)
+  }
+  joined_indices <- which(join)
+  n_rows <- vapply(data[joined_indices], nrow, integer(1))
+  ends <- cumsum(n_rows)
+  idx <- match(
+    unlist(lapply(data[joined_indices], `[[`, "barcode"), use.names = FALSE),
+    metadata$cell_barcode
+  )
+  n_miss <- sum(is.na(idx))
+  if (n_miss > 0L) {
+    warning(sprintf(
+      paste0(
+        "[IR] %d / %d clonotype barcodes not found in cell metadata; ",
+        "grouping/splitting by metadata columns may be incomplete."
+      ),
+      n_miss,
+      length(idx)
+    ))
+  }
+  out <- data
+  for (position in seq_along(joined_indices)) {
+    data_index <- joined_indices[[position]]
+    n <- n_rows[[position]]
+    rows <- seq.int(ends[[position]] - n + 1L, length.out = n)
+    frame_idx <- idx[rows]
+    for (column in add[[data_index]]) {
+      out[[data_index]][[column]] <- metadata[[column]][frame_idx]
+    }
+  }
+  out
+}
+
 ir_data_annotated <- reactive({
   data <- ir_data_raw()
   if (is.null(data)) {
     return(NULL)
   }
   md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
-    return(data) # nothing to join; fall back to raw IR data
-  }
-  # metadata columns that don't already exist in the IR tables
-  meta_cols <- setdiff(colnames(md), "cell_barcode")
-  lapply(data, function(df) {
-    if (is.null(df) || !("barcode" %in% colnames(df))) {
-      return(df)
-    }
-    add <- setdiff(meta_cols, colnames(df))
-    if (length(add) == 0) {
-      return(df)
-    }
-    idx <- match(df$barcode, md$cell_barcode)
-    n_miss <- sum(is.na(idx))
-    if (n_miss > 0) {
-      warning(sprintf(
-        paste0(
-          "[IR] %d / %d clonotype barcodes not found in cell metadata; ",
-          "grouping/splitting by metadata columns may be incomplete. ",
-          "Check that IR barcodes match the cell barcodes (e.g. the '-1' suffix)."
-        ),
-        n_miss,
-        length(idx)
-      ))
-    }
-    for (col in add) {
-      df[[col]] <- md[[col]][idx]
-    }
-    df
-  })
+  ir_annotate_metadata(data, md, ir_requested_metadata_columns())
 })
 
 ## ---- Reactive: repertoire data --------------------------------------- ##
@@ -346,7 +375,9 @@ ir_clonal_umap_data <- function(
   receptor,
   cloneCall = "gene",
   show_all = TRUE,
-  cells = NULL
+  cells = NULL,
+  percentage = 100,
+  max_background = 200000L
 ) {
   if (is.null(projection) || !nzchar(projection)) {
     return(NULL)
@@ -360,6 +391,15 @@ ir_clonal_umap_data <- function(
   coords <- tryCatch(getProjection(projection), error = function(e) NULL)
   if (is.null(coords) || nrow(coords) == 0) {
     return(NULL)
+  }
+  percentage <- suppressWarnings(as.numeric(percentage))
+  if (length(percentage) != 1L || !is.finite(percentage)) {
+    percentage <- 100
+  }
+  percentage <- min(100, max(0, percentage))
+  max_background <- suppressWarnings(as.integer(max_background))
+  if (length(max_background) != 1L || is.na(max_background) || max_background < 0L) {
+    max_background <- 200000L
   }
   # Restrict to the requested cells (group filters) up front, so both the
   # coloured receptor cells and the grey background respect the filter.
@@ -389,16 +429,10 @@ ir_clonal_umap_data <- function(
     } else {
       as.character(df[[clone_col]])
     }
-    in_receptor <- vapply(
-      chain_ref,
-      function(s) {
-        any(vapply(
-          keep_chains,
-          function(ch) grepl(ch, s, fixed = TRUE),
-          logical(1)
-        ))
-      },
-      logical(1)
+    in_receptor <- Reduce(
+      `|`,
+      lapply(keep_chains, function(ch) grepl(ch, chain_ref, fixed = TRUE)),
+      init = rep(FALSE, length(chain_ref))
     )
     df <- df[in_receptor, , drop = FALSE]
     if (nrow(df) == 0) {
@@ -411,18 +445,11 @@ ir_clonal_umap_data <- function(
     )
   })
   rows <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
+  coord_bc <- rownames(coords)
   has_receptor <- !is.null(rows) && nrow(rows) > 0
   if (has_receptor) {
-    # Clone size = number of cells sharing the clonotype; bin into expansion levels.
     rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
-    # Do not let repertoire rows absent from the object inflate clone sizes.
-    all_cells <- tryCatch(
-      as.character(getMetaData()$cell_barcode),
-      error = function(e) NULL
-    )
-    if (!is.null(all_cells)) {
-      rows <- rows[rows$barcode %in% all_cells, , drop = FALSE]
-    }
+    rows <- rows[rows$barcode %in% coord_bc, , drop = FALSE]
     has_receptor <- nrow(rows) > 0
   }
   if (!has_receptor || nrow(rows) == 0) {
@@ -448,8 +475,11 @@ ir_clonal_umap_data <- function(
       include.lowest = TRUE
     )
   }
-
-  coord_bc <- rownames(coords)
+  receptor_barcodes <- if (has_receptor) {
+    unique(rows$barcode)
+  } else {
+    character()
+  }
 
   # Coloured layer: receptor cells with an expansion level, joined to coords.
   if (has_receptor) {
@@ -457,6 +487,16 @@ ir_clonal_umap_data <- function(
     ok <- !is.na(idx)
     rows <- rows[ok, , drop = FALSE]
     idx <- idx[ok]
+    keep_n <- min(length(idx), ceiling(length(idx) * percentage / 100))
+    if (keep_n < length(idx)) {
+      keep <- if (keep_n > 0L) {
+        unique(as.integer(round(seq(1, length(idx), length.out = keep_n))))
+      } else {
+        integer()
+      }
+      rows <- rows[keep, , drop = FALSE]
+      idx <- idx[keep]
+    }
   } else {
     idx <- integer(0)
   }
@@ -480,15 +520,28 @@ ir_clonal_umap_data <- function(
   # renderer can draw them in grey. Only when show_all is requested.
   background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- !(coord_bc %in%
-      (if (length(idx) > 0) rows$barcode else character(0)))
+    bg_mask <- !(coord_bc %in% receptor_barcodes)
     if (any(bg_mask)) {
-      xy_bg <- coords[bg_mask, 1:2, drop = FALSE]
+      bg_idx <- which(bg_mask)
+      target <- min(
+        length(bg_idx),
+        ceiling(length(bg_idx) * percentage / 100),
+        as.integer(max_background)
+      )
+      if (target < length(bg_idx)) {
+        keep <- if (target > 0L) {
+          unique(as.integer(round(seq(1, length(bg_idx), length.out = target))))
+        } else {
+          integer()
+        }
+        bg_idx <- bg_idx[keep]
+      }
+      xy_bg <- coords[bg_idx, 1:2, drop = FALSE]
       background <- data.frame(
         x = as.numeric(xy_bg[[1]]),
         y = as.numeric(xy_bg[[2]]),
         expansion = factor(NA, levels = IR_CLONE_LABELS),
-        barcode = coord_bc[bg_mask],
+        barcode = coord_bc[bg_idx],
         stringsAsFactors = FALSE
       )
     }
