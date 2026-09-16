@@ -485,8 +485,9 @@
 
 #' Save a Cerebro data file
 #'
-#' Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar. The
-#' input object and expression sidecar are not modified.
+#' Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar and
+#' stores spatial molecule tables in a sibling per-FOV sidecar. The input
+#' object and existing sidecars are not modified.
 #'
 #' @param object A Cerebro object.
 #' @param file Output \code{.crb} path.
@@ -532,8 +533,9 @@ saveCerebro <- function(object, file, codec = c("qs2", "rds")) {
 
 #' Read a Cerebro data file
 #'
-#' Auto-detects legacy RDS, thin RDS, and thin qs2 CRBs. Thin CRBs are
-#' hydrated from their sibling expression sidecar.
+#' Auto-detects legacy RDS, thin RDS, and thin qs2 CRBs. Thin expression data
+#' are hydrated from their sibling sidecar; spatial molecule tables stay lazy
+#' until their FOV is requested.
 #'
 #' @param file Input \code{.crb} path.
 #' @return A current Cerebro object.
