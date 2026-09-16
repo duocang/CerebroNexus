@@ -232,10 +232,16 @@ builder_app_bundle_request <- function(plan, built, labels) {
     )
   })
   names(backend_identities) <- names(backend_entries)
+  spatial_molecule_identities <- lapply(
+    resolved,
+    .builder_app_capture_spatial_molecule_identity
+  )
+  names(spatial_molecule_identities) <- names(backend_entries)
   content_identities <- .builder_app_content_identities(
     crb_identities,
     backend_identities,
-    backend_plan
+    backend_plan,
+    spatial_molecule_identities
   )
   storage_valid <- vapply(
     items,
@@ -305,6 +311,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
       crb_pick_smallest_file = FALSE,
       backend_plan = backend_plan,
       backend_identities = backend_identities,
+      spatial_molecule_identities = spatial_molecule_identities,
       content_identities = content_identities,
       spatial_images = spatial_images,
       spatial_image_settings = spatial_image_settings,
