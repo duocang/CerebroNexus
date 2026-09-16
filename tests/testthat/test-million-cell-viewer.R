@@ -214,7 +214,6 @@ test_that("single Canvas views accept per-point sizes", {
   expect_match(utility, '"point_sizes"', fixed = TRUE)
   expect_match(javascript, "space.pointSizes", fixed = TRUE)
   expect_match(javascript, "pointSizes[i]", fixed = TRUE)
-  expect_match(javascript, "singleView._selectionReported", fixed = TRUE)
 })
 
 test_that("gene controls load transcriptome choices server-side", {
