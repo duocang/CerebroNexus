@@ -1482,6 +1482,21 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       if (table > 3L || values == 0L || cursor + values > length(segment)) {
         return(NULL)
       }
+      payload <- as.integer(segment[seq.int(
+        cursor + 1L,
+        length.out = values
+      )])
+      invalid_value <- if (precision == 0L) {
+        any(payload == 0L)
+      } else {
+        any(
+          payload[seq.int(1L, values, by = 2L)] == 0L &
+            payload[seq.int(2L, values, by = 2L)] == 0L
+        )
+      }
+      if (invalid_value) {
+        return(NULL)
+      }
       tables <- c(tables, table)
       cursor <- cursor + values + 1L
     }
@@ -1595,12 +1610,17 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
       }
       component_starts <- seq.int(7L, by = 3L, length.out = component_count)
       component_ids <- as.integer(frame[component_starts])
+      component_sampling <- as.integer(frame[component_starts + 1L])
+      horizontal_sampling <- bitwShiftR(component_sampling, 4L)
+      vertical_sampling <- bitwAnd(component_sampling, 0x0fL)
       component_tables <- as.integer(frame[component_starts + 2L])
       if (
         anyDuplicated(component_ids) ||
+          any(horizontal_sampling < 1L | horizontal_sampling > 4L) ||
+          any(vertical_sampling < 1L | vertical_sampling > 4L) ||
           any(component_tables < 0L | component_tables > 3L)
       ) {
-        return(unsafe())
+        return(missing_pixels())
       }
       frame_components <- stats::setNames(
         component_tables,
@@ -1617,6 +1637,9 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
         integer()
       }
       scan_components <- as.character(as.integer(scan[scan_starts]))
+      scan_tables <- as.integer(scan[scan_starts + 1L])
+      dc_tables <- bitwShiftR(scan_tables, 4L)
+      ac_tables <- bitwAnd(scan_tables, 0x0fL)
       if (
         is.null(width) ||
           is.null(height) ||
@@ -1625,6 +1648,8 @@ BUILDER_IMAGE_MAX_PIXELS <- 32 * 1024^2
           payload_length != expected_length ||
           anyDuplicated(scan_components) ||
           !all(scan_components %in% names(frame_components)) ||
+          any(dc_tables > 3L) ||
+          any(ac_tables > 3L) ||
           (frame_marker %in%
             dct_frame &&
             !all(
