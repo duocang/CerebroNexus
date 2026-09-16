@@ -3879,6 +3879,20 @@ test_that("artifact availability validates the primary file and every member", {
   )
 
   expect_true(runtime$builder_project_artifact_available(artifact, root))
+  primary_time <- file.info(primary)$mtime[[1L]]
+  writeBin(charToRaw("altered"), primary)
+  Sys.setFileTime(primary, primary_time)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+  writeBin(charToRaw("primary"), primary)
+  Sys.setFileTime(primary, primary_time)
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
+  member_time <- file.info(member)$mtime[[1L]]
+  writeBin(charToRaw("tamper"), member)
+  Sys.setFileTime(member, member_time)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+  writeBin(charToRaw("member"), member)
+  Sys.setFileTime(member, member_time)
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
   writeBin(charToRaw("changed"), member)
   expect_false(runtime$builder_project_artifact_available(artifact, root))
   unlink(member)

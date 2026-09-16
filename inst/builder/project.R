@@ -700,6 +700,7 @@ builder_project_file_fingerprint <- function(path, content = FALSE) {
       "%Y-%m-%dT%H:%M:%OS3Z",
       tz = "UTC"
     ),
+    changed_at = as.double(info$ctime[[1L]]),
     md5 = if (isTRUE(content)) unname(tools::md5sum(path)) else NULL
   )
 }
@@ -754,7 +755,24 @@ builder_project_content_addressed_source <- function(path, id) {
 
 builder_project_managed_file_matches <- function(recorded, path) {
   metadata <- builder_project_file_fingerprint(path, content = FALSE)
-  if (builder_project_fingerprint_metadata_matches(recorded, metadata)) {
+  metadata_matches <- builder_project_fingerprint_metadata_matches(
+    recorded,
+    metadata
+  )
+  recorded_md5 <- recorded$md5 %||% NULL
+  recorded_changed <- suppressWarnings(as.double(
+    recorded$changed_at %||% NA_real_
+  ))
+  current_changed <- suppressWarnings(as.double(
+    metadata$changed_at %||% NA_real_
+  ))
+  if (
+    metadata_matches &&
+      (!.builder_project_text(recorded_md5) ||
+        (is.finite(recorded_changed) &&
+          is.finite(current_changed) &&
+          identical(recorded_changed, current_changed)))
+  ) {
     return(TRUE)
   }
   builder_project_content_fingerprint_matches(
