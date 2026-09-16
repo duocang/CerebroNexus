@@ -455,6 +455,10 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(toolbar, 'shiny::icon("floppy-disk")', fixed = TRUE)
   expect_match(shell, 'class = "shell builder-shell"', fixed = TRUE)
   expect_match(shell, 'id = "builder-workspace"', fixed = TRUE)
+  expect_match(shell, 'id = "builder-build-progress"', fixed = TRUE)
+  expect_match(shell, '"Verify & publish"', fixed = TRUE)
+  expect_false(grepl("builder-build-progress-activity", shell, fixed = TRUE))
+  expect_false(grepl('tags$progress(', shell, fixed = TRUE))
   expect_match(shell, 'file.path("ui", "workflow.R")', fixed = TRUE)
   expect_match(shell, '"server/workflow.R"', fixed = TRUE)
   expect_false(grepl(
