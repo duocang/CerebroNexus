@@ -1380,6 +1380,38 @@ test_that("H5 sidecars reject links and escapes before opening", {
   expect_error(builder_verify_crb(crb, item), "sidecar does not match")
 })
 
+test_that("CRB descriptors are checked before sidecar-backed objects open", {
+  root <- withr::local_tempdir()
+  item <- builder_build_test_plan()$items[[1L]]
+  item$expression_backend <- "bpcells"
+  item$sidecars <- "dataset-a.bpcells"
+  dir.create(file.path(root, item$sidecars))
+
+  object <- new.env(parent = emptyenv())
+  object$expression_backend <- list(
+    type = "bpcells",
+    location = "unexpected.bpcells"
+  )
+  class(object) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(object, bindings = FALSE)
+  crb <- file.path(root, "dataset-a.crb")
+  saveRDS(object, crb)
+  opened <- FALSE
+
+  expect_error(
+    builder_verify_crb(
+      crb,
+      item,
+      .read_crb = function(path) {
+        opened <<- TRUE
+        stop("unsafe opener was called")
+      }
+    ),
+    "sidecar location differs"
+  )
+  expect_false(opened)
+})
+
 test_that("read-back rejects a Viewer page-gate mismatch", {
   crb <- tempfile(fileext = ".crb")
   on.exit(unlink(crb), add = TRUE)

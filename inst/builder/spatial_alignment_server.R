@@ -204,17 +204,10 @@ builder_spatial_alignment_server <- function(
         if (!identical(current_md5, data$md5)) {
           return(shiny::httpResponse(404L, "text/plain", "Not found"))
         }
-        bytes <- tryCatch(
-          readBin(data$path, what = "raw", n = file.size(data$path)),
-          error = function(error) NULL
-        )
-        if (is.null(bytes)) {
-          return(shiny::httpResponse(404L, "text/plain", "Not found"))
-        }
         shiny::httpResponse(
           200L,
           data$mime,
-          bytes,
+          list(file = data$path, owned = FALSE),
           headers = list(
             "Cache-Control" = "private, max-age=31536000, immutable",
             "ETag" = paste0('"', data$md5, '"'),
@@ -774,6 +767,11 @@ builder_spatial_alignment_server <- function(
       default_projection = entry$settings$default_projection %||% NULL,
       group = roi_field %||% entry$settings$default_group %||% NULL,
       roi = if (identical(roi_view(), "__separate__")) "" else active_roi(),
+      base_coordinate_transform = if (identical(roi_view(), "")) {
+        NULL
+      } else {
+        coordinate_spec_for(entry, section, "")
+      },
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data"
     )
@@ -1002,6 +1000,7 @@ builder_spatial_alignment_server <- function(
       default_projection = entry$settings$default_projection %||% NULL,
       group = contract$group,
       roi = contract$roi,
+      base_coordinate_transform = contract$base_coordinate_transform,
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data",
       replaces = "spatial_alignment",

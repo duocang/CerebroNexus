@@ -2649,6 +2649,32 @@ builder_project_configuration_digest <- function(entry) {
   )))
 }
 
+builder_project_artifact_configuration_digest <- function(entry) {
+  artifact_entry <- entry
+  viewer_only <- c(
+    "initial_projections",
+    "overview_point_size",
+    "overview_point_opacity",
+    "overview_percentage_cells_to_show",
+    "spatial_point_appearance",
+    "spatial_roi_settings"
+  )
+  settings <- artifact_entry$settings %||% list()
+  settings[intersect(names(settings), viewer_only)] <- NULL
+  artifact_entry$settings <- settings
+  artifact_entry <- .builder_project_map_spatial_images(
+    artifact_entry,
+    function(record, section, label) {
+      if (is.list(record)) {
+        record$point_opacity <- NULL
+        record$point_size <- NULL
+      }
+      record
+    }
+  )
+  builder_project_configuration_digest(artifact_entry)
+}
+
 builder_project_cached_configuration_digest <- function(
   entry,
   cache,
@@ -3260,20 +3286,11 @@ builder_project_artifact_matches_entry <- function(
   if (!is.list(artifact) || !is.list(entry)) {
     return(FALSE)
   }
-  artifact_revision <- suppressWarnings(as.integer(
-    artifact$built_from_revision %||% NA_integer_
-  ))
-  entry_revision <- suppressWarnings(as.integer(entry$revision %||% 0L))
   if (
-    length(artifact_revision) != 1L ||
-      is.na(artifact_revision) ||
-      length(entry_revision) != 1L ||
-      is.na(entry_revision) ||
-      !identical(artifact_revision, entry_revision) ||
-      !identical(
-        as.character(artifact$built_from_configuration %||% ""),
-        builder_project_configuration_digest(entry)
-      )
+    !identical(
+      as.character(artifact$built_from_configuration %||% ""),
+      builder_project_artifact_configuration_digest(entry)
+    )
   ) {
     return(FALSE)
   }
@@ -3815,6 +3832,10 @@ builder_project_migrate_manifest <- function(manifest, root) {
         builder_project_configuration_digest(entry),
         error = function(error) NULL
       )
+      new_artifact_digest <- tryCatch(
+        builder_project_artifact_configuration_digest(entry),
+        error = function(error) NULL
+      )
       if (!.builder_project_text(new_digest)) {
         return(record)
       }
@@ -3837,6 +3858,7 @@ builder_project_migrate_manifest <- function(manifest, root) {
       record$cache <- NULL
       if (
         is.list(record$artifact) &&
+          .builder_project_text(new_artifact_digest) &&
           identical(
             as.character(
               record$artifact$built_from_configuration %||% ""
@@ -3844,11 +3866,41 @@ builder_project_migrate_manifest <- function(manifest, root) {
             old_digest
           )
       ) {
-        record$artifact$built_from_configuration <- new_digest
+        record$artifact$built_from_configuration <- new_artifact_digest
       }
       record
     })
     manifest$schema_version <- .builder_project_schema_version
+  }
+  if (identical(version, .builder_project_schema_version)) {
+    manifest$datasets <- lapply(manifest$datasets, function(record) {
+      artifact <- record$artifact %||% NULL
+      configuration_digest <- as.character(
+        record$configuration$digest %||% ""
+      )
+      if (
+        !is.list(artifact) ||
+          !.builder_project_text(configuration_digest) ||
+          !identical(
+            as.character(artifact$built_from_configuration %||% ""),
+            configuration_digest
+          )
+      ) {
+        return(record)
+      }
+      entry <- tryCatch(
+        builder_project_read_dataset_config(record, root),
+        error = function(error) NULL
+      )
+      digest <- tryCatch(
+        builder_project_artifact_configuration_digest(entry),
+        error = function(error) NULL
+      )
+      if (.builder_project_text(digest)) {
+        record$artifact$built_from_configuration <- digest
+      }
+      record
+    })
   }
   configuration <- manifest$configuration %||% list()
   manifest$configuration <- builder_project_configuration(
