@@ -497,6 +497,28 @@ test_that("build progress records reject unsupported phases", {
   expect_false(file.exists(path))
 })
 
+test_that("terminal progress preserves a missed Viewer phase", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, ".build-progress-test.rds")
+  plan <- list(items = list())
+
+  expect_true(builder_build_progress_write(path, "viewer"))
+  missed <- builder_build_progress_finish(plan, path, current_note = NULL)
+  expect_identical(missed$note, "Packaging Viewer…")
+  expect_true(missed$defer_settlement)
+  expect_false(file.exists(path))
+
+  expect_true(builder_build_progress_write(path, "viewer"))
+  shown <- builder_build_progress_finish(
+    plan,
+    path,
+    current_note = "Packaging Viewer…"
+  )
+  expect_identical(shown$note, "Packaging Viewer…")
+  expect_false(shown$defer_settlement)
+  expect_false(file.exists(path))
+})
+
 test_that("App execution rejects non-inert or non-exact verification evidence", {
   evidence <- list(
     structure(
