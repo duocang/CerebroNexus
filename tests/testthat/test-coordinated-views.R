@@ -875,7 +875,7 @@ test_that("saved-view startup identity does not materialize cell names", {
   )
   expect_match(
     server,
-    "req(cv_saved_view_identity()$cell_count >= 200000L)",
+    "progressive <- cv_saved_view_identity()$cell_count >= 200000L",
     fixed = TRUE
   )
 })
@@ -888,7 +888,7 @@ test_that("colour observation starts only after a bundle is sent", {
   )
 
   sent <- regexpr(
-    "coordviews_build_log$sent_n <- coordviews_build_log$n",
+    "coordviews_build_log$sent_n <- bundle_n",
     server,
     fixed = TRUE
   )[[1]]
