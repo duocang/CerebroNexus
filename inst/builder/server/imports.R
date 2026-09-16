@@ -985,7 +985,8 @@ observe({
         nxt$plan,
         request,
         coordinator = coordinator,
-        auth_material = auth_material
+        auth_material = auth_material,
+        progress_path = nxt$progress_path %||% NULL
       ),
       drop = builder_session_drop(current_worker, nxt$id, request)
     ),
@@ -993,6 +994,7 @@ observe({
   )
   if (inherits(started_call, "try-error")) {
     if (identical(nxt$kind, "build")) {
+      builder_build_progress_remove(nxt$progress_path %||% "")
       release <- isolate(active_release())
       if (!is.null(release)) {
         try(builder_coordinator_abort(release$handle), silent = TRUE)
@@ -1283,10 +1285,12 @@ schedule_builder_release_settlement_poll <- function(delay = 0.1) {
     {
       later::later(
         function() {
-          if (!identical(
-            generation,
-            as.double(isolate(release_settlement_poll_generation()))
-          )) {
+          if (
+            !identical(
+              generation,
+              as.double(isolate(release_settlement_poll_generation()))
+            )
+          ) {
             return(invisible(FALSE))
           }
           release_settlement_poll_scheduled(FALSE)
@@ -1388,7 +1392,12 @@ poll_builder_release_settlement <- function() {
   context <- isolate(release_settlement_context())
   cancelling <- is.list(context) && identical(context$status, "cancelling")
   alive <- tryCatch(process$is_alive(), error = identity)
-  if (inherits(alive, "condition") || !is.logical(alive) || length(alive) != 1L || is.na(alive)) {
+  if (
+    inherits(alive, "condition") ||
+      !is.logical(alive) ||
+      length(alive) != 1L ||
+      is.na(alive)
+  ) {
     if (is.list(context)) {
       context$error <- if (inherits(alive, "condition")) {
         paste0(
@@ -1636,8 +1645,16 @@ observe({
           progress$generation
         )
       }
+    } else if (identical(p$kind, "build") && !is.null(p$progress_path)) {
+      phase <- builder_build_progress_read(p$progress_path)
+      if (!is.null(phase)) {
+        busy_note(builder_build_progress_note(p$plan, phase))
+      }
     }
     return()
+  }
+  if (identical(p$kind, "build")) {
+    builder_build_progress_remove(p$progress_path %||% "")
   }
   if (!is.null(got$result$error)) {
     worker_error <- if (identical(p$kind, "load")) {
@@ -2071,7 +2088,7 @@ observe({
     }
     if (
       contract_matches &&
-      identical(current(), p$id) &&
+        identical(current(), p$id) &&
         identical(active_slice(), p$section)
     ) {
       alignment_preview(value)

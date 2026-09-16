@@ -142,7 +142,10 @@ test_that("browser uploads are retained by the background loader", {
     }
   )
 
-  expect_identical(loaded$retained_path, normalizePath(retained, winslash = "/"))
+  expect_identical(
+    loaded$retained_path,
+    normalizePath(retained, winslash = "/")
+  )
   expect_identical(loaded$adapter$path, normalizePath(retained, winslash = "/"))
   expect_identical(
     readBin(retained, "raw", n = 100L),
@@ -157,7 +160,10 @@ test_that("browser uploads are retained by the background loader", {
     .adapter = function(path) list(path = path),
     .register = function(adapter, id, progress) list(adapter = adapter, id = id)
   )
-  expect_identical(retried$retained_path, normalizePath(retained, winslash = "/"))
+  expect_identical(
+    retried$retained_path,
+    normalizePath(retained, winslash = "/")
+  )
 })
 
 test_that("failed background retention removes its partial file", {
@@ -797,7 +803,11 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   )
 
   payload_entry <- runtime$builder_project_stage_spatial_assets(entry, root)
-  adopted <- runtime$builder_project_adopt_spatial_assets(entry, payload_entry, root)
+  adopted <- runtime$builder_project_adopt_spatial_assets(
+    entry,
+    payload_entry,
+    root
+  )
   expect_true(file.exists(
     adopted$settings$images[["section/a"]][["H&E"]]$source_path
   ))
@@ -841,7 +851,9 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   expect_null(record$configuration$payload)
 
   restored <- runtime$builder_project_restore_entry(record, root)
-  restored_source <- restored$settings$images[["section/a"]][["H&E"]]$source_path
+  restored_source <- restored$settings$images[["section/a"]][[
+    "H&E"
+  ]]$source_path
   expect_true(file.exists(restored_source))
   expect_null(restored$settings$images[["section/a"]][["H&E"]]$source_uri)
   expect_null(restored$settings$images[["section-a"]][["H&E"]]$uri)
@@ -1425,7 +1437,12 @@ test_that("project server uses a dedicated callr source copy process", {
 
 test_that("source sync keeps queued jobs until its worker starts", {
   path <- testthat::test_path(
-    "..", "..", "inst", "builder", "server", "project.R"
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
   start <- regexpr(
@@ -1458,7 +1475,12 @@ test_that("source sync keeps queued jobs until its worker starts", {
 
 test_that("source sync cancellation owns and terminates its process", {
   path <- testthat::test_path(
-    "..", "..", "inst", "builder", "server", "project.R"
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
@@ -1478,7 +1500,12 @@ test_that("source sync cancellation owns and terminates its process", {
 
 test_that("source sync retains ownership when process termination is unconfirmed", {
   path <- testthat::test_path(
-    "..", "..", "inst", "builder", "server", "project.R"
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
   )
   lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
   first <- grep(
@@ -1538,7 +1565,12 @@ test_that("source sync retains ownership when process termination is unconfirmed
 
 test_that("source sync invalidation remains cancelling after a failed stop", {
   path <- testthat::test_path(
-    "..", "..", "inst", "builder", "server", "project.R"
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
   )
   lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
   first <- grep(
@@ -2972,6 +3004,67 @@ test_that("reusable CRB preparation skips current artifacts", {
   )
 })
 
+test_that("current project CRBs replace only temporary Build entries", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  artifact_path <- file.path(root, "dataset.crb")
+  writeLines("ready", artifact_path)
+  entry <- list(
+    id = "ds1",
+    load_state = "loaded",
+    settings = list(name = "Dataset"),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = basename(artifact_path),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      artifact_path,
+      content = TRUE
+    ),
+    members = list(),
+    built_from_configuration = runtime$builder_project_configuration_digest(
+      entry
+    )
+  )
+
+  build_entries <- runtime$builder_project_entries_for_build(
+    list(entry),
+    list(ds1 = artifact),
+    root
+  )
+
+  expect_identical(entry$load_state, "loaded")
+  expect_identical(build_entries[[1L]]$load_state, "artifact_ready")
+  expect_identical(
+    build_entries[[1L]]$project_artifact$resolved_path,
+    normalizePath(artifact_path, winslash = "/", mustWork = TRUE)
+  )
+
+  changed <- entry
+  changed$settings$name <- "Changed"
+  expect_identical(
+    runtime$builder_project_entries_for_build(
+      list(changed),
+      list(ds1 = artifact),
+      root
+    ),
+    list(changed)
+  )
+
+  unlink(artifact_path)
+  expect_identical(
+    runtime$builder_project_entries_for_build(
+      list(entry),
+      list(ds1 = artifact),
+      root
+    ),
+    list(entry)
+  )
+})
+
 test_that("a ready project CRB remains separate from the checked flag", {
   runtime <- builder_project_test_runtime()
   record <- list(
@@ -3563,7 +3656,11 @@ test_that("project input is bounded and Builder has no inline image decoder", {
     collapse = "\n"
   )
   expect_false(grepl("base64decode", implementation, fixed = TRUE))
-  expect_false(grepl("builder_project_decode_image_uri", implementation, fixed = TRUE))
+  expect_false(grepl(
+    "builder_project_decode_image_uri",
+    implementation,
+    fixed = TRUE
+  ))
 })
 
 test_that("restored source identity requires the recorded content fingerprint", {

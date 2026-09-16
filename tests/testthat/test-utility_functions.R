@@ -109,6 +109,47 @@ test_that("Viewer resolves and applies per-ROI spatial settings", {
   expect_equal(all_rois, data.frame(x = c(0, 2, 10), y = c(0, 0, 0)))
 })
 
+test_that("per-ROI rotations reuse pivots from full coordinates", {
+  full <- data.frame(x = c(0, 2, 100), y = c(0, 0, 0))
+  roi <- rep("lesion", nrow(full))
+  settings <- list(lesion = list(rotation_degrees = 90))
+  pivots <- utils_env$spatialRoiPivots(full, roi)
+
+  subset <- utils_env$rotateSpatialCoordinatesByRoi(
+    full[1:2, , drop = FALSE],
+    roi[1:2],
+    settings,
+    pivots = pivots
+  )
+  boundaries <- data.frame(x = c(-1, 1), y = c(-1, 1))
+  rotated_boundaries <- utils_env$rotateSpatialCoordinatesByRoi(
+    boundaries,
+    rep("lesion", nrow(boundaries)),
+    settings,
+    pivots = pivots
+  )
+
+  expect_equal(pivots$lesion, c(x = 50, y = 0))
+  expect_equal(unname(as.matrix(subset)), matrix(c(50, 50, -50, -48), ncol = 2))
+  expect_equal(
+    unname(as.matrix(rotated_boundaries)),
+    matrix(c(51, 49, -51, -49), ncol = 2)
+  )
+})
+
+test_that("Spatial Viewer reuses canonical ROI pivots across render paths", {
+  projection_file <- file.path(
+    dirname(utils_file),
+    "spatial",
+    "obj_projection_data_to_plot.R"
+  )
+  projection <- paste(readLines(projection_file, warn = FALSE), collapse = "\n")
+  reuse <- gregexpr("pivots = roi_pivots", projection, fixed = TRUE)[[1L]]
+
+  expect_match(projection, "roi_pivots <- spatialRoiPivots(", fixed = TRUE)
+  expect_length(reuse[reuse > 0L], 3L)
+})
+
 test_that("CRB cache diagnostics stay quiet when requested", {
   runtime <- new.env(parent = globalenv())
   sys.source(utils_file, envir = runtime)

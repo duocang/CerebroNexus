@@ -119,7 +119,7 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   expect_equal(
     as_numeric_bounds(result$overlay$viewports$`__section__`),
     legacy_view(
-      list(xmin = 0, xmax = 10, ymin = 0, ymax = 20),
+      list(xmin = -5, xmax = 15, ymin = -10, ymax = 30),
       500,
       400,
       2
@@ -127,15 +127,40 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
     tolerance = 1e-12
   )
   expect_equal(
-    as_numeric_bounds(result$separate$viewports$A),
-    legacy_view(
-      list(xmin = 0, xmax = 10, ymin = 0, ymax = 20),
-      (500 - 10 * 3) / 2,
-      (400 - 10 * 2) - 24,
-      6
-    ),
+    mean(unlist(as_numeric_bounds(result$separate$viewports$A)[c(
+      "xmin",
+      "xmax"
+    )])),
+    -45,
     tolerance = 1e-12
   )
+  expect_equal(
+    mean(unlist(as_numeric_bounds(result$separate$viewports$A)[c(
+      "ymin",
+      "ymax"
+    )])),
+    100,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mean(unlist(as_numeric_bounds(result$separate$imageFitViewports$A)[c(
+      "xmin",
+      "xmax"
+    )])),
+    -45,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mean(unlist(as_numeric_bounds(result$separate$imageFitViewports$A)[c(
+      "ymin",
+      "ymax"
+    )])),
+    100,
+    tolerance = 1e-12
+  )
+  expect_equal(as.numeric(result$separateFirstPoint$x), 127, tolerance = 1e-12)
+  expect_equal(as.numeric(result$separateFirstPoint$y), 200, tolerance = 1e-12)
+  expect_identical(result$nullControlsViewKey, "null-controls")
   expect_false(isTRUE(all.equal(
     result$overlay$viewports$`__section__`,
     result$overlay$imageFitViewports$`__section__`
@@ -373,7 +398,11 @@ test_that("control commits carry a complete spatial owner and flush on switch", 
   expect_match(js, "image: scene.activeImage", fixed = TRUE)
   expect_match(js, "window.setTimeout(flushControlCommit, 50)", fixed = TRUE)
   expect_match(server, "event_control_owner <- function(event)", fixed = TRUE)
-  expect_match(server, "apply_browser_controls <- function(event)", fixed = TRUE)
+  expect_match(
+    server,
+    "apply_browser_controls <- function(event)",
+    fixed = TRUE
+  )
   expect_match(server, "control_event_sequences", fixed = TRUE)
 })
 
@@ -390,7 +419,11 @@ test_that("preview settlement cannot overwrite live control values", {
   )[[1L]]
   block <- substr(server, start, start + 1600L)
 
-  expect_match(block, "update_position_steps(draft(), preview$bounds)", fixed = TRUE)
+  expect_match(
+    block,
+    "update_position_steps(draft(), preview$bounds)",
+    fixed = TRUE
+  )
   expect_false(grepl("update_controls(", block, fixed = TRUE))
 })
 
@@ -404,7 +437,11 @@ test_that("image replacement clears stale decoded pixels", {
     collapse = "\n"
   )
 
-  expect_match(js, "if (state.imageKey !== key) state.image = null;", fixed = TRUE)
+  expect_match(
+    js,
+    "if (state.imageKey !== key) state.image = null;",
+    fixed = TRUE
+  )
   expect_match(js, "state.imageKey = null;", fixed = TRUE)
 })
 

@@ -129,7 +129,11 @@ test_that("spatial image storage and nested image counts freeze exactly", {
     write_dummy_png(image_path)
     inspected <- builder_read_image(image_path)
     record <- builder_alignment_record(
-      source = list(name = "H&E.png", type = "image/png", size = inspected$bytes),
+      source = list(
+        name = "H&E.png",
+        type = "image/png",
+        size = inspected$bytes
+      ),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
       section = list(id = "fov", kind = "spatial"),
       source_path = inspected$source_path
@@ -206,6 +210,40 @@ test_that("spatial image storage and nested image counts freeze exactly", {
 
     blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_identical(blocked$error_code, "duplicate_spatial_image_label")
+  })
+})
+
+test_that("points-only ROI settings require Viewer App output", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$dataset_profile$spatial <- list(sections = "fov")
+    entry$settings$images <- list()
+    entry$settings$spatial_roi_settings <- list(
+      fov = list(
+        lesion = list(
+          rotation_degrees = 90,
+          point_opacity = 0.8,
+          point_size = 6
+        )
+      )
+    )
+
+    expect_true(builder_plan_requires_app(list(entry)))
+
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_identical(blocked$error_code, "spatial_roi_settings_require_app")
+
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
+    expect_null(ready$error)
+    expect_identical(
+      ready$items[[1L]]$spatial_roi_settings,
+      entry$settings$spatial_roi_settings
+    )
+    expect_identical(ready$items[[1L]]$spatial_alignment$points_only, "fov")
   })
 })
 

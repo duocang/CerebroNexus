@@ -9,6 +9,7 @@ const nativeHandlers = {};
 const inputs = [];
 const custom = {};
 const frames = [];
+const arcs = [];
 let timerId = 0;
 const timers = new Map();
 const context = new Proxy(
@@ -16,6 +17,7 @@ const context = new Proxy(
     measureText: function (value) {
       return {width: String(value).length * 6};
     },
+    arc: function (x, y) { arcs.push({x: x, y: y}); },
   },
   {
     get: function (target, key) {
@@ -144,6 +146,7 @@ vm.runInThisContext(fs.readFileSync(canvasSource, "utf8"), {
 
 const controls = {
   coordinateRotation: 0,
+  coordinateScale: 2,
   dx: 0,
   dy: 0,
   scale: 0.001,
@@ -244,19 +247,24 @@ const separate = {
   bounds: {xmin: 0, xmax: 30, ymin: 0, ymax: 20},
   image: null,
   roiImages: {},
+  roiBounds: {
+    A: {xmin: -100, xmax: 10, ymin: 0, ymax: 200},
+    B: {xmin: 20, xmax: 30, ymin: 0, ymax: 20},
+  },
   roiPointAppearance: {},
   roiCoordinateTransforms: {},
   points: {
-    x: [0, 10, 20, 30],
-    y: [0, 20, 0, 20],
+    x: [-45, 10, 20, 30],
+    y: [100, 20, 0, 20],
     group: ["A", "A", "B", "B"],
     color: ["#111", "#111", "#222", "#222"],
     count: [2, 2, 2, 2],
   },
-  controls: controls,
+  controls: Object.assign({}, controls, {coordinateRotation: 90}),
 };
 slider.step = "0.02";
 number.step = "0.02";
+arcs.length = 0;
 custom.builder_spatial_canvas_scene(separate);
 frames.shift()();
 Array.from(timers.entries()).forEach(function (entry) {
@@ -266,11 +274,31 @@ Array.from(timers.entries()).forEach(function (entry) {
 const separateViewport = inputs.filter(function (entry) {
   return entry.id === "builder_spatial_viewports";
 }).slice(-1)[0].value;
+const separateFirstPoint = arcs[0];
 const authoritativeStep = String(slider.step);
+
+custom.builder_spatial_canvas_clear({viewKey: "separate", generation: 3});
+delegated.input.call(slider, {
+  type: "input",
+  currentTarget: slider,
+  originalEvent: undefined,
+  stopImmediatePropagation: function () {},
+});
+custom.builder_spatial_canvas_scene(Object.assign({}, overlay, {
+  viewKey: "null-controls",
+  generation: 4,
+  controls: controls,
+}));
+frames.shift()();
+const nullControlsViewport = inputs.filter(function (entry) {
+  return entry.id === "builder_spatial_viewports";
+}).slice(-1)[0].value;
 
 console.log(JSON.stringify({
   overlay: overlayViewport,
   separate: separateViewport,
+  separateFirstPoint: separateFirstPoint,
+  nullControlsViewKey: nullControlsViewport.viewKey,
   numberValue: numberValueAfterIon,
   tinyNumberValue: tinyNumberValueAfterEntry,
   tinySliderValue: tinySliderValueAfterEntry,
