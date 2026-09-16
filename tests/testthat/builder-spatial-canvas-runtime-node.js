@@ -276,10 +276,28 @@ const separateViewport = inputs.filter(function (entry) {
 const separateFirstPoint = arcs[0];
 const authoritativeStep = String(slider.step);
 
+custom.builder_spatial_canvas_clear({viewKey: "separate", generation: 3});
+delegated.input.call(slider, {
+  type: "input",
+  currentTarget: slider,
+  originalEvent: undefined,
+  stopImmediatePropagation: function () {},
+});
+custom.builder_spatial_canvas_scene(Object.assign({}, overlay, {
+  viewKey: "null-controls",
+  generation: 4,
+  controls: controls,
+}));
+frames.shift()();
+const nullControlsViewport = inputs.filter(function (entry) {
+  return entry.id === "builder_spatial_viewports";
+}).slice(-1)[0].value;
+
 console.log(JSON.stringify({
   overlay: overlayViewport,
   separate: separateViewport,
   separateFirstPoint: separateFirstPoint,
+  nullControlsViewKey: nullControlsViewport.viewKey,
   numberValue: numberValueAfterIon,
   tinyNumberValue: tinyNumberValueAfterEntry,
   tinySliderValue: tinySliderValueAfterEntry,

@@ -320,7 +320,7 @@
       return;
     }
     var pad = POINT_EDGE_PADDING;
-    var angle = finite(state.controls.coordinateRotation, 0);
+    var angle = finite(state.controls && state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
       scene.bounds,
       angle,
@@ -530,7 +530,7 @@
     };
   }
   function drawPoints(ctx, scene, screen) {
-    var p = scene.points, c = state.controls;
+    var p = scene.points, c = state.controls || {};
     ctx.globalAlpha = finite(c.point_opacity, .85);
     var radius = Math.max(1, finite(c.point_size, 5) / 2);
     var bounds = scene.bounds;
