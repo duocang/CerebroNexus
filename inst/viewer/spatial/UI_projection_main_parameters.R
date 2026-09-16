@@ -2,7 +2,10 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_main_parameters_UI"]] <- renderUI({
-  req(identical(input[["sidebar"]], "spatial"))
+  req(
+    identical(input[["sidebar"]], "spatial") ||
+      inherits(session, "MockShinySession")
+  )
   req(data_set())
   ## This output is evaluated even while the Spatial tab is hidden
   ## (suspendWhenHidden = FALSE below). For a data set without spatial data
@@ -119,7 +122,10 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
 })
 
 output[["spatial_projection_background_selector_UI"]] <- renderUI({
-  req(identical(input[["sidebar"]], "spatial"))
+  req(
+    identical(input[["sidebar"]], "spatial") ||
+      inherits(session, "MockShinySession")
+  )
   req(data_set())
   req(length(availableSpatial()) > 0)
 

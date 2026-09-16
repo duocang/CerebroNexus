@@ -2583,7 +2583,7 @@ get_or_load_crb <- function(
   ))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  obj <- .attachImmuneRepertoireBackend(obj)
+  obj <- .attachImmuneRepertoireBackend(obj, path, effective_backend)
   obj <- .attachSpatialMoleculeBackend(obj, path)
   .crb_process_cache[[cache_key]] <- list(
     object = obj,
@@ -2592,7 +2592,11 @@ get_or_load_crb <- function(
   .cloneCachedCrb(obj)
 }
 
-.attachImmuneRepertoireBackend <- function(obj) {
+.attachImmuneRepertoireBackend <- function(
+  obj,
+  crb_path,
+  effective_backend = NULL
+) {
   field <- "immune_repertoire_backend"
   if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
     return(obj)
@@ -2619,10 +2623,12 @@ get_or_load_crb <- function(
     length(backend$md5) == 1L &&
     !is.na(backend$md5) &&
     grepl("^[[:xdigit:]]{32}$", backend$md5)
-  expression_backend <- tryCatch(obj$getExpressionBackend(), error = function(e) NULL)
-  valid <- valid &&
-    is.list(expression_backend) &&
-    identical(expression_backend$type, "bpcells")
+  expression_backend <- if (is.null(effective_backend)) {
+    .fallbackRuntimeBackendPlan(obj, crb_path)
+  } else {
+    .validateRuntimeBackendEntry(effective_backend, crb_path)
+  }
+  valid <- valid && identical(expression_backend$type, "bpcells")
   if (!valid) {
     stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
   }
@@ -2633,7 +2639,14 @@ get_or_load_crb <- function(
   }
   backend$samples <- backend$samples[nzchar(backend$samples)]
   backend$chains <- backend$chains[nzchar(backend$chains)]
-  root <- tryCatch(obj$expression@dir, error = function(e) NULL)
+  root <- if (identical(expression_backend$mode, "host_override")) {
+    expression_backend$location
+  } else {
+    file.path(
+      dirname(normalizePath(crb_path, mustWork = FALSE)),
+      expression_backend$location
+    )
+  }
   if (!is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)) {
     stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
   }
