@@ -952,6 +952,14 @@
       finishInteraction();
       return;
     }
+    if (
+      event.target.closest &&
+      event.target.closest("#enhance-reset_coordinate_transform")
+    ) {
+      flushControlCommit();
+      finishInteraction();
+      return;
+    }
     var button = event.target.closest &&
       event.target.closest(".spatial-image-nudge button[data-target]");
     if (!button) return;

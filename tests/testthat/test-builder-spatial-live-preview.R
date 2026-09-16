@@ -333,6 +333,11 @@ test_that("Reset image waits for server-authoritative controls", {
 
   expect_false(grepl("function resetImageControls", js, fixed = TRUE))
   expect_match(js, 'closest("#enhance-reset_align")', fixed = TRUE)
+  expect_match(
+    js,
+    'closest("#enhance-reset_coordinate_transform")',
+    fixed = TRUE
+  )
   expect_match(js, "pendingAuthoritativeControls", fixed = TRUE)
   expect_match(js, "flushControlCommit();", fixed = TRUE)
 })

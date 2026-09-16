@@ -661,18 +661,23 @@ builder_alignment_normalize <- function(
   normalized
 }
 
-#' Reset one section to its deterministic default fit and appearance.
+#' Reset one image to its deterministic fit without changing point appearance.
 builder_alignment_reset <- function(record) {
   normalized <- builder_alignment_normalize(record)
   if (is.null(normalized)) {
     return(NULL)
   }
+  parameters <- builder_alignment_defaults()
+  parameters[c("point_opacity", "point_size")] <- normalized[c(
+    "point_opacity",
+    "point_size"
+  )]
   reset <- builder_alignment_record(
     source = normalized$source,
     source_uri = normalized$source_uri,
     uri = normalized$source_uri,
     base_bounds = normalized$base_bounds,
-    parameters = builder_alignment_defaults(),
+    parameters = parameters,
     image_geometry = list(
       source_width = normalized$source_width,
       source_height = normalized$source_height,
