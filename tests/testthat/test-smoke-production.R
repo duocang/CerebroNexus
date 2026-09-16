@@ -70,7 +70,7 @@ test_that("Builder dormant app path publishes one verified private bundle", {
   expect_false(config$show_upload_ui)
 
   second <- file.path(built$app_dir, config$crb_file_to_load[[2L]])
-  object <- readRDS(second)
+  object <- readCerebro(second)
   spatial <- object$getSpatialData(built$section)
   images <- spatial[["histology_images", exact = TRUE]]
   expect_length(images, 0L)
