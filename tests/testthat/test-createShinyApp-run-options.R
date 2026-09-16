@@ -185,7 +185,10 @@ test_that("new run options preserve historical positional arguments", {
 
   expect_identical(arguments[[14L]], "show_upload_ui")
   expect_identical(arguments[[15L]], "welcome_message")
-  expect_identical(tail(arguments, 1L), "initial_page")
+  expect_identical(
+    tail(arguments, 3L),
+    c("initial_page", "initial_projections", "initial_dataset")
+  )
 })
 
 test_that("createShinyApp freezes typed run options into config", {
@@ -336,7 +339,9 @@ test_that("createShinyApp freezes typed run options into config", {
     )
   )
   expect_true("shiny.appobj" %in% runtime$class)
-  expect_identical(runtime$options, expected_options)
+  ## Launch options stay in config; an embedded app must leave its host free to
+  ## choose the port and display mode.
+  expect_length(runtime$options, 0L)
   expect_identical(runtime$after_source, runtime$sentinel)
   expect_identical(runtime$during, runtime$expected_bytes)
   expect_identical(runtime$after_stop, runtime$sentinel)
@@ -425,6 +430,52 @@ test_that("createShinyApp stores a validated initial Viewer page", {
   expect_match(server, 'trekker = "trekker"', fixed = TRUE)
   expect_match(server, "viewerInitialPageDecision", fixed = TRUE)
   expect_match(server, "updateTabItems", fixed = TRUE)
+})
+
+test_that("explicit initial dataset preserves configured selector order", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro$new(), second)
+  app <- file.path(fixture$root, "app-initial-dataset")
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    initial_dataset = "B"
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(names(config$crb_file_to_load), c("A", "B"))
+  expect_identical(config$initial_dataset, "B")
+})
+
+test_that("initial_projections configures initial Linked views panels", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro$new(), second)
+  app <- file.path(fixture$root, "app-initial-projections")
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    initial_projections = list(
+      A = c("umap", "pca"),
+      B = "tsne"
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    config$viewer_content,
+    list(
+      A = list(initial_projections = c("umap", "pca")),
+      B = list(initial_projections = "tsne")
+    )
+  )
 })
 
 test_that("createShinyApp accepts every supported display mode", {

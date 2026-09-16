@@ -204,7 +204,7 @@ exportFromSCE <- function(
   export$addExperiment('organism', organism)
 
   ## record the CerebroNexus exporter version
-  export$setVersion(utils::packageVersion('CerebroNexus'))
+  export$setVersion(package_version(.cerebroRuntimeVersion()))
 
   ##--------------------------------------------------------------------------##
   ## add transcript counts

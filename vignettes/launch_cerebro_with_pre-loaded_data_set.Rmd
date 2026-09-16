@@ -41,7 +41,7 @@ launchCerebro(
 
 That's it.
 
-<a target="_blank" href="launch_cerebro_with_pre-loaded_data_set_files/landing_page.png"><img src="launch_cerebro_with_pre-loaded_data_set_files/landing_page.png" alt="Load data" width="100%" height="auto" /></a>
+<a target="_blank" href="img/landing_page.png"><img src="img/landing_page.png" alt="Load data" width="100%" height="auto" /></a>
 
 # Modify welcome page
 
@@ -61,7 +61,7 @@ launchCerebro(
 )
 ```
 
-<a target="_blank" href="launch_cerebro_with_pre-loaded_data_set_files/custom_welcome_message.png"><img src="launch_cerebro_with_pre-loaded_data_set_files/custom_welcome_message.png" alt="Load data" width="100%" height="auto" /></a>
+<a target="_blank" href="img/custom_welcome_message.png"><img src="img/custom_welcome_message.png" alt="Load data" width="100%" height="auto" /></a>
 
 # See also
 

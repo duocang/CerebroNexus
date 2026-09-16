@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 4.6.4
+Version: 5.0.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -14,7 +14,6 @@ BugReports: https://github.com/mihem/CerebroNexus/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.3
 Depends: R (>= 3.6.0)
 biocViews:
   FeatureExtraction,
@@ -50,6 +49,7 @@ Imports:
   qvalue (>= 2.14.0),
   qs2,
   R6 (>= 2.4.0),
+  readxl,
   rlang (>= 0.4.2),
   scales (>= 1.1.0),
   scRepertoire (>= 2.0.0),
@@ -69,6 +69,7 @@ Imports:
 Suggests:
   BPCells,
   callr,
+  codetools,
   DelayedArray,
   formattable (>= 0.2.0.1),
   ggtree,
@@ -77,6 +78,9 @@ Suggests:
   knitr,
   monocle,
   png,
+  processx,
+  ps,
+  qs,
   readxl,
   reshape2,
   rhdf5,
@@ -92,3 +96,4 @@ Suggests:
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0

@@ -1,0 +1,163 @@
+sys.source(
+  builder_profile_inst_path("builder", "spatial.R"),
+  envir = environment()
+)
+sys.source(
+  builder_profile_inst_path("builder", "extras.R"),
+  envir = environment()
+)
+sys.source(
+  builder_profile_inst_path("builder", "build.R"),
+  envir = environment()
+)
+
+test_that("Builder preserves uploaded PNG and JPEG bytes", {
+  skip_if_not_installed("png")
+  skip_if_not_installed("jpeg")
+  pixels <- array(seq(0, 1, length.out = 4L * 6L * 3L), c(4L, 6L, 3L))
+  files <- c(
+    png = withr::local_tempfile(fileext = ".png"),
+    jpeg = withr::local_tempfile(fileext = ".jpg")
+  )
+  png::writePNG(pixels, files[["png"]])
+  jpeg::writeJPEG(pixels, files[["jpeg"]], quality = 0.91)
+
+  for (format in names(files)) {
+    path <- files[[format]]
+    mime <- if (identical(format, "png")) "image/png" else "image/jpeg"
+    image <- builder_read_image(path)
+
+    expect_null(image$error, info = format)
+    expect_identical(
+      image$source_path,
+      normalizePath(path, winslash = "/", mustWork = TRUE),
+      info = format
+    )
+    expect_identical(image$mime, mime, info = format)
+    expect_false(any(c("source_uri", "uri") %in% names(image)), info = format)
+    expect_identical(
+      image$source_content_md5,
+      unname(as.character(tools::md5sum(path))),
+      info = format
+    )
+    expect_identical(image$bytes, unname(file.size(path)), info = format)
+    expect_identical(
+      image[c("width", "height")],
+      list(width = 6L, height = 4L),
+      info = format
+    )
+  }
+})
+
+test_that("large images keep original bytes without an R raster copy", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(0, nrow = 1400L, ncol = 1500L), path)
+
+  image <- builder_read_image(path)
+
+  expect_null(image$error)
+  expect_identical(
+    image$source_dimensions,
+    c(width = 1500L, height = 1400L)
+  )
+  expect_null(image$array)
+  expect_false("max_pixels" %in% names(formals(builder_read_image)))
+  expect_identical(BUILDER_IMAGE_MAX_BYTES, 1024^3)
+})
+
+test_that("external image materialization is byte exact and keeps transforms", {
+  skip_if_not_installed("png")
+  source_path <- withr::local_tempfile(fileext = ".png")
+  png::writePNG(matrix(seq(0, 1, length.out = 48L), nrow = 6L), source_path)
+  inspected <- builder_read_image(source_path)
+  record <- builder_alignment_record(
+    source = list(name = "section.png", type = "image/png"),
+    base_bounds = list(xmin = 0, xmax = 20, ymin = 10, ymax = 30),
+    parameters = list(
+      dx = 4,
+      dy = -2,
+      scale = 1.5,
+      rotation = 37,
+      flip_x = TRUE
+    ),
+    section = list(id = "fov-a", kind = "spatial"),
+    source_path = inspected$source_path
+  )
+  record$source_content_md5 <- inspected$source_content_md5
+  stage <- withr::local_tempdir()
+  materialized <- .builder_build_materialize_spatial_images(
+    list(
+      id = "dataset-a",
+      name = "Dataset A",
+      images = list(`fov-a` = list(section = record))
+    ),
+    stage
+  )
+  descriptor <- materialized$images[["Dataset A"]][["fov-a"]]$section
+  copied <- descriptor$path
+
+  expect_true(file.exists(copied))
+  expect_identical(unname(file.size(copied)), unname(file.size(source_path)))
+  expect_identical(
+    unname(as.character(tools::md5sum(copied))),
+    unname(as.character(tools::md5sum(source_path)))
+  )
+  expect_identical(
+    readBin(copied, what = "raw", n = file.size(copied)),
+    readBin(source_path, what = "raw", n = file.size(source_path))
+  )
+  expect_identical(
+    materialized$settings[["Dataset A"]][["fov-a"]]$section$rotation,
+    37
+  )
+})
+
+test_that("truncated JPEG uploads are rejected before they enter a project", {
+  skip_if_not_installed("jpeg")
+  complete <- withr::local_tempfile(fileext = ".jpg")
+  truncated <- withr::local_tempfile(fileext = ".jpg")
+  jpeg::writeJPEG(array(seq(0, 1, length.out = 90L), c(5L, 6L, 3L)), complete)
+  bytes <- readBin(complete, what = "raw", n = file.size(complete))
+  writeBin(bytes[-length(bytes)], truncated)
+
+  expect_null(builder_read_image(complete)$error)
+  expect_identical(
+    builder_read_image(truncated)$error,
+    "The image file is incomplete or truncated."
+  )
+})
+
+test_that("Builder image upload no longer re-encodes display pixels", {
+  extras <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "extras.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("builder_encode_image <-", extras, fixed = TRUE))
+  expect_false(grepl("builder_encode_image(", server, fixed = TRUE))
+  expect_false(grepl("max_px = 1400", server, fixed = TRUE))
+  expect_false(grepl("resizeTissueImageBeforeUpload", client, fixed = TRUE))
+  expect_false(grepl("TISSUE_IMAGE_MAX_EDGE", client, fixed = TRUE))
+  expect_false(grepl("base64encode", extras, fixed = TRUE))
+  expect_false(grepl("base64encode", server, fixed = TRUE))
+  expect_false(grepl("builder_histology_image_payload", extras, fixed = TRUE))
+  expect_false(grepl("builder_attach_spatial_image", extras, fixed = TRUE))
+})
