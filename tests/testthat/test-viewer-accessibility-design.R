@@ -104,13 +104,28 @@ test_that("shared column filters are named from their headers", {
 test_that("async output updates are announced", {
   ui <- viewer_design_source("shiny_UI.R")
   shell <- viewer_design_source("www", "viewer-shell.js")
+  canvas <- viewer_design_source("www", "cell_views.js")
+  css <- viewer_design_source("www", "custom.css")
 
   expect_match(ui, 'role = "status"', fixed = TRUE)
   expect_match(ui, '`aria-live` = "polite"', fixed = TRUE)
+  expect_match(ui, 'id = "cerebro-page-loader"', fixed = TRUE)
+  expect_match(css, ".cerebro-page-loader", fixed = TRUE)
   expect_match(shell, "aria-busy", fixed = TRUE)
   expect_match(shell, "Updating content", fixed = TRUE)
   expect_match(shell, "Content updated", fixed = TRUE)
   expect_match(shell, "pruneBusyOutputs", fixed = TRUE)
+  expect_match(shell, "shiny:idle.cerebroPageLoader", fixed = TRUE)
+  expect_match(shell, "shiny:busy.cerebroPageLoader", fixed = TRUE)
+  expect_match(shell, "scheduleFinish", fixed = TRUE)
+  expect_match(shell, "MutationObserver", fixed = TRUE)
+  expect_match(shell, "requestAnimationFrame", fixed = TRUE)
+  expect_match(shell, "cerebro:cell-view-ready", fixed = TRUE)
+  expect_match(shell, "cerebro:linkedviews-ready", fixed = TRUE)
+  expect_match(shell, "event.detail.painted", fixed = TRUE)
+  expect_match(canvas, "cerebro:cell-view-ready", fixed = TRUE)
+  expect_match(canvas, "linkedWorkspacePainted", fixed = TRUE)
+  expect_match(canvas, "painted: true", fixed = TRUE)
 })
 
 test_that("inactivity warning gives users a way to continue", {

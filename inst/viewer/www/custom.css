@@ -1999,6 +1999,54 @@ body .shiny-progress-container .progress-text {
 body .shiny-progress-container .progress-message { color: var(--c-text) !important; }
 body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !important; }
 
+#main-content { position: relative; }
+.cerebro-page-loader {
+  position: absolute;
+  z-index: 1040;
+  inset: 0;
+  min-height: min(520px, calc(100vh - 72px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  background: var(--c-bg);
+  background: color-mix(in srgb, var(--c-bg) 92%, transparent);
+  color: var(--c-text);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s var(--ease);
+}
+.cerebro-page-loader.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.cerebro-page-loader-spinner {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 3px solid var(--c-amber-100);
+  border-top-color: var(--c-amber-700);
+  border-radius: 50%;
+  animation: cerebro-page-loader-spin .8s linear infinite;
+}
+.cerebro-page-loader-copy {
+  display: grid;
+  gap: 2px;
+  line-height: 1.35;
+}
+.cerebro-page-loader-copy strong { font-size: 14px; }
+.cerebro-page-loader-copy span {
+  color: var(--c-text-2);
+  font-size: 12.5px;
+}
+@keyframes cerebro-page-loader-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-page-loader { transition: none; }
+  .cerebro-page-loader-spinner { animation: none; }
+}
+
 /* Native Plotly charts use the same compact tool language as Linked views. */
 body .js-plotly-plot {
   container-type: inline-size;
