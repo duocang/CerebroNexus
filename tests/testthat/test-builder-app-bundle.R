@@ -47,6 +47,7 @@ builder_app_bundle_fixture <- function(
           default_projection = "umap",
           default_trajectory = NULL,
           overview_point_size = 4,
+          overview_point_opacity = 0.2,
           expression_backend = "embedded",
           sidecars = character()
         ),
@@ -58,6 +59,7 @@ builder_app_bundle_fixture <- function(
           default_projection = "pca",
           default_trajectory = list(method = "monocle2", name = "lineage"),
           overview_point_size = 7,
+          overview_point_opacity = 0.8,
           expression_backend = "embedded",
           sidecars = character()
         )
@@ -457,6 +459,7 @@ test_that("App arguments come only from the frozen plan", {
       initial_projections = "pca",
       default_trajectory = list(method = "monocle2", name = "lineage"),
       overview_point_size = 7,
+      overview_point_opacity = 0.8,
       overview_percentage_cells_to_show = 100,
       spatial_point_appearance = fixture$plan$items[[
         2L
@@ -1310,6 +1313,10 @@ test_that("App assembly calls only the accepted staged interface", {
   expect_identical(
     observed$point_opacity,
     .builder_app_scatter_options(request)$point_opacity
+  )
+  expect_identical(
+    observed$point_opacity,
+    c(`Dataset A` = 0.2, `Dataset B` = 0.8)
   )
   expect_identical(
     observed$percentage_cells_to_show,
