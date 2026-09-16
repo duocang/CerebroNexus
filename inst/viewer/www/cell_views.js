@@ -6285,6 +6285,20 @@
     renderSelbar();
     drawAll();
     reportSingleHiddenGroups(); reportSelection();
+    // Canvas drawing is synchronous, but the browser does not composite it
+    // until a later frame. Keep the page loader in place until that first
+    // painted frame is actually visible; otherwise users see a blank gap
+    // between the loader and the specialist view.
+    var paintedSingleData = D;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (singleActive !== id || D !== paintedSingleData ||
+            visibleSingleId() !== id) return;
+        window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
+          detail: { id: id, painted: true }
+        }));
+      });
+    });
     return true;
   }
   function activateLinked() {
@@ -7192,11 +7206,26 @@
     return { selectedCells: result.selected_cells };
   }
 
-  function reportWorkspaceReady() {
-    var summary = workspaceSummary();
+  var linkedReadyPaintToken = 0;
+
+  function linkedWorkspacePainted() {
+    var meta = $('cv-meta');
+    if (!meta || meta.offsetParent === null || !D) return false;
+    return panels.some(function (panel) {
+      if (!panel.spaceId ||
+          Number(panel.canvas.dataset.pointCount) !== D.n) return false;
+      var rect = panel.canvas.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 &&
+        panel.canvas.width > 0 && panel.canvas.height > 0;
+    });
+  }
+
+  function dispatchWorkspaceReady(summary, painted) {
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
         ready: summary.ready,
+        painted: !!painted,
+        complete: summary.complete,
         selectedCells: summary.selectedCells
       }
     }));
@@ -7215,6 +7244,27 @@
           progressive_token: D.progressive_token,
           nonce: Date.now()
         }, { priority: 'event' });
+      });
+    });
+  }
+
+  function reportWorkspaceReady() {
+    var summary = workspaceSummary();
+    var token = ++linkedReadyPaintToken;
+    if (!summary.ready) {
+      dispatchWorkspaceReady(summary, false);
+      return;
+    }
+    var paintedData = D;
+    var paintedFingerprint = summary.datasetFingerprint;
+    // Two animation frames guarantee that the synchronous Canvas/WebGL draw
+    // has crossed a browser paint boundary before the shell fades its loader.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (token !== linkedReadyPaintToken || D !== paintedData) return;
+        var settled = workspaceSummary();
+        if (settled.datasetFingerprint !== paintedFingerprint) return;
+        dispatchWorkspaceReady(settled, linkedWorkspacePainted());
       });
     });
   }
