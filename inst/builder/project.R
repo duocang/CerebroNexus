@@ -3227,8 +3227,25 @@ builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
   Filter(
     function(entry) {
       artifact <- artifacts[[entry$id]] %||% NULL
+      artifact_revision <- suppressWarnings(as.integer(
+        artifact$built_from_revision %||% NA_integer_
+      ))
+      entry_revision <- suppressWarnings(as.integer(
+        entry$revision %||% 0L
+      ))
+      source_fingerprint <- entry$snapshot$source_fingerprint %||% NULL
       !is.list(artifact) ||
         !builder_project_artifact_available(artifact, root) ||
+        length(artifact_revision) != 1L ||
+        is.na(artifact_revision) ||
+        length(entry_revision) != 1L ||
+        is.na(entry_revision) ||
+        !identical(artifact_revision, entry_revision) ||
+        !.builder_project_text(source_fingerprint) ||
+        !identical(
+          as.character(artifact$built_from_source_fingerprint %||% ""),
+          as.character(source_fingerprint)
+        ) ||
         !identical(
           as.character(artifact$built_from_configuration %||% ""),
           builder_project_configuration_digest(entry)
@@ -3236,6 +3253,22 @@ builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
     },
     entries
   )
+}
+
+builder_project_artifact_source_fingerprint <- function(
+  entry,
+  plan_item,
+  previous_artifact = NULL
+) {
+  current <- entry$snapshot$source_fingerprint %||% NULL
+  if (.builder_project_text(current)) {
+    return(as.character(current))
+  }
+  previous <- previous_artifact$built_from_source_fingerprint %||% NULL
+  if (is.list(plan_item$reused_artifact) && .builder_project_text(previous)) {
+    return(as.character(previous))
+  }
+  NULL
 }
 
 builder_project_entries_for_build <- function(entries, artifacts, root) {
