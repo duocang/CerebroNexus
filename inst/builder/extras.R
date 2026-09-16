@@ -1588,7 +1588,7 @@ builder_pair_sections <- function(picture, per_section) {
     }
     available <- character()
   }
-  applied <- intersect(names(collection), available)
+  applied <- intersect(names(collection) %||% character(), available)
   changed <- character()
   for (section_id in available) {
     spatial <- crb$getSpatialData(section_id)
