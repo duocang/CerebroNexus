@@ -684,10 +684,7 @@ observe({
     configure_readiness()
   }
   message <- if (!alignment_settled) {
-    paste(
-      "Waiting for the spatial preview to finish.",
-      "This action will unlock automatically."
-    )
+    "Saving the latest spatial adjustment…"
   } else if (length(unchecked)) {
     paste0(
       length(ids) - length(unchecked),

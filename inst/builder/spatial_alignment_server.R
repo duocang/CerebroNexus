@@ -267,6 +267,7 @@ builder_spatial_alignment_server <- function(
   expected_controls_token <- shiny::reactiveVal(0L)
   browser_control_state <- shiny::reactiveVal(NULL)
   client_interaction <- shiny::reactiveVal(NULL)
+  last_browser_scene_sequence <- 0
   control_event_sequences <- new.env(parent = emptyenv())
   control_owner_views <- new.env(parent = emptyenv())
   active_control_owner_key <- NULL
@@ -1918,7 +1919,8 @@ builder_spatial_alignment_server <- function(
         parameters = values,
         coordinate_rotation = coordinate$rotation_degrees,
         view_key = view_key,
-        generation = generation
+        generation = generation,
+        sequence = sequence
       ))
       expected_controls(NULL)
       if (changed) {
@@ -2285,10 +2287,18 @@ builder_spatial_alignment_server <- function(
       )
       return(invisible(FALSE))
     }
-    retained <- builder_read_image(session_source, filename = filename)
+    retained_path <- tryCatch(
+      normalizePath(session_source, winslash = "/", mustWork = TRUE),
+      error = function(error) NULL
+    )
+    retained_md5 <- if (is.null(retained_path)) {
+      NULL
+    } else {
+      unname(as.character(tools::md5sum(retained_path)))
+    }
     if (
-      !is.null(retained$error) ||
-        !identical(retained$source_content_md5, image$source_content_md5)
+      is.null(retained_path) ||
+        !identical(retained_md5, image$source_content_md5)
     ) {
       shiny::showNotification(
         "The uploaded image failed its integrity check.",
@@ -2297,7 +2307,9 @@ builder_spatial_alignment_server <- function(
       )
       return(invisible(FALSE))
     }
-    image <- retained
+    ## The upload was already decoded and validated above. Matching the copied
+    ## bytes is sufficient here and avoids decoding a large PNG a second time.
+    image$source_path <- retained_path
     previous_label <- active_image()
     previous <- if (is.null(previous_label)) {
       NULL
@@ -2570,6 +2582,23 @@ builder_spatial_alignment_server <- function(
         is.null(section) ||
         !preview_matches_owner(preview, entry, section)
     ) {
+      return()
+    }
+    browser <- browser_control_state()
+    browser_sequence <- suppressWarnings(as.numeric(browser$sequence %||% NA))
+    current_canvas_contract <- shiny::isolate(canvas_contract())
+    if (
+      is.list(browser) &&
+        length(browser_sequence) == 1L &&
+        is.finite(browser_sequence) &&
+        browser_sequence > last_browser_scene_sequence &&
+        identical(browser$owner, active_control_owner()) &&
+        is.list(current_canvas_contract) &&
+        identical(browser$view_key, current_canvas_contract$viewKey)
+    ) {
+      ## The browser has already rendered these controls locally. Their server
+      ## commit must not serialize and send the complete point/image scene.
+      last_browser_scene_sequence <<- browser_sequence
       return()
     }
     generation <- shiny::isolate(canvas_generation()) + 1L
@@ -2907,54 +2936,23 @@ builder_spatial_alignment_server <- function(
     if (is.null(entry) || is.null(section)) {
       return(TRUE)
     }
-    labels <- image_labels_for(
-      entry,
-      section,
-      active_roi()
-    )
+    if (!is.null(pending_upload())) {
+      return(FALSE)
+    }
+    labels <- image_labels_for(entry, section, active_roi())
     if (!length(labels)) {
       return(TRUE)
     }
     preview <- alignment_preview()
-    contract <- canvas_contract()
-    viewport <- canvas_viewports()
     if (
       !isTRUE(preview$available) ||
-        !preview_matches_owner(preview, entry, section) ||
-        !is.list(contract) ||
-        !is.list(viewport) ||
-        !identical(contract$dataset, entry$id) ||
-        !identical(
-          contract$snapshotIdentity,
-          .builder_worker_identity(entry$snapshot)
-        ) ||
-        !identical(contract$section, section) ||
-        !identical(viewport$viewKey, contract$viewKey) ||
-        !isTRUE(
-          as.integer(viewport$generation) == as.integer(contract$generation)
-        )
+        !preview_matches_owner(preview, entry, section)
     ) {
       return(FALSE)
     }
-    roi <- as.character(active_roi() %||% "")[[1L]]
-    key <- if (nzchar(roi)) roi else "__section__"
-    bounds <- viewport$viewports[[key]]
-    if (!.builder_alignment_valid_bounds(bounds)) {
-      return(FALSE)
-    }
-    records <- collection_for(entry)[[section]] %||% list()
-    all(vapply(
-      labels,
-      function(label) {
-        record <- records[[label]]
-        is.list(record) && isTRUE(all.equal(
-          record$viewport_bounds,
-          bounds,
-          check.attributes = FALSE
-        ))
-      },
-      logical(1)
-    ))
+    interaction <- client_interaction()
+    is.null(interaction) ||
+      !identical(interaction$owner, active_control_owner())
   })
 
   materialize_coordinate_drafts <- function(
