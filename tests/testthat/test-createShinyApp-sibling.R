@@ -1291,7 +1291,9 @@ test_that("cached CRBs reject a different effective backend plan", {
   local_cerebro_options(list())
 
   first <- runtime$get_or_load_crb(path, embedded, path)
-  expect_identical(runtime$get_or_load_crb(path, embedded, path), first)
+  second <- runtime$get_or_load_crb(path, embedded, path)
+  expect_false(identical(first, second))
+  expect_identical(first$meta_data, second$meta_data)
   expect_error(
     runtime$get_or_load_crb(path, changed, path),
     "cached CRB.*backend configuration changed"
