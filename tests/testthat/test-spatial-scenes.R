@@ -34,7 +34,10 @@ test_that("spatial scene choices show only FOV identifiers", {
 })
 
 test_that("Viewer opens multiple ROIs in the Builder's separate layout", {
-  expect_identical(spatial_default_roi_selection(c("ROI1", "ROI2")), "__separate__")
+  expect_identical(
+    spatial_default_roi_selection(c("ROI1", "ROI2")),
+    "__separate__"
+  )
   expect_identical(spatial_default_roi_selection("ROI1"), "__all__")
   expect_identical(spatial_default_roi_selection(character()), "__all__")
 })
@@ -65,6 +68,8 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
   )
   expect_no_match(layout, "spatial_projection_split_plot", fixed = TRUE)
   expect_match(parameters, "split_by", fixed = TRUE)
+  expect_match(parameters, "roi_point_appearance", fixed = TRUE)
+  expect_match(parameters, "spatialRoiSetting", fixed = TRUE)
 
   engine <- paste(
     readLines(file.path(root, "..", "www", "cell_views.js"), warn = FALSE),
@@ -72,6 +77,18 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
   )
   expect_match(engine, "space.xRange = panel.x_range", fixed = TRUE)
   expect_match(engine, "space.yRange = panel.y_range", fixed = TRUE)
+  expect_match(
+    engine,
+    "space.builder_point_size = panel.builder_point_size",
+    fixed = TRUE
+  )
+  expect_match(
+    engine,
+    "space.builder_point_opacity = panel.builder_point_opacity",
+    fixed = TRUE
+  )
+  expect_match(engine, "pointSizeEdited = !panelPointSize", fixed = TRUE)
+  expect_match(engine, "pointOpacityEdited = !panelPointOpacity", fixed = TRUE)
   expect_match(
     engine,
     "panel.background_image || meta.background_image",
@@ -93,6 +110,84 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
     controls,
     "!length(roi_background_groups) && length(background_choices) <= 1L",
     fixed = TRUE
+  )
+})
+
+test_that("Separate ROI panels carry their saved point appearance", {
+  renderer <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
+  sys.source(
+    viewer_test_path("spatial", "func_projection_update_plot.R"),
+    envir = renderer
+  )
+  rendered <- NULL
+  renderer$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover = list(),
+    extra = list()
+  ) {
+    rendered <<- list(meta = meta, data = data, extra = extra)
+  }
+  parameters <- list(
+    color_variable = "cluster",
+    split_by = "sample_roi",
+    background_descriptor = NULL,
+    background_identity = NULL,
+    background_image_allowlist = character(),
+    background_flip_x = FALSE,
+    background_flip_y = FALSE,
+    background_scale_x = 1,
+    background_scale_y = 1,
+    background_offset_x = 0,
+    background_offset_y = 0,
+    background_rotation = 0,
+    background_opacity = 1,
+    n_dimensions = 2,
+    x_range = c(0, 10),
+    y_range = c(0, 10),
+    plot_type = "ImageDimPlot",
+    point_size = 5,
+    point_opacity = 1,
+    draw_border = FALSE,
+    group_labels = FALSE,
+    keep_square = FALSE,
+    show_region_outlines = FALSE,
+    hover_info = FALSE,
+    roi_mode = "separate",
+    roi_order = c("border", "lesion"),
+    roi_backgrounds = list(),
+    roi_point_appearance = list(
+      border = list(point_opacity = 0.35, point_size = 9),
+      lesion = list(point_opacity = 0.65, point_size = 7)
+    )
+  )
+
+  renderer$spatial_projection_update_plot(list(
+    cells_df = data.frame(
+      cell_barcode = c("cell-1", "cell-2"),
+      cluster = factor(c("C1", "C2")),
+      sample_roi = c("lesion", "border")
+    ),
+    coordinates = data.frame(x = c(2, 8), y = c(3, 7)),
+    reset_axes = FALSE,
+    plot_parameters = parameters,
+    color_assignments = c(C1 = "#111111", C2 = "#eeeeee"),
+    group_hulls = list(),
+    hover_columns = list(),
+    hover_info = character(),
+    cell_boundaries = list(),
+    molecule_points = list()
+  ))
+
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "builder_point_size"),
+    list(9, 7)
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "builder_point_opacity"),
+    list(0.35, 0.65)
   )
 })
 

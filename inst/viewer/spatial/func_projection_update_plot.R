@@ -398,6 +398,10 @@ spatial_projection_update_plot <- function(input) {
     payload$data$panels <- lapply(seq_along(panel_indices), function(index) {
       cells <- panel_indices[[index]]
       label <- names(panel_indices)[[index]]
+      point_appearance <- plot_parameters[["roi_point_appearance"]][[
+        label
+      ]] %||%
+        list()
       utils::modifyList(
         list(
           id = paste0("split-", index),
@@ -407,6 +411,8 @@ spatial_projection_update_plot <- function(input) {
           y = as.numeric(coordinates[[2]][cells]),
           hover = panel_hover[cells],
           spatial = TRUE,
+          builder_point_size = point_appearance$point_size,
+          builder_point_opacity = point_appearance$point_opacity,
           preserve_aspect = identical(
             plot_parameters[["roi_mode"]],
             "separate"
