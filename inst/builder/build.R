@@ -30,10 +30,81 @@ builder_build_queue_note <- function(plan) {
         if (rebuilding == 1L) "dataset" else "datasets"
       )
     )
-  } else if (isTRUE(plan$make_app)) {
-    parts <- c(parts, "Packaging Viewer")
   }
   paste0(paste(parts, collapse = " · "), "…")
+}
+
+.builder_build_progress_phases <- c("datasets", "viewer")
+
+.builder_build_progress_phase <- function(phase) {
+  if (
+    !is.character(phase) ||
+      length(phase) != 1L ||
+      !phase %in% .builder_build_progress_phases
+  ) {
+    stop("The worker reported an unsupported build phase.", call. = FALSE)
+  }
+  phase
+}
+
+builder_build_progress_note <- function(plan, phase) {
+  phase <- .builder_build_progress_phase(phase)
+  if (identical(phase, "viewer")) {
+    "Packaging Viewer…"
+  } else {
+    builder_build_queue_note(plan)
+  }
+}
+
+builder_build_progress_write <- function(path, phase) {
+  phase <- .builder_build_progress_phase(phase)
+  if (!.builder_build_text(path) || !dir.exists(dirname(path))) {
+    return(FALSE)
+  }
+  temporary <- tempfile(".progress-", tmpdir = dirname(path))
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  saved <- try(saveRDS(phase, temporary, version = 2), silent = TRUE)
+  if (inherits(saved, "try-error")) {
+    return(FALSE)
+  }
+  try(Sys.chmod(temporary, mode = "0600"), silent = TRUE)
+  moved <- isTRUE(file.rename(temporary, path))
+  if (!moved && file.exists(path)) {
+    unlink(path, force = TRUE)
+    moved <- isTRUE(file.rename(temporary, path))
+  }
+  if (moved) {
+    try(Sys.chmod(path, mode = "0600"), silent = TRUE)
+  }
+  moved
+}
+
+builder_build_progress_read <- function(path) {
+  if (!.builder_build_text(path) || !file.exists(path)) {
+    return(NULL)
+  }
+  phase <- try(readRDS(path), silent = TRUE)
+  checked <- try(.builder_build_progress_phase(phase), silent = TRUE)
+  if (inherits(checked, "try-error")) NULL else checked
+}
+
+builder_build_progress_remove <- function(path) {
+  if (!.builder_build_text(path)) {
+    return(FALSE)
+  }
+  if (file.exists(path)) {
+    unlink(path, force = TRUE)
+  }
+  !file.exists(path)
+}
+
+.builder_build_progress_callback <- function(path) {
+  function(phase) {
+    if (is.null(path)) {
+      return(invisible(FALSE))
+    }
+    invisible(builder_build_progress_write(path, phase))
+  }
 }
 
 .builder_build_copy_file <- function(
@@ -332,6 +403,17 @@ builder_verify_crb <- function(path, item) {
   if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
     stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
   }
+  if (length(item$sidecars)) {
+    .builder_build_sidecar_path(
+      path,
+      item,
+      if (identical(item$expression_backend, "bpcells")) {
+        "directory"
+      } else {
+        "file"
+      }
+    )
+  }
   fingerprint_file <- .builder_build_runtime_function(
     ".bundlePreflightFingerprint"
   )
@@ -459,11 +541,9 @@ builder_verify_crb <- function(path, item) {
     spatial,
     function(section) {
       is.list(section) &&
-        (
-          length(section$histology_images %||% list()) > 0L ||
-            !is.null(section[["histology_image", exact = TRUE]]) ||
-            !is.null(section[["histology_image_bounds", exact = TRUE]])
-        )
+        (length(section$histology_images %||% list()) > 0L ||
+          !is.null(section[["histology_image", exact = TRUE]]) ||
+          !is.null(section[["histology_image_bounds", exact = TRUE]]))
     },
     logical(1)
   )]
@@ -588,12 +668,6 @@ builder_verify_crb <- function(path, item) {
         call. = FALSE
       )
     }
-    expected_directory <- identical(item$expression_backend, "bpcells")
-    .builder_build_sidecar_path(
-      path,
-      item,
-      if (expected_directory) "directory" else "file"
-    )
   }
   visible <- .builder_crb_visible_pages(object)
   expected_visible <- item$viewer_page_expectations$visible_conditional %||%
@@ -1088,7 +1162,10 @@ builder_verify_crb <- function(path, item) {
         !is.null(record$source_content_md5) &&
           !identical(record$source_content_md5, inspected$source_content_md5)
       ) {
-        stop("A Builder Spatial image failed its integrity check.", call. = FALSE)
+        stop(
+          "A Builder Spatial image failed its integrity check.",
+          call. = FALSE
+        )
       }
       extension <- switch(
         inspected$mime,
@@ -1128,12 +1205,14 @@ builder_verify_crb <- function(path, item) {
         filename <- paste0(stem, ".", extension)
       }
       materialized <- file.path(section_dir, filename)
-      if (!file.copy(
-        source_path,
-        materialized,
-        overwrite = TRUE,
-        copy.mode = TRUE
-      )) {
+      if (
+        !file.copy(
+          source_path,
+          materialized,
+          overwrite = TRUE,
+          copy.mode = TRUE
+        )
+      ) {
         stop("A Builder Spatial image could not be copied.", call. = FALSE)
       }
       if (
@@ -1211,7 +1290,8 @@ builder_execute_plan <- function(
   snapshots,
   hooks = builder_build_hooks(),
   auth_material = NULL,
-  objects = list()
+  objects = list(),
+  on_progress = NULL
 ) {
   on.exit(auth_material <- NULL, add = TRUE)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
@@ -1269,6 +1349,13 @@ builder_execute_plan <- function(
   if (!all(vapply(hooks[required_hooks], is.function, logical(1)))) {
     stop("Build execution hooks are incomplete.", call. = FALSE)
   }
+  report_progress <- function(phase) {
+    if (is.function(on_progress)) {
+      try(on_progress(phase), silent = TRUE)
+    }
+    invisible(NULL)
+  }
+  report_progress("datasets")
 
   result <- list(
     state = "success",
@@ -1507,6 +1594,7 @@ builder_execute_plan <- function(
     result$verifications[[item$id]] <- verified
   }
   if (isTRUE(plan$make_app)) {
+    report_progress("viewer")
     app_hooks <- c("build_app", "verify_app")
     if (!all(vapply(hooks[app_hooks], is.function, logical(1)))) {
       return(.builder_build_failure(
