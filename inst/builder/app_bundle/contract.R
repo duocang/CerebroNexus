@@ -29,6 +29,7 @@
   "crb_pick_smallest_file",
   "backend_plan",
   "backend_identities",
+  "spatial_molecule_identities",
   "content_identities",
   "spatial_images",
   "spatial_image_settings",
@@ -1203,7 +1204,8 @@
 .builder_app_content_identities <- function(
   crb_identities,
   backend_identities,
-  backend_plan
+  backend_plan,
+  spatial_molecule_identities
 ) {
   relative_crbs <- names(backend_plan$entries)
   identities <- lapply(seq_along(relative_crbs), function(index) {
@@ -1237,13 +1239,43 @@
         entries = entries
       )
     }
+    spatial_molecules <- spatial_molecule_identities[[relative_crb]]
+    spatial_molecules <- if (is.null(spatial_molecules)) {
+      list(type = "none", root = NULL, entries = list())
+    } else {
+      entries <- lapply(spatial_molecules$entries, function(entry) {
+        path <- paste0("private-data/", entry$path)
+        if (identical(entry$type, "directory")) {
+          return(list(path = path, type = "directory"))
+        }
+        .builder_app_portable_file(
+          path,
+          entry$identity$size,
+          entry$identity$md5
+        )
+      })
+      names(entries) <- if (length(entries)) {
+        paste0("private-data/", names(spatial_molecules$entries))
+      } else {
+        character()
+      }
+      list(
+        type = "directory",
+        root = paste0(
+          "private-data/",
+          basename(spatial_molecules$root)
+        ),
+        entries = entries
+      )
+    }
     list(
       crb = .builder_app_portable_file(
         relative_crb,
         crb_identities[[index]]$size,
         crb_identities[[index]]$md5
       ),
-      backend = backend
+      backend = backend,
+      spatial_molecules = spatial_molecules
     )
   })
   names(identities) <- relative_crbs

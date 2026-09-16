@@ -741,8 +741,28 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     `slice-a` = list(
       coordinates = data.frame(x = 1, y = 2),
       expression = matrix(1),
-      histology_images = list()
+      histology_images = list(),
+      molecules = NULL
     )
+  )
+  spatial_sidecar <- file.path(
+    dirname(crb),
+    paste0(tools::file_path_sans_ext(basename(crb)), ".spatial")
+  )
+  dir.create(spatial_sidecar)
+  on.exit(unlink(spatial_sidecar, recursive = TRUE), add = TRUE)
+  molecule_file <- file.path(spatial_sidecar, "0001.rds")
+  saveRDS(data.frame(x = 1, y = 2, gene = "A"), molecule_file)
+  object$spatial[["slice-a"]]$molecules <- structure(
+    list(
+      file = basename(molecule_file),
+      md5 = unname(tools::md5sum(molecule_file))
+    ),
+    class = "CerebroSpatialMoleculeRef"
+  )
+  object$spatial_molecule_backend <- list(
+    type = "directory",
+    location = basename(spatial_sidecar)
   )
   object$trekker <- NULL
   object$hla_typing <- NULL
@@ -776,6 +796,14 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     item$artifact_identity$spatial_sections
   )
   expect_identical(observed$image_sections, character())
+  expect_identical(
+    observed$spatial_molecule_backend,
+    list(type = "directory", location = basename(spatial_sidecar))
+  )
+  expect_identical(
+    observed$spatial_molecule_path,
+    normalizePath(spatial_sidecar, winslash = "/", mustWork = TRUE)
+  )
 
   compact_item <- item
   compact_item$artifact_identity$cells <- builder_axis_identity(
