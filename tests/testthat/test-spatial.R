@@ -226,6 +226,37 @@ test_that("spatial hierarchy resolves sample and ROI values by barcode", {
   expect_identical(roi$values, c("R3", "R1"))
 })
 
+test_that("ROI rotation pivots use the selected sample and ROI field", {
+  metadata <- data.frame(
+    cell_barcode = c("a1", "a2", "b1", "b2"),
+    sample = c("A", "A", "B", "B"),
+    cell_type = c("T", "B", "T", "B"),
+    sample_roi = "lesion",
+    stringsAsFactors = FALSE
+  )
+  coordinates <- data.frame(
+    x = c(0, 2, 100, 102),
+    y = 0,
+    row.names = metadata$cell_barcode
+  )
+
+  context <- spatial_roi_transform_context(
+    coordinates,
+    metadata,
+    sample_value = "A"
+  )
+
+  expect_identical(context$scoped_cells, c("a1", "a2"))
+  expect_identical(
+    context$roi_by_cell,
+    stats::setNames(
+      rep("lesion", 4L),
+      metadata$cell_barcode
+    )
+  )
+  expect_equal(context$pivots$lesion, c(x = 1, y = 0))
+})
+
 test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
   cells_file <- file.path(
     system.file("viewer", package = "CerebroNexus"),
@@ -1205,14 +1236,15 @@ test_that("spatial hull geometry is prepared outside the renderer", {
 
   expect_match(
     data_flow,
-    "spatial_projection_group_hulls <- reactive({",
+    "group_hulls <- if (",
     fixed = TRUE
   )
   expect_match(
     data_flow,
-    "group_hulls = spatial_projection_group_hulls()",
+    "group_hulls = group_hulls",
     fixed = TRUE
   )
+  expect_match(data_flow, "compute_group_hulls(", fixed = TRUE)
   expect_no_match(renderer, "compute_group_hulls(", fixed = TRUE)
 })
 

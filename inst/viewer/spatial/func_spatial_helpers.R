@@ -80,6 +80,70 @@ spatial_metadata_facet <- function(metadata, cells, candidates) {
   )
 }
 
+spatial_roi_transform_context <- function(
+  coordinates,
+  metadata,
+  sample_value = "",
+  degrees = 0
+) {
+  cells <- rownames(coordinates) %||% character()
+  roi <- spatial_metadata_facet(
+    metadata,
+    cells,
+    c("sample_roi", "roi", "roi_id", "region_of_interest")
+  )
+  scoped_cells <- cells
+  if (
+    is.character(sample_value) &&
+      length(sample_value) == 1L &&
+      !is.na(sample_value) &&
+      nzchar(sample_value)
+  ) {
+    sample <- spatial_metadata_facet(
+      metadata,
+      cells,
+      c("sample", "sample_id", "orig.ident")
+    )
+    scoped_cells <- names(sample$by_cell)[
+      !is.na(sample$by_cell) & sample$by_cell == sample_value
+    ]
+  }
+  scoped_coordinates <- coordinates[scoped_cells, , drop = FALSE]
+  list(
+    roi_by_cell = roi$by_cell,
+    scoped_cells = scoped_cells,
+    pivots = spatialRoiPivots(
+      scoped_coordinates,
+      as.character(roi$by_cell[scoped_cells]),
+      degrees
+    )
+  )
+}
+
+spatial_roi_extents <- function(coordinates, roi_values) {
+  if (
+    !(is.data.frame(coordinates) || is.matrix(coordinates)) ||
+      ncol(coordinates) < 2L ||
+      length(roi_values) != nrow(coordinates)
+  ) {
+    return(list())
+  }
+  x <- coordinates[, 1L]
+  y <- coordinates[, 2L]
+  roi_values <- as.character(roi_values)
+  valid <- !is.na(roi_values) & nzchar(roi_values) & is.finite(x) & is.finite(y)
+  stats::setNames(
+    lapply(unique(roi_values[valid]), function(roi) {
+      rows <- valid & roi_values == roi
+      list(
+        x = range(x[rows]),
+        y = range(y[rows])
+      )
+    }),
+    unique(roi_values[valid])
+  )
+}
+
 spatial_split_columns <- function(
   metadata,
   cells,

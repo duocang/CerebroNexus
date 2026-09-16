@@ -6198,6 +6198,8 @@
         space._sampleName = panel.label || 'Trekker';
         space._preserveAspect = !!panel.preserve_aspect;
       }
+      space.builder_point_size = panel.builder_point_size;
+      space.builder_point_opacity = panel.builder_point_opacity;
       space.xRange = panel.x_range;
       space.yRange = panel.y_range;
       var panelImage = panel.background_image || meta.background_image;
@@ -6429,7 +6431,17 @@
     }
     pointOpacity = Math.max(0.05,
       Math.min(1, Number(payload.data && payload.data.point_opacity) || pointOpacity));
-    psSeeded = pointSizeEdited = pointOpacityEdited = true;
+    var panelPointSize = Array.isArray(payload.data && payload.data.panels) &&
+      payload.data.panels.some(function (panel) {
+        return panel && panel.builder_point_size != null;
+      });
+    var panelPointOpacity = Array.isArray(payload.data && payload.data.panels) &&
+      payload.data.panels.some(function (panel) {
+        return panel && panel.builder_point_opacity != null;
+      });
+    psSeeded = true;
+    pointSizeEdited = !panelPointSize;
+    pointOpacityEdited = !panelPointOpacity;
     ensurePanelSlots(singleSpaceIds.length); buildPanels(); layoutPanels();
     renderGroupFilters();
     updateSpaceScopedControls();
