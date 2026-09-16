@@ -385,6 +385,40 @@ test_that("optional Spatial selectors retain their reset choices", {
   expect_match(controls, '"None" = spatial_split_none_value', fixed = TRUE)
 })
 
+test_that("Separate ROIs hides molecules without ROI membership", {
+  controls <- paste(
+    readLines(
+      viewer_test_path("spatial", "UI_projection_additional_parameters.R")
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    controls,
+    'molecule_scope <-[\\s\\S]*?"__separate__"[\\s\\S]*?tagList\\(',
+    perl = TRUE
+  )
+  expect_match(
+    controls,
+    'molecule_split <- input[["spatial_projection_split_by"]]',
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    "molecule_scope <-[\\s\\S]*?molecule_split[\\s\\S]*?tagList\\(",
+    perl = TRUE
+  )
+  expect_match(
+    controls,
+    "Sample, ROI, or Split by filtering is active",
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    "if (length(molecule_genes) && molecule_scope)",
+    fixed = TRUE
+  )
+})
+
 test_that("Separate ROIs groups and normalizes one background per ROI", {
   rois <- paste0("ROI", 1:4)
   images <- list()
