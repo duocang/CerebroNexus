@@ -651,6 +651,34 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   )
 })
 
+test_that("progressive Linked views separates primary paint from completion", {
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(client, "ready: rendered", fixed = TRUE)
+  expect_match(
+    client,
+    "complete: !!(rendered && !D.progressive &&",
+    fixed = TRUE
+  )
+  expect_match(client, "complete: summary.complete", fixed = TRUE)
+  expect_match(
+    client,
+    "if (summary.ready && D.progressive && Shiny.setInputValue)",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "resizeAll();\n          reportWorkspaceReady();",
+    fixed = TRUE
+  )
+})
+
 test_that("saved per-gene panels use the dynamic payload contract", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 

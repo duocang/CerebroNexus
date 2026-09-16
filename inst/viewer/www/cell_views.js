@@ -3986,7 +3986,11 @@
     if (!resizeObserver) {
       resizeObserver = new ResizeObserver(function () {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () { if (D && !focusAnimating) resizeAll(); }, 30);
+        resizeTimer = setTimeout(function () {
+          if (!D || focusAnimating) return;
+          resizeAll();
+          reportWorkspaceReady();
+        }, 30);
       });
       panels.forEach(function (p) {
         if (p.pane) resizeObserver.observe(p.pane);
@@ -7126,9 +7130,13 @@
   }
 
   function workspaceSummary() {
+    var rendered = !!(D && configFingerprint() && panels.some(function (panel) {
+      return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
+    }));
     return {
-      ready: !!(D && Array.isArray(D.cells) && D.cells.length === D.n &&
-        configFingerprint()),
+      ready: rendered,
+      complete: !!(rendered && !D.progressive &&
+        Array.isArray(D.cells) && D.cells.length === D.n),
       datasetFingerprint: D ? configFingerprint() : null,
       selectedCells: sel ? sel.size : 0,
       selectedCellBarcodes: selectedCellIds(),
@@ -7168,17 +7176,14 @@
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
         ready: summary.ready,
+        complete: summary.complete,
         selectedCells: summary.selectedCells
       }
     }));
-    if (!summary.ready || !D || !D.progressive || !Shiny.setInputValue) return;
-    var active = D;
-    window.requestAnimationFrame(function () {
-      window.requestAnimationFrame(function () {
-        if (D !== active || !D.progressive) return;
-        var key = String(D.dataset_id || '') + '\u0000' + configFingerprint() +
-          '\u0000' + String(D.progressive_token || '');
-        if (progressiveRequestedKey === key) return;
+    if (summary.ready && D.progressive && Shiny.setInputValue) {
+      var key = String(D.dataset_id || '') + '\u0000' + configFingerprint() +
+        '\u0000' + String(D.progressive_token || '');
+      if (progressiveRequestedKey !== key) {
         progressiveRequestedKey = key;
         Shiny.setInputValue('coordviews_primary_ready', {
           dataset_id: D.dataset_id,
@@ -7186,8 +7191,8 @@
           progressive_token: D.progressive_token,
           nonce: Date.now()
         }, { priority: 'event' });
-      });
-    });
+      }
+    }
   }
 
   window.cerebroLinkedViewsState = Object.freeze({
