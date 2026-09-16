@@ -213,12 +213,12 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
 
   expect_match(
     javascript,
-    "pendingStableSelection = singleActive && hasSelection && !stableKeysReady",
+    "CBViewState.specialistSelectionReport",
     fixed = TRUE
   )
   expect_match(
     javascript,
-    "if (!pendingStableSelection)",
+    "pendingStableSelection ? null",
     fixed = TRUE
   )
   expect_match(
@@ -228,7 +228,7 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
   )
   expect_match(
     javascript,
-    "selectedCells: hasSelection ? sel.size : 0",
+    "selectedCells: specialistReport",
     fixed = TRUE
   )
 })
