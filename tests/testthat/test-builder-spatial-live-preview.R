@@ -160,6 +160,7 @@ test_that("Canvas runtime keeps legacy persisted viewports and deduplicates Ion 
   )
   expect_equal(as.numeric(result$separateFirstPoint$x), 127, tolerance = 1e-12)
   expect_equal(as.numeric(result$separateFirstPoint$y), 200, tolerance = 1e-12)
+  expect_identical(result$nullControlsViewKey, "null-controls")
   expect_false(isTRUE(all.equal(
     result$overlay$viewports$`__section__`,
     result$overlay$imageFitViewports$`__section__`
