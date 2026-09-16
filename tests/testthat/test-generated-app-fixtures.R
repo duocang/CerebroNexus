@@ -87,10 +87,12 @@ test_that("basic expression fixture is small, sparse, and human-checkable", {
   expect_identical(sum(is.na(object$qc_missing)), 2L)
   expect_identical(SeuratObject::Reductions(object), c("pca", "umap", "tsne"))
   expect_identical(
-    lapply(expected$groups, function(group) {
-      unclass(table(object@meta.data[[group]]))
-    }) |>
-      stats::setNames(expected$groups),
+    stats::setNames(
+      lapply(expected$groups, function(group) {
+        unclass(table(object@meta.data[[group]]))
+      }),
+      expected$groups
+    ),
     expected$group_counts
   )
   expect_identical(expected$default_group, "seurat_clusters")

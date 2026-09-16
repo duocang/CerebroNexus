@@ -54,6 +54,14 @@ jobs:
             )
           \""
 
+      - name: Verify installed Builder layout
+        run: |
+          nix-shell default.nix --run '
+            mkdir -p "$RUNNER_TEMP/cerebronexus-installed" &&
+            R CMD INSTALL --library="$RUNNER_TEMP/cerebronexus-installed" . &&
+            R_LIBS_USER="$RUNNER_TEMP/cerebronexus-installed" Rscript scripts/check-installed-builder.R
+          '
+
       - name: Upload check results on failure
         if: failure()
         uses: actions/upload-artifact@v4

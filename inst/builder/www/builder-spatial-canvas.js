@@ -4,6 +4,7 @@
   var state = {
     scene: null,
     generation: -1,
+    retiredGeneration: -1,
     resetToken: -1,
     viewKey: null,
     controls: null,
@@ -12,11 +13,17 @@
     imageKey: null,
     images: {},
     dragging: false,
+    interacting: false,
     activeControlId: null,
     activeTransform: "points",
     releaseGuardId: null,
     controlsHeld: false,
     pendingEventAt: null,
+    pendingControlDirty: false,
+    pendingControlTimer: 0,
+    syntheticFinishTimer: 0,
+    pendingAuthoritativeControls: null,
+    controlSequence: 0,
     coordinateSequence: 0,
     colorGroups: {},
     screenPoints: [],
@@ -44,6 +51,14 @@
     "enhance-point_opacity": ["point_opacity", 0.01],
     "enhance-point_size": ["point_size", 1],
   };
+  var POINT_EDGE_PADDING = 18;
+  var IMAGE_EDGE_PADDING = POINT_EDGE_PADDING / 2;
+  var ROI_PANEL_GAP = 8;
+  var LEGACY_VIEWPORT_PADDING = 2;
+  var LEGACY_ROI_PANEL_GAP = 10;
+  var LEGACY_ROI_HEADER = 24;
+  var LEGACY_ROI_VIEWPORT_PADDING = 6;
+  var NONPOSITIVE_SCALE_FALLBACK = 0.02;
 
   function canvas() {
     return document.getElementById("enhance-alignment_spatial_plot");
@@ -78,27 +93,49 @@
   }
   function setScene(message) {
     var generation = finite(message.generation, -1);
-    if (generation < state.generation) return;
+    if (generation < state.generation || generation <= state.retiredGeneration) return;
     var viewChanged = state.viewKey !== null && message.viewKey !== state.viewKey;
+    if (viewChanged) flushControlCommit();
     state.scene = message;
     state.colorGroups = groupPointColors(message.points || {x: [], color: []});
     window.__builderSpatialCanvasMetrics.sceneMessages += 1;
     state.generation = generation;
     state.viewKey = message.viewKey;
     var resetToken = finite(message.resetToken, 0);
+    var controlsAdopted = false;
     if (viewChanged || resetToken > state.resetToken || !state.controls) {
-      state.resetToken = resetToken;
-      state.controls = Object.assign({}, message.controls || {});
+      if (state.interacting && !viewChanged) {
+        state.pendingAuthoritativeControls = {
+          controls: Object.assign({}, message.controls || {}),
+          resetToken: resetToken,
+          viewKey: message.viewKey,
+        };
+      } else {
+        state.resetToken = resetToken;
+        state.controls = Object.assign({}, message.controls || {});
+        state.pendingAuthoritativeControls = null;
+        controlsAdopted = true;
+      }
     }
     if (viewChanged) {
       state.controlsHeld = false;
+      state.dragging = false;
+      state.interacting = false;
+      state.activeControlId = null;
+      state.releaseGuardId = null;
       state.activeTransform = "points";
     }
+    if (controlsAdopted) syncAuthoritativeScaleControl();
     loadImage(message.image);
     loadImages(message.roiImages || {});
     schedule();
   }
   function clear() {
+    flushControlCommit();
+    if (state.syntheticFinishTimer) {
+      window.clearTimeout(state.syntheticFinishTimer);
+      state.syntheticFinishTimer = 0;
+    }
     var node = canvas();
     var tip = node && document.getElementById(node.id + "-tooltip");
     if (tip) tip.hidden = true;
@@ -117,6 +154,12 @@
     state.viewKey = null;
     state.controls = null;
     state.controlsHeld = false;
+    state.dragging = false;
+    state.interacting = false;
+    state.activeControlId = null;
+    state.releaseGuardId = null;
+    state.pendingAuthoritativeControls = null;
+    state.pendingControlDirty = false;
     state.activeTransform = "points";
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
@@ -125,7 +168,12 @@
   }
   function loadImage(image) {
     var key = imageKey(image), uri = image && image.uri;
-    if (!key) return;
+    if (!key) {
+      state.image = null;
+      state.imageKey = null;
+      return;
+    }
+    if (state.imageKey !== key) state.image = null;
     state.imageKey = key;
     if (state.images[key]) {
       state.image = state.images[key];
@@ -182,7 +230,7 @@
     return {xmin: cx - width / 2, xmax: cx + width / 2,
       ymin: cy - height / 2, ymax: cy + height / 2};
   }
-  function viewportLayout(bounds, degrees, width, height, pad) {
+  function viewportLayout(bounds, degrees, width, height, pad, imagePad) {
     var view = viewport(bounds, degrees);
     var viewWidth = view.xmax - view.xmin;
     var viewHeight = view.ymax - view.ymin;
@@ -203,8 +251,16 @@
     var scale = plotWidth / viewWidth;
     var offsetX = (width - plotWidth) / 2;
     var offsetY = (height - plotHeight) / 2;
+    imagePad = Math.max(0, Math.min(finite(imagePad, pad), pad));
+    var imageExpansion = (pad - imagePad) / scale;
     return {
       view: view,
+      imageFitView: {
+        xmin: view.xmin - imageExpansion,
+        xmax: view.xmax + imageExpansion,
+        ymin: view.ymin - imageExpansion,
+        ymax: view.ymax + imageExpansion,
+      },
       scale: scale,
       offsetX: offsetX,
       offsetY: offsetY,
@@ -216,12 +272,13 @@
       },
     };
   }
-  function publishViewports(scene, viewports) {
+  function publishViewports(scene, viewports, imageFitViewports) {
     if (!window.Shiny || typeof Shiny.setInputValue !== "function") return;
     var payload = {
       viewKey: scene.viewKey,
       generation: scene.generation,
       viewports: viewports,
+      imageFitViewports: imageFitViewports,
     };
     var signature = JSON.stringify(payload);
     if (signature === state.viewportSignature) return;
@@ -262,14 +319,23 @@
       updateSummary(node, scene, " across separate ROI panels.");
       return;
     }
-    var pad = 2;
+    var pad = POINT_EDGE_PADDING;
     var angle = finite(state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
       scene.bounds,
       angle,
       cssWidth,
       cssHeight,
-      pad
+      pad,
+      IMAGE_EDGE_PADDING
+    );
+    var persistedLayout = viewportLayout(
+      scene.bounds,
+      angle,
+      cssWidth,
+      cssHeight,
+      LEGACY_VIEWPORT_PADDING,
+      LEGACY_VIEWPORT_PADDING
     );
     var scale = layout.scale, screen = layout.screen;
     window.__builderSpatialCanvasMetrics.latestViewport = {
@@ -279,8 +345,10 @@
     };
     var viewportKey = scene.activeRoi || "__section__";
     var viewports = {};
-    viewports[viewportKey] = layout.view;
-    publishViewports(scene, viewports);
+    var imageFitViewports = {};
+    viewports[viewportKey] = persistedLayout.view;
+    imageFitViewports[viewportKey] = layout.imageFitView;
+    publishViewports(scene, viewports, imageFitViewports);
     drawGrid(ctx, cssWidth, cssHeight, pad);
     var imageGeometry = drawImage(ctx, scene, screen);
     drawPoints(ctx, scene, screen);
@@ -305,15 +373,29 @@
     (p.group || []).forEach(function (group) {
       if (groups.indexOf(group) < 0) groups.push(group);
     });
+    if (!groups.length) {
+      state.screenPoints = [];
+      state.roiPanels = [];
+      publishViewports(scene, {}, {});
+      return;
+    }
     var columns = Math.ceil(Math.sqrt(groups.length));
     var rows = Math.ceil(groups.length / columns);
-    var gap = 10, header = 24;
+    var gap = ROI_PANEL_GAP;
     var panelWidth = (width - gap * (columns + 1)) / columns;
     var panelHeight = (height - gap * (rows + 1)) / rows;
+    var legacyPanelWidth = (
+      width - LEGACY_ROI_PANEL_GAP * (columns + 1)
+    ) / columns;
+    var legacyPanelHeight = (
+      height - LEGACY_ROI_PANEL_GAP * (rows + 1)
+    ) / rows;
+    var legacyPlotHeight = Math.max(legacyPanelHeight - LEGACY_ROI_HEADER, 1);
     var controls = state.controls || {};
     state.screenPoints = new Array(p.x.length);
     state.roiPanels = [];
     var viewports = {};
+    var imageFitViewports = {};
     groups.forEach(function (group, panelIndex) {
       var indices = [];
       for (var i = 0; i < p.group.length; i += 1) {
@@ -322,8 +404,6 @@
       var column = panelIndex % columns, row = Math.floor(panelIndex / columns);
       var left = gap + column * (panelWidth + gap);
       var top = gap + row * (panelHeight + gap);
-      var plotTop = top + header;
-      var plotHeight = Math.max(panelHeight - header, 1);
       var active = group === scene.activeRoi;
       var roiControls = Object.assign({},
         (scene.roiPointAppearance || {})[group] || {},
@@ -338,11 +418,27 @@
       };
       if (bounds.xmin === bounds.xmax) { bounds.xmin -= .5; bounds.xmax += .5; }
       if (bounds.ymin === bounds.ymax) { bounds.ymin -= .5; bounds.ymax += .5; }
-      var local = viewportLayout(bounds, angle, panelWidth, plotHeight, 6);
-      viewports[group] = local.view;
+      var local = viewportLayout(
+        bounds,
+        angle,
+        panelWidth,
+        panelHeight,
+        POINT_EDGE_PADDING,
+        IMAGE_EDGE_PADDING
+      );
+      var persisted = viewportLayout(
+        bounds,
+        angle,
+        legacyPanelWidth,
+        legacyPlotHeight,
+        LEGACY_ROI_VIEWPORT_PADDING,
+        LEGACY_ROI_VIEWPORT_PADDING
+      );
+      viewports[group] = persisted.view;
+      imageFitViewports[group] = local.imageFitView;
       var screen = function (point) {
         var at = local.screen(point);
-        return {x: left + at.x, y: plotTop + at.y};
+        return {x: left + at.x, y: top + at.y};
       };
       ctx.fillStyle = "#fafbfa";
       ctx.fillRect(left, top, panelWidth, panelHeight);
@@ -390,13 +486,10 @@
       ctx.strokeStyle = active ? "#d45500" : "#9a958d";
       ctx.lineWidth = active ? 3 : 1;
       ctx.strokeRect(left, top, panelWidth, panelHeight);
-      ctx.fillStyle = active ? "#d45500" : "#4b4742";
-      ctx.font = "600 13px sans-serif";
-      ctx.fillText(group, left + 8, top + 16);
       state.roiPanels.push({roi: group, left: left, top: top,
         right: left + panelWidth, bottom: top + panelHeight});
     });
-    publishViewports(scene, viewports);
+    publishViewports(scene, viewports, imageFitViewports);
   }
   function drawGrid(ctx, width, height, pad) {
     ctx.strokeStyle = "rgba(0,0,0,.08)"; ctx.lineWidth = 1;
@@ -419,10 +512,10 @@
     var right = screen({x: b.xmax, y: cy});
     var bottom = screen({x: cx, y: b.ymin});
     var top = screen({x: cx, y: b.ymax});
-    var width = Math.hypot(right.x - left.x, right.y - left.y) *
-      finite(c.scale, 1);
-    var height = Math.hypot(top.x - bottom.x, top.y - bottom.y) *
-      finite(c.scale, 1);
+    var imageScale = finite(c.scale, 1);
+    if (imageScale <= 0) imageScale = NONPOSITIVE_SCALE_FALLBACK;
+    var width = Math.hypot(right.x - left.x, right.y - left.y) * imageScale;
+    var height = Math.hypot(top.x - bottom.x, top.y - bottom.y) * imageScale;
     ctx.save(); ctx.globalAlpha = finite(c.image_opacity, .8);
     ctx.translate(center.x, center.y);
     ctx.rotate(-finite(c.rotation, 0) * Math.PI / 180);
@@ -541,6 +634,54 @@
     if (target.type === "checkbox") return target.checked;
     return finite(target.value, 0) * factor;
   }
+  function pairedSlider(target) {
+    if (!target || !target.id) return null;
+    if (controlMap[target.id]) return target;
+    if (!/_number$/.test(target.id)) return null;
+    var slider = document.getElementById(target.id.replace(/_number$/, ""));
+    return slider && controlMap[slider.id] ? slider : null;
+  }
+  function scaleControlStep(value) {
+    var defaultStep = NONPOSITIVE_SCALE_FALLBACK;
+    if (!Number.isFinite(value) || value <= 0) return defaultStep;
+    var ratio = value / defaultStep;
+    if (
+      Math.abs(ratio - Math.round(ratio)) <=
+        1e-12 * Math.max(1, Math.abs(ratio))
+    ) return defaultStep;
+    var parts = String(value).toLowerCase().split("e");
+    var fraction = (parts[0].split(".")[1] || "").length;
+    var exponent = parts.length > 1 ? Number(parts[1]) : 0;
+    var digits = Math.max(0, fraction - (Number.isFinite(exponent) ? exponent : 0));
+    return Math.min(defaultStep, Math.pow(10, -digits));
+  }
+  function syncSliderControl(number, slider) {
+    var value = finite(number.value, finite(slider.value, 0));
+    var minimum = number.min === "" ? NaN : Number(number.min);
+    var maximum = number.max === "" ? NaN : Number(number.max);
+    if (Number.isFinite(minimum)) value = Math.max(minimum, value);
+    if (Number.isFinite(maximum)) value = Math.min(maximum, value);
+    var isScale = controlMap[slider.id][0] === "scale";
+    if (isScale && value <= 0) {
+      value = NONPOSITIVE_SCALE_FALLBACK;
+    }
+    number.value = value;
+    slider.value = value;
+    var range = window.jQuery && window.jQuery(slider).data("ionRangeSlider");
+    if (isScale) {
+      var step = scaleControlStep(value);
+      number.step = step;
+      slider.step = step;
+      if (range) range.update({from: value, step: step});
+    } else if (range) {
+      range.update({from: value});
+    }
+  }
+  function syncNumberControl(target) {
+    var number = document.getElementById(target.id + "_number");
+    if (!number || document.activeElement === number) return;
+    if (number.value !== target.value) number.value = target.value;
+  }
   function resetControl(id, value) {
     var input = document.getElementById(id);
     if (!input) return;
@@ -552,29 +693,99 @@
     var number = document.getElementById(id + "_number");
     if (number) number.value = value;
     var slider = window.jQuery && window.jQuery(input).data("ionRangeSlider");
-    if (slider) slider.update({from: value});
+    var update = {from: value};
+    if (controlMap[id] && controlMap[id][0] === "scale") {
+      var step = scaleControlStep(finite(value, NONPOSITIVE_SCALE_FALLBACK));
+      input.step = step;
+      if (typeof input.setAttribute === "function") {
+        input.setAttribute("data-step", step);
+      }
+      if (number) number.step = step;
+      update.step = step;
+    }
+    if (slider) slider.update(update);
   }
-  function resetImageControls() {
-    if (!state.controls) return;
-    var values = {
-      "enhance-img_dx": 0,
-      "enhance-img_dy": 0,
-      "enhance-img_scale": 1,
-      "enhance-img_rotate": 0,
-      "enhance-image_flip_x": false,
-      "enhance-image_flip_y": false,
-      "enhance-image_opacity": 80,
+  function syncAuthoritativeScaleControl() {
+    if (!state.controls || state.controls.scale === undefined) return;
+    var heldViewKey = state.viewKey;
+    state.controlsHeld = true;
+    resetControl("enhance-img_scale", state.controls.scale);
+    window.setTimeout(function () {
+      if (state.viewKey === heldViewKey && !state.interacting) {
+        state.controlsHeld = false;
+      }
+    }, 0);
+  }
+  function controlPayload() {
+    var scene = state.scene;
+    if (!scene || !scene.dataset || !scene.snapshotIdentity || !scene.section) return null;
+    state.controlSequence += 1;
+    return {
+      dataset: scene.dataset,
+      snapshotIdentity: scene.snapshotIdentity,
+      section: scene.section,
+      roi: scene.activeRoi || "",
+      image: scene.activeImage || "",
+      viewKey: scene.viewKey,
+      generation: scene.generation,
+      sequence: state.controlSequence,
+      controls: Object.assign({}, state.controls || {}),
     };
-    Object.keys(values).forEach(function (id) {
-      resetControl(id, values[id]);
+  }
+  function flushControlCommit() {
+    if (state.pendingControlTimer) {
+      window.clearTimeout(state.pendingControlTimer);
+      state.pendingControlTimer = 0;
+    }
+    if (!state.pendingControlDirty || !window.Shiny || typeof Shiny.setInputValue !== "function") {
+      return;
+    }
+    var payload = controlPayload();
+    state.pendingControlDirty = false;
+    if (payload) {
+      Shiny.setInputValue("builder_spatial_alignment_controls", payload,
+        {priority: "event"});
+    }
+  }
+  function queueControlCommit() {
+    if (state.pendingControlTimer) window.clearTimeout(state.pendingControlTimer);
+    state.pendingControlTimer = window.setTimeout(flushControlCommit, 50);
+  }
+  function sendInteractionState(active) {
+    if (!window.Shiny || typeof Shiny.setInputValue !== "function") return;
+    var scene = state.scene;
+    if (!scene || !scene.dataset || !scene.section) return;
+    Shiny.setInputValue("builder_spatial_interaction_state", {
+      active: active,
+      dataset: scene.dataset,
+      snapshotIdentity: scene.snapshotIdentity,
+      section: scene.section,
+      roi: scene.activeRoi || "",
+      image: scene.activeImage || "",
+      viewKey: scene.viewKey,
+      generation: scene.generation,
+      nonce: Date.now(),
+    }, {priority: "event"});
+  }
+  function beginInteraction() {
+    if (state.interacting) return;
+    state.interacting = true;
+    sendInteractionState(true);
+  }
+  function applyPendingAuthoritativeControls() {
+    var pending = state.pendingAuthoritativeControls;
+    if (!pending || pending.viewKey !== state.viewKey) return;
+    state.resetToken = pending.resetToken;
+    state.controls = Object.assign({}, pending.controls);
+    state.pendingAuthoritativeControls = null;
+    state.controlsHeld = true;
+    Object.keys(controlMap).forEach(function (id) {
+      var spec = controlMap[id], value = state.controls[spec[0]];
+      if (value === undefined) return;
+      if (spec[0] === "image_opacity" || spec[0] === "point_opacity") value *= 100;
+      resetControl(id, value);
     });
-    Object.assign(state.controls, {
-      dx: 0, dy: 0, scale: 1, rotation: 0,
-      flip_x: false, flip_y: false, image_opacity: .8,
-    });
-    state.activeTransform = "image";
-    state.pendingEventAt = performance.now();
-    schedule();
+    window.setTimeout(function () { state.controlsHeld = false; }, 0);
   }
   function consumeControl(target) {
     var spec = controlMap[target.id];
@@ -583,12 +794,21 @@
     if (spec[0] === "dx" || spec[0] === "dy") {
       target.value = Math.round(finite(target.value, 0));
     }
+    if (spec[0] === "scale" && finite(target.value, 0) <= 0) {
+      target.value = NONPOSITIVE_SCALE_FALLBACK;
+      resetControl(target.id, NONPOSITIVE_SCALE_FALLBACK);
+    }
+    var value = controlValue(target, spec[1]);
     state.activeTransform = spec[0] === "coordinateRotation" ||
       spec[0] === "point_opacity" || spec[0] === "point_size" ?
       "points" : "image";
-    state.controls[spec[0]] = controlValue(target, spec[1]);
+    syncNumberControl(target);
     state.activeControlId = target.id;
+    if (Object.is(state.controls[spec[0]], value)) return true;
+    state.controls[spec[0]] = value;
     state.pendingEventAt = performance.now();
+    state.pendingControlDirty = true;
+    queueControlCommit();
     schedule();
     if (spec[0] === "coordinateRotation") {
       window.__builderSpatialCanvasMetrics.latestCoordinateRotation = state.controls[spec[0]];
@@ -610,10 +830,18 @@
     }, {priority: "event"});
   }
   function finishInteraction() {
-    if (!state.dragging) return;
+    if (!state.dragging && !state.interacting) return;
     state.dragging = false;
+    state.interacting = false;
+    if (state.syntheticFinishTimer) {
+      window.clearTimeout(state.syntheticFinishTimer);
+      state.syntheticFinishTimer = 0;
+    }
     var id = state.activeControlId;
     state.activeControlId = null;
+    flushControlCommit();
+    sendInteractionState(false);
+    applyPendingAuthoritativeControls();
     if (!id || !window.Shiny || typeof Shiny.setInputValue !== "function") return;
     var target = document.getElementById(id);
     if (!target) return;
@@ -623,71 +851,117 @@
     window.setTimeout(function () { state.releaseGuardId = null; }, 0);
     if (id === "enhance-coordinate_rotation") {
       sendCoordinateDraft(value);
-      return;
     }
-    Shiny.setInputValue(id, value, {priority: "event"});
   }
   document.addEventListener("pointerdown", function (event) {
-    if (controlMap[event.target.id] && event.target.type !== "checkbox") {
+    if (pairedSlider(event.target) && event.target.type !== "checkbox") {
       state.dragging = true;
+      beginInteraction();
     }
   }, true);
   document.addEventListener("mousedown", function (event) {
-    if (event.target.closest && event.target.closest(".irs")) state.dragging = true;
-  }, true);
-  document.addEventListener("input", function (event) {
-    if (!consumeControl(event.target)) return;
-    if (state.dragging || event.target.id === state.releaseGuardId) {
-      event.stopImmediatePropagation();
+    if (event.target.closest && event.target.closest(".irs")) {
+      state.dragging = true;
+      beginInteraction();
     }
   }, true);
+  document.addEventListener("input", function (event) {
+    var target = pairedSlider(event.target);
+    if (!target) return;
+    if (target.id === state.releaseGuardId) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (state.controlsHeld) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (target !== event.target) syncSliderControl(event.target, target);
+    beginInteraction();
+    if (!consumeControl(target)) return;
+    event.stopImmediatePropagation();
+  }, true);
   document.addEventListener("focusin", function (event) {
-    var spec = controlMap[event.target.id];
+    var target = pairedSlider(event.target);
+    var spec = target && controlMap[target.id];
     if (!spec) return;
+    beginInteraction();
     state.activeTransform = spec[0] === "coordinateRotation" ||
       spec[0] === "point_opacity" || spec[0] === "point_size" ?
       "points" : "image";
     schedule();
   }, true);
   document.addEventListener("change", function (event) {
+    if (
+      event.target.id === "enhance-active_image" ||
+      event.target.id === "enhance-active_section" ||
+      event.target.id === "enhance-active_roi" ||
+      event.target.id === "enhance-active_sample"
+    ) {
+      flushControlCommit();
+      finishInteraction();
+      state.controlsHeld = true;
+      var heldViewKey = state.viewKey;
+      window.setTimeout(function () {
+        if (state.viewKey === heldViewKey) state.controlsHeld = false;
+      }, 1000);
+    }
     if (event.target.id === "enhance-active_image") {
       state.activeTransform = "image";
       schedule();
     }
-    if (event.target.id === "enhance-active_section") {
-      state.controlsHeld = true;
+    var target = pairedSlider(event.target);
+    if (!target) return;
+    if (target.id === state.releaseGuardId) {
+      event.stopImmediatePropagation();
       return;
     }
-    if (!consumeControl(event.target)) return;
-    if (
-      event.target.id === "enhance-coordinate_rotation" &&
-      !state.dragging &&
-      event.target.id !== state.releaseGuardId
-    ) {
-      sendCoordinateDraft(Number(event.target.value));
-    }
-    if (state.dragging || event.target.id === state.releaseGuardId) {
+    if (state.controlsHeld) {
       event.stopImmediatePropagation();
+      return;
     }
+    if (target !== event.target) syncSliderControl(event.target, target);
+    beginInteraction();
+    if (!consumeControl(target)) return;
+    event.stopImmediatePropagation();
+    if (!state.dragging) finishInteraction();
   }, true);
   document.addEventListener("click", function (event) {
+    if (
+      !event.target.closest ||
+      !event.target.closest(".spatial-coordinate-control, .spatial-image-nudge")
+    ) {
+      if (state.interacting || state.dragging) finishInteraction();
+      else flushControlCommit();
+    }
     if (event.target.closest && event.target.closest("#enhance-reset_align")) {
-      resetImageControls();
+      flushControlCommit();
+      finishInteraction();
       return;
     }
     var button = event.target.closest &&
       event.target.closest(".spatial-image-nudge button[data-target]");
     if (!button) return;
+    beginInteraction();
     var target = document.getElementById(button.dataset.target);
     if (!target) return;
     target.value = finite(target.value, 0) +
       finite(button.dataset.delta, 0) * finite(target.step, 1);
     target.dispatchEvent(new Event("input", {bubbles: true}));
     target.dispatchEvent(new Event("change", {bubbles: true}));
+    finishInteraction();
   }, true);
   document.addEventListener("pointerup", finishInteraction, true);
   document.addEventListener("pointercancel", finishInteraction, true);
+  document.addEventListener("touchcancel", finishInteraction, true);
   document.addEventListener("mouseup", finishInteraction, true);
+  document.addEventListener("focusout", function (event) {
+    if (!pairedSlider(event.target)) return;
+    window.setTimeout(function () {
+      if (!pairedSlider(document.activeElement)) finishInteraction();
+    }, 0);
+  }, true);
+  window.addEventListener("blur", finishInteraction);
   document.addEventListener("toggle", function (event) {
     if (
       event.target.matches &&
@@ -738,7 +1012,13 @@
       });
       if (panel && window.Shiny) {
         Shiny.setInputValue("builder_spatial_roi_select", {
-          roi: panel.roi, nonce: Date.now(),
+          roi: panel.roi,
+          dataset: state.scene.dataset,
+          snapshotIdentity: state.scene.snapshotIdentity,
+          section: state.scene.section,
+          viewKey: state.scene.viewKey,
+          generation: state.scene.generation,
+          nonce: Date.now(),
         }, {priority: "event"});
       }
     });
@@ -763,12 +1043,27 @@
   document.addEventListener("shiny:connected", schedule);
   if (window.jQuery) {
     window.jQuery(document).on(
-      "input.builderSpatialCanvas change.builderSpatialCanvas",
+      "change.builderSpatialCanvas input.builderSpatialCanvas",
       Object.keys(controlMap).map(function (id) { return "#" + id; }).join(","),
       function (event) {
-        if (!consumeControl(event.currentTarget)) return;
-        if (state.dragging || event.currentTarget.id === state.releaseGuardId) {
-          event.stopImmediatePropagation();
+        if (event.originalEvent) return;
+        var target = event.currentTarget;
+        if (window.jQuery(target).data("immediate") || state.controlsHeld) return;
+        beginInteraction();
+        if (!consumeControl(target)) return;
+        event.stopImmediatePropagation();
+        if (state.dragging) return;
+        if (state.syntheticFinishTimer) {
+          window.clearTimeout(state.syntheticFinishTimer);
+          state.syntheticFinishTimer = 0;
+        }
+        if (event.type === "change") {
+          state.syntheticFinishTimer = window.setTimeout(function () {
+            state.syntheticFinishTimer = 0;
+            finishInteraction();
+          }, 0);
+        } else {
+          finishInteraction();
         }
       }
     );
@@ -776,12 +1071,31 @@
   if (window.Shiny) {
     Shiny.addCustomMessageHandler("builder_spatial_canvas_scene", setScene);
     Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", function (message) {
+      var generation = finite(message && message.generation, -1);
+      if (generation < state.generation) return;
+      if (
+        message && message.viewKey && state.viewKey &&
+        message.viewKey !== state.viewKey && generation <= state.generation
+      ) return;
+      state.retiredGeneration = Math.max(state.retiredGeneration, generation);
+      state.generation = Math.max(state.generation, generation);
       clear();
     });
     Shiny.addCustomMessageHandler("builder_spatial_canvas_reset", function (message) {
-      if (message.viewKey && message.viewKey !== state.viewKey) clear();
-      state.resetToken = finite(message.resetToken, state.resetToken + 1);
+      if (message.viewKey && message.viewKey !== state.viewKey) return;
+      var nextToken = finite(message.resetToken, state.resetToken + 1);
+      if (nextToken <= state.resetToken) return;
+      if (state.interacting) {
+        state.pendingAuthoritativeControls = {
+          controls: Object.assign({}, message.controls || state.controls || {}),
+          resetToken: nextToken,
+          viewKey: state.viewKey,
+        };
+        return;
+      }
+      state.resetToken = nextToken;
       state.controls = Object.assign({}, message.controls || state.controls || {});
+      syncAuthoritativeScaleControl();
       schedule();
     });
   }

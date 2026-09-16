@@ -1203,12 +1203,15 @@ builder_trajectory_catalog <- function(trajectory) {
     "S7_object",
     "gg"
   )
+  storage <- typeof(value)
+  supported_storage <- storage %in% c("list", "object") ||
+    (identical(storage, "S4") && "S7_object" %in% class)
   recognized <- safe_class &&
     !anyNA(class) &&
     "ggplot" %in% class &&
     "gg" %in% class &&
     all(class %in% allowed) &&
-    typeof(value) %in% c("list", "object")
+    supported_storage
   class_count <- length(class)
   class_shown <- min(class_count, .builder_table_preview_limit)
   class_preview <- .builder_table_bound_preview_text(

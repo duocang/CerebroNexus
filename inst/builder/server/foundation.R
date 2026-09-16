@@ -254,9 +254,19 @@ observe({
     logical(1)
   ))
   entry <- if (length(index) == 1L) entries[[index]] else NULL
+  entry_owner <- if (is.list(entry$snapshot)) {
+    entry$snapshot$owner_token %||% NULL
+  } else if (is.list(entry$project_artifact)) {
+    entry$project_artifact$resolved_path %||%
+      entry$project_artifact$path %||%
+      NULL
+  } else {
+    NULL
+  }
   surface <- list(
     id = id,
-    load_state = if (is.null(entry)) NULL else entry$load_state %||% "loaded"
+    load_state = if (is.null(entry)) NULL else entry$load_state %||% "loaded",
+    entry_owner = entry_owner
   )
   if (!identical(surface, isolate(configure_workbench_surface()))) {
     configure_workbench_surface(surface)
@@ -531,6 +541,40 @@ unique_name <- function(label) {
   paste0(label, " ", n)
 }
 
+send_dataset_action_owner <- function(
+  entry = NULL,
+  project_epoch = NULL
+) {
+  if (is.null(entry)) {
+    id <- isolate(current())
+    entry <- if (builder_has_text(id)) isolate(entry_of(id)) else NULL
+  }
+  if (
+    is.null(project_epoch) &&
+      exists(
+        "builder_project_open_generation",
+        mode = "function",
+        inherits = TRUE
+      )
+  ) {
+    project_epoch <- isolate(builder_project_open_generation())
+  }
+  owner <- builder_content_action_owner(entry, project_epoch)
+  if (is.null(owner)) {
+    return(invisible(FALSE))
+  }
+  session$sendCustomMessage(
+    "builder_dataset_action_owner",
+    c(list(dataset = entry$id), owner)
+  )
+  if (
+    exists("refresh_marker_dialog_owner", mode = "function", inherits = TRUE)
+  ) {
+    refresh_marker_dialog_owner(owner$project_epoch)
+  }
+  invisible(TRUE)
+}
+
 replace_entry <- function(updated, internal = FALSE) {
   if (
     !isTRUE(internal) &&
@@ -572,6 +616,7 @@ replace_entry <- function(updated, internal = FALSE) {
     updated_state <- app_store_compat_entries(current_state, all)
   }
   store(updated_state)
+  send_dataset_action_owner(existing)
   current_protocol <- protocol()
   if (!is.null(current_protocol)) {
     protocol(builder_protocol_dataset(
@@ -606,6 +651,8 @@ build_state <- reactiveVal(builder_build_state())
 active_release <- reactiveVal(NULL)
 release_settlement_process <- reactiveVal(NULL)
 release_settlement_context <- reactiveVal(NULL)
+release_settlement_poll_scheduled <- reactiveVal(FALSE)
+release_settlement_poll_generation <- reactiveVal(0)
 request_sequence <- reactiveVal(0L)
 pending_snapshot_drops <- reactiveVal(list())
 pending_sources <- reactiveVal(character())
@@ -1164,11 +1211,14 @@ session$onFlushed(
 
 session$onSessionEnded(function() {
   for (key in ls(builder_native_pickers, all.names = TRUE)) {
-    builder_cancel_native_picker(key)
+    try(builder_cancel_native_picker(key), silent = TRUE)
   }
-  if (!isTRUE(stop_builder_release_settlement())) {
-    return()
-  }
+  settlement_stopped <- try(
+    stop_builder_release_settlement(),
+    silent = TRUE
+  )
+  settlement_stopped <- !inherits(settlement_stopped, "try-error") &&
+    isTRUE(settlement_stopped)
   current_worker <- isolate(worker())
   if (!is.null(current_worker)) {
     stopped <- try(
@@ -1212,9 +1262,7 @@ session$onSessionEnded(function() {
       unlink(current_worker$snapshot_root, recursive = TRUE, force = TRUE)
     }
   }
-  release <- isolate(active_release())
-  if (!is.null(release)) {
-    try(builder_coordinator_abort(release$handle), silent = TRUE)
-    active_release(NULL)
+  if (isTRUE(settlement_stopped)) {
+    try(builder_abort_active_release(), silent = TRUE)
   }
 })

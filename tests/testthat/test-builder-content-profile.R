@@ -125,12 +125,12 @@ test_that("application and worker load content contracts before profiles", {
     session
   )[1L]
   worker_builder_spatial <- grep(
-    'source(file.path(dir, "spatial.R"',
+    'source_utf8(file.path(dir, "spatial.R"',
     session,
     fixed = TRUE
   )[1L]
   worker_tables <- grep(
-    'source(file.path(dir, "content_tables.R"',
+    'source_utf8(file.path(dir, "content_tables.R"',
     session,
     fixed = TRUE
   )[1L]
@@ -145,12 +145,12 @@ test_that("application and worker load content contracts before profiles", {
     fixed = TRUE
   )[1L]
   worker_content <- grep(
-    'source(file.path(dir, "content.R"',
+    'source_utf8(file.path(dir, "content.R"',
     session,
     fixed = TRUE
   )[1L]
   worker_profile <- grep(
-    'source(file.path(dir, "profile.R"',
+    'source_utf8(file.path(dir, "profile.R"',
     session,
     fixed = TRUE
   )[1L]

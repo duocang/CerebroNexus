@@ -1,6 +1,35 @@
 ## Builder server: enhancements.
 
 marker_dialog_mode <- reactiveVal("choice")
+marker_dialog_owner <- reactiveVal(NULL)
+
+marker_dialog_is_current <- function() {
+  id <- isolate(current())
+  builder_has_text(id) &&
+    builder_content_action_owner_is_current(
+      isolate(marker_dialog_owner()),
+      isolate(entry_of(id)),
+      isolate(builder_project_open_generation())
+    )
+}
+
+refresh_marker_dialog_owner <- function(project_epoch) {
+  owner <- isolate(marker_dialog_owner())
+  id <- isolate(current())
+  entry <- if (builder_has_text(id)) isolate(entry_of(id)) else NULL
+  refreshed <- builder_content_action_owner(entry, project_epoch)
+  if (
+    builder_content_action_owner_is_valid(owner) &&
+      builder_content_action_owner_is_valid(refreshed) &&
+      identical(owner$owner_token, refreshed$owner_token) &&
+      refreshed$project_epoch >= owner$project_epoch &&
+      refreshed$generation >= owner$generation
+  ) {
+    marker_dialog_owner(refreshed)
+    return(invisible(TRUE))
+  }
+  invisible(FALSE)
+}
 
 output[["enhance-marker_dialog_body"]] <- renderUI({
   if (identical(marker_dialog_mode(), "import")) {
@@ -23,10 +52,22 @@ output[["enhance-marker_dialog_body"]] <- renderUI({
 
 builder_show_marker_dialog <- function(mode = "choice") {
   marker_dialog_mode(mode)
+  id <- isolate(current())
+  entry <- if (is.null(id)) NULL else isolate(entry_of(id))
+  owner <- builder_content_action_owner(
+    entry,
+    isolate(builder_project_open_generation())
+  )
+  if (is.null(owner)) {
+    return(invisible(FALSE))
+  }
+  marker_dialog_owner(owner)
   session$sendCustomMessage(
     "builder_marker_dialog",
     list(
       action = "open",
+      dataset = id,
+      generation = as.integer(entry$revision %||% 0L),
       title = if (identical(mode, "import")) {
         "Upload Marker gene results"
       } else {
@@ -34,13 +75,22 @@ builder_show_marker_dialog <- function(mode = "choice") {
       }
     )
   )
+  invisible(TRUE)
 }
 
 builder_close_marker_dialog <- function() {
+  id <- isolate(current())
+  entry <- if (is.null(id)) NULL else isolate(entry_of(id))
   session$sendCustomMessage(
     "builder_marker_dialog",
-    list(action = "close")
+    list(
+      action = "close",
+      dataset = id,
+      generation = as.integer(entry$revision %||% 0L)
+    )
   )
+  marker_dialog_owner(NULL)
+  invisible(TRUE)
 }
 
 observeEvent(
@@ -68,6 +118,9 @@ observeEvent(
   {
     id <- current()
     req(id)
+    if (!marker_dialog_is_current()) {
+      return()
+    }
     entry <- entry_of(id)
     req(entry)
     selected <- unique(c(
@@ -90,6 +143,9 @@ observeEvent(
   {
     id <- current()
     req(id)
+    if (!marker_dialog_is_current()) {
+      return()
+    }
     replace_marker_import_draft(id, NULL)
     builder_show_marker_dialog("import")
   },
@@ -113,6 +169,9 @@ builder_marker_existing_methods <- function(entry) {
 observeEvent(input[["enhance-marker_import_files"]], {
   id <- current()
   req(id)
+  if (!marker_dialog_is_current()) {
+    return()
+  }
   entry <- entry_of(id)
   req(entry)
   method <- trimws(as.character(
@@ -150,6 +209,9 @@ observeEvent(input[["enhance-marker_import_files"]], {
 observeEvent(input[["enhance-marker_source_mode"]], {
   id <- current()
   req(id)
+  if (!marker_dialog_is_current()) {
+    return()
+  }
   action <- input[["enhance-marker_source_mode"]]
   req(is.list(action), nzchar(action$id %||% ""))
   draft <- marker_import_draft_of(id)
@@ -193,6 +255,9 @@ observeEvent(input[["enhance-marker_source_mode"]], {
 observeEvent(input[["enhance-marker_source_confirm"]], {
   id <- current()
   req(id)
+  if (!marker_dialog_is_current()) {
+    return()
+  }
   action <- input[["enhance-marker_source_confirm"]]
   req(is.list(action), nzchar(action$id %||% ""))
   draft <- marker_import_draft_of(id)
@@ -222,6 +287,9 @@ observeEvent(input[["enhance-marker_source_confirm"]], {
 observeEvent(input[["enhance-marker_import_save"]], {
   id <- current()
   req(id)
+  if (!marker_dialog_is_current()) {
+    return()
+  }
   entry <- entry_of(id)
   draft <- marker_import_draft_of(id)
   req(entry, draft)
@@ -310,6 +378,10 @@ add_enhance_table_files <- function(
         session$sendCustomMessage(
           "enhance_tables_added",
           list(
+            dataset = id,
+            generation = as.integer(
+              (isolate(entry_of(id)) %||% entry)$revision %||% 0L
+            ),
             workbooks = unname(lapply(names(added), function(key) {
               list(key = key, count = unname(added[[key]]))
             }))
@@ -336,6 +408,15 @@ builder_table_inventory_runtime_file <- function() {
 }
 
 start_enhance_table_inventory <- function(uploads) {
+  source_utf8 <- get0(
+    "builder_source_utf8",
+    mode = "function",
+    inherits = TRUE
+  )
+  if (!is.function(source_utf8)) {
+    stop("The UTF-8 Builder source loader is unavailable.", call. = FALSE)
+  }
+  environment(source_utf8) <- baseenv()
   files <- lapply(seq_len(nrow(uploads)), function(index) {
     list(
       path = as.character(uploads$datapath[[index]]),
@@ -348,7 +429,7 @@ start_enhance_table_inventory <- function(uploads) {
       runtime$`%||%` <- function(left, right) {
         if (is.null(left)) right else left
       }
-      sys.source(runtime_file, envir = runtime)
+      source_utf8(runtime_file, envir = runtime)
       lapply(files, function(file) {
         tryCatch(
           runtime$builder_table_inventory_metadata(file$path, file$filename),
@@ -358,7 +439,8 @@ start_enhance_table_inventory <- function(uploads) {
     }),
     list(
       files = files,
-      runtime_file = builder_table_inventory_runtime_file()
+      runtime_file = builder_table_inventory_runtime_file(),
+      source_utf8 = source_utf8
     )
   )
 }
@@ -374,19 +456,35 @@ schedule_enhance_table_files <- function(
     }
     return(invisible(FALSE))
   }
-  showNotification(
+  owner <- builder_table_inventory_owner(
+    isolate(entry_of(id)),
+    isolate(builder_project_open_generation())
+  )
+  if (is.null(owner)) {
+    if (is.function(on_complete)) {
+      try(on_complete(), silent = TRUE)
+    }
+    return(invisible(FALSE))
+  }
+  notification_id <- showNotification(
     "Reading workbook sheets…",
-    id = "builder-table-inventory",
     duration = NULL,
     session = session
   )
   task <- tryCatch(start_enhance_table_inventory(uploads), error = identity)
   finish <- function(inventories = NULL, failed = FALSE) {
-    removeNotification("builder-table-inventory", session = session)
+    removeNotification(notification_id, session = session)
     if (is.function(on_complete)) {
       try(on_complete(), silent = TRUE)
     }
     if (builder_session_closed()) {
+      return(invisible(FALSE))
+    }
+    if (!builder_table_inventory_owner_is_current(
+      owner,
+      isolate(entry_of(id)),
+      isolate(builder_project_open_generation())
+    )) {
       return(invisible(FALSE))
     }
     if (isTRUE(failed)) {
@@ -427,9 +525,35 @@ observeEvent(
     id <- current()
     req(id)
     action <- input[["enhance-table_action"]]
-    req(is.list(action), is.character(action$key), nzchar(action$key))
+    scalar_text <- function(value) {
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(value)
+    }
+    if (
+      !is.list(action) ||
+        !identical(action$dataset %||% NULL, id) ||
+        !identical(input[["enhance-rendered_for"]] %||% NULL, id) ||
+        !scalar_text(action$action) ||
+        !action$action %in% c(
+          "remove_workbook",
+          "rename_workbook",
+          "remove",
+          "rename"
+        ) ||
+        !scalar_text(action$key)
+    ) {
+      return()
+    }
     entry <- entry_of(id)
-    req(entry)
+    if (!builder_content_action_owner_is_current(
+      action,
+      entry,
+      isolate(builder_project_open_generation())
+    )) {
+      return()
+    }
     tables <- entry$settings$tables %||% list()
     reopen_workbook <- NULL
     saved_attachment <- NULL
@@ -446,7 +570,10 @@ observeEvent(
       tables <- tables[!workbook_rows]
       structural_change <- TRUE
     } else if (identical(action$action, "rename_workbook")) {
-      new_name <- trimws(as.character(action$name %||% ""))
+      if (!scalar_text(action$name)) {
+        return()
+      }
+      new_name <- trimws(action$name)
       other_names <- unique(vapply(
         tables[!workbook_rows],
         function(table) table$workbook_name %||% table$file_name %||% "",
@@ -478,7 +605,10 @@ observeEvent(
       tables[[action$key]] <- NULL
       structural_change <- TRUE
     } else if (identical(action$action, "rename")) {
-      new_name <- trimws(as.character(action$name %||% ""))
+      if (!scalar_text(action$name)) {
+        return()
+      }
+      new_name <- trimws(action$name)
       if (!nzchar(new_name)) {
         showNotification(
           "Table names must be non-empty.",
@@ -508,17 +638,30 @@ observeEvent(
       refresh_enhance_tables()
     }
     if (!is.null(saved_attachment)) {
+      current_entry <- isolate(entry_of(id)) %||% entry
+      saved_attachment$dataset <- id
+      saved_attachment$generation <- as.integer(
+        current_entry$revision %||% entry$revision %||% 0L
+      )
       session$sendCustomMessage(
         "enhance_attachment_saved",
         saved_attachment
       )
     }
     if (!is.null(reopen_workbook)) {
+      current_entry <- isolate(entry_of(id)) %||% entry
+      reopen_message <- list(
+        key = reopen_workbook,
+        dataset = id,
+        generation = as.integer(
+          current_entry$revision %||% entry$revision %||% 0L
+        )
+      )
       session$onFlushed(
         function() {
           session$sendCustomMessage(
             "enhance_workbook_reopen",
-            list(key = reopen_workbook)
+            reopen_message
           )
         },
         once = TRUE

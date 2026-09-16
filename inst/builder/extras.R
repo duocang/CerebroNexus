@@ -334,7 +334,7 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   parameters$dx <- round(parameters$dx)
   parameters$dy <- round(parameters$dy)
   if (
-    parameters$scale < 0 ||
+    parameters$scale <= 0 ||
       parameters$point_size <= 0 ||
       parameters$image_opacity < 0 ||
       parameters$image_opacity > 1 ||
@@ -349,6 +349,52 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   parameters$flip_x <- isTRUE(parameters$flip_x)
   parameters$flip_y <- isTRUE(parameters$flip_y)
   parameters
+}
+
+#' Choose a slider step that preserves an existing positive image scale.
+#'
+#' Keep the familiar 0.02 increment when the restored value lies on that
+#' grid. Older projects can contain smaller or more precise positive values;
+#' IonRangeSlider would otherwise round them during initialization. In that
+#' case, use the stored value's decimal precision so the control never becomes
+#' an accidental migration of the persisted transform.
+builder_alignment_scale_step <- function(scale, default = 0.02) {
+  scale <- suppressWarnings(as.numeric(scale))
+  default <- suppressWarnings(as.numeric(default))
+  if (
+    length(default) != 1L ||
+      is.na(default) ||
+      !is.finite(default) ||
+      default <= 0
+  ) {
+    stop("Alignment scale step must be positive and finite.", call. = FALSE)
+  }
+  if (
+    length(scale) != 1L ||
+      is.na(scale) ||
+      !is.finite(scale) ||
+      scale <= 0
+  ) {
+    return(default)
+  }
+  ratio <- scale / default
+  if (isTRUE(all.equal(ratio, round(ratio), tolerance = 1e-12))) {
+    return(default)
+  }
+  rendered <- format(
+    scale,
+    scientific = FALSE,
+    trim = TRUE,
+    digits = 15L
+  )
+  rendered <- sub("0+$", "", rendered)
+  decimal <- regexpr("\\.", rendered)
+  digits <- if (decimal[[1L]] < 0L) {
+    0L
+  } else {
+    nchar(rendered) - decimal[[1L]]
+  }
+  min(default, 10^(-digits))
 }
 
 #' Derive alignment slider ranges without discarding a restored transform.

@@ -1175,10 +1175,10 @@ test_that("application and worker source the profile after its dependencies", {
 
   worker_contract <- grep("viewer_content_contract[.]R", session)[1L]
   worker_manifest <- grep(
-    'source\\(file[.]path\\(dir, "manifest[.]R"',
+    'source_utf8\\(file[.]path\\(dir, "manifest[.]R"',
     session
   )[1L]
-  worker_profile <- grep('source\\(file[.]path\\(dir, "profile[.]R"', session)[
+  worker_profile <- grep('source_utf8\\(file[.]path\\(dir, "profile[.]R"', session)[
     1L
   ]
   expect_true(worker_contract < worker_manifest)

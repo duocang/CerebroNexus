@@ -166,7 +166,7 @@ builder_build_options_ui <- function(
   }
   output_mode <- shiny::radioButtons(
     "build_output_mode",
-    label = NULL,
+    label = tags$span(class = "visually-hidden", "Output format"),
     choices = c(
       "Viewer app" = "app",
       "CRB files only" = "crb"
@@ -1028,7 +1028,7 @@ builder_build_status_ui <- function(model) {
         }
       )
     ),
-    h2(`data-icon` = icon, title),
+    h3(`data-icon` = icon, title),
     if (!is.null(pipeline_state)) builder_build_pipeline_ui(pipeline_state),
     if (!is.null(model$message)) p(model$message),
     if (identical(model$type, "success")) {
@@ -1076,7 +1076,7 @@ builder_build_status_ui <- function(model) {
     if (identical(model$type, "recovery_required")) {
       div(
         class = "builder-recovery-action",
-        h3("Manual recovery steps"),
+        h4("Manual recovery steps"),
         p(
           "Keep the preserved backup, close other processes using the output, and restore the backup named above before building again."
         )

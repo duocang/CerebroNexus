@@ -197,7 +197,68 @@ test_that("automatic dataset review advance requests top-of-workbench focus", {
   )
 
   expect_match(review, '"builder_focus_dataset_start"', fixed = TRUE)
-  expect_match(review, "list(dataset = target)", fixed = TRUE)
+  expect_match(review, "dataset = target", fixed = TRUE)
+  expect_match(
+    review,
+    "generation = as.integer(isolate(entry_of(target))$revision",
+    fixed = TRUE
+  )
+})
+
+test_that("dataset-scoped browser actions retain their current entry owner", {
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  enhancements <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "enhancements.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  project <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(foundation, "entry_owner = entry_owner", fixed = TRUE)
+  expect_match(foundation, '"builder_dataset_action_owner"', fixed = TRUE)
+  expect_match(
+    enhancements,
+    "builder_content_action_owner_is_current(",
+    fixed = TRUE
+  )
+  expect_match(enhancements, "marker_dialog_owner <- reactiveVal(NULL)", fixed = TRUE)
+  marker_guards <- gregexpr(
+    "if (!marker_dialog_is_current())",
+    enhancements,
+    fixed = TRUE
+  )[[1L]]
+  expect_identical(sum(marker_guards > 0L), 6L)
+  expect_match(foundation, "refresh_marker_dialog_owner(owner$project_epoch)", fixed = TRUE)
+  expect_match(review, "`data-generation` = table_action_owner$generation", fixed = TRUE)
+  expect_match(review, "`data-project-epoch` = table_action_owner$project_epoch", fixed = TRUE)
+  expect_match(review, "`data-owner-token` = table_action_owner$owner_token", fixed = TRUE)
+  epoch_updates <- gregexpr(
+    "send_dataset_action_owner(project_epoch = generation)",
+    project,
+    fixed = TRUE
+  )[[1L]]
+  expect_identical(sum(epoch_updates > 0L), 2L)
 })
 
 test_that("Configure renders Extras before the final Views content", {
@@ -1439,7 +1500,11 @@ test_that("incomplete datasets focus their first unresolved setting", {
 
     expect_length(dataset_check_marks(), 0L)
     expect_length(checked_dataset_ids(), 0L)
-    expect_identical(messages, list(list(blocker = "settings_organism")))
+    expect_identical(messages, list(list(
+      dataset = "dataset-a",
+      generation = 0L,
+      blocker = "settings_organism"
+    )))
   })
 })
 
@@ -3065,5 +3130,54 @@ test_that("Viewer and spatial preview contracts ignore settings-only revisions",
       list(monocle2 = c("lineage_a", "lineage_b", "lineage_c"))
     ),
     trajectory_contract
+  ))
+})
+
+test_that("table inventories stay with their dataset owner and project epoch", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  entry <- list(
+    id = "ds1",
+    revision = 2L,
+    snapshot = list(
+      path = "/private/project-a/ds1",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    settings = list(name = "Project A")
+  )
+  owner <- app_env$builder_table_inventory_owner(entry, 7)
+  expect_true(app_env$builder_table_inventory_owner_is_current(
+    owner,
+    entry,
+    7
+  ))
+
+  settings_only <- entry
+  settings_only$revision <- 9L
+  settings_only$settings$name <- "Renamed while the workbook is read"
+  expect_true(app_env$builder_table_inventory_owner_is_current(
+    owner,
+    settings_only,
+    7
+  ))
+
+  same_id_other_project <- entry
+  same_id_other_project$snapshot$path <- "/private/project-b/ds1"
+  same_id_other_project$snapshot$owner_token <- "owner-b"
+  same_id_other_project$snapshot$object_md5 <- strrep("b", 32L)
+  expect_false(app_env$builder_table_inventory_owner_is_current(
+    owner,
+    same_id_other_project,
+    7
+  ))
+  expect_false(app_env$builder_table_inventory_owner_is_current(
+    owner,
+    entry,
+    8
   ))
 })

@@ -1392,6 +1392,15 @@ if (builder_lifecycle_api_available) {
 }
 
 if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
+  test_that("worker stop timeout conversion never overflows", {
+    deadline <- Sys.time() + (.Machine$integer.max / 1000) + 10
+
+    expect_identical(
+      .builder_worker_remaining_ms(deadline),
+      .Machine$integer.max
+    )
+  })
+
   test_that("worker stop confirms process death before returning", {
     skip_if_not_installed("callr")
     worker <- builder_worker_start(builder_profile_inst_path("builder"))

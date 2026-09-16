@@ -839,14 +839,14 @@ builder_read_object <- function(path) {
   if (!nzchar(root)) {
     return("")
   }
-  root <- normalizePath(root, mustWork = TRUE)
+  root <- normalizePath(root, winslash = "/", mustWork = TRUE)
   path <- file.path(root, relative)
   if (!file.exists(path) && !dir.exists(path)) {
     return("")
   }
-  path <- normalizePath(path, mustWork = TRUE)
+  path <- normalizePath(path, winslash = "/", mustWork = TRUE)
   inside <- identical(path, root) ||
-    startsWith(path, paste0(root, .Platform$file.sep))
+    startsWith(path, paste0(root, "/"))
   if (!inside) "" else path
 }
 

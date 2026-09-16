@@ -367,12 +367,12 @@ test_that("Builder runtimes load dataset state before planning", {
   app_state <- grep('source("state.R", local = TRUE)', app, fixed = TRUE)
   app_plan <- grep('source("plan.R", local = TRUE)', app, fixed = TRUE)
   worker_state <- grep(
-    'source(file.path(dir, "state.R"))',
+    'source_utf8(file.path(dir, "state.R"), globalenv())',
     session,
     fixed = TRUE
   )
   worker_plan <- grep(
-    'source(file.path(dir, "plan.R"))',
+    'source_utf8(file.path(dir, "plan.R"), globalenv())',
     session,
     fixed = TRUE
   )

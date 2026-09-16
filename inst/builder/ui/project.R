@@ -29,9 +29,13 @@ builder_project_status_ui <- function(
   source_sync = NULL
 ) {
   syncing <- is.list(source_sync) && identical(source_sync$status, "syncing")
+  cancelling <- is.list(source_sync) &&
+    identical(source_sync$status, "cancelling")
   sync_failed <- is.list(source_sync) && identical(source_sync$status, "failed")
   sync_ready <- is.list(source_sync) && identical(source_sync$status, "ready")
-  label <- if (syncing) {
+  label <- if (cancelling) {
+    "Stopping previous source copy…"
+  } else if (syncing) {
     paste0(
       "Saving source files · ",
       source_sync$completed %||% 0L,
@@ -57,7 +61,7 @@ builder_project_status_ui <- function(
       project$name %||% "Saved project"
     )
   }
-  status_class <- if (syncing) {
+  status_class <- if (syncing || cancelling) {
     "is-busy"
   } else if (sync_failed) {
     "is-error"
@@ -159,6 +163,7 @@ builder_project_existing_folder_dialog <- function(path) {
       tags$code(path)
     ),
     footer = tagList(
+      modalButton("Cancel"),
       actionButton(
         "choose_another_builder_project_folder",
         "Choose another folder",
@@ -268,7 +273,10 @@ builder_project_restore_row_ui <- function(record, root) {
     ),
     selectInput(
       paste0("project_restore_", record$id),
-      label = NULL,
+      label = tags$span(
+        class = "visually-hidden",
+        paste("How to open", record$name %||% record$id)
+      ),
       choices = choices,
       selected = selected,
       selectize = FALSE,
