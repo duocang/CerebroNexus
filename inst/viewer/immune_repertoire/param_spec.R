@@ -554,8 +554,8 @@ IR_PARAM_DESC <- list(
 
   ## ---- Clonal UMAP ----
   ir_p_umap_receptor = "Which receptor to colour by: TCR (T cells) or BCR (B cells). Only the types present in your data are offered.",
-  ir_p_umap_projection = "The cell map to draw on — the same UMAP/tSNE projections used elsewhere in the app. Pick which one to overlay the clones on.",
-  ir_p_umap_group_by = "Optional metadata column used to split Clonal UMAP into static square panels. None keeps the default interactive single UMAP.",
+  ir_p_umap_projection = "The cell map to draw on — the same UMAP/t-SNE/PCA projections used elsewhere in the app. Pick which one to overlay the clones on.",
+  ir_p_umap_group_by = "Optional metadata column used to split the clonal projection into static square panels. None keeps the default interactive projection.",
   ir_p_umap_show_all = "When on, every cell is drawn: cells without the selected receptor appear light grey, so the coloured (expanded) clones stand out in context. When off, only cells carrying the receptor are shown.",
 
   ## ---- Diversity ----
@@ -613,7 +613,7 @@ IR_PARAM_DESC <- list(
   ## ---- Display options ----
   ir_d_point_size = "Diameter of the scatter points.",
   ir_d_alpha = "Point opacity (0 = transparent, 1 = solid). Lower values help when points overlap heavily.",
-  ir_d_percentage_cells_to_show = "Percentage of cells sampled for the Clonal UMAP. Lower values can improve performance for large datasets.",
+  ir_d_percentage_cells_to_show = "Percentage of cells sampled for the clonal projection. Lower values can improve performance for large datasets.",
 
   ## ---- Homeostasis ----
   ir_p_clone_size = "The upper bounds (as a fraction of the repertoire) that bin clones into Rare / Small / Medium / Large / Hyperexpanded. Five increasing numbers, comma-separated. Leave as-is for scRepertoire's defaults.",
