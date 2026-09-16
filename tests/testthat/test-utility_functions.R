@@ -35,6 +35,68 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("dataset info resolves only the selected catalog entry", {
+  resolve <- utils_env$viewerDatasetInfo
+  expect_true(is.function(resolve))
+  if (!is.function(resolve)) {
+    return()
+  }
+
+  info <- list(
+    label = "Ren et al. COVID atlas",
+    path = "/data/ren.crb",
+    cells = 1462702L,
+    organism = "Homo sapiens",
+    date = "2026-09-17"
+  )
+  catalog <- list("/data/ren.crb" = info)
+
+  expect_identical(resolve(catalog, "/data/ren.crb"), info)
+  expect_null(resolve(catalog, "/data/missing.crb"))
+  expect_null(resolve(NULL, "/data/ren.crb"))
+  expect_null(resolve(
+    list("/data/ren.crb" = list(cells = -1L)),
+    "/data/ren.crb"
+  ))
+})
+
+test_that("catalog-backed Data Info defers the full dataset load", {
+  load_required <- utils_env$viewerDatasetLoadRequired
+  expect_true(is.function(load_required))
+  if (!is.function(load_required)) {
+    return()
+  }
+
+  info <- list(cells = 1462702L)
+  expect_false(load_required("loadData", info))
+  expect_true(load_required("overview", info))
+  expect_true(load_required("loadData", NULL))
+})
+
+test_that("Data Info uses the catalog before the full dataset", {
+  viewer_root <- dirname(utils_file)
+  server <- readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE)
+  sample_info <- readLines(
+    file.path(viewer_root, "load_data", "sample_info.R"),
+    warn = FALSE
+  )
+
+  expect_true(any(grepl(
+    "dataset_load_requested <- reactiveVal(FALSE)",
+    server,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "req\\(isTRUE\\(dataset_load_requested\\(\\)\\)\\)",
+    server
+  )))
+  expect_true(any(grepl("current_dataset_info\\(\\)", sample_info)))
+  expect_false(any(grepl(
+    "getNumberOfCells\\(\\)|getExperiment\\(\\)",
+    sample_info
+  )))
+})
+
 test_that("the lightweight TCR gate scans every sample", {
   repertoire <- list(
     s1 = data.frame(CTgene = NA_character_),

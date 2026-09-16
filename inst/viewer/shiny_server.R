@@ -209,6 +209,7 @@ server <- function(input, output, session) {
     selected = NULL,
     names = NULL
   )
+  dataset_load_requested <- reactiveVal(FALSE)
 
   current_scatter_defaults <- reactive({
     viewerScatterDefaults(
@@ -406,9 +407,60 @@ server <- function(input, output, session) {
     }
   })
 
+  ## Keep the lightweight Data Info page independent of the full CRB. Opening
+  ## another page, or selecting a dataset absent from the catalog, enables the
+  ## ordinary data_set() chain.
+  observeEvent(
+    list(available_crb_files$selected, input[["sidebar"]]),
+    {
+      catalog <- if (exists("Cerebro.options")) {
+        Cerebro.options[[".dataset_catalog"]]
+      } else {
+        NULL
+      }
+      info <- viewerDatasetInfo(catalog, available_crb_files$selected)
+      dataset_load_requested(
+        viewerDatasetLoadRequired(input[["sidebar"]], info)
+      )
+    },
+    ignoreNULL = FALSE
+  )
+
+  current_dataset_info <- reactive({
+    req(!is.null(available_crb_files$selected))
+    selected <- available_crb_files$selected
+    catalog <- if (exists("Cerebro.options")) {
+      Cerebro.options[[".dataset_catalog"]]
+    } else {
+      NULL
+    }
+    info <- viewerDatasetInfo(catalog, selected)
+    if (!is.null(info)) {
+      return(info)
+    }
+
+    req(isTRUE(dataset_load_requested()))
+    data <- data_set()
+    experiment <- data$getExperiment()
+    scalar <- function(value) {
+      if (is.null(value) || length(value) != 1L || is.na(value)) {
+        return(NA_character_)
+      }
+      as.character(value)
+    }
+    list(
+      label = viewerDatasetName(available_crb_files$files, selected),
+      path = selected,
+      cells = .runtimeCerebroCellCount(data),
+      organism = scalar(experiment$organism),
+      date = scalar(experiment$date_of_export)
+    )
+  })
+
   ## create reactive value holding the current data set
   data_set <- reactive({
     req(!is.null(available_crb_files$selected))
+    req(isTRUE(dataset_load_requested()))
     dataset_to_load <- available_crb_files$selected
     if (exists(dataset_to_load)) {
       print(glue::glue(

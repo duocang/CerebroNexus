@@ -47,6 +47,45 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
+viewerDatasetInfo <- function(catalog, selected) {
+  if (
+    !is.list(catalog) ||
+      !is.character(selected) ||
+      length(selected) != 1L ||
+      is.na(selected) ||
+      !nzchar(selected) ||
+      is.null(names(catalog)) ||
+      !selected %in% names(catalog)
+  ) {
+    return(NULL)
+  }
+  info <- catalog[[selected]]
+  if (
+    !is.list(info) ||
+      !identical(
+        unname(as.character(info$path)),
+        unname(as.character(selected))
+      ) ||
+      length(info$cells) != 1L ||
+      is.na(info$cells) ||
+      !is.numeric(info$cells) ||
+      !is.finite(info$cells) ||
+      info$cells < 0
+  ) {
+    return(NULL)
+  }
+  info
+}
+
+viewerDatasetLoadRequired <- function(tab, info) {
+  is.null(info) ||
+    (is.character(tab) &&
+      length(tab) == 1L &&
+      !is.na(tab) &&
+      nzchar(tab) &&
+      !identical(tab, "loadData"))
+}
+
 viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
   resolve <- function(key, fallback, minimum, maximum) {
     value <- options[[key]]
