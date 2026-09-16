@@ -2553,7 +2553,8 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_process_cache[[path]]
+  cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  cached <- .crb_process_cache[[cache_key]]
   if (!is.null(cached)) {
     if (!identical(cached$backend_identity, cache_identity)) {
       stop(
@@ -2573,7 +2574,7 @@ get_or_load_crb <- function(
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   obj <- .attachSpatialMoleculeBackend(obj, path)
-  .crb_process_cache[[path]] <- list(
+  .crb_process_cache[[cache_key]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
