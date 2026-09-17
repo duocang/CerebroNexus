@@ -350,3 +350,31 @@ test_that("BCR isotype/SHM helpers produce a plot for the bundled BCR data", {
   has_cols <- all(c("CTnt", "CTstrict") %in% colnames(ir[[1]]))
   expect_true(has_cols) # SHM proxy needs CTnt + CTstrict
 })
+
+test_that("BCR isotype extraction preserves sample names from the IR list", {
+  server_file <- file.path(local_inst, "viewer/immune_repertoire/server.R")
+  skip_if_not(file.exists(server_file))
+  expressions <- parse(server_file)
+  definition <- expressions[vapply(
+    expressions,
+    function(expr) {
+      is.call(expr) &&
+        identical(expr[[1]], as.name("<-")) &&
+        identical(as.character(expr[[2]]), "bcr_extract_isotype")
+    },
+    logical(1)
+  )][[1]]
+  env <- new.env(parent = globalenv())
+  eval(definition, envir = env)
+
+  extracted <- env$bcr_extract_isotype(list(
+    donor_a = data.frame(
+      barcode = "a",
+      CTgene = "IGHV1.IGHJ1.IGHM",
+      stringsAsFactors = FALSE
+    )
+  ))
+
+  expect_identical(extracted$sample, "donor_a")
+  expect_identical(extracted$isotype, "IGHM")
+})

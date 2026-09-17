@@ -191,28 +191,33 @@ safeRenderPlot <- function(expr, plot_name = "unknown") {
 
 ## ---- BCR-specific helper: extract isotype ------------------------------- ##
 bcr_extract_isotype <- function(combined_BCR) {
-  dplyr::bind_rows(lapply(combined_BCR, function(df) {
+  sample_names <- names(combined_BCR)
+  dplyr::bind_rows(lapply(seq_along(combined_BCR), function(i) {
+    df <- combined_BCR[[i]]
     if (is.null(df) || !"CTgene" %in% colnames(df)) {
       return(NULL)
     }
-    parts <- strsplit(df$CTgene, "_", fixed = TRUE)
-    igh <- vapply(
-      parts,
-      function(p) {
-        if (length(p) == 0) {
-          return(NA_character_)
-        }
-        hit <- grep("^IGH", p, value = TRUE)
-        if (length(hit) == 0) NA_character_ else hit[1]
-      },
-      character(1)
-    )
+    parts <- strsplit(as.character(df$CTgene), "_", fixed = TRUE)
+    part_lengths <- lengths(parts)
+    part_values <- unlist(parts, use.names = FALSE)
+    part_rows <- rep.int(seq_along(parts), part_lengths)
+    hits <- which(startsWith(part_values, "IGH"))
+    hits <- hits[!duplicated(part_rows[hits])]
+    igh <- rep(NA_character_, nrow(df))
+    igh[part_rows[hits]] <- part_values[hits]
     isotype <- ifelse(
       !is.na(igh) & grepl("\\.", igh),
       sub("^.*\\.", "", igh),
       NA_character_
     )
     isotype <- ifelse(grepl("^IGH[ADEGM]", isotype), isotype, NA_character_)
+    if (
+      !("sample" %in% colnames(df)) &&
+        !is.null(sample_names) &&
+        nzchar(sample_names[[i]])
+    ) {
+      df$sample <- sample_names[[i]]
+    }
     tibble::add_column(tibble::as_tibble(df), isotype = isotype)
   }))
 }
@@ -221,7 +226,7 @@ bcr_extract_isotype <- function(combined_BCR) {
 bcr_isotype_plot <- function(combined, group_col = "sample") {
   iso <- bcr_extract_isotype(combined)
 
-  if (is.null(iso) || nrow(iso) == 0L) {
+  if (is.null(iso) || nrow(iso) == 0L || !(group_col %in% colnames(iso))) {
     return(NULL)
   }
   iso <- iso[!is.na(iso$isotype) & !is.na(iso[[group_col]]), , drop = FALSE]
