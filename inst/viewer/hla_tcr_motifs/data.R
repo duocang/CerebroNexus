@@ -38,6 +38,10 @@ hla_bindCache <- function(x, ..., cache = "session") {
 ## scRepertoire columns; biological grouping lives in cell metadata, attached
 ## here by barcode so the page can colour by any metadata column.
 hla_ir_annotated <- reactive({
+  packed <- hla_packed_segments()
+  if (!is.null(packed)) {
+    return(list(packed))
+  }
   data <- getImmuneRepertoire()
   if (is.null(data) || !is.list(data) || length(data) == 0) {
     return(NULL)
@@ -87,7 +91,7 @@ hla_filter_levels <- reactive({
 ## Parse once without cohort filtering to size a safe initial sample set. This
 ## is linear work; the expensive Hamming graph is built only after filtering.
 hla_unfiltered_segments <- reactive({
-  packed <- viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())
+  packed <- hla_packed_segments()
   if (!is.null(packed)) {
     return(packed)
   }
@@ -187,6 +191,36 @@ hla_active_chain <- reactive({
     return(chains[1])
   }
   "TRB"
+})
+
+## Viewer Packs already contain metadata-annotated, parsed TRA/TRB rows. Read
+## the active chain once and share that frame across filters, controls and the
+## graph instead of hydrating the much larger repertoire sidecar.
+hla_packed_segments <- reactive({
+  viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
+
+hla_ir_samples <- reactive({
+  samples <- as.character(getImmuneRepertoireSummary()$samples)
+  if (length(samples)) {
+    return(unique(samples))
+  }
+  data <- hla_ir_annotated()
+  if (is.null(data)) {
+    return(character(0))
+  }
+  samples <- unlist(
+    lapply(data, function(frame) {
+      if ("sample" %in% colnames(frame)) {
+        as.character(frame$sample)
+      } else {
+        character()
+      }
+    }),
+    use.names = FALSE
+  )
+  if (length(samples)) unique(samples) else names(data)
 })
 
 ## ---- Read a build/display parameter with a default -------------------- ##
@@ -327,7 +361,7 @@ hla_allele_choices <- reactive({
     return(character(0))
   }
   typing <- hla_active_typing()
-  samples <- names(getImmuneRepertoire())
+  samples <- hla_ir_samples()
   summ <- hla_allele_carrier_summary(typing, samples = samples)
   if (is.null(summ) || nrow(summ) == 0) {
     return(character(0))
@@ -548,7 +582,7 @@ hla_celltype_col_declared <- reactive({
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
 hla_segments <- reactive({
   chain <- hla_active_chain()
-  packed <- viewerPackHlaSegments(viewerPackCurrent(), chain)
+  packed <- hla_packed_segments()
   data <- if (is.null(packed)) hla_ir_filtered() else packed
   if (is.null(data)) {
     return(NULL)
@@ -650,7 +684,7 @@ hla_color_by_choices <- reactive({
   # Distinct from colouring by the plain `sample` column, which shows the node's
   # MODAL sample and so hides the cross-sample recurrence an HLA screen looks
   # for. Offered only when the repertoire actually has more than one sample.
-  if (length(names(getImmuneRepertoire())) > 1) {
+  if (length(hla_ir_samples()) > 1) {
     choices <- c(
       choices,
       "Sample of origin|seen in more than one = black" = "sample_origin"
@@ -1230,7 +1264,7 @@ hla_no_allele_reason <- reactive({
     return(NULL)
   }
   typing <- hla_active_typing()
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   matched <- intersect(unique(as.character(typing$sample)), ir_samples)
   if (length(matched) == 0) {
     return(sprintf(

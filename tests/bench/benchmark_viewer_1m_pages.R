@@ -169,7 +169,6 @@ pages <- list(
   immune_repertoire = canvas_page(
     "immune_repertoire",
     "#ir_clonalUMAP_projection_cell_view_host",
-    expected_points = expected_cells,
     required = TRUE,
     event_view = "ir_clonalUMAP_projection"
   ),

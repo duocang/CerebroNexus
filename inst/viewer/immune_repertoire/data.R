@@ -8,6 +8,13 @@ ir_data_raw <- reactive({
   data
 })
 
+## The default Clonal projection is backed by the compact Viewer Pack. Keep its
+## availability gate on the backend summary so opening the page does not hydrate
+## the full repertoire sidecar merely to decide whether controls may render.
+ir_repertoire_available <- reactive({
+  isTRUE(getImmuneRepertoireSummary()$available)
+})
+
 ## ---- Standard scRepertoire columns (not usable as grouping) ----------- ##
 ir_scr_cols <- c(
   "barcode",
@@ -336,6 +343,24 @@ IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 ## detected, so the Clonal UMAP selector only offers what exists. The names
 ## are the labels shown to the user; values feed ir_umap_chains().
 ir_receptor_types <- reactive({
+  pack <- viewerPackCurrent()
+  packed <- if (is.list(pack)) {
+    as.character(pack$manifest$immune_receptors)
+  } else {
+    character(0)
+  }
+  packed <- intersect(packed, c("TCR", "BCR"))
+  if (length(packed)) {
+    return(stats::setNames(packed, packed))
+  }
+  chains <- as.character(getImmuneRepertoireSummary()$chains)
+  present <- c(
+    if (any(chains %in% IR_TCR_CHAINS)) "TCR" else character(0),
+    if (any(chains %in% IR_BCR_CHAINS)) "BCR" else character(0)
+  )
+  if (length(present)) {
+    return(stats::setNames(present, present))
+  }
   present <- tryCatch(
     # Receptor availability is structural. Using the metadata-annotated
     # reactive here makes the parameter panel depend on its own grouping
@@ -446,7 +471,7 @@ ir_clonal_umap_data <- function(
   show_all = TRUE,
   cells = NULL,
   percentage = 100,
-  max_background = 200000L
+  max_background = 100000L
 ) {
   if (is.null(projection) || !nzchar(projection)) {
     return(NULL)
@@ -470,7 +495,7 @@ ir_clonal_umap_data <- function(
   if (
     length(max_background) != 1L || is.na(max_background) || max_background < 0L
   ) {
-    max_background <- 200000L
+    max_background <- 100000L
   }
   # Restrict to the requested cells (group filters) up front, so both the
   # coloured receptor cells and the grey background respect the filter.

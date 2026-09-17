@@ -79,7 +79,7 @@ hla_qc_table <- reactive({
 
 ## ---- The Data & QC tab body ------------------------------------------- ##
 output$hla_data_qc_ui <- renderUI({
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   tagList(
     fluidRow(
       column(
@@ -199,7 +199,7 @@ output$hla_donor_mapping_preview <- DT::renderDataTable({
   if (!hla_has_typing()) {
     return(NULL)
   }
-  samples <- names(getImmuneRepertoire())
+  samples <- hla_ir_samples()
   map <- hla_analysis_unit_map(hla_active_typing(), samples)
   DT::datatable(
     map,
@@ -216,7 +216,7 @@ output$hla_mapping_note <- renderUI({
     return(NULL)
   }
   t <- hla_active_typing()
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   typed <- unique(t$sample)
   unmatched_typing <- setdiff(typed, ir_samples)
   untyped_ir <- setdiff(ir_samples, typed)
@@ -272,7 +272,7 @@ output$hla_qc_table_dt <- DT::renderDataTable({
 output$hla_download_template <- downloadHandler(
   filename = function() "hla_typing_template.csv",
   content = function(file) {
-    ir_samples <- names(getImmuneRepertoire())
+    ir_samples <- hla_ir_samples()
     if (length(ir_samples) == 0) {
       ir_samples <- c("sample_1", "sample_2")
     }

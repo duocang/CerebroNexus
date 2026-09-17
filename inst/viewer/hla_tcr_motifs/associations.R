@@ -123,7 +123,7 @@ hla_overlap_table <- reactive({
   hla_descriptive_feature_overlap(
     typing = typing,
     segments = seg,
-    samples = names(getImmuneRepertoire()),
+    samples = hla_ir_samples(),
     allele = allele,
     feature_cdr3 = members$cdr3,
     feature_v_gene = if (isTRUE(hla_param("hla_by_v", hla_by_v_default()))) {
@@ -434,7 +434,7 @@ output$hla_allele_matrix <- DT::renderDataTable({
   }
   mat <- hla_unit_allele_matrix(
     hla_active_typing(),
-    samples = names(getImmuneRepertoire())
+    samples = hla_ir_samples()
   )
   DT::datatable(
     mat,

@@ -54,8 +54,7 @@ output$ir_visualizations_UI <- renderUI({
   # controls so it can join only requested metadata. Rebuilding the whole
   # tabset on every grouping change resets the selected tab before the
   # corresponding controls/output can update.
-  data <- ir_data_raw()
-  if (is.null(data)) {
+  if (!ir_repertoire_available()) {
     return(div(
       class = "alert alert-warning",
       "No immune repertoire data available."
@@ -509,7 +508,7 @@ output$ir_ui_clonalUMAP <- renderUI({
 })
 
 output[["ir_selection_status_UI"]] <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data())) {
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   active_tab <- input[["ir_tabs"]]

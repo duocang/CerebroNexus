@@ -602,8 +602,18 @@ test_that("the page benchmark has a publication-grade contract", {
       benchmark,
       fixed = TRUE
     )),
-    4L
+    3L
   )
+  immune_spec <- regmatches(
+    benchmark,
+    regexpr(
+      "immune_repertoire = canvas_page\\([\\s\\S]{0,300}?\\n  \\),",
+      benchmark,
+      perl = TRUE
+    )
+  )
+  expect_length(immune_spec, 1L)
+  expect_no_match(immune_spec, "expected_points", fixed = TRUE)
   expect_match(benchmark, "VIEWER_EXPECTED_CELLS", fixed = TRUE)
   expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
   expect_match(benchmark, "state?.summary?.()", fixed = TRUE)

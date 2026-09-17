@@ -434,7 +434,7 @@ hla_visnet <- reactive({
   if (use_carrier && !is.null(allele)) {
     sa <- igraph::vertex_attr(g, "samples_all")
     typing <- hla_active_typing()
-    smp <- names(getImmuneRepertoire())
+    smp <- hla_ir_samples()
     carrier <- hla_node_carrier_status(sa, typing, smp, allele)
     carrier_cnt <- hla_node_carrier_counts(sa, typing, smp, allele)
   }
@@ -544,7 +544,7 @@ output$hla_export_analysis <- downloadHandler(
     tabs <- hla_graph_tables(g)
     motifs <- hla_motif_summary(g)
     typing <- hla_active_typing()
-    ir_samples <- names(getImmuneRepertoire())
+    ir_samples <- hla_ir_samples()
     unit_map <- tryCatch(
       hla_analysis_unit_map(typing, ir_samples),
       error = function(e) NULL

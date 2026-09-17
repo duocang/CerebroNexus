@@ -177,7 +177,9 @@ output$hla_group_filters_ui <- renderUI({
   levels <- hla_filter_levels()
   defaults <- hla_default_filter_selections()
   if (length(groups) == 0) {
-    return(helpText("No sample or grouping columns are available to filter by."))
+    return(helpText(
+      "No sample or grouping columns are available to filter by."
+    ))
   }
   filters <- lapply(groups, function(group) {
     group_levels <- levels[[group]]
@@ -407,7 +409,7 @@ output$hla_pair_allele_ui <- renderUI({
 ## ---- Evidence-status panel -------------------------------------------- ##
 output$hla_status_ui <- renderUI({
   t <- hla_active_typing()
-  n_ir_samples <- length(getImmuneRepertoire())
+  n_ir_samples <- length(hla_ir_samples())
   session_on <- !is.null(hla_session_typing()) &&
     is.data.frame(hla_session_typing()) &&
     nrow(hla_session_typing()) > 0
@@ -452,7 +454,7 @@ output$hla_status_ui <- renderUI({
 
   typed_samples <- length(unique(t$sample))
   src <- paste(unique(t$source_type), collapse = ", ")
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   covered <- sum(ir_samples %in% unique(t$sample))
   tagList(
     tags$p(

@@ -24,6 +24,36 @@ ir_canvas_selector <- paste0(
   ".cv-canvas-wrap > canvas:not(.cv-mini)"
 )
 
+test_that("Clonal projection defers full repertoire controls", {
+  settings <- paste(
+    readLines(file.path(inst_dir, "viewer", "immune_repertoire", "settings.R")),
+    collapse = "\n"
+  )
+  visualizations <- paste(
+    readLines(file.path(
+      inst_dir,
+      "viewer",
+      "immune_repertoire",
+      "visualizations.R"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(settings, "ir_repertoire_available()", fixed = TRUE)
+  expect_match(settings, "if (identical(tab, \"Clone Sharing\"))", fixed = TRUE)
+  expect_no_match(
+    settings,
+    "groups <- tryCatch(getGroups(), error = function(e) character(0))\n  genes <- ir_gene_families()",
+    fixed = TRUE
+  )
+  expect_match(visualizations, "ir_repertoire_available()", fixed = TRUE)
+  expect_no_match(
+    visualizations,
+    'output[["ir_selection_status_UI"]] <- renderUI({\n  if (!has_scRepertoire() || is.null(ir_data()))',
+    fixed = TRUE
+  )
+})
+
 wait_for_ir_sidebar <- function(app, timeout = 60000) {
   app$wait_for_js(
     sprintf("document.querySelector('%s') !== null", ir_sidebar_selector),

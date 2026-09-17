@@ -306,6 +306,9 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
     "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
     fixed = TRUE
   )
+  expect_match(data_layer, "hla_packed_segments <- reactive", fixed = TRUE)
+  expect_match(data_layer, "packed <- hla_packed_segments()", fixed = TRUE)
+  expect_match(data_layer, "hla_ir_samples <- reactive", fixed = TRUE)
   expect_match(data_layer, "data <- getImmuneRepertoire()", fixed = TRUE)
   expect_match(data_layer, "hla_parse_ir_segments(data, chain)", fixed = TRUE)
 
@@ -334,6 +337,11 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   expect_match(
     immune_data,
     "viewerPackImmuneIndex(viewerPackCurrent()",
+    fixed = TRUE
+  )
+  expect_match(
+    immune_data,
+    "pack$manifest$immune_receptors",
     fixed = TRUE
   )
   expect_match(
