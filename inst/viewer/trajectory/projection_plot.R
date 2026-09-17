@@ -50,7 +50,6 @@ trajectory_projection_prepared <- reactive({
     return(list(
       cells_df = cells_df,
       trajectory_lines = list(),
-      hover_columns = list(),
       hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
       color_variable = input[["trajectory_point_color"]],
       point_size = input[["trajectory_point_size"]],
@@ -85,35 +84,10 @@ trajectory_projection_prepared <- reactive({
     )
   })
 
-  hover <- isTRUE(preferences[["show_hover_info_in_projections"]])
-  hover_columns <- list()
-  if (hover) {
-    state <- as.character(cells_df[["state"]])
-    state[is.na(state)] <- "NA"
-    state_levels <- unique(state)
-    hover_columns <- c(
-      cerebroProjectionHoverColumns(cells_df),
-      list(
-        list(
-          label = "State",
-          levels = state_levels,
-          values = match(state, state_levels) - 1L
-        ),
-        list(
-          label = "Pseudotime",
-          format = "fixed",
-          digits = 2L,
-          values = unname(as.numeric(cells_df[["pseudotime"]]))
-        )
-      )
-    )
-  }
-
   list(
     cells_df = cells_df,
     trajectory_lines = trajectory_lines,
-    hover_columns = hover_columns,
-    hover = hover,
+    hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
     color_variable = color_variable,
     point_size = input[["trajectory_point_size"]],
     point_opacity = input[["trajectory_point_opacity"]],
@@ -187,11 +161,6 @@ observe({
   ## metadata, so they are NOT columns 1/2).
   coordinates <- list(cells_df[["DR_1"]], cells_df[["DR_2"]])
   color_input <- cells_df[[color_variable]]
-  selection_keys <- if ("cell_barcode" %in% colnames(cells_df)) {
-    as.character(cells_df[["cell_barcode"]])
-  } else {
-    rownames(cells_df)
-  }
 
   point_line <- if (prepared[["draw_border"]]) {
     list(color = cerebro_plotly_theme()$axis, width = 1)
@@ -220,7 +189,7 @@ observe({
     coordinates = coordinates,
     color = color_input,
     color_variable = color_variable,
-    selection_keys = selection_keys,
+    selection_keys = seq_len(nrow(cells_df)),
     point_size = prepared[["point_size"]],
     point_opacity = prepared[["point_opacity"]],
     group_labels = prepared[["group_labels"]],
@@ -228,16 +197,53 @@ observe({
     point_line = point_line,
     reset_axes = reset_axes_now,
     color_assignments = color_assignments,
-    hover_columns = prepared[["hover_columns"]],
-    hover = prepared[["hover"]],
+    hover_columns = list(),
+    hover = FALSE,
     space_label = input[["trajectory_selected_name"]]
   )
+  selection_rows <- payload$data$selection_key
+  deferred_aux <- function() {
+    cell_barcodes <- if ("cell_barcode" %in% colnames(cells_df)) {
+      as.character(cells_df[["cell_barcode"]])
+    } else {
+      rownames(cells_df)
+    }
+    hover_columns <- list()
+    if (prepared[["hover"]]) {
+      state <- as.character(cells_df[["state"]])
+      state[is.na(state)] <- "NA"
+      state_levels <- unique(state)
+      hover_columns <- c(
+        cerebroProjectionHoverColumns(cells_df),
+        list(
+          list(
+            label = "State",
+            levels = state_levels,
+            values = match(state, state_levels) - 1L
+          ),
+          list(
+            label = "Pseudotime",
+            format = "fixed",
+            digits = 2L,
+            values = unname(as.numeric(cells_df[["pseudotime"]]))
+          )
+        )
+      )
+    }
+    cerebroCellViewDeferredAux(
+      selection_rows = selection_rows,
+      cell_barcodes = cell_barcodes,
+      hover_columns = hover_columns,
+      hover = prepared[["hover"]]
+    )
+  }
   cerebroCellViewRender(
     "trajectory_projection",
     payload[["meta"]],
     payload[["data"]],
     payload[["hover"]],
-    extra = list(shapes = prepared[["trajectory_lines"]])
+    extra = list(shapes = prepared[["trajectory_lines"]]),
+    deferred_aux = deferred_aux
   )
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
