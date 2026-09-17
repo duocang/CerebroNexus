@@ -1141,13 +1141,47 @@ test_that("the parameter panel renders once, then updates in place", {
   # place instead of rebuilding the panel.
   expect_match(
     settings_src,
-    "observeEvent\\([\\s\\S]{0,20}hla_color_by_choices\\(\\)",
+    "observeEvent\\([\\s\\S]{0,160}hla_color_by_choices\\(\\)",
     perl = TRUE
   )
   expect_match(
     settings_src,
     "updateSelectizeInput\\([\\s\\S]{0,40}\"hla_color_by\"",
     perl = TRUE
+  )
+})
+
+test_that("hidden HLA controls do not scan the repertoire", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings_src <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  active_page_gate <- 'req(identical(input[["sidebar"]], "hla_tcr_motifs"))'
+  expect_match(
+    data_src,
+    paste0(
+      "reactive({\n    ",
+      active_page_gate,
+      "\n    as.integer(hla_param(\"hla_min_nodes\""
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    settings_src,
+    paste0(
+      "observeEvent(\n  {\n    ",
+      active_page_gate,
+      "\n    hla_color_by_choices()"
+    ),
+    fixed = TRUE
   )
 })
 

@@ -254,7 +254,10 @@ registerGroupFiltersInfo(
 ## Fires on scope AND dataset change; ignoreInit because the render already
 ## seeded the current choices.
 observeEvent(
-  hla_color_by_choices(),
+  {
+    req(identical(input[["sidebar"]], "hla_tcr_motifs"))
+    hla_color_by_choices()
+  },
   {
     choices <- hla_color_by_choices()
     # Keep the current pick if the new scope still offers it, else fall back to

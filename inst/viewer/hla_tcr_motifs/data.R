@@ -891,6 +891,7 @@ hla_build_graph_raw_from <- function(seg) {
 ## needs no debounce.
 hla_min_nodes_debounced <- shiny::debounce(
   reactive({
+    req(identical(input[["sidebar"]], "hla_tcr_motifs"))
     as.integer(hla_param("hla_min_nodes", hla_default_min_nodes()))
   }),
   millis = 250
