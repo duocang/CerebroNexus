@@ -5,8 +5,7 @@ expression_projection_update_plot <- function(input) {
   expression_levels <- input[['expression_levels']]
   plot_parameters <- input[['plot_parameters']]
   color_settings <- input[['color_settings']]
-  selection_keys <- input[['selection_keys']]
-  hover_columns <- input[['hover_columns']]
+  metadata <- input[['metadata']]
   trajectory <- input[['trajectory']]
   display_mode <- input[['display_mode']]
   separate_panels <- input[['separate_panels']]
@@ -20,7 +19,7 @@ expression_projection_update_plot <- function(input) {
     x = coordinates[[1]],
     y = coordinates[[2]],
     color = expression_levels,
-    selection_key = selection_keys,
+    selection_key = seq_len(nrow(metadata)),
     point_size = plot_parameters[["point_size"]],
     point_opacity = plot_parameters[["point_opacity"]],
     point_line = list(),
@@ -59,38 +58,9 @@ expression_projection_update_plot <- function(input) {
   output_data[["reversescale"]] <- expressionReverseColorScale(
     color_settings[["color_scale"]]
   )
-  ## prepare hover info
-  output_hover <- list(
-    hoverinfo = ifelse(plot_parameters[["hover_info"]], 'text', 'skip'),
-    text = list(),
-    columns = hover_columns
-  )
   ## process trajectory data
   trajectory_lines <- list()
   if (plot_parameters[['is_trajectory']]) {
-    ## Add trajectory values as compact columns; the browser formats only the
-    ## cell actually under the pointer.
-    if (plot_parameters[['hover_info']]) {
-      states <- as.character(trajectory[['meta']]$state)
-      states[is.na(states)] <- "NA"
-      state_levels <- unique(states)
-      output_hover$columns <- c(
-        output_hover$columns,
-        list(
-          list(
-            label = "State",
-            levels = state_levels,
-            values = match(states, state_levels) - 1L
-          ),
-          list(
-            label = "Pseudotime",
-            format = "fixed",
-            digits = 2L,
-            values = as.numeric(trajectory[['meta']]$pseudotime)
-          )
-        )
-      )
-    }
     ## convert trajectory edges to the shared renderer's shape format
     trajectory_edges <- trajectory[['edges']]
     for (i in seq_len(nrow(trajectory_edges))) {
@@ -107,6 +77,42 @@ expression_projection_update_plot <- function(input) {
       trajectory_lines <- c(trajectory_lines, list(line))
     }
   }
+  output_hover <- list(hoverinfo = "skip", text = list(), columns = list())
+  deferred_aux <- function() {
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    hover_columns <- if (hover) {
+      cerebroProjectionHoverColumns(metadata)
+    } else {
+      list()
+    }
+    if (hover && plot_parameters[['is_trajectory']]) {
+      states <- as.character(trajectory[['meta']]$state)
+      states[is.na(states)] <- "NA"
+      state_levels <- unique(states)
+      hover_columns <- c(
+        hover_columns,
+        list(
+          list(
+            label = "State",
+            levels = state_levels,
+            values = match(states, state_levels) - 1L
+          ),
+          list(
+            label = "Pseudotime",
+            format = "fixed",
+            digits = 2L,
+            values = as.numeric(trajectory[['meta']]$pseudotime)
+          )
+        )
+      )
+    }
+    cerebroCellViewDeferredAux(
+      selection_rows = output_data[["selection_key"]],
+      cell_barcodes = metadata[["cell_barcode"]],
+      hover_columns = hover_columns,
+      hover = hover
+    )
+  }
   if (identical(display_mode, "rgb")) {
     output_data[["rgb"]] <- expression_levels[c("r", "g", "b")]
     output_data[["rgb_genes"]] <- color_settings[["rgb_genes"]]
@@ -120,7 +126,8 @@ expression_projection_update_plot <- function(input) {
       ),
       output_data,
       output_hover,
-      extra = list(shapes = trajectory_lines)
+      extra = list(shapes = trajectory_lines),
+      deferred_aux = deferred_aux
     )
     return(invisible(NULL))
   }
@@ -149,7 +156,8 @@ expression_projection_update_plot <- function(input) {
       ),
       output_data,
       output_hover,
-      extra = list(shapes = trajectory_lines)
+      extra = list(shapes = trajectory_lines),
+      deferred_aux = deferred_aux
     )
   }
 }

@@ -147,7 +147,7 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
   )
   object$getParameters <- function() parameters
   object$addParameters <- function(field, content) {
-      parameters[[field]] <<- content
+    parameters[[field]] <<- content
   }
   object$getMethodsForTrajectories <- function() names(object$trajectories)
   object$getNamesOfTrajectories <- function(method) {
@@ -728,8 +728,16 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
   captured <- new.env(parent = emptyenv())
   runtime$expressionColorScale <- function(...) "scale"
   runtime$expressionReverseColorScale <- function(...) FALSE
-  runtime$cerebroCellViewRender <- function(id, meta, data, hover, extra) {
+  runtime$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover,
+    extra,
+    deferred_aux
+  ) {
     captured$data <- data
+    captured$deferred_aux <- deferred_aux
   }
   sys.source(
     viewer_test_path("gene_expression", "func_projection_update_plot.R"),
@@ -758,8 +766,7 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
       color_range = NULL,
       genes = "GeneA"
     ),
-    selection_keys = c("c3", "c1", "c2"),
-    hover_columns = list(),
+    metadata = data.frame(cell_barcode = c("c3", "c1", "c2")),
     trajectory = list(),
     display_mode = "single",
     separate_panels = FALSE
@@ -769,6 +776,11 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
 
   expect_identical(captured$data$x, c(3, 1, 2))
   expect_identical(captured$data$color, c(30, 10, 20))
+  expect_identical(captured$data$selection_key, 1:3)
+  expect_identical(
+    as.character(captured$deferred_aux()$selection_key),
+    c("c3", "c1", "c2")
+  )
   expect_identical(captured$data$paint_order, "highest")
   input$plot_parameters$plot_order <- "Random"
   runtime$expression_projection_update_plot(input)

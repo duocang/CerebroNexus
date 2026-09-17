@@ -28,12 +28,7 @@ expression_projection_data_to_plot_raw <- reactive({
     expression_levels = expression_levels,
     plot_parameters = parameters,
     color_settings = expression_projection_parameters_color(),
-    selection_keys = as.character(metadata[["cell_barcode"]]),
-    hover_columns = if (isTRUE(parameters[["hover_info"]])) {
-      cerebroProjectionHoverColumns(metadata)
-    } else {
-      list()
-    },
+    metadata = metadata,
     trajectory = expression_projection_trajectory(),
     display_mode = input[["expression_projection_genes_in_separate_panels"]],
     separate_panels = identical(
