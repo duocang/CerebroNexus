@@ -191,16 +191,13 @@ test_that("projection filtering and sampling preserve original row indices", {
   expect_true(all(result %in% eligible))
   expect_identical(anyDuplicated(result), 0L)
 
-  set.seed(123L)
-  expected_all <- sample.int(nrow(metadata))
-  set.seed(123L)
   expect_identical(
     run_projection_indices(
       metadata,
       list(batch = c("drop", "keep"), state = c("T", "B")),
       100
     ),
-    expected_all
+    seq_len(nrow(metadata))
   )
 
   expect_identical(
@@ -216,9 +213,6 @@ test_that("projection filtering and sampling preserve original row indices", {
     integer()
   )
 
-  set.seed(456L)
-  expected_unbound <- sample.int(nrow(metadata))
-  set.seed(456L)
   expect_identical(
     run_projection_indices(
       metadata,
@@ -226,7 +220,7 @@ test_that("projection filtering and sampling preserve original row indices", {
       100,
       groups = c("batch", "state")
     ),
-    expected_unbound
+    seq_len(nrow(metadata))
   )
 })
 

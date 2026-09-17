@@ -1,17 +1,14 @@
 ##----------------------------------------------------------------------------##
 ## Update projection plot when overview_projection_data_to_plot() changes.
 ##----------------------------------------------------------------------------##
-overview_projection_rendered <- reactiveVal(FALSE)
-
+overview_projection_last_data <- NULL
 observe({
   req(input[["overview_projection_render_request"]])
-  first_render <- !isolate(overview_projection_rendered())
-  data <- if (first_render) {
-    overview_projection_data_to_plot_raw()
-  } else {
-    overview_projection_data_to_plot()
-  }
+  data <- overview_projection_data_to_plot()
   req(data)
+  if (identical(data, overview_projection_last_data)) {
+    return()
+  }
+  overview_projection_last_data <<- data
   overview_projection_update_plot(data)
-  overview_projection_rendered(TRUE)
 })

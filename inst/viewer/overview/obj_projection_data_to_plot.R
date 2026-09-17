@@ -2,10 +2,8 @@
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
 overview_projection_data_to_plot_raw <- reactive({
-  req(
-    overview_projection_parameters_plot(),
-    reactive_colors()
-  )
+  req(overview_projection_parameters_plot())
+  req(reactive_colors())
   cells_df <- overview_projection_data()
   coordinates <- overview_projection_coordinates()
   plot_parameters <- overview_projection_parameters_plot()
@@ -17,18 +15,13 @@ overview_projection_data_to_plot_raw <- reactive({
   } else {
     color_assignments <- assignColorsToGroups(cells_df, color_variable)
   }
-
   list(
     cells_df = cells_df,
+    cell_indices = overview_projection_cells_to_show(),
     coordinates = coordinates,
     reset_axes = isolate(overview_projection_parameters_other[['reset_axes']]),
     plot_parameters = plot_parameters,
-    color_assignments = color_assignments,
-    hover_columns = if (isTRUE(plot_parameters[["hover_info"]])) {
-      cerebroProjectionHoverColumns(cells_df)
-    } else {
-      list()
-    }
+    color_assignments = color_assignments
   )
 })
 

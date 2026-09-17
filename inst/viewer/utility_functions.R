@@ -324,10 +324,56 @@ viewerOutputTab <- function(ids) {
   )
 }
 
+viewerProjectionFirstFrameCache <- function(object = data_set()) {
+  cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
+  if (is.list(cache)) cache else NULL
+}
+
+viewerProjectionFirstFrameMetadata <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$meta_data)) cache$meta_data else getMetaData()
+}
+
+viewerProjectionFirstFrameCoordinates <- function(name) {
+  cache <- viewerProjectionFirstFrameCache()
+  projection <- cache$projections[[name]]
+  if (!is.null(projection)) projection else getProjection(name)
+}
+
+viewerProjectionDefaults <- function(
+  metadata,
+  projections,
+  parameters = list()
+) {
+  color_choices <- setdiff(colnames(metadata), "cell_barcode")
+  main_group <- parameters[["main_group"]]
+  color_variable <- if (
+    is.character(main_group) &&
+      length(main_group) == 1L &&
+      !is.na(main_group) &&
+      main_group %in% color_choices
+  ) {
+    main_group
+  } else if ("cell_type" %in% color_choices) {
+    "cell_type"
+  } else if (length(color_choices)) {
+    color_choices[[1L]]
+  } else {
+    NULL
+  }
+  list(
+    projection = if (length(projections)) projections[[1L]] else NULL,
+    color_variable = color_variable
+  )
+}
+
 ## Apply the shared projection filters and sample original metadata row ids.
-viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
+) {
   groups <- getGroups()
-  percentage <- input[[paste0(prefix, "_percentage_cells_to_show")]]
   filters <- stats::setNames(
     lapply(groups, function(group) {
       value <- input[[paste0(prefix, "_group_filter_", group)]]
@@ -365,7 +411,7 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
       size <- ceiling(cell_count * percentage / 100)
       return(sample.int(cell_count, size))
     }
-    return(sample.int(cell_count))
+    return(seq_len(cell_count))
   }
   indices <- which(cerebroGroupFilterMask(metadata, filters))
   if (!length(indices)) {
@@ -374,9 +420,41 @@ viewerProjectionCellIndices <- function(prefix, metadata = getMetaData()) {
   size <- if (percentage < 100) {
     ceiling(length(indices) * percentage / 100)
   } else {
-    length(indices)
+    return(indices)
   }
   indices[sample.int(length(indices), size)]
+}
+
+viewerProjectionMetadataColumns <- function(
+  metadata,
+  color_variable,
+  hover_info,
+  groups
+) {
+  columns <- c("cell_barcode", color_variable)
+  if (isTRUE(hover_info)) {
+    columns <- c(columns, "nUMI", "nGene", groups)
+  }
+  unique(columns[columns %in% colnames(metadata)])
+}
+
+viewerProjectionFirstFrameColumns <- function(metadata, color_variable) {
+  unique(color_variable[color_variable %in% colnames(metadata)])
+}
+
+viewerProjectionSubsetRows <- function(
+  table,
+  indices,
+  columns = colnames(table)
+) {
+  if (is.null(columns)) {
+    columns <- colnames(table)
+  }
+  table <- table[, columns, drop = FALSE]
+  if (identical(indices, seq_len(nrow(table)))) {
+    return(table)
+  }
+  table[indices, , drop = FALSE]
 }
 
 ## Prefer the R6 row accessor so a single-gene request never needs a temporary
@@ -601,12 +679,59 @@ cerebroCellViewMessage <- function(
 .cerebro_cell_view_wire_serial <- 0L
 .cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
 
+cerebroCellViewDeferredAux <- function(
+  selection_rows,
+  cell_barcodes,
+  hover_columns = list(),
+  hover = FALSE
+) {
+  grouped <- is.list(selection_rows)
+  reorder <- function(values) {
+    if (grouped) {
+      return(lapply(selection_rows, function(rows) I(unname(values[rows]))))
+    }
+    I(unname(values[selection_rows]))
+  }
+  columns <- if (isTRUE(hover)) {
+    lapply(hover_columns, function(column) {
+      column$values <- reorder(column$values)
+      column
+    })
+  } else {
+    list()
+  }
+  list(
+    selection_key = reorder(as.character(cell_barcodes)),
+    hover = list(
+      hoverinfo = if (isTRUE(hover)) "text" else "skip",
+      columns = columns
+    )
+  )
+}
+
+cerebroCellViewResolveDeferredAux <- function(message) {
+  if (!is.function(message$build)) {
+    return(message)
+  }
+  build <- message$build
+  message$build <- NULL
+  resolved <- build()
+  if (!is.list(resolved)) {
+    stop("deferred cell-view auxiliary data must be a list")
+  }
+  for (name in names(resolved)) {
+    message[[name]] <- resolved[[name]]
+  }
+  message
+}
+
 cerebroCellViewRender <- function(
   id,
   meta,
   data,
   hover = list(),
-  extra = list()
+  extra = list(),
+  deferred_aux = NULL
 ) {
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
   if (
@@ -641,19 +766,35 @@ cerebroCellViewRender <- function(
       if (length(stale)) {
         rm(list = stale, envir = .cerebro_cell_view_aux_pending)
       }
-      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- list(
-        id = id,
-        wire_token = token,
-        selection_key = selection_keys,
-        hover = full_hover
-      )
+      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
+        is.function(deferred_aux)
+      ) {
+        list(id = id, wire_token = token, build = deferred_aux)
+      } else {
+        list(
+          id = id,
+          wire_token = token,
+          selection_key = selection_keys,
+          hover = full_hover
+        )
+      }
     } else {
+      if (is.function(deferred_aux)) {
+        auxiliary <- deferred_aux()
+        message$data$selection_key <- auxiliary$selection_key
+        message$hover <- auxiliary$hover
+      }
       session$sendBinaryMessage(
         "cell_view_binary",
         cv_wire_pack_message(message)
       )
     }
   } else {
+    if (is.function(deferred_aux)) {
+      auxiliary <- deferred_aux()
+      message$data$selection_key <- auxiliary$selection_key
+      message$hover <- auxiliary$hover
+    }
     session$sendCustomMessage("cell_view_render", message)
   }
 }
@@ -2232,6 +2373,11 @@ getGroups <- function() {
   }
 }
 getGroupLevels <- function(group) {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$meta_data) && group %in% colnames(cache$meta_data)) {
+    values <- cache$meta_data[[group]]
+    return(if (is.factor(values)) levels(values) else unique(values))
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupLevels(group))
   }
@@ -2270,6 +2416,10 @@ getNumberOfCells <- function() {
   .runtimeCerebroCellCount(data_set())
 }
 availableProjections <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$projections)) {
+    return(names(cache$projections))
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$availableProjections())
   }
@@ -3018,6 +3168,7 @@ get_or_load_crb <- function(
     rownames(projection) <- cells
     projections[[name]] <- projection
   }
+  rownames(metadata) <- NULL
   list(
     meta_data = data.frame(
       cell_barcode = cells,
@@ -3062,6 +3213,10 @@ get_or_load_crb <- function(
   metadata <- obj$meta_data
   projections <- obj$projections
   .validateThinCrbShape(metadata, projections, schema)
+  attr(obj, "cerebro_projection_first_frame") <- list(
+    meta_data = metadata,
+    projections = projections
+  )
   hydrate <- local({
     hydrated <- NULL
     function() {

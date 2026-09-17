@@ -171,10 +171,12 @@ test_that("Informational Canvas text uses the readable secondary token", {
 
 test_that("Projection honours main group before its cell-type fallback", {
   ui <- viewer_source("overview", "UI_projection_main_parameters.R")
+  utility <- viewer_source("utility_functions.R")
 
-  expect_match(ui, 'parameters[["main_group"]]', fixed = TRUE)
-  expect_match(ui, "main_group %in% color_choices", fixed = TRUE)
-  expect_match(ui, '"cell_type" %in% color_choices', fixed = TRUE)
+  expect_match(ui, "viewerProjectionDefaults", fixed = TRUE)
+  expect_match(utility, 'parameters[["main_group"]]', fixed = TRUE)
+  expect_match(utility, "main_group %in% color_choices", fixed = TRUE)
+  expect_match(utility, '"cell_type" %in% color_choices', fixed = TRUE)
 })
 
 test_that("Cell-view More settings expose only effective appearance controls", {

@@ -129,12 +129,19 @@
   }
   expression_backend <- .cerebroBackend(object)
   if (!identical(expression_backend$type, "bpcells")) {
-    stop("An immune repertoire sidecar requires a BPCells backend.", call. = FALSE)
+    stop(
+      "An immune repertoire sidecar requires a BPCells backend.",
+      call. = FALSE
+    )
   }
   root <- .cerebroSidecar(file, expression_backend)
   repertoire_file <- file.path(root, descriptor$file)
   if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
-    stop("The immune repertoire sidecar is missing: ", repertoire_file, call. = FALSE)
+    stop(
+      "The immune repertoire sidecar is missing: ",
+      repertoire_file,
+      call. = FALSE
+    )
   }
   list(
     type = "bpcells-file",
@@ -182,7 +189,11 @@
     payload$bcr_data <- list()
     payload$tcr_data <- list()
     payload$immune_repertoire_backend <- immune_backend[c(
-      "type", "file", "md5", "samples", "chains"
+      "type",
+      "file",
+      "md5",
+      "samples",
+      "chains"
     )]
   }
   if (identical(backend$type, "embedded")) {
@@ -224,6 +235,7 @@
     }
   }
 
+  rownames(metadata) <- NULL
   metadata$cell_barcode <- NULL
   for (name in intersect(c("nUMI", "nGene"), names(metadata))) {
     metadata[[name]] <- .compactCountColumn(metadata[[name]])
@@ -390,6 +402,7 @@
     rownames(projection) <- cells
     object$projections[[name]] <- projection
   }
+  rownames(metadata) <- NULL
   object$meta_data <- data.frame(
     cell_barcode = cells,
     metadata,
@@ -448,7 +461,10 @@
   if (
     !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
   ) {
-    root <- file.path(dirname(normalizePath(file, mustWork = FALSE)), backend$location)
+    root <- file.path(
+      dirname(normalizePath(file, mustWork = FALSE)),
+      backend$location
+    )
   }
   list(type = "directory", location = backend$location, root = root)
 }
@@ -477,10 +493,16 @@
   location <- .spatialMoleculeSidecarName(file)
   stage <- tempfile(paste0(".", location, "-"), dirname(file))
   if (!dir.create(stage, recursive = FALSE, showWarnings = FALSE)) {
-    stop("Could not create the spatial molecule staging directory.", call. = FALSE)
+    stop(
+      "Could not create the spatial molecule staging directory.",
+      call. = FALSE
+    )
   }
   committed <- FALSE
-  on.exit(if (!committed) unlink(stage, recursive = TRUE, force = TRUE), add = TRUE)
+  on.exit(
+    if (!committed) unlink(stage, recursive = TRUE, force = TRUE),
+    add = TRUE
+  )
   extension <- if (identical(codec, "qs2")) "qs2" else "rds"
   indices <- which(has_molecules)
   for (position in seq_along(indices)) {
@@ -490,10 +512,15 @@
     target <- file.path(stage, sidecar_file)
     if (inherits(molecules, "CerebroSpatialMoleculeRef")) {
       if (is.null(source_backend)) {
-        stop("Spatial molecule reference has no sidecar backend.", call. = FALSE)
+        stop(
+          "Spatial molecule reference has no sidecar backend.",
+          call. = FALSE
+        )
       }
       source <- file.path(source_backend$root, molecules$file)
-      if (!file.exists(source) || dir.exists(source) || !file.copy(source, target)) {
+      if (
+        !file.exists(source) || dir.exists(source) || !file.copy(source, target)
+      ) {
         stop("Could not copy a spatial molecule sidecar entry.", call. = FALSE)
       }
     } else {
@@ -520,7 +547,11 @@
     return(object)
   }
   if (!dir.exists(backend$root)) {
-    stop("The spatial molecule sidecar is missing: ", backend$root, call. = FALSE)
+    stop(
+      "The spatial molecule sidecar is missing: ",
+      backend$root,
+      call. = FALSE
+    )
   }
   object$spatial_molecule_backend <- backend
   object
@@ -535,7 +566,12 @@
   object
 }
 
-.installCerebroPayload <- function(stage, file, spatial_stage = NULL, spatial = NULL) {
+.installCerebroPayload <- function(
+  stage,
+  file,
+  spatial_stage = NULL,
+  spatial = NULL
+) {
   backup <- NULL
   spatial_backup <- NULL
   installed_spatial <- FALSE
@@ -543,8 +579,12 @@
   on.exit(
     {
       if (!committed) {
-        if (file.exists(file)) unlink(file, force = TRUE)
-        if (!is.null(backup) && file.exists(backup)) file.rename(backup, file)
+        if (file.exists(file)) {
+          unlink(file, force = TRUE)
+        }
+        if (!is.null(backup) && file.exists(backup)) {
+          file.rename(backup, file)
+        }
         if (installed_spatial && dir.exists(spatial)) {
           unlink(spatial, recursive = TRUE, force = TRUE)
         }
@@ -621,18 +661,23 @@ saveCerebro <- function(object, file, codec = c("qs2", "rds")) {
   spatial <- .stageSpatialMolecules(payload, file, codec)
   payload <- spatial$payload
   stage <- tempfile(paste0(".", basename(file), "-"), dirname(file))
-  on.exit({
-    unlink(stage, force = TRUE)
-    if (!is.null(spatial$stage)) {
-      unlink(spatial$stage, recursive = TRUE, force = TRUE)
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      unlink(stage, force = TRUE)
+      if (!is.null(spatial$stage)) {
+        unlink(spatial$stage, recursive = TRUE, force = TRUE)
+      }
+    },
+    add = TRUE
+  )
   .writeCerebroPayload(payload, stage, codec)
   .installCerebroPayload(
     stage,
     file,
     spatial_stage = spatial$stage,
-    spatial = if (is.null(spatial$location)) NULL else {
+    spatial = if (is.null(spatial$location)) {
+      NULL
+    } else {
       file.path(dirname(file), spatial$location)
     }
   )

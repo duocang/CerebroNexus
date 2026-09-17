@@ -11,7 +11,7 @@ output[["overview_details_selected_cells_table"]] <- DT::renderDataTable({
   ## ... selection has not been made or there is no cell in it
   if (is.null(overview_projection_selected_cells())) {
     ## prepare empty table
-    getMetaData() %>%
+    viewerProjectionFirstFrameMetadata() %>%
       dplyr::slice(0) %>%
       prepareEmptyTable()
     ## ... selection has been made and at least 1 cell is in it
@@ -46,7 +46,7 @@ output[["overview_details_selected_cells_table"]] <- DT::renderDataTable({
     ## ... no cells are left
     if (nrow(cells_df) == 0) {
       ## prepare empty table
-      getMetaData() %>%
+      viewerProjectionFirstFrameMetadata() %>%
         dplyr::slice(0) %>%
         prepareEmptyTable()
       ## ... at least 1 cell is left

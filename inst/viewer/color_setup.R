@@ -110,7 +110,7 @@ color_input_id <- function(variable, level) {
 reactive_colors <- reactive({
   req(data_set())
   ## get cell meta data
-  meta_data <- getMetaData()
+  meta_data <- viewerProjectionFirstFrameMetadata()
   colors <- list()
 
   configured <- resolve_configured_colors(

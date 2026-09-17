@@ -2,33 +2,26 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_main_parameters_UI"]] <- renderUI({
-  color_choices <- setdiff(colnames(getMetaData()), "cell_barcode")
+  metadata <- viewerProjectionFirstFrameMetadata()
+  color_choices <- setdiff(colnames(metadata), "cell_barcode")
   parameters <- tryCatch(getParameters(), error = function(e) list())
-  main_group <- parameters[["main_group"]]
+  defaults <- viewerProjectionDefaults(
+    metadata,
+    availableProjections(),
+    parameters
+  )
   tagList(
     selectInput(
       "overview_projection_to_display",
       label = "Projection",
-      choices = availableProjections()
+      choices = availableProjections(),
+      selected = defaults$projection
     ),
     selectInput(
       "overview_projection_point_color",
       label = "Colour by",
       choices = color_choices,
-      selected = if (
-        is.character(main_group) &&
-          length(main_group) == 1L &&
-          !is.na(main_group) &&
-          main_group %in% color_choices
-      ) {
-        main_group
-      } else if ("cell_type" %in% color_choices) {
-        "cell_type"
-      } else if (length(color_choices)) {
-        color_choices[[1L]]
-      } else {
-        NULL
-      }
+      selected = defaults$color_variable
     )
   )
 })

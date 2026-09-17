@@ -129,6 +129,23 @@ test_that("Data Info starts a non-blocking CRB prefetch", {
   expect_match(server, "prefetch_task$result()", fixed = TRUE)
 })
 
+test_that("dataset changes reset Data Info before full-load reactives run", {
+  viewer_root <- dirname(utils_file)
+  server <- paste(
+    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    paste0(
+      "(?s)observeEvent\\(\\n    available_crb_files\\$selected,.*?",
+      "priority = 100"
+    ),
+    perl = TRUE
+  )
+})
+
 test_that("a prefetched CRB prototype enters the process cache", {
   cache_prototype <- utils_env$.cacheCrbPrototype
   expect_true(is.function(cache_prototype))

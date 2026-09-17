@@ -73,6 +73,7 @@ server <- function(input, output, session) {
       message <- .cerebro_cell_view_aux_pending[[key]]
       req(!is.null(message))
       rm(list = key, envir = .cerebro_cell_view_aux_pending)
+      message <- cerebroCellViewResolveDeferredAux(message)
       session$sendBinaryMessage(
         "cell_view_aux_binary",
         cv_wire_pack_message(message)
@@ -485,7 +486,8 @@ server <- function(input, output, session) {
         )
       }
     },
-    ignoreNULL = FALSE
+    ignoreNULL = FALSE,
+    priority = 100
   )
 
   observeEvent(
