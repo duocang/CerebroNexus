@@ -298,20 +298,36 @@ test_that("projection can render before its dynamic controls bind", {
   expect_match(parameter_source, "reset_axes = TRUE", fixed = TRUE)
 })
 
-test_that("unchanged late-bound projection controls do not redraw", {
-  event_source <- paste(
-    readLines(
+test_that("a new projection mount redraws unchanged data", {
+  server <- function(input, output, session) {
+    renders <- 0L
+    overview_projection_data_to_plot <- reactive({
+      input[["late_bound_control"]]
+      list(value = 1L)
+    })
+    overview_projection_update_plot <- function(data) {
+      renders <<- renders + 1L
+    }
+    sys.source(
       viewer_test_path("overview", "event_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
+      envir = environment()
+    )
+    session$userData$render_count <- function() renders
+  }
 
-  expect_match(
-    event_source,
-    "identical(data, overview_projection_last_data)",
-    fixed = TRUE
-  )
+  shiny::testServer(server, {
+    session$setInputs(
+      overview_projection_render_request = 1,
+      late_bound_control = 1
+    )
+    expect_identical(session$userData$render_count(), 1L)
+
+    session$setInputs(late_bound_control = 2)
+    expect_identical(session$userData$render_count(), 1L)
+
+    session$setInputs(overview_projection_render_request = 2)
+    expect_identical(session$userData$render_count(), 2L)
+  })
 })
 
 test_that("full ordered projection rows bypass row subsetting", {
