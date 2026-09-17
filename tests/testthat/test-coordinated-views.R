@@ -660,16 +660,23 @@ test_that("progressive Linked views separates primary paint from completion", {
     collapse = "\n"
   )
 
-  expect_match(client, "ready: rendered", fixed = TRUE)
+  expect_match(client, "primaryReady: rendered", fixed = TRUE)
   expect_match(
     client,
-    "complete: !!(rendered && !D.progressive &&",
+    "ready: complete",
     fixed = TRUE
   )
-  expect_match(client, "complete: summary.complete", fixed = TRUE)
+  expect_match(client, "complete: complete", fixed = TRUE)
+  expect_match(client, "primaryReady: summary.primaryReady", fixed = TRUE)
+  expect_match(client, "ready: summary.ready", fixed = TRUE)
   expect_match(
     client,
-    "if (summary.ready && D.progressive && Shiny.setInputValue)",
+    "if (summary.primaryReady && D.progressive && Shiny.setInputValue)",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "primaryReady: function () { return workspaceSummary().primaryReady; }",
     fixed = TRUE
   )
   expect_match(

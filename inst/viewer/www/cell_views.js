@@ -7133,10 +7133,12 @@
     var rendered = !!(D && configFingerprint() && panels.some(function (panel) {
       return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
     }));
+    var complete = !!(rendered && !D.progressive &&
+      Array.isArray(D.cells) && D.cells.length === D.n);
     return {
-      ready: rendered,
-      complete: !!(rendered && !D.progressive &&
-        Array.isArray(D.cells) && D.cells.length === D.n),
+      primaryReady: rendered,
+      ready: complete,
+      complete: complete,
       datasetFingerprint: D ? configFingerprint() : null,
       selectedCells: sel ? sel.size : 0,
       selectedCellBarcodes: selectedCellIds(),
@@ -7175,12 +7177,13 @@
     var summary = workspaceSummary();
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
+        primaryReady: summary.primaryReady,
         ready: summary.ready,
         complete: summary.complete,
         selectedCells: summary.selectedCells
       }
     }));
-    if (summary.ready && D.progressive && Shiny.setInputValue) {
+    if (summary.primaryReady && D.progressive && Shiny.setInputValue) {
       var key = String(D.dataset_id || '') + '\u0000' + configFingerprint() +
         '\u0000' + String(D.progressive_token || '');
       if (progressiveRequestedKey !== key) {
@@ -7196,6 +7199,7 @@
   }
 
   window.cerebroLinkedViewsState = Object.freeze({
+    primaryReady: function () { return workspaceSummary().primaryReady; },
     ready: function () { return workspaceSummary().ready; },
     capture: exportWorkspace,
     apply: applyWorkspace,
