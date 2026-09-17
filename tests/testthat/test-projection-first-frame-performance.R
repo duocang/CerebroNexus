@@ -118,6 +118,14 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
   expect_gt(metadata_at, deferred_at)
 })
 
+test_that("first-frame cache is optional outside a loaded dataset", {
+  scope <- new.env(parent = globalenv())
+  scope$data_set <- NULL
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+
+  expect_null(scope$viewerProjectionFirstFrameCache())
+})
+
 test_that("projection auxiliary data is built only after it is requested", {
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)

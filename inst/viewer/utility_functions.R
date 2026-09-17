@@ -324,7 +324,13 @@ viewerOutputTab <- function(ids) {
   )
 }
 
-viewerProjectionFirstFrameCache <- function(object = data_set()) {
+viewerProjectionFirstFrameCache <- function(object = NULL) {
+  if (is.null(object)) {
+    if (!exists("data_set", mode = "function", inherits = TRUE)) {
+      return(NULL)
+    }
+    object <- data_set()
+  }
   cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
   if (is.list(cache)) cache else NULL
 }
