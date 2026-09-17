@@ -598,6 +598,7 @@ observeEvent(
     )
     kind <- as.character(request$kind %||% "")
     name <- as.character(request$name %||% "")
+    req(length(kind) == 1L, length(name) == 1L, nzchar(name))
     values <- switch(
       kind,
       groups = bundle$groups,
@@ -605,7 +606,7 @@ observeEvent(
       fields = bundle$fields,
       NULL
     )
-    req(length(kind) == 1L, length(name) == 1L, !is.null(values[[name]]))
+    req(!is.null(values[[name]]))
     session$sendBinaryMessage(
       "coordviews_attribute",
       cv_wire_pack_message(list(
@@ -1276,17 +1277,17 @@ cv_fmt_value <- function(v) {
 
 observeEvent(input[["coordviews_cell_detail"]], {
   request <- input[["coordviews_cell_detail"]]
-  index <- if (is.list(request)) {
-    suppressWarnings(as.integer(request$index))
+  index <- if (is.list(request) && length(request$index) == 1L) {
+    suppressWarnings(as.integer(request$index[[1L]]))
   } else {
     NA_integer_
   }
-  bc <- if (length(index) == 1L && !is.na(index)) {
+  bc <- if (!is.na(index)) {
     cv_cells_at_indices(cv_saved_view_cells(), index)
   } else {
     as.character(request)
   }
-  if (is.null(bc) || !nzchar(bc)) {
+  if (length(bc) != 1L || is.na(bc) || !nzchar(bc)) {
     return()
   }
   md <- tryCatch(
