@@ -63,6 +63,18 @@ cv_cell_metadata <- function(metadata, cell) {
   metadata[index, , drop = FALSE]
 }
 
+cv_cells_at_indices <- function(cells, indices) {
+  if (is.null(indices) || !length(indices)) {
+    return(NULL)
+  }
+  indices <- suppressWarnings(as.integer(indices))
+  keep <- !is.na(indices) & indices >= 0L & indices < length(cells)
+  if (!any(keep)) {
+    return(NULL)
+  }
+  as.character(cells[indices[keep] + 1L])
+}
+
 ## Categorical palette (mirrors the app's plotly categorical colours).
 cv_palette <- c(
   "#636EFA",
@@ -1455,7 +1467,7 @@ cv_build_trekker <- function(crb, cells, md) {
 
 ## Immune axis: clone identity, sizes, ranks, a clone "space", expansion level.
 ## Returns list(space, group, bundle) or NULL when there is no receptor data.
-cv_build_clone <- function(crb, cells, n) {
+cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   receptors <- if (is.list(pack)) {
     as.character(pack$manifest$immune_receptors)
@@ -1571,6 +1583,19 @@ cv_build_clone <- function(crb, cells, n) {
     cp$receptor,
     unname(clone_cdr3)
   )
+  if (isTRUE(sparse)) {
+    receptor_index <- which(!is.na(cell_clone))
+    group <- list(
+      index = I(as.integer(receptor_index - 1L)),
+      values = I(as.integer(unclass(group$values)[receptor_index])),
+      default = 0L,
+      levels = group$levels,
+      colors = group$colors
+    )
+    bundle$index <- I(as.integer(receptor_index - 1L))
+    bundle$code <- I(as.integer(cell_clone[receptor_index] - 1L))
+    bundle$id <- NULL
+  }
   list(space = space, group = group, bundle = bundle)
 }
 
@@ -1931,25 +1956,58 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
   )
 }
 
-cv_bundle_supplement <- function(primary, full) {
+cv_bundle_supplement <- function(primary, full, compact = FALSE) {
   missing_named <- function(all, initial) {
     all[setdiff(names(all), names(initial))]
   }
   primary_space_ids <- vapply(primary$spaces, `[[`, character(1), "id")
+  groups <- missing_named(full$groups, primary$groups)
+  cat_extra <- missing_named(full$cat_extra, primary$cat_extra)
+  fields <- missing_named(full$fields, primary$fields)
+  clone <- full$clone
+  if (isTRUE(compact)) {
+    defer <- function(values, member) {
+      lapply(values, function(value) {
+        value[[member]] <- NULL
+        value$deferred <- TRUE
+        value
+      })
+    }
+    groups <- defer(groups, "values")
+    cat_extra <- defer(cat_extra, "values")
+    fields <- defer(fields, "v")
+    if (!is.null(clone) && !is.null(clone$id)) {
+      clone_ids <- as.integer(clone$id)
+      receptor_index <- which(clone_ids >= 0L)
+      clone$index <- I(as.integer(receptor_index - 1L))
+      clone$code <- I(clone_ids[receptor_index])
+      clone$id <- NULL
+      expansion <- full$groups[["clone_expansion"]]
+      if (!is.null(expansion) && "clone_expansion" %in% names(groups)) {
+        groups[["clone_expansion"]] <- list(
+          index = I(as.integer(receptor_index - 1L)),
+          values = I(as.integer(expansion$values[receptor_index])),
+          default = 0L,
+          levels = expansion$levels,
+          colors = expansion$colors
+        )
+      }
+    }
+  }
   list(
     dataset_id = full$dataset_id,
     dataset_fingerprint = full$dataset_fingerprint,
     progressive_token = primary$progressive_token,
-    groups = missing_named(full$groups, primary$groups),
-    cat_extra = missing_named(full$cat_extra, primary$cat_extra),
-    fields = missing_named(full$fields, primary$fields),
+    groups = groups,
+    cat_extra = cat_extra,
+    fields = fields,
     cat_skipped = full$cat_skipped,
     projections = missing_named(full$projections, primary$projections),
     spaces = Filter(
       function(space) !space$id %in% primary_space_ids,
       full$spaces
     ),
-    clone = full$clone,
+    clone = clone,
     trekker = full$trekker
   )
 }

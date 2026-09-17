@@ -103,6 +103,7 @@ coordviews_background_ready <- reactiveVal(FALSE)
 cv_build_bundle_safe <- function(primary_only = FALSE) {
   tryCatch(
     {
+      started <- proc.time()[["elapsed"]]
       b <- cv_build_bundle(
         data_set(),
         primary_only,
@@ -121,6 +122,8 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
         )
       } else {
         b$dataset_fingerprint <- cv_saved_view_dataset()$fingerprint
+        attr(b, "server_prepare_ms") <-
+          (proc.time()[["elapsed"]] - started) * 1000
         b
       }
     },
@@ -260,6 +263,20 @@ cv_config_validate_genes <- function(config, cells) {
   )
 }
 
+cv_config_materialize_selection <- function(config, cells) {
+  if (
+    is.list(config) &&
+      identical(config$schema, CV_CONFIG_SCHEMA) &&
+      is.list(config$selection) &&
+      !is.null(config$selection$indices)
+  ) {
+    resolved <- cv_cells_at_indices(cells, config$selection$indices)
+    config$selection$cells <- if (is.null(resolved)) character() else resolved
+    config$selection$indices <- NULL
+  }
+  config
+}
+
 observeEvent(
   input[["coordviews_config_request"]],
   {
@@ -303,7 +320,7 @@ observeEvent(
         )
         dataset <- cv_saved_view_dataset()
         prepared <- cv_config_prepare(
-          request$config,
+          cv_config_materialize_selection(request$config, dataset$cells),
           cells = dataset$cells,
           fingerprint = dataset$fingerprint
         )
@@ -382,6 +399,9 @@ observeEvent(
           TRUE,
           config = cv_config_json_document(normalized),
           colour_data = colour_data,
+          selection_indices = I(as.integer(
+            match(normalized$selection$cells, dataset$cells) - 1L
+          )),
           selected_cells = length(normalized$selection$cells)
         )
       },
@@ -447,9 +467,30 @@ observe(
         primary,
         cv_color_patch(primary, colors)
       )
+      shared <- input[["coordviews_shared_base"]]
+      if (
+        is.list(shared) &&
+          identical(
+            as.character(shared$dataset_fingerprint %||% ""),
+            primary$dataset_fingerprint
+          ) &&
+          identical(as.integer(shared$cell_count), as.integer(primary$n)) &&
+          as.character(shared$projection %||% "") %in%
+            names(primary$projections)
+      ) {
+        projection <- as.character(shared$projection)
+        primary$shared_projection <- projection
+        primary$projections[[projection]]$x <- NULL
+        primary$projections[[projection]]$y <- NULL
+        primary$projections[[projection]]$z <- NULL
+      }
       coordviews_background_ready(FALSE)
       primary$progressive <- TRUE
       primary$progressive_token <- primary_n
+      primary$transport_profile <- list(
+        server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
+        sent_at_ms = as.numeric(Sys.time()) * 1000
+      )
       session$sendBinaryMessage(
         "coordviews_binary",
         cv_wire_pack_bundle(primary, include_cells = FALSE)
@@ -512,23 +553,55 @@ observeEvent(
       identical(bundle$dataset_id, primary$dataset_id),
       identical(bundle$dataset_fingerprint, primary$dataset_fingerprint)
     )
+    supplement <- cv_bundle_supplement(primary, bundle, compact = TRUE)
+    supplement$transport_profile <- list(
+      server_prepare_ms = attr(bundle, "server_prepare_ms") %||% NA_real_,
+      sent_at_ms = as.numeric(Sys.time()) * 1000
+    )
     session$sendBinaryMessage(
       "coordviews_supplement",
-      cv_wire_pack_message(cv_bundle_supplement(primary, bundle))
-    )
-    cells <- cv_saved_view_cells()
-    dataset_id <- primary$dataset_id
-    session$onFlushed(
-      function() {
-        session$sendBinaryMessage(
-          "coordviews_cells",
-          cv_wire_pack_cells(dataset_id, cells)
-        )
-      },
-      once = TRUE
+      cv_wire_pack_message(supplement)
     )
     coordviews_background_ready(TRUE)
     coordviews_build_log$supplemented_primary_n <- primary_n
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["coordviews_attribute_request"]],
+  {
+    request <- input[["coordviews_attribute_request"]]
+    bundle <- isolate(coordviews_bundle())
+    req(
+      is.list(request),
+      is.null(bundle$error),
+      identical(as.character(request$dataset_id), bundle$dataset_id),
+      identical(
+        as.character(request$dataset_fingerprint),
+        bundle$dataset_fingerprint
+      )
+    )
+    kind <- as.character(request$kind %||% "")
+    name <- as.character(request$name %||% "")
+    values <- switch(
+      kind,
+      groups = bundle$groups,
+      cat_extra = bundle$cat_extra,
+      fields = bundle$fields,
+      NULL
+    )
+    req(length(kind) == 1L, length(name) == 1L, !is.null(values[[name]]))
+    session$sendBinaryMessage(
+      "coordviews_attribute",
+      cv_wire_pack_message(list(
+        dataset_id = bundle$dataset_id,
+        dataset_fingerprint = bundle$dataset_fingerprint,
+        kind = kind,
+        name = name,
+        value = values[[name]]
+      ))
+    )
   },
   ignoreInit = TRUE
 )
@@ -563,11 +636,12 @@ observeEvent(input[["coordviews_wire_fallback"]], {
 ## The client-side composition + top-clonotype readout is unaffected and stays.
 ##----------------------------------------------------------------------------##
 coordviews_selected_barcodes <- reactive({
-  sel <- input[["coordviews_selection"]]
-  if (is.null(sel) || !length(sel)) {
-    return(NULL)
+  indices <- input[["coordviews_selection_indices"]]
+  if (!is.null(indices) && length(indices)) {
+    return(cv_cells_at_indices(cv_saved_view_cells(), indices))
   }
-  as.character(sel)
+  sel <- input[["coordviews_selection"]]
+  if (is.null(sel) || !length(sel)) NULL else as.character(sel)
 })
 
 ## Boxes appear only while a selection exists (same gating as the Overview tab).
@@ -1187,7 +1261,17 @@ cv_fmt_value <- function(v) {
 }
 
 observeEvent(input[["coordviews_cell_detail"]], {
-  bc <- input[["coordviews_cell_detail"]]
+  request <- input[["coordviews_cell_detail"]]
+  index <- if (is.list(request)) {
+    suppressWarnings(as.integer(request$index))
+  } else {
+    NA_integer_
+  }
+  bc <- if (length(index) == 1L && !is.na(index)) {
+    cv_cells_at_indices(cv_saved_view_cells(), index)
+  } else {
+    as.character(request)
+  }
   if (is.null(bc) || !nzchar(bc)) {
     return()
   }
@@ -1204,7 +1288,11 @@ observeEvent(input[["coordviews_cell_detail"]], {
   })
   session$sendCustomMessage(
     "coordviews_cell_meta",
-    list(cell = as.character(bc), rows = rows)
+    list(
+      index = if (is.na(index)) NULL else index,
+      cell = as.character(bc),
+      rows = rows
+    )
   )
 })
 

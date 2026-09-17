@@ -35,6 +35,7 @@
   var linkedState = null;       // Linked workspace state while a single page owns the surface
   var pendingColorPatch = null; // palette received before its dataset bundle
   var progressiveRequestedKey = null;
+  var transportMetrics = {};
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
@@ -261,6 +262,10 @@
     });
   }
   function fmt(n) { return (n == null || isNaN(n)) ? '—' : n.toLocaleString('en-US'); }
+  function cellLabel(index) {
+    return Array.isArray(D && D.cells) && D.cells[index] != null
+      ? String(D.cells[index]) : 'Cell #' + (Number(index) + 1).toLocaleString('en-US');
+  }
   // Human-facing label for a group key. Metadata columns keep their own names;
   // the server-synthesised expansion group gets a readable label.
   function groupLabel(g) { return g === 'clone_expansion' ? 'Clone Expansion' : g; }
@@ -1561,7 +1566,21 @@
     var state = gpuDataState(p);
     if (sameGpuDataState(state, p.gpuDataState)) return p.gpuData;
     var unit = state.unit, order = paintOrder(p), n = D.n;
-    var positions = new Float32Array(shownCount * 2);
+    var shared = window.CerebroSharedDatasetState;
+    var sharedName = null;
+    var currentSpace = spaceById[p.spaceId];
+    if (shared && shownCount === n && !order && currentSpace) {
+      Object.keys(shared.projections || {}).some(function (name) {
+        var projection = shared.projections[name];
+        if (projection.x !== currentSpace.x || projection.y !== currentSpace.y) return false;
+        sharedName = name; return true;
+      });
+    }
+    var positions = sharedName && shared.gpuPositions[sharedName];
+    if (!positions || positions.length !== shownCount * 2) {
+      positions = new Float32Array(shownCount * 2);
+      if (sharedName) shared.gpuPositions[sharedName] = positions;
+    }
     var colors = new Uint8Array(shownCount * 4);
     var layers = new Uint32Array(shownCount);
     var rgb = panelColorMode(p) === RGB_MODE;
@@ -2644,7 +2663,7 @@
     var arr = null;
     if (specialistReport) {
       arr = specialistReport.ids;
-    } else if (hasSelection) {
+    } else if (hasSelection && Array.isArray(D && D.cells)) {
       arr = [];
       sel.forEach(function (i) { arr.push(D.cells[i]); });
     }
@@ -2662,7 +2681,8 @@
         Shiny.setInputValue(singleActive + '_persistent_selection',
           pendingStableSelection ? null : (arr ? { x: x, y: y, ids: arr } : null));
       } else {
-        Shiny.setInputValue('coordviews_selection', arr);
+        Shiny.setInputValue('coordviews_selection_indices', hasSelection
+          ? Array.from(sel) : null);
       }
     }
     if (singleActive) {
@@ -2681,7 +2701,7 @@
             : (hasSelection ? sel.size : 0),
           datasetFingerprint: configFingerprint()
         }
-        : { selectedCells: arr ? arr.length : 0 } }
+        : { selectedCells: hasSelection ? sel.size : 0 } }
     ));
   }
 
@@ -2802,7 +2822,7 @@
         pickKicker.hidden = false;
         pickKicker.textContent = 'Active cell';
       }
-      $('cv-seltext').innerHTML = 'Picked nucleus <b>' + esc(D.cells[pick]) + '</b>';
+      $('cv-seltext').innerHTML = 'Picked nucleus <b>' + esc(cellLabel(pick)) + '</b>';
 
       var pickProfile = $('cv-selprofile'), pickGroup = catOf(compGroupName());
       if (pickProfile) {
@@ -3284,7 +3304,7 @@
       var singleSpace = spaceById[singleSpaceIds[0]];
       var columns = singleSpace && singleSpace._hoverColumns;
       if (Array.isArray(columns) && columns.length) {
-        var lines = ['Cell: ' + (D.cells[i] || '')];
+        var lines = ['Cell: ' + cellLabel(i)];
         columns.forEach(function (column) {
           lines.push(column.label + ': ' + singleHoverColumnValue(column, i, singleSpace));
         });
@@ -3292,14 +3312,14 @@
           esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>';
       }
       var raw = singleSpace && singleNestedValue(singleSpace, singleSpace._hover, i);
-      var text = String(raw || D.cells[i] || '')
+      var text = String(raw || cellLabel(i))
         .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
       return '<div class="cv-tip-row">' + esc(text).replace(/\n/g, '<br>') + '</div>';
     }
     var rows = [];
     var g = catOf(colorBy);
     // headline = the active categorical level, else the barcode
-    var head = g ? g.levels[g.values[i]] : D.cells[i];
+    var head = g ? g.levels[g.values[i]] : cellLabel(i);
     var h = '<div class="cv-tip-row"><b>' + esc(head) + '</b></div>';
     // the continuous variable in play, at its true value
     var fld = fieldOf();
@@ -3420,10 +3440,11 @@
     var t = $('cv-card-title'), b = $('cv-card-bc'), body = $('cv-card-body');
     var it = $('cv-tk-cell-title'), ib = $('cv-tk-cell-bc');
     var inspectorBody = $('cv-tk-cell-body');
+    var barcode = cardMeta && cardMeta.index === i ? cardMeta.cell : cellLabel(i);
     if (t) t.textContent = g ? g.levels[g.values[i]] : 'Cell';
-    if (b) b.textContent = D.cells[i];
+    if (b) b.textContent = barcode;
     if (it) it.textContent = g ? g.levels[g.values[i]] : 'Cell';
-    if (ib) ib.textContent = D.cells[i];
+    if (ib) ib.textContent = barcode;
     if (!body && !inspectorBody) return;
     var html = '';
     var inspectorSections = [];
@@ -3467,14 +3488,14 @@
     if (evidenceImg && /^data:image\//.test(evidenceImg)) {
       addSection('evidence', 'Positioning evidence',
         '<button type="button" class="cv-evidence-thumb" ' +
-        'data-cell="' + esc(D.cells[i]) + '" aria-label="Enlarge positioning evidence">' +
+        'data-cell="' + esc(cellLabel(i)) + '" aria-label="Enlarge positioning evidence">' +
         '<img src="' + esc(evidenceImg) + '" alt="Positioning evidence for ' +
-        esc(D.cells[i]) + '"></button>' +
+        esc(cellLabel(i)) + '"></button>' +
         '<div class="cv-card-sub">Why this nucleus was placed here. Click to enlarge.</div>');
     }
     // the full meta row, or a placeholder until the server answers
     var metaHtml = '';
-    if (cardMeta && cardMeta.cell === D.cells[i] && cardMeta.rows) {
+    if (cardMeta && cardMeta.index === i && cardMeta.rows) {
       metaHtml = kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
     } else {
       metaHtml = '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
@@ -3570,7 +3591,7 @@
       return;
     }
     cardCell = i;
-    if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
+    if (!cardMeta || cardMeta.index !== i) cardMeta = null;
     renderCard();
     // The tooltip has just been promoted into the card — leaving it up would
     // show the same cell twice, once truncated. It returns on the next hover.
@@ -3579,18 +3600,18 @@
     cardFlyFrom(p, i);
     // ask for the exact meta row; the card is already on screen either way
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
+      Shiny.setInputValue('coordviews_cell_detail', { index: i },
         { priority: 'event' });
     }
   }
 
   function openTrekkerInspector(i) {
     cardCell = i;
-    if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
+    if (!cardMeta || cardMeta.index !== i) cardMeta = null;
     renderCard();
     openTrekkerInsights('cell');
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
+      Shiny.setInputValue('coordviews_cell_detail', { index: i },
         { priority: 'event' });
     }
   }
@@ -4576,7 +4597,35 @@
     var on = (colorBy === GENE_MODE) || !!fieldOf();
     el.style.display = on ? '' : 'none';
   }
+  function deferredColor(mode) {
+    var name = mode;
+    var kind = null;
+    var value = null;
+    if (mode && mode.indexOf(FIELD_PREFIX) === 0) {
+      name = mode.slice(FIELD_PREFIX.length);
+      kind = 'fields'; value = D.fields && D.fields[name];
+    } else if (D.groups && D.groups[name]) {
+      kind = 'groups'; value = D.groups[name];
+    } else if (D.cat_extra && D.cat_extra[name]) {
+      kind = 'cat_extra'; value = D.cat_extra[name];
+    }
+    return value && value.deferred ? { kind: kind, name: name, value: value } : null;
+  }
   function setColorBy(mode) {
+    var deferred = deferredColor(mode);
+    if (deferred) {
+      if (!deferred.value.requested && typeof Shiny !== 'undefined') {
+        deferred.value.requested = true;
+        Shiny.setInputValue('coordviews_attribute_request', {
+          dataset_id: D.dataset_id,
+          dataset_fingerprint: configFingerprint(),
+          kind: deferred.kind,
+          name: deferred.name,
+          nonce: Date.now()
+        }, { priority: 'event' });
+      }
+      return;
+    }
     var previousMode = colorBy;
     colorBy = mode; hidden = new Set();
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
@@ -5771,6 +5820,54 @@
       spaces: []
     };
   }
+  function sharedBase() {
+    var identity = window.cerebroSavedViewDataset || {};
+    window.CerebroSharedDatasetState = window.CBViewState.sharedBase(
+      window.CerebroSharedDatasetState,
+      String(identity.cell_fingerprint || ''),
+      Number(identity.cell_count) || 0
+    );
+    return window.CerebroSharedDatasetState;
+  }
+  function cacheSharedProjection(name, space, n) {
+    var base = sharedBase();
+    if (!name || !space || !base.datasetFingerprint || base.cellCount !== n ||
+        !space.x || space.x.length !== n || !space.y || space.y.length !== n) return;
+    var previous = base.projections[name];
+    if (previous && (previous.x !== space.x || previous.y !== space.y)) {
+      delete base.gpuPositions[name];
+    }
+    base.projections[name] = { x: space.x, y: space.y, z: space.z || null };
+    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('coordviews_shared_base', {
+        dataset_fingerprint: base.datasetFingerprint,
+        cell_count: base.cellCount,
+        projection: name
+      }, { priority: 'event' });
+    }
+  }
+  function reuseSharedProjection(bundle) {
+    var name = bundle && bundle.shared_projection;
+    var base = name && sharedBase();
+    var cached = base && base.projections[name];
+    var projection = bundle && bundle.projections && bundle.projections[name];
+    if (!cached || !projection || cached.x.length !== bundle.n) return bundle;
+    projection.x = cached.x; projection.y = cached.y;
+    if (cached.z) projection.z = cached.z;
+    return bundle;
+  }
+  function canonicalGroupedValues(grouped, groups, fallback) {
+    if (!Array.isArray(grouped) || !ArrayBuffer.isView(groups)) return null;
+    var out = new Array(groups.length);
+    var positions = new Uint32Array(grouped.length);
+    for (var i = 0; i < groups.length; i++) {
+      var group = Number(groups[i]);
+      var values = grouped[group] || [];
+      var value = values[positions[group]++];
+      out[i] = value == null ? fallback : value;
+    }
+    return out;
+  }
   function alignSingleCoordinates(data, nested) {
     var n = D && D.n || 0;
     var x = new Float64Array(n), y = new Float64Array(n);
@@ -5793,6 +5890,28 @@
     if (nested) {
       var traces = Array.isArray(data.meta.traces) ? data.meta.traces : [];
       var hoverModes = data.hover && data.hover.hoverinfo;
+      var canonicalGroups = data.data.canonical_group;
+      if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === n) {
+        var canonicalX = canonicalGroupedValues(data.data.x, canonicalGroups, NaN);
+        var canonicalY = canonicalGroupedValues(data.data.y, canonicalGroups, NaN);
+        var canonicalZ = z
+          ? canonicalGroupedValues(data.data.z, canonicalGroups, NaN) : null;
+        for (var canonicalIndex = 0; canonicalIndex < n; canonicalIndex++) {
+          x[canonicalIndex] = Number(canonicalX[canonicalIndex]);
+          y[canonicalIndex] = Number(canonicalY[canonicalIndex]);
+          if (z) z[canonicalIndex] = Number(canonicalZ[canonicalIndex]);
+          groups[canonicalIndex] = Number(canonicalGroups[canonicalIndex]);
+        }
+        traces.forEach(function (name, group) {
+          levels.push(String(name));
+          var colour = data.data.color && data.data.color[group];
+          colors.push(String(Array.isArray(colour) ? colour[0] : colour || '#7b8794'));
+        });
+        return {
+          x: x, y: y, z: z, groups: groups, levels: levels, colors: colors,
+          hover: [], hoverEnabled: hoverEnabled, hoverColumns: []
+        };
+      }
       var offset = 0;
       traces.forEach(function (name, group) {
         levels.push(String(name));
@@ -6187,6 +6306,13 @@
     });
     spaceById = {}; spatialTemplate = null; _clipD = null;
     var built = buildSingleSpaces(id, payload);
+    if (built.spaces.length && payload.meta && payload.meta.space_label) {
+      cacheSharedProjection(
+        String(payload.meta.space_label),
+        spaceById[built.spaces[0]],
+        D.n
+      );
+    }
     payload.data.reset_axes = false;
     singleSpaceIds = built.spaces; singleSpaceModes = built.modes;
     sanitiseColors(D);
@@ -6409,12 +6535,23 @@
 
   function onBinaryData(buffer) {
     var token = ++wireToken;
+    var started = performance.now();
     try {
       if (!window.CBViewWire || !window.CBViewWire.supported) {
         throw new Error('Linked views binary transport is unavailable');
       }
-      var decoded = window.CBViewWire.unpack(buffer);
+      var decoded = reuseSharedProjection(window.CBViewWire.unpack(buffer));
+      var decodedAt = performance.now();
       if (token === wireToken) applyData(decoded);
+      transportMetrics.primary = {
+        bytes: buffer.byteLength,
+        serverPrepareMs: decoded.transport_profile &&
+          Number(decoded.transport_profile.server_prepare_ms),
+        serializeTransferMs: decoded.transport_profile &&
+          Date.now() - Number(decoded.transport_profile.sent_at_ms),
+        decodeMs: decodedAt - started,
+        decodeToDrawMs: performance.now() - decodedAt
+      };
     } catch (error) {
       if (token !== wireToken) return;
       requestWireFallback('', '');
@@ -6438,15 +6575,40 @@
     }
   }
 
+  function hydrateSparseLinked(extra) {
+    var hydrateGroups = function (groups) {
+      Object.keys(groups || {}).forEach(function (name) {
+        var group = groups[name];
+        if (!group || !group.index || !group.values || group.default == null) return;
+        group.values = window.CBViewState.expandSparse(
+          group.index, group.values, D.n, Number(group.default)
+        );
+        delete group.index; delete group.default;
+      });
+    };
+    hydrateGroups(extra.groups);
+    hydrateGroups(extra.cat_extra);
+    if (extra.clone && extra.clone.index && extra.clone.code) {
+      extra.clone.id = window.CBViewState.expandSparse(
+        extra.clone.index, extra.clone.code, D.n, -1
+      );
+      delete extra.clone.index; delete extra.clone.code;
+    }
+    return extra;
+  }
+
   function onBinarySupplement(buffer) {
+    var started = performance.now();
     try {
       var extra = window.CBViewWire.unpack(buffer);
+      var decodedAt = performance.now();
       if (!D) return;
       if (!extra) throw new Error('Linked views supplement is empty');
       if (extra.dataset_id !== D.dataset_id ||
           extra.dataset_fingerprint !== configFingerprint() ||
           extra.progressive_token !== D.progressive_token ||
           !D.progressive) return;
+      extra = hydrateSparseLinked(extra);
       var saved = exportWorkspace();
       var merged = Object.assign({}, D, {
         groups: Object.assign({}, D.groups, extra.groups),
@@ -6462,11 +6624,36 @@
       applyData(merged);
       restoreWorkspace(saved);
       reportWorkspaceReady();
+      transportMetrics.supplement = {
+        bytes: buffer.byteLength,
+        serverPrepareMs: extra.transport_profile &&
+          Number(extra.transport_profile.server_prepare_ms),
+        serializeTransferMs: extra.transport_profile &&
+          Date.now() - Number(extra.transport_profile.sent_at_ms),
+        decodeMs: decodedAt - started,
+        decodeToDrawMs: performance.now() - decodedAt
+      };
     } catch (error) {
       requestWireFallback(
         D && D.dataset_id,
         D && configFingerprint()
       );
+    }
+  }
+
+  function onBinaryAttribute(buffer) {
+    try {
+      var message = window.CBViewWire.unpack(buffer);
+      if (!D || !message || message.dataset_id !== D.dataset_id ||
+          message.dataset_fingerprint !== configFingerprint()) return;
+      var target = D[message.kind];
+      if (!target || !target[message.name] || !message.value) return;
+      target[message.name] = message.value;
+      var mode = message.kind === 'fields'
+        ? FIELD_PREFIX + message.name : message.name;
+      setColorBy(mode);
+    } catch (error) {
+      requestWireFallback(D && D.dataset_id, D && configFingerprint());
     }
   }
 
@@ -6496,13 +6683,18 @@
       view.hover = message.hover || {};
       if (singleActive !== message.id) return;
       var cells = singlePayloadCells(view);
+      var canonicalGroups = view.data.canonical_group;
+      if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === D.n) {
+        cells = canonicalGroupedValues(view.data.selection_key, canonicalGroups, '');
+      }
       if (cells.length !== D.n) return;
       D.cells = cells;
       singleIndexCells = null; singleIndexMap = null;
       // A user may select immediately after the fast first frame. Complete
       // that deferred report now that stable cell identities are available.
       reportSelection();
-      var nested = view.meta && view.meta.color_type === 'categorical';
+      var nested = view.meta && view.meta.color_type === 'categorical' &&
+        !ArrayBuffer.isView(canonicalGroups);
       var offsets = null;
       if (nested) {
         var groups = Array.isArray(view.data.x) ? view.data.x : [];
@@ -6519,13 +6711,28 @@
       singleSpaceIds.forEach(function (spaceId) {
         var space = spaceById[spaceId];
         if (!space) return;
-        space._hover = Array.isArray(hover.text) ? hover.text : [];
-        space._hoverColumns = Array.isArray(hover.columns) ? hover.columns : [];
+        space._hover = ArrayBuffer.isView(canonicalGroups)
+          ? (canonicalGroupedValues(hover.text, canonicalGroups, '') || [])
+          : (Array.isArray(hover.text) ? hover.text : []);
+        space._hoverColumns = Array.isArray(hover.columns)
+          ? hover.columns.map(function (column) {
+            if (!ArrayBuffer.isView(canonicalGroups)) return column;
+            return Object.assign({}, column, {
+              values: canonicalGroupedValues(column.values, canonicalGroups, null)
+            });
+          }) : [];
         space._hoverModes = modes;
         space._hoverOffsets = offsets;
         space._hoverEnabled = enabled;
         space._hoverMask = null;
       });
+      if (singleSpaceIds.length && view.meta && view.meta.space_label) {
+        cacheSharedProjection(
+          String(view.meta.space_label),
+          spaceById[singleSpaceIds[0]],
+          D.n
+        );
+      }
     } catch (error) {
       return;
     }
@@ -6549,6 +6756,12 @@
     }
     linkedBundle = bundle;
     D = bundle;
+    Object.keys(D.projections || {}).forEach(function (name) {
+      var projection = D.projections[name];
+      if (projection && projection.x && projection.y) {
+        cacheSharedProjection(name, projection, D.n);
+      }
+    });
     sanitiseColors(D);
     syncCloneTiers();
     _clipD = null;   // ranges belong to the data set that produced them
@@ -6745,8 +6958,14 @@
 
   function selectedCellIds() {
     var out = [];
-    if (sel) sel.forEach(function (index) { out.push(D.cells[index]); });
+    if (sel && Array.isArray(D && D.cells)) {
+      sel.forEach(function (index) { out.push(D.cells[index]); });
+    }
     return out;
+  }
+
+  function selectedCellIndices() {
+    return sel ? Array.from(sel) : [];
   }
 
   function namedFilters() {
@@ -6858,6 +7077,7 @@
       },
       selection: {
         cells: selectedCellIds(),
+        indices: selectedCellIndices(),
         source: selectionSource || null,
         geometry: savedGeometry()
       },
@@ -6952,18 +7172,23 @@
       configError('The file contains an invalid view lens.');
     }
 
+    var indices = Array.isArray(config.selection.indices)
+      ? config.selection.indices.map(Number) : null;
+    if (indices && indices.some(function (index) {
+      return !Number.isInteger(index) || index < 0 || index >= D.n;
+    })) configError('The file selects cells that are unavailable here.');
     var cells = singleIndex();
-    if (config.selection.cells.some(function (cell) { return !cells.has(String(cell)); })) {
-      configError('The file selects cells that are unavailable here.');
-    }
-    return { cells: cells };
+    if (!indices && config.selection.cells.some(function (cell) {
+      return !cells.has(String(cell));
+    })) configError('The file selects cells that are unavailable here.');
+    return { cells: cells, indices: indices };
   }
 
   function restoreWorkspace(config) {
     var validated = validateWorkspace(config);
     var view = config.view || {}, selection = config.selection || {};
-    var restoredSelection = new Set();
-    selection.cells.forEach(function (cell) {
+    var restoredSelection = new Set(validated.indices || []);
+    if (!validated.indices) selection.cells.forEach(function (cell) {
       restoredSelection.add(validated.cells.get(String(cell)));
     });
 
@@ -7130,8 +7355,16 @@
     var rendered = !!(D && configFingerprint() && panels.some(function (panel) {
       return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
     }));
-    var complete = !!(rendered && !D.progressive &&
-      Array.isArray(D.cells) && D.cells.length === D.n);
+    var complete = !!(rendered && !D.progressive);
+    var gpuUploadMs = 0;
+    var gpuPositionUploads = 0;
+    panels.forEach(function (panel) {
+      var stats = panel.gpu && panel.gpu.stats ? panel.gpu.stats() : null;
+      if (stats) {
+        gpuUploadMs += Number(stats.uploadSubmitMs) || 0;
+        gpuPositionUploads += Number(stats.positionUploads) || 0;
+      }
+    });
     return {
       primaryReady: rendered,
       ready: complete,
@@ -7142,11 +7375,18 @@
       colourMode: colorBy,
       projections: selectedProjections.slice(),
       spatialSections: selectedSpatial.slice(),
-      activeSpatial: D && activeSpatial() ? activeSpatial()._sampleName || null : null
+      activeSpatial: D && activeSpatial() ? activeSpatial()._sampleName || null : null,
+      transport: Object.assign({
+        gpuUploadMs: gpuUploadMs,
+        gpuPositionUploads: gpuPositionUploads
+      }, transportMetrics)
     };
   }
 
-  function applyWorkspace(config, colourData) {
+  function applyWorkspace(config, colourData, selectionIndices) {
+    if (Array.isArray(selectionIndices)) {
+      config.selection.indices = selectionIndices;
+    }
     if (D && colourData && colourData.mode === GENE_MODE) {
       D.gene = {
         gene: colourData.gene,
@@ -7221,6 +7461,7 @@
     booted = true;
     Shiny.addCustomMessageHandler('coordviews_data', onData);
     Shiny.addCustomMessageHandler('coordviews_binary', onBinaryData);
+    Shiny.addCustomMessageHandler('coordviews_attribute', onBinaryAttribute);
     Shiny.addCustomMessageHandler('coordviews_supplement', onBinarySupplement);
     Shiny.addCustomMessageHandler('coordviews_cells', onBinaryCells);
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
@@ -7319,9 +7560,9 @@
     // since moved on to another cell (or closed) — a slow reply must not
     // repaint a card that is now describing something else.
     Shiny.addCustomMessageHandler('coordviews_cell_meta', function (m) {
-      if (!m || !m.cell) return;
-      cardMeta = { cell: m.cell, rows: m.rows || [] };
-      if (cardOpen() && D && D.cells[cardCell] === m.cell) renderCard();
+      if (!m || m.index == null || !m.cell) return;
+      cardMeta = { index: Number(m.index), cell: m.cell, rows: m.rows || [] };
+      if (cardOpen() && cardCell === cardMeta.index) renderCard();
     });
     // Three 0-255 channels for RGB co-expression.
     Shiny.addCustomMessageHandler('coordviews_rgbval', function (m) {

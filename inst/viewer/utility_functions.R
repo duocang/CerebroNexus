@@ -969,6 +969,15 @@ cerebroCellViewScatterPayload <- function(
     index <- index + 1L
   }
 
+  if (
+    length(color) >= 4096L &&
+      identical(as.integer(selection_keys), seq_along(selection_keys))
+  ) {
+    data[["canonical_group"]] <- I(as.integer(
+      match(color, unlist(meta[["traces"]], use.names = FALSE)) - 1L
+    ))
+  }
+
   list(meta = meta, data = data, hover = hover_data)
 }
 

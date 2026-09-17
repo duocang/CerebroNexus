@@ -228,7 +228,11 @@
       var target = adapterForConfig(result.config);
       if (!target) throw new Error('This configuration uses a view that is unavailable here.');
       activeViewId = viewIdForConfig(result.config);
-      var summary = target.apply(result.config, result.colour_data || null);
+      var summary = target.apply(
+        result.config,
+        result.colour_data || null,
+        result.selection_indices || null
+      );
       status(
         'Restored ' + summary.selectedCells + ' selected cells and view settings.',
         'success'

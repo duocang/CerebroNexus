@@ -633,7 +633,7 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(server, 'input[["coordviews_wire_supported"]]', fixed = TRUE)
   expect_match(server, "sendBinaryMessage(", fixed = TRUE)
   expect_match(server, '"coordviews_binary"', fixed = TRUE)
-  expect_match(server, '"coordviews_cells"', fixed = TRUE)
+  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
   expect_match(server, "include_cells = FALSE", fixed = TRUE)
   expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
@@ -830,6 +830,14 @@ test_that("primary bundle materializes only the first visible projection and col
   expect_named(supplement$fields, "meta:score")
   expect_named(supplement$projections, "tsne")
   expect_identical(supplement$cat_skipped, full$cat_skipped)
+
+  compact <- cv_env$cv_bundle_supplement(primary, full, compact = TRUE)
+  expect_true(isTRUE(compact$groups$sample$deferred))
+  expect_null(compact$groups$sample$values)
+  expect_true(isTRUE(compact$cat_extra$donor$deferred))
+  expect_null(compact$cat_extra$donor$values)
+  expect_true(isTRUE(compact$fields[["meta:score"]]$deferred))
+  expect_null(compact$fields[["meta:score"]]$v)
 })
 
 test_that("primary bundle reuses thin CRB first-frame fields", {
@@ -980,16 +988,19 @@ test_that("large-dataset work stays off the initial response", {
 
   expect_no_match(server, "later::later(", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
-  expect_match(server, "cv_bundle_supplement(primary, bundle)", fixed = TRUE)
+  expect_match(
+    server,
+    "cv_bundle_supplement(primary, bundle, compact = TRUE)",
+    fixed = TRUE
+  )
   supplement_at <- regexpr(
     '"coordviews_supplement"',
     server,
     fixed = TRUE
   )[[1L]]
-  cells_at <- regexpr('"coordviews_cells"', server, fixed = TRUE)[[1L]]
   expect_gt(supplement_at, 0L)
-  expect_gt(cells_at, supplement_at)
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
+  expect_match(server, 'input[["coordviews_selection_indices"]]', fixed = TRUE)
   expect_match(
     server,
     "coordviews_background_ready <- reactiveVal(FALSE)",
@@ -1033,6 +1044,17 @@ test_that("bundle cell identity falls back to metadata row names", {
   bundle <- cv_env$cv_build_bundle(crb)
 
   expect_identical(as.character(bundle$cells), cells)
+})
+
+test_that("canonical zero-based indices resolve only requested cell IDs", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3", "c4")
+
+  expect_identical(
+    cv_env$cv_cells_at_indices(cells, c(3L, 0L, 3L, 99L, -1L, NA)),
+    c("c4", "c1", "c4")
+  )
+  expect_null(cv_env$cv_cells_at_indices(cells, NULL))
 })
 
 test_that("rownames-only metadata supports selection and cell details", {
@@ -1622,6 +1644,38 @@ test_that("a single-CDR3 clone is not annotated", {
   out <- cv_env$cv_build_clone(crb, c("c1", "c2"), 2)
   expect_equal(as.character(out$bundle$label[1]), "CASSX")
   expect_equal(as.integer(out$bundle$n_cdr3[1]), 1L)
+})
+
+test_that("sparse clone transport expands to the legacy cell-aligned values", {
+  skip_if_not(have_bundle)
+  ir <- list(data.frame(
+    barcode = c("c2", "c4", "c5"),
+    CTgene = c(
+      "TRAV1_TRAJ1_TRBV1_TRBJ1",
+      "TRAV1_TRAJ1_TRBV1_TRBJ1",
+      "TRAV2_TRAJ2_TRBV2_TRBJ2"
+    ),
+    CTaa = c("CASSA", "CASSA", "CASSB"),
+    stringsAsFactors = FALSE
+  ))
+  crb <- list(getImmuneRepertoire = function() ir)
+  cells <- paste0("c", 1:6)
+
+  dense <- cv_env$cv_build_clone(crb, cells, length(cells))
+  sparse <- cv_env$cv_build_clone(crb, cells, length(cells), sparse = TRUE)
+  clone_ids <- rep(-1L, length(cells))
+  clone_ids[as.integer(sparse$bundle$index) + 1L] <-
+    as.integer(sparse$bundle$code)
+  expansion <- rep(0L, length(cells))
+  expansion[as.integer(sparse$group$index) + 1L] <-
+    as.integer(sparse$group$values)
+
+  expect_null(sparse$bundle$id)
+  expect_identical(clone_ids, as.integer(dense$bundle$id))
+  expect_identical(expansion, as.integer(dense$group$values))
+  expect_identical(sparse$bundle$label, dense$bundle$label)
+  expect_identical(sparse$bundle$size, dense$bundle$size)
+  expect_identical(sparse$bundle$n_cdr3, dense$bundle$n_cdr3)
 })
 
 ## The divergences that clone_contract.R exists to prevent were never visible to

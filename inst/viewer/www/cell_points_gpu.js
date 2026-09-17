@@ -152,7 +152,9 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
     var ready = false;
     var contextLost = false;
     var gpuError = '';
-    var metrics = { backend: 'webgpu', ready: false, pointCount: 0 };
+    var metrics = {
+      backend: 'webgpu', ready: false, pointCount: 0, positionUploads: 0
+    };
     var resolveFailure;
     var failed = new Promise(function (resolve) { resolveFailure = resolve; });
 
@@ -253,9 +255,16 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
           data.layers === next.layers && data.count === count &&
           data.foreground === !!next.foreground) return;
       var started = performance.now();
-      positionBuffer = replaceBuffer(positionBuffer, next.positions);
-      colorBuffer = replaceBuffer(colorBuffer, next.colors);
-      layerBuffer = replaceBuffer(layerBuffer, next.layers);
+      if (!data || data.positions !== next.positions) {
+        positionBuffer = replaceBuffer(positionBuffer, next.positions);
+        metrics.positionUploads++;
+      }
+      if (!data || data.colors !== next.colors) {
+        colorBuffer = replaceBuffer(colorBuffer, next.colors);
+      }
+      if (!data || data.layers !== next.layers) {
+        layerBuffer = replaceBuffer(layerBuffer, next.layers);
+      }
       data = {
         positions: next.positions,
         colors: next.colors,
@@ -481,7 +490,9 @@ void main() {
     var ready = true;
     var contextLost = false;
     var gpuError = '';
-    var metrics = { backend: 'webgl2', ready: true, pointCount: 0 };
+    var metrics = {
+      backend: 'webgl2', ready: true, pointCount: 0, positionUploads: 0
+    };
     var resolveFailure;
     var failed = new Promise(function (resolve) { resolveFailure = resolve; });
 
@@ -543,9 +554,16 @@ void main() {
           data.foreground === !!next.foreground) return;
       var started = performance.now();
       gl.useProgram(program);
-      upload(positionBuffer, 0, next.positions, false);
-      upload(colorBuffer, 1, next.colors, false);
-      upload(layerBuffer, 2, next.layers, true);
+      if (!data || data.positions !== next.positions) {
+        upload(positionBuffer, 0, next.positions, false);
+        metrics.positionUploads++;
+      }
+      if (!data || data.colors !== next.colors) {
+        upload(colorBuffer, 1, next.colors, false);
+      }
+      if (!data || data.layers !== next.layers) {
+        upload(layerBuffer, 2, next.layers, true);
+      }
       data = {
         positions: next.positions,
         colors: next.colors,

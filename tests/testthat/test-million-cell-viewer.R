@@ -326,6 +326,66 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
     )
   )
 })
+
+test_that("sparse linked attributes expand into typed canonical vectors", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      "global.window = {};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const values = window.CBViewState.expandSparse(",
+      "  new Int32Array([1, 4]), new Int16Array([7, 9]), 6, -1);",
+      "console.log(JSON.stringify(Array.from(values)));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output),
+    c(-1L, 7L, -1L, -1L, 9L, -1L)
+  )
+})
+
+test_that("shared browser base reuses only matching dataset projections", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs'); global.window = {};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const S = window.CBViewState;",
+      "const first = S.sharedBase(null, 'dataset-a', 3);",
+      "first.projections.umap = {x:new Float32Array(3),y:new Float32Array(3)};",
+      "const hit = S.sharedBase(first, 'dataset-a', 3);",
+      "const changedDataset = S.sharedBase(first, 'dataset-b', 3);",
+      "const changedCount = S.sharedBase(first, 'dataset-a', 4);",
+      "console.log(JSON.stringify({hit:hit===first,dataset:changedDataset!==first,",
+      "count:changedCount!==first,projection:hit.projections.umap===first.projections.umap}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(hit = TRUE, dataset = TRUE, count = TRUE, projection = TRUE)
+  )
+})
 test_that("trajectory cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")

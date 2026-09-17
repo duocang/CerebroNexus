@@ -40,6 +40,28 @@
     return !preserveTarget || activeView !== targetView;
   };
 
+  S.expandSparse = function (indices, values, length, defaultValue) {
+    var out = new Int32Array(length);
+    if (defaultValue) out.fill(defaultValue);
+    var count = Math.min(indices ? indices.length : 0, values ? values.length : 0);
+    for (var i = 0; i < count; i++) {
+      var index = Number(indices[i]);
+      if (index >= 0 && index < length) out[index] = Number(values[i]);
+    }
+    return out;
+  };
+
+  S.sharedBase = function (current, fingerprint, cellCount) {
+    if (current && current.datasetFingerprint === fingerprint &&
+        current.cellCount === cellCount) return current;
+    return {
+      datasetFingerprint: fingerprint,
+      cellCount: cellCount,
+      projections: Object.create(null),
+      gpuPositions: Object.create(null)
+    };
+  };
+
   // Project the live client-side selection into the state that may safely be
   // published to Shiny. Specialist canvases can paint before their deferred
   // stable cell identities arrive; during that window the local selection is
