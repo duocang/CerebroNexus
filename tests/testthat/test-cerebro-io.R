@@ -137,11 +137,13 @@ test_that("immune repertoires can load lazily from a BPCells sidecar", {
   root <- withr::local_tempdir()
   fixture <- make_bpcells_cerebro(root)
   path <- file.path(root, "immune-lazy.crb")
-  repertoire <- list(sample_a = data.frame(
-    barcode = fixture$cells[1:2],
-    CTgene = c("TRB1", "TRB2"),
-    stringsAsFactors = FALSE
-  ))
+  repertoire <- list(
+    sample_a = data.frame(
+      barcode = fixture$cells[1:2],
+      CTgene = c("TRB1", "TRB2"),
+      stringsAsFactors = FALSE
+    )
+  )
   repertoire_file <- file.path(fixture$sidecar, "immune_repertoire.qs2")
   qs2::qs_save(repertoire, repertoire_file)
   fixture$object$immune_repertoire_backend <- list(
@@ -342,7 +344,8 @@ test_that("Data Info reads the v2 cell count without forcing metadata", {
     readLines(viewer_test_path("load_data", "sample_info.R"), warn = FALSE),
     collapse = "\n"
   )
-  expect_match(sample_info, "getNumberOfCells\\(\\)")
+  expect_match(sample_info, "current_dataset_info\\(\\)")
+  expect_false(grepl("getNumberOfCells\\(\\)", sample_info))
   expect_false(grepl("nrow\\(data_set\\(\\)\\$meta_data\\)", sample_info))
 })
 
