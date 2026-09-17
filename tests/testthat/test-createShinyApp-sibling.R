@@ -225,6 +225,34 @@ build_test_app <- function(cerebro_data, result_dir, ...) {
   )
 }
 
+test_that("valid Viewer Packs are bundled beside their CRB", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  crb <- write_bundle_crb(source)
+  object <- readCerebro(crb)
+  object$setMetaData(data.frame(
+    cell_barcode = c("cell-1", "cell-2"),
+    group = c("A", "B"),
+    stringsAsFactors = FALSE
+  ))
+  object$addProjection(
+    "umap",
+    data.frame(x = 1:2, y = 2:1, row.names = c("cell-1", "cell-2"))
+  )
+  saveCerebro(object, crb, codec = "rds", viewer_binary = "always")
+
+  app <- file.path(root, "app")
+  build_test_app(c(Dataset = crb), app)
+
+  expect_true(dir.exists(file.path(app, "private-data", "dataset.viewer")))
+  expect_true(
+    validateViewerPack(
+      file.path(app, "private-data", "dataset.crb"),
+      file.path(app, "private-data", "dataset.viewer")
+    )$valid
+  )
+})
+
 test_that("scatter defaults accept one value or one value per dataset", {
   labels <- c("PBMC", "Xenium")
 

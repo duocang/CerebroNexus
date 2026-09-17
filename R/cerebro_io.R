@@ -640,10 +640,21 @@
 #' @param file Output \code{.crb} path.
 #' @param codec Serialization codec. Defaults to \code{"qs2"}; use
 #' \code{"rds"} when direct compatibility with \code{readRDS()} is required.
+#' @param viewer_binary Build the derived Viewer Pack \code{"auto"}matically
+#' for large datasets, \code{"always"}, or \code{"never"}.
+#' @param viewer_binary_threshold Dataset-level cell threshold used by
+#' \code{viewer_binary = "auto"}.
 #' @return The output path, invisibly.
 #' @export
-saveCerebro <- function(object, file, codec = c("qs2", "rds")) {
+saveCerebro <- function(
+  object,
+  file,
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L
+) {
   codec <- match.arg(codec)
+  viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
   if (
     !is.character(file) || length(file) != 1L || is.na(file) || !nzchar(file)
   ) {
@@ -681,6 +692,30 @@ saveCerebro <- function(object, file, codec = c("qs2", "rds")) {
       file.path(dirname(file), spatial$location)
     }
   )
+  n_cells <- tryCatch(
+    length(.viewerPackCells(object)),
+    error = function(error) {
+      if (identical(viewer_options$mode, "always")) {
+        stop(error)
+      }
+      0L
+    }
+  )
+  if (
+    .viewerPackEnabled(
+      viewer_options$mode,
+      viewer_options$threshold,
+      n_cells
+    )
+  ) {
+    buildViewerPack(
+      file,
+      viewer_binary = "always",
+      viewer_binary_threshold = viewer_options$threshold,
+      overwrite = TRUE
+    )
+  }
+  invisible(file)
 }
 
 #' Read a Cerebro data file

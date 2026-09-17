@@ -36,6 +36,10 @@
 #' @param codec Serialization codec for the CRB payload. Defaults to
 #' \code{"qs2"}; use \code{"rds"} when direct compatibility with
 #' \code{readRDS()} is required.
+#' @param viewer_binary Build the derived Viewer Pack \code{"auto"}matically
+#' for large datasets, \code{"always"}, or \code{"never"}.
+#' @param viewer_binary_threshold Dataset-level cell threshold used by
+#' \code{viewer_binary = "auto"}.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #'
@@ -76,6 +80,8 @@ exportFromSCE <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   verbose = FALSE
 ) {
   ##--------------------------------------------------------------------------##
@@ -796,7 +802,13 @@ exportFromSCE <- function(
   )
 
   ## save file
-  saveCerebro(export, file, codec = codec)
+  saveCerebro(
+    export,
+    file,
+    codec = codec,
+    viewer_binary = viewer_binary,
+    viewer_binary_threshold = viewer_binary_threshold
+  )
 
   ## log message
   ## ... writing to file was successful

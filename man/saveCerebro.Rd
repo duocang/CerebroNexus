@@ -4,7 +4,13 @@
 \alias{saveCerebro}
 \title{Save a Cerebro data file}
 \usage{
-saveCerebro(object, file, codec = c("qs2", "rds"))
+saveCerebro(
+  object,
+  file,
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L
+)
 }
 \arguments{
 \item{object}{A Cerebro object.}
@@ -13,6 +19,12 @@ saveCerebro(object, file, codec = c("qs2", "rds"))
 
 \item{codec}{Serialization codec. Defaults to \code{"qs2"}; use
 \code{"rds"} when direct compatibility with \code{readRDS()} is required.}
+
+\item{viewer_binary}{Build the derived Viewer Pack \code{"auto"}matically
+for large datasets, \code{"always"}, or \code{"never"}.}
+
+\item{viewer_binary_threshold}{Dataset-level cell threshold used by
+\code{viewer_binary = "auto"}.}
 }
 \value{
 The output path, invisibly.

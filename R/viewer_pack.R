@@ -1,5 +1,25 @@
 .viewerPackSchemaVersion <- 1L
 
+.viewerPackOptions <- function(
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L
+) {
+  mode <- match.arg(viewer_binary)
+  threshold <- suppressWarnings(as.integer(viewer_binary_threshold))
+  if (length(threshold) != 1L || is.na(threshold) || threshold < 0L) {
+    stop(
+      "`viewer_binary_threshold` must be one non-negative integer.",
+      call. = FALSE
+    )
+  }
+  list(mode = mode, threshold = threshold)
+}
+
+.viewerPackEnabled <- function(mode, threshold, n_cells) {
+  identical(mode, "always") ||
+    (identical(mode, "auto") && n_cells >= threshold)
+}
+
 .viewerPackPath <- function(file) {
   file.path(
     dirname(normalizePath(file, mustWork = FALSE)),
@@ -96,7 +116,11 @@
   }
   Reduce(
     `|`,
-    lapply(chains, function(chain) grepl(chain, reference, fixed = TRUE))
+    lapply(chains, function(chain) {
+      match <- grepl(chain, reference, fixed = TRUE)
+      match[is.na(match)] <- FALSE
+      match
+    })
   )
 }
 
@@ -463,19 +487,11 @@ buildViewerPack <- function(
   viewer_binary_threshold = 500000L,
   overwrite = FALSE
 ) {
-  viewer_binary <- match.arg(viewer_binary)
-  threshold <- suppressWarnings(as.integer(viewer_binary_threshold))
-  if (length(threshold) != 1L || is.na(threshold) || threshold < 0L) {
-    stop(
-      "`viewer_binary_threshold` must be one non-negative integer.",
-      call. = FALSE
-    )
-  }
+  options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
   file <- normalizePath(file, mustWork = TRUE)
   object <- readCerebro(file)
   cells <- .viewerPackCells(object)
-  enabled <- identical(viewer_binary, "always") ||
-    (identical(viewer_binary, "auto") && length(cells) >= threshold)
+  enabled <- .viewerPackEnabled(options$mode, options$threshold, length(cells))
   if (!enabled) {
     return(NULL)
   }

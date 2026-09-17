@@ -155,7 +155,9 @@
   if (!file.exists(final_file) || dir.exists(final_file)) {
     return(NULL)
   }
-  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) NULL)
+  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
+    NULL
+  })
   if (
     !is.environment(object) ||
       !exists("spatial_molecule_backend", envir = object, inherits = FALSE) ||
@@ -408,7 +410,10 @@
   if (!is.null(spatial$location)) {
     final_spatial <- file.path(final_dir, spatial$location)
     if (.pathIsSymbolicLink(final_spatial)) {
-      stop("Refusing to replace a symbolic-link spatial sidecar.", call. = FALSE)
+      stop(
+        "Refusing to replace a symbolic-link spatial sidecar.",
+        call. = FALSE
+      )
     }
     if (dir.exists(final_spatial)) {
       owns_target <- !is.null(previous_spatial_backend) &&
@@ -582,6 +587,10 @@
 #' @param codec Serialization codec for the CRB payload. Defaults to
 #' \code{"qs2"}; use \code{"rds"} when direct compatibility with
 #' \code{readRDS()} is required.
+#' @param viewer_binary Build the derived Viewer Pack \code{"auto"}matically
+#' for large datasets, \code{"always"}, or \code{"never"}.
+#' @param viewer_binary_threshold Dataset-level cell threshold used by
+#' \code{viewer_binary = "auto"}.
 #' @param spatial_images Optional named list mapping Seurat image names to named
 #'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
@@ -650,6 +659,8 @@ exportFromSeurat <- function(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -660,6 +671,7 @@ exportFromSeurat <- function(
 
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
+  viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
   if (
     !is.character(file) ||
       length(file) != 1L ||
@@ -1950,6 +1962,20 @@ exportFromSeurat <- function(
     expression_matrix_mode = expression_matrix_mode,
     codec = codec
   )
+  if (
+    .viewerPackEnabled(
+      viewer_options$mode,
+      viewer_options$threshold,
+      length(.viewerPackCells(export))
+    )
+  ) {
+    buildViewerPack(
+      final_file,
+      viewer_binary = "always",
+      viewer_binary_threshold = viewer_options$threshold,
+      overwrite = TRUE
+    )
+  }
 
   ## log message
   ## ... writing to file was successful

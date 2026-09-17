@@ -2784,6 +2784,19 @@ createShinyApp <- function(
       resolved_crb_sources[[index]],
       "Cerebro data file"
     )
+    viewer_pack <- .viewerPackPath(resolved_crb_sources[[index]])
+    if (
+      isTRUE(
+        validateViewerPack(resolved_crb_sources[[index]], viewer_pack)$valid
+      )
+    ) {
+      claim_target(
+        paste0(private_data_root, "/", basename(viewer_pack)),
+        viewer_pack,
+        "Viewer Pack",
+        directory = TRUE
+      )
+    }
   }
 
   for (index in seq_along(cerebro_data)) {

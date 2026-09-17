@@ -78,6 +78,32 @@ test_that("Viewer Pack gating is dataset-level", {
   )
 })
 
+test_that("saveCerebro forwards dataset-level Viewer Pack policy", {
+  root <- tempfile("viewer-pack-save-")
+  dir.create(root)
+  object <- Cerebro$new()
+  cells <- sprintf("cell-%03d", 1:3)
+  object$setMetaData(data.frame(
+    cell_barcode = cells,
+    group = c("A", "A", "B"),
+    stringsAsFactors = FALSE
+  ))
+  object$addProjection(
+    "umap",
+    data.frame(x = 1:3, y = 3:1, row.names = cells)
+  )
+  crb <- file.path(root, "dataset.crb")
+
+  saveCerebro(
+    object,
+    crb,
+    codec = "rds",
+    viewer_binary_threshold = 3L
+  )
+
+  expect_true(validateViewerPack(crb)$valid)
+})
+
 test_that("Viewer Pack manifest validates canonical identity and assets", {
   root <- tempfile("viewer-pack-manifest-")
   dir.create(root)
