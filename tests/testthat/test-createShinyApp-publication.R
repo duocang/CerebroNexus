@@ -18,8 +18,7 @@ publication_build_ops <- function(...) {
   overrides <- list(...)
   defaults <- list(
     copy = function(from, to, ...) file.copy(from, to, ...),
-    save_rds = function(object, file) saveRDS(object, file),
-    write_lines = function(text, connection) writeLines(text, connection)
+    save_rds = function(object, file) saveRDS(object, file)
   )
   utils::modifyList(defaults, overrides)
 }
@@ -74,7 +73,10 @@ test_that("Windows bundle copies use extended-length filesystem paths", {
     "\\\\?\\C:\\source\\image.jpg"
   )
   expect_identical(
-    .bundleWindowsExtendedPath("\\\\server\\share\\image.jpg", os_type = "windows"),
+    .bundleWindowsExtendedPath(
+      "\\\\server\\share\\image.jpg",
+      os_type = "windows"
+    ),
     "\\\\?\\UNC\\server\\share\\image.jpg"
   )
   expect_identical(
@@ -228,14 +230,23 @@ publication_expect_stage_failure <- function(failure) {
       "injected config write error"
     },
     write = {
-      ops$write_lines <- function(text, connection) {
-        stop("injected app write error")
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          return(FALSE)
+        }
+        original_copy(from, to, ...)
       }
-      "injected app write error"
+      "Failed to copy the App entrypoint template"
     },
     parse = {
-      ops$write_lines <- function(text, connection) {
-        writeLines("shiny::shinyApp(", connection)
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          writeLines("shiny::shinyApp(", to)
+          return(TRUE)
+        }
+        original_copy(from, to, ...)
       }
       "Generated app.R is invalid"
     }
@@ -285,6 +296,40 @@ test_that("stage app write failure never moves the old deployment", {
 
 test_that("invalid generated app source never moves the old deployment", {
   publication_expect_stage_failure("parse")
+})
+
+test_that("generated app preserves the trusted template bytes", {
+  root <- withr::local_tempdir()
+  template <- file.path(root, "template.R")
+  writeBin(charToRaw("shiny::shinyApp(ui = NULL, server = NULL)\r\n"), template)
+  resource <- CerebroNexus:::.cerebroPackageResource
+  testthat::local_mocked_bindings(
+    .cerebroPackageResource = function(...) {
+      relative <- file.path(...)
+      if (identical(relative, file.path("viewer", "_bundle_app.R"))) {
+        template
+      } else {
+        resource(...)
+      }
+    },
+    .package = "CerebroNexus",
+    .env = parent.frame()
+  )
+  crb <- file.path(root, "dataset.crb")
+  saveRDS(Cerebro$new(), crb)
+  result <- file.path(root, "app")
+
+  createShinyApp(
+    cerebro_data = c("Dataset" = crb),
+    result_dir = result,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  expect_identical(
+    readBin(file.path(result, "app.R"), "raw", n = file.info(template)$size),
+    readBin(template, "raw", n = file.info(template)$size)
+  )
 })
 
 test_that("destination inspection rejects inaccessible directories", {

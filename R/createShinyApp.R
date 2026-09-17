@@ -1648,22 +1648,34 @@ dedent <- function(string) {
   ) {
     return(FALSE)
   }
-  directories <- vapply(entries, function(path) {
-    .bundleCopiedTargetExists(path, directory = TRUE)
-  }, logical(1))
-  regular_files <- vapply(entries, function(path) {
-    .bundleCopiedTargetExists(path)
-  }, logical(1))
+  directories <- vapply(
+    entries,
+    function(path) {
+      .bundleCopiedTargetExists(path, directory = TRUE)
+    },
+    logical(1)
+  )
+  regular_files <- vapply(
+    entries,
+    function(path) {
+      .bundleCopiedTargetExists(path)
+    },
+    logical(1)
+  )
   if (any(directories == regular_files)) {
     return(FALSE)
   }
   directory_targets <- file.path(destination, relative[directories])
   if (
     length(directory_targets) &&
-      !all(vapply(directory_targets, function(path) {
-        .bundleCopiedTargetExists(path, directory = TRUE) ||
-          .bundleCreateDirectory(path, recursive = TRUE)
-      }, logical(1)))
+      !all(vapply(
+        directory_targets,
+        function(path) {
+          .bundleCopiedTargetExists(path, directory = TRUE) ||
+            .bundleCreateDirectory(path, recursive = TRUE)
+        },
+        logical(1)
+      ))
   ) {
     return(FALSE)
   }
@@ -1798,8 +1810,7 @@ dedent <- function(string) {
     copy = .bundleCopyPath,
     mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
-    save_extra_rds = function(object, file) .saveExtraTableRDS(object, file),
-    write_lines = function(text, connection) writeLines(text, connection)
+    save_extra_rds = function(object, file) .saveExtraTableRDS(object, file)
   )
 }
 
@@ -1992,11 +2003,13 @@ dedent <- function(string) {
   if (!dir.exists(dirname(lock_path))) {
     stop("The build-lock parent directory does not exist.", call. = FALSE)
   }
-  if (!.bundleCreateDirectory(
-    lock_path,
-    mode = "0700",
-    showWarnings = FALSE
-  )) {
+  if (
+    !.bundleCreateDirectory(
+      lock_path,
+      mode = "0700",
+      showWarnings = FALSE
+    )
+  ) {
     if (.bundlePathExists(lock_path)) {
       stop(
         "The app target '",
@@ -3561,11 +3574,13 @@ createShinyApp <- function(
     pattern = paste0(".", basename(result_dir), "-stage-"),
     tmpdir = result_parent
   )
-  if (!.bundleCreateDirectory(
-    stage_result_dir,
-    mode = "0700",
-    showWarnings = FALSE
-  )) {
+  if (
+    !.bundleCreateDirectory(
+      stage_result_dir,
+      mode = "0700",
+      showWarnings = FALSE
+    )
+  ) {
     stop("Failed to create a private app staging directory.", call. = FALSE)
   }
   bundle_cleanup$stage <- stage_result_dir
@@ -3624,13 +3639,14 @@ createShinyApp <- function(
     }
     if (
       identical(entry$artifact, "spatial image") &&
-        (
-          !identical(unname(file.size(target)), unname(file.size(entry$source))) ||
-            !identical(
-              unname(as.character(tools::md5sum(target))),
-              unname(as.character(tools::md5sum(entry$source)))
-            )
-        )
+        (!identical(
+          unname(file.size(target)),
+          unname(file.size(entry$source))
+        ) ||
+          !identical(
+            unname(as.character(tools::md5sum(target))),
+            unname(as.character(tools::md5sum(entry$source)))
+          ))
     ) {
       stop(
         "The copied spatial image failed its byte-integrity check: ",
@@ -3769,10 +3785,9 @@ createShinyApp <- function(
   )
 
   # Generate app.R -----------------------------------------------------------##
-  build_ops$write_lines(
-    readLines(app_template_source, warn = FALSE),
-    app_file
-  )
+  if (!isTRUE(build_ops$copy(app_template_source, app_file))) {
+    stop("Failed to copy the App entrypoint template.", call. = FALSE)
+  }
   tryCatch(
     parse(file = app_file, keep.source = FALSE),
     error = function(error_condition) {
