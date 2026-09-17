@@ -622,6 +622,13 @@ test_that("launchCerebro builds dataset information for configured files", {
   object$setMetaData(data.frame(cell_barcode = cells, row.names = cells))
   object$addExperiment("organism", "Homo sapiens")
   object$addExperiment("date_of_export", as.Date("2026-09-17"))
+  object$immune_repertoire_backend <- list(
+    type = "bpcells-file",
+    file = "immune-repertoire",
+    md5 = strrep("a", 32L),
+    samples = "Ren",
+    chains = c("TRA", "TRB")
+  )
   crb <- tempfile(fileext = ".crb")
   saveRDS(object, crb)
 
@@ -644,7 +651,9 @@ test_that("launchCerebro builds dataset information for configured files", {
       path = crb,
       cells = 3L,
       organism = "Homo sapiens",
-      date = "2026-09-17"
+      date = "2026-09-17",
+      immune_repertoire = TRUE,
+      tcr_repertoire = TRUE
     )
   )
 })

@@ -769,9 +769,15 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Dynamic sidebar: show/hide conditional tabs based on dataset content.
   ##--------------------------------------------------------------------------##
-  toggleConditionalTab <- function(tab_name, check_fn) {
+  toggleConditionalTab <- function(tab_name, check_fn, catalog_field = NULL) {
     item_id <- paste0("sidebar_item_", tab_name)
     show_reactive <- reactive({
+      if (!is.null(catalog_field)) {
+        catalog_value <- current_dataset_info()[[catalog_field]]
+        if (is.logical(catalog_value) && length(catalog_value) == 1L) {
+          return(isTRUE(catalog_value))
+        }
+      }
       req(data_set())
       result <- tryCatch(check_fn(), error = function(e) FALSE)
       if (is.logical(result)) {
@@ -780,7 +786,6 @@ server <- function(input, output, session) {
       length(result) > 0
     })
     observe({
-      req(!is.null(data_set()))
       should_show <- show_reactive()
       shinyjs::toggle(id = item_id, condition = should_show)
       decision <- viewerInitialPageDecision(
@@ -817,7 +822,8 @@ server <- function(input, output, session) {
     "immune_repertoire",
     function() {
       getImmuneRepertoireSummary()$available
-    }
+    },
+    catalog_field = "immune_repertoire"
   )
   toggleConditionalTab(
     "trajectory",
@@ -863,7 +869,8 @@ server <- function(input, output, session) {
         viewerHasTcrRepertoire(getImmuneRepertoire()),
         error = function(e) FALSE
       )
-    }
+    },
+    catalog_field = "tcr_repertoire"
   )
 
   ## Cleanup snapshot artifacts that may have been left by test runs.

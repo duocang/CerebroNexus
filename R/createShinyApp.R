@@ -1071,12 +1071,36 @@ dedent <- function(string) {
   }
   experiment <- object$getExperiment()
   metadata <- object$getMetaData()
+  backend <- tryCatch(object$immune_repertoire_backend, error = function(e) {
+    NULL
+  })
+  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+    immune_repertoire <- TRUE
+    tcr_repertoire <- any(as.character(backend$chains) %in% c("TRA", "TRB"))
+  } else {
+    repertoire <- tryCatch(object$getImmuneRepertoire(), error = function(e) {
+      list()
+    })
+    immune_repertoire <- is.list(repertoire) && length(repertoire) > 0L
+    tcr_repertoire <- immune_repertoire &&
+      any(vapply(
+        repertoire,
+        function(sample) {
+          !is.null(sample) &&
+            "CTgene" %in% names(sample) &&
+            any(grepl("TR[AB]", as.character(sample$CTgene)), na.rm = TRUE)
+        },
+        logical(1)
+      ))
+  }
   list(
     label = as.character(label),
     path = as.character(path),
     cells = as.integer(nrow(metadata)),
     organism = .datasetInfoScalar(experiment$organism),
-    date = .datasetInfoScalar(experiment$date_of_export)
+    date = .datasetInfoScalar(experiment$date_of_export),
+    immune_repertoire = immune_repertoire,
+    tcr_repertoire = tcr_repertoire
   )
 }
 

@@ -124,6 +124,8 @@ test_that("toggleConditionalTab is defined and wired to conditional tabs", {
     'toggleConditionalTab\\s*\\(\\s*"extra_material"',
     perl = TRUE
   )
+  expect_match(content, 'catalog_field = "immune_repertoire"', fixed = TRUE)
+  expect_match(content, 'catalog_field = "tcr_repertoire"', fixed = TRUE)
 })
 
 test_that("conditional sidebar items exist in the initial UI", {

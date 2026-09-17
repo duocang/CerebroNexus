@@ -1043,6 +1043,11 @@ test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
     readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
+  expect_match(
+    data_src,
+    "hla_bindCache <- function[\\s\\S]{0,500}reactive\\(\\{\\s*req\\(data_set\\(\\)\\)\\s*cached\\(\\)",
+    perl = TRUE
+  )
   # Each cached reactive is bindCache'd and must not gate. Both the expensive raw
   # builds and the cheap finalize layers are cached, so all four are pinned.
   for (nm in c(

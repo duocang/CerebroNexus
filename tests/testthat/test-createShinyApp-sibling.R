@@ -395,7 +395,9 @@ test_that("createShinyApp freezes compact dataset information", {
       path = configured[[1L]],
       cells = 2L,
       organism = "Homo sapiens",
-      date = "2026-09-17"
+      date = "2026-09-17",
+      immune_repertoire = FALSE,
+      tcr_repertoire = FALSE
     )
   )
   expect_identical(
