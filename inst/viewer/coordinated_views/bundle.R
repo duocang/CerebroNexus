@@ -1889,6 +1889,12 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
   if (!length(spaces)) {
     return(NULL)
   }
+  viewer_pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  canonical_order_id <- if (is.list(viewer_pack)) {
+    as.character(viewer_pack$manifest$cell_order_fingerprint %||% "")
+  } else {
+    ""
+  }
 
   ## Default colouring: prefer a cell-type-like name, then a sample-like name,
   ## then any categorical field. If no categorical field exists, use the first
@@ -1930,6 +1936,7 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
       },
       error = function(e) paste0("cells:", n)
     ),
+    canonical_order_id = canonical_order_id,
     cells = I(cells),
     n = n,
     groups = groups,

@@ -368,13 +368,15 @@ test_that("shared browser base reuses only matching dataset projections", {
         encodeString(source, quote = '"')
       ),
       "const S = window.CBViewState;",
-      "const first = S.sharedBase(null, 'dataset-a', 3);",
+      "const first = S.sharedBase(null, 'dataset-a', 3, 'order-a');",
       "first.projections.umap = {x:new Float32Array(3),y:new Float32Array(3)};",
-      "const hit = S.sharedBase(first, 'dataset-a', 3);",
-      "const changedDataset = S.sharedBase(first, 'dataset-b', 3);",
-      "const changedCount = S.sharedBase(first, 'dataset-a', 4);",
+      "const hit = S.sharedBase(first, 'dataset-a', 3, 'order-a');",
+      "const changedDataset = S.sharedBase(first, 'dataset-b', 3, 'order-a');",
+      "const changedCount = S.sharedBase(first, 'dataset-a', 4, 'order-a');",
+      "const changedOrder = S.sharedBase(first, 'dataset-a', 3, 'order-b');",
       "console.log(JSON.stringify({hit:hit===first,dataset:changedDataset!==first,",
-      "count:changedCount!==first,projection:hit.projections.umap===first.projections.umap}));"
+      "count:changedCount!==first,order:changedOrder!==first,",
+      "projection:hit.projections.umap===first.projections.umap}));"
     ),
     runner
   )
@@ -383,7 +385,13 @@ test_that("shared browser base reuses only matching dataset projections", {
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
-    list(hit = TRUE, dataset = TRUE, count = TRUE, projection = TRUE)
+    list(
+      hit = TRUE,
+      dataset = TRUE,
+      count = TRUE,
+      order = TRUE,
+      projection = TRUE
+    )
   )
 })
 test_that("trajectory cell views remain eligible for WebGPU", {

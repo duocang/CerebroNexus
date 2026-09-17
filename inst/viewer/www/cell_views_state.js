@@ -51,12 +51,14 @@
     return out;
   };
 
-  S.sharedBase = function (current, fingerprint, cellCount) {
+  S.sharedBase = function (current, fingerprint, cellCount, orderFingerprint) {
     if (current && current.datasetFingerprint === fingerprint &&
-        current.cellCount === cellCount) return current;
+        current.cellCount === cellCount &&
+        current.orderFingerprint === orderFingerprint) return current;
     return {
       datasetFingerprint: fingerprint,
       cellCount: cellCount,
+      orderFingerprint: orderFingerprint,
       projections: Object.create(null),
       gpuPositions: Object.create(null)
     };

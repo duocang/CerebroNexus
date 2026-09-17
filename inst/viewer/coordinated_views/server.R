@@ -43,6 +43,12 @@ cv_saved_view_cells <- reactive({
 
 cv_saved_view_identity <- reactive({
   dataset <- data_set()
+  pack <- attr(dataset, "cerebro_viewer_pack", exact = TRUE)
+  order_fingerprint <- if (is.list(pack)) {
+    as.character(pack$manifest$cell_order_fingerprint %||% "")
+  } else {
+    ""
+  }
   stored_fingerprint <- tryCatch(
     dataset$cell_fingerprint,
     error = function(error) NULL
@@ -55,13 +61,15 @@ cv_saved_view_identity <- reactive({
   ) {
     return(list(
       cell_count = getNumberOfCells(),
-      fingerprint = stored_fingerprint
+      fingerprint = stored_fingerprint,
+      order_fingerprint = order_fingerprint
     ))
   }
   cells <- cv_saved_view_cells()
   list(
     cell_count = length(cells),
-    fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint)
+    fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint),
+    order_fingerprint = order_fingerprint
   )
 })
 
@@ -79,7 +87,8 @@ observe({
     "cerebro_saved_view_dataset",
     list(
       cell_count = identity$cell_count,
-      cell_fingerprint = identity$fingerprint
+      cell_fingerprint = identity$fingerprint,
+      cell_order_fingerprint = identity$order_fingerprint
     )
   )
 })
@@ -475,6 +484,11 @@ observe(
             primary$dataset_fingerprint
           ) &&
           identical(as.integer(shared$cell_count), as.integer(primary$n)) &&
+          nzchar(primary$canonical_order_id %||% "") &&
+          identical(
+            as.character(shared$canonical_order_id %||% ""),
+            primary$canonical_order_id
+          ) &&
           as.character(shared$projection %||% "") %in%
             names(primary$projections)
       ) {

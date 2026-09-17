@@ -5825,13 +5825,15 @@
     window.CerebroSharedDatasetState = window.CBViewState.sharedBase(
       window.CerebroSharedDatasetState,
       String(identity.cell_fingerprint || ''),
-      Number(identity.cell_count) || 0
+      Number(identity.cell_count) || 0,
+      String(identity.cell_order_fingerprint || '')
     );
     return window.CerebroSharedDatasetState;
   }
   function cacheSharedProjection(name, space, n) {
     var base = sharedBase();
-    if (!name || !space || !base.datasetFingerprint || base.cellCount !== n ||
+    if (!name || !space || !base.datasetFingerprint || !base.orderFingerprint ||
+        base.cellCount !== n ||
         !space.x || space.x.length !== n || !space.y || space.y.length !== n) return;
     var previous = base.projections[name];
     if (previous && (previous.x !== space.x || previous.y !== space.y)) {
@@ -5842,6 +5844,7 @@
       Shiny.setInputValue('coordviews_shared_base', {
         dataset_fingerprint: base.datasetFingerprint,
         cell_count: base.cellCount,
+        canonical_order_id: base.orderFingerprint,
         projection: name
       }, { priority: 'event' });
     }
