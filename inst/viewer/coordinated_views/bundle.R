@@ -1467,58 +1467,38 @@ cv_build_trekker <- function(crb, cells, md) {
 
 ## Immune axis: clone identity, sizes, ranks, a clone "space", expansion level.
 ## Returns list(space, group, bundle) or NULL when there is no receptor data.
-cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
-  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
-  receptors <- if (is.list(pack)) {
-    as.character(pack$manifest$immune_receptors)
-  } else {
-    character()
-  }
-  packed <- if (
-    length(receptors) && exists("viewerPackImmuneIndex", mode = "function")
-  ) {
-    viewerPackImmuneIndex(pack, receptors[[1L]])
-  } else {
-    NULL
-  }
-  cp <- if (!is.null(packed)) {
-    clone <- rep(NA_character_, length(cells))
-    ctaa <- rep(NA_character_, length(cells))
-    at <- match(pack$cells[packed$cell_index], cells)
-    keep <- !is.na(at)
-    clone[at[keep]] <- packed$clone[keep]
-    ctaa[at[keep]] <- packed$ctaa[keep]
-    list(clone = clone, ctaa = ctaa, receptor = packed$receptor)
-  } else {
-    ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
-    cv_clone_per_cell(ir, cells)
-  }
-  if (is.null(cp) || !any(!is.na(cp$clone))) {
+cv_build_clone_rows <- function(
+  clone,
+  ctaa,
+  receptor,
+  receptor_index,
+  n,
+  sparse
+) {
+  valid <- !is.na(clone) &
+    nzchar(clone) &
+    !is.na(receptor_index) &
+    receptor_index >= 1L &
+    receptor_index <= n
+  clone <- clone[valid]
+  ctaa <- ctaa[valid]
+  receptor_index <- as.integer(receptor_index[valid])
+  if (!length(clone)) {
     return(NULL)
   }
-  ct <- cp$clone
-  valid_ct <- !is.na(ct) & nzchar(ct)
-  unordered_keys <- unique(ct[valid_ct])
+  unordered_keys <- unique(clone)
   unordered_size <- tabulate(
-    match(ct[valid_ct], unordered_keys),
+    match(clone, unordered_keys),
     nbins = length(unordered_keys)
   )
   clone_order <- order(-unordered_size, unordered_keys, method = "radix")
   clone_keys <- unordered_keys[clone_order]
   clone_size <- unordered_size[clone_order]
-  cell_clone <- match(ct, clone_keys) # 1..K, NA if none
-  ## A clone is called on CTgene, and one CTgene clone routinely spans several
-  ## CDR3s in real receptor data can do this across many cells.
-  ## Labelling it with whichever CDR3 happened to come first therefore named the
-  ## row after one of its members: the table showed a single sequence while
-  ## clicking it selected cells carrying eleven others. The dominant sequence is
-  ## still the useful handle, so it stays, but the count of the rest travels with
-  ## it and the column no longer claims to be a CDR3.
-  ctaa <- cp$ctaa
+  cell_clone <- match(clone, clone_keys)
   K <- length(clone_keys)
   clone_cdr3 <- rep(NA_integer_, K)
   clone_label <- clone_keys
-  valid_aa <- valid_ct & !is.na(ctaa) & nzchar(ctaa)
+  valid_aa <- !is.na(ctaa) & nzchar(ctaa)
   if (any(valid_aa)) {
     aa_clone <- cell_clone[valid_aa]
     aa_value <- ctaa[valid_aa]
@@ -1545,58 +1525,118 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
     dominant <- dominant_order[!duplicated(pair_clone[dominant_order])]
     clone_label[pair_clone[dominant]] <- pair_aa[dominant]
   }
-  ## Name the receptor in the label. The clonotypes shown are one class only
-  ## (mixing TCR and BCR into one ranking is not something any page here does),
-  ## and a data set carrying both would otherwise give no clue which is on screen.
   space <- list(
     id = "clone",
-    label = if (is.na(cp$receptor)) {
+    label = if (is.na(receptor)) {
       "Clonal expansion"
     } else {
-      paste0("Clonal expansion (", cp$receptor, ")")
+      paste0("Clonal expansion (", receptor, ")")
     }
   )
-  size_per_cell <- ifelse(
-    is.na(cell_clone),
-    NA_integer_,
-    clone_size[cell_clone]
-  )
-  ## Bins and labels come from clone_contract.R, so a clone lands in the same
-  ## expansion level here as it does on the Clonal UMAP. "No receptor" is this
-  ## page's own extra level: the Clonal UMAP draws those cells as a grey
-  ## background layer rather than a level, but here every cell is in the same
-  ## legend, so the absence has to be nameable.
-  lvl <- as.character(cerebro_clone_expansion(size_per_cell))
-  lvl[is.na(lvl)] <- "No receptor"
+  expansion <- as.character(cerebro_clone_expansion(clone_size[cell_clone]))
   lev <- c("No receptor", CEREBRO_CLONE_LABELS)
-  group <- cv_group(
-    match(lvl, lev) - 1L,
-    lev,
-    c("#e0e0e0", "#c6dbef", "#6baed6", "#f97316", "#c2410c", "#7f1d1d")
-  )
-  bundle <- cv_clone(
-    ifelse(is.na(cell_clone), -1L, cell_clone - 1L),
-    unname(clone_label),
-    clone_size,
-    K,
-    sum(!is.na(cell_clone)),
-    cp$receptor,
-    unname(clone_cdr3)
-  )
+  expansion_codes <- match(expansion, lev) - 1L
   if (isTRUE(sparse)) {
-    receptor_index <- which(!is.na(cell_clone))
     group <- list(
-      index = I(as.integer(receptor_index - 1L)),
-      values = I(as.integer(unclass(group$values)[receptor_index])),
+      index = I(receptor_index - 1L),
+      values = I(as.integer(expansion_codes)),
       default = 0L,
-      levels = group$levels,
-      colors = group$colors
+      levels = I(lev),
+      colors = I(c(
+        "#e0e0e0",
+        "#c6dbef",
+        "#6baed6",
+        "#f97316",
+        "#c2410c",
+        "#7f1d1d"
+      ))
     )
-    bundle$index <- I(as.integer(receptor_index - 1L))
-    bundle$code <- I(as.integer(cell_clone[receptor_index] - 1L))
+    bundle <- cv_clone(
+      integer(),
+      unname(clone_label),
+      clone_size,
+      K,
+      length(receptor_index),
+      receptor,
+      unname(clone_cdr3)
+    )
+    bundle$index <- I(receptor_index - 1L)
+    bundle$code <- I(as.integer(cell_clone - 1L))
     bundle$id <- NULL
+  } else {
+    dense_clone <- rep(-1L, n)
+    dense_clone[receptor_index] <- cell_clone - 1L
+    dense_expansion <- rep(0L, n)
+    dense_expansion[receptor_index] <- expansion_codes
+    group <- cv_group(
+      dense_expansion,
+      lev,
+      c("#e0e0e0", "#c6dbef", "#6baed6", "#f97316", "#c2410c", "#7f1d1d")
+    )
+    bundle <- cv_clone(
+      dense_clone,
+      unname(clone_label),
+      clone_size,
+      K,
+      length(receptor_index),
+      receptor,
+      unname(clone_cdr3)
+    )
   }
   list(space = space, group = group, bundle = bundle)
+}
+
+cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  receptors <- if (is.list(pack)) {
+    as.character(pack$manifest$immune_receptors)
+  } else {
+    character()
+  }
+  packed <- if (
+    length(receptors) && exists("viewerPackImmuneIndex", mode = "function")
+  ) {
+    viewerPackImmuneIndex(pack, receptors[[1L]])
+  } else {
+    NULL
+  }
+  canonical_packed <- !is.null(packed) &&
+    length(pack$cells) == n &&
+    (identical(cells, seq_len(n)) || identical(as.character(cells), pack$cells))
+  if (isTRUE(sparse) && canonical_packed) {
+    return(cv_build_clone_rows(
+      as.character(packed$clone),
+      as.character(packed$ctaa),
+      as.character(packed$receptor),
+      as.integer(packed$cell_index),
+      n,
+      TRUE
+    ))
+  }
+  cp <- if (!is.null(packed)) {
+    clone <- rep(NA_character_, length(cells))
+    ctaa <- rep(NA_character_, length(cells))
+    at <- match(pack$cells[packed$cell_index], cells)
+    keep <- !is.na(at)
+    clone[at[keep]] <- packed$clone[keep]
+    ctaa[at[keep]] <- packed$ctaa[keep]
+    list(clone = clone, ctaa = ctaa, receptor = packed$receptor)
+  } else {
+    ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
+    cv_clone_per_cell(ir, cells)
+  }
+  if (is.null(cp) || !any(!is.na(cp$clone))) {
+    return(NULL)
+  }
+  receptor_index <- which(!is.na(cp$clone) & nzchar(cp$clone))
+  cv_build_clone_rows(
+    as.character(cp$clone[receptor_index]),
+    as.character(cp$ctaa[receptor_index]),
+    as.character(cp$receptor),
+    receptor_index,
+    n,
+    sparse
+  )
 }
 
 ## Pick the initial categorical colouring from human-written metadata names.
@@ -1960,6 +2000,148 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
     spaces = spaces,
     clone = clone_bundle,
     trekker = trekker_bundle
+  )
+}
+
+cv_build_deferred_metadata <- function(crb, md, primary) {
+  colors_for <- function(name, levels) {
+    tryCatch(
+      cerebro_group_colors(length(levels)),
+      error = function(e) cv_colors_for(levels)
+    )
+  }
+  deferred_group <- function(name, value) {
+    levels <- if (is.factor(value)) {
+      levels(value)
+    } else {
+      sort(unique(as.character(value)))
+    }
+    levels <- levels[!is.na(levels)]
+    if (!length(levels)) {
+      return(NULL)
+    }
+    list(
+      values = NULL,
+      levels = I(levels),
+      colors = I(colors_for(name, levels)),
+      deferred = TRUE
+    )
+  }
+  group_names <- tryCatch(crb$getGroups(), error = function(e) character())
+  groups <- list()
+  for (name in setdiff(
+    intersect(group_names, names(md)),
+    names(primary$groups)
+  )) {
+    group <- deferred_group(name, md[[name]])
+    if (!is.null(group)) groups[[name]] <- group
+  }
+  cat_extra <- list()
+  cat_skipped <- list()
+  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
+  for (name in setdiff(names(md), c(group_names, names(primary$cat_extra)))) {
+    value <- md[[name]]
+    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
+      next
+    }
+    group <- deferred_group(name, value)
+    if (is.null(group)) {
+      next
+    }
+    if (length(group$levels) > max_levels) {
+      cat_skipped[[name]] <- length(group$levels)
+    } else {
+      cat_extra[[name]] <- group
+    }
+  }
+  fields <- list()
+  primary_fields <- sub("^meta:", "", names(primary$fields))
+  for (name in setdiff(names(md), primary_fields)) {
+    value <- md[[name]]
+    if (!is.numeric(value)) {
+      next
+    }
+    range <- suppressWarnings(range(value, na.rm = TRUE))
+    if (!all(is.finite(range)) || range[[2L]] <= range[[1L]]) {
+      next
+    }
+    field <- cv_field(
+      name,
+      integer(),
+      round(range[[1L]], 4),
+      round(range[[2L]], 4)
+    )
+    field$v <- NULL
+    field$deferred <- TRUE
+    fields[[paste0("meta:", name)]] <- field
+  }
+  list(
+    groups = groups,
+    cat_extra = cat_extra,
+    cat_skipped = cat_skipped,
+    fields = fields
+  )
+}
+
+## Fast progressive path for an ordinary projection + immune data set. It uses
+## the already-loaded thin first-frame metadata and the Viewer Pack's canonical
+## immune index, so the supplement never materialises barcodes, per-cell strings,
+## or metadata codes merely to discard them before transport.
+cv_build_compact_supplement <- function(crb, primary, first_frame) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  valid <- is.list(pack) &&
+    is.list(first_frame) &&
+    is.data.frame(first_frame$meta_data) &&
+    is.list(first_frame$projections) &&
+    identical(as.integer(primary$n), nrow(first_frame$meta_data)) &&
+    identical(as.integer(pack$manifest$n_cells), as.integer(primary$n)) &&
+    nzchar(primary$canonical_order_id %||% "") &&
+    identical(
+      as.character(pack$manifest$cell_order_fingerprint %||% ""),
+      primary$canonical_order_id
+    )
+  if (!valid) {
+    return(NULL)
+  }
+  projection_names <- tryCatch(
+    as.character(crb$availableProjections()),
+    error = function(e) character()
+  )
+  unsupported <- length(tryCatch(
+    crb$getMethodsForTrajectories(),
+    error = function(e) character()
+  )) ||
+    length(tryCatch(
+      crb$availableSpatial(),
+      error = function(e) character()
+    )) ||
+    !is.null(tryCatch(crb$getTrekker(), error = function(e) NULL)) ||
+    length(setdiff(projection_names, names(first_frame$projections)))
+  if (unsupported) {
+    return(NULL)
+  }
+  metadata <- cv_build_deferred_metadata(crb, first_frame$meta_data, primary)
+  clone <- cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
+  if (!is.null(clone)) {
+    metadata$groups[["clone_expansion"]] <- clone$group
+  }
+  list(
+    dataset_id = primary$dataset_id,
+    dataset_fingerprint = primary$dataset_fingerprint,
+    progressive_token = primary$progressive_token,
+    groups = metadata$groups,
+    cat_extra = metadata$cat_extra,
+    fields = metadata$fields,
+    cat_skipped = metadata$cat_skipped,
+    projections = cv_build_projections(
+      crb,
+      seq_len(primary$n),
+      setdiff(projection_names, names(primary$projections)),
+      first_frame$projections
+    ),
+    spaces = if (is.null(clone)) list() else list(clone$space),
+    clone = if (is.null(clone)) NULL else clone$bundle,
+    trekker = NULL
   )
 }
 

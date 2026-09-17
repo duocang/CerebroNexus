@@ -75,6 +75,7 @@ test_that("bundle.R parses and defines the builder API", {
     "cv_build_spatial",
     "cv_build_trekker",
     "cv_build_clone",
+    "cv_build_compact_supplement",
     "cv_canonical_metadata",
     "cv_selected_metadata",
     "cv_cell_metadata",
@@ -987,6 +988,8 @@ test_that("large-dataset work stays off the initial response", {
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_no_match(server, "later::later(", fixed = TRUE)
+  expect_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(
     server,
@@ -1676,6 +1679,120 @@ test_that("sparse clone transport expands to the legacy cell-aligned values", {
   expect_identical(sparse$bundle$label, dense$bundle$label)
   expect_identical(sparse$bundle$size, dense$bundle$size)
   expect_identical(sparse$bundle$n_cdr3, dense$bundle$n_cdr3)
+})
+
+test_that("Viewer Pack builds sparse clones from canonical indices", {
+  skip_if_not(have_bundle)
+  old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
+  on.exit(
+    {
+      if (is.null(old_reader)) {
+        rm("viewerPackImmuneIndex", envir = cv_env)
+      } else {
+        assign("viewerPackImmuneIndex", old_reader, envir = cv_env)
+      }
+    },
+    add = TRUE
+  )
+  assign(
+    "viewerPackImmuneIndex",
+    function(pack, receptor) {
+      list(
+        cell_index = c(2L, 4L, 5L),
+        clone = c("clone-a", "clone-a", "clone-b"),
+        ctaa = c("CASSA", "CASSA", "CASSB"),
+        receptor = "TCR"
+      )
+    },
+    envir = cv_env
+  )
+  crb <- list(getImmuneRepertoire = function() stop("CRB fallback used"))
+  attr(crb, "cerebro_viewer_pack") <- list(
+    cells = paste0("c", 1:6),
+    manifest = list(immune_receptors = "TCR")
+  )
+
+  sparse <- cv_env$cv_build_clone(crb, seq_len(6L), 6L, sparse = TRUE)
+
+  expect_identical(as.integer(sparse$bundle$index), c(1L, 3L, 4L))
+  expect_identical(as.integer(sparse$bundle$code), c(0L, 0L, 1L))
+  expect_identical(as.integer(sparse$group$values), c(2L, 2L, 1L))
+})
+
+test_that("compact supplement avoids full CRB hydration", {
+  skip_if_not(have_bundle)
+  old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
+  on.exit(
+    {
+      if (is.null(old_reader)) {
+        rm("viewerPackImmuneIndex", envir = cv_env)
+      } else {
+        assign("viewerPackImmuneIndex", old_reader, envir = cv_env)
+      }
+    },
+    add = TRUE
+  )
+  assign(
+    "viewerPackImmuneIndex",
+    function(pack, receptor) {
+      list(
+        cell_index = c(2L, 4L),
+        clone = c("clone-a", "clone-a"),
+        ctaa = c("CASSA", "CASSA"),
+        receptor = "TCR"
+      )
+    },
+    envir = cv_env
+  )
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T")),
+    sample = factor(c("s1", "s1", "s2", "s2")),
+    score = c(1, 2, 3, 4)
+  )
+  projection <- data.frame(x = 1:4, y = 4:1)
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGeneNames = function() stop("gene hydration was forced"),
+    getGroups = function() c("cell_type", "sample"),
+    availableProjections = function() "tsne",
+    getMethodsForTrajectories = function() character(),
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() stop("immune fallback was forced")
+  )
+  attr(crb, "cerebro_viewer_pack") <- list(
+    cells = paste0("c", 1:4),
+    manifest = list(
+      n_cells = 4L,
+      cell_order_fingerprint = "md5-cell-order-v1:order",
+      immune_receptors = "TCR"
+    )
+  )
+  primary <- list(
+    dataset_id = "ren.crb",
+    dataset_fingerprint = "md5-cell-set-v1:cells",
+    canonical_order_id = "md5-cell-order-v1:order",
+    progressive_token = 7L,
+    n = 4L,
+    groups = list(cell_type = list()),
+    cat_extra = list(),
+    fields = list(),
+    projections = list(tsne = list()),
+    spaces = list(list(id = "umap"))
+  )
+
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    list(meta_data = metadata, projections = list(tsne = projection))
+  )
+
+  expect_true(isTRUE(supplement$groups$sample$deferred))
+  expect_null(supplement$groups$sample$values)
+  expect_true(isTRUE(supplement$fields[["meta:score"]]$deferred))
+  expect_null(supplement$fields[["meta:score"]]$v)
+  expect_identical(as.integer(supplement$clone$index), c(1L, 3L))
+  expect_named(supplement$groups, c("sample", "clone_expansion"))
 })
 
 ## The divergences that clone_contract.R exists to prevent were never visible to

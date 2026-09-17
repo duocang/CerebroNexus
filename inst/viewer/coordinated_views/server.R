@@ -162,6 +162,51 @@ coordviews_primary_bundle <- reactive({
   cv_build_bundle_safe(primary_only = TRUE)
 })
 
+cv_prepare_progressive_supplement <- function(primary, primary_n) {
+  started <- proc.time()[["elapsed"]]
+  supplement <- tryCatch(
+    cv_build_compact_supplement(
+      data_set(),
+      primary,
+      viewerProjectionFirstFrameCache()
+    ),
+    error = function(error) NULL
+  )
+  if (is.null(supplement)) {
+    bundle <- isolate(coordviews_bundle())
+    if (
+      !is.null(bundle$error) ||
+        !identical(bundle$dataset_id, primary$dataset_id) ||
+        !identical(bundle$dataset_fingerprint, primary$dataset_fingerprint)
+    ) {
+      return(NULL)
+    }
+    supplement <- cv_bundle_supplement(primary, bundle, compact = TRUE)
+  }
+  attr(supplement, "server_prepare_ms") <-
+    (proc.time()[["elapsed"]] - started) * 1000
+  list(primary_n = primary_n, value = supplement)
+}
+
+cv_send_progressive_supplement <- function(prepared) {
+  primary_n <- prepared$primary_n
+  if (identical(coordviews_build_log$supplemented_primary_n, primary_n)) {
+    return(invisible(FALSE))
+  }
+  supplement <- prepared$value
+  supplement$transport_profile <- list(
+    server_prepare_ms = attr(supplement, "server_prepare_ms") %||% NA_real_,
+    sent_at_ms = as.numeric(Sys.time()) * 1000
+  )
+  session$sendBinaryMessage(
+    "coordviews_supplement",
+    cv_wire_pack_message(supplement)
+  )
+  coordviews_background_ready(TRUE)
+  coordviews_build_log$supplemented_primary_n <- primary_n
+  invisible(TRUE)
+}
+
 ## The bundle when it actually built; NULL otherwise. Server-side consumers
 ## (gene vectors, histology controls) need real cells, not an error payload.
 cv_ok <- function(b) {
@@ -510,6 +555,20 @@ observe(
         cv_wire_pack_bundle(primary, include_cells = FALSE)
       )
       coordviews_build_log$sent_primary_n <- primary_n
+      session$onFlushed(
+        function() {
+          if (
+            identical(coordviews_build_log$sent_primary_n, primary_n) &&
+              !identical(coordviews_build_log$supplemented_primary_n, primary_n)
+          ) {
+            prepared <- cv_prepare_progressive_supplement(primary, primary_n)
+            if (!is.null(prepared)) {
+              cv_send_progressive_supplement(prepared)
+            }
+          }
+        },
+        once = TRUE
+      )
     } else {
       bundle <- coordviews_bundle()
       bundle_n <- coordviews_build_log$n
@@ -561,23 +620,9 @@ observeEvent(
       return()
     }
     primary$progressive_token <- primary_n
-    bundle <- isolate(coordviews_bundle())
-    req(
-      is.null(bundle$error),
-      identical(bundle$dataset_id, primary$dataset_id),
-      identical(bundle$dataset_fingerprint, primary$dataset_fingerprint)
-    )
-    supplement <- cv_bundle_supplement(primary, bundle, compact = TRUE)
-    supplement$transport_profile <- list(
-      server_prepare_ms = attr(bundle, "server_prepare_ms") %||% NA_real_,
-      sent_at_ms = as.numeric(Sys.time()) * 1000
-    )
-    session$sendBinaryMessage(
-      "coordviews_supplement",
-      cv_wire_pack_message(supplement)
-    )
-    coordviews_background_ready(TRUE)
-    coordviews_build_log$supplemented_primary_n <- primary_n
+    prepared <- cv_prepare_progressive_supplement(primary, primary_n)
+    req(!is.null(prepared))
+    cv_send_progressive_supplement(prepared)
   },
   ignoreInit = TRUE
 )
