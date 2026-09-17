@@ -100,8 +100,16 @@ test_that("Viewer Pack manifest validates canonical identity and assets", {
     "^md5-cell-order-v1:[0-9a-f]{32}$"
   )
   expect_true(all(
-    c("common", "projections", "metadata", "hla_tcr") %in% manifest$modules
+    c(
+      "common",
+      "projections",
+      "metadata",
+      "immune",
+      "hla_tcr"
+    ) %in%
+      manifest$modules
   ))
+  expect_identical(manifest$immune_receptors, "TCR")
   expect_true(length(manifest$assets) >= 4L)
   expect_true(all(file.exists(file.path(pack, manifest$assets$path))))
   expect_true(all(manifest$assets$bytes > 0))
@@ -178,6 +186,23 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   misaligned <- runtime$viewerPackOpen(crb, object)
   misaligned$cells <- rev(misaligned$cells)
   expect_null(runtime$viewerPackHlaSegments(misaligned, "TRB"))
+
+  immune <- runtime$viewerPackImmuneIndex(descriptor, "TCR")
+  expect_identical(immune$cell_index, 1:4)
+  expect_identical(immune$clone, rep("TRBV1.TRBJ1", 4L))
+  expect_identical(immune$ctaa, rep("CASSQ", 4L))
+  expect_identical(immune$expansion, rep(2L, 4L))
+
+  abundance <- runtime$viewerPackImmuneAbundance(descriptor, "CTgene")
+  expect_identical(
+    abundance,
+    data.frame(
+      sample = "sample_1",
+      abundance = 4L,
+      n_clones = 1L,
+      stringsAsFactors = FALSE
+    )
+  )
 
   manifest <- jsonlite::read_json(
     file.path(pack, "manifest.json"),
@@ -257,4 +282,38 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   )
   expect_match(data_layer, "data <- getImmuneRepertoire()", fixed = TRUE)
   expect_match(data_layer, "hla_parse_ir_segments(data, chain)", fixed = TRUE)
+
+  immune_data <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "viewer",
+      "immune_repertoire",
+      "data.R"
+    )),
+    collapse = "\n"
+  )
+  linked <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "viewer",
+      "coordinated_views",
+      "bundle.R"
+    )),
+    collapse = "\n"
+  )
+  expect_match(
+    immune_data,
+    "viewerPackImmuneIndex(viewerPackCurrent()",
+    fixed = TRUE
+  )
+  expect_match(
+    immune_data,
+    "viewerPackImmuneAbundance(viewerPackCurrent()",
+    fixed = TRUE
+  )
+  expect_match(linked, "viewerPackImmuneIndex(pack,", fixed = TRUE)
 })

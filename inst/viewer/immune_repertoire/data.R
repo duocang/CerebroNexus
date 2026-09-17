@@ -371,6 +371,10 @@ ir_clone_expansion <- function(clones) {
 }
 
 ir_clonal_abundance_counts <- function(data, clone_col) {
+  packed <- viewerPackImmuneAbundance(viewerPackCurrent(), clone_col)
+  if (!is.null(packed)) {
+    return(packed)
+  }
   samples <- names(data)
   if (is.null(samples)) {
     samples <- as.character(seq_along(data))
@@ -470,38 +474,45 @@ ir_clonal_umap_data <- function(
     }
   }
 
-  data <- ir_data_annotated()
-  if (is.null(data)) {
-    return(NULL)
-  }
   clone_col <- ir_clonecall_col(cloneCall)
-  keep_chains <- ir_umap_chains(receptor)
-
-  # Flatten the per-sample IR list into one barcode -> clonotype table,
-  # restricted to rows whose CTstrict/CTgene references one of the receptor's
-  # chains. Each row is one cell (scRepertoire keeps one row per barcode).
-  rows <- lapply(data, function(df) {
-    if (is.null(df) || !all(c("barcode", clone_col) %in% colnames(df))) {
-      return(NULL)
-    }
-    chain_ref <- if ("CTstrict" %in% colnames(df)) {
-      as.character(df$CTstrict)
-    } else {
-      as.character(df[[clone_col]])
-    }
-    in_receptor <- grepl(paste(keep_chains, collapse = "|"), chain_ref)
-    if (!any(in_receptor)) {
-      return(NULL)
-    }
-    list(
-      barcode = as.character(df$barcode[in_receptor]),
-      clone = as.character(df[[clone_col]][in_receptor])
-    )
-  })
-  rows <- rows[!vapply(rows, is.null, logical(1))]
-  barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
-  clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
   coord_bc <- rownames(coords)
+  packed <- if (identical(clone_col, "CTgene")) {
+    viewerPackImmuneIndex(viewerPackCurrent(), receptor)
+  } else {
+    NULL
+  }
+  if (!is.null(packed)) {
+    canonical <- viewerPackCurrent()$cells
+    barcodes <- canonical[packed$cell_index]
+    clones <- packed$clone
+  } else {
+    data <- ir_data_annotated()
+    if (is.null(data)) {
+      return(NULL)
+    }
+    keep_chains <- ir_umap_chains(receptor)
+    rows <- lapply(data, function(df) {
+      if (is.null(df) || !all(c("barcode", clone_col) %in% colnames(df))) {
+        return(NULL)
+      }
+      chain_ref <- if ("CTstrict" %in% colnames(df)) {
+        as.character(df$CTstrict)
+      } else {
+        as.character(df[[clone_col]])
+      }
+      in_receptor <- grepl(paste(keep_chains, collapse = "|"), chain_ref)
+      if (!any(in_receptor)) {
+        return(NULL)
+      }
+      list(
+        barcode = as.character(df$barcode[in_receptor]),
+        clone = as.character(df[[clone_col]][in_receptor])
+      )
+    })
+    rows <- rows[!vapply(rows, is.null, logical(1))]
+    barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
+    clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
+  }
   valid <- !is.na(clones) & nzchar(clones)
   coord_index <- match(barcodes, coord_bc)
   valid <- valid & !is.na(coord_index)
@@ -517,7 +528,15 @@ ir_clonal_umap_data <- function(
     }
     expansion <- factor(levels = IR_CLONE_LABELS)
   } else {
-    expansion <- ir_clone_expansion(clones)
+    expansion <- if (!is.null(packed)) {
+      factor(
+        packed$expansion[valid],
+        levels = seq_along(IR_CLONE_LABELS),
+        labels = IR_CLONE_LABELS
+      )
+    } else {
+      ir_clone_expansion(clones)
+    }
   }
   receptor_indices <- unique(coord_index)
 

@@ -83,6 +83,123 @@
   }
 }
 
+.viewerPackRowsInReceptor <- function(frame, receptor, clone_col = "CTgene") {
+  chains <- if (identical(receptor, "BCR")) {
+    c("IGH", "IGK", "IGL")
+  } else {
+    c("TRA", "TRB", "TRG", "TRD")
+  }
+  reference <- if ("CTstrict" %in% colnames(frame)) {
+    as.character(frame$CTstrict)
+  } else {
+    as.character(frame[[clone_col]])
+  }
+  Reduce(
+    `|`,
+    lapply(chains, function(chain) grepl(chain, reference, fixed = TRUE))
+  )
+}
+
+.viewerPackImmuneIndex <- function(repertoire, cells, receptor) {
+  rows <- do.call(
+    rbind,
+    lapply(repertoire, function(frame) {
+      if (is.null(frame) || !all(c("barcode", "CTgene") %in% colnames(frame))) {
+        return(NULL)
+      }
+      keep <- .viewerPackRowsInReceptor(frame, receptor)
+      if (!any(keep)) {
+        return(NULL)
+      }
+      data.frame(
+        barcode = as.character(frame$barcode[keep]),
+        clone = as.character(frame$CTgene[keep]),
+        ctaa = if ("CTaa" %in% colnames(frame)) {
+          as.character(frame$CTaa[keep])
+        } else {
+          as.character(frame$CTgene[keep])
+        },
+        stringsAsFactors = FALSE
+      )
+    })
+  )
+  if (is.null(rows) || !nrow(rows)) {
+    return(NULL)
+  }
+  rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
+  rows <- rows[!duplicated(rows$barcode), , drop = FALSE]
+  cell_index <- match(rows$barcode, cells)
+  keep <- !is.na(cell_index)
+  rows <- rows[keep, , drop = FALSE]
+  cell_index <- cell_index[keep]
+  clone_ids <- match(rows$clone, unique(rows$clone))
+  sizes <- tabulate(clone_ids)
+  expansion <- as.integer(cut(
+    sizes[clone_ids],
+    breaks = c(0, 1, 5, 20, 100, Inf),
+    labels = FALSE,
+    right = TRUE,
+    include.lowest = TRUE
+  ))
+  list(
+    cell_index = as.integer(cell_index),
+    clone = rows$clone,
+    ctaa = rows$ctaa,
+    expansion = expansion,
+    receptor = receptor
+  )
+}
+
+.viewerPackImmuneAbundance <- function(repertoire) {
+  columns <- intersect(
+    c("CTgene", "CTnt", "CTaa", "CTstrict"),
+    unique(unlist(lapply(repertoire, colnames)))
+  )
+  stats::setNames(
+    lapply(columns, function(column) {
+      samples <- names(repertoire)
+      if (is.null(samples)) {
+        samples <- as.character(seq_along(repertoire))
+      }
+      rows <- Map(
+        function(frame, sample) {
+          if (is.null(frame) || !(column %in% colnames(frame))) {
+            return(NULL)
+          }
+          clones <- as.character(frame[[column]])
+          clones <- clones[!is.na(clones) & nzchar(clones)]
+          if (!length(clones)) {
+            return(NULL)
+          }
+          abundance <- tabulate(match(clones, unique(clones)))
+          bins <- table(abundance)
+          data.frame(
+            sample = sample,
+            abundance = as.integer(names(bins)),
+            n_clones = as.integer(bins),
+            stringsAsFactors = FALSE
+          )
+        },
+        repertoire,
+        samples
+      )
+      rows <- rows[!vapply(rows, is.null, logical(1))]
+      out <- if (length(rows)) {
+        do.call(rbind, rows)
+      } else {
+        data.frame(
+          sample = character(),
+          abundance = integer(),
+          n_clones = integer()
+        )
+      }
+      rownames(out) <- NULL
+      out
+    }),
+    columns
+  )
+}
+
 .viewerPackBuildAssets <- function(object, stage) {
   cells <- .viewerPackCells(object)
   assets <- .viewerPackWriteAsset(
@@ -163,6 +280,52 @@
   repertoire <- tryCatch(object$getImmuneRepertoire(), error = function(error) {
     list()
   })
+  receptors <- character()
+  if (length(repertoire)) {
+    references <- unlist(
+      lapply(repertoire, function(frame) {
+        if ("CTstrict" %in% colnames(frame)) {
+          as.character(frame$CTstrict)
+        } else {
+          as.character(frame$CTgene)
+        }
+      }),
+      use.names = FALSE
+    )
+    if (any(grepl("TR[ABGD]", references))) {
+      receptors <- c(receptors, "TCR")
+    }
+    if (any(grepl("IG[HKL]", references))) receptors <- c(receptors, "BCR")
+  }
+  if (length(receptors)) {
+    modules <- c(modules, "immune")
+    for (receptor in receptors) {
+      index <- .viewerPackImmuneIndex(repertoire, cells, receptor)
+      if (!is.null(index)) {
+        assets <- rbind(
+          assets,
+          .viewerPackWriteAsset(
+            stage,
+            file.path("immune", paste0(receptor, ".qs2")),
+            index,
+            "sparse-cell-index",
+            length(index$cell_index)
+          )
+        )
+      }
+    }
+    abundance <- .viewerPackImmuneAbundance(repertoire)
+    assets <- rbind(
+      assets,
+      .viewerPackWriteAsset(
+        stage,
+        file.path("immune", "abundance.qs2"),
+        abundance,
+        "table-list",
+        sum(vapply(abundance, nrow, integer(1)))
+      )
+    )
+  }
   chains <- intersect(hla_detect_chains(repertoire), c("TRA", "TRB"))
   if (length(chains)) {
     modules <- c(modules, "hla_tcr")
@@ -188,6 +351,7 @@
     modules = unique(modules),
     projection_names = projections,
     metadata_names = metadata_names,
+    immune_receptors = receptors,
     hla_chains = chains
   )
 }
@@ -353,6 +517,7 @@ buildViewerPack <- function(
     modules = built$modules,
     projection_names = built$projection_names,
     metadata_names = built$metadata_names,
+    immune_receptors = built$immune_receptors,
     hla_chains = built$hla_chains,
     assets = built$assets
   )

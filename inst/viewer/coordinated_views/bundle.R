@@ -1456,8 +1456,31 @@ cv_build_trekker <- function(crb, cells, md) {
 ## Immune axis: clone identity, sizes, ranks, a clone "space", expansion level.
 ## Returns list(space, group, bundle) or NULL when there is no receptor data.
 cv_build_clone <- function(crb, cells, n) {
-  ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
-  cp <- cv_clone_per_cell(ir, cells)
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  receptors <- if (is.list(pack)) {
+    as.character(pack$manifest$immune_receptors)
+  } else {
+    character()
+  }
+  packed <- if (
+    length(receptors) && exists("viewerPackImmuneIndex", mode = "function")
+  ) {
+    viewerPackImmuneIndex(pack, receptors[[1L]])
+  } else {
+    NULL
+  }
+  cp <- if (!is.null(packed)) {
+    clone <- rep(NA_character_, length(cells))
+    ctaa <- rep(NA_character_, length(cells))
+    at <- match(pack$cells[packed$cell_index], cells)
+    keep <- !is.na(at)
+    clone[at[keep]] <- packed$clone[keep]
+    ctaa[at[keep]] <- packed$ctaa[keep]
+    list(clone = clone, ctaa = ctaa, receptor = packed$receptor)
+  } else {
+    ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
+    cv_clone_per_cell(ir, cells)
+  }
   if (is.null(cp) || !any(!is.na(cp$clone))) {
     return(NULL)
   }

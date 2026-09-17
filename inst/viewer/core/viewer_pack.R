@@ -125,3 +125,22 @@ viewerPackHlaSegments <- function(pack, chain) {
   }
   viewerPackReadAsset(pack, file.path("hla_tcr", paste0(chain, ".qs2")))
 }
+
+viewerPackImmuneIndex <- function(pack, receptor) {
+  if (
+    !is.character(receptor) ||
+      length(receptor) != 1L ||
+      !receptor %in% c("TCR", "BCR")
+  ) {
+    return(NULL)
+  }
+  viewerPackReadAsset(pack, file.path("immune", paste0(receptor, ".qs2")))
+}
+
+viewerPackImmuneAbundance <- function(pack, clone_col) {
+  values <- viewerPackReadAsset(pack, "immune/abundance.qs2")
+  if (is.null(values) || !(clone_col %in% names(values))) {
+    return(NULL)
+  }
+  values[[clone_col]]
+}
