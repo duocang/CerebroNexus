@@ -371,7 +371,14 @@ ir_clone_expansion <- function(clones) {
 }
 
 ir_clonal_abundance_counts <- function(data, clone_col) {
-  packed <- viewerPackImmuneAbundance(viewerPackCurrent(), clone_col)
+  packed <- if (
+    exists("viewerPackCurrent", mode = "function") &&
+      exists("viewerPackImmuneAbundance", mode = "function")
+  ) {
+    viewerPackImmuneAbundance(viewerPackCurrent(), clone_col)
+  } else {
+    NULL
+  }
   if (!is.null(packed)) {
     return(packed)
   }
@@ -477,7 +484,14 @@ ir_clonal_umap_data <- function(
   clone_col <- ir_clonecall_col(cloneCall)
   coord_bc <- rownames(coords)
   packed <- if (identical(clone_col, "CTgene")) {
-    viewerPackImmuneIndex(viewerPackCurrent(), receptor)
+    if (
+      exists("viewerPackCurrent", mode = "function") &&
+        exists("viewerPackImmuneIndex", mode = "function")
+    ) {
+      viewerPackImmuneIndex(viewerPackCurrent(), receptor)
+    } else {
+      NULL
+    }
   } else {
     NULL
   }
