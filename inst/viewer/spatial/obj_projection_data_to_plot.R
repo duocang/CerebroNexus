@@ -192,12 +192,7 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    group_hulls = spatial_projection_group_hulls(),
-    hover_columns = if (isTRUE(plot_parameters[["hover_info"]])) {
-      cerebroProjectionHoverColumns(metadata)
-    } else {
-      list()
-    }
+    group_hulls = spatial_projection_group_hulls()
   )
 
   return(to_return)

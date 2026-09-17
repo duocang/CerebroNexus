@@ -112,14 +112,27 @@ spatial_projection_update_plot <- function(input) {
   reset_axes <- input[['reset_axes']]
   plot_parameters <- input[['plot_parameters']]
   color_assignments <- input[['color_assignments']]
-  hover_columns <- input[['hover_columns']]
 
   color_variable <- plot_parameters[['color_variable']]
   color_input <- metadata[[color_variable]]
-  selection_keys <- if ("cell_barcode" %in% colnames(metadata)) {
-    as.character(metadata[["cell_barcode"]])
-  } else {
-    rownames(metadata)
+  selection_keys <- seq_len(nrow(metadata))
+  build_deferred_aux <- function(selection_rows) {
+    cell_barcodes <- if ("cell_barcode" %in% colnames(metadata)) {
+      as.character(metadata[["cell_barcode"]])
+    } else {
+      rownames(metadata)
+    }
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    cerebroCellViewDeferredAux(
+      selection_rows = selection_rows,
+      cell_barcodes = cell_barcodes,
+      hover_columns = if (hover) {
+        cerebroProjectionHoverColumns(metadata)
+      } else {
+        list()
+      },
+      hover = hover
+    )
   }
 
   ## prepare background image data and bounds if selected
@@ -308,15 +321,18 @@ spatial_projection_update_plot <- function(input) {
       reset_axes = reset_axes
     )
     output_hover <- list(
-      hoverinfo = if (plot_parameters[["hover_info"]]) "text" else "skip",
+      hoverinfo = "skip",
       text = list(),
-      columns = hover_columns
+      columns = list()
     )
     cerebroCellViewRender(
       "spatial_projection",
       output_meta,
       output_data,
-      output_hover
+      output_hover,
+      deferred_aux = function() {
+        build_deferred_aux(output_data[["selection_key"]])
+      }
     )
     return(invisible(NULL))
   }
@@ -337,8 +353,8 @@ spatial_projection_update_plot <- function(input) {
     reset_axes = reset_axes,
     n_dimensions = n_dimensions,
     color_assignments = color_assignments,
-    hover_columns = hover_columns,
-    hover = plot_parameters[["hover_info"]],
+    hover_columns = list(),
+    hover = FALSE,
     space_label = plot_parameters[["projection"]]
   )
   payload[["meta"]] <- c(background_meta, payload[["meta"]])
@@ -362,6 +378,9 @@ spatial_projection_update_plot <- function(input) {
     payload[["meta"]],
     payload[["data"]],
     payload[["hover"]],
-    extra = list(group_hulls = output_hulls)
+    extra = list(group_hulls = output_hulls),
+    deferred_aux = function() {
+      build_deferred_aux(payload[["data"]][["selection_key"]])
+    }
   )
 }

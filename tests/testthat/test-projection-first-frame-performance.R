@@ -184,6 +184,28 @@ test_that("trajectory first frame defers identities and hover", {
   expect_match(source, "deferred_aux = deferred_aux", fixed = TRUE)
 })
 
+test_that("spatial first frame defers identities and hover", {
+  source <- paste(
+    readLines(
+      viewer_test_path("spatial", "func_projection_update_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    source,
+    "selection_keys <- seq_len(nrow(metadata))",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "build_deferred_aux <- function(selection_rows)",
+    fixed = TRUE
+  )
+  expect_match(source, "deferred_aux = function()", fixed = TRUE)
+})
+
 test_that("projection rendering has one first-frame debounce entry point", {
   event_source <- paste(
     readLines(
