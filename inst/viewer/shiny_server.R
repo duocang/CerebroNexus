@@ -411,7 +411,7 @@ server <- function(input, output, session) {
   ## another page, or selecting a dataset absent from the catalog, enables the
   ## ordinary data_set() chain.
   observeEvent(
-    list(available_crb_files$selected, input[["sidebar"]]),
+    available_crb_files$selected,
     {
       catalog <- if (exists("Cerebro.options")) {
         Cerebro.options[[".dataset_catalog"]]
@@ -419,9 +419,23 @@ server <- function(input, output, session) {
         NULL
       }
       info <- viewerDatasetInfo(catalog, available_crb_files$selected)
-      dataset_load_requested(
-        viewerDatasetLoadRequired(input[["sidebar"]], info)
-      )
+      dataset_load_requested(viewerDatasetLoadRequired(
+        isolate(input[["sidebar"]]),
+        info,
+        initial_tab,
+        isolate(initial_page_applied())
+      ))
+    },
+    ignoreNULL = FALSE
+  )
+
+  observeEvent(
+    input[["sidebar"]],
+    {
+      dataset_load_requested(viewerDatasetLoadOnTab(
+        isolate(dataset_load_requested()),
+        input[["sidebar"]]
+      ))
     },
     ignoreNULL = FALSE
   )

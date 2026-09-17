@@ -62,8 +62,10 @@ test_that("dataset info resolves only the selected catalog entry", {
 
 test_that("catalog-backed Data Info defers the full dataset load", {
   load_required <- utils_env$viewerDatasetLoadRequired
+  load_on_tab <- utils_env$viewerDatasetLoadOnTab
   expect_true(is.function(load_required))
-  if (!is.function(load_required)) {
+  expect_true(is.function(load_on_tab))
+  if (!is.function(load_required) || !is.function(load_on_tab)) {
     return()
   }
 
@@ -71,6 +73,22 @@ test_that("catalog-backed Data Info defers the full dataset load", {
   expect_false(load_required("loadData", info))
   expect_true(load_required("overview", info))
   expect_true(load_required("loadData", NULL))
+  expect_true(load_required(
+    "loadData",
+    info,
+    initial_tab = "immune_repertoire",
+    initial_page_applied = FALSE
+  ))
+  expect_false(load_required(
+    "loadData",
+    info,
+    initial_tab = "immune_repertoire",
+    initial_page_applied = TRUE
+  ))
+
+  expect_false(load_on_tab(FALSE, "loadData"))
+  expect_true(load_on_tab(FALSE, "overview"))
+  expect_true(load_on_tab(TRUE, "loadData"))
 })
 
 test_that("Data Info uses the catalog before the full dataset", {

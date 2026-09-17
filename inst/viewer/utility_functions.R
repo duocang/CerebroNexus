@@ -77,8 +77,25 @@ viewerDatasetInfo <- function(catalog, selected) {
   info
 }
 
-viewerDatasetLoadRequired <- function(tab, info) {
+viewerDatasetLoadRequired <- function(
+  tab,
+  info,
+  initial_tab = NULL,
+  initial_page_applied = TRUE
+) {
+  if (!isTRUE(initial_page_applied) && !is.null(initial_tab)) {
+    tab <- initial_tab
+  }
   is.null(info) ||
+    (is.character(tab) &&
+      length(tab) == 1L &&
+      !is.na(tab) &&
+      nzchar(tab) &&
+      !identical(tab, "loadData"))
+}
+
+viewerDatasetLoadOnTab <- function(current, tab) {
+  isTRUE(current) ||
     (is.character(tab) &&
       length(tab) == 1L &&
       !is.na(tab) &&
