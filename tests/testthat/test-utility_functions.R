@@ -115,6 +115,40 @@ test_that("Data Info uses the catalog before the full dataset", {
   )))
 })
 
+test_that("Data Info starts a non-blocking CRB prefetch", {
+  viewer_root <- dirname(utils_file)
+  server <- paste(
+    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server, "crb_prefetch_tasks <- new.env", fixed = TRUE)
+  expect_match(server, "shiny::ExtendedTask$new", fixed = TRUE)
+  expect_match(server, "mirai::mirai", fixed = TRUE)
+  expect_match(server, "session$onFlushed", fixed = TRUE)
+  expect_match(server, "prefetch_task$result()", fixed = TRUE)
+})
+
+test_that("a prefetched CRB prototype enters the process cache", {
+  cache_prototype <- utils_env$.cacheCrbPrototype
+  expect_true(is.function(cache_prototype))
+  if (!is.function(cache_prototype)) {
+    return()
+  }
+
+  path <- tempfile(fileext = ".crb")
+  prototype <- new.env(parent = emptyenv())
+  cache_prototype(path, prototype, NULL)
+  key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  cache <- get(
+    ".crb_process_cache",
+    envir = environment(cache_prototype),
+    inherits = TRUE
+  )
+
+  expect_identical(cache[[key]]$object, prototype)
+})
+
 test_that("the lightweight TCR gate scans every sample", {
   repertoire <- list(
     s1 = data.frame(CTgene = NA_character_),

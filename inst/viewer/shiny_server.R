@@ -210,6 +210,45 @@ server <- function(input, output, session) {
     names = NULL
   )
   dataset_load_requested <- reactiveVal(FALSE)
+  crb_prefetch_tasks <- new.env(parent = emptyenv())
+
+  start_crb_prefetch <- function(path) {
+    path <- as.character(path[[1L]])
+    if (!file.exists(path)) {
+      return(invisible(NULL))
+    }
+    cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+    if (
+      !is.null(.crb_process_cache[[cache_key]]) ||
+        !is.null(crb_prefetch_tasks[[cache_key]])
+    ) {
+      return(invisible(NULL))
+    }
+    prefetch_task <- shiny::ExtendedTask$new(function(path) {
+      mirai::mirai(
+        {
+          connection <- file(path, open = "rb")
+          on.exit(close(connection), add = TRUE)
+          magic <- readBin(connection, "raw", n = 4L)
+          prototype <- if (
+            identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))
+          ) {
+            qs2::qs_read(path)
+          } else {
+            readRDS(path)
+          }
+          list(path = path, prototype = prototype)
+        },
+        path = path
+      )
+    })
+    crb_prefetch_tasks[[cache_key]] <- prefetch_task
+    print(glue::glue(
+      "[{Sys.time()}] CRB background prefetch started: {.crbLogLabel(path)}"
+    ))
+    prefetch_task$invoke(path)
+    invisible(NULL)
+  }
 
   current_scatter_defaults <- reactive({
     viewerScatterDefaults(
@@ -425,6 +464,26 @@ server <- function(input, output, session) {
         initial_tab,
         isolate(initial_page_applied())
       ))
+      selected <- available_crb_files$selected
+      if (!is.null(info) && length(selected) == 1L) {
+        session$onFlushed(
+          function() {
+            if (session$isClosed()) {
+              return()
+            }
+            withReactiveDomain(session, {
+              current <- isolate(available_crb_files$selected)
+              if (
+                length(current) == 1L &&
+                  identical(as.character(current), as.character(selected))
+              ) {
+                start_crb_prefetch(selected)
+              }
+            })
+          },
+          once = TRUE
+        )
+      }
     },
     ignoreNULL = FALSE
   )
@@ -498,6 +557,48 @@ server <- function(input, output, session) {
         unname(Cerebro.options[["crb_file_to_load"]])
       } else {
         character()
+      }
+      cache_key <- normalizePath(
+        dataset_to_load,
+        winslash = "/",
+        mustWork = FALSE
+      )
+      if (is.null(.crb_process_cache[[cache_key]])) {
+        prefetch_task <- crb_prefetch_tasks[[cache_key]]
+        if (!is.null(prefetch_task)) {
+          status <- prefetch_task$status()
+          if (status %in% c("initial", "running")) {
+            prefetch_task$result()
+          } else if (identical(status, "success")) {
+            prefetched <- prefetch_task$result()
+            req(identical(prefetched$path, as.character(dataset_to_load)))
+            effective_backend <- .configuredRuntimeBackendPlan(
+              dataset_to_load,
+              backend_plan,
+              configured_paths
+            )
+            .cacheCrbPrototype(
+              dataset_to_load,
+              prefetched$prototype,
+              .runtimeBackendCacheIdentity(effective_backend)
+            )
+            print(glue::glue(
+              "[{Sys.time()}] CRB background prefetch ready: ",
+              "{.crbLogLabel(dataset_to_load)}"
+            ))
+          } else {
+            tryCatch(
+              prefetch_task$result(),
+              error = function(error) {
+                warning(
+                  "CRB background prefetch failed; loading synchronously: ",
+                  conditionMessage(error),
+                  call. = FALSE
+                )
+              }
+            )
+          }
+        }
       }
       data <- get_or_load_crb(
         dataset_to_load,

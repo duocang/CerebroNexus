@@ -2693,6 +2693,26 @@ if (!exists(".crb_process_cache", inherits = TRUE)) {
   )
 }
 
+.cacheCrbPrototype <- function(path, prototype, backend_identity) {
+  cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  cached <- .crb_process_cache[[cache_key]]
+  if (!is.null(cached)) {
+    if (!identical(cached$backend_identity, backend_identity)) {
+      stop(
+        "The cached CRB '",
+        path,
+        "' backend configuration changed after it was loaded. Start a new ",
+        "app session before using the new configuration.",
+        call. = FALSE
+      )
+    }
+    return(invisible(cached))
+  }
+  cached <- list(object = prototype, backend_identity = backend_identity)
+  .crb_process_cache[[cache_key]] <- cached
+  invisible(cached)
+}
+
 get_or_load_crb <- function(
   path,
   backend_plan = NULL,
@@ -2723,10 +2743,7 @@ get_or_load_crb <- function(
       "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
     ))
     prototype <- read_cerebro_file(path)
-    .crb_process_cache[[cache_key]] <- list(
-      object = prototype,
-      backend_identity = cache_identity
-    )
+    .cacheCrbPrototype(path, prototype, cache_identity)
   }
 
   ## Clone the inert serialized prototype before installing delayed bindings.
