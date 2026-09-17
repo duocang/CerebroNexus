@@ -512,9 +512,14 @@ test_that("the page benchmark has a publication-grade contract", {
     fixed = TRUE
   )
   expect_equal(
-    lengths(gregexpr("expected_points = 1000000", benchmark, fixed = TRUE)),
+    lengths(gregexpr(
+      "expected_points = expected_cells",
+      benchmark,
+      fixed = TRUE
+    )),
     4L
   )
+  expect_match(benchmark, "VIEWER_EXPECTED_CELLS", fixed = TRUE)
   expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
   expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
   expect_match(benchmark, "link.offsetParent !== null", fixed = TRUE)

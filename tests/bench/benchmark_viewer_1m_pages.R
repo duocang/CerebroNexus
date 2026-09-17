@@ -35,6 +35,15 @@ first_candidate <- parse_candidate(args[[1L]])
 crb <- normalizePath(args[[2L]], mustWork = TRUE)
 output <- normalizePath(args[[3L]], mustWork = FALSE)
 profile <- Sys.getenv("VIEWER_BENCH_PROFILE", unset = "quick")
+expected_cells <- suppressWarnings(as.integer(Sys.getenv(
+  "VIEWER_EXPECTED_CELLS",
+  unset = "1000000"
+)))
+if (
+  length(expected_cells) != 1L || is.na(expected_cells) || expected_cells < 1L
+) {
+  stop("VIEWER_EXPECTED_CELLS must be one positive integer.", call. = FALSE)
+}
 rounds <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
   as.integer(args[[4L]])
 } else {
@@ -146,28 +155,28 @@ pages <- list(
   overview = canvas_page(
     "overview",
     "#overview_projection_cell_view_host",
-    expected_points = 1000000,
+    expected_points = expected_cells,
     required = TRUE,
     event_view = "overview_projection"
   ),
   gene_expression = canvas_page(
     "geneExpression",
     "#expression_projection_cell_view_host",
-    expected_points = 1000000,
+    expected_points = expected_cells,
     required = TRUE,
     event_view = "expression_projection"
   ),
   immune_repertoire = canvas_page(
     "immune_repertoire",
     "#ir_clonalUMAP_projection_cell_view_host",
-    expected_points = 1000000,
+    expected_points = expected_cells,
     required = TRUE,
     event_view = "ir_clonalUMAP_projection"
   ),
   trajectory = canvas_page(
     "trajectory",
     "#trajectory_projection_cell_view_host",
-    expected_points = 1000000,
+    expected_points = expected_cells,
     budget_ms = 3000,
     required = TRUE,
     event_view = "trajectory_projection"
@@ -644,8 +653,14 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   )
   app$wait_for_value(output = "load_data_number_of_cells", timeout = 900000)
   count <- app$get_value(output = "load_data_number_of_cells")
-  if (is.null(count$html) || !grepl("1,000,000", count$html, fixed = TRUE)) {
-    stop("Data Info did not report 1,000,000 cells.", call. = FALSE)
+  expected_label <- format(
+    expected_cells,
+    big.mark = ",",
+    scientific = FALSE,
+    trim = TRUE
+  )
+  if (is.null(count$html) || !grepl(expected_label, count$html, fixed = TRUE)) {
+    stop("Data Info did not report ", expected_label, " cells.", call. = FALSE)
   }
   if (!isTRUE(page_available(app, page))) {
     if (isTRUE(page$required)) {
