@@ -40,7 +40,8 @@ hla_ir_annotated <- reactive({
     data,
     tryCatch(getMetaData(), error = function(e) NULL)
   )
-})
+}) %>%
+  hla_bindCache(available_crb_files$selected)
 
 ## ---- Analysis cohort filters ----------------------------------------- ##
 ## Motif construction is quadratic within CDR3-length bins, so an atlas-scale
@@ -59,24 +60,43 @@ hla_filter_levels <- reactive({
   if (is.null(data) || length(groups) == 0) {
     return(stats::setNames(list(), character(0)))
   }
-  stats::setNames(lapply(groups, function(group) {
-    values <- unlist(lapply(data, function(df) {
-      if (group %in% colnames(df)) as.character(df[[group]]) else character(0)
-    }), use.names = FALSE)
-    sort(unique(values[!is.na(values) & nzchar(values)]))
-  }), groups)
+  stats::setNames(
+    lapply(groups, function(group) {
+      values <- unlist(
+        lapply(data, function(df) {
+          if (group %in% colnames(df)) {
+            as.character(df[[group]])
+          } else {
+            character(0)
+          }
+        }),
+        use.names = FALSE
+      )
+      sort(unique(values[!is.na(values) & nzchar(values)]))
+    }),
+    groups
+  )
 })
 
 ## Parse once without cohort filtering to size a safe initial sample set. This
 ## is linear work; the expensive Hamming graph is built only after filtering.
 hla_unfiltered_segments <- reactive({
-  hla_parse_ir_segments(hla_ir_annotated(), hla_active_chain())
-})
+  data <- hla_ir_annotated()
+  minimal <- lapply(data, function(frame) {
+    frame[
+      intersect(c("barcode", "CTgene", "CTaa", "sample"), colnames(frame))
+    ]
+  })
+  hla_parse_ir_segments(minimal, hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
 
 hla_initial_samples <- reactive({
   levels <- hla_filter_levels()[["sample"]]
   seg <- hla_unfiltered_segments()
-  if (is.null(levels) || length(levels) == 0 || is.null(seg) || nrow(seg) == 0) {
+  if (
+    is.null(levels) || length(levels) == 0 || is.null(seg) || nrow(seg) == 0
+  ) {
     return(levels %||% character(0))
   }
   hla_choose_initial_samples(seg, levels)
@@ -93,17 +113,27 @@ hla_default_filter_selections <- reactive({
 hla_filter_selections <- reactive({
   levels <- hla_filter_levels()
   defaults <- hla_default_filter_selections()
-  stats::setNames(lapply(names(levels), function(group) {
-    selected <- input[[paste0("hla_group_filter_", group)]]
-    if (is.null(selected)) defaults[[group]] else as.character(selected)
-  }), names(levels))
+  stats::setNames(
+    lapply(names(levels), function(group) {
+      selected <- input[[paste0("hla_group_filter_", group)]]
+      if (is.null(selected)) defaults[[group]] else as.character(selected)
+    }),
+    names(levels)
+  )
 })
 
 hla_filter_key <- reactive({
   selections <- hla_filter_selections()
-  paste(vapply(names(selections), function(group) {
-    paste0(group, "=", paste(sort(selections[[group]]), collapse = ","))
-  }, character(1)), collapse = "|")
+  paste(
+    vapply(
+      names(selections),
+      function(group) {
+        paste0(group, "=", paste(sort(selections[[group]]), collapse = ","))
+      },
+      character(1)
+    ),
+    collapse = "|"
+  )
 })
 
 hla_ir_filtered <- reactive({
@@ -516,7 +546,13 @@ hla_segments <- reactive({
     seg$mhc_context <- hla_lineage_context(seg[[ct_col]])
   }
   seg
-})
+}) %>%
+  hla_bindCache(
+    hla_active_chain(),
+    hla_filter_key(),
+    hla_celltype_col(),
+    available_crb_files$selected
+  )
 
 ## ---- Metadata columns to carry onto nodes (for tooltip / colouring) ---- ##
 hla_node_meta_cols <- reactive({

@@ -188,7 +188,7 @@ test_that("HLA cohort filters are visible and drive every graph cache", {
   )
   expect_equal(
     lengths(regmatches(data_src, gregexpr("hla_filter_key\\(\\)", data_src))),
-    4L
+    5L
   )
 })
 
