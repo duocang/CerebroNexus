@@ -46,7 +46,10 @@ ir_annotate_metadata <- function(data, metadata, columns = character()) {
   ) {
     return(data)
   }
-  columns <- intersect(unique(columns), setdiff(colnames(metadata), "cell_barcode"))
+  columns <- intersect(
+    unique(columns),
+    setdiff(colnames(metadata), "cell_barcode")
+  )
   add <- lapply(data, function(df) {
     if (is.null(df) || !("barcode" %in% colnames(df))) {
       return(character())
@@ -355,6 +358,18 @@ ir_umap_chains <- function(receptor) {
 IR_CLONE_BINS <- CEREBRO_CLONE_BINS
 IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS
 
+ir_clone_expansion <- function(clones) {
+  clone_ids <- match(clones, unique(clones))
+  sizes <- tabulate(clone_ids)
+  cut(
+    sizes[clone_ids],
+    breaks = IR_CLONE_BINS,
+    labels = IR_CLONE_LABELS,
+    right = TRUE,
+    include.lowest = TRUE
+  )
+}
+
 ## ---- Which CT* column a cloneCall maps to ----------------------------- ##
 ir_clonecall_col <- function(cloneCall) {
   cerebro_clonecall_col(cloneCall)
@@ -402,7 +417,9 @@ ir_clonal_umap_data <- function(
   }
   percentage <- min(100, max(0, percentage))
   max_background <- suppressWarnings(as.integer(max_background))
-  if (length(max_background) != 1L || is.na(max_background) || max_background < 0L) {
+  if (
+    length(max_background) != 1L || is.na(max_background) || max_background < 0L
+  ) {
     max_background <- 200000L
   }
   # Restrict to the requested cells (group filters) up front, so both the
@@ -433,64 +450,41 @@ ir_clonal_umap_data <- function(
     } else {
       as.character(df[[clone_col]])
     }
-    in_receptor <- Reduce(
-      `|`,
-      lapply(keep_chains, function(ch) grepl(ch, chain_ref, fixed = TRUE)),
-      init = rep(FALSE, length(chain_ref))
-    )
-    df <- df[in_receptor, , drop = FALSE]
-    if (nrow(df) == 0) {
+    in_receptor <- grepl(paste(keep_chains, collapse = "|"), chain_ref)
+    if (!any(in_receptor)) {
       return(NULL)
     }
-    data.frame(
-      barcode = as.character(df$barcode),
-      clone = as.character(df[[clone_col]]),
-      stringsAsFactors = FALSE
+    list(
+      barcode = as.character(df$barcode[in_receptor]),
+      clone = as.character(df[[clone_col]][in_receptor])
     )
   })
-  rows <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
+  clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
   coord_bc <- rownames(coords)
-  has_receptor <- !is.null(rows) && nrow(rows) > 0
-  if (has_receptor) {
-    rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
-    rows <- rows[rows$barcode %in% coord_bc, , drop = FALSE]
-    has_receptor <- nrow(rows) > 0
-  }
-  if (!has_receptor || nrow(rows) == 0) {
+  valid <- !is.na(clones) & nzchar(clones)
+  coord_index <- match(barcodes, coord_bc)
+  valid <- valid & !is.na(coord_index)
+  barcodes <- barcodes[valid]
+  clones <- clones[valid]
+  coord_index <- coord_index[valid]
+  has_receptor <- length(coord_index) > 0L
+  if (!has_receptor) {
     # No receptor cells. With show_all we can still draw the grey background;
     # otherwise there is nothing to plot.
     if (!isTRUE(show_all)) {
       return(NULL)
     }
-    rows <- data.frame(
-      barcode = character(0),
-      clone = character(0),
-      stringsAsFactors = FALSE
-    )
-    has_receptor <- FALSE
+    expansion <- factor(levels = IR_CLONE_LABELS)
   } else {
-    sizes <- table(rows$clone)
-    rows$size <- as.integer(sizes[rows$clone])
-    rows$expansion <- cut(
-      rows$size,
-      breaks = IR_CLONE_BINS,
-      labels = IR_CLONE_LABELS,
-      right = TRUE,
-      include.lowest = TRUE
-    )
+    expansion <- ir_clone_expansion(clones)
   }
-  receptor_barcodes <- if (has_receptor) {
-    unique(rows$barcode)
-  } else {
-    character()
-  }
+  receptor_indices <- unique(coord_index)
 
   # Coloured layer: receptor cells with an expansion level, joined to coords.
   if (has_receptor) {
-    idx <- match(rows$barcode, coord_bc)
-    ok <- !is.na(idx)
-    rows <- rows[ok, , drop = FALSE]
-    idx <- idx[ok]
+    idx <- coord_index
     keep_n <- min(length(idx), ceiling(length(idx) * percentage / 100))
     if (keep_n < length(idx)) {
       keep <- if (keep_n > 0L) {
@@ -498,7 +492,8 @@ ir_clonal_umap_data <- function(
       } else {
         integer()
       }
-      rows <- rows[keep, , drop = FALSE]
+      barcodes <- barcodes[keep]
+      expansion <- expansion[keep]
       idx <- idx[keep]
     }
   } else {
@@ -512,8 +507,8 @@ ir_clonal_umap_data <- function(
     data.frame(
       x = as.numeric(xy[[1]]),
       y = as.numeric(xy[[2]]),
-      expansion = factor(rows$expansion, levels = IR_CLONE_LABELS),
-      barcode = rows$barcode,
+      expansion = factor(expansion, levels = IR_CLONE_LABELS),
+      barcode = barcodes,
       stringsAsFactors = FALSE
     )
   } else {
@@ -524,7 +519,8 @@ ir_clonal_umap_data <- function(
   # renderer can draw them in grey. Only when show_all is requested.
   background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- !(coord_bc %in% receptor_barcodes)
+    bg_mask <- rep(TRUE, length(coord_bc))
+    bg_mask[receptor_indices] <- FALSE
     if (any(bg_mask)) {
       bg_idx <- which(bg_mask)
       target <- min(

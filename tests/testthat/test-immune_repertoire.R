@@ -469,11 +469,17 @@ test_that("Clonal projection builds traces without grouped frame copies", {
       perl = TRUE
     )
   )
-  expect_match(block, "background_cells <- which\\(is.na\\(df\\$expansion\\)\\)")
+  expect_match(
+    block,
+    "background_cells <- which\\(is.na\\(df\\$expansion\\)\\)"
+  )
   expect_match(block, "cells <- which\\(df\\$expansion == lvl\\)")
   expect_no_match(block, "bg <- df[", fixed = TRUE)
   expect_no_match(block, "fg <- df[", fixed = TRUE)
   expect_match(block, "ir_projection_axis_names\\(projection\\)")
+  expect_match(block, "deferred_aux = deferred_aux", fixed = TRUE)
+  expect_match(block, "selection_key = placeholder_keys", fixed = TRUE)
+  expect_no_match(block, "data_key <- list()", fixed = TRUE)
 })
 
 test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {

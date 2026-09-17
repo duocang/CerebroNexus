@@ -446,7 +446,11 @@ ir_projection_display_name <- function(projection) {
 }
 
 ir_projection_axis_names <- function(projection) {
-  label <- toupper(gsub("[^[:alnum:]]+", "", ir_projection_display_name(projection)))
+  label <- toupper(gsub(
+    "[^[:alnum:]]+",
+    "",
+    ir_projection_display_name(projection)
+  ))
   paste0(label, "_", 1:2)
 }
 
@@ -597,10 +601,8 @@ observe({
   traces <- list()
   data_x <- list()
   data_y <- list()
-  data_key <- list()
+  data_rows <- list()
   data_color <- list()
-  hover_info <- list()
-  hover_text <- list()
   axes <- ir_projection_axis_names(projection)
 
   background_cells <- which(is.na(df$expansion))
@@ -608,11 +610,8 @@ observe({
     traces[[length(traces) + 1]] <- "Other cells"
     data_x[[length(data_x) + 1]] <- df$x[background_cells]
     data_y[[length(data_y) + 1]] <- df$y[background_cells]
-    data_key[[length(data_key) + 1]] <- df$barcode[background_cells]
+    data_rows[[length(data_rows) + 1]] <- background_cells
     data_color[[length(data_color) + 1]] <- "#D9D9D9"
-    ## Background cells skip hover (per-trace hoverinfo, honoured by shared JS).
-    hover_info[[length(hover_info) + 1]] <- "skip"
-    hover_text[[length(hover_text) + 1]] <- ""
   }
   for (lvl in names(IR_EXPANSION_COLORS)) {
     cells <- which(df$expansion == lvl)
@@ -622,20 +621,45 @@ observe({
     traces[[length(traces) + 1]] <- lvl
     data_x[[length(data_x) + 1]] <- df$x[cells]
     data_y[[length(data_y) + 1]] <- df$y[cells]
-    data_key[[length(data_key) + 1]] <- df$barcode[cells]
+    data_rows[[length(data_rows) + 1]] <- cells
     data_color[[length(data_color) + 1]] <- unname(IR_EXPANSION_COLORS[[lvl]])
-    hover_info[[length(hover_info) + 1]] <- "text"
-    hover_text[[length(hover_text) + 1]] <- paste0(
-      df$barcode[cells],
-      "<br>",
-      lvl,
-      "<br>", axes[[1]], ": ",
-      formatC(df$x[cells], format = "f", digits = 2),
-      "<br>", axes[[2]], ": ",
-      formatC(df$y[cells], format = "f", digits = 2)
-    )
   }
   req(length(traces) > 0)
+  offset <- 0L
+  placeholder_keys <- lapply(data_rows, function(rows) {
+    keys <- seq.int(offset + 1L, length.out = length(rows))
+    offset <<- offset + length(rows)
+    keys
+  })
+  deferred_aux <- function() {
+    hover_info <- ifelse(traces == "Other cells", "skip", "text")
+    hover_text <- Map(
+      function(rows, label) {
+        if (identical(label, "Other cells")) {
+          return("")
+        }
+        paste0(
+          df$barcode[rows],
+          "<br>",
+          label,
+          "<br>",
+          axes[[1]],
+          ": ",
+          formatC(df$x[rows], format = "f", digits = 2),
+          "<br>",
+          axes[[2]],
+          ": ",
+          formatC(df$y[rows], format = "f", digits = 2)
+        )
+      },
+      data_rows,
+      traces
+    )
+    list(
+      selection_key = lapply(data_rows, function(rows) df$barcode[rows]),
+      hover = list(hoverinfo = as.list(hover_info), text = hover_text)
+    )
+  }
 
   output_meta <- list(
     color_type = "categorical",
@@ -651,7 +675,7 @@ observe({
   output_data <- list(
     x = data_x,
     y = data_y,
-    selection_key = data_key,
+    selection_key = placeholder_keys,
     color = data_color,
     point_size = point_size,
     point_opacity = alpha,
@@ -662,16 +686,14 @@ observe({
     },
     reset_axes = TRUE
   )
-  output_hover <- list(
-    hoverinfo = hover_info,
-    text = hover_text
-  )
+  output_hover <- list(hoverinfo = "skip")
 
   cerebroCellViewRender(
     "ir_clonalUMAP_projection",
     output_meta,
     output_data,
-    output_hover
+    output_hover,
+    deferred_aux = deferred_aux
   )
 })
 

@@ -94,11 +94,13 @@ test_that("clonal projection bounds the contextual background before rendering",
   ir_env$availableProjections <- function() "tsne"
   ir_env$getProjection <- function(...) coords
   ir_env$ir_data_annotated <- function() {
-    list(sample = data.frame(
-      barcode = cells[1:3],
-      CTgene = c("TRB-a", "TRB-a", "TRB-b"),
-      stringsAsFactors = FALSE
-    ))
+    list(
+      sample = data.frame(
+        barcode = cells[1:3],
+        CTgene = c("TRB-a", "TRB-a", "TRB-b"),
+        stringsAsFactors = FALSE
+      )
+    )
   }
   ir_env$ir_clonecall_col <- function(...) "CTgene"
   ir_env$ir_umap_chains <- function(...) "TRB"
@@ -123,6 +125,13 @@ test_that("clonal projection bounds the contextual background before rendering",
   expect_false(any(
     cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
   ))
+})
+
+test_that("clonal expansion sizes avoid sorting clone labels", {
+  expansion <- ir_env$ir_clone_expansion(c("clone-b", "clone-a", "clone-b"))
+
+  expect_identical(as.integer(expansion), c(2L, 1L, 2L))
+  expect_identical(levels(expansion), ir_env$IR_CLONE_LABELS)
 })
 
 # --- ir_parse_segments -----------------------------------------------------
