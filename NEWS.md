@@ -7,6 +7,7 @@
 - Generated Apps no longer duplicate CRB payloads at the release root; dataset files remain inside the App's private data directory.
 - Builder-generated Apps and package-owned Viewer/example resources now use the versionless 5.0.0 layout and the single `launchCerebro()` entry point.
 - Workbook inventory, Project validation, and output-folder preflight now share an event-driven `mirai` pool instead of spawning and polling one-off workers.
+- Generated Apps expose runtime diagnostics to process-shared Viewer helpers, restoring external BPCells and HDF5 dataset loading.
 
 # CerebroNexus 4.6.4
 

@@ -33,6 +33,7 @@
   "read_cerebro_file",
   ".cloneCachedCrb",
   ".crbLogLabel",
+  ".runtimeDiagnostic",
   ".runtimeBackendPlanError",
   ".runtimeWindowsPathSegmentInvalid",
   ".runtimePortableBackendPath",

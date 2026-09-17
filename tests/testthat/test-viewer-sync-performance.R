@@ -289,11 +289,20 @@ test_that("viewer source reuses process-safe utility functions", {
   sys.source(viewer_test_path("source_cache.R"), envir = cache_env)
   first <- new.env(parent = globalenv())
   second <- new.env(parent = globalenv())
+  withr::local_options(cerebro.quiet_runtime = TRUE)
 
   cache_env$viewerSource(viewer_test_path("utility_functions.R"), first)
   cache_env$viewerSource(viewer_test_path("utility_functions.R"), second)
 
   expect_identical(first$read_cerebro_file, second$read_cerebro_file)
+  expect_identical(first$.runtimeDiagnostic, second$.runtimeDiagnostic)
+  expect_silent(
+    get(
+      ".runtimeDiagnostic",
+      envir = environment(first$.attachExternalExpression),
+      inherits = TRUE
+    )("runtime dependency check")
+  )
   expect_false(identical(first$get_or_load_crb, second$get_or_load_crb))
   expect_identical(
     environment(first$get_or_load_crb),
