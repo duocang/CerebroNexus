@@ -25,6 +25,10 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/source_cache.R"),
   local = TRUE
 )
+source(
+  paste0(Cerebro.options[["cerebro_root"]], "/viewer/core/viewer_pack.R"),
+  local = TRUE
+)
 
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
@@ -623,6 +627,16 @@ server <- function(input, output, session) {
         ))
       }
     }
+    viewer_pack <- if (
+      is.character(dataset_to_load) &&
+        length(dataset_to_load) == 1L &&
+        file.exists(dataset_to_load)
+    ) {
+      viewerPackOpen(dataset_to_load, data)
+    } else {
+      NULL
+    }
+    attr(data, "cerebro_viewer_pack") <- viewer_pack
     ## return loaded data
     return(data)
   })

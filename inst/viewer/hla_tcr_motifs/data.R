@@ -81,6 +81,10 @@ hla_filter_levels <- reactive({
 ## Parse once without cohort filtering to size a safe initial sample set. This
 ## is linear work; the expensive Hamming graph is built only after filtering.
 hla_unfiltered_segments <- reactive({
+  packed <- viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())
+  if (!is.null(packed)) {
+    return(packed)
+  }
   data <- hla_ir_annotated()
   minimal <- lapply(data, function(frame) {
     frame[
@@ -150,6 +154,11 @@ hla_ir_filtered <- reactive({
 
 ## ---- TCR chains available (TRA / TRB only for this page) --------------- ##
 hla_tcr_chains <- reactive({
+  packed <- viewerPackCurrent()
+  packed_chains <- if (is.list(packed)) packed$manifest$hla_chains else NULL
+  if (length(packed_chains)) {
+    return(intersect(as.character(packed_chains), c("TRA", "TRB")))
+  }
   intersect(
     tryCatch(hla_detect_chains(getImmuneRepertoire()), error = function(e) {
       character(0)
@@ -532,12 +541,22 @@ hla_celltype_col_declared <- reactive({
 
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
 hla_segments <- reactive({
-  data <- hla_ir_filtered()
   chain <- hla_active_chain()
+  packed <- viewerPackHlaSegments(viewerPackCurrent(), chain)
+  data <- if (is.null(packed)) hla_ir_filtered() else packed
   if (is.null(data)) {
     return(NULL)
   }
-  seg <- hla_parse_ir_segments(data, chain)
+  seg <- if (is.null(packed)) {
+    hla_parse_ir_segments(data, chain)
+  } else {
+    filters <- hla_filter_selections()
+    if (length(filters)) {
+      data[cerebroGroupFilterMask(data, filters), , drop = FALSE]
+    } else {
+      data
+    }
+  }
   if (is.null(seg) || nrow(seg) == 0) {
     return(seg)
   }

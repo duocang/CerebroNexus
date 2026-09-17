@@ -137,3 +137,124 @@ test_that("Viewer Pack rejects corruption and preserves the CRB fallback", {
   )
   expect_true(validateViewerPack(crb, rebuilt, full = TRUE)$valid)
 })
+
+test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
+  root <- tempfile("viewer-pack-runtime-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 4L,
+    immune = TRUE
+  )
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    envir = runtime
+  )
+
+  descriptor <- runtime$viewerPackOpen(crb, object)
+  expect_type(descriptor, "list")
+  expect_false(exists(
+    ".cell_order_valid",
+    envir = descriptor$cache,
+    inherits = FALSE
+  ))
+  expected_annotated <- hla_annotate_ir_metadata(
+    object$getImmuneRepertoire(),
+    object$getMetaData()
+  )
+  expect_identical(
+    runtime$viewerPackHlaSegments(descriptor, "TRB"),
+    hla_parse_ir_segments(expected_annotated, "TRB")
+  )
+  expect_true(get(
+    ".cell_order_valid",
+    envir = descriptor$cache,
+    inherits = FALSE
+  ))
+
+  misaligned <- runtime$viewerPackOpen(crb, object)
+  misaligned$cells <- rev(misaligned$cells)
+  expect_null(runtime$viewerPackHlaSegments(misaligned, "TRB"))
+
+  manifest <- jsonlite::read_json(
+    file.path(pack, "manifest.json"),
+    simplifyVector = TRUE
+  )
+  trb <- manifest$assets$path[grepl("hla_tcr/TRB[.]qs2$", manifest$assets$path)]
+  writeBin(as.raw(1:3), file.path(pack, trb))
+  expect_null(runtime$viewerPackHlaSegments(
+    runtime$viewerPackOpen(crb, object),
+    "TRB"
+  ))
+})
+
+test_that("Viewer Pack runtime fails closed on incompatible identity", {
+  root <- tempfile("viewer-pack-identity-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 3L)
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    envir = runtime
+  )
+  manifest_path <- file.path(pack, "manifest.json")
+  manifest <- jsonlite::read_json(manifest_path, simplifyVector = FALSE)
+
+  manifest$schema_version <- 999L
+  jsonlite::write_json(
+    manifest,
+    manifest_path,
+    auto_unbox = TRUE,
+    dataframe = "rows"
+  )
+  expect_null(runtime$viewerPackOpen(crb, object))
+
+  manifest$schema_version <- 1L
+  manifest$dataset_fingerprint <- "md5-crb-v1:00000000000000000000000000000000"
+  jsonlite::write_json(
+    manifest,
+    manifest_path,
+    auto_unbox = TRUE,
+    dataframe = "rows"
+  )
+  expect_null(runtime$viewerPackOpen(crb, object))
+})
+
+test_that("Viewer wires valid HLA assets behind the CRB fallback", {
+  server <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "viewer",
+      "shiny_server.R"
+    )),
+    collapse = "\n"
+  )
+  data_layer <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "viewer",
+      "hla_tcr_motifs",
+      "data.R"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(server, "/viewer/core/viewer_pack.R", fixed = TRUE)
+  expect_match(server, "viewerPackOpen(dataset_to_load, data)", fixed = TRUE)
+  expect_match(
+    data_layer,
+    "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
+    fixed = TRUE
+  )
+  expect_match(data_layer, "data <- getImmuneRepertoire()", fixed = TRUE)
+  expect_match(data_layer, "hla_parse_ir_segments(data, chain)", fixed = TRUE)
+})

@@ -335,6 +335,11 @@ viewerProjectionFirstFrameCache <- function(object = NULL) {
   if (is.list(cache)) cache else NULL
 }
 
+viewerPackCurrent <- function() {
+  pack <- attr(data_set(), "cerebro_viewer_pack", exact = TRUE)
+  if (is.list(pack)) pack else NULL
+}
+
 viewerProjectionFirstFrameMetadata <- function() {
   cache <- viewerProjectionFirstFrameCache()
   if (!is.null(cache$meta_data)) cache$meta_data else getMetaData()

@@ -183,7 +183,12 @@ test_that("HLA cohort filters are visible and drive every graph cache", {
   expect_match(data_src, "hla_ir_filtered <- reactive", fixed = TRUE)
   expect_match(
     data_src,
-    "hla_segments <- reactive\\(\\{[\\s\\S]{0,120}hla_ir_filtered\\(\\)",
+    "hla_segments <- reactive\\(\\{[\\s\\S]{0,300}hla_ir_filtered\\(\\)",
+    perl = TRUE
+  )
+  expect_match(
+    data_src,
+    "hla_segments <- reactive\\(\\{[\\s\\S]{0,700}cerebroGroupFilterMask\\(",
     perl = TRUE
   )
   expect_equal(
