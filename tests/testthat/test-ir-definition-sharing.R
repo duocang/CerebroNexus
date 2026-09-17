@@ -134,6 +134,22 @@ test_that("clonal expansion sizes avoid sorting clone labels", {
   expect_identical(levels(expansion), ir_env$IR_CLONE_LABELS)
 })
 
+test_that("default abundance reduces cells to clone-count bins", {
+  data <- list(
+    sample_a = data.frame(CTgene = c("a", "a", "b", "c", NA)),
+    sample_b = data.frame(CTgene = c("x", "x", "x", "y"))
+  )
+
+  counts <- ir_env$ir_clonal_abundance_counts(data, "CTgene")
+
+  expect_identical(
+    counts$sample,
+    c("sample_a", "sample_a", "sample_b", "sample_b")
+  )
+  expect_identical(counts$abundance, c(1L, 2L, 1L, 3L))
+  expect_identical(counts$n_clones, c(2L, 1L, 1L, 1L))
+})
+
 # --- ir_parse_segments -----------------------------------------------------
 
 test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {

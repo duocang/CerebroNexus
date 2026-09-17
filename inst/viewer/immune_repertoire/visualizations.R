@@ -1160,20 +1160,73 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
     input$ir_p_dot_size
   )
 
+ir_clonal_abundance_plotly <- function(counts) {
+  if (!nrow(counts)) {
+    return(ir_empty_plotly("No clonotypes are available for this selection."))
+  }
+  counts$hover <- paste0(
+    "<b>",
+    counts$sample,
+    "</b><br>",
+    "Abundance: ",
+    formatC(counts$abundance, format = "d"),
+    "<br>",
+    "Clones: ",
+    formatC(counts$n_clones, format = "d")
+  )
+  plot <- plotly::plot_ly(
+    counts,
+    x = ~abundance,
+    y = ~n_clones,
+    split = ~sample,
+    color = ~sample,
+    type = "scatter",
+    mode = "lines",
+    text = ~hover,
+    hoverinfo = "text"
+  ) %>%
+    plotly::layout(
+      xaxis = cerebro_plotly_axis("Abundance", mirror = FALSE, type = "log"),
+      yaxis = cerebro_plotly_axis(
+        "Number of clones",
+        mirror = FALSE,
+        rangemode = "tozero"
+      ),
+      hoverlabel = cerebro_plotly_hoverlabel(),
+      plot_bgcolor = cerebro_plotly_theme()$transparent,
+      paper_bgcolor = cerebro_plotly_theme()$transparent,
+      legend = list(title = list(text = "Samples"))
+    )
+  cerebro_plotly_toolbar(plot)
+}
+
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalAbundance")
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
+  scale <- isTRUE(ir_param("ir_p_scale", FALSE))
+  order_by <- ir_order_by()
+  if (
+    identical(pars$chain, "both") &&
+      is.null(pars$groupBy) &&
+      !scale &&
+      is.null(order_by)
+  ) {
+    return(ir_clonal_abundance_plotly(ir_clonal_abundance_counts(
+      data,
+      ir_clonecall_col(pars$cloneCall)
+    )))
+  }
+  req_scRepertoire()
   ir_render_ggplotly(
     scRepertoire::clonalAbundance(
       data,
       cloneCall = pars$cloneCall,
       chain = pars$chain,
       group.by = pars$groupBy,
-      order.by = ir_order_by(),
-      scale = isTRUE(ir_param("ir_p_scale", FALSE))
+      order.by = order_by,
+      scale = scale
     ),
     "clonalAbundance"
   )

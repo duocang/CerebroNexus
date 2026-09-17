@@ -370,6 +370,45 @@ ir_clone_expansion <- function(clones) {
   )
 }
 
+ir_clonal_abundance_counts <- function(data, clone_col) {
+  samples <- names(data)
+  if (is.null(samples)) {
+    samples <- as.character(seq_along(data))
+  }
+  rows <- Map(
+    function(frame, sample) {
+      if (is.null(frame) || !(clone_col %in% colnames(frame))) {
+        return(NULL)
+      }
+      clones <- as.character(frame[[clone_col]])
+      clones <- clones[!is.na(clones) & nzchar(clones)]
+      if (!length(clones)) {
+        return(NULL)
+      }
+      clone_ids <- match(clones, unique(clones))
+      abundance <- tabulate(clone_ids)
+      bins <- base::table(abundance)
+      data.frame(
+        sample = sample,
+        abundance = as.integer(names(bins)),
+        n_clones = as.integer(bins),
+        stringsAsFactors = FALSE
+      )
+    },
+    data,
+    samples
+  )
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (!length(rows)) {
+    return(data.frame(
+      sample = character(),
+      abundance = integer(),
+      n_clones = integer()
+    ))
+  }
+  do.call(rbind, rows)
+}
+
 ## ---- Which CT* column a cloneCall maps to ----------------------------- ##
 ir_clonecall_col <- function(cloneCall) {
   cerebro_clonecall_col(cloneCall)

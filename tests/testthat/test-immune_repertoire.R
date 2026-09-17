@@ -55,6 +55,16 @@ test_that("Clonal UMAP forwards the shared point-size unit unchanged", {
   expect_match(viz, "point_size = point_size", fixed = TRUE)
 })
 
+test_that("default abundance bypasses scRepertoire cell expansion", {
+  viz <- paste(
+    readLines(file.path(shiny_root, "immune_repertoire", "visualizations.R")),
+    collapse = "\n"
+  )
+
+  expect_match(viz, "ir_clonal_abundance_counts", fixed = TRUE)
+  expect_match(viz, "ir_clonal_abundance_plotly", fixed = TRUE)
+})
+
 test_that("immune_repertoire UI defines correct tabName", {
   ui_file <- file.path(shiny_root, "immune_repertoire", "UI.R")
   skip_if_not(file.exists(ui_file))
