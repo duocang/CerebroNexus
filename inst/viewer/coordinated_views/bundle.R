@@ -984,22 +984,32 @@ cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
 ## A 3-D embedding also sends its third dimension, so the client can orbit it
 ## rather than show a flattened shadow of it. `ndim` travels either way — the
 ## client needs to know which panels can rotate and which are flat.
-cv_build_projections <- function(crb, cells, only = NULL) {
-  proj_names <- tryCatch(crb$availableProjections(), error = function(e) NULL)
+cv_build_projections <- function(crb, cells, only = NULL, preloaded = NULL) {
+  proj_names <- if (is.list(preloaded)) {
+    names(preloaded)
+  } else {
+    tryCatch(crb$availableProjections(), error = function(e) NULL)
+  }
   if (!is.null(only)) {
     proj_names <- intersect(proj_names, only)
   }
   projections <- list()
   for (pn in proj_names) {
-    pj <- tryCatch(crb$getProjection(pn), error = function(e) NULL)
+    pj <- if (is.list(preloaded)) {
+      preloaded[[pn]]
+    } else {
+      tryCatch(crb$getProjection(pn), error = function(e) NULL)
+    }
     if (is.null(pj)) {
       next
     }
-    projection_cells <- cv_cell_ids(
-      rownames(pj),
-      paste0("Projection `", pn, "`")
-    )
-    aligned <- identical(cells, projection_cells)
+    aligned <- is.list(preloaded) && nrow(pj) == length(cells)
+    projection_cells <- if (aligned) {
+      NULL
+    } else {
+      cv_cell_ids(rownames(pj), paste0("Projection `", pn, "`"))
+    }
+    aligned <- aligned || identical(cells, projection_cells)
     pjidx <- if (aligned) NULL else match(cells, projection_cells)
     coordinate <- function(index) {
       if (aligned) pj[, index] else pj[pjidx, index]
@@ -1494,7 +1504,8 @@ cv_build_clone <- function(crb, cells, n) {
       cell_clone[present_cells],
       cell_clone[present_cells],
       FUN = seq_along
-    ) - 1L
+    ) -
+      1L
   }
   maxstack <- max(clone_size)
   na_cells <- which(is.na(cell_clone))
@@ -1677,12 +1688,20 @@ cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
 
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
-cv_build_bundle <- function(crb, primary_only = FALSE) {
-  md <- cv_canonical_metadata(crb$getMetaData())
+cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
+  use_first_frame <- isTRUE(primary_only) &&
+    is.list(first_frame) &&
+    is.data.frame(first_frame$meta_data) &&
+    is.list(first_frame$projections)
+  md <- if (use_first_frame) {
+    first_frame$meta_data
+  } else {
+    cv_canonical_metadata(crb$getMetaData())
+  }
   if (is.null(md)) {
     return(NULL)
   }
-  cells <- md$cell_barcode
+  cells <- if (use_first_frame) seq_len(nrow(md)) else md$cell_barcode
   n <- length(cells)
 
   ## Seed a stable fallback here. The user-editable palette travels separately
@@ -1734,10 +1753,11 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   default_point_size <- appearance$point_size
   default_percentage_cells_to_show <- appearance$percentage_cells_to_show
   default_point_opacity <- appearance$point_opacity
-  projection_names <- tryCatch(
-    crb$availableProjections(),
-    error = function(e) character()
-  )
+  projection_names <- if (use_first_frame) {
+    names(first_frame$projections)
+  } else {
+    tryCatch(crb$availableProjections(), error = function(e) character())
+  }
   configured_projection <- viewer_content[["default_projection"]]
   preferred_projection <- if (
     is.character(configured_projection) &&
@@ -1754,7 +1774,12 @@ cv_build_bundle <- function(crb, primary_only = FALSE) {
   projections <- if (isTRUE(primary_only)) {
     built <- list()
     for (projection_name in unique(c(preferred_projection, projection_names))) {
-      built <- cv_build_projections(crb, cells, projection_name)
+      built <- cv_build_projections(
+        crb,
+        cells,
+        projection_name,
+        preloaded = if (use_first_frame) first_frame$projections else NULL
+      )
       if (length(built)) {
         break
       }

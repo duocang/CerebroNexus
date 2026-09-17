@@ -832,6 +832,43 @@ test_that("primary bundle materializes only the first visible projection and col
   expect_identical(supplement$cat_skipped, full$cat_skipped)
 })
 
+test_that("primary bundle reuses thin CRB first-frame fields", {
+  skip_if_not(have_bundle)
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T")),
+    sample = factor(c("s1", "s1", "s2", "s2"))
+  )
+  projection <- data.frame(
+    x = c(1, 2, 3, 4),
+    y = c(4, 3, 2, 1)
+  )
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGroups = function() c("cell_type", "sample"),
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() "umap",
+    getProjection = function(name) stop("projection hydration was forced"),
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+
+  primary <- cv_env$cv_build_bundle(
+    crb,
+    primary_only = TRUE,
+    first_frame = list(
+      meta_data = metadata,
+      projections = list(umap = projection)
+    )
+  )
+
+  expect_named(primary$groups, "cell_type")
+  expect_named(primary$projections, "umap")
+  expect_identical(unclass(primary$projections$umap$x), c(1, 2, 3, 4))
+  expect_identical(unclass(primary$cells), seq_len(4L))
+})
+
 test_that("progressive supplement carries identity and only missing data", {
   skip_if_not(have_bundle)
   primary <- list(

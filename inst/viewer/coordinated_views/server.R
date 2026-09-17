@@ -103,7 +103,15 @@ coordviews_background_ready <- reactiveVal(FALSE)
 cv_build_bundle_safe <- function(primary_only = FALSE) {
   tryCatch(
     {
-      b <- cv_build_bundle(data_set(), primary_only)
+      b <- cv_build_bundle(
+        data_set(),
+        primary_only,
+        first_frame = if (isTRUE(primary_only)) {
+          viewerProjectionFirstFrameCache()
+        } else {
+          NULL
+        }
+      )
       if (is.null(b)) {
         list(
           error = paste(
@@ -500,7 +508,7 @@ observeEvent(
     primary$progressive_token <- primary_n
     session$sendBinaryMessage(
       "coordviews_cells",
-      cv_wire_pack_cells(primary$dataset_id, primary$cells)
+      cv_wire_pack_cells(primary$dataset_id, cv_saved_view_cells())
     )
     bundle <- isolate(coordviews_bundle())
     req(
