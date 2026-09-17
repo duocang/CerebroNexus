@@ -506,10 +506,6 @@ observeEvent(
       return()
     }
     primary$progressive_token <- primary_n
-    session$sendBinaryMessage(
-      "coordviews_cells",
-      cv_wire_pack_cells(primary$dataset_id, cv_saved_view_cells())
-    )
     bundle <- isolate(coordviews_bundle())
     req(
       is.null(bundle$error),
@@ -519,6 +515,17 @@ observeEvent(
     session$sendBinaryMessage(
       "coordviews_supplement",
       cv_wire_pack_message(cv_bundle_supplement(primary, bundle))
+    )
+    cells <- cv_saved_view_cells()
+    dataset_id <- primary$dataset_id
+    session$onFlushed(
+      function() {
+        session$sendBinaryMessage(
+          "coordviews_cells",
+          cv_wire_pack_cells(dataset_id, cells)
+        )
+      },
+      once = TRUE
     )
     coordviews_background_ready(TRUE)
     coordviews_build_log$supplemented_primary_n <- primary_n

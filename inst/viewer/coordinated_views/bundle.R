@@ -1462,9 +1462,15 @@ cv_build_clone <- function(crb, cells, n) {
     return(NULL)
   }
   ct <- cp$clone
-  tab <- sort(table(ct[!is.na(ct)]), decreasing = TRUE)
-  clone_keys <- names(tab)
-  clone_size <- as.integer(tab)
+  valid_ct <- !is.na(ct) & nzchar(ct)
+  unordered_keys <- unique(ct[valid_ct])
+  unordered_size <- tabulate(
+    match(ct[valid_ct], unordered_keys),
+    nbins = length(unordered_keys)
+  )
+  clone_order <- order(-unordered_size, unordered_keys, method = "radix")
+  clone_keys <- unordered_keys[clone_order]
+  clone_size <- unordered_size[clone_order]
   cell_clone <- match(ct, clone_keys) # 1..K, NA if none
   ## A clone is called on CTgene, and one CTgene clone routinely spans several
   ## CDR3s in real receptor data can do this across many cells.
@@ -1474,58 +1480,46 @@ cv_build_clone <- function(crb, cells, n) {
   ## still the useful handle, so it stays, but the count of the rest travels with
   ## it and the column no longer claims to be a CDR3.
   ctaa <- cp$ctaa
-  clone_aa <- split(
-    ctaa[!is.na(ct)],
-    factor(ct[!is.na(ct)], levels = clone_keys)
-  )
-  clone_summary <- Map(
-    function(aa, k) {
-      aa <- aa[!is.na(aa) & nzchar(aa)]
-      if (!length(aa)) {
-        return(list(n_cdr3 = NA_integer_, label = k))
-      }
-      list(
-        n_cdr3 = length(unique(aa)),
-        label = names(sort(table(aa), decreasing = TRUE))[1]
-      )
-    },
-    clone_aa,
-    clone_keys
-  )
-  clone_cdr3 <- vapply(clone_summary, `[[`, integer(1), "n_cdr3")
-  clone_label <- vapply(clone_summary, `[[`, character(1), "label")
   K <- length(clone_keys)
-  cx <- rep(NA_real_, n)
-  cy <- rep(NA_real_, n)
-  present_cells <- which(!is.na(cell_clone))
-  if (length(present_cells)) {
-    cx[present_cells] <- cell_clone[present_cells]
-    cy[present_cells] <- ave(
-      cell_clone[present_cells],
-      cell_clone[present_cells],
-      FUN = seq_along
-    ) -
-      1L
-  }
-  maxstack <- max(clone_size)
-  na_cells <- which(is.na(cell_clone))
-  if (length(na_cells)) {
-    set.seed(1)
-    cx[na_cells] <- -max(1, round(K * 0.06))
-    cy[na_cells] <- stats::runif(length(na_cells), 0, maxstack)
+  clone_cdr3 <- rep(NA_integer_, K)
+  clone_label <- clone_keys
+  valid_aa <- valid_ct & !is.na(ctaa) & nzchar(ctaa)
+  if (any(valid_aa)) {
+    aa_clone <- cell_clone[valid_aa]
+    aa_value <- ctaa[valid_aa]
+    aa_order <- order(aa_clone, aa_value, method = "radix")
+    aa_clone <- aa_clone[aa_order]
+    aa_value <- aa_value[aa_order]
+    pair_start <- c(
+      TRUE,
+      aa_clone[-1L] != aa_clone[-length(aa_clone)] |
+        aa_value[-1L] != aa_value[-length(aa_value)]
+    )
+    pair_at <- which(pair_start)
+    pair_count <- diff(c(pair_at, length(aa_clone) + 1L))
+    pair_clone <- aa_clone[pair_at]
+    pair_aa <- aa_value[pair_at]
+    clone_cdr3 <- tabulate(pair_clone, nbins = K)
+    clone_cdr3[clone_cdr3 == 0L] <- NA_integer_
+    dominant_order <- order(
+      pair_clone,
+      -pair_count,
+      pair_aa,
+      method = "radix"
+    )
+    dominant <- dominant_order[!duplicated(pair_clone[dominant_order])]
+    clone_label[pair_clone[dominant]] <- pair_aa[dominant]
   }
   ## Name the receptor in the label. The clonotypes shown are one class only
   ## (mixing TCR and BCR into one ranking is not something any page here does),
   ## and a data set carrying both would otherwise give no clue which is on screen.
-  space <- cv_space(
-    "clone",
-    if (is.na(cp$receptor)) {
+  space <- list(
+    id = "clone",
+    label = if (is.na(cp$receptor)) {
       "Clonal expansion"
     } else {
       paste0("Clonal expansion (", cp$receptor, ")")
-    },
-    cx,
-    cy
+    }
   )
   size_per_cell <- ifelse(
     is.na(cell_clone),

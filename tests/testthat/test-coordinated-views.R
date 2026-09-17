@@ -981,6 +981,15 @@ test_that("large-dataset work stays off the initial response", {
   expect_no_match(server, "later::later(", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(server, "cv_bundle_supplement(primary, bundle)", fixed = TRUE)
+  supplement_at <- regexpr(
+    '"coordviews_supplement"',
+    server,
+    fixed = TRUE
+  )[[1L]]
+  cells_at <- regexpr('"coordviews_cells"', server, fixed = TRUE)[[1L]]
+  expect_gt(supplement_at, 0L)
+  expect_gt(cells_at, supplement_at)
+  expect_match(server, "session$onFlushed(", fixed = TRUE)
   expect_match(
     server,
     "coordviews_background_ready <- reactiveVal(FALSE)",
@@ -1593,6 +1602,8 @@ test_that("a clone's label names its dominant CDR3 and says how many it hides", 
   out <- cv_env$cv_build_clone(crb, cells, length(cells))
 
   expect_false(is.null(out))
+  expect_null(out$space$x)
+  expect_null(out$space$y)
   expect_equal(out$bundle$n_clones, 1)
   expect_equal(as.character(out$bundle$label[1]), "CASSB")
   expect_equal(as.integer(out$bundle$n_cdr3[1]), 2L)

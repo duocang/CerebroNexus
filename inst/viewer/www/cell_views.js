@@ -6447,9 +6447,6 @@
           extra.dataset_fingerprint !== configFingerprint() ||
           extra.progressive_token !== D.progressive_token ||
           !D.progressive) return;
-      if (!Array.isArray(D.cells) || D.cells.length !== D.n) {
-        throw new Error('Linked views cells must arrive before the supplement');
-      }
       var saved = exportWorkspace();
       var merged = Object.assign({}, D, {
         groups: Object.assign({}, D.groups, extra.groups),
