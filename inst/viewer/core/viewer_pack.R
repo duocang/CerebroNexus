@@ -76,10 +76,30 @@ viewerPackValidateCellOrder <- function(pack) {
   if (exists(key, envir = pack$cache, inherits = FALSE)) {
     return(isTRUE(get(key, envir = pack$cache, inherits = FALSE)))
   }
-  valid <- identical(
-    pack$manifest$cell_order_fingerprint,
-    viewerPackCellOrderFingerprint(pack$cells)
-  )
+  path <- "common/cell_order.qs2"
+  assets <- pack$manifest$assets
+  row <- which(as.character(assets$path) == path)
+  file <- file.path(pack$path, path)
+  valid <- length(row) == 1L &&
+    file.exists(file) &&
+    !dir.exists(file) &&
+    identical(
+      as.numeric(file.info(file)$size),
+      as.numeric(assets$bytes[[row]])
+    ) &&
+    identical(
+      unname(tools::md5sum(file)),
+      as.character(assets$checksum[[row]])
+    )
+  stored <- if (valid) {
+    tryCatch(qs2::qs_read(file), error = function(error) NULL)
+  } else {
+    NULL
+  }
+  valid <- is.character(stored) && identical(stored, pack$cells)
+  if (valid) {
+    assign(path, stored, envir = pack$cache)
+  }
   assign(key, valid, envir = pack$cache)
   valid
 }
