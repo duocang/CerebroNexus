@@ -567,17 +567,19 @@ test_that("App requests freeze spatial molecule sidecar identities", {
   molecules <- data.frame(x = 1, y = 2, gene = "A")
   saveRDS(molecules, molecule_file)
   object <- Cerebro$new()
-  object$spatial <- list(fov1 = list(
-    coordinates = data.frame(x = 0, y = 0),
-    expression = matrix(numeric(), nrow = 0L, ncol = 1L),
-    molecules = structure(
-      list(
-        file = basename(molecule_file),
-        md5 = unname(tools::md5sum(molecule_file))
-      ),
-      class = "CerebroSpatialMoleculeRef"
+  object$spatial <- list(
+    fov1 = list(
+      coordinates = data.frame(x = 0, y = 0),
+      expression = matrix(numeric(), nrow = 0L, ncol = 1L),
+      molecules = structure(
+        list(
+          file = basename(molecule_file),
+          md5 = unname(tools::md5sum(molecule_file))
+        ),
+        class = "CerebroSpatialMoleculeRef"
+      )
     )
-  ))
+  )
   object$spatial_molecule_backend <- list(
     type = "directory",
     location = basename(sidecar)
@@ -912,7 +914,7 @@ test_that("Backend closure capture rejects aliases and unreadable files", {
   )
 })
 
-test_that("stable identities hash each regular file only once per checkpoint", {
+test_that("stable identities reuse digests across checkpoints", {
   root <- withr::local_tempdir()
   first <- file.path(root, "a.bin")
   second <- file.path(root, "b.bin")
@@ -924,11 +926,26 @@ test_that("stable identities hash each regular file only once per checkpoint", {
     tools::md5sum(path)
   }
 
-  .builder_app_capture_file_identity(first, .digest_file = digest)
+  first_identity <- .builder_app_capture_file_identity(
+    first,
+    .digest_file = digest
+  )
+  expect_identical(calls, 1L)
+  .builder_app_capture_file_identity(
+    first,
+    .digest_file = digest,
+    .previous = first_identity
+  )
   expect_identical(calls, 1L)
 
   calls <- 0L
-  .builder_app_tree_identity(root, .digest_file = digest)
+  tree_identity <- .builder_app_tree_identity(root, .digest_file = digest)
+  expect_identical(calls, 2L)
+  .builder_app_tree_identity(
+    root,
+    .digest_file = digest,
+    .previous = tree_identity
+  )
   expect_identical(calls, 2L)
 })
 
@@ -1764,8 +1781,8 @@ test_that("App verification rejects a tree changed during one verification", {
     file.path(fixture$stage, "cerebro_app")
   )
   calls <- 0L
-  identity <- function(path) {
-    result <- .builder_app_tree_identity(path)
+  identity <- function(path, .previous = NULL) {
+    result <- .builder_app_tree_identity(path, .previous = .previous)
     calls <<- calls + 1L
     if (calls == 1L) {
       writeLines(
@@ -1785,8 +1802,9 @@ test_that("App verification rejects a tree changed during one verification", {
   )
 })
 
-test_that("App verification hashes every regular file twice", {
+test_that("App verification reuses stable regular-file digests", {
   fixture <- builder_app_bundle_fixture()
+  lapply(fixture$paths, function(path) saveRDS(Cerebro$new(), path))
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -1797,7 +1815,7 @@ test_that("App verification hashes every regular file twice", {
     file.path(fixture$stage, "cerebro_app")
   )
   hashed <- character()
-  identity <- function(path) {
+  identity <- function(path, .previous = NULL) {
     .builder_app_tree_identity(
       path,
       .digest_file = function(file) {
@@ -1810,7 +1828,8 @@ test_that("App verification hashes every regular file twice", {
           )
         )
         tools::md5sum(file)
-      }
+      },
+      .previous = .previous
     )
   }
 
@@ -1822,7 +1841,7 @@ test_that("App verification hashes every regular file twice", {
     )$valid
   )
   expect_true(length(hashed) > 0L)
-  expect_true(all(table(hashed) == 2L))
+  expect_true(all(table(hashed) == 1L))
 })
 
 test_that("App verification rejects config drift and private path aliases", {

@@ -538,7 +538,7 @@ builder_verify_app <- function(
     )
   }
 
-  tree_after <- .tree_identity(app_dir)
+  tree_after <- .tree_identity(app_dir, .previous = tree_before)
   if (!identical(tree_before, tree_after)) {
     stop(
       "The staged App tree changed during verification.",

@@ -1069,7 +1069,8 @@
 .builder_app_regular_file_identity <- function(
   path,
   label = NULL,
-  .digest_file = tools::md5sum
+  .digest_file = tools::md5sum,
+  .previous = NULL
 ) {
   before <- tryCatch(
     fs::file_info(path, fail = TRUE, follow = FALSE),
@@ -1087,10 +1088,31 @@
     stop("A staged App regular file cannot be a hard link.", call. = FALSE)
   }
   .builder_app_assert_readable_file(path)
-  digest <- tryCatch(
-    unname(as.character(.digest_file(path))),
-    error = function(error) NA_character_
+  canonical <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
   )
+  if (is.null(canonical)) {
+    stop("A staged App regular file has no stable path.", call. = FALSE)
+  }
+  fingerprint_fields <- setdiff(names(before_fingerprint), "type")
+  reuse_digest <- .builder_app_identity_valid(
+    .previous,
+    label,
+    canonical
+  ) &&
+    identical(
+      .previous[fingerprint_fields],
+      before_fingerprint[fingerprint_fields]
+    )
+  digest <- if (reuse_digest) {
+    .previous$md5
+  } else {
+    tryCatch(
+      unname(as.character(.digest_file(path))),
+      error = function(error) NA_character_
+    )
+  }
   after <- tryCatch(
     fs::file_info(path, fail = TRUE, follow = FALSE),
     error = function(error) NULL
@@ -1106,13 +1128,6 @@
       )
   ) {
     stop("A staged App regular file changed while it was read.", call. = FALSE)
-  }
-  canonical <- tryCatch(
-    normalizePath(path, winslash = "/", mustWork = TRUE),
-    error = function(error) NULL
-  )
-  if (is.null(canonical)) {
-    stop("A staged App regular file has no stable path.", call. = FALSE)
   }
   list(
     label = label,
@@ -1131,9 +1146,10 @@
 .builder_app_capture_file_identity <- function(
   path,
   label = NULL,
-  .digest_file = tools::md5sum
+  .digest_file = tools::md5sum,
+  .previous = NULL
 ) {
-  .builder_app_regular_file_identity(path, label, .digest_file)
+  .builder_app_regular_file_identity(path, label, .digest_file, .previous)
 }
 
 .builder_app_request_error <- function() {

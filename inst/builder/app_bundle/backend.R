@@ -96,10 +96,59 @@
   ))
 }
 
+.builder_app_previous_backend_tree <- function(previous, location) {
+  if (
+    !is.list(previous) ||
+      !identical(previous$type, "bpcells") ||
+      !is.list(previous$entries)
+  ) {
+    return(NULL)
+  }
+  prefix <- paste0(location, "/")
+  entry_names <- names(previous$entries)
+  if (
+    is.null(entry_names) ||
+      any(!startsWith(entry_names, prefix))
+  ) {
+    return(NULL)
+  }
+  relative <- substring(entry_names, nchar(prefix) + 1L)
+  entries <- lapply(seq_along(previous$entries), function(index) {
+    entry <- previous$entries[[index]]
+    if (identical(entry$type, "directory")) {
+      return(list(
+        path = relative[[index]],
+        type = "directory",
+        fingerprint = entry$fingerprint
+      ))
+    }
+    identity <- entry$identity
+    list(
+      path = relative[[index]],
+      type = "file",
+      size = identity$size,
+      modification_time = identity$modification_time,
+      change_time = identity$change_time,
+      device_id = identity$device_id,
+      inode = identity$inode,
+      hard_links = identity$hard_links,
+      permissions = identity$permissions,
+      md5 = identity$md5
+    )
+  })
+  names(entries) <- relative
+  list(
+    schema_version = 1L,
+    root_fingerprint = previous$root_fingerprint,
+    entries = entries
+  )
+}
+
 .builder_app_capture_backend_identity <- function(
   entry,
   crb_path,
-  .tree_identity = .builder_app_tree_identity
+  .tree_identity = .builder_app_tree_identity,
+  .previous = NULL
 ) {
   if (identical(entry$type, "embedded")) {
     return(list(
@@ -137,9 +186,19 @@
     stop("A verified input backend closure has an invalid path.", call. = FALSE)
   }
   if (identical(entry$type, "h5")) {
+    previous_identity <- if (
+      is.list(.previous) &&
+        is.list(.previous$entries) &&
+        is.list(.previous$entries[[entry$location]])
+    ) {
+      .previous$entries[[entry$location]]$identity
+    } else {
+      NULL
+    }
     identity <- .builder_app_capture_file_identity(
       root,
-      label = entry$location
+      label = entry$location,
+      .previous = previous_identity
     )
     entries <- stats::setNames(
       list(list(path = entry$location, type = "file", identity = identity)),
@@ -153,7 +212,13 @@
     ))
   }
 
-  tree <- .tree_identity(root)
+  tree <- .tree_identity(
+    root,
+    .previous = .builder_app_previous_backend_tree(
+      .previous,
+      entry$location
+    )
+  )
   entries <- lapply(names(tree$entries), function(relative) {
     value <- tree$entries[[relative]]
     mapping <- file.path(entry$location, relative)
@@ -203,7 +268,10 @@
   value
 }
 
-.builder_app_capture_spatial_molecule_identity <- function(crb_path) {
+.builder_app_capture_spatial_molecule_identity <- function(
+  crb_path,
+  .previous = NULL
+) {
   object <- .builder_app_runtime_function(".readCerebroPayload")(crb_path)
   if (!is.environment(object)) {
     stop(
@@ -234,7 +302,8 @@
   }
   .builder_app_capture_backend_identity(
     list(type = "bpcells", mode = "bundled", location = backend$location),
-    crb_path
+    crb_path,
+    .previous = .previous
   )
 }
 
@@ -250,29 +319,33 @@
   ) {
     return(FALSE)
   }
-  all(vapply(seq_along(identities), function(index) {
-    closure <- identities[[index]]
-    if (is.null(closure)) {
-      return(TRUE)
-    }
-    location <- paste0(
-      tools::file_path_sans_ext(basename(cerebro_data[[index]])),
-      ".spatial"
-    )
-    plan <- list(
-      schema_version = 1L,
-      entries = stats::setNames(
-        list(list(type = "bpcells", mode = "bundled", location = location)),
-        relative_crbs[[index]]
+  all(vapply(
+    seq_along(identities),
+    function(index) {
+      closure <- identities[[index]]
+      if (is.null(closure)) {
+        return(TRUE)
+      }
+      location <- paste0(
+        tools::file_path_sans_ext(basename(cerebro_data[[index]])),
+        ".spatial"
       )
-    )
-    candidate <- stats::setNames(list(closure), relative_crbs[[index]])
-    .builder_app_backend_identities_valid(
-      candidate,
-      plan,
-      cerebro_data[[index]]
-    )
-  }, logical(1)))
+      plan <- list(
+        schema_version = 1L,
+        entries = stats::setNames(
+          list(list(type = "bpcells", mode = "bundled", location = location)),
+          relative_crbs[[index]]
+        )
+      )
+      candidate <- stats::setNames(list(closure), relative_crbs[[index]])
+      .builder_app_backend_identities_valid(
+        candidate,
+        plan,
+        cerebro_data[[index]]
+      )
+    },
+    logical(1)
+  ))
 }
 
 .builder_app_fingerprint_valid <- function(fingerprint, expected_type) {
@@ -620,7 +693,8 @@
     function(index) {
       .builder_app_capture_file_identity(
         request$cerebro_data[[index]],
-        request$selector_order[[index]]
+        request$selector_order[[index]],
+        .previous = request$crb_identities[[index]]
       )
     }
   )
@@ -636,7 +710,8 @@
     relative_crb <- names(request$backend_plan$entries)[[index]]
     .builder_app_capture_backend_identity(
       request$backend_plan$entries[[relative_crb]],
-      request$cerebro_data[[index]]
+      request$cerebro_data[[index]],
+      .previous = request$backend_identities[[relative_crb]]
     )
   })
   names(current) <- names(request$backend_plan$entries)
@@ -658,10 +733,12 @@
 }
 
 .builder_app_capture_spatial_molecule_identities <- function(request) {
-  current <- lapply(
-    request$cerebro_data,
-    .builder_app_capture_spatial_molecule_identity
-  )
+  current <- lapply(seq_along(request$cerebro_data), function(index) {
+    .builder_app_capture_spatial_molecule_identity(
+      request$cerebro_data[[index]],
+      .previous = request$spatial_molecule_identities[[index]]
+    )
+  })
   names(current) <- names(request$backend_plan$entries)
   current
 }
@@ -686,7 +763,10 @@
     )
   }
   current_spatial <- tryCatch(
-    .builder_app_capture_spatial_identities(request$spatial_images),
+    .builder_app_capture_spatial_identities(
+      request$spatial_images,
+      .previous = request$spatial_image_identities
+    ),
     error = function(error) NULL
   )
   if (

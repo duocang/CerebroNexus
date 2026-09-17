@@ -75,13 +75,18 @@
   .builder_app_plain_value(plan)
 }
 
-.builder_app_capture_spatial_identities <- function(images) {
+.builder_app_capture_spatial_identities <- function(images, .previous = NULL) {
   identities <- lapply(names(images), function(dataset) {
     sections <- lapply(names(images[[dataset]]), function(section) {
       values <- lapply(names(images[[dataset]][[section]]), function(label) {
+        previous <- tryCatch(
+          .previous[[dataset]][[section]][[label]],
+          error = function(error) NULL
+        )
         .builder_app_capture_file_identity(
           images[[dataset]][[section]][[label]]$path,
-          paste(dataset, section, label, sep = "/")
+          paste(dataset, section, label, sep = "/"),
+          .previous = previous
         )
       })
       names(values) <- names(images[[dataset]][[section]])

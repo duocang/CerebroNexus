@@ -178,17 +178,19 @@ test_that("CRB publication owns descriptor-backed spatial molecule sidecars", {
     molecules <- data.frame(x = 1, y = 2, gene = "A")
     saveRDS(molecules, molecule_file)
     object <- Cerebro$new()
-    object$spatial <- list(fov1 = list(
-      coordinates = data.frame(x = 0, y = 0),
-      expression = matrix(numeric(), nrow = 0L, ncol = 1L),
-      molecules = structure(
-        list(
-          file = basename(molecule_file),
-          md5 = unname(tools::md5sum(molecule_file))
-        ),
-        class = "CerebroSpatialMoleculeRef"
+    object$spatial <- list(
+      fov1 = list(
+        coordinates = data.frame(x = 0, y = 0),
+        expression = matrix(numeric(), nrow = 0L, ncol = 1L),
+        molecules = structure(
+          list(
+            file = basename(molecule_file),
+            md5 = unname(tools::md5sum(molecule_file))
+          ),
+          class = "CerebroSpatialMoleculeRef"
+        )
       )
-    ))
+    )
     object$spatial_molecule_backend <- list(
       type = "directory",
       location = basename(sidecar)
@@ -414,13 +416,16 @@ builder_app_coordinator_fake_app <- function(
 builder_app_coordinator_fixture <- function(
   make_app = TRUE,
   backend = "embedded",
+  bpcells_payload = NULL,
+  valid_crb = FALSE,
   root = NULL,
   target = NULL,
   plan = NULL,
   .local_envir = parent.frame(),
   coordinator_prepare,
   bundle_request,
-  verify_app
+  verify_app,
+  build_app = NULL
 ) {
   if (is.null(root)) {
     root <- withr::local_tempdir(.local_envir = .local_envir)
@@ -439,12 +444,17 @@ builder_app_coordinator_fixture <- function(
   labels <- vapply(plan$items, `[[`, character(1), "name")
   names(built) <- labels
   lapply(seq_along(built), function(index) {
-    saveRDS(list(dataset = index), built[[index]])
+    value <- if (isTRUE(valid_crb)) Cerebro$new() else list(dataset = index)
+    saveRDS(value, built[[index]])
   })
   if (identical(backend, "h5")) {
     writeBin(as.raw(1:32), file.path(handle$stage, plan$items[[1L]]$sidecars))
   } else if (identical(backend, "bpcells")) {
-    dir.create(file.path(handle$stage, plan$items[[1L]]$sidecars))
+    sidecar <- file.path(handle$stage, plan$items[[1L]]$sidecars)
+    dir.create(sidecar)
+    if (!is.null(bpcells_payload)) {
+      writeBin(bpcells_payload, file.path(sidecar, "matrix_data"))
+    }
   }
   result <- list(
     state = "success",
@@ -487,11 +497,26 @@ builder_app_coordinator_fixture <- function(
     } else {
       NULL
     }
-    result$app_dir <- builder_app_coordinator_fake_app(
-      request,
-      file.path(handle$stage, "cerebro_app"),
-      auth_material = auth_material
-    )
+    result$app_dir <- if (is.function(build_app)) {
+      build_app(
+        request,
+        handle$stage,
+        create_app = function(result_dir, ...) {
+          builder_app_coordinator_fake_app(
+            request,
+            result_dir,
+            auth_material = auth_material
+          )
+        },
+        auth_material = auth_material
+      )
+    } else {
+      builder_app_coordinator_fake_app(
+        request,
+        file.path(handle$stage, "cerebro_app"),
+        auth_material = auth_material
+      )
+    }
     result$app_verification <- verify_app(
       result$app_dir,
       request,
@@ -599,12 +624,14 @@ test_that("Windows path budget fails before a stage is created", {
       os_type = "windows"
     ))
 
-    bpcells_plan <- list(items = list(list(
-      id = "ds3",
-      filename = "03-17-0-durafibro-sample-roi-2-ds3.crb",
-      sidecars = "03-17-0-durafibro-sample-roi-2-ds3.bpcells",
-      expression_backend = "bpcells"
-    )))
+    bpcells_plan <- list(
+      items = list(list(
+        id = "ds3",
+        filename = "03-17-0-durafibro-sample-roi-2-ds3.crb",
+        sidecars = "03-17-0-durafibro-sample-roi-2-ds3.bpcells",
+        expression_backend = "bpcells"
+      ))
+    )
     realistic_stage <- paste0(
       "C:/Users/example/Projects/spatial-project/",
       ".output.cerebro-control/stages/stage-764819176784"
@@ -646,7 +673,11 @@ test_that("Windows path budget fails before a stage is created", {
       },
       .viewer_relative = actual_viewer_paths
     )
-    expect_false(any(grepl("viewer-resource", project_candidates, fixed = TRUE)))
+    expect_false(any(grepl(
+      "viewer-resource",
+      project_candidates,
+      fixed = TRUE
+    )))
     expect_true(any(endsWith(
       project_candidates,
       actual_viewer_paths[[1L]]
@@ -2414,6 +2445,66 @@ test_that("App publication reuses full release identities", {
 
     expect_true(published$published)
     expect_identical(identity_calls, 6L)
+  })
+})
+
+test_that("App build and publication hash BPCells payloads four times", {
+  local({
+    builder_task9_source()
+    original_tree_identity <- .builder_app_tree_identity
+    original_release_md5 <- .builder_release_payload_md5
+    hashed <- character()
+    record_hash <- function(path, digest) {
+      if (identical(basename(path), "matrix_data")) {
+        hashed <<- c(hashed, normalizePath(path, winslash = "/"))
+      }
+      digest(path)
+    }
+    .builder_app_tree_identity <- function(
+      root,
+      .digest_file = tools::md5sum,
+      .previous = NULL
+    ) {
+      original_tree_identity(
+        root,
+        .digest_file = function(path) {
+          record_hash(path, .digest_file)
+        },
+        .previous = .previous
+      )
+    }
+    .builder_release_payload_md5 <- function(path) {
+      record_hash(path, original_release_md5)
+    }
+    root <- withr::local_tempdir(.local_envir = environment())
+    plan <- builder_app_coordinator_plan_fixture(
+      file.path(root, "release"),
+      backend = "bpcells"
+    )
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      plan = plan,
+      backend = "bpcells",
+      bpcells_payload = as.raw(seq_len(32L)),
+      valid_crb = TRUE,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app,
+      build_app = builder_build_app
+    )
+
+    published <- builder_coordinator_publish(fixture$handle, fixture$result)
+
+    expect_true(published$published)
+    expect_identical(length(hashed), 4L)
+    expect_identical(length(unique(dirname(hashed))), 2L)
+    expect_identical(as.integer(sort(table(dirname(hashed)))), c(2L, 2L))
   })
 })
 

@@ -407,18 +407,53 @@ builder_release_runtime_files <- function() {
   parent_request,
   phase = "after parent verification"
 ) {
-  current_request <- tryCatch(
-    builder_app_bundle_request(
-      handle$app_plan,
-      built,
-      handle$app_expectation$labels
-    ),
-    error = function(error) NULL
-  )
-  if (is.null(current_request) || !identical(current_request, parent_request)) {
+  unchanged <- isTRUE(tryCatch(
+    {
+      .builder_app_assert_input_identities(parent_request)
+      TRUE
+    },
+    error = function(error) FALSE
+  ))
+  if (
+    !unchanged ||
+      !identical(unname(parent_request$cerebro_data), unname(built)) ||
+      !identical(
+        names(parent_request$cerebro_data),
+        handle$app_expectation$labels
+      )
+  ) {
     stop("The App input closure changed ", phase, ".", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+.builder_coordinator_seed_digest_cache <- function(value, digest_cache) {
+  fields <- c(
+    "permissions",
+    "size",
+    "device_id",
+    "inode",
+    "hard_links",
+    "modification_time",
+    "change_time"
+  )
+  if (
+    is.list(value) &&
+      all(c(fields, "md5") %in% names(value)) &&
+      .builder_release_payload_md5_valid(value$md5)
+  ) {
+    snapshot <- c(list(type = "file"), value[fields])
+    assign(
+      .builder_release_digest_cache_key(snapshot),
+      value$md5,
+      envir = digest_cache
+    )
+    return(invisible(NULL))
+  }
+  if (is.list(value)) {
+    lapply(value, .builder_coordinator_seed_digest_cache, digest_cache)
+  }
+  invisible(NULL)
 }
 
 .builder_coordinator_app_payload_summary <- function(identity) {
@@ -444,16 +479,21 @@ builder_release_runtime_files <- function() {
 }
 
 .builder_coordinator_utf16_length <- function(path) {
-  vapply(path, function(value) {
-    encoded <- tryCatch(
-      iconv(value, from = "", to = "UTF-16LE", toRaw = TRUE)[[1L]],
-      error = function(error) NULL
-    )
-    if (is.null(encoded)) {
-      return(as.double(nchar(value, type = "chars")))
-    }
-    as.double(length(encoded) / 2L)
-  }, numeric(1), USE.NAMES = FALSE)
+  vapply(
+    path,
+    function(value) {
+      encoded <- tryCatch(
+        iconv(value, from = "", to = "UTF-16LE", toRaw = TRUE)[[1L]],
+        error = function(error) NULL
+      )
+      if (is.null(encoded)) {
+        return(as.double(nchar(value, type = "chars")))
+      }
+      as.double(length(encoded) / 2L)
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 
 .builder_coordinator_viewer_relative_paths <- function() {
@@ -486,12 +526,15 @@ builder_release_runtime_files <- function() {
   .viewer_relative = NULL
 ) {
   items <- .subset2(plan, "items") %||% list()
-  artifacts <- unique(unlist(lapply(items, function(item) {
-    c(
-      .subset2(item, "filename") %||% character(),
-      .subset2(item, "sidecars") %||% character()
-    )
-  }), use.names = FALSE))
+  artifacts <- unique(unlist(
+    lapply(items, function(item) {
+      c(
+        .subset2(item, "filename") %||% character(),
+        .subset2(item, "sidecars") %||% character()
+      )
+    }),
+    use.names = FALSE
+  ))
   artifacts <- artifacts[
     !is.na(artifacts) & nzchar(artifacts) & !grepl("[/\\\\]", artifacts)
   ]
@@ -569,22 +612,28 @@ builder_release_runtime_files <- function() {
         # Materialization normalizes to png/jpg and may append a make.unique()
         # suffix when labels share a file name. Reserve that bounded suffix.
         filename <- paste0(stem, ".duplicate-0000000000.jpeg")
-        candidates <- c(candidates, file.path(
-          stage,
-          ".builder-spatial-assets",
-          safe_spatial_component(.subset2(item, "id"), "dataset"),
-          safe_spatial_component(section_id, "section"),
-          filename
-        ))
+        candidates <- c(
+          candidates,
+          file.path(
+            stage,
+            ".builder-spatial-assets",
+            safe_spatial_component(.subset2(item, "id"), "dataset"),
+            safe_spatial_component(section_id, "section"),
+            filename
+          )
+        )
       }
     }
   }
-  sidecars <- unique(unlist(lapply(items, function(item) {
-    if (!identical(.subset2(item, "expression_backend"), "bpcells")) {
-      return(character())
-    }
-    .subset2(item, "sidecars") %||% character()
-  }), use.names = FALSE))
+  sidecars <- unique(unlist(
+    lapply(items, function(item) {
+      if (!identical(.subset2(item, "expression_backend"), "bpcells")) {
+        return(character())
+      }
+      .subset2(item, "sidecars") %||% character()
+    }),
+    use.names = FALSE
+  ))
   sidecars <- sidecars[
     !is.na(sidecars) & nzchar(sidecars) & !grepl("[/\\\\]", sidecars)
   ]
@@ -607,10 +656,13 @@ builder_release_runtime_files <- function() {
     )
     candidates <- c(
       candidates,
-      unlist(lapply(
-        sidecars,
-        function(sidecar) file.path(export_stage, sidecar, bpcells_entries)
-      ), use.names = FALSE)
+      unlist(
+        lapply(
+          sidecars,
+          function(sidecar) file.path(export_stage, sidecar, bpcells_entries)
+        ),
+        use.names = FALSE
+      )
     )
   }
   if (isTRUE(app_expected)) {
@@ -663,11 +715,15 @@ builder_release_runtime_files <- function() {
   if (lengths[[longest]] > as.double(limit)) {
     stop(
       "The selected output folder is too deep for this Windows R runtime. ",
-      "The longest planned Builder path is ", lengths[[longest]],
-      " UTF-16 characters (supported limit: ", limit, "). ",
+      "The longest planned Builder path is ",
+      lengths[[longest]],
+      " UTF-16 characters (supported limit: ",
+      limit,
+      "). ",
       "Choose a shorter output folder, for example C:/CerebroBuild, or ",
       "shorten the dataset/spatial image name shown below. ",
-      "Planned path: ", candidates[[longest]],
+      "Planned path: ",
+      candidates[[longest]],
       call. = FALSE
     )
   }
@@ -1034,9 +1090,13 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
     unname(built),
     .builder_app_capture_spatial_molecule_identity
   )
-  locations <- vapply(identities, function(identity) {
-    if (is.null(identity)) "" else basename(identity$root)
-  }, character(1))
+  locations <- vapply(
+    identities,
+    function(identity) {
+      if (is.null(identity)) "" else basename(identity$root)
+    },
+    character(1)
+  )
   locations <- sort(unique(locations[nzchar(locations)]), method = "radix")
   if (!length(locations)) {
     return(handle)
@@ -1247,15 +1307,16 @@ builder_coordinator_publish <- function(
       )
     }
     # Cache hits bind device, inode, and change time; mutations are rehashed.
-    for (entry in parent_tree_identity$entries) {
-      if (identical(entry$type, "file")) {
-        assign(
-          .builder_release_digest_cache_key(entry),
-          entry$md5,
-          envir = digest_cache
-        )
-      }
-    }
+    .builder_coordinator_seed_digest_cache(
+      list(
+        parent_tree_identity,
+        parent_request$crb_identities,
+        parent_request$backend_identities,
+        parent_request$spatial_molecule_identities,
+        parent_request$spatial_image_identities
+      ),
+      digest_cache
+    )
   }
   payload_identity <- .builder_coordinator_stage_identity(
     handle,
@@ -1598,12 +1659,15 @@ builder_coordinator_publish <- function(
     character()
   }
   mapped_paths <- c(unname(build_result$built), verification_paths)
-  spatial_molecule_paths <- unlist(lapply(
-    build_result$verifications,
-    function(verification) {
-      verification$spatial_molecule_path %||% character()
-    }
-  ), use.names = FALSE)
+  spatial_molecule_paths <- unlist(
+    lapply(
+      build_result$verifications,
+      function(verification) {
+        verification$spatial_molecule_path %||% character()
+      }
+    ),
+    use.names = FALSE
+  )
   mapped_paths <- c(mapped_paths, spatial_molecule_paths)
   if (
     !length(mapped_paths) ||
