@@ -84,17 +84,16 @@ heap_before <- heap()
 started <- proc.time()[["elapsed"]]
 click_tab("coordinated_views")
 wait_linked(primary = TRUE)
-primary_ms <- (proc.time()[["elapsed"]] - started) * 1000
+primary_logical_ms <- (proc.time()[["elapsed"]] - started) * 1000
 wait_linked()
-complete_ms <- (proc.time()[["elapsed"]] - started) * 1000
-app$get_js(paste0(
-  "Promise.all(Array.from(document.querySelectorAll(",
-  "'#shiny-tab-coordinated_views canvas.cv-gpu-layer'))",
-  ".map(c=>c._cerebroPointRenderer?.idle?.()||Promise.resolve())).then(()=>true)"
-))
+complete_logical_ms <- (proc.time()[["elapsed"]] - started) * 1000
+visual <- app$get_js("window.cerebroLinkedViewsState.visualReady()")
+if (!isTRUE(visual$ready)) {
+  stop("Linked views did not reach visual readiness: ", visual$reason)
+}
+visual_ready_ms <- (proc.time()[["elapsed"]] - started) * 1000
 summary <- app$get_js("window.cerebroLinkedViewsState.summary()")
 
-idle_started <- proc.time()[["elapsed"]]
 idle_ok <- tryCatch(
   {
     app$wait_for_idle(timeout = 60000)
@@ -102,7 +101,8 @@ idle_ok <- tryCatch(
   },
   error = function(error) FALSE
 )
-idle_ms <- (proc.time()[["elapsed"]] - idle_started) * 1000
+interactive_ready_ms <- (proc.time()[["elapsed"]] - started) * 1000
+auxiliary_idle_ms <- interactive_ready_ms - visual_ready_ms
 
 back_started <- proc.time()[["elapsed"]]
 click_tab("overview")
@@ -112,16 +112,28 @@ repeat_started <- proc.time()[["elapsed"]]
 click_tab("coordinated_views")
 wait_linked()
 repeat_linked_ms <- (proc.time()[["elapsed"]] - repeat_started) * 1000
+repeat_visual <- app$get_js("window.cerebroLinkedViewsState.visualReady()")
+if (!isTRUE(repeat_visual$ready)) {
+  stop("Repeated Linked views did not reach visual readiness")
+}
+repeat_linked_visual_ms <-
+  (proc.time()[["elapsed"]] - repeat_started) * 1000
 heap_after <- heap()
 
 result <- list(
   scenario = scenario,
-  primary_ms = primary_ms,
-  complete_ms = complete_ms,
-  auxiliary_idle_ms = idle_ms,
+  primary_ms = primary_logical_ms,
+  complete_ms = complete_logical_ms,
+  primary_logical_ms = primary_logical_ms,
+  complete_logical_ms = complete_logical_ms,
+  visual_ready_ms = visual_ready_ms,
+  interactive_ready_ms = interactive_ready_ms,
+  auxiliary_idle_ms = auxiliary_idle_ms,
   auxiliary_idle_reached = idle_ok,
+  visual = visual,
   linked_to_projection_ms = linked_to_projection_ms,
   repeat_linked_ms = repeat_linked_ms,
+  repeat_linked_visual_ms = repeat_linked_visual_ms,
   heap_before = heap_before,
   heap_after = heap_after,
   transport = summary$transport

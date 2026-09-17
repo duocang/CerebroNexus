@@ -7438,9 +7438,75 @@
     }
   }
 
+  function linkedVisualReady() {
+    if (!workspaceSummary().ready) {
+      return Promise.resolve({ ready: false, reason: 'logical-not-ready' });
+    }
+    var visible = panels.filter(function (panel) {
+      return panel.spaceId && panel.canvas &&
+        Number(panel.canvas.dataset.pointCount) === D.n;
+    });
+    if (!visible.length || (D.clone && !visible.some(function (panel) {
+      return panel.spaceId === 'clone';
+    }))) {
+      return Promise.resolve({ ready: false, reason: 'panel-not-ready' });
+    }
+    var idle = visible.map(function (panel) {
+      return panel.gpu && panel.gpu.idle ? panel.gpu.idle() : Promise.resolve();
+    });
+    return Promise.all(idle).then(function () {
+      return new Promise(function (resolve) {
+        var previous = null;
+        var stable = 0;
+        var frames = 0;
+        function sample() {
+          requestAnimationFrame(function () {
+            frames++;
+            var signature = JSON.stringify(visible.map(function (panel) {
+              var rect = panel.pane.getBoundingClientRect();
+              return [
+                panel.spaceId,
+                rect.left,
+                rect.top,
+                rect.width,
+                rect.height,
+                getComputedStyle(panel.pane).opacity,
+                panel.canvas.width,
+                panel.canvas.height,
+                panel.canvas.dataset.pointCount
+              ];
+            }));
+            stable = signature === previous ? stable + 1 : 0;
+            previous = signature;
+            var gpuReady = visible.every(function (panel) {
+              return !panel.gpu || !panel.gpu.isReady || panel.gpu.isReady();
+            });
+            if (stable >= 1 && gpuReady) {
+              resolve({
+                ready: true,
+                frames: frames,
+                panels: visible.length,
+                clone: !D.clone || visible.some(function (panel) {
+                  return panel.spaceId === 'clone';
+                }),
+                at: performance.now()
+              });
+            } else if (frames >= 300) {
+              resolve({ ready: false, reason: 'layout-not-stable', frames: frames });
+            } else {
+              sample();
+            }
+          });
+        }
+        sample();
+      });
+    });
+  }
+
   window.cerebroLinkedViewsState = Object.freeze({
     primaryReady: function () { return workspaceSummary().primaryReady; },
     ready: function () { return workspaceSummary().ready; },
+    visualReady: linkedVisualReady,
     capture: exportWorkspace,
     apply: applyWorkspace,
     summary: workspaceSummary,

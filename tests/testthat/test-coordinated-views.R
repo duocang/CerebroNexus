@@ -685,6 +685,10 @@ test_that("progressive Linked views separates primary paint from completion", {
     "resizeAll();\n          reportWorkspaceReady();",
     fixed = TRUE
   )
+  expect_match(client, "function linkedVisualReady()", fixed = TRUE)
+  expect_match(client, "requestAnimationFrame", fixed = TRUE)
+  expect_match(client, "panel.gpu.idle()", fixed = TRUE)
+  expect_match(client, "visualReady: linkedVisualReady", fixed = TRUE)
 })
 
 test_that("saved per-gene panels use the dynamic payload contract", {

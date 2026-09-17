@@ -481,6 +481,23 @@ test_that("the real Viewer benchmark accepts the Canvas baseline", {
   expect_match(benchmark, "rgb_ready_ms", fixed = TRUE)
 })
 
+test_that("the Ren Linked benchmark records visual and interactive readiness", {
+  benchmark_file <- testthat::test_path(
+    "..",
+    "bench",
+    "benchmark_ren_linked_transport.R"
+  )
+  skip_if_not(file.exists(benchmark_file), "benchmark tree not present")
+  benchmark <- paste(readLines(benchmark_file, warn = FALSE), collapse = "\n")
+
+  expect_match(benchmark, "primary_logical_ms", fixed = TRUE)
+  expect_match(benchmark, "complete_logical_ms", fixed = TRUE)
+  expect_match(benchmark, "visual_ready_ms", fixed = TRUE)
+  expect_match(benchmark, "interactive_ready_ms", fixed = TRUE)
+  expect_match(benchmark, "cerebroLinkedViewsState.visualReady()", fixed = TRUE)
+  expect_match(benchmark, "wait_for_idle", fixed = TRUE)
+})
+
 test_that("the page benchmark has a publication-grade contract", {
   benchmark_file <- testthat::test_path(
     "..",
