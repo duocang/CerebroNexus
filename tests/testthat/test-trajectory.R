@@ -107,6 +107,28 @@ test_that("trajectory helper utilities are defined in the app scope", {
   }
 })
 
+test_that("trajectory debounce captures the raw reactive", {
+  source <- paste(
+    readLines(file.path(shiny_root, "trajectory", "projection_plot.R")),
+    collapse = "\n"
+  )
+
+  expect_match(
+    source,
+    "trajectory_projection_prepared_raw <- reactive({",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    paste(
+      "trajectory_projection_prepared <- debounceAfterFirst(",
+      "trajectory_projection_prepared_raw,",
+      sep = "\n  "
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("Trajectory tab is wired into the app UI and server", {
   # Guard the integration points so a future refactor that drops the wiring
   # (as pr05 originally shipped it — module present but never mounted) fails

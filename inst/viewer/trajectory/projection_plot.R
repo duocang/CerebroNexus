@@ -9,7 +9,7 @@
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
 ## the coordinates sent to the plot match those used for selection and hover.
 ##----------------------------------------------------------------------------##
-trajectory_projection_prepared <- reactive({
+trajectory_projection_prepared_raw <- reactive({
   req(
     trajectory_selection_ok(),
     input[["trajectory_percentage_cells_to_show"]],
@@ -103,7 +103,7 @@ trajectory_projection_prepared <- reactive({
 ## intermediate value. Mirrors the debounce the other projection tabs already
 ## apply to their parameter/data reactives.
 trajectory_projection_prepared <- debounceAfterFirst(
-  trajectory_projection_prepared,
+  trajectory_projection_prepared_raw,
   200
 )
 
