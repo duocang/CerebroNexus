@@ -38,13 +38,72 @@ trajectory_data_reactive <- reactive({
   )
 })
 
-trajectory_cells_reactive <- reactive({
-  cells <- mergeTrajectoryWithMetaData(trajectory_data_reactive())
+trajectory_row_index_reactive <- reactive({
+  trajectory <- trajectory_data_reactive()
+  trajectory_cells <- rownames(trajectory[["meta"]])
+  pack <- viewerPackCurrent()
+  index <- viewerPackTrajectoryIndex(
+    pack,
+    input[["trajectory_selected_method"]],
+    input[["trajectory_selected_name"]]
+  )
+  if (
+    length(index) != nrow(trajectory[["meta"]]) ||
+      anyNA(index) ||
+      any(index < 1L)
+  ) {
+    index <- NULL
+  }
+  if (
+    is.null(index) &&
+      is.list(pack) &&
+      length(trajectory_cells) == pack$cell_count &&
+      identical(
+        viewerPackCellOrderFingerprint(trajectory_cells),
+        as.character(pack$manifest$cell_order_fingerprint)
+      )
+  ) {
+    index <- seq_len(pack$cell_count)
+  }
+  if (is.null(index)) {
+    metadata <- getMetaData()
+    index <- match(trajectory_cells, metadata[["cell_barcode"]])
+  }
+  if (anyNA(index)) {
+    stop("Trajectory cells do not match the canonical dataset order.")
+  }
+  as.integer(index)
+})
+
+trajectory_cells_reactive <- function(columns = character(), barcodes = FALSE) {
+  trajectory <- trajectory_data_reactive()
+  cells <- trajectory[["meta"]]
+  cell_index <- trajectory_row_index_reactive()
+  metadata <- viewerProjectionFirstFrameMetadata()
+  columns <- unique(as.character(columns))
+  columns <- setdiff(
+    columns[columns %in% colnames(metadata)],
+    colnames(cells)
+  )
+  if (length(columns)) {
+    cells <- cbind(
+      cells,
+      viewerProjectionSubsetRows(metadata, cell_index, columns)
+    )
+  }
+  cells[["cell_index"]] <- cell_index
+  if (isTRUE(barcodes)) {
+    cell_barcodes <- viewerPackCellBarcodes(viewerPackCurrent(), cell_index)
+    if (is.null(cell_barcodes)) {
+      cell_barcodes <- getMetaData()[["cell_barcode"]][cell_index]
+    }
+    cells[["cell_barcode"]] <- cell_barcodes
+  }
   if (anyNA(cells$pseudotime)) {
     cells <- cells[!is.na(cells$pseudotime), , drop = FALSE]
   }
   cells
-})
+}
 
 source(
   paste0(

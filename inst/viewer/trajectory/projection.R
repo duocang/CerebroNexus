@@ -119,9 +119,10 @@ output[["trajectory_projection_main_parameters_UI"]] <- renderUI({
     metadata_cols <- getGroups()
   } else {
     ## include all metadata columns except cell_barcode
-    metadata_cols <- colnames(getMetaData())[
-      !colnames(getMetaData()) %in% c("cell_barcode")
-    ]
+    metadata_cols <- setdiff(
+      colnames(viewerProjectionFirstFrameMetadata()),
+      "cell_barcode"
+    )
   }
 
   selectInput(
@@ -220,7 +221,7 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
 output[["trajectory_projection_group_labels_UI"]] <- renderUI({
   color_variable <- input[["trajectory_point_color"]]
   req(color_variable)
-  metadata <- getMetaData()
+  metadata <- trajectory_cells_reactive(color_variable)
   categorical <- identical(color_variable, "state") ||
     (color_variable %in%
       colnames(metadata) &&
@@ -294,7 +295,10 @@ registerGroupFiltersUI(
   output,
   "trajectory_projection",
   getGroups = getGroups,
-  getGroupLevels = getGroupLevels
+  getGroupLevels = getGroupLevels,
+  render_request = function() {
+    input[["trajectory_projection_more_render_request"]]
+  }
 )
 
 ##----------------------------------------------------------------------------##

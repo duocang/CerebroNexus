@@ -92,10 +92,9 @@ output[["states_by_group_plot"]] <- plotly::renderPlotly({
     input[["states_by_group_plot_type"]]
   )
 
-  cells_df <- trajectory_cells_reactive()
-
   ##
   grouping_variable <- input[["states_by_group_select_other_group"]]
+  cells_df <- trajectory_cells_reactive(grouping_variable)
 
   ## check which plot type is chosen
   ## ... bar chart
@@ -159,10 +158,9 @@ output[["states_by_group_table"]] <- DT::renderDataTable({
     input[["states_by_group_select_other_group"]]
   )
 
-  cells_df <- trajectory_cells_reactive()
-
   ##
   grouping_variable <- input[["states_by_group_select_other_group"]]
+  cells_df <- trajectory_cells_reactive(grouping_variable)
 
   ## generate table
   composition_df <- cells_df %>%

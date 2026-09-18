@@ -115,7 +115,18 @@ test_that("trajectory consumers reuse merged cells and structured hover", {
     readLines(viewer_test_path("trajectory", "server.R"), warn = FALSE),
     collapse = "\n"
   )
-  expect_match(server, "trajectory_cells_reactive <- reactive", fixed = TRUE)
+  expect_match(
+    server,
+    "trajectory_row_index_reactive <- reactive",
+    fixed = TRUE
+  )
+  expect_match(server, "trajectory_cells_reactive <- function", fixed = TRUE)
+  expect_match(server, "viewerPackTrajectoryIndex", fixed = TRUE)
+  expect_false(grepl(
+    "mergeTrajectoryWithMetaData(",
+    server,
+    fixed = TRUE
+  ))
 
   active_files <- c(
     "distribution_along_pseudotime.R",
@@ -142,7 +153,7 @@ test_that("trajectory consumers reuse merged cells and structured hover", {
     active_source,
     fixed = TRUE
   ))
-  expect_match(active_source, "trajectory_cells_reactive()", fixed = TRUE)
+  expect_match(active_source, "trajectory_cells_reactive(", fixed = TRUE)
 
   projection <- paste(
     readLines(

@@ -64,6 +64,11 @@
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
     button.setAttribute('aria-expanded', 'true');
+    if (window.Shiny && window.Shiny.setInputValue) {
+      window.Shiny.setInputValue(drawer.id + '_render_request', Date.now(), {
+        priority: 'event'
+      });
+    }
     activeDrawer = drawer;
     activeButton = button;
     window.requestAnimationFrame(function () {

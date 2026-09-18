@@ -68,10 +68,21 @@ groupFilterControl <- function(
 #'        names. Pass the caller's own getGroups() defined in
 #'        utility_functions.R.
 #' @param getGroupLevels Closure mapping a group name to its levels.
-registerGroupFiltersUI <- function(output, prefix, getGroups, getGroupLevels) {
+#' @param render_request Optional closure that gates construction until the
+#'        settings drawer requests the controls.
+registerGroupFiltersUI <- function(
+  output,
+  prefix,
+  getGroups,
+  getGroupLevels,
+  render_request = NULL
+) {
   output_id <- paste0(prefix, "_group_filters_UI")
 
   output[[output_id]] <- shiny::renderUI({
+    if (is.function(render_request)) {
+      shiny::req(render_request())
+    }
     filters <- lapply(getGroups(), function(group) {
       levels <- getGroupLevels(group)
       colors <- tryCatch(

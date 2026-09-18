@@ -1,4 +1,9 @@
-viewer_pack_fixture <- function(path, n = 3L, immune = FALSE) {
+viewer_pack_fixture <- function(
+  path,
+  n = 3L,
+  immune = FALSE,
+  trajectory = FALSE
+) {
   object <- Cerebro$new()
   cells <- sprintf("cell-%03d", seq_len(n))
   object$setMetaData(data.frame(
@@ -26,6 +31,23 @@ viewer_pack_fixture <- function(path, n = 3L, immune = FALSE) {
         stringsAsFactors = FALSE
       )
     ))
+  }
+  if (isTRUE(trajectory)) {
+    selected <- cells[c(2L, n)]
+    object$addTrajectory(
+      "monocle2",
+      "subset",
+      list(
+        meta = data.frame(
+          DR_1 = c(1, 2),
+          DR_2 = c(3, 4),
+          pseudotime = c(0, 1),
+          state = c("1", "2"),
+          row.names = selected
+        ),
+        edges = data.frame()
+      )
+    )
   }
   saveCerebro(object, path, codec = "rds")
   path
@@ -76,6 +98,31 @@ test_that("Viewer Pack gating is dataset-level", {
     ),
     normalizePath(pack, winslash = "/", mustWork = FALSE)
   )
+})
+
+test_that("Viewer Pack stores canonical trajectory row indexes", {
+  root <- tempfile("viewer-pack-trajectory-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 4L,
+    trajectory = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  descriptor <- runtime$viewerPackOpen(crb, object)
+
+  expect_identical(
+    runtime$viewerPackTrajectoryIndex(descriptor, "monocle2", "subset"),
+    c(2L, 4L)
+  )
+  expect_false(exists(
+    "common/cell_order.qs2",
+    envir = descriptor$cache,
+    inherits = FALSE
+  ))
 })
 
 test_that("saveCerebro forwards dataset-level Viewer Pack policy", {

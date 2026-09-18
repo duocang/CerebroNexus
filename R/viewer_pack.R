@@ -250,6 +250,33 @@
   )
 }
 
+.viewerPackTrajectoryIndex <- function(object, cells) {
+  methods <- tryCatch(
+    object$getMethodsForTrajectories(),
+    error = function(error) character()
+  )
+  indexes <- lapply(methods, function(method) {
+    names <- object$getNamesOfTrajectories(method)
+    stats::setNames(
+      lapply(names, function(name) {
+        trajectory <- object$getTrajectory(method, name)
+        trajectory_cells <- rownames(trajectory[["meta"]])
+        index <- match(trajectory_cells, cells)
+        if (
+          is.null(trajectory_cells) ||
+            length(index) != nrow(trajectory[["meta"]]) ||
+            anyNA(index)
+        ) {
+          stop("Viewer Pack trajectory is not cell-aligned.", call. = FALSE)
+        }
+        as.integer(index)
+      }),
+      names
+    )
+  })
+  stats::setNames(indexes, methods)
+}
+
 .viewerPackHlaFirstFrame <- function(segments, object) {
   all_segments <- segments
   available <- colnames(segments)
@@ -431,6 +458,19 @@
         )
       }
     }
+  }
+  trajectory_indexes <- .viewerPackTrajectoryIndex(object, cells)
+  if (length(trajectory_indexes)) {
+    modules <- c(modules, "trajectory")
+    assets <- rbind(
+      assets,
+      .viewerPackWriteAsset(
+        stage,
+        file.path("trajectory", "cell_index.qs2"),
+        trajectory_indexes,
+        "canonical-cell-index"
+      )
+    )
   }
   repertoire <- tryCatch(object$getImmuneRepertoire(), error = function(error) {
     list()

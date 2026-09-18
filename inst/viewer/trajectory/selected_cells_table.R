@@ -56,14 +56,14 @@ output[["trajectory_details_selected_cells_table"]] <- DT::renderDataTable({
     input[["trajectory_point_opacity"]]
   )
 
-  meta_data <- getMetaData()
-  req(!is.null(meta_data))
-
   ## get info of selected cells and create identifier from X-Y coordinates
   selected_cells <- trajectory_projection_selected_cells()
 
   ## extract cells for table
-  cells_df <- trajectory_cells_reactive()
+  cells_df <- trajectory_cells_reactive(
+    colnames(viewerProjectionFirstFrameMetadata()),
+    barcodes = TRUE
+  )
 
   ## Filter by stable cell identity; the shared projection keeps barcode-backed
   ## selections across recolouring and trace rebuilds. Coordinates remain the

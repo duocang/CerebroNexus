@@ -22,17 +22,21 @@ trajectory_projection_prepared_raw <- reactive({
 
   trajectory_data <- trajectory_data_reactive()
 
-  ## build data frame with data
-  cells_df <- trajectory_cells_reactive()
-
   groups <- getGroups()
   group_filters <- stats::setNames(
     lapply(groups, function(group) {
-      selected <- input[[paste0("trajectory_projection_group_filter_", group)]]
-      if (is.null(selected)) getGroupLevels(group) else selected
+      input[[paste0("trajectory_projection_group_filter_", group)]]
     }),
     groups
   )
+  group_filters <- group_filters[
+    !vapply(group_filters, is.null, logical(1))
+  ]
+  color_variable <- input[["trajectory_point_color"]]
+  cells_df <- trajectory_cells_reactive(c(
+    color_variable,
+    names(group_filters)
+  ))
   keep <- cerebroGroupFilterMask(cells_df, group_filters)
   if (!all(keep)) {
     cells_df <- cells_df[keep, , drop = FALSE]
@@ -63,7 +67,6 @@ trajectory_projection_prepared_raw <- reactive({
   ## Categorical payloads are split into one trace per group below, so shuffling
   ## rows within a trace cannot change paint order. Continuous colours stay
   ## shuffled so the original overlap behaviour is preserved.
-  color_variable <- input[["trajectory_point_color"]]
   if (is.numeric(cells_df[[color_variable]])) {
     cells_df <- cells_df[sample.int(nrow(cells_df)), , drop = FALSE]
   }
@@ -156,9 +159,7 @@ observe({
   ) {
     cells_df[[color_variable]] <- factor(cells_df[[color_variable]])
   }
-  ## The projection coordinates are the DR_1 / DR_2 columns contributed by the
-  ## trajectory meta (mergeTrajectoryWithMetaData appends them after the cell
-  ## metadata, so they are NOT columns 1/2).
+  ## The projection coordinates come directly from the compact trajectory meta.
   coordinates <- list(cells_df[["DR_1"]], cells_df[["DR_2"]])
   color_input <- cells_df[[color_variable]]
 
@@ -203,18 +204,23 @@ observe({
   )
   selection_rows <- payload$data$selection_key
   deferred_aux <- function() {
-    cell_barcodes <- if ("cell_barcode" %in% colnames(cells_df)) {
-      as.character(cells_df[["cell_barcode"]])
-    } else {
-      rownames(cells_df)
-    }
+    hover_cells <- trajectory_cells_reactive(
+      c("nUMI", "nGene", getGroups()),
+      barcodes = TRUE
+    )
+    hover_cells <- hover_cells[
+      match(cells_df[["cell_index"]], hover_cells[["cell_index"]]),
+      ,
+      drop = FALSE
+    ]
+    cell_barcodes <- as.character(hover_cells[["cell_barcode"]])
     hover_columns <- list()
     if (prepared[["hover"]]) {
-      state <- as.character(cells_df[["state"]])
+      state <- as.character(hover_cells[["state"]])
       state[is.na(state)] <- "NA"
       state_levels <- unique(state)
       hover_columns <- c(
-        cerebroProjectionHoverColumns(cells_df),
+        cerebroProjectionHoverColumns(hover_cells),
         list(
           list(
             label = "State",
@@ -225,7 +231,7 @@ observe({
             label = "Pseudotime",
             format = "fixed",
             digits = 2L,
-            values = unname(as.numeric(cells_df[["pseudotime"]]))
+            values = unname(as.numeric(hover_cells[["pseudotime"]]))
           )
         )
       )
@@ -312,7 +318,10 @@ trajectory_projection_selected_cells <- reactive({
   hidden_groups <- input[["trajectory_projection_hidden_groups"]]
   if (length(hidden_groups) > 0) {
     color_variable <- input[["trajectory_point_color"]]
-    metadata <- trajectory_cells_reactive() %>%
+    metadata <- trajectory_cells_reactive(
+      color_variable,
+      barcodes = TRUE
+    ) %>%
       dplyr::mutate(
         identifier = paste0(DR_1, '-', DR_2),
         selection_key = as.character(cell_barcode)

@@ -170,6 +170,16 @@ viewerPackCellBarcodes <- function(pack, index = NULL) {
   cells[index]
 }
 
+viewerPackTrajectoryIndex <- function(pack, method, name) {
+  indexes <- viewerPackReadAsset(
+    pack,
+    file.path("trajectory", "cell_index.qs2"),
+    validate_cell_order = FALSE
+  )
+  index <- indexes[[method]][[name]]
+  if (is.null(index)) NULL else as.integer(index)
+}
+
 viewerPackHlaSegments <- function(pack, chain) {
   if (
     !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")
