@@ -1119,7 +1119,7 @@ dedent <- function(string) {
   )
 }
 
-.datasetCatalogFromFiles <- function(files) {
+.datasetCatalogFromFiles <- function(files, retain_prototypes = FALSE) {
   if (is.null(files) || !is.character(files) || !length(files)) {
     return(list())
   }
@@ -1128,6 +1128,7 @@ dedent <- function(string) {
     labels <- basename(files)
   }
   catalog <- list()
+  prototypes <- list()
   for (index in seq_along(files)) {
     path <- files[[index]]
     if (!file.exists(path) || dir.exists(path)) {
@@ -1139,7 +1140,13 @@ dedent <- function(string) {
       labels[[index]],
       path
     )
+    if (isTRUE(retain_prototypes)) {
+      prototypes[[path]] <- object
+    }
     object <- NULL
+  }
+  if (isTRUE(retain_prototypes)) {
+    attr(catalog, "prototypes") <- prototypes
   }
   catalog
 }

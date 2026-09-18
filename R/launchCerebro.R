@@ -150,6 +150,12 @@ launchCerebro <- function(
   ## Create global variable with options that need to be available inside the
   ## Shiny app.
   ## --------------------------------------------------------------------------##
+  dataset_catalog <- .datasetCatalogFromFiles(
+    crb_file_to_load,
+    retain_prototypes = TRUE
+  )
+  dataset_prototypes <- attr(dataset_catalog, "prototypes", exact = TRUE)
+  attr(dataset_catalog, "prototypes") <- NULL
   cerebro_options <- list(
     "mode" = mode,
     "cerebro_version" = as.character(
@@ -157,7 +163,11 @@ launchCerebro <- function(
     ),
     "expression_matrix_mode" = expression_matrix_mode,
     "crb_file_to_load" = crb_file_to_load,
-    ".dataset_catalog" = .datasetCatalogFromFiles(crb_file_to_load),
+    ".dataset_catalog" = dataset_catalog,
+    ## Dataset cataloguing already validated and deserialized these immutable
+    ## CRB prototypes. Hand them to the Viewer process cache so the first
+    ## analysis page does not read the same multi-gigabyte file a second time.
+    ".dataset_prototypes" = dataset_prototypes,
     "expression_matrix_h5" = expression_matrix_h5,
     "expression_matrix_BPCells" = expression_matrix_BPCells,
     "welcome_message" = welcome_message,

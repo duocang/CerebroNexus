@@ -636,14 +636,22 @@ test_that("launchCerebro builds dataset information for configured files", {
     mode = "closed",
     crb_file_to_load = c(Ren = crb, Missing = paste0(crb, ".missing"))
   )
-  catalog <- get(
+  launch_options <- get(
     "Cerebro.options",
     envir = .GlobalEnv,
     inherits = FALSE
-  )[[".dataset_catalog"]]
+  )
+  catalog <- launch_options[[".dataset_catalog"]]
+  prototypes <- launch_options[[".dataset_prototypes"]]
 
   expect_s3_class(app, "shiny.appobj")
   expect_named(catalog, crb)
+  expect_named(prototypes, crb)
+  expect_s3_class(prototypes[[crb]], "Cerebro")
+  expect_identical(
+    prototypes[[crb]]$getMetaData()$cell_barcode,
+    cells
+  )
   expect_identical(
     catalog[[crb]],
     list(

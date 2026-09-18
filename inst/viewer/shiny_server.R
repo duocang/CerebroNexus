@@ -44,6 +44,10 @@ source(
 ## browser session while the large immutable fields and on-disk handles remain
 ## shared through R's copy-on-modify semantics.
 .crb_process_cache <- new.env(parent = emptyenv())
+.crb_launch_prototypes <- Cerebro.options[[".dataset_prototypes"]]
+if (!is.list(.crb_launch_prototypes)) {
+  .crb_launch_prototypes <- list()
+}
 
 server <- function(input, output, session) {
   source <- function(file, local = FALSE, ...) {
@@ -68,6 +72,24 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
+  if (length(.crb_launch_prototypes)) {
+    backend_plan <- Cerebro.options[[".bundle_backend_plan"]]
+    configured_paths <- unname(
+      Cerebro.options[["crb_file_to_load"]] %||% character()
+    )
+    for (prototype_path in names(.crb_launch_prototypes)) {
+      effective_backend <- .configuredRuntimeBackendPlan(
+        prototype_path,
+        backend_plan,
+        configured_paths
+      )
+      .cacheCrbPrototype(
+        prototype_path,
+        .crb_launch_prototypes[[prototype_path]],
+        .runtimeBackendCacheIdentity(effective_backend)
+      )
+    }
+  }
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
