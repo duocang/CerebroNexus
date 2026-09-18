@@ -347,6 +347,19 @@ test_that("specialist pages resend whenever they become visible again", {
   }
 })
 
+test_that("specialist page switches restore panels without staggered fades", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    engine,
+    "if (reappearing && !singleActive) fadeInPane(p.pane);",
+    fixed = TRUE
+  )
+})
+
 test_that("specialist pages use binary transport when the browser supports it", {
   utility <- paste(
     readLines(viewer_test_path("utility_functions.R"), warn = FALSE),

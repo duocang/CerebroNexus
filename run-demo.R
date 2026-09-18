@@ -7,7 +7,14 @@ repo_root <- if (length(script_arg)) {
   normalizePath(".", mustWork = TRUE)
 }
 
-suppressPackageStartupMessages(library(CerebroNexus))
+suppressPackageStartupMessages(
+  pkgload::load_all(
+    repo_root,
+    quiet = TRUE,
+    export_all = FALSE,
+    helpers = FALSE
+  )
+)
 source(
   file.path(repo_root, "tests", "bench", "prepare_viewer_1m_data.R"),
   local = TRUE
@@ -22,9 +29,15 @@ Sys.setenv(CEREBRO_1M_DEMO_CRB = normalizePath(crb, mustWork = TRUE))
 ren_crb <- prepareViewerRenDemoData()
 Sys.setenv(CEREBRO_REN_DEMO_CRB = normalizePath(ren_crb, mustWork = TRUE))
 
+port <- tryCatch(
+  httpuv::randomPort(min = 7451L, max = 7451L, n = 1L),
+  error = function(error) httpuv::randomPort()
+)
+message(sprintf("Opening CerebroNexus at http://127.0.0.1:%d", port))
+
 shiny::runApp(
   file.path(repo_root, "inst"),
   host = "127.0.0.1",
-  port = 7451,
+  port = port,
   launch.browser = TRUE
 )

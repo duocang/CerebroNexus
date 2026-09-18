@@ -5496,7 +5496,7 @@
         clearPanelView(p);
         if (p.pane) {
           p.pane.classList.remove('cv-hidden');
-          if (reappearing) fadeInPane(p.pane);
+          if (reappearing && !singleActive) fadeInPane(p.pane);
         }
         var title = $('cv-title-' + p.key.toLowerCase());
         shownSpace = spaceById[p.spaceId];
