@@ -87,6 +87,7 @@ test_that("RGB expression reads all channels in one backend call", {
   scope$input <- shiny::reactiveValues(
     expression_projection_genes_in_separate_panels = "rgb"
   )
+  scope$session <- shiny::MockShinySession$new()
 
   values <- matrix(
     c(1, 2, 3, 4, 5, 6),
@@ -127,6 +128,129 @@ test_that("RGB expression reads all channels in one backend call", {
 
   expect_identical(reads, 1L)
   expect_equal(levels, list(r = c(1, 4), g = c(2, 5), b = c(3, 6)))
+  expect_equal(
+    shiny::isolate(scope$expressionProjectionValues(
+      c(1L, 2L),
+      c("g3", "g1")
+    )),
+    list(g3 = c(3, 6), g1 = c(1, 4))
+  )
+  expect_identical(reads, 1L)
+})
+
+test_that("gene expression work is debounced before backend reads", {
+  levels <- paste(
+    readLines(
+      viewer_test_path(
+        "gene_expression",
+        "obj_projection_expression_levels.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    levels,
+    "expression_projection_request <- debounceAfterFirst(",
+    fixed = TRUE
+  )
+  expect_match(
+    levels,
+    "request <- expression_projection_request()",
+    fixed = TRUE
+  )
+})
+
+test_that("gene display modes reuse specialist geometry", {
+  scope <- new.env(parent = globalenv())
+  scope$expressionProjectionProgressSet <- function(...) NULL
+  scope$expressionColorScale <- function(...) list(c(0, "#fff"), c(1, "#f70"))
+  scope$expressionPanelColorScales <- function(...) NULL
+  scope$expressionReverseColorScale <- function(...) FALSE
+  sent <- list()
+  scope$cerebroCellViewRender <- function(id, meta, data, hover, extra) {
+    sent[[length(sent) + 1L]] <<- list(
+      type = "full",
+      id = id,
+      meta = meta,
+      data = data,
+      hover = hover,
+      extra = extra
+    )
+  }
+  scope$cerebroCellViewRecolor <- function(id, meta, data) {
+    sent[[length(sent) + 1L]] <<- list(
+      type = "recolor",
+      id = id,
+      meta = meta,
+      data = data
+    )
+  }
+  sys.source(
+    viewer_test_path(
+      "gene_expression",
+      "func_projection_update_plot.R"
+    ),
+    envir = scope
+  )
+  base <- list(
+    coordinates = list(x = c(0, 1), y = c(1, 0)),
+    render_token = 1L,
+    reset_axes = FALSE,
+    expression_levels = c(1, 2),
+    plot_parameters = list(
+      draw_border = FALSE,
+      keep_square = FALSE,
+      point_size = 2,
+      point_opacity = 1,
+      x_range = c(0, 1),
+      y_range = c(0, 1),
+      plot_order = "Highest expression on top",
+      is_trajectory = FALSE,
+      projection = "UMAP",
+      n_dimensions = 2,
+      hover_info = FALSE
+    ),
+    color_settings = list(
+      color_scale = "Cerebro orange",
+      color_range = c(0, 2),
+      color_mode = "shared",
+      genes = c("g1", "g2"),
+      rgb_genes = list(r = "g1", g = "g2", b = NULL)
+    ),
+    selection_keys = c("c1", "c2"),
+    hover_columns = list(),
+    trajectory = list(),
+    display_mode = "mean",
+    separate_panels = FALSE
+  )
+
+  scope$expression_projection_update_plot(base)
+  changed <- base
+  changed$render_token <- 2L
+  changed$expression_levels <- c(2, 3)
+  scope$expression_projection_update_plot(changed)
+  rgb <- changed
+  rgb$render_token <- 3L
+  rgb$display_mode <- "rgb"
+  rgb$expression_levels <- list(r = c(1, 2), g = c(2, 1), b = c(0, 0))
+  scope$expression_projection_update_plot(rgb)
+
+  expect_identical(
+    vapply(sent, `[[`, character(1), "type"),
+    c(
+      "full",
+      "recolor",
+      "recolor"
+    )
+  )
+  expect_false(any(c("x", "y", "selection_key") %in% names(sent[[2L]]$data)))
+  expect_null(sent[[3L]]$data$color)
+  expect_named(sent[[3L]]$data$rgb, c("r", "g", "b"))
+  expect_true(sent[[3L]]$data$rgb_scaled)
+  expect_true(all(unlist(sent[[3L]]$data$rgb) >= 0L))
+  expect_true(all(unlist(sent[[3L]]$data$rgb) <= 255L))
 })
 
 test_that("RGB violin outliers use the channel color", {
@@ -235,6 +359,17 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     timeout = 10000
   )
+  app$wait_for_js(
+    "document.querySelector('[id^=\"shiny-progress-\"]') === null",
+    timeout = 20000
+  )
+  app$run_js(paste0(
+    "window.__geneModeTokens=[];",
+    "window.addEventListener('cerebro:cell-view-ready',function(e){",
+    "if(e.detail?.id==='expression_projection' && ",
+    "Number.isFinite(Number(e.detail.renderToken)))",
+    "window.__geneModeTokens.push(Number(e.detail.renderToken));});"
+  ))
   app$set_inputs(
     expression_projection_genes_in_separate_panels = "separate",
     wait_ = FALSE
@@ -251,7 +386,25 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   )
   expect_true(grepl("MS4A1", panel_text, fixed = TRUE))
   expect_true(grepl("CD3D", panel_text, fixed = TRUE))
+  app$wait_for_js(
+    "document.querySelector('[id^=\"shiny-progress-\"]') === null",
+    timeout = 20000
+  )
+  Sys.sleep(0.75)
+  expect_identical(
+    app$get_js(
+      "Array.from(new Set(window.__geneModeTokens)).length"
+    ),
+    1L
+  )
 
+  app$run_js(paste0(
+    "window.__geneModeTokens=[];",
+    "window.addEventListener('cerebro:cell-view-ready',function(e){",
+    "if(e.detail?.id==='expression_projection' && ",
+    "Number.isFinite(Number(e.detail.renderToken)))",
+    "window.__geneModeTokens.push(Number(e.detail.renderToken));});"
+  ))
   app$set_inputs(
     expression_projection_genes_in_separate_panels = "rgb",
     wait_ = FALSE
@@ -260,9 +413,6 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     "document.getElementById('expression_rgb_gene_r') !== null",
     timeout = 10000
   )
-  viewer_set_selectize(app, "expression_rgb_gene_r", "MS4A1")
-  viewer_set_selectize(app, "expression_rgb_gene_g", "CD3D")
-  viewer_set_selectize(app, "expression_rgb_gene_b", "")
   app$wait_for_js(
     paste0(
       "(() => {const text=document.getElementById(",
@@ -271,5 +421,12 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "text.includes('G · CD3D') && !text.includes('B ·');})()"
     ),
     timeout = 20000
+  )
+  Sys.sleep(0.75)
+  expect_identical(
+    app$get_js(
+      "Array.from(new Set(window.__geneModeTokens)).length"
+    ),
+    1L
   )
 })

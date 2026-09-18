@@ -5,6 +5,7 @@ expression_projection_data_to_plot_raw <- reactive({
   coordinates <- expression_projection_coordinates()
   parameters <- expression_projection_parameters_plot()
   expression_levels <- expression_projection_expression_levels()
+  request <- expression_projection_request()
   metadata <- expression_projection_data()
   req(
     coordinates,
@@ -13,7 +14,7 @@ expression_projection_data_to_plot_raw <- reactive({
     expression_projection_trajectory(),
     nrow(coordinates) == length(expression_levels) ||
       nrow(coordinates) == length(expression_levels[[1]]),
-    !is.null(input[["expression_projection_genes_in_separate_panels"]])
+    !is.null(request$display_mode)
   )
   if (parameters[['is_trajectory']]) {
     req(
@@ -22,6 +23,7 @@ expression_projection_data_to_plot_raw <- reactive({
   }
   to_return <- list(
     coordinates = coordinates,
+    render_token = expressionProjectionProgressEnsure(),
     reset_axes = isolate(expression_projection_parameters_other[[
       'reset_axes'
     ]]),
@@ -35,16 +37,13 @@ expression_projection_data_to_plot_raw <- reactive({
       list()
     },
     trajectory = expression_projection_trajectory(),
-    display_mode = input[["expression_projection_genes_in_separate_panels"]],
-    separate_panels = identical(
-      input[["expression_projection_genes_in_separate_panels"]],
-      "separate"
-    )
+    display_mode = request$display_mode,
+    separate_panels = identical(request$display_mode, "separate")
   )
   return(to_return)
 })
 
 expression_projection_data_to_plot <- debounceAfterFirst(
   expression_projection_data_to_plot_raw,
-  250
+  50
 )

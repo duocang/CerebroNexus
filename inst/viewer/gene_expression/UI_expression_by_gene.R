@@ -22,7 +22,11 @@ output[["expression_by_gene_UI"]] <- renderUI({
 ## Bar plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene"]] <- plotly::renderPlotly({
-  req(expression_projection_parameters_color(), expression_summary_data())
+  req(
+    expressionProjectionRenderReady(),
+    expression_projection_parameters_color(),
+    expression_summary_data()
+  )
   expression_levels <- data_set()$getMeanExpressionForGenes(
     expression_summary_data()$genes
   ) %>%

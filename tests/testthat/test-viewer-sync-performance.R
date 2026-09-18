@@ -230,6 +230,37 @@ test_that("projection filtering and sampling preserve original row indices", {
   )
 })
 
+test_that("overview projection copies only first-frame metadata columns", {
+  metadata <- data.frame(
+    cell_barcode = paste0("cell", 1:3),
+    cluster = c("A", "B", "A"),
+    nUMI = 11:13,
+    nGene = 21:23,
+    batch = c("x", "y", "x"),
+    unused_blob = I(list(raw(1024), raw(1024), raw(1024)))
+  )
+  scope <- new.env(parent = globalenv())
+  scope$reactive <- shiny::reactive
+  scope$getMetaData <- function() metadata
+  scope$getGroups <- function() "batch"
+  scope$overview_projection_cells_to_show <- shiny::reactive(c(3L, 1L))
+  scope$overview_projection_parameters_plot <- shiny::reactive(list(
+    color_variable = "cluster",
+    hover_info = TRUE
+  ))
+  sys.source(
+    viewer_test_path("overview", "obj_projection_data.R"),
+    envir = scope
+  )
+
+  selected <- shiny::isolate(scope$overview_projection_data())
+  expect_identical(
+    names(selected),
+    c("cell_barcode", "cluster", "nUMI", "nGene", "batch")
+  )
+  expect_identical(selected$cell_barcode, c("cell3", "cell1"))
+})
+
 test_that("the first reactive value bypasses debounce", {
   utility_env <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)

@@ -917,6 +917,53 @@ test_that("Gene expression panels share one global numeric range", {
   expect_equal(env$expressionValueRange(c(0.2, 0.9)), c(0.2, 0.9))
 })
 
+test_that("Gene expression progress waits for the painted render", {
+  levels <- viewer_source(
+    "gene_expression",
+    "obj_projection_expression_levels.R"
+  )
+  payload <- viewer_source(
+    "gene_expression",
+    "obj_projection_data_to_plot.R"
+  )
+  renderer <- viewer_source("www", "cell_views.js")
+  shell <- viewer_source("www", "viewer-shell.js")
+  summaries <- paste(
+    viewer_source("gene_expression", "UI_expression_by_group.R"),
+    viewer_source("gene_expression", "UI_expression_by_gene.R"),
+    viewer_source("gene_expression", "UI_expression_in_selected_cells.R")
+  )
+
+  expect_match(levels, "shiny::Progress$new", fixed = TRUE)
+  expect_no_match(levels, "withProgress", fixed = TRUE)
+  expect_match(levels, "session$onFlushed(", fixed = TRUE)
+  expect_match(
+    summaries,
+    "expressionProjectionRenderReady()",
+    fixed = TRUE
+  )
+  expect_match(
+    payload,
+    "render_token = expressionProjectionProgressEnsure()",
+    fixed = TRUE
+  )
+  expect_match(renderer, "panel.gpu.idle()", fixed = TRUE)
+  expect_match(renderer, "renderer.ready", fixed = TRUE)
+  expect_match(renderer, "cell_view_recolor_binary", fixed = TRUE)
+  expect_match(renderer, "recolorSingle", fixed = TRUE)
+  expect_match(renderer, "data.rgb_scaled", fixed = TRUE)
+  expect_match(
+    renderer,
+    "renderToken: payload.meta.render_token",
+    fixed = TRUE
+  )
+  expect_match(
+    shell,
+    "id + \"_render_complete\"",
+    fixed = TRUE
+  )
+})
+
 test_that("Different gene colours are stable and visually distinct", {
   root <- system.file("viewer", package = "CerebroNexus")
   if (!nzchar(root)) {

@@ -205,6 +205,41 @@ test_that("large specialist views send their first frame before hover data", {
   expect_identical(unlist(auxiliary$selection_key, use.names = FALSE), keys)
 })
 
+test_that("specialist recolours send only colour state", {
+  skip_if_not_installed("jsonlite")
+  runtime <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = runtime)
+  sys.source(bundle_file, envir = runtime)
+  sent <- list()
+  runtime$input <- list(coordviews_wire_supported = TRUE)
+  runtime$session <- list(sendBinaryMessage = function(type, payload) {
+    sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+  })
+
+  runtime$cerebroCellViewRecolor(
+    "expression_projection",
+    meta = list(
+      color_type = "continuous",
+      color_variable = "MS4A1",
+      render_token = 7L
+    ),
+    data = list(
+      color = as.numeric(seq_len(4096L)),
+      color_range = c(0, 4096),
+      colorscale = list(c(0, "#ffffff"), c(1, "#ff7013"))
+    )
+  )
+
+  expect_identical(sent[[1L]]$type, "cell_view_recolor_binary")
+  header <- wire_header(sent[[1L]]$payload)
+  expect_identical(header$id, "expression_projection")
+  expect_null(header$data$x)
+  expect_null(header$data$y)
+  expect_null(header$data$selection_key)
+  expect_null(header$hover)
+  expect_identical(header$meta$render_token, 7L)
+})
+
 test_that("specialist selections wait for stable IDs and replay after aux", {
   javascript <- paste(
     readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),

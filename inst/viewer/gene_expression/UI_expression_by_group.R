@@ -40,6 +40,7 @@ output[["expression_by_group_UI"]] <- renderUI({
 
 output[["expression_by_group"]] <- plotly::renderPlotly({
   req(
+    expressionProjectionRenderReady(),
     expression_projection_data(),
     expression_summary_data(),
     input[["expression_by_group_selected_group"]]

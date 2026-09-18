@@ -1,6 +1,22 @@
 ## function to be executed to update figure
+expression_projection_render_state <- new.env(parent = emptyenv())
+expression_projection_render_state$geometry <- NULL
+
+expressionRgbWireValues <- function(values) {
+  lapply(values, function(channel) {
+    maximum <- suppressWarnings(max(channel, na.rm = TRUE))
+    if (!is.finite(maximum) || maximum <= 0) {
+      return(rep.int(0L, length(channel)))
+    }
+    scaled <- pmax(0, channel)
+    scaled[!is.finite(scaled)] <- 0
+    as.integer(round(scaled / maximum * 255))
+  })
+}
+
 expression_projection_update_plot <- function(input) {
   coordinates <- input[['coordinates']]
+  render_token <- input[['render_token']]
   reset_axes <- input[['reset_axes']]
   expression_levels <- input[['expression_levels']]
   plot_parameters <- input[['plot_parameters']]
@@ -15,6 +31,14 @@ expression_projection_update_plot <- function(input) {
     draw_border = isTRUE(plot_parameters[["draw_border"]]),
     keep_square = isTRUE(plot_parameters[["keep_square"]])
   )
+  progress_set <- get0(
+    "expressionProjectionProgressSet",
+    mode = "function",
+    inherits = TRUE
+  )
+  if (!is.null(progress_set)) {
+    progress_set(render_token, 0.75, "Rendering colours...")
+  }
   ## define output_data
   output_data <- list(
     x = coordinates[[1]],
@@ -107,20 +131,65 @@ expression_projection_update_plot <- function(input) {
       trajectory_lines <- c(trajectory_lines, list(line))
     }
   }
+  geometry <- list(
+    coordinates = coordinates,
+    plot_parameters = plot_parameters,
+    selection_keys = selection_keys,
+    hover_columns = hover_columns,
+    trajectory = trajectory
+  )
+  recolor <- !isTRUE(reset_axes) &&
+    !is.null(expression_projection_render_state$geometry) &&
+    identical(expression_projection_render_state$geometry, geometry)
+  send_render <- function(meta) {
+    if (recolor) {
+      color_fields <- intersect(
+        c(
+          "color",
+          "rgb",
+          "rgb_scaled",
+          "rgb_genes",
+          "colorscale",
+          "panel_colorscales",
+          "color_range",
+          "reversescale",
+          "paint_order"
+        ),
+        names(output_data)
+      )
+      cerebroCellViewRecolor(
+        "expression_projection",
+        meta,
+        output_data[color_fields]
+      )
+    } else {
+      cerebroCellViewRender(
+        "expression_projection",
+        meta,
+        output_data,
+        output_hover,
+        extra = list(shapes = trajectory_lines)
+      )
+    }
+    expression_projection_render_state$geometry <- geometry
+  }
   if (identical(display_mode, "rgb")) {
-    output_data[["rgb"]] <- expression_levels[c("r", "g", "b")]
+    output_data[["rgb"]] <- expressionRgbWireValues(
+      expression_levels[c("r", "g", "b")]
+    )
+    output_data[["rgb_scaled"]] <- TRUE
     output_data[["rgb_genes"]] <- color_settings[["rgb_genes"]]
-    cerebroCellViewRender(
-      "expression_projection",
+    ## RGB is already carried by the three named channels; retaining `color`
+    ## would send the same vectors twice.
+    output_data[["color"]] <- NULL
+    send_render(
       list(
         color_type = "rgb",
         color_variable = "RGB co-expression",
+        render_token = render_token,
         space_label = plot_parameters[["projection"]],
         appearance = appearance
-      ),
-      output_data,
-      output_hover,
-      extra = list(shapes = trajectory_lines)
+      )
     )
     return(invisible(NULL))
   }
@@ -139,17 +208,14 @@ expression_projection_update_plot <- function(input) {
     } else {
       paste0("Mean expression (", length(color_settings[["genes"]]), " genes)")
     }
-    cerebroCellViewRender(
-      "expression_projection",
+    send_render(
       list(
         color_type = "continuous",
         color_variable = legend_label,
+        render_token = render_token,
         space_label = plot_parameters[["projection"]],
         appearance = appearance
-      ),
-      output_data,
-      output_hover,
-      extra = list(shapes = trajectory_lines)
+      )
     )
   }
 }

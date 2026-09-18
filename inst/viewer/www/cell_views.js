@@ -5934,12 +5934,17 @@
     var direct = !keys.length;
     ['r', 'g', 'b'].forEach(function (channel) {
       var source = raw[channel] || [], maximum = 0;
-      var values = new Float32Array(D && D.n || 0);
+      var values = data.rgb_scaled
+        ? new Uint8Array(D && D.n || 0)
+        : new Float32Array(D && D.n || 0);
       for (var i = 0; i < source.length; i++) {
         var at = direct ? i : index.get(String(keys[i])), value = Number(source[i]);
         if (at == null || !isFinite(value)) continue;
-        values[at] = value; if (value > maximum) maximum = value;
+        values[at] = data.rgb_scaled
+          ? Math.max(0, Math.min(255, value)) : value;
+        if (value > maximum) maximum = value;
       }
+      if (data.rgb_scaled) { out[channel] = values; return; }
       var scaled = new Uint8Array(values.length);
       if (maximum > 0) {
         for (i = 0; i < values.length; i++) {
@@ -6173,13 +6178,19 @@
       var entries = multiple ? Object.keys(data.color).map(function (name) {
         return [name, data.color[name]];
       }) : [[meta.color_variable || 'Value', data.color || []]];
+      var sharedUnit = null;
       entries.forEach(function (entry, panel) {
         var fieldName = 'single:' + id + ':' + panel;
         var panelScale = data.panel_colorscales && data.panel_colorscales[entry[0]];
         D.fields[fieldName] = quantisedField(
           entry[0], entry[1] || [], keys, data, panelScale);
         var spaceId = entries.length === 1 ? baseId : baseId + ':' + panel;
-        makeSpace(spaceId, entry[0]); modes[spaceId] = FIELD_PREFIX + fieldName;
+        var space = makeSpace(spaceId, entry[0]);
+        if (entries.length > 1) {
+          if (!sharedUnit) sharedUnit = deferredUnitOf(space) || unitOf(space);
+          space._unit = sharedUnit;
+        }
+        modes[spaceId] = FIELD_PREFIX + fieldName;
       });
     }
     return { spaces: spaces, modes: modes };
@@ -6197,6 +6208,42 @@
       return { spaceId: p.spaceId,
         view: p.view && Object.assign({}, p.view), rot: p.rot && Object.assign({}, p.rot),
         lassoData: p.lassoData && p.lassoData.map(function (q) { return q.slice(); }) };
+    });
+  }
+  function singleGpuReady(panel) {
+    var renderer = panel && panel.gpu;
+    if (!renderer || !renderer.ready) return Promise.resolve();
+    return Promise.resolve(renderer.ready).catch(function () {}).then(function () {
+      if (panel.gpu && panel.gpu !== renderer) return singleGpuReady(panel);
+    });
+  }
+  function reportSinglePainted(id, payload, paintedData) {
+    var activePanels = panels.filter(function (panel) { return panel.spaceId; });
+    Promise.all(activePanels.map(singleGpuReady)).then(function () {
+      if (singleActive !== id || D !== paintedData || visibleSingleId() !== id) {
+        return false;
+      }
+      drawAll();
+      return Promise.all(activePanels.map(function (panel) {
+        return panel.gpu && typeof panel.gpu.idle === 'function'
+          ? panel.gpu.idle().catch(function () {})
+          : Promise.resolve();
+      }));
+    }).then(function (settled) {
+      if (settled === false) return;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          if (singleActive !== id || D !== paintedData ||
+              visibleSingleId() !== id) return;
+          window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
+            detail: {
+              id: id,
+              painted: true,
+              renderToken: payload.meta.render_token
+            }
+          }));
+        });
+      });
     });
   }
   function activateSingle(id, resetAxes, preserveTargetState) {
@@ -6301,16 +6348,7 @@
     // until a later frame. Keep the page loader in place until that first
     // painted frame is actually visible; otherwise users see a blank gap
     // between the loader and the specialist view.
-    var paintedSingleData = D;
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (singleActive !== id || D !== paintedSingleData ||
-            visibleSingleId() !== id) return;
-        window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
-          detail: { id: id, painted: true }
-        }));
-      });
-    });
+    reportSinglePainted(id, payload, D);
     return true;
   }
   function activateLinked() {
@@ -6352,6 +6390,25 @@
     } else if (visibleSingleId() === id) {
       activateSingle(id, !!data.reset_axes);
     }
+  }
+
+  function recolorSingle(message) {
+    if (!message || !message.id) return false;
+    var view = singleViews[message.id];
+    if (!view || !view.data || view.data.x == null || view.data.y == null) {
+      return false;
+    }
+    var colorFields = [
+      'color', 'rgb', 'rgb_scaled', 'rgb_genes', 'colorscale', 'panel_colorscales',
+      'color_range', 'reversescale', 'paint_order'
+    ];
+    var data = Object.assign({}, view.data);
+    colorFields.forEach(function (name) { delete data[name]; });
+    view.meta = Object.assign({}, view.meta || {}, message.meta || {});
+    view.data = Object.assign(data, message.data || {});
+    view.hiddenGroups = [];
+    if (visibleSingleId() === message.id) activateSingle(message.id, false);
+    return true;
   }
 
   function clearSingleSelection(id) {
@@ -6535,6 +6592,14 @@
         message.hover,
         message.extra
       );
+    } catch (error) {
+      return;
+    }
+  }
+
+  function onSingleRecolorBinary(buffer) {
+    try {
+      recolorSingle(window.CBViewWire.unpack(buffer));
     } catch (error) {
       return;
     }
@@ -7241,7 +7306,7 @@
         selectedCells: summary.selectedCells
       }
     }));
-    if (!summary.ready || !D || !D.progressive || !Shiny.setInputValue) return;
+    if ((!summary.ready && !painted) || !D || !D.progressive || !Shiny.setInputValue) return;
     var active = D;
     window.requestAnimationFrame(function () {
       window.requestAnimationFrame(function () {
@@ -7263,10 +7328,6 @@
   function reportWorkspaceReady() {
     var summary = workspaceSummary();
     var token = ++linkedReadyPaintToken;
-    if (!summary.ready) {
-      dispatchWorkspaceReady(summary, false);
-      return;
-    }
     var paintedData = D;
     var paintedFingerprint = summary.datasetFingerprint;
     // Two animation frames guarantee that the synchronous Canvas/WebGL draw
@@ -7309,6 +7370,7 @@
     Shiny.addCustomMessageHandler('coordviews_supplement', onBinarySupplement);
     Shiny.addCustomMessageHandler('coordviews_cells', onBinaryCells);
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
+    Shiny.addCustomMessageHandler('cell_view_recolor_binary', onSingleRecolorBinary);
     Shiny.addCustomMessageHandler('cell_view_aux_binary', onSingleAuxBinary);
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
@@ -7323,6 +7385,7 @@
         message.extra
       );
     });
+    Shiny.addCustomMessageHandler('cell_view_recolor', recolorSingle);
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
       if (!message || !message.id) return;
       updateSingleBackground(message.id, message.values);

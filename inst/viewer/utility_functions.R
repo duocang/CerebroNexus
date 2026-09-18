@@ -643,6 +643,21 @@ cerebroCellViewRender <- function(
   }
 }
 
+cerebroCellViewRecolor <- function(id, meta, data) {
+  message <- list(id = id, meta = meta, data = data)
+  if (
+    isTRUE(input[["coordviews_wire_supported"]]) &&
+      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
+  ) {
+    session$sendBinaryMessage(
+      "cell_view_recolor_binary",
+      cv_wire_pack_message(message)
+    )
+  } else {
+    session$sendCustomMessage("cell_view_recolor", message)
+  }
+}
+
 cerebroCellViewScatterPayload <- function(
   coordinates,
   color,
@@ -2502,18 +2517,18 @@ if (!exists(".crb_process_cache", inherits = TRUE)) {
 .cloneCachedCrb <- function(object) {
   can_clone <-
     is.environment(object) &&
-      exists("clone", envir = object, inherits = FALSE) &&
-      is.function(object[["clone"]]) &&
-      is.environment(environment(object[["clone"]])) &&
-      exists(
-        "self",
-        envir = environment(object[["clone"]]),
-        inherits = FALSE
-      ) &&
-      identical(
-        get("self", envir = environment(object[["clone"]]), inherits = FALSE),
-        object
-      )
+    exists("clone", envir = object, inherits = FALSE) &&
+    is.function(object[["clone"]]) &&
+    is.environment(environment(object[["clone"]])) &&
+    exists(
+      "self",
+      envir = environment(object[["clone"]]),
+      inherits = FALSE
+    ) &&
+    identical(
+      get("self", envir = environment(object[["clone"]]), inherits = FALSE),
+      object
+    )
   if (can_clone) {
     return(object$clone(deep = FALSE))
   }
@@ -2786,12 +2801,18 @@ get_or_load_crb <- function(
       expression_backend$location
     )
   }
-  if (!is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)) {
+  if (
+    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
+  ) {
     stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
   }
   repertoire_file <- file.path(root, backend$file)
   if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
-    stop("The immune repertoire sidecar is missing: ", repertoire_file, call. = FALSE)
+    stop(
+      "The immune repertoire sidecar is missing: ",
+      repertoire_file,
+      call. = FALSE
+    )
   }
   backend$root <- root
   obj[[field]] <- backend
@@ -3897,11 +3918,12 @@ viewerSupportedTrajectoryMethods <- function(available_methods) {
   available_methods[
     !is.na(available_methods) &
       nzchar(available_methods) &
-      available_methods %in% c(
-        "monocle2",
-        "marker_guided",
-        "illustrative"
-      )
+      available_methods %in%
+        c(
+          "monocle2",
+          "marker_guided",
+          "illustrative"
+        )
   ]
 }
 

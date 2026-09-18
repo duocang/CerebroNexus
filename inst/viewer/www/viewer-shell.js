@@ -359,6 +359,13 @@
     window.addEventListener("cerebro:cell-view-ready", function (event) {
       if (!event.detail || !event.detail.painted) return;
       var id = event.detail && event.detail.id;
+      if (id && event.detail.renderToken != null && window.Shiny &&
+          Shiny.setInputValue) {
+        Shiny.setInputValue(id + "_render_complete", {
+          render_token: event.detail.renderToken,
+          nonce: Date.now()
+        }, { priority: "event" });
+      }
       var host = id && document.getElementById(id + "_cell_view_host");
       var pane = paneFor(host);
       if (pane && pane === currentPane()) finish(pane);
