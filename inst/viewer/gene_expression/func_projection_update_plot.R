@@ -42,6 +42,33 @@ expression_projection_update_plot <- function(input) {
     },
     reset_axes = reset_axes
   )
+  shared_projection <- if (
+    exists("viewerSharedProjectionName", mode = "function", inherits = TRUE)
+  ) {
+    viewerSharedProjectionName(
+      plot_parameters[["projection"]],
+      length(cell_indices)
+    )
+  } else {
+    NULL
+  }
+  projection_asset <- if (
+    is.null(shared_projection) &&
+      exists("viewerProjectionAsset", mode = "function", inherits = TRUE)
+  ) {
+    viewerProjectionAsset(plot_parameters[["projection"]], cell_indices)
+  } else {
+    NULL
+  }
+  failed_asset <- input[["projection_resource_failed"]]
+  if (
+    is.list(projection_asset) &&
+      !identical(as.character(failed_asset), projection_asset$url)
+  ) {
+    output_data[["x"]] <- NULL
+    output_data[["y"]] <- NULL
+    output_data[["projection_resource"]] <- projection_asset
+  }
   if (plot_parameters[["draw_border"]]) {
     output_data[['point_line']] <- list(
       color = "rgb(196,196,196)",
@@ -159,7 +186,7 @@ expression_projection_update_plot <- function(input) {
   multi <- n_dimensions == 2 &&
     isTRUE(separate_panels) &&
     is.list(input[["expression_levels"]])
-  if (n_dimensions == 3) {
+  if (n_dimensions == 3 && is.null(output_data[["projection_resource"]])) {
     output_data[['z']] <- coordinates[[3]]
   }
   if (n_dimensions == 3 || !is.list(input[["expression_levels"]]) || multi) {

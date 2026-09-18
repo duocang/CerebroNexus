@@ -36,6 +36,9 @@ expression_projection_data_to_plot_raw <- reactive({
     trajectory = expression_projection_trajectory(),
     display_mode = input[["expression_projection_genes_in_separate_panels"]],
     cell_indices = expression_projection_cells_to_show(),
+    projection_resource_failed = input[[
+      "expression_projection_projection_resource_failed"
+    ]],
     separate_panels = identical(
       input[["expression_projection_genes_in_separate_panels"]],
       "separate"

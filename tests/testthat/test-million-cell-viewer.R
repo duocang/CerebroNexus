@@ -414,6 +414,35 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(engine, "projection_resource_failed", fixed = TRUE)
 })
 
+test_that("Gene projection streams canonical geometry with wire fallback", {
+  data_source <- paste(
+    readLines(viewer_test_path(
+      "gene_expression",
+      "obj_projection_data_to_plot.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  render_source <- paste(
+    readLines(viewer_test_path(
+      "gene_expression",
+      "func_projection_update_plot.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    data_source,
+    "expression_projection_projection_resource_failed",
+    fixed = TRUE
+  )
+  expect_match(render_source, "viewerProjectionAsset(", fixed = TRUE)
+  expect_match(render_source, "viewerSharedProjectionName(", fixed = TRUE)
+  expect_match(render_source, "projection_resource", fixed = TRUE)
+  expect_match(render_source, "failed_asset", fixed = TRUE)
+  expect_match(render_source, "output_data[[\"x\"]] <- NULL", fixed = TRUE)
+  expect_match(render_source, "output_data[[\"y\"]] <- NULL", fixed = TRUE)
+})
+
 test_that("specialist bundles carry the saved dataset fingerprint", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
