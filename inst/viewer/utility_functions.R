@@ -434,9 +434,26 @@ viewerProjectionCellIndices <- function(
   percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
 ) {
   groups <- getGroups()
+  filter_inputs <- stats::setNames(
+    lapply(groups, function(group) {
+      input[[paste0(prefix, "_group_filter_", group)]]
+    }),
+    groups
+  )
+  if (!length(groups) || all(vapply(filter_inputs, is.null, logical(1)))) {
+    cell_count <- nrow(metadata)
+    if (!cell_count) {
+      return(integer())
+    }
+    if (percentage < 100) {
+      size <- ceiling(cell_count * percentage / 100)
+      return(sample.int(cell_count, size))
+    }
+    return(seq_len(cell_count))
+  }
   filters <- stats::setNames(
     lapply(groups, function(group) {
-      value <- input[[paste0(prefix, "_group_filter_", group)]]
+      value <- filter_inputs[[group]]
       if (is.null(value)) getGroupLevels(group) else value
     }),
     groups

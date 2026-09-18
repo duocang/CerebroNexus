@@ -335,6 +335,45 @@ test_that("gene-expression first frame defers identities and hover", {
   expect_match(selector_source, "selected = selected_projection", fixed = TRUE)
 })
 
+test_that("unmounted group filters preserve canonical rows without level scans", {
+  scope <- new.env(parent = globalenv())
+  scope$input <- list(test_percentage_cells_to_show = 100)
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  level_calls <- 0L
+  scope$getGroups <- function() c("state", "sample")
+  scope$getGroupLevels <- function(group) {
+    level_calls <<- level_calls + 1L
+    levels(metadata[[group]])
+  }
+  metadata <- data.frame(
+    state = factor(c("A", "B", "A")),
+    sample = factor(c("s1", "s1", "s2"))
+  )
+
+  expect_identical(
+    scope$viewerProjectionCellIndices("test", metadata),
+    seq_len(nrow(metadata))
+  )
+  expect_identical(level_calls, 0L)
+})
+
+test_that("Gene group filters mount only after the settings drawer opens", {
+  source <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "UI_projection_group_filters.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(source, "render_request = function()", fixed = TRUE)
+  expect_match(
+    source,
+    'input[["expression_projection_more_render_request"]]',
+    fixed = TRUE
+  )
+})
+
 test_that("gene-expression deferred hover selects rows and columns first", {
   scope <- new.env(parent = globalenv())
   scope$expressionColorScale <- function(...) NULL
