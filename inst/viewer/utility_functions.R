@@ -4209,7 +4209,10 @@ getSpatialData <- function(name) {
   if (!any(grepl("Cerebro", class(ds)))) {
     return(NULL)
   }
-  tryCatch(ds$getSpatialData(name), error = function(e) NULL)
+  tryCatch(
+    ds$getSpatialData(name, hydrate_molecules = FALSE),
+    error = function(e) NULL
+  )
 }
 serverSideGeneSelector <- function(
   session,

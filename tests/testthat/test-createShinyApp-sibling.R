@@ -105,6 +105,26 @@ test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
   expect_named(preflight$spatial_catalogs, c("First", "Second"))
 })
 
+test_that("spatial preflight does not hydrate molecule sidecars", {
+  hydrate_values <- logical()
+  object <- new.env(parent = emptyenv())
+  object$availableSpatial <- function() "fov1"
+  object$getSpatialData <- function(name, hydrate_molecules = TRUE) {
+    hydrate_values <<- c(hydrate_values, hydrate_molecules)
+    list(
+      coordinates = data.frame(x = 1:2, y = 3:4),
+      expression = matrix(numeric(), nrow = 0L, ncol = 2L),
+      histology_images = list()
+    )
+  }
+
+  catalog <- .readBundleSpatialCatalog(object, "Dataset")
+
+  expect_named(catalog, "fov1")
+  expect_null(catalog$fov1)
+  expect_identical(hydrate_values, FALSE)
+})
+
 test_that("CRB preflight releases the current dataset after an inspection error", {
   events <- character()
 

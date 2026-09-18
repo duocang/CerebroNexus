@@ -115,6 +115,12 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
     restored$spatial$fov1$molecules,
     "CerebroSpatialMoleculeRef"
   )
+  summary <- restored$getSpatialData("fov1", hydrate_molecules = FALSE)
+  expect_s3_class(summary$molecules, "CerebroSpatialMoleculeRef")
+  expect_s3_class(
+    restored$spatial$fov1$molecules,
+    "CerebroSpatialMoleculeRef"
+  )
   expect_identical(restored$getSpatialData("fov1")$molecules, molecules)
   expect_identical(restored$spatial$fov1$molecules, molecules)
 

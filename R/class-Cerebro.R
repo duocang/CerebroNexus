@@ -1118,7 +1118,9 @@ Cerebro <- R6::R6Class(
       if (length(self$immune_repertoire) > 0) {
         return(self$immune_repertoire)
       }
-      backend <- tryCatch(self$immune_repertoire_backend, error = function(e) NULL)
+      backend <- tryCatch(self$immune_repertoire_backend, error = function(e) {
+        NULL
+      })
       if (!is.null(backend)) {
         valid <- is.list(backend) &&
           identical(backend$type, "bpcells-file") &&
@@ -1137,7 +1139,10 @@ Cerebro <- R6::R6Class(
           !is.na(backend$md5) &&
           grepl("^[[:xdigit:]]{32}$", backend$md5)
         if (!valid) {
-          stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+          stop(
+            "The immune repertoire sidecar descriptor is invalid.",
+            call. = FALSE
+          )
         }
         repertoire_file <- file.path(backend$root, backend$file)
         if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
@@ -1145,14 +1150,15 @@ Cerebro <- R6::R6Class(
         }
         checksum <- unname(tools::md5sum(repertoire_file))
         if (!identical(checksum, backend$md5)) {
-          stop("The immune repertoire sidecar checksum does not match.", call. = FALSE)
+          stop(
+            "The immune repertoire sidecar checksum does not match.",
+            call. = FALSE
+          )
         }
         connection <- file(repertoire_file, open = "rb")
         magic <- readBin(connection, "raw", n = 4L)
         close(connection)
-        repertoire <- if (
-          identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))
-        ) {
+        repertoire <- if (identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))) {
           qs2::qs_read(repertoire_file)
         } else {
           readRDS(repertoire_file)
@@ -1285,12 +1291,22 @@ Cerebro <- R6::R6Class(
     #' Retrieve spatial data.
     #'
     #' @param name Name of the spatial data entry.
+    #' @param hydrate_molecules Whether to read an external molecule table. Set
+    #'   to \code{FALSE} for Viewer paths that only consume coordinates,
+    #'   expression, or images.
     #'
     #' @return
     #' A canonical spatial-data \code{list} containing 'coordinates',
     #' 'expression', and 'histology_images'. Legacy singular image fields are
     #' normalized on read.
-    getSpatialData = function(name) {
+    getSpatialData = function(name, hydrate_molecules = TRUE) {
+      if (
+        !is.logical(hydrate_molecules) ||
+          length(hydrate_molecules) != 1L ||
+          is.na(hydrate_molecules)
+      ) {
+        stop("`hydrate_molecules` must be TRUE or FALSE.", call. = FALSE)
+      }
       if (name %in% names(self$spatial) == FALSE) {
         stop(
           paste0("Spatial data `", name, "` is not available."),
@@ -1299,7 +1315,10 @@ Cerebro <- R6::R6Class(
       }
       data <- self$spatial[[name]]
       molecules <- data[["molecules"]]
-      if (inherits(molecules, "CerebroSpatialMoleculeRef")) {
+      if (
+        isTRUE(hydrate_molecules) &&
+          inherits(molecules, "CerebroSpatialMoleculeRef")
+      ) {
         backend <- self$spatial_molecule_backend
         valid_backend <- is.list(backend) &&
           identical(backend$type, "directory") &&

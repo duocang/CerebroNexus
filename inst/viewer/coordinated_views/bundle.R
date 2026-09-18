@@ -957,8 +957,26 @@ cv_build_projections <- function(crb, cells, only = NULL, preloaded = NULL) {
 ##   - EXTERNAL (Visium H&E): separate files configured for this exact dataset
 ##     and FOV, with an optional per-image alignment preset and explicit bounds.
 ## Returns list(name, x, y, image) or NULL.
+cv_spatial_data <- function(crb, nm) {
+  getter <- crb$getSpatialData
+  if ("hydrate_molecules" %in% names(formals(getter))) {
+    return(crb$getSpatialData(nm, hydrate_molecules = FALSE))
+  }
+  stored <- tryCatch(crb$spatial[[nm]], error = function(error) NULL)
+  if (
+    is.list(stored) &&
+      inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
+  ) {
+    return(stored)
+  }
+  getter(nm)
+}
+
 cv_spatial_one <- function(crb, cells, nm, allow_external) {
-  sd <- tryCatch(crb$getSpatialData(nm), error = function(e) NULL)
+  sd <- tryCatch(
+    cv_spatial_data(crb, nm),
+    error = function(e) NULL
+  )
   co <- if (!is.null(sd)) sd$coordinates else NULL
   if (is.null(co)) {
     return(NULL)

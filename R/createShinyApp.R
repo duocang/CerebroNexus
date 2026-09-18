@@ -1033,8 +1033,22 @@ dedent <- function(string) {
     )
   }
   catalog <- lapply(available, function(spatial_name) {
+    getter <- object$getSpatialData
+    getter_arguments <- names(formals(getter))
+    stored <- tryCatch(object$spatial[[spatial_name]], error = function(error) {
+      NULL
+    })
     data <- tryCatch(
-      object$getSpatialData(spatial_name),
+      if ("hydrate_molecules" %in% getter_arguments) {
+        getter(spatial_name, hydrate_molecules = FALSE)
+      } else if (
+        is.list(stored) &&
+          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
+      ) {
+        .normalizeSpatialDataImages(stored, spatial_name)
+      } else {
+        getter(spatial_name)
+      },
       error = function(error) {
         stop(
           "Could not read dataset `",
@@ -1159,10 +1173,6 @@ dedent <- function(string) {
             cerebro_data[[index]]
           ))
           spatial_backends[[index]] <- .spatialMoleculeBackend(
-            object,
-            cerebro_data[[index]]
-          )
-          object <- .attachCerebroSpatialMolecules(
             object,
             cerebro_data[[index]]
           )

@@ -234,6 +234,31 @@ test_that("optional Viewer tabs use compact catalog capabilities", {
   }
 })
 
+test_that("Viewer spatial readers leave molecule sidecars dormant", {
+  utility <- paste(
+    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  linked <- paste(
+    readLines(
+      viewer_test_path("coordinated_views", "bundle.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    utility,
+    'ds$getSpatialData(name, hydrate_molecules = FALSE)',
+    fixed = TRUE
+  )
+  expect_match(
+    linked,
+    'crb$getSpatialData(nm, hydrate_molecules = FALSE)',
+    fixed = TRUE
+  )
+})
+
 test_that("million-cell hover stays columnar until the browser needs it", {
   utility <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = utility)
