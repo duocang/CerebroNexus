@@ -255,6 +255,16 @@ pages <- list(
   )
 )
 
+all_pages <- pages
+gene_prime_overview <- identical(
+  tolower(Sys.getenv("VIEWER_GENE_PRIME_OVERVIEW", unset = "false")),
+  "true"
+)
+skip_visual_check <- identical(
+  tolower(Sys.getenv("VIEWER_BENCH_SKIP_VISUAL_CHECK", unset = "false")),
+  "true"
+)
+
 only <- Sys.getenv("VIEWER_PAGES_ONLY")
 if (nzchar(only)) {
   only <- trimws(strsplit(only, ",", fixed = TRUE)[[1L]])
@@ -415,7 +425,7 @@ page_renderer_diagnostics <- function(app, page) {
 }
 
 page_visible_pixels <- function(app, page) {
-  if (!isTRUE(page$visual_check)) {
+  if (!isTRUE(page$visual_check) || isTRUE(skip_visual_check)) {
     return(list(count = NA_real_, pass = NA))
   }
   screenshot <- tempfile("viewer-page-pixels-", fileext = ".png")
@@ -637,8 +647,50 @@ assert_clean_logs <- function(app) {
       logs$message
     )
   if (any(browser_error | server_error, na.rm = TRUE)) {
-    stop("Browser or Shiny server error occurred.", call. = FALSE)
+    details <- unique(as.character(logs$message[browser_error | server_error]))
+    stop(
+      "Browser or Shiny server error occurred: ",
+      paste(details, collapse = " | "),
+      call. = FALSE
+    )
   }
+}
+
+page_specialist_timing <- function(app) {
+  value <- app$get_js(paste0(
+    "(() => {const detail=window.__cerebroPageBenchEventDetail||{};",
+    "const timing=detail.timing||{};",
+    "const click=Number(window.__cerebroPageBenchClickStart);",
+    "const ready=Number(timing.readyAtMs);",
+    "return {clickToRequestMs:timing.clickToRequestMs,",
+    "serverPrepareMs:timing.serverPrepareMs,",
+    "serializeTransferMs:timing.serializeTransferMs,",
+    "decodeMs:timing.decodeMs,projectionFetchMs:timing.projectionFetchMs,",
+    "buildSpacesMs:timing.buildSpacesMs,preDrawMs:timing.preDrawMs,",
+    "firstDrawMs:timing.firstDrawMs,activationMs:timing.activationMs,",
+    "requestToReadyMs:timing.requestToReadyMs,bytes:timing.bytes,",
+    "clickToReadyMs:Number.isFinite(click)&&Number.isFinite(ready)",
+    "?ready-click:null};})()"
+  ))
+  number <- function(name) {
+    result <- suppressWarnings(as.numeric(value[[name]]))
+    if (length(result) != 1L || !is.finite(result)) NA_real_ else result
+  }
+  data.frame(
+    click_to_request_ms = number("clickToRequestMs"),
+    server_prepare_ms = number("serverPrepareMs"),
+    serialize_transfer_ms = number("serializeTransferMs"),
+    binary_decode_ms = number("decodeMs"),
+    projection_fetch_ms = number("projectionFetchMs"),
+    build_spaces_ms = number("buildSpacesMs"),
+    pre_draw_ms = number("preDrawMs"),
+    first_draw_ms = number("firstDrawMs"),
+    activation_ms = number("activationMs"),
+    request_to_ready_ms = number("requestToReadyMs"),
+    click_to_ready_ms = number("clickToReadyMs"),
+    primary_payload_bytes = number("bytes"),
+    stringsAsFactors = FALSE
+  )
 }
 
 run_observation <- function(schedule_row, candidate, page, crb) {
@@ -696,6 +748,22 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     }
     return(empty_observation("skipped", "page unavailable"))
   }
+  shared_projection_primed <- FALSE
+  if (
+    isTRUE(gene_prime_overview) &&
+      identical(schedule_row$page, "gene_expression")
+  ) {
+    overview_page <- all_pages[["overview"]]
+    open_page(app, overview_page, require_event = TRUE)
+    shared_projection_primed <- TRUE
+    app$run_js(
+      "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
+    )
+    app$wait_for_js(
+      "document.getElementById('shiny-tab-loadData').classList.contains('active')",
+      timeout = 120000
+    )
+  }
   warmed <- FALSE
   if (identical(schedule_row$visit, "repeat")) {
     open_page(app, page, require_event = TRUE)
@@ -734,6 +802,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     warmed
   )
   elapsed_ms <- open_page(app, page, require_event = require_event)
+  specialist_timing <- page_specialist_timing(app)
   heap_used_bytes <- js_heap_used(session)
   websocket <- stop_socket_meter(app)
   socket_meter_active <- FALSE
@@ -745,7 +814,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   correctness_pass <- correctness$pass &&
     (is.na(visible_pixels$pass) || visible_pixels$pass)
   assert_clean_logs(app)
-  data.frame(
+  cbind(data.frame(
     status = if (correctness_pass) "ok" else "error",
     error = if (correctness_pass) "" else "Page correctness check failed.",
     elapsed_ms = elapsed_ms,
@@ -767,8 +836,9 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     websocket_sent_payload_bytes = as.numeric(websocket$sent),
     websocket_received_payload_bytes = as.numeric(websocket$received),
     chrome_version = session$Browser$getVersion()$product,
+    shared_projection_primed = shared_projection_primed,
     stringsAsFactors = FALSE
-  )
+  ), specialist_timing)
 }
 
 git_value <- function(root, ...) {
@@ -821,6 +891,15 @@ provenance <- do.call(
 )
 
 schedule <- build_balanced_schedule(candidate_labels, names(pages), rounds)
+visits_only <- trimws(Sys.getenv("VIEWER_VISITS_ONLY", unset = ""))
+if (nzchar(visits_only)) {
+  visits_only <- strsplit(visits_only, ",", fixed = TRUE)[[1L]]
+  if (any(!visits_only %in% c("first", "repeat"))) {
+    stop("VIEWER_VISITS_ONLY must contain first and/or repeat.", call. = FALSE)
+  }
+  schedule <- schedule[schedule$visit %in% visits_only, , drop = FALSE]
+  schedule$schedule_position <- seq_len(nrow(schedule))
+}
 schedule_output <- sub("[.]tsv$", "_schedule.tsv", output)
 if (identical(schedule_output, output)) {
   schedule_output <- paste0(output, ".schedule.tsv")
@@ -851,6 +930,19 @@ empty_observation <- function(status, error) {
     websocket_sent_payload_bytes = NA_real_,
     websocket_received_payload_bytes = NA_real_,
     chrome_version = NA_character_,
+    shared_projection_primed = NA,
+    click_to_request_ms = NA_real_,
+    server_prepare_ms = NA_real_,
+    serialize_transfer_ms = NA_real_,
+    binary_decode_ms = NA_real_,
+    projection_fetch_ms = NA_real_,
+    build_spaces_ms = NA_real_,
+    pre_draw_ms = NA_real_,
+    first_draw_ms = NA_real_,
+    activation_ms = NA_real_,
+    request_to_ready_ms = NA_real_,
+    click_to_ready_ms = NA_real_,
+    primary_payload_bytes = NA_real_,
     stringsAsFactors = FALSE
   )
 }

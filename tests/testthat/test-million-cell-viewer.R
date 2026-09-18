@@ -738,6 +738,9 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_length(immune_spec, 1L)
   expect_no_match(immune_spec, "expected_points", fixed = TRUE)
   expect_match(benchmark, "VIEWER_EXPECTED_CELLS", fixed = TRUE)
+  expect_match(benchmark, "VIEWER_GENE_PRIME_OVERVIEW", fixed = TRUE)
+  expect_match(benchmark, "VIEWER_BENCH_SKIP_VISUAL_CHECK", fixed = TRUE)
+  expect_match(benchmark, "VIEWER_VISITS_ONLY", fixed = TRUE)
   expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
   expect_match(benchmark, "groups_metric_available", fixed = TRUE)
   expect_match(benchmark, "metadata_names", fixed = TRUE)
@@ -767,6 +770,19 @@ test_that("the page benchmark has a publication-grade contract", {
     "js_heap_used_bytes",
     "websocket_sent_payload_bytes",
     "websocket_received_payload_bytes",
+    "shared_projection_primed",
+    "click_to_request_ms",
+    "server_prepare_ms",
+    "serialize_transfer_ms",
+    "binary_decode_ms",
+    "projection_fetch_ms",
+    "build_spaces_ms",
+    "pre_draw_ms",
+    "first_draw_ms",
+    "activation_ms",
+    "request_to_ready_ms",
+    "click_to_ready_ms",
+    "primary_payload_bytes",
     "correctness_pass",
     "rendered_point_count",
     "expected_point_count",
