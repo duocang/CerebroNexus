@@ -767,6 +767,45 @@ test_that("categorical scatter payloads retain cells with missing metadata", {
   )
 })
 
+test_that("large canonical categorical payloads keep coordinates contiguous", {
+  n <- 4096L
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(seq_len(n), rev(seq_len(n))),
+    color = rep(c("A", "B"), length.out = n),
+    color_variable = "cluster",
+    selection_keys = seq_len(n),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE
+  )
+
+  expect_identical(as.numeric(payload$data$x), as.numeric(seq_len(n)))
+  expect_identical(as.numeric(payload$data$y), as.numeric(rev(seq_len(n))))
+  expect_identical(as.integer(payload$data$selection_key), seq_len(n))
+  expect_identical(
+    as.integer(payload$data$canonical_group[1:4]),
+    c(0L, 1L, 0L, 1L)
+  )
+  expect_identical(unlist(payload$meta$traces), c("A", "B"))
+
+  packed <- utils_env$cv_wire_pack_message(
+    utils_env$cerebroCellViewMessage(
+      "overview_projection",
+      payload$meta,
+      payload$data,
+      payload$hover
+    )
+  )
+  header_length <- sum(as.integer(packed[seq_len(4L)]) * 256^(0:3))
+  header <- jsonlite::fromJSON(
+    rawToChar(packed[4L + seq_len(header_length)]),
+    simplifyVector = FALSE
+  )
+  expect_identical(header$data$x$`__cv_wire__`, "f32")
+  expect_identical(header$data$y$`__cv_wire__`, "f32")
+})
+
 test_that("selection counts use payload cell IDs", {
   expect_identical(
     utils_env$cerebroSelectionCount(list(

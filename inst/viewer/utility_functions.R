@@ -1205,6 +1205,26 @@ cerebroCellViewScatterPayload <- function(
     )
   }
 
+  canonical_layout <- length(color) >= 4096L &&
+    identical(as.integer(selection_keys), seq_along(selection_keys)) &&
+    !show_hover &&
+    !length(structured_hover)
+  if (canonical_layout) {
+    traces <- names(color_assignments)[
+      names(color_assignments) %in% levels_in_view
+    ]
+    meta[["traces"]] <- as.list(traces)
+    data[["x"]] <- I(as.numeric(coordinates[[1L]]))
+    data[["y"]] <- I(as.numeric(coordinates[[2L]]))
+    if (has_z) {
+      data[["z"]] <- I(as.numeric(coordinates[[3L]]))
+    }
+    data[["selection_key"]] <- I(selection_keys)
+    data[["color"]] <- as.list(unname(color_assignments[traces]))
+    data[["canonical_group"]] <- I(as.integer(match(color, traces) - 1L))
+    return(list(meta = meta, data = data, hover = hover_data))
+  }
+
   meta[["traces"]] <- list()
   cells_by_group <- split(seq_along(color), color)
   hover_names <- names(hover_info)

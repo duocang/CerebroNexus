@@ -376,6 +376,44 @@ test_that("specialist pages use binary transport when the browser supports it", 
   expect_match(engine, "!ArrayBuffer.isView(data.color)", fixed = TRUE)
 })
 
+test_that("canonical projections use validated static assets with wire fallback", {
+  server <- paste(
+    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  overview <- paste(
+    c(
+      readLines(
+        viewer_test_path("overview", "func_projection_update_plot.R"),
+        warn = FALSE
+      ),
+      readLines(
+        viewer_test_path("overview", "event_projection_update_plot.R"),
+        warn = FALSE
+      )
+    ),
+    collapse = "\n"
+  )
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server, "viewerProjectionAsset <- function", fixed = TRUE)
+  expect_match(server, "tools::md5sum(file)", fixed = TRUE)
+  expect_match(server, "shiny::addResourcePath", fixed = TRUE)
+  expect_match(server, "shiny::removeResourcePath", fixed = TRUE)
+  expect_match(overview, "payload$data$projection_resource", fixed = TRUE)
+  expect_match(
+    overview,
+    "overview_projection_projection_resource_failed",
+    fixed = TRUE
+  )
+  expect_match(engine, "hydrateSingleProjectionResource", fixed = TRUE)
+  expect_match(engine, "response.arrayBuffer()", fixed = TRUE)
+  expect_match(engine, "projection_resource_failed", fixed = TRUE)
+})
+
 test_that("specialist bundles carry the saved dataset fingerprint", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")

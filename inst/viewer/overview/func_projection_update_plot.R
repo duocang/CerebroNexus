@@ -34,6 +34,20 @@ overview_projection_update_plot <- function(input) {
     hover = FALSE,
     space_label = plot_parameters[["projection"]]
   )
+  projection_asset <- viewerProjectionAsset(
+    plot_parameters[["projection"]],
+    cell_indices
+  )
+  failed_asset <- input[["projection_resource_failed"]]
+  if (
+    is.list(projection_asset) &&
+      !identical(as.character(failed_asset), projection_asset$url)
+  ) {
+    payload$data$x <- NULL
+    payload$data$y <- NULL
+    payload$data$z <- NULL
+    payload$data$projection_resource <- projection_asset
+  }
   selection_rows <- payload$data$selection_key
   deferred_aux <- function() {
     metadata <- getMetaData()

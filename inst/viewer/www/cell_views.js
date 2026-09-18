@@ -6025,6 +6025,59 @@
     message.data = data;
     return message;
   }
+  var projectionResourceCache = new Map();
+  function hydrateSingleProjectionResource(message) {
+    var data = message && message.data || {};
+    var resource = data.projection_resource;
+    if (!resource || !resource.url) return Promise.resolve(message);
+    var n = Number(resource.cells) || 0;
+    var dimensions = Number(resource.dimensions) || 0;
+    if (n !== Number(data.n) || (dimensions !== 2 && dimensions !== 3)) {
+      return Promise.reject(new Error('Projection resource shape mismatch'));
+    }
+    var key = String(resource.url) + ':' + String(resource.checksum || '');
+    var pending = projectionResourceCache.get(key);
+    if (!pending) {
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin',
+        cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Projection resource request failed');
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
+          throw new Error('Projection resource byte count mismatch');
+        }
+        var interleaved = new Float32Array(buffer);
+        if (interleaved.length !== n * dimensions) {
+          throw new Error('Projection resource length mismatch');
+        }
+        var x = new Float32Array(n), y = new Float32Array(n);
+        var z = dimensions === 3 ? new Float32Array(n) : null;
+        for (var i = 0; i < n; i++) {
+          var offset = i * dimensions;
+          x[i] = interleaved[offset];
+          y[i] = interleaved[offset + 1];
+          if (z) z[i] = interleaved[offset + 2];
+        }
+        return { x: x, y: y, z: z, bytes: buffer.byteLength };
+      });
+      projectionResourceCache.set(key, pending);
+      pending.catch(function () { projectionResourceCache.delete(key); });
+    }
+    var started = performance.now();
+    return pending.then(function (coordinates) {
+      data.x = coordinates.x;
+      data.y = coordinates.y;
+      if (coordinates.z) data.z = coordinates.z;
+      delete data.projection_resource;
+      message.data = data;
+      var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
+      timing.projectionFetchMs = performance.now() - started;
+      timing.projectionBytes = coordinates.bytes;
+      return message;
+    });
+  }
   function canonicalGroupedValues(grouped, groups, fallback) {
     return window.CBViewState.canonicalGroupedValues(grouped, groups, fallback);
   }
@@ -6046,6 +6099,36 @@
           groups: null,
           levels: [],
           colors: [],
+          hover: [],
+          hoverEnabled: new Uint8Array(0),
+          hoverColumns: []
+        };
+      }
+    }
+    if (nested) {
+      var directGroups = data.data.canonical_group;
+      var directCanonicalX = data.data.x, directCanonicalY = data.data.y;
+      var directCanonicalZ = data.data.z;
+      if (ArrayBuffer.isView(directGroups) && directGroups.length === n &&
+        ArrayBuffer.isView(directCanonicalX) && directCanonicalX.length === n &&
+        ArrayBuffer.isView(directCanonicalY) && directCanonicalY.length === n) {
+        var directTraces = Array.isArray(data.meta.traces)
+          ? data.meta.traces : [];
+        var directLevels = [], directColors = [];
+        directTraces.forEach(function (name, group) {
+          directLevels.push(String(name));
+          var colour = data.data.color && data.data.color[group];
+          directColors.push(String(Array.isArray(colour) ? colour[0] :
+            colour || '#7b8794'));
+        });
+        return {
+          x: directCanonicalX,
+          y: directCanonicalY,
+          z: ArrayBuffer.isView(directCanonicalZ) &&
+            directCanonicalZ.length === n ? directCanonicalZ : null,
+          groups: directGroups,
+          levels: directLevels,
+          colors: directColors,
           hover: [],
           hoverEnabled: new Uint8Array(0),
           hoverColumns: []
@@ -7022,18 +7105,29 @@
         });
         return;
       }
-      if (message.dataset_identity) {
-        window.cerebroSavedViewDataset = message.dataset_identity;
-      }
-      renderSingle(
-        message.id,
-        message.meta,
-        message.data,
-        message.hover,
-        message.extra,
-        message.dataset_identity,
-        message.transport_profile
-      );
+      hydrateSingleProjectionResource(message).then(function (hydrated) {
+        if (hydrated.dataset_identity) {
+          window.cerebroSavedViewDataset = hydrated.dataset_identity;
+        }
+        renderSingle(
+          hydrated.id,
+          hydrated.meta,
+          hydrated.data,
+          hydrated.hover,
+          hydrated.extra,
+          hydrated.dataset_identity,
+          hydrated.transport_profile
+        );
+      }).catch(function () {
+        var failed = message.data && message.data.projection_resource;
+        if (failed && failed.url && typeof Shiny !== 'undefined') {
+          Shiny.setInputValue(
+            message.id + '_projection_resource_failed',
+            String(failed.url),
+            { priority: 'event' }
+          );
+        }
+      });
     } catch (error) {
       return;
     }

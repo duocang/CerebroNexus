@@ -670,6 +670,88 @@ server <- function(input, output, session) {
     return(data)
   })
 
+  ## Large projection coordinates already exist as interleaved Float32 assets
+  ## in the validated Viewer Pack. Expose only that projection directory under
+  ## a session-specific resource prefix so specialist views can fetch the file
+  ## directly instead of copying the same 8 MB through R and Shiny's websocket.
+  viewer_projection_resources <- new.env(parent = emptyenv())
+  viewer_projection_prefixes <- character()
+  viewerProjectionAsset <- function(name, cell_indices) {
+    pack <- viewerPackCurrent()
+    if (
+      !is.list(pack) ||
+        !isTRUE(pack$canonical_order) ||
+        !identical(as.integer(cell_indices), seq_len(pack$cell_count))
+    ) {
+      return(NULL)
+    }
+    projection_names <- as.character(pack$manifest$projection_names)
+    projection_index <- match(as.character(name), projection_names)
+    if (is.na(projection_index)) {
+      return(NULL)
+    }
+    asset_path <- file.path(
+      "projections",
+      sprintf("%03d.bin", projection_index)
+    )
+    key <- paste(pack$path, asset_path, sep = "::")
+    if (exists(key, envir = viewer_projection_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_projection_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- which(as.character(assets$path) == asset_path)
+    dimensions <- if (length(asset_row) == 1L) {
+      suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[asset_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+    } else {
+      integer()
+    }
+    file <- file.path(pack$path, asset_path)
+    valid <- length(asset_row) == 1L &&
+      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
+      length(dimensions) == 2L &&
+      identical(dimensions[[1L]], as.integer(pack$cell_count)) &&
+      dimensions[[2L]] %in% c(2L, 3L) &&
+      file.exists(file) &&
+      !dir.exists(file) &&
+      identical(
+        as.numeric(file.info(file)$size),
+        as.numeric(assets$bytes[[asset_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(file)),
+        as.character(assets$checksum[[asset_row]])
+      )
+    if (!valid) {
+      return(NULL)
+    }
+    prefix <- paste0(
+      "cerebro-projection-",
+      gsub("[^A-Za-z0-9_-]", "", session$token),
+      "-",
+      length(viewer_projection_prefixes) + 1L
+    )
+    shiny::addResourcePath(prefix, dirname(file))
+    viewer_projection_prefixes <<- c(viewer_projection_prefixes, prefix)
+    descriptor <- list(
+      url = paste0(prefix, "/", basename(file)),
+      cells = dimensions[[1L]],
+      dimensions = dimensions[[2L]],
+      bytes = as.numeric(assets$bytes[[asset_row]]),
+      checksum = as.character(assets$checksum[[asset_row]])
+    )
+    assign(key, descriptor, envir = viewer_projection_resources)
+    descriptor
+  }
+  session$onSessionEnded(function() {
+    for (prefix in viewer_projection_prefixes) {
+      try(shiny::removeResourcePath(prefix), silent = TRUE)
+    }
+  })
+
   cv_saved_view_cells <- reactive({
     metadata <- getMetaData()
     if ("cell_barcode" %in% colnames(metadata)) {

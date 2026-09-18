@@ -1,7 +1,7 @@
 ##----------------------------------------------------------------------------##
 ## Layout of the UI elements.
 ##----------------------------------------------------------------------------##
-output[["overview_projection_UI"]] <- renderUI({
+overviewProjectionUI <- function() {
   tagList(
     cerebroVizPageHeader(
       "Projection",
@@ -71,4 +71,4 @@ output[["overview_projection_UI"]] <- renderUI({
       )
     )
   )
-})
+}
