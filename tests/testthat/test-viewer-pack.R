@@ -331,6 +331,85 @@ test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
   expect_true(runtime$viewerPackValidateCellOrder(descriptor))
 })
 
+test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
+  root <- tempfile("viewer-pack-ir-first-frame-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 4L,
+    immune = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  coordinates <- unname(object$getProjection("umap"))
+  thin <- new.env(parent = emptyenv())
+  thin$crb_schema <- list(version = 2L, n_cells = 4L)
+
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    viewer_test_path("core", "viewer_pack.R"),
+    envir = runtime
+  )
+  descriptor <- runtime$viewerPackOpen(crb, thin)
+  expect_null(descriptor$cells)
+  expect_true(exists(
+    "viewerPackCellBarcodes",
+    envir = runtime,
+    inherits = FALSE
+  ))
+
+  projection_calls <- 0L
+  scope <- new.env(parent = globalenv())
+  scope$reactive <- function(x) function() eval(substitute(x))
+  scope$reactiveVal <- function(...) function(...) NULL
+  scope$req <- function(...) invisible(NULL)
+  scope$observeEvent <- function(...) invisible(NULL)
+  scope$`%||%` <- function(a, b) if (is.null(a)) b else a
+  scope$getImmuneRepertoire <- function(...) NULL
+  scope$getImmuneRepertoireSummary <- function(...) list(available = TRUE)
+  scope$getMetaData <- function(...) stop("barcode hydration was forced")
+  scope$availableProjections <- function(...) "umap"
+  scope$getProjection <- function(...) {
+    projection_calls <<- projection_calls + 1L
+    stop("full projection hydration was forced")
+  }
+  scope$viewerProjectionFirstFrameCoordinates <- function(name) coordinates
+  scope$viewerPackCurrent <- function() descriptor
+  scope$viewerPackImmuneIndex <- runtime$viewerPackImmuneIndex
+  scope$detect_chains <- function(...) character()
+  scope$input <- list()
+  scope$session <- list()
+  sys.source(
+    viewer_test_path("clone_contract.R"),
+    envir = scope,
+    keep.source = FALSE
+  )
+  sys.source(
+    viewer_test_path("immune_repertoire", "data.R"),
+    envir = scope,
+    keep.source = FALSE
+  )
+
+  out <- scope$ir_clonal_umap_data(
+    "umap",
+    "TCR",
+    show_all = FALSE
+  )
+
+  expect_identical(projection_calls, 0L)
+  expect_equal(out$x, coordinates[, 1L])
+  expect_equal(out$y, coordinates[, 2L])
+  expect_identical(out$cell_index, 1:4)
+  expect_true(all(!is.na(out$expansion)))
+  expect_false("barcode" %in% names(out))
+  if (exists("viewerPackCellBarcodes", envir = runtime, inherits = FALSE)) {
+    expect_identical(
+      runtime$viewerPackCellBarcodes(descriptor, out$cell_index),
+      sprintf("cell-%03d", 1:4)
+    )
+  }
+})
+
 test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   server <- paste(
     readLines(testthat::test_path(
@@ -391,7 +470,7 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   )
   expect_match(
     immune_data,
-    "viewerPackImmuneIndex(viewerPackCurrent()",
+    "viewerPackImmuneIndex(pack, receptor)",
     fixed = TRUE
   )
   expect_match(

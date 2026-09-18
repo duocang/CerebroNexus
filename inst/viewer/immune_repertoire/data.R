@@ -482,7 +482,28 @@ ir_clonal_umap_data <- function(
   ) {
     return(NULL)
   }
-  coords <- tryCatch(getProjection(projection), error = function(e) NULL)
+  clone_col <- ir_clonecall_col(cloneCall)
+  pack <- NULL
+  packed <- NULL
+  if (
+    identical(clone_col, "CTgene") &&
+      exists("viewerPackCurrent", mode = "function") &&
+      exists("viewerPackImmuneIndex", mode = "function")
+  ) {
+    pack <- viewerPackCurrent()
+    packed <- viewerPackImmuneIndex(pack, receptor)
+  }
+  indexed_pack <- !is.null(packed) &&
+    isTRUE(pack$canonical_order) &&
+    exists("viewerProjectionFirstFrameCoordinates", mode = "function")
+  coords <- tryCatch(
+    if (indexed_pack) {
+      viewerProjectionFirstFrameCoordinates(projection)
+    } else {
+      getProjection(projection)
+    },
+    error = function(e) NULL
+  )
   if (is.null(coords) || nrow(coords) == 0) {
     return(NULL)
   }
@@ -497,31 +518,43 @@ ir_clonal_umap_data <- function(
   ) {
     max_background <- 100000L
   }
-  # Restrict to the requested cells (group filters) up front, so both the
-  # coloured receptor cells and the grey background respect the filter.
-  if (!is.null(cells)) {
+  visible_indices <- seq_len(nrow(coords))
+  if (!is.null(cells) && indexed_pack) {
+    canonical <- if (exists("viewerPackCellBarcodes", mode = "function")) {
+      viewerPackCellBarcodes(pack)
+    } else {
+      NULL
+    }
+    if (is.null(canonical)) {
+      return(NULL)
+    }
+    visible_indices <- visible_indices[canonical %in% cells]
+    if (!length(visible_indices)) {
+      return(NULL)
+    }
+  } else if (!is.null(cells)) {
     coords <- coords[rownames(coords) %in% cells, , drop = FALSE]
     if (nrow(coords) == 0) {
       return(NULL)
     }
+    visible_indices <- seq_len(nrow(coords))
   }
 
-  clone_col <- ir_clonecall_col(cloneCall)
   coord_bc <- rownames(coords)
-  packed <- if (identical(clone_col, "CTgene")) {
-    if (
-      exists("viewerPackCurrent", mode = "function") &&
-        exists("viewerPackImmuneIndex", mode = "function")
-    ) {
-      viewerPackImmuneIndex(viewerPackCurrent(), receptor)
-    } else {
-      NULL
-    }
-  } else {
-    NULL
-  }
-  if (!is.null(packed)) {
-    canonical <- viewerPackCurrent()$cells
+  if (indexed_pack) {
+    coord_index <- suppressWarnings(as.integer(packed$cell_index))
+    clones <- packed$clone
+    valid <- !is.na(clones) &
+      nzchar(clones) &
+      !is.na(coord_index) &
+      coord_index >= 1L &
+      coord_index <= nrow(coords) &
+      coord_index %in% visible_indices
+    clones <- clones[valid]
+    coord_index <- coord_index[valid]
+    barcodes <- NULL
+  } else if (!is.null(packed)) {
+    canonical <- pack$cells
     barcodes <- canonical[packed$cell_index]
     clones <- packed$clone
   } else {
@@ -552,12 +585,14 @@ ir_clonal_umap_data <- function(
     barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
     clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
   }
-  valid <- !is.na(clones) & nzchar(clones)
-  coord_index <- match(barcodes, coord_bc)
-  valid <- valid & !is.na(coord_index)
-  barcodes <- barcodes[valid]
-  clones <- clones[valid]
-  coord_index <- coord_index[valid]
+  if (!indexed_pack) {
+    valid <- !is.na(clones) & nzchar(clones)
+    coord_index <- match(barcodes, coord_bc)
+    valid <- valid & !is.na(coord_index)
+    barcodes <- barcodes[valid]
+    clones <- clones[valid]
+    coord_index <- coord_index[valid]
+  }
   has_receptor <- length(coord_index) > 0L
   if (!has_receptor) {
     # No receptor cells. With show_all we can still draw the grey background;
@@ -589,7 +624,11 @@ ir_clonal_umap_data <- function(
       } else {
         integer()
       }
-      barcodes <- barcodes[keep]
+      if (indexed_pack) {
+        coord_index <- coord_index[keep]
+      } else {
+        barcodes <- barcodes[keep]
+      }
       expansion <- expansion[keep]
       idx <- idx[keep]
     }
@@ -601,13 +640,18 @@ ir_clonal_umap_data <- function(
   }
   coloured <- if (length(idx) > 0) {
     xy <- coords[idx, 1:2, drop = FALSE]
-    data.frame(
-      x = as.numeric(xy[[1]]),
-      y = as.numeric(xy[[2]]),
+    out <- data.frame(
+      x = as.numeric(xy[, 1L]),
+      y = as.numeric(xy[, 2L]),
       expansion = factor(expansion, levels = IR_CLONE_LABELS),
-      barcode = barcodes,
       stringsAsFactors = FALSE
     )
+    if (indexed_pack) {
+      out$cell_index <- coord_index
+    } else {
+      out$barcode <- barcodes
+    }
+    out
   } else {
     NULL
   }
@@ -616,7 +660,7 @@ ir_clonal_umap_data <- function(
   # renderer can draw them in grey. Only when show_all is requested.
   background <- NULL
   if (isTRUE(show_all)) {
-    bg_mask <- rep(TRUE, length(coord_bc))
+    bg_mask <- seq_len(nrow(coords)) %in% visible_indices
     bg_mask[receptor_indices] <- FALSE
     if (any(bg_mask)) {
       bg_idx <- which(bg_mask)
@@ -635,12 +679,16 @@ ir_clonal_umap_data <- function(
       }
       xy_bg <- coords[bg_idx, 1:2, drop = FALSE]
       background <- data.frame(
-        x = as.numeric(xy_bg[[1]]),
-        y = as.numeric(xy_bg[[2]]),
+        x = as.numeric(xy_bg[, 1L]),
+        y = as.numeric(xy_bg[, 2L]),
         expansion = factor(NA, levels = IR_CLONE_LABELS),
-        barcode = coord_bc[bg_idx],
         stringsAsFactors = FALSE
       )
+      if (indexed_pack) {
+        background$cell_index <- bg_idx
+      } else {
+        background$barcode <- coord_bc[bg_idx]
+      }
     }
   }
 
@@ -649,6 +697,33 @@ ir_clonal_umap_data <- function(
     return(NULL)
   }
   out
+}
+
+ir_clonal_umap_barcodes <- function(data) {
+  if ("barcode" %in% colnames(data)) {
+    return(as.character(data$barcode))
+  }
+  if (!("cell_index" %in% colnames(data))) {
+    return(NULL)
+  }
+  if (
+    exists("viewerPackCurrent", mode = "function") &&
+      exists("viewerPackCellBarcodes", mode = "function")
+  ) {
+    cells <- viewerPackCellBarcodes(viewerPackCurrent(), data$cell_index)
+    if (!is.null(cells)) {
+      return(cells)
+    }
+  }
+  metadata <- tryCatch(getMetaData(), error = function(e) NULL)
+  if (
+    !is.data.frame(metadata) ||
+      !("cell_barcode" %in% colnames(metadata)) ||
+      any(data$cell_index < 1L | data$cell_index > nrow(metadata))
+  ) {
+    return(NULL)
+  }
+  as.character(metadata$cell_barcode[data$cell_index])
 }
 
 ##----------------------------------------------------------------------------##

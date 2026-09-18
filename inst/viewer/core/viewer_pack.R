@@ -152,6 +152,33 @@ viewerPackReadAsset <- function(pack, path, validate_cell_order = TRUE) {
   value
 }
 
+viewerPackCellBarcodes <- function(pack, index = NULL) {
+  cells <- pack$cells
+  if (is.null(cells)) {
+    cells <- viewerPackReadAsset(
+      pack,
+      "common/cell_order.qs2",
+      validate_cell_order = FALSE
+    )
+  }
+  if (
+    !is.character(cells) ||
+      length(cells) != pack$cell_count ||
+      anyNA(cells) ||
+      any(!nzchar(cells))
+  ) {
+    return(NULL)
+  }
+  if (is.null(index)) {
+    return(cells)
+  }
+  index <- suppressWarnings(as.integer(index))
+  if (anyNA(index) || any(index < 1L | index > length(cells))) {
+    return(NULL)
+  }
+  cells[index]
+}
+
 viewerPackHlaSegments <- function(pack, chain) {
   if (
     !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")

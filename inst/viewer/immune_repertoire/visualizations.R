@@ -353,7 +353,16 @@ ir_umap_grouped_data <- function(df, group_by) {
   ) {
     return(NULL)
   }
-  idx <- match(df$barcode, md$cell_barcode)
+  idx <- if (
+    "cell_index" %in%
+      colnames(df) &&
+      all(df$cell_index >= 1L & df$cell_index <= nrow(md))
+  ) {
+    as.integer(df$cell_index)
+  } else {
+    match(df$barcode, md$cell_barcode)
+  }
+  df$barcode <- as.character(md$cell_barcode[idx])
   group_values <- as.character(md[[group_by]][idx])
   group_levels <- tryCatch(getGroupLevels(group_by), error = function(e) NULL)
   if (is.null(group_levels) || length(group_levels) == 0) {
@@ -631,6 +640,8 @@ observe({
     keys
   })
   deferred_aux <- function() {
+    barcodes <- ir_clonal_umap_barcodes(df)
+    req(length(barcodes) == nrow(df))
     hover_info <- ifelse(traces == "Other cells", "skip", "text")
     hover_text <- Map(
       function(rows, label) {
@@ -638,7 +649,7 @@ observe({
           return("")
         }
         paste0(
-          df$barcode[rows],
+          barcodes[rows],
           "<br>",
           label,
           "<br>",
@@ -655,7 +666,7 @@ observe({
       traces
     )
     list(
-      selection_key = lapply(data_rows, function(rows) df$barcode[rows]),
+      selection_key = lapply(data_rows, function(rows) barcodes[rows]),
       hover = list(hoverinfo = as.list(hover_info), text = hover_text)
     )
   }
