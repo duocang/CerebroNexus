@@ -268,6 +268,22 @@ test_that("gene-expression first frame defers identities and hover", {
   )
   expect_match(update_source, "deferred_aux = deferred_aux", fixed = TRUE)
   expect_match(update_source, "shared_zero_color", fixed = TRUE)
+  expression_source <- paste(
+    readLines(
+      viewer_test_path(
+        "gene_expression",
+        "obj_projection_expression_levels.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    expression_source,
+    "if (length(genes_present) == 0) {\n      ## No gene",
+    fixed = TRUE
+  )
+  expect_match(expression_source, "expression_levels <- numeric()", fixed = TRUE)
 
   sources <- vapply(
     c(

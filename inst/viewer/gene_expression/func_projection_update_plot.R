@@ -10,6 +10,10 @@ expression_projection_update_plot <- function(input) {
   display_mode <- input[['display_mode']]
   cell_indices <- input[['cell_indices']]
   separate_panels <- input[['separate_panels']]
+  no_gene_selected <- length(color_settings[["genes"]]) == 0L
+  if (no_gene_selected) {
+    expression_levels <- numeric()
+  }
   if (is.null(cell_indices)) {
     cell_indices <- seq_len(nrow(metadata))
   }
@@ -133,7 +137,7 @@ expression_projection_update_plot <- function(input) {
       hover = hover
     )
   }
-  if (identical(display_mode, "rgb")) {
+  if (identical(display_mode, "rgb") && !no_gene_selected) {
     output_data[["rgb"]] <- expression_levels[c("r", "g", "b")]
     output_data[["rgb_genes"]] <- color_settings[["rgb_genes"]]
     cerebroCellViewRender(
@@ -166,8 +170,7 @@ expression_projection_update_plot <- function(input) {
     } else {
       paste0("Mean expression (", length(color_settings[["genes"]]), " genes)")
     }
-    output_data[["shared_zero_color"]] <-
-      length(color_settings[["genes"]]) == 0L
+    output_data[["shared_zero_color"]] <- no_gene_selected
     cerebroCellViewRender(
       "expression_projection",
       list(

@@ -295,6 +295,27 @@ test_that("specialist views can reference validated shared coordinates", {
   expect_null(first$data$color)
   expect_true(first$data$zero_color)
   expect_identical(first$data$n, 4096L)
+
+  sent <- list()
+  runtime$input$coordviews_shared_base <- NULL
+  runtime$cerebroCellViewRender(
+    "expression_projection",
+    meta = list(color_type = "continuous", space_label = "umap"),
+    data = list(
+      x = seq_len(4096L),
+      y = rev(seq_len(4096L)),
+      color = numeric(),
+      selection_key = keys,
+      shared_zero_color = TRUE
+    )
+  )
+  unshared <- wire_header(sent[[1L]]$payload)
+  expect_null(unshared$shared_projection)
+  expect_false(is.null(unshared$data$x))
+  expect_false(is.null(unshared$data$y))
+  expect_null(unshared$data$color)
+  expect_true(unshared$data$zero_color)
+  expect_identical(unshared$data$n, 4096L)
 })
 
 test_that("specialist selections wait for stable IDs and replay after aux", {

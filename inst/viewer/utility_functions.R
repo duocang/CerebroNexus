@@ -1011,6 +1011,11 @@ cerebroCellViewRender <- function(
     )
     shared_zero_color <- isTRUE(message$data$shared_zero_color)
     message$data$shared_zero_color <- NULL
+    if (isTRUE(shared_zero_color)) {
+      message$data$color <- NULL
+      message$data$zero_color <- TRUE
+      message$data$n <- n_cells
+    }
     if (
       is.character(shared_projection) &&
         length(shared_projection) == 1L &&
@@ -1022,10 +1027,6 @@ cerebroCellViewRender <- function(
       message$data$y <- NULL
       message$data$z <- NULL
       message$data$n <- n_cells
-      if (isTRUE(shared_zero_color)) {
-        message$data$color <- NULL
-        message$data$zero_color <- TRUE
-      }
     }
     progressive <- !is.null(selection_keys) &&
       is.null(message$data$panels) &&

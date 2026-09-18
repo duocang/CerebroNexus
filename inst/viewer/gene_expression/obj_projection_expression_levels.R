@@ -37,11 +37,10 @@ expression_projection_expression_levels <- reactive({
     )
 
     if (length(genes_present) == 0) {
-      expression_levels <- if (identical(display_mode, "rgb")) {
-        list(r = rep(0, n_cells), g = rep(0, n_cells), b = rep(0, n_cells))
-      } else {
-        rep(0, n_cells)
-      }
+      ## No gene means one constant renderer colour, not a synthetic
+      ## million-cell expression vector. The transport marks this empty value
+      ## as the explicit zero-colour fast path.
+      expression_levels <- numeric()
     } else {
       req(expression_projection_coordinates())
       ## All branches keep the requested slice in canonical index order. The

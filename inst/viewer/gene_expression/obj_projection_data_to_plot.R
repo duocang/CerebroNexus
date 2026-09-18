@@ -5,13 +5,17 @@ expression_projection_data_to_plot_raw <- reactive({
   coordinates <- expression_projection_coordinates()
   parameters <- expression_projection_parameters_plot()
   expression_levels <- expression_projection_expression_levels()
+  no_gene_selected <- length(
+    expression_selected_genes()[["genes_to_display_present"]]
+  ) == 0L
   metadata <- expression_projection_data()
   req(
     coordinates,
     parameters,
     expression_projection_parameters_color(),
     expression_projection_trajectory(),
-    nrow(coordinates) == length(expression_levels) ||
+    no_gene_selected ||
+      nrow(coordinates) == length(expression_levels) ||
       nrow(coordinates) == length(expression_levels[[1]]),
     !is.null(input[["expression_projection_genes_in_separate_panels"]])
   )
