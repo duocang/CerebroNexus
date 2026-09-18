@@ -1,9 +1,7 @@
 ##----------------------------------------------------------------------------##
 ## Reactive data that holds genes provided by user or in selected gene set.
 ##----------------------------------------------------------------------------##
-## cannot use req() because it delays initialization and plot is updated only
-## with button press so plot doesn't initialize at all
-expression_selected_genes <- reactive({
+expression_selected_genes_input <- reactive({
   req(
     input[["expression_analysis_mode"]],
     list_of_genes()
@@ -70,3 +68,10 @@ expression_selected_genes <- reactive({
   ]][which(is.na(genes_to_display_here))]
   return(gene_sets)
 })
+
+## Let a multi-select gesture settle before any million-cell expression read.
+## The first value still initializes immediately.
+expression_selected_genes <- debounceAfterFirst(
+  expression_selected_genes_input,
+  500
+)

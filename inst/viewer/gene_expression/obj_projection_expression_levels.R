@@ -24,13 +24,8 @@ expression_projection_expression_levels <- reactive({
     n_cells <- length(cells_to_show)
     genes_data <- expression_selected_genes()
 
-    ## expression_selected_genes() is an eventReactive bound to the
-    ## "Plot Expression" button, so its cached `genes_to_display_present` is
-    ## NOT refreshed on a dataset switch. If the user previously plotted
-    ## genes that exist in the old dataset but not in the new one, the cache
-    ## still holds them and getExpressionMatrix(genes=) below would crash
-    ## with vctrs::vec_slice "Element X doesn't exist". Re-filter against
-    ## the current dataset's gene names every time this reactive fires.
+    ## The debounced selection can briefly retain genes from the previous data
+    ## set during a switch. Re-filter before touching the expression backend.
     genes_present <- intersect(
       genes_data$genes_to_display_present,
       getGeneNames()

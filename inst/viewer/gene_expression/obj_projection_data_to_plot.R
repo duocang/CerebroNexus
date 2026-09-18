@@ -42,5 +42,5 @@ expression_projection_data_to_plot_raw <- reactive({
 
 expression_projection_data_to_plot <- debounceAfterFirst(
   expression_projection_data_to_plot_raw,
-  250
+  50
 )

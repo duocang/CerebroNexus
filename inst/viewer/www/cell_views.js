@@ -1719,30 +1719,14 @@
     return true;
   }
 
-  function scheduleSingleAux() {
+  function requestSingleAux() {
     var view = singleActive && singleViews[singleActive];
     var token = view && view.data && view.data.wire_token;
-    if (token == null || view._auxToken === token || view._auxPending === token ||
-        view._auxTimer) return;
+    if (token == null || view._auxToken === token || view._auxPending === token) return;
     view._auxPending = token;
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        view._auxPending = null;
-        var current = singleViews[singleActive];
-        if (!current || current !== view || current.data.wire_token !== token ||
-            visibleSingleId() !== singleActive) return;
-        view._auxTimer = setTimeout(function () {
-          view._auxTimer = null;
-          current = singleViews[singleActive];
-          if (!current || current !== view || current.data.wire_token !== token ||
-              visibleSingleId() !== singleActive) return;
-          view._auxToken = token;
-          Shiny.setInputValue('cell_view_aux_request', {
-            id: singleActive, wire_token: token
-          }, { priority: 'event' });
-        }, 5000);
-      });
-    });
+    Shiny.setInputValue('cell_view_aux_request', {
+      id: singleActive, wire_token: token
+    }, { priority: 'event' });
   }
 
   function draw(p, shownMask, shownCount) {
@@ -1909,7 +1893,6 @@
     // whatever the view slid underneath it.
     repositionPinned(p);
     p.canvas.dataset.pointCount = String(D.n);
-    scheduleSingleAux();
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -3780,6 +3763,7 @@
 
   function wireHover(p) {
     var tip = $(p.tipId);
+    p.canvas.addEventListener('pointerenter', requestSingleAux);
     p.canvas.addEventListener('mousemove', function (e) {
       var space = singleActive && spaceById[p.spaceId];
       if (space && space._hoverEnabled === false) {
@@ -3822,6 +3806,7 @@
     };
     brushTarget.addEventListener('mousedown', function (e) {
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
+      requestSingleAux();
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
       // A rotatable panel NAVIGATES; it does not select. Selection here is done
       // on screen coordinates, and once the cloud has depth those stop being a
@@ -7009,6 +6994,8 @@
       var view = message && singleViews[message.id];
       if (!view || !view.data ||
           Number(view.data.wire_token) !== Number(message.wire_token)) return;
+      view._auxPending = null;
+      view._auxToken = message.wire_token;
       view.data.selection_key = message.selection_key;
       view.hover = message.hover || {};
       if (singleActive !== message.id) return;
