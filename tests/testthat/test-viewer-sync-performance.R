@@ -239,6 +239,7 @@ test_that("the first reactive value bypasses debounce", {
 
   shiny::testServer(server, {
     session$setInputs(value = "first")
+    expect_identical(compute_count, 0L)
     expect_identical(ready(), "first")
     session$setInputs(value = "second")
     expect_identical(ready(), "first")

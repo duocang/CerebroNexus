@@ -367,12 +367,19 @@
     Shiny.addCustomMessageHandler('coordviews_config_result', receive);
     Shiny.addCustomMessageHandler('cerebro_saved_view_dataset', function (identity) {
       window.cerebroSavedViewDataset = identity;
+      var cellViews = window.cerebroCellViews;
+      if (cellViews && cellViews.attachDatasetIdentity) {
+        cellViews.attachDatasetIdentity(identity);
+      }
       refreshActiveState();
     });
     return true;
   }
 
   function boot() {
+    if (window.jQuery) window.jQuery(document).one('shiny:connected', connectShiny);
+    else document.addEventListener('shiny:connected', connectShiny, { once: true });
+    connectShiny();
     var dialog = byId('cv-config-dialog');
     var open = byId('cv-config-open');
     if (!dialog || !open) return;
@@ -431,10 +438,6 @@
     });
     window.addEventListener('cerebro:png-result', announceExternalPNG);
     refreshActiveState();
-
-    if (window.jQuery) window.jQuery(document).one('shiny:connected', connectShiny);
-    else document.addEventListener('shiny:connected', connectShiny, { once: true });
-    connectShiny();
   }
 
   if (document.readyState === 'loading') {

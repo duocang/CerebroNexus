@@ -68,6 +68,13 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/coordinated_views/config.R"
+    ),
+    local = TRUE
+  )
   observeEvent(
     input[["cell_view_aux_request"]],
     {
@@ -641,6 +648,68 @@ server <- function(input, output, session) {
     return(data)
   })
 
+  cv_saved_view_cells <- reactive({
+    metadata <- getMetaData()
+    if ("cell_barcode" %in% colnames(metadata)) {
+      as.character(metadata$cell_barcode)
+    } else {
+      rownames(metadata)
+    }
+  })
+
+  cv_saved_view_identity <- reactive({
+    dataset <- data_set()
+    pack <- attr(dataset, "cerebro_viewer_pack", exact = TRUE)
+    order_fingerprint <- if (is.list(pack)) {
+      as.character(pack$manifest$cell_order_fingerprint %||% "")
+    } else {
+      ""
+    }
+    stored_fingerprint <- tryCatch(
+      dataset$cell_fingerprint,
+      error = function(error) NULL
+    )
+    if (
+      is.character(stored_fingerprint) &&
+        length(stored_fingerprint) == 1L &&
+        !is.na(stored_fingerprint) &&
+        grepl("^md5-cell-set-v1:[[:xdigit:]]{32}$", stored_fingerprint)
+    ) {
+      return(list(
+        cell_count = getNumberOfCells(),
+        fingerprint = stored_fingerprint,
+        order_fingerprint = order_fingerprint
+      ))
+    }
+    cells <- cv_saved_view_cells()
+    list(
+      cell_count = length(cells),
+      fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint),
+      order_fingerprint = order_fingerprint
+    )
+  })
+
+  cv_saved_view_dataset <- reactive({
+    cells <- cv_saved_view_cells()
+    list(
+      cells = cells,
+      fingerprint = cv_saved_view_identity()$fingerprint
+    )
+  })
+
+  observe({
+    input[["sidebar"]]
+    identity <- cv_saved_view_identity()
+    session$sendCustomMessage(
+      "cerebro_saved_view_dataset",
+      list(
+        cell_count = identity$cell_count,
+        cell_fingerprint = identity$fingerprint,
+        cell_order_fingerprint = identity$order_fingerprint
+      )
+    )
+  })
+
   # list of available trajectories
   available_trajectories <- reactive({
     req(!is.null(data_set()))
@@ -679,7 +748,7 @@ server <- function(input, output, session) {
   # available genes
   list_of_genes <- reactive({
     req(data_set())
-    rownames(data_set()$expression)
+    getGeneNames()
   })
 
   # hover info for projection.
@@ -896,44 +965,60 @@ server <- function(input, output, session) {
   )
 
   deferred_viewer_server_files <- c(
-    "marker_genes/server.R",
-    "gene_id_conversion/server.R",
-    "color_management/server.R",
-    "about/server.R",
-    "most_expressed_genes/server.R",
-    "enriched_pathways/server.R",
-    "extra_material/server.R",
-    "immune_repertoire/server.R",
-    "trajectory/server.R",
-    "trekker/server.R",
-    "coordinated_views/server.R",
-    "hla_tcr_motifs/server.R"
+    markerGenes = "marker_genes/server.R",
+    geneIdConversion = "gene_id_conversion/server.R",
+    color_management = "color_management/server.R",
+    about = "about/server.R",
+    mostExpressedGenes = "most_expressed_genes/server.R",
+    enrichedPathways = "enriched_pathways/server.R",
+    extra_material = "extra_material/server.R",
+    immune_repertoire = "immune_repertoire/server.R",
+    trajectory = "trajectory/server.R",
+    trekker = "trekker/server.R",
+    coordinated_views = "coordinated_views/server.R",
+    hla_tcr_motifs = "hla_tcr_motifs/server.R"
   )
   server_scope <- environment()
-  session$onFlushed(
-    function() {
-      later::later(
-        function() {
-          if (session$isClosed()) {
-            return()
-          }
-          withReactiveDomain(session, {
-            for (server_file in deferred_viewer_server_files) {
-              sys.source(
-                file.path(
-                  Cerebro.options[["cerebro_root"]],
-                  "viewer",
-                  server_file
-                ),
-                envir = server_scope
-              )
-            }
-          })
-        },
-        delay = 0.1
+  deferred_viewer_server_loaded <- new.env(parent = emptyenv())
+  load_deferred_viewer_server <- function(server_file) {
+    if (
+      exists(
+        server_file,
+        envir = deferred_viewer_server_loaded,
+        inherits = FALSE
       )
+    ) {
+      return(invisible(FALSE))
+    }
+    sys.source(
+      file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        server_file
+      ),
+      envir = server_scope
+    )
+    assign(server_file, TRUE, envir = deferred_viewer_server_loaded)
+    invisible(TRUE)
+  }
+  observeEvent(
+    input[["coordviews_visible"]],
+    {
+      if (isTRUE(input[["coordviews_visible"]])) {
+        load_deferred_viewer_server("coordinated_views/server.R")
+      }
     },
-    once = TRUE
+    ignoreInit = TRUE
+  )
+  observeEvent(
+    input[["sidebar"]],
+    {
+      server_file <- unname(deferred_viewer_server_files[input[["sidebar"]]])
+      if (length(server_file) && !is.na(server_file)) {
+        load_deferred_viewer_server(server_file)
+      }
+    },
+    ignoreInit = FALSE
   )
 
   ##--------------------------------------------------------------------------##

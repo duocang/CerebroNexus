@@ -349,6 +349,31 @@ test_that("Standalone cell views cannot enter linked-view focus", {
   expect_match(js, "if (!canFocusPanel()) return;", fixed = TRUE)
 })
 
+test_that("Standalone view routing only considers visible canvas hosts", {
+  js <- viewer_source("www", "cell_views.js")
+  routing <- regmatches(
+    js,
+    regexpr(
+      "function visibleSingleId\\(\\) \\{[\\s\\S]*?function rememberSurfaceHome",
+      js,
+      perl = TRUE
+    )
+  )
+
+  expect_match(
+    routing,
+    "document.querySelectorAll('.cerebro-cell-view-host[data-cell-view-id]')",
+    fixed = TRUE
+  )
+  expect_match(routing, "hosts[i].getClientRects().length", fixed = TRUE)
+  expect_no_match(routing, "getBoundingClientRect()", fixed = TRUE)
+  expect_no_match(
+    routing,
+    "document.querySelectorAll('[data-cell-view-id]')",
+    fixed = TRUE
+  )
+})
+
 test_that("Standalone cell-view toolbars reach the panel top-right", {
   css <- viewer_source("www", "coordviews.css")
   expect_match(

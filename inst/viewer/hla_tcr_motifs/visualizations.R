@@ -481,7 +481,8 @@ output$hla_motif_readout <- renderUI({
 })
 
 observe({
-  req(input[["hla_motif_network_render_request"]], hla_ready_latch())
+  req(input[["hla_motif_network_render_request"]])
+  req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$layout)) {
     return()

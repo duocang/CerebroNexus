@@ -39,6 +39,11 @@ test_that("Clonal projection defers full repertoire controls", {
     collapse = "\n"
   )
 
+  expect_match(
+    settings,
+    'tab <- ir_param("ir_tabs", "Clonal UMAP")',
+    fixed = TRUE
+  )
   expect_match(settings, "ir_repertoire_available()", fixed = TRUE)
   expect_match(settings, "if (identical(tab, \"Clone Sharing\"))", fixed = TRUE)
   expect_no_match(

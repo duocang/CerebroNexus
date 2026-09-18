@@ -215,7 +215,7 @@ test_that("spatial first frame defers identities and hover", {
 })
 
 test_that("gene-expression first frame defers identities and hover", {
-  source <- paste(
+  update_source <- paste(
     readLines(
       viewer_test_path("gene_expression", "func_projection_update_plot.R"),
       warn = FALSE
@@ -223,9 +223,132 @@ test_that("gene-expression first frame defers identities and hover", {
     collapse = "\n"
   )
 
-  expect_match(source, "selection_key = seq_len(nrow(metadata))", fixed = TRUE)
-  expect_match(source, "deferred_aux <- function()", fixed = TRUE)
-  expect_match(source, "deferred_aux = deferred_aux", fixed = TRUE)
+  expect_match(
+    update_source,
+    "selection_key = seq_len(nrow(metadata))",
+    fixed = TRUE
+  )
+  expect_match(update_source, "deferred_aux <- function()", fixed = TRUE)
+  expect_match(
+    update_source,
+    '"cell_barcode" %in% colnames(metadata)',
+    fixed = TRUE
+  )
+  expect_match(update_source, "getMetaData()", fixed = TRUE)
+  expect_match(update_source, "deferred_aux = deferred_aux", fixed = TRUE)
+  expect_match(update_source, "shared_zero_color", fixed = TRUE)
+
+  sources <- vapply(
+    c(
+      "obj_projection_cells_to_show.R",
+      "obj_projection_parameters_plot.R",
+      "obj_projection_coordinates.R",
+      "obj_projection_data.R"
+    ),
+    function(file) {
+      paste(
+        readLines(
+          viewer_test_path("gene_expression", file),
+          warn = FALSE
+        ),
+        collapse = "\n"
+      )
+    },
+    character(1)
+  )
+  expect_match(
+    sources[["obj_projection_cells_to_show.R"]],
+    "viewerProjectionFirstFrameMetadata",
+    fixed = TRUE
+  )
+  expect_match(
+    sources[["obj_projection_parameters_plot.R"]],
+    "viewerProjectionFirstFrameCoordinates",
+    fixed = TRUE
+  )
+  expect_match(
+    sources[["obj_projection_coordinates.R"]],
+    "viewerProjectionFirstFrameCoordinates",
+    fixed = TRUE
+  )
+  expect_match(
+    sources[["obj_projection_data.R"]],
+    "viewerProjectionFirstFrameMetadata",
+    fixed = TRUE
+  )
+
+  selector_source <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "UI_projection_select_projection.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(selector_source, "coordviews_shared_base", fixed = TRUE)
+  expect_match(selector_source, "selected = selected_projection", fixed = TRUE)
+})
+
+test_that("cached BPCells gene names do not force the expression backend", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  slow_calls <- 0L
+  object <- new.env(parent = emptyenv())
+  class(object) <- c("Cerebro", "R6")
+  object$getGeneNames <- function() {
+    slow_calls <<- slow_calls + 1L
+    "slow"
+  }
+  attr(object, "cerebro_projection_first_frame") <- list(
+    gene_names = c("CD3D", "NKG7")
+  )
+  scope$data_set <- function() object
+
+  expect_identical(scope$getGeneNames(), c("CD3D", "NKG7"))
+  expect_identical(slow_calls, 0L)
+
+  server_source <- paste(
+    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  list_start <- regexpr(
+    "list_of_genes <- reactive({",
+    server_source,
+    fixed = TRUE
+  )
+  expect_gt(list_start, 0L)
+  expect_match(
+    substr(server_source, list_start, list_start + 180L),
+    "getGeneNames()",
+    fixed = TRUE
+  )
+})
+
+test_that("thin BPCells first-frame cache includes its small gene index", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  sidecar <- tempfile("bpcells-gene-index-")
+  dir.create(sidecar)
+  on.exit(unlink(sidecar, recursive = TRUE), add = TRUE)
+  writeLines(c("cell-1", "cell-2"), file.path(sidecar, "col_names"))
+  writeLines(c("CD3D", "NKG7"), file.path(sidecar, "row_names"))
+  object <- new.env(parent = emptyenv())
+  object$meta_data <- data.frame(group = factor(c("A", "B")))
+  object$projections <- list(umap = data.frame(x = 1:2, y = 3:4))
+  schema <- list(
+    version = 2L,
+    n_cells = 2L,
+    cell_names_md5 = unname(tools::md5sum(file.path(sidecar, "col_names"))),
+    projection_rownames = "umap"
+  )
+
+  object <- scope$.deferThinCrbHydration(
+    object,
+    "dataset.crb",
+    sidecar,
+    schema
+  )
+  cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
+  expect_identical(cache$gene_names, c("CD3D", "NKG7"))
 })
 
 test_that("projection rendering has one first-frame debounce entry point", {
@@ -317,9 +440,13 @@ test_that("a new projection mount redraws unchanged data", {
 
   shiny::testServer(server, {
     session$setInputs(
+      sidebar = "coordinated_views",
       overview_projection_render_request = 1,
       late_bound_control = 1
     )
+    expect_identical(session$userData$render_count(), 0L)
+
+    session$setInputs(sidebar = "overview")
     expect_identical(session$userData$render_count(), 1L)
 
     session$setInputs(late_bound_control = 2)

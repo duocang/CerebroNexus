@@ -59,12 +59,20 @@ hla_ir_annotated <- reactive({
 ## tables above for filter choices / metadata discovery, but feed the graph and
 ## descriptive association layers from this explicitly filtered cohort.
 hla_filter_groups <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$filter_groups))
+  }
   available <- hla_available_cols()
   declared <- tryCatch(getGroups(), error = function(e) character(0))
   unique(intersect(c("sample", declared), available))
 })
 
 hla_filter_levels <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(first$filter_levels)
+  }
   data <- hla_ir_annotated()
   groups <- hla_filter_groups()
   if (is.null(data) || length(groups) == 0) {
@@ -106,6 +114,10 @@ hla_unfiltered_segments <- reactive({
   hla_bindCache(hla_active_chain(), available_crb_files$selected)
 
 hla_initial_samples <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$initial_samples))
+  }
   levels <- hla_filter_levels()[["sample"]]
   seg <- hla_unfiltered_segments()
   if (
@@ -124,12 +136,16 @@ hla_default_filter_selections <- reactive({
   levels
 })
 
+hla_filter_input_id <- function(group) {
+  paste0("hla_group_filter_", hla_active_chain(), "_", group)
+}
+
 hla_filter_selections <- reactive({
   levels <- hla_filter_levels()
   defaults <- hla_default_filter_selections()
   stats::setNames(
     lapply(names(levels), function(group) {
-      selected <- input[[paste0("hla_group_filter_", group)]]
+      selected <- input[[hla_filter_input_id(group)]]
       if (is.null(selected)) defaults[[group]] else as.character(selected)
     }),
     names(levels)
@@ -148,6 +164,26 @@ hla_filter_key <- reactive({
     ),
     collapse = "|"
   )
+})
+
+hla_first_frame_filters_match <- reactive({
+  first <- hla_first_frame()
+  if (is.null(first)) {
+    return(FALSE)
+  }
+  selected <- hla_filter_selections()
+  defaults <- hla_default_filter_selections()
+  identical(names(selected), names(defaults)) &&
+    all(vapply(
+      names(defaults),
+      function(group) {
+        setequal(
+          as.character(selected[[group]]),
+          as.character(defaults[[group]])
+        )
+      },
+      logical(1)
+    ))
 })
 
 hla_ir_filtered <- reactive({
@@ -193,6 +229,14 @@ hla_active_chain <- reactive({
   "TRB"
 })
 
+## Optional deterministic first frame. It contains no canonical cell indices;
+## dataset identity and the asset checksum are sufficient for this graph-only
+## payload, while the complete chain retains the stricter cell-order guard.
+hla_first_frame <- reactive({
+  viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
+
 ## Viewer Packs already contain metadata-annotated, parsed TRA/TRB rows. Read
 ## the active chain once and share that frame across filters, controls and the
 ## graph instead of hydrating the much larger repertoire sidecar.
@@ -236,6 +280,10 @@ hla_param <- function(id, default = NULL) {
 ## the two together would make MHC context vanish for any data set whose lineage
 ## column exists but was never declared a grouping.
 hla_available_cols <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$available_cols))
+  }
   data <- hla_ir_annotated()
   if (is.null(data)) {
     return(character(0))
@@ -273,6 +321,11 @@ HLA_MAX_COLOR_LEVELS <- 24L
 ## ---- Level count of each declared grouping, as the receptors see it ----- ##
 hla_color_col_levels <- reactive({
   cols <- hla_color_meta_cols()
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    counts <- first$color_level_counts
+    return(counts[intersect(cols, names(counts))])
+  }
   data <- hla_ir_annotated()
   if (length(cols) == 0 || is.null(data)) {
     return(stats::setNames(integer(0), character(0)))
@@ -304,7 +357,7 @@ hla_usable_color_cols <- reactive({
   if (length(cols) == 0) {
     return(character(0))
   }
-  if (is.null(hla_ir_annotated())) {
+  if (is.null(hla_first_frame()) && is.null(hla_ir_annotated())) {
     return(cols)
   }
   n_levels <- hla_color_col_levels()
@@ -328,6 +381,10 @@ hla_source_keys_on_v <- reactive({
 })
 
 hla_by_v_default <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(isTRUE(first$by_v))
+  }
   isTRUE(hla_source_keys_on_v())
 })
 
@@ -505,6 +562,11 @@ hla_unit_noun <- reactive({
 ## "T cells / B cells" and a fine "CD8 TEM / CD4 naive", both may resolve the
 ## same cells, and the finer one carries the lineage more precisely.
 hla_celltype_col <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    lineage <- first$lineage_col
+    return(if (is.null(lineage)) NA_character_ else as.character(lineage))
+  }
   data <- hla_ir_annotated()
   cols <- hla_available_cols()
   if (is.null(data) || length(cols) == 0) {
@@ -582,6 +644,11 @@ hla_celltype_col_declared <- reactive({
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
 hla_segments <- reactive({
   chain <- hla_active_chain()
+  first <- hla_first_frame()
+  use_first <- !is.null(first) && isTRUE(hla_first_frame_filters_match())
+  if (use_first) {
+    return(first$segments)
+  }
   packed <- hla_packed_segments()
   data <- if (is.null(packed)) hla_ir_filtered() else packed
   if (is.null(data)) {
@@ -631,6 +698,28 @@ hla_node_meta_cols <- reactive({
     hla_color_meta_cols()
   )
   unique(intersect(cols, hla_available_cols()))
+})
+
+hla_first_frame_graph_matches <- reactive({
+  first <- hla_first_frame()
+  if (is.null(first) || !isTRUE(hla_first_frame_filters_match())) {
+    return(FALSE)
+  }
+  scope <- hla_param("hla_scope", "all")
+  identical(scope, "all") &&
+    identical(
+      isTRUE(hla_param("hla_by_v", hla_by_v_default())),
+      isTRUE(first$by_v)
+    ) &&
+    identical(hla_node_meta_cols(), as.character(first$node_meta_cols)) &&
+    identical(
+      hla_celltype_col(),
+      if (is.null(first$lineage_col)) {
+        NA_character_
+      } else {
+        as.character(first$lineage_col)
+      }
+    )
 })
 
 ## ---- Colour-by choices (scope-aware) ---------------------------------- ##
@@ -999,6 +1088,10 @@ hla_min_nodes_debounced <- shiny::debounce(
 ## (hla_motif_graph below), never inside a bindCache body, because a req() stop
 ## there would be a value the cache stores under the current key and replays.
 hla_motif_graph_raw_cached <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first) && isTRUE(hla_first_frame_graph_matches())) {
+    return(first$graph_raw)
+  }
   hla_build_graph_raw_from(hla_scoped_segments())
 }) %>%
   hla_bindCache(
@@ -1032,6 +1125,16 @@ hla_motif_graph_cached <- reactive({
   )
 
 hla_motif_graph <- reactive({
+  if (isTRUE(hla_first_frame_graph_matches())) {
+    first <- hla_first_frame()
+    return(hla_finalize_motif_graph(
+      first$graph_raw,
+      min_nodes = as.integer(
+        hla_param("hla_min_nodes", hla_default_min_nodes())
+      ),
+      show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE))
+    ))
+  }
   req(hla_params_ready())
   hla_motif_graph_cached()
 })

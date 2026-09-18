@@ -916,7 +916,7 @@ test_that("node colouring is offered from the declared groupings", {
   # "CD8_case" be taken for a lineage and silently reshape HLA scope filtering.
   expect_match(
     src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,60}hla_available_cols\\(\\)",
+    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,300}hla_available_cols\\(\\)",
     perl = TRUE
   )
   expect_match(
@@ -1069,15 +1069,22 @@ test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
       info = paste(nm, "must not req() inside the cached body")
     )
   }
-  # ...and each public reactive gates before reaching its cache.
-  for (nm in c("hla_motif_graph", "hla_global_motif_graph")) {
-    expect_match(
-      data_src,
-      paste0(nm, " <- reactive\\(\\{\\s*req\\(hla_params_ready\\(\\)\\)"),
-      perl = TRUE,
-      info = paste(nm, "must gate on hla_params_ready() first")
-    )
-  }
+  # The precomputed default graph may draw before controls report. Every other
+  # path still gates before reaching its cache.
+  expect_match(
+    data_src,
+    paste0(
+      "hla_motif_graph <- reactive\\(\\{[\\s\\S]{0,700}",
+      "hla_first_frame_graph_matches\\(\\)[\\s\\S]{0,700}",
+      "req\\(hla_params_ready\\(\\)\\)"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    data_src,
+    "hla_global_motif_graph <- reactive\\(\\{\\s*req\\(hla_params_ready\\(\\)\\)",
+    perl = TRUE
+  )
   # The gate must decide on hla_color_by with is.null(), and must never req() it:
   # that input's default value is "" (colour by motif cluster), which req()
   # treats as missing, so the network would never draw until the user happened to
@@ -1460,6 +1467,55 @@ test_that("the network table renders and downloads the current view", {
   )
 })
 
+test_that("Viewer Pack first frames bypass cold HLA preparation", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    data_src,
+    "viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())",
+    fixed = TRUE
+  )
+  expect_match(data_src, "return(first$filter_levels)", fixed = TRUE)
+  expect_match(data_src, "return(first$segments)", fixed = TRUE)
+  expect_match(data_src, "return(first$graph_raw)", fixed = TRUE)
+  expect_match(data_src, "hla_first_frame_graph_matches()", fixed = TRUE)
+  expect_match(
+    data_src,
+    "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
+    fixed = TRUE
+  )
+})
+
+test_that("HLA cohort filter inputs are isolated by chain", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    data_src,
+    'paste0("hla_group_filter_", hla_active_chain(), "_", group)',
+    fixed = TRUE
+  )
+  expect_match(
+    data_src,
+    "selected <- input[[hla_filter_input_id(group)]]",
+    fixed = TRUE
+  )
+  expect_match(
+    settings_src,
+    "hla_filter_input_id(group)",
+    fixed = TRUE
+  )
+})
+
 test_that("the motif Canvas receives the complete layout and edge columns", {
   vis_src <- paste(
     readLines(
@@ -1471,6 +1527,11 @@ test_that("the motif Canvas receives the complete layout and edge columns", {
   expect_match(vis_src, "point_sizes = 2 \\* vn\\$nodes\\$size", perl = TRUE)
   expect_match(vis_src, "x0 = vn\\$layout\\[from, 1\\]", perl = TRUE)
   expect_match(vis_src, "x1 = vn\\$layout\\[to, 1\\]", perl = TRUE)
+  expect_match(
+    vis_src,
+    "req\\(isTRUE\\(hla_first_frame_graph_matches\\(\\)\\) \\|\\| hla_ready_latch\\(\\)\\)",
+    perl = TRUE
+  )
 })
 
 test_that("a colour change reuses the cached graph and Canvas viewport", {

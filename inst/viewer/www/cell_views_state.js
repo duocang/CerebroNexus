@@ -64,6 +64,31 @@
     };
   };
 
+  S.sharedProjection = function (shared, name, count) {
+    var projection = shared && shared.projections && shared.projections[name];
+    if (!projection || !projection.x || !projection.y ||
+        projection.x.length !== count || projection.y.length !== count ||
+        (projection.z && projection.z.length !== count)) return null;
+    return projection;
+  };
+
+  S.canonicalGroupedValues = function (grouped, groups, fallback) {
+    if (!ArrayBuffer.isView(groups)) return null;
+    if (ArrayBuffer.isView(grouped)) {
+      return grouped.length === groups.length ? grouped : null;
+    }
+    if (!Array.isArray(grouped)) return null;
+    var out = new Array(groups.length);
+    var positions = new Uint32Array(grouped.length);
+    for (var i = 0; i < groups.length; i++) {
+      var group = Number(groups[i]);
+      var values = grouped[group] || [];
+      var value = values[positions[group]++];
+      out[i] = value == null ? fallback : value;
+    }
+    return out;
+  };
+
   // Project the live client-side selection into the state that may safely be
   // published to Shiny. Specialist canvases can paint before their deferred
   // stable cell identities arrive; during that window the local selection is

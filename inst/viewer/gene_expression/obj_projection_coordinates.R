@@ -14,7 +14,11 @@ expression_projection_coordinates <- reactive({
       parameters[["projection"]] %in% available_trajectories()
   )
   if (parameters[["projection"]] %in% availableProjections()) {
-    coordinates <- getProjection(parameters[["projection"]])[cells_to_show, ]
+    coordinates <- viewerProjectionSubsetRows(
+      viewerProjectionFirstFrameCoordinates(parameters[["projection"]]),
+      cells_to_show,
+      columns = NULL
+    )
   } else if (parameters[["projection"]] %in% available_trajectories()) {
     selection <- strsplit(parameters[["projection"]], split = ' // ')[[1]]
     req(

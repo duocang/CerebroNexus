@@ -8,7 +8,7 @@ output$ir_main_params_UI <- shiny::bindEvent(
     if (!has_scRepertoire()) {
       return(ir_scRepertoire_missing_ui())
     }
-    tab <- input$ir_tabs
+    tab <- ir_param("ir_tabs", "Clonal UMAP")
     packed_landing <- identical(tab, "Clonal UMAP")
     raw <- if (packed_landing) NULL else ir_data_raw()
     if (

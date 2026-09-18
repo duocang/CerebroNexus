@@ -20,6 +20,7 @@ test_that("the browser restores compact linked-view vectors", {
   }
 
   helpers <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = helpers)
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_bundle(
     list(
@@ -87,6 +88,7 @@ test_that("cell identities travel separately from the first frame", {
   skip_if_not_installed("jsonlite")
 
   helpers <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = helpers)
   sys.source(bundle_file, envir = helpers)
   payload <- tempfile(fileext = ".bin")
   runner <- tempfile(fileext = ".js")
@@ -124,6 +126,7 @@ test_that("specialist cell views use the same binary envelope", {
   skip_if_not_installed("jsonlite")
 
   helpers <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = helpers)
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_message(
     list(
@@ -172,12 +175,16 @@ test_that("large specialist views send their first frame before hover data", {
   skip_if_not_installed("jsonlite")
   runtime <- new.env(parent = globalenv())
   sys.source(utility_file, envir = runtime)
-  sys.source(bundle_file, envir = runtime)
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
-  runtime$session <- list(sendBinaryMessage = function(type, payload) {
-    sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
-  })
+  runtime$session <- list(
+    sendBinaryMessage = function(type, payload) {
+      sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+    },
+    sendCustomMessage = function(type, payload) {
+      sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+    }
+  )
   keys <- sprintf("cell-%04d", seq_len(4096L))
 
   runtime$cerebroCellViewRender(
@@ -205,9 +212,83 @@ test_that("large specialist views send their first frame before hover data", {
   expect_identical(unlist(auxiliary$selection_key, use.names = FALSE), keys)
 })
 
+test_that("specialist views can reference validated shared coordinates", {
+  skip_if_not_installed("jsonlite")
+  runtime <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = runtime)
+
+  has_contract <- all(
+    c(
+      "viewerSharedProjectionName",
+      "cerebroCellViewRender"
+    ) %in%
+      ls(runtime)
+  )
+  expect_true(has_contract)
+  if (!has_contract) {
+    return(invisible(NULL))
+  }
+
+  identity <- list(
+    cell_count = 4096L,
+    fingerprint = "dataset-a",
+    order_fingerprint = "order-a"
+  )
+  shared <- list(
+    dataset_fingerprint = "dataset-a",
+    cell_count = 4096L,
+    canonical_order_id = "order-a",
+    projection = "umap"
+  )
+  expect_identical(
+    runtime$viewerSharedProjectionName("umap", 4096L, shared, identity),
+    "umap"
+  )
+  expect_null(runtime$viewerSharedProjectionName(
+    "umap",
+    4096L,
+    within(shared, dataset_fingerprint <- "dataset-b"),
+    identity
+  ))
+
+  sent <- list()
+  runtime$input <- list(
+    coordviews_wire_supported = TRUE,
+    coordviews_shared_base = shared
+  )
+  runtime$cv_saved_view_identity <- function() identity
+  runtime$session <- list(sendBinaryMessage = function(type, payload) {
+    sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+  })
+  keys <- sprintf("cell-%04d", seq_len(4096L))
+  runtime$cerebroCellViewRender(
+    "expression_projection",
+    meta = list(color_type = "continuous", space_label = "umap"),
+    data = list(
+      x = seq_len(4096L),
+      y = rev(seq_len(4096L)),
+      color = rep(0, 4096L),
+      selection_key = keys,
+      shared_zero_color = TRUE
+    )
+  )
+
+  first <- wire_header(sent[[1L]]$payload)
+  expect_identical(first$shared_projection, "umap")
+  expect_null(first$data$x)
+  expect_null(first$data$y)
+  expect_null(first$data$color)
+  expect_true(first$data$zero_color)
+  expect_identical(first$data$n, 4096L)
+})
+
 test_that("specialist selections wait for stable IDs and replay after aux", {
   javascript <- paste(
     readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  config <- paste(
+    readLines(viewer_test_path("www", "coordviews-config.js"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -231,4 +312,40 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
     "selectedCells: specialistReport",
     fixed = TRUE
   )
+  expect_match(
+    javascript,
+    "if (singleActive && !datasetFingerprint) return;",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "D.dataset_fingerprint || D.cell_fingerprint",
+    fixed = TRUE
+  )
+  expect_match(javascript, "attachDatasetIdentity:", fixed = TRUE)
+  expect_match(
+    config,
+    "cellViews.attachDatasetIdentity(identity)",
+    fixed = TRUE
+  )
+  config_boot <- strsplit(config, "function boot() {", fixed = TRUE)[[1L]][[2L]]
+  expect_lt(
+    regexpr("connectShiny();", config_boot, fixed = TRUE)[[1L]],
+    regexpr("if (!dialog || !open) return;", config_boot, fixed = TRUE)[[1L]]
+  )
+})
+
+test_that("zero-color specialist frames reuse shared browser geometry", {
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    javascript,
+    "zero_color[\\s\\S]+paintOrder: false[\\s\\S]+constantColor:",
+    perl = TRUE
+  )
+  expect_match(javascript, "previous.unit", fixed = TRUE)
+  expect_match(javascript, "gpuPositionCount", fixed = TRUE)
 })

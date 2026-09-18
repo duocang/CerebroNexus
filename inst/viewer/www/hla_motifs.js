@@ -394,11 +394,13 @@
     };
   }
   function reportState() {
+    var fingerprint = (window.cerebroSavedViewDataset || {}).cell_fingerprint || '';
+    if (!fingerprint) return;
     window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
       detail: {
         viewId: 'hla_motif_network',
         selectedCells: selectedCells.length,
-        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
+        datasetFingerprint: fingerprint
       }
     }));
   }

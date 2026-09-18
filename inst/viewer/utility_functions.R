@@ -289,15 +289,22 @@ cachePlot <- function(x, ...) {
 ## Return the first complete reactive value immediately; debounce only later
 ## invalidations caused by interactive controls.
 debounceAfterFirst <- function(reactive, millis) {
-  delayed <- shiny::debounce(reactive, millis)
-  delivered <- FALSE
+  value <- NULL
+  delayed <- NULL
+  observer <- NULL
   shiny::reactive({
-    if (!delivered) {
-      value <- reactive()
-      delivered <<- TRUE
-      return(value)
+    if (is.null(value)) {
+      initial <- reactive()
+      value <<- shiny::reactiveVal(initial)
+      delayed <<- shiny::debounce(reactive, millis)
+      observer <<- shiny::observeEvent(
+        delayed(),
+        value(delayed()),
+        ignoreInit = TRUE
+      )
+      return(initial)
     }
-    delayed()
+    value()
   })
 }
 
@@ -349,6 +356,48 @@ viewerProjectionFirstFrameCoordinates <- function(name) {
   cache <- viewerProjectionFirstFrameCache()
   projection <- cache$projections[[name]]
   if (!is.null(projection)) projection else getProjection(name)
+}
+
+viewerSharedProjectionName <- function(
+  projection,
+  n_cells,
+  shared = NULL,
+  identity = NULL
+) {
+  if (is.null(shared)) {
+    if (!exists("input", inherits = TRUE)) {
+      return(NULL)
+    }
+    shared <- input[["coordviews_shared_base"]]
+  }
+  if (is.null(identity)) {
+    if (!exists("cv_saved_view_identity", mode = "function", inherits = TRUE)) {
+      return(NULL)
+    }
+    identity <- cv_saved_view_identity()
+  }
+  if (
+    !is.list(shared) ||
+      !is.list(identity) ||
+      !is.character(projection) ||
+      length(projection) != 1L ||
+      is.na(projection) ||
+      !nzchar(projection) ||
+      !identical(as.character(shared$projection %||% ""), projection) ||
+      !identical(
+        as.character(shared$dataset_fingerprint %||% ""),
+        as.character(identity$fingerprint %||% "")
+      ) ||
+      !identical(as.integer(shared$cell_count), as.integer(n_cells)) ||
+      !nzchar(as.character(identity$order_fingerprint %||% "")) ||
+      !identical(
+        as.character(shared$canonical_order_id %||% ""),
+        as.character(identity$order_fingerprint %||% "")
+      )
+  ) {
+    return(NULL)
+  }
+  projection
 }
 
 viewerProjectionDefaults <- function(
@@ -687,6 +736,167 @@ cerebroCellViewMessage <- function(
   list(id = id, meta = meta, data = data, hover = hover, extra = extra)
 }
 
+## Binary transport is shared by every cell-scatter page. Keep the codec in the
+## always-loaded utility scope rather than behind the deferred Linked Views
+## server, otherwise opening a specialist page first falls back to full JSON.
+cv_wire_integer_type <- function(values) {
+  if (anyNA(values)) {
+    return("i32")
+  }
+  bounds <- range(values)
+  if (bounds[[1L]] >= -128L && bounds[[2L]] <= 127L) {
+    "i8"
+  } else if (bounds[[1L]] >= -32768L && bounds[[2L]] <= 32767L) {
+    "i16"
+  } else {
+    "i32"
+  }
+}
+
+cv_wire_pack_bundle <- function(
+  bundle,
+  min_length = 4096L,
+  include_cells = TRUE
+) {
+  if (!isTRUE(include_cells)) {
+    bundle$cells <- NULL
+  }
+  cv_wire_pack_message(bundle, min_length = min_length)
+}
+
+cv_wire_pack_cells <- function(dataset_id, cells) {
+  dataset <- charToRaw(enc2utf8(as.character(dataset_id)))
+  values <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    as.character(cells),
+    auto_unbox = FALSE,
+    na = "null"
+  ))))
+  c(
+    writeBin(as.integer(length(dataset)), raw(), size = 4L, endian = "little"),
+    dataset,
+    values
+  )
+}
+
+cv_wire_pack_message <- function(message, min_length = 4096L) {
+  chunks <- list()
+  data_size <- 0L
+  pack <- function(values, type) {
+    bytes <- if (identical(type, "json")) {
+      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+        as.character(values),
+        auto_unbox = FALSE,
+        na = "null"
+      ))))
+    } else {
+      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
+      writeBin(
+        if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
+        raw(),
+        size = size,
+        endian = "little"
+      )
+    }
+    alignment <- switch(
+      type,
+      i8 = 1L,
+      i16 = 2L,
+      i32 = 4L,
+      f32 = 4L,
+      f64 = 8L,
+      1L
+    )
+    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
+    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
+    data_size <<- offset + length(bytes)
+    list(
+      `__cv_wire__` = type,
+      length = length(values),
+      offset = offset,
+      bytes = length(bytes)
+    )
+  }
+  walk <- function(value, field = NULL) {
+    if (is.list(value)) {
+      value_names <- names(value)
+      packed <- lapply(seq_along(value), function(index) {
+        child_field <- if (
+          !is.null(value_names) && nzchar(value_names[[index]])
+        ) {
+          value_names[[index]]
+        } else {
+          field
+        }
+        walk(value[[index]], child_field)
+      })
+      names(packed) <- value_names
+      return(packed)
+    }
+    if (
+      !is.atomic(value) || length(value) <= 1L || length(value) < min_length
+    ) {
+      return(value)
+    }
+    if (is.factor(value) || is.character(value)) {
+      return(pack(as.character(value), "json"))
+    }
+    if (is.integer(value)) {
+      return(pack(value, cv_wire_integer_type(value)))
+    }
+    if (is.numeric(value)) {
+      return(pack(
+        value,
+        if (
+          field %in%
+            c(
+              "x",
+              "y",
+              "z",
+              "from_x",
+              "from_y",
+              "to_x",
+              "to_y",
+              "point_sizes",
+              "color",
+              "r",
+              "g",
+              "b"
+            )
+        ) {
+          "f32"
+        } else {
+          "f64"
+        }
+      ))
+    }
+    value
+  }
+
+  message <- walk(message)
+  message$wire_format <- "binary-v1"
+  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    message,
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null"
+  ))))
+  header_padding <- (4L - length(header) %% 4L) %% 4L
+  data_start <- 4L + length(header) + header_padding
+  payload <- raw(data_start + data_size)
+  payload[seq_len(4L)] <- writeBin(
+    as.integer(length(header)),
+    raw(),
+    size = 4L,
+    endian = "little"
+  )
+  payload[4L + seq_along(header)] <- header
+  for (chunk in chunks) {
+    first <- data_start + chunk$offset + 1L
+    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
+  }
+  payload
+}
+
 .cerebro_cell_view_wire_serial <- 0L
 .cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
 
@@ -756,6 +966,28 @@ cerebroCellViewRender <- function(
       list(selection_keys)
     }
     n_cells <- sum(vapply(key_groups, length, integer(1)))
+    shared_projection <- viewerSharedProjectionName(
+      meta$space_label,
+      n_cells
+    )
+    shared_zero_color <- isTRUE(message$data$shared_zero_color)
+    message$data$shared_zero_color <- NULL
+    if (
+      is.character(shared_projection) &&
+        length(shared_projection) == 1L &&
+        !is.na(shared_projection) &&
+        nzchar(shared_projection)
+    ) {
+      message$shared_projection <- shared_projection
+      message$data$x <- NULL
+      message$data$y <- NULL
+      message$data$z <- NULL
+      message$data$n <- n_cells
+      if (isTRUE(shared_zero_color)) {
+        message$data$color <- NULL
+        message$data$zero_color <- TRUE
+      }
+    }
     progressive <- !is.null(selection_keys) &&
       is.null(message$data$panels) &&
       n_cells >= 4096L
@@ -2383,6 +2615,10 @@ getGeneLists <- function() {
   }
 }
 getGeneNames <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$gene_names)) {
+    return(cache$gene_names)
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGeneNames())
   }
@@ -3233,9 +3469,18 @@ get_or_load_crb <- function(
   metadata <- obj$meta_data
   projections <- obj$projections
   .validateThinCrbShape(metadata, projections, schema)
+  gene_names_file <- file.path(sidecar, "row_names")
+  gene_names <- if (
+    file.exists(gene_names_file) && !dir.exists(gene_names_file)
+  ) {
+    readLines(gene_names_file, warn = FALSE)
+  } else {
+    NULL
+  }
   attr(obj, "cerebro_projection_first_frame") <- list(
     meta_data = metadata,
-    projections = projections
+    projections = projections,
+    gene_names = gene_names
   )
   hydrate <- local({
     hydrated <- NULL
@@ -3954,6 +4199,7 @@ serverSideGeneSelector <- function(
   input_id,
   extra_triggers = function() NULL,
   active = function() TRUE,
+  choices = function() getGeneNames(),
   retry = TRUE
 ) {
   observe({
@@ -3965,7 +4211,7 @@ serverSideGeneSelector <- function(
     ## the app from ever reaching idle and break unrelated tabs' tests.
     req(isTRUE(active()))
     req(data_set())
-    genes <- sort(getGeneNames())
+    genes <- sort(choices())
     req(!is.null(genes), length(genes) > 0)
 
     send_update <- function() {

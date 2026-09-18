@@ -8,7 +8,11 @@ expression_projection_update_plot <- function(input) {
   metadata <- input[['metadata']]
   trajectory <- input[['trajectory']]
   display_mode <- input[['display_mode']]
+  cell_indices <- input[['cell_indices']]
   separate_panels <- input[['separate_panels']]
+  if (is.null(cell_indices)) {
+    cell_indices <- seq_len(nrow(metadata))
+  }
   appearance <- list(
     group_labels = FALSE,
     draw_border = isTRUE(plot_parameters[["draw_border"]]),
@@ -79,9 +83,14 @@ expression_projection_update_plot <- function(input) {
   }
   output_hover <- list(hoverinfo = "skip", text = list(), columns = list())
   deferred_aux <- function() {
+    full_metadata <- if ("cell_barcode" %in% colnames(metadata)) {
+      metadata
+    } else {
+      getMetaData()
+    }
     hover <- isTRUE(plot_parameters[["hover_info"]])
     hover_columns <- if (hover) {
-      cerebroProjectionHoverColumns(metadata)
+      cerebroProjectionHoverColumns(full_metadata)
     } else {
       list()
     }
@@ -107,8 +116,8 @@ expression_projection_update_plot <- function(input) {
       )
     }
     cerebroCellViewDeferredAux(
-      selection_rows = output_data[["selection_key"]],
-      cell_barcodes = metadata[["cell_barcode"]],
+      selection_rows = cell_indices,
+      cell_barcodes = full_metadata[["cell_barcode"]],
       hover_columns = hover_columns,
       hover = hover
     )
@@ -146,6 +155,8 @@ expression_projection_update_plot <- function(input) {
     } else {
       paste0("Mean expression (", length(color_settings[["genes"]]), " genes)")
     }
+    output_data[["shared_zero_color"]] <-
+      length(color_settings[["genes"]]) == 0L
     cerebroCellViewRender(
       "expression_projection",
       list(

@@ -203,6 +203,16 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
     runtime$viewerPackHlaSegments(descriptor, "TRB"),
     hla_parse_ir_segments(expected_annotated, "TRB")
   )
+  first_frame <- runtime$viewerPackHlaFirstFrame(descriptor, "TRB")
+  expect_identical(first_frame$version, 1L)
+  expect_identical(first_frame$filter_groups, "sample")
+  expect_identical(first_frame$filter_levels$sample, "sample_1")
+  expect_identical(first_frame$initial_samples, "sample_1")
+  expect_identical(first_frame$segments$sample, rep("sample_1", 4L))
+  expect_false(first_frame$by_v)
+  expect_identical(first_frame$node_meta_cols, "sample")
+  expect_null(first_frame$lineage_col)
+  expect_s3_class(first_frame$graph_raw, "igraph")
   expect_true(get(
     ".cell_order_valid",
     envir = descriptor$cache,
@@ -212,6 +222,7 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   misaligned <- runtime$viewerPackOpen(crb, object)
   misaligned$cells <- rev(misaligned$cells)
   expect_null(runtime$viewerPackHlaSegments(misaligned, "TRB"))
+  expect_type(runtime$viewerPackHlaFirstFrame(misaligned, "TRB"), "list")
 
   immune <- runtime$viewerPackImmuneIndex(descriptor, "TCR")
   expect_identical(immune$cell_index, 1:4)
@@ -234,6 +245,16 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
     file.path(pack, "manifest.json"),
     simplifyVector = TRUE
   )
+  first_path <- manifest$assets$path[
+    grepl("hla_tcr/TRB[.]first[.]qs2$", manifest$assets$path)
+  ]
+  expect_length(first_path, 1L)
+  writeBin(as.raw(1:3), file.path(pack, first_path))
+  expect_null(runtime$viewerPackHlaFirstFrame(
+    runtime$viewerPackOpen(crb, object),
+    "TRB"
+  ))
+
   trb <- manifest$assets$path[grepl("hla_tcr/TRB[.]qs2$", manifest$assets$path)]
   writeBin(as.raw(1:3), file.path(pack, trb))
   expect_null(runtime$viewerPackHlaSegments(
@@ -274,6 +295,40 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
     dataframe = "rows"
   )
   expect_null(runtime$viewerPackOpen(crb, object))
+})
+
+test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
+  root <- tempfile("viewer-pack-thin-runtime-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
+  buildViewerPack(crb, viewer_binary = "always")
+  calls <- 0L
+  object <- new.env(parent = emptyenv())
+  object$crb_schema <- list(
+    version = 2L,
+    cell_names = "expression",
+    cell_names_md5 = paste(rep("a", 32L), collapse = ""),
+    projection_rownames = "umap",
+    n_cells = 4L
+  )
+  object$getMetaData <- function() {
+    calls <<- calls + 1L
+    stop("cell hydration must stay dormant")
+  }
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    envir = runtime
+  )
+
+  descriptor <- runtime$viewerPackOpen(crb, object)
+
+  expect_type(descriptor, "list")
+  expect_identical(calls, 0L)
+  expect_true(isTRUE(descriptor$canonical_order))
+  expect_identical(descriptor$cell_count, 4L)
+  expect_null(descriptor$cells)
+  expect_true(runtime$viewerPackValidateCellOrder(descriptor))
 })
 
 test_that("Viewer wires valid HLA assets behind the CRB fallback", {

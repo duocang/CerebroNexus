@@ -341,7 +341,8 @@ cv_embedded_alignment_preset <- function(preset, alignment) {
 ## set. createShinyApp() stores them as dataset -> FOV -> image, with each leaf
 ## either a relative path or a descriptor containing path + coordinate bounds.
 ## The output is base64-encoded so the browser never receives a filesystem path.
-cv_external_images <- function(spatial_name = NULL) {
+## Linked Views defers that encoding until the selected image is requested.
+cv_external_images <- function(spatial_name = NULL, defer = FALSE) {
   if (
     !exists("Cerebro.options") ||
       is.null(Cerebro.options[["spatial_images"]])
@@ -439,7 +440,7 @@ cv_external_images <- function(spatial_name = NULL) {
       NULL
     }
     img_path <- cv_authorized_external_image_path(path, root)
-    if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
+    if (is.null(img_path)) {
       next
     }
     mime <- image_mime(img_path)
@@ -452,20 +453,29 @@ cv_external_images <- function(spatial_name = NULL) {
     } else {
       base
     }
-    out[[length(out) + 1]] <- list(
+    image <- list(
       ## Section + position + label keep equal basenames and equal labels on
       ## different FOVs distinct, while remaining stable across bundle pushes.
       id = paste0("external:", spatial_name, ":", i, ":", label),
       label = label,
-      uri = paste0(
+      bounds = bounds,
+      preset = cv_image_preset(spatial_name, label)
+    )
+    if (isTRUE(defer)) {
+      image$asset_path <- img_path
+      image$asset_mime <- mime
+    } else {
+      if (!requireNamespace("base64enc", quietly = TRUE)) {
+        next
+      }
+      image$uri <- paste0(
         "data:",
         mime,
         ";base64,",
         base64enc::base64encode(img_path)
-      ),
-      bounds = bounds,
-      preset = cv_image_preset(spatial_name, label)
-    )
+      )
+    }
+    out[[length(out) + 1L]] <- image
   }
   out
 }
@@ -525,164 +535,6 @@ cv_rgb_message <- function(red, green, blue) {
     b = I(blue$v),
     genes = I(c(red$gene, green$gene, blue$gene))
   )
-}
-
-cv_wire_integer_type <- function(values) {
-  if (anyNA(values)) {
-    return("i32")
-  }
-  bounds <- range(values)
-  if (bounds[[1L]] >= -128L && bounds[[2L]] <= 127L) {
-    "i8"
-  } else if (bounds[[1L]] >= -32768L && bounds[[2L]] <= 32767L) {
-    "i16"
-  } else {
-    "i32"
-  }
-}
-
-cv_wire_pack_bundle <- function(
-  bundle,
-  min_length = 4096L,
-  include_cells = TRUE
-) {
-  if (!isTRUE(include_cells)) {
-    bundle$cells <- NULL
-  }
-  cv_wire_pack_message(bundle, min_length = min_length)
-}
-
-cv_wire_pack_cells <- function(dataset_id, cells) {
-  dataset <- charToRaw(enc2utf8(as.character(dataset_id)))
-  values <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-    as.character(cells),
-    auto_unbox = FALSE,
-    na = "null"
-  ))))
-  c(
-    writeBin(as.integer(length(dataset)), raw(), size = 4L, endian = "little"),
-    dataset,
-    values
-  )
-}
-
-cv_wire_pack_message <- function(message, min_length = 4096L) {
-  chunks <- list()
-  data_size <- 0L
-  pack <- function(values, type) {
-    bytes <- if (identical(type, "json")) {
-      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-        as.character(values),
-        auto_unbox = FALSE,
-        na = "null"
-      ))))
-    } else {
-      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
-      writeBin(
-        if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
-        raw(),
-        size = size,
-        endian = "little"
-      )
-    }
-    alignment <- switch(
-      type,
-      i8 = 1L,
-      i16 = 2L,
-      i32 = 4L,
-      f32 = 4L,
-      f64 = 8L,
-      1L
-    )
-    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
-    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
-    data_size <<- offset + length(bytes)
-    list(
-      `__cv_wire__` = type,
-      length = length(values),
-      offset = offset,
-      bytes = length(bytes)
-    )
-  }
-  walk <- function(value, field = NULL) {
-    if (is.list(value)) {
-      value_names <- names(value)
-      packed <- lapply(seq_along(value), function(index) {
-        child_field <- if (
-          !is.null(value_names) && nzchar(value_names[[index]])
-        ) {
-          value_names[[index]]
-        } else {
-          field
-        }
-        walk(value[[index]], child_field)
-      })
-      names(packed) <- value_names
-      return(packed)
-    }
-    if (
-      !is.atomic(value) || length(value) <= 1L || length(value) < min_length
-    ) {
-      return(value)
-    }
-    if (is.factor(value) || is.character(value)) {
-      return(pack(as.character(value), "json"))
-    }
-    if (is.integer(value)) {
-      return(pack(value, cv_wire_integer_type(value)))
-    }
-    if (is.numeric(value)) {
-      return(pack(
-        value,
-        if (
-          field %in%
-            c(
-              "x",
-              "y",
-              "z",
-              "from_x",
-              "from_y",
-              "to_x",
-              "to_y",
-              "point_sizes",
-              "color",
-              "r",
-              "g",
-              "b"
-            )
-        ) {
-          "f32"
-        } else {
-          "f64"
-        }
-      ))
-    }
-    value
-  }
-
-  message <- walk(message)
-  message$wire_format <- "binary-v1"
-  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-    message,
-    auto_unbox = TRUE,
-    null = "null",
-    na = "null"
-  ))))
-  header_padding <- (4L - length(header) %% 4L) %% 4L
-  data_start <- 4L + length(header) + header_padding
-  payload <- raw(data_start + data_size)
-  payload[seq_len(4L)] <- writeBin(
-    as.integer(length(header)),
-    raw(),
-    size = 4L,
-    endian = "little"
-  )
-  payload[4L + seq_along(header)] <- header
-  for (chunk in chunks) {
-    first <- data_start + chunk$offset + 1L
-    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
-  }
-  payload
 }
 
 ## Colour management changes labels, not cells or coordinates. Send that small
@@ -989,6 +841,48 @@ cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
   list(groups = extra, skipped = skipped)
 }
 
+## Materialise exactly one deferred colour attribute. The first-frame transport
+## carries descriptors for every metadata column, but choosing one must not
+## rebuild projections, spatial images, clones, Trekker data, or gene names.
+cv_build_attribute <- function(
+  crb,
+  md,
+  kind,
+  name,
+  colors_fn = function(group_name, levels) cv_colors_for(levels)
+) {
+  if (
+    !is.character(kind) ||
+      length(kind) != 1L ||
+      is.na(kind) ||
+      !is.character(name) ||
+      length(name) != 1L ||
+      is.na(name) ||
+      !nzchar(name)
+  ) {
+    return(NULL)
+  }
+  if (identical(kind, "groups")) {
+    return(cv_build_groups(crb, md, colors_fn, only = name)[[name]])
+  }
+  if (identical(kind, "cat_extra")) {
+    group_names <- tryCatch(crb$getGroups(), error = function(error) {
+      character()
+    })
+    return(cv_build_extra_groups(
+      md,
+      group_names,
+      colors_fn,
+      only = name
+    )$groups[[name]])
+  }
+  if (identical(kind, "fields")) {
+    column <- sub("^meta:", "", name)
+    return(cv_build_fields(md, only = column)[[name]])
+  }
+  NULL
+}
+
 ## Every projection's coordinates travel in the bundle, keyed by name, so the
 ## expression panel can switch between UMAP / tSNE / PCA client-side with no
 ## server round-trip (the "one bundle per dataset, instant" contract).
@@ -1189,11 +1083,13 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     )
   }
   if (allow_external) {
-    for (ex in cv_external_images(nm)) {
+    for (ex in cv_external_images(nm, defer = TRUE)) {
       images[[length(images) + 1]] <- list(
         id = ex$id,
         label = ex$label,
         uri = ex$uri,
+        asset_path = ex$asset_path,
+        asset_mime = ex$asset_mime,
         bounds = ex$bounds %||% bounds_default,
         preset = ex$preset,
         coord_span = span
@@ -1538,7 +1434,7 @@ cv_build_clone_rows <- function(
   expansion_codes <- match(expansion, lev) - 1L
   if (isTRUE(sparse)) {
     group <- list(
-      index = I(receptor_index - 1L),
+      clone_index = TRUE,
       values = I(as.integer(expansion_codes)),
       default = 0L,
       levels = I(lev),
@@ -1586,6 +1482,23 @@ cv_build_clone_rows <- function(
   list(space = space, group = group, bundle = bundle)
 }
 
+## Clone labels are needed only after a user selects or inspects a clone. Keep
+## the panel geometry in the first clone message and retain these strings on the
+## server for small, indexed follow-up requests.
+cv_defer_clone_details <- function(clone) {
+  if (is.null(clone) || !is.list(clone$bundle)) {
+    return(list(value = clone, details = NULL))
+  }
+  details <- list(
+    label = as.character(clone$bundle$label),
+    n_cdr3 = as.integer(clone$bundle$n_cdr3)
+  )
+  clone$bundle$label <- I(character())
+  clone$bundle$n_cdr3 <- I(integer())
+  clone$bundle$details_deferred <- TRUE
+  list(value = clone, details = details)
+}
+
 cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   receptors <- if (is.list(pack)) {
@@ -1601,8 +1514,11 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
     NULL
   }
   canonical_packed <- !is.null(packed) &&
-    length(pack$cells) == n &&
-    (identical(cells, seq_len(n)) || identical(as.character(cells), pack$cells))
+    (isTRUE(pack$canonical_order) &&
+      identical(cells, seq_len(n)) ||
+      length(pack$cells) == n &&
+        (identical(cells, seq_len(n)) ||
+          identical(as.character(cells), pack$cells)))
   if (isTRUE(sparse) && canonical_packed) {
     return(cv_build_clone_rows(
       as.character(packed$clone),
@@ -1613,7 +1529,7 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
       TRUE
     ))
   }
-  cp <- if (!is.null(packed)) {
+  cp <- if (!is.null(packed) && length(pack$cells) == n) {
     clone <- rep(NA_character_, length(cells))
     ctaa <- rep(NA_character_, length(cells))
     at <- match(pack$cells[packed$cell_index], cells)
@@ -1983,13 +1899,6 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
     cat_extra = cat_extra,
     cat_skipped = cat_skipped,
     fields = fields,
-    genes = I(
-      if (isTRUE(primary_only)) {
-        character()
-      } else {
-        enc2utf8(tryCatch(crb$getGeneNames(), error = function(e) character()))
-      }
-    ),
     default_group = default_group,
     default_point_size = default_point_size,
     default_percentage_cells_to_show = default_percentage_cells_to_show,
@@ -2087,7 +1996,12 @@ cv_build_deferred_metadata <- function(crb, md, primary) {
 ## the already-loaded thin first-frame metadata and the Viewer Pack's canonical
 ## immune index, so the supplement never materialises barcodes, per-cell strings,
 ## or metadata codes merely to discard them before transport.
-cv_build_compact_supplement <- function(crb, primary, first_frame) {
+cv_build_compact_supplement <- function(
+  crb,
+  primary,
+  first_frame,
+  include_clone = TRUE
+) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   valid <- is.list(pack) &&
     is.list(first_frame) &&
@@ -2103,10 +2017,7 @@ cv_build_compact_supplement <- function(crb, primary, first_frame) {
   if (!valid) {
     return(NULL)
   }
-  projection_names <- tryCatch(
-    as.character(crb$availableProjections()),
-    error = function(e) character()
-  )
+  projection_names <- names(first_frame$projections)
   unsupported <- length(tryCatch(
     crb$getMethodsForTrajectories(),
     error = function(e) character()
@@ -2115,13 +2026,16 @@ cv_build_compact_supplement <- function(crb, primary, first_frame) {
       crb$availableSpatial(),
       error = function(e) character()
     )) ||
-    !is.null(tryCatch(crb$getTrekker(), error = function(e) NULL)) ||
-    length(setdiff(projection_names, names(first_frame$projections)))
+    !is.null(tryCatch(crb$getTrekker(), error = function(e) NULL))
   if (unsupported) {
     return(NULL)
   }
   metadata <- cv_build_deferred_metadata(crb, first_frame$meta_data, primary)
-  clone <- cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
+  clone <- if (isTRUE(include_clone)) {
+    cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
+  } else {
+    NULL
+  }
   if (!is.null(clone)) {
     metadata$groups[["clone_expansion"]] <- clone$group
   }
@@ -2145,6 +2059,17 @@ cv_build_compact_supplement <- function(crb, primary, first_frame) {
   )
 }
 
+cv_defer_fields <- function(fields) {
+  lapply(fields, function(field) {
+    if (identical(field$source, "trekker")) {
+      return(field)
+    }
+    field$v <- NULL
+    field$deferred <- TRUE
+    field
+  })
+}
+
 cv_bundle_supplement <- function(primary, full, compact = FALSE) {
   missing_named <- function(all, initial) {
     all[setdiff(names(all), names(initial))]
@@ -2164,7 +2089,7 @@ cv_bundle_supplement <- function(primary, full, compact = FALSE) {
     }
     groups <- defer(groups, "values")
     cat_extra <- defer(cat_extra, "values")
-    fields <- defer(fields, "v")
+    fields <- cv_defer_fields(fields)
     if (!is.null(clone) && !is.null(clone$id)) {
       clone_ids <- as.integer(clone$id)
       receptor_index <- which(clone_ids >= 0L)
@@ -2199,4 +2124,141 @@ cv_bundle_supplement <- function(primary, full, compact = FALSE) {
     clone = clone,
     trekker = full$trekker
   )
+}
+
+## Remove heavyweight browser-only assets from a bundle while keeping the
+## descriptors needed to render controls. The server retains the returned map
+## and sends one asset only when the browser displays that image or opens the
+## corresponding Trekker cell card.
+cv_asset_data_uri <- function(asset) {
+  if (
+    is.character(asset) && length(asset) == 1L && !is.na(asset) && nzchar(asset)
+  ) {
+    return(asset)
+  }
+  if (!is.list(asset)) {
+    return(NULL)
+  }
+  path <- asset$path
+  mime <- asset$mime
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !isTRUE(file_test("-f", path)) ||
+      !is.character(mime) ||
+      length(mime) != 1L ||
+      is.na(mime) ||
+      !(mime %in% c("image/png", "image/jpeg")) ||
+      !requireNamespace("base64enc", quietly = TRUE)
+  ) {
+    return(NULL)
+  }
+  paste0("data:", mime, ";base64,", base64enc::base64encode(path))
+}
+
+cv_defer_assets <- function(value) {
+  assets <- list()
+  safe_key <- function(...) {
+    gsub("[^A-Za-z0-9_.:-]", "_", paste(..., sep = ":"))
+  }
+  defer_images <- function(images, scope) {
+    if (is.null(images) || !length(images)) {
+      return(images)
+    }
+    original_class <- class(images)
+    for (index in seq_along(images)) {
+      image <- images[[index]]
+      uri <- image$uri
+      asset <- if (
+        is.character(uri) && length(uri) == 1L && !is.na(uri) && nzchar(uri)
+      ) {
+        uri
+      } else if (
+        is.character(image$asset_path) &&
+          length(image$asset_path) == 1L &&
+          !is.na(image$asset_path) &&
+          is.character(image$asset_mime) &&
+          length(image$asset_mime) == 1L &&
+          !is.na(image$asset_mime) &&
+          image$asset_mime %in% c("image/png", "image/jpeg")
+      ) {
+        list(path = image$asset_path, mime = image$asset_mime)
+      } else {
+        NULL
+      }
+      image$asset_path <- NULL
+      image$asset_mime <- NULL
+      if (is.null(asset)) {
+        images[[index]] <- image
+        next
+      }
+      key <- safe_key(
+        "image",
+        scope,
+        index,
+        as.character(image$id %||% "image")
+      )
+      assets[[key]] <<- asset
+      image$uri <- NULL
+      image$asset_key <- key
+      image$deferred <- TRUE
+      images[[index]] <- image
+    }
+    class(images) <- original_class
+    images
+  }
+
+  spaces <- value$spaces %||% list()
+  for (space_index in seq_along(spaces)) {
+    space <- spaces[[space_index]]
+    scope <- safe_key(space$id %||% "space", space_index)
+    space$images <- defer_images(space$images, scope)
+    if (!is.null(space$image$uri)) {
+      single <- defer_images(list(space$image), paste0(scope, ":default"))
+      space$image <- single[[1L]]
+    }
+    samples <- space$samples %||% list()
+    for (sample_index in seq_along(samples)) {
+      sample <- samples[[sample_index]]
+      sample_scope <- safe_key(
+        scope,
+        "sample",
+        sample_index,
+        sample$name %||% "sample"
+      )
+      sample$images <- defer_images(sample$images, sample_scope)
+      if (!is.null(sample$image$uri)) {
+        single <- defer_images(
+          list(sample$image),
+          paste0(sample_scope, ":default")
+        )
+        sample$image <- single[[1L]]
+      }
+      samples[[sample_index]] <- sample
+    }
+    if (!is.null(space$samples)) {
+      space$samples <- samples
+    }
+    spaces[[space_index]] <- space
+  }
+  value$spaces <- spaces
+
+  evidence_images <- value$trekker$evidence_img
+  if (!is.null(evidence_images)) {
+    evidence_images <- unclass(evidence_images)
+    deferred_evidence <- FALSE
+    for (index in seq_along(evidence_images)) {
+      uri <- evidence_images[[index]]
+      if (
+        is.character(uri) && length(uri) == 1L && !is.na(uri) && nzchar(uri)
+      ) {
+        assets[[paste0("trekker-evidence:", index - 1L)]] <- uri
+        deferred_evidence <- TRUE
+      }
+    }
+    value$trekker$evidence_img <- NULL
+    value$trekker$evidence_deferred <- deferred_evidence
+  }
+  list(value = value, assets = assets)
 }

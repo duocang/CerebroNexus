@@ -18,7 +18,7 @@ expression_projection_parameters_plot <- reactive({
   selected_projection <- input[["expression_projection_to_display"]]
   if (input[["expression_projection_to_display"]] %in% availableProjections()) {
     is_trajectory <- FALSE
-    range_data <- getProjection(selected_projection)
+    range_data <- viewerProjectionFirstFrameCoordinates(selected_projection)
     n_dimensions <- ncol(range_data)
   } else {
     is_trajectory <- TRUE

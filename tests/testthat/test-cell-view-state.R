@@ -72,6 +72,62 @@ test_that("expression clear transitions remove every dependent payload", {
   )
 })
 
+test_that("shared projections are selected by name without collapsing caches", {
+  output <- run_state_node(paste0(
+    "const S = window.CBViewState;",
+    "const shared = {projections:{",
+    "  umap:{x:new Float32Array([1,2]),y:new Float32Array([3,4])},",
+    "  tsne:{x:new Float32Array([5,6]),y:new Float32Array([7,8])}",
+    "}};",
+    "const available = typeof S.sharedProjection === 'function';",
+    "const umap = available ? S.sharedProjection(shared,'umap',2) : null;",
+    "const tsne = available ? S.sharedProjection(shared,'tsne',2) : null;",
+    "const wrong = available ? S.sharedProjection(shared,'umap',3) : null;",
+    "console.log(JSON.stringify({",
+    "  available,",
+    "  umap:umap ? Array.from(umap.x) : null,",
+    "  tsne:tsne ? Array.from(tsne.y) : null,",
+    "  wrong:wrong",
+    "}));"
+  ))
+
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      available = TRUE,
+      umap = list(1L, 2L),
+      tsne = list(7L, 8L),
+      wrong = NULL
+    )
+  )
+})
+
+test_that("canonical grouped coordinates accept reused typed arrays", {
+  output <- run_state_node(paste0(
+    "const S = window.CBViewState;",
+    "const groups = new Uint8Array([0,1,0]);",
+    "const reused = new Float32Array([10,20,30]);",
+    "const direct = S.canonicalGroupedValues(reused,groups,NaN);",
+    "const nested = S.canonicalGroupedValues([[10,30],[20]],groups,NaN);",
+    "console.log(JSON.stringify({",
+    "  same:direct===reused,",
+    "  direct:Array.from(direct),",
+    "  nested:Array.from(nested)",
+    "}));"
+  ))
+
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      same = TRUE,
+      direct = list(10L, 20L, 30L),
+      nested = list(10L, 20L, 30L)
+    )
+  )
+})
+
 test_that("specialist restore does not overwrite a saved state on its active page", {
   output <- run_state_node(paste0(
     "const S = window.CBViewState;",

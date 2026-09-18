@@ -47,13 +47,23 @@ viewerPackOpen <- function(file, object) {
   ) {
     return(NULL)
   }
-  metadata <- tryCatch(object$getMetaData(), error = function(error) NULL)
-  if (!is.data.frame(metadata) || !("cell_barcode" %in% colnames(metadata))) {
-    return(NULL)
-  }
-  cells <- as.character(metadata$cell_barcode)
-  if (!identical(as.integer(manifest$n_cells), length(cells))) {
-    return(NULL)
+  schema <- tryCatch(object[["crb_schema"]], error = function(error) NULL)
+  canonical_order <- is.list(schema) &&
+    identical(schema$version, 2L) &&
+    is.integer(schema$n_cells) &&
+    length(schema$n_cells) == 1L &&
+    !is.na(schema$n_cells) &&
+    identical(as.integer(manifest$n_cells), schema$n_cells)
+  cells <- NULL
+  if (!canonical_order) {
+    metadata <- tryCatch(object$getMetaData(), error = function(error) NULL)
+    if (!is.data.frame(metadata) || !("cell_barcode" %in% colnames(metadata))) {
+      return(NULL)
+    }
+    cells <- as.character(metadata$cell_barcode)
+    if (!identical(as.integer(manifest$n_cells), length(cells))) {
+      return(NULL)
+    }
   }
   assets <- manifest$assets
   if (
@@ -67,11 +77,16 @@ viewerPackOpen <- function(file, object) {
     path = pack,
     manifest = manifest,
     cells = cells,
+    cell_count = as.integer(manifest$n_cells),
+    canonical_order = canonical_order,
     cache = new.env(parent = emptyenv())
   )
 }
 
 viewerPackValidateCellOrder <- function(pack) {
+  if (isTRUE(pack$canonical_order)) {
+    return(TRUE)
+  }
   key <- ".cell_order_valid"
   if (exists(key, envir = pack$cache, inherits = FALSE)) {
     return(isTRUE(get(key, envir = pack$cache, inherits = FALSE)))
@@ -104,11 +119,11 @@ viewerPackValidateCellOrder <- function(pack) {
   valid
 }
 
-viewerPackReadAsset <- function(pack, path) {
+viewerPackReadAsset <- function(pack, path, validate_cell_order = TRUE) {
   if (is.null(pack) || !is.list(pack) || !is.environment(pack$cache)) {
     return(NULL)
   }
-  if (!viewerPackValidateCellOrder(pack)) {
+  if (isTRUE(validate_cell_order) && !viewerPackValidateCellOrder(pack)) {
     return(NULL)
   }
   if (exists(path, envir = pack$cache, inherits = FALSE)) {
@@ -144,6 +159,19 @@ viewerPackHlaSegments <- function(pack, chain) {
     return(NULL)
   }
   viewerPackReadAsset(pack, file.path("hla_tcr", paste0(chain, ".qs2")))
+}
+
+viewerPackHlaFirstFrame <- function(pack, chain) {
+  if (
+    !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")
+  ) {
+    return(NULL)
+  }
+  viewerPackReadAsset(
+    pack,
+    file.path("hla_tcr", paste0(chain, ".first.qs2")),
+    validate_cell_order = FALSE
+  )
 }
 
 viewerPackImmuneIndex <- function(pack, receptor) {

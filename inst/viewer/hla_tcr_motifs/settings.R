@@ -191,7 +191,7 @@ output$hla_group_filters_ui <- renderUI({
       colors <- cerebro_group_colors(length(group_levels))
     }
     groupFilterControl(
-      paste0("hla_group_filter_", group),
+      hla_filter_input_id(group),
       group,
       group_levels,
       colors,

@@ -97,6 +97,7 @@ test_that("HLA exposes the shared cohort controls and a network saved-view adapt
   expect_match(client, "applyState", fixed = TRUE)
   expect_match(client, "downloadPNG", fixed = TRUE)
   expect_match(client, "cerebro:png-result", fixed = TRUE)
+  expect_match(client, "if (!fingerprint) return;", fixed = TRUE)
   expect_match(adapter, "hla_motif_network", fixed = TRUE)
   expect_match(adapter, "downloadPNG", fixed = TRUE)
   expect_match(config, "hla_motif_network", fixed = TRUE)

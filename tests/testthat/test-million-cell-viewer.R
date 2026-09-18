@@ -751,7 +751,7 @@ test_that("the cold-start benchmark measures an installed Viewer", {
   expect_match(benchmark, "observed_ms >= gate_ms", fixed = TRUE)
 })
 
-test_that("optional page servers register after the first data flush", {
+test_that("optional page servers load only when their page becomes visible", {
   server <- paste(
     readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
     collapse = "\n"
@@ -760,9 +760,35 @@ test_that("optional page servers register after the first data flush", {
   expect_match(server, "deferred_viewer_server_files <- c(", fixed = TRUE)
   expect_match(server, '"marker_genes/server.R"', fixed = TRUE)
   expect_match(server, '"color_management/server.R"', fixed = TRUE)
-  expect_match(server, "later::later(", fixed = TRUE)
-  expect_match(server, "withReactiveDomain(session", fixed = TRUE)
   expect_match(
+    server,
+    "load_deferred_viewer_server <- function(server_file)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'load_deferred_viewer_server("coordinated_views/server.R")',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'server_file <- unname(deferred_viewer_server_files[input[["sidebar"]]])',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "if (length(server_file) && !is.na(server_file))",
+    fixed = TRUE
+  )
+  expect_no_match(
+    server,
+    'deferred_viewer_server_files[[input[["sidebar"]]]]',
+    fixed = TRUE
+  )
+  expect_match(server, "}, ignoreInit = FALSE)", fixed = TRUE)
+  expect_no_match(server, "preload_deferred_viewer_server", fixed = TRUE)
+  expect_no_match(server, "later::later(", fixed = TRUE)
+  expect_no_match(
     server,
     "for (server_file in deferred_viewer_server_files)",
     fixed = TRUE

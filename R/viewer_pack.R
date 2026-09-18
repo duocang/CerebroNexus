@@ -224,6 +224,111 @@
   )
 }
 
+.viewerPackHlaFirstFrame <- function(segments, object) {
+  all_segments <- segments
+  available <- colnames(segments)
+  declared <- tryCatch(object$getGroups(), error = function(error) character())
+  filter_groups <- unique(intersect(c("sample", declared), available))
+  filter_levels <- stats::setNames(
+    lapply(filter_groups, function(group) {
+      values <- as.character(segments[[group]])
+      sort(unique(values[!is.na(values) & nzchar(values)]))
+    }),
+    filter_groups
+  )
+  initial_samples <- filter_levels[["sample"]] %||% character()
+  if (length(initial_samples)) {
+    initial_samples <- hla_choose_initial_samples(segments, initial_samples)
+    segments <- segments[
+      as.character(segments$sample) %in% initial_samples,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  technical <- tryCatch(object$getTechnicalInfo(), error = function(error) {
+    list()
+  })
+  declared_lineage <- technical$lineage_column
+  lineage_col <- if (
+    is.character(declared_lineage) &&
+      length(declared_lineage) >= 1L &&
+      declared_lineage[[1L]] %in% available
+  ) {
+    declared_lineage[[1L]]
+  } else {
+    candidates <- intersect(declared, available)
+    if (length(candidates)) {
+      scores <- vapply(
+        candidates,
+        function(column) hla_lineage_column_score(all_segments[[column]]),
+        numeric(1)
+      )
+      if (max(scores) >= HLA_LINEAGE_MIN_SHARE) {
+        best <- candidates[scores == max(scores)]
+        level_counts <- vapply(
+          best,
+          function(column) {
+            values <- as.character(all_segments[[column]])
+            length(unique(values[!is.na(values) & nzchar(values)]))
+          },
+          integer(1)
+        )
+        best[[which.max(level_counts)]]
+      } else {
+        NULL
+      }
+    } else {
+      NULL
+    }
+  }
+  if (!is.null(lineage_col)) {
+    segments$mhc_context <- hla_lineage_context(segments[[lineage_col]])
+  }
+  color_meta_cols <- intersect(declared, available)
+  color_level_counts <- stats::setNames(
+    vapply(
+      color_meta_cols,
+      function(column) {
+        values <- as.character(all_segments[[column]])
+        length(unique(values[!is.na(values) & nzchar(values)]))
+      },
+      integer(1)
+    ),
+    color_meta_cols
+  )
+  node_meta_cols <- unique(intersect(
+    c("sample", lineage_col, color_meta_cols),
+    available
+  ))
+  by_v <- identical(technical$receptor_key, "v_gene+cdr3")
+  graph_raw <- hla_build_motif_graph_raw(
+    segments,
+    by_v = by_v,
+    meta_cols = node_meta_cols,
+    context_col = if ("mhc_context" %in% colnames(segments)) {
+      "mhc_context"
+    } else {
+      NULL
+    },
+    context_summary = hla_context_summary
+  )
+
+  list(
+    version = 1L,
+    filter_groups = filter_groups,
+    filter_levels = filter_levels,
+    initial_samples = initial_samples,
+    available_cols = available,
+    color_level_counts = color_level_counts,
+    lineage_col = lineage_col,
+    node_meta_cols = node_meta_cols,
+    by_v = by_v,
+    segments = segments,
+    graph_raw = graph_raw
+  )
+}
+
 .viewerPackBuildAssets <- function(object, stage) {
   cells <- .viewerPackCells(object)
   assets <- .viewerPackWriteAsset(
@@ -365,6 +470,12 @@
             value,
             "table",
             dim(value)
+          ),
+          .viewerPackWriteAsset(
+            stage,
+            file.path("hla_tcr", paste0(chain, ".first.qs2")),
+            .viewerPackHlaFirstFrame(value, object),
+            "hla-first-frame"
           )
         )
       }
