@@ -757,45 +757,36 @@ git_dirty <- function(root) {
     0L
 }
 
-sha256_file <- function(path) {
-  if (exists("sha256sum", envir = asNamespace("tools"), inherits = FALSE)) {
-    return(unname(tools::sha256sum(path)))
-  }
-  command <- Sys.which("shasum")
-  if (!nzchar(command)) {
-    stop("No SHA-256 implementation is available.")
-  }
-  sub(" .*", "", system2(command, c("-a", "256", path), stdout = TRUE)[[1L]])
-}
-
 package_version_at <- function(root) {
   description <- read.dcf(file.path(root, "DESCRIPTION"), fields = "Version")
   unname(description[[1L]])
 }
 
+artifact_provenance <- benchmark_artifact_provenance(crb)
 provenance <- do.call(
   rbind,
   lapply(candidate_specs, function(candidate) {
     root <- candidate[["root"]]
-    data.frame(
-      candidate = candidate[["label"]],
-      candidate_root = root,
-      candidate_git_sha = git_value(root, "rev-parse", "HEAD"),
-      candidate_git_dirty = git_dirty(root),
-      artifact = crb,
-      artifact_sha256 = sha256_file(crb),
-      host = unname(Sys.info()[["nodename"]]),
-      os = paste(
-        Sys.info()[c("sysname", "release", "machine")],
-        collapse = " "
+    cbind(
+      data.frame(
+        candidate = candidate[["label"]],
+        candidate_root = root,
+        candidate_git_sha = git_value(root, "rev-parse", "HEAD"),
+        candidate_git_dirty = git_dirty(root),
+        host = unname(Sys.info()[["nodename"]]),
+        os = paste(
+          Sys.info()[c("sysname", "release", "machine")],
+          collapse = " "
+        ),
+        r_version = R.version.string,
+        package_version = package_version_at(root),
+        shinytest2_version = as.character(utils::packageVersion("shinytest2")),
+        chromote_version = as.character(utils::packageVersion("chromote")),
+        profile = profile,
+        rounds = rounds,
+        stringsAsFactors = FALSE
       ),
-      r_version = R.version.string,
-      package_version = package_version_at(root),
-      shinytest2_version = as.character(utils::packageVersion("shinytest2")),
-      chromote_version = as.character(utils::packageVersion("chromote")),
-      profile = profile,
-      rounds = rounds,
-      stringsAsFactors = FALSE
+      artifact_provenance
     )
   })
 )
@@ -806,13 +797,7 @@ if (identical(schedule_output, output)) {
   schedule_output <- paste0(output, ".schedule.tsv")
 }
 dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
-write.table(
-  schedule,
-  schedule_output,
-  row.names = FALSE,
-  sep = "\t",
-  quote = FALSE
-)
+write_validated_tsv(schedule, schedule_output)
 
 empty_observation <- function(status, error) {
   data.frame(
@@ -891,7 +876,7 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
 results <- do.call(rbind, rows)
 results <- merge(results, provenance, by = "candidate", sort = FALSE)
 results <- results[order(results$schedule_position), ]
-write.table(results, output, row.names = FALSE, sep = "\t", quote = FALSE)
+write_validated_tsv(results, output)
 
 chrome_versions <- tapply(
   results$chrome_version,
@@ -906,13 +891,7 @@ manifest_output <- sub("[.]tsv$", "_manifest.tsv", output)
 if (identical(manifest_output, output)) {
   manifest_output <- paste0(output, ".manifest.tsv")
 }
-write.table(
-  provenance,
-  manifest_output,
-  row.names = FALSE,
-  sep = "\t",
-  quote = FALSE
-)
+write_validated_tsv(provenance, manifest_output)
 print(results, row.names = FALSE)
 
 bad_status <- results$status == "error" |

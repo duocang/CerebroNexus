@@ -649,6 +649,14 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "link.offsetParent !== null", fixed = TRUE)
   expect_match(benchmark, "app$get_screenshot", fixed = TRUE)
   expect_match(benchmark, "png::readPNG", fixed = TRUE)
+  protocol <- paste(
+    readLines(
+      testthat::test_path("..", "bench", "viewer_1m_page_protocol.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  benchmark_contract <- paste(benchmark, protocol, sep = "\n")
 
   for (field in c(
     "candidate_git_sha",
@@ -676,8 +684,84 @@ test_that("the page benchmark has a publication-grade contract", {
     "requires_webgpu",
     "performance_applicable"
   )) {
-    expect_match(benchmark, field, fixed = TRUE, info = field)
+    expect_match(benchmark_contract, field, fixed = TRUE, info = field)
   }
+})
+
+test_that("benchmark TSV output escapes controls and validates columns", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+  output <- tempfile(fileext = ".tsv")
+  rows <- data.frame(
+    status = "error",
+    error = "first line\nsecond\tfield\rreturn",
+    correctness_detail = "{\n\t\"reason\": \"bad\"\n}",
+    stringsAsFactors = FALSE
+  )
+
+  expect_silent(protocol$write_validated_tsv(rows, output))
+
+  physical_lines <- readLines(output, warn = FALSE)
+  expect_length(physical_lines, 2L)
+  expect_true(all(
+    vapply(
+      physical_lines,
+      protocol$tsv_field_count,
+      integer(1)
+    ) ==
+      ncol(rows)
+  ))
+  expect_match(
+    physical_lines[[2L]],
+    "first line\\nsecond\\tfield\\rreturn",
+    fixed = TRUE
+  )
+  expect_match(
+    physical_lines[[2L]],
+    "{\\n\\t\"reason\": \"bad\"\\n}",
+    fixed = TRUE
+  )
+})
+
+test_that("benchmark provenance identifies sidecars and Viewer Packs", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+  root <- tempfile("benchmark-artifacts-")
+  dir.create(root)
+  sidecar <- file.path(root, "fixture.bpcells")
+  pack <- file.path(root, "fixture.viewer")
+  dir.create(sidecar)
+  dir.create(pack)
+  writeLines(c("cell-1", "cell-2"), file.path(sidecar, "col_names"))
+  writeBin(as.raw(c(1L, 2L, 3L)), file.path(sidecar, "val_data"))
+  writeLines('{"schema_version":1}', file.path(pack, "manifest.json"))
+  object <- new.env(parent = emptyenv())
+  object$expression_backend <- list(
+    type = "bpcells",
+    location = basename(sidecar)
+  )
+  crb <- file.path(root, "fixture.crb")
+  saveRDS(object, crb)
+
+  manifest <- protocol$benchmark_artifact_provenance(crb)
+
+  expect_identical(manifest$bpcells_sidecar, normalizePath(sidecar))
+  expect_match(manifest$bpcells_sidecar_sha256, "^[0-9a-f]{64}$")
+  expect_identical(
+    manifest$viewer_pack_manifest,
+    normalizePath(file.path(pack, "manifest.json"))
+  )
+  expect_match(manifest$viewer_pack_manifest_sha256, "^[0-9a-f]{64}$")
 })
 
 test_that("the page benchmark schedule and budgets are balanced", {
