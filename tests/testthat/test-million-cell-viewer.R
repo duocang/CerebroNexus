@@ -785,7 +785,7 @@ test_that("optional page servers load only when their page becomes visible", {
     'deferred_viewer_server_files[[input[["sidebar"]]]]',
     fixed = TRUE
   )
-  expect_match(server, "}, ignoreInit = FALSE)", fixed = TRUE)
+  expect_match(server, "ignoreInit\\s*=\\s*FALSE\\s*\\)")
   expect_no_match(server, "preload_deferred_viewer_server", fixed = TRUE)
   expect_no_match(server, "later::later(", fixed = TRUE)
   expect_no_match(
