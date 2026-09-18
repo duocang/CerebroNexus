@@ -29,9 +29,10 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     metadata_cols <- getGroups()
   } else {
     ## include all metadata columns except cell_barcode
-    metadata_cols <- colnames(getMetaData())[
-      !colnames(getMetaData()) %in% c("cell_barcode")
-    ]
+    metadata_cols <- setdiff(
+      colnames(viewerProjectionFirstFrameMetadata()),
+      "cell_barcode"
+    )
   }
 
   current_spatial <- input[["spatial_projection_to_display"]]

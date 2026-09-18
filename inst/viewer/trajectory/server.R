@@ -42,28 +42,32 @@ trajectory_row_index_reactive <- reactive({
   trajectory <- trajectory_data_reactive()
   trajectory_cells <- rownames(trajectory[["meta"]])
   pack <- viewerPackCurrent()
+  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
+  valid_pack_count <- length(pack_cell_count) == 1L &&
+    !is.na(pack_cell_count)
   index <- viewerPackTrajectoryIndex(
     pack,
     input[["trajectory_selected_method"]],
     input[["trajectory_selected_name"]]
   )
-  if (
-    length(index) != nrow(trajectory[["meta"]]) ||
-      anyNA(index) ||
-      any(index < 1L)
-  ) {
+  valid_index <- length(index) == nrow(trajectory[["meta"]]) &&
+    !anyNA(index) &&
+    isTRUE(all(index >= 1L))
+  if (!isTRUE(valid_index)) {
     index <- NULL
   }
-  if (
+  pack_order_matches <-
     is.null(index) &&
-      is.list(pack) &&
-      length(trajectory_cells) == pack$cell_count &&
-      identical(
-        viewerPackCellOrderFingerprint(trajectory_cells),
-        as.character(pack$manifest$cell_order_fingerprint)
-      )
-  ) {
-    index <- seq_len(pack$cell_count)
+    !is.null(pack) &&
+    is.list(pack) &&
+    valid_pack_count &&
+    length(trajectory_cells) == pack_cell_count &&
+    identical(
+      viewerPackCellOrderFingerprint(trajectory_cells),
+      as.character(pack$manifest$cell_order_fingerprint)
+    )
+  if (isTRUE(pack_order_matches)) {
+    index <- seq_len(pack_cell_count)
   }
   if (is.null(index)) {
     metadata <- getMetaData()

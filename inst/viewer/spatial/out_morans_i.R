@@ -13,30 +13,17 @@ output[["spatial_projection_morans_i"]] <- renderText({
   gene <- plot_parameters[["feature_to_display"]]
   req(gene, gene %in% getGeneNames())
 
-  metadata <- getMetaData()
   spatial_data <- getSpatialData(plot_parameters[["projection"]])
   coords <- spatial_data$coordinates
   req(nrow(coords) >= 2)
-
-  ## Align expression to coordinates BY BARCODE, not by position: the coordinate
-  ## table is stored in .getSpatialData()'s own cell order (a possibly reordered
-  ## subset), so a positional pairing would match each cell's expression to a
-  ## different cell's (x, y). Restrict to the barcodes present in both tables.
-  if ("cell_barcode" %in% colnames(metadata)) {
-    cells <- as.character(metadata$cell_barcode)
-  } else {
-    cells <- rownames(metadata)
-  }
-  common <- intersect(cells, rownames(coords))
-  req(length(common) >= 2)
-
-  expr <- viewerExpressionRow(data_set(), common, gene)
+  cell_index <- spatial_projection_cell_index()
+  req(length(cell_index) == nrow(coords))
+  expr <- viewerExpressionRow(data_set(), cell_index, gene)
   req(!is.null(expr))
-  coords <- coords[common, , drop = FALSE]
 
   ## Down-sample for the O(n^2) neighbour search so large slides stay responsive.
   max_cells <- 2000
-  n <- length(common)
+  n <- length(cell_index)
   idx <- seq_len(n)
   if (n > max_cells) {
     set.seed(42) # stable score across re-renders

@@ -277,6 +277,34 @@
   stats::setNames(indexes, methods)
 }
 
+.viewerPackSpatialIndex <- function(object, cells) {
+  spatial_names <- tryCatch(
+    object$availableSpatial(),
+    error = function(error) character()
+  )
+  getter <- object$getSpatialData
+  stats::setNames(
+    lapply(spatial_names, function(name) {
+      data <- if ("hydrate_molecules" %in% names(formals(getter))) {
+        getter(name, hydrate_molecules = FALSE)
+      } else {
+        getter(name)
+      }
+      spatial_cells <- rownames(data[["coordinates"]])
+      index <- match(spatial_cells, cells)
+      if (
+        is.null(spatial_cells) ||
+          length(index) != nrow(data[["coordinates"]]) ||
+          anyNA(index)
+      ) {
+        stop("Viewer Pack spatial data is not cell-aligned.", call. = FALSE)
+      }
+      as.integer(index)
+    }),
+    spatial_names
+  )
+}
+
 .viewerPackHlaFirstFrame <- function(segments, object) {
   all_segments <- segments
   available <- colnames(segments)
@@ -468,6 +496,19 @@
         stage,
         file.path("trajectory", "cell_index.qs2"),
         trajectory_indexes,
+        "canonical-cell-index"
+      )
+    )
+  }
+  spatial_indexes <- .viewerPackSpatialIndex(object, cells)
+  if (length(spatial_indexes)) {
+    modules <- c(modules, "spatial")
+    assets <- rbind(
+      assets,
+      .viewerPackWriteAsset(
+        stage,
+        file.path("spatial", "cell_index.qs2"),
+        spatial_indexes,
         "canonical-cell-index"
       )
     )

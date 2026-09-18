@@ -212,6 +212,27 @@ test_that("spatial first frame defers identities and hover", {
     fixed = TRUE
   )
   expect_match(source, "deferred_aux = function()", fixed = TRUE)
+
+  flow <- paste(
+    vapply(
+      c(
+        "obj_projection_cells_to_show.R",
+        "obj_projection_coordinates.R",
+        "obj_projection_metadata.R"
+      ),
+      function(file) {
+        paste(
+          readLines(viewer_test_path("spatial", file), warn = FALSE),
+          collapse = "\n"
+        )
+      },
+      character(1)
+    ),
+    collapse = "\n"
+  )
+  expect_match(flow, "spatial_projection_cell_index", fixed = TRUE)
+  expect_match(flow, "viewerProjectionFirstFrameMetadata", fixed = TRUE)
+  expect_match(flow, "viewerPackSpatialIndex", fixed = TRUE)
 })
 
 test_that("gene-expression first frame defers identities and hover", {

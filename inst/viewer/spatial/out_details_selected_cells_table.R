@@ -23,10 +23,7 @@ output[["spatial_details_selected_cells_table"]] <- DT::renderDataTable({
     plot_data <- spatial_projection_data_to_plot()
 
     ## extract cells for table - use the coordinates that were actually plotted
-    cells_df <- cbind(
-      plot_data$coordinates,
-      plot_data$cells_df
-    ) %>%
+    cells_df <- spatial_projection_interaction_data(plot_data) %>%
       as.data.frame()
     ## filter out non-selected cells with X-Y identifier
     cells_df <- cells_df %>%

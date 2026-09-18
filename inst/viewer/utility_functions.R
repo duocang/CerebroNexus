@@ -4209,8 +4209,21 @@ getSpatialData <- function(name) {
   if (!any(grepl("Cerebro", class(ds)))) {
     return(NULL)
   }
+  getter <- ds$getSpatialData
   tryCatch(
-    ds$getSpatialData(name, hydrate_molecules = FALSE),
+    {
+      if ("hydrate_molecules" %in% names(formals(getter))) {
+        return(getter(name, hydrate_molecules = FALSE))
+      }
+      stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
+      if (
+        is.list(stored) &&
+          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
+      ) {
+        return(stored)
+      }
+      getter(name)
+    },
     error = function(e) NULL
   )
 }

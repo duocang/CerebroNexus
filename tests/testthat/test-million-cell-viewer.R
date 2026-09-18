@@ -249,13 +249,31 @@ test_that("Viewer spatial readers leave molecule sidecars dormant", {
 
   expect_match(
     utility,
-    'ds$getSpatialData(name, hydrate_molecules = FALSE)',
+    'getter(name, hydrate_molecules = FALSE)',
     fixed = TRUE
   )
   expect_match(
     linked,
     'crb$getSpatialData(nm, hydrate_molecules = FALSE)',
     fixed = TRUE
+  )
+
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  legacy <- new.env(parent = emptyenv())
+  class(legacy) <- c("Cerebro", "R6")
+  legacy$spatial <- list(
+    slice = list(
+      coordinates = data.frame(x = 1:2, y = 3:4),
+      expression = matrix(numeric(), nrow = 0L, ncol = 2L)
+    )
+  )
+  legacy$getSpatialData <- function(name) legacy$spatial[[name]]
+  scope$data_set <- function() legacy
+
+  expect_identical(
+    scope$getSpatialData("slice")$coordinates,
+    legacy$spatial$slice$coordinates
   )
 })
 

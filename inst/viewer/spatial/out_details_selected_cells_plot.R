@@ -17,10 +17,7 @@ output[["spatial_details_selected_cells_plot"]] <- plotly::renderPlotly({
   plot_data <- spatial_projection_data_to_plot()
 
   ## extract cells to plot - use the coordinates that were actually plotted
-  cells_df <- cbind(
-    plot_data$coordinates,
-    plot_data$cells_df
-  )
+  cells_df <- spatial_projection_interaction_data(plot_data)
 
   ## check selection
   ## ... selection has not been made or there is no cell in it

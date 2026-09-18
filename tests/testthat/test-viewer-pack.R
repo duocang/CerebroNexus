@@ -2,7 +2,8 @@ viewer_pack_fixture <- function(
   path,
   n = 3L,
   immune = FALSE,
-  trajectory = FALSE
+  trajectory = FALSE,
+  spatial = FALSE
 ) {
   object <- Cerebro$new()
   cells <- sprintf("cell-%03d", seq_len(n))
@@ -46,6 +47,26 @@ viewer_pack_fixture <- function(
           row.names = selected
         ),
         edges = data.frame()
+      )
+    )
+  }
+  if (isTRUE(spatial)) {
+    selected <- cells[c(3L, 1L)]
+    object$addSpatialData(
+      "slice",
+      list(
+        coordinates = data.frame(
+          x = c(30, 10),
+          y = c(3, 1),
+          row.names = selected
+        ),
+        expression = matrix(
+          numeric(),
+          nrow = 0L,
+          ncol = length(selected),
+          dimnames = list(character(), selected)
+        ),
+        histology_images = list()
       )
     )
   }
@@ -117,6 +138,31 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
   expect_identical(
     runtime$viewerPackTrajectoryIndex(descriptor, "monocle2", "subset"),
     c(2L, 4L)
+  )
+  expect_false(exists(
+    "common/cell_order.qs2",
+    envir = descriptor$cache,
+    inherits = FALSE
+  ))
+})
+
+test_that("Viewer Pack stores canonical spatial row indexes", {
+  root <- tempfile("viewer-pack-spatial-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 4L,
+    spatial = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  descriptor <- runtime$viewerPackOpen(crb, object)
+
+  expect_identical(
+    runtime$viewerPackSpatialIndex(descriptor, "slice"),
+    c(3L, 1L)
   )
   expect_false(exists(
     "common/cell_order.qs2",

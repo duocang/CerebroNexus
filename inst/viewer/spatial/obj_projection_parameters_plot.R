@@ -18,7 +18,10 @@ spatial_projection_parameters_plot <- reactive({
 
   if (plot_type == "ImageDimPlot") {
     color_variable <- input[["spatial_projection_point_color"]]
-    req(color_variable, color_variable %in% colnames(getMetaData()))
+    req(
+      color_variable,
+      color_variable %in% colnames(viewerProjectionFirstFrameMetadata())
+    )
   } else if (plot_type == "ImageFeaturePlot") {
     feature_to_display <- input[["spatial_projection_feature_to_display"]]
     req(feature_to_display)
@@ -38,7 +41,7 @@ spatial_projection_parameters_plot <- reactive({
     ## The cell colour comes from the RGB blend, not a metadata column, but the
     ## downstream code still indexes metadata[[color_variable]] — give it a valid
     ## placeholder column so that lookup can't fail on a NULL name.
-    color_variable <- colnames(getMetaData())[1]
+    color_variable <- "cell_index"
   }
 
   spatial_data <- getSpatialData(input[["spatial_projection_to_display"]])

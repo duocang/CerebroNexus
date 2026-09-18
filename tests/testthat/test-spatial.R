@@ -850,6 +850,7 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     availableSpatial <- function() names(atlas)
     getSpatialData <- function(name) atlas[[name]]
     getMetaData <- function() data.frame(group = c("a", "b"))
+    viewerProjectionFirstFrameMetadata <- getMetaData
     getGroups <- function() "group"
     serverSideGeneSelector <- function(...) invisible(NULL)
     Cerebro.options <- list(

@@ -2,6 +2,16 @@
 ## Reactive that holds IDs of selected cells (ID is built from position in
 ## projection).
 ##----------------------------------------------------------------------------##
+spatial_projection_interaction_data <- function(plot_data) {
+  cell_index <- plot_data$cells_df[["cell_index"]]
+  metadata <- viewerProjectionSubsetRows(
+    getMetaData(),
+    cell_index,
+    columns = NULL
+  )
+  cbind(plot_data$coordinates, metadata)
+}
+
 spatial_projection_selected_cells <- reactive({
   ## make sure plot parameters are set because it means that the plot can be
   ## generated
@@ -37,7 +47,7 @@ spatial_projection_selected_cells <- reactive({
   if (length(hidden_groups) > 0) {
     color_variable <- input[["spatial_projection_point_color"]]
     plot_data <- spatial_projection_data_to_plot()
-    metadata <- cbind(plot_data$coordinates, plot_data$cells_df) %>%
+    metadata <- spatial_projection_interaction_data(plot_data) %>%
       dplyr::rename(X1 = 1, X2 = 2) %>%
       dplyr::mutate(identifier = paste0(X1, '-', X2))
     metadata[["selection_key"]] <- if ("cell_barcode" %in% colnames(metadata)) {

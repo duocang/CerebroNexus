@@ -180,6 +180,16 @@ viewerPackTrajectoryIndex <- function(pack, method, name) {
   if (is.null(index)) NULL else as.integer(index)
 }
 
+viewerPackSpatialIndex <- function(pack, name) {
+  indexes <- viewerPackReadAsset(
+    pack,
+    file.path("spatial", "cell_index.qs2"),
+    validate_cell_order = FALSE
+  )
+  index <- indexes[[name]]
+  if (is.null(index)) NULL else as.integer(index)
+}
+
 viewerPackHlaSegments <- function(pack, chain) {
   if (
     !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")

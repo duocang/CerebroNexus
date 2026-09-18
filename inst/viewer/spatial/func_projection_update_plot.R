@@ -117,17 +117,33 @@ spatial_projection_update_plot <- function(input) {
   color_input <- metadata[[color_variable]]
   selection_keys <- seq_len(nrow(metadata))
   build_deferred_aux <- function(selection_rows) {
-    cell_barcodes <- if ("cell_barcode" %in% colnames(metadata)) {
-      as.character(metadata[["cell_barcode"]])
+    cell_index <- if ("cell_index" %in% colnames(metadata)) {
+      metadata[["cell_index"]]
     } else {
-      rownames(metadata)
+      seq_len(nrow(metadata))
     }
     hover <- isTRUE(plot_parameters[["hover_info"]])
+    first_frame <- viewerProjectionFirstFrameMetadata()
+    columns <- viewerProjectionMetadataColumns(
+      first_frame,
+      color_variable = NULL,
+      hover_info = hover,
+      groups = getGroups()
+    )
+    hover_metadata <- viewerProjectionSubsetRows(
+      first_frame,
+      cell_index,
+      columns
+    )
+    cell_barcodes <- viewerPackCellBarcodes(viewerPackCurrent(), cell_index)
+    if (is.null(cell_barcodes)) {
+      cell_barcodes <- getMetaData()[["cell_barcode"]][cell_index]
+    }
     cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
       cell_barcodes = cell_barcodes,
       hover_columns = if (hover) {
-        cerebroProjectionHoverColumns(metadata)
+        cerebroProjectionHoverColumns(hover_metadata)
       } else {
         list()
       },
