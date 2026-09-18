@@ -1,8 +1,22 @@
 ##----------------------------------------------------------------------------##
 ## Tab: Groups
 ##----------------------------------------------------------------------------##
+groups_plotly_dependencies <- local({
+  empty_plot <- plotly::plot_ly(
+    x = numeric(),
+    y = numeric(),
+    type = "bar"
+  )
+  dependencies <- htmltools::renderTags(empty_plot)$dependencies
+  htmltools::attachDependencies(
+    tags$span(style = "display: none;", `aria-hidden` = "true"),
+    dependencies
+  )
+})
+
 tab_groups <- tabItem(
   tabName = "groups",
+  groups_plotly_dependencies,
   shinyjs::inlineCSS(
     "
     #groups_by_other_group_table .table th {
@@ -13,8 +27,22 @@ tab_groups <- tabItem(
     }
     "
   ),
-  uiOutput("groups_select_group_UI"),
-  uiOutput("groups_composition_UI"),
+  uiOutput("groups_controls_UI"),
+  fluidRow(
+    cerebroBox(
+      title = tagList(
+        boxTitle("Composition by other group"),
+        cerebroInfoButton("groups_by_other_group_info")
+      ),
+      tagList(
+        plotly::plotlyOutput("groups_by_other_group_plot"),
+        conditionalPanel(
+          condition = "input.groups_by_other_group_show_table === true",
+          DT::dataTableOutput("groups_by_other_group_table")
+        )
+      )
+    )
+  ),
   div(
     id = "groups_expression_metrics_gate",
     style = "min-height: 1px;",
@@ -26,18 +54,56 @@ tab_groups <- tabItem(
       var target = document.getElementById('groups_expression_metrics_gate');
       if (!target || target.dataset.observed) return;
       target.dataset.observed = 'true';
-      var observer = new IntersectionObserver(function (entries) {
-        if (!entries.some(function (entry) { return entry.isIntersecting; })) {
-          return;
-        }
+      var visible = false;
+
+      function requestMetrics() {
+        if (!visible || target.dataset.requested) return;
+        target.dataset.requested = 'true';
         Shiny.setInputValue(
           'groups_expression_metrics_render_request',
           Date.now(),
           {priority: 'event'}
         );
         observer.disconnect();
+      }
+
+      var observer = new IntersectionObserver(function (entries) {
+        visible = entries.some(function (entry) { return entry.isIntersecting; });
+        requestMetrics();
       }, {rootMargin: '200px 0px'});
-      observer.observe(target);
+
+      function armObserver() {
+        if (target.dataset.armed) return;
+        target.dataset.armed = 'true';
+        observer.observe(target);
+      }
+
+      function waitForFirstPlotDraw() {
+        var plot = document.getElementById('groups_by_other_group_plot');
+        if (!plot || !plot.classList.contains('js-plotly-plot')) {
+          window.requestAnimationFrame(waitForFirstPlotDraw);
+          return;
+        }
+        if (typeof plot.once === 'function') {
+          plot.once('plotly_afterplot', armObserver);
+        }
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(armObserver);
+        });
+      }
+
+      $(document).on(
+        'shiny:value.groupsExpressionMetricsGate',
+        function (event) {
+          if (event.name === 'groups_by_other_group_plot') {
+            waitForFirstPlotDraw();
+          }
+        }
+      );
+      var existingPlot = document.getElementById('groups_by_other_group_plot');
+      if (existingPlot && existingPlot.classList.contains('js-plotly-plot')) {
+        armObserver();
+      }
     })();
     "
   ))

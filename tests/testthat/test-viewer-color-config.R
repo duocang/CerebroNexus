@@ -123,6 +123,7 @@ test_that("manual colours are isolated by loaded data set", {
     sys.source(viewer_test_path("color_setup.R"), envir = scope)
 
     session$userData$colors <- reactive_colors
+    session$userData$group_colors <- reactive_group_colors
     session$userData$input_id <- color_input_id
     session$userData$select <- function(path) {
       available_crb_files$selected <- path
@@ -141,6 +142,10 @@ test_that("manual colours are isolated by loaded data set", {
       unname(session$userData$colors()$group),
       unname(inputs_a)
     )
+    expect_identical(
+      unname(session$userData$group_colors("group")),
+      unname(inputs_a)
+    )
 
     session$userData$select(files[["B"]])
     session$flushReact()
@@ -153,6 +158,10 @@ test_that("manual colours are isolated by loaded data set", {
     expect_false(identical(ids_a, ids_b))
     expect_identical(
       session$userData$colors()$group,
+      configured$B$group
+    )
+    expect_identical(
+      session$userData$group_colors("group"),
       configured$B$group
     )
   })

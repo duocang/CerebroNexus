@@ -107,14 +107,8 @@ color_input_id <- function(variable, level) {
   )
 }
 
-reactive_colors <- reactive({
-  req(data_set())
-  ## get cell meta data
-  cache <- viewerProjectionFirstFrameCache(data_set())
-  meta_data <- if (!is.null(cache$meta_data)) cache$meta_data else getMetaData()
-  colors <- list()
-
-  configured <- resolve_configured_colors(
+configured_colors_for_current_dataset <- function() {
+  resolve_configured_colors(
     color_config = if (exists("Cerebro.options")) {
       Cerebro.options[["colors"]]
     } else {
@@ -127,38 +121,51 @@ reactive_colors <- reactive({
       NULL
     }
   )
+}
 
-  picked_color <- function(variable, level) {
-    input[[color_input_id(variable, level)]]
-  }
-
-  resolve_palette <- function(variable, levels, defaults) {
-    names(defaults) <- levels
-    defaults <- apply_configured_colors(defaults, configured[[variable]])
-    for (level in levels) {
-      picked <- picked_color(variable, level)
-      if (!is.null(picked)) {
-        defaults[level] <- picked
-      }
+resolve_reactive_palette <- function(variable, levels, defaults) {
+  configured <- configured_colors_for_current_dataset()
+  names(defaults) <- levels
+  defaults <- apply_configured_colors(defaults, configured[[variable]])
+  for (level in levels) {
+    picked <- input[[color_input_id(variable, level)]]
+    if (!is.null(picked)) {
+      defaults[level] <- picked
     }
-    defaults
   }
+  defaults
+}
+
+## Resolve one categorical group without making the caller depend on every
+## colour picker in the data set. Plot-specific reactives should prefer this
+## helper over indexing reactive_colors().
+reactive_group_colors <- function(group_name) {
+  req(data_set(), group_name %in% getGroups())
+  levels <- getGroupLevels(group_name)
+  defaults <- cerebro_group_colors(length(levels))
+  names(defaults) <- levels
+  if ("N/A" %in% levels) {
+    defaults["N/A"] <- "#898989"
+  }
+  resolve_reactive_palette(group_name, levels, defaults)
+}
+
+reactive_colors <- reactive({
+  req(data_set())
+  ## get cell meta data
+  cache <- viewerProjectionFirstFrameCache(data_set())
+  meta_data <- if (!is.null(cache$meta_data)) cache$meta_data else getMetaData()
+  colors <- list()
 
   ## go through all groups
   for (group_name in getGroups()) {
-    levels <- getGroupLevels(group_name)
-    defaults <- cerebro_group_colors(length(levels))
-    names(defaults) <- levels
-    if ("N/A" %in% levels) {
-      defaults["N/A"] <- "#898989"
-    }
-    colors[[group_name]] <- resolve_palette(group_name, levels, defaults)
+    colors[[group_name]] <- reactive_group_colors(group_name)
   }
   ## go through columns with cell cycle info
   if (length(getCellCycle()) > 0) {
     for (column in getCellCycle()) {
       states <- unique(as.character(meta_data[[column]]))
-      colors[[column]] <- resolve_palette(
+      colors[[column]] <- resolve_reactive_palette(
         column,
         states,
         cell_cycle_colorset[seq_along(states)]

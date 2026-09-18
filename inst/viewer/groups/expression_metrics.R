@@ -10,55 +10,55 @@ groupsMetricData <- function(group, metric) {
   groupsMetadataColumns(c(group, metric))
 }
 
+groups_metric_specs <- list(
+  nUMI = list(
+    title = "Number of transcripts",
+    output = "groups_nUMI_plot"
+  ),
+  nGene = list(
+    title = "Number of expressed genes",
+    output = "groups_nGene_plot"
+  ),
+  percent_mt = list(
+    title = "Mitochondrial gene expression",
+    output = "groups_percent_mt_plot"
+  ),
+  percent_ribo = list(
+    title = "Ribosomal gene expression",
+    output = "groups_percent_ribo_plot"
+  )
+)
+
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
 output[["groups_expression_metrics_UI"]] <- renderUI({
   req(input[["groups_expression_metrics_render_request"]])
+  available <- intersect(
+    names(groups_metric_specs),
+    colnames(viewerProjectionFirstFrameMetadata())
+  )
+  content <- if (!length(available)) {
+    p("Expression metric columns are not available for this data set.")
+  } else {
+    tabs <- lapply(available, function(metric) {
+      spec <- groups_metric_specs[[metric]]
+      tabPanel(spec$title, plotly::plotlyOutput(spec$output))
+    })
+    do.call(
+      tabBox,
+      c(list(title = NULL, width = 12, id = "groups_expression_metrics_tabs"), tabs)
+    )
+  }
   fluidRow(
     cerebroBox(
       title = tagList(
         boxTitle("Expression metrics"),
         cerebroInfoButton("groups_expression_metrics_info")
       ),
-      tabBox(
-        title = NULL,
-        width = 12,
-        id = "groups_expression_metrics_tabs",
-        tabPanel(
-          "Number of transcripts",
-          uiOutput("groups_nUMI_UI")
-        ),
-        tabPanel(
-          "Number of expressed genes",
-          uiOutput("groups_nGene_UI")
-        ),
-        tabPanel(
-          "Mitochondrial gene expression",
-          uiOutput("groups_percent_mt_UI")
-        ),
-        tabPanel(
-          "Ribosomal gene expression",
-          uiOutput("groups_percent_ribo_UI")
-        )
-      )
+      content
     )
   )
-})
-
-##----------------------------------------------------------------------------##
-## Number of transcripts.
-##----------------------------------------------------------------------------##
-output[["groups_nUMI_UI"]] <- renderUI({
-  if ("nUMI" %in% colnames(viewerProjectionFirstFrameMetadata())) {
-    plotly::plotlyOutput("groups_nUMI_plot")
-  } else {
-    textOutput("groups_nUMI_text")
-  }
-})
-
-output[["groups_nUMI_text"]] <- renderText({
-  "Column with number of transcript per cell not available."
 })
 
 output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
@@ -74,7 +74,7 @@ output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
     table = groupsMetricData(input[["groups_selected_group"]], "nUMI"),
     metric = "nUMI",
     coloring_variable = input[["groups_selected_group"]],
-    colors = reactive_colors()[[input[["groups_selected_group"]]]],
+    colors = reactive_group_colors(input[["groups_selected_group"]]),
     y_title = "Number of transcripts",
     mode = "integer"
   )
@@ -82,23 +82,9 @@ output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
   cachePlot(
     input[["groups_selected_group"]],
     "nUMI",
+    reactive_group_colors(input[["groups_selected_group"]]),
     available_crb_files$selected
   )
-
-##----------------------------------------------------------------------------##
-## Number of expressed genes.
-##----------------------------------------------------------------------------##
-output[["groups_nGene_UI"]] <- renderUI({
-  if ("nGene" %in% colnames(viewerProjectionFirstFrameMetadata())) {
-    plotly::plotlyOutput("groups_nGene_plot")
-  } else {
-    textOutput("groups_nGene_text")
-  }
-})
-
-output[["groups_nGene_text"]] <- renderText({
-  "Column with number of expressed genes per cell not available."
-})
 
 output[["groups_nGene_plot"]] <- plotly::renderPlotly({
   req(
@@ -113,7 +99,7 @@ output[["groups_nGene_plot"]] <- plotly::renderPlotly({
     table = groupsMetricData(input[["groups_selected_group"]], "nGene"),
     metric = "nGene",
     coloring_variable = input[["groups_selected_group"]],
-    colors = reactive_colors()[[input[["groups_selected_group"]]]],
+    colors = reactive_group_colors(input[["groups_selected_group"]]),
     y_title = "Number of expressed genes",
     mode = "integer"
   )
@@ -121,23 +107,9 @@ output[["groups_nGene_plot"]] <- plotly::renderPlotly({
   cachePlot(
     input[["groups_selected_group"]],
     "nGene",
+    reactive_group_colors(input[["groups_selected_group"]]),
     available_crb_files$selected
   )
-
-##----------------------------------------------------------------------------##
-## Expression from mitochondrial genes.
-##----------------------------------------------------------------------------##
-output[["groups_percent_mt_UI"]] <- renderUI({
-  if ("percent_mt" %in% colnames(viewerProjectionFirstFrameMetadata())) {
-    plotly::plotlyOutput("groups_percent_mt_plot")
-  } else {
-    textOutput("groups_percent_mt_text")
-  }
-})
-
-output[["groups_percent_mt_text"]] <- renderText({
-  "Column with percentage of mitochondrial expression not available."
-})
 
 output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
   req(
@@ -152,7 +124,7 @@ output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
     table = groupsMetricData(input[["groups_selected_group"]], "percent_mt"),
     metric = "percent_mt",
     coloring_variable = input[["groups_selected_group"]],
-    colors = reactive_colors()[[input[["groups_selected_group"]]]],
+    colors = reactive_group_colors(input[["groups_selected_group"]]),
     y_title = "Percentage of transcripts",
     mode = "percent"
   )
@@ -160,23 +132,9 @@ output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
   cachePlot(
     input[["groups_selected_group"]],
     "percent_mt",
+    reactive_group_colors(input[["groups_selected_group"]]),
     available_crb_files$selected
   )
-
-##----------------------------------------------------------------------------##
-## Expression from ribosomal genes.
-##----------------------------------------------------------------------------##
-output[["groups_percent_ribo_UI"]] <- renderUI({
-  if ("percent_ribo" %in% colnames(viewerProjectionFirstFrameMetadata())) {
-    plotly::plotlyOutput("groups_percent_ribo_plot")
-  } else {
-    textOutput("groups_percent_ribo_text")
-  }
-})
-
-output[["groups_percent_ribo_text"]] <- renderText({
-  "Column with percentage of ribosomal expression not available."
-})
 
 output[["groups_percent_ribo_plot"]] <- plotly::renderPlotly({
   req(
@@ -191,7 +149,7 @@ output[["groups_percent_ribo_plot"]] <- plotly::renderPlotly({
     table = groupsMetricData(input[["groups_selected_group"]], "percent_ribo"),
     metric = "percent_ribo",
     coloring_variable = input[["groups_selected_group"]],
-    colors = reactive_colors()[[input[["groups_selected_group"]]]],
+    colors = reactive_group_colors(input[["groups_selected_group"]]),
     y_title = "Percentage of transcripts",
     mode = "percent"
   )
@@ -199,6 +157,7 @@ output[["groups_percent_ribo_plot"]] <- plotly::renderPlotly({
   cachePlot(
     input[["groups_selected_group"]],
     "percent_ribo",
+    reactive_group_colors(input[["groups_selected_group"]]),
     available_crb_files$selected
   )
 
