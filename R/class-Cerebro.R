@@ -829,8 +829,18 @@ Cerebro <- R6::R6Class(
     #' @return
     #' \code{data.frame} containing the most expressed genes.
     getMostExpressedGenes = function(group_name) {
-      self$checkIfGroupExists(group_name)
-      self$checkIfColumnExistsInMetadata(group_name)
+      if (
+        length(group_name) != 1L ||
+          is.na(group_name) ||
+          !(group_name %in% names(self$most_expressed_genes))
+      ) {
+        stop(
+          glue::glue(
+            'Most expressed genes for `{group_name}` are not available.'
+          ),
+          call. = FALSE
+        )
+      }
       return(self$most_expressed_genes[[group_name]])
     },
 
@@ -866,8 +876,16 @@ Cerebro <- R6::R6Class(
     #' @return
     #' \code{data.frame} containing the mean expression per gene.
     getMeanExpression = function(group_name) {
-      self$checkIfGroupExists(group_name)
-      self$checkIfColumnExistsInMetadata(group_name)
+      if (
+        length(group_name) != 1L ||
+          is.na(group_name) ||
+          !(group_name %in% names(self$mean_expression))
+      ) {
+        stop(
+          glue::glue('Mean expression for `{group_name}` is not available.'),
+          call. = FALSE
+        )
+      }
       return(self$mean_expression[[group_name]])
     },
 

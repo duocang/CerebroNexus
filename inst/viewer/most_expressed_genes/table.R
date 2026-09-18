@@ -2,12 +2,47 @@
 ## Table or info text when data is missing.
 ##----------------------------------------------------------------------------##
 
+most_expressed_genes_available_groups <- reactive({
+  unique(c(
+    getGroupsWithMostExpressedGenes(),
+    getGroupsWithMeanExpression()
+  ))
+})
+
+most_expressed_genes_selected_tables <- reactive({
+  selected_group <- input[["most_expressed_genes_selected_group"]]
+  req(
+    selected_group,
+    selected_group %in% most_expressed_genes_available_groups()
+  )
+  list(
+    pct = if (selected_group %in% getGroupsWithMostExpressedGenes()) {
+      tryCatch(
+        viewerGetMostExpressedGenes(selected_group),
+        error = function(e) NULL
+      )
+    },
+    mean_expr = if (selected_group %in% getGroupsWithMeanExpression()) {
+      tryCatch(getMeanExpression(selected_group), error = function(e) NULL)
+    }
+  )
+})
+
+most_expressed_genes_selected_table <- reactive({
+  metric_type <- input[["most_expressed_genes_metric_type"]]
+  req(metric_type)
+  most_expressed_genes_selected_tables()[[metric_type]]
+})
+
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_table_UI"]] <- renderUI({
   selected_group <- input[['most_expressed_genes_selected_group']]
-  if (is.null(selected_group) || selected_group %in% getGroups() == FALSE) {
+  if (
+    is.null(selected_group) ||
+      selected_group %in% most_expressed_genes_available_groups() == FALSE
+  ) {
     fluidRow(
       cerebroBox(
         title = boxTitle("Gene counts"),
@@ -33,39 +68,16 @@ output[["most_expressed_genes_table_UI"]] <- renderUI({
 ## missing.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
-  selected_group <- input[['most_expressed_genes_selected_group']]
-
   ## Build available metric choices based on data availability
   metric_choices <- c()
-
-  ## Check if percent expressed data exists
-  pct_data <- tryCatch(
-    {
-      if (selected_group %in% getGroupsWithMostExpressedGenes()) {
-        viewerGetMostExpressedGenes(selected_group)
-      } else {
-        NULL
-      }
-    },
-    error = function(e) NULL
-  )
+  tables <- most_expressed_genes_selected_tables()
+  pct_data <- tables$pct
 
   if (!is.null(pct_data) && is.data.frame(pct_data) && nrow(pct_data) > 0) {
     metric_choices <- c(metric_choices, "Percent expressed" = "pct")
   }
 
-  ## Check if mean expression data exists
-  mean_data <- tryCatch(
-    {
-      groups_with_mean <- getGroupsWithMeanExpression()
-      if (!is.null(groups_with_mean) && selected_group %in% groups_with_mean) {
-        getMeanExpression(selected_group)
-      } else {
-        NULL
-      }
-    },
-    error = function(e) NULL
-  )
+  mean_data <- tables$mean_expr
 
   if (!is.null(mean_data) && is.data.frame(mean_data) && nrow(mean_data) > 0) {
     metric_choices <- c(metric_choices, "Mean expression" = "mean_expr")
@@ -143,19 +155,8 @@ output[["most_expressed_genes_filter_subgroups_UI"]] <- renderUI({
   req(!is.null(input[["most_expressed_genes_table_filter_switch"]]))
   req(!is.null(input[["most_expressed_genes_metric_type"]]))
   selected_group <- input[['most_expressed_genes_selected_group']]
-  req(selected_group %in% getGroups())
-  ## fetch results based on selected metric type safely
-  metric_type <- input[["most_expressed_genes_metric_type"]]
-  results_df <- tryCatch(
-    {
-      if (metric_type == "pct") {
-        viewerGetMostExpressedGenes(selected_group)
-      } else {
-        getMeanExpression(selected_group)
-      }
-    },
-    error = function(e) NULL
-  )
+  req(selected_group %in% most_expressed_genes_available_groups())
+  results_df <- most_expressed_genes_selected_table()
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
   ## check if pre-filtering is activated and name of first column in table is
@@ -163,7 +164,7 @@ output[["most_expressed_genes_filter_subgroups_UI"]] <- renderUI({
   ## ... it's not
   if (
     input[["most_expressed_genes_table_filter_switch"]] == TRUE ||
-      colnames(results_df)[1] %in% getGroups() == FALSE
+      !identical(colnames(results_df)[1], selected_group)
   ) {
     ## return nothing (empty row)
     fluidRow()
@@ -193,27 +194,17 @@ output[["most_expressed_genes_filter_subgroups_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_table"]] <- DT::renderDataTable({
   selected_group <- input[['most_expressed_genes_selected_group']]
-  req(selected_group %in% getGroups())
+  req(selected_group %in% most_expressed_genes_available_groups())
   req(!is.null(input[["most_expressed_genes_metric_type"]]))
-  ## fetch results based on selected metric type safely
   metric_type <- input[["most_expressed_genes_metric_type"]]
-  results_df <- tryCatch(
-    {
-      if (metric_type == "pct") {
-        viewerGetMostExpressedGenes(selected_group)
-      } else {
-        getMeanExpression(selected_group)
-      }
-    },
-    error = function(e) NULL
-  )
+  results_df <- most_expressed_genes_selected_table()
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
   ## filter the table for a specific subgroup only if specified by the user,
   ## otherwise show all results
   if (
     input[["most_expressed_genes_table_filter_switch"]] == FALSE &&
-      colnames(results_df)[1] %in% getGroups() == TRUE
+      identical(colnames(results_df)[1], selected_group)
   ) {
     ## don't proceed if selection of subgroup is not available
     req(input[["most_expressed_genes_table_select_group_level"]])
