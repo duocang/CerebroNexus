@@ -1202,6 +1202,71 @@ test_that("hidden HLA controls do not scan the repertoire", {
   )
 })
 
+test_that("HLA heavy consumers require their visible subtab", {
+  visual <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  associations <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  ui <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(hla_inst_file("viewer/www/hla_motifs.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  network_observer <- regmatches(
+    visual,
+    regexpr(
+      "observe\\(\\{[\\s\\S]{0,900}cerebroCellViewRender",
+      visual,
+      perl = TRUE
+    )
+  )
+  expect_match(network_observer, 'input[["sidebar"]]', fixed = TRUE)
+  expect_match(network_observer, 'input[["hla_tabs"]]', fixed = TRUE)
+  expect_match(
+    network_observer,
+    "hla_motif_network_render_request",
+    fixed = TRUE
+  )
+  expect_match(
+    network_observer,
+    "hla_active_chain() %in% hla_tcr_chains()",
+    fixed = TRUE
+  )
+
+  expect_match(ui, 'id = "hla_associations_mount"', fixed = TRUE)
+  expect_match(client, "hla_associations_render_request", fixed = TRUE)
+  expect_match(
+    associations,
+    "hla_association_consumer_ready <- reactive",
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(
+      associations,
+      gregexpr(
+        "observeEvent\\(\\n  \\{\\n    req\\(hla_association_consumer_ready\\(\\)\\)",
+        associations,
+        perl = TRUE
+      )
+    )),
+    2L
+  )
+})
+
 test_that("the page's allele lives outside both pickers", {
   # There is ONE allele for the whole page, and it must not be stored in either
   # picker's input. The network's picker sits in a conditionalPanel, so Shiny

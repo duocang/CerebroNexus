@@ -108,7 +108,10 @@ tab_hla_tcr_motifs <- tabItem(
           ),
           tabPanel(
             "HLA Associations",
-            uiOutput("hla_associations_ui")
+            tags$div(
+              id = "hla_associations_mount",
+              uiOutput("hla_associations_ui")
+            )
           ),
           tabPanel(
             "Data & QC",

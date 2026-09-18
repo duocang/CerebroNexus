@@ -22,11 +22,19 @@ hla_label_hint <- function(label, hint) {
   )
 }
 
+hla_association_page_requested <- reactive({
+  req(identical(input[["sidebar"]], "hla_tcr_motifs"))
+  req(identical(input[["hla_tabs"]], "HLA Associations"))
+  req(input[["hla_associations_render_request"]])
+  TRUE
+})
+
 ## Deliberately hla_global_motif_graph(), never the drawn hla_motif_graph():
 ## under the allele scope the drawn graph is built from one allele's carriers,
 ## and a feature nominated by the exposure cannot then be tested against it.
 ## See hla_global_motif_graph in data.R.
 hla_feature_catalog <- reactive({
+  req(hla_association_page_requested())
   g <- hla_global_motif_graph()
   if (!hla_motif_graph_ok(g)) {
     return(NULL)
@@ -66,7 +74,17 @@ hla_selected_feature_members <- reactive({
   members
 })
 
+hla_association_consumer_ready <- reactive({
+  req(hla_association_page_requested())
+  allele <- hla_color_allele()
+  req(allele, allele %in% unname(hla_allele_choices()))
+  members <- hla_selected_feature_members()
+  req(is.data.frame(members), nrow(members) > 0L)
+  TRUE
+})
+
 output$hla_feature_selector_ui <- renderUI({
+  req(hla_association_page_requested())
   catalog <- hla_feature_catalog()
   if (is.null(catalog) || nrow(catalog) == 0) {
     return(tags$p(class = "text-muted", "No drawable motif feature available."))
@@ -103,13 +121,14 @@ output$hla_feature_selector_ui <- renderUI({
 })
 
 hla_overlap_table <- reactive({
+  req(hla_association_consumer_ready())
+  allele <- hla_color_allele()
   typing <- hla_active_typing()
   members <- hla_selected_feature_members()
   # The page's shared allele, not this tab's picker. Reading the picker directly
   # meant these numbers came from a control that only exists while this tab is
   # open, and that answered independently of the allele the network was
   # coloured by — the exact mismatch hla_color_allele() exists to prevent.
-  allele <- hla_color_allele()
   seg <- hla_segments()
   if (
     !hla_has_typing() ||
@@ -135,6 +154,7 @@ hla_overlap_table <- reactive({
 })
 
 output$hla_associations_ui <- renderUI({
+  req(hla_association_page_requested())
   if (!hla_has_typing()) {
     return(tags$p(
       class = "text-muted",
@@ -362,14 +382,20 @@ output$hla_overlap_summary <- DT::renderDataTable(
   )
 )
 hla_overlap_summary_proxy <- DT::dataTableProxy("hla_overlap_summary")
-observeEvent(hla_overlap_summary_data(), {
-  DT::replaceData(
-    hla_overlap_summary_proxy,
-    hla_overlap_summary_data(),
-    resetPaging = FALSE,
-    rownames = FALSE
-  )
-})
+observeEvent(
+  {
+    req(hla_association_consumer_ready())
+    hla_overlap_summary_data()
+  },
+  {
+    DT::replaceData(
+      hla_overlap_summary_proxy,
+      hla_overlap_summary_data(),
+      resetPaging = FALSE,
+      rownames = FALSE
+    )
+  }
+)
 
 ## ---- Per-unit breadth and cell fraction ------------------------------------ ##
 ## Empty skeleton mirrors the columns hla_descriptive_feature_overlap() returns,
@@ -419,14 +445,20 @@ output$hla_overlap_table <- DT::renderDataTable({
   )
 })
 hla_overlap_table_proxy <- DT::dataTableProxy("hla_overlap_table")
-observeEvent(hla_overlap_breadth_data(), {
-  DT::replaceData(
-    hla_overlap_table_proxy,
-    hla_overlap_breadth_data(),
-    resetPaging = FALSE,
-    rownames = FALSE
-  )
-})
+observeEvent(
+  {
+    req(hla_association_consumer_ready())
+    hla_overlap_breadth_data()
+  },
+  {
+    DT::replaceData(
+      hla_overlap_table_proxy,
+      hla_overlap_breadth_data(),
+      resetPaging = FALSE,
+      rownames = FALSE
+    )
+  }
+)
 
 output$hla_allele_matrix <- DT::renderDataTable({
   if (!hla_has_typing()) {

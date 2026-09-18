@@ -15,6 +15,33 @@
   var pendingState = null;
   var syncingSelection = false;
   var shinyBound = false;
+  var associationObserver = null;
+  var associationRequested = false;
+
+  function requestAssociations() {
+    if (associationRequested || !window.Shiny || !Shiny.setInputValue) return;
+    associationRequested = true;
+    Shiny.setInputValue('hla_associations_render_request', Date.now(), {
+      priority: 'event'
+    });
+  }
+
+  function observeAssociations() {
+    var host = document.getElementById('hla_associations_mount');
+    if (!host || host._renderObserved) return;
+    host._renderObserved = true;
+    if (!window.IntersectionObserver) {
+      requestAssociations();
+      return;
+    }
+    associationObserver = new IntersectionObserver(function (entries) {
+      if (entries.some(function (entry) { return entry.isIntersecting; })) {
+        requestAssociations();
+        associationObserver.disconnect();
+      }
+    });
+    associationObserver.observe(host);
+  }
 
   function net() {
     if (!window.HTMLWidgets || !window.HTMLWidgets.find) return null;
@@ -426,6 +453,7 @@
   function connectShiny() {
     if (shinyBound || !window.Shiny || !Shiny.addCustomMessageHandler) return;
     shinyBound = true;
+    observeAssociations();
     Shiny.addCustomMessageHandler('hla_motif_selection_state', receiveSelection);
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
       if (!request) return;

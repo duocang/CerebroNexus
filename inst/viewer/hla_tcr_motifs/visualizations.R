@@ -481,7 +481,10 @@ output$hla_motif_readout <- renderUI({
 })
 
 observe({
+  req(identical(input[["sidebar"]], "hla_tcr_motifs"))
+  req(identical(input[["hla_tabs"]], "Motif Network"))
   req(input[["hla_motif_network_render_request"]])
+  req(hla_active_chain() %in% hla_tcr_chains())
   req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$layout)) {
