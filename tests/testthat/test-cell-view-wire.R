@@ -350,6 +350,68 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
   )
 })
 
+test_that("dataset changes invalidate cached specialist plots", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const resetStart = source.indexOf('  function resetSingleViews');",
+      "const resetEnd = source.indexOf('  function mountSingleSurface', resetStart);",
+      "const attachStart = source.indexOf('  function attachSingleDatasetIdentity');",
+      "const attachEnd = source.indexOf('  function reportSingleHiddenGroups', attachStart);",
+      "let restored = 0;",
+      "function restoreLinkedSurface() { restored += 1; }",
+      "function reportSelection() {}",
+      "let singleViews = {overview_projection:{datasetIdentity:{cell_fingerprint:'dataset-a'}}};",
+      "let singleActive = null;",
+      "let singleRequests = new Set(['overview_projection']);",
+      "let singleSpaceIds = ['umap'];",
+      "let singleSpaceModes = {umap:'cluster'};",
+      "let singleIndexCells = ['a'];",
+      "let singleIndexMap = new Map([['a', 0]]);",
+      "let linkedState = {dataset:'a'};",
+      "let D = {dataset_fingerprint:'dataset-a'};",
+      "eval(source.slice(resetStart, resetEnd));",
+      "eval(source.slice(attachStart, attachEnd));",
+      "attachSingleDatasetIdentity({cell_fingerprint:'dataset-b'});",
+      "console.log(JSON.stringify({views:Object.keys(singleViews),active:singleActive,requests:singleRequests.size,restored:restored}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(views = list(), active = NULL, requests = 0L, restored = 1L)
+  )
+})
+
+test_that("JSON specialist payloads retain dataset identity", {
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  handler <- strsplit(
+    strsplit(
+      javascript,
+      "Shiny.addCustomMessageHandler('cell_view_render'",
+      fixed = TRUE
+    )[[1L]][[2L]],
+    "Shiny.addCustomMessageHandler('cell_view_background'",
+    fixed = TRUE
+  )[[1L]][[1L]]
+
+  expect_match(handler, "message.dataset_identity", fixed = TRUE)
+})
+
 test_that("zero-color specialist frames reuse shared browser geometry", {
   javascript <- paste(
     readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),

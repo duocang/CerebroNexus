@@ -2718,9 +2718,23 @@
   }
 
   function attachSingleDatasetIdentity(identity) {
-    if (!singleActive || !D || D.dataset_fingerprint) return;
     var fingerprint = identity && identity.cell_fingerprint;
     if (!fingerprint) return;
+    var staleCache = Object.keys(singleViews).some(function (id) {
+      var shown = singleViews[id] && singleViews[id].datasetIdentity;
+      if (!shown || !shown.cell_fingerprint) return false;
+      return String(shown.cell_fingerprint) !== String(fingerprint) ||
+        Number(shown.cell_count) !== Number(identity.cell_count) ||
+        String(shown.cell_order_fingerprint || '') !==
+          String(identity.cell_order_fingerprint || '');
+    });
+    var staleActive = singleActive && D && D.dataset_fingerprint &&
+      String(D.dataset_fingerprint) !== String(fingerprint);
+    if (staleCache || staleActive) {
+      resetSingleViews();
+      return;
+    }
+    if (!singleActive || !D || D.dataset_fingerprint) return;
     D.dataset_fingerprint = String(fingerprint);
     reportSelection();
   }
@@ -7899,7 +7913,8 @@
         message.meta,
         message.data,
         message.hover,
-        message.extra
+        message.extra,
+        message.dataset_identity
       );
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
