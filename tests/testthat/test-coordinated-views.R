@@ -1079,6 +1079,13 @@ test_that("saved-view startup identity does not materialize cell names", {
 test_that("supplement work starts only after the painted primary reports ready", {
   server_file <- file.path(dirname(bundle_file), "server.R")
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
   initial_push <- strsplit(
     server,
     'observeEvent(\n  input[["coordviews_primary_ready"]]',
@@ -1092,6 +1099,54 @@ test_that("supplement work starts only after the painted primary reports ready",
     fixed = TRUE
   )
   expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
+  expect_match(
+    server,
+    "modalities <- unique(as.character(request$modalities",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "cv_prepare_progressive_supplement(\n      primary,\n      primary_n,\n      modalities\n    )",
+    fixed = TRUE
+  )
+  expect_match(client, "modalities: requestedModalities()", fixed = TRUE)
+})
+
+test_that("primary colour selection does not scan unused categorical columns", {
+  skip_if_not(have_bundle)
+  old <- get0("as.character.unscannable", envir = .GlobalEnv, inherits = FALSE)
+  assign(
+    "as.character.unscannable",
+    function(x, ...) stop("unused categorical column was scanned"),
+    envir = .GlobalEnv
+  )
+  on.exit(
+    {
+      if (is.null(old)) {
+        rm("as.character.unscannable", envir = .GlobalEnv)
+      } else {
+        assign("as.character.unscannable", old, envir = .GlobalEnv)
+      }
+    },
+    add = TRUE
+  )
+
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B")),
+    unused = structure(c("x", "y", "z"), class = "unscannable")
+  )
+  colours <- cv_env$cv_build_primary_colours(
+    list(
+      getGroups = function() c("cell_type", "unused"),
+      getParameters = function() list(main_group = "cell_type")
+    ),
+    metadata,
+    c("cell_type", "unused"),
+    function(name, levels) rep("#000000", length(levels))
+  )
+
+  expect_identical(colours$default_group, "cell_type")
+  expect_named(colours$groups, "cell_type")
 })
 
 test_that("deferred metadata builds only the requested attribute", {

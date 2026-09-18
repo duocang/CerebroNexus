@@ -1628,48 +1628,11 @@ cv_default_group <- function(available, preferred = NULL) {
 }
 
 cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
-  group_candidates <- group_names[vapply(
-    group_names,
-    function(name) {
-      value <- md[[name]]
-      if (is.null(value)) {
-        return(FALSE)
-      }
-      levels <- if (is.factor(value)) {
-        levels(value)
-      } else {
-        unique(as.character(value))
-      }
-      any(!is.na(levels))
-    },
-    logical(1)
-  )]
-  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
-  extra_candidates <- character()
-  skipped <- list()
-  for (name in setdiff(colnames(md), c("cell_barcode", group_names))) {
-    value <- md[[name]]
-    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
-      next
-    }
-    levels <- if (is.factor(value)) {
-      levels(value)
-    } else {
-      unique(as.character(value))
-    }
-    levels <- levels[!is.na(levels)]
-    if (!length(levels)) {
-      next
-    }
-    if (length(levels) > max_levels) {
-      skipped[[name]] <- length(levels)
-    } else {
-      extra_candidates <- c(extra_candidates, name)
-    }
-  }
+  group_candidates <- intersect(group_names, colnames(md))
+  column_candidates <- setdiff(colnames(md), "cell_barcode")
   parameters <- tryCatch(crb$getParameters(), error = function(e) list())
   default_group <- cv_default_group(
-    c(group_candidates, extra_candidates),
+    unique(c(group_candidates, column_candidates)),
     parameters[["main_group"]]
   )
   groups <- list()
@@ -1678,27 +1641,47 @@ cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
   if (!is.null(default_group) && default_group %in% group_candidates) {
     groups <- cv_build_groups(crb, md, colors_fn, default_group)
   } else if (!is.null(default_group)) {
-    cat_extra <- cv_build_extra_groups(
-      md,
-      group_names,
-      colors_fn,
-      default_group
-    )$groups
-  } else {
-    for (name in setdiff(colnames(md), "cell_barcode")) {
-      fields <- cv_build_fields(md, only = name)
-      if (length(fields)) {
-        default_group <- paste0(cv_field_mode, names(fields)[1L])
-        break
+    value <- md[[default_group]]
+    if (is.character(value) || is.factor(value) || is.logical(value)) {
+      cat_extra <- cv_build_extra_groups(
+        md,
+        group_names,
+        colors_fn,
+        default_group
+      )$groups
+    } else if (is.numeric(value)) {
+      fields <- cv_build_fields(md, only = default_group)
+      default_group <- if (length(fields)) {
+        paste0(cv_field_mode, names(fields)[1L])
+      } else {
+        NULL
       }
     }
   }
   list(
     groups = groups,
     cat_extra = cat_extra,
-    cat_skipped = skipped,
+    cat_skipped = list(),
     fields = fields,
     default_group = default_group
+  )
+}
+
+cv_progressive_modalities <- function(crb, projection_names) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  manifest <- if (is.list(pack)) pack$manifest else NULL
+  if (!is.list(manifest)) {
+    return("all")
+  }
+  capabilities <- manifest$capabilities %||% list()
+  c(
+    "attributes",
+    if (length(projection_names) > 1L) "projections",
+    names(capabilities)[
+      vapply(capabilities, isTRUE, logical(1)) &
+        names(capabilities) %in% c("trajectory", "spatial", "trekker")
+    ],
+    if (length(manifest$immune_receptors %||% character())) "clone"
   )
 }
 
@@ -1918,6 +1901,7 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
     cat_skipped = cat_skipped,
     fields = fields,
     default_group = default_group,
+    available_modalities = I(cv_progressive_modalities(crb, projection_names)),
     default_point_size = default_point_size,
     default_percentage_cells_to_show = default_percentage_cells_to_show,
     default_point_opacity = default_point_opacity,

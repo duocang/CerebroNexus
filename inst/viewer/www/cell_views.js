@@ -7743,6 +7743,14 @@
     return { selectedCells: result.selected_cells };
   }
 
+  function requestedModalities() {
+    var available = D && Array.isArray(D.available_modalities)
+      ? D.available_modalities.filter(function (name) {
+        return typeof name === 'string' && name.length;
+      }) : [];
+    return available.length ? available : ['all'];
+  }
+
   function reportWorkspaceReady() {
     var summary = workspaceSummary();
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
@@ -7762,6 +7770,7 @@
           dataset_id: D.dataset_id,
           dataset_fingerprint: configFingerprint(),
           progressive_token: D.progressive_token,
+          modalities: requestedModalities(),
           nonce: Date.now()
         }, { priority: 'event' });
       }

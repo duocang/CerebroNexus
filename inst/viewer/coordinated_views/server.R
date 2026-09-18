@@ -47,6 +47,7 @@ coordviews_color_source <- reactiveVal(NULL)
 coordviews_assets <- reactiveVal(list())
 coordviews_clone_details <- reactiveVal(NULL)
 coordviews_sent_primary <- reactiveVal(0L)
+coordviews_requested_modalities <- reactiveVal(character())
 
 cv_async_clone_spec <- function(crb, primary) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
@@ -261,15 +262,20 @@ coordviews_primary_bundle <- reactive({
   cv_build_bundle_safe(primary_only = TRUE)
 })
 
-cv_prepare_progressive_supplement <- function(primary, primary_n) {
+cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   started <- proc.time()[["elapsed"]]
-  clone_spec <- cv_async_clone_spec(data_set(), primary)
+  wants_clone <- "all" %in% modalities || "clone" %in% modalities
+  clone_spec <- if (wants_clone) {
+    cv_async_clone_spec(data_set(), primary)
+  } else {
+    NULL
+  }
   supplement <- tryCatch(
     cv_build_compact_supplement(
       data_set(),
       primary,
       viewerProjectionFirstFrameCache(),
-      include_clone = is.null(clone_spec)
+      include_clone = wants_clone && is.null(clone_spec)
     ),
     error = function(error) NULL
   )
@@ -331,6 +337,8 @@ cv_send_progressive_supplement <- function(prepared) {
 observe({
   sent_primary_n <- coordviews_sent_primary()
   req(sent_primary_n > 0L)
+  requested <- coordviews_requested_modalities()
+  req("all" %in% requested || "clone" %in% requested)
   req(identical(coordviews_clone_task$status(), "success"))
   result <- coordviews_clone_task$result()
   target <- result$target
@@ -793,6 +801,7 @@ observe(
       coordviews_assets(list())
       coordviews_clone_details(NULL)
       coordviews_sent_primary(0L)
+      coordviews_requested_modalities(character())
       coordviews_color_source(primary)
       primary$progressive <- TRUE
       primary$progressive_token <- primary_n
@@ -847,6 +856,7 @@ observeEvent(
     request <- input[["coordviews_primary_ready"]]
     primary <- isolate(coordviews_primary_bundle())
     primary_n <- coordviews_build_log$primary_n
+    modalities <- unique(as.character(request$modalities %||% character()))
     req(
       !is.null(request$dataset_id),
       !is.null(request$dataset_fingerprint),
@@ -856,13 +866,31 @@ observeEvent(
         as.character(request$dataset_fingerprint),
         primary$dataset_fingerprint
       ),
-      identical(as.integer(request$progressive_token), primary_n)
+      identical(as.integer(request$progressive_token), primary_n),
+      length(modalities) > 0L,
+      all(
+        modalities %in%
+          c(
+            "all",
+            "attributes",
+            "projections",
+            "trajectory",
+            "spatial",
+            "trekker",
+            "clone"
+          )
+      )
     )
     if (identical(coordviews_build_log$supplemented_primary_n, primary_n)) {
       return()
     }
+    coordviews_requested_modalities(modalities)
     primary$progressive_token <- primary_n
-    prepared <- cv_prepare_progressive_supplement(primary, primary_n)
+    prepared <- cv_prepare_progressive_supplement(
+      primary,
+      primary_n,
+      modalities
+    )
     req(!is.null(prepared))
     cv_send_progressive_supplement(prepared)
     session$sendCustomMessage(
