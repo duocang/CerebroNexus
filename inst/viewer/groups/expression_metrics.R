@@ -6,10 +6,15 @@
 ## - percent of transcripts from ribosomal genes
 ##----------------------------------------------------------------------------##
 
+groupsMetricData <- function(group, metric) {
+  groupsMetadataColumns(c(group, metric))
+}
+
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
 output[["groups_expression_metrics_UI"]] <- renderUI({
+  req(input[["groups_expression_metrics_render_request"]])
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -45,7 +50,7 @@ output[["groups_expression_metrics_UI"]] <- renderUI({
 ## Number of transcripts.
 ##----------------------------------------------------------------------------##
 output[["groups_nUMI_UI"]] <- renderUI({
-  if ("nUMI" %in% colnames(getMetaData())) {
+  if ("nUMI" %in% colnames(viewerProjectionFirstFrameMetadata())) {
     plotly::plotlyOutput("groups_nUMI_plot")
   } else {
     textOutput("groups_nUMI_text")
@@ -57,9 +62,16 @@ output[["groups_nUMI_text"]] <- renderText({
 })
 
 output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
-  req(input[["groups_selected_group"]] %in% getGroups())
+  req(
+    input[["groups_expression_metrics_render_request"]],
+    identical(
+      input[["groups_expression_metrics_tabs"]],
+      "Number of transcripts"
+    ),
+    input[["groups_selected_group"]] %in% getGroups()
+  )
   plotlyViolin(
-    table = getMetaData(),
+    table = groupsMetricData(input[["groups_selected_group"]], "nUMI"),
     metric = "nUMI",
     coloring_variable = input[["groups_selected_group"]],
     colors = reactive_colors()[[input[["groups_selected_group"]]]],
@@ -77,7 +89,7 @@ output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
 ## Number of expressed genes.
 ##----------------------------------------------------------------------------##
 output[["groups_nGene_UI"]] <- renderUI({
-  if ("nGene" %in% colnames(getMetaData())) {
+  if ("nGene" %in% colnames(viewerProjectionFirstFrameMetadata())) {
     plotly::plotlyOutput("groups_nGene_plot")
   } else {
     textOutput("groups_nGene_text")
@@ -89,9 +101,16 @@ output[["groups_nGene_text"]] <- renderText({
 })
 
 output[["groups_nGene_plot"]] <- plotly::renderPlotly({
-  req(input[["groups_selected_group"]] %in% getGroups())
+  req(
+    input[["groups_expression_metrics_render_request"]],
+    identical(
+      input[["groups_expression_metrics_tabs"]],
+      "Number of expressed genes"
+    ),
+    input[["groups_selected_group"]] %in% getGroups()
+  )
   plotlyViolin(
-    table = getMetaData(),
+    table = groupsMetricData(input[["groups_selected_group"]], "nGene"),
     metric = "nGene",
     coloring_variable = input[["groups_selected_group"]],
     colors = reactive_colors()[[input[["groups_selected_group"]]]],
@@ -109,7 +128,7 @@ output[["groups_nGene_plot"]] <- plotly::renderPlotly({
 ## Expression from mitochondrial genes.
 ##----------------------------------------------------------------------------##
 output[["groups_percent_mt_UI"]] <- renderUI({
-  if ("percent_mt" %in% colnames(getMetaData())) {
+  if ("percent_mt" %in% colnames(viewerProjectionFirstFrameMetadata())) {
     plotly::plotlyOutput("groups_percent_mt_plot")
   } else {
     textOutput("groups_percent_mt_text")
@@ -121,9 +140,16 @@ output[["groups_percent_mt_text"]] <- renderText({
 })
 
 output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
-  req(input[["groups_selected_group"]] %in% getGroups())
+  req(
+    input[["groups_expression_metrics_render_request"]],
+    identical(
+      input[["groups_expression_metrics_tabs"]],
+      "Mitochondrial gene expression"
+    ),
+    input[["groups_selected_group"]] %in% getGroups()
+  )
   plotlyViolin(
-    table = getMetaData(),
+    table = groupsMetricData(input[["groups_selected_group"]], "percent_mt"),
     metric = "percent_mt",
     coloring_variable = input[["groups_selected_group"]],
     colors = reactive_colors()[[input[["groups_selected_group"]]]],
@@ -141,7 +167,7 @@ output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
 ## Expression from ribosomal genes.
 ##----------------------------------------------------------------------------##
 output[["groups_percent_ribo_UI"]] <- renderUI({
-  if ("percent_ribo" %in% colnames(getMetaData())) {
+  if ("percent_ribo" %in% colnames(viewerProjectionFirstFrameMetadata())) {
     plotly::plotlyOutput("groups_percent_ribo_plot")
   } else {
     textOutput("groups_percent_ribo_text")
@@ -153,9 +179,16 @@ output[["groups_percent_ribo_text"]] <- renderText({
 })
 
 output[["groups_percent_ribo_plot"]] <- plotly::renderPlotly({
-  req(input[["groups_selected_group"]] %in% getGroups())
+  req(
+    input[["groups_expression_metrics_render_request"]],
+    identical(
+      input[["groups_expression_metrics_tabs"]],
+      "Ribosomal gene expression"
+    ),
+    input[["groups_selected_group"]] %in% getGroups()
+  )
   plotlyViolin(
-    table = getMetaData(),
+    table = groupsMetricData(input[["groups_selected_group"]], "percent_ribo"),
     metric = "percent_ribo",
     coloring_variable = input[["groups_selected_group"]],
     colors = reactive_colors()[[input[["groups_selected_group"]]]],

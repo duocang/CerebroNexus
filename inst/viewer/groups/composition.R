@@ -2,6 +2,12 @@
 ## Composition of selected group by other group.
 ##----------------------------------------------------------------------------##
 
+groupsMetadataColumns <- function(columns) {
+  metadata <- viewerProjectionFirstFrameMetadata()
+  columns <- unique(columns[columns %in% colnames(metadata)])
+  viewerProjectionSubsetRows(metadata, seq_len(nrow(metadata)), columns)
+}
+
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
@@ -101,7 +107,10 @@ output[["groups_by_other_group_plot"]] <- plotly::renderPlotly({
   if (input[["groups_by_other_group_plot_type"]] == "Bar chart") {
     ## calculate table
     composition_df <- calculateTableAB(
-      getMetaData(),
+      groupsMetadataColumns(c(
+        input[["groups_selected_group"]],
+        input[["groups_by_other_group_second_group"]]
+      )),
       input[["groups_selected_group"]],
       input[["groups_by_other_group_second_group"]],
       mode = "long",
@@ -121,7 +130,10 @@ output[["groups_by_other_group_plot"]] <- plotly::renderPlotly({
   } else if (input[["groups_by_other_group_plot_type"]] == "Sankey plot") {
     ## calculate table
     composition_df <- calculateTableAB(
-      getMetaData(),
+      groupsMetadataColumns(c(
+        input[["groups_selected_group"]],
+        input[["groups_by_other_group_second_group"]]
+      )),
       input[["groups_selected_group"]],
       input[["groups_by_other_group_second_group"]],
       mode = "long",
@@ -166,7 +178,10 @@ output[["groups_by_other_group_table"]] <- DT::renderDataTable({
   )
   ## generate table
   composition_df <- calculateTableAB(
-    getMetaData(),
+    groupsMetadataColumns(c(
+      input[["groups_selected_group"]],
+      input[["groups_by_other_group_second_group"]]
+    )),
     input[["groups_selected_group"]],
     input[["groups_by_other_group_second_group"]],
     mode = "wide",
