@@ -47,23 +47,14 @@ viewerPackOpen <- function(file, object) {
   ) {
     return(NULL)
   }
-  schema <- tryCatch(object[["crb_schema"]], error = function(error) NULL)
-  canonical_order <- is.list(schema) &&
-    identical(schema$version, 2L) &&
-    is.integer(schema$n_cells) &&
-    length(schema$n_cells) == 1L &&
-    !is.na(schema$n_cells) &&
-    identical(as.integer(manifest$n_cells), schema$n_cells)
-  cells <- NULL
-  if (!canonical_order) {
-    metadata <- tryCatch(object$getMetaData(), error = function(error) NULL)
-    if (!is.data.frame(metadata) || !("cell_barcode" %in% colnames(metadata))) {
-      return(NULL)
-    }
-    cells <- as.character(metadata$cell_barcode)
-    if (!identical(as.integer(manifest$n_cells), length(cells))) {
-      return(NULL)
-    }
+  cell_count <- suppressWarnings(as.integer(manifest$n_cells))
+  if (
+    length(cell_count) != 1L ||
+      is.na(cell_count) ||
+      cell_count < 0L ||
+      !identical(as.numeric(cell_count), as.numeric(manifest$n_cells))
+  ) {
+    return(NULL)
   }
   assets <- manifest$assets
   if (
@@ -76,9 +67,9 @@ viewerPackOpen <- function(file, object) {
   list(
     path = pack,
     manifest = manifest,
-    cells = cells,
-    cell_count = as.integer(manifest$n_cells),
-    canonical_order = canonical_order,
+    cells = NULL,
+    cell_count = cell_count,
+    canonical_order = TRUE,
     cache = new.env(parent = emptyenv())
   )
 }

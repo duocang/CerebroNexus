@@ -225,16 +225,20 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   expect_identical(first_frame$node_meta_cols, "sample")
   expect_null(first_frame$lineage_col)
   expect_s3_class(first_frame$graph_raw, "igraph")
-  expect_true(get(
+  expect_false(exists(
     ".cell_order_valid",
     envir = descriptor$cache,
     inherits = FALSE
   ))
-
-  misaligned <- runtime$viewerPackOpen(crb, object)
-  misaligned$cells <- rev(misaligned$cells)
-  expect_null(runtime$viewerPackHlaSegments(misaligned, "TRB"))
-  expect_type(runtime$viewerPackHlaFirstFrame(misaligned, "TRB"), "list")
+  expect_false(exists(
+    "common/cell_order.qs2",
+    envir = descriptor$cache,
+    inherits = FALSE
+  ))
+  expect_identical(
+    runtime$viewerPackCellBarcodes(descriptor),
+    sprintf("cell-%03d", 1:4)
+  )
 
   immune <- runtime$viewerPackImmuneIndex(descriptor, "TCR")
   expect_identical(immune$cell_index, 1:4)
@@ -341,6 +345,35 @@ test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
   expect_identical(descriptor$cell_count, 4L)
   expect_null(descriptor$cells)
   expect_true(runtime$viewerPackValidateCellOrder(descriptor))
+})
+
+test_that("full CRBs open Viewer Packs without hydrating metadata", {
+  root <- tempfile("viewer-pack-full-runtime-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
+  buildViewerPack(crb, viewer_binary = "always")
+  calls <- 0L
+  object <- new.env(parent = emptyenv())
+  object$getMetaData <- function() {
+    calls <<- calls + 1L
+    stop("metadata hydration must stay dormant")
+  }
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    envir = runtime
+  )
+
+  descriptor <- runtime$viewerPackOpen(crb, object)
+
+  expect_type(descriptor, "list")
+  expect_identical(calls, 0L)
+  expect_true(isTRUE(descriptor$canonical_order))
+  expect_null(descriptor$cells)
+  expect_identical(
+    runtime$viewerPackCellBarcodes(descriptor),
+    sprintf("cell-%03d", 1:4)
+  )
 })
 
 test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
