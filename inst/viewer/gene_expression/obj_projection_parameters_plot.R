@@ -2,8 +2,30 @@
 ## Collect parameters for projection plot.
 ##----------------------------------------------------------------------------##
 expression_projection_parameters_plot <- reactive({
+  available_projections <- availableProjections()
+  available_trajectory_names <- available_trajectories()
+  selected_projection <- input[["expression_projection_to_display"]]
+  if (
+    is.null(selected_projection) ||
+      !selected_projection %in% c(
+        available_projections,
+        available_trajectory_names
+      )
+  ) {
+    shared <- isolate(input[["coordviews_shared_base"]])
+    selected_projection <- as.character(shared$projection %||% "")
+    if (!selected_projection %in% available_projections) {
+      selected_projection <- if (length(available_projections)) {
+        available_projections[[1L]]
+      } else if (length(available_trajectory_names)) {
+        available_trajectory_names[[1L]]
+      } else {
+        NULL
+      }
+    }
+  }
   req(
-    input[["expression_projection_to_display"]],
+    selected_projection,
     input[["expression_projection_plotting_order"]],
     input[["expression_projection_point_size"]],
     input[["expression_projection_point_opacity"]],
@@ -11,12 +33,10 @@ expression_projection_parameters_plot <- reactive({
     !is.null(input[["expression_projection_keep_square"]]),
     !is.null(preferences[["use_webgl"]]),
     !is.null(preferences[["show_hover_info_in_projections"]]),
-    input[["expression_projection_to_display"]] %in%
-      availableProjections() ||
-      input[["expression_projection_to_display"]] %in% available_trajectories()
+    selected_projection %in% available_projections ||
+      selected_projection %in% available_trajectory_names
   )
-  selected_projection <- input[["expression_projection_to_display"]]
-  if (input[["expression_projection_to_display"]] %in% availableProjections()) {
+  if (selected_projection %in% available_projections) {
     is_trajectory <- FALSE
     range_data <- viewerProjectionFirstFrameCoordinates(selected_projection)
     n_dimensions <- ncol(range_data)

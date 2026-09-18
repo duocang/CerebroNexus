@@ -33,3 +33,29 @@ test_that("Gene selection settles before expression extraction starts", {
     fixed = TRUE
   )
 })
+
+test_that("Gene projection host is present before dynamic controls bind", {
+  ui <- paste(
+    readLines(viewer_test_path("gene_expression", "UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  parameters <- paste(
+    readLines(
+      viewer_test_path(
+        "gene_expression",
+        "obj_projection_parameters_plot.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    ui,
+    'cerebroCellViewOutput("expression_projection")',
+    fixed = TRUE
+  )
+  expect_false(grepl('uiOutput("expression_projection_UI")', ui, fixed = TRUE))
+  expect_match(parameters, 'input[["coordviews_shared_base"]]', fixed = TRUE)
+  expect_match(parameters, "available_projections[[1L]]", fixed = TRUE)
+})

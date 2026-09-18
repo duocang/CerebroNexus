@@ -622,9 +622,12 @@ test_that("{shinytest2} recording: gene_expression", {
   activate_tab(app, "geneExpression")
   app$wait_for_idle(timeout = 10000)
 
-  ## projection UI renders without any gene selected
-  proj_ui <- retry_get_value(app, output = "expression_projection_UI")
-  expect_false(is.null(proj_ui))
+  ## The renderer host is in the initial DOM so the first request does not wait
+  ## for the nested projection controls to complete their binding round trips.
+  app$wait_for_js(
+    "!!document.getElementById('expression_projection_cell_view_host')",
+    timeout = 10000
+  )
 
   ## The gene selectize lives in a renderUI, so it is not bound the instant the
   ## tab goes idle. Wait for its element before set_inputs, or the input binding
