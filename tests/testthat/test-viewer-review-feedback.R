@@ -731,7 +731,6 @@ test_that("Specialist group filters share inclusive empty-selection behavior", {
 
   for (path in list(
     c("overview", "obj_projection_cells_to_show.R"),
-    c("spatial", "obj_projection_cells_to_show.R"),
     c("gene_expression", "obj_projection_cells_to_show.R")
   )) {
     expect_match(
@@ -740,6 +739,9 @@ test_that("Specialist group filters share inclusive empty-selection behavior", {
       fixed = TRUE
     )
   }
+  spatial <- viewer_source("spatial", "obj_projection_cells_to_show.R")
+  expect_match(spatial, "viewerProjectionSubsetRows", fixed = TRUE)
+  expect_match(spatial, "cerebroGroupFilterMask", fixed = TRUE)
 })
 
 test_that("Cell scatter pages share one percentage default", {
