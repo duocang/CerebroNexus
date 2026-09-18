@@ -305,21 +305,19 @@ cv_send_progressive_supplement <- function(prepared) {
   supplement <- deferred$value
   coordviews_assets(deferred$assets)
   current_colors <- coordviews_color_source()
-  coordviews_color_source(list(
-    dataset_id = supplement$dataset_id,
-    groups = c(
-      current_colors$groups %||% list(),
-      supplement$groups %||% list()
-    ),
-    cat_extra = c(
-      current_colors$cat_extra %||% list(),
-      supplement$cat_extra %||% list()
-    ),
-    fields = c(
-      current_colors$fields %||% list(),
-      supplement$fields %||% list()
-    )
-  ))
+  current_colors$groups <- c(
+    current_colors$groups %||% list(),
+    supplement$groups %||% list()
+  )
+  current_colors$cat_extra <- c(
+    current_colors$cat_extra %||% list(),
+    supplement$cat_extra %||% list()
+  )
+  current_colors$fields <- c(
+    current_colors$fields %||% list(),
+    supplement$fields %||% list()
+  )
+  coordviews_color_source(current_colors)
   supplement$transport_profile <- list(
     server_prepare_ms = attr(supplement, "server_prepare_ms") %||% NA_real_,
     sent_at_ms = as.numeric(Sys.time()) * 1000

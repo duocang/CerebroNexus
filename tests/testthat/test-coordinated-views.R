@@ -1204,8 +1204,8 @@ test_that("progressive colour source retains deferred numeric fields", {
   expect_match(
     server,
     paste0(
-      "fields = c(\n      current_colors$fields %||% list(),\n      ",
-      "supplement$fields %||% list()\n    )"
+      "current_colors$fields <- c(\n    current_colors$fields %||% list(),\n    ",
+      "supplement$fields %||% list()\n  )"
     ),
     fixed = TRUE
   )
@@ -2254,6 +2254,25 @@ test_that("canonical clone supplement runs outside the Shiny session", {
   expect_match(client, "coordviews_clone_details", fixed = TRUE)
   expect_match(client, "group.clone_index", fixed = TRUE)
   expect_match(server, "progressive_complete = FALSE", fixed = TRUE)
+  send_supplement <- strsplit(
+    strsplit(
+      server,
+      "cv_send_progressive_supplement <- function(prepared)",
+      fixed = TRUE
+    )[[1L]][[2L]],
+    "observe({",
+    fixed = TRUE
+  )[[1L]][[1L]]
+  expect_match(
+    send_supplement,
+    "coordviews_color_source(current_colors)",
+    fixed = TRUE
+  )
+  expect_no_match(
+    send_supplement,
+    "coordviews_color_source(list(",
+    fixed = TRUE
+  )
   expect_match(client, "function applyCloneSupplement(extra)", fixed = TRUE)
   expect_match(
     client,
