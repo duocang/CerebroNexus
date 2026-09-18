@@ -1100,7 +1100,8 @@ dedent <- function(string) {
     organism = .datasetInfoScalar(experiment$organism),
     date = .datasetInfoScalar(experiment$date_of_export),
     immune_repertoire = immune_repertoire,
-    tcr_repertoire = tcr_repertoire
+    tcr_repertoire = tcr_repertoire,
+    capabilities = .viewerDatasetCapabilities(object)
   )
 }
 

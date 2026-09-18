@@ -136,6 +136,18 @@ test_that("Viewer Pack manifest validates canonical identity and assets", {
       manifest$modules
   ))
   expect_identical(manifest$immune_receptors, "TCR")
+  expect_identical(
+    unlist(manifest$capabilities, use.names = TRUE),
+    c(
+      marker_genes = FALSE,
+      most_expressed_genes = FALSE,
+      enriched_pathways = FALSE,
+      extra_material = FALSE,
+      trajectory = FALSE,
+      spatial = FALSE,
+      trekker = FALSE
+    )
+  )
   expect_true(length(manifest$assets) >= 4L)
   expect_true(all(file.exists(file.path(pack, manifest$assets$path))))
   expect_true(all(manifest$assets$bytes > 0))

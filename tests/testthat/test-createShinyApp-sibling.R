@@ -375,6 +375,11 @@ test_that("createShinyApp freezes compact dataset information", {
       ))
       object$addExperiment("organism", info$organism)
       object$addExperiment("date_of_export", as.Date("2026-09-17"))
+      if (identical(info$organism, "Mouse")) {
+        object$trajectories <- list(
+          marker_guided = list(E18_neurogenesis = list())
+        )
+      }
       path <- file.path(root, paste0(tolower(info$organism), ".crb"))
       saveRDS(object, path)
       path
@@ -397,12 +402,24 @@ test_that("createShinyApp freezes compact dataset information", {
       organism = "Homo sapiens",
       date = "2026-09-17",
       immune_repertoire = FALSE,
-      tcr_repertoire = FALSE
+      tcr_repertoire = FALSE,
+      capabilities = list(
+        marker_genes = FALSE,
+        most_expressed_genes = FALSE,
+        enriched_pathways = FALSE,
+        extra_material = FALSE,
+        trajectory = FALSE,
+        spatial = FALSE,
+        trekker = FALSE
+      )
     )
   )
   expect_identical(
     config[[".dataset_catalog"]][[configured[[2L]]]]$cells,
     3L
+  )
+  expect_true(
+    config[[".dataset_catalog"]][[configured[[2L]]]]$capabilities$trajectory
   )
 })
 

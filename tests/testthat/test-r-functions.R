@@ -653,7 +653,16 @@ test_that("launchCerebro builds dataset information for configured files", {
       organism = "Homo sapiens",
       date = "2026-09-17",
       immune_repertoire = TRUE,
-      tcr_repertoire = TRUE
+      tcr_repertoire = TRUE,
+      capabilities = list(
+        marker_genes = FALSE,
+        most_expressed_genes = FALSE,
+        enriched_pathways = FALSE,
+        extra_material = FALSE,
+        trajectory = FALSE,
+        spatial = FALSE,
+        trekker = FALSE
+      )
     )
   )
 })

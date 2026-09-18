@@ -1,5 +1,31 @@
 .viewerPackSchemaVersion <- 1L
 
+.viewerDatasetCapabilities <- function(object) {
+  available <- function(value) {
+    isTRUE(tryCatch(length(force(value)) > 0L, error = function(error) FALSE))
+  }
+  trajectory_methods <- tryCatch(
+    object$getMethodsForTrajectories(),
+    error = function(error) character()
+  )
+  list(
+    marker_genes = available(object$getMethodsForMarkerGenes()),
+    most_expressed_genes = available(object$getGroupsWithMostExpressedGenes()),
+    enriched_pathways = available(object$getMethodsForEnrichedPathways()),
+    extra_material = available(object$getExtraMaterialCategories()),
+    trajectory = any(
+      trajectory_methods %in%
+        c(
+          "monocle2",
+          "marker_guided",
+          "illustrative"
+        )
+    ),
+    spatial = available(object$availableSpatial()),
+    trekker = available(object$getTrekker())
+  )
+}
+
 .viewerPackOptions <- function(
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L
@@ -484,6 +510,7 @@
   list(
     assets = assets,
     modules = unique(modules),
+    capabilities = .viewerDatasetCapabilities(object),
     projection_names = projections,
     metadata_names = metadata_names,
     immune_receptors = receptors,
@@ -642,6 +669,7 @@ buildViewerPack <- function(
     cell_order_fingerprint = .viewerPackCellOrderFingerprint(cells),
     n_cells = length(cells),
     modules = built$modules,
+    capabilities = built$capabilities,
     projection_names = built$projection_names,
     metadata_names = built$metadata_names,
     immune_receptors = built$immune_receptors,

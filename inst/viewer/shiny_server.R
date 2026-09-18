@@ -842,7 +842,11 @@ server <- function(input, output, session) {
     item_id <- paste0("sidebar_item_", tab_name)
     show_reactive <- reactive({
       if (!is.null(catalog_field)) {
-        catalog_value <- current_dataset_info()[[catalog_field]]
+        info <- current_dataset_info()
+        catalog_value <- info[[catalog_field]]
+        if (is.null(catalog_value) && is.list(info$capabilities)) {
+          catalog_value <- info$capabilities[[catalog_field]]
+        }
         if (is.logical(catalog_value) && length(catalog_value) == 1L) {
           return(isTRUE(catalog_value))
         }
@@ -874,19 +878,26 @@ server <- function(input, output, session) {
 
   toggleConditionalTab(
     "markerGenes",
-    function() getMethodsForMarkerGenes()
+    function() getMethodsForMarkerGenes(),
+    catalog_field = "marker_genes"
   )
   toggleConditionalTab(
     "mostExpressedGenes",
-    function() getGroupsWithMostExpressedGenes()
+    function() getGroupsWithMostExpressedGenes(),
+    catalog_field = "most_expressed_genes"
   )
   toggleConditionalTab(
     "enrichedPathways",
-    function() getMethodsForEnrichedPathways()
+    function() getMethodsForEnrichedPathways(),
+    catalog_field = "enriched_pathways"
   )
-  toggleConditionalTab("extra_material", function() {
-    length(getExtraMaterialCategories()) > 0L
-  })
+  toggleConditionalTab(
+    "extra_material",
+    function() {
+      length(getExtraMaterialCategories()) > 0L
+    },
+    catalog_field = "extra_material"
+  )
   toggleConditionalTab(
     "immune_repertoire",
     function() {
@@ -902,11 +913,13 @@ server <- function(input, output, session) {
       viewerSupportedTrajectoryMethods(
         getMethodsForTrajectories()
       )
-    }
+    },
+    catalog_field = "trajectory"
   )
   toggleConditionalTab(
     "spatial",
-    function() availableSpatial()
+    function() availableSpatial(),
+    catalog_field = "spatial"
   )
   ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
   ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
@@ -915,7 +928,8 @@ server <- function(input, output, session) {
     function() {
       tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
       !is.null(tk)
-    }
+    },
+    catalog_field = "trekker"
   )
   toggleConditionalTab(
     "hla_tcr_motifs",

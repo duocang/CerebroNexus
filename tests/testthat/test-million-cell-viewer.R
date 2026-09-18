@@ -205,6 +205,35 @@ test_that("the Viewer uses one supported-method filter in every trajectory UI", 
   )
 })
 
+test_that("optional Viewer tabs use compact catalog capabilities", {
+  server <- paste(
+    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  fields <- c(
+    markerGenes = "marker_genes",
+    mostExpressedGenes = "most_expressed_genes",
+    enrichedPathways = "enriched_pathways",
+    extra_material = "extra_material",
+    trajectory = "trajectory",
+    spatial = "spatial",
+    trekker = "trekker"
+  )
+
+  for (tab in names(fields)) {
+    expect_match(
+      server,
+      sprintf(
+        'toggleConditionalTab\\([\\s\\S]{0,300}"%s"[\\s\\S]{0,300}catalog_field = "%s"',
+        tab,
+        fields[[tab]]
+      ),
+      perl = TRUE,
+      info = tab
+    )
+  }
+})
+
 test_that("million-cell hover stays columnar until the browser needs it", {
   utility <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = utility)
