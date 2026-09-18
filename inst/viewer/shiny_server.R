@@ -44,9 +44,19 @@ source(
 ## browser session while the large immutable fields and on-disk handles remain
 ## shared through R's copy-on-modify semantics.
 .crb_process_cache <- new.env(parent = emptyenv())
+.viewer_pack_process_cache <- new.env(parent = emptyenv())
 .crb_launch_prototypes <- Cerebro.options[[".dataset_prototypes"]]
 if (!is.list(.crb_launch_prototypes)) {
   .crb_launch_prototypes <- list()
+}
+if (length(.crb_launch_prototypes)) {
+  for (prototype_path in names(.crb_launch_prototypes)) {
+    viewerPackOpenCached(
+      prototype_path,
+      .crb_launch_prototypes[[prototype_path]],
+      .viewer_pack_process_cache
+    )
+  }
 }
 
 server <- function(input, output, session) {
@@ -661,7 +671,11 @@ server <- function(input, output, session) {
         length(dataset_to_load) == 1L &&
         file.exists(dataset_to_load)
     ) {
-      viewerPackOpen(dataset_to_load, data)
+      viewerPackOpenCached(
+        dataset_to_load,
+        data,
+        .viewer_pack_process_cache
+      )
     } else {
       NULL
     }

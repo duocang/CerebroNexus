@@ -146,6 +146,29 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
   ))
 })
 
+test_that("validated Viewer Pack descriptors are reused with session-local caches", {
+  root <- tempfile("viewer-pack-descriptor-cache-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
+  pack_path <- buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  cache <- new.env(parent = emptyenv())
+
+  first <- runtime$viewerPackOpenCached(crb, object, cache)
+  assign("session-value", TRUE, envir = first$cache)
+  second <- runtime$viewerPackOpenCached(crb, object, cache)
+
+  expect_identical(second$manifest, first$manifest)
+  expect_false(identical(second$cache, first$cache))
+  expect_false(exists("session-value", envir = second$cache, inherits = FALSE))
+
+  manifest <- file.path(pack_path, "manifest.json")
+  writeLines("{invalid", manifest, useBytes = TRUE)
+  expect_null(runtime$viewerPackOpenCached(crb, object, cache))
+})
+
 test_that("Viewer Pack stores canonical spatial row indexes", {
   root <- tempfile("viewer-pack-spatial-")
   dir.create(root)
@@ -572,7 +595,7 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   )
 
   expect_match(server, "/viewer/core/viewer_pack.R", fixed = TRUE)
-  expect_match(server, "viewerPackOpen(dataset_to_load, data)", fixed = TRUE)
+  expect_match(server, "viewerPackOpenCached(", fixed = TRUE)
   expect_match(
     data_layer,
     "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",

@@ -74,6 +74,66 @@ viewerPackOpen <- function(file, object) {
   )
 }
 
+viewerPackSourceSignature <- function(file) {
+  if (
+    !is.character(file) ||
+      length(file) != 1L ||
+      is.na(file) ||
+      !file.exists(file) ||
+      dir.exists(file)
+  ) {
+    return(NULL)
+  }
+  file <- normalizePath(file, mustWork = TRUE)
+  manifest_file <- file.path(
+    dirname(file),
+    paste0(tools::file_path_sans_ext(basename(file)), ".viewer"),
+    "manifest.json"
+  )
+  if (!file.exists(manifest_file) || dir.exists(manifest_file)) {
+    return(NULL)
+  }
+  info <- file.info(c(file, manifest_file))
+  if (anyNA(info$size) || anyNA(info$mtime)) {
+    return(NULL)
+  }
+  list(
+    key = file,
+    size = as.numeric(info$size),
+    mtime = as.numeric(info$mtime)
+  )
+}
+
+viewerPackOpenCached <- function(file, object, cache) {
+  if (!is.environment(cache)) {
+    stop("Viewer Pack descriptor cache must be an environment.", call. = FALSE)
+  }
+  signature <- viewerPackSourceSignature(file)
+  if (is.null(signature)) {
+    return(NULL)
+  }
+  cached <- cache[[signature$key]]
+  if (!is.null(cached) && identical(cached$signature, signature)) {
+    pack <- cached$descriptor
+    pack$cache <- new.env(parent = emptyenv())
+    return(pack)
+  }
+  pack <- viewerPackOpen(file, object)
+  if (is.null(pack)) {
+    if (!is.null(cached)) {
+      rm(list = signature$key, envir = cache)
+    }
+    return(NULL)
+  }
+  descriptor <- pack
+  descriptor$cache <- NULL
+  cache[[signature$key]] <- list(
+    signature = signature,
+    descriptor = descriptor
+  )
+  pack
+}
+
 viewerPackValidateCellOrder <- function(pack) {
   if (isTRUE(pack$canonical_order)) {
     return(TRUE)
