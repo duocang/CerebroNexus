@@ -235,6 +235,16 @@ test_that("gene-expression first frame defers identities and hover", {
     fixed = TRUE
   )
   expect_match(update_source, "getMetaData()", fixed = TRUE)
+  expect_match(
+    update_source,
+    "viewerProjectionMetadataColumns",
+    fixed = TRUE
+  )
+  expect_match(
+    update_source,
+    "viewerProjectionSubsetRows",
+    fixed = TRUE
+  )
   expect_match(update_source, "deferred_aux = deferred_aux", fixed = TRUE)
   expect_match(update_source, "shared_zero_color", fixed = TRUE)
 
@@ -286,6 +296,87 @@ test_that("gene-expression first frame defers identities and hover", {
   )
   expect_match(selector_source, "coordviews_shared_base", fixed = TRUE)
   expect_match(selector_source, "selected = selected_projection", fixed = TRUE)
+})
+
+test_that("gene-expression deferred hover selects rows and columns first", {
+  scope <- new.env(parent = globalenv())
+  scope$expressionColorScale <- function(...) NULL
+  scope$expressionReverseColorScale <- function(...) FALSE
+  scope$expressionPanelColorScales <- function(...) NULL
+  scope$getGroups <- function() "group"
+  scope$getMetaData <- function() {
+    data.frame(
+      cell_barcode = c("c1", "c2", "c3"),
+      nUMI = 1:3,
+      group = factor(c("A", "B", "A")),
+      unused = c("x", "y", "z")
+    )
+  }
+  scope$viewerProjectionMetadataColumns <- function(
+    metadata,
+    color_variable,
+    hover_info,
+    groups
+  ) {
+    intersect(c("cell_barcode", "nUMI", groups), colnames(metadata))
+  }
+  scope$viewerProjectionSubsetRows <- function(table, indices, columns) {
+    table[indices, columns, drop = FALSE]
+  }
+  scope$cerebroProjectionHoverColumns <- function(table) {
+    scope$hover_input <- table
+    list()
+  }
+  scope$cerebroCellViewDeferredAux <- function(
+    selection_rows,
+    cell_barcodes,
+    hover_columns,
+    hover
+  ) {
+    list(selection_rows = selection_rows, cell_barcodes = cell_barcodes)
+  }
+  scope$cerebroCellViewRender <- function(..., deferred_aux) {
+    scope$aux <- deferred_aux()
+  }
+  sys.source(
+    viewer_test_path("gene_expression", "func_projection_update_plot.R"),
+    envir = scope
+  )
+
+  scope$expression_projection_update_plot(list(
+    coordinates = data.frame(x = 1:2, y = 3:4),
+    reset_axes = FALSE,
+    expression_levels = c(0, 1),
+    plot_parameters = list(
+      draw_border = FALSE,
+      keep_square = TRUE,
+      point_size = 1,
+      point_opacity = 1,
+      x_range = c(1, 2),
+      y_range = c(3, 4),
+      plot_order = "Natural",
+      is_trajectory = FALSE,
+      hover_info = TRUE,
+      projection = "umap",
+      n_dimensions = 2
+    ),
+    color_settings = list(
+      color_scale = "Viridis",
+      color_range = c(0, 1),
+      color_mode = "same",
+      genes = "CD3D"
+    ),
+    metadata = data.frame(row.names = 1:2),
+    trajectory = list(),
+    display_mode = "single",
+    cell_indices = c(3L, 1L),
+    separate_panels = FALSE
+  ))
+
+  expect_named(scope$hover_input, c("cell_barcode", "nUMI", "group"))
+  expect_identical(scope$hover_input$cell_barcode, c("c3", "c1"))
+  expect_identical(scope$aux$selection_rows, 1:2)
+  expect_identical(scope$aux$cell_barcodes, c("c3", "c1"))
 })
 
 test_that("cached BPCells gene names do not force the expression backend", {

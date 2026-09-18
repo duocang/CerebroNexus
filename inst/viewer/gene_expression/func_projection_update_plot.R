@@ -89,8 +89,19 @@ expression_projection_update_plot <- function(input) {
       getMetaData()
     }
     hover <- isTRUE(plot_parameters[["hover_info"]])
+    columns <- viewerProjectionMetadataColumns(
+      full_metadata,
+      color_variable = NULL,
+      hover_info = hover,
+      groups = getGroups()
+    )
+    deferred_metadata <- viewerProjectionSubsetRows(
+      full_metadata,
+      cell_indices,
+      columns
+    )
     hover_columns <- if (hover) {
-      cerebroProjectionHoverColumns(full_metadata)
+      cerebroProjectionHoverColumns(deferred_metadata)
     } else {
       list()
     }
@@ -116,8 +127,8 @@ expression_projection_update_plot <- function(input) {
       )
     }
     cerebroCellViewDeferredAux(
-      selection_rows = cell_indices,
-      cell_barcodes = full_metadata[["cell_barcode"]],
+      selection_rows = seq_len(nrow(deferred_metadata)),
+      cell_barcodes = deferred_metadata[["cell_barcode"]],
       hover_columns = hover_columns,
       hover = hover
     )
