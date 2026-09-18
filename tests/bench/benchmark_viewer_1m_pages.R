@@ -67,6 +67,30 @@ if (any(!nzchar(candidate_labels)) || anyDuplicated(candidate_labels)) {
 }
 names(candidate_specs) <- candidate_labels
 
+viewer_pack_manifest <- file.path(
+  dirname(crb),
+  paste0(tools::file_path_sans_ext(basename(crb)), ".viewer"),
+  "manifest.json"
+)
+groups_metric_available <- TRUE
+if (file.exists(viewer_pack_manifest)) {
+  viewer_pack <- jsonlite::read_json(
+    viewer_pack_manifest,
+    simplifyVector = TRUE
+  )
+  groups_metric_available <- "nUMI" %in% viewer_pack$metadata_names
+}
+groups_plot_id <- if (groups_metric_available) {
+  "groups_nUMI_plot"
+} else {
+  "groups_by_other_group_plot"
+}
+groups_plot_selector <- paste0(
+  "#shiny-tab-groups #",
+  groups_plot_id,
+  ".js-plotly-plot"
+)
+
 page <- function(
   tab,
   ready,
@@ -138,18 +162,23 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
 pages <- list(
   groups = page(
     "groups",
-    "!!p.querySelector('#groups_nUMI_plot.js-plotly-plot')",
+    sprintf("!!p.querySelector(%s)", quote_r(groups_plot_selector)),
     required = TRUE,
-    correctness = paste0(
-      "(() => {const plot=document.querySelector(",
-      "'#shiny-tab-groups #groups_nUMI_plot.js-plotly-plot');",
-      "return !!plot&&plot.offsetParent!==null&&",
-      "Array.isArray(plot.data)&&plot.data.length>0;})()"
+    correctness = sprintf(
+      paste0(
+        "(() => {const plot=document.querySelector(%s);",
+        "return !!plot&&plot.offsetParent!==null&&",
+        "Array.isArray(plot.data)&&plot.data.length>0;})()"
+      ),
+      quote_r(groups_plot_selector)
     ),
-    correctness_detail = paste0(
-      "(() => {const plot=document.querySelector(",
-      "'#shiny-tab-groups #groups_nUMI_plot.js-plotly-plot');",
-      "return 'plotly_traces='+(Array.isArray(plot?.data)?plot.data.length:0);})()"
+    correctness_detail = sprintf(
+      paste0(
+        "(() => {const plot=document.querySelector(%s);",
+        "return 'plot='+(plot?.id||'missing')+';plotly_traces='+",
+        "(Array.isArray(plot?.data)?plot.data.length:0);})()"
+      ),
+      quote_r(groups_plot_selector)
     )
   ),
   overview = canvas_page(
