@@ -40,6 +40,7 @@
   var pendingCloneDetails = new Set();
   var pendingCloneSupplement = null;
   var transportMetrics = {};
+  var singleTiming = Object.create(null);
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
@@ -2703,6 +2704,16 @@
       : '';
     if (singleActive &&
         !/^md5-cell-set-v1:[0-9a-f]{32}$/.test(datasetFingerprint)) return;
+    var specialistTiming = null;
+    if (singleActive) {
+      var timing = singleTiming[singleActive] || {};
+      var readyAt = performance.now();
+      specialistTiming = Object.assign({}, timing, {
+        readyAtMs: readyAt,
+        requestToReadyMs: isFinite(timing.requestAtMs)
+          ? readyAt - timing.requestAtMs : null
+      });
+    }
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
       { detail: singleActive
@@ -2711,7 +2722,8 @@
           selectedCells: specialistReport
             ? specialistReport.selectedCells
             : (hasSelection ? sel.size : 0),
-          datasetFingerprint: datasetFingerprint
+          datasetFingerprint: datasetFingerprint,
+          timing: specialistTiming
         }
         : { selectedCells: hasSelection ? sel.size : 0 } }
     ));
@@ -6467,6 +6479,9 @@
     });
   }
   function activateSingle(id, resetAxes, preserveTargetState) {
+    var activationStarted = performance.now();
+    var timing = singleTiming[id] || (singleTiming[id] = {});
+    timing.activationStartedAtMs = activationStarted;
     var payload = singleViews[id];
     if (!payload || rebuildingBase) return false;
     if (!singleActive && linkedBundle && D && !linkedState) {
@@ -6490,7 +6505,9 @@
       cat_extra: Object.assign({}, base.cat_extra)
     });
     spaceById = {}; spatialTemplate = null; _clipD = null;
+    var buildStarted = performance.now();
     var built = buildSingleSpaces(id, payload);
+    timing.buildSpacesMs = performance.now() - buildStarted;
     if (built.spaces.length && payload.meta && payload.meta.space_label) {
       cacheSharedProjection(
         String(payload.meta.space_label),
@@ -6566,10 +6583,14 @@
       });
       sel = restored.size ? restored : null;
     }
+    var drawStarted = performance.now();
+    timing.preDrawMs = drawStarted - activationStarted;
     renderLegend();
     var drawn = resizeAll();
     renderSelbar();
     if (!drawn) drawAll();
+    timing.firstDrawMs = performance.now() - drawStarted;
+    timing.activationMs = performance.now() - activationStarted;
     reportSingleHiddenGroups(); reportSelection();
     return true;
   }
@@ -6594,14 +6615,17 @@
     return singleViews[id];
   }
 
-  function renderSingle(id, meta, data, hover, extra, datasetIdentity) {
+  function renderSingle(
+    id, meta, data, hover, extra, datasetIdentity, transportProfile
+  ) {
     var previous = registerSingle(id); if (!previous) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
     singleViews[id] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
-      extra: extra || {}, datasetIdentity: datasetIdentity || {}
+      extra: extra || {}, datasetIdentity: datasetIdentity || {},
+      transportProfile: transportProfile || {}
     });
     if (changedGroup) singleViews[id].hiddenGroups = [];
     if (data.reset_axes) singleViews[id].lenses = [];
@@ -6974,9 +6998,21 @@
   }
 
   function onSingleBinary(buffer) {
+    var receivedAt = performance.now();
     try {
       var decoded = window.CBViewWire.unpack(buffer);
+      var decodedAt = performance.now();
       if (!decoded || !decoded.id) return;
+      var timing = singleTiming[decoded.id] || (singleTiming[decoded.id] = {});
+      var profile = decoded.transport_profile || {};
+      timing.bytes = buffer.byteLength;
+      timing.binaryReceivedAtMs = receivedAt;
+      timing.decodeMs = decodedAt - receivedAt;
+      timing.serverPrepareMs = Number(profile.server_prepare_ms);
+      timing.serializeTransferMs = isFinite(Number(profile.sent_at_ms))
+        ? Date.now() - Number(profile.sent_at_ms) : null;
+      timing.requestToBinaryMs = isFinite(Number(profile.request_at_ms))
+        ? Date.now() - Number(profile.request_at_ms) : null;
       var message = reuseSharedSingleProjection(decoded);
       if (!message) {
         singleRequests.delete(decoded.id);
@@ -6995,7 +7031,8 @@
         message.data,
         message.hover,
         message.extra,
-        message.dataset_identity
+        message.dataset_identity,
+        message.transport_profile
       );
     } catch (error) {
       return;
@@ -7914,7 +7951,8 @@
         message.data,
         message.hover,
         message.extra,
-        message.dataset_identity
+        message.dataset_identity,
+        message.transport_profile
       );
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
@@ -8043,6 +8081,11 @@
       lastVis = key;
       if (singleId && !singleViews[singleId] && !singleRequests.has(singleId)) {
         singleRequests.add(singleId);
+        var requestedAt = performance.now();
+        var timing = singleTiming[singleId] || (singleTiming[singleId] = {});
+        timing.requestAtMs = requestedAt;
+        timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
+          ? requestedAt - window.__cerebroPageBenchClickStart : null;
         Shiny.setInputValue(singleId + '_render_request', Date.now(), {
           priority: 'event'
         });

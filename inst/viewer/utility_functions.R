@@ -955,6 +955,28 @@ cerebroCellViewRender <- function(
   deferred_aux = NULL
 ) {
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  stamp_transport_profile <- function(message) {
+    request_at_ms <- tryCatch(
+      suppressWarnings(as.numeric(input[[paste0(id, "_render_request")]])),
+      error = function(error) NA_real_
+    )
+    if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
+      request_at_ms <- NA_real_
+    }
+    sent_at_ms <- as.numeric(Sys.time()) * 1000
+    message$transport_profile <- list(
+      request_at_ms = request_at_ms,
+      server_prepare_ms = if (
+        is.finite(request_at_ms)
+      ) {
+        max(0, sent_at_ms - request_at_ms)
+      } else {
+        NA_real_
+      },
+      sent_at_ms = sent_at_ms
+    )
+    message
+  }
   if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
     identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
     if (
@@ -1017,6 +1039,7 @@ cerebroCellViewRender <- function(
       message$data$selection_key <- NULL
       full_hover <- message$hover
       message$hover <- list(hoverinfo = "skip")
+      message <- stamp_transport_profile(message)
       session$sendBinaryMessage(
         "cell_view_binary",
         cv_wire_pack_message(message)
@@ -1044,6 +1067,7 @@ cerebroCellViewRender <- function(
         message$data$selection_key <- auxiliary$selection_key
         message$hover <- auxiliary$hover
       }
+      message <- stamp_transport_profile(message)
       session$sendBinaryMessage(
         "cell_view_binary",
         cv_wire_pack_message(message)
@@ -1055,6 +1079,7 @@ cerebroCellViewRender <- function(
       message$data$selection_key <- auxiliary$selection_key
       message$hover <- auxiliary$hover
     }
+    message <- stamp_transport_profile(message)
     session$sendCustomMessage("cell_view_render", message)
   }
 }
