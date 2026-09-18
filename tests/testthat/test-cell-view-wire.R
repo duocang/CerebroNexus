@@ -177,6 +177,13 @@ test_that("large specialist views send their first frame before hover data", {
   sys.source(utility_file, envir = runtime)
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
+  runtime$viewerDatasetIdentity <- function() {
+    list(
+      cell_count = 4096L,
+      fingerprint = "md5-cell-set-v1:0123456789abcdef0123456789abcdef",
+      order_fingerprint = "md5-cell-order-v1:fedcba9876543210fedcba9876543210"
+    )
+  }
   runtime$session <- list(
     sendBinaryMessage = function(type, payload) {
       sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
@@ -205,6 +212,14 @@ test_that("large specialist views send their first frame before hover data", {
     paste("overview_projection", first$data$wire_token, sep = ":")
   ]]
   expect_identical(first$data$n, 4096L)
+  expect_identical(
+    first$dataset_identity,
+    list(
+      cell_count = 4096L,
+      cell_fingerprint = "md5-cell-set-v1:0123456789abcdef0123456789abcdef",
+      cell_order_fingerprint = "md5-cell-order-v1:fedcba9876543210fedcba9876543210"
+    )
+  )
   expect_null(first$data$selection_key)
   expect_identical(first$data$x[[1L]]$`__cv_wire__`, "f32")
   expect_identical(first$hover$hoverinfo, "skip")
@@ -256,7 +271,7 @@ test_that("specialist views can reference validated shared coordinates", {
     coordviews_wire_supported = TRUE,
     coordviews_shared_base = shared
   )
-  runtime$cv_saved_view_identity <- function() identity
+  runtime$viewerDatasetIdentity <- function() identity
   runtime$session <- list(sendBinaryMessage = function(type, payload) {
     sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
   })
@@ -314,7 +329,7 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
   )
   expect_match(
     javascript,
-    "if (singleActive && !datasetFingerprint) return;",
+    "!/^md5-cell-set-v1:[0-9a-f]{32}$/.test(datasetFingerprint)",
     fixed = TRUE
   )
   expect_match(

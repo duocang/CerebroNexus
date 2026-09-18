@@ -371,10 +371,10 @@ viewerSharedProjectionName <- function(
     shared <- input[["coordviews_shared_base"]]
   }
   if (is.null(identity)) {
-    if (!exists("cv_saved_view_identity", mode = "function", inherits = TRUE)) {
+    if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
       return(NULL)
     }
-    identity <- cv_saved_view_identity()
+    identity <- viewerDatasetIdentity()
   }
   if (
     !is.list(shared) ||
@@ -955,6 +955,23 @@ cerebroCellViewRender <- function(
   deferred_aux = NULL
 ) {
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
+    identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
+    if (
+      is.list(identity) &&
+        length(identity$fingerprint) == 1L &&
+        !is.na(identity$fingerprint) &&
+        nzchar(identity$fingerprint)
+    ) {
+      message$dataset_identity <- list(
+        cell_count = as.integer(identity$cell_count),
+        cell_fingerprint = as.character(identity$fingerprint),
+        cell_order_fingerprint = as.character(
+          identity$order_fingerprint %||% ""
+        )
+      )
+    }
+  }
   if (
     isTRUE(input[["coordviews_wire_supported"]]) &&
       exists("cv_wire_pack_message", mode = "function", inherits = TRUE)

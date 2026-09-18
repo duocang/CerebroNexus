@@ -305,12 +305,12 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
       ),
       "const start = source.indexOf('  function singlePayloadCells');",
       "const end = source.indexOf('  function alignSingleCoordinates', start);",
-      "global.window = {cerebroSavedViewDataset:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'}};",
+      "global.window = {cerebroSavedViewDataset:{cell_fingerprint:'stale'}};",
       "eval(source.slice(start, end));",
-      "const payload = {data:{n:2,selection_key:['c1','c2']}};",
+      "const payload = {datasetIdentity:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'},data:{n:2,selection_key:['c1','c2']}};",
       "const present = singlePayloadBundle('overview', payload).dataset_fingerprint;",
       "delete window.cerebroSavedViewDataset;",
-      "const missing = singlePayloadBundle('overview', payload).dataset_fingerprint;",
+      "const missing = singlePayloadBundle('overview', {data:payload.data}).dataset_fingerprint;",
       "console.log(JSON.stringify({present:present,missing:missing}));"
     ),
     runner

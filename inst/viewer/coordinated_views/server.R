@@ -229,7 +229,7 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
           )
         )
       } else {
-        b$dataset_fingerprint <- cv_saved_view_identity()$fingerprint
+        b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint
         attr(b, "server_prepare_ms") <-
           (proc.time()[["elapsed"]] - started) * 1000
         b
@@ -884,7 +884,7 @@ observeEvent(
       identical(as.character(request$dataset_id), source$dataset_id),
       identical(
         as.character(request$dataset_fingerprint),
-        cv_saved_view_identity()$fingerprint
+        viewerDatasetIdentity()$fingerprint
       )
     )
     kind <- as.character(request$kind %||% "")
@@ -915,7 +915,7 @@ observeEvent(
       "coordviews_attribute",
       cv_wire_pack_message(list(
         dataset_id = source$dataset_id,
-        dataset_fingerprint = cv_saved_view_identity()$fingerprint,
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
         kind = kind,
         name = name,
         value = value
@@ -937,7 +937,7 @@ observeEvent(
       nzchar(key),
       identical(
         as.character(request$dataset_fingerprint %||% ""),
-        cv_saved_view_identity()$fingerprint
+        viewerDatasetIdentity()$fingerprint
       ),
       !is.null(assets[[key]])
     )
@@ -950,7 +950,7 @@ observeEvent(
     session$sendCustomMessage(
       "coordviews_asset",
       list(
-        dataset_fingerprint = cv_saved_view_identity()$fingerprint,
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
         key = key,
         uri = uri
       )
@@ -1227,7 +1227,7 @@ cv_has_expression <- function() {
 }
 
 cv_expression_cells <- function() {
-  identity <- cv_saved_view_identity()
+  identity <- viewerDatasetIdentity()
   if (nzchar(identity$order_fingerprint %||% "")) {
     return(NULL)
   }

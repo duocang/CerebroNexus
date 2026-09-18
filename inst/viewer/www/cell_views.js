@@ -2718,7 +2718,8 @@
     var datasetFingerprint = singleActive && D
       ? String(D.dataset_fingerprint || D.cell_fingerprint || '')
       : '';
-    if (singleActive && !datasetFingerprint) return;
+    if (singleActive &&
+        !/^md5-cell-set-v1:[0-9a-f]{32}$/.test(datasetFingerprint)) return;
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
       { detail: singleActive
@@ -5936,9 +5937,10 @@
   function singlePayloadBundle(id, payload) {
     var cells = singlePayloadCells(payload);
     var n = Number(payload.data && payload.data.n) || cells.length;
+    var identity = payload.datasetIdentity || {};
     return {
       dataset_id: 'single:' + id + ':' + n,
-      dataset_fingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || '',
+      dataset_fingerprint: identity.cell_fingerprint || '',
       cells: cells,
       n: n,
       groups: {},
@@ -6593,14 +6595,14 @@
     return singleViews[id];
   }
 
-  function renderSingle(id, meta, data, hover, extra) {
+  function renderSingle(id, meta, data, hover, extra, datasetIdentity) {
     var previous = registerSingle(id); if (!previous) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
     singleViews[id] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
-      extra: extra || {}
+      extra: extra || {}, datasetIdentity: datasetIdentity || {}
     });
     if (changedGroup) singleViews[id].hiddenGroups = [];
     if (data.reset_axes) singleViews[id].lenses = [];
@@ -6985,12 +6987,16 @@
         });
         return;
       }
+      if (message.dataset_identity) {
+        window.cerebroSavedViewDataset = message.dataset_identity;
+      }
       renderSingle(
         message.id,
         message.meta,
         message.data,
         message.hover,
-        message.extra
+        message.extra,
+        message.dataset_identity
       );
     } catch (error) {
       return;

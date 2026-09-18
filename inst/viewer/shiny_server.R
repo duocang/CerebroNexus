@@ -657,7 +657,7 @@ server <- function(input, output, session) {
     }
   })
 
-  cv_saved_view_identity <- reactive({
+  viewerDatasetIdentity <- reactive({
     dataset <- data_set()
     pack <- attr(dataset, "cerebro_viewer_pack", exact = TRUE)
     order_fingerprint <- if (is.list(pack)) {
@@ -693,13 +693,13 @@ server <- function(input, output, session) {
     cells <- cv_saved_view_cells()
     list(
       cells = cells,
-      fingerprint = cv_saved_view_identity()$fingerprint
+      fingerprint = viewerDatasetIdentity()$fingerprint
     )
   })
 
   observe({
     input[["sidebar"]]
-    identity <- cv_saved_view_identity()
+    identity <- viewerDatasetIdentity()
     session$sendCustomMessage(
       "cerebro_saved_view_dataset",
       list(

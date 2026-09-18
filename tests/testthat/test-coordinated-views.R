@@ -1019,7 +1019,7 @@ test_that("Linked views reuses the saved-view fingerprint", {
 
   expect_match(
     server,
-    "b$dataset_fingerprint <- cv_saved_view_identity()$fingerprint",
+    "b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint",
     fixed = TRUE
   )
   expect_no_match(
@@ -1051,21 +1051,21 @@ test_that("saved-view startup identity does not materialize cell names", {
     collapse = "\n"
   )
 
-  expect_match(server, "cv_saved_view_identity <- reactive({", fixed = TRUE)
+  expect_match(server, "viewerDatasetIdentity <- reactive({", fixed = TRUE)
   expect_match(server, "cell_count = getNumberOfCells()", fixed = TRUE)
   expect_match(
     server,
-    "identity <- cv_saved_view_identity()",
+    "identity <- viewerDatasetIdentity()",
     fixed = TRUE
   )
   expect_match(
     server,
-    "input[[\"sidebar\"]]\n    identity <- cv_saved_view_identity()",
+    "input[[\"sidebar\"]]\n    identity <- viewerDatasetIdentity()",
     fixed = TRUE
   )
   expect_no_match(
     coord_server,
-    "cv_saved_view_identity <- reactive({",
+    "viewerDatasetIdentity <- reactive({",
     fixed = TRUE
   )
   expect_match(
