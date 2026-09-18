@@ -96,6 +96,10 @@ builder_native_picker_kinds <- function() {
   c("output_directory", "project_directory", "project_manifest")
 }
 
+builder_native_picker_cancel_marker <- function() {
+  "__CEREBRO_BUILDER_PICKER_CANCELLED__"
+}
+
 builder_native_picker_contract <- function(
   kind = builder_native_picker_kinds()
 ) {
@@ -142,11 +146,14 @@ builder_macos_picker_script <- function(kind) {
   } else {
     types <- paste0(
       '{',
-      paste(vapply(
-        contract$macos_types,
-        quote_applescript,
-        character(1)
-      ), collapse = ", "),
+      paste(
+        vapply(
+          contract$macos_types,
+          quote_applescript,
+          character(1)
+        ),
+        collapse = ", "
+      ),
       '}'
     )
     paste0(
@@ -161,7 +168,7 @@ builder_macos_picker_script <- function(kind) {
     "try",
     command,
     "on error number -128",
-    'return ""',
+    paste0('return "', builder_native_picker_cancel_marker(), '"'),
     "end try",
     sep = "\n"
   )
@@ -300,6 +307,12 @@ builder_windows_picker_script <- function(kind) {
       ),
       "if ($null -ne $selected) {",
       "  [Console]::WriteLine($selected)",
+      "} else {",
+      paste0(
+        "  [Console]::WriteLine(",
+        quote_powershell(builder_native_picker_cancel_marker()),
+        ")"
+      ),
       "}",
       sep = "\n"
     )
@@ -313,6 +326,12 @@ builder_windows_picker_script <- function(kind) {
       "$result = $dialog.ShowDialog($owner)",
       "if ($result -eq [System.Windows.Forms.DialogResult]::OK) {",
       "  [Console]::WriteLine($dialog.FileName)",
+      "} else {",
+      paste0(
+        "  [Console]::WriteLine(",
+        quote_powershell(builder_native_picker_cancel_marker()),
+        ")"
+      ),
       "}",
       sep = "\n"
     )
@@ -386,7 +405,10 @@ builder_native_picker_spec <- function(
       powershell <- .which("pwsh")
     }
     if (!nzchar(powershell)) {
-      stop("Windows PowerShell is required for the system picker.", call. = FALSE)
+      stop(
+        "Windows PowerShell is required for the system picker.",
+        call. = FALSE
+      )
     }
     return(list(
       command = unname(powershell),
@@ -488,6 +510,26 @@ builder_native_picker_output <- function(
     NA_integer_
   }
   if (identical(status, 0L)) {
+    marker <- builder_native_picker_cancel_marker()
+    if (identical(output, marker) && !length(errors)) {
+      return(character())
+    }
+    if (!length(output)) {
+      stop(
+        if (length(errors)) {
+          paste(errors, collapse = "\n")
+        } else {
+          "The system picker exited without returning a selection."
+        },
+        call. = FALSE
+      )
+    }
+    if (marker %in% output) {
+      stop(
+        "The system picker returned an invalid cancellation response.",
+        call. = FALSE
+      )
+    }
     return(output)
   }
   if (
@@ -547,13 +589,12 @@ builder_native_picker_result <- function(kind, select) {
     )),
     error = identity
   )
-  valid <- !inherits(paths, "condition") && if (
-    identical(contract$type, "directory")
-  ) {
-    dir.exists(paths[[1L]])
-  } else {
-    file.exists(paths[[1L]]) && !dir.exists(paths[[1L]])
-  }
+  valid <- !inherits(paths, "condition") &&
+    if (identical(contract$type, "directory")) {
+      dir.exists(paths[[1L]])
+    } else {
+      file.exists(paths[[1L]]) && !dir.exists(paths[[1L]])
+    }
   if (!isTRUE(valid)) {
     return(result("error", error = contract$unavailable))
   }
@@ -597,6 +638,7 @@ builder_start_native_picker <- function(
       stderr = "|",
       cleanup = TRUE,
       cleanup_tree = TRUE,
+      windows_hide_window = TRUE,
       encoding = spec$encoding %||% ""
     ),
     error = identity
