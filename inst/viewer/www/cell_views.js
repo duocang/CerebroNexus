@@ -6026,13 +6026,10 @@
     return message;
   }
   var projectionResourceCache = new Map();
-  function hydrateSingleProjectionResource(message) {
-    var data = message && message.data || {};
-    var resource = data.projection_resource;
-    if (!resource || !resource.url) return Promise.resolve(message);
+  function fetchProjectionResource(resource, expectedCells) {
     var n = Number(resource.cells) || 0;
     var dimensions = Number(resource.dimensions) || 0;
-    if (n !== Number(data.n) || (dimensions !== 2 && dimensions !== 3)) {
+    if (n !== Number(expectedCells) || (dimensions !== 2 && dimensions !== 3)) {
       return Promise.reject(new Error('Projection resource shape mismatch'));
     }
     var key = String(resource.url) + ':' + String(resource.checksum || '');
@@ -6067,15 +6064,51 @@
     }
     var started = performance.now();
     return pending.then(function (coordinates) {
+      return {
+        coordinates: coordinates,
+        fetchMs: performance.now() - started
+      };
+    });
+  }
+  function hydrateSingleProjectionResource(message) {
+    var data = message && message.data || {};
+    var resource = data.projection_resource;
+    if (!resource || !resource.url) return Promise.resolve(message);
+    return fetchProjectionResource(resource, data.n).then(function (result) {
+      var coordinates = result.coordinates;
       data.x = coordinates.x;
       data.y = coordinates.y;
       if (coordinates.z) data.z = coordinates.z;
       delete data.projection_resource;
       message.data = data;
       var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
-      timing.projectionFetchMs = performance.now() - started;
+      timing.projectionFetchMs = result.fetchMs;
       timing.projectionBytes = coordinates.bytes;
       return message;
+    });
+  }
+  function hydrateLinkedProjectionResource(bundle) {
+    var name = bundle && bundle.default_projection;
+    var projection = name && bundle.projections && bundle.projections[name];
+    var resource = projection && projection.projection_resource;
+    if (!resource || !resource.url) {
+      return Promise.resolve({
+        bundle: bundle,
+        projectionFetchMs: 0,
+        projectionBytes: 0
+      });
+    }
+    return fetchProjectionResource(resource, bundle.n).then(function (result) {
+      var coordinates = result.coordinates;
+      projection.x = coordinates.x;
+      projection.y = coordinates.y;
+      if (coordinates.z) projection.z = coordinates.z;
+      delete projection.projection_resource;
+      return {
+        bundle: bundle,
+        projectionFetchMs: result.fetchMs,
+        projectionBytes: coordinates.bytes
+      };
     });
   }
   function canonicalGroupedValues(grouped, groups, fallback) {
@@ -6828,13 +6861,22 @@
   function onBinaryData(buffer) {
     var token = ++wireToken;
     var started = performance.now();
+    var decoded;
+    var decodedAt;
     try {
       if (!window.CBViewWire || !window.CBViewWire.supported) {
         throw new Error('Linked views binary transport is unavailable');
       }
-      var decoded = reuseSharedProjection(window.CBViewWire.unpack(buffer));
-      var decodedAt = performance.now();
-      if (token === wireToken) applyData(decoded);
+      decoded = reuseSharedProjection(window.CBViewWire.unpack(buffer));
+      decodedAt = performance.now();
+    } catch (error) {
+      if (token !== wireToken) return;
+      requestWireFallback('', '');
+      return;
+    }
+    hydrateLinkedProjectionResource(decoded).then(function (hydrated) {
+      if (token !== wireToken) return;
+      applyData(hydrated.bundle);
       transportMetrics.primary = {
         bytes: buffer.byteLength,
         serverPrepareMs: decoded.transport_profile &&
@@ -6842,12 +6884,15 @@
         serializeTransferMs: decoded.transport_profile &&
           Date.now() - Number(decoded.transport_profile.sent_at_ms),
         decodeMs: decodedAt - started,
+        projectionFetchMs: hydrated.projectionFetchMs,
+        projectionBytes: hydrated.projectionBytes,
         decodeToDrawMs: performance.now() - decodedAt
       };
-    } catch (error) {
+    }).catch(function () {
       if (token !== wireToken) return;
-      requestWireFallback('', '');
-    }
+      requestWireFallback(decoded && decoded.dataset_id,
+        decoded && decoded.dataset_fingerprint);
+    });
   }
 
   function onBinaryCells(buffer) {

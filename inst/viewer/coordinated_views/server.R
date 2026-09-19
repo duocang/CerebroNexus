@@ -740,17 +740,6 @@ observeEvent(input[["coordviews_visible"]], {
   coordviews_visible(isTRUE(input[["coordviews_visible"]]))
 })
 
-## A Viewer Pack is bound to the selected CRB by its manifest. Start its clone
-## worker as soon as the tab becomes visible, while the CRB itself is still
-## finishing its background load; the validated pack attached to data_set()
-## remains the authority before any result is sent.
-observe({
-  req(coordviews_visible())
-  spec <- cv_async_clone_file_spec(available_crb_files$selected)
-  req(!is.null(spec))
-  cv_start_clone_task(spec)
-})
-
 ## Push the primary bundle while visible. Generation catches same-path reloads.
 ##
 ## The req() has to come FIRST. It is what keeps this observer from taking a
@@ -794,6 +783,19 @@ observe(
         primary$projections[[projection]]$y <- NULL
         primary$projections[[projection]]$z <- NULL
       }
+      if (is.null(primary$shared_projection)) {
+        projection <- primary$default_projection
+        resource <- viewerProjectionAsset(projection, primary$cells)
+        if (
+          is.list(resource) &&
+            projection %in% names(primary$projections)
+        ) {
+          primary$projections[[projection]]$projection_resource <- resource
+          primary$projections[[projection]]$x <- NULL
+          primary$projections[[projection]]$y <- NULL
+          primary$projections[[projection]]$z <- NULL
+        }
+      }
       coordviews_background_ready(FALSE)
       coordviews_image_spaces(NULL)
       coordviews_assets(list())
@@ -807,13 +809,25 @@ observe(
         server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
         sent_at_ms = as.numeric(Sys.time()) * 1000
       )
-      cv_start_clone_task(cv_async_clone_spec(data_set(), primary))
       session$sendBinaryMessage(
         "coordviews_binary",
         cv_wire_pack_bundle(primary, include_cells = FALSE)
       )
       coordviews_build_log$sent_primary_n <- primary_n
       coordviews_sent_primary(primary_n)
+      ## Worker startup can contend with serialization and the websocket. Clone
+      ## data is progressive, so enqueue the correct primary frame first.
+      session$onFlushed(
+        function() {
+          if (!identical(coordviews_build_log$sent_primary_n, primary_n)) {
+            return(invisible(NULL))
+          }
+          cv_start_clone_task(
+            cv_async_clone_spec(isolate(data_set()), primary)
+          )
+        },
+        once = TRUE
+      )
     } else {
       colors <- tryCatch(reactive_colors(), error = function(e) NULL)
       bundle <- coordviews_bundle()

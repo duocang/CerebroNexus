@@ -645,6 +645,12 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
   expect_match(server, "include_cells = FALSE", fixed = TRUE)
   expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
+  expect_match(
+    server,
+    "viewerProjectionAsset(projection, primary$cells)",
+    fixed = TRUE
+  )
+  expect_match(server, "$projection_resource <- resource", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(server, '"coordviews_supplement"', fixed = TRUE)
   expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
@@ -654,6 +660,17 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
   expect_match(client, "coordviews_primary_ready", fixed = TRUE)
   expect_match(client, "onBinarySupplement", fixed = TRUE)
+  expect_match(client, "hydrateLinkedProjectionResource", fixed = TRUE)
+  expect_match(
+    client,
+    "projectionFetchMs: hydrated.projectionFetchMs",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "projectionBytes: hydrated.projectionBytes",
+    fixed = TRUE
+  )
   expect_equal(
     sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
     1L
@@ -1092,7 +1109,14 @@ test_that("supplement work starts only after the painted primary reports ready",
     fixed = TRUE
   )[[1L]][[1L]]
 
-  expect_no_match(initial_push, "session$onFlushed(", fixed = TRUE)
+  send_at <- regexpr(
+    "session$sendBinaryMessage(",
+    initial_push,
+    fixed = TRUE
+  )[[1L]]
+  flush_at <- regexpr("session$onFlushed(", initial_push, fixed = TRUE)[[1L]]
+  expect_gt(send_at, 0L)
+  expect_gt(flush_at, send_at)
   expect_match(
     server,
     'observeEvent(\n  input[["coordviews_primary_ready"]]',
@@ -1395,7 +1419,7 @@ test_that("large-dataset work stays off the initial response", {
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_no_match(server, "later::later(", fixed = TRUE)
-  expect_no_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_match(server, "session$onFlushed(", fixed = TRUE)
   expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(

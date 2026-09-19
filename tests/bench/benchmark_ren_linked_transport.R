@@ -9,6 +9,16 @@ root <- normalizePath(args[[1L]], mustWork = TRUE)
 crb <- normalizePath(args[[2L]], mustWork = TRUE)
 scenario <- args[[3L]]
 Sys.setenv(NOT_CRAN = "true")
+## Chromote disables GPU acceleration by default on Windows. Linked Views uses
+## its GPU canvas for the production million-cell path, so opt the dedicated
+## transport benchmark back into the same accelerated surface it is measuring.
+chrome_args <- setdiff(chromote::get_chrome_args(), "--disable-gpu")
+chromote::set_chrome_args(c(
+  chrome_args,
+  "--enable-webgl",
+  "--ignore-gpu-blocklist",
+  "--use-angle=swiftshader"
+))
 quote_r <- function(value) encodeString(value, quote = '"')
 
 app_dir <- tempfile("ren-linked-transport-")

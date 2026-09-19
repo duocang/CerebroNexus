@@ -99,6 +99,9 @@ page <- function(
   wait_idle = TRUE,
   event_view = NULL,
   ready_event = if (is.null(event_view)) NULL else "cerebro:specialist-state",
+  ready_event_condition = NULL,
+  completion_ready = NULL,
+  completion_event_condition = NULL,
   correctness = "true",
   point_selector = NULL,
   expected_point_count = NA_real_,
@@ -114,6 +117,9 @@ page <- function(
     wait_idle = wait_idle,
     event_view = event_view,
     ready_event = ready_event,
+    ready_event_condition = ready_event_condition,
+    completion_ready = completion_ready,
+    completion_event_condition = completion_event_condition,
     correctness = correctness,
     point_selector = point_selector,
     expected_point_count = expected_point_count,
@@ -232,22 +238,32 @@ pages <- list(
   about = page("about", "true"),
   coordinated_views = page(
     "coordinated_views",
-    "!!window.cerebroLinkedViewsState&&window.cerebroLinkedViewsState.ready()",
+    paste0(
+      "!!window.cerebroLinkedViewsState&&",
+      "window.cerebroLinkedViewsState.primaryReady()"
+    ),
     required = TRUE,
     wait_idle = FALSE,
     visual_check = TRUE,
     requires_webgpu = TRUE,
     ready_event = "cerebro:linkedviews-ready",
+    ready_event_condition = "e.detail?.primaryReady===true",
+    completion_ready = paste0(
+      "!!window.cerebroLinkedViewsState&&",
+      "window.cerebroLinkedViewsState.ready()"
+    ),
+    completion_event_condition = "e.detail?.ready===true",
     correctness = paste0(
       "(() => {const state=window.cerebroLinkedViewsState;",
       "const summary=state?.summary?.();",
-      "return summary?.ready===true&&",
+      "return summary?.primaryReady===true&&",
       "typeof summary.datasetFingerprint==='string'&&",
       "summary.datasetFingerprint.length>0;})()"
     ),
     correctness_detail = paste0(
       "(() => {const summary=window.cerebroLinkedViewsState?.summary?.()||{};",
-      "return JSON.stringify({ready:summary.ready,",
+      "return JSON.stringify({primaryReady:summary.primaryReady,",
+      "ready:summary.ready,",
       "datasetFingerprint:summary.datasetFingerprint,",
       "projections:summary.projections?.length||0,",
       "spatialSections:summary.spatialSections?.length||0});})()"
@@ -302,7 +318,9 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
   listener <- if (!isTRUE(require_event) || is.null(page$ready_event)) {
     ""
   } else {
-    condition <- if (is.null(page$event_view)) {
+    condition <- if (!is.null(page$ready_event_condition)) {
+      page$ready_event_condition
+    } else if (is.null(page$event_view)) {
       "e.detail?.ready===true"
     } else {
       sprintf("e.detail?.viewId===%s", quote_r(page$event_view))
@@ -314,10 +332,29 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "e.timeStamp >= clickStart&&%s){",
         "window.__cerebroPageBenchSeen=true;",
         "window.__cerebroPageBenchEventDetail=e.detail||null;",
+        "window.__cerebroPageBenchEventAt=e.timeStamp;",
         "window.removeEventListener(%s,h);}});"
       ),
       quote_r(page$ready_event),
       condition,
+      quote_r(page$ready_event)
+    )
+  }
+  completion_listener <- if (
+    is.null(page$ready_event) || is.null(page$completion_event_condition)
+  ) {
+    ""
+  } else {
+    sprintf(
+      paste0(
+        "window.addEventListener(%s,function c(e){",
+        "if(window.__cerebroPageBenchGeneration===generation&&",
+        "e.timeStamp >= clickStart&&%s){",
+        "window.__cerebroPageBenchCompleteAt=e.timeStamp;",
+        "window.removeEventListener(%s,c);}});"
+      ),
+      quote_r(page$ready_event),
+      page$completion_event_condition,
       quote_r(page$ready_event)
     )
   }
@@ -331,9 +368,12 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "window.__cerebroPageBenchClickStart=clickStart;",
         "window.__cerebroPageBenchSeen=false;",
         "window.__cerebroPageBenchEventDetail=null;",
-        "%sdocument.querySelector(%s).click();})()"
+        "window.__cerebroPageBenchEventAt=null;",
+        "window.__cerebroPageBenchCompleteAt=null;",
+        "%s%sdocument.querySelector(%s).click();})()"
       ),
       listener,
+      completion_listener,
       quote_r(selector)
     )
   )
@@ -656,19 +696,47 @@ assert_clean_logs <- function(app) {
   }
 }
 
+page_completion_elapsed <- function(app, page) {
+  if (is.null(page$completion_ready)) {
+    return(NA_real_)
+  }
+  app$run_js(sprintf(
+    paste0(
+      "if(window.__cerebroPageBenchCompleteAt===null&&(%s))",
+      "window.__cerebroPageBenchCompleteAt=performance.now();"
+    ),
+    page$completion_ready
+  ))
+  app$wait_for_js(
+    "Number.isFinite(window.__cerebroPageBenchCompleteAt)",
+    timeout = 120000
+  )
+  as.numeric(app$get_js(paste0(
+    "window.__cerebroPageBenchCompleteAt-",
+    "window.__cerebroPageBenchClickStart"
+  )))
+}
+
 page_specialist_timing <- function(app) {
   value <- app$get_js(paste0(
     "(() => {const detail=window.__cerebroPageBenchEventDetail||{};",
     "const timing=detail.timing||{};",
+    "const linked=window.cerebroLinkedViewsState?.summary?.()",
+    "?.transport?.primary||{};",
     "const click=Number(window.__cerebroPageBenchClickStart);",
-    "const ready=Number(timing.readyAtMs);",
+    "const ready=Number(timing.readyAtMs||",
+    "window.__cerebroPageBenchEventAt);",
     "return {clickToRequestMs:timing.clickToRequestMs,",
-    "serverPrepareMs:timing.serverPrepareMs,",
-    "serializeTransferMs:timing.serializeTransferMs,",
-    "decodeMs:timing.decodeMs,projectionFetchMs:timing.projectionFetchMs,",
+    "serverPrepareMs:timing.serverPrepareMs??linked.serverPrepareMs,",
+    "serializeTransferMs:timing.serializeTransferMs??linked.serializeTransferMs,",
+    "decodeMs:timing.decodeMs??linked.decodeMs,",
+    "projectionFetchMs:timing.projectionFetchMs??linked.projectionFetchMs,",
     "buildSpacesMs:timing.buildSpacesMs,preDrawMs:timing.preDrawMs,",
-    "firstDrawMs:timing.firstDrawMs,activationMs:timing.activationMs,",
-    "requestToReadyMs:timing.requestToReadyMs,bytes:timing.bytes,",
+    "firstDrawMs:timing.firstDrawMs??linked.decodeToDrawMs,",
+    "activationMs:timing.activationMs,",
+    "requestToReadyMs:timing.requestToReadyMs,",
+    "bytes:timing.bytes??linked.bytes,",
+    "projectionBytes:linked.projectionBytes,",
     "clickToReadyMs:Number.isFinite(click)&&Number.isFinite(ready)",
     "?ready-click:null};})()"
   ))
@@ -689,6 +757,7 @@ page_specialist_timing <- function(app) {
     request_to_ready_ms = number("requestToReadyMs"),
     click_to_ready_ms = number("clickToReadyMs"),
     primary_payload_bytes = number("bytes"),
+    projection_asset_bytes = number("projectionBytes"),
     stringsAsFactors = FALSE
   )
 }
@@ -808,6 +877,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   socket_meter_active <- FALSE
   resources <- stop_rss_monitor(monitor)
   monitor_stopped <- TRUE
+  complete_elapsed_ms <- page_completion_elapsed(app, page)
   correctness <- page_correctness(app, page)
   renderer <- page_renderer_diagnostics(app, page)
   visible_pixels <- page_visible_pixels(app, page)
@@ -818,6 +888,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     status = if (correctness_pass) "ok" else "error",
     error = if (correctness_pass) "" else "Page correctness check failed.",
     elapsed_ms = elapsed_ms,
+    complete_elapsed_ms = complete_elapsed_ms,
     ready_event_required = require_event && !is.null(page$ready_event),
     correctness_pass = correctness_pass,
     rendered_point_count = correctness$point_count,
@@ -912,6 +983,7 @@ empty_observation <- function(status, error) {
     status = status,
     error = error,
     elapsed_ms = NA_real_,
+    complete_elapsed_ms = NA_real_,
     ready_event_required = NA,
     correctness_pass = NA,
     rendered_point_count = NA_real_,
@@ -943,6 +1015,7 @@ empty_observation <- function(status, error) {
     request_to_ready_ms = NA_real_,
     click_to_ready_ms = NA_real_,
     primary_payload_bytes = NA_real_,
+    projection_asset_bytes = NA_real_,
     stringsAsFactors = FALSE
   )
 }
