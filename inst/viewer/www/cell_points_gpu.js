@@ -137,6 +137,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
   }
 
   function createWebGpu(canvas) {
+    var initializationStarted = performance.now();
     var adapter = null;
     var device = null;
     var context = null;
@@ -218,6 +219,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
       });
       ready = true;
       metrics.ready = true;
+      metrics.initializationMs = performance.now() - initializationStarted;
     })().catch(function (error) {
       fail(error);
       throw error;
@@ -436,6 +438,7 @@ void main() {
 }`;
 
   function createWebGl(canvas) {
+    var initializationStarted = performance.now();
     var gl = canvas.getContext('webgl2', {
       alpha: true,
       antialias: true,
@@ -491,7 +494,8 @@ void main() {
     var contextLost = false;
     var gpuError = '';
     var metrics = {
-      backend: 'webgl2', ready: true, pointCount: 0, positionUploads: 0
+      backend: 'webgl2', ready: true, pointCount: 0, positionUploads: 0,
+      initializationMs: performance.now() - initializationStarted
     };
     var resolveFailure;
     var failed = new Promise(function (resolve) { resolveFailure = resolve; });

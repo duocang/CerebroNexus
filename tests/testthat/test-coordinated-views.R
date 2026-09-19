@@ -686,6 +686,17 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
     "metadataBytes: hydrated.metadataBytes",
     fixed = TRUE
   )
+  expect_match(client, "projectionDownloadMs", fixed = TRUE)
+  expect_match(client, "projectionDecodeMs", fixed = TRUE)
+  expect_match(client, "rendererInitializationMs", fixed = TRUE)
+  expect_match(client, "D.n >= 200000", fixed = TRUE)
+  expect_match(client, "LABEL_BINS = 256", fixed = TRUE)
+  expect_match(client, "categoricalRgba", fixed = TRUE)
+  expect_match(
+    client,
+    "ensurePanelSlots(1);\n    buildPanels();",
+    fixed = TRUE
+  )
   expect_equal(
     sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
     1L

@@ -1187,7 +1187,61 @@
     // them (identity check, so no extra bookkeeping at those call sites).
     var hit = _lblCache[key];
     if (hit && hit.u === u) return hit.out;
-    var nlev = g.levels.length, xs = [], ys = [], zs = [], li;
+    var nlev = g.levels.length, li;
+    // Exact per-level medians retain two boxed coordinate arrays per cell. On a
+    // million-cell atlas that allocation dominates first paint even though a
+    // label only needs one stable anchor. Approximate the same component-wise
+    // median on a fine fixed histogram: robust to outliers, deterministic, and
+    // bounded by levels x 256 instead of cells x coordinates.
+    if (D.n >= 200000) {
+      var LABEL_BINS = 256;
+      var histX = new Uint32Array(nlev * LABEL_BINS);
+      var histY = new Uint32Array(nlev * LABEL_BINS);
+      var histZ = u.nz ? new Uint32Array(nlev * LABEL_BINS) : null;
+      var count = new Uint32Array(nlev);
+      for (var at = 0; at < D.n; at++) {
+        if (!u.ok[at]) continue;
+        var level = g.values[at];
+        if (level == null || level < 0 || level >= nlev) continue;
+        var offset = level * LABEL_BINS;
+        var bx = Math.max(0, Math.min(LABEL_BINS - 1,
+          Math.floor(u.nx[at] * LABEL_BINS)));
+        var by = Math.max(0, Math.min(LABEL_BINS - 1,
+          Math.floor(u.ny[at] * LABEL_BINS)));
+        histX[offset + bx]++;
+        histY[offset + by]++;
+        if (histZ) {
+          var bz = Math.max(0, Math.min(LABEL_BINS - 1,
+            Math.floor((u.nz[at] + 0.5) * LABEL_BINS)));
+          histZ[offset + bz]++;
+        }
+        count[level]++;
+      }
+      var histogramMiddle = function (histogram, offset, total) {
+        var target = Math.floor(total / 2) + 1, cumulative = 0;
+        for (var bin = 0; bin < LABEL_BINS; bin++) {
+          cumulative += histogram[offset + bin];
+          if (cumulative >= target) return (bin + 0.5) / LABEL_BINS;
+        }
+        return 0.5;
+      };
+      var centres = [];
+      for (li = 0; li < nlev; li++) {
+        if (!count[li]) continue;
+        offset = li * LABEL_BINS;
+        centres.push({
+          li: li,
+          nx: histogramMiddle(histX, offset, count[li]),
+          ny: histogramMiddle(histY, offset, count[li]),
+          nz: histZ
+            ? histogramMiddle(histZ, offset, count[li]) - 0.5 : 0,
+          text: String(g.levels[li])
+        });
+      }
+      _lblCache[key] = { u: u, out: centres };
+      return centres;
+    }
+    var xs = [], ys = [], zs = [];
     for (li = 0; li < nlev; li++) { xs.push([]); ys.push([]); zs.push([]); }
     for (var i = 0; i < D.n; i++) {
       if (!u.ok[i]) continue;
@@ -1418,8 +1472,14 @@
   var GPU_MIN_CELLS = 20000;
   var gpuColorCache = new Map();
   function gpuColor(value) {
-    value = cssColor(value, '#888888');
     if (gpuColorCache.has(value)) return gpuColorCache.get(value);
+    var original = value;
+    value = cssColor(value, '#888888');
+    if (gpuColorCache.has(value)) {
+      var cached = gpuColorCache.get(value);
+      gpuColorCache.set(original, cached);
+      return cached;
+    }
     var rgba;
     if (_colCtx) {
       _colCtx.clearRect(0, 0, 1, 1);
@@ -1431,6 +1491,7 @@
       rgba = rgbChannels(value).concat(255);
     }
     gpuColorCache.set(value, rgba);
+    gpuColorCache.set(original, rgba);
     return rgba;
   }
 
@@ -1599,6 +1660,13 @@
     var colors = new Uint8Array(shownCount * 4);
     var layers = new Uint32Array(shownCount);
     var rgb = panelColorMode(p) === RGB_MODE;
+    var categoricalGroup = rgb ? null : catOf(panelColorMode(p));
+    var categoricalRgba = categoricalGroup
+      ? categoricalGroup.levels.map(function (_level, index) {
+        return gpuColor((categoricalGroup.colors && categoricalGroup.colors[index]) ||
+          PAL[index % PAL.length]);
+      }) : null;
+    var missingCategoricalRgba = categoricalGroup ? gpuColor('#cccccc') : null;
     var hiSet = (sel && sel.size) ? sel : nicheSet;
     var foreground = false, out = 0;
     var pending = unit._pending, cmx = 0, cmy = 0, validCount = 0;
@@ -1661,7 +1729,11 @@
           colors[out * 4 + 2] = (packedRgb >>> 16) & 255;
           colors[out * 4 + 3] = Math.round(255 * alpha);
         } else {
-          var rgba = gpuColor(colorOf(i, p));
+          var category = categoricalGroup && categoricalGroup.values[i];
+          var rgba = categoricalGroup
+            ? (category == null || category < 0 || category >= categoricalRgba.length
+              ? missingCategoricalRgba : categoricalRgba[category])
+            : gpuColor(colorOf(i, p));
           colors[out * 4] = rgba[0];
           colors[out * 4 + 1] = rgba[1];
           colors[out * 4 + 2] = rgba[2];
@@ -4773,6 +4845,8 @@
         _projectionName: name,
         _unit: reusable ? previous._unit : null
       };
+      if (Array.isArray(pj.xRange)) sp.xRange = pj.xRange;
+      if (Array.isArray(pj.yRange)) sp.yRange = pj.yRange;
       if (pj.z) { sp.z = pj.z; sp.axes = pj.axes; }
     });
   }
@@ -6036,6 +6110,8 @@
     var key = String(resource.url) + ':' + String(resource.checksum || '');
     var pending = projectionResourceCache.get(key);
     if (!pending) {
+      var downloadStarted = performance.now();
+      var downloadedAt = downloadStarted;
       pending = window.fetch(String(resource.url), {
         credentials: 'same-origin',
         cache: 'force-cache'
@@ -6043,6 +6119,8 @@
         if (!response.ok) throw new Error('Projection resource request failed');
         return response.arrayBuffer();
       }).then(function (buffer) {
+        downloadedAt = performance.now();
+        var decodeStarted = downloadedAt;
         if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
           throw new Error('Projection resource byte count mismatch');
         }
@@ -6052,13 +6130,27 @@
         }
         var x = new Float32Array(n), y = new Float32Array(n);
         var z = dimensions === 3 ? new Float32Array(n) : null;
+        var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
         for (var i = 0; i < n; i++) {
           var offset = i * dimensions;
           x[i] = interleaved[offset];
           y[i] = interleaved[offset + 1];
+          if (isFinite(x[i]) && isFinite(y[i])) {
+            if (x[i] < x0) x0 = x[i];
+            if (x[i] > x1) x1 = x[i];
+            if (y[i] < y0) y0 = y[i];
+            if (y[i] > y1) y1 = y[i];
+          }
           if (z) z[i] = interleaved[offset + 2];
         }
-        return { x: x, y: y, z: z, bytes: buffer.byteLength };
+        return {
+          x: x, y: y, z: z,
+          xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
+          yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
+          bytes: buffer.byteLength,
+          downloadMs: downloadedAt - downloadStarted,
+          decodeMs: performance.now() - decodeStarted
+        };
       });
       projectionResourceCache.set(key, pending);
       pending.catch(function () { projectionResourceCache.delete(key); });
@@ -6067,7 +6159,9 @@
     return pending.then(function (coordinates) {
       return {
         coordinates: coordinates,
-        fetchMs: performance.now() - started
+        fetchMs: performance.now() - started,
+        downloadMs: coordinates.downloadMs,
+        decodeMs: coordinates.decodeMs
       };
     });
   }
@@ -6080,6 +6174,8 @@
       data.x = coordinates.x;
       data.y = coordinates.y;
       if (coordinates.z) data.z = coordinates.z;
+      if (coordinates.xRange) data.x_range = coordinates.xRange;
+      if (coordinates.yRange) data.y_range = coordinates.yRange;
       delete data.projection_resource;
       message.data = data;
       var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
@@ -6096,7 +6192,9 @@
       return Promise.resolve({
         bundle: bundle,
         projectionFetchMs: 0,
-        projectionBytes: 0
+        projectionBytes: 0,
+        projectionDownloadMs: 0,
+        projectionDecodeMs: 0
       });
     }
     return fetchProjectionResource(resource, bundle.n).then(function (result) {
@@ -6104,11 +6202,15 @@
       projection.x = coordinates.x;
       projection.y = coordinates.y;
       if (coordinates.z) projection.z = coordinates.z;
+      if (coordinates.xRange) projection.xRange = coordinates.xRange;
+      if (coordinates.yRange) projection.yRange = coordinates.yRange;
       delete projection.projection_resource;
       return {
         bundle: bundle,
         projectionFetchMs: result.fetchMs,
-        projectionBytes: coordinates.bytes
+        projectionBytes: coordinates.bytes,
+        projectionDownloadMs: result.downloadMs,
+        projectionDecodeMs: result.decodeMs
       };
     });
   }
@@ -6186,6 +6288,8 @@
         bundle: bundle,
         projectionFetchMs: results[0].projectionFetchMs,
         projectionBytes: results[0].projectionBytes,
+        projectionDownloadMs: results[0].projectionDownloadMs,
+        projectionDecodeMs: results[0].projectionDecodeMs,
         metadataFetchMs: results[1].metadataFetchMs,
         metadataBytes: results[1].metadataBytes
       };
@@ -6956,7 +7060,11 @@
     }
     hydrateLinkedPrimaryResources(decoded).then(function (hydrated) {
       if (token !== wireToken) return;
+      var applyStarted = performance.now();
       applyData(hydrated.bundle);
+      var applyMs = performance.now() - applyStarted;
+      var rendererStats = panels.length && panels[0].gpu && panels[0].gpu.stats
+        ? panels[0].gpu.stats() : {};
       transportMetrics.primary = {
         bytes: buffer.byteLength,
         clickToRequestMs: linkedRequestTiming.clickToRequestMs,
@@ -6973,8 +7081,12 @@
         decodeMs: decodedAt - started,
         projectionFetchMs: hydrated.projectionFetchMs,
         projectionBytes: hydrated.projectionBytes,
+        projectionDownloadMs: hydrated.projectionDownloadMs,
+        projectionDecodeMs: hydrated.projectionDecodeMs,
         metadataFetchMs: hydrated.metadataFetchMs,
         metadataBytes: hydrated.metadataBytes,
+        applyMs: applyMs,
+        rendererInitializationMs: Number(rendererStats.initializationMs),
         decodeToDrawMs: performance.now() - decodedAt
       };
     }).catch(function () {
@@ -8284,6 +8396,12 @@
       if (colorBy !== GENE_PANELS_MODE) return;
       layoutPanels(); renderLegend(); drawAll();
     };
+
+    // The first panel is persistent across data sets. Initialise its GPU
+    // renderer while the app is becoming interactive so the first Linked views
+    // click does not also pay for context creation and shader compilation.
+    ensurePanelSlots(1);
+    buildPanels();
 
     // Report whether the workspace is on screen -- both ways, and not just the
     // first time. Building the bundle walks every cell of the loaded object and
