@@ -799,6 +799,11 @@ test_that("the page benchmark has a publication-grade contract", {
     "expected_points = trajectory_contract$renderable_rows[[1L]]",
     fixed = TRUE
   )
+  expect_match(
+    benchmark,
+    "spatial_contract$renderable_rows[[1L]]",
+    fixed = TRUE
+  )
   expect_match(benchmark, "VIEWER_TRAJECTORY_METHOD", fixed = TRUE)
   expect_match(benchmark, "VIEWER_TRAJECTORY_NAME", fixed = TRUE)
   immune_spec <- regmatches(
@@ -943,6 +948,30 @@ test_that("trajectory benchmark contract follows the selected trajectory", {
   expect_identical(contract$excluded_pseudotime_rows, 1L)
   expect_identical(contract$method, "marker_guided")
   expect_identical(contract$name, "E18_neurogenesis")
+})
+
+test_that("Spatial benchmark contract follows finite coordinate rows", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+  object <- new.env(parent = emptyenv())
+  object$availableSpatial <- function() "synthetic_grid"
+  object$getSpatialData <- function(name, hydrate_molecules = TRUE) {
+    expect_identical(name, "synthetic_grid")
+    expect_false(hydrate_molecules)
+    list(coordinates = data.frame(x = 1:5, y = 6:10))
+  }
+  artifact <- tempfile(fileext = ".crb")
+  saveRDS(object, artifact)
+
+  contract <- protocol$benchmark_spatial_contract(artifact)
+
+  expect_identical(contract$name, "synthetic_grid")
+  expect_identical(contract$renderable_rows, 5L)
 })
 
 test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract", {

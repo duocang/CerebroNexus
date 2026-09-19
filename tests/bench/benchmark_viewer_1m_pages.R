@@ -65,6 +65,13 @@ trajectory_contract <- if (trajectory_requested) {
     stringsAsFactors = FALSE
   )
 }
+spatial_requested <- !nzchar(requested_pages) || "spatial" %in%
+  trimws(strsplit(requested_pages, ",", fixed = TRUE)[[1L]])
+spatial_contract <- if (spatial_requested) {
+  benchmark_spatial_contract(crb)
+} else {
+  NULL
+}
 rounds <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
   as.integer(args[[4L]])
 } else {
@@ -288,6 +295,11 @@ pages <- list(
   spatial = canvas_page(
     "spatial",
     "#spatial_projection_cell_view_host",
+    expected_points = if (is.null(spatial_contract)) {
+      NULL
+    } else {
+      spatial_contract$renderable_rows[[1L]]
+    },
     event_view = "spatial_projection"
   ),
   trekker = page("trekker", "true"),
@@ -816,8 +828,7 @@ wait_for_socket_quiet <- function(app, quiet_ms = 1200) {
     sprintf(
       paste0(
         "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
-        "return !!meter&&!document.documentElement.classList.contains(",
-        "'shiny-busy')&&performance.now()-meter.lastActivityAt>=%d;})()"
+        "return !!meter&&performance.now()-meter.lastActivityAt>=%d;})()"
       ),
       as.integer(quiet_ms)
     ),

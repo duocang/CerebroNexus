@@ -117,6 +117,52 @@ benchmark_trajectory_contract <- function(crb, method, name) {
   )
 }
 
+benchmark_spatial_contract <- function(crb) {
+  object <- read_benchmark_crb_payload(crb)
+  spatial_names <- tryCatch(
+    object$availableSpatial(),
+    error = function(error) character()
+  )
+  spatial_names <- as.character(spatial_names)
+  spatial_names <- spatial_names[!is.na(spatial_names) & nzchar(spatial_names)]
+  if (!length(spatial_names)) {
+    return(NULL)
+  }
+
+  name <- spatial_names[[1L]]
+  spatial <- tryCatch(
+    object$getSpatialData(name, hydrate_molecules = FALSE),
+    error = function(error) {
+      stop(
+        "Benchmark Spatial entry `", name, "` is unavailable: ",
+        conditionMessage(error),
+        call. = FALSE
+      )
+    }
+  )
+  coordinates <- spatial[["coordinates"]]
+  valid <- is.data.frame(coordinates) &&
+    all(c("x", "y") %in% colnames(coordinates)) &&
+    is.numeric(coordinates[["x"]]) &&
+    is.numeric(coordinates[["y"]]) &&
+    nrow(coordinates) > 0L &&
+    all(is.finite(coordinates[["x"]])) &&
+    all(is.finite(coordinates[["y"]]))
+  if (!valid) {
+    stop(
+      "Benchmark Spatial entry `", name,
+      "` must contain finite numeric x/y coordinates.",
+      call. = FALSE
+    )
+  }
+
+  data.frame(
+    name = name,
+    renderable_rows = nrow(coordinates),
+    stringsAsFactors = FALSE
+  )
+}
+
 benchmark_artifact_provenance <- function(crb) {
   crb <- normalizePath(crb, mustWork = TRUE)
   object <- read_benchmark_crb_payload(crb)
