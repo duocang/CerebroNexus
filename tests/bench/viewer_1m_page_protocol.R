@@ -80,6 +80,43 @@ read_benchmark_crb_payload <- function(file) {
   readRDS(file)
 }
 
+benchmark_trajectory_contract <- function(crb, method, name) {
+  if (
+    !is.character(method) || length(method) != 1L || is.na(method) ||
+      !nzchar(method) || !is.character(name) || length(name) != 1L ||
+      is.na(name) || !nzchar(name)
+  ) {
+    stop("Trajectory method and name must be non-empty strings.", call. = FALSE)
+  }
+  object <- read_benchmark_crb_payload(crb)
+  trajectory <- tryCatch(
+    object$getTrajectory(method, name),
+    error = function(error) {
+      stop(
+        "Benchmark trajectory `", method, " / ", name,
+        "` is unavailable: ", conditionMessage(error),
+        call. = FALSE
+      )
+    }
+  )
+  metadata <- trajectory[["meta"]]
+  if (
+    !is.data.frame(metadata) ||
+      !all(c("DR_1", "DR_2", "pseudotime") %in% colnames(metadata))
+  ) {
+    stop("Benchmark trajectory metadata is incomplete.", call. = FALSE)
+  }
+  renderable <- !is.na(metadata[["pseudotime"]])
+  data.frame(
+    method = method,
+    name = name,
+    metadata_rows = nrow(metadata),
+    renderable_rows = sum(renderable),
+    excluded_pseudotime_rows = sum(!renderable),
+    stringsAsFactors = FALSE
+  )
+}
+
 benchmark_artifact_provenance <- function(crb) {
   crb <- normalizePath(crb, mustWork = TRUE)
   object <- read_benchmark_crb_payload(crb)

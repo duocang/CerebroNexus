@@ -5,138 +5,6 @@
 ##----------------------------------------------------------------------------##
 
 ##----------------------------------------------------------------------------##
-## UI elements for plot of projection and input parameters.
-##----------------------------------------------------------------------------##
-
-output[["trajectory_projection_UI"]] <- renderUI({
-  available_methods <- viewerSupportedTrajectoryMethods(
-    getMethodsForTrajectories()
-  )
-
-  if (length(available_methods) == 0) {
-    return(
-      fluidRow(
-        cerebroBox(
-          title = "Trajectory",
-          textOutput("trajectory_missing")
-        )
-      )
-    )
-  }
-
-  tagList(
-    cerebroVizPageHeader(
-      "Trajectory",
-      "trajectory_projection_info",
-      "Explore inferred cell-state transitions and pseudotime."
-    ),
-    fluidRow(
-      class = "cerebro-viz-row cerebro-viz-top-layout",
-      column(
-        width = 12,
-        offset = 0,
-        class = "cerebro-viz-toolbar-col",
-        div(
-          class = "cerebro-viz-toolbar",
-          div(
-            class = "cerebro-viz-primary",
-            uiOutput("trajectory_select_method_and_name_UI"),
-            uiOutput("trajectory_projection_main_parameters_UI")
-          ),
-          cerebroToolbarActions(
-            cerebroSettingsButton(
-              "trajectory_projection_more_button",
-              "trajectory_projection_more"
-            ),
-            cerebroShareButton("trajectory_projection")
-          ),
-          cerebroSettingsDrawer(
-            "trajectory_projection_more",
-            cerebroSettingsSection(
-              "Appearance",
-              tagList(
-                uiOutput("trajectory_projection_additional_parameters_UI"),
-                uiOutput("trajectory_projection_group_labels_UI"),
-                checkboxInput(
-                  "trajectory_projection_point_border",
-                  "Draw border around cells",
-                  value = TRUE
-                ),
-                checkboxInput(
-                  "trajectory_projection_keep_square",
-                  "Keep plots square",
-                  value = FALSE
-                )
-              ),
-              cerebroInfoButton(
-                "trajectory_projection_additional_parameters_info"
-              )
-            ),
-            cerebroSettingsSection(
-              "Data",
-              uiOutput("trajectory_projection_data_parameters_UI")
-            ),
-            cerebroSettingsSection(
-              "Group filters",
-              uiOutput("trajectory_projection_group_filters_UI"),
-              cerebroInfoButton("trajectory_projection_group_filters_info")
-            )
-          ),
-          cerebroSelectionStatus(
-            "trajectory_projection",
-            "trajectory_number_of_selected_cells",
-            portable = FALSE
-          )
-        )
-      ),
-      column(
-        width = 12,
-        offset = 0,
-        class = "cerebro-viz-col",
-        cerebroCellViewOutput("trajectory_projection")
-      )
-    )
-  )
-})
-
-##----------------------------------------------------------------------------##
-## UI elements for main parameters of projection plot.
-##----------------------------------------------------------------------------##
-
-output[["trajectory_projection_main_parameters_UI"]] <- renderUI({
-  ## determine which metadata columns to include based on exclude_trivial_metadata
-  exclude_trivial <- FALSE
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[['exclude_trivial_metadata']])
-  ) {
-    exclude_trivial <- Cerebro.options[['exclude_trivial_metadata']]
-  }
-
-  ## build choices based on setting
-  if (exclude_trivial == TRUE) {
-    ## only include groups from getGroups()
-    metadata_cols <- getGroups()
-  } else {
-    ## include all metadata columns except cell_barcode
-    metadata_cols <- setdiff(
-      colnames(viewerProjectionFirstFrameMetadata()),
-      "cell_barcode"
-    )
-  }
-
-  selectInput(
-    "trajectory_point_color",
-    label = "Colour by",
-    choices = c(
-      "state",
-      "pseudotime",
-      metadata_cols
-    )
-  )
-})
-
-##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
@@ -174,8 +42,36 @@ trajectory_projection_main_parameters_info <- list(
 ## UI elements for additional parameters of projection plot.
 ##----------------------------------------------------------------------------##
 
-output[["trajectory_projection_additional_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+trajectory_initial_appearance <- isolate(current_scatter_defaults())
+trajectory_projection_appearance <- reactiveValues(
+  point_size = trajectory_initial_appearance$point_size,
+  point_opacity = trajectory_initial_appearance$point_opacity,
+  percentage_cells_to_show =
+    trajectory_initial_appearance$percentage_cells_to_show,
+  group_labels = TRUE,
+  draw_border = TRUE,
+  keep_square = FALSE
+)
+
+trajectory_update_appearance <- function(name, value) {
+  if (!identical(trajectory_projection_appearance[[name]], value)) {
+    trajectory_projection_appearance[[name]] <- value
+    TRUE
+  } else {
+    FALSE
+  }
+}
+
+output[["trajectory_projection_appearance_UI"]] <- renderUI({
+  req(input[["trajectory_projection_more_render_request"]])
+  color_variable <- input[["trajectory_point_color"]]
+  categorical <- FALSE
+  if (!is.null(color_variable)) {
+    metadata <- trajectory_cells_reactive(color_variable)
+    categorical <- identical(color_variable, "state") ||
+      (color_variable %in% colnames(metadata) &&
+        !is.numeric(metadata[[color_variable]]))
+  }
 
   tagList(
     sliderInput(
@@ -184,7 +80,7 @@ output[["trajectory_projection_additional_parameters_UI"]] <- renderUI({
       min = preferences[["cell_point_size"]][["min"]],
       max = preferences[["cell_point_size"]][["max"]],
       step = preferences[["cell_point_size"]][["step"]],
-      value = appearance$point_size
+      value = isolate(trajectory_projection_appearance$point_size)
     ),
     sliderInput(
       "trajectory_point_opacity",
@@ -192,13 +88,30 @@ output[["trajectory_projection_additional_parameters_UI"]] <- renderUI({
       min = preferences[["cell_point_opacity"]][["min"]],
       max = preferences[["cell_point_opacity"]][["max"]],
       step = preferences[["cell_point_opacity"]][["step"]],
-      value = appearance$point_opacity
+      value = isolate(trajectory_projection_appearance$point_opacity)
+    ),
+    if (categorical) {
+      checkboxInput(
+        "trajectory_projection_group_labels",
+        "Group labels",
+        value = isolate(trajectory_projection_appearance$group_labels)
+      )
+    },
+    checkboxInput(
+      "trajectory_projection_point_border",
+      "Draw border around cells",
+      value = isolate(trajectory_projection_appearance$draw_border)
+    ),
+    checkboxInput(
+      "trajectory_projection_keep_square",
+      "Keep plots square",
+      value = isolate(trajectory_projection_appearance$keep_square)
     )
   )
 })
 
 output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+  req(input[["trajectory_projection_more_render_request"]])
 
   tagList(
     sliderInput(
@@ -213,45 +126,58 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
       step = preferences[["cell_percentage_cells_to_show"]][[
         "step"
       ]],
-      value = appearance$percentage_cells_to_show
+      value = isolate(
+        trajectory_projection_appearance$percentage_cells_to_show
+      )
     )
   )
 })
 
-output[["trajectory_projection_group_labels_UI"]] <- renderUI({
-  color_variable <- input[["trajectory_point_color"]]
-  req(color_variable)
-  metadata <- trajectory_cells_reactive(color_variable)
-  categorical <- identical(color_variable, "state") ||
-    (color_variable %in%
-      colnames(metadata) &&
-      !is.numeric(metadata[[color_variable]]))
-  if (!categorical) {
-    return(NULL)
-  }
-  checkboxInput(
-    "trajectory_projection_group_labels",
-    "Group labels",
-    value = TRUE
+observeEvent(input[["trajectory_point_size"]], {
+  trajectory_update_appearance("point_size", input[["trajectory_point_size"]])
+}, ignoreNULL = TRUE)
+observeEvent(input[["trajectory_point_opacity"]], {
+  trajectory_update_appearance(
+    "point_opacity",
+    input[["trajectory_point_opacity"]]
   )
-})
-
-## Keep controls available while the settings drawer is hidden.
-outputOptions(
-  output,
-  "trajectory_projection_additional_parameters_UI",
-  suspendWhenHidden = FALSE
-)
-outputOptions(
-  output,
-  "trajectory_projection_data_parameters_UI",
-  suspendWhenHidden = FALSE
-)
-outputOptions(
-  output,
-  "trajectory_projection_group_labels_UI",
-  suspendWhenHidden = FALSE
-)
+}, ignoreNULL = TRUE)
+observeEvent(input[["trajectory_percentage_cells_to_show"]], {
+  trajectory_update_appearance(
+    "percentage_cells_to_show",
+    input[["trajectory_percentage_cells_to_show"]]
+  )
+}, ignoreNULL = TRUE)
+observeEvent(input[["trajectory_projection_point_border"]], {
+  trajectory_update_appearance(
+    "draw_border",
+    isTRUE(input[["trajectory_projection_point_border"]])
+  )
+}, ignoreNULL = TRUE)
+observeEvent(input[["trajectory_projection_keep_square"]], {
+  trajectory_update_appearance(
+    "keep_square",
+    isTRUE(input[["trajectory_projection_keep_square"]])
+  )
+}, ignoreNULL = TRUE)
+observeEvent(input[["trajectory_projection_group_labels"]], {
+  changed <- trajectory_update_appearance(
+    "group_labels",
+    isTRUE(input[["trajectory_projection_group_labels"]])
+  )
+  if (changed) {
+    session$sendCustomMessage(
+      "cell_view_appearance",
+      list(
+        id = "trajectory_projection",
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
+        values = list(
+          group_labels = trajectory_projection_appearance$group_labels
+        )
+      )
+    )
+  }
+}, ignoreNULL = TRUE)
 
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.

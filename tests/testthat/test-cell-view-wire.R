@@ -227,6 +227,64 @@ test_that("large specialist views send their first frame before hover data", {
   expect_identical(unlist(auxiliary$selection_key, use.names = FALSE), keys)
 })
 
+test_that("deferred specialist IDs can declare trace lengths without placeholders", {
+  skip_if_not_installed("jsonlite")
+  runtime <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = runtime)
+  sent <- list()
+  runtime$input <- list(coordviews_wire_supported = TRUE)
+  runtime$viewerDatasetIdentity <- function() {
+    list(
+      cell_count = 4096L,
+      fingerprint = "dataset-a",
+      order_fingerprint = "order-a"
+    )
+  }
+  runtime$session <- list(sendBinaryMessage = function(type, payload) {
+    sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+  })
+  trace_lengths <- c(2500L, 1596L)
+  keys <- sprintf("cell-%04d", seq_len(sum(trace_lengths)))
+
+  runtime$cerebroCellViewRender(
+    "ir_clonalUMAP_projection",
+    meta = list(color_type = "categorical", traces = c("Other", "Single")),
+    data = list(
+      x = list(seq_len(trace_lengths[[1L]]), seq_len(trace_lengths[[2L]])),
+      y = list(seq_len(trace_lengths[[1L]]), seq_len(trace_lengths[[2L]])),
+      deferred_selection_lengths = trace_lengths,
+      color = list("#d9d9d9", "#123456")
+    ),
+    deferred_aux = function() {
+      list(
+        selection_key = list(
+          keys[seq_len(trace_lengths[[1L]])],
+          keys[trace_lengths[[1L]] + seq_len(trace_lengths[[2L]])]
+        ),
+        hover = list(hoverinfo = "skip")
+      )
+    }
+  )
+
+  expect_identical(length(sent), 1L)
+  first <- wire_header(sent[[1L]]$payload)
+  expect_identical(first$data$n, 4096L)
+  expect_null(first$data$selection_key)
+  expect_null(first$data$deferred_selection_lengths)
+  auxiliary <- runtime$.cerebro_cell_view_aux_pending[[
+    paste(
+      "ir_clonalUMAP_projection",
+      first$data$wire_token,
+      sep = ":"
+    )
+  ]]
+  expect_true(is.function(auxiliary$build))
+  expect_identical(
+    unlist(auxiliary$build()$selection_key, use.names = FALSE),
+    keys
+  )
+})
+
 test_that("specialist views can reference validated shared coordinates", {
   skip_if_not_installed("jsonlite")
   runtime <- new.env(parent = globalenv())

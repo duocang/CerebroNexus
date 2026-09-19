@@ -9,6 +9,7 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
+  req(input[["trajectory_distribution_section_visible"]])
   req(trajectory_projection_sent())
   req(
     input[["trajectory_selected_method"]],

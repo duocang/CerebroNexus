@@ -129,6 +129,95 @@ test_that("trajectory debounce captures the raw reactive", {
   )
 })
 
+test_that("trajectory first frame has a static host and stable appearance", {
+  ui <- paste(
+    readLines(file.path(shiny_root, "trajectory", "UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  controls <- paste(
+    readLines(
+      file.path(shiny_root, "trajectory", "select_method_and_name.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  projection <- paste(
+    readLines(
+      file.path(shiny_root, "trajectory", "projection_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  settings <- paste(
+    readLines(
+      file.path(shiny_root, "trajectory", "projection.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(ui, 'cerebroCellViewOutput("trajectory_projection")', fixed = TRUE)
+  expect_false(grepl('uiOutput("trajectory_projection_UI")', ui, fixed = TRUE))
+  expect_match(controls, 'output[["trajectory_primary_controls_UI"]]', fixed = TRUE)
+  expect_match(controls, '"trajectory_selected_method"', fixed = TRUE)
+  expect_match(controls, '"trajectory_selected_name"', fixed = TRUE)
+  expect_match(controls, '"trajectory_point_color"', fixed = TRUE)
+  expect_false(grepl(
+    'input[["trajectory_projection_group_labels"]]',
+    projection,
+    fixed = TRUE
+  ))
+  expect_match(
+    projection,
+    "group_labels = isolate(trajectory_projection_appearance$group_labels)",
+    fixed = TRUE
+  )
+  expect_match(settings, '"cell_view_appearance"', fixed = TRUE)
+})
+
+test_that("trajectory summaries require their own visibility gate", {
+  gates <- c(
+    distribution_along_pseudotime.R =
+      "trajectory_distribution_section_visible",
+    states_by_group.R = "trajectory_states_section_visible",
+    expression_metrics.R = "trajectory_expression_section_visible"
+  )
+  for (path in names(gates)) {
+    source <- paste(
+      readLines(file.path(shiny_root, "trajectory", path), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_match(source, gates[[path]], fixed = TRUE, info = path)
+    expect_match(
+      source,
+      "req(trajectory_projection_sent())",
+      fixed = TRUE,
+      info = path
+    )
+  }
+})
+
+test_that("specialist timing separates primary, cached, and auxiliary events", {
+  source <- paste(
+    readLines(file.path(shiny_root, "www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(source, "function beginSingleTiming", fixed = TRUE)
+  expect_match(source, "renderRequestSent: !!renderRequestSent", fixed = TRUE)
+  expect_match(source, "eventKind: eventKind", fixed = TRUE)
+  expect_match(source, "reportSelection('aux')", fixed = TRUE)
+  expect_match(source, "'cached'", fixed = TRUE)
+  expect_match(source, "__cerebroResetSpecialistBench", fixed = TRUE)
+  expect_match(source, "recordSpecialistPayload('primary'", fixed = TRUE)
+  expect_match(source, "recordSpecialistPayload('aux'", fixed = TRUE)
+  expect_false(grepl(
+    "p.canvas.addEventListener('pointerenter', requestSingleAux)",
+    source,
+    fixed = TRUE
+  ))
+})
+
 test_that("Trajectory tab is wired into the app UI and server", {
   # Guard the integration points so a future refactor that drops the wiring
   # (as pr05 originally shipped it — module present but never mounted) fails

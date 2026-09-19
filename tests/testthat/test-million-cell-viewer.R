@@ -181,10 +181,9 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
   expect_false(env$.viewer1mEnrichDemoObject(object))
 })
 
-test_that("the Viewer uses one supported-method filter in every trajectory UI", {
+test_that("the Viewer filters methods at trajectory selection boundaries", {
   files <- c(
     viewer_test_path("shiny_server.R"),
-    viewer_test_path("trajectory", "projection.R"),
     viewer_test_path("trajectory", "select_method_and_name.R")
   )
   for (file in files) {
@@ -758,8 +757,15 @@ test_that("the page benchmark has a publication-grade contract", {
       benchmark,
       fixed = TRUE
     )),
-    3L
+    2L
   )
+  expect_match(
+    benchmark,
+    "expected_points = trajectory_contract$renderable_rows[[1L]]",
+    fixed = TRUE
+  )
+  expect_match(benchmark, "VIEWER_TRAJECTORY_METHOD", fixed = TRUE)
+  expect_match(benchmark, "VIEWER_TRAJECTORY_NAME", fixed = TRUE)
   immune_spec <- regmatches(
     benchmark,
     regexpr(
@@ -803,7 +809,15 @@ test_that("the page benchmark has a publication-grade contract", {
     "js_heap_used_bytes",
     "websocket_sent_payload_bytes",
     "websocket_received_payload_bytes",
+    "websocket_received_at_ready_bytes",
+    "websocket_post_ready_received_bytes",
     "shared_projection_primed",
+    "performance_ms",
+    "specialist_event_kind",
+    "specialist_generation",
+    "render_request_sent",
+    "cached_activation",
+    "geometry_reused",
     "click_to_request_ms",
     "server_prepare_ms",
     "serialize_transfer_ms",
@@ -816,9 +830,17 @@ test_that("the page benchmark has a publication-grade contract", {
     "request_to_ready_ms",
     "click_to_ready_ms",
     "primary_payload_bytes",
+    "primary_payload_count",
+    "primary_payload_meter_bytes",
+    "aux_payload_count",
+    "aux_payload_bytes",
     "correctness_pass",
     "rendered_point_count",
     "expected_point_count",
+    "trajectory_method",
+    "trajectory_name",
+    "expected_trajectory_method",
+    "expected_trajectory_name",
     "correctness_detail",
     "navigator_gpu",
     "renderer_backend",
@@ -832,6 +854,65 @@ test_that("the page benchmark has a publication-grade contract", {
   )) {
     expect_match(benchmark_contract, field, fixed = TRUE, info = field)
   }
+})
+
+test_that("trajectory benchmark contract follows the selected trajectory", {
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+  object <- new.env(parent = emptyenv())
+  object$getTrajectory <- function(method, name) {
+    expect_identical(method, "marker_guided")
+    expect_identical(name, "E18_neurogenesis")
+    list(meta = data.frame(
+      DR_1 = 1:5,
+      DR_2 = 6:10,
+      pseudotime = c(0, 1, NA, 3, 4)
+    ))
+  }
+  artifact <- tempfile(fileext = ".crb")
+  saveRDS(object, artifact)
+
+  contract <- protocol$benchmark_trajectory_contract(
+    artifact,
+    "marker_guided",
+    "E18_neurogenesis"
+  )
+
+  expect_identical(contract$metadata_rows, 5L)
+  expect_identical(contract$renderable_rows, 4L)
+  expect_identical(contract$excluded_pseudotime_rows, 1L)
+  expect_identical(contract$method, "marker_guided")
+  expect_identical(contract$name, "E18_neurogenesis")
+})
+
+test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract", {
+  artifact <- Sys.getenv("CEREBRO_MOUSE_1M_CRB")
+  skip_if(!nzchar(artifact) || !file.exists(artifact))
+  protocol_file <- testthat::test_path(
+    "..",
+    "bench",
+    "viewer_1m_page_protocol.R"
+  )
+  protocol <- new.env(parent = baseenv())
+  sys.source(protocol_file, envir = protocol)
+  object <- protocol$read_benchmark_crb_payload(artifact)
+  trajectory <- object$getTrajectory("marker_guided", "E18_neurogenesis")
+
+  expect_identical(nrow(object$getMetaData()), 1000000L)
+  expect_identical(nrow(trajectory$meta), 981785L)
+  expect_identical(1000000L - nrow(trajectory$meta), 18215L)
+  expect_false(anyNA(trajectory$meta$pseudotime))
+  expect_false(anyNA(trajectory$meta$DR_1))
+  expect_false(anyNA(trajectory$meta$DR_2))
+  expect_setequal(
+    trajectory$provenance$excluded_clusters,
+    c("2", "9", "20", "23", "29", "30")
+  )
 })
 
 test_that("benchmark TSV output escapes controls and validates columns", {

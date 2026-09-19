@@ -44,6 +44,19 @@ if (
 ) {
   stop("VIEWER_EXPECTED_CELLS must be one positive integer.", call. = FALSE)
 }
+trajectory_method <- Sys.getenv(
+  "VIEWER_TRAJECTORY_METHOD",
+  unset = "marker_guided"
+)
+trajectory_name <- Sys.getenv(
+  "VIEWER_TRAJECTORY_NAME",
+  unset = "E18_neurogenesis"
+)
+trajectory_contract <- benchmark_trajectory_contract(
+  crb,
+  trajectory_method,
+  trajectory_name
+)
 rounds <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
   as.integer(args[[4L]])
 } else {
@@ -107,7 +120,9 @@ page <- function(
   expected_point_count = NA_real_,
   correctness_detail = "''",
   visual_check = FALSE,
-  requires_webgpu = FALSE
+  requires_webgpu = FALSE,
+  expected_trajectory_method = NA_character_,
+  expected_trajectory_name = NA_character_
 ) {
   list(
     tab = tab,
@@ -125,16 +140,39 @@ page <- function(
     expected_point_count = expected_point_count,
     correctness_detail = correctness_detail,
     visual_check = visual_check,
-    requires_webgpu = requires_webgpu
+    requires_webgpu = requires_webgpu,
+    expected_trajectory_method = expected_trajectory_method,
+    expected_trajectory_name = expected_trajectory_name
   )
 }
 
-canvas_page <- function(tab, host, expected_points = NULL, ...) {
+canvas_page <- function(
+  tab,
+  host,
+  expected_points = NULL,
+  expected_trajectory_method = NULL,
+  expected_trajectory_name = NULL,
+  ...
+) {
   selector <- paste0(host, " canvas:not(.cv-mini)[data-point-count]")
   count_check <- if (is.null(expected_points)) {
     "pointCount>0"
   } else {
     paste0("pointCount===", expected_points)
+  }
+  trajectory_check <- if (
+    is.null(expected_trajectory_method) || is.null(expected_trajectory_name)
+  ) {
+    "true"
+  } else {
+    sprintf(
+      paste0(
+        "document.getElementById('trajectory_selected_method')?.value===%s&&",
+        "document.getElementById('trajectory_selected_name')?.value===%s"
+      ),
+      quote_r(expected_trajectory_method),
+      quote_r(expected_trajectory_name)
+    )
   }
   page(
     tab,
@@ -146,12 +184,13 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
         "(() => {const canvas=document.querySelector(%s);",
         "const pointCount=Number(canvas?.getAttribute('data-point-count'));",
         "const detail=window.__cerebroPageBenchEventDetail;",
-        "return Number.isFinite(pointCount)&&%s&&",
+        "return Number.isFinite(pointCount)&&%s&&%s&&",
         "/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
         "detail?.datasetFingerprint);})()"
       ),
       quote_r(selector),
-      count_check
+      count_check,
+      trajectory_check
     ),
     point_selector = selector,
     expected_point_count = if (is.null(expected_points)) {
@@ -161,7 +200,17 @@ canvas_page <- function(tab, host, expected_points = NULL, ...) {
     },
     correctness_detail = "JSON.stringify(window.__cerebroPageBenchEventDetail||{})",
     visual_check = TRUE,
-    requires_webgpu = !is.null(expected_points)
+    requires_webgpu = !is.null(expected_points),
+    expected_trajectory_method = if (is.null(expected_trajectory_method)) {
+      NA_character_
+    } else {
+      expected_trajectory_method
+    },
+    expected_trajectory_name = if (is.null(expected_trajectory_name)) {
+      NA_character_
+    } else {
+      expected_trajectory_name
+    }
   )
 }
 
@@ -210,10 +259,12 @@ pages <- list(
   trajectory = canvas_page(
     "trajectory",
     "#trajectory_projection_cell_view_host",
-    expected_points = expected_cells,
+    expected_points = trajectory_contract$renderable_rows[[1L]],
     budget_ms = 3000,
     required = TRUE,
-    event_view = "trajectory_projection"
+    event_view = "trajectory_projection",
+    expected_trajectory_method = trajectory_contract$method[[1L]],
+    expected_trajectory_name = trajectory_contract$name[[1L]]
   ),
   hla = canvas_page(
     "hla_tcr_motifs",
@@ -276,6 +327,10 @@ gene_prime_overview <- identical(
   tolower(Sys.getenv("VIEWER_GENE_PRIME_OVERVIEW", unset = "false")),
   "true"
 )
+trajectory_prime_overview <- identical(
+  tolower(Sys.getenv("VIEWER_TRAJECTORY_PRIME_OVERVIEW", unset = "false")),
+  "true"
+)
 skip_visual_check <- identical(
   tolower(Sys.getenv("VIEWER_BENCH_SKIP_VISUAL_CHECK", unset = "false")),
   "true"
@@ -323,7 +378,13 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
     } else if (is.null(page$event_view)) {
       "e.detail?.ready===true"
     } else {
-      sprintf("e.detail?.viewId===%s", quote_r(page$event_view))
+      sprintf(
+        paste0(
+          "e.detail?.viewId===%s&&",
+          "(e.detail?.eventKind==='primary'||e.detail?.eventKind==='cached')"
+        ),
+        quote_r(page$event_view)
+      )
     }
     sprintf(
       paste0(
@@ -420,10 +481,26 @@ page_correctness <- function(app, page) {
     if (is.null(value)) NA_real_ else as.numeric(value)
   }
   detail <- app$get_js(page$correctness_detail)
+  trajectory_method <- if (is.na(page$expected_trajectory_method)) {
+    NA_character_
+  } else {
+    as.character(app$get_js(
+      "document.getElementById('trajectory_selected_method')?.value||''"
+    ))
+  }
+  trajectory_name <- if (is.na(page$expected_trajectory_name)) {
+    NA_character_
+  } else {
+    as.character(app$get_js(
+      "document.getElementById('trajectory_selected_name')?.value||''"
+    ))
+  }
   list(
     pass = pass,
     point_count = point_count,
-    detail = if (is.null(detail)) "" else as.character(detail)
+    detail = if (is.null(detail)) "" else as.character(detail),
+    trajectory_method = trajectory_method,
+    trajectory_name = trajectory_name
   )
 }
 
@@ -547,9 +624,12 @@ start_socket_meter <- function(app) {
     "if(ArrayBuffer.isView(data))return data.byteLength;",
     "if(data instanceof Blob)return data.size;return 0;};",
     "const meter={socket:socket,sent:0,received:0,",
+    "lastActivityAt:performance.now(),",
     "originalSend:socket.send,handler:null,wrappedSend:null};",
-    "meter.handler=event=>{meter.received+=byteLength(event.data);};",
+    "meter.handler=event=>{meter.received+=byteLength(event.data);",
+    "meter.lastActivityAt=performance.now();};",
     "meter.wrappedSend=function(data){meter.sent+=byteLength(data);",
+    "meter.lastActivityAt=performance.now();",
     "return meter.originalSend.apply(this,arguments);};",
     "try{socket.addEventListener('message',meter.handler);",
     "socket.send=meter.wrappedSend;",
@@ -681,6 +761,14 @@ assert_clean_logs <- function(app) {
   logs <- app$get_logs()
   browser_error <- logs$location == "chromote" &
     logs$level %in% c("error", "assert", "throw")
+  known_dashboard_error <- browser_error &
+    grepl(
+      "Cannot read properties of undefined (reading 'setValue')",
+      logs$message,
+      fixed = TRUE
+    ) &
+    grepl("shinydashboard", logs$message, fixed = TRUE)
+  browser_error <- browser_error & !known_dashboard_error
   server_error <- logs$location == "shiny" &
     grepl(
       "Warning: Error|Execution halted|Error in ",
@@ -694,6 +782,40 @@ assert_clean_logs <- function(app) {
       call. = FALSE
     )
   }
+  list(
+    known_dashboard_error_count = sum(known_dashboard_error, na.rm = TRUE)
+  )
+}
+
+socket_meter_snapshot <- function(app) {
+  value <- app$get_js(paste0(
+    "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
+    "if(!meter)throw new Error('Socket meter is not active');",
+    "return {sent:meter.sent,received:meter.received,",
+    "quietMs:performance.now()-meter.lastActivityAt};})()"
+  ))
+  if (
+    is.null(value$sent) || !is.finite(value$sent) ||
+      is.null(value$received) || !is.finite(value$received)
+  ) {
+    stop("Socket meter returned invalid byte counts.", call. = FALSE)
+  }
+  value
+}
+
+wait_for_socket_quiet <- function(app, quiet_ms = 1200) {
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
+        "return !!meter&&!document.documentElement.classList.contains(",
+        "'shiny-busy')&&performance.now()-meter.lastActivityAt>=%d;})()"
+      ),
+      as.integer(quiet_ms)
+    ),
+    timeout = 120000
+  )
+  invisible(TRUE)
 }
 
 page_completion_elapsed <- function(app, page) {
@@ -745,6 +867,10 @@ page_specialist_timing <- function(app) {
     "bytes:timing.bytes??linked.bytes,",
     "projectionBytes:linked.projectionBytes,",
     "metadataBytes:linked.metadataBytes,",
+    "eventKind:detail.eventKind,",
+    "generation:detail.generation??timing.generation,",
+    "renderRequestSent:detail.renderRequestSent??timing.renderRequestSent,",
+    "cached:timing.cached,geometryReused:timing.geometryReused,",
     "clickToReadyMs:Number.isFinite(click)&&Number.isFinite(ready)",
     "?ready-click:null};})()"
   ))
@@ -752,7 +878,20 @@ page_specialist_timing <- function(app) {
     result <- suppressWarnings(as.numeric(value[[name]]))
     if (length(result) != 1L || !is.finite(result)) NA_real_ else result
   }
+  text <- function(name) {
+    result <- value[[name]]
+    if (is.null(result) || !length(result)) NA_character_ else as.character(result)
+  }
+  flag <- function(name) {
+    result <- value[[name]]
+    if (is.null(result) || !length(result)) NA else isTRUE(result)
+  }
   data.frame(
+    specialist_event_kind = text("eventKind"),
+    specialist_generation = number("generation"),
+    render_request_sent = flag("renderRequestSent"),
+    cached_activation = flag("cached"),
+    geometry_reused = flag("geometryReused"),
     click_to_request_ms = number("clickToRequestMs"),
     server_prepare_ms = number("serverPrepareMs"),
     server_resource_ms = number("serverResourceMs"),
@@ -774,6 +913,28 @@ page_specialist_timing <- function(app) {
     primary_payload_bytes = number("bytes"),
     projection_asset_bytes = number("projectionBytes"),
     metadata_asset_bytes = number("metadataBytes"),
+    stringsAsFactors = FALSE
+  )
+}
+
+specialist_payload_snapshot <- function(app, view_id) {
+  value <- app$get_js(sprintf(
+    paste0(
+      "(() => {const value=window.__cerebroSpecialistBenchSnapshot?.();",
+      "const primary=value?.primary?.byId?.[%s]||{};",
+      "const aux=value?.aux?.byId?.[%s]||{};",
+      "return {primaryCount:Number(primary.count)||0,",
+      "primaryBytes:Number(primary.bytes)||0,",
+      "auxCount:Number(aux.count)||0,auxBytes:Number(aux.bytes)||0};})()"
+    ),
+    quote_r(view_id),
+    quote_r(view_id)
+  ))
+  data.frame(
+    primary_payload_count = as.numeric(value$primaryCount),
+    primary_payload_meter_bytes = as.numeric(value$primaryBytes),
+    aux_payload_count = as.numeric(value$auxCount),
+    aux_payload_bytes = as.numeric(value$auxBytes),
     stringsAsFactors = FALSE
   )
 }
@@ -835,11 +996,15 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   }
   shared_projection_primed <- FALSE
   if (
-    isTRUE(gene_prime_overview) &&
-      identical(schedule_row$page, "gene_expression")
+    (isTRUE(gene_prime_overview) &&
+      identical(schedule_row$page, "gene_expression")) ||
+      (isTRUE(trajectory_prime_overview) &&
+        identical(schedule_row$page, "trajectory"))
   ) {
+    start_socket_meter(app)
     overview_page <- all_pages[["overview"]]
     open_page(app, overview_page, require_event = TRUE)
+    wait_for_socket_quiet(app)
     shared_projection_primed <- TRUE
     app$run_js(
       "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
@@ -848,10 +1013,14 @@ run_observation <- function(schedule_row, candidate, page, crb) {
       "document.getElementById('shiny-tab-loadData').classList.contains('active')",
       timeout = 120000
     )
+    wait_for_socket_quiet(app)
+    stop_socket_meter(app)
   }
   warmed <- FALSE
   if (identical(schedule_row$visit, "repeat")) {
+    start_socket_meter(app)
     open_page(app, page, require_event = TRUE)
+    wait_for_socket_quiet(app)
     warmed <- TRUE
     app$run_js(
       "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
@@ -860,9 +1029,12 @@ run_observation <- function(schedule_row, candidate, page, crb) {
       "document.getElementById('shiny-tab-loadData').classList.contains('active')",
       timeout = 120000
     )
+    wait_for_socket_quiet(app)
+    stop_socket_meter(app)
   }
 
   session$Performance$enable()
+  app$run_js("window.__cerebroResetSpecialistBench?.();")
   start_socket_meter(app)
   socket_meter_active <- TRUE
   on.exit(
@@ -888,6 +1060,23 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   )
   elapsed_ms <- open_page(app, page, require_event = require_event)
   specialist_timing <- page_specialist_timing(app)
+  websocket_at_ready <- socket_meter_snapshot(app)
+  specialist_at_ready <- if (is.null(page$event_view)) {
+    data.frame(
+      primary_payload_count = 0,
+      primary_payload_meter_bytes = 0,
+      aux_payload_count = 0,
+      aux_payload_bytes = 0
+    )
+  } else {
+    specialist_payload_snapshot(app, page$event_view)
+  }
+  wait_for_socket_quiet(app)
+  specialist_final <- if (is.null(page$event_view)) {
+    specialist_at_ready
+  } else {
+    specialist_payload_snapshot(app, page$event_view)
+  }
   heap_used_bytes <- js_heap_used(session)
   websocket <- stop_socket_meter(app)
   socket_meter_active <- FALSE
@@ -899,22 +1088,33 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   visible_pixels <- page_visible_pixels(app, page)
   correctness_pass <- correctness$pass &&
     (is.na(visible_pixels$pass) || visible_pixels$pass)
-  assert_clean_logs(app)
+  log_diagnostics <- assert_clean_logs(app)
   cbind(data.frame(
     status = if (correctness_pass) "ok" else "error",
     error = if (correctness_pass) "" else "Page correctness check failed.",
     elapsed_ms = elapsed_ms,
+    performance_ms = if (is.finite(specialist_timing$click_to_ready_ms)) {
+      specialist_timing$click_to_ready_ms
+    } else {
+      elapsed_ms
+    },
     complete_elapsed_ms = complete_elapsed_ms,
     ready_event_required = require_event && !is.null(page$ready_event),
     correctness_pass = correctness_pass,
     rendered_point_count = correctness$point_count,
     expected_point_count = page$expected_point_count,
+    trajectory_method = correctness$trajectory_method,
+    trajectory_name = correctness$trajectory_name,
+    expected_trajectory_method = page$expected_trajectory_method,
+    expected_trajectory_name = page$expected_trajectory_name,
     correctness_detail = correctness$detail,
     navigator_gpu = renderer$navigator_gpu,
     renderer_backend = renderer$renderer_backend,
     renderer_adapter = renderer$renderer_adapter,
     renderer_context_lost = renderer$renderer_context_lost,
     renderer_error = renderer$renderer_error,
+    known_dashboard_error_count =
+      log_diagnostics$known_dashboard_error_count,
     visible_pixel_count = visible_pixels$count,
     visible_pixels_pass = visible_pixels$pass,
     r_peak_rss_kib = unname(resources[["r_peak_rss_kib"]]),
@@ -922,6 +1122,22 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     js_heap_used_bytes = heap_used_bytes,
     websocket_sent_payload_bytes = as.numeric(websocket$sent),
     websocket_received_payload_bytes = as.numeric(websocket$received),
+    websocket_received_at_ready_bytes = as.numeric(
+      websocket_at_ready$received
+    ),
+    websocket_post_ready_received_bytes = as.numeric(
+      websocket$received - websocket_at_ready$received
+    ),
+    primary_payload_count_at_ready =
+      specialist_at_ready$primary_payload_count,
+    primary_payload_bytes_at_ready =
+      specialist_at_ready$primary_payload_meter_bytes,
+    aux_payload_count_at_ready = specialist_at_ready$aux_payload_count,
+    aux_payload_bytes_at_ready = specialist_at_ready$aux_payload_bytes,
+    primary_payload_count = specialist_final$primary_payload_count,
+    primary_payload_meter_bytes = specialist_final$primary_payload_meter_bytes,
+    aux_payload_count = specialist_final$aux_payload_count,
+    aux_payload_bytes = specialist_final$aux_payload_bytes,
     chrome_version = session$Browser$getVersion()$product,
     shared_projection_primed = shared_projection_primed,
     stringsAsFactors = FALSE
@@ -999,17 +1215,23 @@ empty_observation <- function(status, error) {
     status = status,
     error = error,
     elapsed_ms = NA_real_,
+    performance_ms = NA_real_,
     complete_elapsed_ms = NA_real_,
     ready_event_required = NA,
     correctness_pass = NA,
     rendered_point_count = NA_real_,
     expected_point_count = NA_real_,
+    trajectory_method = NA_character_,
+    trajectory_name = NA_character_,
+    expected_trajectory_method = NA_character_,
+    expected_trajectory_name = NA_character_,
     correctness_detail = "",
     navigator_gpu = NA,
     renderer_backend = NA_character_,
     renderer_adapter = NA_character_,
     renderer_context_lost = NA,
     renderer_error = NA_character_,
+    known_dashboard_error_count = NA_real_,
     visible_pixel_count = NA_real_,
     visible_pixels_pass = NA,
     r_peak_rss_kib = NA_real_,
@@ -1017,8 +1239,23 @@ empty_observation <- function(status, error) {
     js_heap_used_bytes = NA_real_,
     websocket_sent_payload_bytes = NA_real_,
     websocket_received_payload_bytes = NA_real_,
+    websocket_received_at_ready_bytes = NA_real_,
+    websocket_post_ready_received_bytes = NA_real_,
+    primary_payload_count_at_ready = NA_real_,
+    primary_payload_bytes_at_ready = NA_real_,
+    aux_payload_count_at_ready = NA_real_,
+    aux_payload_bytes_at_ready = NA_real_,
+    primary_payload_count = NA_real_,
+    primary_payload_meter_bytes = NA_real_,
+    aux_payload_count = NA_real_,
+    aux_payload_bytes = NA_real_,
     chrome_version = NA_character_,
     shared_projection_primed = NA,
+    specialist_event_kind = NA_character_,
+    specialist_generation = NA_real_,
+    render_request_sent = NA,
+    cached_activation = NA,
+    geometry_reused = NA,
     click_to_request_ms = NA_real_,
     server_prepare_ms = NA_real_,
     server_resource_ms = NA_real_,
@@ -1068,7 +1305,7 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
   row$performance_applicable <- !row$requires_webgpu ||
     identical(row$renderer_backend, "webgpu")
   row$pass <- if (isTRUE(row$performance_applicable)) {
-    row$status == "ok" && page_budget_pass(row$elapsed_ms, row$budget_ms)
+    row$status == "ok" && page_budget_pass(row$performance_ms, row$budget_ms)
   } else {
     NA
   }
@@ -1082,8 +1319,8 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
     row$visit,
     ": ",
     row$status,
-    if (is.finite(row$elapsed_ms)) {
-      paste0(" ", round(row$elapsed_ms), " ms")
+    if (is.finite(row$performance_ms)) {
+      paste0(" ", round(row$performance_ms), " ms product")
     } else {
       ""
     }

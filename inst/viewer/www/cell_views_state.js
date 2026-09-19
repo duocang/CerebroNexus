@@ -89,6 +89,18 @@
     return out;
   };
 
+  S.canonicalAuxValues = function (values, groups, fallback) {
+    if (!ArrayBuffer.isView(groups)) return null;
+    if (ArrayBuffer.isView(values)) {
+      return values.length === groups.length ? values : null;
+    }
+    if (!Array.isArray(values)) return null;
+    var first = values.length ? values[0] : null;
+    var nested = Array.isArray(first) || ArrayBuffer.isView(first);
+    if (!nested && values.length === groups.length) return values;
+    return S.canonicalGroupedValues(values, groups, fallback);
+  };
+
   // Project the live client-side selection into the state that may safely be
   // published to Shiny. Specialist canvases can paint before their deferred
   // stable cell identities arrive; during that window the local selection is

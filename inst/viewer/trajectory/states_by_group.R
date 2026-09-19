@@ -9,6 +9,7 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_by_group_UI"]] <- renderUI({
+  req(input[["trajectory_states_section_visible"]])
   req(trajectory_projection_sent())
   req(trajectory_selection_ok())
 

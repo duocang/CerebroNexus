@@ -12,12 +12,7 @@
 trajectory_projection_prepared_raw <- reactive({
   req(
     trajectory_selection_ok(),
-    input[["trajectory_percentage_cells_to_show"]],
-    input[["trajectory_point_color"]],
-    input[["trajectory_point_size"]],
-    input[["trajectory_point_opacity"]],
-    !is.null(input[["trajectory_projection_point_border"]]),
-    !is.null(input[["trajectory_projection_keep_square"]])
+    input[["trajectory_point_color"]]
   )
 
   trajectory_data <- trajectory_data_reactive()
@@ -45,7 +40,7 @@ trajectory_projection_prepared_raw <- reactive({
   ## randomly remove cells (if necessary)
   cells_df <- randomlySubsetCells(
     cells_df,
-    input[["trajectory_percentage_cells_to_show"]]
+    trajectory_projection_appearance$percentage_cells_to_show
   )
 
   ## Send an explicit empty payload so clearing every filter cannot leave the
@@ -56,11 +51,10 @@ trajectory_projection_prepared_raw <- reactive({
       trajectory_lines = list(),
       hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
       color_variable = input[["trajectory_point_color"]],
-      point_size = input[["trajectory_point_size"]],
-      point_opacity = input[["trajectory_point_opacity"]],
-      group_labels = isTRUE(input[["trajectory_projection_group_labels"]]),
-      draw_border = isTRUE(input[["trajectory_projection_point_border"]]),
-      keep_square = isTRUE(input[["trajectory_projection_keep_square"]])
+      point_size = trajectory_projection_appearance$point_size,
+      point_opacity = trajectory_projection_appearance$point_opacity,
+      draw_border = trajectory_projection_appearance$draw_border,
+      keep_square = trajectory_projection_appearance$keep_square
     ))
   }
 
@@ -92,11 +86,10 @@ trajectory_projection_prepared_raw <- reactive({
     trajectory_lines = trajectory_lines,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
     color_variable = color_variable,
-    point_size = input[["trajectory_point_size"]],
-    point_opacity = input[["trajectory_point_opacity"]],
-    group_labels = isTRUE(input[["trajectory_projection_group_labels"]]),
-    draw_border = isTRUE(input[["trajectory_projection_point_border"]]),
-    keep_square = isTRUE(input[["trajectory_projection_keep_square"]])
+    point_size = trajectory_projection_appearance$point_size,
+    point_opacity = trajectory_projection_appearance$point_opacity,
+    draw_border = trajectory_projection_appearance$draw_border,
+    keep_square = trajectory_projection_appearance$keep_square
   )
 })
 
@@ -138,6 +131,18 @@ observeEvent(
 ## Observer that pushes the prepared data to the shared JS renderer.
 ##----------------------------------------------------------------------------##
 trajectory_projection_sent <- reactiveVal(FALSE)
+
+observeEvent(viewerDatasetIdentity()$fingerprint, {
+  appearance <- current_scatter_defaults()
+  trajectory_projection_appearance$point_size <- appearance$point_size
+  trajectory_projection_appearance$point_opacity <- appearance$point_opacity
+  trajectory_projection_appearance$percentage_cells_to_show <-
+    appearance$percentage_cells_to_show
+  trajectory_projection_appearance$group_labels <- TRUE
+  trajectory_projection_appearance$draw_border <- TRUE
+  trajectory_projection_appearance$keep_square <- FALSE
+  trajectory_projection_sent(FALSE)
+}, ignoreInit = TRUE)
 
 observe({
   req(input[["trajectory_projection_render_request"]])
@@ -193,7 +198,7 @@ observe({
     selection_keys = seq_len(nrow(cells_df)),
     point_size = prepared[["point_size"]],
     point_opacity = prepared[["point_opacity"]],
-    group_labels = prepared[["group_labels"]],
+    group_labels = isolate(trajectory_projection_appearance$group_labels),
     keep_square = prepared[["keep_square"]],
     point_line = point_line,
     reset_axes = reset_axes_now,

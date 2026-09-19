@@ -128,6 +128,32 @@ test_that("canonical grouped coordinates accept reused typed arrays", {
   )
 })
 
+test_that("canonical auxiliary values preserve flat barcode order", {
+  output <- run_state_node(paste0(
+    "const S = window.CBViewState;",
+    "const groups = new Uint8Array([0,1,0]);",
+    "const flat = ['cell-a','cell-b','cell-c'];",
+    "const direct = S.canonicalAuxValues(flat,groups,'');",
+    "const nested = S.canonicalAuxValues(",
+    "  [['cell-a','cell-c'],['cell-b']],groups,'');",
+    "console.log(JSON.stringify({",
+    "  same:direct===flat,",
+    "  direct:Array.from(direct),",
+    "  nested:Array.from(nested)",
+    "}));"
+  ))
+
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      same = TRUE,
+      direct = list("cell-a", "cell-b", "cell-c"),
+      nested = list("cell-a", "cell-b", "cell-c")
+    )
+  )
+})
+
 test_that("specialist restore does not overwrite a saved state on its active page", {
   output <- run_state_node(paste0(
     "const S = window.CBViewState;",

@@ -42,6 +42,39 @@
   var transportMetrics = {};
   var linkedRequestTiming = {};
   var singleTiming = Object.create(null);
+  var specialistPayloadMeter = null;
+  window.__cerebroResetSpecialistBench = function () {
+    specialistPayloadMeter = {
+      primary: { count: 0, bytes: 0, byId: {} },
+      aux: { count: 0, bytes: 0, byId: {} }
+    };
+    return true;
+  };
+  window.__cerebroSpecialistBenchSnapshot = function () {
+    return specialistPayloadMeter
+      ? JSON.parse(JSON.stringify(specialistPayloadMeter))
+      : null;
+  };
+  function recordSpecialistPayload(kind, id, bytes) {
+    if (!specialistPayloadMeter || !specialistPayloadMeter[kind]) return;
+    var metric = specialistPayloadMeter[kind];
+    var key = String(id || 'unknown');
+    metric.count += 1;
+    metric.bytes += Number(bytes) || 0;
+    metric.byId[key] = metric.byId[key] || { count: 0, bytes: 0 };
+    metric.byId[key].count += 1;
+    metric.byId[key].bytes += Number(bytes) || 0;
+  }
+  function beginSingleTiming(id, renderRequestSent) {
+    var previous = singleTiming[id] || {};
+    var timing = {
+      generation: (Number(previous.generation) || 0) + 1,
+      renderRequestSent: !!renderRequestSent,
+      cached: !renderRequestSent
+    };
+    singleTiming[id] = timing;
+    return timing;
+  }
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
@@ -2731,7 +2764,8 @@
       pngFilename('linked-views')
     );
   }
-  function reportSelection() {
+  function reportSelection(eventKind) {
+    eventKind = eventKind || 'interaction';
     var hasSelection = !!(sel && sel.size);
     var specialistReport = singleActive
       ? window.CBViewState.specialistSelectionReport(
@@ -2796,6 +2830,9 @@
             ? specialistReport.selectedCells
             : (hasSelection ? sel.size : 0),
           datasetFingerprint: datasetFingerprint,
+          eventKind: eventKind,
+          generation: Number(timing.generation) || 0,
+          renderRequestSent: !!timing.renderRequestSent,
           timing: specialistTiming
         }
         : { selectedCells: hasSelection ? sel.size : 0 } }
@@ -3862,7 +3899,6 @@
 
   function wireHover(p) {
     var tip = $(p.tipId);
-    p.canvas.addEventListener('pointerenter', requestSingleAux);
     p.canvas.addEventListener('mousemove', function (e) {
       var space = singleActive && spaceById[p.spaceId];
       if (space && space._hoverEnabled === false) {
@@ -3884,6 +3920,7 @@
         setHoverCell(null);
         return;
       }
+      requestSingleAux();
       setHoverCell(i);
       if (!own) return;
       tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
@@ -5981,6 +6018,7 @@
     singleSpaceIds = []; singleSpaceModes = {};
     singleIndexCells = null; singleIndexMap = null;
     linkedState = null;
+    singleTiming = Object.create(null);
   }
   function mountSingleSurface(id) {
     rememberSurfaceHome();
@@ -6297,6 +6335,9 @@
   }
   function canonicalGroupedValues(grouped, groups, fallback) {
     return window.CBViewState.canonicalGroupedValues(grouped, groups, fallback);
+  }
+  function canonicalAuxValues(values, groups, fallback) {
+    return window.CBViewState.canonicalAuxValues(values, groups, fallback);
   }
   function alignSingleCoordinates(data, nested) {
     var n = D && D.n || 0;
@@ -6778,7 +6819,7 @@
         lassoData: p.lassoData && p.lassoData.map(function (q) { return q.slice(); }) };
     });
   }
-  function activateSingle(id, resetAxes, preserveTargetState) {
+  function activateSingle(id, resetAxes, preserveTargetState, eventKind) {
     var activationStarted = performance.now();
     var timing = singleTiming[id] || (singleTiming[id] = {});
     timing.activationStartedAtMs = activationStarted;
@@ -6891,7 +6932,7 @@
     if (!drawn) drawAll();
     timing.firstDrawMs = performance.now() - drawStarted;
     timing.activationMs = performance.now() - activationStarted;
-    reportSingleHiddenGroups(); reportSelection();
+    reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
     return true;
   }
   function activateLinked() {
@@ -6934,7 +6975,7 @@
       singleViews[id].pendingSavedState = null;
       applySingleState(id, pending);
     } else if (visibleSingleId() === id) {
-      activateSingle(id, !!data.reset_axes);
+      activateSingle(id, !!data.reset_axes, false, 'primary');
     }
   }
 
@@ -7332,6 +7373,7 @@
       var decoded = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
       if (!decoded || !decoded.id) return;
+      recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
       var timing = singleTiming[decoded.id] || (singleTiming[decoded.id] = {});
       var profile = decoded.transport_profile || {};
       timing.bytes = buffer.byteLength;
@@ -7342,7 +7384,9 @@
         ? Date.now() - Number(profile.sent_at_ms) : null;
       timing.requestToBinaryMs = isFinite(Number(profile.request_at_ms))
         ? Date.now() - Number(profile.request_at_ms) : null;
+      var requestedSharedProjection = !!decoded.shared_projection;
       var message = reuseSharedSingleProjection(decoded);
+      timing.geometryReused = requestedSharedProjection && !!message;
       if (!message) {
         singleRequests.delete(decoded.id);
         Shiny.setInputValue('coordviews_shared_base', {}, { priority: 'event' });
@@ -7382,6 +7426,9 @@
   function onSingleAuxBinary(buffer) {
     try {
       var message = window.CBViewWire.unpack(buffer);
+      if (message && message.id) {
+        recordSpecialistPayload('aux', message.id, buffer.byteLength);
+      }
       var view = message && singleViews[message.id];
       if (!view || !view.data ||
           Number(view.data.wire_token) !== Number(message.wire_token)) return;
@@ -7393,14 +7440,14 @@
       var cells = singlePayloadCells(view);
       var canonicalGroups = view.data.canonical_group;
       if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === D.n) {
-        cells = canonicalGroupedValues(view.data.selection_key, canonicalGroups, '');
+        cells = canonicalAuxValues(view.data.selection_key, canonicalGroups, '');
       }
       if (cells.length !== D.n) return;
       D.cells = cells;
       singleIndexCells = null; singleIndexMap = null;
       // A user may select immediately after the fast first frame. Complete
       // that deferred report now that stable cell identities are available.
-      reportSelection();
+      reportSelection('aux');
       var nested = view.meta && view.meta.color_type === 'categorical' &&
         !ArrayBuffer.isView(canonicalGroups);
       var offsets = null;
@@ -7420,13 +7467,13 @@
         var space = spaceById[spaceId];
         if (!space) return;
         space._hover = ArrayBuffer.isView(canonicalGroups)
-          ? (canonicalGroupedValues(hover.text, canonicalGroups, '') || [])
+          ? (canonicalAuxValues(hover.text, canonicalGroups, '') || [])
           : (Array.isArray(hover.text) ? hover.text : []);
         space._hoverColumns = Array.isArray(hover.columns)
           ? hover.columns.map(function (column) {
             if (!ArrayBuffer.isView(canonicalGroups)) return column;
             return Object.assign({}, column, {
-              values: canonicalGroupedValues(column.values, canonicalGroups, null)
+              values: canonicalAuxValues(column.values, canonicalGroups, null)
             });
           }) : [];
         space._hoverModes = modes;
@@ -8299,6 +8346,32 @@
       if (!message || !message.id) return;
       updateSingleBackground(message.id, message.values);
     });
+    Shiny.addCustomMessageHandler('cell_view_appearance', function (message) {
+      if (!message || !message.id || !message.values) return;
+      var view = singleViews[message.id];
+      var identity = view && view.datasetIdentity || {};
+      if (!view || String(identity.cell_fingerprint || '') !==
+          String(message.dataset_fingerprint || '')) return;
+      view.meta = view.meta || {};
+      view.meta.appearance = Object.assign(
+        {},
+        view.meta.appearance || {},
+        message.values
+      );
+      if (singleActive !== message.id) return;
+      if (Object.prototype.hasOwnProperty.call(message.values, 'group_labels')) {
+        labelsOn = message.values.group_labels !== false;
+      }
+      if (Object.prototype.hasOwnProperty.call(message.values, 'draw_border')) {
+        bordersOn = !!message.values.draw_border;
+      }
+      if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) {
+        keepPlotsSquare = !!message.values.keep_square;
+      }
+      renderLegend();
+      resizeAll();
+      drawAll();
+    });
 
     // Single-gene expression vector (0-255) for the current gene.
     // A reply is only for the gene still being asked about. Two things used to
@@ -8428,7 +8501,7 @@
       if (singleId && !singleViews[singleId] && !singleRequests.has(singleId)) {
         singleRequests.add(singleId);
         var requestedAt = performance.now();
-        var timing = singleTiming[singleId] || (singleTiming[singleId] = {});
+        var timing = beginSingleTiming(singleId, true);
         timing.requestAtMs = requestedAt;
         timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? requestedAt - window.__cerebroPageBenchClickStart : null;
@@ -8437,7 +8510,12 @@
         });
       }
       if (singleId && singleViews[singleId]) {
-        activateSingle(singleId);
+        var cachedAt = performance.now();
+        var cachedTiming = beginSingleTiming(singleId, false);
+        cachedTiming.activationRequestAtMs = cachedAt;
+        cachedTiming.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
+          ? cachedAt - window.__cerebroPageBenchClickStart : null;
+        activateSingle(singleId, false, false, 'cached');
       } else if (singleActive) {
         if (linkedVis && linkedBundle) {
           activateLinked();
