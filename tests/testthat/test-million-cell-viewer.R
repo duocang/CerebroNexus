@@ -428,6 +428,13 @@ test_that("Gene projection streams canonical geometry with wire fallback", {
     ), warn = FALSE),
     collapse = "\n"
   )
+  event_source <- paste(
+    readLines(viewer_test_path(
+      "gene_expression",
+      "event_projection_update_plot.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
 
   expect_match(
     data_source,
@@ -436,6 +443,11 @@ test_that("Gene projection streams canonical geometry with wire fallback", {
   )
   expect_match(render_source, "viewerProjectionAsset(", fixed = TRUE)
   expect_match(render_source, "viewerSharedProjectionName(", fixed = TRUE)
+  expect_match(
+    event_source,
+    "isolate(expression_projection_update_plot(data))",
+    fixed = TRUE
+  )
   expect_match(render_source, "projection_resource", fixed = TRUE)
   expect_match(render_source, "failed_asset", fixed = TRUE)
   expect_match(render_source, "output_data[[\"x\"]] <- NULL", fixed = TRUE)
