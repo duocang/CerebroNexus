@@ -32,7 +32,7 @@ spatial_projection_full_ranges <- reactive({
 
 spatial_projection_group_hulls <- reactive({
   if (
-    !isTRUE(input[["spatial_projection_show_region_outlines"]]) ||
+    !isTRUE(spatial_projection_region_outlines()) ||
       !identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")
   ) {
     return(list())

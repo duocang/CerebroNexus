@@ -791,6 +791,81 @@ test_that("spatial hull geometry is prepared outside the renderer", {
   expect_no_match(renderer, "compute_group_hulls(", fixed = TRUE)
 })
 
+test_that("hidden Spatial appearance controls do not rebuild primary data", {
+  parameters <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_parameters_plot.R"
+    )),
+    collapse = "\n"
+  )
+  data_flow <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_data_to_plot.R"
+    )),
+    collapse = "\n"
+  )
+  controls <- paste(
+    unlist(lapply(
+      c(
+        "UI_projection_point_border.R",
+        "UI_projection_show_group_label.R"
+      ),
+      function(file) {
+        readLines(viewer_test_path("spatial", file), warn = FALSE)
+      }
+    )),
+    collapse = "\n"
+  )
+  projection_ui <- paste(
+    readLines(viewer_test_path("spatial", "UI_projection.R")),
+    collapse = "\n"
+  )
+
+  expect_match(
+    parameters,
+    "spatial_projection_appearance <- reactiveValues(",
+    fixed = TRUE
+  )
+  expect_match(parameters, '"cell_view_appearance"', fixed = TRUE)
+  expect_match(
+    parameters,
+    "draw_border = isolate(spatial_projection_appearance$draw_border)",
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    "group_labels = isolate(spatial_projection_appearance$group_labels)",
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    "keep_square = isolate(spatial_projection_appearance$keep_square)",
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    "show_region_outlines = spatial_projection_region_outlines()",
+    fixed = TRUE
+  )
+  expect_match(
+    data_flow,
+    "!isTRUE(spatial_projection_region_outlines())",
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    'req(input[["spatial_projection_more_render_request"]])',
+    fixed = TRUE
+  )
+  expect_match(
+    projection_ui,
+    'uiOutput("spatial_projection_keep_square_UI")',
+    fixed = TRUE
+  )
+})
+
 test_that("shared Canvas owns spatial background identity and appearance", {
   engine <- paste(
     readLines(viewer_test_path("www", "cell_views.js")),

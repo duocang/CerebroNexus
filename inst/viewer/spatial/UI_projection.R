@@ -34,11 +34,7 @@ output[["spatial_projection_UI"]] <- renderUI({
               tagList(
                 uiOutput("spatial_projection_scatter_parameters_UI"),
                 uiOutput("spatial_projection_show_group_label_UI"),
-                checkboxInput(
-                  "spatial_projection_keep_square",
-                  "Keep plots square",
-                  value = FALSE
-                ),
+                uiOutput("spatial_projection_keep_square_UI"),
                 uiOutput("spatial_projection_point_border_UI"),
                 uiOutput("spatial_projection_show_region_outline_UI")
               ),

@@ -1,14 +1,72 @@
 ##----------------------------------------------------------------------------##
 ## Collect parameters for projection plot.
 ##----------------------------------------------------------------------------##
+## Hidden Settings inputs bind after the first frame. Keep their defaults in
+## server state so that mounting the drawer cannot invalidate the million-cell
+## data reactive. Labels, borders and square layout are browser-only appearance
+## patches; region outlines remain reactive because they require hull geometry.
+spatial_projection_appearance <- reactiveValues(
+  group_labels = TRUE,
+  draw_border = FALSE,
+  keep_square = FALSE
+)
+spatial_projection_region_outlines <- reactiveVal(FALSE)
+
+spatial_update_appearance <- function(name, value) {
+  if (identical(spatial_projection_appearance[[name]], value)) {
+    return(FALSE)
+  }
+  spatial_projection_appearance[[name]] <- value
+  TRUE
+}
+
+spatial_send_appearance <- function(values) {
+  identity <- viewerDatasetIdentity()
+  req(identity$fingerprint)
+  session$sendCustomMessage(
+    "cell_view_appearance",
+    list(
+      id = "spatial_projection",
+      dataset_fingerprint = identity$fingerprint,
+      values = values
+    )
+  )
+}
+
+observeEvent(input[["spatial_projection_group_labels"]], {
+  value <- isTRUE(input[["spatial_projection_group_labels"]])
+  if (spatial_update_appearance("group_labels", value)) {
+    spatial_send_appearance(list(group_labels = value))
+  }
+}, ignoreNULL = TRUE)
+
+observeEvent(input[["spatial_projection_point_border"]], {
+  value <- isTRUE(input[["spatial_projection_point_border"]])
+  if (spatial_update_appearance("draw_border", value)) {
+    spatial_send_appearance(list(draw_border = value))
+  }
+}, ignoreNULL = TRUE)
+
+observeEvent(input[["spatial_projection_keep_square"]], {
+  value <- isTRUE(input[["spatial_projection_keep_square"]])
+  if (spatial_update_appearance("keep_square", value)) {
+    spatial_send_appearance(list(keep_square = value))
+  }
+}, ignoreNULL = TRUE)
+
+observeEvent(input[["spatial_projection_show_region_outlines"]], {
+  value <- isTRUE(input[["spatial_projection_show_region_outlines"]])
+  if (!identical(spatial_projection_region_outlines(), value)) {
+    spatial_projection_region_outlines(value)
+  }
+}, ignoreNULL = TRUE)
+
 spatial_projection_parameters_plot <- reactive({
   req(
     input[["spatial_projection_to_display"]] %in% availableSpatial(),
     input[["spatial_projection_plot_type"]],
     input[["spatial_projection_point_size"]],
     input[["spatial_projection_point_opacity"]],
-    !is.null(input[["spatial_projection_point_border"]]),
-    !is.null(input[["spatial_projection_keep_square"]]),
     !is.null(preferences[["use_webgl"]]),
     !is.null(preferences[["show_hover_info_in_projections"]])
   )
@@ -107,12 +165,10 @@ spatial_projection_parameters_plot <- reactive({
     coexpr_b = input[["spatial_projection_coexpr_b"]],
     point_size = input[["spatial_projection_point_size"]],
     point_opacity = input[["spatial_projection_point_opacity"]],
-    draw_border = input[["spatial_projection_point_border"]],
-    group_labels = isTRUE(input[["spatial_projection_group_labels"]]),
-    keep_square = isTRUE(input[["spatial_projection_keep_square"]]),
-    show_region_outlines = isTRUE(
-      input[["spatial_projection_show_region_outlines"]]
-    ),
+    draw_border = isolate(spatial_projection_appearance$draw_border),
+    group_labels = isolate(spatial_projection_appearance$group_labels),
+    keep_square = isolate(spatial_projection_appearance$keep_square),
+    show_region_outlines = spatial_projection_region_outlines(),
     x_range = NULL,
     y_range = NULL,
     background_image = background_image,
