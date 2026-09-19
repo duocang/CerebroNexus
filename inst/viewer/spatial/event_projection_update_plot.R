@@ -8,6 +8,6 @@ observe({
   req(data)
 
   withProgress(message = 'Updating spatial plot...', value = 0.5, {
-    spatial_projection_update_plot(data)
+    isolate(spatial_projection_update_plot(data))
   })
 })
