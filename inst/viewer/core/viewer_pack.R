@@ -240,6 +240,36 @@ viewerPackTrajectoryIndex <- function(pack, method, name) {
   if (is.null(index)) NULL else as.integer(index)
 }
 
+viewerPackTrajectoryFrame <- function(pack, method, name) {
+  frames <- pack$manifest$trajectory_frames
+  if (!is.data.frame(frames) || !nrow(frames)) {
+    return(NULL)
+  }
+  row <- which(
+    as.character(frames$method) == as.character(method) &
+      as.character(frames$name) == as.character(name)
+  )
+  if (length(row) != 1L) {
+    return(NULL)
+  }
+  frame <- as.list(frames[row, , drop = FALSE])
+  frame <- lapply(frame, function(value) value[[1L]])
+  frame$cells <- suppressWarnings(as.integer(frame$cells))
+  required_paths <- c(
+    "geometry_path",
+    "state_codes_path",
+    "state_dictionary_path"
+  )
+  valid <- length(frame$cells) == 1L &&
+    !is.na(frame$cells) &&
+    frame$cells >= 0L &&
+    all(vapply(frame[required_paths], function(path) {
+      is.character(path) && length(path) == 1L && !is.na(path) && nzchar(path)
+    }, logical(1))) &&
+    frame$state_dtype %in% c("uint8", "uint16", "uint32")
+  if (!isTRUE(valid)) NULL else frame
+}
+
 viewerPackSpatialIndex <- function(pack, name) {
   indexes <- viewerPackReadAsset(
     pack,

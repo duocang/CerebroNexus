@@ -144,6 +144,38 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
     envir = descriptor$cache,
     inherits = FALSE
   ))
+
+  frame <- runtime$viewerPackTrajectoryFrame(
+    descriptor,
+    "monocle2",
+    "subset"
+  )
+  expect_identical(frame$cells, 2L)
+  expect_identical(frame$state_dtype, "uint8")
+  geometry <- readBin(
+    file.path(descriptor$path, frame$geometry_path),
+    what = numeric(),
+    n = 4L,
+    size = 4L,
+    endian = "little"
+  )
+  expect_equal(geometry, c(1, 3, 2, 4))
+  state_codes <- readBin(
+    file.path(descriptor$path, frame$state_codes_path),
+    what = integer(),
+    n = 2L,
+    size = 1L,
+    signed = FALSE,
+    endian = "little"
+  )
+  expect_identical(state_codes, c(0L, 1L))
+  expect_identical(
+    as.character(jsonlite::read_json(
+      file.path(descriptor$path, frame$state_dictionary_path),
+      simplifyVector = TRUE
+    )),
+    c("1", "2")
+  )
 })
 
 test_that("validated Viewer Pack descriptors are reused with session-local caches", {

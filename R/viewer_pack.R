@@ -277,6 +277,119 @@
   stats::setNames(indexes, methods)
 }
 
+.viewerPackTrajectoryFrames <- function(object, cells, stage) {
+  methods <- tryCatch(
+    object$getMethodsForTrajectories(),
+    error = function(error) character()
+  )
+  indexes <- stats::setNames(vector("list", length(methods)), methods)
+  frames <- list()
+  assets <- NULL
+  frame_id <- 0L
+  for (method in methods) {
+    names <- object$getNamesOfTrajectories(method)
+    method_indexes <- stats::setNames(vector("list", length(names)), names)
+    for (name in names) {
+      trajectory <- object$getTrajectory(method, name)
+      meta <- trajectory[["meta"]]
+      required <- c("DR_1", "DR_2", "pseudotime", "state")
+      trajectory_cells <- rownames(meta)
+      index <- match(trajectory_cells, cells)
+      if (
+        !is.data.frame(meta) ||
+          is.null(trajectory_cells) ||
+          length(index) != nrow(meta) ||
+          anyNA(index) ||
+          !all(required %in% colnames(meta))
+      ) {
+        stop("Viewer Pack trajectory is not cell-aligned.", call. = FALSE)
+      }
+      method_indexes[[name]] <- as.integer(index)
+
+      ## Match the Viewer first-frame contract: cells with missing pseudotime
+      ## are excluded before rendering, while trajectory row order is retained.
+      keep <- !is.na(meta[["pseudotime"]])
+      frame <- meta[keep, , drop = FALSE]
+      state <- frame[["state"]]
+      if (is.numeric(state)) {
+        state <- factor(state)
+      }
+      state_values <- as.character(state)
+      state_values[is.na(state_values)] <- "(missing)"
+      state_levels <- if (is.factor(state)) {
+        as.character(levels(state))
+      } else {
+        unique(state_values)
+      }
+      if ("(missing)" %in% state_values && !"(missing)" %in% state_levels) {
+        state_levels <- c(state_levels, "(missing)")
+      }
+      state_codes <- match(state_values, state_levels) - 1L
+      state_dtype <- .viewerPackCodeDtype(length(state_levels))
+      frame_id <- frame_id + 1L
+      prefix <- file.path("trajectory", sprintf("%03d", frame_id))
+      geometry_path <- paste0(prefix, ".geometry.bin")
+      state_codes_path <- paste0(prefix, ".state.codes.bin")
+      state_dictionary_path <- paste0(prefix, ".state.dictionary.json")
+      geometry <- as.matrix(frame[, c("DR_1", "DR_2"), drop = FALSE])
+      if (!is.numeric(geometry)) {
+        stop("Viewer Pack trajectory coordinates must be numeric.", call. = FALSE)
+      }
+      assets <- rbind(
+        assets,
+        .viewerPackWriteAsset(
+          stage,
+          geometry_path,
+          as.numeric(t(geometry)),
+          "float32",
+          dim(geometry)
+        ),
+        .viewerPackWriteAsset(
+          stage,
+          state_codes_path,
+          state_codes,
+          state_dtype,
+          length(state_codes)
+        ),
+        .viewerPackWriteAsset(
+          stage,
+          state_dictionary_path,
+          state_levels,
+          "utf8",
+          length(state_levels)
+        )
+      )
+      frames[[length(frames) + 1L]] <- data.frame(
+        method = method,
+        name = name,
+        cells = nrow(frame),
+        geometry_path = geometry_path,
+        state_codes_path = state_codes_path,
+        state_dictionary_path = state_dictionary_path,
+        state_dtype = state_dtype,
+        stringsAsFactors = FALSE
+      )
+    }
+    indexes[[method]] <- method_indexes
+  }
+  frame_table <- if (length(frames)) {
+    do.call(rbind, frames)
+  } else {
+    data.frame(
+      method = character(),
+      name = character(),
+      cells = integer(),
+      geometry_path = character(),
+      state_codes_path = character(),
+      state_dictionary_path = character(),
+      state_dtype = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+  rownames(frame_table) <- NULL
+  list(indexes = indexes, frames = frame_table, assets = assets)
+}
+
 .viewerPackSpatialIndex <- function(object, cells) {
   spatial_names <- tryCatch(
     object$availableSpatial(),
@@ -487,17 +600,18 @@
       }
     }
   }
-  trajectory_indexes <- .viewerPackTrajectoryIndex(object, cells)
-  if (length(trajectory_indexes)) {
+  trajectory <- .viewerPackTrajectoryFrames(object, cells, stage)
+  if (length(trajectory$indexes)) {
     modules <- c(modules, "trajectory")
     assets <- rbind(
       assets,
       .viewerPackWriteAsset(
         stage,
         file.path("trajectory", "cell_index.qs2"),
-        trajectory_indexes,
+        trajectory$indexes,
         "canonical-cell-index"
-      )
+      ),
+      trajectory$assets
     )
   }
   spatial_indexes <- .viewerPackSpatialIndex(object, cells)
@@ -594,6 +708,7 @@
     capabilities = .viewerDatasetCapabilities(object),
     projection_names = projections,
     metadata_names = metadata_names,
+    trajectory_frames = trajectory$frames,
     immune_receptors = receptors,
     hla_chains = chains
   )
@@ -753,6 +868,7 @@ buildViewerPack <- function(
     capabilities = built$capabilities,
     projection_names = built$projection_names,
     metadata_names = built$metadata_names,
+    trajectory_frames = built$trajectory_frames,
     immune_receptors = built$immune_receptors,
     hla_chains = built$hla_chains,
     assets = built$assets
