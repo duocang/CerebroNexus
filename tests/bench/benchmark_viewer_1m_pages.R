@@ -52,11 +52,19 @@ trajectory_name <- Sys.getenv(
   "VIEWER_TRAJECTORY_NAME",
   unset = "E18_neurogenesis"
 )
-trajectory_contract <- benchmark_trajectory_contract(
-  crb,
-  trajectory_method,
-  trajectory_name
-)
+requested_pages <- trimws(Sys.getenv("VIEWER_PAGES_ONLY", unset = ""))
+trajectory_requested <- !nzchar(requested_pages) || "trajectory" %in%
+  trimws(strsplit(requested_pages, ",", fixed = TRUE)[[1L]])
+trajectory_contract <- if (trajectory_requested) {
+  benchmark_trajectory_contract(crb, trajectory_method, trajectory_name)
+} else {
+  data.frame(
+    method = trajectory_method,
+    name = trajectory_name,
+    renderable_rows = expected_cells,
+    stringsAsFactors = FALSE
+  )
+}
 rounds <- if (length(args) >= 4L && grepl("^[0-9]+$", args[[4L]])) {
   as.integer(args[[4L]])
 } else {
