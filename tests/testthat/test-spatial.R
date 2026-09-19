@@ -127,6 +127,11 @@ test_that("background-image selection only recreates image calibration controls"
     'output\\[\\["spatial_projection_background_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
     perl = TRUE
   )
+  expect_match(
+    src,
+    'input\\[\\["spatial_projection_more_render_request"\\]\\]',
+    perl = TRUE
+  )
 
   scatter_src <- sub(
     '^[\\s\\S]*?output\\[\\["spatial_projection_scatter_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI\\(\\{',

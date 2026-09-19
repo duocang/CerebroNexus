@@ -51,6 +51,7 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
 ## The image-specific controls may safely be regenerated when the selected
 ## image changes: their initial values come from that image's preset.
 output[["spatial_projection_background_parameters_UI"]] <- renderUI({
+  req(input[["spatial_projection_more_render_request"]])
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
   ## That keeps one range usable whether the coordinates run 0–5k (Xenium) or

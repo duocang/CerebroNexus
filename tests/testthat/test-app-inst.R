@@ -217,6 +217,10 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
+  app$click(selector = "#spatial_projection_more_button")
+  wait_for_input(app, "spatial_projection_background_scale", timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_scale_x", timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_scale_y", timeout = 30000)
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_scale').value ",
