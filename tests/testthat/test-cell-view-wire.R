@@ -2,6 +2,7 @@ wire_file <- viewer_test_path("www", "cell_views_wire.js")
 bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
 utility_file <- viewer_test_path("utility_functions.R")
 message_file <- viewer_test_path("core", "cell_view_message.R")
+scatter_file <- viewer_test_path("core", "cell_view_scatter.R")
 codec_file <- viewer_test_path("core", "cell_view_wire.R")
 
 wire_header <- function(payload) {
@@ -65,6 +66,33 @@ test_that("the isolated message normalizer preserves the existing contract", {
   expect_identical(
     do.call(isolated$cerebroCellViewMessage, arguments),
     do.call(legacy$cerebroCellViewMessage, arguments)
+  )
+})
+
+test_that("the isolated scatter builder preserves canonical payloads", {
+  legacy <- new.env(parent = globalenv())
+  isolated <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = legacy)
+  sys.source(utility_file, envir = isolated)
+  sys.source(scatter_file, envir = isolated)
+
+  n <- 5000L
+  arguments <- list(
+    coordinates = list(seq_len(n) + 0.25, seq_len(n) + 0.75),
+    color = factor(
+      rep(c("B", "A", NA_character_), length.out = n),
+      levels = c("A", "B", "unused")
+    ),
+    color_variable = "state",
+    selection_keys = seq_len(n),
+    point_size = 2,
+    point_opacity = 0.8,
+    color_assignments = c(A = "#111111", B = "#222222", unused = "#333333"),
+    hover = FALSE
+  )
+  expect_identical(
+    do.call(isolated$cerebroCellViewScatterPayload, arguments),
+    do.call(legacy$cerebroCellViewScatterPayload, arguments)
   )
 })
 
