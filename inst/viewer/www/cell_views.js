@@ -8544,6 +8544,16 @@
     // selected, which a programmatic tab switch leaves untouched even though the
     // panels are plainly visible. Size is true however the tab was opened.
     var lastVis = null;
+    if (window.jQuery) {
+      window.jQuery(document).on(
+        'shiny:inputchanged.cerebroDatasetSwitch',
+        function (event) {
+          if (event.name !== 'crb_file_selector') return;
+          resetSingleViews();
+          lastVis = null;
+        }
+      );
+    }
     function reportVisibility() {
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);

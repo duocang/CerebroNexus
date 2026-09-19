@@ -891,6 +891,26 @@ test_that("the page benchmark has a publication-grade contract", {
   }
 })
 
+test_that("dataset switches clear specialist caches before the next render", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    engine,
+    "shiny:inputchanged.cerebroDatasetSwitch",
+    fixed = TRUE
+  )
+  expect_match(
+    engine,
+    "event.name !== 'crb_file_selector'",
+    fixed = TRUE
+  )
+  expect_match(engine, "resetSingleViews();", fixed = TRUE)
+  expect_match(engine, "lastVis = null;", fixed = TRUE)
+})
+
 test_that("trajectory benchmark contract follows the selected trajectory", {
   protocol_file <- testthat::test_path(
     "..",
