@@ -12,9 +12,17 @@ spatial_projection_coordinates <- reactive({
   req(parameters[["projection"]] %in% availableSpatial())
 
   spatial_data <- getSpatialData(parameters[["projection"]])
-  coordinate_rows <- match(cells_to_show, spatial_projection_cell_index())
-  req(!anyNA(coordinate_rows))
-  coordinates <- spatial_data$coordinates[coordinate_rows, , drop = FALSE]
+  canonical_index <- spatial_projection_cell_index()
+  coordinates <- spatial_data$coordinates
+  if (!spatial_coordinates_are_canonical_full_order(
+    cells_to_show,
+    canonical_index,
+    nrow(coordinates)
+  )) {
+    coordinate_rows <- match(cells_to_show, canonical_index)
+    req(!anyNA(coordinate_rows))
+    coordinates <- coordinates[coordinate_rows, , drop = FALSE]
+  }
 
   return(coordinates)
 })

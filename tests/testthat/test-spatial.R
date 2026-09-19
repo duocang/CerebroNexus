@@ -105,6 +105,98 @@ test_that("all spatial module files parse without errors", {
   }
 })
 
+test_that("spatial coordinate reuse requires exact canonical full order", {
+  canonical <- seq_len(6L)
+
+  expect_true(spatial_coordinates_are_canonical_full_order(
+    canonical,
+    canonical,
+    6L
+  ))
+  expect_false(spatial_coordinates_are_canonical_full_order(
+    canonical[-3L],
+    canonical,
+    6L
+  ))
+  expect_false(spatial_coordinates_are_canonical_full_order(
+    rev(canonical),
+    canonical,
+    6L
+  ))
+  expect_false(spatial_coordinates_are_canonical_full_order(
+    canonical,
+    c(2L, 1L, 3L, 4L, 5L, 6L),
+    6L
+  ))
+  expect_false(spatial_coordinates_are_canonical_full_order(
+    as.numeric(canonical),
+    canonical,
+    6L
+  ))
+  expect_false(spatial_coordinates_are_canonical_full_order(
+    canonical,
+    canonical,
+    5L
+  ))
+})
+
+test_that("spatial coordinates retain subset and dataset-switch fallbacks", {
+  coordinates <- list(
+    million = data.frame(
+      x = 1:6,
+      y = 11:16,
+      row.names = paste0("million-", 1:6)
+    ),
+    alternate = data.frame(
+      x = 101:106,
+      y = 111:116,
+      row.names = paste0("alternate-", 1:6)
+    )
+  )
+  server <- function(input, output, session) {
+    selected <- shiny::reactiveVal("million")
+    cells <- shiny::reactiveVal(seq_len(6L))
+    canonical_index <- shiny::reactiveVal(seq_len(6L))
+    spatial_projection_parameters_plot <- shiny::reactive(list(
+      projection = selected()
+    ))
+    spatial_projection_cells_to_show <- shiny::reactive(cells())
+    spatial_projection_cell_index <- shiny::reactive(canonical_index())
+    availableSpatial <- function() names(coordinates)
+    getSpatialData <- function(name) list(coordinates = coordinates[[name]])
+    sys.source(
+      viewer_test_path("spatial", "obj_projection_coordinates.R"),
+      envir = environment()
+    )
+  }
+
+  shiny::testServer(server, {
+    expect_identical(spatial_projection_coordinates(), coordinates$million)
+
+    cells(seq_len(3L))
+    session$flushReact()
+    expect_identical(
+      spatial_projection_coordinates(),
+      coordinates$million[seq_len(3L), , drop = FALSE]
+    )
+
+    selected("alternate")
+    canonical_index(c(2L, 1L, 3L, 4L, 5L, 6L))
+    cells(seq_len(6L))
+    session$flushReact()
+    expect_identical(
+      spatial_projection_coordinates(),
+      coordinates$alternate[c(2L, 1L, 3L, 4L, 5L, 6L), , drop = FALSE]
+    )
+
+    selected("million")
+    canonical_index(seq_len(6L))
+    cells(seq_len(6L))
+    session$flushReact()
+    expect_identical(spatial_projection_coordinates(), coordinates$million)
+  })
+})
+
 test_that("background-image selection only recreates image calibration controls", {
   # The scatter controls retain user-selected values while moving between
   # backgrounds. Keep them in their own renderUI so that the selected image

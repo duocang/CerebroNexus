@@ -22,6 +22,30 @@ spatial_dataset_name <- function(crb_files, selected) {
   if (is.na(dataset) || !nzchar(dataset)) NULL else dataset
 }
 
+## Reusing the stored Spatial coordinates is safe only for the exact canonical
+## full-order view. Any filtered, sampled, reordered, incomplete, or non-
+## canonical index must keep using the general match/subset path.
+spatial_coordinates_are_canonical_full_order <- function(
+  cells_to_show,
+  canonical_index,
+  coordinate_count
+) {
+  coordinate_count <- suppressWarnings(as.integer(coordinate_count))
+  if (
+    length(coordinate_count) != 1L ||
+      is.na(coordinate_count) ||
+      coordinate_count < 0L ||
+      length(canonical_index) != coordinate_count ||
+      length(cells_to_show) != coordinate_count ||
+      !is.integer(canonical_index) ||
+      !is.integer(cells_to_show)
+  ) {
+    return(FALSE)
+  }
+  identical(canonical_index, seq_len(coordinate_count)) &&
+    identical(cells_to_show, canonical_index)
+}
+
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
 ## is a descriptor so its display label is never confused with a filesystem
 ## path, and descriptor bounds survive all the way to the renderer.
