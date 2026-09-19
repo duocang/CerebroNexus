@@ -6206,19 +6206,35 @@
   function hydrateSingleProjectionResource(message) {
     var data = message && message.data || {};
     var resource = data.projection_resource;
-    if (!resource || !resource.url) return Promise.resolve(message);
-    return fetchProjectionResource(resource, data.n).then(function (result) {
-      var coordinates = result.coordinates;
+    var groupResource = data.categorical_resource;
+    if ((!resource || !resource.url) &&
+        (!groupResource || !groupResource.url)) {
+      return Promise.resolve(message);
+    }
+    var coordinatesPromise = resource && resource.url
+      ? fetchProjectionResource(resource, data.n) : Promise.resolve(null);
+    var groupsPromise = groupResource && groupResource.url
+      ? fetchCategoricalResource(groupResource, data.n) : Promise.resolve(null);
+    return Promise.all([coordinatesPromise, groupsPromise]).then(function (results) {
+      var result = results[0];
+      var groupResult = results[1];
+      var coordinates = result && result.coordinates;
+      if (coordinates) {
       data.x = coordinates.x;
       data.y = coordinates.y;
       if (coordinates.z) data.z = coordinates.z;
       if (coordinates.xRange) data.x_range = coordinates.xRange;
       if (coordinates.yRange) data.y_range = coordinates.yRange;
+      }
+      if (groupResult) data.canonical_group = groupResult.values;
       delete data.projection_resource;
+      delete data.categorical_resource;
       message.data = data;
       var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
-      timing.projectionFetchMs = result.fetchMs;
-      timing.projectionBytes = coordinates.bytes;
+      timing.projectionFetchMs = result ? result.fetchMs : 0;
+      timing.projectionBytes = coordinates ? coordinates.bytes : 0;
+      timing.categoricalFetchMs = groupResult ? groupResult.fetchMs : 0;
+      timing.categoricalBytes = groupResult ? groupResult.bytes : 0;
       return message;
     });
   }
@@ -6253,6 +6269,48 @@
     });
   }
   var metadataCodesResourceCache = new Map();
+  var categoricalResourceCache = new Map();
+  function fetchCategoricalResource(resource, expectedCells) {
+    var n = Number(resource.cells) || 0;
+    var dtype = String(resource.dtype || '');
+    var bytesPerCode = dtype === 'uint8' ? 1 :
+      (dtype === 'uint16' ? 2 : (dtype === 'uint32' ? 4 : 0));
+    var levels = resource.levels;
+    if (n !== Number(expectedCells) || !bytesPerCode || !levels) {
+      return Promise.reject(new Error('Categorical resource mismatch'));
+    }
+    var key = String(resource.url) + ':' + String(resource.checksum || '');
+    var pending = categoricalResourceCache.get(key);
+    if (!pending) {
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin',
+        cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Categorical resource request failed');
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        if (buffer.byteLength !== n * bytesPerCode ||
+            (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
+          throw new Error('Categorical resource byte count mismatch');
+        }
+        var values = dtype === 'uint8' ? new Uint8Array(buffer) :
+          (dtype === 'uint16' ? new Uint16Array(buffer) : new Uint32Array(buffer));
+        for (var i = 0; i < n; i++) {
+          if (values[i] >= levels.length) {
+            throw new Error('Categorical code is outside its dictionary');
+          }
+        }
+        return { values: values, bytes: buffer.byteLength };
+      });
+      categoricalResourceCache.set(key, pending);
+      pending.catch(function () { categoricalResourceCache.delete(key); });
+    }
+    var started = performance.now();
+    return pending.then(function (result) {
+      return { values: result.values, bytes: result.bytes,
+        fetchMs: performance.now() - started };
+    });
+  }
   function fetchMetadataCodesResource(resource, expectedCells) {
     var n = Number(resource.cells) || 0;
     var dtype = String(resource.dtype || '');

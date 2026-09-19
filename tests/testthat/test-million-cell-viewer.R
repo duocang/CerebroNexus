@@ -413,6 +413,24 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(engine, "projection_resource_failed", fixed = TRUE)
 })
 
+test_that("trajectory first frames expose paired static geometry and state", {
+  server <- paste(
+    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server, "viewerTrajectoryFrameAsset <- function", fixed = TRUE)
+  expect_match(server, "viewerPackTrajectoryFrame(pack, method, name)", fixed = TRUE)
+  expect_match(server, "cerebro-trajectory-", fixed = TRUE)
+  expect_match(engine, "fetchCategoricalResource", fixed = TRUE)
+  expect_match(engine, "data.canonical_group = groupResult.values", fixed = TRUE)
+  expect_match(engine, "categorical_resource", fixed = TRUE)
+})
+
 test_that("Gene projection streams canonical geometry with wire fallback", {
   data_source <- paste(
     readLines(viewer_test_path(

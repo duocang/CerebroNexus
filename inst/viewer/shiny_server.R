@@ -763,6 +763,133 @@ server <- function(input, output, session) {
     assign(key, descriptor, envir = viewer_projection_resources)
     descriptor
   }
+  ## A trajectory frame has its own row order and cell count, so it cannot use
+  ## the canonical projection descriptor above. The Viewer Pack publishes the
+  ## matching geometry and state codes together; validate and expose both as a
+  ## single first-frame resource contract.
+  viewer_trajectory_resources <- new.env(parent = emptyenv())
+  viewer_trajectory_prefixes <- character()
+  viewerTrajectoryFrameAsset <- function(method, name) {
+    pack <- viewerPackCurrent()
+    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+      return(NULL)
+    }
+    frame <- viewerPackTrajectoryFrame(pack, method, name)
+    if (is.null(frame)) {
+      return(NULL)
+    }
+    key <- paste(pack$path, method, name, sep = "::")
+    if (exists(key, envir = viewer_trajectory_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_trajectory_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- function(path) {
+      which(as.character(assets$path) == as.character(path))
+    }
+    geometry_row <- asset_row(frame$geometry_path)
+    codes_row <- asset_row(frame$state_codes_path)
+    dictionary_row <- asset_row(frame$state_dictionary_path)
+    if (
+      length(geometry_row) != 1L ||
+        length(codes_row) != 1L ||
+        length(dictionary_row) != 1L
+    ) {
+      return(NULL)
+    }
+    geometry_dimensions <- suppressWarnings(as.integer(strsplit(
+      as.character(assets$dimensions[[geometry_row]]),
+      "x",
+      fixed = TRUE
+    )[[1L]]))
+    code_dimensions <- suppressWarnings(as.integer(
+      as.character(assets$dimensions[[codes_row]])
+    ))
+    dtype <- as.character(assets$dtype[[codes_row]])
+    bytes_per_code <- switch(
+      dtype,
+      uint8 = 1L,
+      uint16 = 2L,
+      uint32 = 4L,
+      NA_integer_
+    )
+    paths <- c(
+      frame$geometry_path,
+      frame$state_codes_path,
+      frame$state_dictionary_path
+    )
+    rows <- c(geometry_row, codes_row, dictionary_row)
+    files <- file.path(pack$path, paths)
+    valid <- length(geometry_dimensions) == 2L &&
+      identical(geometry_dimensions, c(frame$cells, 2L)) &&
+      identical(code_dimensions, frame$cells) &&
+      identical(as.character(assets$dtype[[geometry_row]]), "float32") &&
+      !is.na(bytes_per_code) &&
+      identical(
+        as.numeric(assets$bytes[[geometry_row]]),
+        as.numeric(frame$cells) * 2 * 4
+      ) &&
+      identical(
+        as.numeric(assets$bytes[[codes_row]]),
+        as.numeric(frame$cells) * bytes_per_code
+      ) &&
+      all(file.exists(files)) &&
+      !any(dir.exists(files)) &&
+      all(
+        as.numeric(file.info(files)$size) ==
+          as.numeric(assets$bytes[rows])
+      ) &&
+      all(
+        unname(tools::md5sum(files)) ==
+          as.character(assets$checksum[rows])
+      )
+    if (!isTRUE(valid)) {
+      return(NULL)
+    }
+    levels <- tryCatch(
+      as.character(jsonlite::read_json(
+        files[[3L]],
+        simplifyVector = TRUE
+      )),
+      error = function(error) NULL
+    )
+    if (
+      is.null(levels) ||
+        length(levels) != suppressWarnings(as.integer(
+          assets$dimensions[[dictionary_row]]
+        ))
+    ) {
+      return(NULL)
+    }
+    prefix <- paste0(
+      "cerebro-trajectory-",
+      gsub("[^A-Za-z0-9_-]", "", session$token),
+      "-",
+      length(viewer_trajectory_prefixes) + 1L
+    )
+    shiny::addResourcePath(prefix, dirname(files[[1L]]))
+    viewer_trajectory_prefixes <<- c(viewer_trajectory_prefixes, prefix)
+    resource_url <- function(file) paste0(prefix, "/", basename(file))
+    descriptor <- list(
+      cells = frame$cells,
+      projection = list(
+        url = resource_url(files[[1L]]),
+        cells = frame$cells,
+        dimensions = 2L,
+        bytes = as.numeric(assets$bytes[[geometry_row]]),
+        checksum = as.character(assets$checksum[[geometry_row]])
+      ),
+      state = list(
+        url = resource_url(files[[2L]]),
+        cells = frame$cells,
+        dtype = dtype,
+        bytes = as.numeric(assets$bytes[[codes_row]]),
+        checksum = as.character(assets$checksum[[codes_row]]),
+        levels = I(levels)
+      )
+    )
+    assign(key, descriptor, envir = viewer_trajectory_resources)
+    descriptor
+  }
   ## Categorical metadata codes are also stored in canonical cell order. The
   ## first Linked views frame needs one such column, which can otherwise be the
   ## largest remaining websocket vector. Keep the small level/color contract in
@@ -891,6 +1018,9 @@ server <- function(input, output, session) {
       try(shiny::removeResourcePath(prefix), silent = TRUE)
     }
     for (prefix in viewer_metadata_prefixes) {
+      try(shiny::removeResourcePath(prefix), silent = TRUE)
+    }
+    for (prefix in viewer_trajectory_prefixes) {
       try(shiny::removeResourcePath(prefix), silent = TRUE)
     }
   })
