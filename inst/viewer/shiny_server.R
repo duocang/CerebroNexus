@@ -82,13 +82,6 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/core/cell_view_wire.R"
-    ),
-    local = TRUE
-  )
   if (length(.crb_launch_prototypes)) {
     backend_plan <- Cerebro.options[[".bundle_backend_plan"]]
     configured_paths <- unname(

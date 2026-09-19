@@ -1,7 +1,6 @@
 wire_file <- viewer_test_path("www", "cell_views_wire.js")
 bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
 utility_file <- viewer_test_path("utility_functions.R")
-codec_file <- viewer_test_path("core", "cell_view_wire.R")
 
 wire_header <- function(payload) {
   header_length <- sum(as.integer(payload[seq_len(4L)]) * 256^(0:3))
@@ -10,34 +9,6 @@ wire_header <- function(payload) {
     simplifyVector = FALSE
   )
 }
-
-test_that("the isolated cell-view codec preserves the existing wire bytes", {
-  skip_if_not_installed("jsonlite")
-  legacy <- new.env(parent = globalenv())
-  isolated <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = legacy)
-  sys.source(utility_file, envir = isolated)
-  sys.source(codec_file, envir = isolated)
-
-  message <- list(
-    id = "wire-equivalence",
-    meta = list(traces = list("A", "B")),
-    data = list(
-      x = I(c(1.25, NA_real_, -2.5, 3.75)),
-      y = I(c(4.5, 5.5, 6.5, 7.5)),
-      group = I(c(0L, 1L, NA_integer_, 1L)),
-      selection_key = I(c("a", "b", "c", "d"))
-    )
-  )
-  expect_identical(
-    isolated$cv_wire_pack_message(message, min_length = 1L),
-    legacy$cv_wire_pack_message(message, min_length = 1L)
-  )
-  expect_identical(
-    isolated$cv_wire_pack_cells("dataset-a", c("a", "b", NA_character_)),
-    legacy$cv_wire_pack_cells("dataset-a", c("a", "b", NA_character_))
-  )
-})
 
 test_that("the browser restores compact linked-view vectors", {
   skip_if(Sys.which("node") == "", "node not on PATH")
