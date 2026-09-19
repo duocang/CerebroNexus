@@ -76,6 +76,7 @@ rix(
     "igraph",
     "later",
     "Matrix",
+    "mirai",
     "msigdbr",
     "pbapply",
     "plotly",
