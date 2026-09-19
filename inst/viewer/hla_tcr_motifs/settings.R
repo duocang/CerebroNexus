@@ -29,6 +29,15 @@ HLA_TWO_LINE_RENDER <- I(
   }"
 )
 
+## The settings drawer stays mounted in the DOM while closed, so output
+## suspension alone does not keep its data-dependent controls off the first
+## frame. Build the expensive cohort filters only after the user's first open;
+## the structural graph defaults below remain eager because first-frame
+## rendering waits for those inputs to bind.
+hla_settings_requested <- reactive({
+  !is.null(input[["hla_more_render_request"]])
+})
+
 ## ---- Primary parameters ------------------------------------------------ ##
 output$hla_parameters_ui <- renderUI({
   chains <- hla_tcr_chains()
@@ -173,6 +182,7 @@ outputOptions(output, "hla_more_parameters_ui", suspendWhenHidden = FALSE)
 ## below the motif graph's hard size guard. Every declared grouping remains
 ## available so the initial cohort is transparent and fully editable.
 output$hla_group_filters_ui <- renderUI({
+  req(hla_settings_requested())
   groups <- hla_filter_groups()
   levels <- hla_filter_levels()
   defaults <- hla_default_filter_selections()
@@ -206,6 +216,7 @@ output$hla_group_filters_ui <- renderUI({
 })
 
 output$hla_filter_status <- renderUI({
+  req(hla_settings_requested())
   levels <- hla_filter_levels()
   selected <- hla_filter_selections()
   seg <- hla_segments()

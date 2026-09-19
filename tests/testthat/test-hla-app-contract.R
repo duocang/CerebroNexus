@@ -178,6 +178,18 @@ test_that("HLA cohort filters are visible and drive every graph cache", {
 
   expect_match(ui, 'cerebroSettingsSection\\(\\s*"Filters"', perl = TRUE)
   expect_match(ui, 'uiOutput\\("hla_group_filters_ui"\\)')
+  expect_match(
+    settings,
+    'input[["hla_more_render_request"]]',
+    fixed = TRUE
+  )
+  expect_gte(
+    lengths(regmatches(
+      settings,
+      gregexpr("req(hla_settings_requested())", settings, fixed = TRUE)
+    )),
+    2L
+  )
   expect_match(settings, "groupFilterControl(", fixed = TRUE)
   expect_match(settings, "hla_default_filter_selections", fixed = TRUE)
   expect_match(data_src, "hla_ir_filtered <- reactive", fixed = TRUE)
