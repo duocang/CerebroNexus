@@ -1,6 +1,7 @@
 wire_file <- viewer_test_path("www", "cell_views_wire.js")
 bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
 utility_file <- viewer_test_path("utility_functions.R")
+message_file <- viewer_test_path("core", "cell_view_message.R")
 codec_file <- viewer_test_path("core", "cell_view_wire.R")
 
 wire_header <- function(payload) {
@@ -36,6 +37,34 @@ test_that("the isolated cell-view codec preserves the existing wire bytes", {
   expect_identical(
     isolated$cv_wire_pack_cells("dataset-a", c("a", "b", NA_character_)),
     legacy$cv_wire_pack_cells("dataset-a", c("a", "b", NA_character_))
+  )
+})
+
+test_that("the isolated message normalizer preserves the existing contract", {
+  legacy <- new.env(parent = globalenv())
+  isolated <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = legacy)
+  sys.source(utility_file, envir = isolated)
+  sys.source(message_file, envir = isolated)
+
+  arguments <- list(
+    id = "message-equivalence",
+    meta = list(color_type = "categorical", traces = c("A", "B")),
+    data = list(
+      x = list(c(1, 2), c(3, 4)),
+      y = list(c(5, 6), c(7, 8)),
+      selection_key = list(1:2, 3:4),
+      color = list("#111111", "#222222")
+    ),
+    hover = list(
+      hoverinfo = "text",
+      columns = list(list(label = "State", values = list(1:2, 3:4)))
+    ),
+    extra = list(edges = list(x0 = c(1, 2), y0 = c(3, 4)))
+  )
+  expect_identical(
+    do.call(isolated$cerebroCellViewMessage, arguments),
+    do.call(legacy$cerebroCellViewMessage, arguments)
   )
 })
 
