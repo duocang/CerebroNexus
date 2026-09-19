@@ -56,6 +56,19 @@ click_tab <- function(tab) {
     tab
   ))
 }
+click_linked_with_browser_clock <- function() {
+  app$run_js(paste0(
+    "(() => {const timing={clickAt:performance.now(),primaryAt:null,",
+    "completeAt:null};window.__renLinkedTiming=timing;",
+    "window.__cerebroPageBenchClickStart=timing.clickAt;",
+    "const handler=e=>{const d=e.detail||{};",
+    "if(d.primaryReady&&timing.primaryAt==null)timing.primaryAt=e.timeStamp;",
+    "if(d.ready&&timing.completeAt==null){timing.completeAt=e.timeStamp;",
+    "window.removeEventListener('cerebro:linkedviews-ready',handler);}};",
+    "window.addEventListener('cerebro:linkedviews-ready',handler);",
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();})()"
+  ))
+}
 wait_projection <- function() {
   app$wait_for_js(
     paste0(
@@ -92,11 +105,14 @@ if (identical(scenario, "projection")) {
 }
 heap_before <- heap()
 started <- proc.time()[["elapsed"]]
-click_tab("coordinated_views")
+click_linked_with_browser_clock()
 wait_linked(primary = TRUE)
-primary_logical_ms <- (proc.time()[["elapsed"]] - started) * 1000
+driver_primary_ms <- (proc.time()[["elapsed"]] - started) * 1000
 wait_linked()
-complete_logical_ms <- (proc.time()[["elapsed"]] - started) * 1000
+driver_complete_ms <- (proc.time()[["elapsed"]] - started) * 1000
+browser_timing <- app$get_js("window.__renLinkedTiming")
+primary_logical_ms <- browser_timing$primaryAt - browser_timing$clickAt
+complete_logical_ms <- browser_timing$completeAt - browser_timing$clickAt
 visual <- app$get_js("window.cerebroLinkedViewsState.visualReady()")
 if (!isTRUE(visual$ready)) {
   stop("Linked views did not reach visual readiness: ", visual$reason)
@@ -136,6 +152,8 @@ result <- list(
   complete_ms = complete_logical_ms,
   primary_logical_ms = primary_logical_ms,
   complete_logical_ms = complete_logical_ms,
+  driver_primary_ms = driver_primary_ms,
+  driver_complete_ms = driver_complete_ms,
   visual_ready_ms = visual_ready_ms,
   interactive_ready_ms = interactive_ready_ms,
   auxiliary_idle_ms = auxiliary_idle_ms,

@@ -690,12 +690,15 @@ server <- function(input, output, session) {
   ## directly instead of copying the same 8 MB through R and Shiny's websocket.
   viewer_projection_resources <- new.env(parent = emptyenv())
   viewer_projection_prefixes <- character()
-  viewerProjectionAsset <- function(name, cell_indices) {
+  viewerProjectionAsset <- function(name, cell_indices = NULL) {
     pack <- viewerPackCurrent()
     if (
       !is.list(pack) ||
         !isTRUE(pack$canonical_order) ||
-        !identical(as.integer(cell_indices), seq_len(pack$cell_count))
+        (
+          !is.null(cell_indices) &&
+            !identical(as.integer(cell_indices), seq_len(pack$cell_count))
+        )
     ) {
       return(NULL)
     }
@@ -760,8 +763,134 @@ server <- function(input, output, session) {
     assign(key, descriptor, envir = viewer_projection_resources)
     descriptor
   }
+  ## Categorical metadata codes are also stored in canonical cell order. The
+  ## first Linked views frame needs one such column, which can otherwise be the
+  ## largest remaining websocket vector. Keep the small level/color contract in
+  ## the bundle and let the browser fetch the validated packed codes directly.
+  viewer_metadata_resources <- new.env(parent = emptyenv())
+  viewer_metadata_prefixes <- character()
+  viewerMetadataCodesAsset <- function(name, levels = NULL) {
+    pack <- viewerPackCurrent()
+    if (
+      !is.list(pack) ||
+        !isTRUE(pack$canonical_order) ||
+        !is.character(name) ||
+        length(name) != 1L ||
+        is.na(name) ||
+        !nzchar(name)
+    ) {
+      return(NULL)
+    }
+    metadata_names <- as.character(pack$manifest$metadata_names)
+    metadata_index <- match(name, metadata_names)
+    if (is.na(metadata_index)) {
+      return(NULL)
+    }
+    prefix_path <- file.path("metadata", sprintf("%03d", metadata_index))
+    codes_path <- paste0(prefix_path, ".codes.bin")
+    dictionary_path <- paste0(prefix_path, ".dictionary.json")
+    requested_levels <- if (is.null(levels)) NULL else as.character(levels)
+    key <- paste(pack$path, codes_path, paste(requested_levels, collapse = "\r"),
+      sep = "::")
+    if (exists(key, envir = viewer_metadata_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_metadata_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    codes_row <- which(as.character(assets$path) == codes_path)
+    dictionary_row <- which(as.character(assets$path) == dictionary_path)
+    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
+      return(NULL)
+    }
+    dtype <- as.character(assets$dtype[[codes_row]])
+    dimensions <- suppressWarnings(as.integer(
+      as.character(assets$dimensions[[codes_row]])
+    ))
+    codes_file <- file.path(pack$path, codes_path)
+    dictionary_file <- file.path(pack$path, dictionary_path)
+    bytes_per_code <- if (identical(dtype, "uint8")) {
+      1L
+    } else if (identical(dtype, "uint16")) {
+      2L
+    } else {
+      NA_integer_
+    }
+    valid_files <- !is.na(bytes_per_code) &&
+      length(dimensions) == 1L &&
+      identical(dimensions, as.integer(pack$cell_count)) &&
+      file.exists(codes_file) &&
+      !dir.exists(codes_file) &&
+      file.exists(dictionary_file) &&
+      !dir.exists(dictionary_file) &&
+      identical(
+        as.numeric(file.info(codes_file)$size),
+        as.numeric(assets$bytes[[codes_row]])
+      ) &&
+      identical(
+        as.numeric(file.info(codes_file)$size),
+        as.numeric(pack$cell_count) * bytes_per_code
+      ) &&
+      identical(
+        as.numeric(file.info(dictionary_file)$size),
+        as.numeric(assets$bytes[[dictionary_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(codes_file)),
+        as.character(assets$checksum[[codes_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(dictionary_file)),
+        as.character(assets$checksum[[dictionary_row]])
+      )
+    if (!valid_files) {
+      return(NULL)
+    }
+    dictionary <- tryCatch(
+      as.character(jsonlite::read_json(dictionary_file, simplifyVector = TRUE)),
+      error = function(error) NULL
+    )
+    target_levels <- if (is.null(requested_levels)) {
+      sort(unique(dictionary))
+    } else {
+      requested_levels
+    }
+    remap <- match(dictionary, target_levels) - 1L
+    if (
+      is.null(dictionary) ||
+        length(dictionary) != as.integer(assets$dimensions[[dictionary_row]]) ||
+        anyNA(remap)
+    ) {
+      return(NULL)
+    }
+    resource_prefix <- paste0(
+      "cerebro-metadata-",
+      gsub("[^A-Za-z0-9_-]", "", session$token),
+      "-",
+      length(viewer_metadata_prefixes) + 1L
+    )
+    shiny::addResourcePath(resource_prefix, dirname(codes_file))
+    viewer_metadata_prefixes <<- c(
+      viewer_metadata_prefixes,
+      resource_prefix
+    )
+    descriptor <- list(
+      url = paste0(resource_prefix, "/", basename(codes_file)),
+      cells = as.integer(pack$cell_count),
+      dtype = dtype,
+      bytes = as.numeric(assets$bytes[[codes_row]]),
+      checksum = as.character(assets$checksum[[codes_row]]),
+      levels = I(target_levels),
+      ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
+      ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.
+      code_map = I(c(-1L, as.integer(remap)))
+    )
+    assign(key, descriptor, envir = viewer_metadata_resources)
+    descriptor
+  }
   session$onSessionEnded(function() {
     for (prefix in viewer_projection_prefixes) {
+      try(shiny::removeResourcePath(prefix), silent = TRUE)
+    }
+    for (prefix in viewer_metadata_prefixes) {
       try(shiny::removeResourcePath(prefix), silent = TRUE)
     }
   })

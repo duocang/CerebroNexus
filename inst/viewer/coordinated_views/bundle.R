@@ -1627,7 +1627,13 @@ cv_default_group <- function(available, preferred = NULL) {
   sample(available, 1L)
 }
 
-cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
+cv_build_primary_colours <- function(
+  crb,
+  md,
+  group_names,
+  colors_fn,
+  primary_group_resource = NULL
+) {
   group_candidates <- intersect(group_names, colnames(md))
   column_candidates <- setdiff(colnames(md), "cell_barcode")
   parameters <- tryCatch(crb$getParameters(), error = function(e) list())
@@ -1638,6 +1644,37 @@ cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
   groups <- list()
   cat_extra <- list()
   fields <- list()
+  resource_kind <- primary_group_resource$kind
+  resource_name <- primary_group_resource$name
+  resource_levels <- as.character(primary_group_resource$levels %||% character())
+  resource_descriptor <- primary_group_resource$descriptor
+  use_resource <-
+    is.character(resource_name) &&
+    length(resource_name) == 1L &&
+    !is.na(resource_name) &&
+    identical(resource_name, default_group) &&
+    resource_kind %in% c("groups", "cat_extra") &&
+    length(resource_levels) &&
+    is.list(resource_descriptor)
+  if (use_resource) {
+    group <- list(
+      levels = I(resource_levels),
+      colors = I(colors_fn(default_group, resource_levels)),
+      values_resource = resource_descriptor
+    )
+    if (identical(resource_kind, "groups")) {
+      groups[[default_group]] <- group
+    } else {
+      cat_extra[[default_group]] <- group
+    }
+    return(list(
+      groups = groups,
+      cat_extra = cat_extra,
+      cat_skipped = list(),
+      fields = fields,
+      default_group = default_group
+    ))
+  }
   if (!is.null(default_group) && default_group %in% group_candidates) {
     groups <- cv_build_groups(crb, md, colors_fn, default_group)
   } else if (!is.null(default_group)) {
@@ -1667,6 +1704,39 @@ cv_build_primary_colours <- function(crb, md, group_names, colors_fn) {
   )
 }
 
+cv_primary_group_resource <- function(crb, md, resource_fn) {
+  if (!is.data.frame(md) || !is.function(resource_fn)) {
+    return(NULL)
+  }
+  group_names <- tryCatch(crb$getGroups(), error = function(error) character())
+  group_candidates <- intersect(group_names, colnames(md))
+  column_candidates <- setdiff(colnames(md), "cell_barcode")
+  parameters <- tryCatch(crb$getParameters(), error = function(error) list())
+  name <- cv_default_group(
+    unique(c(group_candidates, column_candidates)),
+    parameters[["main_group"]]
+  )
+  value <- if (!is.null(name)) md[[name]] else NULL
+  if (!(is.factor(value) || is.character(value) || is.logical(value))) {
+    return(NULL)
+  }
+  resource <- tryCatch(
+    resource_fn(name, if (is.factor(value)) levels(value) else NULL),
+    error = function(error) NULL
+  )
+  levels <- as.character(resource$levels %||% character())
+  if (!is.list(resource) || !length(levels)) {
+    return(NULL)
+  }
+  resource$levels <- NULL
+  list(
+    name = name,
+    kind = if (name %in% group_candidates) "groups" else "cat_extra",
+    levels = I(levels),
+    descriptor = resource
+  )
+}
+
 cv_progressive_modalities <- function(crb, projection_names) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   manifest <- if (is.list(pack)) pack$manifest else NULL
@@ -1685,9 +1755,69 @@ cv_progressive_modalities <- function(crb, projection_names) {
   )
 }
 
+cv_preferred_projection_name <- function(projection_names, configured = NULL) {
+  projection_names <- as.character(projection_names)
+  if (!length(projection_names)) {
+    return(NULL)
+  }
+  if (
+    is.character(configured) &&
+      length(configured) == 1L &&
+      !is.na(configured) &&
+      configured %in% projection_names
+  ) {
+    configured
+  } else if ("umap" %in% projection_names) {
+    "umap"
+  } else {
+    projection_names[[1L]]
+  }
+}
+
+cv_resource_projection <- function(resource, projection, n) {
+  if (
+    !is.list(resource) ||
+      !is.character(resource$name) ||
+      length(resource$name) != 1L ||
+      is.na(resource$name) ||
+      !nzchar(resource$name) ||
+      !is.list(resource$descriptor) ||
+      length(resource$descriptor$cells) != 1L ||
+      is.na(resource$descriptor$cells) ||
+      !identical(as.integer(resource$descriptor$cells), as.integer(n)) ||
+      length(resource$descriptor$dimensions) != 1L ||
+      is.na(resource$descriptor$dimensions) ||
+      !(as.integer(resource$descriptor$dimensions) %in% c(2L, 3L))
+  ) {
+    return(NULL)
+  }
+  dimensions <- as.integer(resource$descriptor$dimensions)
+  entry <- list(
+    ndim = dimensions,
+    projection_resource = resource$descriptor
+  )
+  if (dimensions == 3L) {
+    axes <- colnames(projection)[seq_len(3L)]
+    entry$axes <- I(
+      if (is.null(axes) || length(axes) != 3L || anyNA(axes)) {
+        paste0("dim ", seq_len(3L))
+      } else {
+        as.character(axes)
+      }
+    )
+  }
+  setNames(list(entry), resource$name)
+}
+
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
 ## its own cv_build_* helper; this function wires them into the final list.
-cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
+cv_build_bundle <- function(
+  crb,
+  primary_only = FALSE,
+  first_frame = NULL,
+  primary_projection_resource = NULL,
+  primary_group_resource = NULL
+) {
   use_first_frame <- isTRUE(primary_only) &&
     is.list(first_frame) &&
     is.data.frame(first_frame$meta_data) &&
@@ -1726,7 +1856,8 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
       crb,
       md,
       group_names,
-      cv_group_colors
+      cv_group_colors,
+      primary_group_resource
     )
     groups <- primary_colours$groups
     cat_extra <- primary_colours$cat_extra
@@ -1758,32 +1889,47 @@ cv_build_bundle <- function(crb, primary_only = FALSE, first_frame = NULL) {
     tryCatch(crb$availableProjections(), error = function(e) character())
   }
   configured_projection <- viewer_content[["default_projection"]]
-  preferred_projection <- if (
-    is.character(configured_projection) &&
-      length(configured_projection) == 1L &&
-      !is.na(configured_projection) &&
-      configured_projection %in% projection_names
-  ) {
+  preferred_projection <- cv_preferred_projection_name(
+    projection_names,
     configured_projection
-  } else if ("umap" %in% projection_names) {
-    "umap"
-  } else {
-    projection_names[1L]
-  }
+  )
   projections <- if (isTRUE(primary_only)) {
-    built <- list()
-    for (projection_name in unique(c(preferred_projection, projection_names))) {
-      built <- cv_build_projections(
-        crb,
-        cells,
-        projection_name,
-        preloaded = if (use_first_frame) first_frame$projections else NULL
+    resource_name <- primary_projection_resource$name
+    resource_projection <- if (
+      is.character(resource_name) &&
+        length(resource_name) == 1L &&
+        !is.na(resource_name) &&
+        resource_name %in% projection_names
+    ) {
+      cv_resource_projection(
+        primary_projection_resource,
+        if (use_first_frame) {
+          first_frame$projections[[resource_name]]
+        } else {
+          NULL
+        },
+        n
       )
-      if (length(built)) {
-        break
-      }
+    } else {
+      NULL
     }
-    built
+    if (length(resource_projection)) {
+      resource_projection
+    } else {
+      built <- list()
+      for (projection_name in unique(c(preferred_projection, projection_names))) {
+        built <- cv_build_projections(
+          crb,
+          cells,
+          projection_name,
+          preloaded = if (use_first_frame) first_frame$projections else NULL
+        )
+        if (length(built)) {
+          break
+        }
+      }
+      built
+    }
   } else {
     cv_build_projections(crb, cells)
   }

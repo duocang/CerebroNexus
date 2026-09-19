@@ -40,6 +40,7 @@
   var pendingCloneDetails = new Set();
   var pendingCloneSupplement = null;
   var transportMetrics = {};
+  var linkedRequestTiming = {};
   var singleTiming = Object.create(null);
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
@@ -6111,6 +6112,85 @@
       };
     });
   }
+  var metadataCodesResourceCache = new Map();
+  function fetchMetadataCodesResource(resource, expectedCells) {
+    var n = Number(resource.cells) || 0;
+    var dtype = String(resource.dtype || '');
+    var bytesPerCode = dtype === 'uint8' ? 1 : (dtype === 'uint16' ? 2 : 0);
+    var codeMap = resource.code_map;
+    if (n !== Number(expectedCells) || !bytesPerCode ||
+        !codeMap || !codeMap.length) {
+      return Promise.reject(new Error('Metadata codes resource mismatch'));
+    }
+    var key = String(resource.url) + ':' + String(resource.checksum || '') +
+      ':' + Array.prototype.join.call(codeMap, ',');
+    var pending = metadataCodesResourceCache.get(key);
+    if (!pending) {
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin',
+        cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Metadata codes request failed');
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        if (buffer.byteLength !== n * bytesPerCode ||
+            (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
+          throw new Error('Metadata codes byte count mismatch');
+        }
+        var source = dtype === 'uint8'
+          ? new Uint8Array(buffer) : new Uint16Array(buffer);
+        var maxCode = codeMap.length - 2;
+        var values = maxCode <= 127
+          ? new Int8Array(n)
+          : (maxCode <= 32767 ? new Int16Array(n) : new Int32Array(n));
+        for (var i = 0; i < n; i++) {
+          var code = source[i];
+          if (code >= codeMap.length) {
+            throw new Error('Metadata code is outside its dictionary');
+          }
+          values[i] = Number(codeMap[code]);
+        }
+        return { values: values, bytes: buffer.byteLength };
+      });
+      metadataCodesResourceCache.set(key, pending);
+      pending.catch(function () { metadataCodesResourceCache.delete(key); });
+    }
+    var started = performance.now();
+    return pending.then(function (result) {
+      return { values: result.values, bytes: result.bytes,
+        fetchMs: performance.now() - started };
+    });
+  }
+  function hydrateLinkedMetadataResource(bundle) {
+    var name = bundle && bundle.default_group;
+    var group = name && ((bundle.groups && bundle.groups[name]) ||
+      (bundle.cat_extra && bundle.cat_extra[name]));
+    var resource = group && group.values_resource;
+    if (!resource || !resource.url) {
+      return Promise.resolve({ bundle: bundle, metadataFetchMs: 0,
+        metadataBytes: 0 });
+    }
+    return fetchMetadataCodesResource(resource, bundle.n).then(function (result) {
+      group.values = result.values;
+      delete group.values_resource;
+      return { bundle: bundle, metadataFetchMs: result.fetchMs,
+        metadataBytes: result.bytes };
+    });
+  }
+  function hydrateLinkedPrimaryResources(bundle) {
+    return Promise.all([
+      hydrateLinkedProjectionResource(bundle),
+      hydrateLinkedMetadataResource(bundle)
+    ]).then(function (results) {
+      return {
+        bundle: bundle,
+        projectionFetchMs: results[0].projectionFetchMs,
+        projectionBytes: results[0].projectionBytes,
+        metadataFetchMs: results[1].metadataFetchMs,
+        metadataBytes: results[1].metadataBytes
+      };
+    });
+  }
   function canonicalGroupedValues(grouped, groups, fallback) {
     return window.CBViewState.canonicalGroupedValues(grouped, groups, fallback);
   }
@@ -6874,18 +6954,27 @@
       requestWireFallback('', '');
       return;
     }
-    hydrateLinkedProjectionResource(decoded).then(function (hydrated) {
+    hydrateLinkedPrimaryResources(decoded).then(function (hydrated) {
       if (token !== wireToken) return;
       applyData(hydrated.bundle);
       transportMetrics.primary = {
         bytes: buffer.byteLength,
+        clickToRequestMs: linkedRequestTiming.clickToRequestMs,
+        requestToBinaryMs: isFinite(linkedRequestTiming.requestAtMs)
+          ? decodedAt - linkedRequestTiming.requestAtMs : null,
         serverPrepareMs: decoded.transport_profile &&
           Number(decoded.transport_profile.server_prepare_ms),
+        serverResourceMs: decoded.transport_profile &&
+          Number(decoded.transport_profile.server_resource_ms),
+        serverBundleMs: decoded.transport_profile &&
+          Number(decoded.transport_profile.server_bundle_ms),
         serializeTransferMs: decoded.transport_profile &&
           Date.now() - Number(decoded.transport_profile.sent_at_ms),
         decodeMs: decodedAt - started,
         projectionFetchMs: hydrated.projectionFetchMs,
         projectionBytes: hydrated.projectionBytes,
+        metadataFetchMs: hydrated.metadataFetchMs,
+        metadataBytes: hydrated.metadataBytes,
         decodeToDrawMs: performance.now() - decodedAt
       };
     }).catch(function () {
@@ -8241,6 +8330,13 @@
         }
       }
       if (Shiny.setInputValue) {
+        if (vis && !isFinite(linkedRequestTiming.requestAtMs)) {
+          linkedRequestTiming.requestAtMs = performance.now();
+          linkedRequestTiming.clickToRequestMs =
+            isFinite(window.__cerebroPageBenchClickStart)
+              ? linkedRequestTiming.requestAtMs -
+                window.__cerebroPageBenchClickStart : null;
+        }
         Shiny.setInputValue('coordviews_visible', vis);
       }
     }
@@ -8249,7 +8345,17 @@
     // The poll is the backstop; a tab switch is a click, so report on the way
     // out too. Without this the server can still believe the workspace is on
     // screen for up to one interval after the user has left it.
-    document.addEventListener('click', function () {
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest
+        ? event.target.closest('a[href="#shiny-tab-coordinated_views"]') : null;
+      if (target && Shiny.setInputValue) {
+        linkedRequestTiming.requestAtMs = performance.now();
+        linkedRequestTiming.clickToRequestMs =
+          isFinite(window.__cerebroPageBenchClickStart)
+            ? linkedRequestTiming.requestAtMs -
+              window.__cerebroPageBenchClickStart : null;
+        Shiny.setInputValue('coordviews_visible', true, { priority: 'event' });
+      }
       setTimeout(reportVisibility, 0);
     }, true);
     // A reconnect gives a fresh server session that knows nothing, so the state

@@ -726,17 +726,21 @@ page_specialist_timing <- function(app) {
     "const click=Number(window.__cerebroPageBenchClickStart);",
     "const ready=Number(timing.readyAtMs||",
     "window.__cerebroPageBenchEventAt);",
-    "return {clickToRequestMs:timing.clickToRequestMs,",
+    "return {clickToRequestMs:timing.clickToRequestMs??linked.clickToRequestMs,",
     "serverPrepareMs:timing.serverPrepareMs??linked.serverPrepareMs,",
+    "serverResourceMs:linked.serverResourceMs,",
+    "serverBundleMs:linked.serverBundleMs,",
     "serializeTransferMs:timing.serializeTransferMs??linked.serializeTransferMs,",
     "decodeMs:timing.decodeMs??linked.decodeMs,",
     "projectionFetchMs:timing.projectionFetchMs??linked.projectionFetchMs,",
+    "metadataFetchMs:linked.metadataFetchMs,",
     "buildSpacesMs:timing.buildSpacesMs,preDrawMs:timing.preDrawMs,",
     "firstDrawMs:timing.firstDrawMs??linked.decodeToDrawMs,",
     "activationMs:timing.activationMs,",
     "requestToReadyMs:timing.requestToReadyMs,",
     "bytes:timing.bytes??linked.bytes,",
     "projectionBytes:linked.projectionBytes,",
+    "metadataBytes:linked.metadataBytes,",
     "clickToReadyMs:Number.isFinite(click)&&Number.isFinite(ready)",
     "?ready-click:null};})()"
   ))
@@ -747,9 +751,12 @@ page_specialist_timing <- function(app) {
   data.frame(
     click_to_request_ms = number("clickToRequestMs"),
     server_prepare_ms = number("serverPrepareMs"),
+    server_resource_ms = number("serverResourceMs"),
+    server_bundle_ms = number("serverBundleMs"),
     serialize_transfer_ms = number("serializeTransferMs"),
     binary_decode_ms = number("decodeMs"),
     projection_fetch_ms = number("projectionFetchMs"),
+    metadata_fetch_ms = number("metadataFetchMs"),
     build_spaces_ms = number("buildSpacesMs"),
     pre_draw_ms = number("preDrawMs"),
     first_draw_ms = number("firstDrawMs"),
@@ -758,6 +765,7 @@ page_specialist_timing <- function(app) {
     click_to_ready_ms = number("clickToReadyMs"),
     primary_payload_bytes = number("bytes"),
     projection_asset_bytes = number("projectionBytes"),
+    metadata_asset_bytes = number("metadataBytes"),
     stringsAsFactors = FALSE
   )
 }
@@ -1005,9 +1013,12 @@ empty_observation <- function(status, error) {
     shared_projection_primed = NA,
     click_to_request_ms = NA_real_,
     server_prepare_ms = NA_real_,
+    server_resource_ms = NA_real_,
+    server_bundle_ms = NA_real_,
     serialize_transfer_ms = NA_real_,
     binary_decode_ms = NA_real_,
     projection_fetch_ms = NA_real_,
+    metadata_fetch_ms = NA_real_,
     build_spaces_ms = NA_real_,
     pre_draw_ms = NA_real_,
     first_draw_ms = NA_real_,
@@ -1016,6 +1027,7 @@ empty_observation <- function(status, error) {
     click_to_ready_ms = NA_real_,
     primary_payload_bytes = NA_real_,
     projection_asset_bytes = NA_real_,
+    metadata_asset_bytes = NA_real_,
     stringsAsFactors = FALSE
   )
 }

@@ -659,8 +659,18 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(client, "coordviews_wire_supported", fixed = TRUE)
   expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
   expect_match(client, "coordviews_primary_ready", fixed = TRUE)
+  expect_match(
+    client,
+    "a[href=\"#shiny-tab-coordinated_views\"]",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "Shiny.setInputValue('coordviews_visible', true, { priority: 'event' })",
+    fixed = TRUE
+  )
   expect_match(client, "onBinarySupplement", fixed = TRUE)
-  expect_match(client, "hydrateLinkedProjectionResource", fixed = TRUE)
+  expect_match(client, "hydrateLinkedPrimaryResources", fixed = TRUE)
   expect_match(
     client,
     "projectionFetchMs: hydrated.projectionFetchMs",
@@ -669,6 +679,11 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(
     client,
     "projectionBytes: hydrated.projectionBytes",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "metadataBytes: hydrated.metadataBytes",
     fixed = TRUE
   )
   expect_equal(
@@ -983,6 +998,104 @@ test_that("primary bundle reuses thin CRB first-frame fields", {
   expect_identical(unclass(primary$cells), seq_len(4L))
 })
 
+test_that("primary bundle can keep canonical projection coordinates external", {
+  skip_if_not(have_bundle)
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T"))
+  )
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGroups = function() "cell_type",
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() "umap",
+    getProjection = function(name) stop("projection coordinates were copied"),
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+  descriptor <- list(
+    url = "projection/001.bin",
+    cells = 4L,
+    dimensions = 2L,
+    bytes = 32,
+    checksum = "0123456789abcdef0123456789abcdef"
+  )
+
+  primary <- cv_env$cv_build_bundle(
+    crb,
+    primary_only = TRUE,
+    first_frame = list(
+      meta_data = metadata,
+      projections = list(umap = stop)
+    ),
+    primary_projection_resource = list(
+      name = "umap",
+      descriptor = descriptor
+    )
+  )
+
+  expect_named(primary$projections, "umap")
+  expect_identical(primary$projections$umap$projection_resource, descriptor)
+  expect_identical(primary$projections$umap$ndim, 2L)
+  expect_null(primary$projections$umap$x)
+  expect_null(primary$projections$umap$y)
+})
+
+test_that("primary bundle can build canonical group codes externally", {
+  crb <- list(
+    getGroups = function() "cell_type",
+    getParameters = function() list(main_group = "cell_type")
+  )
+  metadata <- data.frame(
+    cell_barcode = c("one", "two", "three"),
+    cell_type = c("B", "A", "B"),
+    stringsAsFactors = FALSE
+  )
+  descriptor <- list(
+    url = "metadata/004.codes.bin",
+    cells = 3L,
+    dtype = "uint8",
+    bytes = 3,
+    checksum = "abc",
+    levels = I(c("A", "B")),
+    code_map = I(c(-1L, 1L, 0L))
+  )
+  resource <- cv_env$cv_primary_group_resource(
+    crb,
+    metadata,
+    function(name, factor_levels) {
+      expect_identical(name, "cell_type")
+      expect_null(factor_levels)
+      descriptor
+    }
+  )
+  colours <- cv_env$cv_build_primary_colours(
+    crb,
+    metadata,
+    "cell_type",
+    function(name, levels) c("red", "blue"),
+    resource
+  )
+
+  expect_null(colours$groups$cell_type[["values"]])
+  expect_identical(
+    colours$groups$cell_type$values_resource$url,
+    descriptor$url
+  )
+  expect_identical(colours$groups$cell_type$levels, I(c("A", "B")))
+  expect_identical(colours$groups$cell_type$colors, I(c("red", "blue")))
+  expect_identical(colours$default_group, "cell_type")
+
+  fallback <- cv_env$cv_build_primary_colours(
+    crb,
+    metadata,
+    "cell_type",
+    function(name, levels) c("red", "blue")
+  )
+  expect_identical(as.integer(fallback$groups$cell_type$values), c(1L, 0L, 1L))
+})
+
 test_that("progressive supplement carries identity and only missing data", {
   skip_if_not(have_bundle)
   primary <- list(
@@ -1114,9 +1227,8 @@ test_that("supplement work starts only after the painted primary reports ready",
     initial_push,
     fixed = TRUE
   )[[1L]]
-  flush_at <- regexpr("session$onFlushed(", initial_push, fixed = TRUE)[[1L]]
   expect_gt(send_at, 0L)
-  expect_gt(flush_at, send_at)
+  expect_no_match(initial_push, "cv_start_clone_task(", fixed = TRUE)
   expect_match(
     server,
     'observeEvent(\n  input[["coordviews_primary_ready"]]',
@@ -1133,6 +1245,12 @@ test_that("supplement work starts only after the painted primary reports ready",
     "cv_prepare_progressive_supplement(\n      primary,\n      primary_n,\n      modalities\n    )",
     fixed = TRUE
   )
+  primary_ready <- strsplit(
+    server,
+    'observeEvent(\n  input[["coordviews_primary_ready"]]',
+    fixed = TRUE
+  )[[1L]][[2L]]
+  expect_match(primary_ready, "cv_start_clone_task(prepared$clone_spec)", fixed = TRUE)
   expect_match(client, "modalities: requestedModalities()", fixed = TRUE)
 })
 
@@ -1419,8 +1537,8 @@ test_that("large-dataset work stays off the initial response", {
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_no_match(server, "later::later(", fixed = TRUE)
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
   expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
+  expect_match(server, "cv_start_clone_task(prepared$clone_spec)", fixed = TRUE)
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(
     server,

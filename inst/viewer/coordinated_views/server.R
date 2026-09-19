@@ -213,15 +213,51 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
   tryCatch(
     {
       started <- proc.time()[["elapsed"]]
+      first_frame <- if (isTRUE(primary_only)) {
+        viewerProjectionFirstFrameCache()
+      } else {
+        NULL
+      }
+      resource_started <- proc.time()[["elapsed"]]
+      projection_resource <- NULL
+      group_resource <- NULL
+      if (
+        is.list(first_frame) &&
+          is.list(first_frame$projections) &&
+          length(first_frame$projections)
+      ) {
+        configured <- cv_selected_viewer_content()[["default_projection"]]
+        projection_name <- cv_preferred_projection_name(
+          names(first_frame$projections),
+          configured
+        )
+        descriptor <- viewerProjectionAsset(projection_name)
+        if (is.list(descriptor)) {
+          projection_resource <- list(
+            name = projection_name,
+            descriptor = descriptor
+          )
+        }
+      }
+      if (is.list(first_frame) && is.data.frame(first_frame$meta_data)) {
+        group_resource <- cv_primary_group_resource(
+          data_set(),
+          first_frame$meta_data,
+          viewerMetadataCodesAsset
+        )
+      }
+      resource_prepare_ms <-
+        (proc.time()[["elapsed"]] - resource_started) * 1000
+      bundle_started <- proc.time()[["elapsed"]]
       b <- cv_build_bundle(
         data_set(),
         primary_only,
-        first_frame = if (isTRUE(primary_only)) {
-          viewerProjectionFirstFrameCache()
-        } else {
-          NULL
-        }
+        first_frame = first_frame,
+        primary_projection_resource = projection_resource,
+        primary_group_resource = group_resource
       )
+      bundle_build_ms <-
+        (proc.time()[["elapsed"]] - bundle_started) * 1000
       if (is.null(b)) {
         list(
           error = paste(
@@ -233,6 +269,8 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
         b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint
         attr(b, "server_prepare_ms") <-
           (proc.time()[["elapsed"]] - started) * 1000
+        attr(b, "server_resource_ms") <- resource_prepare_ms
+        attr(b, "server_bundle_ms") <- bundle_build_ms
         b
       }
     },
@@ -782,10 +820,14 @@ observe(
         primary$projections[[projection]]$x <- NULL
         primary$projections[[projection]]$y <- NULL
         primary$projections[[projection]]$z <- NULL
+        primary$projections[[projection]]$projection_resource <- NULL
       }
       if (is.null(primary$shared_projection)) {
         projection <- primary$default_projection
-        resource <- viewerProjectionAsset(projection, primary$cells)
+        resource <- primary$projections[[projection]]$projection_resource
+        if (is.null(resource)) {
+          resource <- viewerProjectionAsset(projection, primary$cells)
+        }
         if (
           is.list(resource) &&
             projection %in% names(primary$projections)
@@ -807,6 +849,8 @@ observe(
       primary$progressive_token <- primary_n
       primary$transport_profile <- list(
         server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
+        server_resource_ms = attr(primary, "server_resource_ms") %||% NA_real_,
+        server_bundle_ms = attr(primary, "server_bundle_ms") %||% NA_real_,
         sent_at_ms = as.numeric(Sys.time()) * 1000
       )
       session$sendBinaryMessage(
@@ -815,19 +859,6 @@ observe(
       )
       coordviews_build_log$sent_primary_n <- primary_n
       coordviews_sent_primary(primary_n)
-      ## Worker startup can contend with serialization and the websocket. Clone
-      ## data is progressive, so enqueue the correct primary frame first.
-      session$onFlushed(
-        function() {
-          if (!identical(coordviews_build_log$sent_primary_n, primary_n)) {
-            return(invisible(NULL))
-          }
-          cv_start_clone_task(
-            cv_async_clone_spec(isolate(data_set()), primary)
-          )
-        },
-        once = TRUE
-      )
     } else {
       colors <- tryCatch(reactive_colors(), error = function(e) NULL)
       bundle <- coordviews_bundle()
@@ -905,6 +936,10 @@ observeEvent(
     )
     req(!is.null(prepared))
     cv_send_progressive_supplement(prepared)
+    ## Clone preparation can saturate CPU and disk long enough to delay the GPU
+    ## frame. The client reaches this observer only after the primary frame is
+    ## correct and visible, so progressive work cannot compete with first paint.
+    cv_start_clone_task(prepared$clone_spec)
     session$sendCustomMessage(
       "coordviews_colors",
       isolate(coordviews_color_patch())
