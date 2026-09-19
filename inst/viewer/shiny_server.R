@@ -85,13 +85,6 @@ server <- function(input, output, session) {
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
-      "/viewer/core/cell_view_message.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
       "/viewer/core/cell_view_wire.R"
     ),
     local = TRUE
