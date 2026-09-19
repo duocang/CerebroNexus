@@ -17,6 +17,7 @@ expression_projection_update_plot <- function(input) {
   if (is.null(cell_indices)) {
     cell_indices <- seq_len(nrow(metadata))
   }
+  n_cells <- if (is.null(metadata)) length(cell_indices) else nrow(metadata)
   appearance <- list(
     group_labels = FALSE,
     draw_border = isTRUE(plot_parameters[["draw_border"]]),
@@ -27,7 +28,7 @@ expression_projection_update_plot <- function(input) {
     x = coordinates[[1]],
     y = coordinates[[2]],
     color = expression_levels,
-    selection_key = seq_len(nrow(metadata)),
+    selection_key = seq_len(n_cells),
     point_size = plot_parameters[["point_size"]],
     point_opacity = plot_parameters[["point_opacity"]],
     point_line = list(),
@@ -114,7 +115,9 @@ expression_projection_update_plot <- function(input) {
   }
   output_hover <- list(hoverinfo = "skip", text = list(), columns = list())
   deferred_aux <- function() {
-    full_metadata <- if ("cell_barcode" %in% colnames(metadata)) {
+    full_metadata <- if (
+      !is.null(metadata) && "cell_barcode" %in% colnames(metadata)
+    ) {
       metadata
     } else {
       getMetaData()

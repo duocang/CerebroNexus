@@ -441,6 +441,11 @@ test_that("Gene projection streams canonical geometry with wire fallback", {
     "expression_projection_projection_resource_failed",
     fixed = TRUE
   )
+  expect_match(
+    data_source,
+    "if (no_gene_selected) NULL else expression_projection_data()",
+    fixed = TRUE
+  )
   expect_match(render_source, "viewerProjectionAsset(", fixed = TRUE)
   expect_match(render_source, "viewerSharedProjectionName(", fixed = TRUE)
   expect_match(
@@ -1263,6 +1268,70 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
   input$plot_parameters$plot_order <- "Random"
   runtime$expression_projection_update_plot(input)
   expect_identical(captured$data$paint_order, "natural")
+})
+
+test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
+  runtime <- new.env(parent = globalenv())
+  captured <- new.env(parent = emptyenv())
+  runtime$expressionColorScale <- function(...) "scale"
+  runtime$expressionReverseColorScale <- function(...) FALSE
+  runtime$getMetaData <- function() {
+    data.frame(cell_barcode = c("c3", "c1", "c2"))
+  }
+  runtime$getGroups <- function() character()
+  runtime$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover,
+    extra,
+    deferred_aux
+  ) {
+    captured$data <- data
+    captured$deferred_aux <- deferred_aux
+  }
+  sys.source(
+    viewer_test_path("gene_expression", "func_projection_update_plot.R"),
+    envir = runtime
+  )
+  input <- list(
+    coordinates = data.frame(x = c(3, 1, 2), y = c(6, 4, 5)),
+    reset_axes = FALSE,
+    expression_levels = numeric(),
+    plot_parameters = list(
+      draw_border = FALSE,
+      keep_square = TRUE,
+      plot_order = "Highest expression on top",
+      point_size = 1,
+      point_opacity = 0.5,
+      x_range = c(1, 3),
+      y_range = c(4, 6),
+      is_trajectory = FALSE,
+      hover_info = FALSE,
+      projection = "UMAP",
+      n_dimensions = 2L
+    ),
+    color_settings = list(
+      color_scale = "Viridis",
+      color_mode = "same",
+      color_range = c(0, 1),
+      genes = character()
+    ),
+    metadata = NULL,
+    trajectory = list(),
+    display_mode = "single",
+    cell_indices = 1:3,
+    separate_panels = FALSE
+  )
+
+  runtime$expression_projection_update_plot(input)
+
+  expect_identical(captured$data$selection_key, 1:3)
+  expect_true(captured$data$shared_zero_color)
+  expect_identical(
+    as.character(captured$deferred_aux()$selection_key),
+    c("c3", "c1", "c2")
+  )
 })
 
 test_that("hidden group filters activate after startup rendering", {

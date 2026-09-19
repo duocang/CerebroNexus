@@ -8,7 +8,10 @@ expression_projection_data_to_plot_raw <- reactive({
   no_gene_selected <- length(
     expression_selected_genes()[["genes_to_display_present"]]
   ) == 0L
-  metadata <- expression_projection_data()
+  ## The no-gene first frame needs only the canonical cell count/order. Full
+  ## metadata is used exclusively by deferred hover/selection auxiliary data,
+  ## so do not materialize it until the browser requests that supplement.
+  metadata <- if (no_gene_selected) NULL else expression_projection_data()
   req(
     coordinates,
     parameters,
