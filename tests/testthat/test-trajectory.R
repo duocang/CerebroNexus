@@ -175,6 +175,24 @@ test_that("trajectory first frame has a static host and stable appearance", {
   expect_match(settings, '"cell_view_appearance"', fixed = TRUE)
 })
 
+test_that("trajectory static first frame is narrow and keeps deferred identity", {
+  projection <- paste(
+    readLines(
+      file.path(shiny_root, "trajectory", "projection_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(projection, "trajectory_static_first_frame <- reactive", fixed = TRUE)
+  expect_match(projection, "viewerTrajectoryFrameAsset(method, name)", fixed = TRUE)
+  expect_match(projection, 'identical(input[["trajectory_point_color"]], "state")', fixed = TRUE)
+  expect_match(projection, "categorical_resource = resource$state", fixed = TRUE)
+  expect_match(projection, "deferred_selection_lengths = resource$cells", fixed = TRUE)
+  expect_match(projection, "trajectory_cells_reactive(", fixed = TRUE)
+  expect_match(projection, "selection_rows = seq_len(resource$cells)", fixed = TRUE)
+})
+
 test_that("trajectory summaries require their own visibility gate", {
   gates <- c(
     distribution_along_pseudotime.R =

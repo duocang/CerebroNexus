@@ -4,6 +4,21 @@
 ## Rendered by the shared cell-view Canvas engine. The trajectory path is sent
 ## as coordinate-space line segments alongside the cell payload.
 
+trajectory_projection_lines <- function(trajectory_edges) {
+  lapply(seq_len(nrow(trajectory_edges)), function(i) {
+    list(
+      type = "line",
+      line = list(color = cerebro_plotly_theme()$title, width = 1),
+      xref = "x",
+      yref = "y",
+      x0 = trajectory_edges$source_dim_1[i],
+      y0 = trajectory_edges$source_dim_2[i],
+      x1 = trajectory_edges$target_dim_1[i],
+      y1 = trajectory_edges$target_dim_2[i]
+    )
+  })
+}
+
 ##----------------------------------------------------------------------------##
 ## Reactive that prepares the cells + trajectory-line data for the current
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
@@ -67,19 +82,7 @@ trajectory_projection_prepared_raw <- reactive({
 
   ## trajectory path as line-segment shapes (warm near-black, the theme title
   ## colour), drawn under the points as the structural backbone
-  trajectory_edges <- trajectory_data[["edges"]]
-  trajectory_lines <- lapply(seq_len(nrow(trajectory_edges)), function(i) {
-    list(
-      type = "line",
-      line = list(color = cerebro_plotly_theme()$title, width = 1),
-      xref = "x",
-      yref = "y",
-      x0 = trajectory_edges$source_dim_1[i],
-      y0 = trajectory_edges$source_dim_2[i],
-      x1 = trajectory_edges$target_dim_1[i],
-      y1 = trajectory_edges$target_dim_2[i]
-    )
-  })
+  trajectory_lines <- trajectory_projection_lines(trajectory_data[["edges"]])
 
   list(
     cells_df = cells_df,
@@ -132,6 +135,62 @@ observeEvent(
 ##----------------------------------------------------------------------------##
 trajectory_projection_sent <- reactiveVal(FALSE)
 
+## The default million-cell frame is already stored in the Viewer Pack in the
+## exact trajectory row order. Keep this gate deliberately narrow: any filter,
+## sampling, non-state colour, unsupported transport, or failed resource uses
+## the established R construction path below.
+trajectory_static_first_frame <- reactive({
+  req(trajectory_selection_ok())
+  if (
+    !isTRUE(input[["coordviews_wire_supported"]]) ||
+      !identical(input[["trajectory_point_color"]], "state") ||
+      !isTRUE(all.equal(
+        as.numeric(trajectory_projection_appearance$percentage_cells_to_show),
+        100
+      ))
+  ) {
+    return(NULL)
+  }
+  groups <- getGroups()
+  filters <- lapply(groups, function(group) {
+    input[[paste0("trajectory_projection_group_filter_", group)]]
+  })
+  if (any(!vapply(filters, is.null, logical(1)))) {
+    return(NULL)
+  }
+  method <- input[["trajectory_selected_method"]]
+  name <- input[["trajectory_selected_name"]]
+  resource <- viewerTrajectoryFrameAsset(method, name)
+  if (is.null(resource)) {
+    return(NULL)
+  }
+  failed <- input[["trajectory_projection_projection_resource_failed"]]
+  if (
+    length(failed) == 1L &&
+      !is.na(failed) &&
+      failed %in% c(resource$projection$url, resource$state$url)
+  ) {
+    return(NULL)
+  }
+  levels <- as.character(resource$state$levels)
+  colors <- stats::setNames(cerebro_group_colors(length(levels)), levels)
+  if ("state" %in% groups) {
+    configured <- reactive_group_colors("state")
+    if (all(levels %in% names(configured))) {
+      colors <- configured[levels]
+    }
+  }
+  list(
+    resource = resource,
+    levels = levels,
+    colors = colors,
+    hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
+    trajectory_lines = trajectory_projection_lines(
+      trajectory_data_reactive()[["edges"]]
+    )
+  )
+})
+
 observeEvent(viewerDatasetIdentity()$fingerprint, {
   appearance <- current_scatter_defaults()
   trajectory_projection_appearance$point_size <- appearance$point_size
@@ -146,8 +205,6 @@ observeEvent(viewerDatasetIdentity()$fingerprint, {
 
 observe({
   req(input[["trajectory_projection_render_request"]])
-  prepared <- trajectory_projection_prepared()
-  req(prepared)
 
   ## resolve current reset_axes, then clear it so only a trajectory switch (not
   ## a colour / point-size tweak) triggers the next autorange.
@@ -155,6 +212,94 @@ observe({
     trajectory_projection_parameters_other[["reset_axes"]]
   )
   trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
+
+  static_frame <- trajectory_static_first_frame()
+  if (!is.null(static_frame)) {
+    resource <- static_frame$resource
+    point_line <- if (trajectory_projection_appearance$draw_border) {
+      list(color = cerebro_plotly_theme()$axis, width = 1)
+    } else {
+      list()
+    }
+    meta <- list(
+      color_type = "categorical",
+      color_variable = "state",
+      traces = as.list(static_frame$levels),
+      appearance = list(
+        group_labels = isTRUE(trajectory_projection_appearance$group_labels),
+        draw_border = isTRUE(trajectory_projection_appearance$draw_border),
+        keep_square = isTRUE(trajectory_projection_appearance$keep_square)
+      ),
+      space_label = input[["trajectory_selected_name"]]
+    )
+    primary <- list(
+      color = as.list(unname(static_frame$colors)),
+      point_size = trajectory_projection_appearance$point_size,
+      point_opacity = trajectory_projection_appearance$point_opacity,
+      point_line = point_line,
+      x_range = list(),
+      y_range = list(),
+      reset_axes = reset_axes_now,
+      projection_resource = resource$projection,
+      categorical_resource = resource$state,
+      deferred_selection_lengths = resource$cells
+    )
+    deferred_aux <- function() {
+      hover_cells <- trajectory_cells_reactive(
+        c("nUMI", "nGene", getGroups()),
+        barcodes = TRUE
+      )
+      if (nrow(hover_cells) != resource$cells) {
+        stop("Trajectory Viewer Pack frame no longer matches trajectory rows.")
+      }
+      hover_columns <- list()
+      if (static_frame$hover) {
+        state <- as.character(hover_cells[["state"]])
+        state[is.na(state)] <- "NA"
+        state_levels <- unique(state)
+        hover_columns <- c(
+          cerebroProjectionHoverColumns(hover_cells),
+          list(
+            list(
+              label = "State",
+              levels = state_levels,
+              values = match(state, state_levels) - 1L
+            ),
+            list(
+              label = "Pseudotime",
+              format = "fixed",
+              digits = 2L,
+              values = unname(as.numeric(hover_cells[["pseudotime"]]))
+            )
+          )
+        )
+      }
+      cerebroCellViewDeferredAux(
+        selection_rows = seq_len(resource$cells),
+        cell_barcodes = as.character(hover_cells[["cell_barcode"]]),
+        hover_columns = hover_columns,
+        hover = static_frame$hover
+      )
+    }
+    cerebroCellViewRender(
+      "trajectory_projection",
+      meta,
+      primary,
+      list(hoverinfo = "skip"),
+      extra = list(shapes = static_frame$trajectory_lines),
+      deferred_aux = deferred_aux
+    )
+    if (!isolate(trajectory_projection_sent())) {
+      session$onFlushed(
+        function() trajectory_projection_sent(TRUE),
+        once = TRUE
+      )
+    }
+    return()
+  }
+
+  prepared <- trajectory_projection_prepared()
+  req(prepared)
 
   cells_df <- prepared[["cells_df"]]
   color_variable <- prepared[["color_variable"]]
