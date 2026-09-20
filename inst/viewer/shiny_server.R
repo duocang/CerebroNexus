@@ -1093,6 +1093,10 @@ server <- function(input, output, session) {
     ) {
       return(NULL)
     }
+    identity <- tryCatch(
+      viewerDatasetIdentity(),
+      error = function(error) NULL
+    )
     resource_prefix <- paste0(
       "cerebro-metadata-",
       gsub("[^A-Za-z0-9_-]", "", session$token),
@@ -1105,11 +1109,19 @@ server <- function(input, output, session) {
       resource_prefix
     )
     descriptor <- list(
+      protocol = "canonical-metadata-codes-v1",
       url = paste0(resource_prefix, "/", basename(codes_file)),
       cells = as.integer(pack$cell_count),
       dtype = dtype,
       bytes = as.numeric(assets$bytes[[codes_row]]),
       checksum = as.character(assets$checksum[[codes_row]]),
+      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
+      cell_order_fingerprint = as.character(
+        pack$manifest$cell_order_fingerprint %||% ""
+      ),
+      pack_dataset_fingerprint = as.character(
+        pack$manifest$dataset_fingerprint %||% ""
+      ),
       levels = I(target_levels),
       ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
       ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.

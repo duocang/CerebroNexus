@@ -1998,6 +1998,11 @@ cv_build_bundle <- function(
   } else {
     ""
   }
+  pack_dataset_fingerprint <- if (is.list(viewer_pack)) {
+    as.character(viewer_pack$manifest$dataset_fingerprint %||% "")
+  } else {
+    ""
+  }
 
   ## Default colouring: prefer a cell-type-like name, then a sample-like name,
   ## then any categorical field. If no categorical field exists, use the first
@@ -2040,6 +2045,7 @@ cv_build_bundle <- function(
       error = function(e) paste0("cells:", n)
     ),
     canonical_order_id = canonical_order_id,
+    pack_dataset_fingerprint = pack_dataset_fingerprint,
     cells = I(cells),
     n = n,
     groups = groups,

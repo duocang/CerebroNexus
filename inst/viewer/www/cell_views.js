@@ -6206,10 +6206,9 @@
     });
   }
   var projectionSubsetResourceCache = new Map();
-  function canonicalProjectionIdentityMatches(resource, message) {
-    var identity = message && message.dataset_identity || {};
-    return resource && resource.protocol === 'canonical-projection-v1' &&
-      resource.dtype === 'float32' &&
+  function canonicalResourceIdentityMatches(resource, identity) {
+    identity = identity || {};
+    return resource &&
       /^md5-cell-set-v1:[0-9a-f]{32}$/.test(
         String(resource.dataset_fingerprint || '')
       ) &&
@@ -6226,6 +6225,13 @@
       String(resource.pack_dataset_fingerprint || '') ===
         String(identity.pack_dataset_fingerprint || '') &&
       Number(resource.cells) === Number(identity.cell_count);
+  }
+  function canonicalProjectionIdentityMatches(resource, message) {
+    return resource && resource.protocol === 'canonical-projection-v1' &&
+      resource.dtype === 'float32' &&
+      canonicalResourceIdentityMatches(
+        resource, message && message.dataset_identity
+      );
   }
   function fetchValidatedProjectionResource(resource, message, expectedCells) {
     if (resource && resource.protocol === 'canonical-projection-v1' &&
@@ -6586,6 +6592,13 @@
         fetchMs: performance.now() - started };
     });
   }
+  function fetchValidatedMetadataCodesResource(resource, expectedCells, identity) {
+    if (resource && resource.protocol === 'canonical-metadata-codes-v1' &&
+        !canonicalResourceIdentityMatches(resource, identity)) {
+      return Promise.reject(new Error('Canonical metadata identity mismatch'));
+    }
+    return fetchMetadataCodesResource(resource, expectedCells);
+  }
   function hydrateLinkedMetadataResource(bundle) {
     var name = bundle && bundle.default_group;
     var group = name && ((bundle.groups && bundle.groups[name]) ||
@@ -6595,7 +6608,14 @@
       return Promise.resolve({ bundle: bundle, metadataFetchMs: 0,
         metadataBytes: 0 });
     }
-    return fetchMetadataCodesResource(resource, bundle.n).then(function (result) {
+    return fetchValidatedMetadataCodesResource(
+      resource, bundle.n, {
+        cell_count: bundle.n,
+        cell_fingerprint: bundle.dataset_fingerprint,
+        cell_order_fingerprint: bundle.canonical_order_id,
+        pack_dataset_fingerprint: bundle.pack_dataset_fingerprint
+      }
+    ).then(function (result) {
       group.values = result.values;
       delete group.values_resource;
       return { bundle: bundle, metadataFetchMs: result.fetchMs,

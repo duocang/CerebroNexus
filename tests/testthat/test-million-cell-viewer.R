@@ -443,7 +443,7 @@ test_that("canonical projection fetches enforce the full dataset identity", {
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const start = source.indexOf('  function canonicalProjectionIdentityMatches');",
+      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
       "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
       "let calls = 0;",
       "function fetchProjectionResource(resource, expectedCells) {",
@@ -512,6 +512,89 @@ test_that("canonical projection fetches enforce the full dataset identity", {
       packMismatch = TRUE,
       countMismatch = TRUE,
       fetchFailurePreserved = TRUE
+    )
+  )
+})
+
+test_that("Linked canonical metadata validates its dataset identity", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+  server <- paste(
+    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(server, 'protocol = "canonical-metadata-codes-v1"', fixed = TRUE)
+  expect_match(server, "dataset_fingerprint = as.character", fixed = TRUE)
+  expect_match(server, "cell_order_fingerprint = as.character", fixed = TRUE)
+  expect_match(server, "pack_dataset_fingerprint = as.character", fixed = TRUE)
+
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const identityStart = source.indexOf('  function canonicalResourceIdentityMatches');",
+      "const identityEnd = source.indexOf('  function canonicalProjectionIdentityMatches', identityStart);",
+      "const fetchStart = source.indexOf('  function fetchValidatedMetadataCodesResource');",
+      "const fetchEnd = source.indexOf('  function hydrateLinkedMetadataResource', fetchStart);",
+      "let calls = 0;",
+      "function fetchMetadataCodesResource(resource, expectedCells) {",
+      "  calls += 1;",
+      "  return Promise.resolve({url:resource.url, cells:expectedCells});",
+      "}",
+      "eval(source.slice(identityStart, identityEnd));",
+      "eval(source.slice(fetchStart, fetchEnd));",
+      "const identity = {",
+      "  cell_count:3,",
+      "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
+      "  cell_order_fingerprint:'md5-cell-order-v1:' + 'b'.repeat(32),",
+      "  pack_dataset_fingerprint:'md5-crb-v1:' + 'c'.repeat(32)",
+      "};",
+      "const resource = {",
+      "  protocol:'canonical-metadata-codes-v1', url:'metadata.bin',",
+      "  cells:3, dtype:'uint8',",
+      "  dataset_fingerprint:identity.cell_fingerprint,",
+      "  cell_order_fingerprint:identity.cell_order_fingerprint,",
+      "  pack_dataset_fingerprint:identity.pack_dataset_fingerprint",
+      "};",
+      "async function rejected(value) {",
+      "  try {",
+      "    await fetchValidatedMetadataCodesResource(value, 3, identity);",
+      "    return false;",
+      "  } catch (error) {",
+      "    return error.message === 'Canonical metadata identity mismatch';",
+      "  }",
+      "}",
+      "(async () => {",
+      "  const canonical = await fetchValidatedMetadataCodesResource(resource, 3, identity);",
+      "  const legacy = await fetchValidatedMetadataCodesResource({url:'legacy.bin'}, 3, identity);",
+      "  const datasetMismatch = await rejected({...resource, dataset_fingerprint:'md5-cell-set-v1:' + 'd'.repeat(32)});",
+      "  const orderMismatch = await rejected({...resource, cell_order_fingerprint:'md5-cell-order-v1:' + 'd'.repeat(32)});",
+      "  const packMismatch = await rejected({...resource, pack_dataset_fingerprint:'md5-crb-v1:' + 'd'.repeat(32)});",
+      "  const countMismatch = await rejected({...resource, cells:2});",
+      "  console.log(JSON.stringify({calls, canonical, legacy, datasetMismatch, orderMismatch, packMismatch, countMismatch}));",
+      "})().catch(error => { console.error(error); process.exit(1); });"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      calls = 2L,
+      canonical = list(url = "metadata.bin", cells = 3L),
+      legacy = list(url = "legacy.bin", cells = 3L),
+      datasetMismatch = TRUE,
+      orderMismatch = TRUE,
+      packMismatch = TRUE,
+      countMismatch = TRUE
     )
   )
 })
