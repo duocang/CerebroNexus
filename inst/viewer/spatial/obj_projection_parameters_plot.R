@@ -102,7 +102,10 @@ spatial_projection_parameters_plot <- reactive({
     color_variable <- "cell_index"
   }
 
-  spatial_data <- getSpatialData(input[["spatial_projection_to_display"]])
+  spatial_data <- viewerSpatialFirstFrameData(
+    input[["spatial_projection_to_display"]]
+  )
+  req(spatial_data, spatial_data$coordinates)
   n_dimensions <- ncol(spatial_data$coordinates)
   spatial_name <- input[["spatial_projection_to_display"]]
   dataset <- spatial_dataset_name(

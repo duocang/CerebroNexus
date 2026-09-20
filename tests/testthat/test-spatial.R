@@ -1019,7 +1019,7 @@ test_that("spatial hull geometry is prepared outside the renderer", {
   )
   expect_match(
     data_flow,
-    "group_hulls = spatial_projection_group_hulls()",
+    "group_hulls = if (resource_first) list() else spatial_projection_group_hulls()",
     fixed = TRUE
   )
   expect_no_match(renderer, "compute_group_hulls(", fixed = TRUE)
@@ -1207,6 +1207,66 @@ test_that("spatial first frames replace only exact flat geometry with an asset",
   expect_null(rendered$data$projection_resource)
   expect_identical(length(rendered$data[["x"]]), n)
   expect_identical(length(rendered$data[["y"]]), n)
+
+  categories <- list(
+    protocol = "canonical-metadata-codes-v1",
+    url = "group.codes.bin",
+    cells = n,
+    dtype = "uint8",
+    levels = c("A", "B"),
+    code_map = c(-1L, 0L, 1L)
+  )
+  value$cells_df <- NULL
+  value$coordinates <- NULL
+  value$geometry_resource <- resource
+  value$categorical_resource <- categories
+  value$resource_first <- TRUE
+  value$cell_count <- n
+  value$cell_indices <- seq_len(n)
+  renderer$spatial_projection_update_plot(value)
+  expect_identical(rendered$data$projection_resource, resource)
+  expect_identical(rendered$data$categorical_resource, categories)
+  expect_null(rendered$data[["x"]])
+  expect_null(rendered$data[["y"]])
+  expect_null(rendered$data[["canonical_group"]])
+})
+
+test_that("Spatial first-frame data bypasses the legacy full accessor", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  coordinates <- data.frame(x = 1:3, y = 4:6)
+  stored <- list(
+    coordinates = coordinates,
+    histology_images = list(),
+    molecules = structure(list(), class = "large-unrelated-payload")
+  )
+  dataset <- structure(list(spatial = list(slice = stored)), class = "Cerebro")
+  runtime$data_set <- function() dataset
+  runtime$getSpatialData <- function(name) {
+    stop("legacy accessor should not run")
+  }
+
+  result <- runtime$viewerSpatialFirstFrameData("slice")
+  expect_identical(result$coordinates, coordinates)
+  expect_identical(result$histology_images, list())
+  expect_false("molecules" %in% names(result))
+})
+
+test_that("bounded Spatial backgrounds remain eligible for resource first frames", {
+  data_flow <- paste(
+    readLines(viewer_test_path("spatial", "obj_projection_data_to_plot.R")),
+    collapse = "\n"
+  )
+  expect_match(
+    data_flow,
+    "background_geometry_ready <- is.null(background_descriptor)",
+    fixed = TRUE
+  )
+  expect_match(
+    data_flow,
+    "is.atomic(background_bounds) || is.list(background_bounds)",
+    fixed = TRUE
+  )
 })
 
 test_that("Spatial geometry catalog is registered but fetched only on page request", {
@@ -1226,12 +1286,12 @@ test_that("Spatial geometry catalog is registered but fetched only on page reque
     collapse = "\n"
   )
   click_prefetch <- regexpr(
-    "prefetchRegisteredSingleResource(singleId);",
+    "prefetchRegisteredSingleResource(id);",
     browser_source,
     fixed = TRUE
   )[[1L]]
   render_request <- regexpr(
-    "Shiny.setInputValue(singleId + '_render_request'",
+    "Shiny.setInputValue(id + '_render_request'",
     browser_source,
     fixed = TRUE
   )[[1L]]

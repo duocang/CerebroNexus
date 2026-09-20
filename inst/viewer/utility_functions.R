@@ -4268,6 +4268,33 @@ getSpatialData <- function(name) {
   )
 }
 
+## The first Spatial frame only needs coordinates and embedded-image metadata.
+## Read those fields directly from canonical storage so a tab click does not
+## normalize or copy molecule payloads and other unrelated Spatial content.
+## Legacy or malformed entries retain the validated public accessor fallback.
+viewerSpatialFirstFrameData <- function(name) {
+  ds <- data_set()
+  if (!any(grepl("Cerebro", class(ds)))) {
+    return(NULL)
+  }
+  stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
+  coordinates <- if (is.list(stored)) stored[["coordinates"]] else NULL
+  valid_coordinates <- is.data.frame(coordinates) &&
+    all(c("x", "y") %in% colnames(coordinates)) &&
+    is.numeric(coordinates[["x"]]) &&
+    is.numeric(coordinates[["y"]]) &&
+    nrow(coordinates) > 0L
+  if (!isTRUE(valid_coordinates)) {
+    return(getSpatialData(name))
+  }
+  list(
+    coordinates = coordinates,
+    histology_images = stored[["histology_images"]],
+    histology_image = stored[["histology_image"]],
+    histology_image_bounds = stored[["histology_image_bounds"]]
+  )
+}
+
 ## Coordinate-only Spatial consumers run after spatial_projection_parameters_plot
 ## has validated the exact current dataset + entry through getSpatialData().
 ## Reuse the canonical stored coordinate reference there instead of invoking the

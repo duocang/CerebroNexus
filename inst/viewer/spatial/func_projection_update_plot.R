@@ -113,6 +113,8 @@ spatial_projection_update_plot <- function(input) {
   plot_parameters <- input[['plot_parameters']]
   color_assignments <- input[['color_assignments']]
   geometry_resource <- input[["geometry_resource"]]
+  categorical_resource <- input[["categorical_resource"]]
+  resource_first <- isTRUE(input[["resource_first"]])
 
   attach_geometry_resource <- function(data) {
     if (
@@ -131,10 +133,16 @@ spatial_projection_update_plot <- function(input) {
   }
 
   color_variable <- plot_parameters[['color_variable']]
-  color_input <- metadata[[color_variable]]
-  selection_keys <- seq_len(nrow(metadata))
+  color_input <- if (resource_first) NULL else metadata[[color_variable]]
+  selection_keys <- if (resource_first) {
+    integer()
+  } else {
+    seq_len(nrow(metadata))
+  }
   build_deferred_aux <- function(selection_rows) {
-    cell_index <- if ("cell_index" %in% colnames(metadata)) {
+    cell_index <- if (resource_first) {
+      input[["cell_indices"]]
+    } else if ("cell_index" %in% colnames(metadata)) {
       metadata[["cell_index"]]
     } else {
       seq_len(nrow(metadata))
@@ -373,7 +381,7 @@ spatial_projection_update_plot <- function(input) {
 
   n_dimensions <- plot_parameters[["n_dimensions"]]
   payload <- cerebroCellViewScatterPayload(
-    coordinates = coordinates,
+    coordinates = if (resource_first) list() else coordinates,
     color = color_input,
     color_variable = plot_parameters[["color_variable"]],
     selection_keys = selection_keys,
@@ -389,10 +397,19 @@ spatial_projection_update_plot <- function(input) {
     color_assignments = color_assignments,
     hover_columns = list(),
     hover = FALSE,
-    space_label = plot_parameters[["projection"]]
+    space_label = plot_parameters[["projection"]],
+    cell_count = input[["cell_count"]],
+    coordinate_resource = if (resource_first) geometry_resource else NULL,
+    categorical_resource = if (resource_first) {
+      categorical_resource
+    } else {
+      NULL
+    }
   )
   payload[["meta"]] <- c(background_meta, payload[["meta"]])
-  payload[["data"]] <- attach_geometry_resource(payload[["data"]])
+  if (!resource_first) {
+    payload[["data"]] <- attach_geometry_resource(payload[["data"]])
+  }
 
   output_hulls <- list()
   if (
@@ -415,7 +432,11 @@ spatial_projection_update_plot <- function(input) {
     payload[["hover"]],
     extra = list(group_hulls = output_hulls),
     deferred_aux = function() {
-      build_deferred_aux(payload[["data"]][["selection_key"]])
+      build_deferred_aux(if (resource_first) {
+        seq_len(input[["cell_count"]])
+      } else {
+        payload[["data"]][["selection_key"]]
+      })
     }
   )
 }

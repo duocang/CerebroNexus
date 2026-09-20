@@ -203,7 +203,7 @@ test_that("spatial first frame defers identities and hover", {
 
   expect_match(
     source,
-    "selection_keys <- seq_len(nrow(metadata))",
+    "selection_keys <- if (resource_first)",
     fixed = TRUE
   )
   expect_match(
