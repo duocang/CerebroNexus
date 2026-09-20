@@ -308,6 +308,7 @@
       frame_id <- frame_id + 1L
       prefix <- file.path("trajectory", sprintf("%03d", frame_id))
       geometry_path <- paste0(prefix, ".geometry.bin")
+      edges_path <- paste0(prefix, ".edges.qs2")
       subset_path <- paste0(prefix, ".subset.bin")
       state_codes_path <- paste0(prefix, ".state.codes.bin")
       state_dictionary_path <- paste0(prefix, ".state.dictionary.json")
@@ -394,6 +395,13 @@
           state_levels,
           "utf8",
           length(state_levels)
+        ),
+        .viewerPackWriteAsset(
+          stage,
+          edges_path,
+          trajectory[["edges"]],
+          "trajectory-edges",
+          nrow(trajectory[["edges"]])
         )
       )
       frames[[length(frames) + 1L]] <- data.frame(
@@ -408,6 +416,7 @@
         subset_kind = subset_kind,
         subset_path = subset_path,
         subset_dtype = if (nzchar(subset_path)) "uint32" else "",
+        edges_path = edges_path,
         state_codes_path = state_codes_path,
         state_dictionary_path = state_dictionary_path,
         state_dtype = state_dtype,
@@ -429,6 +438,7 @@
       subset_kind = character(),
       subset_path = character(),
       subset_dtype = character(),
+      edges_path = character(),
       state_codes_path = character(),
       state_dictionary_path = character(),
       state_dtype = character(),

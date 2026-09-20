@@ -185,14 +185,20 @@ trajectory_static_first_frame <- reactive({
       colors <- configured[levels]
     }
   }
+  trajectory_edges <- viewerPackTrajectoryEdges(
+    viewerPackCurrent(),
+    method,
+    name
+  )
+  if (is.null(trajectory_edges)) {
+    trajectory_edges <- trajectory_data_reactive()[["edges"]]
+  }
   list(
     resource = resource,
     levels = levels,
     colors = colors,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
-    trajectory_lines = trajectory_projection_lines(
-      trajectory_data_reactive()[["edges"]]
-    )
+    trajectory_lines = trajectory_projection_lines(trajectory_edges)
   )
 })
 

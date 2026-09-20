@@ -260,6 +260,11 @@ viewerPackTrajectoryFrame <- function(pack, method, name) {
   } else {
     frame$geometry_kind
   })
+  frame$edges_path <- as.character(if (is.null(frame$edges_path)) {
+    ""
+  } else {
+    frame$edges_path
+  })
   required_paths <- c("state_codes_path", "state_dictionary_path")
   geometry_valid <- if (identical(frame$geometry_kind, "canonical_projection")) {
     is.character(frame$projection_name) &&
@@ -297,6 +302,30 @@ viewerPackTrajectoryFrame <- function(pack, method, name) {
     }, logical(1))) &&
     frame$state_dtype %in% c("uint8", "uint16", "uint32")
   if (!isTRUE(valid)) NULL else frame
+}
+
+viewerPackTrajectoryEdges <- function(pack, method, name) {
+  frame <- viewerPackTrajectoryFrame(pack, method, name)
+  if (
+    is.null(frame) ||
+      length(frame$edges_path) != 1L ||
+      is.na(frame$edges_path) ||
+      !nzchar(frame$edges_path)
+  ) {
+    return(NULL)
+  }
+  edges <- viewerPackReadAsset(
+    pack,
+    frame$edges_path,
+    validate_cell_order = FALSE
+  )
+  required <- c(
+    "source_dim_1", "source_dim_2", "target_dim_1", "target_dim_2"
+  )
+  if (!is.data.frame(edges) || !all(required %in% colnames(edges))) {
+    return(NULL)
+  }
+  edges
 }
 
 viewerPackSpatialIndex <- function(pack, name) {

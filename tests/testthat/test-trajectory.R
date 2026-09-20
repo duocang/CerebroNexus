@@ -184,6 +184,7 @@ test_that("trajectory static first frame is narrow and keeps deferred identity",
 
   expect_match(projection, "trajectory_static_first_frame <- reactive", fixed = TRUE)
   expect_match(projection, "viewerTrajectoryFrameAsset(method, name)", fixed = TRUE)
+  expect_match(projection, "viewerPackTrajectoryEdges(", fixed = TRUE)
   expect_match(projection, 'identical(input[["trajectory_point_color"]], "state")', fixed = TRUE)
   expect_match(projection, "trajectory_frame_resource = resource", fixed = TRUE)
   expect_match(projection, "deferred_selection_lengths = resource$cells", fixed = TRUE)

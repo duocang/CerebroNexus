@@ -56,7 +56,12 @@ viewer_pack_fixture <- function(
           state = rep(c("1", "2"), length.out = length(selected)),
           row.names = selected
         ),
-        edges = data.frame()
+        edges = data.frame(
+          source_dim_1 = 1,
+          source_dim_2 = 3,
+          target_dim_1 = 2,
+          target_dim_2 = 4
+        )
       )
     )
   }
@@ -179,6 +184,15 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
     endian = "little"
   )
   expect_identical(state_codes, c(0L, 1L))
+  expect_identical(
+    runtime$viewerPackTrajectoryEdges(descriptor, "monocle2", "subset"),
+    data.frame(
+      source_dim_1 = 1,
+      source_dim_2 = 3,
+      target_dim_1 = 2,
+      target_dim_2 = 4
+    )
+  )
   expect_identical(
     as.character(jsonlite::read_json(
       file.path(descriptor$path, frame$state_dictionary_path),

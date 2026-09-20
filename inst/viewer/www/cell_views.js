@@ -6634,7 +6634,8 @@
       if (!subset || !canonicalProjectionIdentityMatches(projection, message)) {
         throw new Error('Trajectory canonical frame mismatch');
       }
-    } else if (geometryKind === 'trajectory') {
+    } else if (geometryKind === 'trajectory_asset' ||
+               geometryKind === 'trajectory') {
       if (subset || !window.CBViewState.resourceDescriptor.validate(
         projection, {
           cells: expectedCells, dtype: 'float32', requireUrl: true
