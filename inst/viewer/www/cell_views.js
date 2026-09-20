@@ -2903,6 +2903,7 @@
             : (hasSelection ? sel.size : 0),
           datasetFingerprint: datasetFingerprint,
           eventKind: eventKind,
+          renderKey: renderKey == null ? null : String(renderKey),
           generation: Number(timing.generation) || 0,
           renderRequestSent: !!timing.renderRequestSent,
           timing: specialistTiming
@@ -6452,26 +6453,51 @@
     }
     return values;
   }
-  function hydrateSparseSingleColor(data) {
-    var sparse = data && data.sparse_color;
-    if (!sparse || sparse.protocol !== 'sparse-f32-v1') return;
-    var n = Number(sparse.length);
-    var key = String(data.color_cache_key || '');
+  function hydrateColorPacket(packet, key) {
+    if (!packet) return null;
+    var n = Number(packet.length);
     var cached = key && singleColorCache.get(key);
     if (cached && cached.length === n) {
-      cacheSingleColor(key, cached);
-      data.color = cached;
-      return;
+      return cacheSingleColor(key, cached);
     }
-    var index = sparse.index, source = sparse.color;
-    if (!Number.isInteger(n) || n < 0 || !ArrayBuffer.isView(index) ||
-        !ArrayBuffer.isView(source) || index.length !== source.length) return;
+    if (!Number.isInteger(n) || n < 0) return null;
+    var source = packet.color;
+    if (packet.protocol === 'dense-f32-v1') {
+      if (!ArrayBuffer.isView(source) && !Array.isArray(source)) return null;
+      if (source.length !== n) return null;
+      var dense = source instanceof Float32Array
+        ? source : Float32Array.from(source, Number);
+      return cacheSingleColor(key, dense);
+    }
+    if (packet.protocol !== 'sparse-f32-v1') return null;
+    var index = packet.index;
+    if ((!ArrayBuffer.isView(index) && !Array.isArray(index)) ||
+        (!ArrayBuffer.isView(source) && !Array.isArray(source)) ||
+        index.length !== source.length) return null;
     var values = new Float32Array(n);
     for (var i = 0; i < index.length; i++) {
       var at = Number(index[i]);
       if (at >= 0 && at < n) values[at] = Number(source[i]);
     }
-    data.color = cacheSingleColor(key, values);
+    return cacheSingleColor(key, values);
+  }
+  function hydrateSparseSingleColor(data) {
+    var sparse = data && data.sparse_color;
+    var key = String(data.color_cache_key || '');
+    var values = hydrateColorPacket(sparse, key);
+    if (values) data.color = values;
+  }
+  function hydrateColorPacketMap(data, packetField, keyField, targetField) {
+    var packets = data && data[packetField];
+    if (!packets || typeof packets !== 'object') return;
+    var keys = data[keyField] || {}, target = {};
+    Object.keys(packets).forEach(function (name) {
+      var values = hydrateColorPacket(packets[name], String(keys[name] || ''));
+      if (values) target[name] = values;
+    });
+    if (Object.keys(target).length) {
+      data[targetField] = target;
+    }
   }
   function registerSingleCategoryResource(message) {
     var resource = message && message.resource;
@@ -7301,6 +7327,10 @@
   function buildSingleSpaces(id, payload) {
     var meta = payload.meta || {}, data = payload.data || {}, extra = payload.extra || {};
     hydrateSparseSingleColor(data);
+    hydrateColorPacketMap(
+      data, 'packed_colors', 'packed_color_cache_keys', 'color');
+    hydrateColorPacketMap(
+      data, 'packed_rgb', 'packed_rgb_cache_keys', 'rgb');
     var specialistPanels = buildSpecialistPanels(id, payload);
     if (specialistPanels) return specialistPanels;
     var categorical = meta.color_type === 'categorical';

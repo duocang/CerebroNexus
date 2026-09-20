@@ -89,11 +89,7 @@ expressionProjectionFullCellSelection <- function(data, cells) {
     identical(as.integer(cells), seq_len(n_cells))
 }
 
-expressionProjectionCachedRow <- function(data, cells, gene) {
-  dataset_key <- expressionProjectionDatasetKey()
-  cacheable <- !is.null(dataset_key) &&
-    expressionProjectionFullCellSelection(data, cells)
-  key <- if (cacheable) paste(dataset_key, gene, sep = "::") else NULL
+expressionProjectionRowCacheGet <- function(key) {
   if (
     !is.null(key) &&
       exists(key, envir = expression_projection_row_cache, inherits = FALSE)
@@ -104,7 +100,10 @@ expressionProjectionCachedRow <- function(data, cells, gene) {
     )
     return(get(key, envir = expression_projection_row_cache, inherits = FALSE))
   }
-  value <- unname(viewerExpressionRow(data, cells, gene))
+  NULL
+}
+
+expressionProjectionRowCacheSet <- function(key, value) {
   if (!is.null(key)) {
     assign(key, value, envir = expression_projection_row_cache)
     expression_projection_row_cache_order <<- c(
@@ -119,6 +118,32 @@ expressionProjectionCachedRow <- function(data, cells, gene) {
       rm(list = evict, envir = expression_projection_row_cache)
     }
   }
+  invisible(value)
+}
+
+expressionProjectionCachedRows <- function(data, cells, genes) {
+  genes <- unique(as.character(genes))
+  dataset_key <- expressionProjectionDatasetKey()
+  cacheable <- !is.null(dataset_key) &&
+    expressionProjectionFullCellSelection(data, cells)
+  keys <- stats::setNames(lapply(genes, function(gene) {
+    if (cacheable) paste(dataset_key, gene, sep = "::") else NULL
+  }), genes)
+  values <- stats::setNames(lapply(keys, expressionProjectionRowCacheGet), genes)
+  missing <- genes[vapply(values, is.null, logical(1))]
+  if (length(missing)) {
+    fetched <- viewerExpressionValues(data, cells, missing)
+    for (gene in intersect(missing, names(fetched))) {
+      value <- unname(fetched[[gene]])
+      values[[gene]] <- value
+      expressionProjectionRowCacheSet(keys[[gene]], value)
+    }
+  }
+  values[!vapply(values, is.null, logical(1))]
+}
+
+expressionProjectionCachedRow <- function(data, cells, gene) {
+  value <- expressionProjectionCachedRows(data, cells, gene)[[gene]]
   value
 }
 
@@ -244,7 +269,7 @@ expression_projection_expression_levels <- reactive({
         unique(unlist(rgb_genes, use.names = FALSE)),
         genes_present
       )
-      expression_values <- viewerExpressionValues(
+      expression_values <- expressionProjectionCachedRows(
         data_set(),
         cells_to_show,
         requested_genes
@@ -257,7 +282,7 @@ expression_projection_expression_levels <- reactive({
       })
     } else if (identical(display_mode, "separate")) {
       expressionProjectionProgressUpdate(0.3, "Extracting multiple gene panels...")
-      expression_levels <- viewerExpressionValues(
+      expression_levels <- expressionProjectionCachedRows(
         data_set(),
         cells_to_show,
         genes_present

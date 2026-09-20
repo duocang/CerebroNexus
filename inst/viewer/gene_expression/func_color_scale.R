@@ -12,12 +12,23 @@ expressionColorScale <- function(name) {
 }
 
 expressionValueRange <- function(expression_levels) {
-  values <- unlist(expression_levels, use.names = FALSE)
-  values <- values[is.finite(values)]
-  if (!length(values) || all(values == 0)) {
+  series <- if (is.list(expression_levels)) {
+    expression_levels
+  } else {
+    list(expression_levels)
+  }
+  ranges <- lapply(series, function(values) {
+    if (!length(values)) return(NULL)
+    value_range <- suppressWarnings(range(values, finite = TRUE))
+    if (any(!is.finite(value_range))) NULL else value_range
+  })
+  ranges <- Filter(Negate(is.null), ranges)
+  if (!length(ranges)) {
     return(c(0, 1))
   }
-  round(range(values), digits = 2)
+  low <- min(vapply(ranges, `[[`, numeric(1), 1L))
+  high <- max(vapply(ranges, `[[`, numeric(1), 2L))
+  if (low == 0 && high == 0) c(0, 1) else round(c(low, high), digits = 2)
 }
 
 expressionPanelColorScales <- function(genes, mode, shared_scale) {

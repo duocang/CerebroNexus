@@ -36,6 +36,21 @@ test_that("Gene selection settles before expression extraction starts", {
   expect_match(selected, "expression_selected_genes_input,\n  200", fixed = TRUE)
 })
 
+test_that("RGB mode reuses mounted selectors without resending all genes", {
+  source <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "UI_projection_input_type.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(source, "copyGenesToRgb", fixed = TRUE)
+  expect_match(source, "cerebroExpressionRgbPrefill", fixed = TRUE)
+  expect_false(grepl("genes <- sort(getGeneNames())", source, fixed = TRUE))
+  expect_false(grepl("choices = genes", source, fixed = TRUE))
+})
+
 test_that("Gene projection host is present before dynamic controls bind", {
   ui <- paste(
     readLines(viewer_test_path("gene_expression", "UI.R"), warn = FALSE),

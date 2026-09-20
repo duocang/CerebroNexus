@@ -25,6 +25,12 @@ expression_selected_genes_input <- reactive({
         input[[paste0("expression_rgb_gene_", channel)]]
       })
       names(rgb) <- c("r", "g", "b")
+      if (!any(vapply(rgb, function(gene) {
+        !is.null(gene) && length(gene) && nzchar(gene[[1L]])
+      }, logical(1)))) {
+        previous <- head(input[["expression_genes_input"]] %||% character(), 3)
+        rgb[seq_along(previous)] <- as.list(previous)
+      }
       gene_sets[["rgb_genes"]] <- rgb
       gene_sets[["genes_to_display"]] <- unique(unlist(Filter(
         function(gene) !is.null(gene) && nzchar(gene),

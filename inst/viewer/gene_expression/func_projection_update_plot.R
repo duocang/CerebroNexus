@@ -14,13 +14,21 @@ expressionSparseColor <- function(values, max_density = 0.5) {
   )
 }
 
-expressionColorCacheKey <- function(color_settings, cell_indices, n_cells) {
-  genes <- as.character(color_settings[["genes"]] %||% character())
+expressionPackedColor <- function(values) {
+  sparse <- expressionSparseColor(values)
+  if (!is.null(sparse)) {
+    return(sparse)
+  }
+  list(
+    protocol = "dense-f32-v1",
+    length = length(values),
+    color = unname(values)
+  )
+}
+
+expressionColorDatasetKey <- function() {
   if (
-    length(genes) != 1L ||
-      length(cell_indices) != n_cells ||
-      !identical(as.integer(cell_indices), seq_len(n_cells)) ||
-      !exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)
+    !exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)
   ) {
     return(NULL)
   }
@@ -46,7 +54,35 @@ expressionColorCacheKey <- function(color_settings, cell_indices, n_cells) {
   if (length(fingerprint) != 1L || is.na(fingerprint) || !nzchar(fingerprint)) {
     return(NULL)
   }
-  paste(fingerprint, genes[[1L]], n_cells, sep = "::")
+  fingerprint
+}
+
+expressionColorCacheKeyForGene <- function(gene, cell_indices, n_cells) {
+  gene <- as.character(gene %||% "")
+  if (
+    length(gene) != 1L ||
+      is.na(gene) ||
+      !nzchar(gene) ||
+      length(cell_indices) != n_cells ||
+      !identical(as.integer(cell_indices), seq_len(n_cells))
+  ) {
+    return(NULL)
+  }
+  fingerprint <- expressionColorDatasetKey()
+  if (is.null(fingerprint)) return(NULL)
+  paste(fingerprint, gene, n_cells, sep = "::")
+}
+
+expressionColorCacheKey <- function(color_settings, cell_indices, n_cells) {
+  genes <- as.character(color_settings[["genes"]] %||% character())
+  if (length(genes) != 1L) return(NULL)
+  expressionColorCacheKeyForGene(genes[[1L]], cell_indices, n_cells)
+}
+
+expressionPackedColorKeys <- function(genes, cell_indices, n_cells) {
+  vapply(genes, function(gene) {
+    expressionColorCacheKeyForGene(gene, cell_indices, n_cells) %||% ""
+  }, character(1), USE.NAMES = TRUE)
 }
 
 ## function to be executed to update figure
@@ -96,14 +132,25 @@ expression_projection_update_plot <- function(input) {
     reset_axes = reset_axes
   )
   output_data[["render_key"]] <- render_key
-  sparse_color <- if (is.list(expression_levels)) {
-    NULL
-  } else {
-    expressionSparseColor(expression_levels)
-  }
-  if (!is.null(sparse_color)) {
+  if (is.list(expression_levels)) {
     output_data[["color"]] <- NULL
-    output_data[["sparse_color"]] <- sparse_color
+    if (!identical(display_mode, "rgb")) {
+      output_data[["packed_colors"]] <- lapply(
+        expression_levels,
+        expressionPackedColor
+      )
+      output_data[["packed_color_cache_keys"]] <- expressionPackedColorKeys(
+        names(expression_levels),
+        cell_indices,
+        n_cells
+      )
+    }
+  } else {
+    sparse_color <- expressionSparseColor(expression_levels)
+    if (!is.null(sparse_color)) {
+      output_data[["color"]] <- NULL
+      output_data[["sparse_color"]] <- sparse_color
+    }
   }
   output_data[["color_cache_key"]] <- expressionColorCacheKey(
     color_settings,
@@ -235,7 +282,14 @@ expression_projection_update_plot <- function(input) {
     )
   }
   if (identical(display_mode, "rgb") && !no_gene_selected) {
-    output_data[["rgb"]] <- expression_levels[c("r", "g", "b")]
+    rgb_levels <- expression_levels[c("r", "g", "b")]
+    rgb_genes <- color_settings[["rgb_genes"]][c("r", "g", "b")]
+    output_data[["packed_rgb"]] <- lapply(rgb_levels, expressionPackedColor)
+    output_data[["packed_rgb_cache_keys"]] <- expressionPackedColorKeys(
+      unlist(rgb_genes, use.names = TRUE),
+      cell_indices,
+      n_cells
+    )
     output_data[["rgb_genes"]] <- color_settings[["rgb_genes"]]
     cerebroCellViewRender(
       "expression_projection",

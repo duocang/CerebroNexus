@@ -64,7 +64,45 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
     conditionalPanel(
       "input.expression_analysis_mode == 'Gene set'",
       uiOutput("expression_select_gene_set_UI")
-    )
+    ),
+    tags$script(HTML(
+      "
+      (function () {
+        if (!window.jQuery) return;
+        var modeSelector = '#expression_projection_genes_in_separate_panels';
+        var geneSelector = '#expression_genes_input';
+        function copyGenesToRgb() {
+          var source = document.getElementById('expression_genes_input');
+          var genes = source && source.selectize
+            ? source.selectize.getValue() : [];
+          if (!Array.isArray(genes)) genes = genes ? [genes] : [];
+          ['r', 'g', 'b'].forEach(function (channel, index) {
+            var input = document.getElementById(
+              'expression_rgb_gene_' + channel
+            );
+            var control = input && input.selectize;
+            if (!control) return;
+            var gene = genes[index] || '';
+            if (gene) control.addOption({value: gene, text: gene});
+            control.setValue(gene);
+          });
+        }
+        window.jQuery(document)
+          .off('change.cerebroExpressionRgb', modeSelector)
+          .on('change.cerebroExpressionRgb', modeSelector, function () {
+            if (this.value !== 'rgb') return;
+            copyGenesToRgb();
+          })
+          .off('change.cerebroExpressionRgbPrefill', geneSelector)
+          .on('change.cerebroExpressionRgbPrefill', geneSelector, function () {
+            var mode = document.getElementById(
+              'expression_projection_genes_in_separate_panels'
+            );
+            if (!mode || mode.value !== 'rgb') copyGenesToRgb();
+          });
+      })();
+      "
+    ))
   )
 })
 
@@ -103,24 +141,3 @@ observeEvent(
   },
   once = TRUE
 )
-
-## Preserve the former convenience: entering RGB starts from the first three
-## genes in the ordinary gene selector.
-observeEvent(input[["expression_projection_genes_in_separate_panels"]], {
-  req(identical(
-    input[["expression_projection_genes_in_separate_panels"]],
-    "rgb"
-  ))
-  previous <- head(input[["expression_genes_input"]] %||% character(), 3)
-  genes <- sort(getGeneNames())
-  for (index in seq_along(c("r", "g", "b"))) {
-    selected <- if (length(previous) >= index) previous[[index]] else ""
-    updateSelectizeInput(
-      session,
-      paste0("expression_rgb_gene_", c("r", "g", "b")[[index]]),
-      choices = genes,
-      selected = selected,
-      server = TRUE
-    )
-  }
-})

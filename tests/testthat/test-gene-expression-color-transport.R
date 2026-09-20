@@ -104,6 +104,88 @@ test_that("single-gene primary frames choose sparse colour transport", {
   )
 })
 
+test_that("RGB and separate panels use one packed colour map", {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(x, y) if (is.null(x)) y else x
+  runtime$expressionColorScale <- function(...) "scale"
+  runtime$expressionReverseColorScale <- function(...) FALSE
+  runtime$viewerDatasetIdentity <- function() list(
+    fingerprint = "cells",
+    pack_fingerprint = "dataset"
+  )
+  runtime$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover,
+    extra,
+    deferred_aux
+  ) {
+    runtime$captured <- data
+  }
+  sys.source(
+    viewer_test_path("gene_expression", "func_projection_update_plot.R"),
+    envir = runtime
+  )
+  n <- 10000L
+  sparse <- numeric(n)
+  sparse[c(2L, 5000L)] <- c(2, 4)
+  levels <- list(GeneA = sparse, GeneB = rep(1, n))
+  base <- list(
+    coordinates = data.frame(x = seq_len(n), y = rev(seq_len(n))),
+    reset_axes = FALSE,
+    expression_levels = levels,
+    plot_parameters = list(
+      draw_border = FALSE,
+      keep_square = TRUE,
+      plot_order = "Natural order",
+      point_size = 1,
+      point_opacity = 1,
+      x_range = c(1, n),
+      y_range = c(1, n),
+      is_trajectory = FALSE,
+      hover_info = FALSE,
+      projection = "umap",
+      n_dimensions = 2L
+    ),
+    color_settings = list(
+      color_scale = "Viridis",
+      color_range = c(0, 4),
+      color_mode = "shared",
+      genes = names(levels),
+      rgb_genes = list(r = "GeneA", g = "GeneB", b = NULL)
+    ),
+    metadata = NULL,
+    trajectory = list(),
+    display_mode = "separate",
+    render_key = "separate",
+    cell_indices = seq_len(n),
+    projection_resource_failed = NULL,
+    separate_panels = TRUE
+  )
+
+  runtime$expression_projection_update_plot(base)
+  expect_null(runtime$captured$color)
+  expect_identical(
+    runtime$captured$packed_colors$GeneA$protocol,
+    "sparse-f32-v1"
+  )
+  expect_identical(
+    runtime$captured$packed_colors$GeneB$protocol,
+    "dense-f32-v1"
+  )
+
+  rgb <- base
+  rgb$display_mode <- "rgb"
+  rgb$separate_panels <- FALSE
+  rgb$expression_levels <- list(r = sparse, g = rep(1, n), b = numeric(n))
+  runtime$expression_projection_update_plot(rgb)
+  expect_null(runtime$captured$color)
+  expect_null(runtime$captured[["rgb"]])
+  expect_named(runtime$captured$packed_rgb, c("r", "g", "b"))
+  expect_identical(runtime$captured$packed_rgb$r$protocol, "sparse-f32-v1")
+})
+
 test_that("full canonical expression reads omit the million-index slice", {
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
@@ -162,6 +244,8 @@ test_that("single-gene colour caches are bounded on both sides", {
   )
   expect_match(browser, "SINGLE_COLOR_CACHE_LIMIT = 4", fixed = TRUE)
   expect_match(browser, "hydrateSparseSingleColor(data)", fixed = TRUE)
+  expect_match(browser, "hydrateColorPacketMap(", fixed = TRUE)
+  expect_match(server, "expressionProjectionCachedRows", fixed = TRUE)
 })
 
 test_that("secondary expression summaries wait for the painted primary frame", {
