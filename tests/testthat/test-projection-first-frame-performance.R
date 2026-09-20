@@ -280,7 +280,7 @@ test_that("gene-expression first frame defers identities and hover", {
   )
   expect_match(
     expression_source,
-    "if (length(genes_present) == 0) {\n      ## No gene",
+    "if (length(genes_present) == 0) {\n    ## No gene",
     fixed = TRUE
   )
   expect_match(expression_source, "expression_levels <- numeric()", fixed = TRUE)

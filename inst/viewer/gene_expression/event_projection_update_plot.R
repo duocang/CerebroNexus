@@ -10,5 +10,13 @@ observe({
   ## Those reads are snapshots for this render, not plot dependencies: the
   ## browser republishes shared geometry after every paint, and subscribing to
   ## it here creates an endless render/publish feedback loop.
-  isolate(expression_projection_update_plot(data))
+  expressionProjectionProgressUpdate(0.72, "Transferring expression colours...")
+  tryCatch(
+    isolate(expression_projection_update_plot(data)),
+    error = function(error) {
+      expressionProjectionProgressClose()
+      stop(error)
+    }
+  )
+  expressionProjectionProgressUpdate(0.9, "Drawing expression colours...")
 })

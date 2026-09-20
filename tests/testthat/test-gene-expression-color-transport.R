@@ -204,3 +204,34 @@ test_that("secondary expression summaries wait for the painted primary frame", {
     fixed = TRUE
   )
 })
+
+test_that("gene expression progress remains open until the browser paints", {
+  levels <- paste(
+    readLines(
+      viewer_test_path(
+        "gene_expression",
+        "obj_projection_expression_levels.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  render <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "event_projection_update_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(levels, "shiny::Progress$new", fixed = TRUE)
+  expect_false(grepl("withProgress(", levels, fixed = TRUE))
+  expect_match(
+    levels,
+    'input[["expression_projection_rendered_key"]]',
+    fixed = TRUE
+  )
+  expect_match(levels, "expressionProjectionProgressClose(", fixed = TRUE)
+  expect_match(render, "Transferring expression colours...", fixed = TRUE)
+  expect_match(render, "Drawing expression colours...", fixed = TRUE)
+})
