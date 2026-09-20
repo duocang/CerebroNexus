@@ -68,14 +68,23 @@ output[["trajectory_details_selected_cells_table"]] <- DT::renderDataTable({
   ## Filter by stable cell identity; the shared projection keeps barcode-backed
   ## selections across recolouring and trace rebuilds. Coordinates remain the
   ## fallback for older Plotly event payloads without customdata.
-  cells_df <- cells_df %>%
-    dplyr::mutate(identifier = paste0(DR_1, '-', DR_2)) %>%
-    dplyr::filter(selectedCellMask(
-      cell_barcode,
+  stable_selection <- "selection_key" %in% colnames(selected_cells) &&
+    any(!is.na(selected_cells[["selection_key"]]) &
+      nzchar(as.character(selected_cells[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[["DR_1"]], "-", cells_df[["DR_2"]])
+  } else {
+    NULL
+  }
+  cells_df <- cells_df[
+    selectedCellMask(
+      cells_df[["cell_barcode"]],
       identifier,
       selected_cells
-    )) %>%
-    dplyr::select(-identifier) %>%
+    ),
+    ,
+    drop = FALSE
+  ] %>%
     dplyr::select(cell_barcode, everything())
 
   ## check how many cells are left after filtering

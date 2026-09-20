@@ -45,17 +45,24 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
     expression_projection_data()
   )
   cells_df <- cells_df %>%
-    dplyr::rename(X1 = 1, X2 = 2) %>%
-    dplyr::mutate(identifier = paste0(X1, '-', X2))
+    dplyr::rename(X1 = 1, X2 = 2)
   cells_df[["selection_key"]] <- if ("cell_barcode" %in% colnames(cells_df)) {
     as.character(cells_df[["cell_barcode"]])
   } else {
     as.character(seq_len(nrow(cells_df)))
   }
+  stable_selection <- "selection_key" %in% colnames(selected_cells) &&
+    any(!is.na(selected_cells[["selection_key"]]) &
+      nzchar(as.character(selected_cells[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
+  } else {
+    NULL
+  }
   groups <- ifelse(
     selectedCellMask(
       cells_df[["selection_key"]],
-      cells_df[["identifier"]],
+      identifier,
       selected_cells
     ),
     "selected",

@@ -471,11 +471,19 @@ trajectory_projection_selected_cells <- reactive({
     metadata <- trajectory_cells_reactive(
       color_variable,
       barcodes = TRUE
-    ) %>%
-      dplyr::mutate(
-        identifier = paste0(DR_1, '-', DR_2),
-        selection_key = as.character(cell_barcode)
+    )
+    metadata[["selection_key"]] <- as.character(metadata[["cell_barcode"]])
+    stable_selection <- "selection_key" %in% colnames(metadata) &&
+      "selection_key" %in% colnames(selection) &&
+      any(!is.na(selection[["selection_key"]]) &
+        nzchar(as.character(selection[["selection_key"]])))
+    if (!stable_selection) {
+      metadata[["identifier"]] <- paste0(
+        metadata[["DR_1"]],
+        "-",
+        metadata[["DR_2"]]
       )
+    }
     selection <- filterSelectionByHiddenGroups(
       selection,
       metadata,

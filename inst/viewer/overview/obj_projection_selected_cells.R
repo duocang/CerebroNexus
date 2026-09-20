@@ -39,12 +39,22 @@ overview_projection_selected_cells <- reactive({
     projection <- getProjection(input[["overview_projection_to_display"]])
     metadata <- cbind(projection, getMetaData())
     metadata <- metadata %>%
-      dplyr::rename(X1 = 1, X2 = 2) %>%
-      dplyr::mutate(identifier = paste0(X1, '-', X2))
+      dplyr::rename(X1 = 1, X2 = 2)
     metadata[["selection_key"]] <- if ("cell_barcode" %in% colnames(metadata)) {
       as.character(metadata[["cell_barcode"]])
     } else {
-      as.character(seq_len(nrow(metadata)))
+      NULL
+    }
+    stable_selection <- "selection_key" %in% colnames(metadata) &&
+      "selection_key" %in% colnames(selection) &&
+      any(!is.na(selection[["selection_key"]]) &
+        nzchar(as.character(selection[["selection_key"]])))
+    if (!stable_selection) {
+      metadata[["identifier"]] <- paste0(
+        metadata[["X1"]],
+        "-",
+        metadata[["X2"]]
+      )
     }
     selection <- filterSelectionByHiddenGroups(
       selection,

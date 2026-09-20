@@ -4475,11 +4475,8 @@ filterSelectionByHiddenGroups <- function(
 }
 
 selectedCellMask <- function(selection_key, identifier, selection) {
-  if (length(selection_key) != length(identifier)) {
-    stop("Selection identity vectors must have equal length.", call. = FALSE)
-  }
   if (is.null(selection) || !is.data.frame(selection)) {
-    return(rep(FALSE, length(identifier)))
+    return(rep(FALSE, length(selection_key)))
   }
   stable <- if ("selection_key" %in% colnames(selection)) {
     as.character(selection[["selection_key"]])
@@ -4489,6 +4486,12 @@ selectedCellMask <- function(selection_key, identifier, selection) {
   stable <- stable[!is.na(stable) & nzchar(stable)]
   if (length(stable)) {
     return(as.character(selection_key) %in% stable)
+  }
+  if (is.null(identifier)) {
+    return(rep(FALSE, length(selection_key)))
+  }
+  if (length(selection_key) != length(identifier)) {
+    stop("Selection identity vectors must have equal length.", call. = FALSE)
   }
   coordinates <- if ("identifier" %in% colnames(selection)) {
     as.character(selection[["identifier"]])
@@ -4604,13 +4607,22 @@ cerebroSelectedCellsTable <- function(
   }
 
   fallback_key <- match.arg(fallback_key)
-  identifier <- paste0(cells_df[[1L]], "-", cells_df[[2L]])
   selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
     as.character(cells_df[["cell_barcode"]])
-  } else if (identical(fallback_key, "identifier")) {
-    identifier
   } else {
     as.character(seq_len(nrow(cells_df)))
+  }
+  stable_selection <- is.data.frame(selection) &&
+    "selection_key" %in% colnames(selection) &&
+    any(!is.na(selection[["selection_key"]]) &
+      nzchar(as.character(selection[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[[1L]], "-", cells_df[[2L]])
+  } else {
+    NULL
+  }
+  if (!stable_selection && identical(fallback_key, "identifier")) {
+    selection_key <- identifier
   }
   keep <- selectedCellMask(selection_key, identifier, selection)
   metadata_columns <- setdiff(seq_len(ncol(cells_df)), 1:2)
@@ -4643,13 +4655,22 @@ cerebroSelectedCellsPlot <- function(
   fallback_key = c("row", "identifier")
 ) {
   fallback_key <- match.arg(fallback_key)
-  identifier <- paste0(cells_df[[1L]], "-", cells_df[[2L]])
   selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
     as.character(cells_df[["cell_barcode"]])
-  } else if (identical(fallback_key, "identifier")) {
-    identifier
   } else {
     as.character(seq_len(nrow(cells_df)))
+  }
+  stable_selection <- is.data.frame(selection) &&
+    "selection_key" %in% colnames(selection) &&
+    any(!is.na(selection[["selection_key"]]) &
+      nzchar(as.character(selection[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[[1L]], "-", cells_df[[2L]])
+  } else {
+    NULL
+  }
+  if (!stable_selection && identical(fallback_key, "identifier")) {
+    selection_key <- identifier
   }
   cells_df[["group"]] <- factor(
     ifelse(

@@ -918,6 +918,31 @@ test_that("selected-cell tables preserve identity and skip eager cell work", {
   expect_identical(selected$cluster, "B")
 })
 
+test_that("stable selected-cell keys skip coordinate identifiers", {
+  helper_env <- new.env(parent = utils_env)
+  helper_env$prepareEmptyTable <- function(data) data
+  helper_env$prettifyTable <- function(data, ...) data
+  helper_env$paste0 <- function(...) {
+    stop("coordinate identifier should not be built")
+  }
+  helper <- utils_env$cerebroSelectedCellsTable
+  environment(helper) <- helper_env
+
+  cells <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    cell_barcode = c("cell-a", "cell-b"),
+    cluster = c("A", "B")
+  )
+  selected <- helper(
+    cells,
+    cells[, 3:4, drop = FALSE],
+    data.frame(selection_key = "cell-b"),
+    download_file_name = "test"
+  )
+  expect_identical(selected$cell_barcode, "cell-b")
+})
+
 test_that("shared result filtering keeps grouped and all-row semantics", {
   results <- data.frame(group = c("A", "B"), value = c(1, 2))
   filter_rows <- utils_env$cerebroFilterResultRows
