@@ -3961,6 +3961,7 @@
   function wireHover(p) {
     var tip = $(p.tipId);
     p.canvas.addEventListener('mousemove', function (e) {
+      if (singleInteractionIsStatic()) return;
       var space = singleActive && spaceById[p.spaceId];
       if (space && space._hoverEnabled === false) {
         tip.style.opacity = 0; setHoverCell(null); return;
@@ -4002,6 +4003,7 @@
       return [e.clientX - r.left, e.clientY - r.top];
     };
     brushTarget.addEventListener('mousedown', function (e) {
+      if (singleInteractionIsStatic()) return;
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
       requestSingleAux();
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
@@ -6076,6 +6078,67 @@
       surfaceHome.insightsNext
     );
   }
+  function singleInteractionConfig(view) {
+    var config = view && view.extra && view.extra.interaction;
+    var threshold = Number(config && config.static_above);
+    return isFinite(threshold) && threshold >= 0
+      ? { threshold: threshold } : null;
+  }
+  function singleInteractionRecommendedStatic(view) {
+    var config = singleInteractionConfig(view);
+    var count = Number(view && view.data && view.data.n);
+    if (!isFinite(count)) count = singlePayloadCells(view).length;
+    return !!config && count > config.threshold;
+  }
+  function singleInteractionIsStatic() {
+    var view = singleActive && singleViews[singleActive];
+    return singleInteractionRecommendedStatic(view) &&
+      view.interactionEnabled !== true;
+  }
+  function updateSingleInteractionMode() {
+    var view = singleActive && singleViews[singleActive];
+    var host = singleActive && singleHost(singleActive);
+    if (!view || !host) return;
+    var recommended = singleInteractionRecommendedStatic(view);
+    var isStatic = recommended && view.interactionEnabled !== true;
+    var count = Number(view.data && view.data.n);
+    if (!isFinite(count)) count = singlePayloadCells(view).length;
+    host.classList.toggle('cv-static-performance', isStatic);
+    var notice = host.querySelector('.cv-performance-mode');
+    if (notice) {
+      notice.hidden = !recommended;
+      var message = notice.querySelector('.cv-performance-mode-text');
+      if (message) {
+        message.textContent = isStatic
+          ? 'Performance mode: ' + count.toLocaleString() +
+            ' nodes are shown as a static network.'
+          : 'Interaction enabled for this ' + count.toLocaleString() +
+            '-node network.';
+      }
+      var button = notice.querySelector('button');
+      if (button) {
+        button.textContent = isStatic ? 'Enable interaction' : 'Use static mode';
+        button.setAttribute('aria-pressed', isStatic ? 'false' : 'true');
+      }
+    }
+    panels.forEach(function (panel) {
+      if (panel.canvas) panel.canvas.style.pointerEvents = isStatic ? 'none' : '';
+      if (panel.pane) panel.pane.classList.toggle('cv-pane-static', isStatic);
+    });
+    if (isStatic) {
+      panels.forEach(function (panel) {
+        panel.drag = false; panel.panning = false; panel.orbiting = false;
+        var tip = $(panel.tipId); if (tip) tip.style.opacity = 0;
+      });
+      setHoverCell(null);
+    }
+  }
+  function toggleSingleInteraction() {
+    var view = singleActive && singleViews[singleActive];
+    if (!view || !singleInteractionRecommendedStatic(view)) return;
+    view.interactionEnabled = singleInteractionIsStatic();
+    updateSingleInteractionMode();
+  }
   function resetSingleViews() {
     restoreLinkedSurface();
     singleViews = {}; singleActive = null;
@@ -6094,6 +6157,18 @@
     surface.innerHTML = '';
     var legend = document.createElement('div');
     legend.className = 'cerebro-cell-view-legend';
+    var performanceMode = document.createElement('div');
+    performanceMode.className = 'cv-performance-mode';
+    performanceMode.hidden = true;
+    var performanceText = document.createElement('span');
+    performanceText.className = 'cv-performance-mode-text';
+    var performanceButton = document.createElement('button');
+    performanceButton.type = 'button';
+    performanceButton.className = 'btn btn-xs btn-default';
+    performanceButton.addEventListener('click', toggleSingleInteraction);
+    performanceMode.appendChild(performanceText);
+    performanceMode.appendChild(performanceButton);
+    surface.appendChild(performanceMode);
     surface.appendChild(legend); surface.appendChild(surfaceHome.panes);
     if (surfaceHome.legend) legend.appendChild(surfaceHome.legend);
     if (surfaceHome.cbar) legend.appendChild(surfaceHome.cbar);
@@ -7392,6 +7467,7 @@
       Math.min(1, Number(payload.data && payload.data.point_opacity) || pointOpacity));
     psSeeded = pointSizeEdited = pointOpacityEdited = true;
     ensurePanelSlots(singleSpaceIds.length); buildPanels(); layoutPanels();
+    updateSingleInteractionMode();
     renderGroupFilters();
     updateSpaceScopedControls();
     setTrekkerSettingsVisible(!!D.trekker);
@@ -9175,6 +9251,7 @@
       var tb = t && t.closest && t.closest('.cv-tbtn');
       if (tb) {
         var act = tb.getAttribute('data-act'), key = tb.getAttribute('data-panel');
+        if (singleInteractionIsStatic() && act !== 'png') return;
         var pp = null;
         panels.forEach(function (p) { if (p.key === key) pp = p; });
         if (act === 'box' || act === 'lasso' || act === 'pan' || act === 'orbit') {

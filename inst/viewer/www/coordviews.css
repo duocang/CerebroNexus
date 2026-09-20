@@ -469,6 +469,19 @@
   background: var(--c-amber-50); border-color: var(--c-amber-200);
   color: var(--c-amber-700);
 }
+.coordviews-page .cv-performance-mode {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 8px; padding: 8px 10px;
+  border: 1px solid #d8e5ef; border-radius: 6px;
+  background: #f6f9fc; color: var(--c-text-2);
+  font-size: 12px; line-height: 1.35;
+}
+.coordviews-page .cv-performance-mode[hidden] { display: none; }
+.coordviews-page .cv-performance-mode button { flex: 0 0 auto; }
+.coordviews-page.cv-static-performance .cv-panebar .cv-tbtn:not([data-act="png"]) {
+  display: none !important;
+}
+.coordviews-page .cv-pane.cv-pane-static { cursor: default; }
 .coordviews-page .cv-focus-btn {
   position: absolute; top: 12px; right: 12px; z-index: 5;
   width: auto; min-width: 72px; height: 26px; padding: 0 9px; gap: 5px;

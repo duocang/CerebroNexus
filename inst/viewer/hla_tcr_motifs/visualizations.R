@@ -605,6 +605,12 @@ observe({
       columns = vn$hover_columns
     ),
     extra = list(
+      interaction = list(
+        # Dense motif networks are primarily overview figures. Above this size,
+        # per-node hit testing and drag interaction are opt-in so the rest of the
+        # page stays responsive; the user can re-enable them from the notice.
+        static_above = 200L
+      ),
       edges = list(
         # The browser already owns the node coordinates. Integer endpoints avoid
         # repeating four double vectors for every edge (the dominant HLA payload).
