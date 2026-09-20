@@ -120,5 +120,55 @@
     };
   };
 
+  S.specialistLifecycle = {
+    begin: function (store, id, renderRequestSent) {
+      var previous = store[id] || {};
+      var timing = {
+        generation: (Number(previous.generation) || 0) + 1,
+        renderRequestSent: !!renderRequestSent,
+        cached: !renderRequestSent
+      };
+      store[id] = timing;
+      return timing;
+    },
+
+    update: function (store, id, values) {
+      var timing = store[id] || (store[id] = {});
+      Object.assign(timing, values || {});
+      return timing;
+    },
+
+    activate: function (store, id, now) {
+      return this.update(store, id, { activationStartedAtMs: now });
+    },
+
+    ready: function (store, id, now) {
+      var timing = store[id] || {};
+      return Object.assign({}, timing, {
+        readyAtMs: now,
+        requestToReadyMs: isFinite(timing.requestAtMs)
+          ? now - timing.requestAtMs : null
+      });
+    },
+
+    requestAux: function (view) {
+      var token = view && view.data && view.data.wire_token;
+      if (token == null || view._auxToken === token ||
+          view._auxPending === token) return null;
+      view._auxPending = token;
+      return token;
+    },
+
+    acceptAux: function (view, message) {
+      if (!view || !view.data || !message ||
+          Number(view.data.wire_token) !== Number(message.wire_token)) {
+        return false;
+      }
+      view._auxPending = null;
+      view._auxToken = message.wire_token;
+      return true;
+    }
+  };
+
   window.CBViewState = S;
 })();

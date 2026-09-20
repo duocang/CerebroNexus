@@ -66,16 +66,6 @@
     metric.byId[key].count += 1;
     metric.byId[key].bytes += Number(bytes) || 0;
   }
-  function beginSingleTiming(id, renderRequestSent) {
-    var previous = singleTiming[id] || {};
-    var timing = {
-      generation: (Number(previous.generation) || 0) + 1,
-      renderRequestSent: !!renderRequestSent,
-      cached: !renderRequestSent
-    };
-    singleTiming[id] = timing;
-    return timing;
-  }
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
@@ -1885,9 +1875,8 @@
 
   function requestSingleAux() {
     var view = singleActive && singleViews[singleActive];
-    var token = view && view.data && view.data.wire_token;
-    if (token == null || view._auxToken === token || view._auxPending === token) return;
-    view._auxPending = token;
+    var token = CBViewState.specialistLifecycle.requestAux(view);
+    if (token == null) return;
     Shiny.setInputValue('cell_view_aux_request', {
       id: singleActive, wire_token: token
     }, { priority: 'event' });
@@ -2861,11 +2850,9 @@
     if (singleActive) {
       var timing = singleTiming[singleActive] || {};
       var readyAt = performance.now();
-      specialistTiming = Object.assign({}, timing, {
-        readyAtMs: readyAt,
-        requestToReadyMs: isFinite(timing.requestAtMs)
-          ? readyAt - timing.requestAtMs : null
-      });
+      specialistTiming = CBViewState.specialistLifecycle.ready(
+        singleTiming, singleActive, readyAt
+      );
     }
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
@@ -6605,29 +6592,29 @@
       delete data.categorical_resource;
       delete data.trajectory_frame_resource;
       message.data = data;
-      var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
-      timing.projectionFetchMs = result ? result.fetchMs : 0;
-      timing.projectionBytes = coordinates ? coordinates.bytes : 0;
-      timing.projectionDownloadMs = result ? result.downloadMs : 0;
-      timing.projectionDecodeMs = result ? result.decodeMs : 0;
-      timing.projectionCacheHit = result ? !!result.cacheHit : false;
-      timing.projectionSubsetFetchMs = subsetResult ? subsetResult.fetchMs : 0;
-      timing.projectionSubsetBytes = subsetResult ? subsetResult.bytes : 0;
-      timing.projectionSubsetDownloadMs = subsetResult
-        ? subsetResult.downloadMs : 0;
-      timing.projectionSubsetDecodeMs = subsetResult
-        ? subsetResult.decodeMs : 0;
-      timing.projectionSubsetCacheHit = subsetResult
-        ? !!subsetResult.cacheHit : false;
-      timing.projectionSubsetMaterializeMs = materialized
-        ? materialized.materializeMs : 0;
+      var timing = CBViewState.specialistLifecycle.update(
+        singleTiming, message.id, {
+          projectionFetchMs: result ? result.fetchMs : 0,
+          projectionBytes: coordinates ? coordinates.bytes : 0,
+          projectionDownloadMs: result ? result.downloadMs : 0,
+          projectionDecodeMs: result ? result.decodeMs : 0,
+          projectionCacheHit: result ? !!result.cacheHit : false,
+          projectionSubsetFetchMs: subsetResult ? subsetResult.fetchMs : 0,
+          projectionSubsetBytes: subsetResult ? subsetResult.bytes : 0,
+          projectionSubsetDownloadMs: subsetResult ? subsetResult.downloadMs : 0,
+          projectionSubsetDecodeMs: subsetResult ? subsetResult.decodeMs : 0,
+          projectionSubsetCacheHit: subsetResult ? !!subsetResult.cacheHit : false,
+          projectionSubsetMaterializeMs: materialized
+            ? materialized.materializeMs : 0,
+          categoricalFetchMs: groupResult ? groupResult.fetchMs : 0,
+          categoricalBytes: groupResult ? groupResult.bytes : 0
+        }
+      );
       if (subsetResult) {
         timing.geometryReused = true;
         timing.geometryReuseProtocol = 'canonical-projection-v1';
         timing.geometryReuseSubset = subsetResult.kind;
       }
-      timing.categoricalFetchMs = groupResult ? groupResult.fetchMs : 0;
-      timing.categoricalBytes = groupResult ? groupResult.bytes : 0;
       return message;
     });
   }
@@ -7293,8 +7280,9 @@
   }
   function activateSingle(id, resetAxes, preserveTargetState, eventKind) {
     var activationStarted = performance.now();
-    var timing = singleTiming[id] || (singleTiming[id] = {});
-    timing.activationStartedAtMs = activationStarted;
+    var timing = CBViewState.specialistLifecycle.activate(
+      singleTiming, id, activationStarted
+    );
     var payload = singleViews[id];
     if (!payload || rebuildingBase) return false;
     if (!singleActive && linkedBundle && D && !linkedState) {
@@ -7846,16 +7834,19 @@
       var decodedAt = performance.now();
       if (!decoded || !decoded.id) return;
       recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
-      var timing = singleTiming[decoded.id] || (singleTiming[decoded.id] = {});
       var profile = decoded.transport_profile || {};
-      timing.bytes = buffer.byteLength;
-      timing.binaryReceivedAtMs = receivedAt;
-      timing.decodeMs = decodedAt - receivedAt;
-      timing.serverPrepareMs = Number(profile.server_prepare_ms);
-      timing.serializeTransferMs = isFinite(Number(profile.sent_at_ms))
-        ? Date.now() - Number(profile.sent_at_ms) : null;
-      timing.requestToBinaryMs = isFinite(Number(profile.request_at_ms))
-        ? Date.now() - Number(profile.request_at_ms) : null;
+      var timing = CBViewState.specialistLifecycle.update(
+        singleTiming, decoded.id, {
+          bytes: buffer.byteLength,
+          binaryReceivedAtMs: receivedAt,
+          decodeMs: decodedAt - receivedAt,
+          serverPrepareMs: Number(profile.server_prepare_ms),
+          serializeTransferMs: isFinite(Number(profile.sent_at_ms))
+            ? Date.now() - Number(profile.sent_at_ms) : null,
+          requestToBinaryMs: isFinite(Number(profile.request_at_ms))
+            ? Date.now() - Number(profile.request_at_ms) : null
+        }
+      );
       var requestedSharedProjection = !!decoded.shared_projection;
       var message = reuseSharedSingleProjection(decoded);
       timing.geometryReused = requestedSharedProjection && !!message;
@@ -7906,10 +7897,7 @@
         recordSpecialistPayload('aux', message.id, buffer.byteLength);
       }
       var view = message && singleViews[message.id];
-      if (!view || !view.data ||
-          Number(view.data.wire_token) !== Number(message.wire_token)) return;
-      view._auxPending = null;
-      view._auxToken = message.wire_token;
+      if (!CBViewState.specialistLifecycle.acceptAux(view, message)) return;
       view.data.selection_key = message.selection_key;
       view.hover = message.hover || {};
       if (singleActive !== message.id) return;
@@ -9000,7 +8988,9 @@
       if (singleId && !singleViews[singleId] && !singleRequests.has(singleId)) {
         singleRequests.add(singleId);
         var requestedAt = performance.now();
-        var timing = beginSingleTiming(singleId, true);
+        var timing = CBViewState.specialistLifecycle.begin(
+          singleTiming, singleId, true
+        );
         timing.requestAtMs = requestedAt;
         timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? requestedAt - window.__cerebroPageBenchClickStart : null;
@@ -9011,7 +9001,9 @@
       }
       if (singleId && singleViews[singleId]) {
         var cachedAt = performance.now();
-        var cachedTiming = beginSingleTiming(singleId, false);
+        var cachedTiming = CBViewState.specialistLifecycle.begin(
+          singleTiming, singleId, false
+        );
         cachedTiming.activationRequestAtMs = cachedAt;
         cachedTiming.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? cachedAt - window.__cerebroPageBenchClickStart : null;

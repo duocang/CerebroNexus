@@ -1072,6 +1072,50 @@ test_that("shared browser base reuses only matching dataset projections", {
     )
   )
 })
+
+test_that("specialist lifecycle owns request, ready, and auxiliary state", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs'); global.window = {};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const L = window.CBViewState.specialistLifecycle, timings = {};",
+      "const first = L.begin(timings, 'spatial', true); first.requestAtMs = 10;",
+      "L.update(timings, 'spatial', {bytes: 42});",
+      "L.activate(timings, 'spatial', 20);",
+      "const ready = L.ready(timings, 'spatial', 35);",
+      "const view = {data:{wire_token:7}};",
+      "const requested = L.requestAux(view);",
+      "const duplicate = L.requestAux(view);",
+      "const rejected = L.acceptAux(view, {wire_token:8});",
+      "const accepted = L.acceptAux(view, {wire_token:7});",
+      "const cached = L.begin(timings, 'spatial', false);",
+      "console.log(JSON.stringify({generation:cached.generation,",
+      "cached:cached.cached,bytes:ready.bytes,latency:ready.requestToReadyMs,",
+      "activation:ready.activationStartedAtMs,requested,duplicate,rejected,accepted,",
+      "pending:view._auxPending,token:view._auxToken}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      generation = 2L, cached = TRUE, bytes = 42L, latency = 25L,
+      activation = 20L, requested = 7L, duplicate = NULL,
+      rejected = FALSE, accepted = TRUE, pending = NULL, token = 7L
+    )
+  )
+})
+
 test_that("decorated 2-D cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
