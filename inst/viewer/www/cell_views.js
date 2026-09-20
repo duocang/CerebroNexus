@@ -27,6 +27,7 @@
   var singleViews = {};         // latest specialist payload per plot id
   var singleRequests = new Set(); // visible hosts awaiting their first payload
   var singleResourceDescriptors = new Map();
+  var singleCategoryResourceDescriptors = new Map();
   var singleActive = null;      // plot id currently using the shared surface
   var singleIndexCells = null;  // cells array behind the cached barcode index
   var singleIndexMap = null;
@@ -6039,6 +6040,7 @@
     linkedState = null;
     singleTiming = Object.create(null);
     singleResourceDescriptors.clear();
+    singleCategoryResourceDescriptors.clear();
   }
   function mountSingleSurface(id) {
     rememberSurfaceHome();
@@ -6310,6 +6312,18 @@
       message
     );
   }
+  function registerSingleCategoryResource(message) {
+    var resource = message && message.resource;
+    var identity = message && message.dataset_identity;
+    if (!message || !resource || !resource.metadata_name ||
+        resource.protocol !== 'canonical-metadata-codes-v1' ||
+        !window.CBViewState.resourceDescriptor.validate(resource, {
+          dtypes: ['uint8', 'uint16'], minCells: 1, identity: identity
+        })) return;
+    singleCategoryResourceDescriptors.set(
+      message.id + ':' + String(resource.metadata_name), message
+    );
+  }
   function singleGeometryRequestEligible(id) {
     var percentage = document.getElementById(
       id + '_percentage_cells_to_show'
@@ -6348,6 +6362,18 @@
         {priority: 'event'}
       );
     });
+  }
+  function prefetchRegisteredSingleCategory(id) {
+    if (id !== 'overview_projection') return;
+    var selector = document.getElementById(id + '_point_color');
+    var name = selector && selector.value;
+    var message = name && singleCategoryResourceDescriptors.get(id + ':' + name);
+    if (!message || !canonicalDatasetIdentityMatches(
+      message.resource, window.cerebroSavedViewDataset
+    )) return;
+    fetchValidatedMetadataCodesResource(
+      message.resource, Number(message.resource.cells), message.dataset_identity
+    ).catch(function () {});
   }
   function fetchProjectionSubsetResource(
     resource, expectedCanonicalCells, expectedCells
@@ -8730,6 +8756,13 @@
             dataset_identity: message.dataset_identity
           });
         });
+        (message.category_resources || []).forEach(function (resource) {
+          registerSingleCategoryResource({
+            id: message.id,
+            resource: resource,
+            dataset_identity: message.dataset_identity
+          });
+        });
       }
     );
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
@@ -8915,6 +8948,7 @@
       timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
         ? requestedAt - window.__cerebroPageBenchClickStart : null;
       prefetchRegisteredSingleResource(id);
+      prefetchRegisteredSingleCategory(id);
       Shiny.setInputValue(id + '_render_request', Date.now(), {
         priority: 'event'
       });

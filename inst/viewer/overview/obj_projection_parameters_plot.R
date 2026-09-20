@@ -3,13 +3,14 @@
 ##----------------------------------------------------------------------------##
 overview_projection_parameters_plot <- reactive({
   metadata <- viewerProjectionFirstFrameMetadata()
+  projections <- availableProjections()
   defaults <- viewerProjectionDefaults(
     metadata,
-    availableProjections(),
+    projections,
     tryCatch(getParameters(), error = function(e) list())
   )
   projection <- input[["overview_projection_to_display"]]
-  if (is.null(projection) || !projection %in% availableProjections()) {
+  if (is.null(projection) || !projection %in% projections) {
     projection <- defaults$projection
   }
   color_variable <- input[["overview_projection_point_color"]]

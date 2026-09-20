@@ -786,6 +786,34 @@ test_that("large canonical categorical payloads keep coordinates contiguous", {
   expect_identical(header$data$y$`__cv_wire__`, "f32")
 })
 
+test_that("large canonical factor payloads encode groups without expanding labels", {
+  n <- 4096L
+  color <- factor(
+    rep(c("B", "A", NA_character_), length.out = n),
+    levels = c("unused", "A", "B")
+  )
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(seq_len(n), rev(seq_len(n))),
+    color = color,
+    color_variable = "cluster",
+    selection_keys = seq_len(n),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(B = "#abcdef", A = "#123456"),
+    hover = FALSE
+  )
+
+  expect_identical(
+    unlist(payload$meta$traces),
+    c("B", "A", "(missing)")
+  )
+  expect_identical(
+    as.integer(payload$data$canonical_group[1:6]),
+    c(0L, 1L, 2L, 0L, 1L, 2L)
+  )
+  expect_false("unused" %in% unlist(payload$meta$traces))
+})
+
 test_that("canonical scatter resources avoid materializing million-cell vectors", {
   projection <- list(
     protocol = "canonical-projection-v1",

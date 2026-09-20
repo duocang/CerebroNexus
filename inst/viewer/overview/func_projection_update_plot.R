@@ -38,9 +38,18 @@ overview_projection_update_plot <- function(input) {
       input[["projection_resource"]]
     } else {
       NULL
+    },
+    categorical_resource = if (resource_coordinates) {
+      input[["categorical_resource"]]
+    } else {
+      NULL
     }
   )
-  selection_rows <- payload$data$selection_key
+  selection_rows <- if (is.list(input[["categorical_resource"]])) {
+    seq_len(input[["cell_count"]])
+  } else {
+    payload$data$selection_key
+  }
   deferred_aux <- function() {
     metadata <- getMetaData()
     groups <- getGroups()

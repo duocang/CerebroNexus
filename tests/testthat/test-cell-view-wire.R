@@ -420,6 +420,7 @@ test_that("dataset changes invalidate cached specialist plots", {
       "let singleIndexMap = new Map([['a', 0]]);",
       "let singleTiming = {};",
       "let singleResourceDescriptors = new Map();",
+      "let singleCategoryResourceDescriptors = new Map();",
       "let linkedState = {dataset:'a'};",
       "let D = {dataset_fingerprint:'dataset-a'};",
       "eval(source.slice(resetStart, resetEnd));",

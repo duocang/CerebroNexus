@@ -2,9 +2,8 @@
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
 overview_projection_data_to_plot_raw <- reactive({
-  req(overview_projection_parameters_plot())
-  req(reactive_colors())
   plot_parameters <- overview_projection_parameters_plot()
+  req(plot_parameters)
   cell_indices <- overview_projection_cells_to_show()
   color_variable <- plot_parameters[['color_variable']]
   metadata <- viewerProjectionFirstFrameMetadata()
@@ -13,6 +12,8 @@ overview_projection_data_to_plot_raw <- reactive({
     color_assignments <- character(0)
   } else if (is.numeric(color_input)) {
     color_assignments <- NULL
+  } else if (color_variable %in% getGroups()) {
+    color_assignments <- reactive_group_colors(color_variable)
   } else {
     color_assignments <- assignColorsToGroups(metadata, color_variable)
   }
@@ -32,6 +33,13 @@ overview_projection_data_to_plot_raw <- reactive({
     projection_resource <- NULL
   }
   resource_coordinates <- is.list(projection_resource)
+  categorical_resource <- if (
+    resource_coordinates && !is.numeric(color_input) && length(cell_indices)
+  ) {
+    viewerMetadataCodesAsset(color_variable, names(color_assignments))
+  } else {
+    NULL
+  }
   cells_df <- overview_projection_data()
   coordinates <- if (resource_coordinates) {
     list()
@@ -47,6 +55,7 @@ overview_projection_data_to_plot_raw <- reactive({
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
     projection_resource = projection_resource,
+    categorical_resource = categorical_resource,
     resource_coordinates = resource_coordinates
   )
 })

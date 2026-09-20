@@ -503,6 +503,9 @@ test_that("canonical projections use validated static assets with wire fallback"
     "resource_coordinates = resource_coordinates",
     fixed = TRUE
   )
+  expect_match(overview, "categorical_resource", fixed = TRUE)
+  expect_match(server, "category_resources", fixed = TRUE)
+  expect_match(engine, "prefetchRegisteredSingleCategory", fixed = TRUE)
   expect_match(
     engine,
     "groupResource.protocol === 'canonical-metadata-codes-v1'",

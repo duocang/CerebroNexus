@@ -1263,9 +1263,22 @@ cerebroCellViewScatterPayload <- function(
     data[["deferred_selection_lengths"]] <- as.integer(n_cells)
     return(list(meta = meta, data = data, hover = hover_data))
   }
-  color <- as.character(color)
-  color[is.na(color)] <- "(missing)"
-  levels_in_view <- unique(color)
+  factor_color <- is.factor(color)
+  factor_codes <- if (factor_color) as.integer(color) else NULL
+  factor_levels <- if (factor_color) levels(color) else NULL
+  has_missing_color <- if (factor_color) anyNA(factor_codes) else anyNA(color)
+  levels_in_view <- if (factor_color) {
+    present <- tabulate(
+      factor_codes[!is.na(factor_codes)],
+      nbins = length(factor_levels)
+    ) > 0L
+    factor_levels[present]
+  } else {
+    unique(as.character(color[!is.na(color)]))
+  }
+  if (has_missing_color) {
+    levels_in_view <- c(levels_in_view, "(missing)")
+  }
   if (
     !("(missing)" %in% names(color_assignments)) &&
       "(missing)" %in% levels_in_view
@@ -1302,10 +1315,24 @@ cerebroCellViewScatterPayload <- function(
     }
     data[["selection_key"]] <- I(selection_keys)
     data[["color"]] <- as.list(unname(color_assignments[traces]))
-    data[["canonical_group"]] <- I(as.integer(match(color, traces) - 1L))
+    canonical_group <- if (factor_color) {
+      group <- match(factor_levels, traces) - 1L
+      group <- as.integer(group[factor_codes])
+      if (has_missing_color) {
+        group[is.na(factor_codes)] <- match("(missing)", traces) - 1L
+      }
+      group
+    } else {
+      normalized_color <- as.character(color)
+      normalized_color[is.na(normalized_color)] <- "(missing)"
+      as.integer(match(normalized_color, traces) - 1L)
+    }
+    data[["canonical_group"]] <- I(canonical_group)
     return(list(meta = meta, data = data, hover = hover_data))
   }
 
+  color <- as.character(color)
+  color[is.na(color)] <- "(missing)"
   meta[["traces"]] <- list()
   cells_by_group <- split(seq_along(color), color)
   hover_names <- names(hover_info)

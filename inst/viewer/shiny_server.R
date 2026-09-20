@@ -1239,6 +1239,7 @@ server <- function(input, output, session) {
       ),
       viewerCanonicalResourceIdentity(pack),
       list(
+        metadata_name = as.character(name),
         levels = I(target_levels),
         ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
         ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.
@@ -1325,11 +1326,18 @@ server <- function(input, output, session) {
     )
     projection_resources <- viewerProjectionCatalog()
     if (length(projection_resources)) {
+      category_resources <- Filter(
+        Negate(is.null),
+        lapply(getGroups(), function(group) {
+          viewerMetadataCodesAsset(group, getGroupLevels(group))
+        })
+      )
       session$sendCustomMessage(
         "cell_view_resource_catalog",
         list(
           id = "overview_projection",
           resources = unname(projection_resources),
+          category_resources = unname(category_resources),
           dataset_identity = dataset_identity
         )
       )
