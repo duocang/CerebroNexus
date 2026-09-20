@@ -516,6 +516,64 @@ test_that("canonical projection fetches enforce the full dataset identity", {
   )
 })
 
+test_that("canonical subsets bind projection and local cell counts", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const start = source.indexOf('  function fetchProjectionSubsetResource');",
+      "const end = source.indexOf('  function materializeProjectionSubset', start);",
+      "let calls = 0;",
+      "var projectionSubsetResourceCache = new Map();",
+      "global.window = {fetch:async () => {",
+      "  calls += 1;",
+      "  return {ok:true, arrayBuffer:async () => new Uint32Array([0, 2]).buffer};",
+      "}};",
+      "eval(source.slice(start, end));",
+      "const include = {protocol:'canonical-subset-v1', kind:'include_uint32', canonical_cells:3, cells:2, index_base:0, dtype:'uint32', url:'subset.bin', bytes:8, checksum:'abc'};",
+      "const identity = {protocol:'canonical-subset-v1', kind:'identity', canonical_cells:3, cells:3, index_base:0, dtype:'uint32', bytes:0, checksum:''};",
+      "async function rejected(resource, canonicalCells, cells) {",
+      "  try {",
+      "    await fetchProjectionSubsetResource(resource, canonicalCells, cells);",
+      "    return false;",
+      "  } catch (error) {",
+      "    return error.message === 'Projection subset contract mismatch';",
+      "  }",
+      "}",
+      "(async () => {",
+      "  const canonicalMismatch = await rejected(include, 4, 2);",
+      "  const localMismatch = await rejected(include, 3, 1);",
+      "  const valid = await fetchProjectionSubsetResource(include, 3, 2);",
+      "  const identityResult = await fetchProjectionSubsetResource(identity, 3, 3);",
+      "  console.log(JSON.stringify({calls, canonicalMismatch, localMismatch, validKind:valid.kind, validIndices:Array.from(valid.indices), identityCacheHit:identityResult.cacheHit}));",
+      "})().catch(error => { console.error(error); process.exit(1); });"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      calls = 1L,
+      canonicalMismatch = TRUE,
+      localMismatch = TRUE,
+      validKind = "include_uint32",
+      validIndices = list(0L, 2L),
+      identityCacheHit = TRUE
+    )
+  )
+})
+
 test_that("Linked projection hydration uses the primary bundle identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")

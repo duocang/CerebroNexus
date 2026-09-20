@@ -6240,13 +6240,16 @@
     }
     return fetchProjectionResource(resource, expectedCells);
   }
-  function fetchProjectionSubsetResource(resource) {
+  function fetchProjectionSubsetResource(
+    resource, expectedCanonicalCells, expectedCells
+  ) {
     var kind = String(resource && resource.kind || '');
     var canonicalCells = Number(resource && resource.canonical_cells) || 0;
     var cells = Number(resource && resource.cells) || 0;
     if (!resource || resource.protocol !== 'canonical-subset-v1' ||
         resource.dtype !== 'uint32' || Number(resource.index_base) !== 0 ||
-        canonicalCells < cells || cells < 0) {
+        canonicalCells !== Number(expectedCanonicalCells) ||
+        cells !== Number(expectedCells) || canonicalCells < cells || cells < 0) {
       return Promise.reject(new Error('Projection subset contract mismatch'));
     }
     if (kind === 'identity') {
@@ -6416,7 +6419,9 @@
         : fetchValidatedProjectionResource(resource, message, data.n))
       : Promise.resolve(null);
     var subsetPromise = subsetResource
-      ? fetchProjectionSubsetResource(subsetResource) : Promise.resolve(null);
+      ? fetchProjectionSubsetResource(
+        subsetResource, resource && resource.cells, data.n
+      ) : Promise.resolve(null);
     var groupsPromise = groupResource && groupResource.url
       ? fetchCategoricalResource(groupResource, data.n) : Promise.resolve(null);
     return Promise.all([
