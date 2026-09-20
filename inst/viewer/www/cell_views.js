@@ -1007,20 +1007,49 @@
   function resizePanel(p, width, height) {
     var dpr = window.devicePixelRatio || 1;
     p.W = width; p.H = height;
-    p.canvas.width = width * dpr; p.canvas.height = height * dpr;
-    p.canvas.style.width = width + 'px';
-    p.canvas.style.height = height + 'px';
-    p.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (p.underlayCanvas) {
-      p.underlayCanvas.width = width * dpr;
-      p.underlayCanvas.height = height * dpr;
-      p.underlayCanvas.style.width = width + 'px';
-      p.underlayCanvas.style.height = height + 'px';
-      p.underlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    if (p.gpu) p.gpu.resize(width, height, dpr);
+    resizePanelLayers(p, width, height, dpr);
     if (p.pane) p.pane.classList.toggle('cv-narrow', width < 420);
     project(p);
+  }
+
+  function resizeCanvasLayer(canvas, context, width, height, dpr) {
+    if (!canvas) return;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    if (context) context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function resizePanelLayers(p, width, height, dpr) {
+    resizeCanvasLayer(p.canvas, p.ctx, width, height, dpr);
+    resizeCanvasLayer(p.underlayCanvas, p.underlayCtx, width, height, dpr);
+    if (p.gpu) p.gpu.resize(width, height, dpr);
+  }
+
+  function syncPanelOverlay(p) {
+    var gpuVisible = p.gpuCanvas && p.gpuCanvas.style.display !== 'none';
+    p.canvas.classList.toggle('cv-layer-overlay', !!p.underlayCanvas || gpuVisible);
+  }
+
+  function setGpuLayerVisible(p, visible) {
+    if (!p.gpuCanvas) return;
+    p.gpuCanvas.style.display = visible ? 'block' : 'none';
+    syncPanelOverlay(p);
+  }
+
+  function clearPanelLayers(p) {
+    p.ctx.clearRect(0, 0, p.W, p.H);
+    if (p.underlayCtx) p.underlayCtx.clearRect(0, 0, p.W, p.H);
+  }
+
+  function exportPanelLayers(context, panel, x, y, width, height) {
+    [panel.underlayCanvas,
+      panel.gpuCanvas && panel.gpuCanvas.style.display !== 'none'
+        ? panel.gpuCanvas : null,
+      panel.canvas].forEach(function (canvas) {
+      if (canvas) context.drawImage(canvas, x, y, width, height);
+    });
   }
 
   // Draw the histology image behind the points of the spatial panel. The image's
@@ -1589,8 +1618,7 @@
 
   function hideGpu(p) {
     if (!p.gpuCanvas) return;
-    p.gpuCanvas.style.display = 'none';
-    p.canvas.classList.remove('cv-gpu-overlay');
+    setGpuLayerVisible(p, false);
     try { if (p.gpu) p.gpu.clear(); } catch (error) { /* Canvas fallback */ }
   }
 
@@ -1683,14 +1711,10 @@
     p.canvas.parentNode.insertBefore(canvas, p.canvas.nextSibling);
     p.underlayCanvas = canvas;
     p.underlayCtx = canvas.getContext('2d');
-    p.canvas.classList.add('cv-layer-overlay');
+    syncPanelOverlay(p);
     if (p.W && p.H) {
       var dpr = window.devicePixelRatio || 1;
-      canvas.width = p.W * dpr;
-      canvas.height = p.H * dpr;
-      canvas.style.width = p.W + 'px';
-      canvas.style.height = p.H + 'px';
-      p.underlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      resizeCanvasLayer(canvas, p.underlayCtx, p.W, p.H, dpr);
     }
   }
 
@@ -1854,8 +1878,7 @@
       return false;
     }
     if (!ok) { disableGpu(p); return false; }
-    p.gpuCanvas.style.display = 'block';
-    p.canvas.classList.add('cv-gpu-overlay');
+    setGpuLayerVisible(p, true);
     p.gpuCanvas.dataset.pointCount = String(data.count);
     return true;
   }
@@ -1871,10 +1894,9 @@
   }
 
   function draw(p, shownMask, shownCount) {
-    var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
+    var c = p.ctx; clearPanelLayers(p);
     if (needsUnderlay(p)) attachUnderlay(p);
     var underlay = p.underlayCtx || c;
-    if (underlay !== c) underlay.clearRect(0, 0, p.W, p.H);
     if (!p.ok) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
@@ -2747,30 +2769,8 @@
       var canvasY = canvasRect.top - bounds.top + padding;
       context.fillStyle = '#ffffff';
       context.fillRect(canvasX, canvasY, canvasRect.width, canvasRect.height);
-      if (panel.underlayCanvas) {
-        context.drawImage(
-          panel.underlayCanvas,
-          canvasX,
-          canvasY,
-          canvasRect.width,
-          canvasRect.height
-        );
-      }
-      if (panel.gpuCanvas && panel.gpuCanvas.style.display !== 'none') {
-        context.drawImage(
-          panel.gpuCanvas,
-          canvasX,
-          canvasY,
-          canvasRect.width,
-          canvasRect.height
-        );
-      }
-      context.drawImage(
-        panel.canvas,
-        canvasX,
-        canvasY,
-        canvasRect.width,
-        canvasRect.height
+      exportPanelLayers(
+        context, panel, canvasX, canvasY, canvasRect.width, canvasRect.height
       );
 
       if (panel.mini) {

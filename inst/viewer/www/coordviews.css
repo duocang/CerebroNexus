@@ -520,8 +520,7 @@
   background: transparent; pointer-events: none;
 }
 .coordviews-page canvas.cv-gpu-layer { z-index: 1; }
-.coordviews-page canvas.cv-layer-overlay,
-.coordviews-page canvas.cv-gpu-overlay {
+.coordviews-page canvas.cv-layer-overlay {
   position: relative; z-index: 2; background: transparent;
 }
 /* ---- minimap ------------------------------------------------------------ */
