@@ -1122,6 +1122,17 @@
       sp.edges.forEach(function (edge) {
         if (edge && edge.length >= 4) drawEdge(edge[0], edge[1], edge[2], edge[3]);
       });
+    } else if (sp.edges.from && sp.edges.to) {
+      var edgeCount = Math.min(sp.edges.from.length, sp.edges.to.length);
+      for (var edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) {
+        // R graph endpoints are one-based. Resolve them against the already
+        // aligned point coordinates in the browser instead of transferring four
+        // repeated floating-point coordinates per edge.
+        var from = Number(sp.edges.from[edgeIndex]) - 1;
+        var to = Number(sp.edges.to[edgeIndex]) - 1;
+        if (from < 0 || to < 0 || from >= sp.x.length || to >= sp.x.length) continue;
+        drawEdge(sp.x[from], sp.y[from], sp.x[to], sp.y[to]);
+      }
     } else {
       var n = sp.edges.x0 && sp.edges.x0.length || 0;
       for (var i = 0; i < n; i++) {
@@ -7048,6 +7059,9 @@
   }
   function singleEdges(extra) {
     var columns = extra && extra.edges;
+    if (columns && columns.from && columns.to) {
+      return { from: columns.from, to: columns.to };
+    }
     if (columns && columns.x0 && columns.y0 && columns.x1 && columns.y1) {
       return columns;
     }
@@ -7205,7 +7219,9 @@
       }
       if (Array.isArray(meta.axes)) space.axes = meta.axes.slice(0, 3);
       if ((Array.isArray(edges) && edges.length) ||
-          (!Array.isArray(edges) && edges.x0 && edges.x0.length)) {
+          (!Array.isArray(edges) && (
+            (edges.x0 && edges.x0.length) || (edges.from && edges.from.length)
+          ))) {
         space.trajectory = true; space.edges = edges;
       }
       if (pointSizes) space.pointSizes = pointSizes;

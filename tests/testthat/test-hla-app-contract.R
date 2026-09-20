@@ -1593,7 +1593,7 @@ test_that("HLA cohort filter inputs are isolated by chain", {
   )
 })
 
-test_that("the motif Canvas receives the complete layout and edge columns", {
+test_that("the motif Canvas receives the complete layout and compact edges", {
   vis_src <- paste(
     readLines(
       hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
@@ -1602,8 +1602,9 @@ test_that("the motif Canvas receives the complete layout and edge columns", {
     collapse = "\n"
   )
   expect_match(vis_src, "point_sizes = 2 \\* vn\\$nodes\\$size", perl = TRUE)
-  expect_match(vis_src, "x0 = vn\\$layout\\[from, 1\\]", perl = TRUE)
-  expect_match(vis_src, "x1 = vn\\$layout\\[to, 1\\]", perl = TRUE)
+  expect_match(vis_src, "from = as.integer(from)", fixed = TRUE)
+  expect_match(vis_src, "to = as.integer(to)", fixed = TRUE)
+  expect_no_match(vis_src, "x0 = vn$layout[from, 1]", fixed = TRUE)
   expect_match(
     vis_src,
     "req\\(isTRUE\\(hla_first_frame_graph_matches\\(\\)\\) \\|\\| hla_ready_latch\\(\\)\\)",

@@ -521,10 +521,10 @@ observe({
     ),
     extra = list(
       edges = list(
-        x0 = vn$layout[from, 1],
-        y0 = vn$layout[from, 2],
-        x1 = vn$layout[to, 1],
-        y1 = vn$layout[to, 2]
+        # The browser already owns the node coordinates. Integer endpoints avoid
+        # repeating four double vectors for every edge (the dominant HLA payload).
+        from = as.integer(from),
+        to = as.integer(to)
       )
     )
   )

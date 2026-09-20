@@ -1412,6 +1412,26 @@ test_that("single Canvas views accept per-point sizes", {
   expect_match(javascript, "pointSizes[i]", fixed = TRUE)
 })
 
+test_that("single Canvas trajectories accept compact endpoint edges", {
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  hla <- paste(
+    readLines(
+      viewer_test_path("hla_tcr_motifs", "visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(javascript, "columns.from && columns.to", fixed = TRUE)
+  expect_match(javascript, "sp.x[from]", fixed = TRUE)
+  expect_match(hla, "from = as.integer(from)", fixed = TRUE)
+  expect_match(hla, "to = as.integer(to)", fixed = TRUE)
+  expect_no_match(hla, "x0 = vn$layout[from, 1]", fixed = TRUE)
+})
+
 test_that("gene controls load transcriptome choices server-side", {
   source <- paste(
     readLines(
