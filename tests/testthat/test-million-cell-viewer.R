@@ -415,6 +415,31 @@ test_that("canonical projections use validated static assets with wire fallback"
   )
 
   expect_match(server, "viewerProjectionAsset <- function", fixed = TRUE)
+  expect_match(server, "viewerStaticResourcePrefix <- function", fixed = TRUE)
+  expect_match(
+    server,
+    "viewerCanonicalResourceIdentity <- function",
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(gregexpr("shiny::addResourcePath", server, fixed = TRUE)),
+    1L
+  )
+  expect_equal(
+    lengths(gregexpr("shiny::removeResourcePath", server, fixed = TRUE)),
+    1L
+  )
+  expect_equal(
+    lengths(gregexpr(
+      "viewerCanonicalResourceIdentity(pack)",
+      server,
+      fixed = TRUE
+    )),
+    2L
+  )
+  expect_no_match(server, "viewer_projection_prefixes", fixed = TRUE)
+  expect_no_match(server, "viewer_metadata_prefixes", fixed = TRUE)
+  expect_no_match(server, "viewer_trajectory_prefixes", fixed = TRUE)
   expect_match(server, "tools::md5sum(file)", fixed = TRUE)
   expect_match(server, "shiny::addResourcePath", fixed = TRUE)
   expect_match(server, "shiny::removeResourcePath", fixed = TRUE)
@@ -747,7 +772,11 @@ test_that("trajectory first frames expose paired static geometry and state", {
 
   expect_match(server, "viewerTrajectoryFrameAsset <- function", fixed = TRUE)
   expect_match(server, "viewerPackTrajectoryFrame(pack, method, name)", fixed = TRUE)
-  expect_match(server, "cerebro-trajectory-", fixed = TRUE)
+  expect_match(
+    server,
+    'viewerStaticResourcePrefix(\n      "trajectory"',
+    fixed = TRUE
+  )
   expect_match(engine, "fetchCategoricalResource", fixed = TRUE)
   expect_match(engine, "data.canonical_group = groupResult.values", fixed = TRUE)
   expect_match(engine, "categorical_resource", fixed = TRUE)

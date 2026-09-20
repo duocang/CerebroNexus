@@ -688,8 +688,43 @@ server <- function(input, output, session) {
   ## in the validated Viewer Pack. Expose only that projection directory under
   ## a session-specific resource prefix so specialist views can fetch the file
   ## directly instead of copying the same 8 MB through R and Shiny's websocket.
+  viewer_resource_prefixes <- character()
+  viewer_resource_counts <- new.env(parent = emptyenv())
+  viewerStaticResourcePrefix <- function(kind, directory) {
+    count <- if (exists(kind, envir = viewer_resource_counts, inherits = FALSE)) {
+      get(kind, envir = viewer_resource_counts, inherits = FALSE) + 1L
+    } else {
+      1L
+    }
+    prefix <- paste0(
+      "cerebro-",
+      kind,
+      "-",
+      gsub("[^A-Za-z0-9_-]", "", session$token),
+      "-",
+      count
+    )
+    shiny::addResourcePath(prefix, directory)
+    assign(kind, count, envir = viewer_resource_counts)
+    viewer_resource_prefixes <<- c(viewer_resource_prefixes, prefix)
+    prefix
+  }
+  viewerCanonicalResourceIdentity <- function(pack) {
+    identity <- tryCatch(
+      viewerDatasetIdentity(),
+      error = function(error) NULL
+    )
+    list(
+      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
+      cell_order_fingerprint = as.character(
+        pack$manifest$cell_order_fingerprint %||% ""
+      ),
+      pack_dataset_fingerprint = as.character(
+        pack$manifest$dataset_fingerprint %||% ""
+      )
+    )
+  }
   viewer_projection_resources <- new.env(parent = emptyenv())
-  viewer_projection_prefixes <- character()
   viewerProjectionAsset <- function(name, cell_indices = NULL) {
     pack <- viewerPackCurrent()
     if (
@@ -745,34 +780,22 @@ server <- function(input, output, session) {
     if (!valid) {
       return(NULL)
     }
-    prefix <- paste0(
-      "cerebro-projection-",
-      gsub("[^A-Za-z0-9_-]", "", session$token),
-      "-",
-      length(viewer_projection_prefixes) + 1L
+    prefix <- viewerStaticResourcePrefix(
+      "projection",
+      dirname(file)
     )
-    shiny::addResourcePath(prefix, dirname(file))
-    viewer_projection_prefixes <<- c(viewer_projection_prefixes, prefix)
-    identity <- tryCatch(
-      viewerDatasetIdentity(),
-      error = function(error) NULL
-    )
-    descriptor <- list(
-      protocol = "canonical-projection-v1",
-      projection_name = as.character(name),
-      url = paste0(prefix, "/", basename(file)),
-      cells = dimensions[[1L]],
-      dimensions = dimensions[[2L]],
-      dtype = "float32",
-      bytes = as.numeric(assets$bytes[[asset_row]]),
-      checksum = as.character(assets$checksum[[asset_row]]),
-      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
-      cell_order_fingerprint = as.character(
-        pack$manifest$cell_order_fingerprint %||% ""
+    descriptor <- c(
+      list(
+        protocol = "canonical-projection-v1",
+        projection_name = as.character(name),
+        url = paste0(prefix, "/", basename(file)),
+        cells = dimensions[[1L]],
+        dimensions = dimensions[[2L]],
+        dtype = "float32",
+        bytes = as.numeric(assets$bytes[[asset_row]]),
+        checksum = as.character(assets$checksum[[asset_row]])
       ),
-      pack_dataset_fingerprint = as.character(
-        pack$manifest$dataset_fingerprint %||% ""
-      )
+      viewerCanonicalResourceIdentity(pack)
     )
     assign(key, descriptor, envir = viewer_projection_resources)
     descriptor
@@ -782,7 +805,6 @@ server <- function(input, output, session) {
   ## coordinate comparison. Older packs and non-matching frames retain their
   ## dedicated geometry asset.
   viewer_trajectory_resources <- new.env(parent = emptyenv())
-  viewer_trajectory_prefixes <- character()
   viewerTrajectoryFrameAsset <- function(method, name) {
     pack <- viewerPackCurrent()
     if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
@@ -955,14 +977,10 @@ server <- function(input, output, session) {
       files <- c(files, geometry_file)
       rows <- c(rows, geometry_row)
     }
-    prefix <- paste0(
-      "cerebro-trajectory-",
-      gsub("[^A-Za-z0-9_-]", "", session$token),
-      "-",
-      length(viewer_trajectory_prefixes) + 1L
+    prefix <- viewerStaticResourcePrefix(
+      "trajectory",
+      dirname(files[[1L]])
     )
-    shiny::addResourcePath(prefix, dirname(files[[1L]]))
-    viewer_trajectory_prefixes <<- c(viewer_trajectory_prefixes, prefix)
     resource_url <- function(file) paste0(prefix, "/", basename(file))
     if (!is.null(subset) && !identical(subset$kind, "identity")) {
       subset$url <- resource_url(subset_file)
@@ -1000,7 +1018,6 @@ server <- function(input, output, session) {
   ## largest remaining websocket vector. Keep the small level/color contract in
   ## the bundle and let the browser fetch the validated packed codes directly.
   viewer_metadata_resources <- new.env(parent = emptyenv())
-  viewer_metadata_prefixes <- character()
   viewerMetadataCodesAsset <- function(name, levels = NULL) {
     pack <- viewerPackCurrent()
     if (
@@ -1093,51 +1110,32 @@ server <- function(input, output, session) {
     ) {
       return(NULL)
     }
-    identity <- tryCatch(
-      viewerDatasetIdentity(),
-      error = function(error) NULL
+    resource_prefix <- viewerStaticResourcePrefix(
+      "metadata",
+      dirname(codes_file)
     )
-    resource_prefix <- paste0(
-      "cerebro-metadata-",
-      gsub("[^A-Za-z0-9_-]", "", session$token),
-      "-",
-      length(viewer_metadata_prefixes) + 1L
-    )
-    shiny::addResourcePath(resource_prefix, dirname(codes_file))
-    viewer_metadata_prefixes <<- c(
-      viewer_metadata_prefixes,
-      resource_prefix
-    )
-    descriptor <- list(
-      protocol = "canonical-metadata-codes-v1",
-      url = paste0(resource_prefix, "/", basename(codes_file)),
-      cells = as.integer(pack$cell_count),
-      dtype = dtype,
-      bytes = as.numeric(assets$bytes[[codes_row]]),
-      checksum = as.character(assets$checksum[[codes_row]]),
-      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
-      cell_order_fingerprint = as.character(
-        pack$manifest$cell_order_fingerprint %||% ""
+    descriptor <- c(
+      list(
+        protocol = "canonical-metadata-codes-v1",
+        url = paste0(resource_prefix, "/", basename(codes_file)),
+        cells = as.integer(pack$cell_count),
+        dtype = dtype,
+        bytes = as.numeric(assets$bytes[[codes_row]]),
+        checksum = as.character(assets$checksum[[codes_row]])
       ),
-      pack_dataset_fingerprint = as.character(
-        pack$manifest$dataset_fingerprint %||% ""
-      ),
-      levels = I(target_levels),
-      ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
-      ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.
-      code_map = I(c(-1L, as.integer(remap)))
+      viewerCanonicalResourceIdentity(pack),
+      list(
+        levels = I(target_levels),
+        ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
+        ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.
+        code_map = I(c(-1L, as.integer(remap)))
+      )
     )
     assign(key, descriptor, envir = viewer_metadata_resources)
     descriptor
   }
   session$onSessionEnded(function() {
-    for (prefix in viewer_projection_prefixes) {
-      try(shiny::removeResourcePath(prefix), silent = TRUE)
-    }
-    for (prefix in viewer_metadata_prefixes) {
-      try(shiny::removeResourcePath(prefix), silent = TRUE)
-    }
-    for (prefix in viewer_trajectory_prefixes) {
+    for (prefix in viewer_resource_prefixes) {
       try(shiny::removeResourcePath(prefix), silent = TRUE)
     }
   })
