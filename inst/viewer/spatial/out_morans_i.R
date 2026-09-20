@@ -8,6 +8,11 @@
 ## large slides (it's an estimate of the same statistic on a random subset).
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_morans_i"]] <- renderText({
+  ## Guard on the raw input before touching spatial_projection_parameters_plot(),
+  ## which reads getSpatialData() to derive image bounds. The output is kept
+  ## active so it is ready when ImageFeaturePlot appears, but the default hidden
+  ## ImageDimPlot path must exit without hydrating or validating coordinates.
+  req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))
   plot_parameters <- spatial_projection_parameters_plot()
   req(identical(plot_parameters[["plot_type"]], "ImageFeaturePlot"))
   gene <- plot_parameters[["feature_to_display"]]

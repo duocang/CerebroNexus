@@ -373,6 +373,93 @@ test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
   }
 })
 
+test_that("hidden Moran's I exits before reading Spatial data", {
+  morans_source <- paste(
+    readLines(file.path(shiny_root, "spatial", "out_morans_i.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  projection_ui <- paste(
+    readLines(file.path(shiny_root, "spatial", "UI_projection.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    projection_ui,
+    "input.spatial_projection_plot_type == 'ImageFeaturePlot'",
+    fixed = TRUE
+  )
+  expect_match(
+    projection_ui,
+    'textOutput("spatial_projection_morans_i", inline = TRUE)',
+    fixed = TRUE
+  )
+  early_guard <- regexpr(
+    'req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))',
+    morans_source,
+    fixed = TRUE
+  )[[1]]
+  parameter_read <- regexpr(
+    "plot_parameters <- spatial_projection_parameters_plot()",
+    morans_source,
+    fixed = TRUE
+  )[[1]]
+  spatial_read <- regexpr(
+    "spatial_data <- getSpatialData(",
+    morans_source,
+    fixed = TRUE
+  )[[1]]
+
+  expect_gt(early_guard, 0)
+  expect_gt(parameter_read, early_guard)
+  expect_gt(spatial_read, parameter_read)
+})
+
+test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested", {
+  shiny::testServer(
+    function(input, output, session) {
+      spatial_reads <- shiny::reactiveVal(0L)
+      spatial_projection_parameters_plot <- shiny::reactive({
+        list(
+          plot_type = input[["spatial_projection_plot_type"]],
+          feature_to_display = input[["spatial_projection_feature_to_display"]],
+          projection = "synthetic_grid"
+        )
+      })
+      getGeneNames <- function() "GeneA"
+      getSpatialData <- function(name) {
+        spatial_reads(shiny::isolate(spatial_reads()) + 1L)
+        list(coordinates = data.frame(x = seq_len(7L), y = seq_len(7L)))
+      }
+      spatial_projection_cell_index <- shiny::reactive(paste0("cell", seq_len(7L)))
+      viewerExpressionRow <- function(data, cells, gene) seq_along(cells)
+      data_set <- shiny::reactive(list())
+      morans_i <- function(x, y, values, k = 6) 0.5
+      cachePlot <- function(x, ...) x
+      available_crb_files <- shiny::reactiveValues(selected = "dataset.crb")
+
+      sys.source(
+        file.path(shiny_root, "spatial", "out_morans_i.R"),
+        envir = environment()
+      )
+    },
+    {
+      session$setInputs(
+        spatial_projection_plot_type = "ImageDimPlot",
+        spatial_projection_feature_to_display = "GeneA"
+      )
+      expect_error(
+        output[["spatial_projection_morans_i"]],
+        class = "shiny.silent.error"
+      )
+      expect_identical(spatial_reads(), 0L)
+
+      session$setInputs(spatial_projection_plot_type = "ImageFeaturePlot")
+      expect_identical(output[["spatial_projection_morans_i"]], "0.500")
+      expect_identical(spatial_reads(), 1L)
+    }
+  )
+})
+
 test_that("group_filters widget the spatial tab depends on is present", {
   # spatial/UI_projection_group_filters.R calls registerGroupFiltersUI() and
   # registerGroupFiltersInfo(); those are only defined in the shared module,
