@@ -1603,9 +1603,11 @@ test_that("the motif Canvas receives the complete layout and compact edges", {
     ),
     collapse = "\n"
   )
-  expect_match(vis_src, "point_sizes = 2 \\* vn\\$nodes\\$size", perl = TRUE)
-  expect_match(vis_src, "from = as.integer(from)", fixed = TRUE)
-  expect_match(vis_src, "to = as.integer(to)", fixed = TRUE)
+  expect_match(vis_src, "point_sizes <- 2 * vn$nodes$size", fixed = TRUE)
+  expect_match(vis_src, "from <- as.integer(vn$edges$from)", fixed = TRUE)
+  expect_match(vis_src, "to <- as.integer(vn$edges$to)", fixed = TRUE)
+  expect_match(vis_src, "from = from", fixed = TRUE)
+  expect_match(vis_src, "to = to", fixed = TRUE)
   expect_no_match(vis_src, "x0 = vn$layout[from, 1]", fixed = TRUE)
   expect_match(
     vis_src,
