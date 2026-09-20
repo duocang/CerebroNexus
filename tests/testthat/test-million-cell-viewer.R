@@ -435,7 +435,7 @@ test_that("canonical projections use validated static assets with wire fallback"
       server,
       fixed = TRUE
     )),
-    3L
+    4L
   )
   expect_no_match(server, "viewer_projection_prefixes", fixed = TRUE)
   expect_no_match(server, "viewer_metadata_prefixes", fixed = TRUE)
@@ -537,6 +537,69 @@ test_that("canonical projection fetches enforce the full dataset identity", {
       packMismatch = TRUE,
       countMismatch = TRUE,
       fetchFailurePreserved = TRUE
+    )
+  )
+})
+
+test_that("spatial geometry fetches require exact dataset identity", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
+      "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
+      "let calls = 0;",
+      "function fetchProjectionResource(resource, expectedCells) {",
+      "  calls += 1; return Promise.resolve({url:resource.url, cells:expectedCells});",
+      "}",
+      "eval(source.slice(start, end));",
+      "const identity = {",
+      "  cell_count:5,",
+      "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
+      "  cell_order_fingerprint:'md5-cell-order-v1:' + 'b'.repeat(32),",
+      "  pack_dataset_fingerprint:'md5-crb-v1:' + 'c'.repeat(32)",
+      "};",
+      "const message = {dataset_identity:identity};",
+      "const resource = {",
+      "  protocol:'spatial-geometry-v1', spatial_name:'slice',",
+      "  url:'spatial.bin', cells:3, dimensions:2, dtype:'float32',",
+      "  dataset_fingerprint:identity.cell_fingerprint,",
+      "  cell_order_fingerprint:identity.cell_order_fingerprint,",
+      "  pack_dataset_fingerprint:identity.pack_dataset_fingerprint",
+      "};",
+      "async function rejected(value, cells) {",
+      "  try { await fetchValidatedSingleGeometryResource(value, message, cells); return false; }",
+      "  catch (error) { return error.message === 'Spatial geometry identity mismatch'; }",
+      "}",
+      "(async () => {",
+      "  const valid = await fetchValidatedSingleGeometryResource(resource, message, 3);",
+      "  const datasetMismatch = await rejected({...resource, dataset_fingerprint:'md5-cell-set-v1:' + 'd'.repeat(32)}, 3);",
+      "  const localMismatch = await rejected(resource, 2);",
+      "  const shapeMismatch = await rejected({...resource, dimensions:3}, 3);",
+      "  console.log(JSON.stringify({calls, valid, datasetMismatch, localMismatch, shapeMismatch}));",
+      "})().catch(error => { console.error(error); process.exit(1); });"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      calls = 1L,
+      valid = list(url = "spatial.bin", cells = 3L),
+      datasetMismatch = TRUE,
+      localMismatch = TRUE,
+      shapeMismatch = TRUE
     )
   )
 })

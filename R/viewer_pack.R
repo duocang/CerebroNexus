@@ -466,32 +466,79 @@
   list(indexes = indexes, frames = frame_table, assets = assets)
 }
 
-.viewerPackSpatialIndex <- function(object, cells) {
+.viewerPackSpatialAssets <- function(object, cells, stage) {
   spatial_names <- tryCatch(
     object$availableSpatial(),
     error = function(error) character()
   )
   getter <- object$getSpatialData
-  stats::setNames(
-    lapply(spatial_names, function(name) {
-      data <- if ("hydrate_molecules" %in% names(formals(getter))) {
-        getter(name, hydrate_molecules = FALSE)
-      } else {
-        getter(name)
-      }
-      spatial_cells <- rownames(data[["coordinates"]])
-      index <- match(spatial_cells, cells)
-      if (
-        is.null(spatial_cells) ||
-          length(index) != nrow(data[["coordinates"]]) ||
-          anyNA(index)
-      ) {
-        stop("Viewer Pack spatial data is not cell-aligned.", call. = FALSE)
-      }
-      as.integer(index)
-    }),
-    spatial_names
-  )
+  indexes <- stats::setNames(vector("list", length(spatial_names)), spatial_names)
+  frames <- list()
+  assets <- NULL
+  for (i in seq_along(spatial_names)) {
+    name <- spatial_names[[i]]
+    data <- if ("hydrate_molecules" %in% names(formals(getter))) {
+      getter(name, hydrate_molecules = FALSE)
+    } else {
+      getter(name)
+    }
+    coordinates <- data[["coordinates"]]
+    spatial_cells <- rownames(coordinates)
+    index <- match(spatial_cells, cells)
+    if (
+      is.null(spatial_cells) ||
+        length(index) != nrow(coordinates) ||
+        anyNA(index)
+    ) {
+      stop("Viewer Pack spatial data is not cell-aligned.", call. = FALSE)
+    }
+    indexes[[i]] <- as.integer(index)
+    coordinate_matrix <- tryCatch(
+      as.matrix(coordinates),
+      error = function(error) NULL
+    )
+    if (
+      is.null(coordinate_matrix) ||
+        !is.numeric(coordinate_matrix) ||
+        ncol(coordinate_matrix) != 2L
+    ) {
+      next
+    }
+    geometry_path <- file.path(
+      "spatial",
+      sprintf("%03d.geometry.bin", i)
+    )
+    assets <- rbind(
+      assets,
+      .viewerPackWriteAsset(
+        stage,
+        geometry_path,
+        as.numeric(t(coordinate_matrix)),
+        "float32",
+        dim(coordinate_matrix)
+      )
+    )
+    frames[[length(frames) + 1L]] <- data.frame(
+      name = name,
+      cells = nrow(coordinate_matrix),
+      dimensions = ncol(coordinate_matrix),
+      geometry_path = geometry_path,
+      stringsAsFactors = FALSE
+    )
+  }
+  frame_table <- if (length(frames)) {
+    do.call(rbind, frames)
+  } else {
+    data.frame(
+      name = character(),
+      cells = integer(),
+      dimensions = integer(),
+      geometry_path = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+  rownames(frame_table) <- NULL
+  list(indexes = indexes, frames = frame_table, assets = assets)
 }
 
 .viewerPackHlaFirstFrame <- function(segments, object) {
@@ -700,17 +747,18 @@
       trajectory$assets
     )
   }
-  spatial_indexes <- .viewerPackSpatialIndex(object, cells)
-  if (length(spatial_indexes)) {
+  spatial <- .viewerPackSpatialAssets(object, cells, stage)
+  if (length(spatial$indexes)) {
     modules <- c(modules, "spatial")
     assets <- rbind(
       assets,
       .viewerPackWriteAsset(
         stage,
         file.path("spatial", "cell_index.qs2"),
-        spatial_indexes,
+        spatial$indexes,
         "canonical-cell-index"
-      )
+      ),
+      spatial$assets
     )
   }
   repertoire <- tryCatch(object$getImmuneRepertoire(), error = function(error) {
@@ -795,6 +843,7 @@
     projection_names = projections,
     metadata_names = metadata_names,
     trajectory_frames = trajectory$frames,
+    spatial_frames = spatial$frames,
     immune_receptors = receptors,
     hla_chains = chains
   )
@@ -955,6 +1004,7 @@ buildViewerPack <- function(
     projection_names = built$projection_names,
     metadata_names = built$metadata_names,
     trajectory_frames = built$trajectory_frames,
+    spatial_frames = built$spatial_frames,
     immune_receptors = built$immune_receptors,
     hla_chains = built$hla_chains,
     assets = built$assets

@@ -112,6 +112,23 @@ spatial_projection_update_plot <- function(input) {
   reset_axes <- input[['reset_axes']]
   plot_parameters <- input[['plot_parameters']]
   color_assignments <- input[['color_assignments']]
+  geometry_resource <- input[["geometry_resource"]]
+
+  attach_geometry_resource <- function(data) {
+    if (
+      is.null(geometry_resource) ||
+        !is.atomic(data[["x"]]) ||
+        !is.atomic(data[["y"]]) ||
+        length(data[["x"]]) != geometry_resource$cells ||
+        length(data[["y"]]) != geometry_resource$cells
+    ) {
+      return(data)
+    }
+    data[["x"]] <- NULL
+    data[["y"]] <- NULL
+    data[["projection_resource"]] <- geometry_resource
+    data
+  }
 
   color_variable <- plot_parameters[['color_variable']]
   color_input <- metadata[[color_variable]]
@@ -341,6 +358,7 @@ spatial_projection_update_plot <- function(input) {
       text = list(),
       columns = list()
     )
+    output_data <- attach_geometry_resource(output_data)
     cerebroCellViewRender(
       "spatial_projection",
       output_meta,
@@ -374,6 +392,7 @@ spatial_projection_update_plot <- function(input) {
     space_label = plot_parameters[["projection"]]
   )
   payload[["meta"]] <- c(background_meta, payload[["meta"]])
+  payload[["data"]] <- attach_geometry_resource(payload[["data"]])
 
   output_hulls <- list()
   if (

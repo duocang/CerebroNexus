@@ -153,6 +153,22 @@ spatial_projection_data_to_plot_raw <- reactive({
     current_name,
     plot_parameters[["projection"]]
   )
+  geometry_resource <- viewerSpatialGeometryAsset(
+    plot_parameters[["projection"]],
+    cells_to_extract,
+    rotation_angle
+  )
+  failed_resource <- input[[
+    "spatial_projection_projection_resource_failed"
+  ]]
+  if (
+    !is.null(geometry_resource) &&
+      length(failed_resource) == 1L &&
+      !is.na(failed_resource) &&
+      identical(failed_resource, geometry_resource$url)
+  ) {
+    geometry_resource <- NULL
+  }
   ## Apply rotation to the displayed (subset) coordinates.
   coordinates <- rotateSpatialCoordinates(
     spatial_projection_coordinates(),
@@ -194,7 +210,8 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    group_hulls = spatial_projection_group_hulls()
+    group_hulls = spatial_projection_group_hulls(),
+    geometry_resource = geometry_resource
   )
 
   return(to_return)

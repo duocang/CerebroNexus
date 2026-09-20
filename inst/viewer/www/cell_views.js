@@ -26,6 +26,7 @@
   var linkedBundle = null;      // cached while a dedicated page owns the canvas
   var singleViews = {};         // latest specialist payload per plot id
   var singleRequests = new Set(); // visible hosts awaiting their first payload
+  var singleResourceDescriptors = new Map();
   var singleActive = null;      // plot id currently using the shared surface
   var singleIndexCells = null;  // cells array behind the cached barcode index
   var singleIndexMap = null;
@@ -6019,6 +6020,7 @@
     singleIndexCells = null; singleIndexMap = null;
     linkedState = null;
     singleTiming = Object.create(null);
+    singleResourceDescriptors.clear();
   }
   function mountSingleSurface(id) {
     rememberSurfaceHome();
@@ -6244,6 +6246,73 @@
     }
     return fetchProjectionResource(resource, expectedCells);
   }
+  function fetchValidatedSingleGeometryResource(
+    resource, message, expectedCells
+  ) {
+    if (resource && resource.protocol === 'spatial-geometry-v1') {
+      if (resource.dtype !== 'float32' ||
+          Number(resource.dimensions) !== 2 ||
+          Number(resource.cells) !== Number(expectedCells) ||
+          !canonicalDatasetIdentityMatches(
+            resource, message && message.dataset_identity
+          )) {
+        return Promise.reject(new Error('Spatial geometry identity mismatch'));
+      }
+      return fetchProjectionResource(resource, expectedCells);
+    }
+    return fetchValidatedProjectionResource(resource, message, expectedCells);
+  }
+  function registerSingleGeometryResource(message) {
+    var resource = message && message.resource;
+    var identity = message && message.dataset_identity;
+    if (!message || message.id !== 'spatial_projection' || !resource ||
+        resource.protocol !== 'spatial-geometry-v1' ||
+        !resource.spatial_name || resource.dtype !== 'float32' ||
+        Number(resource.dimensions) !== 2 || Number(resource.cells) < 1 ||
+        !canonicalDatasetIdentityMatches(resource, identity)) return;
+    singleResourceDescriptors.set(
+      message.id + ':' + String(resource.spatial_name),
+      message
+    );
+  }
+  function spatialGeometryRequestEligible() {
+    var percentage = document.getElementById(
+      'spatial_projection_percentage_cells_to_show'
+    );
+    if (!percentage || Number(percentage.value) !== 100) return false;
+    var filters = document.querySelectorAll(
+      '[id^="spatial_projection_group_filter_"]'
+    );
+    for (var i = 0; i < filters.length; i++) {
+      var boxes = filters[i].querySelectorAll('input[type="checkbox"]');
+      for (var j = 0; j < boxes.length; j++) {
+        if (!boxes[j].checked) return false;
+      }
+    }
+    return true;
+  }
+  function prefetchRegisteredSingleResource(id) {
+    if (id !== 'spatial_projection' || !spatialGeometryRequestEligible()) {
+      return;
+    }
+    var selector = document.getElementById('spatial_projection_to_display');
+    var name = selector && selector.value;
+    var message = name && singleResourceDescriptors.get(id + ':' + name);
+    if (!message || !canonicalDatasetIdentityMatches(
+      message.resource, window.cerebroSavedViewDataset
+    )) return;
+    fetchValidatedSingleGeometryResource(
+      message.resource,
+      {dataset_identity: window.cerebroSavedViewDataset},
+      message.resource.cells
+    ).catch(function () {
+      Shiny.setInputValue(
+        id + '_projection_resource_failed',
+        String(message.resource.url || ''),
+        {priority: 'event'}
+      );
+    });
+  }
   function fetchProjectionSubsetResource(
     resource, expectedCanonicalCells, expectedCells
   ) {
@@ -6455,7 +6524,7 @@
     var coordinatesPromise = resource && resource.url
       ? (subsetResource
         ? canonicalProjectionCoordinates(resource, message)
-        : fetchValidatedProjectionResource(resource, message, data.n))
+        : fetchValidatedSingleGeometryResource(resource, message, data.n))
       : Promise.resolve(null);
     var subsetPromise = subsetResource
       ? fetchProjectionSubsetResource(
@@ -8686,6 +8755,19 @@
     Shiny.addCustomMessageHandler('coordviews_cells', onBinaryCells);
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
     Shiny.addCustomMessageHandler('cell_view_aux_binary', onSingleAuxBinary);
+    Shiny.addCustomMessageHandler(
+      'cell_view_resource_catalog',
+      function (message) {
+        if (!message || !Array.isArray(message.resources)) return;
+        message.resources.forEach(function (resource) {
+          registerSingleGeometryResource({
+            id: message.id,
+            resource: resource,
+            dataset_identity: message.dataset_identity
+          });
+        });
+      }
+    );
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
     });
@@ -8876,6 +8958,7 @@
         timing.requestAtMs = requestedAt;
         timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? requestedAt - window.__cerebroPageBenchClickStart : null;
+        prefetchRegisteredSingleResource(singleId);
         Shiny.setInputValue(singleId + '_render_request', Date.now(), {
           priority: 'event'
         });

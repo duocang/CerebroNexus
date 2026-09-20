@@ -309,6 +309,30 @@ viewerPackSpatialIndex <- function(pack, name) {
   if (is.null(index)) NULL else as.integer(index)
 }
 
+viewerPackSpatialFrame <- function(pack, name) {
+  frames <- pack$manifest$spatial_frames
+  if (!is.data.frame(frames) || !nrow(frames)) {
+    return(NULL)
+  }
+  row <- which(as.character(frames$name) == as.character(name))
+  if (length(row) != 1L) {
+    return(NULL)
+  }
+  frame <- as.list(frames[row, , drop = FALSE])
+  frame <- lapply(frame, function(value) value[[1L]])
+  frame$cells <- suppressWarnings(as.integer(frame$cells))
+  frame$dimensions <- suppressWarnings(as.integer(frame$dimensions))
+  valid <- length(frame$cells) == 1L &&
+    !is.na(frame$cells) &&
+    frame$cells >= 0L &&
+    identical(frame$dimensions, 2L) &&
+    is.character(frame$geometry_path) &&
+    length(frame$geometry_path) == 1L &&
+    !is.na(frame$geometry_path) &&
+    nzchar(frame$geometry_path)
+  if (!isTRUE(valid)) NULL else frame
+}
+
 viewerPackHlaSegments <- function(pack, chain) {
   if (
     !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")

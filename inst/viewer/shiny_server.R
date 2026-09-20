@@ -1018,6 +1018,103 @@ server <- function(input, output, session) {
     assign(key, descriptor, envir = viewer_trajectory_resources)
     descriptor
   }
+  ## Spatial coordinates have their own physical coordinate system and row
+  ## order. Publish only a Viewer Pack asset whose canonical cell mapping is an
+  ## exact match for the current unrotated frame; every other case retains the
+  ## established websocket path.
+  viewer_spatial_resources <- new.env(parent = emptyenv())
+  viewerSpatialGeometryAsset <- function(name, cell_indices, rotation = 0) {
+    pack <- viewerPackCurrent()
+    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+      return(NULL)
+    }
+    frame <- viewerPackSpatialFrame(pack, name)
+    stored_index <- viewerPackSpatialIndex(pack, name)
+    rotation <- suppressWarnings(as.numeric(rotation))
+    if (
+      is.null(frame) ||
+        length(rotation) != 1L ||
+        is.na(rotation) ||
+        !identical(rotation, 0) ||
+        !identical(as.integer(cell_indices), stored_index) ||
+        !identical(length(stored_index), frame$cells)
+    ) {
+      return(NULL)
+    }
+    key <- paste(pack$path, frame$geometry_path, sep = "::")
+    if (exists(key, envir = viewer_spatial_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_spatial_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- which(
+      as.character(assets$path) == as.character(frame$geometry_path)
+    )
+    dimensions <- if (length(asset_row) == 1L) {
+      suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[asset_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+    } else {
+      integer()
+    }
+    file <- file.path(pack$path, frame$geometry_path)
+    valid <- length(asset_row) == 1L &&
+      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
+      identical(dimensions, c(frame$cells, 2L)) &&
+      identical(
+        as.numeric(assets$bytes[[asset_row]]),
+        as.numeric(frame$cells) * 2 * 4
+      ) &&
+      file.exists(file) &&
+      !dir.exists(file) &&
+      identical(
+        as.numeric(file.info(file)$size),
+        as.numeric(assets$bytes[[asset_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(file)),
+        as.character(assets$checksum[[asset_row]])
+      )
+    if (!isTRUE(valid)) {
+      return(NULL)
+    }
+    prefix <- viewerStaticResourcePrefix("spatial", dirname(file))
+    descriptor <- c(
+      list(
+        protocol = "spatial-geometry-v1",
+        spatial_name = as.character(name),
+        url = paste0(prefix, "/", basename(file)),
+        cells = frame$cells,
+        dimensions = 2L,
+        dtype = "float32",
+        bytes = as.numeric(assets$bytes[[asset_row]]),
+        checksum = as.character(assets$checksum[[asset_row]])
+      ),
+      viewerCanonicalResourceIdentity(pack)
+    )
+    assign(key, descriptor, envir = viewer_spatial_resources)
+    descriptor
+  }
+  viewerSpatialGeometryCatalog <- function() {
+    pack <- viewerPackCurrent()
+    frames <- if (is.list(pack)) pack$manifest$spatial_frames else NULL
+    if (!is.data.frame(frames) || !nrow(frames)) {
+      return(list())
+    }
+    dataset <- spatial_dataset_name(
+      available_crb_files$files,
+      available_crb_files$selected
+    )
+    resources <- lapply(unique(as.character(frames$name)), function(name) {
+      viewerSpatialGeometryAsset(
+        name,
+        viewerPackSpatialIndex(pack, name),
+        spatialPlotRotation(Cerebro.options, dataset, name)
+      )
+    })
+    Filter(Negate(is.null), resources)
+  }
   ## Categorical metadata codes are also stored in canonical cell order. The
   ## first Linked views frame needs one such column, which can otherwise be the
   ## largest remaining websocket vector. Keep the small level/color contract in
@@ -1204,15 +1301,27 @@ server <- function(input, output, session) {
   observe({
     input[["sidebar"]]
     identity <- viewerDatasetIdentity()
+    dataset_identity <- list(
+      cell_count = as.integer(identity$cell_count),
+      cell_fingerprint = as.character(identity$fingerprint),
+      cell_order_fingerprint = as.character(identity$order_fingerprint %||% ""),
+      pack_dataset_fingerprint = as.character(identity$pack_fingerprint %||% "")
+    )
     session$sendCustomMessage(
       "cerebro_saved_view_dataset",
-      list(
-        cell_count = identity$cell_count,
-        cell_fingerprint = identity$fingerprint,
-        cell_order_fingerprint = identity$order_fingerprint,
-        pack_dataset_fingerprint = identity$pack_fingerprint
-      )
+      dataset_identity
     )
+    resources <- viewerSpatialGeometryCatalog()
+    if (length(resources)) {
+      session$sendCustomMessage(
+        "cell_view_resource_catalog",
+        list(
+          id = "spatial_projection",
+          resources = unname(resources),
+          dataset_identity = dataset_identity
+        )
+      )
+    }
   })
 
   # list of available trajectories

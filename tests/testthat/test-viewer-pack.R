@@ -263,6 +263,17 @@ test_that("Viewer Pack stores canonical spatial row indexes", {
     runtime$viewerPackSpatialIndex(descriptor, "slice"),
     c(3L, 1L)
   )
+  frame <- runtime$viewerPackSpatialFrame(descriptor, "slice")
+  expect_identical(frame$cells, 2L)
+  expect_identical(frame$dimensions, 2L)
+  geometry <- readBin(
+    file.path(descriptor$path, frame$geometry_path),
+    what = numeric(),
+    n = 4L,
+    size = 4L,
+    endian = "little"
+  )
+  expect_equal(geometry, c(30, 3, 10, 1))
   expect_false(exists(
     "common/cell_order.qs2",
     envir = descriptor$cache,

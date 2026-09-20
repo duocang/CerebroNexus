@@ -1140,6 +1140,116 @@ test_that("shared Canvas owns spatial background identity and appearance", {
   )
 })
 
+test_that("spatial first frames replace only exact flat geometry with an asset", {
+  renderer <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
+  sys.source(
+    viewer_test_path("spatial", "func_projection_update_plot.R"),
+    envir = renderer
+  )
+  rendered <- NULL
+  renderer$cerebroCellViewRender <- function(id, meta, data, ...) {
+    rendered <<- list(id = id, meta = meta, data = data)
+  }
+  n <- 4096L
+  resource <- list(
+    protocol = "spatial-geometry-v1",
+    url = "spatial.bin",
+    cells = n,
+    dimensions = 2L,
+    dtype = "float32"
+  )
+  parameters <- list(
+    color_variable = "group",
+    background_descriptor = NULL,
+    background_identity = NULL,
+    background_image = "none",
+    background_image_allowlist = character(),
+    n_dimensions = 2L,
+    x_range = c(0, n),
+    y_range = c(0, n),
+    background_flip_x = FALSE,
+    background_flip_y = FALSE,
+    background_scale_x = 1,
+    background_scale_y = 1,
+    background_offset_x = 0,
+    background_offset_y = 0,
+    background_rotation = 0,
+    background_opacity = 1,
+    plot_type = "ImageDimPlot",
+    point_size = 1,
+    point_opacity = 1,
+    draw_border = FALSE,
+    group_labels = TRUE,
+    keep_square = FALSE,
+    show_region_outlines = FALSE,
+    hover_info = FALSE,
+    projection = "slice"
+  )
+  value <- list(
+    cells_df = data.frame(group = rep(c("A", "B"), length.out = n)),
+    coordinates = data.frame(x = seq_len(n), y = -seq_len(n)),
+    reset_axes = FALSE,
+    color_assignments = c(A = "#111111", B = "#222222"),
+    group_hulls = list(),
+    geometry_resource = resource,
+    plot_parameters = parameters
+  )
+
+  renderer$spatial_projection_update_plot(value)
+  expect_identical(rendered$data$projection_resource, resource)
+  expect_null(rendered$data[["x"]])
+  expect_null(rendered$data[["y"]])
+  expect_identical(length(rendered$data$canonical_group), n)
+
+  value$geometry_resource$cells <- n - 1L
+  renderer$spatial_projection_update_plot(value)
+  expect_null(rendered$data$projection_resource)
+  expect_identical(length(rendered$data[["x"]]), n)
+  expect_identical(length(rendered$data[["y"]]), n)
+})
+
+test_that("Spatial geometry catalog is registered but fetched only on page request", {
+  server_source <- paste(
+    readLines(viewer_test_path("shiny_server.R")),
+    collapse = "\n"
+  )
+  expect_match(server_source, "viewerSpatialGeometryCatalog <- function()", fixed = TRUE)
+  expect_match(server_source, '"cell_view_resource_catalog"', fixed = TRUE)
+  expect_match(
+    server_source,
+    "viewerPackSpatialIndex(pack, name)",
+    fixed = TRUE
+  )
+  browser_source <- paste(
+    readLines(viewer_test_path("www", "cell_views.js")),
+    collapse = "\n"
+  )
+  click_prefetch <- regexpr(
+    "prefetchRegisteredSingleResource(singleId);",
+    browser_source,
+    fixed = TRUE
+  )[[1L]]
+  render_request <- regexpr(
+    "Shiny.setInputValue(singleId + '_render_request'",
+    browser_source,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(click_prefetch, 0L)
+  expect_gt(render_request, click_prefetch)
+  expect_match(
+    browser_source,
+    "Number(percentage.value) !== 100",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_source,
+    "if (!boxes[j].checked) return false;",
+    fixed = TRUE
+  )
+  expect_false(grepl("cell_view_resource_prefetch", browser_source, fixed = TRUE))
+})
+
 test_that("empty spatial selection returns before million-cell plot data", {
   selected_source <- paste(
     readLines(viewer_test_path(
