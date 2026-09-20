@@ -441,7 +441,7 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
 
@@ -539,7 +539,7 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
   object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
   manifest_path <- file.path(pack, "manifest.json")
@@ -585,7 +585,7 @@ test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
   }
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
 
@@ -612,7 +612,7 @@ test_that("full CRBs open Viewer Packs without hydrating metadata", {
   }
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "viewer", "core", "viewer_pack.R"),
+    viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
 
@@ -709,24 +709,11 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
 
 test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   server <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "viewer",
-      "shiny_server.R"
-    )),
+    readLines(viewer_test_path("shiny_server.R")),
     collapse = "\n"
   )
   data_layer <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "viewer",
-      "hla_tcr_motifs",
-      "data.R"
-    )),
+    readLines(viewer_test_path("hla_tcr_motifs", "data.R")),
     collapse = "\n"
   )
 
@@ -744,25 +731,11 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   expect_match(data_layer, "hla_parse_ir_segments(data, chain)", fixed = TRUE)
 
   immune_data <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "viewer",
-      "immune_repertoire",
-      "data.R"
-    )),
+    readLines(viewer_test_path("immune_repertoire", "data.R")),
     collapse = "\n"
   )
   linked <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "viewer",
-      "coordinated_views",
-      "bundle.R"
-    )),
+    readLines(viewer_test_path("coordinated_views", "bundle.R")),
     collapse = "\n"
   )
   expect_match(

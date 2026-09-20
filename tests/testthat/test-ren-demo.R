@@ -119,6 +119,10 @@ test_that("run-demo prepares both full-scale datasets", {
   launcher <- testthat::test_path("..", "..", "run-demo.R")
   skip_if_not(
     file.exists(launcher),
+    "repository-only demo launcher is not installed with the package"
+  )
+  skip_if_not(
+    file.exists(launcher),
     "repository-only demo launcher is not included in the built package"
   )
   script <- paste(readLines(launcher), collapse = "\n")

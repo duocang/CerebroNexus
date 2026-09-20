@@ -1,6 +1,11 @@
 test_that("run-demo loads the worktree and avoids a busy default port", {
+  launcher <- testthat::test_path("..", "..", "run-demo.R")
+  skip_if_not(
+    file.exists(launcher),
+    "repository-only demo launcher is not installed with the package"
+  )
   script <- paste(
-    readLines(testthat::test_path("..", "..", "run-demo.R"), warn = FALSE),
+    readLines(launcher, warn = FALSE),
     collapse = "\n"
   )
 

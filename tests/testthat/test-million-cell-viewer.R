@@ -1769,6 +1769,7 @@ test_that("trajectory benchmark contract follows the selected trajectory", {
     "bench",
     "viewer_1m_page_protocol.R"
   )
+  skip_if_not(file.exists(protocol_file), "benchmark tree not present")
   protocol <- new.env(parent = baseenv())
   sys.source(protocol_file, envir = protocol)
   object <- new.env(parent = emptyenv())
@@ -1803,6 +1804,7 @@ test_that("Spatial benchmark contract follows finite coordinate rows", {
     "bench",
     "viewer_1m_page_protocol.R"
   )
+  skip_if_not(file.exists(protocol_file), "benchmark tree not present")
   protocol <- new.env(parent = baseenv())
   sys.source(protocol_file, envir = protocol)
   object <- new.env(parent = emptyenv())
@@ -1852,6 +1854,7 @@ test_that("benchmark TSV output escapes controls and validates columns", {
     "bench",
     "viewer_1m_page_protocol.R"
   )
+  skip_if_not(file.exists(protocol_file), "benchmark tree not present")
   protocol <- new.env(parent = baseenv())
   sys.source(protocol_file, envir = protocol)
   output <- tempfile(fileext = ".tsv")
@@ -1892,6 +1895,7 @@ test_that("benchmark provenance identifies sidecars and Viewer Packs", {
     "bench",
     "viewer_1m_page_protocol.R"
   )
+  skip_if_not(file.exists(protocol_file), "benchmark tree not present")
   protocol <- new.env(parent = baseenv())
   sys.source(protocol_file, envir = protocol)
   root <- tempfile("benchmark-artifacts-")
@@ -2125,6 +2129,26 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
   captured <- new.env(parent = emptyenv())
   runtime$expressionColorScale <- function(...) "scale"
   runtime$expressionReverseColorScale <- function(...) FALSE
+  runtime$getGroups <- function() character()
+  runtime$viewerProjectionMetadataColumns <- function(
+    metadata,
+    color_variable,
+    hover_info,
+    groups
+  ) {
+    "cell_barcode"
+  }
+  runtime$viewerProjectionSubsetRows <- function(table, indices, columns) {
+    table[indices, columns, drop = FALSE]
+  }
+  runtime$cerebroCellViewDeferredAux <- function(
+    selection_rows,
+    cell_barcodes,
+    hover_columns,
+    hover
+  ) {
+    list(selection_key = cell_barcodes[selection_rows])
+  }
   runtime$cerebroCellViewRender <- function(
     id,
     meta,
@@ -2193,6 +2217,25 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     data.frame(cell_barcode = c("c3", "c1", "c2"))
   }
   runtime$getGroups <- function() character()
+  runtime$viewerProjectionMetadataColumns <- function(
+    metadata,
+    color_variable,
+    hover_info,
+    groups
+  ) {
+    "cell_barcode"
+  }
+  runtime$viewerProjectionSubsetRows <- function(table, indices, columns) {
+    table[indices, columns, drop = FALSE]
+  }
+  runtime$cerebroCellViewDeferredAux <- function(
+    selection_rows,
+    cell_barcodes,
+    hover_columns,
+    hover
+  ) {
+    list(selection_key = cell_barcodes[selection_rows])
+  }
   runtime$cerebroCellViewRender <- function(
     id,
     meta,
