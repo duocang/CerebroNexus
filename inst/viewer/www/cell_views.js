@@ -6289,24 +6289,34 @@
   function registerSingleGeometryResource(message) {
     var resource = message && message.resource;
     var identity = message && message.dataset_identity;
-    if (!message || message.id !== 'spatial_projection' ||
-        !resource || !resource.spatial_name ||
-        !window.CBViewState.resourceDescriptor.validate(resource, {
-          protocol: 'spatial-geometry-v1', dtype: 'float32', dimensions: 2,
-          minCells: 1, identity: identity
-        })) return;
+    if (!message || !resource) return;
+    var isSpatial = message.id === 'spatial_projection' &&
+      resource.spatial_name &&
+      window.CBViewState.resourceDescriptor.validate(resource, {
+        protocol: 'spatial-geometry-v1', dtype: 'float32', dimensions: 2,
+        minCells: 1, identity: identity
+      });
+    var isOverview = message.id === 'overview_projection' &&
+      resource.projection_name &&
+      window.CBViewState.resourceDescriptor.validate(resource, {
+        protocol: 'canonical-projection-v1', dtype: 'float32',
+        minCells: 1, identity: identity
+      });
+    if (!isSpatial && !isOverview) return;
     singleResourceDescriptors.set(
-      message.id + ':' + String(resource.spatial_name),
+      message.id + ':' + String(
+        isSpatial ? resource.spatial_name : resource.projection_name
+      ),
       message
     );
   }
-  function spatialGeometryRequestEligible() {
+  function singleGeometryRequestEligible(id) {
     var percentage = document.getElementById(
-      'spatial_projection_percentage_cells_to_show'
+      id + '_percentage_cells_to_show'
     );
     if (!percentage || Number(percentage.value) !== 100) return false;
     var filters = document.querySelectorAll(
-      '[id^="spatial_projection_group_filter_"]'
+      '[id^="' + id + '_group_filter_"]'
     );
     for (var i = 0; i < filters.length; i++) {
       var boxes = filters[i].querySelectorAll('input[type="checkbox"]');
@@ -6317,10 +6327,11 @@
     return true;
   }
   function prefetchRegisteredSingleResource(id) {
-    if (id !== 'spatial_projection' || !spatialGeometryRequestEligible()) {
+    if ((id !== 'spatial_projection' && id !== 'overview_projection') ||
+        !singleGeometryRequestEligible(id)) {
       return;
     }
-    var selector = document.getElementById('spatial_projection_to_display');
+    var selector = document.getElementById(id + '_to_display');
     var name = selector && selector.value;
     var message = name && singleResourceDescriptors.get(id + ':' + name);
     if (!message || !canonicalDatasetIdentityMatches(
@@ -6517,7 +6528,12 @@
         subsetResource, resource && resource.cells, data.n
       ) : Promise.resolve(null);
     var groupsPromise = groupResource && groupResource.url
-      ? fetchCategoricalResource(groupResource, data.n) : Promise.resolve(null);
+      ? (groupResource.protocol === 'canonical-metadata-codes-v1'
+        ? fetchValidatedMetadataCodesResource(
+          groupResource, data.n, message && message.dataset_identity
+        )
+        : fetchCategoricalResource(groupResource, data.n))
+      : Promise.resolve(null);
     return Promise.all([
       coordinatesPromise, subsetPromise, groupsPromise
     ]).then(function (results) {

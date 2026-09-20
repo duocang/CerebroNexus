@@ -422,6 +422,10 @@ test_that("canonical projections use validated static assets with wire fallback"
       readLines(
         viewer_test_path("overview", "event_projection_update_plot.R"),
         warn = FALSE
+      ),
+      readLines(
+        viewer_test_path("overview", "obj_projection_data_to_plot.R"),
+        warn = FALSE
       )
     ),
     collapse = "\n"
@@ -470,6 +474,18 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(engine, "fetchValidatedProjectionResource", fixed = TRUE)
   expect_match(engine, "response.arrayBuffer()", fixed = TRUE)
   expect_match(engine, "projection_resource_failed", fixed = TRUE)
+  expect_match(server, "viewerProjectionCatalog <- function", fixed = TRUE)
+  expect_match(server, 'id = "overview_projection"', fixed = TRUE)
+  expect_match(
+    overview,
+    "categorical_resource = categorical_resource",
+    fixed = TRUE
+  )
+  expect_match(
+    engine,
+    "groupResource.protocol === 'canonical-metadata-codes-v1'",
+    fixed = TRUE
+  )
 })
 
 test_that("canonical projection fetches enforce the full dataset identity", {

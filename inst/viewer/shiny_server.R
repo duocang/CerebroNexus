@@ -800,6 +800,18 @@ server <- function(input, output, session) {
     assign(key, descriptor, envir = viewer_projection_resources)
     descriptor
   }
+  viewerProjectionCatalog <- function() {
+    pack <- viewerPackCurrent()
+    names <- if (is.list(pack)) {
+      as.character(pack$manifest$projection_names)
+    } else {
+      character()
+    }
+    Filter(
+      Negate(is.null),
+      lapply(names, viewerProjectionAsset)
+    )
+  }
   ## Trajectory frames may bind an exact row subset to a canonical projection.
   ## The binding is published only by the Viewer Pack builder after exact
   ## coordinate comparison. Older packs and non-matching frames retain their
@@ -1311,6 +1323,17 @@ server <- function(input, output, session) {
       "cerebro_saved_view_dataset",
       dataset_identity
     )
+    projection_resources <- viewerProjectionCatalog()
+    if (length(projection_resources)) {
+      session$sendCustomMessage(
+        "cell_view_resource_catalog",
+        list(
+          id = "overview_projection",
+          resources = unname(projection_resources),
+          dataset_identity = dataset_identity
+        )
+      )
+    }
     resources <- viewerSpatialGeometryCatalog()
     if (length(resources)) {
       session$sendCustomMessage(

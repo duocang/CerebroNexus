@@ -786,6 +786,45 @@ test_that("large canonical categorical payloads keep coordinates contiguous", {
   expect_identical(header$data$y$`__cv_wire__`, "f32")
 })
 
+test_that("canonical scatter resources avoid materializing million-cell vectors", {
+  projection <- list(
+    protocol = "canonical-projection-v1",
+    url = "projection.bin",
+    cells = 1000000L,
+    dimensions = 2L,
+    dtype = "float32"
+  )
+  categories <- list(
+    protocol = "canonical-metadata-codes-v1",
+    url = "cluster.codes.bin",
+    cells = 1000000L,
+    dtype = "uint8",
+    levels = c("A", "B"),
+    code_map = c(-1L, 0L, 1L)
+  )
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(),
+    color = NULL,
+    color_variable = "cluster",
+    selection_keys = integer(),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE,
+    cell_count = 1000000L,
+    coordinate_resource = projection,
+    categorical_resource = categories
+  )
+
+  expect_null(payload$data[["x"]])
+  expect_null(payload$data[["y"]])
+  expect_null(payload$data$selection_key)
+  expect_identical(payload$data$projection_resource, projection)
+  expect_identical(payload$data$categorical_resource, categories)
+  expect_identical(payload$data$deferred_selection_lengths, 1000000L)
+  expect_identical(unlist(payload$meta$traces), c("A", "B"))
+})
+
 test_that("selection counts use payload cell IDs", {
   expect_identical(
     utils_env$cerebroSelectionCount(list(

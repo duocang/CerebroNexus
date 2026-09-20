@@ -1121,25 +1121,57 @@ cerebroCellViewScatterPayload <- function(
   y_range = list(),
   reset_axes = FALSE,
   n_dimensions = 2L,
-  space_label = NULL
+  space_label = NULL,
+  cell_count = NULL,
+  coordinate_resource = NULL,
+  categorical_resource = NULL
 ) {
   dimensions <- if (as.integer(n_dimensions) == 3L) 3L else 2L
-  if (length(coordinates) < dimensions) {
+  resource_coordinates <- is.list(coordinate_resource) &&
+    is.character(coordinate_resource$url) &&
+    length(coordinate_resource$url) == 1L &&
+    nzchar(coordinate_resource$url)
+  resource_categories <- is.list(categorical_resource) &&
+    is.character(categorical_resource$url) &&
+    length(categorical_resource$url) == 1L &&
+    nzchar(categorical_resource$url) &&
+    length(categorical_resource$levels)
+  if (!resource_coordinates && length(coordinates) < dimensions) {
     stop("coordinates do not contain the requested dimensions")
   }
-  cell_counts <- c(
-    vapply(coordinates[seq_len(dimensions)], length, integer(1)),
-    color = length(color),
-    selection_keys = length(selection_keys)
-  )
+  cell_counts <- c()
+  if (!is.null(cell_count)) {
+    cell_counts <- c(cell_counts, cell_count = as.integer(cell_count))
+  }
+  if (resource_coordinates) {
+    cell_counts <- c(cell_counts, coordinates = as.integer(coordinate_resource$cells))
+  } else {
+    cell_counts <- c(
+      cell_counts,
+      vapply(coordinates[seq_len(dimensions)], length, integer(1))
+    )
+  }
+  if (resource_categories) {
+    cell_counts <- c(cell_counts, color = as.integer(categorical_resource$cells))
+  } else {
+    cell_counts <- c(cell_counts, color = length(color))
+  }
+  if (length(selection_keys)) {
+    cell_counts <- c(cell_counts, selection_keys = length(selection_keys))
+  }
+  if (!length(cell_counts) || anyNA(cell_counts) || any(cell_counts < 0L)) {
+    stop("cell_count or valid cell resources are required")
+  }
   if (length(unique(cell_counts)) != 1L) {
     stop(
       "coordinates, color, and selection_keys must describe the same number of cells"
     )
   }
 
-  continuous <- is.numeric(color)
-  has_z <- as.integer(n_dimensions) == 3L && length(coordinates) >= 3L
+  n_cells <- unname(cell_counts[[1L]])
+  continuous <- if (resource_categories) FALSE else is.numeric(color)
+  has_z <- !resource_coordinates &&
+    as.integer(n_dimensions) == 3L && length(coordinates) >= 3L
   meta <- list(
     color_type = if (continuous) "continuous" else "categorical",
     color_variable = color_variable,
@@ -1155,8 +1187,8 @@ cerebroCellViewScatterPayload <- function(
     meta[["space_label"]] <- space_label
   }
   data <- list(
-    x = if (continuous) I(coordinates[[1L]]) else list(),
-    y = if (continuous) I(coordinates[[2L]]) else list(),
+    x = if (continuous && !resource_coordinates) I(coordinates[[1L]]) else list(),
+    y = if (continuous && !resource_coordinates) I(coordinates[[2L]]) else list(),
     selection_key = if (continuous) I(selection_keys) else list(),
     color = if (continuous) I(color) else list(),
     point_size = point_size,
@@ -1176,7 +1208,7 @@ cerebroCellViewScatterPayload <- function(
       if (!is.list(column) || is.null(column$label) || is.null(column$values)) {
         stop("hover columns require label and values")
       }
-      if (length(column$values) != cell_counts[[1L]]) {
+      if (length(column$values) != n_cells) {
         stop("hover columns must describe the same number of cells")
       }
       column
@@ -1202,10 +1234,34 @@ cerebroCellViewScatterPayload <- function(
     })
   }
   if (continuous) {
+    if (resource_coordinates) {
+      data$x <- NULL
+      data$y <- NULL
+      data$projection_resource <- coordinate_resource
+    }
     return(list(meta = meta, data = data, hover = hover_data))
   }
   if (is.null(color_assignments)) {
     stop("color_assignments are required for categorical cell views")
+  }
+  if (resource_categories) {
+    traces <- as.character(categorical_resource$levels)
+    missing_levels <- setdiff(traces, names(color_assignments))
+    if (length(missing_levels)) {
+      stop(
+        "color_assignments are missing categorical levels: ",
+        paste(missing_levels, collapse = ", ")
+      )
+    }
+    meta[["traces"]] <- as.list(traces)
+    data[["x"]] <- NULL
+    data[["y"]] <- NULL
+    data[["selection_key"]] <- NULL
+    data[["color"]] <- as.list(unname(color_assignments[traces]))
+    data[["projection_resource"]] <- coordinate_resource
+    data[["categorical_resource"]] <- categorical_resource
+    data[["deferred_selection_lengths"]] <- as.integer(n_cells)
+    return(list(meta = meta, data = data, hover = hover_data))
   }
   color <- as.character(color)
   color[is.na(color)] <- "(missing)"

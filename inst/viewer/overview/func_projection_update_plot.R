@@ -9,13 +9,13 @@ overview_projection_update_plot <- function(input) {
   plot_parameters <- input[["plot_parameters"]]
   color_assignments <- input[["color_assignments"]]
   color_variable <- plot_parameters[["color_variable"]]
-  color_input <- cells_df[[color_variable]]
   n_dimensions <- plot_parameters[["n_dimensions"]]
+  resource_first <- isTRUE(input[["resource_first"]])
   payload <- cerebroCellViewScatterPayload(
-    coordinates = coordinates,
-    color = color_input,
+    coordinates = if (resource_first) list() else coordinates,
+    color = if (resource_first) NULL else cells_df[[color_variable]],
     color_variable = color_variable,
-    selection_keys = seq_len(nrow(cells_df)),
+    selection_keys = if (resource_first) integer() else seq_len(nrow(cells_df)),
     point_size = plot_parameters[["point_size"]],
     point_opacity = plot_parameters[["point_opacity"]],
     group_labels = plot_parameters[["group_labels"]],
@@ -32,23 +32,30 @@ overview_projection_update_plot <- function(input) {
     color_assignments = color_assignments,
     hover_columns = list(),
     hover = FALSE,
-    space_label = plot_parameters[["projection"]]
+    space_label = plot_parameters[["projection"]],
+    cell_count = input[["cell_count"]],
+    coordinate_resource = if (resource_first) {
+      input[["projection_resource"]]
+    } else {
+      NULL
+    },
+    categorical_resource = if (resource_first) {
+      input[["categorical_resource"]]
+    } else {
+      NULL
+    }
   )
-  projection_asset <- viewerProjectionAsset(
-    plot_parameters[["projection"]],
-    cell_indices
-  )
-  failed_asset <- input[["projection_resource_failed"]]
-  if (
-    is.list(projection_asset) &&
-      !identical(as.character(failed_asset), projection_asset$url)
-  ) {
+  if (!resource_first && is.list(input[["projection_resource"]])) {
     payload$data$x <- NULL
     payload$data$y <- NULL
     payload$data$z <- NULL
-    payload$data$projection_resource <- projection_asset
+    payload$data$projection_resource <- input[["projection_resource"]]
   }
-  selection_rows <- payload$data$selection_key
+  selection_rows <- if (resource_first) {
+    seq_len(input[["cell_count"]])
+  } else {
+    payload$data$selection_key
+  }
   deferred_aux <- function() {
     metadata <- getMetaData()
     groups <- getGroups()
