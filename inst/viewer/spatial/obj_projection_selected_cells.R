@@ -13,10 +13,6 @@ spatial_projection_interaction_data <- function(plot_data) {
 }
 
 spatial_projection_selected_cells <- reactive({
-  ## make sure plot parameters are set because it means that the plot can be
-  ## generated
-  req(spatial_projection_data_to_plot())
-
   ## The selection is held persistently on the JS side (see
   ## cell_views.js) and pushed here as {x, y, ids} so it survives plot
   ## parameter changes. Plotly's own plotly_selected event is NOT used, because a
@@ -29,6 +25,11 @@ spatial_projection_selected_cells <- reactive({
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }
+
+  ## Do not make the empty-selection path depend on the million-cell plot-data
+  ## reactive. The plotted coordinates and metadata are only needed after the
+  ## browser has supplied a real selection.
+  req(spatial_projection_data_to_plot())
   selection <- data.frame(
     x = as.numeric(sel[["x"]]),
     y = as.numeric(sel[["y"]]),

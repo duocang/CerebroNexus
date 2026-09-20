@@ -1109,6 +1109,95 @@ test_that("shared Canvas owns spatial background identity and appearance", {
   )
 })
 
+test_that("empty spatial selection returns before million-cell plot data", {
+  selected_source <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_selected_cells.R"
+    )),
+    collapse = "\n"
+  )
+  selection_read <- regexpr(
+    'sel <- input[["spatial_projection_persistent_selection"]]',
+    selected_source,
+    fixed = TRUE
+  )[[1L]]
+  empty_return <- regexpr(
+    'if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0)',
+    selected_source,
+    fixed = TRUE
+  )[[1L]]
+  plot_data_read <- regexpr(
+    "req(spatial_projection_data_to_plot())",
+    selected_source,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(selection_read, 0L)
+  expect_gt(empty_return, selection_read)
+  expect_gt(plot_data_read, empty_return)
+
+  summary_source <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "out_number_of_selected_cells.R"
+    )),
+    collapse = "\n"
+  )
+  expect_gte(
+    lengths(regmatches(
+      summary_source,
+      gregexpr(
+        "req(!is.null(selection), nrow(selection) > 0L)",
+        summary_source,
+        fixed = TRUE
+      )
+    )),
+    2L
+  )
+
+  calls <- new.env(parent = emptyenv())
+  calls$plot_data <- 0L
+  selected_lines <- readLines(viewer_test_path(
+    "spatial",
+    "obj_projection_selected_cells.R"
+  ))
+  observer_line <- grep("^observeEvent\\(", selected_lines)[[1L]]
+  selected_reactive_source <- paste(
+    selected_lines[seq_len(observer_line - 1L)],
+    collapse = "\n"
+  )
+  server <- function(input, output, session) {
+    spatial_projection_data_to_plot <- reactive({
+      calls$plot_data <- calls$plot_data + 1L
+      list(cells_df = data.frame(cell_index = 1L), coordinates = data.frame(
+        x = 1,
+        y = 2
+      ))
+    })
+    getMetaData <- function() data.frame(cell_barcode = "cell-1")
+    viewerProjectionSubsetRows <- function(data, index, columns = NULL) data
+    filterSelectionByHiddenGroups <- function(...) stop(
+      "hidden-group filtering should not run in this contract"
+    )
+    eval(parse(text = selected_reactive_source), envir = environment())
+  }
+
+  shiny::testServer(server, {
+    expect_null(shiny::isolate(spatial_projection_selected_cells()))
+    expect_identical(calls$plot_data, 0L)
+
+    session$setInputs(spatial_projection_persistent_selection = list(
+      x = 1,
+      y = 2,
+      ids = "cell-1"
+    ))
+    selection <- shiny::isolate(spatial_projection_selected_cells())
+    expect_identical(calls$plot_data, 1L)
+    expect_identical(selection$selection_key, "cell-1")
+    expect_identical(selection$identifier, "1-2")
+  })
+})
+
 test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
   main_ui <- viewer_test_path(
     "spatial",
