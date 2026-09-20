@@ -21,6 +21,19 @@ test_that("the million-cell renderer is loaded before cell views", {
   expect_match(engine, "CerebroPointRenderer.create", fixed = TRUE)
   expect_match(engine, "replaceGpuWithWebGl", fixed = TRUE)
   expect_match(engine, "setData", fixed = TRUE)
+
+  benchmark <- paste(
+    readLines(
+      testthat::test_path("..", "bench", "benchmark_million_cell_renderer.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    benchmark,
+    'setdiff(chromote::get_chrome_args(), "--disable-gpu")',
+    fixed = TRUE
+  )
 })
 
 test_that("WebGPU failures make the renderer fall back", {

@@ -2,6 +2,13 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 Sys.setenv(NOT_CRAN = "true")
+# chromote disables GPU acceleration by default for test stability. This
+# benchmark explicitly measures the production million-cell GPU path, so that
+# default would make its WebGPU requirement impossible to satisfy.
+chromote::set_chrome_args(setdiff(
+  chromote::get_chrome_args(),
+  "--disable-gpu"
+))
 script_argument <- grep("^--file=", commandArgs(), value = TRUE)[[1L]]
 source(file.path(
   dirname(normalizePath(sub("^--file=", "", script_argument))),

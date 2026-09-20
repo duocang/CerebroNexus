@@ -506,6 +506,7 @@
 /* The wrapper gives the minimap a stable positioning anchor. */
 .coordviews-page .cv-canvas-wrap {
   position: relative; margin: auto 0; align-self: center;
+  background: var(--c-surface); border-radius: 6px;
 }
 .coordviews-page canvas {
   /* JS fits the canvas inside its panel without distorting spatial geometry. */
@@ -513,12 +514,15 @@
   border-radius: 6px; cursor: crosshair;
   transition: width .2s ease, height .2s ease;
 }
+.coordviews-page canvas.cv-underlay-layer,
 .coordviews-page canvas.cv-gpu-layer {
   position: absolute; inset: 0; z-index: 0;
-  background: var(--c-surface); pointer-events: none;
+  background: transparent; pointer-events: none;
 }
+.coordviews-page canvas.cv-gpu-layer { z-index: 1; }
+.coordviews-page canvas.cv-layer-overlay,
 .coordviews-page canvas.cv-gpu-overlay {
-  position: relative; z-index: 1; background: transparent;
+  position: relative; z-index: 2; background: transparent;
 }
 /* ---- minimap ------------------------------------------------------------ */
 /* Deliberately coarse: a subsampled impression of the space plus a frame for the

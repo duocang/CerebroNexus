@@ -1072,7 +1072,7 @@ test_that("shared browser base reuses only matching dataset projections", {
     )
   )
 })
-test_that("trajectory cell views remain eligible for WebGPU", {
+test_that("decorated 2-D cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
   runner <- tempfile(fileext = ".js")
@@ -1086,14 +1086,43 @@ test_that("trajectory cell views remain eligible for WebGPU", {
       ),
       "const fn = source.match(/function gpuCandidate\\(p\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
       "const GPU_MIN_CELLS = 4096, D = {n: 1000000};",
-      "const spaceById = {trajectory: {_unit: {nz: false}, trajectory: true}};",
+      "const spaceById = {",
+      "trajectory: {_unit: {nz: false}, trajectory: true},",
+      "spatial: {_unit: {nz: false}, background_scope: 'spatial',",
+      "  _axisSpec: {}, hulls: [{x:[0,1,0],y:[0,0,1]}]},",
+      "sized: {_unit: {nz: false}, pointSizes: new Float32Array(1000000)},",
+      "threeD: {_unit: {nz: true}}};",
       "eval(fn);",
-      "if (!gpuCandidate({gpu: {}, spaceId: 'trajectory'})) process.exit(1);"
+      "if (!gpuCandidate({gpu: {}, spaceId: 'trajectory'})) process.exit(1);",
+      "if (!gpuCandidate({gpu: {}, spaceId: 'spatial'})) process.exit(2);",
+      "if (gpuCandidate({gpu: {}, spaceId: 'sized'})) process.exit(3);",
+      "if (gpuCandidate({gpu: {}, spaceId: 'threeD'})) process.exit(4);"
     ),
     runner
   )
 
   expect_identical(system2("node", runner), 0L)
+})
+
+test_that("GPU cell views split underlay, points and interaction overlay", {
+  javascript <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  stylesheet <- paste(
+    readLines(viewer_test_path("www", "coordviews.css"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(javascript, "function attachUnderlay(p)", fixed = TRUE)
+  expect_match(javascript, "if (needsUnderlay(p)) attachUnderlay(p)", fixed = TRUE)
+  expect_match(javascript, "drawImage(p, underlay)", fixed = TRUE)
+  expect_match(javascript, "drawHulls(p, underlay)", fixed = TRUE)
+  expect_match(javascript, "drawTrajectory(p, underlay)", fixed = TRUE)
+  expect_match(javascript, "panel.underlayCanvas", fixed = TRUE)
+  expect_match(stylesheet, "canvas.cv-underlay-layer", fixed = TRUE)
+  expect_match(stylesheet, "canvas.cv-gpu-layer { z-index: 1; }", fixed = TRUE)
+  expect_match(stylesheet, "z-index: 2; background: transparent", fixed = TRUE)
 })
 
 test_that("single Canvas views accept per-point sizes", {
@@ -1192,6 +1221,11 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_no_match(benchmark, "!isTRUE(first) ||", fixed = TRUE)
   expect_match(benchmark, "cerebro:specialist-state", fixed = TRUE)
   expect_match(benchmark, "cerebro:linkedviews-ready", fixed = TRUE)
+  expect_match(
+    benchmark,
+    'setdiff(\n  chromote::get_chrome_args(),\n  "--disable-gpu"',
+    fixed = TRUE
+  )
   expect_match(benchmark, "cerebroLinkedViewsState.primaryReady()", fixed = TRUE)
   expect_match(benchmark, "completion_ready", fixed = TRUE)
   expect_match(benchmark, "complete_elapsed_ms", fixed = TRUE)

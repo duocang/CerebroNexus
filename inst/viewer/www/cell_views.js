@@ -1011,6 +1011,13 @@
     p.canvas.style.width = width + 'px';
     p.canvas.style.height = height + 'px';
     p.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (p.underlayCanvas) {
+      p.underlayCanvas.width = width * dpr;
+      p.underlayCanvas.height = height * dpr;
+      p.underlayCanvas.style.width = width + 'px';
+      p.underlayCanvas.style.height = height + 'px';
+      p.underlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
     if (p.gpu) p.gpu.resize(width, height, dpr);
     if (p.pane) p.pane.classList.toggle('cv-narrow', width < 420);
     project(p);
@@ -1042,7 +1049,7 @@
     return [x * Math.cos(theta) - y * Math.sin(theta),
       x * Math.sin(theta) + y * Math.cos(theta)];
   }
-  function drawImage(p) {
+  function drawImage(p, context) {
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
     var state = sp && sp._imgState;
@@ -1069,7 +1076,7 @@
       centerData[1] + state.offsetY);
     var offSX = o1 ? (o1[0] - center[0]) : 0;
     var offSY = o1 ? (o1[1] - center[1]) : 0;
-    var c = p.ctx;
+    var c = context || p.ctx;
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(center[0] + offSX, center[1] + offSY);
@@ -1083,10 +1090,10 @@
     c.globalAlpha = 1;
   }
 
-  function drawTrajectory(p) {
+  function drawTrajectory(p, context) {
     var sp = spaceById[p.spaceId];
     if (!sp || !sp.trajectory || !sp.edges) return;
-    var c = p.ctx;
+    var c = context || p.ctx;
     c.save();
     c.globalAlpha = 0.72;
     c.strokeStyle = '#1f2937';
@@ -1113,10 +1120,10 @@
     c.restore();
   }
 
-  function drawHulls(p) {
+  function drawHulls(p, context) {
     var sp = spaceById[p.spaceId];
     if (!sp || !sp.hulls || !sp.hulls.length) return;
-    var c = p.ctx;
+    var c = context || p.ctx;
     sp.hulls.forEach(function (hull) {
       if (!hull || hull.x.length < 3 || hull.x.length !== hull.y.length) return;
       c.save(); c.beginPath();
@@ -1571,9 +1578,10 @@
   function gpuCandidate(p) {
     if (!p.gpu || !D || D.n < GPU_MIN_CELLS) return false;
     var space = spaceById[p.spaceId], unit = space && space._unit;
-    return !!(space && unit && !unit.nz && !space.background_scope &&
-      !space.pointSizes &&
-      !space._axisSpec && !(space.hulls && space.hulls.length));
+    // Images, hulls and trajectories live on the CPU underlay; axes, labels and
+    // interaction marks live on the CPU overlay. Only features that change the
+    // point primitive itself still require the Canvas2D path.
+    return !!(space && unit && !unit.nz && !space.pointSizes);
   }
   function gpuEligible(p) {
     return gpuCandidate(p) && p.gpu.isReady();
@@ -1665,6 +1673,31 @@
       canvas.remove();
       p.gpuCanvas = null;
     }
+  }
+
+  function attachUnderlay(p) {
+    if (p.underlayCanvas) return;
+    var canvas = document.createElement('canvas');
+    canvas.className = 'cv-underlay-layer';
+    canvas.setAttribute('aria-hidden', 'true');
+    p.canvas.parentNode.insertBefore(canvas, p.canvas.nextSibling);
+    p.underlayCanvas = canvas;
+    p.underlayCtx = canvas.getContext('2d');
+    p.canvas.classList.add('cv-layer-overlay');
+    if (p.W && p.H) {
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = p.W * dpr;
+      canvas.height = p.H * dpr;
+      canvas.style.width = p.W + 'px';
+      canvas.style.height = p.H + 'px';
+      p.underlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  function needsUnderlay(p) {
+    var space = spaceById[p.spaceId];
+    return !!(space && (space.background_scope || space.trajectory ||
+      (space.hulls && space.hulls.length)));
   }
 
   function buildGpuData(p, shownMask, shownCount) {
@@ -1839,12 +1872,15 @@
 
   function draw(p, shownMask, shownCount) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
+    if (needsUnderlay(p)) attachUnderlay(p);
+    var underlay = p.underlayCtx || c;
+    if (underlay !== c) underlay.clearRect(0, 0, p.W, p.H);
     if (!p.ok) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
-    drawImage(p);
-    drawHulls(p);
-    drawTrajectory(p);
+    drawImage(p, underlay);
+    drawHulls(p, underlay);
+    drawTrajectory(p, underlay);
     drawAxes(p);
     // One two-layer pass: background on layer 0, foreground on layer 1 (on top).
     // The foreground is the "meaningful" set — expressing cells in RGB mode,
@@ -2711,6 +2747,15 @@
       var canvasY = canvasRect.top - bounds.top + padding;
       context.fillStyle = '#ffffff';
       context.fillRect(canvasX, canvasY, canvasRect.width, canvasRect.height);
+      if (panel.underlayCanvas) {
+        context.drawImage(
+          panel.underlayCanvas,
+          canvasX,
+          canvasY,
+          canvasRect.width,
+          canvasRect.height
+        );
+      }
       if (panel.gpuCanvas && panel.gpuCanvas.style.display !== 'none') {
         context.drawImage(
           panel.gpuCanvas,
@@ -4141,6 +4186,7 @@
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
         view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null,
+        underlayCanvas: null, underlayCtx: null,
         gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null,
         gpuTransformOnly: false };
       attachGpu(p);

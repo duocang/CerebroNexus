@@ -15,15 +15,16 @@ app_dir <- file.path(dirname(script), "million_cell_renderer_app")
 Sys.setenv(NOT_CRAN = "true")
 expected <- Sys.getenv("CEREBRO_RENDERER_BACKEND", unset = "")
 force_webgl <- identical(expected, "webgl2")
+chrome_args <- setdiff(chromote::get_chrome_args(), "--disable-gpu")
 if (force_webgl) {
-  chrome_args <- setdiff(chromote::get_chrome_args(), "--disable-gpu")
-  chromote::set_chrome_args(c(
+  chrome_args <- c(
     chrome_args,
     "--enable-webgl",
     "--ignore-gpu-blocklist",
     "--use-angle=swiftshader"
-  ))
+  )
 }
+chromote::set_chrome_args(chrome_args)
 driver <- shinytest2::AppDriver$new(
   app_dir,
   name = "million-cell-renderer",

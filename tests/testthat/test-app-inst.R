@@ -219,6 +219,18 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
+  app$wait_for_js(
+    paste0(
+      "(() => {const host=document.getElementById(",
+      "'spatial_projection_cell_view_host');",
+      "const underlay=host?.querySelector('canvas.cv-underlay-layer');",
+      "const overlay=host?.querySelector('canvas.cv-layer-overlay');",
+      "return !!underlay&&!!overlay&&",
+      "getComputedStyle(underlay).zIndex==='0'&&",
+      "getComputedStyle(overlay).zIndex==='2';})()"
+    ),
+    timeout = 30000
+  )
   wait_for_input(app, "spatial_projection_background_scale", timeout = 30000)
   wait_for_input(app, "spatial_projection_background_scale_x", timeout = 30000)
   wait_for_input(app, "spatial_projection_background_scale_y", timeout = 30000)
