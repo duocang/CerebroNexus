@@ -816,7 +816,12 @@ test_that("Projection renders an empty filter result instead of retaining cells"
     )
   }
   data_to_plot <- viewer_source("overview", "obj_projection_data_to_plot.R")
-  expect_match(data_to_plot, "nrow(cells_df) == 0L", fixed = TRUE)
+  expect_match(data_to_plot, "if (!length(cell_indices))", fixed = TRUE)
+  expect_match(
+    data_to_plot,
+    "cell_count = length(cell_indices)",
+    fixed = TRUE
+  )
 })
 
 test_that("Specialist group filters reuse the Linked views control", {

@@ -325,10 +325,6 @@ test_that("specialist pages resend whenever they become visible again", {
     list(
       c("trajectory", "projection_plot.R"),
       "trajectory_projection_render_request"
-    ),
-    list(
-      c("hla_tcr_motifs", "visualizations.R"),
-      "hla_motif_network_render_request"
     )
   )
 
@@ -344,6 +340,20 @@ test_that("specialist pages resend whenever they become visible again", {
       info = page[[2]]
     )
   }
+
+  hla <- paste(
+    readLines(
+      viewer_test_path("hla_tcr_motifs", "visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    hla,
+    'render_request <- input[["hla_motif_network_render_request"]]',
+    fixed = TRUE
+  )
+  expect_match(hla, "req(render_request)", fixed = TRUE)
 })
 
 test_that("specialist tab clicks request the primary frame without polling", {
@@ -1044,9 +1054,10 @@ test_that("Gene projection streams canonical geometry with wire fallback", {
   )
   expect_match(
     data_source,
-    "if (no_gene_selected) NULL else expression_projection_data()",
+    "metadata <- NULL",
     fixed = TRUE
   )
+  expect_no_match(data_source, "expression_projection_data()", fixed = TRUE)
   expect_match(render_source, "viewerProjectionAsset(", fixed = TRUE)
   expect_match(render_source, "viewerSharedProjectionName(", fixed = TRUE)
   expect_match(
@@ -1427,8 +1438,10 @@ test_that("single Canvas trajectories accept compact endpoint edges", {
 
   expect_match(javascript, "columns.from && columns.to", fixed = TRUE)
   expect_match(javascript, "sp.x[from]", fixed = TRUE)
-  expect_match(hla, "from = as.integer(from)", fixed = TRUE)
-  expect_match(hla, "to = as.integer(to)", fixed = TRUE)
+  expect_match(hla, "from <- as.integer(vn$edges$from)", fixed = TRUE)
+  expect_match(hla, "to <- as.integer(vn$edges$to)", fixed = TRUE)
+  expect_match(hla, "from = from", fixed = TRUE)
+  expect_match(hla, "to = to", fixed = TRUE)
   expect_no_match(hla, "x0 = vn$layout[from, 1]", fixed = TRUE)
 })
 

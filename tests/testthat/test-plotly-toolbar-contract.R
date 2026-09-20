@@ -94,8 +94,12 @@ test_that("the declared Shiny minimum supplies Font Awesome 6", {
     " ",
     packageDescription("CerebroNexus")[["Imports"]]
   )
-
-  expect_match(description, "shiny \\(>= 1[.]7[.]2[.]1\\)")
+  declared <- sub(
+    ".*shiny \\(>= ([^)]+)\\).*",
+    "\\1",
+    description
+  )
+  expect_gte(utils::compareVersion(declared, "1.7.2.1"), 0L)
 })
 
 test_that("shared Plotly toolbars render their icons and charts", {
