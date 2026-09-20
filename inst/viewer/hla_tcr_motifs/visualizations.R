@@ -301,6 +301,67 @@ hla_build_motif_visnet <- function(
     character(1)
   )
 
+  # Send tooltip fields as compact columns. Repeating the full HTML template for
+  # every node made hover text the second-largest part of the HLA frame. The
+  # browser already knows how to expand dictionary-coded categorical columns.
+  hover_categorical <- function(label, values) {
+    values <- as.character(values)
+    missing <- is.na(values) | !nzchar(values)
+    levels <- unique(values[!missing])
+    if (!length(levels)) {
+      return(NULL)
+    }
+    codes <- match(values, levels) - 1L
+    codes[missing] <- NA_integer_
+    list(label = label, levels = levels, values = codes)
+  }
+  hover_numeric <- function(label, values, format = NULL, digits = NULL) {
+    values <- suppressWarnings(as.numeric(values))
+    if (!length(values) || all(is.na(values))) {
+      return(NULL)
+    }
+    out <- list(label = label, values = values)
+    if (!is.null(format)) out$format <- format
+    if (!is.null(digits)) out$digits <- digits
+    out
+  }
+  carrier_detail <- if (use_carrier && !is.null(carrier_counts)) {
+    sprintf(
+      "%d carrier / %d non-carrier / %d untyped %s",
+      carrier_counts$n_carrier,
+      carrier_counts$n_noncarrier,
+      carrier_counts$n_untyped,
+      if (identical(unit_noun, "cell")) "sample(s)" else "donor(s)"
+    )
+  } else {
+    rep(NA_character_, n)
+  }
+  hover_columns <- Filter(
+    Negate(is.null),
+    list(
+      hover_categorical("Motif", topo_cluster),
+      hover_categorical("Consensus", consensus),
+      hover_numeric("Max mismatch", diameter, "integer"),
+      hover_categorical("Variable residue", node_label),
+      hover_numeric(
+        if (identical(unit_noun, "cell")) "Clone size" else "Analysis units",
+        clone_count,
+        "integer"
+      ),
+      if (!is.na(total_cells) && total_cells > 0) {
+        hover_numeric("Fraction (%)", 100 * clone_count / total_cells, "fixed", 1)
+      },
+      hover_numeric("Neighbours", deg, "integer"),
+      if (use_carrier) hover_categorical(carrier_allele %||% "HLA carrier", group_raw),
+      if (use_carrier) hover_categorical("Carrier counts", carrier_detail),
+      if (!is.na(lineage_col)) hover_categorical(lineage_col, cell_dist),
+      if (!color_col %in% skip_dist) hover_categorical(color_col, color_dist),
+      if (!is.null(chain)) hover_categorical("Chain", rep(chain, n)),
+      hover_categorical("V gene", v_gene),
+      hover_categorical("J gene", j_gene)
+    )
+  )
+
   ## NO `group` column, deliberately. vis-network auto-registers any group it
   ## has not been told about and paints it from its own default palette
   ## (#97C2FC, #FFFF00, #FB7E81, #7BE141, ...), which overrides the per-node
@@ -380,6 +441,7 @@ hla_build_motif_visnet <- function(
     nodes = nodes,
     edges = edges,
     layout = layout,
+    hover_columns = hover_columns,
     legend = legend,
     legend_title = if (color_col == "cluster") {
       "Motif cluster"
@@ -517,7 +579,7 @@ observe({
     ),
     hover = list(
       hoverinfo = "text",
-      text = vn$nodes$title
+      columns = vn$hover_columns
     ),
     extra = list(
       edges = list(

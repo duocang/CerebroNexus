@@ -159,6 +159,8 @@ test_that("motif network exposes a stable selected-node detail panel", {
   expect_no_match(viz, "window.hlaShowNodeDetails", fixed = TRUE)
   expect_no_match(viz, "hla_selected_node_id", fixed = TRUE)
   expect_match(viz, 'hoverinfo = "text"', fixed = TRUE)
+  expect_match(viz, "columns = vn$hover_columns", fixed = TRUE)
+  expect_no_match(viz, "text = vn$nodes$title", fixed = TRUE)
   expect_no_match(js, "hla-refresh-node-details", fixed = TRUE)
 })
 

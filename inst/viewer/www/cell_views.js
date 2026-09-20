@@ -3538,12 +3538,13 @@
   function hoverHtml(i, pinned) {
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
-      var columns = singleSpace && singleSpace._hoverColumns;
-      if (Array.isArray(columns) && columns.length) {
-        var lines = ['Cell: ' + cellLabel(i)];
-        columns.forEach(function (column) {
-          lines.push(column.label + ': ' + singleHoverColumnValue(column, i, singleSpace));
-        });
+        var columns = singleSpace && singleSpace._hoverColumns;
+        if (Array.isArray(columns) && columns.length) {
+          var lines = ['Cell: ' + cellLabel(i)];
+          columns.forEach(function (column) {
+            var value = singleHoverColumnValue(column, i, singleSpace);
+            if (value !== '') lines.push(column.label + ': ' + value);
+          });
         return '<div class="cv-tip-row">' +
           esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>';
       }
