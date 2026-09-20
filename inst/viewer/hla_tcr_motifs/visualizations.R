@@ -43,14 +43,6 @@ HLA_CONTEXT_COLORS <- c(
   "Unknown" = "#b8bcc4"
 )
 
-## ---- HTML-escape helper ----------------------------------------------- ##
-hla_esc <- function(x) {
-  x <- as.character(x)
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  gsub(">", "&gt;", x, fixed = TRUE)
-}
-
 ## ---- Build Canvas data from a motif igraph ----------------------------- ##
 ## Node area is proportional to clone_count; colour follows `color_by` (a node attribute) or the
 ## motif cluster by default. Tooltip shows CDR3, clone size + fraction, motif
@@ -235,72 +227,6 @@ hla_build_motif_visnet <- function(
     rep(NA_character_, n)
   }
 
-  titles <- vapply(
-    seq_len(n),
-    function(i) {
-      frac <- if (
-        !is.na(total_cells) && total_cells > 0 && !is.na(clone_count[i])
-      ) {
-        sprintf(" (%.1f%%)", 100 * clone_count[i] / total_cells)
-      } else {
-        ""
-      }
-      lines <- c(
-        sprintf("<b>%s</b>", hla_esc(cdr3[i])),
-        if (!is.na(consensus[i])) {
-          sprintf(
-            "Motif %s &middot; consensus %s &middot; max mismatch %s",
-            hla_esc(topo_cluster[i]),
-            hla_esc(consensus[i]),
-            hla_esc(diameter[i])
-          )
-        },
-        if (nzchar(node_label[i])) {
-          sprintf("Variable residue: %s", hla_esc(node_label[i]))
-        },
-        # Name the unit for what it actually is. On bulk data there are no
-        # cells, so calling this a clone size would invent a measurement.
-        sprintf(
-          "%s: %s%s",
-          if (identical(unit_noun, "cell")) "Clone size" else "Analysis units",
-          hla_esc(clone_count[i]),
-          frac
-        ),
-        sprintf("Neighbours: %s", hla_esc(deg[i])),
-        if (use_carrier) {
-          # Never let the label stand alone: "Carrier" can mean ten carriers or
-          # one carrier and nine untyped, and the colour cannot tell them apart.
-          cnt <- if (!is.null(carrier_counts)) {
-            sprintf(
-              "<br>&nbsp;&nbsp;%d carrier / %d non-carrier / %d untyped %s",
-              carrier_counts$n_carrier[i],
-              carrier_counts$n_noncarrier[i],
-              carrier_counts$n_untyped[i],
-              if (identical(unit_noun, "cell")) "sample(s)" else "donor(s)"
-            )
-          } else {
-            ""
-          }
-          sprintf(
-            "%s: <b>%s</b>%s%s",
-            hla_esc(carrier_allele %||% "HLA carrier status"),
-            hla_esc(group_raw[i]),
-            cnt,
-            "<br>&nbsp;&nbsp;<i>candidate co-occurrence, not restriction</i>"
-          )
-        },
-        if (!is.na(cell_dist[i])) hla_esc(cell_dist[i]),
-        if (!is.na(color_dist[i])) {
-          sprintf("%s: %s", hla_esc(color_col), hla_esc(color_dist[i]))
-        },
-        if (!is.null(chain)) sprintf("Chain: %s", hla_esc(chain)),
-        sprintf("V/J: %s / %s", hla_esc(v_gene[i]), hla_esc(j_gene[i]))
-      )
-      paste(lines[!vapply(lines, is.null, logical(1))], collapse = "<br>")
-    },
-    character(1)
-  )
-
   # Send tooltip fields as compact columns. Repeating the full HTML template for
   # every node made hover text the second-largest part of the HLA frame. The
   # browser already knows how to expand dictionary-coded categorical columns.
@@ -378,8 +304,6 @@ hla_build_motif_visnet <- function(
     # squares the difference the eye reads. See hla_node_radius().
     size = hla_node_radius(clone_count, node_scale),
     color = node_color,
-    title = titles,
-    detail = titles,
     font.size = 16,
     font.color = "#2a3f5f",
     font.vadjust = -20,

@@ -697,7 +697,7 @@ test_that("no user-facing string calls the max mismatch a diameter", {
     collapse = "\n"
   )
   expect_no_match(viz, "consensus %s &middot; diameter", fixed = TRUE)
-  expect_match(viz, "max mismatch", fixed = TRUE)
+  expect_match(viz, 'hover_numeric("Max mismatch"', fixed = TRUE)
   expect_no_match(names(hla_motif_summary(NULL)), "^diameter$", perl = TRUE)
   expect_true("max_mismatch" %in% names(hla_motif_summary(NULL)))
 })

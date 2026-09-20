@@ -391,11 +391,16 @@ hla_by_v_default <- reactive({
 ## Scale the default to the data instead, so the first view is a readable set of
 ## the larger motifs; the slider still exposes the full range down to 2.
 hla_default_min_nodes <- reactive({
-  seg <- hla_segments()
-  if (is.null(seg) || nrow(seg) == 0) {
-    return(2L)
+  first <- hla_first_frame()
+  if (!is.null(first) && hla_motif_graph_ok(first$graph_raw)) {
+    n_cdr3 <- igraph::vcount(first$graph_raw)
+  } else {
+    seg <- hla_segments()
+    if (is.null(seg) || nrow(seg) == 0) {
+      return(2L)
+    }
+    n_cdr3 <- length(unique(seg$cdr3))
   }
-  n_cdr3 <- length(unique(seg$cdr3))
   if (n_cdr3 > 2000) {
     6L
   } else if (n_cdr3 > 500) {
@@ -638,13 +643,8 @@ hla_celltype_col_declared <- reactive({
 })
 
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
-hla_segments <- reactive({
+hla_segments_fallback <- reactive({
   chain <- hla_active_chain()
-  first <- hla_first_frame()
-  use_first <- !is.null(first) && isTRUE(hla_first_frame_filters_match())
-  if (use_first) {
-    return(first$segments)
-  }
   packed <- hla_packed_segments()
   data <- if (is.null(packed)) hla_ir_filtered() else packed
   if (is.null(data)) {
@@ -675,6 +675,17 @@ hla_segments <- reactive({
     hla_celltype_col(),
     available_crb_files$selected
   )
+
+hla_segments <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first) && isTRUE(hla_first_frame_filters_match())) {
+    # This table is already cached inside the viewer-pack asset. Passing its
+    # 18 MB payload through bindCache makes Shiny size and copy it again before
+    # the first graph can render.
+    return(first$segments)
+  }
+  hla_segments_fallback()
+})
 
 ## ---- Metadata columns to carry onto nodes (for tooltip / colouring) ---- ##
 hla_node_meta_cols <- reactive({
