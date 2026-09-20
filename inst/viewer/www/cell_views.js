@@ -6227,6 +6227,13 @@
         String(identity.pack_dataset_fingerprint || '') &&
       Number(resource.cells) === Number(identity.cell_count);
   }
+  function fetchValidatedProjectionResource(resource, message, expectedCells) {
+    if (resource && resource.protocol === 'canonical-projection-v1' &&
+        !canonicalProjectionIdentityMatches(resource, message)) {
+      return Promise.reject(new Error('Canonical projection identity mismatch'));
+    }
+    return fetchProjectionResource(resource, expectedCells);
+  }
   function fetchProjectionSubsetResource(resource) {
     var kind = String(resource && resource.kind || '');
     var canonicalCells = Number(resource && resource.canonical_cells) || 0;
@@ -6400,7 +6407,8 @@
     var coordinatesPromise = resource && resource.url
       ? (subsetResource
         ? canonicalProjectionCoordinates(resource, message)
-        : fetchProjectionResource(resource, data.n)) : Promise.resolve(null);
+        : fetchValidatedProjectionResource(resource, message, data.n))
+      : Promise.resolve(null);
     var subsetPromise = subsetResource
       ? fetchProjectionSubsetResource(subsetResource) : Promise.resolve(null);
     var groupsPromise = groupResource && groupResource.url
