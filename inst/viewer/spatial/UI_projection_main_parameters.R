@@ -123,6 +123,7 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
 })
 
 output[["spatial_projection_background_selector_UI"]] <- renderUI({
+  req(input[["spatial_projection_more_render_request"]])
   req(
     identical(input[["sidebar"]], "spatial") ||
       inherits(session, "MockShinySession")
@@ -208,8 +209,9 @@ lapply(
   }
 )
 
-## Render even when tab is hidden so that input values are available for
-## programmatic access (e.g. shinytest2) without waiting for tab activation.
+## Keep the output bindings active while hidden. The main parameters remain
+## available immediately; the background selector body is separately gated on
+## an explicit Settings request above so it cannot hydrate Spatial data early.
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",

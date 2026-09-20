@@ -270,6 +270,30 @@ test_that("background-image selection only recreates image calibration controls"
     'output\\[\\["spatial_projection_background_selector_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
     perl = TRUE
   )
+  selector_source <- sub(
+    '^[\\s\\S]*?output\\[\\["spatial_projection_background_selector_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI\\(\\{',
+    "",
+    main_parameters_ui,
+    perl = TRUE
+  )
+  selector_source <- sub(
+    "serverSideGeneSelector[\\s\\S]*$",
+    "",
+    selector_source,
+    perl = TRUE
+  )
+  selector_request <- regexpr(
+    'req(input[["spatial_projection_more_render_request"]])',
+    selector_source,
+    fixed = TRUE
+  )[[1]]
+  selector_spatial_read <- regexpr(
+    "getSpatialData(current_spatial)",
+    selector_source,
+    fixed = TRUE
+  )[[1]]
+  expect_gt(selector_request, 0)
+  expect_gt(selector_spatial_read, selector_request)
   expect_match(
     projection_ui,
     'uiOutput\\("spatial_projection_background_selector_UI"\\)'
@@ -1128,7 +1152,10 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
   }
 
   shiny::testServer(server, {
-    session$setInputs(spatial_projection_to_display = "sliceB")
+    session$setInputs(
+      spatial_projection_to_display = "sliceB",
+      spatial_projection_more_render_request = 1
+    )
     session$flushReact()
     main_html <- as.character(
       output$spatial_projection_main_parameters_UI$html
