@@ -465,7 +465,11 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(server, "tools::md5sum(file)", fixed = TRUE)
   expect_match(server, "shiny::addResourcePath", fixed = TRUE)
   expect_match(server, "shiny::removeResourcePath", fixed = TRUE)
-  expect_match(overview, "payload$data$projection_resource", fixed = TRUE)
+  expect_match(
+    overview,
+    'input[["projection_resource"]]',
+    fixed = TRUE
+  )
   expect_match(
     overview,
     "overview_projection_projection_resource_failed",
@@ -496,7 +500,7 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(server, 'id = "overview_projection"', fixed = TRUE)
   expect_match(
     overview,
-    "categorical_resource = categorical_resource",
+    "resource_coordinates = resource_coordinates",
     fixed = TRUE
   )
   expect_match(

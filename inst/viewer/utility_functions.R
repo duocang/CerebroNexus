@@ -1289,10 +1289,16 @@ cerebroCellViewScatterPayload <- function(
       names(color_assignments) %in% levels_in_view
     ]
     meta[["traces"]] <- as.list(traces)
-    data[["x"]] <- I(as.numeric(coordinates[[1L]]))
-    data[["y"]] <- I(as.numeric(coordinates[[2L]]))
-    if (has_z) {
-      data[["z"]] <- I(as.numeric(coordinates[[3L]]))
+    if (resource_coordinates) {
+      data[["x"]] <- NULL
+      data[["y"]] <- NULL
+      data[["projection_resource"]] <- coordinate_resource
+    } else {
+      data[["x"]] <- I(as.numeric(coordinates[[1L]]))
+      data[["y"]] <- I(as.numeric(coordinates[[2L]]))
+      if (has_z) {
+        data[["z"]] <- I(as.numeric(coordinates[[3L]]))
+      }
     }
     data[["selection_key"]] <- I(selection_keys)
     data[["color"]] <- as.list(unname(color_assignments[traces]))

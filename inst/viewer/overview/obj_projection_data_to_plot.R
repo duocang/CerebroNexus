@@ -31,17 +31,13 @@ overview_projection_data_to_plot_raw <- reactive({
   ) {
     projection_resource <- NULL
   }
-  categorical_resource <- if (
-    is.list(projection_resource) && !is.numeric(color_input)
-  ) {
-    viewerMetadataCodesAsset(color_variable, names(color_assignments))
+  resource_coordinates <- is.list(projection_resource)
+  cells_df <- overview_projection_data()
+  coordinates <- if (resource_coordinates) {
+    list()
   } else {
-    NULL
+    overview_projection_coordinates()
   }
-  resource_first <- is.list(projection_resource) &&
-    is.list(categorical_resource)
-  cells_df <- if (resource_first) NULL else overview_projection_data()
-  coordinates <- if (resource_first) NULL else overview_projection_coordinates()
   list(
     cells_df = cells_df,
     cell_indices = cell_indices,
@@ -51,8 +47,7 @@ overview_projection_data_to_plot_raw <- reactive({
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
     projection_resource = projection_resource,
-    categorical_resource = categorical_resource,
-    resource_first = resource_first
+    resource_coordinates = resource_coordinates
   )
 })
 

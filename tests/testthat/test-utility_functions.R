@@ -823,6 +823,26 @@ test_that("canonical scatter resources avoid materializing million-cell vectors"
   expect_identical(payload$data$categorical_resource, categories)
   expect_identical(payload$data$deferred_selection_lengths, 1000000L)
   expect_identical(unlist(payload$meta$traces), c("A", "B"))
+
+  wire_categories <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(),
+    color = rep(c("A", "B"), length.out = 4096L),
+    color_variable = "cluster",
+    selection_keys = seq_len(4096L),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE,
+    cell_count = 4096L,
+    coordinate_resource = within(projection, cells <- 4096L)
+  )
+  expect_null(wire_categories$data[["x"]])
+  expect_null(wire_categories$data[["y"]])
+  expect_identical(
+    wire_categories$data$projection_resource$cells,
+    4096L
+  )
+  expect_identical(length(wire_categories$data$canonical_group), 4096L)
 })
 
 test_that("selection counts use payload cell IDs", {
