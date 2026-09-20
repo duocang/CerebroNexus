@@ -897,6 +897,13 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "const generation", fixed = TRUE)
   expect_match(benchmark, "performance.now()", fixed = TRUE)
   expect_match(benchmark, "e.timeStamp >= clickStart", fixed = TRUE)
+  expect_match(benchmark, "eventAt!==null", fixed = TRUE)
+  expect_match(benchmark, "const linked=hasCurrentEvent", fixed = TRUE)
+  expect_match(
+    benchmark,
+    "readyValue===null||readyValue===undefined",
+    fixed = TRUE
+  )
   expect_match(
     benchmark,
     "open_page(app, page, require_event = TRUE)",
