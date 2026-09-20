@@ -221,6 +221,12 @@ observeEvent(
     keys <- hla_selection_values(
       if (is.list(selection)) selection$ids else NULL
     )
+    if (!length(keys)) {
+      if (length(hla_selected_node_keys())) {
+        hla_selected_node_keys(character(0))
+      }
+      return()
+    }
     graph <- isolate(hla_motif_graph())
     hla_selected_node_keys(intersect(keys, hla_graph_node_keys(graph)))
   },
@@ -228,9 +234,13 @@ observeEvent(
 )
 
 hla_selected_cells <- reactive({
+  selected <- hla_selected_node_keys()
+  if (!length(selected)) {
+    return(character(0))
+  }
   graph <- hla_motif_graph()
   keys <- intersect(
-    hla_selected_node_keys(),
+    selected,
     hla_graph_node_keys(graph)
   )
   hla_cells_for_node_keys(
@@ -256,9 +266,17 @@ output$hla_motif_network_composition <- renderUI({
 })
 
 observe({
+  selected <- hla_selected_node_keys()
+  if (!length(selected)) {
+    session$sendCustomMessage(
+      "hla_motif_selection_state",
+      list(node_keys = I(character(0)), cells = I(character(0)))
+    )
+    return()
+  }
   graph <- hla_motif_graph()
   keys <- intersect(
-    hla_selected_node_keys(),
+    selected,
     hla_graph_node_keys(graph)
   )
   if (!identical(keys, hla_selected_node_keys())) {

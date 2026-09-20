@@ -544,7 +544,7 @@ observe({
     )
   )
   hla_motif_last_render_signature(render_signature)
-})
+}, priority = 100)
 
 ## ---- Export: tables + manifest ---------------------------------------- ##
 ## A screenshot of the network is not a result. This writes what the page shows
