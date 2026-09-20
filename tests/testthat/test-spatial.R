@@ -277,7 +277,7 @@ test_that("background-image selection only recreates image calibration controls"
   )
 
   projection_ui <- paste(
-    readLines(file.path(shiny_root, "spatial", "UI_projection.R")),
+    readLines(file.path(shiny_root, "spatial", "UI.R")),
     collapse = "\n"
   )
   expect_match(
@@ -434,7 +434,7 @@ test_that("hidden Moran's I exits before reading Spatial data", {
     collapse = "\n"
   )
   projection_ui <- paste(
-    readLines(file.path(shiny_root, "spatial", "UI_projection.R"), warn = FALSE),
+    readLines(file.path(shiny_root, "spatial", "UI.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -1053,7 +1053,7 @@ test_that("hidden Spatial appearance controls do not rebuild primary data", {
     collapse = "\n"
   )
   projection_ui <- paste(
-    readLines(viewer_test_path("spatial", "UI_projection.R")),
+    readLines(viewer_test_path("spatial", "UI.R")),
     collapse = "\n"
   )
 

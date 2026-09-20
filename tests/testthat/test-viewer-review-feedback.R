@@ -201,7 +201,7 @@ test_that("Cell-view More settings expose only effective appearance controls", {
     viewer_source("overview", "UI_projection_show_group_label.R")
   )
   spatial <- paste(
-    viewer_source("spatial", "UI_projection.R"),
+    viewer_source("spatial", "UI.R"),
     viewer_source("spatial", "UI_projection_show_group_label.R")
   )
   expression <- paste(
@@ -276,7 +276,7 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
     utility,
     viewer_source("shiny_UI.R"),
     viewer_source("overview", "UI_projection.R"),
-    viewer_source("spatial", "UI_projection.R"),
+    viewer_source("spatial", "UI.R"),
     viewer_source("gene_expression", "UI.R"),
     viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
     viewer_source("gene_expression", "UI_projection_point_border.R"),
@@ -409,7 +409,7 @@ test_that("Standalone cell-view toolbars reach the panel top-right", {
 
   shared_views <- c(
     "overview/UI_projection.R",
-    "spatial/UI_projection.R",
+    "spatial/UI.R",
     "gene_expression/UI.R",
     "trajectory/UI.R",
     "immune_repertoire/UI.R",

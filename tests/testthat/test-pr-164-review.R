@@ -118,7 +118,7 @@ test_that("Share and Settings use one right-aligned toolbar layout", {
   )
   for (path in list(
     c("overview", "UI_projection.R"),
-    c("spatial", "UI_projection.R"),
+    c("spatial", "UI.R"),
     c("gene_expression", "UI.R"),
     c("trajectory", "UI.R"),
     c("immune_repertoire", "UI.R"),

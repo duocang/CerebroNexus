@@ -97,7 +97,7 @@ test_that("standard visualization toolbars own selection status", {
     "overview/UI_projection.R",
     "gene_expression/UI.R",
     "trajectory/UI.R",
-    "spatial/UI_projection.R",
+    "spatial/UI.R",
     "trekker/UI.R",
     "hla_tcr_motifs/UI.R"
   )
@@ -146,7 +146,7 @@ test_that("specialized controls live in More settings", {
     'output[["spatial_projection_background_selector_UI"]]'
   )
   spatial_toolbar <- find_call_by_class(
-    source_expressions("spatial/UI_projection.R"),
+    source_expressions("spatial/UI.R"),
     "cerebro-viz-toolbar"
   )
 
@@ -235,7 +235,7 @@ test_that("legends use one scrolling row outside the visualization", {
     regexpr('class = "cv-panes"', linked_text, fixed = TRUE)[[1]]
   )
 
-  spatial <- source_expressions("spatial/UI_projection.R")
+  spatial <- source_expressions("spatial/UI.R")
   spatial_surface <- find_call_by_class(spatial, "spatial-viz-surface")
   expect_true(
     contains_call(
