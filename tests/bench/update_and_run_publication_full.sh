@@ -138,11 +138,15 @@ fi
 command -v nix-shell >/dev/null 2>&1 || fail "未找到 nix-shell；旧结果尚未清理"
 [ "$ACTION" = "run" ] || exit 0
 
-run "清理旧 benchmark 结果"
+run "清除上一次 benchmark 结果和临时产物"
 for target in \
   "$RESULT_ROOT" \
   "$REPO/tests/bench/study-work" \
   "$REPO/tests/bench/scratch"; do
+  case "$target" in
+    "$REPO/tests/bench/"*) ;;
+    *) fail "拒绝清理仓库 benchmark 目录之外的路径：$target" ;;
+  esac
   if [ -e "$target" ]; then
     rm -rf -- "$target"
     ok "已清理：$target"

@@ -48,9 +48,24 @@ if (
   stop("run manifest must contain unique key/value rows", call. = FALSE)
 }
 manifest_values <- stats::setNames(as.character(manifest$value), manifest$key)
-required_manifest <- c("run_id", "profile", "git_sha")
+required_manifest <- c(
+  "study_id", "run_id", "profile", "generated_at", "git_sha", "git_branch",
+  "git_dirty", "package_version", "r_version", "r_platform", "os", "cpu",
+  "logical_cores", "benchmark_threads", "scratch_df",
+  "storage_description", "memory_mb", "r_vector_limit_mb",
+  "package_Matrix", "package_rhdf5", "package_BPCells", "package_HDF5Array",
+  "package_CerebroNexus"
+)
 if (!all(required_manifest %in% names(manifest_values))) {
   stop("run manifest is missing required provenance", call. = FALSE)
+}
+required_values <- manifest_values[required_manifest]
+if (any(is.na(required_values) | !nzchar(trimws(required_values)))) {
+  stop(
+    "run manifest contains blank required provenance: ",
+    paste(names(required_values)[is.na(required_values) | !nzchar(trimws(required_values))], collapse = ", "),
+    call. = FALSE
+  )
 }
 if (!identical(manifest_values[["profile"]], profile$name)) {
   stop("run manifest profile does not match validation profile", call. = FALSE)

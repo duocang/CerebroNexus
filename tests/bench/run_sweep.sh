@@ -225,6 +225,7 @@ if [ "$BENCH_PROFILE" = "publication" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; th
 fi
 
 echo "==> checking report and figures"
+Rscript "$BENCH_ROOT/src/49_write_evidence_manifest.R" "$STAGE" || exit 1
 Rscript "$BENCH_ROOT/src/50_check_outputs.R" "$STAGE" || exit 1
 
 echo "==> publishing immutable result run"

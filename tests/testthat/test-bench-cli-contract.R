@@ -179,7 +179,7 @@ test_that("remote launcher safely updates, clears, and backgrounds", {
   body <- paste(readLines(launcher, warn = FALSE), collapse = "\n")
   expect_match(body, 'merge --ff-only "$REMOTE/$BRANCH"', fixed = TRUE)
   expect_match(body, '"$RESULT_ROOT"', fixed = TRUE)
-  expect_match(body, 'source cache 已保留', fixed = TRUE)
+  expect_match(body, 'rm -rf -- "$target"', fixed = TRUE)
   expect_match(body, 'nohup "$SCRIPT" _worker', fixed = TRUE)
   expect_match(body, 'kill -0 "$pid"', fixed = TRUE)
 })
@@ -225,6 +225,22 @@ test_that("full-source sweep excludes Viewer checks", {
   expect_false(grepl("21_measure_viewer.R", sweep, fixed = TRUE))
   expect_false(grepl("04_check_webgpu.R", sweep, fixed = TRUE))
   expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
+})
+
+test_that("Viewer validation is a separate CRB-driven workflow", {
+  skip_unless_bench_cli()
+  repo <- normalizePath(file.path(bench_root, "..", ".."))
+  runner_path <- file.path(repo, "tests", "viewer-validation", "run.sh")
+  validator_path <- file.path(repo, "tests", "viewer-validation", "validate.R")
+  expect_true(file.exists(runner_path))
+  expect_true(file.exists(validator_path))
+  runner <- paste(readLines(runner_path, warn = FALSE), collapse = "\n")
+  validator <- paste(readLines(validator_path, warn = FALSE), collapse = "\n")
+  expect_false(grepl("run_sweep.sh", runner, fixed = TRUE))
+  expect_false(grepl("BENCH_RESULT_ROOT", runner, fixed = TRUE))
+  expect_false(grepl("tests/bench/result", validator, fixed = TRUE))
+  expect_match(validator, "readCerebro(crb)", fixed = TRUE)
+  expect_match(validator, "viewer_validation.csv", fixed = TRUE)
 })
 
 test_that("full-source backend figure is required", {

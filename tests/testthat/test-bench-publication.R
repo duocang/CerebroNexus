@@ -87,7 +87,7 @@ test_that("publisher rejects unsafe and conflicting run identities", {
   )
 })
 
-test_that("output checker requires report and publication figures", {
+test_that("output checker requires raw evidence, figures, and checksums", {
   skip_unless_bench_publication()
   stage <- tempfile("bench-output-stage-")
   dir.create(stage)
@@ -127,6 +127,20 @@ test_that("output checker requires report and publication figures", {
       "expression_backend_benchmark_ceiling.png"
     )
   )
+  for (name in c(
+    "00_probe.csv", "05_schedule.csv", "10_export.csv", "20_access.csv",
+    "crashes.csv", "query_panel.csv", "query_plan_manifest.csv",
+    "resource_check.csv", "source_manifest.csv"
+  )) {
+    writeLines("evidence", file.path(stage, name))
+  }
+  inventory <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(file.path(bench_root, "src", "49_write_evidence_manifest.R"), stage),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  expect_null(attr(inventory, "status"), info = paste(inventory, collapse = "\n"))
   complete <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(checker, stage),
@@ -135,4 +149,14 @@ test_that("output checker requires report and publication figures", {
     env = paste0("BENCH_ROOT=", bench_root)
   )
   expect_null(attr(complete, "status"), info = paste(complete, collapse = "\n"))
+
+  writeLines("tampered", file.path(stage, "10_export.csv"))
+  tampered <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, stage),
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  expect_false(is.null(attr(tampered, "status")))
+  expect_match(paste(tampered, collapse = "\n"), "inventory does not match")
 })

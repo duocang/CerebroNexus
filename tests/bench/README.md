@@ -2,11 +2,27 @@
 
 The publication workflow compares CerebroNexus on two complete public single-cell matrices. It does not truncate either source or use 50k, 150k, or one-million-cell samples as publication evidence.
 
+This workflow measures expression backends only. Viewer validation is an
+independent smoke test under [`../viewer-validation`](../viewer-validation/)
+and cannot pass, fail, publish, or replace backend evidence.
+
 > **Current status:** historical evidence has been retired. No publication result is current until `run_publication_full.sh` completes and publishes a new immutable run.
 
 Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.md) before interpreting generated values. [PRELIMINARY_BACKEND_RESULTS.md](PRELIMINARY_BACKEND_RESULTS.md) records the rounded backend observations recovered from the last browser-gate-aborted run; it is not publication evidence.
 
 ## Publication run
+
+On the configured benchmark host, the complete update-and-run interface is one
+command:
+
+```bash
+bash tests/bench/update_and_run_publication_full.sh
+```
+
+It clears the previous local publication result and scratch directories before
+starting a fresh acquisition, while preserving the checksum-verified source
+cache. Use the same command with `status` to inspect a running or completed
+acquisition.
 
 Use a clean checkout, the pinned Nix environment, an exclusive high-memory node, a persistent checksum-verified source cache, and local scratch storage.
 
@@ -37,7 +53,10 @@ The publication wrapper rejects source overrides and runs exactly this grid:
 
 Each source has one frozen 12-gene query plan. Runtime measurements cover full-cell single-gene and 12-gene reads plus deterministic reverse-ordered, non-contiguous reads of up to 100,000 cells. CRBs are written with the default qs2 codec, BPCells uses CerebroNexus's production gene-major writer, and fresh-process startup uses `readCerebro()`.
 
-Validated runs are published under `result/publication-full/runs/<run-id>/`; `CURRENT` changes last.
+Validated runs are published under `result/publication-full/runs/<run-id>/`;
+`CURRENT` changes last. Every published run includes `evidence_manifest.csv`,
+which records the byte size and MD5 checksum of every raw table, log, report,
+and figure in the evidence package.
 
 ### Remote rerun on the benchmark host
 
@@ -81,5 +100,6 @@ The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_view
 | `20_measure_backend.R` | measure hydrated startup and expression access |
 | `30_check_measurements.R` | reject incomplete, failed, or inconsistent evidence |
 | `40_write_report.R` / `41_draw_figures.R` | generate the report and publication overview |
-| `50_check_outputs.R` | validate the report package |
+| `49_write_evidence_manifest.R` | inventory and checksum the complete evidence package |
+| `50_check_outputs.R` | validate all raw evidence, reports, figures, and checksums |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |

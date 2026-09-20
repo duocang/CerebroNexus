@@ -6,6 +6,10 @@ On complete million-scale public scRNA-seq matrices, how do CerebroNexus's `bpce
 
 This is descriptive engineering evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
 
+Viewer behaviour is deliberately outside this research question. The separate
+`tests/viewer-validation` workflow provides functional browser smoke evidence;
+its outcome cannot invalidate or publish expression-backend measurements.
+
 ## Sources and scope
 
 The study uses every cell in two pinned public files: 1,306,127 cells from the 10x mouse brain E18 dataset (`GSE93421`, `SRP096558`) and 1,486,324 cells from the CELLxGENE PsychAD HBCC human prefrontal-cortex dataset (dataset `d27fb144-f105-46c2-b36f-f51421f74e4e`, collection `84ce6837-548d-4a1f-919f-0bc0d9a3952f`, DOI `10.1038/s41597-025-04687-5`). Downloads are reused only after byte-size and SHA-256 verification.
@@ -37,6 +41,8 @@ The first getter call is fresh-process but not controlled cold disk; the operati
 The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed processes, mismatched plans, incorrect values, missing figures, or dirty publication state reject the run before immutable publication.
 
 Validated evidence is published under `result/publication-full/runs/<run-id>/`, and `CURRENT` is updated only after all checks pass.
+The package also contains a deterministic file inventory with byte sizes and
+checksums, so the raw tables and generated report can be audited as one unit.
 
 ## Interpretation limits
 

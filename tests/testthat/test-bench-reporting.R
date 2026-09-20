@@ -615,6 +615,20 @@ test_that("publication-full report and figure use one frozen study", {
     attr(full_figure, "status"),
     info = paste(full_figure, collapse = "\n")
   )
+  inventory <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "src", "49_write_evidence_manifest.R"),
+      file.path(root, "c2")
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = env
+  )
+  expect_null(
+    attr(inventory, "status"),
+    info = paste(inventory, collapse = "\n")
+  )
   full_output <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(

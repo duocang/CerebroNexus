@@ -15,6 +15,7 @@ Start with:
 5. `20_access.csv` for hydrated startup and expression access;
 6. `query_plan_manifest.csv` and `query_panel.csv` for the frozen workload and correctness references;
 7. `figures/expression_backend_benchmark_overview.png` for the publication overview.
+8. `evidence_manifest.csv` to verify that the raw evidence package is complete and unchanged.
 
 ## Interpret metrics
 
