@@ -6173,6 +6173,44 @@
     message.data = data;
     return message;
   }
+  function resourceCacheKey(resource, suffix) {
+    return String(resource.url) + ':' + String(resource.checksum || '') +
+      (suffix ? ':' + suffix : '');
+  }
+  function fetchCachedResource(resource, cache, label, suffix, decode) {
+    var key = resourceCacheKey(resource, suffix);
+    var pending = cache.get(key);
+    var cacheHit = !!pending;
+    if (!pending) {
+      var downloadStarted = performance.now();
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin', cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error(label + ' request failed');
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        var downloadedAt = performance.now();
+        var value = decode(buffer);
+        return {
+          value: value,
+          downloadMs: downloadedAt - downloadStarted,
+          decodeMs: performance.now() - downloadedAt
+        };
+      });
+      cache.set(key, pending);
+      pending.catch(function () { cache.delete(key); });
+    }
+    var started = performance.now();
+    return pending.then(function (entry) {
+      return {
+        value: entry.value,
+        downloadMs: entry.downloadMs,
+        decodeMs: entry.decodeMs,
+        fetchMs: performance.now() - started,
+        cacheHit: cacheHit
+      };
+    });
+  }
   var projectionResourceCache = new Map();
   function fetchProjectionResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
@@ -6183,21 +6221,9 @@
     }
     var n = descriptor.cells;
     var dimensions = descriptor.dimensions;
-    var key = String(resource.url) + ':' + String(resource.checksum || '');
-    var pending = projectionResourceCache.get(key);
-    var cacheHit = !!pending;
-    if (!pending) {
-      var downloadStarted = performance.now();
-      var downloadedAt = downloadStarted;
-      pending = window.fetch(String(resource.url), {
-        credentials: 'same-origin',
-        cache: 'force-cache'
-      }).then(function (response) {
-        if (!response.ok) throw new Error('Projection resource request failed');
-        return response.arrayBuffer();
-      }).then(function (buffer) {
-        downloadedAt = performance.now();
-        var decodeStarted = downloadedAt;
+    return fetchCachedResource(
+      resource, projectionResourceCache, 'Projection resource', '',
+      function (buffer) {
         if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
           throw new Error('Projection resource byte count mismatch');
         }
@@ -6224,22 +6250,16 @@
           x: x, y: y, z: z,
           xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
           yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
-          bytes: buffer.byteLength,
-          downloadMs: downloadedAt - downloadStarted,
-          decodeMs: performance.now() - decodeStarted
+          bytes: buffer.byteLength
         };
-      });
-      projectionResourceCache.set(key, pending);
-      pending.catch(function () { projectionResourceCache.delete(key); });
-    }
-    var started = performance.now();
-    return pending.then(function (coordinates) {
+      }
+    ).then(function (loaded) {
       return {
-        coordinates: coordinates,
-        fetchMs: performance.now() - started,
-        downloadMs: coordinates.downloadMs,
-        decodeMs: coordinates.decodeMs,
-        cacheHit: cacheHit
+        coordinates: loaded.value,
+        fetchMs: loaded.fetchMs,
+        downloadMs: loaded.downloadMs,
+        decodeMs: loaded.decodeMs,
+        cacheHit: loaded.cacheHit
       };
     });
   }
@@ -6351,20 +6371,9 @@
       });
     }
     var expectedCount = mapping.expectedCount;
-    var key = String(resource.url) + ':' + String(resource.checksum || '');
-    var pending = projectionSubsetResourceCache.get(key);
-    var cacheHit = !!pending;
-    if (!pending) {
-      var downloadStarted = performance.now();
-      var downloadedAt = downloadStarted;
-      pending = window.fetch(String(resource.url), {
-        credentials: 'same-origin', cache: 'force-cache'
-      }).then(function (response) {
-        if (!response.ok) throw new Error('Projection subset request failed');
-        return response.arrayBuffer();
-      }).then(function (buffer) {
-        downloadedAt = performance.now();
-        var decodeStarted = downloadedAt;
+    return fetchCachedResource(
+      resource, projectionSubsetResourceCache, 'Projection subset', '',
+      function (buffer) {
         if (buffer.byteLength !== expectedCount * 4) {
           throw new Error('Projection subset byte count mismatch');
         }
@@ -6374,21 +6383,14 @@
         )) {
           throw new Error('Projection subset index mismatch');
         }
-        return {
-          kind: kind, indices: indices, bytes: buffer.byteLength,
-          downloadMs: downloadedAt - downloadStarted,
-          decodeMs: performance.now() - decodeStarted
-        };
-      });
-      projectionSubsetResourceCache.set(key, pending);
-      pending.catch(function () { projectionSubsetResourceCache.delete(key); });
-    }
-    var started = performance.now();
-    return pending.then(function (result) {
+        return {kind: kind, indices: indices, bytes: buffer.byteLength};
+      }
+    ).then(function (loaded) {
+      var result = loaded.value;
       return {
         kind: result.kind, indices: result.indices, bytes: result.bytes,
-        downloadMs: result.downloadMs, decodeMs: result.decodeMs,
-        fetchMs: performance.now() - started, cacheHit: cacheHit
+        downloadMs: loaded.downloadMs, decodeMs: loaded.decodeMs,
+        fetchMs: loaded.fetchMs, cacheHit: loaded.cacheHit
       };
     });
   }
@@ -6640,16 +6642,9 @@
     if (!descriptor || !bytesPerCode || !levels) {
       return Promise.reject(new Error('Categorical resource mismatch'));
     }
-    var key = String(resource.url) + ':' + String(resource.checksum || '');
-    var pending = categoricalResourceCache.get(key);
-    if (!pending) {
-      pending = window.fetch(String(resource.url), {
-        credentials: 'same-origin',
-        cache: 'force-cache'
-      }).then(function (response) {
-        if (!response.ok) throw new Error('Categorical resource request failed');
-        return response.arrayBuffer();
-      }).then(function (buffer) {
+    return fetchCachedResource(
+      resource, categoricalResourceCache, 'Categorical resource', '',
+      function (buffer) {
         if (buffer.byteLength !== n * bytesPerCode ||
             (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
           throw new Error('Categorical resource byte count mismatch');
@@ -6662,14 +6657,11 @@
           }
         }
         return { values: values, bytes: buffer.byteLength };
-      });
-      categoricalResourceCache.set(key, pending);
-      pending.catch(function () { categoricalResourceCache.delete(key); });
-    }
-    var started = performance.now();
-    return pending.then(function (result) {
+      }
+    ).then(function (loaded) {
+      var result = loaded.value;
       return { values: result.values, bytes: result.bytes,
-        fetchMs: performance.now() - started };
+        fetchMs: loaded.fetchMs };
     });
   }
   function fetchMetadataCodesResource(resource, expectedCells) {
@@ -6683,17 +6675,10 @@
     if (!descriptor || !bytesPerCode || !codeMap || !codeMap.length) {
       return Promise.reject(new Error('Metadata codes resource mismatch'));
     }
-    var key = String(resource.url) + ':' + String(resource.checksum || '') +
-      ':' + Array.prototype.join.call(codeMap, ',');
-    var pending = metadataCodesResourceCache.get(key);
-    if (!pending) {
-      pending = window.fetch(String(resource.url), {
-        credentials: 'same-origin',
-        cache: 'force-cache'
-      }).then(function (response) {
-        if (!response.ok) throw new Error('Metadata codes request failed');
-        return response.arrayBuffer();
-      }).then(function (buffer) {
+    return fetchCachedResource(
+      resource, metadataCodesResourceCache, 'Metadata codes',
+      Array.prototype.join.call(codeMap, ','),
+      function (buffer) {
         if (buffer.byteLength !== n * bytesPerCode ||
             (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
           throw new Error('Metadata codes byte count mismatch');
@@ -6712,14 +6697,11 @@
           values[i] = Number(codeMap[code]);
         }
         return { values: values, bytes: buffer.byteLength };
-      });
-      metadataCodesResourceCache.set(key, pending);
-      pending.catch(function () { metadataCodesResourceCache.delete(key); });
-    }
-    var started = performance.now();
-    return pending.then(function (result) {
+      }
+    ).then(function (loaded) {
+      var result = loaded.value;
       return { values: result.values, bytes: result.bytes,
-        fetchMs: performance.now() - started };
+        fetchMs: loaded.fetchMs };
     });
   }
   function fetchValidatedMetadataCodesResource(resource, expectedCells, identity) {

@@ -628,7 +628,7 @@ test_that("canonical subsets bind projection and local cell counts", {
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const start = source.indexOf('  function fetchProjectionSubsetResource');",
+      "const start = source.indexOf('  function resourceCacheKey');",
       "const end = source.indexOf('  function materializeProjectionSubset', start);",
       "let calls = 0;",
       "var projectionSubsetResourceCache = new Map();",
@@ -655,8 +655,9 @@ test_that("canonical subsets bind projection and local cell counts", {
       "  const canonicalMismatch = await rejected(include, 4, 2);",
       "  const localMismatch = await rejected(include, 3, 1);",
       "  const valid = await fetchProjectionSubsetResource(include, 3, 2);",
+      "  const cached = await fetchProjectionSubsetResource(include, 3, 2);",
       "  const identityResult = await fetchProjectionSubsetResource(identity, 3, 3);",
-      "  console.log(JSON.stringify({calls, canonicalMismatch, localMismatch, validKind:valid.kind, validIndices:Array.from(valid.indices), identityCacheHit:identityResult.cacheHit}));",
+      "  console.log(JSON.stringify({calls, canonicalMismatch, localMismatch, validKind:valid.kind, validIndices:Array.from(valid.indices), cachedHit:cached.cacheHit, identityCacheHit:identityResult.cacheHit}));",
       "})().catch(error => { console.error(error); process.exit(1); });"
     ),
     runner
@@ -672,6 +673,7 @@ test_that("canonical subsets bind projection and local cell counts", {
       localMismatch = TRUE,
       validKind = "include_uint32",
       validIndices = list(0L, 2L),
+      cachedHit = TRUE,
       identityCacheHit = TRUE
     )
   )
