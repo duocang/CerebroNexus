@@ -8981,7 +8981,6 @@
         ? event.target.closest('a[href="#shiny-tab-coordinated_views"]') : null;
       var tabLink = event.target && event.target.closest
         ? event.target.closest('a[href^="#shiny-tab-"]') : null;
-      requestSingleView(tabSingleViewId(tabLink));
       if (target && Shiny.setInputValue) {
         linkedRequestTiming.requestAtMs = performance.now();
         linkedRequestTiming.clickToRequestMs =
@@ -8990,7 +8989,10 @@
               window.__cerebroPageBenchClickStart : null;
         Shiny.setInputValue('coordviews_visible', true, { priority: 'event' });
       }
-      setTimeout(reportVisibility, 0);
+      setTimeout(function () {
+        requestSingleView(tabSingleViewId(tabLink));
+        reportVisibility();
+      }, 0);
     }, true);
     // A reconnect gives a fresh server session that knows nothing, so the state
     // has to be sent again rather than suppressed as unchanged.

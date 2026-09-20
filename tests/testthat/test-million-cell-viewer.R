@@ -359,6 +359,7 @@ test_that("specialist tab clicks request the primary frame without polling", {
     "requestSingleView(tabSingleViewId(tabLink));",
     fixed = TRUE
   )
+  expect_match(engine, "setTimeout(function () {", fixed = TRUE)
   expect_match(engine, "requestSingleView(singleId);", fixed = TRUE)
   expect_match(engine, "setInterval(reportVisibility, 250);", fixed = TRUE)
 })
