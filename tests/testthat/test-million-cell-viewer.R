@@ -475,6 +475,23 @@ test_that("canonical projections use validated static assets with wire fallback"
   expect_match(engine, "fetchValidatedProjectionResource", fixed = TRUE)
   expect_match(engine, "response.arrayBuffer()", fixed = TRUE)
   expect_match(engine, "projection_resource_failed", fixed = TRUE)
+  parameters <- paste(
+    readLines(
+      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    parameters,
+    "projection_resource <- viewerProjectionAsset(",
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    "XYranges <- if (is.null(projection_data)) NULL else getXYranges",
+    fixed = TRUE
+  )
   expect_match(server, "viewerProjectionCatalog <- function", fixed = TRUE)
   expect_match(server, 'id = "overview_projection"', fixed = TRUE)
   expect_match(

@@ -35,19 +35,35 @@ overview_projection_parameters_plot <- reactive({
     !is.null(preferences[["use_webgl"]]),
     !is.null(preferences[["show_hover_info_in_projections"]])
   )
-  projection_data <- viewerProjectionFirstFrameCoordinates(projection)
-  XYranges <- getXYranges(projection_data)
+  projection_resource <- viewerProjectionAsset(
+    projection,
+    overview_projection_cells_to_show()
+  )
+  projection_data <- if (is.list(projection_resource)) {
+    NULL
+  } else {
+    viewerProjectionFirstFrameCoordinates(projection)
+  }
+  XYranges <- if (is.null(projection_data)) NULL else getXYranges(projection_data)
   parameters <- list(
     projection = projection,
-    n_dimensions = ncol(projection_data),
+    n_dimensions = if (is.list(projection_resource)) {
+      as.integer(projection_resource$dimensions)
+    } else {
+      ncol(projection_data)
+    },
     color_variable = color_variable,
     point_size = point_size,
     point_opacity = point_opacity,
     draw_border = isTRUE(input[["overview_projection_point_border"]]),
     group_labels = isTRUE(group_labels),
     keep_square = isTRUE(input[["overview_projection_keep_square"]]),
-    x_range = c(XYranges$x$min, XYranges$x$max),
-    y_range = c(XYranges$y$min, XYranges$y$max),
+    x_range = if (is.null(XYranges)) list() else {
+      c(XYranges$x$min, XYranges$x$max)
+    },
+    y_range = if (is.null(XYranges)) list() else {
+      c(XYranges$y$min, XYranges$y$max)
+    },
     webgl = preferences[["use_webgl"]],
     hover_info = preferences[["show_hover_info_in_projections"]]
   )
