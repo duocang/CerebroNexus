@@ -7,7 +7,8 @@
 ##----------------------------------------------------------------------------##
 
 groupsMetricData <- function(group, metric) {
-  groupsMetadataColumns(c(group, metric))
+  packed <- viewerPackGroupMetric(viewerPackCurrent(), group, metric)
+  if (!is.null(packed)) packed else groupsMetadataColumns(c(group, metric))
 }
 
 groups_metric_specs <- list(

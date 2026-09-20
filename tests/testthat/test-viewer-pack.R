@@ -4,7 +4,8 @@ viewer_pack_fixture <- function(
   immune = FALSE,
   trajectory = FALSE,
   trajectory_match = FALSE,
-  spatial = FALSE
+  spatial = FALSE,
+  groups = FALSE
 ) {
   object <- Cerebro$new()
   cells <- sprintf("cell-%03d", seq_len(n))
@@ -12,8 +13,13 @@ viewer_pack_fixture <- function(
     cell_barcode = cells,
     group = factor(rep(c("A", "B"), length.out = n)),
     score = seq_len(n) / 10,
+    nUMI = seq_len(n) * 10,
+    nGene = seq_len(n) * 2,
     stringsAsFactors = FALSE
   ))
+  if (isTRUE(groups)) {
+    object$addGroup("group", c("A", "B"))
+  }
   object$addProjection(
     "umap",
     data.frame(
@@ -293,6 +299,28 @@ test_that("Viewer Pack stores canonical spatial row indexes", {
     envir = descriptor$cache,
     inherits = FALSE
   ))
+})
+
+test_that("Viewer Pack stores compact group metric frames", {
+  root <- tempfile("viewer-pack-groups-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 10000L,
+    groups = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  descriptor <- runtime$viewerPackOpen(crb, object)
+
+  packed <- runtime$viewerPackGroupMetric(descriptor, "group", "nUMI")
+  expect_named(packed, c("group", "nUMI"))
+  expect_identical(nrow(packed), 8192L)
+  expect_identical(levels(packed$group), c("A", "B"))
+  expect_true("groups" %in% descriptor$manifest$modules)
+  expect_null(runtime$viewerPackGroupMetric(descriptor, "group", "missing"))
 })
 
 test_that("saveCerebro forwards dataset-level Viewer Pack policy", {

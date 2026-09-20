@@ -60,14 +60,15 @@ test_that("Groups builds its first-frame controls without a renderUI cascade", {
   expect_match(ui, "groups_plotly_dependencies", fixed = TRUE)
 })
 
-test_that("Groups delays expression metrics until the first plot layout", {
+test_that("Groups requests visible expression metrics without a plot barrier", {
   ui <- paste(
     readLines(viewer_test_path("groups", "UI.R"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_match(ui, "plotly_afterplot", fixed = TRUE)
-  expect_match(ui, "waitForFirstPlotDraw", fixed = TRUE)
+  expect_false(grepl("plotly_afterplot", ui, fixed = TRUE))
+  expect_false(grepl("waitForFirstPlotDraw", ui, fixed = TRUE))
+  expect_match(ui, "observer.observe(target)", fixed = TRUE)
   expect_match(ui, "if (!visible || target.dataset.requested", fixed = TRUE)
 })
 

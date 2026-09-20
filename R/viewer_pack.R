@@ -662,6 +662,108 @@
   )
 }
 
+.viewerPackCompactViolinData <- function(
+  metadata,
+  group,
+  metric,
+  max_points_per_group = 4096L
+) {
+  table <- metadata[, c(group, metric), drop = FALSE]
+  values <- table[[metric]]
+  groups <- table[[group]]
+  valid <- !is.na(values) & is.finite(values) & !is.na(groups)
+  rows_by_group <- split(which(valid), groups[valid], drop = TRUE)
+  if (!length(rows_by_group)) {
+    return(table[integer(), , drop = FALSE])
+  }
+  compact <- lapply(rows_by_group, function(rows) {
+    if (length(rows) <= max_points_per_group) {
+      return(table[rows, , drop = FALSE])
+    }
+    sampled_values <- unname(stats::quantile(
+      values[rows],
+      probs = (seq_len(max_points_per_group) - 0.5) /
+        max_points_per_group,
+      type = 8
+    ))
+    target_mean <- mean(values[rows])
+    sampled_mean <- mean(sampled_values)
+    if (
+      length(unique(sampled_values)) == 1L &&
+        min(values[rows]) != max(values[rows])
+    ) {
+      sampled_values[[length(sampled_values)]] <-
+        target_mean * length(sampled_values) -
+        sampled_values[[1L]] * (length(sampled_values) - 1L)
+      sampled_mean <- mean(sampled_values)
+    }
+    if (sampled_mean != target_mean && all(values[rows] >= 0)) {
+      sampled_values <- sampled_values * target_mean / sampled_mean
+    } else if (sampled_mean != target_mean) {
+      sampled_values <- sampled_values + target_mean - sampled_mean
+    }
+    result <- table[rep(rows[[1L]], max_points_per_group), , drop = FALSE]
+    result[[metric]] <- sampled_values
+    result
+  })
+  result <- do.call(rbind, compact)
+  rownames(result) <- NULL
+  result
+}
+
+.viewerPackGroupMetricAssets <- function(object, metadata, stage) {
+  groups <- intersect(
+    tryCatch(object$getGroups(), error = function(error) character()),
+    colnames(metadata)
+  )
+  metrics <- intersect(
+    c("nUMI", "nGene", "percent_mt", "percent_ribo"),
+    colnames(metadata)
+  )
+  assets <- NULL
+  frames <- list()
+  if (length(groups) && length(metrics)) {
+    frame_index <- 0L
+    for (group in groups) {
+      for (metric in metrics) {
+        frame_index <- frame_index + 1L
+        path <- file.path("groups", sprintf("%03d.qs2", frame_index))
+        value <- .viewerPackCompactViolinData(metadata, group, metric)
+        assets <- rbind(
+          assets,
+          .viewerPackWriteAsset(
+            stage,
+            path,
+            value,
+            "group-metric-violin",
+            nrow(value)
+          )
+        )
+        frames[[frame_index]] <- data.frame(
+          group = group,
+          metric = metric,
+          rows = nrow(value),
+          path = path,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  frame_table <- if (length(frames)) {
+    do.call(rbind, frames)
+  } else {
+    data.frame(
+      group = character(),
+      metric = character(),
+      rows = integer(),
+      path = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+  rownames(frame_table) <- NULL
+  list(frames = frame_table, assets = assets)
+}
+
 .viewerPackBuildAssets <- function(object, stage) {
   cells <- .viewerPackCells(object)
   assets <- .viewerPackWriteAsset(
@@ -743,6 +845,11 @@
         )
       }
     }
+  }
+  group_metrics <- .viewerPackGroupMetricAssets(object, metadata, stage)
+  if (nrow(group_metrics$frames)) {
+    modules <- c(modules, "groups")
+    assets <- rbind(assets, group_metrics$assets)
   }
   trajectory <- .viewerPackTrajectoryFrames(
     object,
@@ -858,6 +965,7 @@
     capabilities = .viewerDatasetCapabilities(object),
     projection_names = projections,
     metadata_names = metadata_names,
+    group_metric_frames = group_metrics$frames,
     trajectory_frames = trajectory$frames,
     spatial_frames = spatial$frames,
     immune_receptors = receptors,
@@ -1019,6 +1127,7 @@ buildViewerPack <- function(
     capabilities = built$capabilities,
     projection_names = built$projection_names,
     metadata_names = built$metadata_names,
+    group_metric_frames = built$group_metric_frames,
     trajectory_frames = built$trajectory_frames,
     spatial_frames = built$spatial_frames,
     immune_receptors = built$immune_receptors,

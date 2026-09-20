@@ -72,38 +72,7 @@ tab_groups <- tabItem(
         requestMetrics();
       }, {rootMargin: '200px 0px'});
 
-      function armObserver() {
-        if (target.dataset.armed) return;
-        target.dataset.armed = 'true';
-        observer.observe(target);
-      }
-
-      function waitForFirstPlotDraw() {
-        var plot = document.getElementById('groups_by_other_group_plot');
-        if (!plot || !plot.classList.contains('js-plotly-plot')) {
-          window.requestAnimationFrame(waitForFirstPlotDraw);
-          return;
-        }
-        if (typeof plot.once === 'function') {
-          plot.once('plotly_afterplot', armObserver);
-        }
-        window.requestAnimationFrame(function () {
-          window.requestAnimationFrame(armObserver);
-        });
-      }
-
-      $(document).on(
-        'shiny:value.groupsExpressionMetricsGate',
-        function (event) {
-          if (event.name === 'groups_by_other_group_plot') {
-            waitForFirstPlotDraw();
-          }
-        }
-      );
-      var existingPlot = document.getElementById('groups_by_other_group_plot');
-      if (existingPlot && existingPlot.classList.contains('js-plotly-plot')) {
-        armObserver();
-      }
+      observer.observe(target);
     })();
     "
   ))

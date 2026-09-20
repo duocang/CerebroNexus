@@ -362,6 +362,39 @@ viewerPackSpatialFrame <- function(pack, name) {
   if (!isTRUE(valid)) NULL else frame
 }
 
+viewerPackGroupMetric <- function(pack, group, metric) {
+  if (is.null(pack) || !is.list(pack)) {
+    return(NULL)
+  }
+  frames <- pack$manifest$group_metric_frames
+  if (!is.data.frame(frames) || !nrow(frames)) {
+    return(NULL)
+  }
+  row <- which(
+    as.character(frames$group) == as.character(group) &
+      as.character(frames$metric) == as.character(metric)
+  )
+  if (length(row) != 1L) {
+    return(NULL)
+  }
+  path <- as.character(frames$path[[row]])
+  if (length(path) != 1L || is.na(path) || !nzchar(path)) {
+    return(NULL)
+  }
+  value <- viewerPackReadAsset(
+    pack,
+    path,
+    validate_cell_order = FALSE
+  )
+  if (
+    !is.data.frame(value) ||
+      !all(c(group, metric) %in% colnames(value))
+  ) {
+    return(NULL)
+  }
+  value[, c(group, metric), drop = FALSE]
+}
+
 viewerPackHlaSegments <- function(pack, chain) {
   if (
     !is.character(chain) || length(chain) != 1L || !chain %in% c("TRA", "TRB")
