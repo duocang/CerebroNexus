@@ -196,17 +196,7 @@ output[["states_by_group_table"]] <- DT::renderDataTable({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["states_by_group_info"]], {
-  showModal(
-    modalDialog(
-      states_by_group_info[["text"]],
-      title = states_by_group_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "states_by_group_info", states_by_group_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

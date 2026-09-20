@@ -246,7 +246,7 @@ test_that("gene-expression first frame defers identities and hover", {
 
   expect_match(
     update_source,
-    "selection_key = seq_len(nrow(metadata))",
+    "selection_key = seq_len(n_cells)",
     fixed = TRUE
   )
   expect_match(update_source, "deferred_aux <- function()", fixed = TRUE)

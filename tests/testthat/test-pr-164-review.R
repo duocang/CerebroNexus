@@ -53,7 +53,7 @@ test_that("Immune Repertoire exposes sharing only with its visible canvas", {
 })
 
 test_that("missing genes retain compact validation feedback", {
-  ui <- review_source("gene_expression", "UI_projection.R")
+  ui <- review_source("gene_expression", "UI.R")
   feedback <- review_source("gene_expression", "out_genes_displayed.R")
 
   expect_match(ui, 'uiOutput("expression_genes_displayed")', fixed = TRUE)
@@ -119,8 +119,8 @@ test_that("Share and Settings use one right-aligned toolbar layout", {
   for (path in list(
     c("overview", "UI_projection.R"),
     c("spatial", "UI_projection.R"),
-    c("gene_expression", "UI_projection.R"),
-    c("trajectory", "projection.R"),
+    c("gene_expression", "UI.R"),
+    c("trajectory", "UI.R"),
     c("immune_repertoire", "UI.R"),
     c("hla_tcr_motifs", "UI.R"),
     c("coordinated_views", "UI.R")

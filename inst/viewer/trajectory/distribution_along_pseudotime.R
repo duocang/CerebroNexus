@@ -357,17 +357,11 @@ output[[
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_distribution_along_pseudotime_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_distribution_along_pseudotime_info[["text"]],
-      title = trajectory_distribution_along_pseudotime_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "trajectory_distribution_along_pseudotime_info",
+  trajectory_distribution_along_pseudotime_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

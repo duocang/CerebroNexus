@@ -159,34 +159,12 @@ output[["most_expressed_genes_filter_subgroups_UI"]] <- renderUI({
   results_df <- most_expressed_genes_selected_table()
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
-  ## check if pre-filtering is activated and name of first column in table is
-  ## one of the registered groups
-  ## ... it's not
-  if (
-    input[["most_expressed_genes_table_filter_switch"]] == TRUE ||
-      !identical(colnames(results_df)[1], selected_group)
-  ) {
-    ## return nothing (empty row)
-    fluidRow()
-    ## ... it is
-  } else {
-    ## check for which groups results exist
-    if (is.character(results_df[[1]])) {
-      available_groups <- unique(results_df[[1]])
-    } else if (is.factor(results_df[[1]])) {
-      available_groups <- levels(results_df[[1]])
-    }
-    fluidRow(
-      column(
-        12,
-        selectInput(
-          "most_expressed_genes_table_select_group_level",
-          label = "Filter results for subgroup:",
-          choices = available_groups
-        )
-      )
-    )
-  }
+  cerebroResultSubgroupUI(
+    results_df,
+    input[["most_expressed_genes_table_filter_switch"]],
+    identical(colnames(results_df)[[1L]], selected_group),
+    "most_expressed_genes_table_select_group_level"
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -200,69 +178,39 @@ output[["most_expressed_genes_table"]] <- DT::renderDataTable({
   results_df <- most_expressed_genes_selected_table()
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
-  ## filter the table for a specific subgroup only if specified by the user,
-  ## otherwise show all results
-  if (
-    input[["most_expressed_genes_table_filter_switch"]] == FALSE &&
-      identical(colnames(results_df)[1], selected_group)
-  ) {
-    ## don't proceed if selection of subgroup is not available
+  grouped <- identical(colnames(results_df)[[1L]], selected_group)
+  if (!isTRUE(input[["most_expressed_genes_table_filter_switch"]]) && grouped) {
     req(input[["most_expressed_genes_table_select_group_level"]])
-    ## filter table
-    results_df <- results_df[
-      which(
-        results_df[[1]] ==
-          input[["most_expressed_genes_table_select_group_level"]]
+  }
+  results_df <- cerebroFilterResultRows(
+    results_df,
+    input[["most_expressed_genes_table_filter_switch"]],
+    grouped,
+    input[["most_expressed_genes_table_select_group_level"]]
+  )
+  value_col <- NULL
+  if (identical(metric_type, "pct") && "pct" %in% colnames(results_df)) {
+    results_df <- dplyr::rename(results_df, "% of cells expressing" = pct)
+    value_col <- 3
+  } else if (
+    !identical(metric_type, "pct") &&
+      "mean_expr" %in% colnames(results_df)
+  ) {
+    results_df <- dplyr::rename(results_df, "Mean expression" = mean_expr)
+  }
+  cerebroResultTable(
+    results_df,
+    paste0(
+      ifelse(
+        metric_type == "pct",
+        "percent_expressed_",
+        "mean_expression_"
       ),
-    ]
-  }
-
-  ## if the table is empty, e.g. because the filtering of results for a specific
-  ## subgroup did not work properly, skip the processing and show and empty
-  ## table (otherwise the procedure would result in an error)
-  if (nrow(results_df) == 0) {
-    results_df %>%
-      as.data.frame() %>%
-      dplyr::slice(0) %>%
-      prepareEmptyTable()
-    ## if there is at least 1 row in the table, create proper table
-  } else {
-    ## rename value column based on metric type
-    value_col <- NULL
-    if (metric_type == "pct") {
-      if ("pct" %in% colnames(results_df)) {
-        results_df <- results_df %>%
-          dplyr::rename("% of cells expressing" = pct)
-        value_col <- 3
-      }
-    } else {
-      if ("mean_expr" %in% colnames(results_df)) {
-        results_df <- results_df %>%
-          dplyr::rename("Mean expression" = mean_expr)
-      }
-    }
-
-    results_df %>%
-      prettifyTable(
-        filter = list(position = "top", clear = TRUE),
-        dom = "Bfrtlip",
-        show_buttons = TRUE,
-        number_formatting = TRUE,
-        color_highlighting = TRUE,
-        hide_long_columns = FALSE,
-        columns_percentage = value_col,
-        download_file_name = paste0(
-          ifelse(
-            metric_type == "pct",
-            "percent_expressed_",
-            "mean_expression_"
-          ),
-          input[["most_expressed_genes_selected_group"]]
-        ),
-        page_length_default = 20,
-        page_length_menu = c(20, 50, 100)
-      )
-  }
+      input[["most_expressed_genes_selected_group"]]
+    ),
+    hide_long_columns = FALSE,
+    columns_percentage = value_col
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -275,17 +223,11 @@ output[["most_expressed_genes_message_no_data_found"]] <- renderText({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["most_expressed_genes_info"]], {
-  showModal(
-    modalDialog(
-      most_expressed_genes_info[["text"]],
-      title = most_expressed_genes_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "most_expressed_genes_info",
+  most_expressed_genes_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

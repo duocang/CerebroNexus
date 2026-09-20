@@ -276,14 +276,8 @@ rotateSpatialCoordinates <- function(coordinates, degrees) {
 ## dependency, so this adds no new package.
 ##----------------------------------------------------------------------------##
 cachePlot <- function(x, ...) {
-  if (utils::packageVersion("shiny") >= "1.6.0") {
-    keys <- rlang::enquos(...)
-    rlang::inject(
-      shiny::bindCache(x, !!!keys, cache = "session")
-    )
-  } else {
-    x
-  }
+  keys <- rlang::enquos(...)
+  rlang::inject(shiny::bindCache(x, !!!keys, cache = "session"))
 }
 
 ## Return the first complete reactive value immediately; debounce only later
@@ -779,20 +773,6 @@ cv_wire_pack_bundle <- function(
     bundle$cells <- NULL
   }
   cv_wire_pack_message(bundle, min_length = min_length)
-}
-
-cv_wire_pack_cells <- function(dataset_id, cells) {
-  dataset <- charToRaw(enc2utf8(as.character(dataset_id)))
-  values <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-    as.character(cells),
-    auto_unbox = FALSE,
-    na = "null"
-  ))))
-  c(
-    writeBin(as.integer(length(dataset)), raw(), size = 4L, endian = "little"),
-    dataset,
-    values
-  )
 }
 
 cv_wire_pack_message <- function(message, min_length = 4096L) {
@@ -2394,39 +2374,6 @@ randomlySubsetCells <- function(table, percentage) {
 }
 
 ##----------------------------------------------------------------------------##
-## Merge a trajectory's per-cell meta data (DR_1/DR_2/pseudotime/state) with the
-## data set's full meta data, aligned BY CELL BARCODE.
-##
-## A trajectory may cover only a SUBSET of cells (e.g. a monocle2 trajectory
-## computed on B cells only). The trajectory meta data frame therefore has fewer
-## rows than getMetaData(), and its rownames are the covered cells' barcodes. A
-## positional `cbind()` would crash ("differing number of rows") or, worse,
-## silently mis-align cells. This joins on the barcode so every cell keeps its
-## own coordinates and cells outside the trajectory get NA pseudotime (which the
-## callers then drop via `filter(!is.na(pseudotime))`). The full meta data is the
-## left side, so the result has one row per cell in getMetaData() order.
-##----------------------------------------------------------------------------##
-mergeTrajectoryWithMetaData <- function(trajectory_data) {
-  trajectory_meta <- trajectory_data[["meta"]]
-  metadata <- getMetaData()
-  overlap <- intersect(colnames(metadata), colnames(trajectory_meta))
-  if (length(overlap) == 0L) {
-    trajectory_cells <- rownames(trajectory_meta)
-    idx <- if (identical(metadata[["cell_barcode"]], trajectory_cells)) {
-      seq_len(nrow(metadata))
-    } else {
-      match(metadata[["cell_barcode"]], trajectory_cells)
-    }
-    out <- cbind(metadata, trajectory_meta[idx, , drop = FALSE])
-    rownames(out) <- NULL
-    return(out)
-  }
-  trajectory_meta[["cell_barcode"]] <- rownames(trajectory_meta)
-  metadata %>%
-    dplyr::left_join(trajectory_meta, by = "cell_barcode")
-}
-
-##----------------------------------------------------------------------------##
 ## Calculate X-Y ranges for projections.
 ##----------------------------------------------------------------------------##
 getXYranges <- function(table) {
@@ -2611,60 +2558,6 @@ getGenesForGeneSet <- function(gene_set) {
   }
 
   getMsigdbGenes(species, gene_set)
-}
-
-##----------------------------------------------------------------------------##
-## Function to calculate center of groups in projections/trajectories.
-##----------------------------------------------------------------------------##
-centerOfGroups <- function(coordinates, df, n_dimensions, group) {
-  ## Guard against a missing grouping column: callers occasionally pass a
-  ## group that isn't present in df (e.g. a metadata column dropped for a
-  ## selected-cells slice), which would otherwise make df[[group]] NULL and
-  ## crash the tibble construction. Return a typed empty result instead.
-  if (is.null(group) || !group %in% colnames(df)) {
-    return(tidyr::tibble(
-      group = character(),
-      x_median = numeric(),
-      y_median = numeric(),
-      z_median = numeric()
-    ))
-  }
-  ## check number of dimenions in projection
-  ## ... 2 dimensions
-  if (n_dimensions == 2) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-    ## ... 3 dimensions
-  } else if (n_dimensions == 3 && is.numeric(coordinates[, 3])) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      z = coordinates[[3]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        z_median = median(z),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-  }
 }
 
 ##----------------------------------------------------------------------------##
@@ -4476,6 +4369,354 @@ selectedCellMask <- function(selection_key, identifier, selection) {
     character()
   }
   as.character(identifier) %in% coordinates
+}
+
+cerebroRegisterInfo <- function(input, input_id, info) {
+  shiny::observeEvent(input[[input_id]], {
+    shiny::showModal(shiny::modalDialog(
+      info$text,
+      title = info$title,
+      easyClose = TRUE,
+      footer = NULL,
+      size = "l"
+    ))
+  })
+}
+
+cerebroSelectedCellsTableInfo <- function() {
+  list(
+    title = "Details of selected cells",
+    text = shiny::HTML(
+      "
+      Table containing meta data (some columns may be hidden, check the 'Column visibility' button) for cells selected in the plot using the box or lasso selection tool. If you want the table to contain all cells in the data set, you must select all cells in the plot. The table can be saved to disk in CSV or Excel format for further analysis.
+      <h4>Options</h4>
+      <b>Automatically format numbers</b><br>
+      When activated, columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>
+      <em>This feature does not work on columns that contain 'NA' values.</em><br>
+      <b>Highlight values with colours</b><br>
+      Similar to the automatic formatting option, when activated, CerebroNexus will look for known columns in the table (those that contain grouping variables), try to interpret column content, and use colours and other stylistic elements to facilitate quick interpretation of the values. If you prefer the table without colours and/or the identification does not work properly, you can simply deactivate this feature.<br>
+      <em>This feature does not work on columns that contain 'NA' values.</em><br>
+      <br>
+      <em>Columns can be re-ordered by dragging their respective header.</em>"
+    )
+  )
+}
+
+cerebroSelectedCellsPlotInfo <- function() {
+  list(
+    title = "Plot of selected cells",
+    text = shiny::p(
+      "Depending on the variable selected to colour cells in the dimensional reduction, this plot will show different things. If you select a categorical variable, e.g. 'sample' or 'cluster', you will get a bar plot showing which groups the cells selected with the box or lasso tool come from. Instead, if you select a continuous variable, e.g. the number of transcripts (nUMI), you will see a violin/box plot showing the distribution of that variable in the selected vs. non-selected cells."
+    )
+  )
+}
+
+cerebroSelectedCellsTableUI <- function(prefix) {
+  shiny::fluidRow(cerebroBox(
+    title = shiny::tagList(
+      boxTitle("Table of selected cells"),
+      cerebroInfoButton(paste0(prefix, "_details_selected_cells_table_info"))
+    ),
+    shiny::tagList(
+      shinyWidgets::materialSwitch(
+        inputId = paste0(
+          prefix,
+          "_details_selected_cells_table_number_formatting"
+        ),
+        label = "Automatically format numbers:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(
+          prefix,
+          "_details_selected_cells_table_color_highlighting"
+        ),
+        label = "Highlight values with colours:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      DT::dataTableOutput(paste0(prefix, "_details_selected_cells_table"))
+    )
+  ))
+}
+
+cerebroSelectedCellsPlotUI <- function(prefix, choices) {
+  shiny::fluidRow(cerebroBox(
+    title = shiny::tagList(
+      boxTitle("Plot of selected cells"),
+      cerebroInfoButton(paste0(prefix, "_details_selected_cells_plot_info"))
+    ),
+    shiny::tagList(
+      shiny::selectInput(
+        paste0(prefix, "_selected_cells_plot_select_variable"),
+        label = "Variable to compare:",
+        choices = choices
+      ),
+      plotly::plotlyOutput(paste0(prefix, "_details_selected_cells_plot"))
+    )
+  ))
+}
+
+cerebroSelectedCellsTable <- function(
+  cells_df,
+  empty_data,
+  selection,
+  fallback_key = c("row", "identifier"),
+  number_formatting = TRUE,
+  color_highlighting = TRUE,
+  download_file_name
+) {
+  empty_table <- function() {
+    prepareEmptyTable(empty_data[0, , drop = FALSE])
+  }
+  if (is.null(selection)) {
+    return(empty_table())
+  }
+
+  fallback_key <- match.arg(fallback_key)
+  identifier <- paste0(cells_df[[1L]], "-", cells_df[[2L]])
+  selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
+    as.character(cells_df[["cell_barcode"]])
+  } else if (identical(fallback_key, "identifier")) {
+    identifier
+  } else {
+    as.character(seq_len(nrow(cells_df)))
+  }
+  keep <- selectedCellMask(selection_key, identifier, selection)
+  metadata_columns <- setdiff(seq_len(ncol(cells_df)), 1:2)
+  cells_df <- cells_df[keep, metadata_columns, drop = FALSE]
+  if (!nrow(cells_df)) {
+    return(empty_table())
+  }
+  if ("cell_barcode" %in% colnames(cells_df)) {
+    cells_df <- cells_df[, c(
+      "cell_barcode",
+      setdiff(colnames(cells_df), "cell_barcode")
+    ), drop = FALSE]
+  }
+  prettifyTable(
+    cells_df,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Brtlip",
+    show_buttons = TRUE,
+    number_formatting = number_formatting,
+    color_highlighting = color_highlighting,
+    hide_long_columns = TRUE,
+    download_file_name = download_file_name
+  )
+}
+
+cerebroSelectedCellsPlot <- function(
+  cells_df,
+  selection,
+  color_variable,
+  fallback_key = c("row", "identifier")
+) {
+  fallback_key <- match.arg(fallback_key)
+  identifier <- paste0(cells_df[[1L]], "-", cells_df[[2L]])
+  selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
+    as.character(cells_df[["cell_barcode"]])
+  } else if (identical(fallback_key, "identifier")) {
+    identifier
+  } else {
+    as.character(seq_len(nrow(cells_df)))
+  }
+  cells_df[["group"]] <- factor(
+    ifelse(
+      selectedCellMask(selection_key, identifier, selection),
+      "selected",
+      "not selected"
+    ),
+    levels = c("selected", "not selected")
+  )
+
+  if (is.factor(cells_df[[color_variable]]) ||
+      is.character(cells_df[[color_variable]])) {
+    cells_df <- cells_df[cells_df[["group"]] == "selected", , drop = FALSE]
+    if (nrow(cells_df)) {
+      cells_df <- cells_df %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(color_variable))) %>%
+        dplyr::tally() %>%
+        dplyr::ungroup()
+    } else {
+      group_levels <- if (color_variable %in% getGroups()) {
+        getGroupLevels(color_variable)
+      } else {
+        unique(getMetaData()[[color_variable]])
+      }
+      cells_df <- data.frame(group = group_levels, n = 0) %>%
+        dplyr::rename(!!color_variable := group)
+    }
+    colors_for_groups <- assignColorsToGroups(cells_df, color_variable)
+    cells_df[[1L]] <- as.character(cells_df[[1L]])
+    plot <- plotly::plot_ly(
+      cells_df,
+      x = ~cells_df[[1L]],
+      y = ~cells_df[[2L]],
+      type = "bar",
+      color = ~cells_df[[1L]],
+      colors = colors_for_groups,
+      source = "subset",
+      showlegend = FALSE,
+      hoverinfo = "y"
+    )
+    y_axis_title <- "Number of cells"
+  } else {
+    cells_df <- cells_df[, c("group", color_variable), drop = FALSE]
+    cells_df <- compactViolinData(cells_df, color_variable, "group")
+    plot <- plotly::plot_ly(
+      cells_df,
+      x = ~cells_df[["group"]],
+      y = ~cells_df[[color_variable]],
+      type = "violin",
+      box = list(visible = TRUE),
+      meanline = list(visible = TRUE),
+      color = ~cells_df[[1L]],
+      colors = stats::setNames(
+        c("#e74c3c", "#7f8c8d"),
+        c("selected", "not selected")
+      ),
+      source = "subset",
+      showlegend = FALSE,
+      hoverinfo = "y",
+      marker = list(size = 5)
+    )
+    y_axis_title <- colnames(cells_df)[[2L]]
+  }
+
+  plot %>%
+    plotly::layout(
+      title = "",
+      xaxis = list(title = "", mirror = TRUE, showline = TRUE),
+      yaxis = list(
+        title = y_axis_title,
+        tickformat = ",.0f",
+        hoverformat = ",.0f",
+        mirror = TRUE,
+        showline = TRUE
+      ),
+      dragmode = "lasso",
+      hovermode = "compare"
+    ) %>%
+    cerebro_plotly_toolbar()
+}
+
+cerebroProjectionInfo <- function() {
+  list(
+    title = "Dimensional reduction",
+    text = shiny::HTML(
+      "
+      Interactive projection of cells into 2-dimensional space based on their expression profile.
+      <ul>
+        <li>Both tSNE and UMAP are frequently used algorithms for dimensional reduction in single cell transcriptomics. While they generally allow to make similar conclusions, some differences exist between the two (please refer to Google and/or literature, such as Becht E. et al., Dimensionality reduction for visualizing single-cell data using UMAP. Nature Biotechnology, 2018, 37, 38-44).</li>
+        <li>Cells can be coloured by the sample they came from, the cluster they were assigned, the number of transcripts or expressed genes, percentage of mitochondrial and ribosomal gene expression, an apoptotic score (calculated based on the expression of few marker genes; more info in the 'Sample info' tab on the left), or cell cycle status (determined using the Seurat and Cyclone method).</li>
+        <li>Confidence ellipses show the 95% confidence regions.</li>
+        <li>Samples and clusters can be removed from the plot individually to highlight a contrast of interest.</li>
+        <li>Point size, point opacity, and the percentage of displayed cells can be changed in Settings.</li>
+      </ul>
+      The plot is interactive (drag and zoom) but depending on the computer of the user and the number of cells displayed it can become very slow."
+    )
+  )
+}
+
+registerCellViewPointBorder <- function(output, prefix) {
+  output_id <- paste0(prefix, "_point_border_UI")
+  output[[output_id]] <- shiny::renderUI({
+    shiny::checkboxInput(
+      inputId = paste0(prefix, "_point_border"),
+      label = "Draw border around cells",
+      value = FALSE
+    )
+  })
+  shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
+}
+
+cerebroResultTableControls <- function(prefix) {
+  shiny::fluidRow(
+    shiny::column(
+      12,
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_filter_switch"),
+        label = "Show results for all subgroups (no pre-filtering):",
+        value = FALSE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_number_formatting"),
+        label = "Automatically format numbers:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_color_highlighting"),
+        label = "Highlight values with colours:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      )
+    ),
+    shiny::column(12, shiny::uiOutput(paste0(prefix, "_filter_subgroups_UI"))),
+    shiny::column(12, DT::dataTableOutput(paste0(prefix, "_table")))
+  )
+}
+
+cerebroResultSubgroupUI <- function(results_df, show_all, grouped, input_id) {
+  if (isTRUE(show_all) || !isTRUE(grouped)) {
+    return(shiny::fluidRow())
+  }
+  available_groups <- if (is.factor(results_df[[1L]])) {
+    levels(results_df[[1L]])
+  } else {
+    unique(as.character(results_df[[1L]]))
+  }
+  shiny::fluidRow(shiny::column(
+    12,
+    shiny::selectInput(
+      input_id,
+      label = "Filter results for subgroup:",
+      choices = available_groups
+    )
+  ))
+}
+
+cerebroFilterResultRows <- function(results_df, show_all, grouped, selected) {
+  if (isTRUE(show_all) || !isTRUE(grouped)) {
+    return(results_df)
+  }
+  results_df[results_df[[1L]] == selected, , drop = FALSE]
+}
+
+cerebroResultTable <- function(
+  results_df,
+  download_file_name,
+  number_formatting = TRUE,
+  color_highlighting = TRUE,
+  hide_long_columns = TRUE,
+  columns_hide = NULL,
+  columns_percentage = NULL
+) {
+  if (!nrow(results_df)) {
+    return(prepareEmptyTable(as.data.frame(results_df)[0, , drop = FALSE]))
+  }
+  prettifyTable(
+    results_df,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Bfrtlip",
+    show_buttons = TRUE,
+    number_formatting = number_formatting,
+    color_highlighting = color_highlighting,
+    hide_long_columns = hide_long_columns,
+    columns_hide = columns_hide,
+    columns_percentage = columns_percentage,
+    download_file_name = download_file_name,
+    page_length_default = 20,
+    page_length_menu = c(20, 50, 100)
+  )
 }
 
 ##----------------------------------------------------------------------------##

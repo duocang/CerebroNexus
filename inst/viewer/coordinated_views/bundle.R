@@ -2213,70 +2213,59 @@ cv_build_compact_supplement <- function(
   )
 }
 
-cv_defer_fields <- function(fields) {
-  lapply(fields, function(field) {
-    if (identical(field$source, "trekker")) {
-      return(field)
-    }
-    field$v <- NULL
-    field$deferred <- TRUE
-    field
-  })
-}
-
-cv_bundle_supplement <- function(primary, full, compact = FALSE) {
-  missing_named <- function(all, initial) {
-    all[setdiff(names(all), names(initial))]
+## Build only the data absent from the primary response. Unlike the retired
+## full-bundle/diff fallback, this never rebuilds the primary projection or
+## materialises metadata vectors that the browser will request lazily.
+cv_build_progressive_supplement <- function(
+  crb,
+  primary,
+  include_clone = TRUE
+) {
+  md <- cv_canonical_metadata(crb$getMetaData())
+  if (is.null(md) || !identical(as.integer(nrow(md)), as.integer(primary$n))) {
+    return(NULL)
   }
-  primary_space_ids <- vapply(primary$spaces, `[[`, character(1), "id")
-  groups <- missing_named(full$groups, primary$groups)
-  cat_extra <- missing_named(full$cat_extra, primary$cat_extra)
-  fields <- missing_named(full$fields, primary$fields)
-  clone <- full$clone
-  if (isTRUE(compact)) {
-    defer <- function(values, member) {
-      lapply(values, function(value) {
-        value[[member]] <- NULL
-        value$deferred <- TRUE
-        value
-      })
-    }
-    groups <- defer(groups, "values")
-    cat_extra <- defer(cat_extra, "values")
-    fields <- cv_defer_fields(fields)
-    if (!is.null(clone) && !is.null(clone$id)) {
-      clone_ids <- as.integer(clone$id)
-      receptor_index <- which(clone_ids >= 0L)
-      clone$index <- I(as.integer(receptor_index - 1L))
-      clone$code <- I(clone_ids[receptor_index])
-      clone$id <- NULL
-      expansion <- full$groups[["clone_expansion"]]
-      if (!is.null(expansion) && "clone_expansion" %in% names(groups)) {
-        groups[["clone_expansion"]] <- list(
-          index = I(as.integer(receptor_index - 1L)),
-          values = I(as.integer(expansion$values[receptor_index])),
-          default = 0L,
-          levels = expansion$levels,
-          colors = expansion$colors
-        )
-      }
-    }
+  cells <- md$cell_barcode
+  metadata <- cv_build_deferred_metadata(crb, md, primary)
+  projection_names <- tryCatch(
+    crb$availableProjections(),
+    error = function(e) character()
+  )
+  spaces <- cv_build_trajectories(crb, cells)
+  spatial <- cv_build_spatial(crb, cells)
+  if (!is.null(spatial)) {
+    spaces[[length(spaces) + 1L]] <- spatial
+  }
+  trekker <- cv_build_trekker(crb, cells, md)
+  if (!is.null(trekker)) {
+    spaces[[length(spaces) + 1L]] <- trekker$space
+    metadata$fields <- c(metadata$fields, trekker$fields)
+  }
+  clone <- if (isTRUE(include_clone)) {
+    cv_build_clone(crb, cells, nrow(md), sparse = TRUE)
+  } else {
+    NULL
+  }
+  if (!is.null(clone)) {
+    spaces[[length(spaces) + 1L]] <- clone$space
+    metadata$groups[["clone_expansion"]] <- clone$group
   }
   list(
-    dataset_id = full$dataset_id,
-    dataset_fingerprint = full$dataset_fingerprint,
+    dataset_id = primary$dataset_id,
+    dataset_fingerprint = primary$dataset_fingerprint,
     progressive_token = primary$progressive_token,
-    groups = groups,
-    cat_extra = cat_extra,
-    fields = fields,
-    cat_skipped = full$cat_skipped,
-    projections = missing_named(full$projections, primary$projections),
-    spaces = Filter(
-      function(space) !space$id %in% primary_space_ids,
-      full$spaces
+    groups = metadata$groups,
+    cat_extra = metadata$cat_extra,
+    fields = metadata$fields,
+    cat_skipped = metadata$cat_skipped,
+    projections = cv_build_projections(
+      crb,
+      cells,
+      setdiff(projection_names, names(primary$projections))
     ),
-    clone = clone,
-    trekker = full$trekker
+    spaces = spaces,
+    clone = if (is.null(clone)) NULL else clone$bundle,
+    trekker = if (is.null(trekker)) NULL else trekker$bundle
   )
 }
 

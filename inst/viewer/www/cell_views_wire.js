@@ -66,27 +66,9 @@
     return unpackValue(buffer, dataStart, JSON.parse(header));
   }
 
-  function unpackCells(buffer) {
-    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 4) {
-      throw new Error('invalid Linked views cell message');
-    }
-    var datasetLength = new DataView(buffer, 0, 4).getUint32(0, true);
-    if (4 + datasetLength > buffer.byteLength) {
-      throw new Error('invalid Linked views cell header');
-    }
-    var decoder = new window.TextDecoder();
-    return {
-      dataset_id: decoder.decode(new Uint8Array(buffer, 4, datasetLength)),
-      cells: JSON.parse(decoder.decode(
-        new Uint8Array(buffer, 4 + datasetLength)
-      ))
-    };
-  }
-
   window.CBViewWire = Object.freeze({
     supported: typeof window.ArrayBuffer === 'function' &&
       typeof window.TextDecoder === 'function',
-    unpack: unpack,
-    unpackCells: unpackCells
+    unpack: unpack
   });
 })();

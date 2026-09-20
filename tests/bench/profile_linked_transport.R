@@ -38,31 +38,18 @@ timed <- function(expr) {
 packed_size <- function(value) length(env$cv_wire_pack_message(value))
 
 primary <- timed(env$cv_build_bundle(data_set, primary_only = TRUE))
-full <- timed(env$cv_build_bundle(data_set))
-supplement <- env$cv_bundle_supplement(primary$value, full$value)
-compact_supplement <- env$cv_bundle_supplement(
-  primary$value,
-  full$value,
-  compact = TRUE
-)
+supplement <- timed(env$cv_build_progressive_supplement(
+  data_set,
+  primary$value
+))
 primary_wire <- timed(env$cv_wire_pack_bundle(
   primary$value,
   include_cells = FALSE
 ))
-supplement_wire <- timed(env$cv_wire_pack_message(supplement))
-cells_wire <- timed(env$cv_wire_pack_cells(
-  full$value$dataset_id,
-  full$value$cells
-))
+supplement_wire <- timed(env$cv_wire_pack_message(supplement$value))
 messages <- list(
   primary = primary_wire$value,
-  supplement = supplement_wire$value,
-  cells = cells_wire$value
-)
-compact_wire <- timed(env$cv_wire_pack_message(compact_supplement))
-compact_messages <- list(
-  primary = messages$primary,
-  supplement = compact_wire$value
+  supplement = supplement_wire$value
 )
 shared_primary <- primary$value
 shared_name <- shared_primary$default_projection
@@ -72,7 +59,7 @@ shared_primary$projections[[shared_name]]$y <- NULL
 shared_primary$projections[[shared_name]]$z <- NULL
 shared_messages <- list(
   primary = env$cv_wire_pack_bundle(shared_primary, include_cells = FALSE),
-  supplement = compact_messages$supplement
+  supplement = messages$supplement
 )
 
 rows <- data.frame(
@@ -81,7 +68,7 @@ rows <- data.frame(
   stringsAsFactors = FALSE
 )
 components <- setdiff(
-  names(supplement),
+  names(supplement$value),
   c(
     "dataset_id",
     "dataset_fingerprint",
@@ -92,21 +79,21 @@ component_rows <- data.frame(
   section = paste0("supplement.", components),
   bytes = vapply(
     components,
-    function(name) packed_size(supplement[name]),
+    function(name) packed_size(supplement$value[name]),
     numeric(1)
   ),
   stringsAsFactors = FALSE
 )
 rows <- rbind(rows, component_rows)
-if (is.list(supplement$clone)) {
-  clone_names <- names(supplement$clone)
+if (is.list(supplement$value$clone)) {
+  clone_names <- names(supplement$value$clone)
   rows <- rbind(
     rows,
     data.frame(
       section = paste0("supplement.clone.", clone_names),
       bytes = vapply(
         clone_names,
-        function(name) packed_size(supplement$clone[name]),
+        function(name) packed_size(supplement$value$clone[name]),
         numeric(1)
       ),
       stringsAsFactors = FALSE
@@ -115,24 +102,18 @@ if (is.list(supplement$clone)) {
 }
 rows$mib <- rows$bytes / 1024^2
 
-cat(sprintf("cells\t%d\n", full$value$n))
+cat(sprintf("cells\t%d\n", primary$value$n))
 cat(sprintf("primary_build_ms\t%.0f\n", primary$ms))
-cat(sprintf("full_build_ms\t%.0f\n", full$ms))
+cat(sprintf("supplement_build_ms\t%.0f\n", supplement$ms))
 cat(sprintf("primary_serialize_ms\t%.0f\n", primary_wire$ms))
 cat(sprintf("supplement_serialize_ms\t%.0f\n", supplement_wire$ms))
-cat(sprintf("cells_serialize_ms\t%.0f\n", cells_wire$ms))
-cat(sprintf("compact_supplement_serialize_ms\t%.0f\n", compact_wire$ms))
 cat(sprintf(
   "first_open_total_bytes\t%.0f\n",
   sum(vapply(messages, length, numeric(1)))
 ))
 cat(sprintf(
-  "compact_first_open_total_bytes\t%.0f\n",
-  sum(vapply(compact_messages, length, numeric(1)))
-))
-cat(sprintf(
-  "compact_incremental_bytes\t%.0f\n",
-  length(compact_messages$supplement)
+  "incremental_bytes\t%.0f\n",
+  length(messages$supplement)
 ))
 cat(sprintf(
   "shared_incremental_bytes\t%.0f\n",

@@ -25,7 +25,6 @@ enriched_pathways_data <- reactive({
 
 output[["enriched_pathways_table_UI"]] <- renderUI({
   selected_method <- input[["enriched_pathways_selected_method"]]
-  selected_table <- input[["enriched_pathways_selected_table"]]
   if (
     is.null(selected_method) ||
       selected_method %in% getMethodsForEnrichedPathways() == FALSE
@@ -91,34 +90,7 @@ output[["enriched_pathways_table_or_text_UI"]] <- renderUI({
   ) {
     textOutput("enriched_pathways_message_no_gene_sets_enriched")
   } else if (is.data.frame(results_type)) {
-    fluidRow(
-      column(
-        12,
-        shinyWidgets::materialSwitch(
-          inputId = "enriched_pathways_table_filter_switch",
-          label = "Show results for all subgroups (no pre-filtering):",
-          value = FALSE,
-          status = "primary",
-          inline = TRUE
-        ),
-        shinyWidgets::materialSwitch(
-          inputId = "enriched_pathways_table_number_formatting",
-          label = "Automatically format numbers:",
-          value = TRUE,
-          status = "primary",
-          inline = TRUE
-        ),
-        shinyWidgets::materialSwitch(
-          inputId = "enriched_pathways_table_color_highlighting",
-          label = "Highlight values with colours:",
-          value = TRUE,
-          status = "primary",
-          inline = TRUE
-        )
-      ),
-      column(12, uiOutput("enriched_pathways_filter_subgroups_UI")),
-      column(12, DT::dataTableOutput("enriched_pathways_table"))
-    )
+    cerebroResultTableControls("enriched_pathways")
   } else {
     textOutput("enriched_pathways_message_no_data_found")
   }
@@ -146,37 +118,12 @@ output[["enriched_pathways_filter_subgroups_UI"]] <- renderUI({
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
 
-  ## check if pre-filtering is activated and name of first column in table is
-  ## one of the registered groups
-  ## ... it's not
-  if (
-    input[["enriched_pathways_table_filter_switch"]] == TRUE ||
-      colnames(results_df)[1] %in% getGroups() == FALSE
-  ) {
-    ## return nothing (empty row)
-    fluidRow()
-
-    ## ... it is
-  } else {
-    ## check for which groups results exist
-    if (is.character(results_df[[1]])) {
-      available_groups <- unique(results_df[[1]])
-    } else if (is.factor(results_df[[1]])) {
-      available_groups <- levels(results_df[[1]])
-    }
-
-    ## create input selection for available groups
-    fluidRow(
-      column(
-        12,
-        selectInput(
-          "enriched_pathways_table_select_group_level",
-          label = "Filter results for subgroup:",
-          choices = available_groups
-        )
-      )
-    )
-  }
+  cerebroResultSubgroupUI(
+    results_df,
+    input[["enriched_pathways_table_filter_switch"]],
+    colnames(results_df)[[1L]] %in% getGroups(),
+    "enriched_pathways_table_select_group_level"
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -203,80 +150,46 @@ output[["enriched_pathways_table"]] <- DT::renderDataTable({
 
     incProgress(0.3, detail = "Filtering data...")
 
-    ## filter the table for a specific subgroup only if specified by the user
-    ## (otherwise show all results)
-    if (
-      input[["enriched_pathways_table_filter_switch"]] == FALSE &&
-        colnames(results_df)[1] %in% getGroups() == TRUE
-    ) {
-      ## don't proceed if selection of subgroup is not available
-      req(
-        input[["enriched_pathways_table_select_group_level"]]
-      )
-
-      ## filter table
-      results_df <- results_df[
-        which(
-          results_df[[1]] ==
-            input[["enriched_pathways_table_select_group_level"]]
-        ),
-      ]
+    grouped <- colnames(results_df)[[1L]] %in% getGroups()
+    if (!isTRUE(input[["enriched_pathways_table_filter_switch"]]) && grouped) {
+      req(input[["enriched_pathways_table_select_group_level"]])
     }
+    results_df <- cerebroFilterResultRows(
+      results_df,
+      input[["enriched_pathways_table_filter_switch"]],
+      grouped,
+      input[["enriched_pathways_table_select_group_level"]]
+    )
 
     incProgress(0.6, detail = "Rendering table...")
 
-    ## if the table is empty, e.g. because the filtering of results for a specific
-    ## subgroup did not work properly, skip the processing and show and empty
-    ## table (otherwise the procedure would result in an error)
-    if (nrow(results_df) == 0) {
-      results_df %>%
-        as.data.frame() %>%
-        dplyr::slice(0) %>%
-        prepareEmptyTable()
-
-      ## ... if there is at least 1 row, create proper table
-    } else if (nrow(results_df) > 0) {
-      ## check whether the data frame comes from the enrichR helper
-      columns_hide <- c()
-      if (
-        any(grepl(colnames(results_df), pattern = "Term")) &&
-          any(grepl(colnames(results_df), pattern = "Old.P.value")) &&
-          any(grepl(colnames(results_df), pattern = "Old.Adjusted.P.value"))
-      ) {
-        columns_hide <- c()
-        columns_hide <- c(
-          columns_hide,
-          grep(colnames(results_df), pattern = "Old.P.value")
-        )
-        columns_hide <- c(
-          columns_hide,
-          grep(colnames(results_df), pattern = "Old.Adjusted.P.value")
-        )
-      }
-
-      prettifyTable(
-        results_df,
-        filter = list(position = "top", clear = TRUE),
-        dom = "Bfrtlip",
-        show_buttons = TRUE,
-        number_formatting = input[[
-          "enriched_pathways_table_number_formatting"
-        ]],
-        color_highlighting = input[[
-          "enriched_pathways_table_color_highlighting"
-        ]],
-        hide_long_columns = TRUE,
-        columns_hide = columns_hide,
-        download_file_name = paste0(
-          "enriched_pathways_by_",
-          input[["enriched_pathways_selected_method"]],
-          "_",
-          input[["enriched_pathways_selected_table"]]
-        ),
-        page_length_default = 20,
-        page_length_menu = c(20, 50, 100)
+    columns_hide <- integer()
+    if (
+      any(grepl("Term", colnames(results_df))) &&
+        any(grepl("Old.P.value", colnames(results_df))) &&
+        any(grepl("Old.Adjusted.P.value", colnames(results_df)))
+    ) {
+      columns_hide <- grep(
+        "Old.P.value|Old.Adjusted.P.value",
+        colnames(results_df)
       )
     }
+    cerebroResultTable(
+      results_df,
+      paste0(
+        "enriched_pathways_by_",
+        input[["enriched_pathways_selected_method"]],
+        "_",
+        input[["enriched_pathways_selected_table"]]
+      ),
+      number_formatting = input[[
+        "enriched_pathways_table_number_formatting"
+      ]],
+      color_highlighting = input[[
+        "enriched_pathways_table_color_highlighting"
+      ]],
+      columns_hide = columns_hide
+    )
   })
 })
 
@@ -316,17 +229,7 @@ output[["enriched_pathways_message_no_data_found"]] <- renderText({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["enriched_pathways_info"]], {
-  showModal(
-    modalDialog(
-      enriched_pathways_info[["text"]],
-      title = enriched_pathways_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "enriched_pathways_info", enriched_pathways_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

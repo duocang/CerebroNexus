@@ -6,38 +6,6 @@
 .cerebro_layer_roots <- c("scale.data", "counts", "data")
 .cerebro_fallback_roots <- c("data", "counts", "scale.data")
 
-#' Semantic root of a (possibly split) Seurat v5 layer name
-#'
-#' `split(assay, f = ...)` names each layer `<root>.<level>`, where the level is
-#' whatever the splitting factor's values are -- sample names (`counts.pbmc_1`)
-#' at least as often as integers (`counts.1`). Matching only the numeric form
-#' left every sample-split object looking unsplit.
-#'
-#' Roots are matched against a whitelist rather than stripped with a general
-#' rule, because `scale.data` contains a dot itself: `sub("\\.[^.]+$", "", x)`
-#' would root it as `scale` and quietly divorce it from its own split layers.
-#' Layer names outside the whitelist keep the legacy numeric-suffix handling, so
-#' a custom slot such as `foo.1` still resolves to `foo`.
-#'
-#' @keywords internal
-#' @noRd
-.layer_semantic_root <- function(x) {
-  vapply(
-    x,
-    function(layer) {
-      known <- .cerebro_layer_roots[
-        startsWith(layer, paste0(.cerebro_layer_roots, "."))
-      ]
-      if (length(known) > 0) {
-        return(known[[1L]])
-      }
-      sub("\\.[0-9]+$", "", layer)
-    },
-    character(1),
-    USE.NAMES = FALSE
-  )
-}
-
 #' Find a unique Seurat v5 layer partition
 #'
 #' The normal `split.Assay5()` case is linear in the number of cells and layer
@@ -707,37 +675,6 @@
   )
 }
 
-#' Filter candidate fallback layers to the same semantic class as the request
-#'
-#' Given a requested layer name (e.g. "data", "counts", "scale.data") and the
-#' layers actually present in an assay, return the acceptable fallback layers.
-#' By default only layers sharing the same semantic root are kept, so that a
-#' missing "data" layer never silently falls back to "counts" (raw) or
-#' "scale.data" (scaled). Seurat v5 split layers ("data.1", "data.s1", ...)
-#' share the root of their base layer and are therefore kept. Set
-#' \code{allow_cross_semantic = TRUE} for the legacy behaviour where any
-#' available layer is an acceptable fallback (requested layer ordered first).
-#'
-#' @keywords internal
-#' @noRd
-.filter_same_semantic_layers <- function(
-  requested_layer,
-  available_layers,
-  allow_cross_semantic = FALSE
-) {
-  root_of <- .layer_semantic_root
-
-  if (isTRUE(allow_cross_semantic)) {
-    return(unique(c(
-      intersect(requested_layer, available_layers),
-      setdiff(available_layers, requested_layer)
-    )))
-  }
-
-  requested_root <- root_of(requested_layer)
-  available_layers[root_of(available_layers) == requested_root]
-}
-
 #' Validate expression-matrix cell coverage and order
 #'
 #' @keywords internal
@@ -1181,21 +1118,6 @@
 
 .spx_collapse <- function(x) {
   if (length(x) == 0) "none" else paste(x, collapse = ", ")
-}
-
-.spx_escape_regex <- function(x) {
-  gsub("([\\^$.|?*+()\\[\\]{}\\\\\\-])", "\\\\\\1", x, perl = TRUE)
-}
-
-.spx_is_matrix_like <- function(x) {
-  if (is.null(x)) {
-    return(FALSE)
-  }
-  d <- .spx_try(dim(x))
-  if (.spx_is_try_error(d) || is.null(d) || length(d) != 2) {
-    return(FALSE)
-  }
-  TRUE
 }
 
 .spx_has_slot <- function(obj, slot_name) {

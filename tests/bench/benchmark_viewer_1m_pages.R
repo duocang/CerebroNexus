@@ -312,7 +312,6 @@ pages <- list(
   trekker = page("trekker", "true"),
   gene_id_conversion = page("geneIdConversion", "true"),
   color_management = page("color_management", "true"),
-  analysis_info = page("analysis_info", "true"),
   about = page("about", "true"),
   coordinated_views = page(
     "coordinated_views",

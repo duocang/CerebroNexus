@@ -111,17 +111,11 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_details_selected_cells_info"]], {
-  showModal(
-    modalDialog(
-      expression_details_selected_cells_info$text,
-      title = expression_details_selected_cells_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "expression_details_selected_cells_info",
+  expression_details_selected_cells_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

@@ -65,17 +65,11 @@ outputOptions(
 
 ## Info box explaining the score, shown when pressing the "info" button next to
 ## the Moran's I value in the projection title bar.
-observeEvent(input[["spatial_projection_morans_i_info"]], {
-  showModal(
-    modalDialog(
-      spatial_projection_morans_i_info[["text"]],
-      title = spatial_projection_morans_i_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "spatial_projection_morans_i_info",
+  spatial_projection_morans_i_info
+)
 
 spatial_projection_morans_i_info <- list(
   title = "Spatial autocorrelation (Moran's I)",

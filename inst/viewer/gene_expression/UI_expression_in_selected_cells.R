@@ -68,17 +68,11 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_in_selected_cells_info"]], {
-  showModal(
-    modalDialog(
-      expression_in_selected_cells_info$text,
-      title = expression_in_selected_cells_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "expression_in_selected_cells_info",
+  expression_in_selected_cells_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

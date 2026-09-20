@@ -146,13 +146,6 @@
     '#FF6692', '#B6E880', '#FF97FF', '#FECB52', '#2f6fd6', '#f97316',
     '#16a34a', '#9a5cd0', '#e05780', '#38b2ac', '#d97706', '#7bb0e8'];
 
-  function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === 'function') {
-      return window.CSS.escape(String(value));
-    }
-    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
-  }
-
   // RGB co-expression: cells whose max channel is <= RGB_MIN form a light-grey
   // substrate; the rest blend FROM that grey toward their full-brightness hue by
   // intensity (max/255), so weak co-expression stays faint (≈grey). Cells above
@@ -944,10 +937,6 @@
   }
   function projectionId(name) { return 'projection::' + name; }
   function isProjectionSpace(sp) { return !!(sp && sp._projectionName); }
-  function isProjectionPanel(p) {
-    return !!(p && isProjectionSpace(spaceById[p.spaceId]));
-  }
-
   // Is there a panel one can actually select on?
   function anyFlatPanel() {
     return panels.some(function (p) { return p.spaceId && !panelIs3D(p); });
@@ -2423,10 +2412,6 @@
     var any = false;
     sel.forEach(function (i) { if (u.ok[i]) any = true; });
     return any;
-  }
-  function panelForSpace(spaceId) {
-    if (!spaceId) return null;
-    return panels.find(function (panel) { return panel.spaceId === spaceId; }) || null;
   }
   function resetZoom(only) {
     var any = false;
@@ -7547,23 +7532,6 @@
     });
   }
 
-  function onBinaryCells(buffer) {
-    try {
-      var message = window.CBViewWire.unpackCells(buffer);
-      if (!D || message.dataset_id !== D.dataset_id ||
-          !Array.isArray(message.cells) || message.cells.length !== D.n) return;
-      D.cells = message.cells;
-      if (linkedBundle) linkedBundle.cells = message.cells;
-      singleIndexCells = null; singleIndexMap = null;
-      reportWorkspaceReady();
-    } catch (error) {
-      requestWireFallback(
-        D && D.dataset_id,
-        D && configFingerprint()
-      );
-    }
-  }
-
   function hydrateSparseLinked(extra) {
     var cloneIndex = extra.clone && extra.clone.index;
     var hydrateGroups = function (groups) {
@@ -8733,7 +8701,6 @@
       assetCache[cacheKey] = message.uri;
       applyDeferredAsset(message.key, message.uri);
     });
-    Shiny.addCustomMessageHandler('coordviews_cells', onBinaryCells);
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
     Shiny.addCustomMessageHandler('cell_view_aux_binary', onSingleAuxBinary);
     Shiny.addCustomMessageHandler(

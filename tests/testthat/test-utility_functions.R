@@ -30,7 +30,6 @@ skip_if_not(file.exists(utils_file), "utility_functions.R not found")
 utils_env <- new.env()
 source(utils_file, local = utils_env)
 prettifyTable <- utils_env$prettifyTable
-centerOfGroups <- utils_env$centerOfGroups
 cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
@@ -561,25 +560,6 @@ test_that("spatial offset ranges require finite coordinates", {
   expect_match(source_text, "length\\(x\\) > 0 && length\\(y\\) > 0")
 })
 
-## ---------------------------------------------------------------------------
-## centerOfGroups
-## ---------------------------------------------------------------------------
-
-test_that("centerOfGroups computes 2D medians per group", {
-  result <- centerOfGroups(
-    coordinates = list(c(0, 10, 2), c(0, 10, 12)),
-    df = data.frame(grp = c("A", "A", "B")),
-    n_dimensions = 2,
-    group = "grp"
-  )
-  result <- as.data.frame(result)
-  expect_setequal(result$group, c("A", "B"))
-  expect_equal(result$x_median[result$group == "A"], 5)
-  expect_equal(result$y_median[result$group == "A"], 5)
-  expect_equal(result$x_median[result$group == "B"], 2)
-  expect_equal(result$y_median[result$group == "B"], 12)
-})
-
 test_that("cell scatter payload rejects incoherent categorical snapshots", {
   payload <- utils_env$cerebroCellViewScatterPayload
   common <- list(
@@ -818,27 +798,49 @@ test_that("selection counts use payload cell IDs", {
   expect_identical(utils_env$cerebroSelectionCount(c("c1", "c2")), 2L)
 })
 
-test_that("centerOfGroups returns a typed empty tibble for a missing group column", {
-  result <- centerOfGroups(
-    coordinates = matrix(c(1, 2, 3, 4), ncol = 2),
-    df = data.frame(cluster = c("a", "b")),
-    n_dimensions = 2,
-    group = "does_not_exist"
+test_that("selected-cell tables preserve identity and skip eager cell work", {
+  helper_env <- new.env(parent = utils_env)
+  helper_env$prepareEmptyTable <- function(data) data
+  helper_env$prettifyTable <- function(data, ...) data
+  helper <- utils_env$cerebroSelectedCellsTable
+  environment(helper) <- helper_env
+
+  empty <- data.frame(cell_barcode = character())
+  expect_no_error(
+    helper(
+      stop("cell data evaluated before selection"),
+      empty,
+      NULL,
+      download_file_name = "test"
+    )
   )
-  expect_equal(nrow(result), 0)
-  expect_true(all(
-    c("group", "x_median", "y_median", "z_median") %in% colnames(result)
-  ))
+
+  cells <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    cell_barcode = c("cell-a", "cell-b"),
+    cluster = c("A", "B")
+  )
+  selected <- helper(
+    cells,
+    cells[, 3:4, drop = FALSE],
+    data.frame(selection_key = "cell-b"),
+    download_file_name = "test"
+  )
+  expect_identical(selected$cell_barcode, "cell-b")
+  expect_identical(selected$cluster, "B")
 })
 
-test_that("centerOfGroups returns a typed empty tibble for a NULL group", {
-  result <- centerOfGroups(
-    coordinates = matrix(c(1, 2, 3, 4), ncol = 2),
-    df = data.frame(cluster = c("a", "b")),
-    n_dimensions = 2,
-    group = NULL
+test_that("shared result filtering keeps grouped and all-row semantics", {
+  results <- data.frame(group = c("A", "B"), value = c(1, 2))
+  filter_rows <- utils_env$cerebroFilterResultRows
+
+  expect_identical(filter_rows(results, TRUE, TRUE, "A"), results)
+  expect_identical(filter_rows(results, FALSE, FALSE, "A"), results)
+  expect_identical(
+    filter_rows(results, FALSE, TRUE, "B"),
+    results[2, , drop = FALSE]
   )
-  expect_equal(nrow(result), 0)
 })
 
 ## ---------------------------------------------------------------------------

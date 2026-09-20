@@ -40,34 +40,7 @@ output[["marker_genes_table_or_text_UI"]] <- renderUI({
   )
   if (length(results_type) > 0) {
     if (is.data.frame(results_type)) {
-      fluidRow(
-        column(
-          12,
-          shinyWidgets::materialSwitch(
-            inputId = "marker_genes_table_filter_switch",
-            label = "Show results for all subgroups (no pre-filtering):",
-            value = FALSE,
-            status = "primary",
-            inline = TRUE
-          ),
-          shinyWidgets::materialSwitch(
-            inputId = "marker_genes_table_number_formatting",
-            label = "Automatically format numbers:",
-            value = TRUE,
-            status = "primary",
-            inline = TRUE
-          ),
-          shinyWidgets::materialSwitch(
-            inputId = "marker_genes_table_color_highlighting",
-            label = "Highlight values with colours:",
-            value = TRUE,
-            status = "primary",
-            inline = TRUE
-          )
-        ),
-        column(12, uiOutput("marker_genes_filter_subgroups_UI")),
-        column(12, DT::dataTableOutput("marker_genes_table"))
-      )
+      cerebroResultTableControls("marker_genes")
     } else if (
       is.character(results_type) &&
         results_type == "no_markers_found"
@@ -97,35 +70,12 @@ output[["marker_genes_filter_subgroups_UI"]] <- renderUI({
   )
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
-  ## check if pre-filtering is activated and name of first column in table is
-  ## one of the registered groups
-  ## ... it's not
-  if (
-    input[["marker_genes_table_filter_switch"]] == TRUE ||
-      colnames(results_df)[1] %in% getGroups() == FALSE
-  ) {
-    ## return nothing (empty row)
-    fluidRow()
-    ## ... it is
-  } else {
-    ## check for which groups results exist
-    if (is.character(results_df[[1]])) {
-      available_groups <- unique(results_df[[1]])
-    } else if (is.factor(results_df[[1]])) {
-      available_groups <- levels(results_df[[1]])
-    }
-    ## create input selection for available groups
-    fluidRow(
-      column(
-        12,
-        selectInput(
-          "marker_genes_table_select_group_level",
-          label = "Filter results for subgroup:",
-          choices = available_groups
-        )
-      )
-    )
-  }
+  cerebroResultSubgroupUI(
+    results_df,
+    input[["marker_genes_table_filter_switch"]],
+    colnames(results_df)[[1L]] %in% getGroups(),
+    "marker_genes_table_select_group_level"
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -147,47 +97,27 @@ output[["marker_genes_table"]] <- DT::renderDataTable({
   req(is.data.frame(results_df))
   ## filter the table for a specific subgroup only if specified by the user
   ## (otherwise show all results)
-  if (
-    input[["marker_genes_table_filter_switch"]] == FALSE &&
-      colnames(results_df)[1] %in% getGroups() == TRUE
-  ) {
-    ## don't proceed if selection of subgroup is not available
+  grouped <- colnames(results_df)[[1L]] %in% getGroups()
+  if (!isTRUE(input[["marker_genes_table_filter_switch"]]) && grouped) {
     req(input[["marker_genes_table_select_group_level"]])
-    ## filter table
-    results_df <- results_df[
-      which(
-        results_df[[1]] == input[["marker_genes_table_select_group_level"]]
-      ),
-    ]
   }
-  ## if the table is empty, e.g. because the filtering of results for a specific
-  ## subgroup did not work properly, skip the processing and show and empty
-  ## table (otherwise the procedure would result in an error)
-  if (nrow(results_df) == 0) {
-    results_df %>%
-      as.data.frame() %>%
-      dplyr::slice(0) %>%
-      prepareEmptyTable()
-    ## if there is at least 1 row, create proper table
-  } else {
-    prettifyTable(
-      results_df,
-      filter = list(position = "top", clear = TRUE),
-      dom = "Bfrtlip",
-      show_buttons = TRUE,
-      number_formatting = input[["marker_genes_table_number_formatting"]],
-      color_highlighting = input[["marker_genes_table_color_highlighting"]],
-      hide_long_columns = TRUE,
-      download_file_name = paste0(
-        "marker_genes_by_",
-        input[["marker_genes_selected_method"]],
-        "_",
-        input[["marker_genes_selected_table"]]
-      ),
-      page_length_default = 20,
-      page_length_menu = c(20, 50, 100)
-    )
-  }
+  results_df <- cerebroFilterResultRows(
+    results_df,
+    input[["marker_genes_table_filter_switch"]],
+    grouped,
+    input[["marker_genes_table_select_group_level"]]
+  )
+  cerebroResultTable(
+    results_df,
+    paste0(
+      "marker_genes_by_",
+      input[["marker_genes_selected_method"]],
+      "_",
+      input[["marker_genes_selected_table"]]
+    ),
+    number_formatting = input[["marker_genes_table_number_formatting"]],
+    color_highlighting = input[["marker_genes_table_color_highlighting"]]
+  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -207,17 +137,7 @@ output[["marker_genes_table_no_data"]] <- renderText({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["marker_genes_info"]], {
-  showModal(
-    modalDialog(
-      marker_genes_info[["text"]],
-      title = marker_genes_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "marker_genes_info", marker_genes_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

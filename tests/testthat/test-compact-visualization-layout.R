@@ -95,8 +95,8 @@ find_assignment_rhs <- function(expression, left_hand_side) {
 test_that("standard visualization toolbars own selection status", {
   pages <- c(
     "overview/UI_projection.R",
-    "gene_expression/UI_projection.R",
-    "trajectory/projection.R",
+    "gene_expression/UI.R",
+    "trajectory/UI.R",
     "spatial/UI_projection.R",
     "trekker/UI.R",
     "hla_tcr_motifs/UI.R"

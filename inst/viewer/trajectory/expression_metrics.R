@@ -321,17 +321,11 @@ output[["trajectory_states_percent_ery_plot"]] <- plotly::renderPlotly({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_expression_metrics_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_expression_metrics_info[["text"]],
-      title = trajectory_expression_metrics_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "trajectory_expression_metrics_info",
+  trajectory_expression_metrics_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

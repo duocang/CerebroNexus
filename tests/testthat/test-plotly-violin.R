@@ -45,8 +45,7 @@ test_that("large violins retain distribution coverage with bounded rows", {
 test_that("million-cell violin callers share the compact path", {
   callers <- c(
     "gene_expression/func_expression_summary.R",
-    "overview/out_details_selected_cells_plot.R",
-    "spatial/out_details_selected_cells_plot.R",
+    "utility_functions.R",
     "coordinated_views/server.R"
   )
   for (caller in callers) {
@@ -55,5 +54,12 @@ test_that("million-cell violin callers share the compact path", {
       collapse = "\n"
     )
     expect_match(source, "compactViolinData(", fixed = TRUE, info = caller)
+  }
+  for (caller in c(
+    "overview/out_details_selected_cells_plot.R",
+    "spatial/out_details_selected_cells_plot.R"
+  )) {
+    source <- paste(readLines(viewer_test_path(caller)), collapse = "\n")
+    expect_match(source, "cerebroSelectedCellsPlot(", fixed = TRUE)
   }
 })

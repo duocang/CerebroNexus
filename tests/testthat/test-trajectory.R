@@ -16,8 +16,6 @@ test_that("all trajectory module files parse without errors", {
     "projection_plot.R",
     "distribution_along_pseudotime.R",
     "expression_metrics.R",
-    "number_of_expressed_genes_by_state.R",
-    "number_of_transcripts_by_state.R",
     "select_method_and_name.R",
     "selected_cells_table.R",
     "states_by_group.R"
@@ -220,9 +218,30 @@ test_that("specialist timing separates primary, cached, and auxiliary events", {
     readLines(file.path(shiny_root, "www", "cell_views.js"), warn = FALSE),
     collapse = "\n"
   )
+  state_source <- paste(
+    readLines(
+      file.path(shiny_root, "www", "cell_views_state.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
-  expect_match(source, "function beginSingleTiming", fixed = TRUE)
-  expect_match(source, "renderRequestSent: !!renderRequestSent", fixed = TRUE)
+  expect_match(state_source, "S.specialistLifecycle = {", fixed = TRUE)
+  expect_match(
+    state_source,
+    "begin: function (store, id, renderRequestSent)",
+    fixed = TRUE
+  )
+  expect_match(
+    state_source,
+    "renderRequestSent: !!renderRequestSent",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "CBViewState.specialistLifecycle.begin(",
+    fixed = TRUE
+  )
   expect_match(source, "eventKind: eventKind", fixed = TRUE)
   expect_match(source, "reportSelection('aux')", fixed = TRUE)
   expect_match(source, "'cached'", fixed = TRUE)

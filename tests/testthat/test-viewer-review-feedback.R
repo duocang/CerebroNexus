@@ -87,17 +87,29 @@ test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")
   tables <- list(
-    marker_genes = viewer_source("marker_genes", "table.R"),
+    marker_genes = paste(
+      viewer_source("marker_genes", "table.R"),
+      viewer_source("utility_functions.R")
+    ),
     linked = viewer_source("coordinated_views", "server.R"),
     trajectory = viewer_source("trajectory", "selected_cells_table.R"),
-    spatial = viewer_source("spatial", "UI_selected_cells_table.R"),
-    pathways = viewer_source("enriched_pathways", "table.R"),
+    spatial = paste(
+      viewer_source("spatial", "UI_selected_cells_table.R"),
+      viewer_source("utility_functions.R")
+    ),
+    pathways = paste(
+      viewer_source("enriched_pathways", "table.R"),
+      viewer_source("utility_functions.R")
+    ),
     extra = viewer_source("extra_material", "content.R"),
     expression = viewer_source(
       "gene_expression",
       "UI_table_of_selected_cells.R"
     ),
-    projection = viewer_source("overview", "UI_selected_cells_table.R")
+    projection = paste(
+      viewer_source("overview", "UI_selected_cells_table.R"),
+      viewer_source("utility_functions.R")
+    )
   )
   expression <- viewer_source(
     "gene_expression",
@@ -123,7 +135,10 @@ test_that("Cell-view colouring controls share one label", {
     linked = viewer_source("coordinated_views", "UI.R"),
     projection = viewer_source("overview", "UI_projection_main_parameters.R"),
     spatial = viewer_source("spatial", "UI_projection_main_parameters.R"),
-    trajectory = viewer_source("trajectory", "projection.R"),
+    trajectory = paste(
+      viewer_source("trajectory", "projection.R"),
+      viewer_source("trajectory", "select_method_and_name.R")
+    ),
     trekker = viewer_source("trekker", "server.R"),
     hla = viewer_source("hla_tcr_motifs", "settings.R")
   )
@@ -189,7 +204,11 @@ test_that("Cell-view More settings expose only effective appearance controls", {
     viewer_source("spatial", "UI_projection.R"),
     viewer_source("spatial", "UI_projection_show_group_label.R")
   )
-  expression <- viewer_source("gene_expression", "UI_projection.R")
+  expression <- paste(
+    viewer_source("gene_expression", "UI.R"),
+    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
+    viewer_source("gene_expression", "UI_projection_point_border.R")
+  )
   trajectory <- viewer_source("trajectory", "projection.R")
   repertoire <- viewer_source("immune_repertoire", "settings.R")
   repertoire_spec <- viewer_source("immune_repertoire", "param_spec.R")
@@ -234,12 +253,12 @@ test_that("Cell-view More settings expose only effective appearance controls", {
   }
   expect_no_match(repertoire_spec, 'id = "ir_d_base_size"', fixed = TRUE)
   expect_no_match(repertoire_spec, 'id = "ir_d_legend_size"', fixed = TRUE)
-  for (id in c(
-    "expression_projection_point_border",
-    "expression_projection_keep_square"
-  )) {
-    expect_match(expression, id, fixed = TRUE)
-  }
+  expect_match(expression, "expression_projection_keep_square", fixed = TRUE)
+  expect_match(
+    expression,
+    'registerCellViewPointBorder(output, "expression_projection")',
+    fixed = TRUE
+  )
   expect_no_match(
     expression,
     "expression_projection_group_labels",
@@ -258,7 +277,9 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
     viewer_source("shiny_UI.R"),
     viewer_source("overview", "UI_projection.R"),
     viewer_source("spatial", "UI_projection.R"),
-    viewer_source("gene_expression", "UI_projection.R"),
+    viewer_source("gene_expression", "UI.R"),
+    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
+    viewer_source("gene_expression", "UI_projection_point_border.R"),
     viewer_source("trajectory", "projection.R"),
     viewer_source("immune_repertoire", "settings.R")
   )
@@ -318,7 +339,11 @@ test_that("cell scatter pages share defaults with a Gene Expression override", {
 test_that("Projection pages use automatic ranges instead of axis sliders", {
   pages <- c("overview", "spatial", "gene_expression")
   for (page in pages) {
-    ui <- viewer_source(page, "UI_projection.R")
+    ui <- if (identical(page, "gene_expression")) {
+      viewer_source(page, "UI.R")
+    } else {
+      viewer_source(page, "UI_projection.R")
+    }
     params <- viewer_source(page, "obj_projection_parameters_plot.R")
     expect_no_match(ui, '"Axes"', fixed = TRUE)
     expect_no_match(ui, "projection_scales_UI", fixed = TRUE)
@@ -385,9 +410,9 @@ test_that("Standalone cell-view toolbars reach the panel top-right", {
   shared_views <- c(
     "overview/UI_projection.R",
     "spatial/UI_projection.R",
-    "gene_expression/UI_projection.R",
-    "trajectory/projection.R",
-    "immune_repertoire/visualizations.R",
+    "gene_expression/UI.R",
+    "trajectory/UI.R",
+    "immune_repertoire/UI.R",
     "trekker/UI.R"
   )
   for (view in shared_views) {
@@ -781,8 +806,7 @@ test_that("Cell scatter pages share one percentage default", {
 test_that("Projection renders an empty filter result instead of retaining cells", {
   for (path in list(
     c("overview", "obj_projection_data.R"),
-    c("overview", "obj_projection_coordinates.R"),
-    c("overview", "obj_projection_hover_info.R")
+    c("overview", "obj_projection_coordinates.R")
   )) {
     source <- do.call(viewer_source, as.list(path))
     expect_no_match(

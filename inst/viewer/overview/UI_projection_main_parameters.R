@@ -29,17 +29,11 @@ output[["overview_projection_main_parameters_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["overview_projection_main_parameters_info"]], {
-  showModal(
-    modalDialog(
-      overview_projection_main_parameters_info[["text"]],
-      title = overview_projection_main_parameters_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "overview_projection_main_parameters_info",
+  overview_projection_main_parameters_info
+)
 ##----------------------------------------------------------------------------##
 ## Text in info box.
 ##----------------------------------------------------------------------------##

@@ -83,44 +83,6 @@ test_that("the browser restores compact linked-view vectors", {
   expect_equal(unlist(restored$projections$umap$y), c(-2.5, 3.75))
 })
 
-test_that("cell identities travel separately from the first frame", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  skip_if_not_installed("jsonlite")
-
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
-  sys.source(bundle_file, envir = helpers)
-  payload <- tempfile(fileext = ".bin")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(c(payload, runner)), add = TRUE)
-  writeBin(
-    helpers$cv_wire_pack_cells("dataset-1", c("cell-1", "cell-2")),
-    payload
-  )
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "global.window = global;",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(wire_file, quote = "\"")
-      ),
-      sprintf(
-        "const input = fs.readFileSync(%s);",
-        encodeString(payload, quote = "\"")
-      ),
-      "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
-      "console.log(JSON.stringify(window.CBViewWire.unpackCells(buffer)));"
-    ),
-    runner
-  )
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_equal(attr(output, "status"), NULL)
-  restored <- jsonlite::fromJSON(output, simplifyVector = FALSE)
-  expect_identical(restored$dataset_id, "dataset-1")
-  expect_identical(unlist(restored$cells), c("cell-1", "cell-2"))
-})
-
 test_that("specialist cell views use the same binary envelope", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
@@ -456,6 +418,8 @@ test_that("dataset changes invalidate cached specialist plots", {
       "let singleSpaceModes = {umap:'cluster'};",
       "let singleIndexCells = ['a'];",
       "let singleIndexMap = new Map([['a', 0]]);",
+      "let singleTiming = {};",
+      "let singleResourceDescriptors = new Map();",
       "let linkedState = {dataset:'a'};",
       "let D = {dataset_fingerprint:'dataset-a'};",
       "eval(source.slice(resetStart, resetEnd));",

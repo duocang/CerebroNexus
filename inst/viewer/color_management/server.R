@@ -72,17 +72,7 @@ output[["color_assignments_UI"]] <- renderUI({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["color_assignments_info"]], {
-  showModal(
-    modalDialog(
-      color_assignments_info[["text"]],
-      title = color_assignments_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "color_assignments_info", color_assignments_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

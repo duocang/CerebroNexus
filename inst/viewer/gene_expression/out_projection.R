@@ -1,17 +1,7 @@
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_projection_info"]], {
-  showModal(
-    modalDialog(
-      expression_projection_info$text,
-      title = expression_projection_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "expression_projection_info", expression_projection_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

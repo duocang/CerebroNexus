@@ -558,11 +558,6 @@ output[["ir_selection_status_UI"]] <- renderUI({
   )
 })
 
-## Shared cell-view host for the non-faceted Clonal UMAP.
-ir_clonalUMAP_projection_ui <- function() {
-  cerebroCellViewOutput("ir_clonalUMAP_projection")
-}
-
 ## Draw the non-faceted Clonal UMAP through the shared cell-view engine.
 ## We marshal the same grey "Other cells" background + one-trace-per-expansion-
 ## level data the old renderPlotly built, but as the meta/data/hover arrays the

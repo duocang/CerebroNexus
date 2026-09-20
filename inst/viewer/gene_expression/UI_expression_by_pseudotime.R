@@ -190,17 +190,11 @@ output[["expression_by_pseudotime"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_by_pseudotime_info"]], {
-  showModal(
-    modalDialog(
-      expression_by_pseudotime_info$text,
-      title = expression_by_pseudotime_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "expression_by_pseudotime_info",
+  expression_by_pseudotime_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

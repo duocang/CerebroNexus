@@ -347,17 +347,11 @@ outputOptions(
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["spatial_projection_additional_parameters_info"]], {
-  showModal(
-    modalDialog(
-      spatial_projection_additional_parameters_info[["text"]],
-      title = spatial_projection_additional_parameters_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "spatial_projection_additional_parameters_info",
+  spatial_projection_additional_parameters_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

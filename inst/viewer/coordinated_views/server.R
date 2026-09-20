@@ -71,55 +71,6 @@ cv_async_clone_spec <- function(crb, primary) {
   )
 }
 
-cv_async_clone_file_spec <- function(file) {
-  if (
-    !is.character(file) ||
-      length(file) != 1L ||
-      is.na(file) ||
-      !file.exists(file) ||
-      dir.exists(file)
-  ) {
-    return(NULL)
-  }
-  file <- normalizePath(file, winslash = "/", mustWork = TRUE)
-  pack_path <- file.path(
-    dirname(file),
-    paste0(tools::file_path_sans_ext(basename(file)), ".viewer")
-  )
-  manifest_file <- file.path(pack_path, "manifest.json")
-  manifest <- tryCatch(
-    jsonlite::read_json(manifest_file, simplifyVector = TRUE),
-    error = function(error) NULL
-  )
-  receptors <- if (is.list(manifest)) {
-    as.character(manifest$immune_receptors %||% character())
-  } else {
-    character()
-  }
-  asset <- if (length(receptors)) {
-    file.path("immune", paste0(receptors[[1L]], ".qs2"))
-  } else {
-    ""
-  }
-  if (
-    !is.list(manifest) ||
-      !identical(as.integer(manifest$schema_version), 1L) ||
-      !length(receptors) ||
-      is.na(manifest$n_cells) ||
-      !is.data.frame(manifest$assets) ||
-      !(asset %in% as.character(manifest$assets$path)) ||
-      !file.exists(file.path(pack_path, asset))
-  ) {
-    return(NULL)
-  }
-  list(
-    pack_path = normalizePath(pack_path, winslash = "/", mustWork = TRUE),
-    manifest = manifest,
-    receptor = receptors[[1L]],
-    n = as.integer(manifest$n_cells)
-  )
-}
-
 cv_clone_task_key <- function(spec) {
   if (is.null(spec)) {
     ""
@@ -308,26 +259,26 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   } else {
     NULL
   }
-  supplement <- tryCatch(
-    cv_build_compact_supplement(
+  supplement <- tryCatch({
+    value <- cv_build_compact_supplement(
       data_set(),
       primary,
       viewerProjectionFirstFrameCache(),
       include_clone = wants_clone && is.null(clone_spec)
-    ),
+    )
+    if (is.null(value)) {
+      value <- cv_build_progressive_supplement(
+        data_set(),
+        primary,
+        include_clone = wants_clone && is.null(clone_spec)
+      )
+    }
+    value
+  },
     error = function(error) NULL
   )
   if (is.null(supplement)) {
-    clone_spec <- NULL
-    bundle <- isolate(coordviews_bundle())
-    if (
-      !is.null(bundle$error) ||
-        !identical(bundle$dataset_id, primary$dataset_id) ||
-        !identical(bundle$dataset_fingerprint, primary$dataset_fingerprint)
-    ) {
-      return(NULL)
-    }
-    supplement <- cv_bundle_supplement(primary, bundle, compact = TRUE)
+    return(NULL)
   }
   attr(supplement, "server_prepare_ms") <-
     (proc.time()[["elapsed"]] - started) * 1000
@@ -1350,14 +1301,6 @@ cv_scale_gene_values <- function(v) {
   }
   q[is.na(q)] <- 0L
   list(v = q, max = round(mx, 3))
-}
-
-cv_gene_vector <- function(gene, cells) {
-  v <- cv_gene_values(gene, cells)
-  if (is.null(v)) {
-    return(NULL)
-  }
-  cv_scale_gene_values(v)
 }
 
 coordviews_gene_names <- reactive({

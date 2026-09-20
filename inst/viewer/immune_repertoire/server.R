@@ -426,23 +426,18 @@ detect_chains <- function(data) {
   chains
 }
 
-## ---- bindCache fallback for Shiny < 1.6.0 ---------------------------- ##
 ## cache = "session" ensures caches are NOT shared across users/sessions.
 ## available_crb_files$selected is appended to every key so switching datasets
 ## invalidates the cache (prevents stale plots from the previous dataset).
 ir_bindCache <- function(x, ..., cache = "session") {
-  if (utils::packageVersion("shiny") >= "1.6.0") {
-    # Keep only truly global plot state here. Plot-specific parameters belong
-    # in each renderer's own bindCache call.
-    shiny::bindCache(
-      x,
-      ...,
-      available_crb_files$selected,
-      cache = cache
-    )
-  } else {
-    x
-  }
+  # Keep only truly global plot state here. Plot-specific parameters belong
+  # in each renderer's own bindCache call.
+  shiny::bindCache(
+    x,
+    ...,
+    available_crb_files$selected,
+    cache = cache
+  )
 }
 
 source(

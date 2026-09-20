@@ -8,17 +8,11 @@
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_projection_main_parameters_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_projection_main_parameters_info$text,
-      title = trajectory_projection_main_parameters_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "trajectory_projection_main_parameters_info",
+  trajectory_projection_main_parameters_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.
@@ -183,17 +177,11 @@ observeEvent(input[["trajectory_projection_group_labels"]], {
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_projection_additional_parameters_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_projection_additional_parameters_info$text,
-      title = trajectory_projection_additional_parameters_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "trajectory_projection_additional_parameters_info",
+  trajectory_projection_additional_parameters_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

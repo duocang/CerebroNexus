@@ -10,12 +10,27 @@ valid_spatial_image_payload <- function() {
   )
 }
 
+normalize_test_spatial_image <- function(payload, image_name, coordinates) {
+  if (.isLegacySpatialImagePayload(payload)) {
+    payload <- .canonicalizeLegacySpatialImagePayload(
+      payload,
+      paste0("Spatial image payload `", image_name, "` image `Tissue background`")
+    )
+    payload <- list(`Tissue background` = payload)
+  }
+  list(histology_images = .normalizeEmbeddedSpatialImages(
+    payload,
+    coordinates,
+    paste0("Spatial image payload `", image_name, "`")
+  ))
+}
+
 test_that("spatial image payload validation accepts a contained FOV image", {
   payload <- valid_spatial_image_payload()
   coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
 
   expect_identical(
-    .validateCerebroSpatialImage(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
     list(histology_images = list(`Tissue background` = payload))
   )
 })
@@ -84,7 +99,7 @@ test_that("legacy misc list bounds canonicalize in fixed numeric order", {
   )
   expect_named(declared$spatial_fov, "Tissue background")
 
-  normalized <- .validateCerebroSpatialImage(
+  normalized <- normalize_test_spatial_image(
     payload,
     "spatial_fov",
     coordinates
@@ -110,7 +125,7 @@ test_that("histology_image is a valid canonical image label", {
 
   coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
   expect_identical(
-    .validateCerebroSpatialImage(
+    normalize_test_spatial_image(
       list(histology_image = payload),
       "spatial_fov",
       coordinates
@@ -125,7 +140,7 @@ test_that("spatial image payload validation rejects malformed images", {
 
   payload$histology_image <- "not-a-data-uri"
   expect_error(
-    .validateCerebroSpatialImage(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
     "spatial_fov.*data:image"
   )
 
@@ -137,21 +152,21 @@ test_that("spatial image payload validation rejects malformed images", {
     bottom = 80
   )
   expect_error(
-    .validateCerebroSpatialImage(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
     "xmin.*xmax.*ymin.*ymax"
   )
 
   payload <- valid_spatial_image_payload()
   payload$histology_image_bounds[["xmax"]] <- Inf
   expect_error(
-    .validateCerebroSpatialImage(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
     "finite"
   )
 
   payload <- valid_spatial_image_payload()
   payload$histology_image_bounds[["xmin"]] <- 100
   expect_error(
-    .validateCerebroSpatialImage(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
     "xmin.*less than.*xmax"
   )
 })
@@ -160,7 +175,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
   payload <- valid_spatial_image_payload()
 
   expect_error(
-    .validateCerebroSpatialImage(
+    normalize_test_spatial_image(
       payload,
       "spatial_fov",
       data.frame(row = 10, column = 20)
@@ -168,7 +183,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
     "numeric.*x.*y"
   )
   expect_error(
-    .validateCerebroSpatialImage(
+    normalize_test_spatial_image(
       payload,
       "spatial_fov",
       data.frame(x = 101, y = 10)
@@ -176,7 +191,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
     "outside.*bounds"
   )
   expect_error(
-    .validateCerebroSpatialImage(
+    normalize_test_spatial_image(
       payload,
       "spatial_fov",
       data.frame(x = NA_real_, y = 10)

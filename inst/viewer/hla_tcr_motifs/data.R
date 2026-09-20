@@ -20,11 +20,7 @@ hla_has_deps <- function() {
 ## cache = "session" keeps caches isolated per user; the selected dataset is
 ## appended to every key at the call site so switching datasets invalidates it.
 hla_bindCache <- function(x, ..., cache = "session") {
-  cached <- if (utils::packageVersion("shiny") >= "1.6.0") {
-    shiny::bindCache(x, ..., cache = cache)
-  } else {
-    x
-  }
+  cached <- shiny::bindCache(x, ..., cache = cache)
   ## Data Info intentionally defers data_set(). Keep its req() outside the
   ## cached body so an early hidden output cannot cache a silent stop forever.
   reactive({

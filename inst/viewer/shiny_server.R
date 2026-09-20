@@ -1396,13 +1396,6 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
 
   ##--------------------------------------------------------------------------##
-  ## Print log message when switching tab (for debugging).
-  ##--------------------------------------------------------------------------##
-  observe({
-    print(glue::glue("[{Sys.time()}] Active tab: {input[['sidebar']]}"))
-  })
-
-  ##--------------------------------------------------------------------------##
   ## Print message when session is closed due to inactivity.
   ##--------------------------------------------------------------------------##
   observeEvent(input$timeOut, {
@@ -1570,23 +1563,6 @@ server <- function(input, output, session) {
     catalog_field = "tcr_repertoire"
   )
 
-  ## Cleanup snapshot artifacts that may have been left by test runs.
-  snapshot_dir <- file.path(
-    Cerebro.options[["cerebro_root"]],
-    "..",
-    "..",
-    "tests",
-    "testthat",
-    "_snaps"
-  )
-  new_pngs <- list.files(
-    snapshot_dir,
-    pattern = "\\.new\\.png$",
-    full.names = TRUE
-  )
-  if (length(new_pngs) > 0) {
-    file.remove(new_pngs)
-  }
   source(
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/spatial/server.R"),
     local = TRUE

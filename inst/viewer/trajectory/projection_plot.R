@@ -417,17 +417,7 @@ observe({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_projection_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_projection_info[["text"]],
-      title = trajectory_projection_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "trajectory_projection_info", trajectory_projection_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

@@ -67,12 +67,6 @@
   httr::GET(url = paste0(URL_API, "/share"))
 
   ##
-  dfSAF <- options()$stringsAsFactors
-
-  ##
-  options()
-
-  ##
   enrichr_export_fun <- function(x) {
     ##
     r <- httr::GET(

@@ -655,7 +655,7 @@ test_that("Linked views negotiates compact transport with a legacy fallback", {
   expect_match(server, '"coordviews_supplement"', fixed = TRUE)
   expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
   expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
-  expect_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
+  expect_no_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
   expect_match(client, "coordviews_wire_supported", fixed = TRUE)
   expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
   expect_match(client, "coordviews_primary_ready", fixed = TRUE)
@@ -948,28 +948,28 @@ test_that("primary bundle materializes only the first visible projection and col
   expect_identical(calls$genes, 0L)
   expect_identical(calls$immune, 0L)
 
-  full <- cv_env$cv_build_bundle(crb)
-  expect_identical(calls$immune, 1L)
-  expect_identical(calls$genes, 0L)
-  expect_false("genes" %in% names(full))
   primary$dataset_fingerprint <- "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   primary$progressive_token <- 4L
-  full$dataset_fingerprint <- primary$dataset_fingerprint
-  supplement <- cv_env$cv_bundle_supplement(primary, full)
+  supplement <- cv_env$cv_build_progressive_supplement(crb, primary)
 
+  expect_identical(calls$immune, 1L)
+  expect_identical(calls$genes, 0L)
+  expect_identical(supplement$dataset_id, primary$dataset_id)
+  expect_identical(
+    supplement$dataset_fingerprint,
+    primary$dataset_fingerprint
+  )
+  expect_identical(supplement$progressive_token, primary$progressive_token)
   expect_named(supplement$groups, "sample")
   expect_named(supplement$cat_extra, "donor")
   expect_named(supplement$fields, "meta:score")
   expect_named(supplement$projections, "tsne")
-  expect_identical(supplement$cat_skipped, full$cat_skipped)
-
-  compact <- cv_env$cv_bundle_supplement(primary, full, compact = TRUE)
-  expect_true(isTRUE(compact$groups$sample$deferred))
-  expect_null(compact$groups$sample$values)
-  expect_true(isTRUE(compact$cat_extra$donor$deferred))
-  expect_null(compact$cat_extra$donor$values)
-  expect_true(isTRUE(compact$fields[["meta:score"]]$deferred))
-  expect_null(compact$fields[["meta:score"]]$v)
+  expect_true(isTRUE(supplement$groups$sample$deferred))
+  expect_null(supplement$groups$sample$values)
+  expect_true(isTRUE(supplement$cat_extra$donor$deferred))
+  expect_null(supplement$cat_extra$donor$values)
+  expect_true(isTRUE(supplement$fields[["meta:score"]]$deferred))
+  expect_null(supplement$fields[["meta:score"]]$v)
 })
 
 test_that("primary bundle reuses thin CRB first-frame fields", {
@@ -1105,43 +1105,6 @@ test_that("primary bundle can build canonical group codes externally", {
     function(name, levels) c("red", "blue")
   )
   expect_identical(as.integer(fallback$groups$cell_type$values), c(1L, 0L, 1L))
-})
-
-test_that("progressive supplement carries identity and only missing data", {
-  skip_if_not(have_bundle)
-  primary <- list(
-    dataset_id = "brain.crb",
-    dataset_fingerprint = "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    progressive_token = 3L,
-    groups = list(cluster = list()),
-    cat_extra = list(),
-    fields = list(score = list()),
-    cat_skipped = list(),
-    projections = list(umap = list()),
-    spaces = list(list(id = "projection::umap")),
-    clone = NULL,
-    trekker = NULL
-  )
-  full <- primary
-  full$groups$sample <- list()
-  full$cat_skipped$barcode <- 100L
-  full$projections$tsne <- list()
-  full$spaces <- c(full$spaces, list(list(id = "trajectory::slingshot")))
-  full$clone <- list(ids = 1L)
-
-  supplement <- cv_env$cv_bundle_supplement(primary, full)
-
-  expect_identical(supplement$dataset_id, full$dataset_id)
-  expect_identical(
-    supplement$dataset_fingerprint,
-    full$dataset_fingerprint
-  )
-  expect_identical(supplement$progressive_token, primary$progressive_token)
-  expect_named(supplement$groups, "sample")
-  expect_identical(supplement$cat_skipped, full$cat_skipped)
-  expect_named(supplement$projections, "tsne")
-  expect_identical(supplement$spaces[[1L]]$id, "trajectory::slingshot")
-  expect_identical(supplement$clone, full$clone)
 })
 
 test_that("Linked views reuses the saved-view fingerprint", {
@@ -1364,21 +1327,6 @@ test_that("progressive colour source retains deferred numeric fields", {
   )
 })
 
-test_that("compact supplements keep Trekker fields materialised", {
-  skip_if_not(have_bundle)
-  deferred <- list(
-    meta = list(v = I(1:3), source = NULL),
-    trekker = list(v = I(4:6), source = "trekker")
-  )
-
-  compact <- cv_env$cv_defer_fields(deferred)
-
-  expect_null(compact$meta$v)
-  expect_true(isTRUE(compact$meta$deferred))
-  expect_identical(as.integer(compact$trekker$v), 4:6)
-  expect_null(compact$trekker$deferred)
-})
-
 test_that("deferred assets leave only descriptors in the supplement", {
   skip_if_not(have_bundle)
   value <- list(
@@ -1553,7 +1501,12 @@ test_that("large-dataset work stays off the initial response", {
   expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
   expect_match(
     server,
-    "cv_bundle_supplement(primary, bundle, compact = TRUE)",
+    "cv_build_progressive_supplement(",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'input[["coordviews_wire_fallback"]]',
     fixed = TRUE
   )
   supplement_at <- regexpr(
