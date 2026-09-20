@@ -1198,6 +1198,15 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "projection_asset_bytes", fixed = TRUE)
   expect_match(benchmark, "e.detail?.primaryReady===true", fixed = TRUE)
   expect_match(benchmark, "run_observation", fixed = TRUE)
+  expect_match(benchmark, "browser_debug_port_error <- function", fixed = TRUE)
+  expect_match(benchmark, "start_app_driver <- function", fixed = TRUE)
+  expect_match(benchmark, "startup_attempts = startup$attempts", fixed = TRUE)
+  expect_match(benchmark, "startup_errors = paste(startup$errors", fixed = TRUE)
+  expect_match(
+    benchmark,
+    "Chrome debugging port not open after [0-9]+ seconds",
+    fixed = TRUE
+  )
   expect_match(benchmark, "arm_and_click_page <- function", fixed = TRUE)
   expect_no_match(benchmark, "arm_page <- function", fixed = TRUE)
   expect_match(benchmark, "const generation", fixed = TRUE)

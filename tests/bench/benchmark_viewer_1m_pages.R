@@ -980,6 +980,64 @@ specialist_payload_snapshot <- function(app, view_id) {
   )
 }
 
+browser_start_attempts <- suppressWarnings(as.integer(Sys.getenv(
+  "VIEWER_BROWSER_START_ATTEMPTS",
+  unset = "3"
+)))
+if (
+  length(browser_start_attempts) != 1L ||
+    is.na(browser_start_attempts) ||
+    browser_start_attempts < 1L ||
+    browser_start_attempts > 5L
+) {
+  stop("VIEWER_BROWSER_START_ATTEMPTS must be between 1 and 5.", call. = FALSE)
+}
+
+browser_debug_port_error <- function(error) {
+  grepl(
+    "Chrome debugging port not open after [0-9]+ seconds",
+    conditionMessage(error)
+  )
+}
+
+stop_failed_app_driver <- function(error) {
+  failed_app <- tryCatch(error$app, error = function(condition) NULL)
+  if (!is.null(failed_app)) {
+    try(failed_app$stop(), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+start_app_driver <- function(app_dir, name) {
+  errors <- character()
+  for (attempt in seq_len(browser_start_attempts)) {
+    app <- tryCatch(
+      shinytest2::AppDriver$new(
+        app_dir,
+        name = name,
+        height = 950,
+        width = 1619,
+        load_timeout = 900000,
+        timeout = 900000,
+        check_names = FALSE
+      ),
+      error = function(error) {
+        message <- strsplit(conditionMessage(error), "\n", fixed = TRUE)[[1L]][[1L]]
+        errors <<- c(errors, paste0("attempt ", attempt, ": ", message))
+        retry <- browser_debug_port_error(error) &&
+          attempt < browser_start_attempts
+        stop_failed_app_driver(error)
+        if (!retry) stop(error)
+        NULL
+      }
+    )
+    if (!is.null(app)) {
+      return(list(app = app, attempts = attempt, errors = errors))
+    }
+  }
+  stop("Browser startup retry loop ended without an AppDriver.", call. = FALSE)
+}
+
 run_observation <- function(schedule_row, candidate, page, crb) {
   app_dir <- tempfile("viewer-1m-page-")
   dir.create(app_dir)
@@ -1000,15 +1058,11 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     file.path(app_dir, "app.R")
   )
   suppressWarnings(shinytest2::local_app_support(app_dir))
-  app <- shinytest2::AppDriver$new(
+  startup <- start_app_driver(
     app_dir,
-    name = paste0("viewer_1m_page_", schedule_row$schedule_position),
-    height = 950,
-    width = 1619,
-    load_timeout = 900000,
-    timeout = 900000,
-    check_names = FALSE
+    paste0("viewer_1m_page_", schedule_row$schedule_position)
   )
+  app <- startup$app
   session <- app$get_chromote_session()
   browser <- session$parent
   on.exit(
@@ -1133,6 +1187,8 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   cbind(data.frame(
     status = if (correctness_pass) "ok" else "error",
     error = if (correctness_pass) "" else "Page correctness check failed.",
+    startup_attempts = startup$attempts,
+    startup_errors = paste(startup$errors, collapse = " | "),
     elapsed_ms = elapsed_ms,
     performance_ms = if (is.finite(specialist_timing$click_to_ready_ms)) {
       specialist_timing$click_to_ready_ms
@@ -1255,6 +1311,8 @@ empty_observation <- function(status, error) {
   data.frame(
     status = status,
     error = error,
+    startup_attempts = NA_real_,
+    startup_errors = "",
     elapsed_ms = NA_real_,
     performance_ms = NA_real_,
     complete_elapsed_ms = NA_real_,
