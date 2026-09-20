@@ -558,7 +558,6 @@ observe({
 
   color_by <- hla_param("hla_color_by", "cluster")
   render_key <- list(
-    request = render_request,
     dataset = available_crb_files$selected,
     chain = hla_active_chain(),
     scope = hla_scope_key(),
@@ -577,9 +576,10 @@ observe({
     nodes = nrow(vn$nodes),
     edges = nrow(vn$edges)
   )
-  # Input widgets initialise independently. Several invalidations can therefore
-  # arrive with the same effective values and the same client request. Do not
-  # resend an identical full graph while the first frame is already activating.
+  # Input widgets and the client request lifecycle initialise independently.
+  # Several invalidations can therefore arrive with the same effective graph.
+  # Do not resend it: a new data set or any display/build setting changes this
+  # key, while a bare retry for an already delivered frame does not.
   if (identical(hla_motif_last_render_key(), render_key)) {
     return()
   }
