@@ -542,14 +542,45 @@ output$hla_motif_readout <- renderUI({
   )
 })
 
+hla_motif_last_render_key <- reactiveVal(NULL)
+
 observe({
   req(identical(input[["sidebar"]], "hla_tcr_motifs"))
   req(identical(input[["hla_tabs"]], "Motif Network"))
-  req(input[["hla_motif_network_render_request"]])
+  render_request <- input[["hla_motif_network_render_request"]]
+  req(render_request)
   req(hla_active_chain() %in% hla_tcr_chains())
   req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$layout)) {
+    return()
+  }
+
+  color_by <- hla_param("hla_color_by", "cluster")
+  render_key <- list(
+    request = render_request,
+    dataset = available_crb_files$selected,
+    chain = hla_active_chain(),
+    scope = hla_scope_key(),
+    filters = hla_filter_key(),
+    by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default())),
+    min_nodes = as.integer(hla_param("hla_min_nodes", hla_default_min_nodes())),
+    show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE)),
+    color_by = color_by,
+    color_allele = if (identical(color_by, "hla_carrier")) {
+      hla_color_allele()
+    } else {
+      NULL
+    },
+    legend_mode = hla_param("hla_legend_mode", "auto"),
+    node_scale = hla_param("hla_node_scale", 1),
+    nodes = nrow(vn$nodes),
+    edges = nrow(vn$edges)
+  )
+  # Input widgets initialise independently. Several invalidations can therefore
+  # arrive with the same effective values and the same client request. Do not
+  # resend an identical full graph while the first frame is already activating.
+  if (identical(hla_motif_last_render_key(), render_key)) {
     return()
   }
 
@@ -590,6 +621,7 @@ observe({
       )
     )
   )
+  hla_motif_last_render_key(render_key)
 })
 
 ## ---- Export: tables + manifest ---------------------------------------- ##
