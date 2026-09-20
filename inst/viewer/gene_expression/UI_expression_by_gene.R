@@ -6,6 +6,8 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene_UI"]] <- renderUI({
+  req(input[["expression_summary_viewport_request"]])
+  req(expression_projection_summary_ready())
   req(length(expression_summary_data()$genes) > 1)
   fluidRow(
     cerebroBox(
@@ -22,7 +24,12 @@ output[["expression_by_gene_UI"]] <- renderUI({
 ## Bar plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene"]] <- plotly::renderPlotly({
-  req(expression_projection_parameters_color(), expression_summary_data())
+  req(
+    input[["expression_summary_viewport_request"]],
+    expression_projection_summary_ready(),
+    expression_projection_parameters_color(),
+    expression_summary_data()
+  )
   expression_levels <- data_set()$getMeanExpressionForGenes(
     expression_summary_data()$genes
   ) %>%

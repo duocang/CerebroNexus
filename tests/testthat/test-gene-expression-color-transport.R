@@ -1,0 +1,206 @@
+gene_expression_test_function <- function(file, name) {
+  expressions <- parse(viewer_test_path("gene_expression", file))
+  assignment <- Filter(function(expression) {
+    is.call(expression) &&
+      identical(expression[[1L]], quote(`<-`)) &&
+      identical(as.character(expression[[2L]]), name) &&
+      is.call(expression[[3L]]) &&
+      identical(expression[[3L]][[1L]], as.name("function"))
+  }, expressions)
+  stopifnot(length(assignment) == 1L)
+  scope <- new.env(parent = globalenv())
+  eval(assignment[[1L]], envir = scope)
+  scope[[name]]
+}
+
+test_that("sparse expression colour transport is exact and density-gated", {
+  sparse_color <- gene_expression_test_function(
+    "func_projection_update_plot.R",
+    "expressionSparseColor"
+  )
+  values <- numeric(10000L)
+  values[c(2L, 100L, 9999L)] <- c(1.5, Inf, NA_real_)
+  packed <- sparse_color(values)
+
+  expect_identical(packed$protocol, "sparse-f32-v1")
+  expect_identical(packed$length, length(values))
+  expect_identical(packed$index, c(1L, 99L, 9998L))
+  restored <- numeric(packed$length)
+  restored[packed$index + 1L] <- packed$color
+  expect_equal(restored, values)
+  expect_null(sparse_color(rep(1, 10000L)))
+  expect_null(sparse_color(numeric(4095L)))
+
+  wire <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  sparse_wire <- wire$cv_wire_pack_message(list(data = list(
+    sparse_color = packed
+  )))
+  dense_wire <- wire$cv_wire_pack_message(list(data = list(color = values)))
+  expect_lt(length(sparse_wire), length(dense_wire) / 100)
+})
+
+test_that("single-gene primary frames choose sparse colour transport", {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(x, y) if (is.null(x)) y else x
+  runtime$expressionColorScale <- function(...) "scale"
+  runtime$expressionReverseColorScale <- function(...) FALSE
+  runtime$viewerDatasetIdentity <- function() list(
+    fingerprint = "cells",
+    pack_fingerprint = "dataset"
+  )
+  runtime$cerebroCellViewRender <- function(
+    id,
+    meta,
+    data,
+    hover,
+    extra,
+    deferred_aux
+  ) {
+    runtime$captured <- data
+  }
+  sys.source(
+    viewer_test_path("gene_expression", "func_projection_update_plot.R"),
+    envir = runtime
+  )
+  values <- numeric(10000L)
+  values[c(2L, 5000L)] <- c(2, 4)
+  runtime$expression_projection_update_plot(list(
+    coordinates = data.frame(x = seq_along(values), y = rev(seq_along(values))),
+    reset_axes = FALSE,
+    expression_levels = values,
+    plot_parameters = list(
+      draw_border = FALSE,
+      keep_square = TRUE,
+      plot_order = "Highest expression on top",
+      point_size = 1,
+      point_opacity = 1,
+      x_range = c(1, length(values)),
+      y_range = c(1, length(values)),
+      is_trajectory = FALSE,
+      hover_info = FALSE,
+      projection = "umap",
+      n_dimensions = 2L
+    ),
+    color_settings = list(
+      color_scale = "Viridis",
+      color_range = c(0, 4),
+      color_mode = "same",
+      genes = "GeneA"
+    ),
+    metadata = NULL,
+    trajectory = list(),
+    display_mode = "single",
+    cell_indices = seq_along(values),
+    projection_resource_failed = NULL,
+    separate_panels = FALSE
+  ))
+
+  expect_null(runtime$captured$color)
+  expect_identical(runtime$captured$sparse_color$index, c(1L, 4999L))
+  expect_identical(
+    runtime$captured$color_cache_key,
+    "dataset::GeneA::10000"
+  )
+})
+
+test_that("full canonical expression reads omit the million-index slice", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  data_set <- Cerebro$new()
+  data_set$expression <- matrix(
+    1:6,
+    nrow = 2L,
+    dimnames = list(c("A", "B"), c("c1", "c2", "c3"))
+  )
+
+  expect_null(scope$viewerExpressionCells(data_set, 1:3))
+  values <- scope$viewerExpressionValues(data_set, 1:3, "A")
+
+  expect_identical(values, list(A = c(1, 3, 5)))
+})
+
+test_that("gene primary colours do not materialize metadata", {
+  source <- paste(
+    readLines(
+      viewer_test_path("gene_expression", "obj_projection_data_to_plot.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(source, "metadata <- NULL", fixed = TRUE)
+  expect_false(grepl(
+    "if (no_gene_selected) NULL else expression_projection_data()",
+    source,
+    fixed = TRUE
+  ))
+})
+
+test_that("single-gene colour caches are bounded on both sides", {
+  server <- paste(
+    readLines(
+      viewer_test_path(
+        "gene_expression",
+        "obj_projection_expression_levels.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  browser <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server, "expression_projection_row_cache_limit <- 4L", fixed = TRUE)
+  expect_match(server, "expressionProjectionCachedRow", fixed = TRUE)
+  expect_match(server, "expression_projection_backend_warmed", fixed = TRUE)
+  expect_match(
+    server,
+    'input[["expression_projection_rendered_key"]]',
+    fixed = TRUE
+  )
+  expect_match(browser, "SINGLE_COLOR_CACHE_LIMIT = 4", fixed = TRUE)
+  expect_match(browser, "hydrateSparseSingleColor(data)", fixed = TRUE)
+})
+
+test_that("secondary expression summaries wait for the painted primary frame", {
+  summaries <- paste(vapply(
+    c(
+      "UI_expression_by_group.R",
+      "UI_expression_by_gene.R",
+      "UI_expression_in_selected_cells.R",
+      "UI_table_of_selected_cells.R"
+    ),
+    function(file) paste(
+      readLines(viewer_test_path("gene_expression", file), warn = FALSE),
+      collapse = "\n"
+    ),
+    character(1)
+  ), collapse = "\n")
+  browser <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    summaries,
+    "expression_projection_summary_ready()",
+    fixed = TRUE
+  )
+  expect_match(browser, "singleActive + '_rendered_key'", fixed = TRUE)
+  expect_match(browser, "eventKind === 'primary'", fixed = TRUE)
+
+  ui <- paste(
+    readLines(viewer_test_path("gene_expression", "UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(ui, "expression_summary_gate", fixed = TRUE)
+  expect_match(ui, "IntersectionObserver", fixed = TRUE)
+  expect_match(ui, "expression_summary_viewport_request", fixed = TRUE)
+  expect_match(
+    summaries,
+    'input[["expression_summary_viewport_request"]]',
+    fixed = TRUE
+  )
+})

@@ -8,6 +8,8 @@
 ## UI element with input selection (which group to show) and plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_group_UI"]] <- renderUI({
+  req(input[["expression_summary_viewport_request"]])
+  req(expression_projection_summary_ready())
   summary <- expression_summary_data()
   fluidRow(
     cerebroBox(
@@ -40,6 +42,8 @@ output[["expression_by_group_UI"]] <- renderUI({
 
 output[["expression_by_group"]] <- plotly::renderPlotly({
   req(
+    input[["expression_summary_viewport_request"]],
+    expression_projection_summary_ready(),
     expression_projection_data(),
     expression_summary_data(),
     input[["expression_by_group_selected_group"]]

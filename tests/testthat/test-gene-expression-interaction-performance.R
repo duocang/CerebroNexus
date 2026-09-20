@@ -33,6 +33,7 @@ test_that("Gene selection settles before expression extraction starts", {
     "expression_selected_genes <- debounceAfterFirst(",
     fixed = TRUE
   )
+  expect_match(selected, "expression_selected_genes_input,\n  200", fixed = TRUE)
 })
 
 test_that("Gene projection host is present before dynamic controls bind", {

@@ -33,6 +33,8 @@
   var singleIndexMap = null;
   var singleSpaceIds = [];      // one space, or one per gene in multi-panel mode
   var singleSpaceModes = {};    // space id -> categorical/continuous colour mode
+  var singleColorCache = new Map();
+  var SINGLE_COLOR_CACHE_LIMIT = 4;
   var surfaceHome = null;       // original Linked Views panel/legend locations
   var linkedState = null;       // Linked workspace state while a single page owns the surface
   var pendingColorPatch = null; // palette received before its dataset bundle
@@ -2858,6 +2860,15 @@
         // as the deferred IDs have been attached.
         Shiny.setInputValue(singleActive + '_persistent_selection',
           pendingStableSelection ? null : (arr ? { x: x, y: y, ids: arr } : null));
+        var activeView = singleViews[singleActive];
+        var renderKey = activeView && activeView.data && activeView.data.render_key;
+        if (eventKind === 'primary' && renderKey != null) {
+          Shiny.setInputValue(
+            singleActive + '_rendered_key',
+            String(renderKey),
+            { priority: 'event' }
+          );
+        }
       } else {
         Shiny.setInputValue('coordviews_selection_indices', hasSelection
           ? Array.from(sel) : null);
@@ -6432,6 +6443,36 @@
       message
     );
   }
+  function cacheSingleColor(key, values) {
+    if (!key || !ArrayBuffer.isView(values)) return values;
+    singleColorCache.delete(key);
+    singleColorCache.set(key, values);
+    while (singleColorCache.size > SINGLE_COLOR_CACHE_LIMIT) {
+      singleColorCache.delete(singleColorCache.keys().next().value);
+    }
+    return values;
+  }
+  function hydrateSparseSingleColor(data) {
+    var sparse = data && data.sparse_color;
+    if (!sparse || sparse.protocol !== 'sparse-f32-v1') return;
+    var n = Number(sparse.length);
+    var key = String(data.color_cache_key || '');
+    var cached = key && singleColorCache.get(key);
+    if (cached && cached.length === n) {
+      cacheSingleColor(key, cached);
+      data.color = cached;
+      return;
+    }
+    var index = sparse.index, source = sparse.color;
+    if (!Number.isInteger(n) || n < 0 || !ArrayBuffer.isView(index) ||
+        !ArrayBuffer.isView(source) || index.length !== source.length) return;
+    var values = new Float32Array(n);
+    for (var i = 0; i < index.length; i++) {
+      var at = Number(index[i]);
+      if (at >= 0 && at < n) values[at] = Number(source[i]);
+    }
+    data.color = cacheSingleColor(key, values);
+  }
   function registerSingleCategoryResource(message) {
     var resource = message && message.resource;
     var identity = message && message.dataset_identity;
@@ -7259,6 +7300,7 @@
   }
   function buildSingleSpaces(id, payload) {
     var meta = payload.meta || {}, data = payload.data || {}, extra = payload.extra || {};
+    hydrateSparseSingleColor(data);
     var specialistPanels = buildSpecialistPanels(id, payload);
     if (specialistPanels) return specialistPanels;
     var categorical = meta.color_type === 'categorical';

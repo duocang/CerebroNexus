@@ -7,6 +7,7 @@
 ##----------------------------------------------------------------------------##
 output[["expression_by_pseudotime_UI"]] <- renderUI({
   req(
+    expression_projection_summary_ready(),
     input[["expression_projection_to_display"]] %in% availableProjections() ==
       FALSE
   )
@@ -71,6 +72,7 @@ output[["expression_by_pseudotime_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["expression_by_pseudotime"]] <- plotly::renderPlotly({
   req(
+    expression_projection_summary_ready(),
     input[["expression_projection_to_display"]],
     input[["expression_projection_point_size"]],
     input[["expression_projection_point_opacity"]],

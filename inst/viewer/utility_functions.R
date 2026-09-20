@@ -552,6 +552,15 @@ viewerExpressionCells <- function(data_set, cells) {
       error = function(e) NULL
     ))
   ) {
+    n_cells <- tryCatch(ncol(data_set$expression), error = function(e) NA_integer_)
+    if (
+      length(n_cells) == 1L &&
+        !is.na(n_cells) &&
+        length(cells) == n_cells &&
+        identical(as.integer(cells), seq_len(n_cells))
+    ) {
+      return(NULL)
+    }
     return(cells)
   }
   cell_names <- colnames(data_set$expression)
@@ -560,6 +569,7 @@ viewerExpressionCells <- function(data_set, cells) {
 
 viewerExpressionRow <- function(data_set, cells, gene) {
   cells <- viewerExpressionCells(data_set, cells)
+  all_cells <- is.null(cells)
   cell_indices <- is.numeric(cells)
   get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
   if (is.function(get_row)) {
@@ -585,9 +595,9 @@ viewerExpressionRow <- function(data_set, cells, gene) {
   }
   cell_names <- colnames(expression_matrix)
   cell_index <- if (
-    cell_indices || is.null(cell_names) || identical(cells, cell_names)
+    all_cells || cell_indices || is.null(cell_names) || identical(cells, cell_names)
   ) {
-    seq_len(min(length(cells), ncol(expression_matrix)))
+    seq_len(ncol(expression_matrix))
   } else {
     match(cells, cell_names)
   }
@@ -598,6 +608,7 @@ viewerExpressionRow <- function(data_set, cells, gene) {
 ## the requested cell order. Missing genes are omitted from the result.
 viewerExpressionValues <- function(data_set, cells, genes) {
   cells <- viewerExpressionCells(data_set, cells)
+  all_cells <- is.null(cells)
   cell_indices <- is.numeric(cells)
   genes <- unique(as.character(unlist(genes, use.names = FALSE)))
   genes <- genes[!is.na(genes) & nzchar(genes)]
@@ -629,8 +640,8 @@ viewerExpressionValues <- function(data_set, cells, genes) {
     gene_names <- genes
   }
   cell_names <- colnames(expression_matrix)
-  cell_index <- if (cell_indices || is.null(cell_names)) {
-    seq_len(min(length(cells), ncol(expression_matrix)))
+  cell_index <- if (all_cells || cell_indices || is.null(cell_names)) {
+    seq_len(ncol(expression_matrix))
   } else if (identical(cells, cell_names)) {
     seq_along(cells)
   } else {

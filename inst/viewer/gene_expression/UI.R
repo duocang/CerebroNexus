@@ -100,7 +100,35 @@ tab_gene_expression <- tabItem(
   ),
   uiOutput("expression_details_selected_cells_UI"),
   uiOutput("expression_in_selected_cells_UI"),
-  uiOutput("expression_by_group_UI"),
-  uiOutput("expression_by_gene_UI") #,
+  div(
+    id = "expression_summary_gate",
+    style = "min-height: 200px;",
+    uiOutput("expression_by_group_UI"),
+    uiOutput("expression_by_gene_UI")
+  ),
+  tags$script(HTML(
+    "
+    (function () {
+      var target = document.getElementById('expression_summary_gate');
+      if (!target || target.dataset.observed) return;
+      target.dataset.observed = 'true';
+      var observer = new IntersectionObserver(function (entries) {
+        if (!entries.some(function (entry) { return entry.isIntersecting; })) return;
+        Shiny.setInputValue(
+          'expression_summary_viewport_request',
+          Date.now(),
+          {priority: 'event'}
+        );
+        observer.disconnect();
+      }, {threshold: 0.25});
+      function armSummaryGate(event) {
+        if (event.detail?.viewId !== 'expression_projection') return;
+        window.removeEventListener('cerebro:specialist-state', armSummaryGate);
+        observer.observe(target);
+      }
+      window.addEventListener('cerebro:specialist-state', armSummaryGate);
+    })();
+    "
+  )) #,
   # uiOutput("expression_by_pseudotime_UI")
 )

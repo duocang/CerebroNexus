@@ -6,7 +6,10 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_in_selected_cells_UI"]] <- renderUI({
-  req(expression_projection_selected_cells())
+  req(
+    expression_projection_summary_ready(),
+    expression_projection_selected_cells()
+  )
   summary <- expression_summary_data()
   fluidRow(
     cerebroBox(
@@ -30,6 +33,7 @@ output[["expression_in_selected_cells_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
   req(
+    expression_projection_summary_ready(),
     expression_projection_data(),
     expression_projection_coordinates(),
     expression_summary_data(),

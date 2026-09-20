@@ -1,3 +1,54 @@
+expressionSparseColor <- function(values, max_density = 0.5) {
+  if (!is.numeric(values) || length(values) < 4096L) {
+    return(NULL)
+  }
+  present <- which(is.na(values) | !is.finite(values) | values != 0)
+  if (length(present) >= length(values) * max_density) {
+    return(NULL)
+  }
+  list(
+    protocol = "sparse-f32-v1",
+    length = length(values),
+    index = as.integer(present - 1L),
+    color = unname(values[present])
+  )
+}
+
+expressionColorCacheKey <- function(color_settings, cell_indices, n_cells) {
+  genes <- as.character(color_settings[["genes"]] %||% character())
+  if (
+    length(genes) != 1L ||
+      length(cell_indices) != n_cells ||
+      !identical(as.integer(cell_indices), seq_len(n_cells)) ||
+      !exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)
+  ) {
+    return(NULL)
+  }
+  identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
+  fingerprint <- as.character(identity$pack_fingerprint %||% "")
+  if (
+    length(fingerprint) != 1L ||
+      is.na(fingerprint) ||
+      !nzchar(fingerprint)
+  ) {
+    fingerprint <- tryCatch(
+      as.character(available_crb_files$selected),
+      error = function(error) ""
+    )
+  }
+  if (
+    length(fingerprint) != 1L ||
+      is.na(fingerprint) ||
+      !nzchar(fingerprint)
+  ) {
+    fingerprint <- as.character(identity$fingerprint %||% "")
+  }
+  if (length(fingerprint) != 1L || is.na(fingerprint) || !nzchar(fingerprint)) {
+    return(NULL)
+  }
+  paste(fingerprint, genes[[1L]], n_cells, sep = "::")
+}
+
 ## function to be executed to update figure
 expression_projection_update_plot <- function(input) {
   coordinates <- input[['coordinates']]
@@ -8,6 +59,7 @@ expression_projection_update_plot <- function(input) {
   metadata <- input[['metadata']]
   trajectory <- input[['trajectory']]
   display_mode <- input[['display_mode']]
+  render_key <- input[["render_key"]]
   cell_indices <- input[['cell_indices']]
   separate_panels <- input[['separate_panels']]
   no_gene_selected <- length(color_settings[["genes"]]) == 0L
@@ -42,6 +94,21 @@ expression_projection_update_plot <- function(input) {
       "natural"
     },
     reset_axes = reset_axes
+  )
+  output_data[["render_key"]] <- render_key
+  sparse_color <- if (is.list(expression_levels)) {
+    NULL
+  } else {
+    expressionSparseColor(expression_levels)
+  }
+  if (!is.null(sparse_color)) {
+    output_data[["color"]] <- NULL
+    output_data[["sparse_color"]] <- sparse_color
+  }
+  output_data[["color_cache_key"]] <- expressionColorCacheKey(
+    color_settings,
+    cell_indices,
+    n_cells
   )
   shared_projection <- if (
     exists("viewerSharedProjectionName", mode = "function", inherits = TRUE)

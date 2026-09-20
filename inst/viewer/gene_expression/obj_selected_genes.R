@@ -73,5 +73,5 @@ expression_selected_genes_input <- reactive({
 ## The first value still initializes immediately.
 expression_selected_genes <- debounceAfterFirst(
   expression_selected_genes_input,
-  500
+  200
 )

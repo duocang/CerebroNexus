@@ -8,10 +8,10 @@ expression_projection_data_to_plot_raw <- reactive({
   no_gene_selected <- length(
     expression_selected_genes()[["genes_to_display_present"]]
   ) == 0L
-  ## The no-gene first frame needs only the canonical cell count/order. Full
-  ## metadata is used exclusively by deferred hover/selection auxiliary data,
-  ## so do not materialize it until the browser requests that supplement.
-  metadata <- if (no_gene_selected) NULL else expression_projection_data()
+  ## The primary frame needs only canonical row indices. Full metadata belongs
+  ## exclusively to deferred hover/selection auxiliary data, including after a
+  ## gene is selected, so never materialize it on the colour-update path.
+  metadata <- NULL
   req(
     coordinates,
     parameters,
@@ -38,6 +38,7 @@ expression_projection_data_to_plot_raw <- reactive({
     metadata = metadata,
     trajectory = expression_projection_trajectory(),
     display_mode = input[["expression_projection_genes_in_separate_panels"]],
+    render_key = expression_projection_render_key(),
     cell_indices = expression_projection_cells_to_show(),
     projection_resource_failed = input[[
       "expression_projection_projection_resource_failed"
