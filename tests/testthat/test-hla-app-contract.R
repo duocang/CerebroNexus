@@ -190,7 +190,7 @@ test_that("HLA cohort filters are visible and drive every graph cache", {
       settings,
       gregexpr("req(hla_settings_requested())", settings, fixed = TRUE)
     )),
-    3L
+    2L
   )
   expect_match(settings, "groupFilterControl(", fixed = TRUE)
   expect_match(settings, "hla_default_filter_selections", fixed = TRUE)

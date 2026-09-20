@@ -122,9 +122,6 @@ output$hla_parameters_ui <- renderUI({
 
 ## ---- Secondary analysis parameters ------------------------------------ ##
 output$hla_more_parameters_ui <- renderUI({
-  # Defaults are already server-side. Do not construct and bind the secondary
-  # controls during the first network frame; mount them on the first drawer open.
-  req(hla_settings_requested())
   tagList(
     sliderInput(
       "hla_min_nodes",
