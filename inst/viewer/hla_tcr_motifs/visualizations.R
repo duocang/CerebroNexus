@@ -66,11 +66,22 @@ hla_build_motif_visnet <- function(
   lineage_col = NULL,
   node_scale = 1
 ) {
-  if (!hla_motif_graph_ok(graph)) {
-    return(NULL)
+  snapshot <- is.list(graph) &&
+    identical(graph$version, 1L) &&
+    is.list(graph$vertex_attrs)
+  if (snapshot) {
+    va <- graph$vertex_attrs
+    n <- length(va$name)
+    if (!n) {
+      return(NULL)
+    }
+  } else {
+    if (!hla_motif_graph_ok(graph)) {
+      return(NULL)
+    }
+    va <- igraph::vertex_attr(graph)
+    n <- igraph::vcount(graph)
   }
-  va <- igraph::vertex_attr(graph)
-  n <- igraph::vcount(graph)
   get_attr <- function(nm) if (nm %in% names(va)) va[[nm]] else rep(NA, n)
 
   # Carrier status is not a graph attribute; splice it in for this render only.
@@ -195,11 +206,12 @@ hla_build_motif_visnet <- function(
     character(1)
   )
 
-  deg <- igraph::degree(graph)
-  total_cells <- tryCatch(
-    igraph::graph_attr(graph, "total_cells"),
-    error = function(e) NA_real_
-  )
+  deg <- if (snapshot) graph$degree else igraph::degree(graph)
+  total_cells <- if (snapshot) {
+    graph$total_cells
+  } else {
+    tryCatch(igraph::graph_attr(graph, "total_cells"), error = function(e) NA_real_)
+  }
   if (length(total_cells) != 1 || is.na(total_cells)) {
     total_cells <- NA_real_
   }
@@ -298,7 +310,7 @@ hla_build_motif_visnet <- function(
   ## `color` alone. Re-adding `group` requires a matching visGroups() call.
   nodes <- data.frame(
     id = seq_len(n),
-    node_key = as.character(igraph::V(graph)$name),
+    node_key = as.character(get_attr("name")),
     label = node_label,
     # `size`, not `value`: vis scales `value` linearly onto the radius, which
     # squares the difference the eye reads. See hla_node_radius().
@@ -310,7 +322,7 @@ hla_build_motif_visnet <- function(
     stringsAsFactors = FALSE
   )
 
-  el <- igraph::as_edgelist(graph, names = FALSE)
+  el <- if (snapshot) graph$edges else igraph::as_edgelist(graph, names = FALSE)
   edges <- if (nrow(el) == 0) {
     data.frame(from = integer(0), to = integer(0), stringsAsFactors = FALSE)
   } else {
@@ -344,7 +356,11 @@ hla_build_motif_visnet <- function(
     )
   }
 
-  n_multi <- sum(igraph::components(graph)$csize >= 2)
+  n_multi <- if (snapshot) {
+    sum(graph$component_sizes >= 2L)
+  } else {
+    sum(igraph::components(graph)$csize >= 2L)
+  }
   subtitle <- sprintf(
     "%d CDR3 in %d motif(s). Edge = Hamming distance 1.",
     n,
@@ -395,13 +411,20 @@ hla_visnet <- reactive({
   if (!hla_has_deps()) {
     return(NULL)
   }
-  g <- hla_motif_graph()
+  g <- hla_first_frame_graph_snapshot()
+  if (is.null(g)) {
+    g <- hla_motif_graph()
+  }
+  snapshot <- is.list(g) &&
+    identical(g$version, 1L) &&
+    is.list(g$vertex_attrs)
   # A tripped size guard returns NA carrying a message; surface it as a note
   # (handled by output$hla_motif_note) and draw nothing.
-  if (!hla_motif_graph_ok(g)) {
+  if (!snapshot && !hla_motif_graph_ok(g)) {
     return(NULL)
   }
-  if (igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
+  n_nodes <- if (snapshot) length(g$vertex_attrs$name) else igraph::vcount(g)
+  if (n_nodes > HLA_MOTIF_MAX_RENDER) {
     return(NULL)
   }
   color_by <- hla_param("hla_color_by", "cluster")
@@ -418,7 +441,11 @@ hla_visnet <- reactive({
   carrier <- NULL
   carrier_cnt <- NULL
   if (use_carrier && !is.null(allele)) {
-    sa <- igraph::vertex_attr(g, "samples_all")
+    sa <- if (snapshot) {
+      g$vertex_attrs$samples_all
+    } else {
+      igraph::vertex_attr(g, "samples_all")
+    }
     typing <- hla_active_typing()
     smp <- hla_ir_samples()
     carrier <- hla_node_carrier_status(sa, typing, smp, allele)

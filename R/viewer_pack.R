@@ -603,9 +603,40 @@
     },
     context_summary = hla_context_summary
   )
+  default_min_nodes <- if (!hla_motif_graph_ok(graph_raw)) {
+    2L
+  } else if (igraph::vcount(graph_raw) > 2000L) {
+    6L
+  } else if (igraph::vcount(graph_raw) > 500L) {
+    4L
+  } else {
+    2L
+  }
+  graph_default <- hla_finalize_motif_graph(
+    graph_raw,
+    min_nodes = default_min_nodes,
+    show_isolated = FALSE
+  )
+  graph_snapshot <- if (hla_motif_graph_ok(graph_default)) {
+    edge_matrix <- igraph::as_edgelist(graph_default, names = FALSE)
+    list(
+      version = 1L,
+      vertex_attrs = igraph::vertex_attr(graph_default),
+      total_cells = igraph::graph_attr(graph_default, "total_cells"),
+      degree = as.integer(igraph::degree(graph_default)),
+      edges = if (nrow(edge_matrix)) {
+        unname(matrix(as.integer(edge_matrix), ncol = 2L))
+      } else {
+        matrix(integer(), ncol = 2L)
+      },
+      component_sizes = as.integer(igraph::components(graph_default)$csize)
+    )
+  } else {
+    NULL
+  }
 
   list(
-    version = 1L,
+    version = 2L,
     filter_groups = filter_groups,
     filter_levels = filter_levels,
     initial_samples = initial_samples,
@@ -615,7 +646,9 @@
     node_meta_cols = node_meta_cols,
     by_v = by_v,
     segments = segments,
-    graph_raw = graph_raw
+    graph_raw = graph_raw,
+    default_min_nodes = default_min_nodes,
+    graph_snapshot = graph_snapshot
   )
 }
 

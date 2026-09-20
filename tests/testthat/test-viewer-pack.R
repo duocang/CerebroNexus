@@ -419,7 +419,7 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
     hla_parse_ir_segments(expected_annotated, "TRB")
   )
   first_frame <- runtime$viewerPackHlaFirstFrame(descriptor, "TRB")
-  expect_identical(first_frame$version, 1L)
+  expect_identical(first_frame$version, 2L)
   expect_identical(first_frame$filter_groups, "sample")
   expect_identical(first_frame$filter_levels$sample, "sample_1")
   expect_identical(first_frame$initial_samples, "sample_1")
@@ -428,6 +428,13 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   expect_identical(first_frame$node_meta_cols, "sample")
   expect_null(first_frame$lineage_col)
   expect_s3_class(first_frame$graph_raw, "igraph")
+  expect_identical(first_frame$default_min_nodes, 2L)
+  expect_true(is.null(first_frame$graph_snapshot) || is.list(first_frame$graph_snapshot))
+  if (!is.null(first_frame$graph_snapshot)) {
+    expect_identical(first_frame$graph_snapshot$version, 1L)
+    expect_type(first_frame$graph_snapshot$vertex_attrs, "list")
+    expect_equal(ncol(first_frame$graph_snapshot$edges), 2L)
+  }
   expect_false(exists(
     ".cell_order_valid",
     envir = descriptor$cache,

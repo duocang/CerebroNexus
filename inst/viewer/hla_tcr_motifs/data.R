@@ -392,6 +392,13 @@ hla_by_v_default <- reactive({
 ## the larger motifs; the slider still exposes the full range down to 2.
 hla_default_min_nodes <- reactive({
   first <- hla_first_frame()
+  if (
+    !is.null(first) &&
+      length(first$default_min_nodes) == 1L &&
+      !is.na(first$default_min_nodes)
+  ) {
+    return(as.integer(first$default_min_nodes))
+  }
   if (!is.null(first) && hla_motif_graph_ok(first$graph_raw)) {
     n_cdr3 <- igraph::vcount(first$graph_raw)
   } else {
@@ -685,6 +692,24 @@ hla_segments <- reactive({
     return(first$segments)
   }
   hla_segments_fallback()
+})
+
+hla_first_frame_graph_snapshot <- reactive({
+  first <- hla_first_frame()
+  snapshot <- if (is.list(first)) first$graph_snapshot else NULL
+  if (
+    !is.list(snapshot) ||
+      !identical(snapshot$version, 1L) ||
+      !isTRUE(hla_first_frame_graph_matches()) ||
+      !identical(
+        as.integer(hla_param("hla_min_nodes", hla_default_min_nodes())),
+        as.integer(first$default_min_nodes)
+      ) ||
+      isTRUE(hla_param("hla_show_isolated", FALSE))
+  ) {
+    return(NULL)
+  }
+  snapshot
 })
 
 ## ---- Metadata columns to carry onto nodes (for tooltip / colouring) ---- ##
