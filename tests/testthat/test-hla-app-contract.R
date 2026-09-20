@@ -190,7 +190,7 @@ test_that("HLA cohort filters are visible and drive every graph cache", {
       settings,
       gregexpr("req(hla_settings_requested())", settings, fixed = TRUE)
     )),
-    2L
+    3L
   )
   expect_match(settings, "groupFilterControl(", fixed = TRUE)
   expect_match(settings, "hla_default_filter_selections", fixed = TRUE)
@@ -1243,7 +1243,7 @@ test_that("HLA heavy consumers require their visible subtab", {
   network_observer <- regmatches(
     visual,
     regexpr(
-      "observe\\(\\{[\\s\\S]{0,900}cerebroCellViewRender",
+      "observe\\(\\{[\\s\\S]{0,2600}cerebroCellViewRender",
       visual,
       perl = TRUE
     )

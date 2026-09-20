@@ -979,28 +979,44 @@ hla_finalize_motif_graph <- function(
     return(raw)
   }
   g <- raw
+  degree <- igraph::degree(g)
   if (!isTRUE(show_isolated)) {
-    g <- igraph::induced_subgraph(g, igraph::V(g)[igraph::degree(g) > 0])
-    if (igraph::vcount(g) == 0) {
+    connected <- degree > 0
+    if (!any(connected)) {
       return(NULL)
+    }
+    # Avoid cloning the complete igraph (including every vertex attribute) when
+    # the filter keeps every node. Large HLA first frames commonly take this
+    # path, and two no-op induced_subgraph calls otherwise dominate activation.
+    if (!all(connected)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[connected])
     }
     comp <- igraph::components(g)
-    keep <- which(comp$csize >= min_nodes)
-    if (length(keep) == 0) {
+    keep <- comp$csize[comp$membership] >= min_nodes
+    if (!any(keep)) {
       return(NULL)
     }
-    g <- igraph::induced_subgraph(g, igraph::V(g)[comp$membership %in% keep])
+    if (!all(keep)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+      comp <- igraph::components(g)
+    }
   } else {
     comp <- igraph::components(g)
-    is_isolated <- igraph::degree(g) == 0
+    is_isolated <- degree == 0
     keep_cluster <- comp$csize[comp$membership] >= min_nodes
     keep <- is_isolated | keep_cluster
-    g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+    if (!any(keep)) {
+      return(NULL)
+    }
+    if (!all(keep)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+      comp <- igraph::components(g)
+    }
   }
   if (igraph::vcount(g) == 0) {
     return(NULL)
   }
-  igraph::V(g)$cluster <- igraph::components(g)$membership
+  igraph::V(g)$cluster <- comp$membership
   # Every survivor already carries a coordinate from the cached raw layout --
   # connected nodes from the force layout, isolated ones from the grid -- so
   # nothing is laid out here and the clusters that survive keep their exact
