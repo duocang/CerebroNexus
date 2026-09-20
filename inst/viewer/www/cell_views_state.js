@@ -170,5 +170,109 @@
     }
   };
 
+  S.canonicalMapping = {
+    datasetIdentityMatches: function (resource, identity) {
+      identity = identity || {};
+      return resource &&
+        /^md5-cell-set-v1:[0-9a-f]{32}$/.test(
+          String(resource.dataset_fingerprint || '')
+        ) &&
+        /^md5-cell-order-v1:[0-9a-f]{32}$/.test(
+          String(resource.cell_order_fingerprint || '')
+        ) &&
+        /^md5-crb-v1:[0-9a-f]{32}$/.test(
+          String(resource.pack_dataset_fingerprint || '')
+        ) &&
+        String(resource.dataset_fingerprint || '') ===
+          String(identity.cell_fingerprint || '') &&
+        String(resource.cell_order_fingerprint || '') ===
+          String(identity.cell_order_fingerprint || '') &&
+        String(resource.pack_dataset_fingerprint || '') ===
+          String(identity.pack_dataset_fingerprint || '');
+    },
+
+    resourceIdentityMatches: function (resource, identity) {
+      return this.datasetIdentityMatches(resource, identity) &&
+        Number(resource.cells) === Number((identity || {}).cell_count);
+    },
+
+    projectionIdentityMatches: function (resource, identity) {
+      return resource && resource.protocol === 'canonical-projection-v1' &&
+        resource.dtype === 'float32' &&
+        this.resourceIdentityMatches(resource, identity);
+    },
+
+    subsetContract: function (resource, expectedCanonicalCells, expectedCells) {
+      var kind = String(resource && resource.kind || '');
+      var canonicalCells = Number(resource && resource.canonical_cells) || 0;
+      var cells = Number(resource && resource.cells) || 0;
+      if (!resource || resource.protocol !== 'canonical-subset-v1' ||
+          resource.dtype !== 'uint32' || Number(resource.index_base) !== 0 ||
+          canonicalCells !== Number(expectedCanonicalCells) ||
+          cells !== Number(expectedCells) || canonicalCells < cells || cells < 0) {
+        return null;
+      }
+      if (kind === 'identity') {
+        return cells === canonicalCells && Number(resource.bytes) === 0
+          ? {kind: kind, canonicalCells: canonicalCells, cells: cells,
+            expectedCount: 0}
+          : null;
+      }
+      var expectedCount = kind === 'include_uint32' ? cells :
+        (kind === 'exclude_uint32' ? canonicalCells - cells : -1);
+      if (expectedCount < 0 || !resource.url ||
+          Number(resource.bytes) !== expectedCount * 4) return null;
+      return {
+        kind: kind, canonicalCells: canonicalCells, cells: cells,
+        expectedCount: expectedCount
+      };
+    },
+
+    indicesMatch: function (mapping, indices) {
+      if (!mapping || mapping.kind === 'identity') return !!mapping;
+      if (!indices || indices.length !== mapping.expectedCount) return false;
+      if (mapping.kind === 'exclude_uint32') {
+        var previous = -1;
+        for (var i = 0; i < indices.length; i++) {
+          if (indices[i] >= mapping.canonicalCells || indices[i] <= previous) {
+            return false;
+          }
+          previous = indices[i];
+        }
+        return true;
+      }
+      if (mapping.kind !== 'include_uint32') return false;
+      var seen = new Uint8Array(mapping.canonicalCells);
+      for (var j = 0; j < indices.length; j++) {
+        if (indices[j] >= mapping.canonicalCells || seen[indices[j]]) return false;
+        seen[indices[j]] = 1;
+      }
+      return true;
+    },
+
+    forEachIndex: function (mapping, indices, visit) {
+      var count = 0;
+      if (mapping.kind === 'identity') {
+        for (var identity = 0; identity < mapping.canonicalCells; identity++) {
+          visit(identity); count++;
+        }
+      } else if (mapping.kind === 'include_uint32') {
+        for (var i = 0; i < indices.length; i++) {
+          visit(indices[i]); count++;
+        }
+      } else {
+        var excluded = 0;
+        for (var canonical = 0; canonical < mapping.canonicalCells; canonical++) {
+          if (excluded < indices.length && indices[excluded] === canonical) {
+            excluded++;
+          } else {
+            visit(canonical); count++;
+          }
+        }
+      }
+      return count;
+    }
+  };
+
   window.CBViewState = S;
 })();

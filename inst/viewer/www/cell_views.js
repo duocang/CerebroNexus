@@ -6242,35 +6242,19 @@
   }
   var projectionSubsetResourceCache = new Map();
   function canonicalResourceIdentityMatches(resource, identity) {
-    identity = identity || {};
-    return canonicalDatasetIdentityMatches(resource, identity) &&
-      Number(resource.cells) === Number(identity.cell_count);
+    return window.CBViewState.canonicalMapping.resourceIdentityMatches(
+      resource, identity
+    );
   }
   function canonicalDatasetIdentityMatches(resource, identity) {
-    identity = identity || {};
-    return resource &&
-      /^md5-cell-set-v1:[0-9a-f]{32}$/.test(
-        String(resource.dataset_fingerprint || '')
-      ) &&
-      /^md5-cell-order-v1:[0-9a-f]{32}$/.test(
-        String(resource.cell_order_fingerprint || '')
-      ) &&
-      /^md5-crb-v1:[0-9a-f]{32}$/.test(
-        String(resource.pack_dataset_fingerprint || '')
-      ) &&
-      String(resource.dataset_fingerprint || '') ===
-        String(identity.cell_fingerprint || '') &&
-      String(resource.cell_order_fingerprint || '') ===
-        String(identity.cell_order_fingerprint || '') &&
-      String(resource.pack_dataset_fingerprint || '') ===
-        String(identity.pack_dataset_fingerprint || '');
+    return window.CBViewState.canonicalMapping.datasetIdentityMatches(
+      resource, identity
+    );
   }
   function canonicalProjectionIdentityMatches(resource, message) {
-    return resource && resource.protocol === 'canonical-projection-v1' &&
-      resource.dtype === 'float32' &&
-      canonicalResourceIdentityMatches(
-        resource, message && message.dataset_identity
-      );
+    return window.CBViewState.canonicalMapping.projectionIdentityMatches(
+      resource, message && message.dataset_identity
+    );
   }
   function fetchValidatedProjectionResource(resource, message, expectedCells) {
     if (resource && resource.protocol === 'canonical-projection-v1' &&
@@ -6349,30 +6333,21 @@
   function fetchProjectionSubsetResource(
     resource, expectedCanonicalCells, expectedCells
   ) {
-    var kind = String(resource && resource.kind || '');
-    var canonicalCells = Number(resource && resource.canonical_cells) || 0;
-    var cells = Number(resource && resource.cells) || 0;
-    if (!resource || resource.protocol !== 'canonical-subset-v1' ||
-        resource.dtype !== 'uint32' || Number(resource.index_base) !== 0 ||
-        canonicalCells !== Number(expectedCanonicalCells) ||
-        cells !== Number(expectedCells) || canonicalCells < cells || cells < 0) {
+    var mapping = window.CBViewState.canonicalMapping.subsetContract(
+      resource, expectedCanonicalCells, expectedCells
+    );
+    if (!mapping) {
       return Promise.reject(new Error('Projection subset contract mismatch'));
     }
+    var kind = mapping.kind;
+    var canonicalCells = mapping.canonicalCells;
     if (kind === 'identity') {
-      if (cells !== canonicalCells || Number(resource.bytes) !== 0) {
-        return Promise.reject(new Error('Projection identity subset mismatch'));
-      }
       return Promise.resolve({
         kind: kind, indices: null, bytes: 0, fetchMs: 0,
         downloadMs: 0, decodeMs: 0, cacheHit: true
       });
     }
-    var expectedCount = kind === 'include_uint32' ? cells :
-      (kind === 'exclude_uint32' ? canonicalCells - cells : -1);
-    if (expectedCount < 0 || !resource.url ||
-        Number(resource.bytes) !== expectedCount * 4) {
-      return Promise.reject(new Error('Projection subset shape mismatch'));
-    }
+    var expectedCount = mapping.expectedCount;
     var key = String(resource.url) + ':' + String(resource.checksum || '');
     var pending = projectionSubsetResourceCache.get(key);
     var cacheHit = !!pending;
@@ -6391,22 +6366,10 @@
           throw new Error('Projection subset byte count mismatch');
         }
         var indices = new Uint32Array(buffer);
-        if (kind === 'exclude_uint32') {
-          var previous = -1;
-          for (var i = 0; i < indices.length; i++) {
-            if (indices[i] >= canonicalCells || indices[i] <= previous) {
-              throw new Error('Projection exclusion index mismatch');
-            }
-            previous = indices[i];
-          }
-        } else {
-          var seen = new Uint8Array(canonicalCells);
-          for (var j = 0; j < indices.length; j++) {
-            if (indices[j] >= canonicalCells || seen[indices[j]]) {
-              throw new Error('Projection inclusion index mismatch');
-            }
-            seen[indices[j]] = 1;
-          }
+        if (!window.CBViewState.canonicalMapping.indicesMatch(
+          mapping, indices
+        )) {
+          throw new Error('Projection subset index mismatch');
         }
         return {
           kind: kind, indices: indices, bytes: buffer.byteLength,
@@ -6459,19 +6422,15 @@
       }
       out++;
     }
-    if (subset.kind === 'include_uint32') {
-      for (var i = 0; i < subset.indices.length; i++) copy(subset.indices[i]);
-    } else {
-      var excluded = 0;
-      for (var canonical = 0; canonical < canonicalCells; canonical++) {
-        if (excluded < subset.indices.length &&
-            subset.indices[excluded] === canonical) {
-          excluded++;
-        } else {
-          copy(canonical);
-        }
-      }
-    }
+    window.CBViewState.canonicalMapping.forEachIndex(
+      {
+        kind: subset.kind,
+        canonicalCells: canonicalCells,
+        cells: expectedCells
+      },
+      subset.indices,
+      copy
+    );
     if (out !== expectedCells) {
       throw new Error('Projection subset output length mismatch');
     }

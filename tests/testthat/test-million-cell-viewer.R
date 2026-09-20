@@ -459,6 +459,7 @@ test_that("canonical projection fetches enforce the full dataset identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -467,6 +468,10 @@ test_that("canonical projection fetches enforce the full dataset identity", {
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
+      ),
+      sprintf(
+        "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
       ),
       "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
       "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
@@ -545,6 +550,7 @@ test_that("spatial geometry fetches require exact dataset identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -553,6 +559,10 @@ test_that("spatial geometry fetches require exact dataset identity", {
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
+      ),
+      sprintf(
+        "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
       ),
       "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
       "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
@@ -608,6 +618,7 @@ test_that("canonical subsets bind projection and local cell counts", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -625,6 +636,10 @@ test_that("canonical subsets bind projection and local cell counts", {
       "  calls += 1;",
       "  return {ok:true, arrayBuffer:async () => new Uint32Array([0, 2]).buffer};",
       "}};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
+      ),
       "eval(source.slice(start, end));",
       "const include = {protocol:'canonical-subset-v1', kind:'include_uint32', canonical_cells:3, cells:2, index_base:0, dtype:'uint32', url:'subset.bin', bytes:8, checksum:'abc'};",
       "const identity = {protocol:'canonical-subset-v1', kind:'identity', canonical_cells:3, cells:3, index_base:0, dtype:'uint32', bytes:0, checksum:''};",
@@ -666,6 +681,7 @@ test_that("trajectory frame resources bind every static asset to dataset identit
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -680,7 +696,12 @@ test_that("trajectory frame resources bind every static asset to dataset identit
       "var projectionSubsetResourceCache = new Map();",
       "function fetchProjectionResource() {}",
       "function cacheSharedProjection() {}",
-      "global.window = {CBViewState:{sharedProjection:() => null}};",
+      "global.window = {};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
+      ),
+      "window.CBViewState.sharedProjection = () => null;",
       "function sharedBase() { return {}; }",
       "eval(source.slice(start, end));",
       "const identity = {",
@@ -744,6 +765,7 @@ test_that("Linked projection hydration uses the primary bundle identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -762,6 +784,10 @@ test_that("Linked projection hydration uses the primary bundle identity", {
       "  calls += 1;",
       "  return Promise.resolve({coordinates:{x:new Float32Array(expectedCells), y:new Float32Array(expectedCells), bytes:24}, fetchMs:1, downloadMs:1, decodeMs:1});",
       "}",
+      sprintf(
+        "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
+      ),
       "eval(source.slice(identityStart, identityEnd));",
       "eval(source.slice(hydrateStart, hydrateEnd));",
       "const fingerprints = {",
@@ -831,6 +857,7 @@ test_that("Linked canonical metadata validates its dataset identity", {
   expect_match(server, "pack_dataset_fingerprint = as.character", fixed = TRUE)
 
   source <- viewer_test_path("www", "cell_views.js")
+  state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
@@ -849,6 +876,10 @@ test_that("Linked canonical metadata validates its dataset identity", {
       "  calls += 1;",
       "  return Promise.resolve({url:resource.url, cells:expectedCells});",
       "}",
+      sprintf(
+        "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(state_source, quote = '"')
+      ),
       "eval(source.slice(identityStart, identityEnd));",
       "eval(source.slice(fetchStart, fetchEnd));",
       "const identity = {",
@@ -1112,6 +1143,57 @@ test_that("specialist lifecycle owns request, ready, and auxiliary state", {
       generation = 2L, cached = TRUE, bytes = 42L, latency = 25L,
       activation = 20L, requested = 7L, duplicate = NULL,
       rejected = FALSE, accepted = TRUE, pending = NULL, token = 7L
+    )
+  )
+})
+
+test_that("canonical mapping centralizes identity, subset, and index order", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs'); global.window = {};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const M = window.CBViewState.canonicalMapping;",
+      "const identity = {cell_count:4,",
+      " cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
+      " cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
+      " pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
+      "const resource = {cells:4,dataset_fingerprint:identity.cell_fingerprint,",
+      " cell_order_fingerprint:identity.cell_order_fingerprint,",
+      " pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
+      "const include = M.subsetContract({protocol:'canonical-subset-v1',",
+      " kind:'include_uint32',canonical_cells:4,cells:2,index_base:0,",
+      " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
+      "const exclude = M.subsetContract({protocol:'canonical-subset-v1',",
+      " kind:'exclude_uint32',canonical_cells:4,cells:2,index_base:0,",
+      " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
+      "const included = [], excluded = [];",
+      "M.forEachIndex(include,new Uint32Array([3,1]),i=>included.push(i));",
+      "M.forEachIndex(exclude,new Uint32Array([1,3]),i=>excluded.push(i));",
+      "console.log(JSON.stringify({identity:M.resourceIdentityMatches(resource,identity),",
+      "badIdentity:M.resourceIdentityMatches({...resource,cells:3},identity),",
+      "includeValid:M.indicesMatch(include,new Uint32Array([3,1])),",
+      "duplicate:M.indicesMatch(include,new Uint32Array([1,1])),",
+      "excludeValid:M.indicesMatch(exclude,new Uint32Array([1,3])),",
+      "unsorted:M.indicesMatch(exclude,new Uint32Array([3,1])),included,excluded}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      identity = TRUE, badIdentity = FALSE, includeValid = TRUE,
+      duplicate = FALSE, excludeValid = TRUE, unsorted = FALSE,
+      included = list(3L, 1L), excluded = list(0L, 2L)
     )
   )
 })
