@@ -1198,6 +1198,45 @@ test_that("canonical mapping centralizes identity, subset, and index order", {
   )
 })
 
+test_that("resource descriptors share shape and identity validation", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs=require('fs'); global.window={};",
+      sprintf(
+        "eval(fs.readFileSync(%s,'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const R=window.CBViewState.resourceDescriptor;",
+      "const identity={cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
+      "cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
+      "pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
+      "const resource={protocol:'spatial-geometry-v1',url:'g.bin',cells:4,",
+      "dimensions:2,dtype:'float32',bytes:32,",
+      "dataset_fingerprint:identity.cell_fingerprint,",
+      "cell_order_fingerprint:identity.cell_order_fingerprint,",
+      "pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
+      "const valid=R.validate(resource,{protocol:'spatial-geometry-v1',",
+      "cells:4,dimensions:2,dtype:'float32',requireUrl:true,identity});",
+      "console.log(JSON.stringify({valid:!!valid,bytes:valid.bytes,",
+      "shape:!!R.validate({...resource,dimensions:3},{cells:4,dimensions:2}),",
+      "identity:!!R.validate({...resource,dataset_fingerprint:'bad'},",
+      "{cells:4,identity}),width:R.codeWidth({dtype:'uint16'})}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(valid = TRUE, bytes = 32L, shape = FALSE, identity = FALSE, width = 2L)
+  )
+})
+
 test_that("decorated 2-D cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")

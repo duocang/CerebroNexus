@@ -6175,11 +6175,14 @@
   }
   var projectionResourceCache = new Map();
   function fetchProjectionResource(resource, expectedCells) {
-    var n = Number(resource.cells) || 0;
-    var dimensions = Number(resource.dimensions) || 0;
-    if (n !== Number(expectedCells) || (dimensions !== 2 && dimensions !== 3)) {
+    var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
+      cells: expectedCells, dimensionSet: [2, 3], requireUrl: true
+    });
+    if (!descriptor) {
       return Promise.reject(new Error('Projection resource shape mismatch'));
     }
+    var n = descriptor.cells;
+    var dimensions = descriptor.dimensions;
     var key = String(resource.url) + ':' + String(resource.checksum || '');
     var pending = projectionResourceCache.get(key);
     var cacheHit = !!pending;
@@ -6267,12 +6270,11 @@
     resource, message, expectedCells
   ) {
     if (resource && resource.protocol === 'spatial-geometry-v1') {
-      if (resource.dtype !== 'float32' ||
-          Number(resource.dimensions) !== 2 ||
-          Number(resource.cells) !== Number(expectedCells) ||
-          !canonicalDatasetIdentityMatches(
-            resource, message && message.dataset_identity
-          )) {
+      if (!window.CBViewState.resourceDescriptor.validate(resource, {
+        protocol: 'spatial-geometry-v1', dtype: 'float32', dimensions: 2,
+        cells: expectedCells, requireUrl: true,
+        identity: message && message.dataset_identity
+      })) {
         return Promise.reject(new Error('Spatial geometry identity mismatch'));
       }
       return fetchProjectionResource(resource, expectedCells);
@@ -6282,11 +6284,12 @@
   function registerSingleGeometryResource(message) {
     var resource = message && message.resource;
     var identity = message && message.dataset_identity;
-    if (!message || message.id !== 'spatial_projection' || !resource ||
-        resource.protocol !== 'spatial-geometry-v1' ||
-        !resource.spatial_name || resource.dtype !== 'float32' ||
-        Number(resource.dimensions) !== 2 || Number(resource.cells) < 1 ||
-        !canonicalDatasetIdentityMatches(resource, identity)) return;
+    if (!message || message.id !== 'spatial_projection' ||
+        !resource || !resource.spatial_name ||
+        !window.CBViewState.resourceDescriptor.validate(resource, {
+          protocol: 'spatial-geometry-v1', dtype: 'float32', dimensions: 2,
+          minCells: 1, identity: identity
+        })) return;
     singleResourceDescriptors.set(
       message.id + ':' + String(resource.spatial_name),
       message
@@ -6475,10 +6478,11 @@
     var projection = resource && resource.projection;
     var subset = resource && resource.subset;
     var state = resource && resource.state;
-    if (!resource || resource.protocol !== 'trajectory-frame-v1' ||
-        Number(resource.cells) !== Number(expectedCells) ||
+    if (!window.CBViewState.resourceDescriptor.validate(resource, {
+          protocol: 'trajectory-frame-v1', cells: expectedCells,
+          identity: identity
+        }) ||
         Number(resource.canonical_cells) !== Number(identity.cell_count) ||
-        !canonicalDatasetIdentityMatches(resource, identity) ||
         !projection || !projection.url || !state || !state.url) {
       throw new Error('Trajectory frame resource mismatch');
     }
@@ -6487,8 +6491,11 @@
         throw new Error('Trajectory canonical frame mismatch');
       }
     } else if (geometryKind === 'trajectory') {
-      if (subset || Number(projection.cells) !== Number(expectedCells) ||
-          projection.dtype !== 'float32') {
+      if (subset || !window.CBViewState.resourceDescriptor.validate(
+        projection, {
+          cells: expectedCells, dtype: 'float32', requireUrl: true
+        }
+      )) {
         throw new Error('Trajectory geometry frame mismatch');
       }
     } else {
@@ -6622,12 +6629,15 @@
   var metadataCodesResourceCache = new Map();
   var categoricalResourceCache = new Map();
   function fetchCategoricalResource(resource, expectedCells) {
-    var n = Number(resource.cells) || 0;
-    var dtype = String(resource.dtype || '');
-    var bytesPerCode = dtype === 'uint8' ? 1 :
-      (dtype === 'uint16' ? 2 : (dtype === 'uint32' ? 4 : 0));
+    var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
+      cells: expectedCells, dtypes: ['uint8', 'uint16', 'uint32'],
+      requireUrl: true
+    });
+    var n = descriptor && descriptor.cells;
+    var dtype = descriptor && descriptor.dtype;
+    var bytesPerCode = window.CBViewState.resourceDescriptor.codeWidth(descriptor);
     var levels = resource.levels;
-    if (n !== Number(expectedCells) || !bytesPerCode || !levels) {
+    if (!descriptor || !bytesPerCode || !levels) {
       return Promise.reject(new Error('Categorical resource mismatch'));
     }
     var key = String(resource.url) + ':' + String(resource.checksum || '');
@@ -6663,12 +6673,14 @@
     });
   }
   function fetchMetadataCodesResource(resource, expectedCells) {
-    var n = Number(resource.cells) || 0;
-    var dtype = String(resource.dtype || '');
-    var bytesPerCode = dtype === 'uint8' ? 1 : (dtype === 'uint16' ? 2 : 0);
+    var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
+      cells: expectedCells, dtypes: ['uint8', 'uint16'], requireUrl: true
+    });
+    var n = descriptor && descriptor.cells;
+    var dtype = descriptor && descriptor.dtype;
+    var bytesPerCode = window.CBViewState.resourceDescriptor.codeWidth(descriptor);
     var codeMap = resource.code_map;
-    if (n !== Number(expectedCells) || !bytesPerCode ||
-        !codeMap || !codeMap.length) {
+    if (!descriptor || !bytesPerCode || !codeMap || !codeMap.length) {
       return Promise.reject(new Error('Metadata codes resource mismatch'));
     }
     var key = String(resource.url) + ':' + String(resource.checksum || '') +

@@ -274,5 +274,46 @@
     }
   };
 
+  S.resourceDescriptor = {
+    validate: function (resource, expected) {
+      expected = expected || {};
+      if (!resource) return null;
+      var cells = Number(resource.cells);
+      var dimensions = Number(resource.dimensions);
+      var dtype = String(resource.dtype || '');
+      if (expected.protocol != null &&
+          resource.protocol !== expected.protocol) return null;
+      if (expected.cells != null && cells !== Number(expected.cells)) return null;
+      if (expected.minCells != null && cells < Number(expected.minCells)) return null;
+      if (expected.dtype != null && dtype !== expected.dtype) return null;
+      if (expected.dtypes && expected.dtypes.indexOf(dtype) < 0) return null;
+      if (expected.dimensions != null &&
+          dimensions !== Number(expected.dimensions)) return null;
+      if (expected.dimensionSet &&
+          expected.dimensionSet.indexOf(dimensions) < 0) return null;
+      if (expected.requireUrl && !resource.url) return null;
+      if (expected.identity &&
+          !S.canonicalMapping.datasetIdentityMatches(
+            resource, expected.identity
+          )) return null;
+      return {
+        resource: resource,
+        url: resource.url == null ? null : String(resource.url),
+        checksum: String(resource.checksum || ''),
+        bytes: Number(resource.bytes) || 0,
+        cells: cells,
+        dimensions: dimensions,
+        dtype: dtype
+      };
+    },
+
+    codeWidth: function (descriptor) {
+      if (!descriptor) return 0;
+      return descriptor.dtype === 'uint8' ? 1 :
+        (descriptor.dtype === 'uint16' ? 2 :
+          (descriptor.dtype === 'uint32' ? 4 : 0));
+    }
+  };
+
   window.CBViewState = S;
 })();
