@@ -346,6 +346,23 @@ test_that("specialist pages resend whenever they become visible again", {
   }
 })
 
+test_that("specialist tab clicks request the primary frame without polling", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(engine, "function requestSingleView(id)", fixed = TRUE)
+  expect_match(engine, "function tabSingleViewId(link)", fixed = TRUE)
+  expect_match(
+    engine,
+    "requestSingleView(tabSingleViewId(tabLink));",
+    fixed = TRUE
+  )
+  expect_match(engine, "requestSingleView(singleId);", fixed = TRUE)
+  expect_match(engine, "setInterval(reportVisibility, 250);", fixed = TRUE)
+})
+
 test_that("Spatial primary rendering ignores shared-base writeback", {
   source <- paste(
     readLines(

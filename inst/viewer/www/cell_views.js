@@ -8887,6 +8887,32 @@
         }
       );
     }
+    function requestSingleView(id) {
+      if (!id || singleViews[id] || singleRequests.has(id) ||
+          !Shiny.setInputValue) return false;
+      singleRequests.add(id);
+      var requestedAt = performance.now();
+      var timing = CBViewState.specialistLifecycle.begin(
+        singleTiming, id, true
+      );
+      timing.requestAtMs = requestedAt;
+      timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
+        ? requestedAt - window.__cerebroPageBenchClickStart : null;
+      prefetchRegisteredSingleResource(id);
+      Shiny.setInputValue(id + '_render_request', Date.now(), {
+        priority: 'event'
+      });
+      return true;
+    }
+    function tabSingleViewId(link) {
+      var href = link && link.getAttribute('href');
+      if (!href || href.slice(0, 11) !== '#shiny-tab-') return null;
+      var pane = document.getElementById(href.slice(1));
+      var host = pane && pane.querySelector(
+        '.cerebro-cell-view-host[data-cell-view-id]'
+      );
+      return host && host.dataset.cellViewId || null;
+    }
     function reportVisibility() {
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
@@ -8899,20 +8925,7 @@
         surface.contains(surfaceHome.panes));
       if (key === lastVis && mounted) return;
       lastVis = key;
-      if (singleId && !singleViews[singleId] && !singleRequests.has(singleId)) {
-        singleRequests.add(singleId);
-        var requestedAt = performance.now();
-        var timing = CBViewState.specialistLifecycle.begin(
-          singleTiming, singleId, true
-        );
-        timing.requestAtMs = requestedAt;
-        timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
-          ? requestedAt - window.__cerebroPageBenchClickStart : null;
-        prefetchRegisteredSingleResource(singleId);
-        Shiny.setInputValue(singleId + '_render_request', Date.now(), {
-          priority: 'event'
-        });
-      }
+      requestSingleView(singleId);
       if (singleId && singleViews[singleId]) {
         var cachedAt = performance.now();
         var cachedTiming = CBViewState.specialistLifecycle.begin(
@@ -8950,6 +8963,9 @@
     document.addEventListener('click', function (event) {
       var target = event.target && event.target.closest
         ? event.target.closest('a[href="#shiny-tab-coordinated_views"]') : null;
+      var tabLink = event.target && event.target.closest
+        ? event.target.closest('a[href^="#shiny-tab-"]') : null;
+      requestSingleView(tabSingleViewId(tabLink));
       if (target && Shiny.setInputValue) {
         linkedRequestTiming.requestAtMs = performance.now();
         linkedRequestTiming.clickToRequestMs =
