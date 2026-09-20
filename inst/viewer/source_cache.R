@@ -54,7 +54,6 @@
   ".runtimeBackendRecoveryAdvice",
   ".attachExternalExpression",
   "extra_material_table_filter",
-  "extra_material_table_groups",
   "viewerHasTcrRepertoire",
   "filterSelectionByHiddenGroups",
   "selectedCellMask",

@@ -294,5 +294,14 @@ test_that("viewer source reuses process-safe utility functions", {
     environment(first$get_or_load_crb),
     first
   )
+  ## This helper resolves the current session's data_set() when callers omit
+  ## its embedded argument, so it must not be evaluated in the process-owned
+  ## shared function environment.
+  first$data_set <- function() NULL
+  second$data_set <- function() NULL
+  expect_identical(first$extra_material_table_groups(), list())
+  expect_identical(second$extra_material_table_groups(), list())
+  expect_identical(environment(first$extra_material_table_groups), first)
+  expect_identical(environment(second$extra_material_table_groups), second)
   expect_false(identical(first$cachePlot, second$cachePlot))
 })
