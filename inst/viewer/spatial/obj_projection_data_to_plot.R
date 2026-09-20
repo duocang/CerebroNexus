@@ -4,6 +4,8 @@
 spatial_projection_full_ranges <- reactive({
   spatial_name <- input[["spatial_projection_to_display"]]
   req(spatial_name %in% availableSpatial())
+  parameters <- spatial_projection_parameters_plot()
+  req(identical(parameters[["projection"]], spatial_name))
 
   dataset <- spatial_dataset_name(
     available_crb_files$files,
@@ -15,7 +17,7 @@ spatial_projection_full_ranges <- reactive({
     spatial_name
   )
   full_coords <- rotateSpatialCoordinates(
-    getSpatialData(spatial_name)$coordinates,
+    viewerSpatialCoordinates(spatial_name),
     rotation_angle
   )
   x_full <- range(full_coords[[1]], na.rm = TRUE)

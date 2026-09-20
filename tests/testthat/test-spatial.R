@@ -140,6 +140,37 @@ test_that("spatial coordinate reuse requires exact canonical full order", {
   ))
 })
 
+test_that("validated spatial coordinates reuse canonical storage with fallback", {
+  expressions <- parse(viewer_test_path("utility_functions.R"))
+  assignment <- Filter(
+    function(expression) {
+      is.call(expression) &&
+        identical(expression[[1L]], as.name("<-")) &&
+        identical(expression[[2L]], as.name("viewerSpatialCoordinates"))
+    },
+    as.list(expressions)
+  )[[1L]]
+  coordinates <- data.frame(x = 1:3, y = 4:6)
+  dataset <- new.env(parent = emptyenv())
+  class(dataset) <- c("Cerebro", "R6")
+  dataset$spatial <- list(slice = list(coordinates = coordinates))
+  calls <- 0L
+  environment <- new.env(parent = baseenv())
+  environment$data_set <- function() dataset
+  environment$getSpatialData <- function(name) {
+    calls <<- calls + 1L
+    list(coordinates = coordinates)
+  }
+  eval(assignment, envir = environment)
+
+  expect_identical(environment$viewerSpatialCoordinates("slice"), coordinates)
+  expect_identical(calls, 0L)
+
+  dataset$spatial$slice$coordinates <- data.frame(a = 1:3, b = 4:6)
+  expect_identical(environment$viewerSpatialCoordinates("slice"), coordinates)
+  expect_identical(calls, 1L)
+})
+
 test_that("spatial coordinates retain subset and dataset-switch fallbacks", {
   coordinates <- list(
     million = data.frame(
@@ -163,7 +194,7 @@ test_that("spatial coordinates retain subset and dataset-switch fallbacks", {
     spatial_projection_cells_to_show <- shiny::reactive(cells())
     spatial_projection_cell_index <- shiny::reactive(canonical_index())
     availableSpatial <- function() names(coordinates)
-    getSpatialData <- function(name) list(coordinates = coordinates[[name]])
+    viewerSpatialCoordinates <- function(name) coordinates[[name]]
     sys.source(
       viewer_test_path("spatial", "obj_projection_coordinates.R"),
       envir = environment()

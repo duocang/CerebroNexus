@@ -4,7 +4,10 @@
 spatial_projection_cell_index <- reactive({
   spatial_name <- input[["spatial_projection_to_display"]]
   req(spatial_name %in% availableSpatial())
-  coordinates <- getSpatialData(spatial_name)[["coordinates"]]
+  parameters <- spatial_projection_parameters_plot()
+  req(identical(parameters[["projection"]], spatial_name))
+  coordinates <- viewerSpatialCoordinates(spatial_name)
+  req(coordinates)
   spatial_cells <- rownames(coordinates)
   pack <- viewerPackCurrent()
   pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))

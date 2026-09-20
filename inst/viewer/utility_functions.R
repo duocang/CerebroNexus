@@ -4315,6 +4315,32 @@ getSpatialData <- function(name) {
     error = function(e) NULL
   )
 }
+
+## Coordinate-only Spatial consumers run after spatial_projection_parameters_plot
+## has validated the exact current dataset + entry through getSpatialData().
+## Reuse the canonical stored coordinate reference there instead of invoking the
+## legacy getter's image/bounds normalization for every downstream reactive.
+## Malformed or legacy storage keeps the fully validated fallback path.
+viewerSpatialCoordinates <- function(name) {
+  ds <- data_set()
+  if (!any(grepl("Cerebro", class(ds)))) {
+    return(NULL)
+  }
+  coordinates <- tryCatch(
+    ds$spatial[[name]][["coordinates"]],
+    error = function(error) NULL
+  )
+  valid <- is.data.frame(coordinates) &&
+    all(c("x", "y") %in% colnames(coordinates)) &&
+    is.numeric(coordinates[["x"]]) &&
+    is.numeric(coordinates[["y"]]) &&
+    nrow(coordinates) > 0L
+  if (isTRUE(valid)) {
+    return(coordinates)
+  }
+  spatial_data <- getSpatialData(name)
+  if (is.null(spatial_data)) NULL else spatial_data[["coordinates"]]
+}
 serverSideGeneSelector <- function(
   session,
   input_id,

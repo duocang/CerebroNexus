@@ -11,9 +11,9 @@ spatial_projection_coordinates <- reactive({
   cells_to_show <- spatial_projection_cells_to_show()
   req(parameters[["projection"]] %in% availableSpatial())
 
-  spatial_data <- getSpatialData(parameters[["projection"]])
   canonical_index <- spatial_projection_cell_index()
-  coordinates <- spatial_data$coordinates
+  coordinates <- viewerSpatialCoordinates(parameters[["projection"]])
+  req(coordinates)
   if (!spatial_coordinates_are_canonical_full_order(
     cells_to_show,
     canonical_index,
