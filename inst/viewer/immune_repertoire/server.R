@@ -56,8 +56,7 @@ req_scRepertoire <- function() {
 }
 
 ## ---- Missing-dependency notice ---------------------------------------- ##
-## scRepertoire is a mandatory dependency, so a standard install always has it;
-## this notice is a defensive fallback for a broken/partial install. Rather than
+## scRepertoire is an optional, lazily loaded dependency. Rather than
 ## a silent blank panel we show an explicit prompt telling the user how to
 ## reinstall it. Shown in both the settings and visualizations boxes.
 ir_scRepertoire_missing_ui <- function() {

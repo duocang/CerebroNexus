@@ -103,6 +103,42 @@ test_that("selection composition shows count, top groups, and Other", {
   expect_match(card, "Move composition card; use arrow keys", fixed = TRUE)
 })
 
+test_that("empty selection composition does not hydrate metadata", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(viewer_dir, "utility_functions.R"), envir = env)
+  calls <- new.env(parent = emptyenv())
+  calls$metadata <- 0L
+  calls$groups <- 0L
+  calls$observation_unit <- 0L
+  calls$parameters <- 0L
+  env$getMetaData <- function() {
+    calls$metadata <- calls$metadata + 1L
+    stop("metadata should stay lazy")
+  }
+  env$getGroups <- function() {
+    calls$groups <- calls$groups + 1L
+    stop("groups should stay lazy")
+  }
+  env$getObservationUnit <- function() {
+    calls$observation_unit <- calls$observation_unit + 1L
+    stop("observation unit should stay lazy")
+  }
+  env$getParameters <- function() {
+    calls$parameters <- calls$parameters + 1L
+    stop("parameters should stay lazy")
+  }
+
+  expect_null(env$cerebroSelectionSummary(
+    selection = NULL,
+    source = "umap",
+    composition = TRUE
+  ))
+  expect_identical(
+    unlist(as.list(calls), use.names = FALSE),
+    rep(0L, 4L)
+  )
+})
+
 test_that("selection summary reports source and escapes labels", {
   env <- new.env(parent = globalenv())
   sys.source(file.path(viewer_dir, "utility_functions.R"), envir = env)

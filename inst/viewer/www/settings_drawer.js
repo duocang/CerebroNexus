@@ -11,6 +11,12 @@
     );
   }
 
+  function drawerHomePageIsActive(drawer) {
+    var home = drawer && drawer._cerebroHomeParent;
+    var page = home && home.closest('.tab-pane');
+    return !!(page && page.classList.contains('active'));
+  }
+
   function restoreDrawer(drawer) {
     var parent = drawer._cerebroHomeParent;
     var next = drawer._cerebroHomeNext;
@@ -183,6 +189,12 @@
         activeDrawer._cerebroHomeParent &&
         event.target.contains(activeDrawer._cerebroHomeParent)
       ) {
+        if (
+          activeDrawer.hasAttribute('data-cerebro-drawer-sticky-in-page') &&
+          drawerHomePageIsActive(activeDrawer)
+        ) {
+          return;
+        }
         closeDrawer(false, true);
       }
     }
@@ -208,6 +220,13 @@
   );
 
   window.jQuery(document).on('shown.bs.tab.cerebroSettings', function (event) {
+    if (
+      activeDrawer &&
+      activeDrawer.hasAttribute('data-cerebro-drawer-sticky-in-page') &&
+      drawerHomePageIsActive(activeDrawer)
+    ) {
+      return;
+    }
     if (!activeDrawer || !activeDrawer.contains(event.target)) {
       closeDrawer(false);
     }

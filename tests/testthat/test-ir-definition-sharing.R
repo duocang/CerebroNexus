@@ -125,6 +125,24 @@ test_that("clonal projection bounds the contextual background before rendering",
   expect_false(any(
     cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
   ))
+
+  grouped <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    max_background = 10L,
+    split_output = TRUE
+  )
+  expect_identical(grouped$trace_codes, c(NA_integer_, 1L, 2L))
+  expect_identical(lengths(grouped$x), c(10L, 1L, 2L))
+  expect_identical(lengths(grouped$y), c(10L, 1L, 2L))
+  expect_identical(grouped$key_type, "barcode")
+  grouped_coloured_keys <- unlist(lapply(
+    grouped$coloured_rows,
+    function(rows) grouped$coloured_key[rows]
+  ))
+  expect_setequal(grouped_coloured_keys, cells[1:3])
+  expect_false(any(grouped$background_key %in% cells[1:3]))
 })
 
 test_that("clonal expansion sizes avoid sorting clone labels", {

@@ -144,9 +144,19 @@ output$ir_main_params_UI <- shiny::bindEvent(
   data_set()
 )
 
+## ---- Deferred settings drawer ----------------------------------------- ##
+## The drawer lives in the DOM while closed, so suspendWhenHidden alone does
+## not prevent its renderUI outputs from running. Wait for the drawer's client
+## open event before constructing any of its controls. In particular, this
+## keeps the hundreds of group-filter choices out of the default landing path.
+ir_settings_requested <- reactive({
+  !is.null(input[["ir_more_render_request"]])
+})
+
 ## ---- Appearance controls (settings drawer) ---------------------------- ##
 ## Only render the section when the active plot has effective controls.
 output$ir_appearance_section_UI <- renderUI({
+  req(ir_settings_requested())
   if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
@@ -168,6 +178,7 @@ output$ir_appearance_section_UI <- renderUI({
 
 ## Scatter point controls and shared Canvas checkboxes.
 output$ir_additional_params_UI <- renderUI({
+  req(ir_settings_requested())
   if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
@@ -439,6 +450,7 @@ output$ir_primary_param_panel <- shiny::bindEvent(
 )
 
 output$ir_more_analysis_UI <- renderUI({
+  req(ir_settings_requested())
   if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
@@ -462,6 +474,7 @@ n_samples <- reactive({
 ## Renders the effective display controls applicable to the current tab. The
 ## settings drawer owns the section and scrolling, so this stays flat.
 output$ir_display_panel <- renderUI({
+  req(ir_settings_requested())
   tab <- input$ir_tabs
   if (!exists("ir_display_params_for")) {
     return(NULL)
@@ -527,6 +540,7 @@ output$ir_display_panel <- renderUI({
 })
 
 output$ir_cell_view_options_UI <- renderUI({
+  req(ir_settings_requested())
   if (!identical(input$ir_tabs, "Clonal UMAP")) {
     return(NULL)
   }
@@ -599,6 +613,7 @@ ir_display_params <- reactive({
 ## ---- Group filters (settings drawer) ---------------------------------- ##
 ## Shared group-filter chips for the Clonal UMAP. Other tabs show a short note.
 output$ir_group_filters_UI <- renderUI({
+  req(ir_settings_requested())
   if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
@@ -638,30 +653,37 @@ output$ir_group_filters_UI <- renderUI({
 ## Overrides the NULL default defined in data.R.
 ir_umap_cells_to_show <- reactive({
   groups <- tryCatch(getGroups(), error = function(e) character(0))
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (
-    length(groups) == 0 ||
-      is.null(md) ||
-      !("cell_barcode" %in% colnames(md))
-  ) {
+  if (length(groups) == 0) {
     return(NULL)
   }
-  keep <- rep(TRUE, nrow(md))
-  any_filter <- FALSE
+
+  ## Missing inputs mean that the drawer has not mounted, hence no filter is
+  ## active. Compare selections with the lightweight catalogued levels before
+  ## hydrating the 1.46M-row metadata table.
+  active_filters <- list()
   for (g in groups) {
     sel <- input[[paste0("ir_group_filter_", g)]]
-    if (is.null(sel) || !(g %in% colnames(md))) {
+    if (is.null(sel)) {
       next
     }
     all_lvls <- tryCatch(getGroupLevels(g), error = function(e) character(0))
-    # Only treat it as an active filter when the user has deselected something.
     if (length(sel) < length(all_lvls)) {
-      any_filter <- TRUE
-      keep <- keep & (as.character(md[[g]]) %in% sel)
+      active_filters[[g]] <- sel
     }
   }
-  if (!any_filter) {
+  if (!length(active_filters)) {
     return(NULL)
+  }
+
+  md <- tryCatch(getMetaData(), error = function(e) NULL)
+  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
+    return(NULL)
+  }
+  keep <- rep(TRUE, nrow(md))
+  for (g in names(active_filters)) {
+    if (g %in% colnames(md)) {
+      keep <- keep & (as.character(md[[g]]) %in% active_filters[[g]])
+    }
   }
   as.character(md$cell_barcode[keep])
 })

@@ -440,6 +440,14 @@ test_that("Display options panel exposes scatter params on scatter-type tabs", {
   app <- shared_app()
   activate_ir_tab(app)
 
+  # Drawer controls are deliberately absent from the cold landing path. The
+  # first open requests and mounts them.
+  app$click(selector = "#ir_more_button")
+  app$wait_for_js(
+    "document.querySelector('#ir_d_point_size') !== null",
+    timeout = 45000
+  )
+
   control_exists <- function(id) {
     app$get_js(sprintf(
       "document.querySelector('#%s') !== null;",
@@ -534,6 +542,16 @@ test_that("IR page uses the compact top toolbar and settings drawer", {
   }
   expect_true(isTRUE(exists_el("#ir_visualizations_info")))
   expect_true(isTRUE(exists_el("#ir_more_button")))
+  if (!isTRUE(exists_el("#ir_additional_parameters_info"))) {
+    app$click(selector = "#ir_more_button")
+  }
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#ir_additional_parameters_info') !== null && ",
+      "document.querySelector('#ir_group_filters_info') !== null"
+    ),
+    timeout = 45000
+  )
   expect_true(isTRUE(exists_el("#ir_additional_parameters_info")))
   expect_true(isTRUE(exists_el("#ir_group_filters_info")))
   expect_true(isTRUE(exists_el("#ir_tabs")))
@@ -563,13 +581,13 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
     app$get_js(sprintf("document.querySelector('%s') !== null;", sel))
   }
 
-  # Default tab is Clonal UMAP: the Show-all checkbox should exist, and at least
-  # one per-group filter picker (e.g. ir_group_filter_sample) should render.
+  # Default tab is Clonal UMAP: the primary Show-all checkbox should exist.
+  # Group choices mount on the first drawer request; this shared AppDriver may
+  # already have received that request in an earlier test.
   expect_true(isTRUE(exists_el("#ir_p_umap_show_all")))
   has_group_filter <- app$get_js(
     "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
   )
-  expect_true(isTRUE(has_group_filter))
 
   # The non-faceted host renders through the shared Canvas engine.
   wait_for_ir_canvas(app)
@@ -577,6 +595,17 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
     sprintf("document.querySelector('%s') !== null;", ir_canvas_selector)
   )
   expect_true(isTRUE(has_canvas))
+
+  if (!isTRUE(has_group_filter)) {
+    app$click(selector = "#ir_more_button")
+  }
+  app$wait_for_js(
+    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null",
+    timeout = 45000
+  )
+  expect_true(isTRUE(app$get_js(
+    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
+  )))
 })
 
 test_that("Clonal UMAP switches to static facets only when grouped", {

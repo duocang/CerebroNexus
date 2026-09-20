@@ -972,6 +972,10 @@ cerebroCellViewRender <- function(
   deferred_aux = NULL
 ) {
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  deferred_selection_lengths <- suppressWarnings(as.integer(
+    message$data$deferred_selection_lengths
+  ))
+  message$data$deferred_selection_lengths <- NULL
   stamp_transport_profile <- function(message) {
     request_at_ms <- tryCatch(
       suppressWarnings(as.numeric(input[[paste0(id, "_render_request")]])),
@@ -1021,7 +1025,15 @@ cerebroCellViewRender <- function(
     } else {
       list(selection_keys)
     }
-    n_cells <- sum(vapply(key_groups, length, integer(1)))
+    n_cells <- if (
+      length(deferred_selection_lengths) &&
+        all(!is.na(deferred_selection_lengths)) &&
+        all(deferred_selection_lengths >= 0L)
+    ) {
+      sum(deferred_selection_lengths)
+    } else {
+      sum(vapply(key_groups, length, integer(1)))
+    }
     shared_projection <- viewerSharedProjectionName(
       meta$space_label,
       n_cells
@@ -1045,7 +1057,13 @@ cerebroCellViewRender <- function(
       message$data$z <- NULL
       message$data$n <- n_cells
     }
-    progressive <- !is.null(selection_keys) &&
+    progressive <- (
+      !is.null(selection_keys) ||
+        (
+          length(deferred_selection_lengths) &&
+            is.function(deferred_aux)
+        )
+    ) &&
       is.null(message$data$panels) &&
       n_cells >= 4096L
     if (progressive) {
@@ -1326,6 +1344,13 @@ cerebroSelectionSummary <- function(
     character(0)
   }
   keys <- unique(as.character(keys[!is.na(keys) & nzchar(keys)]))
+  # Composition has nothing to render until stable selection keys arrive.
+  # Return before forcing the lazy metadata/groups defaults: on million-cell
+  # datasets those accessors can hydrate the complete per-cell metadata even
+  # though the result below would immediately be discarded.
+  if (isTRUE(composition) && !length(keys)) {
+    return(NULL)
+  }
   n_selected <- if (length(keys)) {
     length(keys)
   } else if (is.data.frame(selection)) {
