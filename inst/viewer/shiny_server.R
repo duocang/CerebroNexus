@@ -985,30 +985,35 @@ server <- function(input, output, session) {
     if (!is.null(subset) && !identical(subset$kind, "identity")) {
       subset$url <- resource_url(subset_file)
     }
-    descriptor <- list(
-      cells = frame$cells,
-      geometry_kind = geometry_kind,
-      projection = if (identical(geometry_kind, "canonical_projection")) {
-        projection
-      } else {
-        list(
-          url = resource_url(geometry_file),
-          cells = frame$cells,
-          dimensions = 2L,
-          dtype = "float32",
-          bytes = as.numeric(assets$bytes[[geometry_row]]),
-          checksum = as.character(assets$checksum[[geometry_row]])
-        )
-      },
-      subset = subset,
-      state = list(
-        url = resource_url(file.path(pack$path, frame$state_codes_path)),
+    descriptor <- c(
+      list(
+        protocol = "trajectory-frame-v1",
         cells = frame$cells,
-        dtype = dtype,
-        bytes = as.numeric(assets$bytes[[codes_row]]),
-        checksum = as.character(assets$checksum[[codes_row]]),
-        levels = I(levels)
-      )
+        canonical_cells = as.integer(pack$cell_count),
+        geometry_kind = geometry_kind,
+        projection = if (identical(geometry_kind, "canonical_projection")) {
+          projection
+        } else {
+          list(
+            url = resource_url(geometry_file),
+            cells = frame$cells,
+            dimensions = 2L,
+            dtype = "float32",
+            bytes = as.numeric(assets$bytes[[geometry_row]]),
+            checksum = as.character(assets$checksum[[geometry_row]])
+          )
+        },
+        subset = subset,
+        state = list(
+          url = resource_url(file.path(pack$path, frame$state_codes_path)),
+          cells = frame$cells,
+          dtype = dtype,
+          bytes = as.numeric(assets$bytes[[codes_row]]),
+          checksum = as.character(assets$checksum[[codes_row]]),
+          levels = I(levels)
+        )
+      ),
+      viewerCanonicalResourceIdentity(pack)
     )
     assign(key, descriptor, envir = viewer_trajectory_resources)
     descriptor

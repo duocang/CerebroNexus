@@ -6208,6 +6208,11 @@
   var projectionSubsetResourceCache = new Map();
   function canonicalResourceIdentityMatches(resource, identity) {
     identity = identity || {};
+    return canonicalDatasetIdentityMatches(resource, identity) &&
+      Number(resource.cells) === Number(identity.cell_count);
+  }
+  function canonicalDatasetIdentityMatches(resource, identity) {
+    identity = identity || {};
     return resource &&
       /^md5-cell-set-v1:[0-9a-f]{32}$/.test(
         String(resource.dataset_fingerprint || '')
@@ -6223,8 +6228,7 @@
       String(resource.cell_order_fingerprint || '') ===
         String(identity.cell_order_fingerprint || '') &&
       String(resource.pack_dataset_fingerprint || '') ===
-        String(identity.pack_dataset_fingerprint || '') &&
-      Number(resource.cells) === Number(identity.cell_count);
+        String(identity.pack_dataset_fingerprint || '');
   }
   function canonicalProjectionIdentityMatches(resource, message) {
     return resource && resource.protocol === 'canonical-projection-v1' &&
@@ -6404,11 +6408,46 @@
       return result;
     });
   }
+  function trajectoryFrameResources(resource, message, expectedCells) {
+    var identity = message && message.dataset_identity || {};
+    var geometryKind = String(resource && resource.geometry_kind || '');
+    var projection = resource && resource.projection;
+    var subset = resource && resource.subset;
+    var state = resource && resource.state;
+    if (!resource || resource.protocol !== 'trajectory-frame-v1' ||
+        Number(resource.cells) !== Number(expectedCells) ||
+        Number(resource.canonical_cells) !== Number(identity.cell_count) ||
+        !canonicalDatasetIdentityMatches(resource, identity) ||
+        !projection || !projection.url || !state || !state.url) {
+      throw new Error('Trajectory frame resource mismatch');
+    }
+    if (geometryKind === 'canonical_projection') {
+      if (!subset || !canonicalProjectionIdentityMatches(projection, message)) {
+        throw new Error('Trajectory canonical frame mismatch');
+      }
+    } else if (geometryKind === 'trajectory') {
+      if (subset || Number(projection.cells) !== Number(expectedCells) ||
+          projection.dtype !== 'float32') {
+        throw new Error('Trajectory geometry frame mismatch');
+      }
+    } else {
+      throw new Error('Trajectory geometry kind mismatch');
+    }
+    return {projection: projection, subset: subset, state: state};
+  }
   function hydrateSingleProjectionResource(message) {
     var data = message && message.data || {};
-    var resource = data.projection_resource;
-    var subsetResource = data.projection_subset_resource;
-    var groupResource = data.categorical_resource;
+    var frameResource = data.trajectory_frame_resource;
+    var frame = null;
+    try {
+      frame = frameResource
+        ? trajectoryFrameResources(frameResource, message, data.n) : null;
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    var resource = frame ? frame.projection : data.projection_resource;
+    var subsetResource = frame ? frame.subset : data.projection_subset_resource;
+    var groupResource = frame ? frame.state : data.categorical_resource;
     if ((!resource || !resource.url) &&
         (!groupResource || !groupResource.url)) {
       return Promise.resolve(message);
@@ -6449,6 +6488,7 @@
       delete data.projection_resource;
       delete data.projection_subset_resource;
       delete data.categorical_resource;
+      delete data.trajectory_frame_resource;
       message.data = data;
       var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
       timing.projectionFetchMs = result ? result.fetchMs : 0;
@@ -7726,7 +7766,11 @@
           hydrated.transport_profile
         );
       }).catch(function () {
-        var failed = message.data && message.data.projection_resource;
+        var failed = message.data && (
+          message.data.projection_resource ||
+          (message.data.trajectory_frame_resource &&
+            message.data.trajectory_frame_resource.projection)
+        );
         if (failed && failed.url && typeof Shiny !== 'undefined') {
           Shiny.setInputValue(
             message.id + '_projection_resource_failed',

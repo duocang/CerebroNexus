@@ -245,9 +245,7 @@ observe({
       x_range = list(),
       y_range = list(),
       reset_axes = reset_axes_now,
-      projection_resource = resource$projection,
-      projection_subset_resource = resource$subset,
-      categorical_resource = resource$state,
+      trajectory_frame_resource = resource,
       deferred_selection_lengths = resource$cells
     )
     deferred_aux <- function() {

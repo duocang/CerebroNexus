@@ -435,7 +435,7 @@ test_that("canonical projections use validated static assets with wire fallback"
       server,
       fixed = TRUE
     )),
-    2L
+    3L
   )
   expect_no_match(server, "viewer_projection_prefixes", fixed = TRUE)
   expect_no_match(server, "viewer_metadata_prefixes", fixed = TRUE)
@@ -595,6 +595,84 @@ test_that("canonical subsets bind projection and local cell counts", {
       validKind = "include_uint32",
       validIndices = list(0L, 2L),
       identityCacheHit = TRUE
+    )
+  )
+})
+
+test_that("trajectory frame resources bind every static asset to dataset identity", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
+      "const end = source.indexOf('  function hydrateSingleProjectionResource', start);",
+      "var projectionSubsetResourceCache = new Map();",
+      "function fetchProjectionResource() {}",
+      "function cacheSharedProjection() {}",
+      "global.window = {CBViewState:{sharedProjection:() => null}};",
+      "function sharedBase() { return {}; }",
+      "eval(source.slice(start, end));",
+      "const identity = {",
+      "  cell_count:3,",
+      "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
+      "  cell_order_fingerprint:'md5-cell-order-v1:' + 'b'.repeat(32),",
+      "  pack_dataset_fingerprint:'md5-crb-v1:' + 'c'.repeat(32)",
+      "};",
+      "const projection = {",
+      "  protocol:'canonical-projection-v1', projection_name:'UMAP',",
+      "  url:'projection.bin', cells:3, dtype:'float32',",
+      "  dataset_fingerprint:identity.cell_fingerprint,",
+      "  cell_order_fingerprint:identity.cell_order_fingerprint,",
+      "  pack_dataset_fingerprint:identity.pack_dataset_fingerprint",
+      "};",
+      "const frame = {",
+      "  protocol:'trajectory-frame-v1', cells:2, canonical_cells:3,",
+      "  geometry_kind:'canonical_projection', projection:projection,",
+      "  subset:{protocol:'canonical-subset-v1', kind:'exclude_uint32'},",
+      "  state:{url:'state.bin', cells:2, dtype:'uint8'},",
+      "  dataset_fingerprint:identity.cell_fingerprint,",
+      "  cell_order_fingerprint:identity.cell_order_fingerprint,",
+      "  pack_dataset_fingerprint:identity.pack_dataset_fingerprint",
+      "};",
+      "const message = {dataset_identity:identity};",
+      "function rejected(value, expectedCells) {",
+      "  try { trajectoryFrameResources(value, message, expectedCells); return false; }",
+      "  catch (error) { return /Trajectory/.test(error.message); }",
+      "}",
+      "const valid = trajectoryFrameResources(frame, message, 2);",
+      "console.log(JSON.stringify({",
+      "  validProjection:valid.projection.url,",
+      "  validState:valid.state.url,",
+      "  datasetMismatch:rejected({...frame, dataset_fingerprint:'md5-cell-set-v1:' + 'd'.repeat(32)}, 2),",
+      "  canonicalMismatch:rejected({...frame, canonical_cells:4}, 2),",
+      "  localMismatch:rejected(frame, 1),",
+      "  missingSubset:rejected({...frame, subset:null}, 2),",
+      "  projectionMismatch:rejected({...frame, projection:{...projection, cell_order_fingerprint:'md5-cell-order-v1:' + 'd'.repeat(32)}}, 2)",
+      "}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      validProjection = "projection.bin",
+      validState = "state.bin",
+      datasetMismatch = TRUE,
+      canonicalMismatch = TRUE,
+      localMismatch = TRUE,
+      missingSubset = TRUE,
+      projectionMismatch = TRUE
     )
   )
 })
