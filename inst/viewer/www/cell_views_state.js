@@ -315,5 +315,34 @@
     }
   };
 
+  S.telemetry = {
+    number: function (value) {
+      value = Number(value);
+      return isFinite(value) ? value : null;
+    },
+
+    transport: function (profile, values, includeServerBreakdown, nowEpoch) {
+      profile = profile || {};
+      values = values || {};
+      var sentAt = Number(profile.sent_at_ms);
+      var metric = {
+        bytes: Number(values.bytes) || 0,
+        serverPrepareMs: this.number(profile.server_prepare_ms),
+        serializeTransferMs: isFinite(sentAt)
+          ? Number(nowEpoch) - sentAt : null,
+        decodeMs: this.number(values.decodeMs)
+      };
+      if (includeServerBreakdown) {
+        metric.serverResourceMs = this.number(profile.server_resource_ms);
+        metric.serverBundleMs = this.number(profile.server_bundle_ms);
+      }
+      return Object.assign(metric, values);
+    },
+
+    snapshot: function (metric, values) {
+      return Object.assign({}, metric || {}, values || {});
+    }
+  };
+
   window.CBViewState = S;
 })();

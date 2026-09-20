@@ -7519,19 +7519,13 @@
       var applyMs = performance.now() - applyStarted;
       var rendererStats = panels.length && panels[0].gpu && panels[0].gpu.stats
         ? panels[0].gpu.stats() : {};
-      transportMetrics.primary = {
+      transportMetrics.primary = CBViewState.telemetry.transport(
+        decoded.transport_profile,
+        {
         bytes: buffer.byteLength,
         clickToRequestMs: linkedRequestTiming.clickToRequestMs,
         requestToBinaryMs: isFinite(linkedRequestTiming.requestAtMs)
           ? decodedAt - linkedRequestTiming.requestAtMs : null,
-        serverPrepareMs: decoded.transport_profile &&
-          Number(decoded.transport_profile.server_prepare_ms),
-        serverResourceMs: decoded.transport_profile &&
-          Number(decoded.transport_profile.server_resource_ms),
-        serverBundleMs: decoded.transport_profile &&
-          Number(decoded.transport_profile.server_bundle_ms),
-        serializeTransferMs: decoded.transport_profile &&
-          Date.now() - Number(decoded.transport_profile.sent_at_ms),
         decodeMs: decodedAt - started,
         projectionFetchMs: hydrated.projectionFetchMs,
         projectionBytes: hydrated.projectionBytes,
@@ -7542,7 +7536,10 @@
         applyMs: applyMs,
         rendererInitializationMs: Number(rendererStats.initializationMs),
         decodeToDrawMs: performance.now() - decodedAt
-      };
+        },
+        true,
+        Date.now()
+      );
     }).catch(function () {
       if (token !== wireToken) return;
       requestWireFallback(decoded && decoded.dataset_id,
@@ -7711,13 +7708,9 @@
         reportWorkspaceReady();
       }
       transportMetrics[extra.progressive_complete === false
-        ? 'clone' : 'supplement'] = {
-        bytes: metric.bytes,
-        serverPrepareMs: metric.serverPrepareMs,
-        serializeTransferMs: metric.serializeTransferMs,
-        decodeMs: metric.decodeMs,
+        ? 'clone' : 'supplement'] = CBViewState.telemetry.snapshot(metric, {
         decodeToDrawMs: performance.now() - drawStarted
-      };
+      });
       if (!D.progressive && pendingCloneSupplement) {
         var pending = pendingCloneSupplement;
         pendingCloneSupplement = null;
@@ -7746,14 +7739,12 @@
           extra.dataset_fingerprint !== configFingerprint() ||
           extra.progressive_token !== D.progressive_token) return;
       extra = hydrateSparseLinked(extra);
-      var metric = {
-        bytes: buffer.byteLength,
-        serverPrepareMs: extra.transport_profile &&
-          Number(extra.transport_profile.server_prepare_ms),
-        serializeTransferMs: extra.transport_profile &&
-          Date.now() - Number(extra.transport_profile.sent_at_ms),
-        decodeMs: decodedAt - started
-      };
+      var metric = CBViewState.telemetry.transport(
+        extra.transport_profile,
+        {bytes: buffer.byteLength, decodeMs: decodedAt - started},
+        false,
+        Date.now()
+      );
       if (extra.progressive_complete === false && D.progressive) {
         pendingCloneSupplement = { extra: extra, metric: metric };
         return;
@@ -7788,17 +7779,20 @@
       if (!decoded || !decoded.id) return;
       recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
       var profile = decoded.transport_profile || {};
-      var timing = CBViewState.specialistLifecycle.update(
-        singleTiming, decoded.id, {
+      var transportTiming = CBViewState.telemetry.transport(
+        profile,
+        {
           bytes: buffer.byteLength,
           binaryReceivedAtMs: receivedAt,
           decodeMs: decodedAt - receivedAt,
-          serverPrepareMs: Number(profile.server_prepare_ms),
-          serializeTransferMs: isFinite(Number(profile.sent_at_ms))
-            ? Date.now() - Number(profile.sent_at_ms) : null,
           requestToBinaryMs: isFinite(Number(profile.request_at_ms))
             ? Date.now() - Number(profile.request_at_ms) : null
-        }
+        },
+        false,
+        Date.now()
+      );
+      var timing = CBViewState.specialistLifecycle.update(
+        singleTiming, decoded.id, transportTiming
       );
       var requestedSharedProjection = !!decoded.shared_projection;
       var message = reuseSharedSingleProjection(decoded);

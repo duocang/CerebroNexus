@@ -1239,6 +1239,40 @@ test_that("resource descriptors share shape and identity validation", {
   )
 })
 
+test_that("telemetry snapshots normalize shared transport phases", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  source <- viewer_test_path("www", "cell_views_state.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs=require('fs'); global.window={};",
+      sprintf(
+        "eval(fs.readFileSync(%s,'utf8'));",
+        encodeString(source, quote = '"')
+      ),
+      "const T=window.CBViewState.telemetry;",
+      "const metric=T.transport({server_prepare_ms:'12.5',",
+      "server_resource_ms:'3',server_bundle_ms:'bad',sent_at_ms:900},",
+      "{bytes:42,decodeMs:4,requestToBinaryMs:8},true,1000);",
+      "const snapshot=T.snapshot(metric,{decodeToDrawMs:6});",
+      "console.log(JSON.stringify(snapshot));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      bytes = 42L, serverPrepareMs = 12.5, serializeTransferMs = 100L,
+      decodeMs = 4L, serverResourceMs = 3L, serverBundleMs = NULL,
+      requestToBinaryMs = 8L, decodeToDrawMs = 6L
+    )
+  )
+})
+
 test_that("decorated 2-D cell views remain eligible for WebGPU", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
