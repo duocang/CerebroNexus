@@ -1374,6 +1374,14 @@ test_that("GPU cell views split underlay, points and interaction overlay", {
   )
 
   expect_match(javascript, "function attachUnderlay(p)", fixed = TRUE)
+  expect_match(javascript, "function attachInteractionLayer(p)", fixed = TRUE)
+  expect_match(javascript, "function drawHoverOverlay(p)", fixed = TRUE)
+  expect_match(javascript, "drawHoverAll();", fixed = TRUE)
+  expect_no_match(
+    javascript,
+    "hoverCell = i;\n    drawAll();",
+    fixed = TRUE
+  )
   expect_match(javascript, "if (needsUnderlay(p)) attachUnderlay(p)", fixed = TRUE)
   expect_match(javascript, "drawImage(p, underlay)", fixed = TRUE)
   expect_match(javascript, "drawHulls(p, underlay)", fixed = TRUE)
@@ -1384,6 +1392,7 @@ test_that("GPU cell views split underlay, points and interaction overlay", {
   expect_match(javascript, "function exportPanelLayers", fixed = TRUE)
   expect_no_match(javascript, "cv-gpu-overlay", fixed = TRUE)
   expect_match(stylesheet, "canvas.cv-underlay-layer", fixed = TRUE)
+  expect_match(stylesheet, "canvas.cv-interaction-layer", fixed = TRUE)
   expect_match(stylesheet, "canvas.cv-gpu-layer { z-index: 1; }", fixed = TRUE)
   expect_match(stylesheet, "z-index: 2; background: transparent", fixed = TRUE)
 })

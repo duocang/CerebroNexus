@@ -515,7 +515,8 @@
   transition: width .2s ease, height .2s ease;
 }
 .coordviews-page canvas.cv-underlay-layer,
-.coordviews-page canvas.cv-gpu-layer {
+.coordviews-page canvas.cv-gpu-layer,
+.coordviews-page canvas.cv-interaction-layer {
   position: absolute; inset: 0; z-index: 0;
   background: transparent; pointer-events: none;
 }
@@ -523,6 +524,7 @@
 .coordviews-page canvas.cv-layer-overlay {
   position: relative; z-index: 2; background: transparent;
 }
+.coordviews-page canvas.cv-interaction-layer { z-index: 3; }
 /* ---- minimap ------------------------------------------------------------ */
 /* Deliberately coarse: a subsampled impression of the space plus a frame for the
    visible part. It exists to answer "where am I", which needs no detail. Fades

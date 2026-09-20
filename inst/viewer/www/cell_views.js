@@ -1004,6 +1004,7 @@
   function resizePanelLayers(p, width, height, dpr) {
     resizeCanvasLayer(p.canvas, p.ctx, width, height, dpr);
     resizeCanvasLayer(p.underlayCanvas, p.underlayCtx, width, height, dpr);
+    resizeCanvasLayer(p.interactionCanvas, p.interactionCtx, width, height, dpr);
     if (p.gpu) p.gpu.resize(width, height, dpr);
   }
 
@@ -1021,13 +1022,15 @@
   function clearPanelLayers(p) {
     p.ctx.clearRect(0, 0, p.W, p.H);
     if (p.underlayCtx) p.underlayCtx.clearRect(0, 0, p.W, p.H);
+    if (p.interactionCtx) p.interactionCtx.clearRect(0, 0, p.W, p.H);
   }
 
   function exportPanelLayers(context, panel, x, y, width, height) {
     [panel.underlayCanvas,
       panel.gpuCanvas && panel.gpuCanvas.style.display !== 'none'
         ? panel.gpuCanvas : null,
-      panel.canvas].forEach(function (canvas) {
+      panel.canvas,
+      panel.interactionCanvas].forEach(function (canvas) {
       if (canvas) context.drawImage(canvas, x, y, width, height);
     });
   }
@@ -1698,6 +1701,23 @@
     }
   }
 
+  // Hover changes much more often than the graph beneath it. Keep the moving
+  // ring on its own transparent layer so following the cursor never repaints a
+  // trajectory's complete edge set and point cloud.
+  function attachInteractionLayer(p) {
+    if (p.interactionCanvas) return;
+    var canvas = document.createElement('canvas');
+    canvas.className = 'cv-interaction-layer';
+    canvas.setAttribute('aria-hidden', 'true');
+    p.canvas.parentNode.insertBefore(canvas, p.canvas.nextSibling);
+    p.interactionCanvas = canvas;
+    p.interactionCtx = canvas.getContext('2d');
+    if (p.W && p.H) {
+      resizeCanvasLayer(canvas, p.interactionCtx, p.W, p.H,
+        window.devicePixelRatio || 1);
+    }
+  }
+
   function needsUnderlay(p) {
     var space = spaceById[p.spaceId];
     return !!(space && (space.background_scope || space.trajectory ||
@@ -1976,21 +1996,6 @@
     }
     drawAxes3D(p);
     drawGroupLabels(p);
-    // Hovered cell, marked in EVERY panel including the one being pointed at.
-    // Thinner and cooler than the pick ring so the two never read as the same
-    // state: this one follows the cursor and is gone the moment it leaves.
-    if (hoverCell != null && hoverCell !== pick && p.ok[hoverCell]) {
-      c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
-      c.beginPath();
-      c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
-        p._renderPointSize + 3.5, 0, 6.2832);
-      c.stroke();
-      c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
-      c.beginPath();
-      c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
-        p._renderPointSize + 5, 0, 6.2832);
-      c.stroke();
-    }
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
@@ -2038,6 +2043,32 @@
     // whatever the view slid underneath it.
     repositionPinned(p);
     p.canvas.dataset.pointCount = String(D.n);
+    drawHoverOverlay(p);
+  }
+
+  function drawHoverOverlay(p) {
+    var c = p.interactionCtx;
+    if (!c) return;
+    c.clearRect(0, 0, p.W, p.H);
+    if (hoverCell == null || hoverCell === pick || !p.ok || !p.ok[hoverCell]) return;
+    // Thinner and cooler than the pick ring so hover and selection never read
+    // as the same state.
+    c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
+    c.beginPath();
+    c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
+      p._renderPointSize + 3.5, 0, 6.2832);
+    c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
+    c.beginPath();
+    c.arc(pointScreenX(p, hoverCell), pointScreenY(p, hoverCell),
+      p._renderPointSize + 5, 0, 6.2832);
+    c.stroke();
+  }
+
+  function drawHoverAll() {
+    panels.forEach(function (p) {
+      if (p.spaceId) drawHoverOverlay(p);
+    });
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -3907,13 +3938,12 @@
     placeTip(p, tip, i);
   }
 
-  // Mark the hovered cell everywhere. Redraws only when the cell CHANGES: a
-  // mousemove fires far more often than the answer to "which cell is nearest"
-  // changes, and each redraw is the whole cloud in every panel.
+  // Mark the hovered cell everywhere. The rings have their own lightweight
+  // canvas, so a change never redraws clouds or trajectory underlays.
   function setHoverCell(i) {
     if (hoverCell === i) return;
     hoverCell = i;
-    drawAll();
+    drawHoverAll();
   }
 
   function wireHover(p) {
@@ -4160,9 +4190,11 @@
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
         view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null,
         underlayCanvas: null, underlayCtx: null,
+        interactionCanvas: null, interactionCtx: null,
         gpu: null, gpuCanvas: null, gpuData: null, gpuDataState: null,
         gpuTransformOnly: false };
       attachGpu(p);
+      attachInteractionLayer(p);
       // The minimap is a FIXED size, so its backing store is set once here
       // rather than on every re-fit.
       if (mini) {
@@ -5940,6 +5972,7 @@
       p.miniBg = null; p.miniUnit = null;
       if (p.mini) p.mini.classList.remove('is-on');
       if (p.ctx) p.ctx.clearRect(0, 0, p.W, p.H);
+      if (p.interactionCtx) p.interactionCtx.clearRect(0, 0, p.W, p.H);
       hideGpu(p);
       if (p.pane) p.pane.classList.add('cv-hidden');
     });
