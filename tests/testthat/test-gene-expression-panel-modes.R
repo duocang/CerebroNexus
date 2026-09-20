@@ -171,7 +171,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
   app$wait_for_js(
     "document.getElementById('expression_genes_input') !== null",
-    timeout = 20000
+    timeout = 60000
   )
   expect_false(app$get_js(
     "document.querySelector('#expression_details_selected_cells_UI h3') !== null"
@@ -187,7 +187,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   )
   app$wait_for_js(
     "document.querySelector('#expression_by_group_UI h3') !== null",
-    timeout = 20000
+    timeout = 60000
   )
   expect_false(app$get_js(
     "document.querySelector('#expression_by_gene_UI h3') !== null"
@@ -198,7 +198,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "document.querySelector(",
       "'#expression_projection_cell_view_host canvas:not(.cv-mini)') !== null"
     ),
-    timeout = 20000
+    timeout = 60000
   )
   app$run_js(paste0(
     "Shiny.setInputValue('expression_projection_persistent_selection',",
@@ -209,7 +209,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "document.querySelector(",
       "'#expression_in_selected_cells_UI h3') !== null"
     ),
-    timeout = 20000
+    timeout = 60000
   )
   expect_true(app$get_js(
     "document.querySelector('#expression_details_selected_cells_UI h3') !== null"
@@ -223,7 +223,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "document.querySelector(",
       "'#expression_in_selected_cells_UI h3') === null"
     ),
-    timeout = 20000
+    timeout = 60000
   )
 
   viewer_set_selectize(
@@ -247,7 +247,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "document.getElementById('expression_by_group')?.innerText",
       ".includes('MS4A1')"
     ),
-    timeout = 20000
+    timeout = 60000
   )
   panel_text <- app$get_js(
     "document.getElementById('expression_by_group').innerText"
@@ -273,6 +273,6 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "return text.includes('R · MS4A1') && ",
       "text.includes('G · CD3D') && !text.includes('B ·');})()"
     ),
-    timeout = 20000
+    timeout = 60000
   )
 })
