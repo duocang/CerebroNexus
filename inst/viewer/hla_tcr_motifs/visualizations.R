@@ -542,7 +542,7 @@ output$hla_motif_readout <- renderUI({
   )
 })
 
-hla_motif_last_render_key <- reactiveVal(NULL)
+hla_motif_last_render_signature <- reactiveVal(NULL)
 
 observe({
   req(identical(input[["sidebar"]], "hla_tcr_motifs"))
@@ -556,36 +556,28 @@ observe({
     return()
   }
 
-  color_by <- hla_param("hla_color_by", "cluster")
-  render_key <- list(
+  from <- as.integer(vn$edges$from)
+  to <- as.integer(vn$edges$to)
+  point_sizes <- 2 * vn$nodes$size
+  render_signature <- list(
     dataset = available_crb_files$selected,
-    chain = hla_active_chain(),
-    scope = hla_scope_key(),
-    filters = hla_filter_key(),
-    by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default())),
-    min_nodes = as.integer(hla_param("hla_min_nodes", hla_default_min_nodes())),
-    show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE)),
-    color_by = color_by,
-    color_allele = if (identical(color_by, "hla_carrier")) {
-      hla_color_allele()
-    } else {
-      NULL
-    },
-    legend_mode = hla_param("hla_legend_mode", "auto"),
-    node_scale = hla_param("hla_node_scale", 1),
-    nodes = nrow(vn$nodes),
-    edges = nrow(vn$edges)
+    legend_title = vn$legend_title,
+    layout = vn$layout,
+    node_key = vn$nodes$node_key,
+    color = vn$nodes$color,
+    point_sizes = point_sizes,
+    hover_columns = vn$hover_columns,
+    from = from,
+    to = to
   )
   # Input widgets and the client request lifecycle initialise independently.
   # Several invalidations can therefore arrive with the same effective graph.
-  # Do not resend it: a new data set or any display/build setting changes this
-  # key, while a bare retry for an already delivered frame does not.
-  if (identical(hla_motif_last_render_key(), render_key)) {
+  # Compare the actual frame, not its input controls: controls can move from a
+  # server default to the same explicit browser value without changing one pixel.
+  if (identical(hla_motif_last_render_signature(), render_signature)) {
     return()
   }
 
-  from <- vn$edges$from
-  to <- vn$edges$to
   cerebroCellViewRender(
     "hla_motif_network",
     meta = list(
@@ -603,8 +595,8 @@ observe({
       y = vn$layout[, 2],
       selection_key = vn$nodes$node_key,
       color = vn$nodes$color,
-      point_sizes = 2 * vn$nodes$size,
-      point_size = min(20, stats::median(2 * vn$nodes$size)),
+      point_sizes = point_sizes,
+      point_size = min(20, stats::median(point_sizes)),
       point_opacity = 1,
       reset_axes = FALSE
     ),
@@ -616,12 +608,12 @@ observe({
       edges = list(
         # The browser already owns the node coordinates. Integer endpoints avoid
         # repeating four double vectors for every edge (the dominant HLA payload).
-        from = as.integer(from),
-        to = as.integer(to)
+        from = from,
+        to = to
       )
     )
   )
-  hla_motif_last_render_key(render_key)
+  hla_motif_last_render_signature(render_signature)
 })
 
 ## ---- Export: tables + manifest ---------------------------------------- ##

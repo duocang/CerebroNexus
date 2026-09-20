@@ -1612,10 +1612,14 @@ test_that("the motif Canvas receives the complete layout and compact edges", {
     "req\\(isTRUE\\(hla_first_frame_graph_matches\\(\\)\\) \\|\\| hla_ready_latch\\(\\)\\)",
     perl = TRUE
   )
-  expect_match(vis_src, "hla_motif_last_render_key <- reactiveVal(NULL)", fixed = TRUE)
   expect_match(
     vis_src,
-    "identical(hla_motif_last_render_key(), render_key)",
+    "hla_motif_last_render_signature <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    vis_src,
+    "identical(hla_motif_last_render_signature(), render_signature)",
     fixed = TRUE
   )
 })
