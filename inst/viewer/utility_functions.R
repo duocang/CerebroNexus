@@ -1011,6 +1011,9 @@ cerebroCellViewRender <- function(
         cell_fingerprint = as.character(identity$fingerprint),
         cell_order_fingerprint = as.character(
           identity$order_fingerprint %||% ""
+        ),
+        pack_dataset_fingerprint = as.character(
+          identity$pack_fingerprint %||% ""
         )
       )
     }

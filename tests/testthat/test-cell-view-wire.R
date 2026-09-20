@@ -217,7 +217,8 @@ test_that("large specialist views send their first frame before hover data", {
     list(
       cell_count = 4096L,
       cell_fingerprint = "md5-cell-set-v1:0123456789abcdef0123456789abcdef",
-      cell_order_fingerprint = "md5-cell-order-v1:fedcba9876543210fedcba9876543210"
+      cell_order_fingerprint = "md5-cell-order-v1:fedcba9876543210fedcba9876543210",
+      pack_dataset_fingerprint = ""
     )
   )
   expect_null(first$data$selection_key)

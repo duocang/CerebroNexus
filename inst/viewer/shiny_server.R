@@ -753,20 +753,34 @@ server <- function(input, output, session) {
     )
     shiny::addResourcePath(prefix, dirname(file))
     viewer_projection_prefixes <<- c(viewer_projection_prefixes, prefix)
+    identity <- tryCatch(
+      viewerDatasetIdentity(),
+      error = function(error) NULL
+    )
     descriptor <- list(
+      protocol = "canonical-projection-v1",
+      projection_name = as.character(name),
       url = paste0(prefix, "/", basename(file)),
       cells = dimensions[[1L]],
       dimensions = dimensions[[2L]],
+      dtype = "float32",
       bytes = as.numeric(assets$bytes[[asset_row]]),
-      checksum = as.character(assets$checksum[[asset_row]])
+      checksum = as.character(assets$checksum[[asset_row]]),
+      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
+      cell_order_fingerprint = as.character(
+        pack$manifest$cell_order_fingerprint %||% ""
+      ),
+      pack_dataset_fingerprint = as.character(
+        pack$manifest$dataset_fingerprint %||% ""
+      )
     )
     assign(key, descriptor, envir = viewer_projection_resources)
     descriptor
   }
-  ## A trajectory frame has its own row order and cell count, so it cannot use
-  ## the canonical projection descriptor above. The Viewer Pack publishes the
-  ## matching geometry and state codes together; validate and expose both as a
-  ## single first-frame resource contract.
+  ## Trajectory frames may bind an exact row subset to a canonical projection.
+  ## The binding is published only by the Viewer Pack builder after exact
+  ## coordinate comparison. Older packs and non-matching frames retain their
+  ## dedicated geometry asset.
   viewer_trajectory_resources <- new.env(parent = emptyenv())
   viewer_trajectory_prefixes <- character()
   viewerTrajectoryFrameAsset <- function(method, name) {
@@ -786,21 +800,11 @@ server <- function(input, output, session) {
     asset_row <- function(path) {
       which(as.character(assets$path) == as.character(path))
     }
-    geometry_row <- asset_row(frame$geometry_path)
     codes_row <- asset_row(frame$state_codes_path)
     dictionary_row <- asset_row(frame$state_dictionary_path)
-    if (
-      length(geometry_row) != 1L ||
-        length(codes_row) != 1L ||
-        length(dictionary_row) != 1L
-    ) {
+    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
       return(NULL)
     }
-    geometry_dimensions <- suppressWarnings(as.integer(strsplit(
-      as.character(assets$dimensions[[geometry_row]]),
-      "x",
-      fixed = TRUE
-    )[[1L]]))
     code_dimensions <- suppressWarnings(as.integer(
       as.character(assets$dimensions[[codes_row]])
     ))
@@ -812,22 +816,11 @@ server <- function(input, output, session) {
       uint32 = 4L,
       NA_integer_
     )
-    paths <- c(
-      frame$geometry_path,
-      frame$state_codes_path,
-      frame$state_dictionary_path
-    )
-    rows <- c(geometry_row, codes_row, dictionary_row)
+    paths <- c(frame$state_codes_path, frame$state_dictionary_path)
+    rows <- c(codes_row, dictionary_row)
     files <- file.path(pack$path, paths)
-    valid <- length(geometry_dimensions) == 2L &&
-      identical(geometry_dimensions, c(frame$cells, 2L)) &&
-      identical(code_dimensions, frame$cells) &&
-      identical(as.character(assets$dtype[[geometry_row]]), "float32") &&
+    valid <- identical(code_dimensions, frame$cells) &&
       !is.na(bytes_per_code) &&
-      identical(
-        as.numeric(assets$bytes[[geometry_row]]),
-        as.numeric(frame$cells) * 2 * 4
-      ) &&
       identical(
         as.numeric(assets$bytes[[codes_row]]),
         as.numeric(frame$cells) * bytes_per_code
@@ -847,7 +840,7 @@ server <- function(input, output, session) {
     }
     levels <- tryCatch(
       as.character(jsonlite::read_json(
-        files[[3L]],
+        files[[2L]],
         simplifyVector = TRUE
       )),
       error = function(error) NULL
@@ -860,6 +853,108 @@ server <- function(input, output, session) {
     ) {
       return(NULL)
     }
+    geometry_kind <- as.character(frame$geometry_kind)
+    projection <- NULL
+    subset <- NULL
+    if (identical(geometry_kind, "canonical_projection")) {
+      projection <- viewerProjectionAsset(frame$projection_name)
+      canonical_cells <- as.integer(pack$cell_count)
+      if (is.null(projection) || frame$cells > canonical_cells) {
+        return(NULL)
+      }
+      subset_kind <- as.character(frame$subset_kind)
+      subset_count <- switch(
+        subset_kind,
+        identity = 0L,
+        include_uint32 = frame$cells,
+        exclude_uint32 = canonical_cells - frame$cells,
+        NA_integer_
+      )
+      if (is.na(subset_count)) {
+        return(NULL)
+      }
+      subset <- list(
+        protocol = "canonical-subset-v1",
+        kind = subset_kind,
+        canonical_cells = canonical_cells,
+        cells = frame$cells,
+        index_base = 0L,
+        dtype = "uint32",
+        bytes = 0,
+        checksum = ""
+      )
+      if (!identical(subset_kind, "identity")) {
+        subset_row <- asset_row(frame$subset_path)
+        if (length(subset_row) != 1L) {
+          return(NULL)
+        }
+        subset_dimensions <- suppressWarnings(as.integer(
+          as.character(assets$dimensions[[subset_row]])
+        ))
+        subset_file <- file.path(pack$path, frame$subset_path)
+        subset_valid <- identical(
+          as.character(assets$dtype[[subset_row]]),
+          "uint32"
+        ) &&
+          identical(subset_dimensions, subset_count) &&
+          identical(
+            as.numeric(assets$bytes[[subset_row]]),
+            as.numeric(subset_count) * 4
+          ) &&
+          file.exists(subset_file) &&
+          !dir.exists(subset_file) &&
+          identical(
+            as.numeric(file.info(subset_file)$size),
+            as.numeric(assets$bytes[[subset_row]])
+          ) &&
+          identical(
+            unname(tools::md5sum(subset_file)),
+            as.character(assets$checksum[[subset_row]])
+          )
+        if (!isTRUE(subset_valid)) {
+          return(NULL)
+        }
+        paths <- c(paths, frame$subset_path)
+        files <- c(files, subset_file)
+        rows <- c(rows, subset_row)
+        subset$bytes <- as.numeric(assets$bytes[[subset_row]])
+        subset$checksum <- as.character(assets$checksum[[subset_row]])
+      }
+    } else {
+      geometry_row <- asset_row(frame$geometry_path)
+      if (length(geometry_row) != 1L) {
+        return(NULL)
+      }
+      geometry_dimensions <- suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[geometry_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+      geometry_file <- file.path(pack$path, frame$geometry_path)
+      geometry_valid <- length(geometry_dimensions) == 2L &&
+        identical(geometry_dimensions, c(frame$cells, 2L)) &&
+        identical(as.character(assets$dtype[[geometry_row]]), "float32") &&
+        identical(
+          as.numeric(assets$bytes[[geometry_row]]),
+          as.numeric(frame$cells) * 2 * 4
+        ) &&
+        file.exists(geometry_file) &&
+        !dir.exists(geometry_file) &&
+        identical(
+          as.numeric(file.info(geometry_file)$size),
+          as.numeric(assets$bytes[[geometry_row]])
+        ) &&
+        identical(
+          unname(tools::md5sum(geometry_file)),
+          as.character(assets$checksum[[geometry_row]])
+        )
+      if (!isTRUE(geometry_valid)) {
+        return(NULL)
+      }
+      paths <- c(paths, frame$geometry_path)
+      files <- c(files, geometry_file)
+      rows <- c(rows, geometry_row)
+    }
     prefix <- paste0(
       "cerebro-trajectory-",
       gsub("[^A-Za-z0-9_-]", "", session$token),
@@ -869,17 +964,27 @@ server <- function(input, output, session) {
     shiny::addResourcePath(prefix, dirname(files[[1L]]))
     viewer_trajectory_prefixes <<- c(viewer_trajectory_prefixes, prefix)
     resource_url <- function(file) paste0(prefix, "/", basename(file))
+    if (!is.null(subset) && !identical(subset$kind, "identity")) {
+      subset$url <- resource_url(subset_file)
+    }
     descriptor <- list(
       cells = frame$cells,
-      projection = list(
-        url = resource_url(files[[1L]]),
-        cells = frame$cells,
-        dimensions = 2L,
-        bytes = as.numeric(assets$bytes[[geometry_row]]),
-        checksum = as.character(assets$checksum[[geometry_row]])
-      ),
+      geometry_kind = geometry_kind,
+      projection = if (identical(geometry_kind, "canonical_projection")) {
+        projection
+      } else {
+        list(
+          url = resource_url(geometry_file),
+          cells = frame$cells,
+          dimensions = 2L,
+          dtype = "float32",
+          bytes = as.numeric(assets$bytes[[geometry_row]]),
+          checksum = as.character(assets$checksum[[geometry_row]])
+        )
+      },
+      subset = subset,
       state = list(
-        url = resource_url(files[[2L]]),
+        url = resource_url(file.path(pack$path, frame$state_codes_path)),
         cells = frame$cells,
         dtype = dtype,
         bytes = as.numeric(assets$bytes[[codes_row]]),
@@ -1037,6 +1142,11 @@ server <- function(input, output, session) {
   viewerDatasetIdentity <- reactive({
     dataset <- data_set()
     pack <- attr(dataset, "cerebro_viewer_pack", exact = TRUE)
+    pack_fingerprint <- if (is.list(pack)) {
+      as.character(pack$manifest$dataset_fingerprint %||% "")
+    } else {
+      ""
+    }
     order_fingerprint <- if (is.list(pack)) {
       as.character(pack$manifest$cell_order_fingerprint %||% "")
     } else {
@@ -1055,14 +1165,16 @@ server <- function(input, output, session) {
       return(list(
         cell_count = getNumberOfCells(),
         fingerprint = stored_fingerprint,
-        order_fingerprint = order_fingerprint
+        order_fingerprint = order_fingerprint,
+        pack_fingerprint = pack_fingerprint
       ))
     }
     cells <- cv_saved_view_cells()
     list(
       cell_count = length(cells),
       fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint),
-      order_fingerprint = order_fingerprint
+      order_fingerprint = order_fingerprint,
+      pack_fingerprint = pack_fingerprint
     )
   })
 
@@ -1082,7 +1194,8 @@ server <- function(input, output, session) {
       list(
         cell_count = identity$cell_count,
         cell_fingerprint = identity$fingerprint,
-        cell_order_fingerprint = identity$order_fingerprint
+        cell_order_fingerprint = identity$order_fingerprint,
+        pack_dataset_fingerprint = identity$pack_fingerprint
       )
     )
   })

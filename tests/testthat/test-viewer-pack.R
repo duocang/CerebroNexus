@@ -3,6 +3,7 @@ viewer_pack_fixture <- function(
   n = 3L,
   immune = FALSE,
   trajectory = FALSE,
+  trajectory_match = FALSE,
   spatial = FALSE
 ) {
   object <- Cerebro$new()
@@ -34,16 +35,25 @@ viewer_pack_fixture <- function(
     ))
   }
   if (isTRUE(trajectory)) {
-    selected <- cells[c(2L, n)]
+    selected <- if (isTRUE(trajectory_match)) cells[-1L] else cells[c(2L, n)]
+    selected_index <- match(selected, cells)
     object$addTrajectory(
       "monocle2",
       "subset",
       list(
         meta = data.frame(
-          DR_1 = c(1, 2),
-          DR_2 = c(3, 4),
-          pseudotime = c(0, 1),
-          state = c("1", "2"),
+          DR_1 = if (isTRUE(trajectory_match)) {
+            selected_index
+          } else {
+            c(1, 2)
+          },
+          DR_2 = if (isTRUE(trajectory_match)) {
+            -selected_index
+          } else {
+            c(3, 4)
+          },
+          pseudotime = seq(0, 1, length.out = length(selected)),
+          state = rep(c("1", "2"), length.out = length(selected)),
           row.names = selected
         ),
         edges = data.frame()
@@ -176,6 +186,40 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
     )),
     c("1", "2")
   )
+})
+
+test_that("Viewer Pack links exact trajectory geometry to canonical projection", {
+  root <- tempfile("viewer-pack-trajectory-canonical-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 5L,
+    trajectory = TRUE,
+    trajectory_match = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  descriptor <- runtime$viewerPackOpen(crb, object)
+  frame <- runtime$viewerPackTrajectoryFrame(
+    descriptor,
+    "monocle2",
+    "subset"
+  )
+
+  expect_identical(frame$geometry_kind, "canonical_projection")
+  expect_identical(frame$projection_name, "umap")
+  expect_identical(frame$subset_kind, "exclude_uint32")
+  expect_false(file.exists(file.path(descriptor$path, "trajectory/001.geometry.bin")))
+  excluded <- readBin(
+    file.path(descriptor$path, frame$subset_path),
+    what = integer(),
+    n = 1L,
+    size = 4L,
+    endian = "little"
+  )
+  expect_identical(excluded, 0L)
 })
 
 test_that("validated Viewer Pack descriptors are reused with session-local caches", {

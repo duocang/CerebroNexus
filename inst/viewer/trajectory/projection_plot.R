@@ -165,10 +165,15 @@ trajectory_static_first_frame <- reactive({
     return(NULL)
   }
   failed <- input[["trajectory_projection_projection_resource_failed"]]
+  resource_urls <- c(
+    resource$projection$url,
+    resource$state$url,
+    resource$subset$url
+  )
   if (
     length(failed) == 1L &&
       !is.na(failed) &&
-      failed %in% c(resource$projection$url, resource$state$url)
+      failed %in% resource_urls
   ) {
     return(NULL)
   }
@@ -241,6 +246,7 @@ observe({
       y_range = list(),
       reset_axes = reset_axes_now,
       projection_resource = resource$projection,
+      projection_subset_resource = resource$subset,
       categorical_resource = resource$state,
       deferred_selection_lengths = resource$cells
     )

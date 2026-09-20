@@ -6147,6 +6147,7 @@
     }
     var key = String(resource.url) + ':' + String(resource.checksum || '');
     var pending = projectionResourceCache.get(key);
+    var cacheHit = !!pending;
     if (!pending) {
       var downloadStarted = performance.now();
       var downloadedAt = downloadStarted;
@@ -6199,40 +6200,258 @@
         coordinates: coordinates,
         fetchMs: performance.now() - started,
         downloadMs: coordinates.downloadMs,
-        decodeMs: coordinates.decodeMs
+        decodeMs: coordinates.decodeMs,
+        cacheHit: cacheHit
       };
+    });
+  }
+  var projectionSubsetResourceCache = new Map();
+  function canonicalProjectionIdentityMatches(resource, message) {
+    var identity = message && message.dataset_identity || {};
+    return resource && resource.protocol === 'canonical-projection-v1' &&
+      resource.dtype === 'float32' &&
+      /^md5-cell-set-v1:[0-9a-f]{32}$/.test(
+        String(resource.dataset_fingerprint || '')
+      ) &&
+      /^md5-cell-order-v1:[0-9a-f]{32}$/.test(
+        String(resource.cell_order_fingerprint || '')
+      ) &&
+      /^md5-crb-v1:[0-9a-f]{32}$/.test(
+        String(resource.pack_dataset_fingerprint || '')
+      ) &&
+      String(resource.dataset_fingerprint || '') ===
+        String(identity.cell_fingerprint || '') &&
+      String(resource.cell_order_fingerprint || '') ===
+        String(identity.cell_order_fingerprint || '') &&
+      String(resource.pack_dataset_fingerprint || '') ===
+        String(identity.pack_dataset_fingerprint || '') &&
+      Number(resource.cells) === Number(identity.cell_count);
+  }
+  function fetchProjectionSubsetResource(resource) {
+    var kind = String(resource && resource.kind || '');
+    var canonicalCells = Number(resource && resource.canonical_cells) || 0;
+    var cells = Number(resource && resource.cells) || 0;
+    if (!resource || resource.protocol !== 'canonical-subset-v1' ||
+        resource.dtype !== 'uint32' || Number(resource.index_base) !== 0 ||
+        canonicalCells < cells || cells < 0) {
+      return Promise.reject(new Error('Projection subset contract mismatch'));
+    }
+    if (kind === 'identity') {
+      if (cells !== canonicalCells || Number(resource.bytes) !== 0) {
+        return Promise.reject(new Error('Projection identity subset mismatch'));
+      }
+      return Promise.resolve({
+        kind: kind, indices: null, bytes: 0, fetchMs: 0,
+        downloadMs: 0, decodeMs: 0, cacheHit: true
+      });
+    }
+    var expectedCount = kind === 'include_uint32' ? cells :
+      (kind === 'exclude_uint32' ? canonicalCells - cells : -1);
+    if (expectedCount < 0 || !resource.url ||
+        Number(resource.bytes) !== expectedCount * 4) {
+      return Promise.reject(new Error('Projection subset shape mismatch'));
+    }
+    var key = String(resource.url) + ':' + String(resource.checksum || '');
+    var pending = projectionSubsetResourceCache.get(key);
+    var cacheHit = !!pending;
+    if (!pending) {
+      var downloadStarted = performance.now();
+      var downloadedAt = downloadStarted;
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin', cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Projection subset request failed');
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        downloadedAt = performance.now();
+        var decodeStarted = downloadedAt;
+        if (buffer.byteLength !== expectedCount * 4) {
+          throw new Error('Projection subset byte count mismatch');
+        }
+        var indices = new Uint32Array(buffer);
+        if (kind === 'exclude_uint32') {
+          var previous = -1;
+          for (var i = 0; i < indices.length; i++) {
+            if (indices[i] >= canonicalCells || indices[i] <= previous) {
+              throw new Error('Projection exclusion index mismatch');
+            }
+            previous = indices[i];
+          }
+        } else {
+          var seen = new Uint8Array(canonicalCells);
+          for (var j = 0; j < indices.length; j++) {
+            if (indices[j] >= canonicalCells || seen[indices[j]]) {
+              throw new Error('Projection inclusion index mismatch');
+            }
+            seen[indices[j]] = 1;
+          }
+        }
+        return {
+          kind: kind, indices: indices, bytes: buffer.byteLength,
+          downloadMs: downloadedAt - downloadStarted,
+          decodeMs: performance.now() - decodeStarted
+        };
+      });
+      projectionSubsetResourceCache.set(key, pending);
+      pending.catch(function () { projectionSubsetResourceCache.delete(key); });
+    }
+    var started = performance.now();
+    return pending.then(function (result) {
+      return {
+        kind: result.kind, indices: result.indices, bytes: result.bytes,
+        downloadMs: result.downloadMs, decodeMs: result.decodeMs,
+        fetchMs: performance.now() - started, cacheHit: cacheHit
+      };
+    });
+  }
+  function materializeProjectionSubset(coordinates, subset, expectedCells) {
+    var started = performance.now();
+    var canonicalCells = coordinates.x.length;
+    if (subset.kind === 'identity') {
+      if (canonicalCells !== expectedCells) {
+        throw new Error('Projection identity materialization mismatch');
+      }
+      return {
+        coordinates: coordinates,
+        materializeMs: performance.now() - started
+      };
+    }
+    var x = new Float32Array(expectedCells);
+    var y = new Float32Array(expectedCells);
+    var z = coordinates.z ? new Float32Array(expectedCells) : null;
+    var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    var out = 0;
+    function copy(canonicalIndex) {
+      if (out >= expectedCells) {
+        throw new Error('Projection subset output overflow');
+      }
+      var xv = coordinates.x[canonicalIndex];
+      var yv = coordinates.y[canonicalIndex];
+      x[out] = xv; y[out] = yv;
+      if (z) z[out] = coordinates.z[canonicalIndex];
+      if (isFinite(xv) && isFinite(yv)) {
+        if (xv < x0) x0 = xv;
+        if (xv > x1) x1 = xv;
+        if (yv < y0) y0 = yv;
+        if (yv > y1) y1 = yv;
+      }
+      out++;
+    }
+    if (subset.kind === 'include_uint32') {
+      for (var i = 0; i < subset.indices.length; i++) copy(subset.indices[i]);
+    } else {
+      var excluded = 0;
+      for (var canonical = 0; canonical < canonicalCells; canonical++) {
+        if (excluded < subset.indices.length &&
+            subset.indices[excluded] === canonical) {
+          excluded++;
+        } else {
+          copy(canonical);
+        }
+      }
+    }
+    if (out !== expectedCells) {
+      throw new Error('Projection subset output length mismatch');
+    }
+    return {
+      coordinates: {
+        x: x, y: y, z: z,
+        xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
+        yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
+        bytes: coordinates.bytes
+      },
+      materializeMs: performance.now() - started
+    };
+  }
+  function canonicalProjectionCoordinates(resource, message) {
+    if (!canonicalProjectionIdentityMatches(resource, message)) {
+      return Promise.reject(new Error('Canonical projection identity mismatch'));
+    }
+    var cached = window.CBViewState.sharedProjection(
+      sharedBase(), resource.projection_name, Number(resource.cells)
+    );
+    if (cached) {
+      return Promise.resolve({
+        coordinates: {
+          x: cached.x, y: cached.y, z: cached.z,
+          bytes: Number(resource.bytes) || 0
+        },
+        fetchMs: 0, downloadMs: 0, decodeMs: 0, cacheHit: true
+      });
+    }
+    return fetchProjectionResource(resource, resource.cells).then(function (result) {
+      cacheSharedProjection(
+        resource.projection_name,
+        result.coordinates,
+        Number(resource.cells)
+      );
+      return result;
     });
   }
   function hydrateSingleProjectionResource(message) {
     var data = message && message.data || {};
     var resource = data.projection_resource;
+    var subsetResource = data.projection_subset_resource;
     var groupResource = data.categorical_resource;
     if ((!resource || !resource.url) &&
         (!groupResource || !groupResource.url)) {
       return Promise.resolve(message);
     }
     var coordinatesPromise = resource && resource.url
-      ? fetchProjectionResource(resource, data.n) : Promise.resolve(null);
+      ? (subsetResource
+        ? canonicalProjectionCoordinates(resource, message)
+        : fetchProjectionResource(resource, data.n)) : Promise.resolve(null);
+    var subsetPromise = subsetResource
+      ? fetchProjectionSubsetResource(subsetResource) : Promise.resolve(null);
     var groupsPromise = groupResource && groupResource.url
       ? fetchCategoricalResource(groupResource, data.n) : Promise.resolve(null);
-    return Promise.all([coordinatesPromise, groupsPromise]).then(function (results) {
+    return Promise.all([
+      coordinatesPromise, subsetPromise, groupsPromise
+    ]).then(function (results) {
       var result = results[0];
-      var groupResult = results[1];
+      var subsetResult = results[1];
+      var groupResult = results[2];
       var coordinates = result && result.coordinates;
+      var materialized = null;
+      if (coordinates && subsetResult) {
+        materialized = materializeProjectionSubset(
+          coordinates, subsetResult, Number(data.n)
+        );
+        coordinates = materialized.coordinates;
+      }
       if (coordinates) {
-      data.x = coordinates.x;
-      data.y = coordinates.y;
-      if (coordinates.z) data.z = coordinates.z;
-      if (coordinates.xRange) data.x_range = coordinates.xRange;
-      if (coordinates.yRange) data.y_range = coordinates.yRange;
+        data.x = coordinates.x;
+        data.y = coordinates.y;
+        if (coordinates.z) data.z = coordinates.z;
+        if (coordinates.xRange) data.x_range = coordinates.xRange;
+        if (coordinates.yRange) data.y_range = coordinates.yRange;
       }
       if (groupResult) data.canonical_group = groupResult.values;
       delete data.projection_resource;
+      delete data.projection_subset_resource;
       delete data.categorical_resource;
       message.data = data;
       var timing = singleTiming[message.id] || (singleTiming[message.id] = {});
       timing.projectionFetchMs = result ? result.fetchMs : 0;
       timing.projectionBytes = coordinates ? coordinates.bytes : 0;
+      timing.projectionDownloadMs = result ? result.downloadMs : 0;
+      timing.projectionDecodeMs = result ? result.decodeMs : 0;
+      timing.projectionCacheHit = result ? !!result.cacheHit : false;
+      timing.projectionSubsetFetchMs = subsetResult ? subsetResult.fetchMs : 0;
+      timing.projectionSubsetBytes = subsetResult ? subsetResult.bytes : 0;
+      timing.projectionSubsetDownloadMs = subsetResult
+        ? subsetResult.downloadMs : 0;
+      timing.projectionSubsetDecodeMs = subsetResult
+        ? subsetResult.decodeMs : 0;
+      timing.projectionSubsetCacheHit = subsetResult
+        ? !!subsetResult.cacheHit : false;
+      timing.projectionSubsetMaterializeMs = materialized
+        ? materialized.materializeMs : 0;
+      if (subsetResult) {
+        timing.geometryReused = true;
+        timing.geometryReuseProtocol = 'canonical-projection-v1';
+        timing.geometryReuseSubset = subsetResult.kind;
+      }
       timing.categoricalFetchMs = groupResult ? groupResult.fetchMs : 0;
       timing.categoricalBytes = groupResult ? groupResult.bytes : 0;
       return message;

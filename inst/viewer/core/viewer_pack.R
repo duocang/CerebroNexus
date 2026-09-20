@@ -255,14 +255,43 @@ viewerPackTrajectoryFrame <- function(pack, method, name) {
   frame <- as.list(frames[row, , drop = FALSE])
   frame <- lapply(frame, function(value) value[[1L]])
   frame$cells <- suppressWarnings(as.integer(frame$cells))
-  required_paths <- c(
-    "geometry_path",
-    "state_codes_path",
-    "state_dictionary_path"
-  )
+  frame$geometry_kind <- as.character(if (is.null(frame$geometry_kind)) {
+    "trajectory_asset"
+  } else {
+    frame$geometry_kind
+  })
+  required_paths <- c("state_codes_path", "state_dictionary_path")
+  geometry_valid <- if (identical(frame$geometry_kind, "canonical_projection")) {
+    is.character(frame$projection_name) &&
+      length(frame$projection_name) == 1L &&
+      !is.na(frame$projection_name) &&
+      nzchar(frame$projection_name) &&
+      frame$subset_kind %in% c(
+        "identity",
+        "include_uint32",
+        "exclude_uint32"
+      ) &&
+      (
+        identical(frame$subset_kind, "identity") ||
+          (
+            is.character(frame$subset_path) &&
+              length(frame$subset_path) == 1L &&
+              !is.na(frame$subset_path) &&
+              nzchar(frame$subset_path) &&
+              identical(frame$subset_dtype, "uint32")
+          )
+      )
+  } else {
+    identical(frame$geometry_kind, "trajectory_asset") &&
+      is.character(frame$geometry_path) &&
+      length(frame$geometry_path) == 1L &&
+      !is.na(frame$geometry_path) &&
+      nzchar(frame$geometry_path)
+  }
   valid <- length(frame$cells) == 1L &&
     !is.na(frame$cells) &&
     frame$cells >= 0L &&
+    geometry_valid &&
     all(vapply(frame[required_paths], function(path) {
       is.character(path) && length(path) == 1L && !is.na(path) && nzchar(path)
     }, logical(1))) &&

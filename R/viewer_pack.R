@@ -277,7 +277,12 @@
   stats::setNames(indexes, methods)
 }
 
-.viewerPackTrajectoryFrames <- function(object, cells, stage) {
+.viewerPackTrajectoryFrames <- function(
+  object,
+  cells,
+  stage,
+  projections = list()
+) {
   methods <- tryCatch(
     object$getMethodsForTrajectories(),
     error = function(error) character()
@@ -310,6 +315,7 @@
       ## are excluded before rendering, while trajectory row order is retained.
       keep <- !is.na(meta[["pseudotime"]])
       frame <- meta[keep, , drop = FALSE]
+      frame_index <- as.integer(index[keep])
       state <- frame[["state"]]
       if (is.numeric(state)) {
         state <- factor(state)
@@ -329,21 +335,79 @@
       frame_id <- frame_id + 1L
       prefix <- file.path("trajectory", sprintf("%03d", frame_id))
       geometry_path <- paste0(prefix, ".geometry.bin")
+      subset_path <- paste0(prefix, ".subset.bin")
       state_codes_path <- paste0(prefix, ".state.codes.bin")
       state_dictionary_path <- paste0(prefix, ".state.dictionary.json")
       geometry <- as.matrix(frame[, c("DR_1", "DR_2"), drop = FALSE])
       if (!is.numeric(geometry)) {
         stop("Viewer Pack trajectory coordinates must be numeric.", call. = FALSE)
       }
+      matching_projection <- if (
+        length(frame_index) && !anyDuplicated(frame_index)
+      ) {
+        names(projections)[vapply(
+          projections,
+          function(projection) {
+            is.matrix(projection) &&
+              is.numeric(projection) &&
+              nrow(projection) == length(cells) &&
+              ncol(projection) == 2L &&
+              identical(
+                as.numeric(projection[frame_index, , drop = FALSE]),
+                as.numeric(geometry)
+              )
+          },
+          logical(1)
+        )]
+      } else {
+        character()
+      }
+      geometry_kind <- if (length(matching_projection)) {
+        "canonical_projection"
+      } else {
+        "trajectory_asset"
+      }
+      projection_name <- if (length(matching_projection)) {
+        matching_projection[[1L]]
+      } else {
+        ""
+      }
+      subset_kind <- ""
+      subset_values <- integer()
+      if (identical(geometry_kind, "canonical_projection")) {
+        if (identical(frame_index, seq_along(cells))) {
+          subset_kind <- "identity"
+          subset_path <- ""
+        } else if (
+          !is.unsorted(frame_index, strictly = TRUE) &&
+            length(cells) - length(frame_index) < length(frame_index)
+        ) {
+          subset_kind <- "exclude_uint32"
+          subset_values <- setdiff(seq_along(cells), frame_index) - 1L
+        } else {
+          subset_kind <- "include_uint32"
+          subset_values <- frame_index - 1L
+        }
+      }
       assets <- rbind(
         assets,
-        .viewerPackWriteAsset(
-          stage,
-          geometry_path,
-          as.numeric(t(geometry)),
-          "float32",
-          dim(geometry)
-        ),
+        if (identical(geometry_kind, "trajectory_asset")) {
+          .viewerPackWriteAsset(
+            stage,
+            geometry_path,
+            as.numeric(t(geometry)),
+            "float32",
+            dim(geometry)
+          )
+        } else if (length(subset_values)) {
+          .viewerPackWriteAsset(
+            stage,
+            subset_path,
+            subset_values,
+            "uint32",
+            length(subset_values)
+          )
+        },
         .viewerPackWriteAsset(
           stage,
           state_codes_path,
@@ -363,7 +427,14 @@
         method = method,
         name = name,
         cells = nrow(frame),
-        geometry_path = geometry_path,
+        geometry_kind = geometry_kind,
+        geometry_path = if (
+          identical(geometry_kind, "trajectory_asset")
+        ) geometry_path else "",
+        projection_name = projection_name,
+        subset_kind = subset_kind,
+        subset_path = subset_path,
+        subset_dtype = if (nzchar(subset_path)) "uint32" else "",
         state_codes_path = state_codes_path,
         state_dictionary_path = state_dictionary_path,
         state_dtype = state_dtype,
@@ -379,7 +450,12 @@
       method = character(),
       name = character(),
       cells = integer(),
+      geometry_kind = character(),
       geometry_path = character(),
+      projection_name = character(),
+      subset_kind = character(),
+      subset_path = character(),
+      subset_dtype = character(),
       state_codes_path = character(),
       state_dictionary_path = character(),
       state_dtype = character(),
@@ -534,6 +610,10 @@
   )
   modules <- "common"
   projections <- object$availableProjections()
+  projection_values <- stats::setNames(
+    vector("list", length(projections)),
+    projections
+  )
   if (length(projections)) {
     modules <- c(modules, "projections")
     for (i in seq_along(projections)) {
@@ -541,6 +621,7 @@
       if (!is.numeric(value) || nrow(value) != length(cells)) {
         stop("Viewer Pack projection is not cell-aligned.", call. = FALSE)
       }
+      projection_values[[i]] <- value
       assets <- rbind(
         assets,
         .viewerPackWriteAsset(
@@ -600,7 +681,12 @@
       }
     }
   }
-  trajectory <- .viewerPackTrajectoryFrames(object, cells, stage)
+  trajectory <- .viewerPackTrajectoryFrames(
+    object,
+    cells,
+    stage,
+    projection_values
+  )
   if (length(trajectory$indexes)) {
     modules <- c(modules, "trajectory")
     assets <- rbind(
