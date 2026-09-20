@@ -6471,6 +6471,14 @@
       return message;
     });
   }
+  function linkedBundleResourceIdentity(bundle) {
+    return {
+      cell_count: bundle && bundle.n,
+      cell_fingerprint: bundle && bundle.dataset_fingerprint,
+      cell_order_fingerprint: bundle && bundle.canonical_order_id,
+      pack_dataset_fingerprint: bundle && bundle.pack_dataset_fingerprint
+    };
+  }
   function hydrateLinkedProjectionResource(bundle) {
     var name = bundle && bundle.default_projection;
     var projection = name && bundle.projections && bundle.projections[name];
@@ -6484,7 +6492,11 @@
         projectionDecodeMs: 0
       });
     }
-    return fetchProjectionResource(resource, bundle.n).then(function (result) {
+    return fetchValidatedProjectionResource(
+      resource,
+      { dataset_identity: linkedBundleResourceIdentity(bundle) },
+      bundle.n
+    ).then(function (result) {
       var coordinates = result.coordinates;
       projection.x = coordinates.x;
       projection.y = coordinates.y;
@@ -6609,12 +6621,7 @@
         metadataBytes: 0 });
     }
     return fetchValidatedMetadataCodesResource(
-      resource, bundle.n, {
-        cell_count: bundle.n,
-        cell_fingerprint: bundle.dataset_fingerprint,
-        cell_order_fingerprint: bundle.canonical_order_id,
-        pack_dataset_fingerprint: bundle.pack_dataset_fingerprint
-      }
+      resource, bundle.n, linkedBundleResourceIdentity(bundle)
     ).then(function (result) {
       group.values = result.values;
       delete group.values_resource;

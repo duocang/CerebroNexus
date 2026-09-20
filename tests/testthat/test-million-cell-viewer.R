@@ -516,6 +516,84 @@ test_that("canonical projection fetches enforce the full dataset identity", {
   )
 })
 
+test_that("Linked projection hydration uses the primary bundle identity", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+  source <- viewer_test_path("www", "cell_views.js")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      sprintf(
+        "const source = fs.readFileSync(%s, 'utf8');",
+        encodeString(source, quote = '"')
+      ),
+      "const identityStart = source.indexOf('  function canonicalResourceIdentityMatches');",
+      "const identityEnd = source.indexOf('  function fetchProjectionSubsetResource', identityStart);",
+      "const hydrateStart = source.indexOf('  function linkedBundleResourceIdentity');",
+      "const hydrateEnd = source.indexOf('  var metadataCodesResourceCache', hydrateStart);",
+      "let calls = 0;",
+      "function fetchProjectionResource(resource, expectedCells) {",
+      "  calls += 1;",
+      "  return Promise.resolve({coordinates:{x:new Float32Array(expectedCells), y:new Float32Array(expectedCells), bytes:24}, fetchMs:1, downloadMs:1, decodeMs:1});",
+      "}",
+      "eval(source.slice(identityStart, identityEnd));",
+      "eval(source.slice(hydrateStart, hydrateEnd));",
+      "const fingerprints = {",
+      "  dataset:'md5-cell-set-v1:' + 'a'.repeat(32),",
+      "  order:'md5-cell-order-v1:' + 'b'.repeat(32),",
+      "  pack:'md5-crb-v1:' + 'c'.repeat(32)",
+      "};",
+      "function bundle(resource) { return {",
+      "  n:3, default_projection:'UMAP',",
+      "  dataset_fingerprint:fingerprints.dataset,",
+      "  canonical_order_id:fingerprints.order,",
+      "  pack_dataset_fingerprint:fingerprints.pack,",
+      "  projections:{UMAP:{projection_resource:resource}}",
+      "}; }",
+      "const resource = {",
+      "  protocol:'canonical-projection-v1', dtype:'float32',",
+      "  url:'projection.bin', cells:3, projection_name:'UMAP',",
+      "  dataset_fingerprint:fingerprints.dataset,",
+      "  cell_order_fingerprint:fingerprints.order,",
+      "  pack_dataset_fingerprint:fingerprints.pack",
+      "};",
+      "async function rejected(value) {",
+      "  try {",
+      "    await hydrateLinkedProjectionResource(bundle(value));",
+      "    return false;",
+      "  } catch (error) {",
+      "    return error.message === 'Canonical projection identity mismatch';",
+      "  }",
+      "}",
+      "(async () => {",
+      "  const canonical = await hydrateLinkedProjectionResource(bundle(resource));",
+      "  const legacy = await hydrateLinkedProjectionResource(bundle({url:'legacy.bin', cells:3, dtype:'float32'}));",
+      "  const datasetMismatch = await rejected({...resource, dataset_fingerprint:'md5-cell-set-v1:' + 'd'.repeat(32)});",
+      "  const orderMismatch = await rejected({...resource, cell_order_fingerprint:'md5-cell-order-v1:' + 'd'.repeat(32)});",
+      "  const packMismatch = await rejected({...resource, pack_dataset_fingerprint:'md5-crb-v1:' + 'd'.repeat(32)});",
+      "  console.log(JSON.stringify({calls, canonicalBytes:canonical.projectionBytes, legacyBytes:legacy.projectionBytes, datasetMismatch, orderMismatch, packMismatch}));",
+      "})().catch(error => { console.error(error); process.exit(1); });"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  expect_identical(
+    jsonlite::fromJSON(output, simplifyVector = FALSE),
+    list(
+      calls = 2L,
+      canonicalBytes = 24L,
+      legacyBytes = 24L,
+      datasetMismatch = TRUE,
+      orderMismatch = TRUE,
+      packMismatch = TRUE
+    )
+  )
+})
+
 test_that("Linked canonical metadata validates its dataset identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
