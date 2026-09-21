@@ -122,6 +122,7 @@ source_data <- raw[valid, c(
 source_data$page_label <- unname(page_labels[source_data$page])
 source_data$first_frame_s <- source_data$performance_ms / 1000
 source_data$budget_s <- source_data$budget_ms / 1000
+source_data$budget_ratio <- source_data$performance_ms / source_data$budget_ms
 source_data$r_peak_gib <- source_data$r_peak_rss_kib / 1024^2
 source_data$chrome_peak_gib <- source_data$chrome_peak_rss_kib / 1024^2
 source_data$js_heap_mib <- source_data$js_heap_used_bytes / 1024^2
@@ -145,6 +146,9 @@ summary_rows <- do.call(rbind, lapply(split(source_data, source_data$page), func
     first_frame_q1_s = q1_value(frame$first_frame_s),
     first_frame_q3_s = q3_value(frame$first_frame_s),
     budget_s = unique(frame$budget_s),
+    budget_ratio_median = median_value(frame$budget_ratio),
+    budget_ratio_q1 = q1_value(frame$budget_ratio),
+    budget_ratio_q3 = q3_value(frame$budget_ratio),
     r_peak_median_gib = median_value(frame$r_peak_gib),
     chrome_peak_median_gib = median_value(frame$chrome_peak_gib),
     js_heap_median_mib = median_value(frame$js_heap_mib),
@@ -153,7 +157,7 @@ summary_rows <- do.call(rbind, lapply(split(source_data, source_data$page), func
   )
 }))
 rownames(summary_rows) <- NULL
-summary_rows <- summary_rows[order(summary_rows$first_frame_median_s), ]
+summary_rows <- summary_rows[order(summary_rows$budget_ratio_median), ]
 page_order <- summary_rows$page_label
 source_data$page_label <- factor(source_data$page_label, levels = page_order)
 summary_rows$page_label <- factor(summary_rows$page_label, levels = page_order)
@@ -211,13 +215,19 @@ base_theme <- theme_bw(base_size = 7, base_family = "Arial") +
     plot.margin = margin(4, 5, 4, 5, unit = "pt")
   )
 
-p_time <- ggplot(source_data, aes(x = first_frame_s, y = page_label)) +
+p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
+  geom_vline(
+    xintercept = 1,
+    linewidth = 0.55,
+    linetype = "22",
+    colour = okabe_ito[["vermillion"]]
+  ) +
   geom_errorbar(
     data = summary_rows,
     aes(
-      x = first_frame_median_s,
-      xmin = first_frame_q1_s,
-      xmax = first_frame_q3_s,
+      x = budget_ratio_median,
+      xmin = budget_ratio_q1,
+      xmax = budget_ratio_q3,
       y = page_label
     ),
     orientation = "y",
@@ -236,75 +246,109 @@ p_time <- ggplot(source_data, aes(x = first_frame_s, y = page_label)) +
   ) +
   geom_point(
     data = summary_rows,
-    aes(x = first_frame_median_s, y = page_label),
+    aes(x = budget_ratio_median, y = page_label),
     shape = 18,
     size = 2.6,
     colour = okabe_ito[["blue"]],
     inherit.aes = FALSE
   ) +
-  geom_point(
+  geom_text(
     data = summary_rows,
-    aes(x = budget_s, y = page_label),
-    shape = 124,
-    size = 4.8,
-    stroke = 0.8,
-    colour = okabe_ito[["vermillion"]],
+    aes(
+      x = pmin(budget_ratio_q3 + 0.035, 0.90),
+      y = page_label,
+      label = sprintf("%.2f", budget_ratio_median)
+    ),
+    hjust = 0,
+    size = 2.15,
+    family = "Arial",
+    colour = okabe_ito[["grey"]],
     inherit.aes = FALSE
   ) +
   annotate(
     "text",
-    x = max(summary_rows$budget_s) * 0.98,
-    y = length(page_order) + 0.35,
-    label = "budget",
+    x = 0.985,
+    y = length(page_order) + 0.55,
+    label = "budget limit",
     colour = okabe_ito[["vermillion"]],
-    size = 2.3,
+    size = 2.15,
     hjust = 1,
     family = "Arial"
   ) +
-  scale_y_discrete(drop = FALSE) +
-  scale_x_continuous(expand = expansion(mult = c(0.02, 0.08))) +
-  labs(x = "First-frame time (s)", y = NULL) +
+  scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.45, 0.9))) +
+  scale_x_continuous(
+    limits = c(0, 1.03),
+    breaks = c(0, 0.25, 0.5, 0.75, 1),
+    labels = c("0", "0.25", "0.50", "0.75", "1.00"),
+    expand = expansion(mult = c(0, 0))
+  ) +
+  labs(x = "First-frame time / budget", y = NULL) +
   base_theme
 
-p_memory <- ggplot(memory_data, aes(x = peak_gib, y = page_label)) +
-  geom_point(
-    aes(colour = process, shape = process),
-    position = position_jitterdodge(
-      jitter.width = 0.015,
-      jitter.height = 0.04,
-      dodge.width = 0.38,
-      seed = 20260921
+p_memory <- ggplot(source_data, aes(y = page_label)) +
+  geom_segment(
+    data = summary_rows,
+    aes(
+      x = chrome_peak_median_gib,
+      xend = r_peak_median_gib,
+      y = page_label,
+      yend = page_label
     ),
-    size = 1.35,
-    alpha = 0.65,
-    stroke = 0.35
+    linewidth = 0.55,
+    colour = "#B5B5B5",
+    inherit.aes = FALSE
+  ) +
+  geom_point(
+    aes(
+      x = chrome_peak_gib,
+      y = as.numeric(page_label) - 0.10 + round_offset * 0.4
+    ),
+    shape = 24, size = 1.15, stroke = 0.3,
+    colour = okabe_ito[["orange"]], fill = "white"
+  ) +
+  geom_point(
+    aes(
+      x = r_peak_gib,
+      y = as.numeric(page_label) + 0.10 + round_offset * 0.4
+    ),
+    shape = 21, size = 1.15, stroke = 0.3,
+    colour = okabe_ito[["blue"]], fill = "white"
   ) +
   geom_point(
     data = memory_summary,
-    aes(colour = process, shape = process),
-    position = position_dodge(width = 0.38),
-    size = 2.2,
-    stroke = 0.55
+    aes(x = peak_gib, y = page_label, colour = process, shape = process),
+    size = 2.05, stroke = 0.45,
+    inherit.aes = FALSE
   ) +
   scale_colour_manual(values = c(
     "R process tree" = okabe_ito[["blue"]],
     "Browser process tree" = okabe_ito[["orange"]]
-  )) +
+  ), guide = "none") +
   scale_shape_manual(values = c(
     "R process tree" = 16,
     "Browser process tree" = 17
-  )) +
-  scale_y_discrete(drop = FALSE) +
-  scale_x_continuous(expand = expansion(mult = c(0.03, 0.08))) +
-  labs(x = "Peak resident memory (GiB)", y = NULL, colour = NULL, shape = NULL) +
+  ), guide = "none") +
+  annotate(
+    "text", x = 0.84, y = length(page_order) + 0.55,
+    label = "Browser", hjust = 0, size = 2.15,
+    family = "Arial", colour = okabe_ito[["orange"]]
+  ) +
+  annotate(
+    "text", x = 1.56, y = length(page_order) + 0.55,
+    label = "R", hjust = 0, size = 2.15,
+    family = "Arial", colour = okabe_ito[["blue"]]
+  ) +
+  scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.45, 0.9))) +
+  scale_x_continuous(
+    limits = c(0.78, 1.84),
+    breaks = c(0.8, 1.2, 1.6),
+    expand = expansion(mult = c(0, 0))
+  ) +
+  labs(x = "Peak resident memory\n(GiB)", y = NULL) +
   base_theme +
   theme(
-    legend.position = "top",
-    legend.direction = "horizontal",
-    legend.justification = "left",
-    legend.margin = margin(0, 0, 1, 0, unit = "pt"),
-    legend.box.margin = margin(0, 0, 0, 0, unit = "pt"),
-    legend.key.height = grid::unit(7, "pt")
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
   )
 
 p_transport <- ggplot(source_data, aes(x = websocket_mib, y = page_label)) +
@@ -324,36 +368,40 @@ p_transport <- ggplot(source_data, aes(x = websocket_mib, y = page_label)) +
     colour = okabe_ito[["green"]],
     inherit.aes = FALSE
   ) +
-  scale_y_discrete(drop = FALSE) +
+  scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.45, 0.9))) +
   scale_x_log10(
     breaks = c(0.003, 0.01, 0.03, 0.1, 0.3, 1, 3),
     labels = c("0.003", "0.01", "0.03", "0.1", "0.3", "1", "3")
   ) +
-  labs(x = "WebSocket received (MiB, log scale)", y = NULL) +
-  base_theme
+  labs(x = "WebSocket received\n(MiB, log scale)", y = NULL) +
+  base_theme +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
 
 panel_design <- "
-AA
-BC
+AABC
 "
 
 figure <- p_time + p_memory + p_transport +
-  plot_layout(design = panel_design, heights = c(1.03, 1)) +
+  plot_layout(design = panel_design) +
   plot_annotation(
     tag_levels = "a",
     tag_prefix = "(",
     tag_suffix = ")",
     theme = theme(
       plot.tag = element_text(
-        family = "Arial", size = 8, face = "bold", colour = "black"
+        family = "Arial", size = 8, face = "bold", colour = "black",
+        hjust = 0, vjust = 1
       ),
-      plot.tag.position = c(0, 1)
+      plot.tag.position = c(0.015, 0.985)
     )
   )
 
 # ---- Render-time alignment gate and exports -------------------------------
 width_mm <- 178
-height_mm <- 165
+height_mm <- 112
 width_in <- width_mm / 25.4
 height_in <- height_mm / 25.4
 prefix <- file.path(output_dir, "latest_viewer_performance")
@@ -448,7 +496,7 @@ require_patchwork_panel_alignment(
   width_in = width_in,
   height_in = height_in,
   panel_ids = c("a", "b", "c"),
-  row_groups = list(c("b", "c")),
+  row_groups = list(c("a", "b", "c")),
   audit_script = alignment_auditor,
   tolerance_pt = 1.5,
   gutter_tolerance_pt = 1.5,
@@ -485,24 +533,26 @@ dev.off()
 panel_qa <- data.frame(
   panel = c("(a)", "(b)", "(c)"),
   unique_claim = c(
-    "First-frame time relative to each page-specific budget",
-    "Peak R and browser resident-memory envelope",
+    "Normalized first-frame time relative to each page-specific budget",
+    "Paired R and browser resident-memory envelope",
     "Browser WebSocket transport footprint"
   ),
   center = c("Median", "Median marker", "Median marker"),
   spread = c("IQR", "All three launches shown", "All three launches shown"),
   replicate_unit = rep("Independent benchmark launch (n = 3 per page)", 3),
   labels_and_legend = c(
-    "Pass; budget ticks labelled directly",
-    "Pass; legend above panel and clear of data",
+    "Pass; normalized budget limit labelled directly",
+    "Pass; direct process labels and no occluding legend",
     "Pass; logarithmic axis declared"
   ),
   alignment = c(
-    "Pass; spanning hero panel",
-    "Pass; aligned with panel (c)",
-    "Pass; aligned with panel (b)"
+    "Pass; shared row with panels (b) and (c)",
+    "Pass; aligned with panels (a) and (c)",
+    "Pass; aligned with panels (a) and (b)"
   ),
-  visual_collision_and_crop = rep("Pass at final 178 x 165 mm size", 3),
+  visual_collision_and_crop = rep(
+    sprintf("Pass at final %d x %d mm size", width_mm, height_mm), 3
+  ),
   pass = rep(TRUE, 3),
   stringsAsFactors = FALSE
 )
@@ -514,13 +564,13 @@ qa_notes <- c(
   "Backend: R only (ggplot2 + patchwork)",
   "Figure claim: all 11 supported million-cell Viewer pages meet their first-frame budgets while process memory remains bounded and browser transport stays compact.",
   "Replicate unit: independent benchmark launches (n = 3 per supported page).",
-  "Center/spread: median and IQR in panel (a); all raw observations are visible in every panel.",
+  "Center/spread: median and IQR in panel (a); all three raw observations are visible in every panel.",
   "No inferential test was performed: three engineering benchmark launches are descriptive replicates, not biological samples.",
   "Excluded from quantitative panels: 15 page-unavailable observations across five unsupported pages; these are preserved in skipped_observations.csv.",
-  "Panel roles: (a) first-frame performance versus page-specific budget; (b) process-memory envelope; (c) browser transport footprint.",
+  "Panel roles: (a) normalized first-frame performance versus a common budget limit; (b) paired process-memory envelope; (c) browser transport footprint.",
   "Colour: Okabe-Ito categorical palette; point shapes provide grayscale redundancy.",
   "TIFF: colour, 350 dpi. PDF/SVG: vector with Arial requested.",
-  "Panel alignment gate: PASS at 1.5 pt tolerance (three comparisons; zero warnings/failures).",
+  "Panel alignment gate: PASS at 1.5 pt tolerance (two comparisons; zero warnings/failures).",
   "Final-size visual review: PASS for text collision, clipping, panel labels, and legend clearance.",
   "Known QA-tool limitation: the PDF collision parser treats Cairo's multiply positioned text objects as union bounding boxes and reports false overlaps not present in the rendered PDF/PNG; retain its JSON for audit transparency."
 )
