@@ -31,12 +31,12 @@ preparation <- read_required("query_plan_manifest.csv")
 query_panel <- read_required("query_panel.csv")
 profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
 
-resource_keys <- paste(
-  resource_check$source,
-  resource_check$n_cells,
-  sep = "\r"
-)
-schedule_keys <- unique(paste(schedule$source, schedule$n_cells, sep = "\r"))
+tier_key <- function(source, n_cells) {
+  paste(source, sprintf("%.0f", as.numeric(n_cells)), sep = "\r")
+}
+
+resource_keys <- tier_key(resource_check$source, resource_check$n_cells)
+schedule_keys <- unique(tier_key(schedule$source, schedule$n_cells))
 if (!setequal(resource_keys, schedule_keys) || anyDuplicated(resource_keys)) {
   stop("resource_check.csv does not cover the scheduled tiers", call. = FALSE)
 }
@@ -117,8 +117,8 @@ if (
   stop("result rows do not share the manifest run id", call. = FALSE)
 }
 
-plan_keys <- paste(schedule$source, schedule$n_cells, sep = "\r")
-preparation_keys <- paste(preparation$source, preparation$n_cells, sep = "\r")
+plan_keys <- tier_key(schedule$source, schedule$n_cells)
+preparation_keys <- tier_key(preparation$source, preparation$n_cells)
 if (
   !setequal(unique(plan_keys), preparation_keys) ||
     anyDuplicated(preparation_keys) ||
@@ -152,7 +152,7 @@ if (identical(profile$name, "panel_c2")) {
 if (!all(required_panel_columns %in% names(query_panel))) {
   stop("query panel is missing required columns", call. = FALSE)
 }
-panel_keys <- paste(query_panel$source, query_panel$n_cells, sep = "\r")
+panel_keys <- tier_key(query_panel$source, query_panel$n_cells)
 panel_groups <- split(query_panel, panel_keys)
 validate_subset <- all(subset_panel_columns %in% names(query_panel))
 if (
@@ -197,7 +197,7 @@ if (
   stop("query panel does not match the fixed study protocol", call. = FALSE)
 }
 fingerprint_for <- function(data) {
-  keys <- paste(data$source, data$n_cells, sep = "\r")
+  keys <- tier_key(data$source, data$n_cells)
   observed <- split(as.character(data$query_plan_fingerprint), keys)
   if (any(lengths(lapply(observed, unique)) != 1L)) {
     stop("query-plan fingerprint drifted within a tier", call. = FALSE)
