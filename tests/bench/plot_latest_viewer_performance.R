@@ -85,13 +85,15 @@ audit <- data.frame(
   item = c(
     "input_rows", "valid_rows", "skipped_rows", "valid_pages",
     "replicates_per_page", "missing_key_metrics", "correctness_failures",
-    "budget_failures", "candidate_git_sha", "viewer_pack_manifest_sha256"
+    "budget_failures", "publication_3s_budget_failures",
+    "candidate_git_sha", "viewer_pack_manifest_sha256"
   ),
   value = c(
     nrow(raw), sum(valid), sum(skipped), length(page_counts),
     paste(sort(unique(as.integer(page_counts))), collapse = ","),
     sum(is.na(raw[valid, metric_columns])),
     sum(!raw$correctness_pass[valid]), sum(!raw$pass[valid]),
+    sum(raw$performance_ms[valid] > 3000),
     unique(raw$candidate_git_sha), unique(raw$viewer_pack_manifest_sha256)
   ),
   stringsAsFactors = FALSE
@@ -123,6 +125,7 @@ source_data$page_label <- unname(page_labels[source_data$page])
 source_data$first_frame_s <- source_data$performance_ms / 1000
 source_data$budget_s <- source_data$budget_ms / 1000
 source_data$budget_ratio <- source_data$performance_ms / source_data$budget_ms
+source_data$publication_budget_s <- 3
 source_data$r_peak_gib <- source_data$r_peak_rss_kib / 1024^2
 source_data$chrome_peak_gib <- source_data$chrome_peak_rss_kib / 1024^2
 source_data$js_heap_mib <- source_data$js_heap_used_bytes / 1024^2
@@ -145,6 +148,7 @@ summary_rows <- do.call(rbind, lapply(split(source_data, source_data$page), func
     first_frame_median_s = median_value(frame$first_frame_s),
     first_frame_q1_s = q1_value(frame$first_frame_s),
     first_frame_q3_s = q3_value(frame$first_frame_s),
+    first_frame_max_s = max(frame$first_frame_s),
     budget_s = unique(frame$budget_s),
     budget_ratio_median = median_value(frame$budget_ratio),
     budget_ratio_q1 = q1_value(frame$budget_ratio),
@@ -157,7 +161,8 @@ summary_rows <- do.call(rbind, lapply(split(source_data, source_data$page), func
   )
 }))
 rownames(summary_rows) <- NULL
-summary_rows <- summary_rows[order(summary_rows$budget_ratio_median), ]
+summary_rows$publication_budget_s <- 3
+summary_rows <- summary_rows[order(summary_rows$first_frame_median_s), ]
 page_order <- summary_rows$page_label
 source_data$page_label <- factor(source_data$page_label, levels = page_order)
 summary_rows$page_label <- factor(summary_rows$page_label, levels = page_order)
@@ -215,9 +220,9 @@ base_theme <- theme_bw(base_size = 7, base_family = "Arial") +
     plot.margin = margin(4, 5, 4, 5, unit = "pt")
   )
 
-p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
+p_time <- ggplot(source_data, aes(x = first_frame_s, y = page_label)) +
   geom_vline(
-    xintercept = 1,
+    xintercept = 3,
     linewidth = 0.55,
     linetype = "22",
     colour = okabe_ito[["vermillion"]]
@@ -225,9 +230,9 @@ p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
   geom_errorbar(
     data = summary_rows,
     aes(
-      x = budget_ratio_median,
-      xmin = budget_ratio_q1,
-      xmax = budget_ratio_q3,
+      x = first_frame_median_s,
+      xmin = first_frame_q1_s,
+      xmax = first_frame_q3_s,
       y = page_label
     ),
     orientation = "y",
@@ -246,7 +251,7 @@ p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
   ) +
   geom_point(
     data = summary_rows,
-    aes(x = budget_ratio_median, y = page_label),
+    aes(x = first_frame_median_s, y = page_label),
     shape = 18,
     size = 2.6,
     colour = okabe_ito[["blue"]],
@@ -255,9 +260,9 @@ p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
   geom_text(
     data = summary_rows,
     aes(
-      x = pmin(budget_ratio_q3 + 0.035, 0.90),
+      x = pmin(first_frame_max_s + 0.10, 2.72),
       y = page_label,
-      label = sprintf("%.2f", budget_ratio_median)
+      label = sprintf("%.2f s", first_frame_median_s)
     ),
     hjust = 0,
     size = 2.15,
@@ -267,9 +272,9 @@ p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
   ) +
   annotate(
     "text",
-    x = 0.985,
+    x = 2.96,
     y = length(page_order) + 0.55,
-    label = "budget limit",
+    label = "3 s budget",
     colour = okabe_ito[["vermillion"]],
     size = 2.15,
     hjust = 1,
@@ -277,12 +282,12 @@ p_time <- ggplot(source_data, aes(x = budget_ratio, y = page_label)) +
   ) +
   scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.45, 0.9))) +
   scale_x_continuous(
-    limits = c(0, 1.03),
-    breaks = c(0, 0.25, 0.5, 0.75, 1),
-    labels = c("0", "0.25", "0.50", "0.75", "1.00"),
+    limits = c(0, 3.08),
+    breaks = c(0, 1, 2, 3),
+    labels = c("0", "1", "2", "3"),
     expand = expansion(mult = c(0, 0))
   ) +
-  labs(x = "First-frame time / budget", y = NULL) +
+  labs(x = "First-frame time (s)", y = NULL) +
   base_theme
 
 p_memory <- ggplot(source_data, aes(y = page_label)) +
@@ -533,7 +538,7 @@ dev.off()
 panel_qa <- data.frame(
   panel = c("(a)", "(b)", "(c)"),
   unique_claim = c(
-    "Normalized first-frame time relative to each page-specific budget",
+    "Actual first-frame time relative to a common 3 s budget",
     "Paired R and browser resident-memory envelope",
     "Browser WebSocket transport footprint"
   ),
@@ -541,7 +546,7 @@ panel_qa <- data.frame(
   spread = c("IQR", "All three launches shown", "All three launches shown"),
   replicate_unit = rep("Independent benchmark launch (n = 3 per page)", 3),
   labels_and_legend = c(
-    "Pass; normalized budget limit labelled directly",
+    "Pass; common 3 s budget labelled directly",
     "Pass; direct process labels and no occluding legend",
     "Pass; logarithmic axis declared"
   ),
@@ -562,12 +567,12 @@ qa_notes <- c(
   "Target journal: Oxford Bioinformatics",
   sprintf("Final size: %d x %d mm", width_mm, height_mm),
   "Backend: R only (ggplot2 + patchwork)",
-  "Figure claim: all 11 supported million-cell Viewer pages meet their first-frame budgets while process memory remains bounded and browser transport stays compact.",
+  "Figure claim: all 11 supported million-cell Viewer pages render within a common 3 s first-frame budget while process memory remains bounded and browser transport stays compact.",
   "Replicate unit: independent benchmark launches (n = 3 per supported page).",
   "Center/spread: median and IQR in panel (a); all three raw observations are visible in every panel.",
   "No inferential test was performed: three engineering benchmark launches are descriptive replicates, not biological samples.",
   "Excluded from quantitative panels: 15 page-unavailable observations across five unsupported pages; these are preserved in skipped_observations.csv.",
-  "Panel roles: (a) normalized first-frame performance versus a common budget limit; (b) paired process-memory envelope; (c) browser transport footprint.",
+  "Panel roles: (a) actual first-frame time versus a common 3 s budget; (b) paired process-memory envelope; (c) browser transport footprint.",
   "Colour: Okabe-Ito categorical palette; point shapes provide grayscale redundancy.",
   "TIFF: colour, 350 dpi. PDF/SVG: vector with Arial requested.",
   "Panel alignment gate: PASS at 1.5 pt tolerance (two comparisons; zero warnings/failures).",
