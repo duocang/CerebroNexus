@@ -1307,6 +1307,26 @@ test_that("Spatial geometry catalog is registered but fetched only on page reque
     "if (!boxes[j].checked) return false;",
     fixed = TRUE
   )
+  expect_match(
+    server_source,
+    "default_resource_name = default_resource_name",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_source,
+    "return singleDefaultResourceNames.has(id);",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_source,
+    "if (!name) name = singleDefaultResourceNames.get(id);",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_source,
+    "if (singleRequests.has(message.id)) {",
+    fixed = TRUE
+  )
   expect_false(grepl("cell_view_resource_prefetch", browser_source, fixed = TRUE))
 })
 

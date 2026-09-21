@@ -1370,11 +1370,31 @@ server <- function(input, output, session) {
     }
     resources <- viewerSpatialGeometryCatalog()
     if (length(resources)) {
+      spatial_names <- availableSpatial()
+      spatial_defaults <- current_scatter_defaults()
+      default_resource_name <- if (
+        length(spatial_names) > 0L &&
+          isTRUE(all.equal(
+            as.numeric(spatial_defaults$percentage_cells_to_show),
+            100
+          )) &&
+          spatial_names[[1L]] %in% vapply(
+            resources,
+            `[[`,
+            character(1),
+            "spatial_name"
+          )
+      ) {
+        spatial_names[[1L]]
+      } else {
+        NULL
+      }
       session$sendCustomMessage(
         "cell_view_resource_catalog",
         list(
           id = "spatial_projection",
           resources = unname(resources),
+          default_resource_name = default_resource_name,
           dataset_identity = dataset_identity
         )
       )

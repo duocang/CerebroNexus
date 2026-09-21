@@ -27,6 +27,7 @@
   var singleViews = {};         // latest specialist payload per plot id
   var singleRequests = new Set(); // visible hosts awaiting their first payload
   var singleResourceDescriptors = new Map();
+  var singleDefaultResourceNames = new Map();
   var singleCategoryResourceDescriptors = new Map();
   var singleActive = null;      // plot id currently using the shared surface
   var singleIndexCells = null;  // cells array behind the cached barcode index
@@ -6210,6 +6211,7 @@
     linkedState = null;
     singleTiming = Object.create(null);
     singleResourceDescriptors.clear();
+    singleDefaultResourceNames.clear();
     singleCategoryResourceDescriptors.clear();
   }
   function mountSingleSurface(id) {
@@ -6565,7 +6567,14 @@
     var percentage = document.getElementById(
       id + '_percentage_cells_to_show'
     );
-    if (!percentage || Number(percentage.value) !== 100) return false;
+    // A specialist page's dynamic controls do not exist yet on its first
+    // click. The server catalog supplies a default resource name only when the
+    // configured initial frame is the full canonical cell set, so that case is
+    // safe to prefetch before the controls bind.
+    if (!percentage) {
+      return singleDefaultResourceNames.has(id);
+    }
+    if (Number(percentage.value) !== 100) return false;
     var filters = document.querySelectorAll(
       '[id^="' + id + '_group_filter_"]'
     );
@@ -6584,6 +6593,7 @@
     }
     var selector = document.getElementById(id + '_to_display');
     var name = selector && selector.value;
+    if (!name) name = singleDefaultResourceNames.get(id);
     var message = name && singleResourceDescriptors.get(id + ':' + name);
     if (!message || !canonicalDatasetIdentityMatches(
       message.resource, window.cerebroSavedViewDataset
@@ -9000,6 +9010,14 @@
       'cell_view_resource_catalog',
       function (message) {
         if (!message || !Array.isArray(message.resources)) return;
+        if (typeof message.default_resource_name === 'string' &&
+            message.default_resource_name) {
+          singleDefaultResourceNames.set(
+            message.id, message.default_resource_name
+          );
+        } else {
+          singleDefaultResourceNames.delete(message.id);
+        }
         message.resources.forEach(function (resource) {
           registerSingleGeometryResource({
             id: message.id,
@@ -9014,6 +9032,14 @@
             dataset_identity: message.dataset_identity
           });
         });
+        // The first click can precede this catalog because both the dynamic
+        // controls and their resource descriptors arrive in the same Shiny
+        // flush. Retry as soon as the catalog is registered so the immutable
+        // geometry download overlaps the remaining server preparation.
+        if (singleRequests.has(message.id)) {
+          prefetchRegisteredSingleResource(message.id);
+          prefetchRegisteredSingleCategory(message.id);
+        }
       }
     );
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
