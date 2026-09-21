@@ -1837,8 +1837,22 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   if (is.na(threshold) || threshold < 1) {
     threshold <- 1
   }
+  row_count <- sum(vapply(data, nrow, integer(1)))
   ir_render_ggplotly(
-    {
+    if (row_count >= 100000L) {
+      # The upstream implementation creates a dense clonotype-by-sample
+      # matrix. On the Ren atlas that blocked the only Shiny R process for
+      # close to a minute and made every subsequently selected tab appear
+      # broken. Cluster exact empirical clone-size profiles instead; this path
+      # is linear in repertoire rows and keeps the same group/linkage controls.
+      ir_empirical_size_distribution_plot(
+        data,
+        chain = pars$chain,
+        group_by = pars$groupBy,
+        method = ir_param("ir_p_sd_method", "ward.D2"),
+        threshold = threshold
+      )
+    } else {
       p <- scRepertoire::clonalSizeDistribution(
         data,
         cloneCall = "strict",

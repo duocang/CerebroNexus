@@ -782,6 +782,11 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   ## regression: previously every renderer forced loadNamespace().
   app$set_inputs(ir_tabs = "Clone Sharing", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_cloneSharing .plotly') !== null",
+    timeout = 45000
+  )
+  expect_false(is.null(app$get_value(output = "ir_plot_cloneSharing")))
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
@@ -820,4 +825,18 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), TRUE)
   expect_false(is.null(app$get_value(output = "ir_plot_clonalHomeostasis")))
+
+  ## SizeDist previously monopolised the Shiny process on large repertoires and
+  ## could leave this and every subsequently selected tab blank. The bundled
+  ## data uses the upstream path; large-data profile correctness is covered by
+  ## the pure-function tests.
+  app$set_inputs(ir_tabs = "SizeDist", wait_ = FALSE)
+  app$wait_for_idle(timeout = 45000)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_clonalSizeDistribution .plotly') !== null",
+    timeout = 45000
+  )
+  expect_false(is.null(app$get_value(
+    output = "ir_plot_clonalSizeDistribution"
+  )))
 })

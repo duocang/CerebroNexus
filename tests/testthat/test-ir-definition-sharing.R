@@ -64,6 +64,10 @@ ir_sharing_classify <- ir_env$ir_sharing_classify
 ir_build_definition_plot <- ir_env$ir_build_definition_plot
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
+ir_chain_clone_values <- ir_env$ir_chain_clone_values
+ir_clone_size_profiles <- ir_env$ir_clone_size_profiles
+ir_empirical_size_distribution_plot <-
+  ir_env$ir_empirical_size_distribution_plot
 
 test_that("immune metadata joins only requested columns in one aligned pass", {
   data <- list(
@@ -82,6 +86,52 @@ test_that("immune metadata joins only requested columns in one aligned pass", {
   expect_identical(out$a$group, c("g3", "g1"))
   expect_identical(out$b$group, "g2")
   expect_false("unused" %in% names(out$a))
+})
+
+test_that("segment parsing keeps only requested columns and supplies sample", {
+  data <- list(
+    donor_a = data.frame(
+      barcode = c("c1", "c2"),
+      CTgene = rep("TRBV1..TRBJ1.TRBC1", 2),
+      CTaa = rep("CASSA", 2),
+      unused = c("large-a", "large-b"),
+      stringsAsFactors = FALSE
+    )
+  )
+  out <- ir_parse_segments(data, "TRB", columns = "sample")
+  expect_named(
+    out,
+    c("barcode", "sample", "v_gene", "j_gene", "cdr3", "clone_vjc")
+  )
+  expect_identical(out$sample, rep("donor_a", 2))
+  expect_false("unused" %in% names(out))
+})
+
+test_that("empirical clone-size profiles preserve exact observed counts", {
+  frame <- data.frame(
+    CTgene = rep("TRBV1..TRBJ1.TRBC1", 8),
+    CTstrict = c(rep("clone-a", 4), rep("clone-b", 2), "clone-c", "clone-d"),
+    cohort = c(rep("A", 6), "B", "B"),
+    stringsAsFactors = FALSE
+  )
+  profiles <- ir_clone_size_profiles(
+    list(sample_1 = frame),
+    chain = "TRB",
+    group_by = "cohort",
+    threshold = 1
+  )
+  expect_named(profiles$clone_counts, c("A", "B"))
+  expect_equal(sort(unname(profiles$clone_counts$A)), c(2L, 4L))
+  expect_equal(sort(unname(profiles$clone_counts$B)), c(1L, 1L))
+  expect_equal(rowSums(profiles$profile), c(A = 1, B = 1))
+
+  skip_if_not_installed("ggdendro")
+  plot <- ir_empirical_size_distribution_plot(
+    list(sample_1 = frame),
+    chain = "TRB",
+    group_by = "cohort"
+  )
+  expect_s3_class(plot, "ggplot")
 })
 
 test_that("clonal projection bounds the contextual background before rendering", {

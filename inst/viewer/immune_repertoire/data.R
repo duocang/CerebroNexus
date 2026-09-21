@@ -39,7 +39,8 @@ ir_scr_cols <- c(
 ir_requested_metadata_columns <- reactive({
   requested <- c(
     input[["ir_groupBy"]],
-    input[["ir_p_umap_group_by"]]
+    input[["ir_p_umap_group_by"]],
+    input[["ir_sharing_unit"]]
   )
   requested <- as.character(requested)
   unique(requested[!is.na(requested) & nzchar(requested)])
@@ -208,23 +209,40 @@ ir_sharing_unit_choices <- reactive({
     return(character(0))
   }
   common <- Reduce(intersect, lapply(data, colnames))
-  merged <- do.call(
-    rbind,
-    lapply(data, function(df) {
-      df[, common, drop = FALSE]
-    })
-  )
   cand <- setdiff(common, ir_scr_cols)
   keep <- vapply(
     cand,
     function(col) {
-      v <- merged[[col]]
-      (is.character(v) || is.factor(v)) &&
-        length(unique(v[!is.na(v) & nzchar(as.character(v))])) > 1
+      eligible <- all(vapply(
+        data,
+        function(df) is.character(df[[col]]) || is.factor(df[[col]]),
+        logical(1)
+      ))
+      if (!eligible) {
+        return(FALSE)
+      }
+      # Stop as soon as two values are known. Building one rbind() of every
+      # repertoire row merely to populate this selector copied the complete Ren
+      # sidecar and blocked all tab changes.
+      seen <- character()
+      for (df in data) {
+        values <- as.character(df[[col]])
+        values <- values[!is.na(values) & nzchar(values)]
+        if (length(values)) {
+          seen <- unique(c(seen, unique(values)))
+        }
+        if (length(seen) > 1L) {
+          return(TRUE)
+        }
+      }
+      FALSE
     },
     logical(1)
   )
   cols <- cand[keep]
+  if (!("sample" %in% cols) && length(data) > 1L) {
+    cols <- c("sample", cols)
+  }
   if ("sample" %in% cols) c("sample", setdiff(cols, "sample")) else cols
 })
 
@@ -443,6 +461,209 @@ ir_clonal_abundance_counts <- function(data, clone_col) {
     ))
   }
   do.call(rbind, rows)
+}
+
+## ---- Scalable clone-size distribution -------------------------------- ##
+## scRepertoire::clonalSizeDistribution() expands a dense
+## clonotype-by-sample matrix before fitting its model. With hundreds of Ren
+## samples this matrix contains mostly zeroes and can keep the single Shiny R
+## process busy for close to a minute. The helpers below retain the exact
+## observed clone sizes, summarize them into logarithmic bins, and cluster the
+## resulting empirical distributions without constructing that dense matrix.
+ir_chain_clone_values <- function(frame, chain, clone_col = "CTstrict") {
+  if (
+    is.null(frame) ||
+      !(clone_col %in% colnames(frame)) ||
+      !nrow(frame)
+  ) {
+    return(character())
+  }
+  values <- as.character(frame[[clone_col]])
+  if (is.null(chain) || !nzchar(chain) || identical(chain, "both")) {
+    return(values)
+  }
+  if (!("CTgene" %in% colnames(frame))) {
+    return(rep(NA_character_, length(values)))
+  }
+  genes <- as.character(frame$CTgene)
+  pair_key <- paste(genes, values, sep = "\034")
+  first <- !duplicated(pair_key)
+  unique_genes <- strsplit(genes[first], "_", fixed = TRUE)
+  unique_values <- strsplit(values[first], "_", fixed = TRUE)
+  selected <- mapply(
+    function(gene_parts, value_parts) {
+      gene_first <- sub(";.*$", "", gene_parts)
+      index <- which(
+        startsWith(gene_first, chain) & gene_first != "NA"
+      )[1L]
+      if (
+        is.na(index) ||
+          index > length(value_parts) ||
+          is.na(value_parts[[index]]) ||
+          !nzchar(value_parts[[index]]) ||
+          identical(value_parts[[index]], "NA")
+      ) {
+        NA_character_
+      } else {
+        value_parts[[index]]
+      }
+    },
+    unique_genes,
+    unique_values,
+    USE.NAMES = FALSE
+  )
+  selected[match(pair_key, pair_key[first])]
+}
+
+ir_clone_size_profiles <- function(
+  data,
+  chain = "both",
+  group_by = NULL,
+  threshold = 1
+) {
+  if (is.null(data) || !length(data)) {
+    return(NULL)
+  }
+  threshold <- suppressWarnings(as.integer(threshold))
+  if (is.na(threshold) || threshold < 1L) {
+    threshold <- 1L
+  }
+  sample_names <- names(data)
+  if (is.null(sample_names)) {
+    sample_names <- as.character(seq_along(data))
+  }
+  counts <- list()
+  merge_counts <- function(existing, incoming) {
+    if (is.null(existing)) {
+      return(incoming)
+    }
+    keys <- union(names(existing), names(incoming))
+    out <- integer(length(keys))
+    names(out) <- keys
+    out[match(names(existing), keys)] <- existing
+    positions <- match(names(incoming), keys)
+    out[positions] <- out[positions] + incoming
+    out
+  }
+  for (index in seq_along(data)) {
+    frame <- data[[index]]
+    clones <- ir_chain_clone_values(frame, chain, "CTstrict")
+    groups <- if (
+      !is.null(group_by) &&
+        nzchar(group_by) &&
+        group_by %in% colnames(frame)
+    ) {
+      as.character(frame[[group_by]])
+    } else {
+      rep(sample_names[[index]], nrow(frame))
+    }
+    keep <- !is.na(clones) & nzchar(clones) & !is.na(groups) & nzchar(groups)
+    if (!any(keep)) {
+      next
+    }
+    rows_by_group <- split(which(keep), groups[keep], drop = TRUE)
+    for (group in names(rows_by_group)) {
+      incoming <- base::table(clones[rows_by_group[[group]]])
+      incoming <- stats::setNames(as.integer(incoming), names(incoming))
+      counts[[group]] <- merge_counts(counts[[group]], incoming)
+    }
+  }
+  counts <- lapply(counts, function(x) x[x >= threshold])
+  counts <- counts[lengths(counts) > 0L]
+  if (!length(counts)) {
+    return(NULL)
+  }
+  max_size <- max(unlist(counts, use.names = FALSE))
+  max_bin <- floor(log2(max_size))
+  profile <- matrix(
+    0,
+    nrow = length(counts),
+    ncol = max_bin + 1L,
+    dimnames = list(names(counts), as.character(0:max_bin))
+  )
+  for (group in names(counts)) {
+    bins <- floor(log2(counts[[group]]))
+    profile[group, ] <- tabulate(bins + 1L, nbins = ncol(profile))
+  }
+  totals <- rowSums(profile)
+  profile <- profile / pmax(totals, 1)
+  list(profile = profile, clone_counts = counts, threshold = threshold)
+}
+
+ir_empirical_size_distribution_plot <- function(
+  data,
+  chain = "both",
+  group_by = NULL,
+  method = "ward.D2",
+  threshold = 1
+) {
+  profiles <- ir_clone_size_profiles(data, chain, group_by, threshold)
+  if (is.null(profiles)) {
+    return(NULL)
+  }
+  profile <- profiles$profile
+  if (nrow(profile) == 1L) {
+    frame <- data.frame(
+      size = 2^(seq_len(ncol(profile)) - 1L),
+      proportion = as.numeric(profile[1L, ]),
+      stringsAsFactors = FALSE
+    )
+    return(
+      ggplot2::ggplot(
+        frame,
+        ggplot2::aes(x = size, y = proportion)
+      ) +
+        ggplot2::geom_col(fill = "#4c72a6") +
+        ggplot2::scale_x_log10() +
+        ggplot2::labs(
+          x = "Clone size (log scale)",
+          y = "Proportion of clonotypes",
+          title = rownames(profile)[[1L]]
+        ) +
+        ggplot2::theme_bw(base_size = 11)
+    )
+  }
+  allowed <- c(
+    "ward.D2",
+    "ward.D",
+    "single",
+    "complete",
+    "average",
+    "mcquitty",
+    "median",
+    "centroid"
+  )
+  if (!(method %in% allowed)) {
+    method <- "ward.D2"
+  }
+  tree <- stats::hclust(stats::dist(profile), method = method)
+  dendro <- ggdendro::dendro_data(tree, type = "rectangle")
+  ggplot2::ggplot() +
+    ggplot2::geom_segment(
+      data = ggdendro::segment(dendro),
+      ggplot2::aes(x = x, y = y, xend = xend, yend = yend)
+    ) +
+    ggplot2::geom_text(
+      data = ggdendro::label(dendro),
+      ggplot2::aes(x = x, y = -0.02, label = label, hjust = 0),
+      size = 3
+    ) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_reverse(expand = c(0.2, 0)) +
+    ggplot2::labs(
+      x = NULL,
+      y = NULL,
+      subtitle = paste0(
+        "Exact empirical clone-size profiles; minimum clone size = ",
+        profiles$threshold,
+        "."
+      )
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      axis.ticks.y = ggplot2::element_blank(),
+      axis.text.y = ggplot2::element_blank()
+    )
 }
 
 ## ---- Which CT* column a cloneCall maps to ----------------------------- ##
@@ -806,7 +1027,7 @@ ir_clonal_umap_barcodes <- function(data) {
 ##
 ##   data  : the metadata-annotated IR list (ir_data_annotated())
 ##   chain : chain prefix, e.g. "TRB" / "TRA" / "IGH"
-ir_parse_segments <- function(data, chain) {
+ir_parse_segments <- function(data, chain, columns = NULL) {
   if (is.null(data) || length(data) == 0 || is.null(chain) || !nzchar(chain)) {
     return(NULL)
   }
@@ -853,13 +1074,27 @@ ir_parse_segments <- function(data, chain) {
     ifelse(is.na(x), NA_character_, sub(";.*$", "", x))
   }
 
-  rows <- lapply(data, function(df) {
+  sample_names <- names(data)
+  if (is.null(sample_names)) {
+    sample_names <- as.character(seq_along(data))
+  }
+  rows <- Map(function(df, sample_name) {
     if (is.null(df) || !all(c("barcode", "CTgene", "CTaa") %in% colnames(df))) {
       return(NULL)
     }
-    slot_idx <- chain_slot_index(df$CTgene)
-    gene_seg <- first_allele(pick_slot(df$CTgene, slot_idx))
-    cdr3 <- first_allele(pick_slot(df$CTaa, slot_idx))
+    # Parse each distinct CTgene/CTaa pair once. Large repertoires contain many
+    # repeated clonotypes; parsing every cell separately made Definition and
+    # Clone Sharing spend tens of seconds in strsplit() before drawing.
+    pair_key <- paste(df$CTgene, df$CTaa, sep = "\034")
+    first <- !duplicated(pair_key)
+    unique_gene <- df$CTgene[first]
+    unique_aa <- df$CTaa[first]
+    slot_idx <- chain_slot_index(unique_gene)
+    gene_unique <- first_allele(pick_slot(unique_gene, slot_idx))
+    cdr3_unique <- first_allele(pick_slot(unique_aa, slot_idx))
+    pair_index <- match(pair_key, pair_key[first])
+    gene_seg <- gene_unique[pair_index]
+    cdr3 <- cdr3_unique[pair_index]
     # From "TRBV6-2..TRBJ2-6.TRBC2" pull the V and J tokens (segs split on ".").
     # NA gene_seg -> strsplit yields NA -> no token matches -> NA gene, dropped.
     pull_token <- function(prefix) {
@@ -878,13 +1113,21 @@ ir_parse_segments <- function(data, chain) {
     if (!any(keep)) {
       return(NULL)
     }
-    out <- df[keep, , drop = FALSE]
+    keep_columns <- if (is.null(columns)) {
+      colnames(df)
+    } else {
+      intersect(unique(c("barcode", columns)), colnames(df))
+    }
+    out <- df[keep, keep_columns, drop = FALSE]
+    if (!is.null(columns) && "sample" %in% columns && !("sample" %in% names(out))) {
+      out$sample <- sample_name
+    }
     out$v_gene <- v_gene[keep]
     out$j_gene <- j_gene[keep]
     out$cdr3 <- cdr3[keep]
     out$clone_vjc <- paste(out$v_gene, out$j_gene, out$cdr3, sep = ";")
     out
-  })
+  }, data, sample_names)
   rows <- rows[!vapply(rows, is.null, logical(1))]
   if (length(rows) == 0) {
     return(NULL)
@@ -1043,7 +1286,7 @@ IR_BCR_SHM_CAVEAT <- "BCR: CDR3 not collapsed by SHM; clones may be split."
 ## when there are no cells for the chain (caller renders the empty state).
 ## Shared by the live renderer and the Example-modal demo.
 ir_build_definition_plot <- function(data, chain, group_by = NULL) {
-  seg <- ir_parse_segments(data, chain)
+  seg <- ir_parse_segments(data, chain, columns = group_by)
   if (is.null(seg) || nrow(seg) == 0) {
     return(NULL)
   }
@@ -1103,7 +1346,11 @@ IR_SHARING_DISPLAY_LABELS <- c(
 ## counts, using friendly x-axis labels. Returns NULL on empty data or when
 ## the unit column is absent. Shared by the live renderer and the demo.
 ir_build_sharing_plot <- function(data, chain, unit_col, group_by = NULL) {
-  seg <- ir_parse_segments(data, chain)
+  seg <- ir_parse_segments(
+    data,
+    chain,
+    columns = unique(c(unit_col, group_by))
+  )
   if (is.null(seg) || nrow(seg) == 0 || !(unit_col %in% colnames(seg))) {
     return(NULL)
   }
