@@ -8217,7 +8217,7 @@
     D.spaces.forEach(function (s) {
       s._unit = null;
       if (s.id === 'spatial') spatialTemplate = s;
-      else if (s.id === 'umap') { /* rebuilt from D.projections below */ }
+      else if (s.id === 'expression') { /* rebuilt from D.projections below */ }
       else {
         spaceById[s.id] = s;
         if (s.background_scope) s._sampleName = s.background_scope;

@@ -891,7 +891,7 @@ test_that("Linked views does not duplicate immutable bundle data", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expression_space <- bundle$spaces[[which(
-    vapply(bundle$spaces, `[[`, character(1), "id") == "umap"
+    vapply(bundle$spaces, `[[`, character(1), "id") == "expression"
   )]]
 
   expect_true(all(c("x", "y") %in% names(bundle$projections$umap)))
@@ -1948,6 +1948,10 @@ test_that("Linked views consumes the selected dataset point appearance", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expect_identical(bundle$default_projection, "tsne")
+  expression_space <- bundle$spaces[[which(
+    vapply(bundle$spaces, `[[`, character(1), "id") == "expression"
+  )]]
+  expect_identical(expression_space$label, "tsne (expression)")
   expect_identical(bundle$default_group, "region")
   expect_identical(bundle$default_point_size, 5)
   expect_identical(bundle$default_point_opacity, 0.7)

@@ -1952,7 +1952,7 @@ cv_build_bundle <- function(
     ## from there. Keeping another x/y/z copy doubles the largest part of a
     ## million-cell wire payload.
     expression_space <- list(
-      id = "umap",
+      id = "expression",
       label = paste0(default_projection, " (expression)")
     )
     spaces[[length(spaces) + 1L]] <- expression_space
