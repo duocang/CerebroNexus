@@ -168,7 +168,7 @@ test_that("publication-full wrapper runs only complete sources", {
   expect_match(body, "publication-full", fixed = TRUE)
 })
 
-test_that("remote launcher safely updates, clears, and backgrounds", {
+test_that("remote launcher preserves results and clears scratch", {
   skip_unless_bench_cli()
   launcher <- file.path(bench_root, "update_and_run_publication_full.sh")
   expect_true(file.exists(launcher))
@@ -176,9 +176,13 @@ test_that("remote launcher safely updates, clears, and backgrounds", {
     return()
   }
 
-  body <- paste(readLines(launcher, warn = FALSE), collapse = "\n")
+  lines <- readLines(launcher, warn = FALSE)
+  body <- paste(lines, collapse = "\n")
   expect_match(body, 'merge --ff-only "$REMOTE/$BRANCH"', fixed = TRUE)
   expect_match(body, '"$RESULT_ROOT"', fixed = TRUE)
+  expect_false(any(startsWith(lines, '  "$RESULT_ROOT"')))
+  expect_true(any(startsWith(lines, '  "$REPO/tests/bench/study-work"')))
+  expect_true(any(startsWith(lines, '  "$REPO/tests/bench/scratch"')))
   expect_match(body, 'rm -rf -- "$target"', fixed = TRUE)
   expect_match(body, 'nohup "$SCRIPT" _worker', fixed = TRUE)
   expect_match(body, 'kill -0 "$pid"', fixed = TRUE)

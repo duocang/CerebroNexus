@@ -86,7 +86,7 @@ figure in the evidence package.
 
 ### Remote rerun on the benchmark host
 
-The launcher updates `paper/real-data-benchmark` from `origin` with a fast-forward only, removes the previous publication result and scratch directories, preserves the downloaded source cache, and starts the complete benchmark with `nohup`.
+The launcher updates `paper/real-data-benchmark` from `origin` with a fast-forward only, preserves previous immutable publication runs, removes transient study and scratch directories, preserves the downloaded source cache, and starts the complete benchmark with `nohup`.
 
 ```bash
 cd /home/xuesong/Projects/CerebroNexus
