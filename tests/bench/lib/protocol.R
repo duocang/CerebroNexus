@@ -271,7 +271,13 @@ bench_subset_cells <- function(n_cells, limit = 100000L) {
 }
 
 .bench_result_key <- function(x) {
-  paste(x$source, x$n_cells, x$backend, x$export_repeat, sep = "|")
+  paste(
+    x$source,
+    sprintf("%.0f", as.numeric(x$n_cells)),
+    x$backend,
+    as.integer(x$export_repeat),
+    sep = "|"
+  )
 }
 
 bench_validate_results <- function(

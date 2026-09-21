@@ -334,3 +334,27 @@ test_that("access crashes do not masquerade as duplicate export outcomes", {
     "missing access measurement"
   )
 })
+
+test_that("result keys canonicalize scientific and integer cell counts", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+
+  scientific <- data.frame(
+    source = "fixture",
+    n_cells = 1e5,
+    backend = "bpcells",
+    export_repeat = 1L
+  )
+  integer <- data.frame(
+    source = "fixture",
+    n_cells = 100000L,
+    backend = "bpcells",
+    export_repeat = 1
+  )
+
+  expect_identical(.bench_result_key(scientific), .bench_result_key(integer))
+  expect_identical(
+    .bench_result_key(scientific),
+    "fixture|100000|bpcells|1"
+  )
+})
