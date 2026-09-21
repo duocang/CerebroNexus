@@ -22,6 +22,20 @@ run_dir <- normalizePath(args[[1L]], mustWork = TRUE)
 output_dir <- normalizePath(args[[2L]], mustWork = FALSE)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 output_dir <- normalizePath(output_dir, mustWork = TRUE)
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+script_path <- normalizePath(sub("^--file=", "", script_arg[[1L]]))
+repo <- normalizePath(file.path(dirname(script_path), "..", ".."))
+plotting_git_sha <- paste(
+  system2(
+    "git",
+    c("-C", shQuote(repo), "rev-parse", "HEAD"),
+    stdout = TRUE
+  ),
+  collapse = ""
+)
+if (!grepl("^[0-9a-f]{40}$", plotting_git_sha)) {
+  stop("could not record the plotting-code Git SHA", call. = FALSE)
+}
 
 suppressPackageStartupMessages({
   library(ggplot2)
@@ -365,6 +379,7 @@ plot_manifest <- data.frame(
   md5 = unname(tools::md5sum(c(input_paths, output_paths))),
   benchmark_run_id = manifest_values[["run_id"]],
   benchmark_git_sha = manifest_values[["git_sha"]],
+  plotting_git_sha = plotting_git_sha,
   generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
   stringsAsFactors = FALSE
 )
