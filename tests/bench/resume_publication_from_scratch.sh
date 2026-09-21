@@ -61,8 +61,17 @@ Rscript -e '
   old <- m$key == "package_version.Version"
   if (!any(m$key == "package_version") && sum(old) == 1L) {
     m$key[old] <- "package_version"
-    write.csv(m, path, row.names = FALSE, na = "")
   }
+  package_version <- m$value[m$key == "package_version"]
+  package_row <- m$key == "package_CerebroNexus"
+  if (
+    length(package_version) == 1L && nzchar(package_version) &&
+      sum(package_row) == 1L &&
+      (is.na(m$value[package_row]) || !nzchar(m$value[package_row]))
+  ) {
+    m$value[package_row] <- package_version
+  }
+  write.csv(m, path, row.names = FALSE, na = "")
 ' "$MANIFEST"
 Rscript "$BENCH_ROOT/src/30_check_measurements.R" "$STAGE"
 Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE"

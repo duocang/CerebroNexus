@@ -123,10 +123,15 @@ packages <- c(
   "HDF5Array",
   "CerebroNexus"
 )
+package_versions <- vapply(packages, package_version_or_na, character(1))
+# Provenance is recorded before the branch-under-test is installed into its
+# isolated library. Its authoritative version is therefore DESCRIPTION, not a
+# possibly absent or stale package on the caller's library path.
+package_versions[["CerebroNexus"]] <- unname(description[1, "Version"])
 manifest <- c(
   manifest,
   stats::setNames(
-    vapply(packages, package_version_or_na, character(1)),
+    package_versions,
     paste0("package_", packages)
   )
 )
