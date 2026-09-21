@@ -1462,6 +1462,67 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
   })
 })
 
+test_that("spatial gene selectors initialize only for their visible plot type", {
+  main_ui <- viewer_test_path(
+    "spatial",
+    "UI_projection_main_parameters.R"
+  )
+  selectors <- new.env(parent = emptyenv())
+  server <- function(input, output, session) {
+    data_set <- function() TRUE
+    availableSpatial <- function() "sliceA"
+    viewerProjectionFirstFrameMetadata <- function() data.frame(group = "a")
+    getGroups <- function() "group"
+    serverSideGeneSelector <- function(
+      session,
+      input_id,
+      extra_triggers,
+      active,
+      ...
+    ) {
+      selectors[[input_id]] <- active
+      invisible(NULL)
+    }
+    sys.source(main_ui, envir = environment())
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(
+      sidebar = "spatial",
+      spatial_projection_plot_type = "ImageDimPlot"
+    )
+    session$flushReact()
+    expect_false(shiny::isolate(
+      selectors[["spatial_projection_feature_to_display"]]()
+    ))
+    for (channel in c("r", "g", "b")) {
+      expect_false(shiny::isolate(
+        selectors[[paste0("spatial_projection_coexpr_", channel)]]()
+      ))
+    }
+
+    session$setInputs(spatial_projection_plot_type = "ImageFeaturePlot")
+    expect_true(shiny::isolate(
+      selectors[["spatial_projection_feature_to_display"]]()
+    ))
+    for (channel in c("r", "g", "b")) {
+      expect_false(shiny::isolate(
+        selectors[[paste0("spatial_projection_coexpr_", channel)]]()
+      ))
+    }
+
+    session$setInputs(spatial_projection_plot_type = "Co-expression (RGB)")
+    expect_false(shiny::isolate(
+      selectors[["spatial_projection_feature_to_display"]]()
+    ))
+    for (channel in c("r", "g", "b")) {
+      expect_true(shiny::isolate(
+        selectors[[paste0("spatial_projection_coexpr_", channel)]]()
+      ))
+    }
+  })
+})
+
 test_that("bundled real demos embed a genuine tissue image in the .crb", {
   # MERFISH carries its real DAPI inside the CRB. Visium and Xenium use external
   # files; Slide-seq carries no image.

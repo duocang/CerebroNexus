@@ -177,13 +177,18 @@ serverSideGeneSelector(
   extra_triggers = function() input[["spatial_projection_plot_type"]],
   active = function() {
     identical(input[["sidebar"]], "spatial") &&
+      identical(
+        input[["spatial_projection_plot_type"]],
+        "ImageFeaturePlot"
+      ) &&
       length(availableSpatial()) > 0
   }
 )
 
-## Co-expression channel gene pickers. Same server-side population + active gate
-## as the feature selector, so their later:: callbacks don't leak into other
-## tabs' tests when no spatial data is present.
+## Co-expression channel gene pickers. Populate each hidden gene selector only
+## when its plot type is active. This keeps their dataobj requests out of the
+## default ImageDimPlot waterfall while preserving lazy initialization when the
+## user switches modes.
 ##
 ## Use lapply, NOT a for loop: serverSideGeneSelector references the input id
 ## lazily, and a for loop's index variable is a single shared binding — all
@@ -203,6 +208,10 @@ lapply(
       extra_triggers = function() input[["spatial_projection_plot_type"]],
       active = function() {
         identical(input[["sidebar"]], "spatial") &&
+          identical(
+            input[["spatial_projection_plot_type"]],
+            "Co-expression (RGB)"
+          ) &&
           length(availableSpatial()) > 0
       }
     )
