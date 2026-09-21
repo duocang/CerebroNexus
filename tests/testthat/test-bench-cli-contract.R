@@ -112,7 +112,7 @@ test_that("Panel C2 build CLI uses only the lazy full-source path", {
     return()
   }
   body <- paste(readLines(script, warn = FALSE), collapse = "\n")
-  expect_match(body, "bench_open_full_source", fixed = TRUE)
+  expect_match(body, "bench_open_source_tier", fixed = TRUE)
   expect_match(body, "bench_write_full_backend", fixed = TRUE)
   expect_match(body, "bench_make_full_shell", fixed = TRUE)
   expect_match(body, "readRDS(query_plan_path)", fixed = TRUE)
@@ -213,6 +213,7 @@ test_that("shared sweep selects the full-source build and resource paths", {
   )
   expect_match(sweep, "04_check_full_resources.R", fixed = TRUE)
   expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
+  expect_match(sweep, 'BENCH_PROFILE" = "publication_scale', fixed = TRUE)
 })
 
 test_that("full-source sweep excludes Viewer checks", {

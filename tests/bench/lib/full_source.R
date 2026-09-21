@@ -1,4 +1,4 @@
-# Lazy full-source helpers for Panel C2.
+# Lazy source helpers for scale and full-source publication benchmarks.
 
 bench_validate_full_matrix <- function(matrix, spec = list()) {
   if (!inherits(matrix, "IterableMatrix")) {
@@ -38,6 +38,23 @@ bench_open_full_source <- function(spec, path) {
     h5ad = BPCells::open_matrix_anndata_hdf5(path, group = "X")
   )
   bench_validate_full_matrix(matrix, spec)
+}
+
+bench_open_source_tier <- function(spec, path, n_cells) {
+  matrix <- bench_open_full_source(spec, path)
+  if (
+    length(n_cells) != 1L ||
+      !is.finite(n_cells) ||
+      n_cells < 1L ||
+      n_cells != as.integer(n_cells) ||
+      n_cells > ncol(matrix)
+  ) {
+    stop("source tier must be a positive available cell count", call. = FALSE)
+  }
+  if (n_cells < ncol(matrix)) {
+    matrix <- matrix[, seq_len(as.integer(n_cells)), drop = FALSE]
+  }
+  bench_validate_full_matrix(matrix)
 }
 
 bench_write_full_backend <- function(matrix, backend, path) {

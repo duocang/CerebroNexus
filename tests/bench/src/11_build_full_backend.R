@@ -90,7 +90,9 @@ fail <- function(stage, error) {
 
 source_matrix <- NULL
 row$read_secs <- tryCatch(
-  bench_time(source_matrix <<- bench_open_full_source(spec, source_path)),
+  bench_time(
+    source_matrix <<- bench_open_source_tier(spec, source_path, n_cells)
+  ),
   error = function(error) fail("open", error)
 )
 row$n_cells <- ncol(source_matrix)

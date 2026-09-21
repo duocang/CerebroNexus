@@ -73,8 +73,8 @@ source_matrix <- NULL
 profile <- Sys.getenv("BENCH_PROFILE")
 row$source_prepare_secs <- tryCatch(
   bench_time({
-    source_matrix <<- if (identical(profile, "panel_c2")) {
-      bench_open_full_source(spec, source_path)
+    source_matrix <<- if (profile %in% c("publication_scale", "panel_c2")) {
+      bench_open_source_tier(spec, source_path, n_cells)
     } else {
       spec$local_path <- source_path
       bench_read_subset(spec, n_cells, n_chunks = 4L, verbose = FALSE)
@@ -92,7 +92,7 @@ row$n_genes <- nrow(source_matrix)
 plan <- NULL
 row$query_plan_secs <- tryCatch(
   bench_time({
-    plan <<- if (identical(profile, "panel_c2")) {
+    plan <<- if (profile %in% c("publication_scale", "panel_c2")) {
       bench_build_lazy_query_plan(
         source_matrix,
         bench_profile(profile)$query_genes

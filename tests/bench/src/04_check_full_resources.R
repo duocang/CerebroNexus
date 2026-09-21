@@ -1,4 +1,4 @@
-# Preflight a full-source out-of-core Panel C2 schedule.
+# Preflight a scale or full-source out-of-core schedule.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4L) {
@@ -44,7 +44,7 @@ required_disk <- source$source_bytes * 2.5
 assessment <- data.frame(
   source = planned$source,
   n_cells = planned$n_cells,
-  estimated_nnz = source$nnz,
+  estimated_nnz = source$nnz * planned$n_cells / source$n_cells,
   estimated_peak_mb = round(estimated_peak_mb),
   memory_budget_mb = round(memory_mb * 0.70),
   source_bytes = source$source_bytes,

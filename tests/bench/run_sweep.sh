@@ -97,7 +97,8 @@ Rscript "$BENCH_ROOT/src/03_plan_runs.R" "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
 
 RESOURCE_SCRIPT="04_check_resources.R"
 BUILD_SCRIPT="10_export_backend.R"
-if [ "$BENCH_PROFILE" = "panel_c2" ]; then
+if [ "$BENCH_PROFILE" = "publication_scale" ] || \
+   [ "$BENCH_PROFILE" = "panel_c2" ]; then
   RESOURCE_SCRIPT="04_check_full_resources.R"
   BUILD_SCRIPT="11_build_full_backend.R"
 fi
