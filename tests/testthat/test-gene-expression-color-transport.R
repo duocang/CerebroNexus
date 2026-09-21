@@ -282,6 +282,8 @@ test_that("secondary expression summaries wait for the painted primary frame", {
   expect_match(ui, "expression_summary_gate", fixed = TRUE)
   expect_match(ui, "IntersectionObserver", fixed = TRUE)
   expect_match(ui, "expression_summary_viewport_request", fixed = TRUE)
+  expect_match(ui, "observer.observe(target)", fixed = TRUE)
+  expect_false(grepl("armSummaryGate", ui, fixed = TRUE))
   expect_match(
     summaries,
     'input[["expression_summary_viewport_request"]]',

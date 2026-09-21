@@ -121,12 +121,7 @@ tab_gene_expression <- tabItem(
         );
         observer.disconnect();
       }, {threshold: 0.25});
-      function armSummaryGate(event) {
-        if (event.detail?.viewId !== 'expression_projection') return;
-        window.removeEventListener('cerebro:specialist-state', armSummaryGate);
-        observer.observe(target);
-      }
-      window.addEventListener('cerebro:specialist-state', armSummaryGate);
+      observer.observe(target);
     })();
     "
   )) #,
