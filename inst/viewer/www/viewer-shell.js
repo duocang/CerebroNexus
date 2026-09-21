@@ -371,19 +371,21 @@
     }
 
     if (window.jQuery) {
-      window.jQuery(document)
-        .on("shiny:connected.cerebroDatasetProgress", install)
-        .on("shiny:inputchanged.cerebroDatasetProgress", function (event) {
-          if (event.name !== "crb_file_selector" && event.name !== "input_file") return;
-          var label = "Dataset";
-          if (event.name === "crb_file_selector") {
-            var select = document.getElementById("crb_file_selector");
-            var selected = select && select.options[select.selectedIndex];
-            label = selected ? selected.textContent : String(event.value || label);
-          }
-          begin(label, "Waiting for the server");
-        });
+      window.jQuery(document).on(
+        "shiny:connected.cerebroDatasetProgress",
+        install
+      );
     }
+    document.addEventListener("change", function (event) {
+      var input = event.target;
+      if (!input || (input.id !== "crb_file_selector" && input.id !== "input_file")) {
+        return;
+      }
+      if (input.id === "input_file" && !(input.files && input.files.length)) return;
+      var selected = input.id === "crb_file_selector" &&
+        input.options[input.selectedIndex];
+      begin(selected ? selected.textContent : "Dataset", "Waiting for the server");
+    });
     install();
   });
 }());
