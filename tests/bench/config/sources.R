@@ -35,8 +35,8 @@ BENCH_SOURCES <- list(
     panel_c1_cells = 400e3,
     # Shared publication-scale tiers. The complete 1,306,127-cell matrix is
     # measured separately by publication-full and is never labelled as 1m.
-    tiers = c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6),
-    comparison_tiers = c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6)
+    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
 
   # CELLxGENE Discover: population-scale cross-disorder atlas of the human
@@ -67,8 +67,8 @@ BENCH_SOURCES <- list(
     panel_c1_cells = 300e3,
     # The same fixed tiers are used for direct scale comparison. The complete
     # 1,486,324-cell matrix remains a separate publication-full observation.
-    tiers = c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6),
-    comparison_tiers = c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6)
+    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
 
   # Same collection, MSSM cohort: 4,140,453 cells, 33.6 GB remote. Opt-in via

@@ -147,7 +147,7 @@ test_that("query plans are prepared before any timed backend build", {
   expect_false(grepl("bench_build_query_plan", sampled_body, fixed = TRUE))
   expect_lt(
     grep("05_prepare_query_plan.R", sweep, fixed = TRUE)[1L],
-    grep('"$BENCH_ROOT/src/$BUILD_SCRIPT"', sweep, fixed = TRUE)[1L]
+    grep('"$BENCH_ROOT/src/$build_script"', sweep, fixed = TRUE)[1L]
   )
 })
 
@@ -217,6 +217,10 @@ test_that("shared sweep selects the full-source build and resource paths", {
   )
   expect_match(sweep, "04_check_full_resources.R", fixed = TRUE)
   expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
+  expect_match(sweep, 'build_script="$BUILD_SCRIPT"', fixed = TRUE)
+  expect_match(sweep, 'backend" = "embedded', fixed = TRUE)
+  expect_match(sweep, 'build_script="10_export_backend.R"', fixed = TRUE)
+  expect_match(sweep, 'missing_ok=1', fixed = TRUE)
   expect_match(sweep, 'BENCH_PROFILE" = "publication_scale', fixed = TRUE)
 })
 

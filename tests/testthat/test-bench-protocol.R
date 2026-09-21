@@ -91,10 +91,12 @@ test_that("default sources share the complete publication scale grid", {
   ]
   expect_true(all(vapply(
     defaults,
-    function(source) identical(
-      source$comparison_tiers,
-      c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6)
-    ),
+    function(source) {
+      identical(
+        source$comparison_tiers,
+        c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+      )
+    },
     logical(1)
   )))
 })
@@ -141,24 +143,95 @@ test_that("Panel C2 is the exact two-backend full-source schedule", {
   expect_error(bench_panel_c_schedule(BENCH_SOURCES, "unknown"), "c1 or c2")
 })
 
-test_that("publication scale uses nine tiers, two backends, and five repeats", {
+test_that("publication scale runs embedded through 500k", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
   source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
 
   schedule <- bench_publication_scale_schedule(BENCH_SOURCES)
-  expected_tiers <- c(
-    1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6
-  )
+  expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
 
-  expect_equal(nrow(schedule), 2L * 9L * 2L * 5L)
-  expect_setequal(unique(schedule$source), c(
-    "mouse_brain_e18", "human_pfc_hbcc"
-  ))
-  expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
+  expect_equal(nrow(schedule), 2L * (5L * 3L + 2L) * 5L)
+  expect_setequal(
+    unique(schedule$source),
+    c(
+      "mouse_brain_e18",
+      "human_pfc_hbcc"
+    )
+  )
+  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
   expect_identical(sort(unique(schedule$n_cells)), expected_tiers)
+  expect_true(all(schedule$n_cells[schedule$backend == "embedded"] <= 500e3))
+  expect_false(any(
+    schedule$n_cells == 1e6 & schedule$backend == "embedded"
+  ))
+  expect_setequal(
+    unique(schedule$backend[schedule$n_cells <= 500e3]),
+    c("embedded", "bpcells", "h5")
+  )
+  expect_setequal(
+    unique(schedule$backend[schedule$n_cells == 1e6]),
+    c("bpcells", "h5")
+  )
   expect_true(all(schedule$export_repeat %in% seq_len(5L)))
   expect_true(all(schedule$access_repeats == 2L))
+})
+
+test_that("publication scale accepts failed embedded builds only", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+
+  specs <- list(fixture = list(tiers = 1000, comparison_tiers = 1000))
+  schedule <- bench_schedule(
+    specs,
+    "publication_scale",
+    sources = "fixture"
+  )
+  exports <- transform(schedule, status = "OK", run_id = "run-1")
+  exports$status[exports$backend == "embedded"] <- "FAILED(export): limit"
+  successful <- exports$status == "OK"
+  access <- do.call(
+    rbind,
+    lapply(which(successful), function(i) {
+      do.call(
+        rbind,
+        lapply(seq_len(schedule$access_repeats[i]), function(j) {
+          data.frame(
+            source = schedule$source[i],
+            n_cells = schedule$n_cells[i],
+            backend = schedule$backend[i],
+            export_repeat = schedule$export_repeat[i],
+            access_repeat = j,
+            status = "OK",
+            correctness = "OK",
+            row_fingerprint = "row",
+            reference_row_fingerprint = "row",
+            block_fingerprint = "block",
+            reference_block_fingerprint = "block",
+            stringsAsFactors = FALSE
+          )
+        })
+      )
+    })
+  )
+
+  expect_true(bench_validate_results(
+    schedule,
+    exports,
+    access,
+    profile = bench_profile("publication_scale")
+  ))
+
+  exports$status[exports$backend == "bpcells"][1] <- "FAILED(build): limit"
+  expect_error(
+    bench_validate_results(
+      schedule,
+      exports,
+      access,
+      profile = bench_profile("publication_scale")
+    ),
+    "comparison tier did not complete every required backend"
+  )
 })
 
 test_that("query panels are deterministic and span expression density", {

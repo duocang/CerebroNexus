@@ -156,9 +156,16 @@ for src in $SOURCES; do
     query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
     out_dir="$SCRATCH/export/$tag"
     crb="$out_dir/bench.crb"
+    build_script="$BUILD_SCRIPT"
+    missing_ok=0
+    if [ "$BENCH_PROFILE" = "publication_scale" ] && \
+       [ "$backend" = "embedded" ]; then
+      build_script="10_export_backend.R"
+      missing_ok=1
+    fi
 
     echo "==> [$tag] build (position $order_position)"
-    Rscript "$BENCH_ROOT/src/$BUILD_SCRIPT" \
+    Rscript "$BENCH_ROOT/src/$build_script" \
       "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
       "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
       > "$LOG_DIR/export_$tag.log" 2>&1
@@ -176,6 +183,12 @@ for src in $SOURCES; do
     fi
 
     if [ ! -f "$crb" ]; then
+      if [ "$missing_ok" = "1" ]; then
+        if [ "${BENCH_KEEP:-0}" != "1" ]; then
+          rm -rf -- "$out_dir"
+        fi
+        continue
+      fi
       echo "    !! export succeeded but artifact is missing: $crb" >&2
       printf '"%s","%s","%s",%s,"%s",%s,%s,"export-artifact",1\n' \
         "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \

@@ -91,13 +91,37 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
 bench_publication_scale_schedule <- function(specs) {
   sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
   if (length(sources) != 2L) {
-    stop("publication scale requires the mouse and human sources", call. = FALSE)
+    stop(
+      "publication scale requires the mouse and human sources",
+      call. = FALSE
+    )
   }
-  bench_schedule(
-    specs,
-    "publication_scale",
-    sources = sources,
-    backends = c("bpcells", "h5")
+  embedded_specs <- external_specs <- specs
+  for (source in sources) {
+    embedded_specs[[source]]$tiers <-
+      embedded_specs[[source]]$comparison_tiers <-
+        specs[[source]]$comparison_tiers[
+          specs[[source]]$comparison_tiers <= 500e3
+        ]
+    external_specs[[source]]$tiers <-
+      external_specs[[source]]$comparison_tiers <-
+        specs[[source]]$comparison_tiers[
+          specs[[source]]$comparison_tiers > 500e3
+        ]
+  }
+  rbind(
+    bench_schedule(
+      embedded_specs,
+      "publication_scale",
+      sources = sources,
+      backends = c("embedded", "bpcells", "h5")
+    ),
+    bench_schedule(
+      external_specs,
+      "publication_scale",
+      sources = sources,
+      backends = c("bpcells", "h5")
+    )
   )
 }
 
@@ -322,9 +346,15 @@ bench_validate_results <- function(
     ,
     drop = FALSE
   ]
-  comparison_keys <- expected[schedule$comparison]
+  required <- schedule$comparison &
+    !(identical(profile$name, "publication_scale") &
+      schedule$backend == "embedded")
+  comparison_keys <- expected[required]
   if (!all(comparison_keys %in% .bench_result_key(successful))) {
-    stop("comparison tier did not complete every backend", call. = FALSE)
+    stop(
+      "comparison tier did not complete every required backend",
+      call. = FALSE
+    )
   }
 
   if (nrow(access)) {

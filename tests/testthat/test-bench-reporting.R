@@ -294,6 +294,17 @@ test_that("publication figure labels distinct expression workloads", {
   expect_match(source, 'plot_annotation(tag_levels = "A")', fixed = TRUE)
 })
 
+test_that("scale-limit summaries use embedded exports only", {
+  skip_unless_bench_reporting()
+  for (name in c("40_write_report.R", "41_draw_figures.R")) {
+    source <- paste(
+      readLines(file.path(bench_root, "src", name), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
+  }
+})
+
 test_that("publication-full report scripts are present", {
   skip_unless_bench_reporting()
   expect_true(file.exists(file.path(

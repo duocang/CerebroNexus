@@ -269,7 +269,10 @@ if (
     nrow(exports)
 ) {
   usable <- exports[
-    exports$status == "OK" & is.finite(exports$r_peak_mb) & !is.na(exports$nnz),
+    exports$backend == "embedded" &
+      exports$status == "OK" &
+      is.finite(exports$r_peak_mb) &
+      !is.na(exports$nnz),
     ,
     drop = FALSE
   ]

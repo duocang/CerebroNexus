@@ -209,7 +209,10 @@ if (identical(profile$name, "panel_c2")) {
 }
 
 usable <- exports[
-  exports$status == "OK" & is.finite(exports$r_peak_mb) & !is.na(exports$nnz),
+  exports$backend == "embedded" &
+    exports$status == "OK" &
+    is.finite(exports$r_peak_mb) &
+    !is.na(exports$nnz),
   ,
   drop = FALSE
 ]
@@ -227,7 +230,11 @@ if (!is.finite(limit_mb)) {
 }
 ceiling_nnz <- limit_mb * 2^20 / bytes_per_nnz
 
-failures <- exports[grepl("^FAILED", exports$status) & !is.na(exports$nnz), ]
+failures <- exports[
+  exports$backend == "embedded" &
+    grepl("^FAILED", exports$status) &
+    !is.na(exports$nnz),
+]
 failures <- failures[!duplicated(failures[c("source", "n_cells", "nnz")]), ]
 failures <- add_source_label(failures)
 plot_points <- rbind(

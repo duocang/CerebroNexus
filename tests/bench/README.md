@@ -1,9 +1,6 @@
 # Real-data expression-backend benchmark
 
-The backend benchmark has two independent publication workflows. The scale
-study measures the same two public sources at 1k, 5k, 10k, 20k, 50k, 100k,
-200k, 500k, and 1m cells. The full-source study separately measures every cell
-in each source. Results and `CURRENT` pointers are never shared between them.
+The backend benchmark has two independent publication workflows. The scale study measures the same two public sources at 1k, 10k, 50k, 100k, 500k, and 1m cells. The full-source study separately measures every cell in each source. Results and `CURRENT` pointers are never shared between them.
 
 This workflow measures expression backends only. Viewer validation is an
 independent smoke test under [`../viewer-validation`](../viewer-validation/)
@@ -61,10 +58,7 @@ opened by two independent access processes. Backend order alternates by repeat.
 
 ## Publication scale run
 
-The scale study is intentionally separate from the complete-source study. It
-uses BPCells and H5 at all nine fixed cell-count tiers, with five independent
-builds and two access processes per build. Run it from the same clean checkout
-and reuse the same external source cache:
+The scale study is intentionally separate from the complete-source study. It uses BPCells and H5 at all six fixed cell-count tiers and attempts embedded storage through 500k cells, with five independent builds and two access processes per successful build. An embedded failure is retained with empty metrics and does not invalidate the mandatory BPCells/H5 results. Run it from the same clean checkout and reuse the same external source cache:
 
 ```bash
 BENCH_THREADS=1 \
