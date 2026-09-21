@@ -212,22 +212,23 @@ fingerprints <- list(
   access = fingerprint_for(access)
 )
 fingerprint_keys <- Reduce(union, lapply(fingerprints, names))
-fingerprint_mismatches <- fingerprint_keys[vapply(
-  fingerprint_keys,
-  function(key) {
-    values <- vapply(
-      fingerprints,
-      function(x) if (key %in% names(x)) x[[key]] else NA_character_,
-      character(1)
-    )
-    anyNA(values) || length(unique(values)) != 1L
-  },
-  logical(1)
+fingerprint_matrix <- vapply(
+  fingerprints,
+  function(x) unname(x[match(fingerprint_keys, names(x))]),
+  character(length(fingerprint_keys))
+)
+fingerprint_mismatches <- fingerprint_keys[apply(
+  fingerprint_matrix,
+  1L,
+  function(values) anyNA(values) || length(unique(values)) != 1L
 )]
 if (length(fingerprint_mismatches)) {
   stop(
     "query-plan fingerprint differs across preparation/build/access: ",
-    paste(fingerprint_mismatches, collapse = ", "),
+    paste(
+      gsub("\r", " @ ", fingerprint_mismatches, fixed = TRUE),
+      collapse = ", "
+    ),
     call. = FALSE
   )
 }
