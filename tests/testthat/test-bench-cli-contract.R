@@ -255,6 +255,8 @@ test_that("completed measurements have a report-only recovery path", {
   expect_match(recovery, ".cerebro-benchmark-scratch", fixed = TRUE)
   expect_match(recovery, "30_check_measurements.R", fixed = TRUE)
   expect_match(recovery, "60_publish_results.R", fixed = TRUE)
+  expect_match(recovery, "result/publication-scale", fixed = TRUE)
+  expect_match(recovery, 'STATE_NAME="publication-scale"', fixed = TRUE)
   expect_false(grepl("11_build_full_backend.R", recovery, fixed = TRUE))
   expect_false(grepl("20_measure_backend.R", recovery, fixed = TRUE))
 })

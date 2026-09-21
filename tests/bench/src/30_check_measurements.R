@@ -205,13 +205,29 @@ fingerprint_for <- function(data) {
   sort(vapply(observed, function(x) unique(x)[1L], character(1)))
 }
 prepared_fingerprints <- fingerprint_for(preparation)
-if (
-  !identical(prepared_fingerprints, fingerprint_for(query_panel)) ||
-    !identical(prepared_fingerprints, fingerprint_for(exports)) ||
-    !identical(prepared_fingerprints, fingerprint_for(access))
-) {
+fingerprints <- list(
+  preparation = prepared_fingerprints,
+  query_panel = fingerprint_for(query_panel),
+  build = fingerprint_for(exports),
+  access = fingerprint_for(access)
+)
+fingerprint_keys <- Reduce(union, lapply(fingerprints, names))
+fingerprint_mismatches <- fingerprint_keys[vapply(
+  fingerprint_keys,
+  function(key) {
+    values <- vapply(
+      fingerprints,
+      function(x) if (key %in% names(x)) x[[key]] else NA_character_,
+      character(1)
+    )
+    anyNA(values) || length(unique(values)) != 1L
+  },
+  logical(1)
+)]
+if (length(fingerprint_mismatches)) {
   stop(
-    "query-plan fingerprint differs across preparation/build/access",
+    "query-plan fingerprint differs across preparation/build/access: ",
+    paste(fingerprint_mismatches, collapse = ", "),
     call. = FALSE
   )
 }

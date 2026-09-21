@@ -51,7 +51,21 @@ export NOT_CRAN=true
 export BENCH_RUN_ID="$(read_manifest_value run_id)"
 export BENCH_STUDY_ID="$(read_manifest_value study_id)"
 export BENCH_PROFILE="$(read_manifest_value profile)"
-RESULT_ROOT="${BENCH_RESULT_ROOT:-$BENCH_ROOT/result/publication-full}"
+case "$BENCH_PROFILE" in
+  publication_scale)
+    DEFAULT_RESULT_ROOT="$BENCH_ROOT/result/publication-scale"
+    STATE_NAME="publication-scale"
+    ;;
+  publication|panel_c1|panel_c2)
+    DEFAULT_RESULT_ROOT="$BENCH_ROOT/result/publication-full"
+    STATE_NAME="publication-full"
+    ;;
+  *)
+    echo "retained run is not a publication profile: $BENCH_PROFILE" >&2
+    exit 1
+    ;;
+esac
+RESULT_ROOT="${BENCH_RESULT_ROOT:-$DEFAULT_RESULT_ROOT}"
 STATE_DIR="${BENCH_STATE_DIR:-/home/xuesong/.cache/cerebronexus-benchmark/runner}"
 
 echo "==> resuming completed measurements: $BENCH_RUN_ID"
@@ -83,7 +97,7 @@ Rscript "$BENCH_ROOT/src/50_check_outputs.R" "$STAGE"
 Rscript "$BENCH_ROOT/src/60_publish_results.R" \
   "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID"
 mkdir -p "$STATE_DIR"
-printf '0\n' > "$STATE_DIR/publication-full.exit.tmp"
-mv -f -- "$STATE_DIR/publication-full.exit.tmp" \
-  "$STATE_DIR/publication-full.exit"
+printf '0\n' > "$STATE_DIR/$STATE_NAME.exit.tmp"
+mv -f -- "$STATE_DIR/$STATE_NAME.exit.tmp" \
+  "$STATE_DIR/$STATE_NAME.exit"
 echo "==> recovered and published: $RESULT_ROOT/runs/$BENCH_RUN_ID"
