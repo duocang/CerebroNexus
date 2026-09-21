@@ -644,10 +644,35 @@ test_that("validator CLI accepts complete results and rejects drift", {
     row.names = FALSE
   )
   utils::write.csv(access, file.path(stage, "20_access.csv"), row.names = FALSE)
+  manifest <- c(
+    study_id = "fixture-study",
+    run_id = "run-1",
+    profile = "quick",
+    generated_at = "2026-09-21T12:00:00+0000",
+    git_sha = paste(rep("a", 40), collapse = ""),
+    git_branch = "test",
+    git_dirty = "false",
+    package_version = "5.2.0",
+    r_version = R.version.string,
+    r_platform = R.version$platform,
+    os = "test",
+    cpu = "test",
+    logical_cores = "1",
+    benchmark_threads = "1",
+    scratch_df = "fixture",
+    storage_description = "fixture storage",
+    memory_mb = "1024",
+    r_vector_limit_mb = "32768",
+    package_Matrix = "fixture",
+    package_rhdf5 = "fixture",
+    package_BPCells = "fixture",
+    package_HDF5Array = "fixture",
+    package_CerebroNexus = "5.2.0"
+  )
   utils::write.csv(
     data.frame(
-      key = c("run_id", "profile", "git_sha"),
-      value = c("run-1", "quick", paste(rep("a", 40), collapse = ""))
+      key = names(manifest),
+      value = unname(manifest)
     ),
     file.path(stage, "run_manifest.csv"),
     row.names = FALSE

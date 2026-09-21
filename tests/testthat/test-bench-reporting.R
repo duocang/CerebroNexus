@@ -515,11 +515,13 @@ test_that("publication-full report and figure use one frozen study", {
       profile = profile,
       generated_at = "2026-09-08T12:00:00+0000",
       git_sha = paste(rep("c", 40), collapse = ""),
+      git_branch = "test",
       git_dirty = "false",
       r_version = "R 4.6.1",
       r_platform = "x86_64-pc-linux-gnu",
       os = "Linux fixture",
       cpu = "fixture CPU",
+      logical_cores = "1",
       benchmark_threads = "1",
       storage_description = "local NVMe ext4",
       scratch_df = "fixture",
@@ -562,7 +564,18 @@ test_that("publication-full report and figure use one frozen study", {
       exit_code = integer(),
       stringsAsFactors = FALSE
     )
+    probe <- data.frame(
+      label = names(source_hashes),
+      n_cells = c(1000, 2000),
+      n_genes = c(100, 100),
+      nnz = c(10000, 20000),
+      nnz_per_cell = c(10, 10),
+      dgc_gb_full = c(0.001, 0.002),
+      dgc_representable = c(TRUE, TRUE),
+      stringsAsFactors = FALSE
+    )
     files <- list(
+      "00_probe.csv" = probe,
       "05_schedule.csv" = schedule,
       "10_export.csv" = exports,
       "20_access.csv" = access,
@@ -669,12 +682,34 @@ test_that("publication-full report and figure use one frozen study", {
     file.path(out, "query_panel.csv"),
     stringsAsFactors = FALSE
   )
-  expect_equal(nrow(query_panel), 96L)
+  expect_equal(
+    nrow(query_panel),
+    sum(vapply(
+      c("ab", "c1", "c2"),
+      function(phase) {
+        nrow(utils::read.csv(
+          file.path(root, phase, "query_panel.csv")
+        ))
+      },
+      integer(1)
+    ))
+  )
   correctness <- utils::read.csv(
     file.path(out, "correctness.csv"),
     stringsAsFactors = FALSE
   )
-  expect_equal(correctness$total, c(72L, 36L, 24L))
+  expect_equal(
+    correctness$total,
+    unname(vapply(
+      correctness$panel,
+      function(phase) {
+        nrow(utils::read.csv(
+          file.path(root, phase, "20_access.csv")
+        ))
+      },
+      integer(1)
+    ))
+  )
   expect_true(all(correctness$all_passed))
   summary <- readLines(file.path(out, "summary.md"), warn = FALSE)
   expect_true(any(grepl("independent processes", summary, fixed = TRUE)))

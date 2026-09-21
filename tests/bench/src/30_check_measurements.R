@@ -59,11 +59,28 @@ if (
     manifest_values[["package_version.Version"]]
 }
 required_manifest <- c(
-  "study_id", "run_id", "profile", "generated_at", "git_sha", "git_branch",
-  "git_dirty", "package_version", "r_version", "r_platform", "os", "cpu",
-  "logical_cores", "benchmark_threads", "scratch_df",
-  "storage_description", "memory_mb", "r_vector_limit_mb",
-  "package_Matrix", "package_rhdf5", "package_BPCells", "package_HDF5Array",
+  "study_id",
+  "run_id",
+  "profile",
+  "generated_at",
+  "git_sha",
+  "git_branch",
+  "git_dirty",
+  "package_version",
+  "r_version",
+  "r_platform",
+  "os",
+  "cpu",
+  "logical_cores",
+  "benchmark_threads",
+  "scratch_df",
+  "storage_description",
+  "memory_mb",
+  "r_vector_limit_mb",
+  "package_Matrix",
+  "package_rhdf5",
+  "package_BPCells",
+  "package_HDF5Array",
   "package_CerebroNexus"
 )
 if (!all(required_manifest %in% names(manifest_values))) {
@@ -73,7 +90,12 @@ required_values <- manifest_values[required_manifest]
 if (any(is.na(required_values) | !nzchar(trimws(required_values)))) {
   stop(
     "run manifest contains blank required provenance: ",
-    paste(names(required_values)[is.na(required_values) | !nzchar(trimws(required_values))], collapse = ", "),
+    paste(
+      names(required_values)[
+        is.na(required_values) | !nzchar(trimws(required_values))
+      ],
+      collapse = ", "
+    ),
     call. = FALSE
   )
 }
@@ -212,10 +234,12 @@ fingerprints <- list(
   access = fingerprint_for(access)
 )
 fingerprint_keys <- Reduce(union, lapply(fingerprints, names))
-fingerprint_matrix <- vapply(
-  fingerprints,
-  function(x) unname(x[match(fingerprint_keys, names(x))]),
-  character(length(fingerprint_keys))
+fingerprint_matrix <- do.call(
+  cbind,
+  lapply(
+    fingerprints,
+    function(x) unname(x[match(fingerprint_keys, names(x))])
+  )
 )
 fingerprint_mismatches <- fingerprint_keys[apply(
   fingerprint_matrix,
