@@ -98,7 +98,7 @@ manifest <- c(
   git_sha = git_value("rev-parse", "HEAD"),
   git_branch = git_value("branch", "--show-current"),
   git_dirty = if (nzchar(status)) "true" else "false",
-  package_version = description[1, "Version"],
+  package_version = unname(description[1, "Version"]),
   r_version = R.version.string,
   r_platform = R.version$platform,
   os = paste(Sys.info()[c("sysname", "release", "version")], collapse = " "),

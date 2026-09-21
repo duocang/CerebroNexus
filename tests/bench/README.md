@@ -72,6 +72,17 @@ bash tests/bench/update_and_run_publication_full.sh
 
 Use `bash tests/bench/update_and_run_publication_full.sh status` for the current PID or final exit status. The launcher prints the absolute log path when it starts.
 
+If all timed measurements finished but a later validation, reporting, or
+figure step failed, do not repeat the acquisition. Finalize the retained,
+marker-protected scratch directory with:
+
+```bash
+bash tests/bench/resume_publication_from_scratch.sh /path/to/cerebro-bench.XXXXXX
+```
+
+The recovery command reruns only validation, reporting, figures, checksums, and
+immutable publication. It never reruns builds or access measurements.
+
 ## Harness development
 
 `quick`, `standard`, and `stress` remain sampled smoke/development profiles for changing the harness. They are not publication evidence and are not called by `run_publication_full.sh`.

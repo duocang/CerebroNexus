@@ -48,6 +48,16 @@ if (
   stop("run manifest must contain unique key/value rows", call. = FALSE)
 }
 manifest_values <- stats::setNames(as.character(manifest$value), manifest$key)
+# Runs created before the manifest-name fix inherited the DCF column name and
+# wrote `package_version.Version`. Accept that exact legacy spelling so a fully
+# completed acquisition can be finalized without repeating timed measurements.
+if (
+  !"package_version" %in% names(manifest_values) &&
+    "package_version.Version" %in% names(manifest_values)
+) {
+  manifest_values[["package_version"]] <-
+    manifest_values[["package_version.Version"]]
+}
 required_manifest <- c(
   "study_id", "run_id", "profile", "generated_at", "git_sha", "git_branch",
   "git_dirty", "package_version", "r_version", "r_platform", "os", "cpu",

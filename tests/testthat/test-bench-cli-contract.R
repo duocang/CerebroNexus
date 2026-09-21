@@ -227,6 +227,22 @@ test_that("full-source sweep excludes Viewer checks", {
   expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
 })
 
+test_that("completed measurements have a report-only recovery path", {
+  skip_unless_bench_cli()
+  recovery <- paste(
+    readLines(
+      file.path(bench_root, "resume_publication_from_scratch.sh"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(recovery, ".cerebro-benchmark-scratch", fixed = TRUE)
+  expect_match(recovery, "30_check_measurements.R", fixed = TRUE)
+  expect_match(recovery, "60_publish_results.R", fixed = TRUE)
+  expect_false(grepl("11_build_full_backend.R", recovery, fixed = TRUE))
+  expect_false(grepl("20_measure_backend.R", recovery, fixed = TRUE))
+})
+
 test_that("Viewer validation is a separate CRB-driven workflow", {
   skip_unless_bench_cli()
   repo <- normalizePath(file.path(bench_root, "..", ".."))
