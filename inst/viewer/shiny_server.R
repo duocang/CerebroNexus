@@ -575,11 +575,28 @@ server <- function(input, output, session) {
     )
   })
 
+  datasetLoadProgress <- function(label, percent, detail, done = FALSE) {
+    session$sendCustomMessage(
+      "cerebro_dataset_load",
+      list(
+        label = as.character(label %||% "Dataset"),
+        percent = max(0, min(100, as.numeric(percent))),
+        detail = as.character(detail %||% ""),
+        done = isTRUE(done)
+      )
+    )
+  }
+
   ## create reactive value holding the current data set
   data_set <- reactive({
     req(!is.null(available_crb_files$selected))
     req(isTRUE(dataset_load_requested()))
     dataset_to_load <- available_crb_files$selected
+    dataset_label <- viewerDatasetName(
+      available_crb_files$files,
+      dataset_to_load
+    )
+    datasetLoadProgress(dataset_label, 8, "Preparing dataset")
     if (exists(dataset_to_load)) {
       print(glue::glue(
         "[{Sys.time()}] Load data set from variable: {dataset_to_load}"
@@ -613,6 +630,11 @@ server <- function(input, output, session) {
         if (!is.null(prefetch_task)) {
           status <- prefetch_task$status()
           if (status %in% c("initial", "running")) {
+            datasetLoadProgress(
+              dataset_label,
+              24,
+              "Reading dataset in the background"
+            )
             prefetch_task$result()
           } else if (identical(status, "success")) {
             prefetched <- prefetch_task$result()
@@ -645,12 +667,14 @@ server <- function(input, output, session) {
           }
         }
       }
+      datasetLoadProgress(dataset_label, 42, "Opening cells and metadata")
       data <- get_or_load_crb(
         dataset_to_load,
         backend_plan,
         configured_paths
       )
     }
+    datasetLoadProgress(dataset_label, 78, "Preparing viewer data")
     expression_is_deferred <- is.environment(data) &&
       exists("expression", envir = data, inherits = FALSE) &&
       isTRUE(rlang::env_binding_are_lazy(data, "expression"))
@@ -679,7 +703,9 @@ server <- function(input, output, session) {
     } else {
       NULL
     }
+    datasetLoadProgress(dataset_label, 94, "Finalizing the workspace")
     attr(data, "cerebro_viewer_pack") <- viewer_pack
+    datasetLoadProgress(dataset_label, 100, "Ready", done = TRUE)
     ## return loaded data
     return(data)
   })

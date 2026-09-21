@@ -290,4 +290,100 @@
       );
     }
   });
+
+  ready(function () {
+    var overlay = null;
+    var startedAt = 0;
+    var elapsedTimer = null;
+    var hideTimer = null;
+    var installed = false;
+
+    function ensureOverlay() {
+      if (overlay) return overlay;
+      overlay = document.createElement("div");
+      overlay.id = "cerebro-dataset-loading";
+      overlay.className = "cerebro-dataset-loading";
+      overlay.hidden = true;
+      overlay.setAttribute("role", "status");
+      overlay.setAttribute("aria-live", "polite");
+      overlay.setAttribute("aria-atomic", "true");
+      overlay.innerHTML =
+        '<div class="cerebro-dataset-loading-card">' +
+        '<div class="cerebro-dataset-loading-kicker">Loading dataset</div>' +
+        '<div class="cerebro-dataset-loading-label"></div>' +
+        '<div class="cerebro-dataset-loading-detail"></div>' +
+        '<div class="cerebro-dataset-loading-track" aria-hidden="true">' +
+        '<span></span></div>' +
+        '<div class="cerebro-dataset-loading-meta">' +
+        '<span class="cerebro-dataset-loading-percent">0%</span>' +
+        '<span class="cerebro-dataset-loading-elapsed">0.0 s</span>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+      return overlay;
+    }
+
+    function elapsedText() {
+      return ((window.performance.now() - startedAt) / 1000).toFixed(1) + " s";
+    }
+
+    function begin(label, detail) {
+      var element = ensureOverlay();
+      window.clearTimeout(hideTimer);
+      if (element.hidden) startedAt = window.performance.now();
+      element.hidden = false;
+      document.body.classList.add("cerebro-dataset-is-loading");
+      element.querySelector(".cerebro-dataset-loading-label").textContent =
+        label || "Dataset";
+      element.querySelector(".cerebro-dataset-loading-detail").textContent =
+        detail || "Preparing dataset";
+      window.clearInterval(elapsedTimer);
+      elapsedTimer = window.setInterval(function () {
+        if (!overlay || overlay.hidden) return;
+        overlay.querySelector(".cerebro-dataset-loading-elapsed").textContent =
+          elapsedText();
+      }, 100);
+    }
+
+    function update(message) {
+      message = message || {};
+      begin(message.label, message.detail);
+      var percent = Math.max(0, Math.min(100, Number(message.percent) || 0));
+      overlay.querySelector(".cerebro-dataset-loading-track span").style.width =
+        percent + "%";
+      overlay.querySelector(".cerebro-dataset-loading-percent").textContent =
+        Math.round(percent) + "%";
+      overlay.querySelector(".cerebro-dataset-loading-elapsed").textContent =
+        elapsedText();
+      if (message.done) {
+        window.clearInterval(elapsedTimer);
+        hideTimer = window.setTimeout(function () {
+          overlay.hidden = true;
+          document.body.classList.remove("cerebro-dataset-is-loading");
+        }, 350);
+      }
+    }
+
+    function install() {
+      if (installed || typeof window.Shiny === "undefined" ||
+          !window.Shiny.addCustomMessageHandler) return;
+      installed = true;
+      window.Shiny.addCustomMessageHandler("cerebro_dataset_load", update);
+    }
+
+    if (window.jQuery) {
+      window.jQuery(document)
+        .on("shiny:connected.cerebroDatasetProgress", install)
+        .on("shiny:inputchanged.cerebroDatasetProgress", function (event) {
+          if (event.name !== "crb_file_selector" && event.name !== "input_file") return;
+          var label = "Dataset";
+          if (event.name === "crb_file_selector") {
+            var select = document.getElementById("crb_file_selector");
+            var selected = select && select.options[select.selectedIndex];
+            label = selected ? selected.textContent : String(event.value || label);
+          }
+          begin(label, "Waiting for the server");
+        });
+    }
+    install();
+  });
 }());
