@@ -52,7 +52,7 @@
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
 #  > "pandoc",
-#  > "poppler_utils"),
+#  > "poppler-utils"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
 #  > commit = bpcells_sha)),
@@ -163,15 +163,14 @@ let
       };
     });
       
-  system_packages = builtins.attrValues {
+  system_packages = (builtins.attrValues {
     inherit (pkgs) 
       chromium
       glibcLocales
       nix
       pandoc
-      poppler_utils
       R;
-  };
+  }) ++ [ pkgs."poppler-utils" ];
   
   shell = pkgs.mkShell {
     LOCALE_ARCHIVE = if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "${pkgs.glibcLocales}/lib/locale/locale-archive" else "";
