@@ -52,8 +52,18 @@ export BENCH_RUN_ID="$(read_manifest_value run_id)"
 export BENCH_STUDY_ID="$(read_manifest_value study_id)"
 export BENCH_PROFILE="$(read_manifest_value profile)"
 RESULT_ROOT="${BENCH_RESULT_ROOT:-$BENCH_ROOT/result/publication-full}"
+STATE_DIR="${BENCH_STATE_DIR:-/home/xuesong/.cache/cerebronexus-benchmark/runner}"
 
 echo "==> resuming completed measurements: $BENCH_RUN_ID"
+Rscript -e '
+  path <- commandArgs(TRUE)[1]
+  m <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  old <- m$key == "package_version.Version"
+  if (!any(m$key == "package_version") && sum(old) == 1L) {
+    m$key[old] <- "package_version"
+    write.csv(m, path, row.names = FALSE, na = "")
+  }
+' "$MANIFEST"
 Rscript "$BENCH_ROOT/src/30_check_measurements.R" "$STAGE"
 Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE"
 mkdir -p "$STAGE/logs"
@@ -63,4 +73,8 @@ Rscript "$BENCH_ROOT/src/49_write_evidence_manifest.R" "$STAGE"
 Rscript "$BENCH_ROOT/src/50_check_outputs.R" "$STAGE"
 Rscript "$BENCH_ROOT/src/60_publish_results.R" \
   "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID"
+mkdir -p "$STATE_DIR"
+printf '0\n' > "$STATE_DIR/publication-full.exit.tmp"
+mv -f -- "$STATE_DIR/publication-full.exit.tmp" \
+  "$STATE_DIR/publication-full.exit"
 echo "==> recovered and published: $RESULT_ROOT/runs/$BENCH_RUN_ID"
