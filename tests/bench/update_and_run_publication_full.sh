@@ -110,7 +110,8 @@ if command -v pgrep >/dev/null 2>&1; then
   [ -z "$old_pids" ] || fail "检测到未受本脚本管理的 benchmark 进程：$old_pids"
 fi
 
-tracked=$(git -C "$REPO" status --porcelain --untracked-files=no)
+tracked=$(git -C "$REPO" status --porcelain --untracked-files=no -- \
+  . ":(exclude,glob)tests/bench/result/**")
 [ -z "$tracked" ] || {
   printf '%s\n' "$tracked" >&2
   fail "仓库有已跟踪文件改动，拒绝覆盖"
@@ -156,7 +157,8 @@ done
 rm -f -- "$PID_FILE" "$EXIT_FILE" "$LOG_FILE"
 ok "source cache 已保留：$SOURCE_CACHE"
 
-dirty=$(git -C "$REPO" status --porcelain --untracked-files=all)
+dirty=$(git -C "$REPO" status --porcelain --untracked-files=all -- \
+  . ":(exclude,glob)tests/bench/result/**")
 [ -z "$dirty" ] || {
   printf '%s\n' "$dirty" >&2
   fail "清理后仓库仍不干净，拒绝启动"

@@ -38,7 +38,8 @@ if [[ ! "$BENCH_STUDY_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   exit 1
 fi
 
-tracked=$(git -C "$REPO" status --porcelain --untracked-files=no)
+tracked=$(git -C "$REPO" status --porcelain --untracked-files=no -- \
+  . ":(exclude,glob)tests/bench/result/**")
 untracked=$(git -C "$REPO" ls-files --others --exclude-standard -- \
   . ":(exclude,glob)tests/bench/result/**" \
   ":(exclude,glob)tests/bench/study-work/**")

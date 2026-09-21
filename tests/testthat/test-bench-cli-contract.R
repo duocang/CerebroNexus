@@ -91,9 +91,11 @@ test_that("publication wrappers select their profile and unified runner", {
   expect_match(scale, "BENCH_PROFILE=publication_scale", fixed = TRUE)
   expect_match(scale, "result/publication-scale", fixed = TRUE)
   expect_match(scale, "run_benchmark.sh", fixed = TRUE)
+  expect_match(scale, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
   expect_match(full, "BENCH_PROFILE=panel_c2", fixed = TRUE)
   expect_match(full, "result/publication-full", fixed = TRUE)
   expect_match(full, "run_benchmark.sh", fixed = TRUE)
+  expect_match(full, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
 })
 
 test_that("schedule CLI includes embedded through 500k", {
@@ -143,6 +145,11 @@ test_that("manifest CLI records the run identity", {
   expect_equal(values[["run_id"]], "test-run")
   expect_equal(values[["benchmark_threads"]], "3")
   expect_match(values[["git_sha"]], "^[0-9a-f]{40}$")
+  cli <- paste(
+    readLines(file.path(bench_root, "benchmark_cli.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(cli, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
 })
 
 test_that("source cache reuses only verified files", {

@@ -151,7 +151,14 @@ if (identical(command, "inspect")) {
   }
 
   description <- read.dcf(file.path(repo, "DESCRIPTION"))
-  tracked_status <- git_value("status", "--porcelain", "--untracked-files=no")
+  tracked_status <- git_value(
+    "status",
+    "--porcelain",
+    "--untracked-files=no",
+    "--",
+    ".",
+    ":(exclude,glob)tests/bench/result/**"
+  )
   untracked_status <- git_value(
     "ls-files",
     "--others",
