@@ -47,7 +47,7 @@ if (!requireNamespace("systemfonts", quietly = TRUE)) {
 
 FONT_FAMILY <- "Arial"
 FIGURE_WIDTH_MM <- 178
-FIGURE_HEIGHT_MM <- 200
+FIGURE_HEIGHT_MM <- 132
 COLOUR_DPI <- 350
 OKABE_ITO <- c(BPCells = "#0072B2", H5 = "#E69F00")
 
@@ -174,8 +174,9 @@ theme_bioinformatics <- function(show_legend = FALSE) {
       axis.ticks.length = grid::unit(1.4, "mm"),
       strip.background = element_blank(),
       strip.text = element_text(size = 7, face = "plain", colour = "black"),
-      plot.margin = margin(3, 4, 3, 3, unit = "mm"),
-      legend.position = if (show_legend) c(0.78, 0.83) else "none",
+      strip.placement = "outside",
+      plot.margin = margin(5, 6, 3, 5, unit = "mm"),
+      legend.position = if (show_legend) c(0.78, 0.22) else "none",
       legend.background = element_rect(
         fill = scales::alpha("white", 0.88),
         colour = "black",
@@ -190,42 +191,58 @@ theme_bioinformatics <- function(show_legend = FALSE) {
         face = "bold",
         colour = "black"
       ),
-      plot.tag.position = c(0, 1)
+      plot.tag.position = c(0, 1.02)
     )
 }
 
-metric_plot <- function(
+dumbbell_plot <- function(
   summary,
-  y_label,
+  x_label,
   log_scale = FALSE,
-  show_legend = FALSE
+  show_legend = FALSE,
+  facet_columns = NULL,
+  facet_ncol = 1L
 ) {
-  dodge <- position_dodge(width = 0.48)
   plot <- ggplot(
     summary,
     aes(
-      x = source_label,
-      y = median,
+      x = median,
+      y = source_label,
       colour = backend_label,
       shape = backend_label,
-      group = backend_label
+      group = source_label
     )
   ) +
-    geom_errorbar(
-      aes(ymin = minimum, ymax = maximum),
-      position = dodge,
-      width = 0.12,
-      linewidth = 0.42
+    geom_line(
+      colour = "grey68",
+      linewidth = 0.5,
+      aes(group = interaction(source_label, metric))
     ) +
-    geom_point(position = dodge, size = 2.1, stroke = 0.7) +
+    geom_errorbar(
+      aes(xmin = minimum, xmax = maximum),
+      orientation = "y",
+      width = 0.11,
+      linewidth = 0.45
+    ) +
+    geom_point(size = 2.35, stroke = 0.75) +
     scale_colour_manual(values = OKABE_ITO, drop = FALSE) +
     scale_shape_manual(values = c(BPCells = 16, H5 = 17), drop = FALSE) +
-    labs(x = NULL, y = y_label, colour = NULL, shape = NULL) +
+    labs(x = x_label, y = NULL, colour = NULL, shape = NULL) +
     theme_bioinformatics(show_legend)
+  if (!is.null(facet_columns)) {
+    plot <- plot + facet_wrap(
+      stats::as.formula(paste("~", facet_columns)),
+      ncol = facet_ncol,
+      scales = "free_x"
+    )
+  }
   if (log_scale) {
-    plot <- plot + scale_y_log10()
+    plot <- plot + scale_x_log10(
+      breaks = scales::breaks_log(n = 3),
+      labels = scales::label_number(accuracy = 0.01)
+    )
   } else {
-    plot <- plot + expand_limits(y = 0)
+    plot <- plot + expand_limits(x = 0)
   }
   plot
 }
@@ -235,47 +252,68 @@ storage <- summarise_metric(exports, "total_mb", scale = 1024)
 startup <- summarise_metric(access, "startup_secs")
 hot <- summarise_metric(access, "hot_p50_secs")
 
-memory <- rbind(
-  summarise_metric(access, "rss_mb", label = "Resident RSS"),
-  summarise_metric(access, "peak_rss_mb", label = "Peak RSS")
+resources <- rbind(
+  summarise_metric(access, "startup_secs", label = "Hydrated startup (s)"),
+  summarise_metric(access, "rss_mb", label = "Resident RSS (MB)"),
+  summarise_metric(access, "peak_rss_mb", label = "Peak RSS (MB)")
 )
-memory$metric <- factor(memory$metric, levels = c("Resident RSS", "Peak RSS"))
+resources$metric <- factor(
+  resources$metric,
+  levels = c("Hydrated startup (s)", "Resident RSS (MB)", "Peak RSS (MB)")
+)
 
 blocks <- rbind(
+  summarise_metric(
+    access,
+    "hot_p50_secs",
+    label = "1 gene, all cells"
+  ),
   summarise_metric(access, "block_secs", label = "12 genes, all cells"),
   summarise_metric(
     access,
     "subset_row_secs",
-    label = "1 gene, 100k non-contiguous cells"
+    label = "1 gene, 100k cells"
   ),
   summarise_metric(
     access,
     "subset_block_secs",
-    label = "12 genes, 100k non-contiguous cells"
+    label = "12 genes, 100k cells"
   )
 )
 blocks$metric <- factor(
   blocks$metric,
   levels = c(
+    "1 gene, all cells",
     "12 genes, all cells",
-    "1 gene, 100k non-contiguous cells",
-    "12 genes, 100k non-contiguous cells"
+    "1 gene, 100k cells",
+    "12 genes, 100k cells"
   )
 )
 
-p_a <- metric_plot(build, "Backend construction time (s)", show_legend = TRUE)
-p_b <- metric_plot(storage, "Stored size (GB)")
-p_c <- metric_plot(startup, "Hydrated startup time (s)")
-p_d <- metric_plot(memory, "Process memory (MB)") +
-  facet_wrap(~metric, ncol = 1)
-p_e <- metric_plot(hot, "Warmed single-gene latency (s)", log_scale = TRUE)
-p_f <- metric_plot(blocks, "Expression access latency (s)", log_scale = TRUE) +
-  facet_wrap(~metric, ncol = 1, scales = "free_y") +
-  theme(strip.text = element_text(size = 6.4, family = FONT_FAMILY))
+p_a <- dumbbell_plot(
+  build,
+  "Backend construction time (s)",
+  show_legend = TRUE
+)
+p_b <- dumbbell_plot(storage, "Stored size (GB)")
+p_c <- dumbbell_plot(
+  resources,
+  NULL,
+  facet_columns = "metric",
+  facet_ncol = 1L
+) +
+  theme(strip.text = element_text(size = 6.6, family = FONT_FAMILY))
+p_d <- dumbbell_plot(
+  blocks,
+  "Expression access latency (s; log scale)",
+  log_scale = TRUE,
+  facet_columns = "metric",
+  facet_ncol = 2L
+) +
+  theme(strip.text = element_text(size = 6.2, family = FONT_FAMILY))
 
 figure <- (p_a | p_b) /
-  (p_c | p_d) /
-  (p_e | p_f) +
+  (p_c | p_d) +
   plot_annotation(
     tag_levels = "a",
     tag_prefix = "(",
@@ -289,7 +327,7 @@ figure <- (p_a | p_b) /
       )
     )
   ) +
-  plot_layout(heights = c(1, 1.25, 1.42))
+  plot_layout(heights = c(0.72, 1.28))
 
 pdf_path <- file.path(output_dir, "expression_backend_benchmark.pdf")
 tiff_path <- file.path(output_dir, "expression_backend_benchmark.tiff")
@@ -351,15 +389,15 @@ legend <- c(
   paste0(
     "(a) Backend construction time. (b) Total stored size of the CRB and its ",
     "external expression-backend sibling. (c) Fresh-process hydrated startup ",
-    "through `readCerebro()`. (d) Resident and peak process memory after ",
-    "hydration. (e) Warmed full-cell single-gene expression access. (f) ",
-    "Full-cell 12-gene access and deterministic reverse-ordered, ",
-    "non-contiguous access over up to 100,000 cells."
+    "through `readCerebro()` and resident/peak process memory after hydration. ",
+    "(d) Warmed full-cell expression access and deterministic reverse-ordered, ",
+    "non-contiguous access over up to 100,000 cells. Grey connectors join the ",
+    "two backend medians for the same complete dataset."
   ),
   paste0(
     "Points show medians and error bars show the observed minimum-to-maximum ",
     "range across three independent builds in (a,b) and six independent ",
-    "fresh access processes in (c-f). Error bars are observed ranges, not ",
+    "fresh access processes in (c,d). Error bars are observed ranges, not ",
     "95% confidence intervals. Both datasets were analysed at their complete ",
     "cell counts."
   )
