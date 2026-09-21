@@ -1,3 +1,0 @@
-Warning: Converting to a dense matrix may use excessive memory
-This message is displayed once every 8 hours.
-[01:30:51] bpcells: hydrated startup 3.74s, rss 760 MB, hot p50 0.6360s

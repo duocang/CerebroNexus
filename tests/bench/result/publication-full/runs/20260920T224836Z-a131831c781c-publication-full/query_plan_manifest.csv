@@ -1,3 +1,0 @@
-"run_id","profile","source","n_cells","n_genes","nnz","source_prepare_secs","query_plan_secs","peak_rss_mb","subset_n_cells","subset_cells_fingerprint","query_plan_fingerprint","status"
-"20260920T224836Z-a131831c781c-publication-full","panel_c2","mouse_brain_e18",1306127,27998,2624828308,2.51158332824707,167.640675783157,1286.671875,100000,"288646ed2ac29baf750d4f94c209df8e","c61f895e8f2b6fb6d3885f87f949f7af","OK"
-"20260920T224836Z-a131831c781c-publication-full","panel_c2","human_pfc_hbcc",1486324,34176,6111732728,2.90606141090393,605.14955496788,1407.4296875,100000,"a03fd967c1d6d77edf7b69f69d468fd4","2c364761b43946292a646e0f3e1e8bb6","OK"
