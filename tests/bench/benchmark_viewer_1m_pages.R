@@ -708,38 +708,42 @@ start_rss_monitor <- function(r_pid, chrome_pid) {
   ready_file <- paste0(result, ".ready")
   process <- callr::r_bg(
     function(r_pid, chrome_pid, result, stop_file, ready_file) {
-      tree_rss <- function(root, processes) {
-        members <- root
-        repeat {
-          children <- processes$pid[processes$ppid %in% members]
-          children <- setdiff(children, members)
-          if (!length(children)) {
-            break
-          }
-          members <- c(members, children)
+      tree_rss <- function(root) {
+        handle <- tryCatch(ps::ps_handle(root), error = function(error) NULL)
+        if (is.null(handle) || !ps::ps_is_running(handle)) {
+          return(NA_real_)
         }
-        sum(processes$rss[processes$pid %in% members], na.rm = TRUE)
+        children <- tryCatch(
+          ps::ps_children(handle, recursive = TRUE),
+          error = function(error) list()
+        )
+        rss <- vapply(
+          c(list(handle), children),
+          function(member) {
+            tryCatch(
+              unname(ps::ps_memory_info(member)[["rss"]]),
+              error = function(error) NA_real_
+            )
+          },
+          numeric(1L)
+        )
+        rss <- rss[is.finite(rss)]
+        if (!length(rss)) {
+          return(NA_real_)
+        }
+        sum(rss) / 1024
       }
-      peaks <- c(r_peak_rss_kib = 0, chrome_peak_rss_kib = 0)
+      update_peak <- function(current, observed) {
+        if (!is.finite(observed)) {
+          return(current)
+        }
+        if (!is.finite(current)) observed else max(current, observed)
+      }
+      peaks <- c(r_peak_rss_kib = NA_real_, chrome_peak_rss_kib = NA_real_)
       file.create(ready_file)
       repeat {
-        lines <- system2(
-          "ps",
-          c("-axo", "pid=,ppid=,rss="),
-          stdout = TRUE,
-          stderr = FALSE
-        )
-        processes <- tryCatch(
-          utils::read.table(
-            text = lines,
-            col.names = c("pid", "ppid", "rss")
-          ),
-          error = function(error) NULL
-        )
-        if (!is.null(processes)) {
-          peaks[[1L]] <- max(peaks[[1L]], tree_rss(r_pid, processes))
-          peaks[[2L]] <- max(peaks[[2L]], tree_rss(chrome_pid, processes))
-        }
+        peaks[[1L]] <- update_peak(peaks[[1L]], tree_rss(r_pid))
+        peaks[[2L]] <- update_peak(peaks[[2L]], tree_rss(chrome_pid))
         if (file.exists(stop_file)) {
           break
         }
@@ -766,7 +770,9 @@ start_rss_monitor <- function(r_pid, chrome_pid) {
 
 stop_rss_monitor <- function(monitor) {
   file.create(monitor$stop)
-  monitor$process$wait(5000)
+  # A recursive Windows process-tree sample can take several seconds. Give an
+  # in-flight sample time to finish and persist its peaks after the stop signal.
+  monitor$process$wait(30000)
   value <- if (file.exists(monitor$result)) {
     readRDS(monitor$result)
   } else {

@@ -25,6 +25,43 @@ For a balanced comparison, pass additional `LABEL=REPO_ROOT` candidates after th
 VIEWER_BENCH_PROFILE=publication Rscript tests/bench/benchmark_viewer_1m_pages.R baseline=/path/to/baseline /path/to/cerebro_mouse_brain_1m_pages.crb /path/to/viewer_1m_pages.tsv 5 candidate=/path/to/candidate
 ```
 
+On Windows, the reproducible wrapper resolves Git refs to immutable commits,
+creates or reuses clean detached worktrees, runs a balanced three-candidate
+comparison, and writes raw plus aggregated results outside the source tree:
+
+```powershell
+pwsh tests/bench/run_viewer_page_comparison.ps1 `
+  -Artifact C:\data\cerebro_mouse_brain_1m_pages.crb `
+  -Profile publication
+```
+
+The defaults compare the merge base before PR0 (`892097a1`), the fixed PR5
+reference (`6c9718d7`), and the current `temp/pr5-dead-code-prune-v2` tip. Refs
+are recorded together with their resolved SHA in `run-config.tsv`. The default
+output root is the `CerebroNexus-benchmarks` directory beside the repository.
+Each run writes `raw.tsv`, `raw_schedule.tsv`, `raw_manifest.tsv`, `run.log`,
+`page-summary.tsv`, `comparison.tsv`, and `page-summary.md`. Use `-Profile quick`
+for a one-round preflight, `-Pages overview,trajectory,spatial` to restrict a
+diagnostic run, and explicit `-BaselineRef`, `-ReferenceRef`, or `-CandidateRef`
+values to reproduce historical comparisons. Add `-Visits first` for a faster
+first-open smoke test. Publication runs should keep the default of measuring
+both `first` and `repeat` visits.
+
+For a reproducible first-open comparison in which each revision builds and
+uses its own Viewer Pack, run:
+
+```powershell
+pwsh tests/bench/run_viewer_release_comparison.ps1 `
+  -Artifact C:\data\cerebro_mouse_brain_1m_pages.crb `
+  -Rounds 3
+```
+
+This creates isolated hard-linked fixtures, builds one pack from the fixed PR5
+revision and one from the latest candidate revision, runs every available page
+three times with `VIEWER_VISITS_ONLY=first`, and stores raw data, manifests,
+logs, resolved Git SHAs, and summaries below the sibling
+`CerebroNexus-benchmarks` directory.
+
 > **Current status:** a complete five-round `publication` profile comparison between clean PR4 and PR5 revisions is recorded in `results/million_cell_pages_pr4_pr5_4_6_3.tsv`. All 140 observations passed status and correctness checks. The overall comparison does not pass the publication gate because both candidates contain budget failures. PR5 itself passes 11/14 page/visit gates; only its first-visit Gene Expression, Immune Repertoire, and Coordinated Views remain over budget. Use the run as a complete diagnostic comparison under its historical completion-ready Coordinated Views contract, not as a current primary-frame result. The archived pilot is retained for provenance only.
 
 ## Quick start
