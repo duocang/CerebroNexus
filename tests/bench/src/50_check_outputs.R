@@ -20,7 +20,7 @@ required <- c(
   "resource_check.csv", "run_manifest.csv", "source_manifest.csv",
   "summary.md", "evidence_manifest.csv"
 )
-if (identical(profile, "publication")) {
+if (profile %in% c("publication", "publication_scale")) {
   required <- c(
     required,
     file.path("figures", "expression_backend_benchmark_overview.png"),

@@ -24,11 +24,21 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     ),
     publication = list(
       name = "publication",
-      export_repeats = 3L,
+      export_repeats = 5L,
       access_repeats = 2L,
       query_genes = 12L,
       hot_iterations = 3L,
       include_scale_tiers = FALSE,
+      comparison_tier_mode = "all",
+      article_eligible = TRUE
+    ),
+    publication_scale = list(
+      name = "publication_scale",
+      export_repeats = 5L,
+      access_repeats = 2L,
+      query_genes = 12L,
+      hot_iterations = 3L,
+      include_scale_tiers = TRUE,
       comparison_tier_mode = "all",
       article_eligible = TRUE
     ),
@@ -44,7 +54,7 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     ),
     panel_c2 = list(
       name = "panel_c2",
-      export_repeats = 3L,
+      export_repeats = 5L,
       access_repeats = 2L,
       query_genes = 12L,
       hot_iterations = 3L,
@@ -68,11 +78,27 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     stop(
       "unknown benchmark profile: ",
       name,
-      "; expected quick, standard, publication, panel_c1, panel_c2, or stress",
+      paste0(
+        "; expected quick, standard, publication, publication_scale, ",
+        "panel_c1, panel_c2, or stress"
+      ),
       call. = FALSE
     )
   }
   profile
+}
+
+bench_publication_scale_schedule <- function(specs) {
+  sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
+  if (length(sources) != 2L) {
+    stop("publication scale requires the mouse and human sources", call. = FALSE)
+  }
+  bench_schedule(
+    specs,
+    "publication_scale",
+    sources = sources,
+    backends = c("bpcells", "h5")
+  )
 }
 
 bench_panel_c_schedule <- function(specs, part = c("c1", "c2")) {

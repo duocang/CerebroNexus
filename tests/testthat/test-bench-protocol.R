@@ -16,6 +16,7 @@ test_that("benchmark profiles separate smoke, review, and article evidence", {
   expect_equal(bench_profile("quick")$comparison_tier_mode, "smallest")
   expect_equal(bench_profile("standard")$export_repeats, 3L)
   expect_true(bench_profile("standard")$include_scale_tiers)
+  expect_equal(bench_profile("publication")$export_repeats, 5L)
   expect_equal(bench_profile("publication")$access_repeats, 2L)
   expect_equal(bench_profile("publication")$query_genes, 12L)
   expect_equal(bench_profile("publication")$hot_iterations, 3L)
@@ -26,6 +27,11 @@ test_that("benchmark profiles separate smoke, review, and article evidence", {
   )
   expect_false(bench_profile("standard")$article_eligible)
   expect_true(bench_profile("publication")$article_eligible)
+  expect_equal(bench_profile("publication_scale")$export_repeats, 5L)
+  expect_equal(bench_profile("publication_scale")$access_repeats, 2L)
+  expect_true(bench_profile("publication_scale")$include_scale_tiers)
+  expect_true(bench_profile("publication_scale")$article_eligible)
+  expect_equal(bench_profile("panel_c2")$export_repeats, 5L)
   expect_true(bench_profile("stress")$include_scale_tiers)
   expect_false(bench_profile("stress")$article_eligible)
   expect_false(bench_profile("publication")$include_scale_tiers)
@@ -72,7 +78,7 @@ test_that("quick schedules run only the smallest comparison tier", {
   expect_equal(nrow(schedule), 3L)
 })
 
-test_that("default sources share 50k and 150k comparison tiers", {
+test_that("default sources share the complete publication scale grid", {
   skip_unless_bench_protocol()
   source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
 
@@ -85,7 +91,10 @@ test_that("default sources share 50k and 150k comparison tiers", {
   ]
   expect_true(all(vapply(
     defaults,
-    function(source) all(c(50e3, 150e3) %in% source$comparison_tiers),
+    function(source) identical(
+      source$comparison_tiers,
+      c(1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6)
+    ),
     logical(1)
   )))
 })
@@ -118,7 +127,7 @@ test_that("Panel C2 is the exact two-backend full-source schedule", {
 
   schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c2")
 
-  expect_equal(nrow(schedule), 12L)
+  expect_equal(nrow(schedule), 20L)
   expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
   expect_equal(
     unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
@@ -130,6 +139,26 @@ test_that("Panel C2 is the exact two-backend full-source schedule", {
   )
   expect_true(all(schedule$access_repeats == 2L))
   expect_error(bench_panel_c_schedule(BENCH_SOURCES, "unknown"), "c1 or c2")
+})
+
+test_that("publication scale uses nine tiers, two backends, and five repeats", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+
+  schedule <- bench_publication_scale_schedule(BENCH_SOURCES)
+  expected_tiers <- c(
+    1e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6
+  )
+
+  expect_equal(nrow(schedule), 2L * 9L * 2L * 5L)
+  expect_setequal(unique(schedule$source), c(
+    "mouse_brain_e18", "human_pfc_hbcc"
+  ))
+  expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
+  expect_identical(sort(unique(schedule$n_cells)), expected_tiers)
+  expect_true(all(schedule$export_repeat %in% seq_len(5L)))
+  expect_true(all(schedule$access_repeats == 2L))
 })
 
 test_that("query panels are deterministic and span expression density", {

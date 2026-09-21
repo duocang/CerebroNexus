@@ -227,6 +227,21 @@ test_that("full-source sweep excludes Viewer checks", {
   expect_match(sweep, "BENCH_KEEP_ON_FAILURE", fixed = TRUE)
 })
 
+test_that("publication-scale wrapper is independent from full-source runs", {
+  skip_unless_bench_cli()
+  wrapper <- file.path(bench_root, "run_publication_scale.sh")
+  expect_true(file.exists(wrapper))
+  if (!file.exists(wrapper)) {
+    return()
+  }
+
+  body <- paste(readLines(wrapper, warn = FALSE), collapse = "\n")
+  expect_match(body, "BENCH_PROFILE=publication_scale", fixed = TRUE)
+  expect_match(body, "result/publication-scale", fixed = TRUE)
+  expect_match(body, "run_sweep.sh", fixed = TRUE)
+  expect_false(grepl("run_publication_full.sh", body, fixed = TRUE))
+})
+
 test_that("completed measurements have a report-only recovery path", {
   skip_unless_bench_cli()
   recovery <- paste(
@@ -297,7 +312,7 @@ test_that("benchmark docs scope publication evidence to expression backends", {
 
   expect_match(docs, "backend construction", fixed = TRUE)
   expect_match(docs, "expression access", fixed = TRUE)
-  expect_match(docs, "three independent", fixed = TRUE)
+  expect_match(docs, "five independent", fixed = TRUE)
   expect_false(grepl("21_viewer.csv", docs, fixed = TRUE))
   expect_false(grepl("Viewer gate", docs, fixed = TRUE))
 })

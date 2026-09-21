@@ -1,6 +1,9 @@
 # Real-data expression-backend benchmark
 
-The publication workflow compares CerebroNexus on two complete public single-cell matrices. It does not truncate either source or use 50k, 150k, or one-million-cell samples as publication evidence.
+The backend benchmark has two independent publication workflows. The scale
+study measures the same two public sources at 1k, 5k, 10k, 20k, 50k, 100k,
+200k, 500k, and 1m cells. The full-source study separately measures every cell
+in each source. Results and `CURRENT` pointers are never shared between them.
 
 This workflow measures expression backends only. Viewer validation is an
 independent smoke test under [`../viewer-validation`](../viewer-validation/)
@@ -46,17 +49,40 @@ The publication wrapper rejects source overrides and runs exactly this grid:
 
 | sources | cells | backends | builds | access processes |
 |---|---:|---|---:|---:|
-| 10x mouse brain E18 | 1,306,127 | bpcells, h5 | 6 | 12 |
-| PsychAD HBCC human PFC | 1,486,324 | bpcells, h5 | 6 | 12 |
+| 10x mouse brain E18 | 1,306,127 | bpcells, h5 | 10 | 20 |
+| PsychAD HBCC human PFC | 1,486,324 | bpcells, h5 | 10 | 20 |
 
 `embedded` is recorded as not representable because each complete matrix exceeds the 32-bit non-zero index limit of `Matrix::dgCMatrix`; it is not attempted on a smaller substitute.
 
 Each source has one frozen 12-gene query plan. Runtime measurements cover full-cell single-gene and 12-gene reads plus deterministic reverse-ordered, non-contiguous reads of up to 100,000 cells. CRBs are written with the default qs2 codec, BPCells uses CerebroNexus's production gene-major writer, and fresh-process startup uses `readCerebro()`.
 
-Validated runs are published under `result/publication-full/runs/<run-id>/`;
-`CURRENT` changes last. Every published run includes `evidence_manifest.csv`,
-which records the byte size and MD5 checksum of every raw table, log, report,
-and figure in the evidence package.
+Every source/backend pair has five independent builds. Each built artifact is
+opened by two independent access processes. Backend order alternates by repeat.
+
+## Publication scale run
+
+The scale study is intentionally separate from the complete-source study. It
+uses BPCells and H5 at all nine fixed cell-count tiers, with five independent
+builds and two access processes per build. Run it from the same clean checkout
+and reuse the same external source cache:
+
+```bash
+BENCH_THREADS=1 \
+  BENCH_SOURCE_CACHE=/home/xuesong/.cache/cerebronexus-benchmark/sources \
+  BENCH_SCRATCH_PARENT=/home/xuesong/.cache/cerebronexus-benchmark/scratch \
+  BENCH_STORAGE_DESCRIPTION="local NVMe; ext4; model=<model>" \
+  bash tests/bench/run_publication_scale.sh
+```
+
+Its immutable results are written under
+`tests/bench/result/publication-scale/`; it neither reads nor replaces
+`tests/bench/result/publication-full/`.
+
+Validated runs are published under the selected workflow's
+`result/publication-{scale,full}/runs/<run-id>/` directory; its own `CURRENT`
+changes last. Every published run includes `evidence_manifest.csv`, which
+records the byte size and MD5 checksum of every raw table, log, report, and
+figure in the evidence package.
 
 ### Remote rerun on the benchmark host
 
@@ -101,6 +127,7 @@ The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_view
 | script | purpose |
 |---|---|
 | `run_publication_full.sh` | run the exact complete-source publication protocol |
+| `run_publication_scale.sh` | run the independent nine-tier scale protocol |
 | `run_sweep.sh` | execute and immutably publish one profile |
 | `01_inspect_data.R` | inspect source dimensions and sparsity |
 | `02_record_environment.R` | record code, machine, storage, and dependencies |

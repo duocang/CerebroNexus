@@ -14,7 +14,9 @@ source(file.path(here, "config", "sources.R"))
 source(file.path(here, "lib", "protocol.R"))
 
 profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
-schedule <- if (profile$name %in% c("panel_c1", "panel_c2")) {
+schedule <- if (identical(profile$name, "publication_scale")) {
+  bench_publication_scale_schedule(BENCH_SOURCES)
+} else if (profile$name %in% c("panel_c1", "panel_c2")) {
   bench_panel_c_schedule(BENCH_SOURCES, sub("panel_c", "c", profile$name))
 } else {
   bench_schedule(

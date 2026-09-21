@@ -215,7 +215,9 @@ echo "==> writing report"
 Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE" 2>&1 \
   | tee "$LOG_DIR/report.log" || exit 1
 
-if [ "$BENCH_PROFILE" = "publication" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
+if [ "$BENCH_PROFILE" = "publication" ] || \
+   [ "$BENCH_PROFILE" = "publication_scale" ] || \
+   [ "$BENCH_PROFILE" = "panel_c2" ]; then
   echo "==> drawing publication figures"
   Rscript "$BENCH_ROOT/src/41_draw_figures.R" "$STAGE" "$STAGE/figures" \
     > "$LOG_DIR/figures.log" 2>&1 || {
