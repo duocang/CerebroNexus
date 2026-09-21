@@ -896,6 +896,15 @@ test_that("Linked views does not duplicate immutable bundle data", {
 
   expect_true(all(c("x", "y") %in% names(bundle$projections$umap)))
   expect_false(any(c("x", "y", "z") %in% names(expression_space)))
+  javascript <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
+    collapse = "\n"
+  )
+  expect_match(
+    javascript,
+    "s.id !== 'expression' && s.id !== 'spatial'",
+    fixed = TRUE
+  )
   expect_null(bundle$cell_fingerprint)
 })
 

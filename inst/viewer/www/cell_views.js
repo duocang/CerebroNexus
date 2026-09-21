@@ -5620,7 +5620,7 @@
       if (spaceById[id]) out.push(id);
     });
     D.spaces.forEach(function (s) {
-      if (s.id !== 'umap' && s.id !== 'spatial' && out.indexOf(s.id) < 0) {
+      if (s.id !== 'expression' && s.id !== 'spatial' && out.indexOf(s.id) < 0) {
         out.push(s.id);
       }
     });
