@@ -54,3 +54,4 @@ tests/bench/result/**/logs/
 tests/bench/study-work/
 tests/bench/scratch/
 tests/viewer-validation/result/
+paper/figures/output/
