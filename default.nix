@@ -48,9 +48,11 @@
 #  > "tidyr",
 #  > "tidyselect",
 #  > "stringdist",
+#  > "systemfonts",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
-#  > "pandoc"),
+#  > "pandoc",
+#  > "poppler_utils"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
 #  > commit = bpcells_sha)),
@@ -117,6 +119,7 @@ let
       shinyWidgets
       stringdist
       stringr
+      systemfonts
       testthat
       tibble
       tidyr
@@ -166,6 +169,7 @@ let
       glibcLocales
       nix
       pandoc
+      poppler_utils
       R;
   };
   

@@ -96,11 +96,13 @@ rix(
     "tidyr",
     "tidyselect",
     "stringdist",
+    "systemfonts",
     "visNetwork"
   ),
   system_pkgs = c(
     "chromium", # headless browser for shinytest2
-    "pandoc" # required for building vignettes
+    "pandoc", # required for building vignettes
+    "poppler_utils" # pdffonts for publication-figure font audits
   ),
   git_pkgs = list(
     # BPCells is not on CRAN, install from GitHub
