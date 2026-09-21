@@ -2,10 +2,10 @@
 #
 # Repeated, correctness-checked expression-backend benchmark on real data.
 #
-#   BENCH_PROFILE=quick tests/bench/run_sweep.sh
-#   BENCH_PROFILE=standard tests/bench/run_sweep.sh
-#   BENCH_PROFILE=publication tests/bench/run_sweep.sh
-#   BENCH_KEEP=1 tests/bench/run_sweep.sh
+#   BENCH_PROFILE=quick tests/bench/run_benchmark.sh
+#   BENCH_PROFILE=standard tests/bench/run_benchmark.sh
+#   BENCH_PROFILE=publication tests/bench/run_benchmark.sh
+#   BENCH_KEEP=1 tests/bench/run_benchmark.sh
 #
 # Every run is staged under a uniquely created scratch directory. Validated
 # result files are published as an immutable run and CURRENT is changed last,
@@ -32,7 +32,7 @@ export VECLIB_MAXIMUM_THREADS="$BENCH_THREADS"
 export BLIS_NUM_THREADS="$BENCH_THREADS"
 export RCPP_PARALLEL_NUM_THREADS="$BENCH_THREADS"
 
-source "$BENCH_ROOT/lib/source_cache.sh"
+source "$BENCH_ROOT/source_cache.sh"
 
 SCRATCH_PARENT="${BENCH_SCRATCH_PARENT:-${TMPDIR:-/tmp}}"
 mkdir -p "$SCRATCH_PARENT"
@@ -90,21 +90,21 @@ echo "==> results:  $RESULT_ROOT"
 df -h "$SCRATCH" | tail -1
 
 echo "==> inspecting source dimensions (metadata only)"
-Rscript "$BENCH_ROOT/src/01_inspect_data.R" "$STAGE/00_probe.csv" 2>&1 \
+Rscript "$BENCH_ROOT/benchmark_cli.R" inspect "$STAGE/00_probe.csv" 2>&1 \
   | tee "$LOG_DIR/probe.log" || exit 1
-Rscript "$BENCH_ROOT/src/02_record_environment.R" "$STAGE/run_manifest.csv" || exit 1
-Rscript "$BENCH_ROOT/src/03_plan_runs.R" "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" environment "$STAGE/run_manifest.csv" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" plan "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
 
-RESOURCE_SCRIPT="04_check_resources.R"
-BUILD_SCRIPT="10_export_backend.R"
+RESOURCE_COMMAND="resources"
+BUILD_COMMAND="export"
 if [ "$BENCH_PROFILE" = "publication_scale" ] || \
    [ "$BENCH_PROFILE" = "panel_c2" ]; then
-  RESOURCE_SCRIPT="04_check_full_resources.R"
-  BUILD_SCRIPT="11_build_full_backend.R"
+  RESOURCE_COMMAND="full-resources"
+  BUILD_COMMAND="build-full"
 fi
 
 echo "==> checking whether this machine can run the plan"
-Rscript "$BENCH_ROOT/src/$RESOURCE_SCRIPT" \
+Rscript "$BENCH_ROOT/benchmark_cli.R" "$RESOURCE_COMMAND" \
   "$STAGE/00_probe.csv" "$SCHEDULE" "$STAGE/run_manifest.csv" \
   "$STAGE/resource_check.csv" || exit 1
 
@@ -116,12 +116,12 @@ R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
   exit 1
 }
 
-SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sources.R")); cat(bench_active_sources(), sep="\n")')
+SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "benchmark.R")); cat(bench_active_sources(), sep="\n")')
 
 for src in $SOURCES; do
-  url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$url)")
-  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
-  expected_sha=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
+  url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$url)")
+  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
+  expected_sha=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
 
   echo "==> [$src] fetching $(basename "${url%%\?*}")"
   if ! bench_fetch_source \
@@ -141,7 +141,7 @@ for src in $SOURCES; do
   for tier in $tiers; do
     query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
     echo "==> [$src / $tier] preparing frozen query plan"
-    Rscript "$BENCH_ROOT/src/05_prepare_query_plan.R" \
+    Rscript "$BENCH_ROOT/benchmark_cli.R" query-plan \
       "$src" "$tier" "$SCRATCH" "$query_plan" "$QUERY_PLAN_MANIFEST" \
       "$QUERY_PANEL" \
       > "$LOG_DIR/query_plan_${src}_${tier}.log" 2>&1 || {
@@ -156,16 +156,16 @@ for src in $SOURCES; do
     query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
     out_dir="$SCRATCH/export/$tag"
     crb="$out_dir/bench.crb"
-    build_script="$BUILD_SCRIPT"
+    build_command="$BUILD_COMMAND"
     missing_ok=0
     if [ "$BENCH_PROFILE" = "publication_scale" ] && \
        [ "$backend" = "embedded" ]; then
-      build_script="10_export_backend.R"
+      build_command="export"
       missing_ok=1
     fi
 
     echo "==> [$tag] build (position $order_position)"
-    Rscript "$BENCH_ROOT/src/$build_script" \
+    Rscript "$BENCH_ROOT/benchmark_cli.R" "$build_command" \
       "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
       "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
       > "$LOG_DIR/export_$tag.log" 2>&1
@@ -198,7 +198,7 @@ for src in $SOURCES; do
 
     for access_repeat in $(seq 1 "$access_repeats"); do
       echo "==> [$tag] access repeat $access_repeat/$access_repeats"
-      Rscript "$BENCH_ROOT/src/20_measure_backend.R" \
+      Rscript "$BENCH_ROOT/benchmark_cli.R" access \
         "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
         "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
         > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
@@ -223,17 +223,17 @@ for src in $SOURCES; do
 done
 
 echo "==> checking measurements"
-Rscript "$BENCH_ROOT/src/30_check_measurements.R" "$STAGE" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$STAGE" || exit 1
 
 echo "==> writing report"
-Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE" 2>&1 \
+Rscript "$BENCH_ROOT/benchmark_cli.R" report "$STAGE" 2>&1 \
   | tee "$LOG_DIR/report.log" || exit 1
 
 if [ "$BENCH_PROFILE" = "publication" ] || \
    [ "$BENCH_PROFILE" = "publication_scale" ] || \
    [ "$BENCH_PROFILE" = "panel_c2" ]; then
   echo "==> drawing publication figures"
-  Rscript "$BENCH_ROOT/src/41_draw_figures.R" "$STAGE" "$STAGE/figures" \
+  Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$STAGE" "$STAGE/figures" \
     > "$LOG_DIR/figures.log" 2>&1 || {
     tail -20 "$LOG_DIR/figures.log"
     exit 1
@@ -241,10 +241,10 @@ if [ "$BENCH_PROFILE" = "publication" ] || \
 fi
 
 echo "==> checking report and figures"
-Rscript "$BENCH_ROOT/src/49_write_evidence_manifest.R" "$STAGE" || exit 1
-Rscript "$BENCH_ROOT/src/50_check_outputs.R" "$STAGE" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$STAGE" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" check "$STAGE" || exit 1
 
 echo "==> publishing immutable result run"
-Rscript "$BENCH_ROOT/src/60_publish_results.R" "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
 
 echo "==> done: $RESULT_ROOT/runs/$BENCH_RUN_ID"

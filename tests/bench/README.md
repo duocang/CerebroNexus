@@ -111,7 +111,7 @@ immutable publication. It never reruns builds or access measurements.
 BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
   BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
   BENCH_SOURCES_ONLY=mouse_brain_e18 \
-  BENCH_PROFILE=quick tests/bench/run_sweep.sh
+  BENCH_PROFILE=quick tests/bench/run_benchmark.sh
 ```
 
 The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_viewer_1m_pages.R` scripts preserve historical PR0-PR5 engineering comparisons only. They are not part of the current paper benchmark.
@@ -121,17 +121,7 @@ The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_view
 | script | purpose |
 |---|---|
 | `run_publication_full.sh` | run the exact complete-source publication protocol |
-| `run_publication_scale.sh` | run the independent nine-tier scale protocol |
-| `run_sweep.sh` | execute and immutably publish one profile |
-| `01_inspect_data.R` | inspect source dimensions and sparsity |
-| `02_record_environment.R` | record code, machine, storage, and dependencies |
-| `03_plan_runs.R` | write the deterministic schedule |
-| `04_check_full_resources.R` | gate complete-source out-of-core runs |
-| `05_prepare_query_plan.R` | freeze the untimed query plan and reference fingerprints |
-| `11_build_full_backend.R` | build one complete-source backend and production CRB |
-| `20_measure_backend.R` | measure hydrated startup and expression access |
-| `30_check_measurements.R` | reject incomplete, failed, or inconsistent evidence |
-| `40_write_report.R` / `41_draw_figures.R` | generate the report and publication overview |
-| `49_write_evidence_manifest.R` | inventory and checksum the complete evidence package |
-| `50_check_outputs.R` | validate all raw evidence, reports, figures, and checksums |
-| `60_publish_results.R` | publish immutably and update `CURRENT` last |
+| `run_publication_scale.sh` | run the independent six-tier scale protocol |
+| `run_benchmark.sh` | execute and immutably publish one profile |
+| `benchmark.R` | source definitions, schedules, I/O, validation, and reporting helpers |
+| `benchmark_cli.R` | execute one isolated benchmark stage |

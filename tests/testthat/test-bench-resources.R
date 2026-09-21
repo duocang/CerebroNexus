@@ -1,4 +1,4 @@
-bench_resources <- file.path("..", "bench", "lib", "resource_planning.R")
+bench_resources <- file.path("..", "bench", "benchmark.R")
 
 skip_unless_bench_resources <- function() {
   testthat::skip_if_not(
@@ -116,7 +116,8 @@ test_that("resource checker rejects unsafe plans before a run", {
   output <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "04_check_resources.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "resources",
       inventory_path,
       plan_path,
       manifest_path,
@@ -169,7 +170,8 @@ test_that("resource checker accepts an unlimited R vector heap", {
   output <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "04_check_resources.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "resources",
       inventory_path,
       plan_path,
       manifest_path,

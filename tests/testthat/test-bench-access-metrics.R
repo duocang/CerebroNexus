@@ -1,5 +1,5 @@
-bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
-bench_access_metrics <- file.path("..", "bench", "lib", "access_metrics.R")
+bench_protocol <- file.path("..", "bench", "benchmark.R")
+bench_access_metrics <- bench_protocol
 
 skip_unless_bench_access <- function() {
   testthat::skip_if_not(
@@ -46,10 +46,7 @@ test_that("query plans stratify genes and fingerprint source values", {
 
 test_that("Linux peak RSS reads the process high-water mark", {
   skip_unless_bench_access()
-  source(
-    file.path(bench_root <- file.path("..", "bench"), "lib", "bench_utils.R"),
-    local = TRUE
-  )
+  source(bench_protocol, local = TRUE)
   status <- tempfile("proc-status-")
   on.exit(unlink(status), add = TRUE)
   writeLines(c("Name:\tR", "VmRSS:\t1024 kB", "VmHWM:\t4096 kB"), status)

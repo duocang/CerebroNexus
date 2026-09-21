@@ -2,7 +2,7 @@ bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
 
 skip_unless_bench_publication <- function() {
   testthat::skip_if_not(
-    file.exists(file.path(bench_root, "src", "60_publish_results.R")),
+    file.exists(file.path(bench_root, "benchmark_cli.R")),
     "benchmark tree not present (expected when checking a built package)"
   )
 }
@@ -14,14 +14,18 @@ run_publisher <- function(stage, target, run_id, fail_at = "") {
   status <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "60_publish_results.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "publish",
       stage,
       target,
       run_id
     ),
     stdout = out,
     stderr = err,
-    env = paste0("BENCH_PUBLISH_FAIL_AT=", fail_at)
+    env = c(
+      paste0("BENCH_ROOT=", bench_root),
+      paste0("BENCH_PUBLISH_FAIL_AT=", fail_at)
+    )
   )
   list(
     status = status,
@@ -97,11 +101,11 @@ test_that("output checker requires raw evidence, figures, and checksums", {
     file.path(stage, "run_manifest.csv"),
     row.names = FALSE
   )
-  checker <- file.path(bench_root, "src", "50_check_outputs.R")
+  checker <- file.path(bench_root, "benchmark_cli.R")
 
   missing <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c(checker, stage),
+    c(checker, "check", stage),
     stdout = TRUE,
     stderr = TRUE,
     env = paste0("BENCH_ROOT=", bench_root)
@@ -128,22 +132,32 @@ test_that("output checker requires raw evidence, figures, and checksums", {
     )
   )
   for (name in c(
-    "00_probe.csv", "05_schedule.csv", "10_export.csv", "20_access.csv",
-    "crashes.csv", "query_panel.csv", "query_plan_manifest.csv",
-    "resource_check.csv", "source_manifest.csv"
+    "00_probe.csv",
+    "05_schedule.csv",
+    "10_export.csv",
+    "20_access.csv",
+    "crashes.csv",
+    "query_panel.csv",
+    "query_plan_manifest.csv",
+    "resource_check.csv",
+    "source_manifest.csv"
   )) {
     writeLines("evidence", file.path(stage, name))
   }
   inventory <- system2(
     file.path(R.home("bin"), "Rscript"),
-    c(file.path(bench_root, "src", "49_write_evidence_manifest.R"), stage),
+    c(file.path(bench_root, "benchmark_cli.R"), "evidence", stage),
     stdout = TRUE,
-    stderr = TRUE
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
   )
-  expect_null(attr(inventory, "status"), info = paste(inventory, collapse = "\n"))
+  expect_null(
+    attr(inventory, "status"),
+    info = paste(inventory, collapse = "\n")
+  )
   complete <- system2(
     file.path(R.home("bin"), "Rscript"),
-    c(checker, stage),
+    c(checker, "check", stage),
     stdout = TRUE,
     stderr = TRUE,
     env = paste0("BENCH_ROOT=", bench_root)
@@ -153,9 +167,10 @@ test_that("output checker requires raw evidence, figures, and checksums", {
   writeLines("tampered", file.path(stage, "10_export.csv"))
   tampered <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c(checker, stage),
+    c(checker, "check", stage),
     stdout = TRUE,
-    stderr = TRUE
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
   ))
   expect_false(is.null(attr(tampered, "status")))
   expect_match(paste(tampered, collapse = "\n"), "inventory does not match")

@@ -50,4 +50,4 @@ fi
 BENCH_PROFILE=publication_scale \
   BENCH_RUN_ID="$BENCH_STUDY_ID" \
   BENCH_RESULT_ROOT="$RESULT_ROOT" \
-  "$BENCH_ROOT/run_sweep.sh"
+  "$BENCH_ROOT/run_benchmark.sh"

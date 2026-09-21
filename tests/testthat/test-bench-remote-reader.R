@@ -1,9 +1,9 @@
-# Guards for the pure planning/ordering logic in tests/bench/lib/remote_h5.R.
+# Guards for the pure planning/ordering logic in tests/bench/benchmark.R.
 #
 # Only the functions that need no network are exercised here. The benchmark tree
 # is .Rbuildignore'd, so these skip when running against a built tarball.
 
-bench_lib <- file.path("..", "bench", "lib", "remote_h5.R")
+bench_lib <- file.path("..", "bench", "benchmark.R")
 
 skip_unless_bench <- function() {
   testthat::skip_if_not(

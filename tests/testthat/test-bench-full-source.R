@@ -1,5 +1,5 @@
 bench_root_full <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
-full_source_lib <- file.path(bench_root_full, "lib", "full_source.R")
+full_source_lib <- file.path(bench_root_full, "benchmark.R")
 
 skip_unless_full_source_deps <- function() {
   for (package in c("BPCells", "HDF5Array", "rhdf5", "CerebroNexus")) {
@@ -78,8 +78,6 @@ test_that("full-source H5 writer stays on the lazy BPCells path", {
 
 test_that("full-source query plan and portable shell use bounded expression", {
   skip_unless_full_source_deps()
-  source(file.path(bench_root_full, "lib", "protocol.R"), local = TRUE)
-  source(file.path(bench_root_full, "lib", "access_metrics.R"), local = TRUE)
   source(full_source_lib, local = TRUE)
   root <- tempfile("full-shell-")
   dir.create(root)

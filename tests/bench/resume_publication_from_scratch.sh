@@ -87,14 +87,14 @@ Rscript -e '
   }
   write.csv(m, path, row.names = FALSE, na = "")
 ' "$MANIFEST"
-Rscript "$BENCH_ROOT/src/30_check_measurements.R" "$STAGE"
-Rscript "$BENCH_ROOT/src/40_write_report.R" "$STAGE"
+Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$STAGE"
+Rscript "$BENCH_ROOT/benchmark_cli.R" report "$STAGE"
 mkdir -p "$STAGE/logs"
-Rscript "$BENCH_ROOT/src/41_draw_figures.R" "$STAGE" "$STAGE/figures" \
+Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$STAGE" "$STAGE/figures" \
   > "$STAGE/logs/figures-recovery.log" 2>&1
-Rscript "$BENCH_ROOT/src/49_write_evidence_manifest.R" "$STAGE"
-Rscript "$BENCH_ROOT/src/50_check_outputs.R" "$STAGE"
-Rscript "$BENCH_ROOT/src/60_publish_results.R" \
+Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$STAGE"
+Rscript "$BENCH_ROOT/benchmark_cli.R" check "$STAGE"
+Rscript "$BENCH_ROOT/benchmark_cli.R" publish \
   "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID"
 mkdir -p "$STATE_DIR"
 printf '0\n' > "$STATE_DIR/$STATE_NAME.exit.tmp"

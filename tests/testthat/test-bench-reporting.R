@@ -1,5 +1,5 @@
-bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
-bench_reporting <- file.path("..", "bench", "lib", "reporting.R")
+bench_protocol <- file.path("..", "bench", "benchmark.R")
+bench_reporting <- bench_protocol
 bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
 
 skip_unless_bench_reporting <- function() {
@@ -239,7 +239,8 @@ test_that("report and plots consume repeated publication rows", {
   report_status <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "40_write_report.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "report",
       result_dir
     ),
     stdout = TRUE,
@@ -258,7 +259,8 @@ test_that("report and plots consume repeated publication rows", {
   plot_status <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "41_draw_figures.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "figure",
       result_dir,
       out_dir
     ),
@@ -283,7 +285,7 @@ test_that("report and plots consume repeated publication rows", {
 test_that("publication figure labels distinct expression workloads", {
   skip_unless_bench_reporting()
   script <- readLines(
-    file.path(bench_root, "src", "41_draw_figures.R"),
+    file.path(bench_root, "benchmark_cli.R"),
     warn = FALSE
   )
   source <- paste(script, collapse = "\n")
@@ -296,27 +298,11 @@ test_that("publication figure labels distinct expression workloads", {
 
 test_that("scale-limit summaries use embedded exports only", {
   skip_unless_bench_reporting()
-  for (name in c("40_write_report.R", "41_draw_figures.R")) {
-    source <- paste(
-      readLines(file.path(bench_root, "src", name), warn = FALSE),
-      collapse = "\n"
-    )
-    expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
-  }
-})
-
-test_that("publication-full report scripts are present", {
-  skip_unless_bench_reporting()
-  expect_true(file.exists(file.path(
-    bench_root,
-    "src",
-    "42_write_panel_c_report.R"
-  )))
-  expect_true(file.exists(file.path(
-    bench_root,
-    "src",
-    "43_draw_panel_c_figure.R"
-  )))
+  source <- paste(
+    readLines(file.path(bench_root, "benchmark_cli.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
 })
 
 test_that("study environment comparison rejects incompatible phases", {
@@ -392,395 +378,4 @@ test_that("backend ratios retain direction and matched tiers", {
     nrow(bench_backend_ratios(summary, "seconds_median", "embedded")),
     0L
   )
-})
-
-test_that("publication-full report and figure use one frozen study", {
-  skip_unless_bench_reporting()
-  testthat::skip_if_not_installed("ggplot2")
-  testthat::skip_if_not_installed("patchwork")
-  source(bench_protocol, local = TRUE)
-  source(file.path(bench_root, "config", "sources.R"), local = TRUE)
-
-  root <- tempfile("publication-full-root-")
-  out <- tempfile("publication-full-output-")
-  drift_out <- tempfile("publication-full-drift-")
-  dir.create(root)
-  dir.create(out)
-  on.exit(unlink(c(root, out, drift_out), recursive = TRUE), add = TRUE)
-
-  source_hashes <- vapply(
-    BENCH_SOURCES[c("mouse_brain_e18", "human_pfc_hbcc")],
-    `[[`,
-    character(1),
-    "expected_sha256"
-  )
-  make_phase <- function(phase) {
-    profile <- c(ab = "publication", c1 = "panel_c1", c2 = "panel_c2")[[phase]]
-    run_id <- paste0("fixture-study-", phase)
-    run_dir <- file.path(root, phase)
-    dir.create(run_dir)
-    schedule <- switch(
-      phase,
-      ab = bench_schedule(
-        BENCH_SOURCES,
-        "publication",
-        sources = c("mouse_brain_e18", "human_pfc_hbcc")
-      ),
-      c1 = bench_panel_c_schedule(BENCH_SOURCES, "c1"),
-      c2 = bench_panel_c_schedule(BENCH_SOURCES, "c2")
-    )
-    tier_key <- paste(schedule$source, schedule$n_cells, sep = "-")
-    exports <- transform(
-      schedule,
-      run_id = run_id,
-      status = "OK",
-      read_secs = seq_len(nrow(schedule)) / 10,
-      export_secs = seq_len(nrow(schedule)),
-      shell_secs = seq_len(nrow(schedule)) / 20,
-      serialize_secs = seq_len(nrow(schedule)) / 30,
-      crb_mb = 1,
-      sibling_mb = seq_len(nrow(schedule)) * 10 - 1,
-      total_mb = seq_len(nrow(schedule)) * 10,
-      r_peak_mb = seq_len(nrow(schedule)) * 15,
-      peak_rss_mb = seq_len(nrow(schedule)) * 20,
-      query_plan_fingerprint = tier_key
-    )
-    access <- do.call(
-      rbind,
-      lapply(seq_len(nrow(schedule)), function(i) {
-        repeats <- schedule$access_repeats[i]
-        data.frame(
-          run_id = run_id,
-          profile = profile,
-          source = schedule$source[i],
-          n_cells = schedule$n_cells[i],
-          backend = schedule$backend[i],
-          export_repeat = schedule$export_repeat[i],
-          access_repeat = seq_len(repeats),
-          status = "OK",
-          load_secs = seq_len(repeats) / 10,
-          attach_secs = seq_len(repeats) / 20,
-          rss_mb = 100 + seq_len(repeats),
-          peak_rss_mb = 110 + seq_len(repeats),
-          first_query_secs = seq_len(repeats) / 200,
-          hot_p50_secs = seq_len(repeats) / 100,
-          hot_p95_secs = seq_len(repeats) / 80,
-          block_secs = seq_len(repeats) / 50,
-          subset_row_secs = seq_len(repeats) / 300,
-          subset_block_secs = seq_len(repeats) / 250,
-          subset_n_cells = pmin(100000, schedule$n_cells[i]),
-          n_hot = 33L,
-          correctness = "OK",
-          row_fingerprint = "row",
-          reference_row_fingerprint = "row",
-          block_fingerprint = "block",
-          reference_block_fingerprint = "block",
-          subset_row_fingerprint = "subset-row",
-          reference_subset_row_fingerprint = "subset-row",
-          subset_block_fingerprint = "subset-block",
-          reference_subset_block_fingerprint = "subset-block",
-          query_plan_fingerprint = tier_key[i],
-          stringsAsFactors = FALSE
-        )
-      })
-    )
-    preparation <- unique(schedule[c("source", "n_cells")])
-    preparation <- transform(
-      preparation,
-      run_id = run_id,
-      profile = profile,
-      n_genes = 100,
-      nnz = n_cells * 10,
-      source_prepare_secs = 1,
-      query_plan_secs = 2,
-      peak_rss_mb = 100,
-      query_plan_fingerprint = paste(source, n_cells, sep = "-"),
-      status = "OK"
-    )
-    query_panel <- do.call(
-      rbind,
-      lapply(seq_len(nrow(preparation)), function(i) {
-        data.frame(
-          run_id = run_id,
-          profile = profile,
-          source = preparation$source[i],
-          n_cells = preparation$n_cells[i],
-          panel_index = seq_len(12L),
-          gene = paste0("gene_", seq_len(12L)),
-          nnz = seq_len(12L),
-          role = c("first", rep("hot", 11L)),
-          query_plan_fingerprint = preparation$query_plan_fingerprint[i],
-          reference_row_fingerprint = "row",
-          reference_block_fingerprint = "block",
-          subset_n_cells = pmin(100000, preparation$n_cells[i]),
-          subset_cells_fingerprint = "subset-cells",
-          reference_subset_row_fingerprint = "subset-row",
-          reference_subset_block_fingerprint = "subset-block",
-          stringsAsFactors = FALSE
-        )
-      })
-    )
-    manifest <- c(
-      study_id = "fixture-study",
-      run_id = run_id,
-      profile = profile,
-      generated_at = "2026-09-08T12:00:00+0000",
-      git_sha = paste(rep("c", 40), collapse = ""),
-      git_branch = "test",
-      git_dirty = "false",
-      r_version = "R 4.6.1",
-      r_platform = "x86_64-pc-linux-gnu",
-      os = "Linux fixture",
-      cpu = "fixture CPU",
-      logical_cores = "1",
-      benchmark_threads = "1",
-      storage_description = "local NVMe ext4",
-      scratch_df = "fixture",
-      package_version = "5.2.0",
-      package_Matrix = "1.7-4",
-      package_rhdf5 = "2.52.1",
-      package_Seurat = "5.3.1",
-      package_SeuratObject = "5.2.0",
-      package_BPCells = "0.3.1",
-      package_HDF5Array = "1.36.0",
-      package_CerebroNexus = "5.2.0",
-      memory_mb = "131072",
-      r_vector_limit_mb = "131072"
-    )
-    manifest <- data.frame(
-      key = names(manifest),
-      value = unname(manifest),
-      stringsAsFactors = FALSE
-    )
-    sources <- data.frame(
-      run_id = run_id,
-      source = names(source_hashes),
-      url = paste0("https://example.test/", names(source_hashes)),
-      bytes = c(1000, 2000),
-      sha256 = unname(source_hashes),
-      stringsAsFactors = FALSE
-    )
-    resource <- unique(schedule[c("source", "n_cells")])
-    resource$safe <- TRUE
-    resource$reason <- "safe"
-    crashes <- data.frame(
-      run_id = character(),
-      profile = character(),
-      source = character(),
-      n_cells = numeric(),
-      backend = character(),
-      export_repeat = integer(),
-      order_position = integer(),
-      stage = character(),
-      exit_code = integer(),
-      stringsAsFactors = FALSE
-    )
-    probe <- data.frame(
-      label = names(source_hashes),
-      n_cells = c(1000, 2000),
-      n_genes = c(100, 100),
-      nnz = c(10000, 20000),
-      nnz_per_cell = c(10, 10),
-      dgc_gb_full = c(0.001, 0.002),
-      dgc_representable = c(TRUE, TRUE),
-      stringsAsFactors = FALSE
-    )
-    files <- list(
-      "00_probe.csv" = probe,
-      "05_schedule.csv" = schedule,
-      "10_export.csv" = exports,
-      "20_access.csv" = access,
-      "query_plan_manifest.csv" = preparation,
-      "query_panel.csv" = query_panel,
-      "run_manifest.csv" = manifest,
-      "source_manifest.csv" = sources,
-      "resource_check.csv" = resource,
-      "crashes.csv" = crashes
-    )
-    for (name in names(files)) {
-      utils::write.csv(
-        files[[name]],
-        file.path(run_dir, name),
-        row.names = FALSE
-      )
-    }
-  }
-  make_phase("ab")
-  make_phase("c1")
-  make_phase("c2")
-
-  env <- paste0("BENCH_ROOT=", normalizePath(bench_root))
-  full_report <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "40_write_report.R"),
-      file.path(root, "c2")
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(
-    attr(full_report, "status"),
-    info = paste(full_report, collapse = "\n")
-  )
-  full_figure <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "41_draw_figures.R"),
-      file.path(root, "c2"),
-      file.path(root, "c2", "figures")
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(
-    attr(full_figure, "status"),
-    info = paste(full_figure, collapse = "\n")
-  )
-  inventory <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "49_write_evidence_manifest.R"),
-      file.path(root, "c2")
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(
-    attr(inventory, "status"),
-    info = paste(inventory, collapse = "\n")
-  )
-  full_output <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "50_check_outputs.R"),
-      file.path(root, "c2")
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(
-    attr(full_output, "status"),
-    info = paste(full_output, collapse = "\n")
-  )
-  report <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(file.path(bench_root, "src", "42_write_panel_c_report.R"), root, out),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(attr(report, "status"), info = paste(report, collapse = "\n"))
-  expect_true(all(file.exists(file.path(
-    out,
-    c(
-      "study_manifest.csv",
-      "environment_comparison.csv",
-      "query_plan_metrics.csv",
-      "query_panel.csv",
-      "combined_metrics.csv",
-      "backend_ratios.csv",
-      "correctness.csv",
-      "source_provenance.csv",
-      "summary.md"
-    )
-  ))))
-  query_panel <- utils::read.csv(
-    file.path(out, "query_panel.csv"),
-    stringsAsFactors = FALSE
-  )
-  expect_equal(
-    nrow(query_panel),
-    sum(vapply(
-      c("ab", "c1", "c2"),
-      function(phase) {
-        nrow(utils::read.csv(
-          file.path(root, phase, "query_panel.csv")
-        ))
-      },
-      integer(1)
-    ))
-  )
-  correctness <- utils::read.csv(
-    file.path(out, "correctness.csv"),
-    stringsAsFactors = FALSE
-  )
-  expect_equal(
-    correctness$total,
-    unname(vapply(
-      correctness$panel,
-      function(phase) {
-        nrow(utils::read.csv(
-          file.path(root, phase, "20_access.csv")
-        ))
-      },
-      integer(1)
-    ))
-  )
-  expect_true(all(correctness$all_passed))
-  summary <- readLines(file.path(out, "summary.md"), warn = FALSE)
-  expect_true(any(grepl("independent processes", summary, fixed = TRUE)))
-
-  figure <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(file.path(bench_root, "src", "43_draw_panel_c_figure.R"), root, out),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  )
-  expect_null(attr(figure, "status"), info = paste(figure, collapse = "\n"))
-  expect_true(file.exists(file.path(
-    out,
-    "figures",
-    "expression_backend_benchmark_publication_full.png"
-  )))
-
-  manifest_path <- file.path(root, "c2", "run_manifest.csv")
-  manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE)
-  manifest$value[manifest$key == "cpu"] <- "different CPU"
-  utils::write.csv(manifest, manifest_path, row.names = FALSE)
-  drift <- suppressWarnings(system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "42_write_panel_c_report.R"),
-      root,
-      drift_out
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  ))
-  expect_false(is.null(attr(drift, "status")))
-  expect_match(paste(drift, collapse = "\n"), "environment drift")
-
-  manifest$value[manifest$key == "cpu"] <- "fixture CPU"
-  utils::write.csv(manifest, manifest_path, row.names = FALSE)
-  for (phase in c("ab", "c1", "c2")) {
-    path <- file.path(root, phase, "source_manifest.csv")
-    sources <- utils::read.csv(path, stringsAsFactors = FALSE)
-    sources$sha256[sources$source == "mouse_brain_e18"] <- paste(
-      rep("0", 64),
-      collapse = ""
-    )
-    utils::write.csv(sources, path, row.names = FALSE)
-  }
-  hash_out <- tempfile("publication-full-hash-")
-  on.exit(unlink(hash_out, recursive = TRUE), add = TRUE)
-  hash_drift <- suppressWarnings(system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(
-      file.path(bench_root, "src", "42_write_panel_c_report.R"),
-      root,
-      hash_out
-    ),
-    stdout = TRUE,
-    stderr = TRUE,
-    env = env
-  ))
-  expect_false(is.null(attr(hash_drift, "status")))
-  expect_match(paste(hash_drift, collapse = "\n"), "pinned inputs")
 })

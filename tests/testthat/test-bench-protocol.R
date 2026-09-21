@@ -1,4 +1,4 @@
-bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
+bench_protocol <- file.path("..", "bench", "benchmark.R")
 
 skip_unless_bench_protocol <- function() {
   testthat::skip_if_not(
@@ -80,7 +80,7 @@ test_that("quick schedules run only the smallest comparison tier", {
 
 test_that("default sources share the complete publication scale grid", {
   skip_unless_bench_protocol()
-  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+  source(bench_protocol, local = TRUE)
 
   defaults <- BENCH_SOURCES[
     !vapply(
@@ -104,7 +104,7 @@ test_that("default sources share the complete publication scale grid", {
 test_that("Panel C1 is the exact three-backend scale bridge", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
-  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+  source(bench_protocol, local = TRUE)
 
   schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c1")
 
@@ -125,7 +125,7 @@ test_that("Panel C1 is the exact three-backend scale bridge", {
 test_that("Panel C2 is the exact two-backend full-source schedule", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
-  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+  source(bench_protocol, local = TRUE)
 
   schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c2")
 
@@ -146,7 +146,7 @@ test_that("Panel C2 is the exact two-backend full-source schedule", {
 test_that("publication scale runs embedded through 500k", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
-  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+  source(bench_protocol, local = TRUE)
 
   schedule <- bench_publication_scale_schedule(BENCH_SOURCES)
   expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
