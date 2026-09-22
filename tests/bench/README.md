@@ -25,6 +25,12 @@ bash tests/bench/run_benchmark.sh status
 tail -f "$HOME/.cache/cerebronexus-benchmark/runner/benchmark.log"
 ```
 
+If measurement completed but final validation or reporting failed, publish the retained measurements without rerunning them:
+
+```bash
+bash tests/bench/run_benchmark.sh resume /path/to/cerebro-bench.XXXXXX
+```
+
 The full-source profile rejects source overrides and runs exactly this grid:
 
 | sources | cells | backends | builds | access processes |

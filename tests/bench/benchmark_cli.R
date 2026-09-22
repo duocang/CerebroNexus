@@ -1264,10 +1264,15 @@ if (identical(command, "inspect")) {
     sort(vapply(observed, function(x) unique(x)[1L], character(1)))
   }
   prepared_fingerprints <- fingerprint_for(preparation)
+  successful_exports <- exports[
+    !is.na(exports$status) & exports$status == "OK",
+    ,
+    drop = FALSE
+  ]
   fingerprints <- list(
     preparation = prepared_fingerprints,
     query_panel = fingerprint_for(query_panel),
-    build = fingerprint_for(exports),
+    build = fingerprint_for(successful_exports),
     access = fingerprint_for(access)
   )
   fingerprint_keys <- Reduce(union, lapply(fingerprints, names))

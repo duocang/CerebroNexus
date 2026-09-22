@@ -401,6 +401,78 @@ run_all() {
   run_profile scale scale
 }
 
+manifest_value() {
+  Rscript -e 'm <- read.csv(commandArgs(TRUE)[1], stringsAsFactors = FALSE); value <- m$value[m$key == commandArgs(TRUE)[2]]; if (length(value) != 1L || is.na(value) || !nzchar(value)) quit(status = 1L); cat(value)' "$1" "$2"
+}
+
+resume_inside() {
+  local scratch stage manifest result_name
+  scratch="${BENCH_RECOVERY_SCRATCH:-}"
+  [ -f "$scratch/.cerebro-benchmark-scratch" ] || {
+    printf 'unsafe benchmark scratch directory: %s\n' "$scratch" >&2
+    return 1
+  }
+  stage="$scratch/result"
+  manifest="$stage/run_manifest.csv"
+  [ -f "$manifest" ] || {
+    printf 'missing run manifest: %s\n' "$manifest" >&2
+    return 1
+  }
+
+  export BENCH_ROOT="$REPO/tests/bench"
+  export BENCH_SCRATCH="$scratch"
+  export BENCH_LIB="$scratch/rlib"
+  export R_LIBS_USER="$scratch/r-user-library"
+  export R_ENVIRON_USER=/dev/null
+  export R_PROFILE_USER=/dev/null
+  export NOT_CRAN=true
+  export BENCH_RUN_ID="$(manifest_value "$manifest" run_id)"
+  export BENCH_STUDY_ID="$(manifest_value "$manifest" study_id)"
+  export BENCH_PROFILE="$(manifest_value "$manifest" profile)"
+  case "$BENCH_PROFILE" in
+    panel_c2) result_name=full ;;
+    scale) result_name=scale ;;
+    *)
+      printf 'unsupported benchmark profile: %s\n' "$BENCH_PROFILE" >&2
+      return 1
+      ;;
+  esac
+
+  Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage"
+  mkdir -p "$stage/logs"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
+    > "$stage/logs/figures-resume.log" 2>&1
+  Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" publish \
+    "$stage" "$BENCH_ROOT/result/$result_name" "$BENCH_RUN_ID"
+  printf '0\n' > "$EXIT_FILE"
+  printf 'benchmark result published: %s\n' \
+    "$BENCH_ROOT/result/$result_name/runs/$BENCH_RUN_ID"
+}
+
+resume_run() {
+  local scratch command
+  [ "$#" -eq 1 ] && [ -n "$1" ] || {
+    printf 'usage: %s resume <scratch-directory>\n' "$SCRIPT" >&2
+    return 2
+  }
+  command -v nix-shell >/dev/null 2>&1 || {
+    printf 'nix-shell is required\n' >&2
+    return 1
+  }
+  scratch="$(cd "$1" && pwd -P)"
+  [ -f "$scratch/.cerebro-benchmark-scratch" ] || {
+    printf 'not a benchmark scratch directory: %s\n' "$scratch" >&2
+    return 1
+  }
+  require_clean
+  export BENCH_RECOVERY_SCRATCH="$scratch"
+  printf -v command 'bash %q _resume' "$SCRIPT"
+  nix-shell "$REPO/default.nix" -A shell --run "$command"
+}
+
 worker() {
   local code command tmp_exit
   printf '==> running full benchmark, then scale benchmark\n'
@@ -435,10 +507,18 @@ case "$ACTION" in
     run_profile_engine
     exit $?
     ;;
+  _resume)
+    resume_inside
+    exit $?
+    ;;
+  resume)
+    resume_run "${2:-}"
+    exit $?
+    ;;
   run)
     ;;
   *)
-    printf 'usage: %s [run|status]\n' "$0" >&2
+    printf 'usage: %s [run|status|resume <scratch-directory>]\n' "$0" >&2
     exit 2
     ;;
 esac

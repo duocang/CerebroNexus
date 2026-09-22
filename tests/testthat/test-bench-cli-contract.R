@@ -88,6 +88,7 @@ test_that("one public launcher runs both benchmark profiles in the background", 
   expect_match(launcher, "status)", fixed = TRUE)
   expect_match(launcher, 'nohup "$SCRIPT" _worker', fixed = TRUE)
   expect_match(launcher, '"$SCRIPT" _profile', fixed = TRUE)
+  expect_match(launcher, "resume)", fixed = TRUE)
   full <- regexpr(
     "run_profile panel_c2 full",
     launcher,
@@ -155,6 +156,11 @@ test_that("manifest CLI records the run identity", {
   )
   expect_match(cli, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
   expect_false(grepl("<<-", cli, fixed = TRUE))
+  expect_match(
+    cli,
+    "build = fingerprint_for(successful_exports)",
+    fixed = TRUE
+  )
 })
 
 test_that("source cache reuses only verified files", {
