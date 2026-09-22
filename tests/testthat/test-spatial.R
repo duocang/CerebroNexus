@@ -1356,6 +1356,18 @@ test_that("Spatial geometry catalog is registered but fetched only on page reque
     "default_resource_name = default_resource_name",
     fixed = TRUE
   )
+  spatial_catalog <- regexpr(
+    'id = "spatial_projection"',
+    server_source,
+    fixed = TRUE
+  )[[1L]]
+  overview_catalog <- regexpr(
+    'id = "overview_projection"',
+    server_source,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(spatial_catalog, 0L)
+  expect_gt(overview_catalog, spatial_catalog)
   expect_match(
     browser_source,
     "return singleDefaultResourceNames.has(id);",

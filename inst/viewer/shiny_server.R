@@ -1350,24 +1350,6 @@ server <- function(input, output, session) {
       "cerebro_saved_view_dataset",
       dataset_identity
     )
-    projection_resources <- viewerProjectionCatalog()
-    if (length(projection_resources)) {
-      category_resources <- Filter(
-        Negate(is.null),
-        lapply(getGroups(), function(group) {
-          viewerMetadataCodesAsset(group, getGroupLevels(group))
-        })
-      )
-      session$sendCustomMessage(
-        "cell_view_resource_catalog",
-        list(
-          id = "overview_projection",
-          resources = unname(projection_resources),
-          category_resources = unname(category_resources),
-          dataset_identity = dataset_identity
-        )
-      )
-    }
     resources <- viewerSpatialGeometryCatalog()
     if (length(resources)) {
       spatial_names <- availableSpatial()
@@ -1395,6 +1377,27 @@ server <- function(input, output, session) {
           id = "spatial_projection",
           resources = unname(resources),
           default_resource_name = default_resource_name,
+          dataset_identity = dataset_identity
+        )
+      )
+    }
+    ## Spatial can begin its immutable geometry download as soon as its catalog
+    ## reaches the browser. Build the Overview category assets afterwards so
+    ## they cannot delay that prefetch on a first Spatial visit.
+    projection_resources <- viewerProjectionCatalog()
+    if (length(projection_resources)) {
+      category_resources <- Filter(
+        Negate(is.null),
+        lapply(getGroups(), function(group) {
+          viewerMetadataCodesAsset(group, getGroupLevels(group))
+        })
+      )
+      session$sendCustomMessage(
+        "cell_view_resource_catalog",
+        list(
+          id = "overview_projection",
+          resources = unname(projection_resources),
+          category_resources = unname(category_resources),
           dataset_identity = dataset_identity
         )
       )
