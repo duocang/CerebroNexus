@@ -31,7 +31,14 @@ test_that("publication benchmark has one library and one CLI", {
   expect_true(file.exists(file.path(bench_root, "benchmark.R")))
   expect_true(file.exists(file.path(bench_root, "benchmark_cli.R")))
   expect_true(file.exists(file.path(bench_root, "run_benchmark.sh")))
+  expect_true(file.exists(file.path(bench_root, "_benchmark_profile.sh")))
   expect_true(file.exists(file.path(bench_root, "source_cache.sh")))
+  expect_false(file.exists(file.path(
+    bench_root,
+    "update_and_run_publication_full.sh"
+  )))
+  expect_false(file.exists(file.path(bench_root, "run_publication_full.sh")))
+  expect_false(file.exists(file.path(bench_root, "run_publication_scale.sh")))
   expect_false(dir.exists(file.path(bench_root, "config")))
   expect_false(dir.exists(file.path(bench_root, "lib")))
   expect_false(dir.exists(file.path(bench_root, "src")))
@@ -41,7 +48,7 @@ test_that("publication benchmark has one library and one CLI", {
 test_that("runner keeps isolated processes and safe cleanup", {
   skip_unless_bench_cli()
   runner <- paste(
-    readLines(file.path(bench_root, "run_benchmark.sh"), warn = FALSE),
+    readLines(file.path(bench_root, "_benchmark_profile.sh"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -77,25 +84,29 @@ test_that("runner keeps isolated processes and safe cleanup", {
   expect_true(all(positions > 0L))
 })
 
-test_that("publication wrappers select their profile and unified runner", {
+test_that("one public launcher runs both benchmark profiles in the background", {
   skip_unless_bench_cli()
-  scale <- paste(
-    readLines(file.path(bench_root, "run_publication_scale.sh"), warn = FALSE),
-    collapse = "\n"
-  )
-  full <- paste(
-    readLines(file.path(bench_root, "run_publication_full.sh"), warn = FALSE),
+  launcher <- paste(
+    readLines(file.path(bench_root, "run_benchmark.sh"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_match(scale, "BENCH_PROFILE=publication_scale", fixed = TRUE)
-  expect_match(scale, "result/publication-scale", fixed = TRUE)
-  expect_match(scale, "run_benchmark.sh", fixed = TRUE)
-  expect_match(scale, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
-  expect_match(full, "BENCH_PROFILE=panel_c2", fixed = TRUE)
-  expect_match(full, "result/publication-full", fixed = TRUE)
-  expect_match(full, "run_benchmark.sh", fixed = TRUE)
-  expect_match(full, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
+  expect_match(launcher, 'ACTION="${1:-run}"', fixed = TRUE)
+  expect_match(launcher, "status)", fixed = TRUE)
+  expect_match(launcher, 'nohup "$SCRIPT" _worker', fixed = TRUE)
+  expect_match(launcher, '"$BENCH_ROOT/_benchmark_profile.sh"', fixed = TRUE)
+  full <- regexpr(
+    "run_profile panel_c2 publication-full",
+    launcher,
+    fixed = TRUE
+  )[1L]
+  scale <- regexpr(
+    "run_profile publication_scale publication-scale",
+    launcher,
+    fixed = TRUE
+  )[1L]
+  expect_gt(full, 0L)
+  expect_gt(scale, full)
 })
 
 test_that("schedule CLI includes embedded through 500k", {

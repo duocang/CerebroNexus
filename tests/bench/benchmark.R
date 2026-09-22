@@ -1111,7 +1111,7 @@ bench_open <- function(spec) {
 
 #' Cache a source in `dir` for the duration of a run. Returns the local path.
 #'
-#' The caller is responsible for deleting `dir`; run_benchmark.sh does that from a
+#' The caller is responsible for deleting `dir`; `_benchmark_profile.sh` does that from a
 #' trap so an interrupted run does not leave tens of GB behind.
 bench_fetch_source <- function(spec, dir, verbose = TRUE) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
