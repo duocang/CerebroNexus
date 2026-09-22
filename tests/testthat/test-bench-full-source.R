@@ -79,6 +79,10 @@ test_that("full-source writers round-trip both runtime backends", {
 })
 
 test_that("full-source H5 writer stays on the lazy BPCells path", {
+  testthat::skip_if_not(
+    file.exists(storage_backends_file),
+    "benchmark tree not present (expected when checking a built package)"
+  )
   body <- paste(readLines(storage_backends_file, warn = FALSE), collapse = "\n")
 
   expect_match(body, "BPCells::write_matrix_10x_hdf5", fixed = TRUE)
