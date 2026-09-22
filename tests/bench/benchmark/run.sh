@@ -474,9 +474,21 @@ resume_run() {
 }
 
 worker() {
-  local code command tmp_exit
-  printf '==> running full benchmark, then scale benchmark\n'
-  printf -v command 'bash %q _inside' "$SCRIPT"
+  local code command target tmp_exit
+  target="${1:-all}"
+  case "$target" in
+    all)
+      printf '==> running full benchmark, then scale benchmark\n'
+      ;;
+    full|scale)
+      printf '==> running %s benchmark\n' "$target"
+      ;;
+    *)
+      printf 'unknown benchmark target: %s\n' "$target" >&2
+      return 2
+      ;;
+  esac
+  printf -v command 'bash %q _inside %q' "$SCRIPT" "$target"
   set +e
   nix-shell "$REPO/default.nix" -A shell --run "$command"
   code=$?
@@ -490,6 +502,7 @@ worker() {
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 ACTION="${1:-run}"
+RUN_TARGET=all
 case "$ACTION" in
   status)
     mkdir -p "$STATE_DIR"
@@ -497,10 +510,15 @@ case "$ACTION" in
     exit 0
     ;;
   _worker)
-    worker
+    worker "${2:-all}"
     ;;
   _inside)
-    run_all
+    case "${2:-all}" in
+      all) run_all ;;
+      full) run_profile full full ;;
+      scale) run_profile scale scale ;;
+      *) printf 'unknown benchmark target: %s\n' "$2" >&2; exit 2 ;;
+    esac
     exit 0
     ;;
   _profile)
@@ -517,8 +535,12 @@ case "$ACTION" in
     ;;
   run)
     ;;
+  full|scale)
+    RUN_TARGET="$ACTION"
+    ;;
   *)
-    printf 'usage: %s [run|status|resume <scratch-directory>]\n' "$0" >&2
+    printf 'usage: %s [run|full|scale|status|resume <scratch-directory>]\n' \
+      "$0" >&2
     exit 2
     ;;
 esac
@@ -550,7 +572,7 @@ command -v nix-shell >/dev/null 2>&1 || {
 require_clean
 
 rm -f -- "$PID_FILE" "$EXIT_FILE" "$LOG_FILE"
-nohup "$SCRIPT" _worker > "$LOG_FILE" 2>&1 < /dev/null &
+nohup "$SCRIPT" _worker "$RUN_TARGET" > "$LOG_FILE" 2>&1 < /dev/null &
 pid=$!
 printf '%s\n' "$pid" > "$PID_FILE"
 sleep 2

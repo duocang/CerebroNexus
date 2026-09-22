@@ -98,7 +98,12 @@ test_that("one public launcher runs both benchmark profiles in the background", 
 
   expect_match(launcher, 'ACTION="${1:-run}"', fixed = TRUE)
   expect_match(launcher, "status)", fixed = TRUE)
-  expect_match(launcher, 'nohup "$SCRIPT" _worker', fixed = TRUE)
+  expect_match(launcher, "full|scale)", fixed = TRUE)
+  expect_match(
+    launcher,
+    'nohup "$SCRIPT" _worker "$RUN_TARGET"',
+    fixed = TRUE
+  )
   expect_match(launcher, '"$SCRIPT" _profile', fixed = TRUE)
   expect_match(launcher, "resume)", fixed = TRUE)
   full <- regexpr(
