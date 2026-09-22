@@ -1,8 +1,8 @@
 bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
 
-skip_unless_bench_publication <- function() {
+skip_unless_bench_publish <- function() {
   testthat::skip_if_not(
-    file.exists(file.path(bench_root, "src", "60_publish_results.R")),
+    file.exists(file.path(bench_root, "benchmark", "cli.R")),
     "benchmark tree not present (expected when checking a built package)"
   )
 }
@@ -11,17 +11,21 @@ run_publisher <- function(stage, target, run_id, fail_at = "") {
   out <- tempfile("bench-publish-stdout-")
   err <- tempfile("bench-publish-stderr-")
   on.exit(unlink(c(out, err)), add = TRUE)
-  status <- system2(
+  status <- bench_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "60_publish_results.R"),
+      file.path(bench_root, "benchmark", "cli.R"),
+      "publish",
       stage,
       target,
       run_id
     ),
     stdout = out,
     stderr = err,
-    env = paste0("BENCH_PUBLISH_FAIL_AT=", fail_at)
+    env = c(
+      paste0("BENCH_ROOT=", bench_root),
+      paste0("BENCH_PUBLISH_FAIL_AT=", fail_at)
+    )
   )
   list(
     status = status,
@@ -30,8 +34,8 @@ run_publisher <- function(stage, target, run_id, fail_at = "") {
   )
 }
 
-test_that("failed publication preserves the prior current result", {
-  skip_unless_bench_publication()
+test_that("failed publish preserves the prior current result", {
+  skip_unless_bench_publish()
   root <- tempfile("bench-results-")
   stage <- tempfile("bench-stage-")
   dir.create(file.path(root, "runs", "old-run"), recursive = TRUE)
@@ -64,7 +68,7 @@ test_that("failed publication preserves the prior current result", {
 })
 
 test_that("publisher rejects unsafe and conflicting run identities", {
-  skip_unless_bench_publication()
+  skip_unless_bench_publish()
   root <- tempfile("bench-results-")
   stage <- tempfile("bench-stage-")
   dir.create(root)
@@ -87,21 +91,21 @@ test_that("publisher rejects unsafe and conflicting run identities", {
   )
 })
 
-test_that("output checker requires report and publication figures", {
-  skip_unless_bench_publication()
+test_that("output checker requires raw evidence, figures, and checksums", {
+  skip_unless_bench_publish()
   stage <- tempfile("bench-output-stage-")
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   utils::write.csv(
-    data.frame(key = "profile", value = "publication"),
+    data.frame(key = "profile", value = "scale"),
     file.path(stage, "run_manifest.csv"),
     row.names = FALSE
   )
-  checker <- file.path(bench_root, "src", "50_check_outputs.R")
+  checker <- file.path(bench_root, "benchmark", "cli.R")
 
-  missing <- suppressWarnings(system2(
+  missing <- suppressWarnings(bench_system2(
     file.path(R.home("bin"), "Rscript"),
-    c(checker, stage),
+    c(checker, "check", stage),
     stdout = TRUE,
     stderr = TRUE,
     env = paste0("BENCH_ROOT=", bench_root)
@@ -127,12 +131,54 @@ test_that("output checker requires report and publication figures", {
       "expression_backend_benchmark_ceiling.png"
     )
   )
-  complete <- system2(
+  for (name in c(
+    "00_probe.csv",
+    "05_schedule.csv",
+    "10_export.csv",
+    "20_access.csv",
+    "crashes.csv",
+    "query_panel.csv",
+    "query_plan_manifest.csv",
+    "resource_check.csv",
+    "source_manifest.csv"
+  )) {
+    writeLines("evidence", file.path(stage, name))
+  }
+  dir.create(file.path(stage, "logs"))
+  writeLines("transient", file.path(stage, "logs", "run.log"))
+  inventory <- bench_system2(
     file.path(R.home("bin"), "Rscript"),
-    c(checker, stage),
+    c(file.path(bench_root, "benchmark", "cli.R"), "evidence", stage),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
+  )
+  expect_null(
+    attr(inventory, "status"),
+    info = paste(inventory, collapse = "\n")
+  )
+  inventory_rows <- utils::read.csv(
+    file.path(stage, "evidence_manifest.csv"),
+    stringsAsFactors = FALSE
+  )
+  expect_false(any(startsWith(inventory_rows$path, "logs/")))
+  complete <- bench_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, "check", stage),
     stdout = TRUE,
     stderr = TRUE,
     env = paste0("BENCH_ROOT=", bench_root)
   )
   expect_null(attr(complete, "status"), info = paste(complete, collapse = "\n"))
+
+  writeLines("tampered", file.path(stage, "10_export.csv"))
+  tampered <- suppressWarnings(bench_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, "check", stage),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
+  ))
+  expect_false(is.null(attr(tampered, "status")))
+  expect_match(paste(tampered, collapse = "\n"), "inventory does not match")
 })

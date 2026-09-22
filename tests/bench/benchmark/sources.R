@@ -1,3 +1,7 @@
+# Shared configuration and helpers for the backend benchmark.
+# Source this file from tests or cli.R.
+
+# ---- sources.R ----
 # Remote data source registry for the expression-backend benchmark.
 #
 # Every source is a public HDF5 file. Metadata inspection uses the rhdf5 ROS3
@@ -5,7 +9,7 @@
 # downloads the complete file into its marked scratch directory so all timed
 # source reads are local and network throughput is excluded from measurements.
 #
-# Numbers in the comments were measured with src/01_inspect_data.R on 2026-07-30.
+# Numbers in the comments were measured with `cli.R inspect`.
 
 BENCH_SOURCES <- list(
   # 10x Genomics 1.3 M mouse brain cells (E18), the canonical large-scale
@@ -13,6 +17,11 @@ BENCH_SOURCES <- list(
   # 1,306,127 cells x 27,998 genes, nnz 2,624,828,308, 3.93 GB remote.
   mouse_brain_e18 = list(
     label = "10x mouse brain E18",
+    accession = "GSE93421; SRP096558",
+    landing_page = paste0(
+      "https://www.10xgenomics.com/datasets/",
+      "1-3-million-brain-cells-from-e-18-mice-2-standard-1-3-0"
+    ),
     kind = "tenx",
     url = paste0(
       "https://cf.10xgenomics.com/samples/cell-exp/1.3.0/1M_neurons/",
@@ -22,12 +31,16 @@ BENCH_SOURCES <- list(
     organism = "mm10",
     slot = "counts",
     expected_bytes = 4216018749,
-    # 2010 nnz/cell. A dgCMatrix costs 12 B per non-zero and assembling one
-    # peaks at roughly twice that (the slot assignment copies), so budget
-    # ~48 kB of peak RAM per cell: a 32 GB host runs out somewhere past 400k
-    # cells. The last tier is deliberately past that wall.
-    tiers = c(50e3, 150e3, 400e3, 800e3),
-    comparison_tiers = c(50e3, 150e3)
+    expected_sha256 = paste0(
+      "255a36ee92de25cb3568faa2c27d31fe",
+      "6d0db30f285c5c977be8d6245de14044"
+    ),
+    full_cells = 1306127,
+    preview_cells = 400e3,
+    # Shared scale tiers. The complete 1,306,127-cell matrix is
+    # measured separately by full and is never labelled as 1m.
+    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
 
   # CELLxGENE Discover: population-scale cross-disorder atlas of the human
@@ -35,6 +48,13 @@ BENCH_SOURCES <- list(
   # 1,486,324 cells x 34,176 genes, nnz 6,111,732,728, 14.15 GB remote.
   human_pfc_hbcc = list(
     label = "human PFC cross-disorder (HBCC)",
+    dataset_id = "d27fb144-f105-46c2-b36f-f51421f74e4e",
+    collection_id = "84ce6837-548d-4a1f-919f-0bc0d9a3952f",
+    doi = "10.1038/s41597-025-04687-5",
+    landing_page = paste0(
+      "https://cellxgene.cziscience.com/collections/",
+      "84ce6837-548d-4a1f-919f-0bc0d9a3952f"
+    ),
     kind = "h5ad",
     url = paste0(
       "https://datasets.cellxgene.cziscience.com/",
@@ -43,11 +63,16 @@ BENCH_SOURCES <- list(
     organism = "hg38",
     slot = "data",
     expected_bytes = 14150526668,
-    # 4112 nnz/cell, so ~98 kB of peak RAM per cell: this source hits the same
-    # 32 GB wall at less than half the cell count of the mouse fixture even
-    # though the two files hold a comparable number of cells.
-    tiers = c(50e3, 150e3, 300e3),
-    comparison_tiers = 50e3
+    expected_sha256 = paste0(
+      "aeca0480ab8941a7e4cf6b0ff6dc8c",
+      "5f9d0de376466d65ca8198dc873f1cb16f"
+    ),
+    full_cells = 1486324,
+    preview_cells = 300e3,
+    # The same fixed tiers are used for direct scale comparison. The complete
+    # 1,486,324-cell matrix remains a separate full observation.
+    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
 
   # Same collection, MSSM cohort: 4,140,453 cells, 33.6 GB remote. Opt-in via
