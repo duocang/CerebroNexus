@@ -247,8 +247,8 @@ if (identical(command, "inspect")) {
   }
 
   profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
-  schedule <- if (identical(profile$name, "publication_scale")) {
-    bench_publication_scale_schedule(BENCH_SOURCES)
+  schedule <- if (identical(profile$name, "scale")) {
+    bench_scale_schedule(BENCH_SOURCES)
   } else if (profile$name %in% c("panel_c1", "panel_c2")) {
     bench_panel_c_schedule(BENCH_SOURCES, sub("panel_c", "c", profile$name))
   } else {
@@ -500,7 +500,7 @@ if (identical(command, "inspect")) {
   profile <- Sys.getenv("BENCH_PROFILE")
   row$source_prepare_secs <- tryCatch(
     bench_time({
-      source_matrix <<- if (profile %in% c("publication_scale", "panel_c2")) {
+      source_matrix <- if (profile %in% c("scale", "panel_c2")) {
         bench_open_source_tier(spec, source_path, n_cells)
       } else {
         spec$local_path <- source_path
@@ -519,7 +519,7 @@ if (identical(command, "inspect")) {
   plan <- NULL
   row$query_plan_secs <- tryCatch(
     bench_time({
-      plan <<- if (profile %in% c("publication_scale", "panel_c2")) {
+      plan <- if (profile %in% c("scale", "panel_c2")) {
         bench_build_lazy_query_plan(
           source_matrix,
           bench_profile(profile)$query_genes
@@ -674,7 +674,7 @@ if (identical(command, "inspect")) {
   m <- NULL
   row$read_secs <- tryCatch(
     bench_time(
-      m <<- bench_read_subset(spec, n_cells, n_chunks = 4, verbose = TRUE)
+      m <- bench_read_subset(spec, n_cells, n_chunks = 4, verbose = TRUE)
     ),
     error = function(e) fail("read", e)
   )
@@ -693,7 +693,7 @@ if (identical(command, "inspect")) {
 
   obj <- NULL
   row$seurat_secs <- tryCatch(
-    bench_time(obj <<- bench_make_seurat(m)),
+    bench_time(obj <- bench_make_seurat(m)),
     error = function(e) fail("seurat", e)
   )
   rm(m)
@@ -834,7 +834,7 @@ if (identical(command, "inspect")) {
   source_matrix <- NULL
   row$read_secs <- tryCatch(
     bench_time(
-      source_matrix <<- bench_open_source_tier(spec, source_path, n_cells)
+      source_matrix <- bench_open_source_tier(spec, source_path, n_cells)
     ),
     error = function(error) fail("open", error)
   )
@@ -864,7 +864,7 @@ if (identical(command, "inspect")) {
   obj <- NULL
   row$shell_secs <- tryCatch(
     bench_time(
-      obj <<- bench_make_full_shell(
+      obj <- bench_make_full_shell(
         source_matrix,
         backend,
         basename(sibling),
@@ -984,7 +984,7 @@ if (identical(command, "inspect")) {
     error = function(e) fail("query plan", e)
   )
   row$startup_secs <- tryCatch(
-    bench_time(obj <<- readCerebro(crb)),
+    bench_time(obj <- readCerebro(crb)),
     error = function(e) fail("startup", e)
   )
   row$rss_mb <- bench_rss_mb()
@@ -1145,7 +1145,7 @@ if (identical(command, "inspect")) {
       !identical(manifest_values[["git_dirty"]], "false")
   ) {
     stop(
-      "publication-profile evidence requires a clean Git worktree",
+      "benchmark evidence requires a clean Git worktree",
       call. = FALSE
     )
   }
@@ -1676,7 +1676,7 @@ if (identical(command, "inspect")) {
   cat(paste(out, collapse = "\n"), "\n")
   message("\nwrote ", path)
 } else if (identical(command, "figure")) {
-  # Generate uncertainty-aware figures from the current publication-profile run.
+  # Generate uncertainty-aware figures from the current benchmark run.
   #
   # Usage: Rscript benchmark_cli.R figure <result_dir> <out_dir>
 
@@ -1877,7 +1877,7 @@ if (identical(command, "inspect")) {
   if (identical(profile$name, "panel_c2")) {
     message(
       sprintf(
-        "wrote full-source publication figure from %s",
+        "wrote full-source benchmark figure from %s",
         manifest_values[["run_id"]]
       )
     )
@@ -1986,7 +1986,7 @@ if (identical(command, "inspect")) {
 
   message(
     sprintf(
-      "wrote publication-profile figures from %s (%d scale points)",
+      "wrote benchmark figures from %s (%d scale points)",
       manifest_values[["run_id"]],
       nrow(points)
     )
@@ -2028,7 +2028,7 @@ if (identical(command, "inspect")) {
   utils::write.csv(manifest, output, row.names = FALSE, na = "")
   message("wrote evidence inventory for ", nrow(manifest), " files")
 } else if (identical(command, "check")) {
-  # Check the complete staged evidence package before immutable publication.
+  # Check the complete staged evidence package before publishing it.
   #
   # Usage: Rscript benchmark_cli.R check <stage_dir>
 
@@ -2058,7 +2058,7 @@ if (identical(command, "inspect")) {
     "summary.md",
     "evidence_manifest.csv"
   )
-  if (profile %in% c("publication", "publication_scale")) {
+  if (identical(profile, "scale")) {
     required <- c(
       required,
       file.path("figures", "expression_backend_benchmark_overview.png"),

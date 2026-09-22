@@ -4,7 +4,7 @@
 #
 # Usage:
 #   Rscript paper/figures/draw_expression_backend_benchmark.R \
-#     tests/bench/result/publication-full/runs/<run-id> \
+#     tests/bench/result/full/runs/<run-id> \
 #     paper/figures/output/<run-id>
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -53,11 +53,15 @@ OKABE_ITO <- c(BPCells = "#0072B2", H5 = "#E69F00")
 
 font_match <- systemfonts::match_fonts(FONT_FAMILY)
 if (!nrow(font_match) || !file.exists(font_match$path[[1L]])) {
-  stop("Arial is not installed or cannot be resolved by Fontconfig", call. = FALSE)
+  stop(
+    "Arial is not installed or cannot be resolved by Fontconfig",
+    call. = FALSE
+  )
 }
 if (!grepl("arial", basename(font_match$path[[1L]]), ignore.case = TRUE)) {
   stop(
-    "Fontconfig substituted a non-Arial font: ", font_match$path[[1L]],
+    "Fontconfig substituted a non-Arial font: ",
+    font_match$path[[1L]],
     call. = FALSE
   )
 }
@@ -79,13 +83,23 @@ if (any(exports$status != "OK") || any(access$status != "OK")) {
   stop("paper figure requires an all-OK published run", call. = FALSE)
 }
 if (!"correctness" %in% names(access) || any(access$correctness != "OK")) {
-  stop("paper figure requires correctness=OK for every access row", call. = FALSE)
+  stop(
+    "paper figure requires correctness=OK for every access row",
+    call. = FALSE
+  )
 }
 
 required_export <- c("source", "backend", "export_secs", "total_mb")
 required_access <- c(
-  "source", "backend", "startup_secs", "rss_mb", "peak_rss_mb",
-  "hot_p50_secs", "block_secs", "subset_row_secs", "subset_block_secs"
+  "source",
+  "backend",
+  "startup_secs",
+  "rss_mb",
+  "peak_rss_mb",
+  "hot_p50_secs",
+  "block_secs",
+  "subset_row_secs",
+  "subset_block_secs"
 )
 if (!all(required_export %in% names(exports))) {
   stop("10_export.csv lacks required plotting columns", call. = FALSE)
@@ -139,16 +153,18 @@ summarise_metric <- function(data, metric, scale = 1, label = metric) {
     ),
     groups
   )
-  rows <- lapply(pieces, function(x) data.frame(
-    source_label = x$source_label[[1L]],
-    backend_label = x$backend_label[[1L]],
-    metric = label,
-    median = stats::median(x$value),
-    minimum = min(x$value),
-    maximum = max(x$value),
-    n = nrow(x),
-    stringsAsFactors = FALSE
-  ))
+  rows <- lapply(pieces, function(x) {
+    data.frame(
+      source_label = x$source_label[[1L]],
+      backend_label = x$backend_label[[1L]],
+      metric = label,
+      median = stats::median(x$value),
+      minimum = min(x$value),
+      maximum = max(x$value),
+      n = nrow(x),
+      stringsAsFactors = FALSE
+    )
+  })
   result <- do.call(rbind, rows)
   result$source_label <- factor(
     result$source_label,
@@ -230,17 +246,19 @@ dumbbell_plot <- function(
     labs(x = x_label, y = NULL, colour = NULL, shape = NULL) +
     theme_bioinformatics(show_legend)
   if (!is.null(facet_columns)) {
-    plot <- plot + facet_wrap(
-      stats::as.formula(paste("~", facet_columns)),
-      ncol = facet_ncol,
-      scales = "free_x"
-    )
+    plot <- plot +
+      facet_wrap(
+        stats::as.formula(paste("~", facet_columns)),
+        ncol = facet_ncol,
+        scales = "free_x"
+      )
   }
   if (log_scale) {
-    plot <- plot + scale_x_log10(
-      breaks = scales::breaks_log(n = 3),
-      labels = scales::label_number(accuracy = 0.01)
-    )
+    plot <- plot +
+      scale_x_log10(
+        breaks = scales::breaks_log(n = 3),
+        labels = scales::label_number(accuracy = 0.01)
+      )
   } else {
     plot <- plot + expand_limits(x = 0)
   }
@@ -405,7 +423,10 @@ legend <- c(
 writeLines(legend, file.path(output_dir, "figure_legend.md"))
 
 inputs <- c(
-  "10_export.csv", "20_access.csv", "run_manifest.csv", "source_manifest.csv"
+  "10_export.csv",
+  "20_access.csv",
+  "run_manifest.csv",
+  "source_manifest.csv"
 )
 input_paths <- file.path(run_dir, inputs)
 outputs <- c(basename(pdf_path), basename(tiff_path), "figure_legend.md")

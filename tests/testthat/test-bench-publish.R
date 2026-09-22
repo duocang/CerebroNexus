@@ -1,6 +1,6 @@
 bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
 
-skip_unless_bench_publication <- function() {
+skip_unless_bench_publish <- function() {
   testthat::skip_if_not(
     file.exists(file.path(bench_root, "benchmark_cli.R")),
     "benchmark tree not present (expected when checking a built package)"
@@ -34,8 +34,8 @@ run_publisher <- function(stage, target, run_id, fail_at = "") {
   )
 }
 
-test_that("failed publication preserves the prior current result", {
-  skip_unless_bench_publication()
+test_that("failed publish preserves the prior current result", {
+  skip_unless_bench_publish()
   root <- tempfile("bench-results-")
   stage <- tempfile("bench-stage-")
   dir.create(file.path(root, "runs", "old-run"), recursive = TRUE)
@@ -68,7 +68,7 @@ test_that("failed publication preserves the prior current result", {
 })
 
 test_that("publisher rejects unsafe and conflicting run identities", {
-  skip_unless_bench_publication()
+  skip_unless_bench_publish()
   root <- tempfile("bench-results-")
   stage <- tempfile("bench-stage-")
   dir.create(root)
@@ -92,12 +92,12 @@ test_that("publisher rejects unsafe and conflicting run identities", {
 })
 
 test_that("output checker requires raw evidence, figures, and checksums", {
-  skip_unless_bench_publication()
+  skip_unless_bench_publish()
   stage <- tempfile("bench-output-stage-")
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   utils::write.csv(
-    data.frame(key = "profile", value = "publication"),
+    data.frame(key = "profile", value = "scale"),
     file.path(stage, "run_manifest.csv"),
     row.names = FALSE
   )

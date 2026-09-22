@@ -1,14 +1,10 @@
 # Preliminary full-source backend results
 
-These rounded observations were recovered from the console log of run
-`20260915T192120Z-9f65e8eb4efc-publication-full`. All 12 backend builds and all
-24 fresh-process access measurements completed successfully. The former
-publication workflow rejected the run later because its unrelated browser
-interaction gate failed.
+These rounded observations were recovered from the console log of a retired run. All 12 backend builds and all 24 fresh-process access measurements completed successfully. The former benchmark workflow rejected the run later because its unrelated browser interaction gate failed.
 
 The original staged CSV files were deliberately removed with the failed-run
 scratch directory. These tables are therefore an engineering summary, not an
-immutable publication result. A new backend-only run remains required for the
+immutable benchmark result. A new backend-only run remains required for the
 paper evidence package.
 
 ## Backend construction

@@ -18,7 +18,7 @@ The scale study takes deterministic prefixes at its declared cell counts and att
 
 For each source/backend pair, five fresh R processes independently open the source, stream the backend, construct the Cerebro shell, and serialize the CRB. Backend order alternates across repeats. Each artifact is opened by two fresh access processes, yielding ten access observations per source/backend.
 
-The independent scale study uses fixed tiers of 1k, 10k, 50k, 100k, 500k, and 1m cells from each source. The complete-source study uses all 1,306,127 mouse cells or all 1,486,324 human cells. Scale and full results have separate run IDs, result roots, validation, and publication pointers and must not be pooled as one experiment.
+The independent scale study uses fixed tiers of 1k, 10k, 50k, 100k, 500k, and 1m cells from each source. The complete-source study uses all 1,306,127 mouse cells or all 1,486,324 human cells. Scale and full results have separate run IDs, result roots, validation, and current-result pointers and must not be pooled as one experiment.
 
 Processes run sequentially with a fixed thread count on an exclusive node. Reports show medians, observed minima/maxima, and independent-process `n`; no significance test is performed.
 
@@ -36,11 +36,11 @@ The access workload measures hydrated startup, the first full-cell single-gene r
 
 The first getter call is fresh-process but not controlled cold disk; the operating-system page cache may be warm. Every successful result is fingerprinted outside the timed expression. Any full or subset mismatch invalidates the run. Failed `embedded` builds in the scale study retain missing metrics and do not receive access measurements; BPCells and H5 remain mandatory at every tier.
 
-## Provenance and publication gate
+## Provenance and evidence gate
 
-The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed mandatory backends, mismatched plans, incorrect values, missing figures, or dirty publication state reject the run before immutable publication. Scale-study `embedded` failures are the sole optional build outcome.
+The wrapper requires a clean worktree, an explicit storage description, a fixed thread count, and a source cache outside Git. Each run records Git SHA, package and dependency versions, R, OS, CPU, storage, source URLs, file sizes, and hashes. Missing rows, failed mandatory backends, mismatched plans, incorrect values, missing figures, or dirty Git state reject the run before the immutable result is published. Scale-study `embedded` failures are the sole optional build outcome.
 
-Validated evidence is published under either `result/publication-scale/runs/<run-id>/` or `result/publication-full/runs/<run-id>/`; each workflow updates only its own `CURRENT`, and only after all checks pass. The package also contains a deterministic file inventory with byte sizes and checksums, so the raw tables and generated report can be audited as one unit.
+Validated evidence is published under either `result/scale/runs/<run-id>/` or `result/full/runs/<run-id>/`; each workflow updates only its own `CURRENT`, and only after all checks pass. The package also contains a deterministic file inventory with byte sizes and checksums, so the raw tables and generated report can be audited as one unit.
 
 ## Interpretation limits
 

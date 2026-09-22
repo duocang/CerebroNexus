@@ -11,6 +11,334 @@ EXIT_FILE="$STATE_DIR/benchmark.exit"
 LOG_FILE="$STATE_DIR/benchmark.log"
 SCRIPT="$BENCH_ROOT/run_benchmark.sh"
 
+bench_sha256_file() {
+  local path=$1
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$path" | awk '{print $NF}'
+  else
+    echo "no SHA-256 implementation found" >&2
+    return 1
+  fi
+}
+
+bench_fetch_source() {
+  local url=$1
+  local expected_bytes=$2
+  local scratch_dir=$3
+  local expected_sha=${4:-}
+  local name
+  local file
+  local part
+  local bytes
+  local sha
+  local recorded_sha
+  local cache_root
+  name=$(basename "${url%%\?*}")
+  mkdir -p "$scratch_dir"
+
+  if [ -n "${BENCH_SOURCE_CACHE:-}" ]; then
+    mkdir -p "$BENCH_SOURCE_CACHE"
+    cache_root=$(cd "$BENCH_SOURCE_CACHE" && pwd) || return 1
+    file="$cache_root/$name"
+    if [ -f "$file" ]; then
+      if [ ! -f "$file.sha256" ]; then
+        echo "cached source has no SHA-256 sidecar: $file" >&2
+        return 1
+      fi
+      recorded_sha=$(tr -d '[:space:]' < "$file.sha256")
+      sha=$(bench_sha256_file "$file") || return 1
+      bytes=$(wc -c < "$file" | tr -d '[:space:]')
+      if [ "$sha" != "$recorded_sha" ] || [ "$bytes" != "$expected_bytes" ]; then
+        echo "cached source failed checksum or size validation: $file" >&2
+        return 1
+      fi
+      if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+        echo "cached source differs from the pinned SHA-256: $file" >&2
+        return 1
+      fi
+    else
+      part="$file.part"
+      curl -fL --retry 3 --retry-delay 5 --continue-at - \
+        -o "$part" "$url" || return 1
+      bytes=$(wc -c < "$part" | tr -d '[:space:]')
+      if [ "$bytes" != "$expected_bytes" ]; then
+        echo "downloaded source has unexpected size: $bytes != $expected_bytes" >&2
+        return 1
+      fi
+      sha=$(bench_sha256_file "$part") || return 1
+      if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+        echo "downloaded source differs from the pinned SHA-256" >&2
+        return 1
+      fi
+      mv "$part" "$file"
+      printf '%s\n' "$sha" > "$file.sha256.tmp"
+      mv "$file.sha256.tmp" "$file.sha256"
+    fi
+    BENCH_FETCHED_FILE="$scratch_dir/$name"
+    ln -sfn "$file" "$BENCH_FETCHED_FILE"
+  else
+    BENCH_FETCHED_FILE="$scratch_dir/$name"
+    part="$BENCH_FETCHED_FILE.part"
+    curl -fL --retry 3 --retry-delay 5 --continue-at - \
+      -o "$part" "$url" || return 1
+    bytes=$(wc -c < "$part" | tr -d '[:space:]')
+    if [ "$bytes" != "$expected_bytes" ]; then
+      echo "downloaded source has unexpected size: $bytes != $expected_bytes" >&2
+      return 1
+    fi
+    sha=$(bench_sha256_file "$part") || return 1
+    if [ -n "$expected_sha" ] && [ "$sha" != "$expected_sha" ]; then
+      echo "downloaded source differs from the pinned SHA-256" >&2
+      return 1
+    fi
+    mv "$part" "$BENCH_FETCHED_FILE"
+  fi
+
+  BENCH_FETCHED_BYTES=$bytes
+  BENCH_FETCHED_SHA256=$sha
+}
+
+run_profile_engine() (
+set +e
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export BENCH_ROOT="$REPO/tests/bench"
+RESULT_ROOT="${BENCH_RESULT_ROOT:-$BENCH_ROOT/result}"
+export BENCH_PROFILE="${BENCH_PROFILE:-quick}"
+export BENCH_THREADS="${BENCH_THREADS:-1}"
+
+case "$BENCH_THREADS" in
+  ''|*[!0-9]*|0)
+    echo "BENCH_THREADS must be a positive integer" >&2
+    exit 1
+    ;;
+esac
+export OMP_NUM_THREADS="$BENCH_THREADS"
+export OPENBLAS_NUM_THREADS="$BENCH_THREADS"
+export MKL_NUM_THREADS="$BENCH_THREADS"
+export VECLIB_MAXIMUM_THREADS="$BENCH_THREADS"
+export BLIS_NUM_THREADS="$BENCH_THREADS"
+export RCPP_PARALLEL_NUM_THREADS="$BENCH_THREADS"
+
+SCRATCH_PARENT="${BENCH_SCRATCH_PARENT:-${TMPDIR:-/tmp}}"
+mkdir -p "$SCRATCH_PARENT"
+SCRATCH="$(mktemp -d "$SCRATCH_PARENT/cerebro-bench.XXXXXX")" || exit 1
+SCRATCH_MARKER="$SCRATCH/.cerebro-benchmark-scratch"
+: > "$SCRATCH_MARKER"
+export BENCH_SCRATCH="$SCRATCH"
+export BENCH_LIB="$SCRATCH/rlib"
+# Benchmark evidence must not load packages or startup hooks from the caller's
+# personal R installation. Nix-provided site libraries remain available.
+export R_ENVIRON_USER=/dev/null
+export R_PROFILE_USER=/dev/null
+export NOT_CRAN=true
+export R_LIBS_USER="$SCRATCH/r-user-library"
+export BENCH_RUN_ID="${BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$REPO" rev-parse --short=12 HEAD)-$BENCH_PROFILE}"
+
+STAGE="$SCRATCH/result"
+LOG_DIR="$STAGE/logs"
+SCHEDULE="$STAGE/05_schedule.csv"
+SCHEDULE_TSV="$SCRATCH/05_schedule.tsv"
+EXPORT_CSV="$STAGE/10_export.csv"
+ACCESS_CSV="$STAGE/20_access.csv"
+CRASH_CSV="$STAGE/crashes.csv"
+SOURCE_MANIFEST="$STAGE/source_manifest.csv"
+QUERY_PLAN_MANIFEST="$STAGE/query_plan_manifest.csv"
+QUERY_PANEL="$STAGE/query_panel.csv"
+
+cleanup() {
+  local code=$?
+  trap - EXIT INT TERM
+  if [ "${BENCH_KEEP:-0}" = "1" ]; then
+    echo "==> keeping scratch at $SCRATCH (BENCH_KEEP=1)"
+  elif [ "$code" -ne 0 ] && [ "${BENCH_KEEP_ON_FAILURE:-1}" = "1" ]; then
+    echo "==> keeping failed-run scratch at $SCRATCH (BENCH_KEEP_ON_FAILURE=1)"
+  elif [ -f "$SCRATCH_MARKER" ] && [[ "$(basename "$SCRATCH")" == cerebro-bench.* ]]; then
+    echo "==> removing scratch $SCRATCH"
+    rm -rf -- "$SCRATCH"
+  else
+    echo "!! refusing to remove unverified scratch path: $SCRATCH" >&2
+    code=1
+  fi
+  exit "$code"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
+  "$BENCH_LIB" "$R_LIBS_USER"
+printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
+printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
+
+echo "==> run:      $BENCH_RUN_ID"
+echo "==> profile:  $BENCH_PROFILE"
+echo "==> scratch:  $SCRATCH"
+echo "==> results:  $RESULT_ROOT"
+df -h "$SCRATCH" | tail -1
+
+echo "==> inspecting source dimensions (metadata only)"
+Rscript "$BENCH_ROOT/benchmark_cli.R" inspect "$STAGE/00_probe.csv" 2>&1 \
+  | tee "$LOG_DIR/probe.log" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" environment "$STAGE/run_manifest.csv" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" plan "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
+
+RESOURCE_COMMAND="resources"
+BUILD_COMMAND="export"
+if [ "$BENCH_PROFILE" = "scale" ] || \
+   [ "$BENCH_PROFILE" = "panel_c2" ]; then
+  RESOURCE_COMMAND="full-resources"
+  BUILD_COMMAND="build-full"
+fi
+
+echo "==> checking whether this machine can run the plan"
+Rscript "$BENCH_ROOT/benchmark_cli.R" "$RESOURCE_COMMAND" \
+  "$STAGE/00_probe.csv" "$SCHEDULE" "$STAGE/run_manifest.csv" \
+  "$STAGE/resource_check.csv" || exit 1
+
+echo "==> installing branch under test into $BENCH_LIB"
+R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
+  > "$LOG_DIR/install.log" 2>&1 || {
+  echo "!! install failed, see $LOG_DIR/install.log"
+  tail -20 "$LOG_DIR/install.log"
+  exit 1
+}
+
+SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "benchmark.R")); cat(bench_active_sources(), sep="\n")')
+
+for src in $SOURCES; do
+  url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$url)")
+  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
+  expected_sha=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'benchmark.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
+
+  echo "==> [$src] fetching $(basename "${url%%\?*}")"
+  if ! bench_fetch_source \
+    "$url" "$expected_bytes" "$SCRATCH/sources" "$expected_sha"; then
+    echo "!! download failed for $src; validation will preserve the previous run"
+    continue
+  fi
+  file=$BENCH_FETCHED_FILE
+  bytes=$BENCH_FETCHED_BYTES
+  sha256=$BENCH_FETCHED_SHA256
+  printf '"%s","%s","%s",%s,"%s"\n' \
+    "$BENCH_RUN_ID" "$src" "$url" "$bytes" "$sha256" >> "$SOURCE_MANIFEST"
+  echo "    local copy: $bytes bytes, sha256 ${sha256:0:12}..."
+
+  tiers=$(awk -F '\t' -v source="$src" '$2 == source {print $3}' \
+    "$SCHEDULE_TSV" | sort -n -u)
+  for tier in $tiers; do
+    query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
+    echo "==> [$src / $tier] preparing frozen query plan"
+    Rscript "$BENCH_ROOT/benchmark_cli.R" query-plan \
+      "$src" "$tier" "$SCRATCH" "$query_plan" "$QUERY_PLAN_MANIFEST" \
+      "$QUERY_PANEL" \
+      > "$LOG_DIR/query_plan_${src}_${tier}.log" 2>&1 || {
+      tail -20 "$LOG_DIR/query_plan_${src}_${tier}.log"
+      exit 1
+    }
+  done
+
+  while IFS=$'\t' read -r profile row_source tier comparison export_repeat order_position backend access_repeats; do
+    [ "$row_source" = "$src" ] || continue
+    tag="${src}_${tier}_${backend}_r${export_repeat}"
+    query_plan="$SCRATCH/query-plans/${src}_${tier}.rds"
+    out_dir="$SCRATCH/export/$tag"
+    crb="$out_dir/bench.crb"
+    build_command="$BUILD_COMMAND"
+    missing_ok=0
+    if [ "$BENCH_PROFILE" = "scale" ] && \
+       [ "$backend" = "embedded" ]; then
+      build_command="export"
+      missing_ok=1
+    fi
+
+    echo "==> [$tag] build (position $order_position)"
+    Rscript "$BENCH_ROOT/benchmark_cli.R" "$build_command" \
+      "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
+      "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
+      > "$LOG_DIR/export_$tag.log" 2>&1
+    rc=$?
+    tail -3 "$LOG_DIR/export_$tag.log" | sed 's/^/    /'
+    if [ "$rc" -ne 0 ]; then
+      echo "    !! export process died (exit $rc)"
+      printf '"%s","%s","%s",%s,"%s",%s,%s,"export",%s\n' \
+        "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+        "$export_repeat" "$order_position" "$rc" >> "$CRASH_CSV"
+      if [ "${BENCH_KEEP:-0}" != "1" ]; then
+        rm -rf -- "$out_dir"
+      fi
+      continue
+    fi
+
+    if [ ! -f "$crb" ]; then
+      if [ "$missing_ok" = "1" ]; then
+        if [ "${BENCH_KEEP:-0}" != "1" ]; then
+          rm -rf -- "$out_dir"
+        fi
+        continue
+      fi
+      echo "    !! export succeeded but artifact is missing: $crb" >&2
+      printf '"%s","%s","%s",%s,"%s",%s,%s,"export-artifact",1\n' \
+        "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+        "$export_repeat" "$order_position" >> "$CRASH_CSV"
+      exit 1
+    fi
+
+    for access_repeat in $(seq 1 "$access_repeats"); do
+      echo "==> [$tag] access repeat $access_repeat/$access_repeats"
+      Rscript "$BENCH_ROOT/benchmark_cli.R" access \
+        "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
+        "$access_repeat" "$crb" "$ACCESS_CSV" "$query_plan" \
+        > "$LOG_DIR/access_${tag}_a${access_repeat}.log" 2>&1
+      rc=$?
+      tail -2 "$LOG_DIR/access_${tag}_a${access_repeat}.log" | sed 's/^/    /'
+      if [ "$rc" -ne 0 ]; then
+        echo "    !! access process died (exit $rc)"
+        printf '"%s","%s","%s",%s,"%s",%s,%s,"access-%s",%s\n' \
+          "$BENCH_RUN_ID" "$BENCH_PROFILE" "$src" "$tier" "$backend" \
+          "$export_repeat" "$order_position" "$access_repeat" "$rc" >> "$CRASH_CSV"
+      fi
+    done
+
+    if [ "${BENCH_KEEP:-0}" != "1" ]; then
+      rm -rf -- "$out_dir"
+    fi
+  done < "$SCHEDULE_TSV"
+
+  if [ "${BENCH_KEEP:-0}" != "1" ]; then
+    rm -f -- "$file"
+  fi
+done
+
+echo "==> checking measurements"
+Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$STAGE" || exit 1
+
+echo "==> writing report"
+Rscript "$BENCH_ROOT/benchmark_cli.R" report "$STAGE" 2>&1 \
+  | tee "$LOG_DIR/report.log" || exit 1
+
+if [ "$BENCH_PROFILE" = "scale" ] || \
+   [ "$BENCH_PROFILE" = "panel_c2" ]; then
+  echo "==> drawing benchmark figures"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$STAGE" "$STAGE/figures" \
+    > "$LOG_DIR/figures.log" 2>&1 || {
+    tail -20 "$LOG_DIR/figures.log"
+    exit 1
+  }
+fi
+
+echo "==> checking report and figures"
+Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$STAGE" || exit 1
+Rscript "$BENCH_ROOT/benchmark_cli.R" check "$STAGE" || exit 1
+
+echo "==> publishing immutable result run"
+Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
+
+echo "==> done: $RESULT_ROOT/runs/$BENCH_RUN_ID"
+)
+
 read_pid() {
   local pid=""
   [ -f "$PID_FILE" ] || return 1
@@ -65,12 +393,12 @@ run_profile() {
     BENCH_STUDY_ID="$study_id" \
     BENCH_RUN_ID="$study_id" \
     BENCH_RESULT_ROOT="$BENCH_ROOT/result/$result_name" \
-    "$BENCH_ROOT/_benchmark_profile.sh"
+    "$SCRIPT" _profile
 }
 
 run_all() {
-  run_profile panel_c2 publication-full
-  run_profile publication_scale publication-scale
+  run_profile panel_c2 full
+  run_profile scale scale
 }
 
 worker() {
@@ -87,6 +415,8 @@ worker() {
   exit "$code"
 }
 
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
 ACTION="${1:-run}"
 case "$ACTION" in
   status)
@@ -100,6 +430,10 @@ case "$ACTION" in
   _inside)
     run_all
     exit 0
+    ;;
+  _profile)
+    run_profile_engine
+    exit $?
     ;;
   run)
     ;;

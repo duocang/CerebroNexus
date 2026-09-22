@@ -1,10 +1,10 @@
 # Reading full-source benchmark results
 
-This guide defines how to interpret one completed publication run. It contains no fixed performance conclusion.
+This guide defines how to interpret one completed benchmark run. It contains no fixed performance conclusion.
 
 ## Select one immutable run
 
-Read `result/publication-full/CURRENT`, then open the matching directory under `result/publication-full/runs/<run-id>/`. Do not combine files from different runs.
+Read `result/full/CURRENT`, then open the matching directory under `result/full/runs/<run-id>/`. Do not combine files from different runs.
 
 Start with:
 
@@ -14,7 +14,7 @@ Start with:
 4. `10_export.csv` for build observations;
 5. `20_access.csv` for hydrated startup and expression access;
 6. `query_plan_manifest.csv` and `query_panel.csv` for the frozen workload and correctness references;
-7. `figures/expression_backend_benchmark_overview.png` for the publication overview.
+7. `figures/expression_backend_benchmark_overview.png` for the benchmark overview.
 8. `evidence_manifest.csv` to verify that the raw evidence package is complete and unchanged.
 
 ## Interpret metrics

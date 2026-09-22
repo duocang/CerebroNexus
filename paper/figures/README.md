@@ -6,7 +6,7 @@ immutable benchmark run without modifying its evidence package.
 Generate the Oxford Bioinformatics-ready expression-backend figure with:
 
 ```bash
-RUN_ROOT=tests/bench/result/publication-full
+RUN_ROOT=tests/bench/result/full
 RUN_DIR="$RUN_ROOT/runs/$(cat "$RUN_ROOT/CURRENT")"
 OUT_DIR="paper/figures/output/$(basename "$RUN_DIR")"
 

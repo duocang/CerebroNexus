@@ -75,8 +75,8 @@ test_that("evidence labels prevent quick runs from sounding definitive", {
     "Exploratory"
   )
   expect_match(
-    bench_evidence_notice(bench_profile("publication")),
-    "Publication-profile"
+    bench_evidence_notice(bench_profile("scale")),
+    "Benchmark evidence"
   )
 })
 
@@ -100,7 +100,7 @@ test_that("current result resolution is safe and backward compatible", {
   expect_error(bench_current_result_dir(root), "unsafe CURRENT")
 })
 
-test_that("report and plots consume repeated publication rows", {
+test_that("report and plots consume repeated benchmark rows", {
   skip_unless_bench_reporting()
   testthat::skip_if_not_installed("ggplot2")
   testthat::skip_if_not_installed("patchwork")
@@ -118,7 +118,7 @@ test_that("report and plots consume repeated publication rows", {
     stringsAsFactors = FALSE
   )
   exports$run_id <- "test-run"
-  exports$profile <- "publication"
+  exports$profile <- "scale"
   exports$source <- "fixture"
   exports$label <- "fixture"
   exports$n_cells <- 1000
@@ -205,7 +205,7 @@ test_that("report and plots consume repeated publication rows", {
   )
   manifest <- c(
     run_id = "test-run",
-    profile = "publication",
+    profile = "scale",
     git_sha = paste(rep("a", 40), collapse = ""),
     generated_at = "2026-08-04",
     git_branch = "test",
@@ -252,7 +252,7 @@ test_that("report and plots consume repeated publication rows", {
     info = paste(report_status, collapse = "\n")
   )
   report <- readLines(file.path(result_dir, "summary.md"), warn = FALSE)
-  expect_true(any(grepl("Publication-profile evidence", report, fixed = TRUE)))
+  expect_true(any(grepl("Benchmark evidence", report, fixed = TRUE)))
   expect_true(any(grepl("n=3", report, fixed = TRUE)))
   expect_true(any(grepl("peak process RSS MB", report, fixed = TRUE)))
 
@@ -282,7 +282,7 @@ test_that("report and plots consume repeated publication rows", {
   )))
 })
 
-test_that("publication figure labels distinct expression workloads", {
+test_that("benchmark figure labels distinct expression workloads", {
   skip_unless_bench_reporting()
   script <- readLines(
     file.path(bench_root, "benchmark_cli.R"),

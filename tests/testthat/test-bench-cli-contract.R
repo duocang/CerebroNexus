@@ -25,20 +25,13 @@ run_bench_command <- function(command, args = character(), env = character()) {
   )
 }
 
-test_that("publication benchmark has one library and one CLI", {
+test_that("benchmark has one library and one CLI", {
   skip_unless_bench_cli()
 
   expect_true(file.exists(file.path(bench_root, "benchmark.R")))
   expect_true(file.exists(file.path(bench_root, "benchmark_cli.R")))
   expect_true(file.exists(file.path(bench_root, "run_benchmark.sh")))
-  expect_true(file.exists(file.path(bench_root, "_benchmark_profile.sh")))
-  expect_true(file.exists(file.path(bench_root, "source_cache.sh")))
-  expect_false(file.exists(file.path(
-    bench_root,
-    "update_and_run_publication_full.sh"
-  )))
-  expect_false(file.exists(file.path(bench_root, "run_publication_full.sh")))
-  expect_false(file.exists(file.path(bench_root, "run_publication_scale.sh")))
+  expect_false(file.exists(file.path(bench_root, "run_scale.sh")))
   expect_false(dir.exists(file.path(bench_root, "config")))
   expect_false(dir.exists(file.path(bench_root, "lib")))
   expect_false(dir.exists(file.path(bench_root, "src")))
@@ -48,7 +41,7 @@ test_that("publication benchmark has one library and one CLI", {
 test_that("runner keeps isolated processes and safe cleanup", {
   skip_unless_bench_cli()
   runner <- paste(
-    readLines(file.path(bench_root, "_benchmark_profile.sh"), warn = FALSE),
+    readLines(file.path(bench_root, "run_benchmark.sh"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -58,7 +51,7 @@ test_that("runner keeps isolated processes and safe cleanup", {
   expect_match(runner, "R_ENVIRON_USER=/dev/null", fixed = TRUE)
   expect_match(runner, "R_PROFILE_USER=/dev/null", fixed = TRUE)
   expect_match(runner, 'R_LIBS_USER="$SCRATCH/r-user-library"', fixed = TRUE)
-  expect_match(runner, 'source "$BENCH_ROOT/source_cache.sh"', fixed = TRUE)
+  expect_match(runner, "bench_fetch_source()", fixed = TRUE)
 
   stages <- c(
     " inspect ",
@@ -94,14 +87,14 @@ test_that("one public launcher runs both benchmark profiles in the background", 
   expect_match(launcher, 'ACTION="${1:-run}"', fixed = TRUE)
   expect_match(launcher, "status)", fixed = TRUE)
   expect_match(launcher, 'nohup "$SCRIPT" _worker', fixed = TRUE)
-  expect_match(launcher, '"$BENCH_ROOT/_benchmark_profile.sh"', fixed = TRUE)
+  expect_match(launcher, '"$SCRIPT" _profile', fixed = TRUE)
   full <- regexpr(
-    "run_profile panel_c2 publication-full",
+    "run_profile panel_c2 full",
     launcher,
     fixed = TRUE
   )[1L]
   scale <- regexpr(
-    "run_profile publication_scale publication-scale",
+    "run_profile scale scale",
     launcher,
     fixed = TRUE
   )[1L]
@@ -118,7 +111,7 @@ test_that("schedule CLI includes embedded through 500k", {
   run <- run_bench_command(
     "plan",
     c(csv, tsv),
-    env = "BENCH_PROFILE=publication_scale"
+    env = "BENCH_PROFILE=scale"
   )
   expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
   schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
@@ -161,11 +154,12 @@ test_that("manifest CLI records the run identity", {
     collapse = "\n"
   )
   expect_match(cli, ":(exclude,glob)tests/bench/result/**", fixed = TRUE)
+  expect_false(grepl("<<-", cli, fixed = TRUE))
 })
 
 test_that("source cache reuses only verified files", {
   skip_unless_bench_cli()
-  helper <- file.path(bench_root, "source_cache.sh")
+  helper <- file.path(bench_root, "run_benchmark.sh")
   root <- tempfile("bench-cache-")
   origin <- file.path(root, "origin", "fixture.h5")
   cache <- file.path(root, "cache")
@@ -197,7 +191,7 @@ test_that("source cache reuses only verified files", {
   expect_null(attr(second, "status"), info = paste(second, collapse = "\n"))
 })
 
-test_that("publication sources pin SHA-256 values", {
+test_that("benchmark sources pin SHA-256 values", {
   skip_unless_bench_cli()
   source(file.path(bench_root, "benchmark.R"), local = TRUE)
   pinned <- vapply(

@@ -8,7 +8,7 @@ and cannot pass, fail, publish, or replace backend evidence.
 
 > **Current status:** historical evidence has been retired. No result is current until `run_benchmark.sh` completes both benchmark profiles.
 
-Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.md) before interpreting generated values. [PRELIMINARY_BACKEND_RESULTS.md](PRELIMINARY_BACKEND_RESULTS.md) records the rounded backend observations recovered from the last browser-gate-aborted run; it is not publication evidence.
+Read [METHODOLOGY.md](METHODOLOGY.md) for the protocol and [RESULTS.md](RESULTS.md) before interpreting generated values. [PRELIMINARY_BACKEND_RESULTS.md](PRELIMINARY_BACKEND_RESULTS.md) records rounded observations recovered from a retired run; it is not current benchmark evidence.
 
 ## Run the benchmark
 
@@ -44,36 +44,14 @@ opened by two independent access processes. Backend order alternates by repeat.
 The scale profile follows the complete-source profile automatically. It uses BPCells and H5 at all six fixed cell-count tiers and attempts embedded storage through 500k cells, with five independent builds and two access processes per successful build. An embedded failure is retained with empty metrics and does not invalidate the mandatory BPCells/H5 results.
 
 Its immutable results are written under
-`tests/bench/result/publication-scale/`; it neither reads nor replaces
-`tests/bench/result/publication-full/`.
+`tests/bench/result/scale/`; it neither reads nor replaces
+`tests/bench/result/full/`.
 
 Validated runs are published under the selected workflow's
-`result/publication-{scale,full}/runs/<run-id>/` directory; its own `CURRENT`
+`result/{scale,full}/runs/<run-id>/` directory; its own `CURRENT`
 changes last. Every published run includes `evidence_manifest.csv`, which
 records the byte size and MD5 checksum of every raw table, log, report, and
 figure in the evidence package.
-
-If all timed measurements finished but a later validation, reporting, or
-figure step failed, do not repeat the acquisition. Finalize the retained,
-marker-protected scratch directory with:
-
-```bash
-bash tests/bench/resume_publication_from_scratch.sh /path/to/cerebro-bench.XXXXXX
-```
-
-The recovery command reruns only validation, reporting, figures, checksums, and
-immutable publication. It never reruns builds or access measurements.
-
-## Harness development
-
-`quick`, `standard`, and `stress` remain sampled smoke/development profiles for changing the harness. They are not publication evidence and are not called by the public launcher.
-
-```bash
-BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
-  BENCH_SOURCE_CACHE=/persistent/cerebro-benchmark-sources \
-  BENCH_SOURCES_ONLY=mouse_brain_e18 \
-  BENCH_PROFILE=quick tests/bench/_benchmark_profile.sh
-```
 
 The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_viewer_1m_pages.R` scripts preserve historical PR0-PR5 engineering comparisons only. They are not part of the current paper benchmark.
 
@@ -82,6 +60,5 @@ The older `benchmark_million_cell_*`, `prepare_viewer_1m_*`, and `benchmark_view
 | script | purpose |
 |---|---|
 | `run_benchmark.sh` | public background launcher for the complete benchmark |
-| `_benchmark_profile.sh` | private single-profile execution engine |
 | `benchmark.R` | source definitions, schedules, I/O, validation, and reporting helpers |
 | `benchmark_cli.R` | execute one isolated benchmark stage |

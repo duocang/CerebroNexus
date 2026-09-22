@@ -1,4 +1,4 @@
-# Shared configuration and helpers for the publication benchmark.
+# Shared configuration and helpers for the backend benchmark.
 # Source this file from tests or benchmark_cli.R.
 
 # ---- sources.R ----
@@ -37,8 +37,8 @@ BENCH_SOURCES <- list(
     ),
     full_cells = 1306127,
     panel_c1_cells = 400e3,
-    # Shared publication-scale tiers. The complete 1,306,127-cell matrix is
-    # measured separately by publication-full and is never labelled as 1m.
+    # Shared scale tiers. The complete 1,306,127-cell matrix is
+    # measured separately by full and is never labelled as 1m.
     tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
     comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
@@ -70,7 +70,7 @@ BENCH_SOURCES <- list(
     full_cells = 1486324,
     panel_c1_cells = 300e3,
     # The same fixed tiers are used for direct scale comparison. The complete
-    # 1,486,324-cell matrix remains a separate publication-full observation.
+    # 1,486,324-cell matrix remains a separate full observation.
     tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
     comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
   ),
@@ -137,18 +137,8 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
       comparison_tier_mode = "all",
       article_eligible = FALSE
     ),
-    publication = list(
-      name = "publication",
-      export_repeats = 5L,
-      access_repeats = 2L,
-      query_genes = 12L,
-      hot_iterations = 3L,
-      include_scale_tiers = FALSE,
-      comparison_tier_mode = "all",
-      article_eligible = TRUE
-    ),
-    publication_scale = list(
-      name = "publication_scale",
+    scale = list(
+      name = "scale",
       export_repeats = 5L,
       access_repeats = 2L,
       query_genes = 12L,
@@ -194,7 +184,7 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
       "unknown benchmark profile: ",
       name,
       paste0(
-        "; expected quick, standard, publication, publication_scale, ",
+        "; expected quick, standard, scale, ",
         "panel_c1, panel_c2, or stress"
       ),
       call. = FALSE
@@ -203,11 +193,11 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
   profile
 }
 
-bench_publication_scale_schedule <- function(specs) {
+bench_scale_schedule <- function(specs) {
   sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
   if (length(sources) != 2L) {
     stop(
-      "publication scale requires the mouse and human sources",
+      "scale profile requires the mouse and human sources",
       call. = FALSE
     )
   }
@@ -227,13 +217,13 @@ bench_publication_scale_schedule <- function(specs) {
   rbind(
     bench_schedule(
       embedded_specs,
-      "publication_scale",
+      "scale",
       sources = sources,
       backends = c("embedded", "bpcells", "h5")
     ),
     bench_schedule(
       external_specs,
-      "publication_scale",
+      "scale",
       sources = sources,
       backends = c("bpcells", "h5")
     )
@@ -247,7 +237,7 @@ bench_panel_c_schedule <- function(specs, part = c("c1", "c2")) {
   sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
   if (length(sources) != 2L) {
     stop(
-      "Panel C requires the mouse and human publication sources",
+      "Panel C requires the mouse and human benchmark sources",
       call. = FALSE
     )
   }
@@ -462,7 +452,7 @@ bench_validate_results <- function(
     drop = FALSE
   ]
   required <- schedule$comparison &
-    !(identical(profile$name, "publication_scale") &
+    !(identical(profile$name, "scale") &
       schedule$backend == "embedded")
   comparison_keys <- expected[required]
   if (!all(comparison_keys %in% .bench_result_key(successful))) {
@@ -544,7 +534,7 @@ bench_require_article_profile <- function(profile) {
   }
   if (!isTRUE(profile$article_eligible)) {
     stop(
-      "the user-facing article requires results from the publication profile",
+      "the user-facing article requires an evidence-grade benchmark profile",
       call. = FALSE
     )
   }
@@ -760,7 +750,7 @@ bench_msg <- function(...) {
 }
 
 # ---- full_source.R ----
-# Lazy source helpers for scale and full-source publication benchmarks.
+# Lazy source helpers for scale and full-source benchmarks.
 
 bench_validate_full_matrix <- function(matrix, spec = list()) {
   if (!inherits(matrix, "IterableMatrix")) {
@@ -1111,7 +1101,7 @@ bench_open <- function(spec) {
 
 #' Cache a source in `dir` for the duration of a run. Returns the local path.
 #'
-#' The caller is responsible for deleting `dir`; `_benchmark_profile.sh` does that from a
+#' The caller is responsible for deleting `dir`; `run_benchmark.sh` does that from a
 #' trap so an interrupted run does not leave tens of GB behind.
 bench_fetch_source <- function(spec, dir, verbose = TRUE) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
@@ -1455,7 +1445,7 @@ bench_format_interval <- function(median, minimum, maximum, n, digits = 2L) {
 bench_evidence_notice <- function(profile) {
   if (isTRUE(profile$article_eligible)) {
     paste0(
-      "Publication-profile evidence: backend comparisons use independent ",
+      "Benchmark evidence: backend comparisons use independent ",
       "process repeats and correctness fingerprints."
     )
   } else {

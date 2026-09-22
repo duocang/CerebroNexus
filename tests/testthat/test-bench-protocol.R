@@ -16,25 +16,25 @@ test_that("benchmark profiles separate smoke, review, and article evidence", {
   expect_equal(bench_profile("quick")$comparison_tier_mode, "smallest")
   expect_equal(bench_profile("standard")$export_repeats, 3L)
   expect_true(bench_profile("standard")$include_scale_tiers)
-  expect_equal(bench_profile("publication")$export_repeats, 5L)
-  expect_equal(bench_profile("publication")$access_repeats, 2L)
-  expect_equal(bench_profile("publication")$query_genes, 12L)
-  expect_equal(bench_profile("publication")$hot_iterations, 3L)
+  expect_equal(bench_profile("panel_c2")$export_repeats, 5L)
+  expect_equal(bench_profile("panel_c2")$access_repeats, 2L)
+  expect_equal(bench_profile("panel_c2")$query_genes, 12L)
+  expect_equal(bench_profile("panel_c2")$hot_iterations, 3L)
   expect_lte(
-    (bench_profile("publication")$query_genes - 1L) *
-      bench_profile("publication")$hot_iterations,
+    (bench_profile("panel_c2")$query_genes - 1L) *
+      bench_profile("panel_c2")$hot_iterations,
     36L
   )
   expect_false(bench_profile("standard")$article_eligible)
-  expect_true(bench_profile("publication")$article_eligible)
-  expect_equal(bench_profile("publication_scale")$export_repeats, 5L)
-  expect_equal(bench_profile("publication_scale")$access_repeats, 2L)
-  expect_true(bench_profile("publication_scale")$include_scale_tiers)
-  expect_true(bench_profile("publication_scale")$article_eligible)
+  expect_true(bench_profile("panel_c2")$article_eligible)
+  expect_equal(bench_profile("scale")$export_repeats, 5L)
+  expect_equal(bench_profile("scale")$access_repeats, 2L)
+  expect_true(bench_profile("scale")$include_scale_tiers)
+  expect_true(bench_profile("scale")$article_eligible)
   expect_equal(bench_profile("panel_c2")$export_repeats, 5L)
   expect_true(bench_profile("stress")$include_scale_tiers)
   expect_false(bench_profile("stress")$article_eligible)
-  expect_false(bench_profile("publication")$include_scale_tiers)
+  expect_false(bench_profile("panel_c2")$include_scale_tiers)
   expect_error(bench_profile("unknown"), "unknown benchmark profile")
 })
 
@@ -78,7 +78,7 @@ test_that("quick schedules run only the smallest comparison tier", {
   expect_equal(nrow(schedule), 3L)
 })
 
-test_that("default sources share the complete publication scale grid", {
+test_that("default sources share the complete scale grid", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
 
@@ -143,12 +143,12 @@ test_that("Panel C2 is the exact two-backend full-source schedule", {
   expect_error(bench_panel_c_schedule(BENCH_SOURCES, "unknown"), "c1 or c2")
 })
 
-test_that("publication scale runs embedded through 500k", {
+test_that("scale profile runs embedded through 500k", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
   source(bench_protocol, local = TRUE)
 
-  schedule <- bench_publication_scale_schedule(BENCH_SOURCES)
+  schedule <- bench_scale_schedule(BENCH_SOURCES)
   expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
 
   expect_equal(nrow(schedule), 2L * (5L * 3L + 2L) * 5L)
@@ -177,14 +177,14 @@ test_that("publication scale runs embedded through 500k", {
   expect_true(all(schedule$access_repeats == 2L))
 })
 
-test_that("publication scale accepts failed embedded builds only", {
+test_that("scale profile accepts failed embedded builds only", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
 
   specs <- list(fixture = list(tiers = 1000, comparison_tiers = 1000))
   schedule <- bench_schedule(
     specs,
-    "publication_scale",
+    "scale",
     sources = "fixture"
   )
   exports <- transform(schedule, status = "OK", run_id = "run-1")
@@ -219,7 +219,7 @@ test_that("publication scale accepts failed embedded builds only", {
     schedule,
     exports,
     access,
-    profile = bench_profile("publication_scale")
+    profile = bench_profile("scale")
   ))
 
   exports$status[exports$backend == "bpcells"][1] <- "FAILED(build): limit"
@@ -228,7 +228,7 @@ test_that("publication scale accepts failed embedded builds only", {
       schedule,
       exports,
       access,
-      profile = bench_profile("publication_scale")
+      profile = bench_profile("scale")
     ),
     "comparison tier did not complete every required backend"
   )
@@ -354,15 +354,15 @@ test_that("result validation rejects missing and incorrect measurements", {
   )
 })
 
-test_that("only publication profiles may back the user-facing article", {
+test_that("only evidence-grade profiles may back the user-facing article", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
 
   expect_error(
     bench_require_article_profile(bench_profile("standard")),
-    "publication profile"
+    "evidence-grade benchmark profile"
   )
-  expect_true(bench_require_article_profile(bench_profile("publication")))
+  expect_true(bench_require_article_profile(bench_profile("panel_c2")))
 })
 
 test_that("access crashes do not masquerade as duplicate export outcomes", {
