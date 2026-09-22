@@ -1533,7 +1533,20 @@ test_that("the page benchmark has a publication-grade contract", {
   )
   expect_match(benchmark, "cerebroLinkedViewsState.primaryReady()", fixed = TRUE)
   expect_match(benchmark, "completion_ready", fixed = TRUE)
-  expect_match(benchmark, "complete_elapsed_ms", fixed = TRUE)
+  expect_match(benchmark, "primary_ready_ms", fixed = TRUE)
+  expect_match(benchmark, "settled_ms", fixed = TRUE)
+  expect_match(benchmark, "dataset_load_ms", fixed = TRUE)
+  expect_match(
+    benchmark,
+    '"if(!completionRequired&&"',
+    fixed = TRUE
+  )
+  expect_match(
+    benchmark,
+    '"!document.documentElement.classList.contains',
+    fixed = TRUE
+  )
+  expect_match(benchmark, "benchmark_mode", fixed = TRUE)
   expect_match(benchmark, "projection_asset_bytes", fixed = TRUE)
   expect_match(benchmark, "e.detail?.primaryReady===true", fixed = TRUE)
   expect_match(benchmark, "run_observation", fixed = TRUE)
@@ -1580,10 +1593,15 @@ test_that("the page benchmark has a publication-grade contract", {
     benchmark,
     perl = TRUE
   )
-  expect_match(canvas_spec, "wait_idle = FALSE", fixed = TRUE)
+  expect_no_match(canvas_spec, "shiny-busy", fixed = TRUE)
   expect_match(
     canvas_spec,
-    "/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
+    "detail?.datasetFingerprint===",
+    fixed = TRUE
+  )
+  expect_match(
+    canvas_spec,
+    "window.__cerebroPageBenchExpectedFingerprint",
     fixed = TRUE
   )
   expect_no_match(canvas_spec, "datasetFingerprint.length>0", fixed = TRUE)
@@ -1612,7 +1630,12 @@ test_that("the page benchmark has a publication-grade contract", {
     benchmark,
     regexpr("coordinated_views = page(", benchmark, fixed = TRUE)
   )
-  expect_match(coordinated_spec, "wait_idle = FALSE", fixed = TRUE)
+  expect_no_match(coordinated_spec, "wait_idle", fixed = TRUE)
+  expect_match(
+    coordinated_spec,
+    "e.detail?.datasetFingerprint===expectedFingerprint",
+    fixed = TRUE
+  )
   atomic_click <- sub(
     "(?s).*?(arm_and_click_page <- function.*?)(?=\\n\\npage_available).*",
     "\\1",
@@ -1671,6 +1694,34 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "groups_metric_available", fixed = TRUE)
   expect_match(benchmark, "metadata_names", fixed = TRUE)
   expect_match(benchmark, "groups_by_other_group_plot", fixed = TRUE)
+  expect_match(benchmark, "cerebro:groups-primary-ready", fixed = TRUE)
+  expect_match(benchmark, "load_benchmark_dataset <- function", fixed = TRUE)
+  expect_match(
+    benchmark,
+    "cerebro_benchmark_dataset_load_request",
+    fixed = TRUE
+  )
+  expect_match(
+    benchmark,
+    "detail?.benchmarkGeneration===generation",
+    fixed = TRUE
+  )
+  expect_match(
+    benchmark,
+    "detail?.datasetFingerprint===expectedFingerprint",
+    fixed = TRUE
+  )
+  expect_match(benchmark, "if (isTRUE(memory_mode))", fixed = TRUE)
+  expect_match(
+    benchmark,
+    'identical(benchmark_mode, "timing")',
+    fixed = TRUE
+  )
+  expect_match(
+    benchmark,
+    'identical(profile, "publication") &&\n    identical(benchmark_mode, "timing")',
+    fixed = TRUE
+  )
   expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
   expect_match(benchmark, "link.offsetParent !== null", fixed = TRUE)
   expect_match(benchmark, "app$get_screenshot", fixed = TRUE)
@@ -1700,6 +1751,11 @@ test_that("the page benchmark has a publication-grade contract", {
     "websocket_post_ready_received_bytes",
     "shared_projection_primed",
     "performance_ms",
+    "primary_ready_ms",
+    "settled_ms",
+    "dataset_load_ms",
+    "benchmark_mode",
+    "profiler_instrumented",
     "specialist_event_kind",
     "specialist_generation",
     "render_request_sent",
@@ -1741,6 +1797,19 @@ test_that("the page benchmark has a publication-grade contract", {
   )) {
     expect_match(benchmark_contract, field, fixed = TRUE, info = field)
   }
+})
+
+test_that("page-ready events carry request-bound correctness identity", {
+  engine <- paste(
+    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(engine, "benchmarkGeneration", fixed = TRUE)
+  expect_match(engine, "renderedPointCount", fixed = TRUE)
+  expect_match(engine, "datasetFingerprint", fixed = TRUE)
+  expect_match(engine, "page: 'coordinated_views'", fixed = TRUE)
+  expect_match(engine, "reportWorkspaceReady('cached')", fixed = TRUE)
 })
 
 test_that("dataset switches clear specialist caches before the next render", {
@@ -1983,7 +2052,7 @@ test_that("the page benchmark schedule and budgets are balanced", {
     "repeat",
     warmed = FALSE
   ))
-  expect_false(protocol$requires_ready_event(
+  expect_true(protocol$requires_ready_event(
     "coordinated_views",
     "repeat",
     warmed = TRUE
@@ -1993,6 +2062,9 @@ test_that("the page benchmark schedule and budgets are balanced", {
     "repeat",
     warmed = TRUE
   ))
+  expect_silent(protocol$validate_benchmark_mode("timing"))
+  expect_silent(protocol$validate_benchmark_mode("memory"))
+  expect_error(protocol$validate_benchmark_mode("mixed"), "timing or memory")
 })
 
 test_that("the cold-start benchmark measures an installed Viewer", {

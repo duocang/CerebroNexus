@@ -21,7 +21,8 @@ raw <- utils::read.delim(
 
 required <- c(
   "candidate", "round", "page", "visit", "budget_ms", "status",
-  "correctness_pass", "performance_ms", "performance_applicable", "pass"
+  "correctness_pass", "primary_ready_ms", "settled_ms", "benchmark_mode",
+  "performance_applicable", "pass"
 )
 missing <- setdiff(required, names(raw))
 if (length(missing)) {
@@ -61,6 +62,9 @@ count_true <- function(value) sum(value %in% TRUE, na.rm = TRUE)
 count_false <- function(value) sum(value %in% FALSE, na.rm = TRUE)
 
 metric_specs <- list(
+  dataset_load_ms = FALSE,
+  primary_ready_ms = FALSE,
+  settled_ms = FALSE,
   performance_ms = FALSE,
   complete_elapsed_ms = FALSE,
   click_to_request_ms = FALSE,
@@ -106,13 +110,16 @@ metric_specs <- list(
 )
 metric_specs <- metric_specs[names(metric_specs) %in% names(raw)]
 
-groups <- unique(raw[c("candidate", "page", "visit", "budget_ms")])
+groups <- unique(raw[c(
+  "candidate", "page", "visit", "budget_ms", "benchmark_mode"
+)])
 summary_rows <- lapply(seq_len(nrow(groups)), function(index) {
   key <- groups[index, , drop = FALSE]
   rows <- raw[
     raw$candidate == key$candidate &
       raw$page == key$page &
-      raw$visit == key$visit,
+      raw$visit == key$visit &
+      raw$benchmark_mode == key$benchmark_mode,
     ,
     drop = FALSE
   ]
@@ -122,6 +129,7 @@ summary_rows <- lapply(seq_len(nrow(groups)), function(index) {
     candidate = key$candidate,
     page = key$page,
     visit = key$visit,
+    benchmark_mode = key$benchmark_mode,
     budget_ms = key$budget_ms,
     observations = nrow(rows),
     ok = sum(ok),
@@ -143,6 +151,12 @@ summary_rows <- lapply(seq_len(nrow(groups)), function(index) {
         positive = positive
       )
     }
+  }
+  primary_values <- finite_values(rows$primary_ready_ms[ok])
+  result$primary_ready_ms_raw <- if (length(primary_values)) {
+    paste(round(primary_values, 1L), collapse = " / ")
+  } else {
+    ""
   }
   result
 })
@@ -188,23 +202,25 @@ for (pair in pair_specs) {
     for (visit in visit_order) {
       left <- raw[
         raw$candidate == baseline & raw$page == page &
-          raw$visit == visit & raw$status == "ok",
-        c("round", "performance_ms"),
+          raw$visit == visit & raw$status == "ok" &
+          raw$benchmark_mode == "timing",
+        c("round", "primary_ready_ms"),
         drop = FALSE
       ]
       right <- raw[
         raw$candidate == candidate & raw$page == page &
-          raw$visit == visit & raw$status == "ok",
-        c("round", "performance_ms"),
+          raw$visit == visit & raw$status == "ok" &
+          raw$benchmark_mode == "timing",
+        c("round", "primary_ready_ms"),
         drop = FALSE
       ]
       paired <- merge(left, right, by = "round", suffixes = c("_base", "_candidate"))
       if (!nrow(paired)) {
         next
       }
-      base_values <- finite_values(paired$performance_ms_base)
-      candidate_values <- finite_values(paired$performance_ms_candidate)
-      delta <- paired$performance_ms_candidate - paired$performance_ms_base
+      base_values <- finite_values(paired$primary_ready_ms_base)
+      candidate_values <- finite_values(paired$primary_ready_ms_candidate)
+      delta <- paired$primary_ready_ms_candidate - paired$primary_ready_ms_base
       delta <- finite_values(delta)
       comparison_index <- comparison_index + 1L
       base_median <- if (length(base_values)) stats::median(base_values) else NA_real_
@@ -254,29 +270,72 @@ markdown <- c(
   "",
   sprintf("Candidates: %s", paste(sprintf("`%s`", candidate_order), collapse = ", ")),
   "",
-  "## Page readiness",
+  "Official KPI: browser click to request-bound, correctness-bound primary-ready.",
+  "Timing and profiler-instrumented memory observations are never pooled.",
   "",
-  "| Candidate | Page | Visit | P50 ms | P25–P75 ms | Budget pass | Correctness | R peak MiB | Chrome peak MiB | JS heap MiB |",
-  "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+  "## Unified primary-ready timing",
+  "",
+  "| Candidate | Page | Fresh primary P50 ms | Fresh min–max ms | Repeat primary P50 ms | Settled P50 ms | Correctness | Fresh raw ms |",
+  "|---|---|---:|---:|---:|---:|---:|---|"
 )
-for (index in seq_len(nrow(page_summary))) {
-  row <- page_summary[index, ]
+timing_summary <- page_summary[page_summary$benchmark_mode == "timing", , drop = FALSE]
+timing_keys <- unique(timing_summary[c("candidate", "page")])
+for (index in seq_len(nrow(timing_keys))) {
+  key <- timing_keys[index, ]
+  first <- timing_summary[
+    timing_summary$candidate == key$candidate &
+      timing_summary$page == key$page & timing_summary$visit == "first",
+    , drop = FALSE
+  ]
+  repeat_row <- timing_summary[
+    timing_summary$candidate == key$candidate &
+      timing_summary$page == key$page & timing_summary$visit == "repeat",
+    , drop = FALSE
+  ]
+  if (!nrow(first)) next
   markdown <- c(markdown, sprintf(
-    "| %s | %s | %s | %s | %s–%s | %d/%d | %d/%d | %s | %s | %s |",
-    row$candidate,
-    row$page,
-    row$visit,
-    format_number(row$performance_ms_median),
-    format_number(row$performance_ms_p25),
-    format_number(row$performance_ms_p75),
-    row$budget_pass,
-    row$applicable,
-    row$correctness_pass,
-    row$ok,
-    format_number(row$r_peak_rss_kib_median / 1024),
-    format_number(row$chrome_peak_rss_kib_median / 1024),
-    format_number(row$js_heap_used_bytes_median / 1024^2)
+    "| %s | %s | %s | %s–%s | %s | %s | %d/%d | %s |",
+    key$candidate,
+    key$page,
+    format_number(first$primary_ready_ms_median),
+    format_number(first$primary_ready_ms_min),
+    format_number(first$primary_ready_ms_max),
+    if (nrow(repeat_row)) format_number(repeat_row$primary_ready_ms_median) else "NA",
+    format_number(first$settled_ms_median),
+    first$correctness_pass,
+    first$ok,
+    first$primary_ready_ms_raw
   ))
+}
+
+memory_summary <- page_summary[
+  page_summary$benchmark_mode == "memory" & page_summary$visit == "first",
+  , drop = FALSE
+]
+markdown <- c(
+  markdown,
+  "",
+  "## Profiler-instrumented memory",
+  "",
+  "These elapsed values are diagnostic only and are excluded from timing KPIs.",
+  "",
+  "| Candidate | Page | Peak R RSS MiB | Peak Browser RSS MiB | JS heap MiB | Memory mode |",
+  "|---|---|---:|---:|---:|---|"
+)
+if (nrow(memory_summary)) {
+  for (index in seq_len(nrow(memory_summary))) {
+    row <- memory_summary[index, ]
+    markdown <- c(markdown, sprintf(
+      "| %s | %s | %s | %s | %s | profiler-instrumented |",
+      row$candidate,
+      row$page,
+      format_number(row$r_peak_rss_kib_median / 1024),
+      format_number(row$chrome_peak_rss_kib_median / 1024),
+      format_number(row$js_heap_used_bytes_median / 1024^2)
+    ))
+  }
+} else {
+  markdown <- c(markdown, "| — | — | NA | NA | NA | run memory mode separately |")
 }
 
 if (nrow(comparison)) {

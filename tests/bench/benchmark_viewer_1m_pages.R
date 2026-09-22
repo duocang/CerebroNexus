@@ -42,6 +42,9 @@ first_candidate <- parse_candidate(args[[1L]])
 crb <- normalizePath(args[[2L]], mustWork = TRUE)
 output <- normalizePath(args[[3L]], mustWork = FALSE)
 profile <- Sys.getenv("VIEWER_BENCH_PROFILE", unset = "quick")
+benchmark_mode <- tolower(Sys.getenv("VIEWER_BENCH_MODE", unset = "timing"))
+validate_benchmark_mode(benchmark_mode)
+memory_mode <- identical(benchmark_mode, "memory")
 expected_cells <- suppressWarnings(as.integer(Sys.getenv(
   "VIEWER_EXPECTED_CELLS",
   unset = "1000000"
@@ -131,7 +134,6 @@ page <- function(
   ready,
   budget_ms = 2000,
   required = FALSE,
-  wait_idle = TRUE,
   event_view = NULL,
   ready_event = if (is.null(event_view)) NULL else "cerebro:specialist-state",
   ready_event_condition = NULL,
@@ -151,7 +153,6 @@ page <- function(
     ready = ready,
     budget_ms = budget_ms,
     required = required,
-    wait_idle = wait_idle,
     event_view = event_view,
     ready_event = ready_event,
     ready_event_condition = ready_event_condition,
@@ -171,6 +172,7 @@ page <- function(
 canvas_page <- function(
   tab,
   host,
+  event_view,
   expected_points = NULL,
   expected_trajectory_method = NULL,
   expected_trajectory_name = NULL,
@@ -196,19 +198,37 @@ canvas_page <- function(
       quote_r(expected_trajectory_name)
     )
   }
+  event_count_check <- if (is.null(expected_points)) {
+    "Number(e.detail?.renderedPointCount)>0"
+  } else {
+    paste0("Number(e.detail?.renderedPointCount)===", expected_points)
+  }
   page(
     tab,
     sprintf("!!document.querySelector(%s)", quote_r(selector)),
     ...,
-    wait_idle = FALSE,
+    event_view = event_view,
+    ready_event_condition = sprintf(
+      paste0(
+        "e.detail?.viewId===%s&&",
+        "e.detail?.benchmarkGeneration===generation&&",
+        "e.detail?.datasetFingerprint===expectedFingerprint&&",
+        "%s&&%s"
+      ),
+      quote_r(event_view),
+      event_count_check,
+      trajectory_check
+    ),
     correctness = sprintf(
       paste0(
         "(() => {const canvas=document.querySelector(%s);",
         "const pointCount=Number(canvas?.getAttribute('data-point-count'));",
         "const detail=window.__cerebroPageBenchEventDetail;",
         "return Number.isFinite(pointCount)&&%s&&%s&&",
-        "/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
-        "detail?.datasetFingerprint);})()"
+        "detail?.benchmarkGeneration===window.__cerebroPageBenchGeneration&&",
+        "detail?.datasetFingerprint===",
+        "window.__cerebroPageBenchExpectedFingerprint&&",
+        "Number(detail?.renderedPointCount)===pointCount;})()"
       ),
       quote_r(selector),
       count_check,
@@ -241,19 +261,49 @@ pages <- list(
     "groups",
     sprintf("!!p.querySelector(%s)", quote_r(groups_plot_selector)),
     required = TRUE,
+    ready_event = "cerebro:groups-primary-ready",
+    ready_event_condition = sprintf(
+      paste0(
+        "e.detail?.page==='groups'&&e.detail?.plotId===%s&&",
+        "e.detail?.metric===%s&&",
+        "e.detail?.benchmarkGeneration===generation&&",
+        "e.detail?.datasetFingerprint===expectedFingerprint&&",
+        "Number(e.detail?.traceCount)>0&&",
+        "typeof e.detail?.selectedGroup==='string'&&",
+        "e.detail.selectedGroup.length>0"
+      ),
+      quote_r(groups_plot_id),
+      quote_r(if (identical(groups_plot_id, "groups_nUMI_plot")) {
+        "nUMI"
+      } else {
+        "composition"
+      })
+    ),
     correctness = sprintf(
       paste0(
         "(() => {const plot=document.querySelector(%s);",
+        "const detail=window.__cerebroPageBenchEventDetail||{};",
         "return !!plot&&plot.offsetParent!==null&&",
-        "Array.isArray(plot.data)&&plot.data.length>0;})()"
+        "Array.isArray(plot.data)&&plot.data.length>0&&",
+        "detail.plotId===plot.id&&detail.traceCount===plot.data.length&&",
+        "detail.datasetFingerprint===",
+        "window.__cerebroPageBenchExpectedFingerprint&&",
+        "detail.benchmarkGeneration===",
+        "window.__cerebroPageBenchGeneration&&",
+        "detail.selectedGroup===",
+        "document.getElementById('groups_selected_group')?.value;})()"
       ),
       quote_r(groups_plot_selector)
     ),
     correctness_detail = sprintf(
       paste0(
         "(() => {const plot=document.querySelector(%s);",
-        "return 'plot='+(plot?.id||'missing')+';plotly_traces='+",
-        "(Array.isArray(plot?.data)?plot.data.length:0);})()"
+        "const detail=window.__cerebroPageBenchEventDetail||{};",
+        "return JSON.stringify({plot:plot?.id||'missing',",
+        "plotlyTraces:Array.isArray(plot?.data)?plot.data.length:0,",
+        "datasetFingerprint:detail.datasetFingerprint||'',",
+        "selectedGroup:detail.selectedGroup||'',",
+        "metric:detail.metric||'',generation:detail.benchmarkGeneration});})()"
       ),
       quote_r(groups_plot_selector)
     )
@@ -320,11 +370,16 @@ pages <- list(
       "window.cerebroLinkedViewsState.primaryReady()"
     ),
     required = TRUE,
-    wait_idle = FALSE,
     visual_check = TRUE,
     requires_webgpu = TRUE,
     ready_event = "cerebro:linkedviews-ready",
-    ready_event_condition = "e.detail?.primaryReady===true",
+    ready_event_condition = paste0(
+      "e.detail?.page==='coordinated_views'&&",
+      "e.detail?.primaryReady===true&&",
+      "e.detail?.benchmarkGeneration===generation&&",
+      "e.detail?.datasetFingerprint===expectedFingerprint&&",
+      "Number(e.detail?.renderedPointCount)===", expected_cells
+    ),
     completion_ready = paste0(
       "!!window.cerebroLinkedViewsState&&",
       "window.cerebroLinkedViewsState.ready()"
@@ -333,9 +388,14 @@ pages <- list(
     correctness = paste0(
       "(() => {const state=window.cerebroLinkedViewsState;",
       "const summary=state?.summary?.();",
+      "const detail=window.__cerebroPageBenchEventDetail||{};",
       "return summary?.primaryReady===true&&",
-      "typeof summary.datasetFingerprint==='string'&&",
-      "summary.datasetFingerprint.length>0;})()"
+      "summary.datasetFingerprint===",
+      "window.__cerebroPageBenchExpectedFingerprint&&",
+      "detail.datasetFingerprint===summary.datasetFingerprint&&",
+      "detail.benchmarkGeneration===",
+      "window.__cerebroPageBenchGeneration&&",
+      "Number(detail.renderedPointCount)===", expected_cells, ";})()"
     ),
     correctness_detail = paste0(
       "(() => {const summary=window.cerebroLinkedViewsState?.summary?.()||{};",
@@ -349,6 +409,16 @@ pages <- list(
 )
 
 all_pages <- pages
+official_page_names <- c(
+  "overview",
+  "gene_expression",
+  "groups",
+  "coordinated_views",
+  "immune_repertoire",
+  "hla",
+  "trajectory",
+  "spatial"
+)
 gene_prime_overview <- identical(
   tolower(Sys.getenv("VIEWER_GENE_PRIME_OVERVIEW", unset = "false")),
   "true"
@@ -370,14 +440,11 @@ if (nzchar(only)) {
     stop("Unknown VIEWER_PAGES_ONLY page: ", unknown[[1L]], call. = FALSE)
   }
   pages <- pages[only]
+} else {
+  pages <- pages[official_page_names]
 }
 
 page_active_js <- function(page, require_event = TRUE) {
-  idle <- if (isTRUE(page$wait_idle)) {
-    "!document.documentElement.classList.contains('shiny-busy')"
-  } else {
-    "true"
-  }
   event_ready <- if (!isTRUE(require_event) || is.null(page$ready_event)) {
     "true"
   } else {
@@ -386,10 +453,9 @@ page_active_js <- function(page, require_event = TRUE) {
   sprintf(
     paste0(
       "(() => {const p=document.getElementById('shiny-tab-%s');",
-      "return !!p&&p.classList.contains('active')&&%s&&%s&&(%s);})()"
+      "return !!p&&p.classList.contains('active')&&%s&&(%s);})()"
     ),
     page$tab,
-    idle,
     event_ready,
     page$ready
   )
@@ -420,6 +486,9 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "window.__cerebroPageBenchSeen=true;",
         "window.__cerebroPageBenchEventDetail=e.detail||null;",
         "window.__cerebroPageBenchEventAt=e.timeStamp;",
+        "if(!completionRequired&&",
+        "!document.documentElement.classList.contains('shiny-busy')){",
+        "window.__cerebroPageBenchSettledAt=e.timeStamp;}",
         "window.removeEventListener(%s,h);}});"
       ),
       quote_r(page$ready_event),
@@ -436,8 +505,11 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
       paste0(
         "window.addEventListener(%s,function c(e){",
         "if(window.__cerebroPageBenchGeneration===generation&&",
-        "e.timeStamp >= clickStart&&%s){",
+        "e.timeStamp >= clickStart&&",
+        "e.detail?.benchmarkGeneration===generation&&",
+        "e.detail?.datasetFingerprint===expectedFingerprint&&%s){",
         "window.__cerebroPageBenchCompleteAt=e.timeStamp;",
+        "window.__cerebroPageBenchSettledAt=e.timeStamp;",
         "window.removeEventListener(%s,c);}});"
       ),
       quote_r(page$ready_event),
@@ -452,13 +524,27 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "(window.__cerebroPageBenchGeneration||0)+1;",
         "window.__cerebroPageBenchGeneration=generation;",
         "const clickStart=performance.now();",
+        "const expectedFingerprint=String(",
+        "window.__cerebroPageBenchExpectedFingerprint||'');",
+        "const completionRequired=%s;",
         "window.__cerebroPageBenchClickStart=clickStart;",
         "window.__cerebroPageBenchSeen=false;",
         "window.__cerebroPageBenchEventDetail=null;",
         "window.__cerebroPageBenchEventAt=null;",
         "window.__cerebroPageBenchCompleteAt=null;",
+        "window.__cerebroPageBenchSettledAt=null;",
+        "if(window.jQuery){",
+        "window.jQuery(document).off('shiny:idle.cerebroPageBenchSettled');",
+        "window.jQuery(document).on('shiny:idle.cerebroPageBenchSettled',",
+        "function(){if(!completionRequired&&",
+        "window.__cerebroPageBenchGeneration===generation&&",
+        "window.__cerebroPageBenchSeen===true&&",
+        "!Number.isFinite(window.__cerebroPageBenchSettledAt)){",
+        "window.__cerebroPageBenchSettledAt=performance.now();",
+        "window.jQuery(document).off('shiny:idle.cerebroPageBenchSettled');}});}",
         "%s%sdocument.querySelector(%s).click();})()"
       ),
+      if (is.null(page$completion_ready)) "false" else "true",
       listener,
       completion_listener,
       quote_r(selector)
@@ -472,6 +558,60 @@ page_available <- function(app, page) {
     "(() => {const link=document.querySelector(%s);return !!link&&link.offsetParent !== null;})()",
     quote_r(selector)
   ))
+}
+
+load_benchmark_dataset <- function(app) {
+  request <- paste0(
+    "dataset-",
+    format(as.numeric(Sys.time()) * 1000, scientific = FALSE, trim = TRUE),
+    "-",
+    sample.int(.Machine$integer.max, 1L)
+  )
+  driver_started <- proc.time()[["elapsed"]]
+  app$run_js(sprintf(
+    paste0(
+      "(() => {const request=%s;",
+      "window.__cerebroPageBenchDatasetRequest=request;",
+      "window.__cerebroPageBenchDatasetStartedAt=performance.now();",
+      "window.__cerebroPageBenchDatasetReadyAt=null;",
+      "window.__cerebroPageBenchDatasetDetail=null;",
+      "Shiny.addCustomMessageHandler('cerebro_benchmark_dataset_ready',",
+      "function(detail){if(String(detail?.request||'')!==request)return;",
+      "window.__cerebroPageBenchDatasetDetail=detail;",
+      "window.__cerebroPageBenchDatasetReadyAt=performance.now();});",
+      "Shiny.setInputValue('cerebro_benchmark_dataset_load_request',request,",
+      "{priority:'event'});})()"
+    ),
+    quote_r(request)
+  ))
+  app$wait_for_js(
+    paste0(
+      "Number.isFinite(window.__cerebroPageBenchDatasetReadyAt)&&",
+      "window.__cerebroPageBenchDatasetDetail?.cell_count===", expected_cells,
+      "&&/^md5-cell-set-v1:[0-9a-f]{32}$/.test(",
+      "String(window.__cerebroPageBenchDatasetDetail?.dataset_fingerprint||''))"
+    ),
+    timeout = 900000
+  )
+  app$wait_for_idle(timeout = 120000)
+  driver_ms <- (proc.time()[["elapsed"]] - driver_started) * 1000
+  value <- app$get_js(paste0(
+    "(() => {const detail=window.__cerebroPageBenchDatasetDetail||{};",
+    "const elapsed=window.__cerebroPageBenchDatasetReadyAt-",
+    "window.__cerebroPageBenchDatasetStartedAt;",
+    "window.__cerebroPageBenchExpectedFingerprint=",
+    "String(detail.dataset_fingerprint||'');",
+    "return {elapsedMs:elapsed,fingerprint:",
+    "window.__cerebroPageBenchExpectedFingerprint,",
+    "cellCount:Number(detail.cell_count)||0};})()"
+  ))
+  data.frame(
+    dataset_load_ms = as.numeric(value$elapsedMs),
+    dataset_load_driver_ms = driver_ms,
+    dataset_fingerprint = as.character(value$fingerprint),
+    dataset_cell_count = as.numeric(value$cellCount),
+    stringsAsFactors = FALSE
+  )
 }
 
 open_page <- function(app, page, require_event = TRUE) {
@@ -850,22 +990,23 @@ wait_for_socket_quiet <- function(app, quiet_ms = 1200) {
 }
 
 page_completion_elapsed <- function(app, page) {
-  if (is.null(page$completion_ready)) {
-    return(NA_real_)
+  if (!is.null(page$completion_ready)) {
+    app$run_js(sprintf(
+      paste0(
+        "if(window.__cerebroPageBenchCompleteAt===null&&(%s)){",
+        "window.__cerebroPageBenchCompleteAt=performance.now();",
+        "window.__cerebroPageBenchSettledAt=",
+        "window.__cerebroPageBenchCompleteAt;}"
+      ),
+      page$completion_ready
+    ))
   }
-  app$run_js(sprintf(
-    paste0(
-      "if(window.__cerebroPageBenchCompleteAt===null&&(%s))",
-      "window.__cerebroPageBenchCompleteAt=performance.now();"
-    ),
-    page$completion_ready
-  ))
   app$wait_for_js(
-    "Number.isFinite(window.__cerebroPageBenchCompleteAt)",
+    "Number.isFinite(window.__cerebroPageBenchSettledAt)",
     timeout = 120000
   )
   as.numeric(app$get_js(paste0(
-    "window.__cerebroPageBenchCompleteAt-",
+    "window.__cerebroPageBenchSettledAt-",
     "window.__cerebroPageBenchClickStart"
   )))
 }
@@ -1095,6 +1236,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   if (is.null(count$html) || !grepl(expected_label, count$html, fixed = TRUE)) {
     stop("Data Info did not report ", expected_label, " cells.", call. = FALSE)
   }
+  dataset_metrics <- load_benchmark_dataset(app)
   if (!isTRUE(page_available(app, page))) {
     if (isTRUE(page$required)) {
       stop("Missing required benchmark page: ", page$tab, call. = FALSE)
@@ -1150,16 +1292,19 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     },
     add = TRUE
   )
-  r_pid <- app$.__enclos_env__$private$shiny_process$get_pid()
-  chrome_pid <- browser$get_browser()$.__enclos_env__$private$process$get_pid()
-  monitor <- start_rss_monitor(r_pid, chrome_pid)
+  monitor <- NULL
   monitor_stopped <- FALSE
-  on.exit(
-    {
-      if (!monitor_stopped) try(stop_rss_monitor(monitor), silent = TRUE)
-    },
-    add = TRUE
-  )
+  if (isTRUE(memory_mode)) {
+    r_pid <- app$.__enclos_env__$private$shiny_process$get_pid()
+    chrome_pid <- browser$get_browser()$.__enclos_env__$private$process$get_pid()
+    monitor <- start_rss_monitor(r_pid, chrome_pid)
+    on.exit(
+      {
+        if (!monitor_stopped) try(stop_rss_monitor(monitor), silent = TRUE)
+      },
+      add = TRUE
+    )
+  }
   require_event <- requires_ready_event(
     schedule_row$page,
     schedule_row$visit,
@@ -1167,6 +1312,12 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   )
   elapsed_ms <- open_page(app, page, require_event = require_event)
   specialist_timing <- page_specialist_timing(app)
+  primary_ready_ms <- if (is.finite(specialist_timing$click_to_ready_ms)) {
+    specialist_timing$click_to_ready_ms
+  } else {
+    elapsed_ms
+  }
+  correctness <- page_correctness(app, page)
   websocket_at_ready <- socket_meter_snapshot(app)
   specialist_at_ready <- if (is.null(page$event_view)) {
     data.frame(
@@ -1178,36 +1329,38 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   } else {
     specialist_payload_snapshot(app, page$event_view)
   }
+  settled_ms <- page_completion_elapsed(app, page)
   wait_for_socket_quiet(app)
   specialist_final <- if (is.null(page$event_view)) {
     specialist_at_ready
   } else {
     specialist_payload_snapshot(app, page$event_view)
   }
-  heap_used_bytes <- js_heap_used(session)
+  heap_used_bytes <- if (isTRUE(memory_mode)) js_heap_used(session) else NA_real_
   websocket <- stop_socket_meter(app)
   socket_meter_active <- FALSE
-  resources <- stop_rss_monitor(monitor)
-  monitor_stopped <- TRUE
-  complete_elapsed_ms <- page_completion_elapsed(app, page)
-  correctness <- page_correctness(app, page)
+  resources <- if (isTRUE(memory_mode)) {
+    value <- stop_rss_monitor(monitor)
+    monitor_stopped <- TRUE
+    value
+  } else {
+    c(r_peak_rss_kib = NA_real_, chrome_peak_rss_kib = NA_real_)
+  }
   renderer <- page_renderer_diagnostics(app, page)
   visible_pixels <- page_visible_pixels(app, page)
   correctness_pass <- correctness$pass &&
     (is.na(visible_pixels$pass) || visible_pixels$pass)
   log_diagnostics <- assert_clean_logs(app)
-  cbind(data.frame(
+  cbind(dataset_metrics, data.frame(
     status = if (correctness_pass) "ok" else "error",
     error = if (correctness_pass) "" else "Page correctness check failed.",
     startup_attempts = startup$attempts,
     startup_errors = paste(startup$errors, collapse = " | "),
     elapsed_ms = elapsed_ms,
-    performance_ms = if (is.finite(specialist_timing$click_to_ready_ms)) {
-      specialist_timing$click_to_ready_ms
-    } else {
-      elapsed_ms
-    },
-    complete_elapsed_ms = complete_elapsed_ms,
+    primary_ready_ms = primary_ready_ms,
+    performance_ms = primary_ready_ms,
+    settled_ms = settled_ms,
+    complete_elapsed_ms = settled_ms,
     ready_event_required = require_event && !is.null(page$ready_event),
     correctness_pass = correctness_pass,
     rendered_point_count = correctness$point_count,
@@ -1294,6 +1447,8 @@ provenance <- do.call(
         shinytest2_version = as.character(utils::packageVersion("shinytest2")),
         chromote_version = as.character(utils::packageVersion("chromote")),
         profile = profile,
+        benchmark_mode = benchmark_mode,
+        profiler_instrumented = isTRUE(memory_mode),
         rounds = rounds,
         stringsAsFactors = FALSE
       ),
@@ -1321,12 +1476,18 @@ write_validated_tsv(schedule, schedule_output)
 
 empty_observation <- function(status, error) {
   data.frame(
+    dataset_load_ms = NA_real_,
+    dataset_load_driver_ms = NA_real_,
+    dataset_fingerprint = NA_character_,
+    dataset_cell_count = NA_real_,
     status = status,
     error = error,
     startup_attempts = NA_real_,
     startup_errors = "",
     elapsed_ms = NA_real_,
+    primary_ready_ms = NA_real_,
     performance_ms = NA_real_,
+    settled_ms = NA_real_,
     complete_elapsed_ms = NA_real_,
     ready_event_required = NA,
     correctness_pass = NA,
@@ -1422,8 +1583,8 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
     observation,
     stringsAsFactors = FALSE
   )
-  row$performance_applicable <- !row$requires_webgpu ||
-    identical(row$renderer_backend, "webgpu")
+  row$performance_applicable <- identical(benchmark_mode, "timing") &&
+    (!row$requires_webgpu || identical(row$renderer_backend, "webgpu"))
   row$pass <- if (isTRUE(row$performance_applicable)) {
     row$status == "ok" && page_budget_pass(row$performance_ms, row$budget_ms)
   } else {
@@ -1440,7 +1601,7 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
     ": ",
     row$status,
     if (is.finite(row$performance_ms)) {
-      paste0(" ", round(row$performance_ms), " ms product")
+      paste0(" ", round(row$performance_ms), " ms primary")
     } else {
       ""
     }
@@ -1472,9 +1633,13 @@ print(results, row.names = FALSE)
 bad_status <- results$status == "error" |
   (results$required & results$status != "ok")
 missing_resources <- results$status == "ok" &
-  (!is.finite(results$r_peak_rss_kib) |
-    !is.finite(results$chrome_peak_rss_kib) |
-    !is.finite(results$js_heap_used_bytes) |
+  ((!is.finite(results$dataset_load_ms)) |
+    (!is.finite(results$primary_ready_ms)) |
+    (!is.finite(results$settled_ms)) |
+    (isTRUE(memory_mode) &
+      (!is.finite(results$r_peak_rss_kib) |
+        !is.finite(results$chrome_peak_rss_kib) |
+        !is.finite(results$js_heap_used_bytes))) |
     !is.finite(results$websocket_sent_payload_bytes) |
     !is.finite(results$websocket_received_payload_bytes))
 if (any(bad_status | missing_resources)) {
@@ -1488,6 +1653,7 @@ if (identical(profile, "publication") && any(provenance$candidate_git_dirty)) {
 }
 if (
   identical(profile, "publication") &&
+    identical(benchmark_mode, "timing") &&
     any(
       results$required &
         results$requires_webgpu &

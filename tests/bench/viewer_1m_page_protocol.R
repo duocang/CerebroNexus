@@ -13,9 +13,14 @@ page_budget_pass <- function(elapsed_ms, budget_ms) {
 }
 
 requires_ready_event <- function(page_name, visit, warmed) {
-  !identical(page_name, "coordinated_views") ||
-    !identical(visit, "repeat") ||
-    !isTRUE(warmed)
+  TRUE
+}
+
+validate_benchmark_mode <- function(mode) {
+  if (!mode %in% c("timing", "memory")) {
+    stop("VIEWER_BENCH_MODE must be timing or memory.", call. = FALSE)
+  }
+  invisible(mode)
 }
 
 escape_tsv_controls <- function(value) {

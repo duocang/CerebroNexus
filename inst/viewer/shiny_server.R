@@ -710,6 +710,35 @@ server <- function(input, output, session) {
     return(data)
   })
 
+  ## The page benchmark must separate full dataset materialization from page
+  ## readiness. Data Info intentionally uses the lightweight catalog and does
+  ## not force data_set(), so a benchmark-only input provides an explicit,
+  ## request-bound load boundary without opening (and warming) any analysis
+  ## page. There is no UI control that sends this input in the product.
+  observeEvent(
+    input[["cerebro_benchmark_dataset_load_request"]],
+    {
+      request <- as.character(
+        input[["cerebro_benchmark_dataset_load_request"]] %||% ""
+      )
+      dataset_load_requested(TRUE)
+      loaded <- data_set()
+      identity <- viewerDatasetIdentity()
+      session$sendCustomMessage(
+        "cerebro_benchmark_dataset_ready",
+        list(
+          request = request,
+          cell_count = as.integer(identity$cell_count),
+          dataset_fingerprint = as.character(identity$fingerprint),
+          order_fingerprint = as.character(identity$order_fingerprint %||% "")
+        )
+      )
+      invisible(loaded)
+    },
+    ignoreInit = TRUE,
+    priority = 10000
+  )
+
   ## Large projection coordinates already exist as interleaved Float32 assets
   ## in the validated Viewer Pack. Expose only that projection directory under
   ## a session-specific resource prefix so specialist views can fetch the file

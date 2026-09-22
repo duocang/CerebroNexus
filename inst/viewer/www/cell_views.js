@@ -2896,6 +2896,15 @@
         singleTiming, singleActive, readyAt
       );
     }
+    var renderedPointCount = 0;
+    if (singleActive) {
+      var renderedPanel = panels.filter(function (panel) {
+        return panel && panel.spaceId && panel.canvas;
+      })[0];
+      renderedPointCount = Number(
+        renderedPanel && renderedPanel.canvas.dataset.pointCount
+      ) || 0;
+    }
     window.dispatchEvent(new CustomEvent(
       singleActive ? 'cerebro:specialist-state' : 'cerebro:linkedviews-selection',
       { detail: singleActive
@@ -2908,7 +2917,10 @@
           eventKind: eventKind,
           renderKey: renderKey == null ? null : String(renderKey),
           generation: Number(timing.generation) || 0,
+          benchmarkGeneration:
+            Number(window.__cerebroPageBenchGeneration) || 0,
           renderRequestSent: !!timing.renderRequestSent,
+          renderedPointCount: renderedPointCount,
           timing: specialistTiming
         }
         : { selectedCells: hasSelection ? sel.size : 0 } }
@@ -8792,9 +8804,10 @@
   }
 
   function workspaceSummary() {
-    var rendered = !!(D && configFingerprint() && panels.some(function (panel) {
+    var primaryPanel = D && panels.filter(function (panel) {
       return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
-    }));
+    })[0];
+    var rendered = !!(D && configFingerprint() && primaryPanel);
     var complete = !!(rendered && !D.progressive);
     var gpuUploadMs = 0;
     var gpuPositionUploads = 0;
@@ -8810,6 +8823,7 @@
       ready: complete,
       complete: complete,
       datasetFingerprint: D ? configFingerprint() : null,
+      renderedPointCount: primaryPanel && D ? Number(D.n) : 0,
       selectedCells: sel ? sel.size : 0,
       selectedCellBarcodes: selectedCellIds(),
       colourMode: colorBy,
@@ -8858,14 +8872,22 @@
     return available.length ? available : ['all'];
   }
 
-  function reportWorkspaceReady() {
+  function reportWorkspaceReady(eventKind) {
     var summary = workspaceSummary();
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
+        page: 'coordinated_views',
         primaryReady: summary.primaryReady,
         ready: summary.ready,
         complete: summary.complete,
-        selectedCells: summary.selectedCells
+        selectedCells: summary.selectedCells,
+        datasetFingerprint: summary.datasetFingerprint,
+        renderedPointCount: summary.renderedPointCount,
+        projections: summary.projections.slice(),
+        spatialSections: summary.spatialSections.slice(),
+        benchmarkGeneration:
+          Number(window.__cerebroPageBenchGeneration) || 0,
+        eventKind: eventKind || 'primary'
       }
     }));
     if (summary.primaryReady && D.progressive && Shiny.setInputValue) {
@@ -9255,6 +9277,7 @@
       var mounted = !singleId || !!(surfaceHome && surface &&
         surface.contains(surfaceHome.panes));
       if (key === lastVis && mounted) return;
+      var enteringCachedLinked = linkedVis && !!(D && workspaceSummary().primaryReady);
       lastVis = key;
       requestSingleView(singleId);
       if (singleId && singleViews[singleId]) {
@@ -9274,6 +9297,9 @@
           singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
           if (linkedVis) showUnavailable('Loading linked views…');
         }
+      }
+      if (enteringCachedLinked && !singleActive) {
+        reportWorkspaceReady('cached');
       }
       if (Shiny.setInputValue) {
         if (vis && !isFinite(linkedRequestTiming.requestAtMs)) {

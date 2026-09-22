@@ -60,13 +60,17 @@ test_that("Groups builds its first-frame controls without a renderUI cascade", {
   expect_match(ui, "groups_plotly_dependencies", fixed = TRUE)
 })
 
-test_that("Groups requests visible expression metrics without a plot barrier", {
+test_that("Groups reports passive request-bound Plotly readiness", {
   ui <- paste(
     readLines(viewer_test_path("groups", "UI.R"), warn = FALSE),
     collapse = "\n"
   )
 
-  expect_false(grepl("plotly_afterplot", ui, fixed = TRUE))
+  expect_match(ui, "plotly_afterplot", fixed = TRUE)
+  expect_match(ui, "cerebro:groups-primary-ready", fixed = TRUE)
+  expect_match(ui, "datasetFingerprint", fixed = TRUE)
+  expect_match(ui, "selectedGroup", fixed = TRUE)
+  expect_match(ui, "benchmarkGeneration", fixed = TRUE)
   expect_false(grepl("waitForFirstPlotDraw", ui, fixed = TRUE))
   expect_match(ui, "observer.observe(target)", fixed = TRUE)
   expect_match(ui, "if (!visible || target.dataset.requested", fixed = TRUE)

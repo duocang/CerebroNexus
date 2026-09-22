@@ -11,6 +11,9 @@ param(
     [ValidateSet('quick', 'publication')]
     [string]$Profile = 'quick',
 
+    [ValidateSet('timing', 'memory')]
+    [string]$Mode = 'timing',
+
     [ValidateRange(0, 100)]
     [int]$Rounds = 0,
 
@@ -160,6 +163,7 @@ $config = @(
     "key`tvalue",
     "run_id`t$RunId",
     "profile`t$Profile",
+    "benchmark_mode`t$Mode",
     "rounds`t$Rounds",
     "visits`t$($Visits -join ',')",
     "artifact`t$Artifact",
@@ -175,10 +179,12 @@ foreach ($label in $refs.Keys) {
 $config | Set-Content -LiteralPath $configPath -Encoding utf8
 
 $oldProfile = $env:VIEWER_BENCH_PROFILE
+$oldMode = $env:VIEWER_BENCH_MODE
 $oldPages = $env:VIEWER_PAGES_ONLY
 $oldVisits = $env:VIEWER_VISITS_ONLY
 try {
     $env:VIEWER_BENCH_PROFILE = $Profile
+    $env:VIEWER_BENCH_MODE = $Mode
     if ($Pages.Count -gt 0) {
         $env:VIEWER_PAGES_ONLY = $Pages -join ','
     } else {
@@ -204,6 +210,11 @@ try {
         Remove-Item Env:VIEWER_BENCH_PROFILE -ErrorAction SilentlyContinue
     } else {
         $env:VIEWER_BENCH_PROFILE = $oldProfile
+    }
+    if ($null -eq $oldMode) {
+        Remove-Item Env:VIEWER_BENCH_MODE -ErrorAction SilentlyContinue
+    } else {
+        $env:VIEWER_BENCH_MODE = $oldMode
     }
     if ($null -eq $oldPages) {
         Remove-Item Env:VIEWER_PAGES_ONLY -ErrorAction SilentlyContinue
