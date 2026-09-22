@@ -1,7 +1,16 @@
 #!/usr/bin/env Rscript
 
 args <- commandArgs(trailingOnly = TRUE)
-source("tests/bench/harnesses/crb/fixture.R")
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)[[1L]]
+script_path <- normalizePath(
+  sub("^--file=", "", script_arg),
+  mustWork = TRUE
+)
+repo_root <- normalizePath(
+  file.path(dirname(script_path), "..", "..", "..", ".."),
+  mustWork = TRUE
+)
+source(file.path(dirname(script_path), "fixture.R"))
 
 crb <- if (length(args)) {
   normalizePath(args[[1L]], mustWork = TRUE)
@@ -13,7 +22,7 @@ if (!phase %in% c("rds", "qs2", "all")) {
   stop("PHASE must be rds, qs2, or all.", call. = FALSE)
 }
 
-suppressPackageStartupMessages(pkgload::load_all(".", quiet = TRUE))
+suppressPackageStartupMessages(pkgload::load_all(repo_root, quiet = TRUE))
 legacy <- readRDS(crb)
 if (nrow(legacy$meta_data) != 1000000L) {
   stop("The CRB must contain exactly 1,000,000 cells.", call. = FALSE)
@@ -68,7 +77,10 @@ verify_thin_payload <- function(object) {
 
 verify_standalone_runtime <- function(path) {
   runtime <- new.env(parent = globalenv())
-  sys.source("inst/viewer/utility_functions.R", envir = runtime)
+  sys.source(
+    file.path(repo_root, "inst", "viewer", "utility_functions.R"),
+    envir = runtime
+  )
   object <- runtime$read_cerebro_file(path)
   object <- runtime$.attachExternalExpression(object, path)
   verify_hydrated(object)

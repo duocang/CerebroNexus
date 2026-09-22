@@ -51,16 +51,6 @@ test_that("budget crossings are hard failures", {
   expect_identical(acceptance_budget_verdict(1999, 2001, 2000)$candidate_state, FALSE)
 })
 
-test_that("correctness is one vote, no tolerance", {
-  skip_unless_bench_acceptance()
-  source(bench_acceptance, local = TRUE)
-
-  expect_equal(acceptance_correctness_verdict(c(TRUE, TRUE)), "PASS")
-  expect_equal(acceptance_correctness_verdict(c(TRUE, FALSE)), "FAIL")
-  expect_equal(acceptance_correctness_verdict(logical()), "INVALID")
-  expect_equal(acceptance_correctness_verdict(c(TRUE, NA)), "INVALID")
-})
-
 test_that("headline improvement needs ten percent or a justification", {
   skip_unless_bench_acceptance()
   source(bench_acceptance, local = TRUE)
@@ -253,7 +243,7 @@ test_that("acceptance config pins every machine-judged branch", {
   source(bench_acceptance_config, local = TRUE)
 
   expected <- list(
-    pr0 = c("892097a1", "99d305c0", "crb"),
+    pr0 = c("69893a2b", "99d305c0", "crb"),
     pr1 = c("99d305c0", "35128c51", "hot_paths"),
     pr2 = c("35128c51", "5ad9ed40", "renderer"),
     pr3 = c("5ad9ed40", "8f38ee56", "startup"),
@@ -619,7 +609,7 @@ test_that("a failed correctness contract exits 1, not 2", {
   config$branch <- "pr0"
   config$layer <- "crb"
   config$candidate_sha <- "99d305c0"
-  config$baseline_sha <- "892097a1"
+  config$baseline_sha <- "69893a2b"
   config$candidate_label <- "latest"
   config$baseline_label <- "thin_rds"
   config$rounds <- 5

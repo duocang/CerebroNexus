@@ -10,9 +10,9 @@
 
 The backend benchmark runs two profiles in sequence. The full-source profile measures every cell in each source, then the scale profile measures the same sources at 1k, 10k, 50k, 100k, 500k, and 1m cells. Results and `CURRENT` pointers are never shared between them.
 
-This workflow measures expression backends only. Viewer validation is an
-independent smoke test under [`../viewer-validation`](../viewer-validation/)
-and cannot pass, fail, publish, or replace backend evidence.
+This workflow measures expression backends only. Focused Viewer checks live
+under [`harnesses/viewer/`](harnesses/viewer/) and cannot pass, fail, publish,
+or replace backend evidence.
 
 > **Current status:** validated full-source and scale runs are selected by their
 > separate `CURRENT` pointers under `results/benchmark/`.

@@ -3,8 +3,8 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-before_ref="${1:-27303f21}"
-after_ref="${2:-HEAD}"
+before_ref="${1:-99d305c0}"
+after_ref="${2:-35128c51}"
 output_dir="${3:-$repo_root/tests/bench/results/engineering/runs/$(date -u +%Y%m%dT%H%M%SZ)-backend}"
 repeats="${REPEATS:-3}"
 cache_dir="${CEREBRO_LARGE_CACHE:-}"

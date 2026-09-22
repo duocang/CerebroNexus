@@ -1,6 +1,15 @@
 #!/usr/bin/env Rscript
 
 args <- commandArgs(trailingOnly = TRUE)
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)[[1L]]
+script_path <- normalizePath(
+  sub("^--file=", "", script_arg),
+  mustWork = TRUE
+)
+repo_root <- normalizePath(
+  file.path(dirname(script_path), "..", "..", "..", ".."),
+  mustWork = TRUE
+)
 if (length(args) < 3L) {
   stop(
     "usage: bpcells_order.R CELL_MAJOR_CRB GENE_MAJOR_CRB OUTPUT [REPEATS]",
@@ -20,7 +29,7 @@ suppressPackageStartupMessages({
   library(BPCells)
   library(Matrix)
 })
-devtools::load_all(".", quiet = TRUE)
+devtools::load_all(repo_root, quiet = TRUE)
 
 cell_major <- readCerebro(cell_major_path)
 gene_major <- readCerebro(gene_major_path)

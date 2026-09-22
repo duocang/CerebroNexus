@@ -25,7 +25,7 @@
 
 ## 1. Background
 
-Since `892097a1` (PR #157, 2026-09-09), `perf/pr0`-`perf/pr7` have been stacked one on top of another: pr0 13 commits, pr1 3, pr2 5, pr3 4, pr4 6, pr5 174, pr6 9, pr7 24. The optimizations span IO/CRB, backend hot paths, WebGPU rendering, startup, page readiness, UI, and builder layers.
+Since `69893a2b` (PR #165, 2026-09-11), `perf/pr0`-`perf/pr7` have been stacked one on top of another: pr0 3 commits, pr1 3, pr2 5, pr3 4, pr4 6, pr5 174, pr6 9, pr7 24. The optimizations span IO/CRB, backend hot paths, WebGPU rendering, startup, page readiness, UI, and builder layers.
 
 `tests/bench` already contains high-quality assets: the scientific expression benchmark, CRB lifecycle, hot paths, startup, the million-cell page harness, and release comparison scripts. What is missing is a single executable way to decide, for each branch, whether it is acceptable:
 
@@ -69,7 +69,7 @@ L1 hard gate = no regression + 100% correctness + sample counts + at least one h
 
 | Branch | Declared parent SHA | Candidate tip SHA (2026-09-22) |
 |---|---|---|
-| pr0 | `892097a1` | `99d305c0` |
+| pr0 | `69893a2b` | `99d305c0` |
 | pr1 | `99d305c0` | `35128c51` |
 | pr2 | `35128c51` | `5ad9ed40` |
 | pr3 | `5ad9ed40` | `8f38ee56` |
@@ -79,7 +79,7 @@ L1 hard gate = no regression + 100% correctness + sample counts + at least one h
 | pr7 (manual) | fork point `cc973713` | `17b04c92` |
 
 - **No rebase is required for acceptance.** When a branch is rewritten (restack/amend), update the SHAs in the config and re-run only the affected layers of the rewritten branch and its descendants; records are replaced per SHA, older records are retained.
-- L2 additionally compares against the cumulative baseline `892097a1` (pre-PR0) and the previous release tag.
+- L2 additionally compares against the cumulative baseline `69893a2b` (PR #165, pre-PR0) and the previous release tag.
 
 ## 6. Layer-to-harness mapping
 
@@ -216,7 +216,7 @@ acceptance_config <- list(
                  commands = list(windows = "...", mac = "..."))
   ),
   branches = list(
-    pr0 = list(layer = "crb", parent = "892097a1", candidate = "99d305c0",
+    pr0 = list(layer = "crb", parent = "69893a2b", candidate = "99d305c0",
                headline = c("write_median_ms", "size_mib")),
     # pr1 .. pr5 are structurally identical; pr6/pr7 machine = FALSE + manual checklist
     pr6 = list(machine = FALSE, checklist = "pr6-ui-accessibility",

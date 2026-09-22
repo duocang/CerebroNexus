@@ -17,6 +17,10 @@ matching directory under `results/benchmark/<profile>/runs/<run-id>/`, where
 `<profile>` is `full` or `scale`. Do not combine files from different runs or
 profiles.
 
+The committed full run was produced before `panel_c2` was renamed to `full`,
+so its internal manifest retains `panel_c2`. The validator treats that value as
+the `full` compatibility alias; new runs record `full`.
+
 Start with:
 
 1. `summary.md` for the descriptive tables;

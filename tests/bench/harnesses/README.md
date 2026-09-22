@@ -1,7 +1,7 @@
 # Engineering harnesses
 
 These scripts reproduce focused PR0-PR5 million-cell measurements. They are not
-the current real-data paper benchmark; run that through
+the current real-data benchmark; run that through
 [`../benchmark/run.sh`](../benchmark/run.sh).
 
 ## Contents
@@ -25,7 +25,9 @@ the current real-data paper benchmark; run that through
 ## Workflow entry point
 
 `backend/compare.sh` prepares isolated revisions and runs both
-`backend/hot_paths.R` and `backend/bundle.R`.
+`backend/hot_paths.R` and `backend/bundle.R`. With no revision arguments it
+compares the pinned pr0 and pr1 tips (`99d305c0` and `35128c51`); explicit
+revision arguments reproduce older archived studies.
 
 ## Focused diagnostics
 

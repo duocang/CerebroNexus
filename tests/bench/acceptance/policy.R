@@ -97,7 +97,7 @@ ACCEPTANCE_CONFIG <- list(
     )
   ),
   branches = list(
-    pr0 = list(machine = TRUE, layer = "crb", parent = "892097a1",
+    pr0 = list(machine = TRUE, layer = "crb", parent = "69893a2b",
                candidate = "99d305c0",
                headline = c("write_median_ms", "size_mib")),
     pr1 = list(machine = TRUE, layer = "hot_paths", parent = "99d305c0",

@@ -1,7 +1,16 @@
 #!/usr/bin/env Rscript
 
 args <- commandArgs(trailingOnly = TRUE)
-source("tests/bench/harnesses/crb/fixture.R")
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)[[1L]]
+script_path <- normalizePath(
+  sub("^--file=", "", script_arg),
+  mustWork = TRUE
+)
+repo_root <- normalizePath(
+  file.path(dirname(script_path), "..", "..", "..", ".."),
+  mustWork = TRUE
+)
+source(file.path(dirname(script_path), "fixture.R"))
 
 baseline <- if (length(args)) {
   normalizePath(args[[1L]], mustWork = TRUE)
@@ -14,7 +23,7 @@ if (is.na(rounds) || rounds < 1L) {
   stop("ROUNDS must be a positive integer.", call. = FALSE)
 }
 
-suppressPackageStartupMessages(pkgload::load_all(".", quiet = TRUE))
+suppressPackageStartupMessages(pkgload::load_all(repo_root, quiet = TRUE))
 baseline_payload <- readRDS(baseline)
 if (
   nrow(baseline_payload$meta_data) != 1000000L ||

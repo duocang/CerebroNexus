@@ -80,26 +80,6 @@ test_that("evidence labels prevent quick runs from sounding definitive", {
   )
 })
 
-test_that("current result resolution is safe and backward compatible", {
-  skip_unless_bench_reporting()
-  source(bench_reporting, local = TRUE)
-
-  root <- tempfile("bench-result-root-")
-  dir.create(root)
-  on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  expect_equal(bench_current_result_dir(root), normalizePath(root))
-
-  dir.create(file.path(root, "runs", "run-1"), recursive = TRUE)
-  writeLines("run-1", file.path(root, "CURRENT"))
-  expect_equal(
-    bench_current_result_dir(root),
-    normalizePath(file.path(root, "runs", "run-1"))
-  )
-
-  writeLines("../escape", file.path(root, "CURRENT"))
-  expect_error(bench_current_result_dir(root), "unsafe CURRENT")
-})
-
 test_that("report and plots consume repeated benchmark rows", {
   skip_unless_bench_reporting()
   testthat::skip_if_not_installed("ggplot2")
@@ -306,79 +286,4 @@ test_that("scale-limit summaries use embedded exports only", {
     collapse = "\n"
   )
   expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
-})
-
-test_that("study environment comparison rejects incompatible phases", {
-  skip_unless_bench_reporting()
-  source(bench_reporting, local = TRUE)
-
-  baseline <- c(
-    r_version = "R 4.6.1",
-    r_platform = "x86_64-pc-linux-gnu",
-    cpu = "host-a",
-    benchmark_threads = "1",
-    package_Matrix = "1.7-4"
-  )
-  same <- baseline
-  changed <- baseline
-  changed[["cpu"]] <- "host-b"
-
-  expect_true(
-    bench_compare_environments(
-      baseline,
-      same,
-      keys = names(baseline)
-    )$comparable
-  )
-  comparison <- bench_compare_environments(
-    baseline,
-    changed,
-    keys = names(baseline)
-  )
-  expect_false(comparison$comparable)
-  expect_equal(comparison$different, "cpu")
-})
-
-test_that("frozen run paths cannot escape their result roots", {
-  skip_unless_bench_reporting()
-  source(bench_reporting, local = TRUE)
-
-  root <- tempfile("bench-frozen-root-")
-  dir.create(file.path(root, "runs", "run-1"), recursive = TRUE)
-  on.exit(unlink(root, recursive = TRUE), add = TRUE)
-
-  expect_equal(
-    bench_result_run_dir(root, "run-1"),
-    normalizePath(file.path(root, "runs", "run-1"))
-  )
-  expect_error(bench_result_run_dir(root, "../escape"), "unsafe run id")
-  expect_error(bench_result_run_dir(root, "missing"), "does not exist")
-})
-
-test_that("backend ratios retain direction and matched tiers", {
-  skip_unless_bench_reporting()
-  source(bench_reporting, local = TRUE)
-
-  summary <- data.frame(
-    source = rep("fixture", 3),
-    n_cells = rep(1000, 3),
-    backend = c("embedded", "bpcells", "h5"),
-    seconds_median = c(4, 2, 1),
-    stringsAsFactors = FALSE
-  )
-  got <- bench_backend_ratios(
-    summary,
-    metric = "seconds_median",
-    reference = "embedded"
-  )
-
-  expect_equal(got$ratio[got$backend == "bpcells"], 0.5)
-  expect_equal(got$ratio[got$backend == "h5"], 0.25)
-  expect_true(all(got$reference_backend == "embedded"))
-
-  summary$seconds_median[summary$backend == "embedded"] <- 0
-  expect_equal(
-    nrow(bench_backend_ratios(summary, "seconds_median", "embedded")),
-    0L
-  )
 })

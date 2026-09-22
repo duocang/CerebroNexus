@@ -16,7 +16,9 @@ Across fixed scales and complete million-scale public scRNA-seq matrices, how do
 
 This is descriptive engineering evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
 
-Viewer behaviour is deliberately outside this research question. The separate `tests/viewer-validation` workflow provides functional browser smoke evidence; its outcome cannot invalidate or publish expression-backend measurements.
+Viewer behaviour is deliberately outside this research question. The focused
+`tests/bench/harnesses/viewer/` checks provide engineering evidence; their
+outcome cannot invalidate or publish expression-backend measurements.
 
 ## Sources and scope
 

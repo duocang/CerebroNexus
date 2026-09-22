@@ -1,5 +1,13 @@
 # Acceptance records
 
+## Contents
+
+- [Record layout](#record-layout)
+- [Manual records](#manual-records)
+- [Fixtures](#fixtures)
+
+## Record layout
+
 One directory per judgement under `tests/bench/results/acceptance/`:
 
 `<branch>-<candidate8>-<platform>/`
@@ -17,9 +25,13 @@ The CLI rejects acceptance record directories outside this root. A custom
 `--results-root` is available only for isolated tests or external evidence
 workspaces; repository records still belong under `tests/bench/results/`.
 
+## Manual records
+
 Manual records for pr6/pr7 use `pr6-<sha8>-manual.md` / `pr7-<sha8>-manual.md`
 and list the checklist from `STANDARD.md` section 10 with a date
 and the confirming person.
+
+## Fixtures
 
 Fixtures under `tests/bench/acceptance/fixtures/` are format contracts for the
 adapters. They are synthetic and never used for performance conclusions.

@@ -42,13 +42,6 @@ acceptance_budget_verdict <- function(baseline_median, candidate_median, budget)
        candidate_state = candidate_state)
 }
 
-acceptance_correctness_verdict <- function(values) {
-  if (!length(values) || anyNA(values)) {
-    return("INVALID")
-  }
-  if (all(values)) "PASS" else "FAIL"
-}
-
 acceptance_headline_improvement <- function(baseline_median, candidate_median) {
   if (!is.finite(baseline_median) || !is.finite(candidate_median) ||
       baseline_median <= 0) {
