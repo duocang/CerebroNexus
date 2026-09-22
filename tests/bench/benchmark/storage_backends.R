@@ -58,6 +58,25 @@ bench_open_source_tier <- function(spec, path, n_cells) {
   bench_validate_full_matrix(matrix)
 }
 
+# Materialize exactly the same deterministic prefix used by the scale-study
+# query plan and out-of-core backends.  The older sampled reader deliberately
+# spreads chunks across the complete source, so using it for `embedded` made
+# that backend answer queries for a different matrix.
+bench_materialize_source_tier <- function(spec, path, n_cells) {
+  source_matrix <- bench_open_source_tier(spec, path, n_cells)
+  matrix <- methods::as(source_matrix, "dgCMatrix")
+  if (
+    !identical(dim(matrix), dim(source_matrix)) ||
+      !identical(dimnames(matrix), dimnames(source_matrix))
+  ) {
+    stop(
+      "materialized source tier changed dimensions or names",
+      call. = FALSE
+    )
+  }
+  matrix
+}
+
 bench_write_full_backend <- function(matrix, backend, path) {
   bench_validate_full_matrix(matrix)
   if (backend == "bpcells") {

@@ -55,6 +55,31 @@ test_that("full-source adapters stay lazy and preserve orientation", {
   )
 })
 
+test_that("embedded scale materialization uses the same source prefix", {
+  skip_unless_full_source_deps()
+  source(full_source_lib, local = TRUE)
+  root <- tempfile("scale-materialized-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- full_source_fixture(root)
+
+  materialized <- bench_materialize_source_tier(
+    list(kind = "tenx"),
+    fixture$tenx,
+    3L
+  )
+
+  expect_s4_class(materialized, "dgCMatrix")
+  expect_equal(
+    as.matrix(materialized),
+    as.matrix(fixture$matrix[, seq_len(3L), drop = FALSE])
+  )
+  expect_identical(
+    dimnames(materialized),
+    dimnames(fixture$matrix[, seq_len(3L), drop = FALSE])
+  )
+})
+
 test_that("full-source writers round-trip both runtime backends", {
   skip_unless_full_source_deps()
   source(full_source_lib, local = TRUE)

@@ -100,7 +100,11 @@ if (identical(command, "export")) {
   m <- NULL
   row$read_secs <- tryCatch(
     bench_time(
-      m <- bench_read_subset(spec, n_cells, n_chunks = 4, verbose = TRUE)
+      m <- if (identical(Sys.getenv("BENCH_PROFILE"), "scale")) {
+        bench_materialize_source_tier(spec, cached, n_cells)
+      } else {
+        bench_read_subset(spec, n_cells, n_chunks = 4, verbose = TRUE)
+      }
     ),
     error = function(e) fail("read", e)
   )
