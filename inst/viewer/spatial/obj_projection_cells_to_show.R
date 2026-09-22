@@ -2,7 +2,9 @@
 ## Indices of cells to show in projection.
 ##----------------------------------------------------------------------------##
 spatial_projection_cell_index <- reactive({
-  spatial_name <- input[["spatial_projection_to_display"]]
+  controls <- spatial_projection_controls()
+  req(controls)
+  spatial_name <- controls$projection
   req(spatial_name %in% availableSpatial())
   parameters <- spatial_projection_parameters_plot()
   req(identical(parameters[["projection"]], spatial_name))
@@ -43,7 +45,8 @@ spatial_projection_cell_index <- reactive({
 })
 
 spatial_projection_cells_to_show <- reactive({
-  req(input[["spatial_projection_percentage_cells_to_show"]])
+  controls <- spatial_projection_controls()
+  req(controls, controls$percentage_cells_to_show)
   groups <- getGroups()
   filters <- stats::setNames(
     lapply(groups, function(group) {
@@ -61,7 +64,7 @@ spatial_projection_cells_to_show <- reactive({
     )
     index <- index[cerebroGroupFilterMask(metadata, filters)]
   }
-  percentage <- input[["spatial_projection_percentage_cells_to_show"]]
+  percentage <- controls$percentage_cells_to_show
   if (length(index) && percentage < 100) {
     index <- sample(index, ceiling(length(index) * percentage / 100))
   }

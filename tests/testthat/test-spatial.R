@@ -1100,6 +1100,50 @@ test_that("hidden Spatial appearance controls do not rebuild primary data", {
   )
 })
 
+test_that("first Spatial frame uses deduplicated server-side control defaults", {
+  parameters <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_parameters_plot.R"
+    )),
+    collapse = "\n"
+  )
+  cells <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_cells_to_show.R"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(
+    parameters,
+    "spatial_projection_controls <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    'req(input[["spatial_projection_render_request"]])',
+    fixed = TRUE
+  )
+  expect_match(
+    parameters,
+    "if (!identical(isolate(spatial_projection_controls()), controls))",
+    fixed = TRUE
+  )
+  expect_match(parameters, "}, priority = 1000)", fixed = TRUE)
+  expect_match(
+    parameters,
+    "controls <- spatial_projection_controls()",
+    fixed = TRUE
+  )
+  expect_match(
+    cells,
+    "percentage <- controls$percentage_cells_to_show",
+    fixed = TRUE
+  )
+})
+
 test_that("shared Canvas owns spatial background identity and appearance", {
   engine <- paste(
     readLines(viewer_test_path("www", "cell_views.js")),
