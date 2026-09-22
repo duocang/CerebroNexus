@@ -7,6 +7,16 @@ skip_unless_bench_resources <- function() {
   )
 }
 
+test_that("resource planning honours an explicit disk-space override", {
+  skip_unless_bench_resources()
+  source(bench_resources, local = TRUE)
+
+  expect_identical(
+    bench_free_disk_bytes(tempdir(), override = "12345"),
+    12345
+  )
+})
+
 test_that("resource planning explains safe and unsafe memory tiers", {
   skip_unless_bench_resources()
   source(bench_resources, local = TRUE)

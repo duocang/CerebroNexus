@@ -1,6 +1,30 @@
 # ---- resource_planning.R ----
 # Pure host-resource planning helpers for the real-data benchmark.
 
+bench_free_disk_bytes <- function(
+  path,
+  override = Sys.getenv("BENCH_FREE_DISK_BYTES", unset = "")
+) {
+  override <- suppressWarnings(as.numeric(override))
+  if (is.finite(override) && override > 0) {
+    return(override)
+  }
+  lines <- tryCatch(
+    system2("df", c("-Pk", shQuote(path)), stdout = TRUE, stderr = TRUE),
+    error = function(error) character()
+  )
+  fields <- if (length(lines)) {
+    strsplit(trimws(tail(lines, 1L)), "[[:space:]]+")[[1L]]
+  } else {
+    character()
+  }
+  available_kb <- suppressWarnings(as.numeric(fields[4L]))
+  if (!is.finite(available_kb)) {
+    stop("could not determine free disk space", call. = FALSE)
+  }
+  available_kb * 1024
+}
+
 bench_assess_resources <- function(
   inventory,
   plan,

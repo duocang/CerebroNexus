@@ -289,18 +289,6 @@ if (identical(command, "inspect")) {
   output <- args[4L]
   values <- stats::setNames(as.character(manifest$value), manifest$key)
 
-  free_disk_bytes <- function(path) {
-    override <- suppressWarnings(as.numeric(Sys.getenv(
-      "BENCH_FREE_DISK_BYTES"
-    )))
-    if (is.finite(override) && override > 0) {
-      return(override)
-    }
-    lines <- system2("df", c("-Pk", shQuote(path)), stdout = TRUE)
-    fields <- strsplit(trimws(tail(lines, 1L)), "[[:space:]]+")[[1L]]
-    as.numeric(fields[4L]) * 1024
-  }
-
   planned <- unique(plan[c("source", "n_cells")])
   matched <- match(planned$source, inventory$source)
   if (anyNA(matched)) {
@@ -312,7 +300,7 @@ if (identical(command, "inspect")) {
     as.numeric(values[["r_vector_limit_mb"]]),
     na.rm = TRUE
   )
-  disk_free <- free_disk_bytes(dirname(output))
+  disk_free <- bench_free_disk_bytes(dirname(output))
   # Only 12 queried rows are materialised. Four GiB covers R, native buffers and
   # the full-cell metadata shell with a conservative margin.
   estimated_peak_mb <- 4096 + planned$n_cells * 12 * 8 / 2^20
@@ -369,22 +357,6 @@ if (identical(command, "inspect")) {
     here <- normalizePath("tests/bench")
   }
 
-  free_disk_bytes <- function(path) {
-    override <- suppressWarnings(as.numeric(Sys.getenv(
-      "BENCH_FREE_DISK_BYTES"
-    )))
-    if (is.finite(override) && override > 0) {
-      return(override)
-    }
-    lines <- system2("df", c("-Pk", shQuote(path)), stdout = TRUE)
-    fields <- strsplit(trimws(tail(lines, 1L)), "[[:space:]]+")[[1]]
-    available_kb <- suppressWarnings(as.numeric(fields[4]))
-    if (!is.finite(available_kb)) {
-      stop("could not determine free disk space", call. = FALSE)
-    }
-    available_kb * 1024
-  }
-
   inventory <- utils::read.csv(inventory_path, stringsAsFactors = FALSE)
   plan <- utils::read.csv(plan_path, stringsAsFactors = FALSE)
   manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE)
@@ -407,7 +379,7 @@ if (identical(command, "inspect")) {
     plan,
     memory_mb = memory_mb,
     vector_limit_mb = vector_limit_mb,
-    free_disk_bytes = free_disk_bytes(dirname(output_path))
+    free_disk_bytes = bench_free_disk_bytes(dirname(output_path))
   )
   dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(assessment, output_path, row.names = FALSE)
