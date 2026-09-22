@@ -2284,16 +2284,26 @@ get_or_load_crb <- function(
     return(NULL)
   }
   schema_names <- names(schema)
+  expected_names <- if (identical(schema$version, 1L)) {
+    c("version", "cell_names", "cell_names_md5", "projection_rownames")
+  } else if (identical(schema$version, 2L)) {
+    c(
+      "version",
+      "cell_names",
+      "cell_names_md5",
+      "projection_rownames",
+      "n_cells"
+    )
+  } else {
+    character()
+  }
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
-    length(schema) == 4L &&
+    length(expected_names) > 0L &&
+    length(schema) == length(expected_names) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
-    setequal(
-      schema_names,
-      c("version", "cell_names", "cell_names_md5", "projection_rownames")
-    ) &&
-    identical(schema$version, 1L) &&
+    setequal(schema_names, expected_names) &&
     identical(schema$cell_names, "expression") &&
     is.character(schema$cell_names_md5) &&
     length(schema$cell_names_md5) == 1L &&
@@ -2302,7 +2312,12 @@ get_or_load_crb <- function(
     is.character(schema$projection_rownames) &&
     !anyNA(schema$projection_rownames) &&
     !any(!nzchar(schema$projection_rownames)) &&
-    !anyDuplicated(schema$projection_rownames)
+    !anyDuplicated(schema$projection_rownames) &&
+    (identical(schema$version, 1L) ||
+      (is.integer(schema$n_cells) &&
+        length(schema$n_cells) == 1L &&
+        !is.na(schema$n_cells) &&
+        schema$n_cells >= 0L))
   if (!valid) {
     stop(
       "The Cerebro data file '",
@@ -2336,6 +2351,15 @@ get_or_load_crb <- function(
     )
   }
   cells <- colnames(obj$expression)
+  if (
+    identical(schema$version, 2L) &&
+      !identical(length(cells), schema$n_cells)
+  ) {
+    stop(
+      "The thin CRB cell count does not match its BPCells sidecar.",
+      call. = FALSE
+    )
+  }
   metadata <- obj$meta_data
   if (
     !is.character(cells) ||

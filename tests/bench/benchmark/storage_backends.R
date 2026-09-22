@@ -64,12 +64,7 @@ bench_write_full_backend <- function(matrix, backend, path) {
     if (dir.exists(path)) {
       unlink(path, recursive = TRUE)
     }
-    written <- if (identical(BPCells::storage_order(matrix), "row")) {
-      BPCells::write_matrix_dir(matrix, dir = path)
-      BPCells::open_matrix_dir(path)
-    } else {
-      BPCells::transpose_storage_order(matrix, outdir = path)
-    }
+    written <- CerebroNexus:::.writeBpcellsGeneMajor(matrix, path)
   } else if (backend == "h5") {
     if (file.exists(path)) {
       unlink(path)

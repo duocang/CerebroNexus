@@ -92,7 +92,13 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   expect_false("cell_barcode" %in% names(payload$meta_data))
   expect_type(payload$meta_data$nUMI, "integer")
   expect_type(payload$meta_data$nGene, "integer")
+  expect_identical(payload$crb_schema$version, 2L)
+  expect_identical(payload$crb_schema$n_cells, 4L)
   expect_identical(payload$crb_schema$projection_rownames, "umap")
+  expect_match(
+    payload$cell_fingerprint,
+    "^md5-cell-set-v1:[0-9a-f]{32}$"
+  )
   expect_identical(
     readBin(qs, "raw", n = 4L),
     as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
@@ -119,6 +125,19 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   invalid_path <- file.path(root, "invalid-checksum.crb")
   saveRDS(invalid, invalid_path)
   expect_error(readCerebro(invalid_path), "cell-name index does not match")
+
+  wrong_count <- .readCerebroPayload(rds)
+  wrong_count$crb_schema$n_cells <- 3L
+  wrong_count_path <- file.path(root, "invalid-cell-count.crb")
+  saveRDS(wrong_count, wrong_count_path)
+  expect_error(readCerebro(wrong_count_path), "cell count does not match")
+
+  version_one <- .readCerebroPayload(rds)
+  version_one$crb_schema$version <- 1L
+  version_one$crb_schema$n_cells <- NULL
+  version_one_path <- file.path(root, "schema-v1.crb")
+  saveRDS(version_one, version_one_path)
+  expect_cerebro_fields(readCerebro(version_one_path), fixture)
 
   missing_root <- file.path(root, "missing-sidecar")
   dir.create(missing_root)

@@ -115,7 +115,7 @@ test_that("full-source query plan and portable shell use bounded expression", {
   loaded <- CerebroNexus::readCerebro(crb)
 
   expect_null(payload$expression)
-  expect_true(payload$crb_schema$version %in% c(1L, 2L))
+  expect_identical(payload$crb_schema$version, 2L)
   expect_equal(nrow(loaded$getMetaData()), ncol(fixture$matrix))
   expect_identical(loaded$getMetaData()$cell_barcode, colnames(fixture$matrix))
   expect_true(all(c("nUMI", "nGene") %in% names(loaded$getMetaData())))
