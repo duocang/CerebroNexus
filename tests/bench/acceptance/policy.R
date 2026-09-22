@@ -2,7 +2,7 @@
 # Human-readable rules live in tests/bench/acceptance/STANDARD.md.
 
 ACCEPTANCE_CONFIG <- list(
-  version = "1.1.0",
+  version = "1.2.0",
   tolerances = list(
     latency = list(rel = 0.05, floor = 50),
     allocation = list(rel = 0.15, floor = 16),
@@ -125,6 +125,10 @@ ACCEPTANCE_CONFIG <- list(
     list(
       date = "2026-09-22",
       change = "complete run commands and rename L2 profile to evidence"
+    ),
+    list(
+      date = "2026-09-22",
+      change = "validate observed rounds and make correctness non-waivable"
     )
   )
 )

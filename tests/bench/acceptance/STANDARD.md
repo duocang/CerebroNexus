@@ -1,6 +1,6 @@
 # Performance Acceptance Standard
 
-- Status: implemented v1.1.0
+- Status: implemented v1.2.0
 - Date: 2026-09-22
 - Applies to: `perf/pr0`-`perf/pr7` (pr0-pr5 machine-judged; pr6/pr7 manual checklists)
 - Judge implementation: `tests/bench/acceptance/policy.R`, `tests/bench/acceptance/evaluator.R`, `tests/bench/acceptance/check.R`, `tests/testthat/test-bench-acceptance.R`
@@ -79,7 +79,8 @@ L1 hard gate = no regression + 100% correctness + sample counts + at least one h
 | pr7 (manual) | fork point `cc973713` | `17b04c92` |
 
 - **No rebase is required for acceptance.** When a branch is rewritten (restack/amend), update the SHAs in the config and re-run only the affected layers of the rewritten branch and its descendants; records are replaced per SHA, older records are retained.
-- L2 additionally compares against the cumulative baseline `69893a2b` (PR #165, pre-PR0) and the previous release tag.
+- L2 uses the same pinned parent baseline as L1, with stricter provenance,
+  sample-count, memory, and reporting gates.
 
 ## 6. Layer-to-harness mapping
 
@@ -133,7 +134,10 @@ Page budgets keep the existing contract: fresh ordinary pages `<2000 ms`, Trajec
 | renderer | >=15 repeats | >=15 |
 | pages | `quick` + 3 balanced rounds | `evidence` + >=5 rounds |
 
-For pages, n means samples per page x visit (first/repeat) for the median, for both candidate and baseline. Below the minimum the evidence is invalid (exit 2): neither pass nor fail.
+For pages, n means samples per page x visit (first/repeat) for the median, for
+both candidate and baseline. CRB, hot-path, bundle, and renderer summaries must
+record their observed round count; it must match `run-config.tsv`. Below the
+minimum the evidence is invalid (exit 2): neither pass nor fail.
 
 ### 7.5 Performance credit (headline)
 
@@ -141,7 +145,10 @@ Every machine-judged branch declares 1-3 headline metrics in the config. L1 requ
 
 ### 7.6 Waivers
 
-Zero waivers by default. A waiver must be registered explicitly in the config (metric, reason, date); the judge prints `PASS (WAIVED)` and surfaces it at the top of the summary. Waivers apply to both L1 and L2, but an L2 report must list every effective waiver.
+Zero waivers by default. A waiver must be registered explicitly in the config
+(metric, reason, date); the judge prints `PASS (WAIVED)` and surfaces it at the
+top of the summary. Correctness failures cannot be waived. Other waivers apply
+to both L1 and L2, but an L2 report must list every effective waiver.
 
 ### 7.7 Outcomes and exit codes
 
@@ -252,7 +259,7 @@ One `extract_*` pure function per layer turns that layer's raw file into a norma
 |---|---|---|---|
 | pr0 | CRB/IO | write/decode/hydrated medians, payload MiB; headline = write speedup + payload shrink | the before input is the legacy 1M RDS; lazy IR/spatial loading must prove content equality with eager |
 | pr1 | backend hot paths + bundle | projection selection, index resolution, single gene/RGB/multi-panel/mean, alloc, bundle build/JSON; headline = RGB, mean, bundle build | storage-order reads must not change values or order (`check = equal`) |
-| pr2 | renderer | WebGPU first frame; headline = WebGPU first-frame time | must cover the no-WebGPU fallback path for correctness |
+| pr2 | renderer | observed backend first frame; headline = first-frame time | checks context loss and GPU errors for the measured backend; fallback remains a package regression contract |
 | pr3 | startup | each phase; headline = `load_to_data_ms` / `browser_to_data_ms` / `process_to_data_ms` | deferred pages and collapsed filters must still initialize correctly (existing regression tests) |
 | pr4 | pages (framework) | all-page `primary_ready_ms` fresh/repeat, budget crossings, deferral/reuse correctness; headline = budget pass count + page improvement | full page sweep; paired against the pr3 baseline |
 | pr5 | pages (per page) + hot-path regression | grouped by touched page (groups/overview/gene_expression/immune_repertoire/trajectory/hla/coordinated_views); headline = IR first visit, all repeats | Spatial is skipped when the fixture has no data, and the record says so |

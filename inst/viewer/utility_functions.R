@@ -2341,6 +2341,36 @@ get_or_load_crb <- function(
   checksum
 }
 
+.runtimeCellFingerprint <- function(cells) {
+  cells <- sort(enc2utf8(cells), method = "radix")
+  stream <- paste0(nchar(cells, type = "bytes"), ":", cells, collapse = "")
+  path <- tempfile("cerebro-cell-fingerprint-")
+  on.exit(unlink(path), add = TRUE)
+  writeBin(charToRaw(stream), path)
+  paste0("md5-cell-set-v1:", unname(tools::md5sum(path)))
+}
+
+.validateExternalCellIdentity <- function(obj) {
+  cells <- colnames(obj$expression)
+  metadata <- obj$meta_data
+  if (
+    !is.character(cells) ||
+      anyNA(cells) ||
+      any(!nzchar(cells)) ||
+      anyDuplicated(cells) ||
+      !is.data.frame(metadata) ||
+      !"cell_barcode" %in% names(metadata) ||
+      !identical(as.character(metadata$cell_barcode), cells)
+  ) {
+    stop(
+      "The external expression sidecar and CRB metadata must contain the ",
+      "same cells in the same order.",
+      call. = FALSE
+    )
+  }
+  obj
+}
+
 .hydrateThinCrb <- function(obj, crb_path, sidecar, schema) {
   if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
     stop(
@@ -2357,6 +2387,23 @@ get_or_load_crb <- function(
   ) {
     stop(
       "The thin CRB cell count does not match its BPCells sidecar.",
+      call. = FALSE
+    )
+  }
+  if (
+    identical(schema$version, 2L) &&
+      (
+        !is.character(obj$cell_fingerprint) ||
+          length(obj$cell_fingerprint) != 1L ||
+          is.na(obj$cell_fingerprint) ||
+          !identical(
+            obj$cell_fingerprint,
+            .runtimeCellFingerprint(cells)
+          )
+      )
+  ) {
+    stop(
+      "The thin CRB cell fingerprint does not match its BPCells sidecar.",
       call. = FALSE
     )
   }
@@ -2684,6 +2731,10 @@ get_or_load_crb <- function(
       ),
       call. = FALSE
     )
+  }
+
+  if (is.null(crb_schema)) {
+    obj <- .validateExternalCellIdentity(obj)
   }
 
   obj

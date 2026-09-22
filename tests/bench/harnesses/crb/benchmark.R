@@ -119,6 +119,7 @@ summary <- do.call(
     selected <- timings[timings$candidate == candidate, , drop = FALSE]
     data.frame(
       candidate = candidate,
+      rounds = nrow(selected),
       size_mib = unname(file.info(files[[candidate]])$size / 1024^2),
       write_median_ms = median(selected$write_ms),
       decode_median_ms = median(selected$decode_ms),

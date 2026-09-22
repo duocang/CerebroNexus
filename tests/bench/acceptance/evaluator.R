@@ -294,13 +294,54 @@ acceptance_load_run_dir <- function(path) {
     stop("run-config.tsv is missing fields: ", paste(missing, collapse = ", "),
          call. = FALSE)
   }
+  if (nrow(config) != 1L) {
+    stop("run-config.tsv must contain exactly one data row", call. = FALSE)
+  }
   config <- as.list(config[1L, , drop = FALSE])
   config <- lapply(config, function(value) as.character(value[[1L]]))
   files <- utils::read.delim(files_path, stringsAsFactors = FALSE,
                              check.names = FALSE)
+  file_fields <- c("role", "file_role", "relative_path", "sha256")
+  missing_file_fields <- setdiff(file_fields, names(files))
+  if (length(missing_file_fields)) {
+    stop("files.tsv is missing fields: ",
+         paste(missing_file_fields, collapse = ", "), call. = FALSE)
+  }
+  if (!nrow(files)) {
+    stop("files.tsv must contain at least one data row", call. = FALSE)
+  }
   files$path <- vapply(files$relative_path, acceptance_resolve_path,
                        character(1), base = path)
   list(path = path, config = config, files = files)
+}
+
+acceptance_observed_rounds <- function(path, file_role) {
+  field <- switch(
+    file_role,
+    crb = "rounds",
+    hot_paths = "repeats",
+    bundle = "repeats",
+    renderer_baseline = "repeats",
+    renderer_candidate = "repeats",
+    NULL
+  )
+  if (is.null(field)) {
+    return(NULL)
+  }
+  rows <- acceptance_read_table(path)
+  if (!field %in% names(rows) || !nrow(rows)) {
+    return(NA_integer_)
+  }
+  values <- unique(suppressWarnings(as.numeric(rows[[field]])))
+  if (
+    length(values) != 1L ||
+      !is.finite(values) ||
+      values < 1 ||
+      values != floor(values)
+  ) {
+    return(NA_integer_)
+  }
+  as.integer(values)
 }
 
 acceptance_sample_key <- function(layer, level, config) {
@@ -372,6 +413,30 @@ acceptance_validate_run <- function(run, branch, platform,
       problems <- c(problems, paste0("missing file: ",
                                      run$files$relative_path[[i]]))
       next
+    }
+    observed_rounds <- acceptance_observed_rounds(
+      run$files$path[[i]],
+      run$files$file_role[[i]]
+    )
+    if (length(observed_rounds)) {
+      if (is.na(observed_rounds)) {
+        problems <- c(
+          problems,
+          paste0(
+            "missing or invalid observed rounds: ",
+            run$files$relative_path[[i]]
+          )
+        )
+      } else if (is.na(rounds) || observed_rounds != rounds) {
+        problems <- c(
+          problems,
+          paste0(
+            "observed rounds mismatch for ",
+            run$files$relative_path[[i]],
+            ": ", observed_rounds, " != ", run$config$rounds
+          )
+        )
+      }
     }
     declared <- run$files$sha256[[i]]
     if (is.na(declared) || !nzchar(declared)) {
@@ -565,6 +630,9 @@ acceptance_apply_waivers <- function(verdicts, branch,
       match <- match & verdicts$visit == waiver$visit
     }
     match <- match & verdicts$verdict == "FAIL"
+    if ("rule" %in% names(verdicts)) {
+      match <- match & verdicts$rule != "correctness"
+    }
     verdicts$verdict[match] <- "WAIVED"
   }
   verdicts

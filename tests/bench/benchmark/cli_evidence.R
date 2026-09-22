@@ -101,6 +101,8 @@ if (identical(command, "evidence")) {
     !identical(names(inventory), c("path", "bytes", "md5")) ||
       !nrow(inventory) ||
       anyDuplicated(inventory$path) ||
+      any(!nzchar(inventory$path)) ||
+      any(grepl("(^|/)\\.\\.(/|$)|^/|^[A-Za-z]:|\\\\", inventory$path)) ||
       any(!grepl("^[0-9a-f]{32}$", inventory$md5)) ||
       any(!is.finite(inventory$bytes) | inventory$bytes < 0)
   ) {
@@ -124,6 +126,26 @@ if (identical(command, "evidence")) {
   if (!all(required_inventory %in% inventory$path)) {
     stop(
       "evidence inventory does not cover all required outputs",
+      call. = FALSE
+    )
+  }
+  actual_files <- list.files(
+    stage,
+    recursive = TRUE,
+    full.names = TRUE,
+    all.files = TRUE,
+    no.. = TRUE
+  )
+  actual_files <- actual_files[!dir.exists(actual_files)]
+  actual_relative <- substring(actual_files, nchar(stage) + 2L)
+  actual_relative <- gsub("\\\\", "/", actual_relative)
+  actual_relative <- actual_relative[
+    actual_relative != "evidence_manifest.csv" &
+      !startsWith(actual_relative, "logs/")
+  ]
+  if (!setequal(actual_relative, inventory$path)) {
+    stop(
+      "evidence inventory does not exactly cover staged files",
       call. = FALSE
     )
   }

@@ -100,6 +100,7 @@ record <- function(metric, scale, before_work, after_work, check) {
   rows[[length(rows) + 1L]] <<- data.frame(
     metric = metric,
     scale = scale,
+    repeats = repeats,
     before_ms = before_ms,
     after_ms = after_ms,
     time_change_pct = (after_ms / before_ms - 1) * 100,

@@ -171,6 +171,18 @@ test_that("output checker requires raw evidence, figures, and checksums", {
   )
   expect_null(attr(complete, "status"), info = paste(complete, collapse = "\n"))
 
+  writeLines("not inventoried", file.path(stage, "unlisted.txt"))
+  unlisted <- suppressWarnings(bench_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, "check", stage),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
+  ))
+  expect_false(is.null(attr(unlisted, "status")))
+  expect_match(paste(unlisted, collapse = "\n"), "exactly cover")
+  unlink(file.path(stage, "unlisted.txt"))
+
   writeLines("tampered", file.path(stage, "10_export.csv"))
   tampered <- suppressWarnings(bench_system2(
     file.path(R.home("bin"), "Rscript"),

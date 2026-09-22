@@ -264,6 +264,25 @@
 
 .hydrateThinCerebro <- function(object, file, backend, schema) {
   if (is.null(schema)) {
+    if (!identical(backend$type, "embedded")) {
+      cells <- colnames(object$expression)
+      metadata <- object$meta_data
+      if (
+        !is.character(cells) ||
+          anyNA(cells) ||
+          any(!nzchar(cells)) ||
+          anyDuplicated(cells) ||
+          !is.data.frame(metadata) ||
+          !"cell_barcode" %in% names(metadata) ||
+          !identical(as.character(metadata$cell_barcode), cells)
+      ) {
+        stop(
+          "The external expression sidecar and CRB metadata must contain ",
+          "the same cells in the same order.",
+          call. = FALSE
+        )
+      }
+    }
     return(object)
   }
   if (!identical(backend$type, "bpcells")) {
@@ -286,6 +305,23 @@
   ) {
     stop(
       "The thin CRB cell count does not match its BPCells sidecar.",
+      call. = FALSE
+    )
+  }
+  if (
+    identical(schema$version, 2L) &&
+      (
+        !is.character(object$cell_fingerprint) ||
+          length(object$cell_fingerprint) != 1L ||
+          is.na(object$cell_fingerprint) ||
+          !identical(
+            object$cell_fingerprint,
+            .cerebroCellFingerprint(cells)
+          )
+      )
+  ) {
+    stop(
+      "The thin CRB cell fingerprint does not match its BPCells sidecar.",
       call. = FALSE
     )
   }

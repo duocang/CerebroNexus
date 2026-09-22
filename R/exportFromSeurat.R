@@ -334,6 +334,12 @@
       sidecar_mode,
       "the staged expression sidecar"
     )
+    if (identical(backend$type, "bpcells")) {
+      ## Windows cannot rename a BPCells directory while its external pointer
+      ## is open. The published path is reopened immediately after the move.
+      export$expression <- NULL
+      invisible(gc())
+    }
     if (!file.rename(stage_sidecar, final_sidecar)) {
       stop("Failed to install the staged expression sidecar.", call. = FALSE)
     }
@@ -967,12 +973,13 @@ exportFromSeurat <- function(
     }
     ## Keep Cerebro's genes x cells dimensions, but physically store rows
     ## contiguously so per-gene and small gene-set queries avoid a full scan.
-    mat_handle <- .writeBpcellsGeneMajor(bpc_iter, bpc_abs)
-
     ## Carry the live handle (absolute path inside @dir -- BPCells normalises
     ## it on open_matrix_dir()) AND the portable relative location tag. Step
     ## 7.3's attach reads the tag, not @dir, so the crb stays portable.
-    export$setExpression(mat_handle, backend = "external")
+    export$setExpression(
+      .writeBpcellsGeneMajor(bpc_iter, bpc_abs),
+      backend = "external"
+    )
     export$setExpressionBackend(type = "bpcells", location = bpc_dirname)
   } else if (expression_matrix_mode == "h5") {
     ## Write the expression matrix to a TENxMatrix-format sparse HDF5 file

@@ -102,5 +102,6 @@ summary <- stats::aggregate(
   raw["candidate"],
   stats::median
 )
+summary$repeats <- repeats
 summary$check <- "equal"
 write.table(summary, row.names = FALSE, sep = "\t", quote = FALSE)

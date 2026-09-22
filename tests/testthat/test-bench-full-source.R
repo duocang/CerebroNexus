@@ -145,4 +145,22 @@ test_that("full-source query plan and portable shell use bounded expression", {
   h5_attached <- CerebroNexus::readCerebro(h5_crb)
   h5_metrics <- bench_measure_backend(h5_attached, plan, hot_iterations = 1L)
   expect_identical(h5_metrics$correctness, "OK")
+
+  mismatched_h5 <- bench_make_full_shell(
+    source_matrix,
+    backend = "h5",
+    location = basename(h5_sibling),
+    source_name = "fixture",
+    organism = "mm10",
+    run_id = "run-1"
+  )
+  mismatched_h5$meta_data$cell_barcode <- rev(
+    mismatched_h5$meta_data$cell_barcode
+  )
+  mismatched_crb <- file.path(root, "mismatched-h5.crb")
+  CerebroNexus::saveCerebro(mismatched_h5, mismatched_crb)
+  expect_error(
+    CerebroNexus::readCerebro(mismatched_crb),
+    "same cells in the same order"
+  )
 })

@@ -570,9 +570,12 @@ test_that("waivers rewrite only the configured failing metric", {
 
   verdicts <- data.frame(
     metric_id = c("a", "b"), scope = c("s", "s"), verdict = c("FAIL", "FAIL"),
+    rule = c("tolerance", "correctness"),
     stringsAsFactors = FALSE)
-  config <- list(waivers = list(list(branch = "pr3", metric_id = "a",
-                                     scope = "s")))
+  config <- list(waivers = list(
+    list(branch = "pr3", metric_id = "a", scope = "s"),
+    list(branch = "pr3", metric_id = "b", scope = "s")
+  ))
   expect_equal(acceptance_apply_waivers(verdicts, "pr3", config)$verdict,
                c("WAIVED", "FAIL"))
   expect_equal(acceptance_apply_waivers(verdicts, "pr4", config)$verdict,
@@ -646,6 +649,48 @@ test_that("malformed run-config is rejected with a clear error", {
   expect_error(acceptance_load_run_dir(root), "missing fields")
 })
 
+test_that("self-declared rounds cannot exceed observed harness rounds", {
+  skip_unless_bench_fixtures()
+  skip_unless_bench_config()
+  source(bench_acceptance, local = TRUE)
+  source(bench_acceptance_config, local = TRUE)
+
+  root <- temp_run_root("acceptance-observed-rounds-")
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  rows <- acceptance_read_table(
+    file.path(bench_acceptance_fixtures, "crb_sample.csv")
+  )
+  rows$rounds <- 1L
+  utils::write.csv(rows, file.path(root, "crb.csv"), row.names = FALSE)
+  writeLines(
+    "1M CRB all contract: PASS",
+    file.path(root, "correctness.txt")
+  )
+  config <- base_run_config()
+  config$branch <- "pr0"
+  config$layer <- "crb"
+  config$candidate_sha <- "99d305c0"
+  config$baseline_sha <- "69893a2b"
+  config$candidate_label <- "latest"
+  config$baseline_label <- "thin_rds"
+  config$rounds <- 5L
+  files <- data.frame(
+    role = c("both", "both"),
+    file_role = c("crb", "correctness"),
+    relative_path = c("crb.csv", "correctness.txt"),
+    sha256 = c(
+      acceptance_sha256(file.path(root, "crb.csv")),
+      acceptance_sha256(file.path(root, "correctness.txt"))
+    ),
+    stringsAsFactors = FALSE
+  )
+  write_run_dir(root, config, files)
+
+  judged <- acceptance_judge(root, "pr0", "windows", ACCEPTANCE_CONFIG)
+  expect_equal(judged$exit_code, 2L)
+  expect_true(any(grepl("observed rounds mismatch", judged$problems)))
+})
+
 test_that("run-dir keeps absolute file paths intact", {
   skip_unless_bench_config()
   source(bench_acceptance, local = TRUE)
@@ -688,6 +733,7 @@ test_that("waivers respect the visit field", {
   verdicts <- data.frame(
     metric_id = c("m", "m"), scope = c("s", "s"),
     visit = c("first", "repeat"), verdict = c("FAIL", "FAIL"),
+    rule = c("budget", "correctness"),
     stringsAsFactors = FALSE)
   config <- list(waivers = list(list(branch = "pr4", metric_id = "m",
                                      scope = "s", visit = "first")))

@@ -132,6 +132,49 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   saveRDS(wrong_count, wrong_count_path)
   expect_error(readCerebro(wrong_count_path), "cell count does not match")
 
+  wrong_fingerprint <- .readCerebroPayload(rds)
+  wrong_fingerprint$cell_fingerprint <- paste0(
+    "md5-cell-set-v1:",
+    paste(rep("0", 32L), collapse = "")
+  )
+  wrong_fingerprint_path <- file.path(root, "invalid-cell-fingerprint.crb")
+  saveRDS(wrong_fingerprint, wrong_fingerprint_path)
+  expect_error(
+    readCerebro(wrong_fingerprint_path),
+    "cell fingerprint does not match"
+  )
+  runtime_fingerprint <- runtime$read_cerebro_file(wrong_fingerprint_path)
+  expect_error(
+    runtime$.attachExternalExpression(
+      runtime_fingerprint,
+      wrong_fingerprint_path
+    ),
+    "cell fingerprint does not match"
+  )
+
+  other_cells <- paste0("other-cell-", seq_len(4L))
+  other_sidecar <- file.path(root, "other-expression.bpcells")
+  other_counts <- fixture$counts
+  colnames(other_counts) <- other_cells
+  BPCells::write_matrix_dir(
+    methods::as(
+      methods::as(Matrix::Matrix(other_counts, sparse = TRUE), "CsparseMatrix"),
+      "IterableMatrix"
+    ),
+    dir = other_sidecar
+  )
+  wrong_sidecar <- .readCerebroPayload(rds)
+  wrong_sidecar$expression_backend$location <- basename(other_sidecar)
+  wrong_sidecar$crb_schema$cell_names_md5 <- .bpcellsCellNamesChecksum(
+    other_sidecar
+  )
+  wrong_sidecar_path <- file.path(root, "same-count-wrong-cells.crb")
+  saveRDS(wrong_sidecar, wrong_sidecar_path)
+  expect_error(
+    readCerebro(wrong_sidecar_path),
+    "cell fingerprint does not match"
+  )
+
   version_one <- .readCerebroPayload(rds)
   version_one$crb_schema$version <- 1L
   version_one$crb_schema$n_cells <- NULL
