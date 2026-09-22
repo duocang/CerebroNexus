@@ -177,7 +177,7 @@ test_that("scale profile runs embedded through 500k", {
   expect_true(all(schedule$access_repeats == 2L))
 })
 
-test_that("scale profile accepts failed embedded builds only", {
+test_that("scale profile accepts failed embedded measurements only", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
 
@@ -187,33 +187,36 @@ test_that("scale profile accepts failed embedded builds only", {
     "scale",
     sources = "fixture"
   )
+  access_for <- function(indices) {
+    do.call(
+      rbind,
+      lapply(indices, function(i) {
+        do.call(
+          rbind,
+          lapply(seq_len(schedule$access_repeats[i]), function(j) {
+            data.frame(
+              source = schedule$source[i],
+              n_cells = schedule$n_cells[i],
+              backend = schedule$backend[i],
+              export_repeat = schedule$export_repeat[i],
+              access_repeat = j,
+              status = "OK",
+              correctness = "OK",
+              row_fingerprint = "row",
+              reference_row_fingerprint = "row",
+              block_fingerprint = "block",
+              reference_block_fingerprint = "block",
+              stringsAsFactors = FALSE
+            )
+          })
+        )
+      })
+    )
+  }
+
   exports <- transform(schedule, status = "OK", run_id = "run-1")
   exports$status[exports$backend == "embedded"] <- "FAILED(export): limit"
-  successful <- exports$status == "OK"
-  access <- do.call(
-    rbind,
-    lapply(which(successful), function(i) {
-      do.call(
-        rbind,
-        lapply(seq_len(schedule$access_repeats[i]), function(j) {
-          data.frame(
-            source = schedule$source[i],
-            n_cells = schedule$n_cells[i],
-            backend = schedule$backend[i],
-            export_repeat = schedule$export_repeat[i],
-            access_repeat = j,
-            status = "OK",
-            correctness = "OK",
-            row_fingerprint = "row",
-            reference_row_fingerprint = "row",
-            block_fingerprint = "block",
-            reference_block_fingerprint = "block",
-            stringsAsFactors = FALSE
-          )
-        })
-      )
-    })
-  )
+  access <- access_for(which(exports$status == "OK"))
 
   expect_true(bench_validate_results(
     schedule,
@@ -221,6 +224,33 @@ test_that("scale profile accepts failed embedded builds only", {
     access,
     profile = bench_profile("scale")
   ))
+
+  exports$status <- "OK"
+  access <- access_for(seq_len(nrow(schedule)))
+  optional <- access$backend == "embedded"
+  access$status[optional] <- "FAILED(correctness/access): unsupported"
+  access$correctness[optional] <- NA_character_
+  access$row_fingerprint[optional] <- NA_character_
+  access$reference_row_fingerprint[optional] <- NA_character_
+  access$block_fingerprint[optional] <- NA_character_
+  access$reference_block_fingerprint[optional] <- NA_character_
+  expect_true(bench_validate_results(
+    schedule,
+    exports,
+    access,
+    profile = bench_profile("scale")
+  ))
+
+  access$status[access$backend == "bpcells"][1] <- "FAILED(access): error"
+  expect_error(
+    bench_validate_results(
+      schedule,
+      exports,
+      access,
+      profile = bench_profile("scale")
+    ),
+    "access process failed"
+  )
 
   exports$status[exports$backend == "bpcells"][1] <- "FAILED(build): limit"
   expect_error(

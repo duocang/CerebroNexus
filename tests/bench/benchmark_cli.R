@@ -1269,11 +1269,16 @@ if (identical(command, "inspect")) {
     ,
     drop = FALSE
   ]
+  successful_access <- access[
+    !is.na(access$status) & access$status == "OK",
+    ,
+    drop = FALSE
+  ]
   fingerprints <- list(
     preparation = prepared_fingerprints,
     query_panel = fingerprint_for(query_panel),
     build = fingerprint_for(successful_exports),
-    access = fingerprint_for(access)
+    access = fingerprint_for(successful_access)
   )
   fingerprint_keys <- Reduce(union, lapply(fingerprints, names))
   fingerprint_matrix <- do.call(

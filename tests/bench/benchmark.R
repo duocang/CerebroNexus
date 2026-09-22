@@ -487,19 +487,30 @@ bench_validate_results <- function(
     if (identical(profile$name, "panel_c2") && !all(has_subset)) {
       stop("full-source access results require subset metrics", call. = FALSE)
     }
-    if (!"status" %in% names(access) || any(access$status != "OK")) {
+    optional_failure <-
+      identical(profile$name, "scale") &
+      access$backend == "embedded" &
+      !is.na(access$status) &
+      access$status != "OK"
+    checked_access <- access[!optional_failure, , drop = FALSE]
+    if (
+      any(is.na(checked_access$status)) ||
+        any(checked_access$status != "OK")
+    ) {
       stop("access process failed", call. = FALSE)
     }
     mismatch <-
-      access$correctness != "OK" |
-      access$row_fingerprint != access$reference_row_fingerprint |
-      access$block_fingerprint != access$reference_block_fingerprint
+      checked_access$correctness != "OK" |
+      checked_access$row_fingerprint !=
+        checked_access$reference_row_fingerprint |
+      checked_access$block_fingerprint !=
+        checked_access$reference_block_fingerprint
     if (all(has_subset)) {
       mismatch <- mismatch |
-        access$subset_row_fingerprint !=
-          access$reference_subset_row_fingerprint |
-        access$subset_block_fingerprint !=
-          access$reference_subset_block_fingerprint
+        checked_access$subset_row_fingerprint !=
+          checked_access$reference_subset_row_fingerprint |
+        checked_access$subset_block_fingerprint !=
+          checked_access$reference_subset_block_fingerprint
     }
     if (any(is.na(mismatch) | mismatch)) {
       stop("backend correctness fingerprint mismatch", call. = FALSE)

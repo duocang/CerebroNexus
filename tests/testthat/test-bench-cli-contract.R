@@ -161,6 +161,11 @@ test_that("manifest CLI records the run identity", {
     "build = fingerprint_for(successful_exports)",
     fixed = TRUE
   )
+  expect_match(
+    cli,
+    "access = fingerprint_for(successful_access)",
+    fixed = TRUE
+  )
 })
 
 test_that("source cache reuses only verified files", {
