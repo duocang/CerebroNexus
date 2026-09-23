@@ -14,7 +14,8 @@
 - `acceptance/<branch>-<candidate8>-<platform>/` contains one acceptance record
   for a pinned candidate and platform.
 - `engineering/runs/<UTC>-<study>/` is the default destination for new
-  engineering harness runs.
+  engineering harness runs. A Thin CRB qs2 sweep writes `raw.csv`,
+  `summary.csv`, `environment.csv`, and `summary.md` into one such directory.
 - `engineering/archive/` contains imported PR0-PR5 evidence referenced by the
   million-cell vignettes.
 
