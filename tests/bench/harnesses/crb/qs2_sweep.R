@@ -339,6 +339,19 @@ utils::write.csv(
 )
 
 default_row <- summary[summary$production_default, , drop = FALSE]
+thin_rds_row <- summary[summary$candidate == "thin_rds", , drop = FALSE]
+threaded_default <- summary[
+  summary$codec == "qs2" &
+    summary$compress_level == 3L &
+    summary$shuffle,
+  ,
+  drop = FALSE
+]
+threaded_default <- threaded_default[
+  which.max(threaded_default$nthreads),
+  ,
+  drop = FALSE
+]
 best_write <- summary[qs_rows[which.min(summary$write_median_ms[qs_rows])], , drop = FALSE]
 best_read <- summary[qs_rows[which.min(summary$hydrated_median_ms[qs_rows])], , drop = FALSE]
 smallest <- summary[qs_rows[which.min(summary$size_mib[qs_rows])], , drop = FALSE]
@@ -360,6 +373,7 @@ report <- c(
   "",
   "- [Scope](#scope)",
   "- [Headline results](#headline-results)",
+  "- [Findings](#findings)",
   "- [Decision rule](#decision-rule)",
   "- [Files](#files)",
   "",
@@ -367,7 +381,8 @@ report <- c(
   "",
   sprintf(
     paste0(
-      "One legacy one-million-cell BPCells-backed CRB; %d alternating rounds; ",
+      "One reconstructed legacy-compatible one-million-cell BPCells-backed ",
+      "payload; %d alternating rounds; ",
       "%d qs2 parameter combinations. All candidates reuse the same sidecar."
     ),
     rounds,
@@ -379,17 +394,50 @@ report <- c(
   "| Role | Candidate | MiB | Write ms | Decode ms | Hydrated ms |",
   "|---|---|---:|---:|---:|---:|",
   format_row("Legacy baseline", baseline_row),
+  format_row("Thin payload, RDS", thin_rds_row),
   format_row("Production default", default_row),
+  format_row("Recommended host setting", threaded_default),
   format_row("Fastest write", best_write),
   format_row("Fastest hydration", best_read),
   format_row("Smallest file", smallest),
   "",
+  "## Findings",
+  "",
+  sprintf(
+    paste0(
+      "- Payload thinning alone reduces the control file by %.2f%% and makes ",
+      "physical decoding %.2fx faster than the reconstructed legacy payload."
+    ),
+    thin_rds_row$size_reduction_pct,
+    thin_rds_row$decode_speedup
+  ),
+  sprintf(
+    paste0(
+      "- Default qs2 adds a further %.2f%% size reduction versus thin RDS and ",
+      "makes writing %.2fx faster."
+    ),
+    100 * (1 - default_row$size_mib / thin_rds_row$size_mib),
+    thin_rds_row$write_median_ms / default_row$write_median_ms
+  ),
+  sprintf(
+    paste0(
+      "- With the same level-3 shuffled file format, %d threads write %.2fx ",
+      "faster and hydrate %.2fx faster than the one-thread production default ",
+      "on this host."
+    ),
+    threaded_default$nthreads,
+    default_row$write_median_ms / threaded_default$write_median_ms,
+    default_row$hydrated_median_ms / threaded_default$hydrated_median_ms
+  ),
+  "",
   "## Decision rule",
   "",
   paste0(
-    "Prefer a correctness-passing Pareto candidate. Change the production ",
-    "default only when its repeated write or hydrated-read gain is material ",
-    "and the file-size trade-off is acceptable."
+    "Keep compression level 3 with shuffle enabled as the portable format ",
+    "default. Prefer the measured multi-thread setting when TBB is available; ",
+    "thread count changes runtime only, not the serialized format. Extreme ",
+    "compression levels save little additional space for disproportionate ",
+    "write cost."
   ),
   "",
   "## Files",
