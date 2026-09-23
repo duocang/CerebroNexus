@@ -38,4 +38,4 @@ Keep compression level 3 with shuffle enabled as the portable format default. Pr
 
 - `raw.csv`: every timed observation and execution position.
 - `summary.csv`: medians, baseline deltas, correctness, and Pareto status.
-- `environment.csv`: hardware, software, source, and sweep parameters.
+- `environment.csv`: hardware, software, source, and comparison parameters.

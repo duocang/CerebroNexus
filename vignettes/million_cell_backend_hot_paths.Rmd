@@ -219,15 +219,15 @@ The wrapper defaults to the exact Thin CRB baseline and current checkout. It cre
 
 ```{bash reproduce, eval=FALSE}
 export CEREBRO_LARGE_CACHE=/path/to/cerebro-large-examples
-tests/bench/harnesses/backend/compare.sh 27303f21 1ad8abc0 tests/bench/results/engineering/runs/20260922T000000Z-backend-4.5.1
+tests/bench/harnesses/backend/compare.sh 27303f21 1ad8abc0 tests/bench/results/component/backend/20260922T000000Z-backend-4.5.1
 ```
 
 The output directory contains the exact comparison identity and measured rows:
 
 ```{bash inspect-output, eval=FALSE}
-column -t -s $'\t' tests/bench/results/engineering/runs/20260922T000000Z-backend-4.5.1/run_manifest.tsv
-column -t -s $'\t' tests/bench/results/engineering/runs/20260922T000000Z-backend-4.5.1/hot_paths.tsv
-column -t -s $'\t' tests/bench/results/engineering/runs/20260922T000000Z-backend-4.5.1/bundle.tsv
+column -t -s $'\t' tests/bench/results/component/backend/20260922T000000Z-backend-4.5.1/run_manifest.tsv
+column -t -s $'\t' tests/bench/results/component/backend/20260922T000000Z-backend-4.5.1/hot_paths.tsv
+column -t -s $'\t' tests/bench/results/component/backend/20260922T000000Z-backend-4.5.1/bundle.tsv
 ```
 
 To reuse a prepared CRB directly, run the lower-level benchmark with explicit source roots. The CRB may use qs2 or RDS because the script loads it through `readCerebro()`.

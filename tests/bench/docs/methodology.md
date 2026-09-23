@@ -14,10 +14,10 @@
 
 Across fixed scales and complete million-scale public scRNA-seq matrices, how do CerebroNexus's `embedded`, `bpcells`, and `h5` backends compare in backend construction, stored size, memory, hydrated startup, and expression access after the PR0-PR6 performance work?
 
-This is descriptive engineering evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
+This is descriptive component evidence. It does not compare biological methods, test statistical significance, control the operating-system page cache, or claim cross-machine generality.
 
 Viewer behaviour is deliberately outside this research question. The focused
-`tests/bench/harnesses/viewer/` checks provide engineering evidence; their
+`tests/bench/harnesses/viewer/` checks provide component evidence; their
 outcome cannot invalidate or publish expression-backend measurements.
 
 ## Sources and scope

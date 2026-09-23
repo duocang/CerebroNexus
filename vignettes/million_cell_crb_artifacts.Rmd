@@ -263,7 +263,7 @@ The following command reruns all five alternating benchmark rounds and regenerat
 
 ```{bash, eval=FALSE}
 BASELINE=$(Rscript -e 'cat(file.path(tools::R_user_dir("CerebroNexus", "cache"), "large-examples", "1m", "cerebro", "cerebro_mouse_brain_1m.crb"))')
-Rscript tests/bench/harnesses/crb/benchmark.R "$BASELINE" 5 tests/bench/results/engineering/archive/million_cell_crb_pr165.csv
+Rscript tests/bench/harnesses/crb/benchmark.R "$BASELINE" 5 tests/bench/results/component/crb/million_cell_crb_pr165.csv
 ```
 
 # Run the complete preparation

@@ -1,4 +1,4 @@
-# Engineering harnesses
+# Component harnesses
 
 These scripts reproduce focused PR0-PR5 million-cell measurements. They are not
 the current real-data benchmark; run that through
@@ -17,7 +17,7 @@ the current real-data benchmark; run that through
 |---|---|---|
 | `crb/benchmark.R` | `acceptance/policy.R` | CRB write, decode, hydration, and size |
 | `crb/verify.R` | `acceptance/STANDARD.md` correctness gate | legacy/thin CRB correctness |
-| `crb/qs2_sweep.R` | manual Thin CRB study | payload, codec, compression, shuffle, and thread trade-offs |
+| `crb/thin_crb_comparison.R` | manual Thin CRB comparison | payload, codec, compression, shuffle, and thread trade-offs |
 | `backend/hot_paths.R` | policy and `backend/compare.sh` | expression backend operations |
 | `renderer/benchmark.R` | policy | isolated million-point renderer |
 | `viewer/startup.R` | policy | installed Viewer startup phases |
@@ -53,9 +53,9 @@ Do not invoke these directly unless developing a harness:
 Run the complete practical Thin CRB comparison with:
 
 ```sh
-Rscript tests/bench/harnesses/crb/qs2_sweep.R \
+Rscript tests/bench/harnesses/crb/thin_crb_comparison.R \
   <legacy-1m.crb> 5 \
-  tests/bench/results/engineering/runs/<UTC>-thin-crb
+  tests/bench/results/component/crb/<UTC>-thin-crb
 ```
 
 The default matrix covers Zstd levels 1, 3, 6, 9, 12, 15, 19, and 22,

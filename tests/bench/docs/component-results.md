@@ -1,7 +1,7 @@
-# Million-cell engineering results
+# Million-cell component results
 
 These results explain the PR0-PR5 performance work on one exact 1,000,000-cell
-10x mouse-brain fixture. They are engineering comparisons, not evidence for the
+10x mouse-brain fixture. They are component comparisons, not evidence for the
 current real-data paper benchmark.
 
 ## Contents
@@ -14,8 +14,8 @@ current real-data paper benchmark.
 
 ## Evidence status
 
-- CRB, backend, startup, and final page observations have archived raw files in
-  [`results/engineering/archive/`](../results/engineering/archive/).
+- CRB, backend, startup, and final page observations have retained raw files in
+  [`results/component/`](../results/component/).
 - The old PR4 quick run was exploratory and is intentionally omitted here.
 - Rounded full-source observations from a discarded scratch directory were
   removed because the original raw files no longer exist.
@@ -59,7 +59,7 @@ not pass the full acceptance gate.
 - The strongest gains are CRB lifecycle, repeat-page readiness, Immune
   Repertoire, and Linked Views bundle construction.
 - Ordinary full-cell single-gene reading remains I/O-bound.
-- Do not generalize warm-cache engineering timings across machines or treat
+- Do not generalize warm-cache component timings across machines or treat
   their sum as end-to-end Viewer latency.
 
 ## Reproduce
@@ -70,5 +70,5 @@ The supported entry points and their callers are listed in
 ```sh
 tests/bench/harnesses/backend/compare.sh \
   27303f21 1ad8abc0 \
-  tests/bench/results/engineering/runs/<run-id>
+  tests/bench/results/component/backend/<run-id>
 ```

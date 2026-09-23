@@ -27,13 +27,13 @@ before interpreting generated values.
 |---|---|
 | `benchmark/` | current real-data benchmark implementation and launcher |
 | `acceptance/` | acceptance policy, evaluator, CLI, documentation, and fixtures |
-| `docs/` | methodology, result interpretation, and concise engineering findings |
-| `harnesses/` | PR0-PR5 engineering harnesses, with callers documented in its README |
+| `docs/` | methodology, result interpretation, and concise component findings |
+| `harnesses/` | PR0-PR5 component harnesses, with callers documented in its README |
 | `results/` | the only in-repository result root |
 
 Results are separated by purpose: paper runs go to `results/benchmark/`,
-acceptance records to `results/acceptance/`, and engineering comparisons to
-`results/engineering/`. Temporary data stays outside the checkout. See
+acceptance records to `results/acceptance/`, and focused component comparisons
+to `results/component/<component>/`. Temporary data stays outside the checkout. See
 [`results/README.md`](results/README.md) for naming and ordering rules.
 
 ## Dataset scope
@@ -43,7 +43,7 @@ The default benchmark has two public million-scale sources: the complete
 HBCC human-PFC matrix. The scale profile also takes a 1,000,000-cell prefix
 from each of these same two sources; those are not additional datasets.
 
-The engineering Viewer/CRB harness uses one exact 1,000,000-cell subset of the
+The component Viewer/CRB harness uses one exact 1,000,000-cell subset of the
 same 10x mouse-brain source. An optional 4,140,453-cell MSSM source is registered
 for opt-in experiments, but it is not part of the default or committed results.
 
@@ -120,4 +120,4 @@ The reproducibility harnesses are grouped by responsibility:
 
 They remain because the acceptance policy and million-cell vignettes execute
 them; they are not copies kept only for history. Their imported evidence lives
-under `results/engineering/archive/`.
+under `results/component/{crb,backend,viewer}/`.

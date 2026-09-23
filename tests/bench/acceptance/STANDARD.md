@@ -44,7 +44,7 @@ Since `69893a2b` (PR #165, 2026-09-11), `perf/pr0`-`perf/pr7` have been stacked 
 
 ## 3. Non-goals
 
-- Keep the engineering harnesses under `harnesses/`; acceptance evaluates their evidence without rewriting them.
+- Keep the component harnesses under `harnesses/`; acceptance evaluates their evidence without rewriting them.
 - The judge never runs heavy benchmarks (no R app, no browser); `plan` only prints commands.
 - Do not build new performance benchmarks for pr6/pr7 (manual checklist only).
 - No CI million-cell performance gate; CI runs only the judge contract tests.

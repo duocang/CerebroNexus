@@ -227,7 +227,7 @@ R CMD INSTALL --library="$STARTUP_LIB" .
 
 R_LIBS="$STARTUP_LIB" \
   CEREBRO_STARTUP_REPEATS=3 \
-  CEREBRO_STARTUP_OUTPUT=tests/bench/results/engineering/archive/million_cell_startup_4_6_0.csv \
+  CEREBRO_STARTUP_OUTPUT=tests/bench/results/component/viewer/million_cell_startup_4_6_0.csv \
   Rscript tests/bench/harnesses/viewer/startup.R \
   legacy_rds=/path/to/cerebro_mouse_brain_1m.crb \
   thin_qs2_no_fingerprint=/path/to/cerebro_mouse_brain_1m_thin_qs2.crb \
@@ -244,7 +244,7 @@ The recorded values are medians of three fresh Viewer processes per artifact. Al
 
 Thin qs2 removes 11.8% of legacy process-to-data time. Recording the fingerprint during export brings the total reduction to 33.4% against legacy RDS and 24.5% against the previous thin qs2 artifact.
 
-The runtime optimization was then measured separately against its exact code starting point with the fingerprinted thin qs2 artifact, the same BPCells sidecar, and three fresh installed-package processes per candidate. The startup harness now records browser document loading separately from the interval between the load event and Data Info becoming ready. Raw measurements are in `tests/bench/results/engineering/archive/million_cell_startup_optimization_4_6_0.csv`.
+The runtime optimization was then measured separately against its exact code starting point with the fingerprinted thin qs2 artifact, the same BPCells sidecar, and three fresh installed-package processes per candidate. The startup harness now records browser document loading separately from the interval between the load event and Data Info becoming ready. Raw measurements are in `tests/bench/results/component/viewer/million_cell_startup_optimization_4_6_0.csv`.
 
 | Startup phase | Starting point | Optimized | Change |
 |---|---:|---:|---:|
@@ -258,14 +258,14 @@ The runtime optimization was then measured separately against its exact code sta
 
 The optimized thin BPCells path validates and hydrates the million cell names without loading BPCells, then attaches the expression matrix on its first real use. Large-dataset Linked Views prewarming starts after the initial response and a three-second grace period; its gene-selector gate checks that grace period before inspecting the expression matrix. Overview and Data Info therefore no longer wait for a hidden expression control or hidden Linked Views bundle. The cost is deferred rather than erased: opening an expression-dependent page immediately performs the one-time BPCells attach, while an otherwise idle session performs it during Linked Views prewarming.
 
-PR3 adds Thin CRB schema v2 with a stored cell count, allowing Data Info to report the true one-million-cell size without first parsing the sidecar cell index or reconstructing metadata and projection row names. The Viewer registers optional page servers 100 ms after the first response and resumes collapsed group-filter outputs after 500 ms; package-level `readCerebro()` remains eager, old schema v1 files remain compatible, and browser regressions cover the deferred pages. The strict gate is the median of five fresh installed-package processes and requires `process_to_data_ms < 3000` without changing the Data Info readiness selector. Raw measurements are in `tests/bench/results/engineering/archive/million_cell_startup_sub3_4_6_0.csv`.
+PR3 adds Thin CRB schema v2 with a stored cell count, allowing Data Info to report the true one-million-cell size without first parsing the sidecar cell index or reconstructing metadata and projection row names. The Viewer registers optional page servers 100 ms after the first response and resumes collapsed group-filter outputs after 500 ms; package-level `readCerebro()` remains eager, old schema v1 files remain compatible, and browser regressions cover the deferred pages. The strict gate is the median of five fresh installed-package processes and requires `process_to_data_ms < 3000` without changing the Data Info readiness selector. Raw measurements are in `tests/bench/results/component/viewer/million_cell_startup_sub3_4_6_0.csv`.
 
 ```{bash pr3-startup-gate, eval=FALSE}
 R_LIBS="$STARTUP_LIB" \
   CEREBRO_STARTUP_REPEATS=5 \
   CEREBRO_STARTUP_GATE_LABEL=v2_lazy \
   CEREBRO_STARTUP_MAX_PROCESS_TO_DATA_MS=3000 \
-  CEREBRO_STARTUP_OUTPUT=tests/bench/results/engineering/archive/million_cell_startup_sub3_4_6_0.csv \
+  CEREBRO_STARTUP_OUTPUT=tests/bench/results/component/viewer/million_cell_startup_sub3_4_6_0.csv \
   Rscript tests/bench/harnesses/viewer/startup.R \
   v1_eager=/path/to/cerebro_mouse_brain_1m_thin_qs2.crb \
   v2_lazy=/path/to/cerebro_mouse_brain_1m_startup_v2.crb
@@ -341,7 +341,7 @@ PR4 physically stores the exported BPCells matrix in row-major order so a gene q
 Rscript tests/bench/harnesses/backend/bpcells_order.R \
   /path/to/column-major.crb \
   /path/to/gene-major.crb \
-  tests/bench/results/engineering/archive/million_cell_bpcells_quick_pr4.tsv \
+  tests/bench/results/component/backend/million_cell_bpcells_quick_pr4.tsv \
   3
 ```
 
@@ -394,7 +394,7 @@ VIEWER_PAGES_ONLY=trajectory,hla \
   /tmp/million-cell-hla-trajectory.tsv 1
 ```
 
-The complete raw PR4 tables are stored in `tests/bench/results/engineering/archive/million_cell_bpcells_quick_pr4.tsv`, `tests/bench/results/engineering/archive/million_cell_pages_quick_pr3_pr4.tsv`, and `tests/bench/results/engineering/archive/million_cell_hla_trajectory_focused_pr4.tsv`.
+The complete raw PR4 tables are stored in `tests/bench/results/component/backend/million_cell_bpcells_quick_pr4.tsv`, `tests/bench/results/component/viewer/million_cell_pages_quick_pr3_pr4.tsv`, and `tests/bench/results/component/viewer/million_cell_hla_trajectory_focused_pr4.tsv`.
 
 ## Measure the renderer alone
 

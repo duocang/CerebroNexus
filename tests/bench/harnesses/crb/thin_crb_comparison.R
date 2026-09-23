@@ -3,7 +3,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 3L) {
   stop(
-    "usage: qs2_sweep.R SOURCE_CRB ROUNDS OUTPUT_DIR",
+    "usage: thin_crb_comparison.R SOURCE_CRB ROUNDS OUTPUT_DIR",
     call. = FALSE
   )
 }
@@ -41,7 +41,7 @@ sidecar <- normalizePath(
 )
 expected_cells <- colnames(baseline_payload$expression)
 
-artifact_root <- tempfile("cerebro-thin-crb-sweep-")
+artifact_root <- tempfile("cerebro-thin-crb-comparison-")
 dir.create(artifact_root)
 on.exit(unlink(artifact_root, recursive = TRUE, force = TRUE), add = TRUE)
 if (!file.symlink(sidecar, file.path(artifact_root, backend$location))) {
@@ -81,7 +81,7 @@ parse_integers <- function(name, default) {
 }
 
 # Representative Zstd levels cover fast, balanced, compact, and maximum modes.
-# Set CEREBRO_QS2_LEVELS=1,2,...,22 for an exhaustive positive-level sweep.
+# Set CEREBRO_QS2_LEVELS=1,2,...,22 for every positive compression level.
 levels <- parse_integers(
   "CEREBRO_QS2_LEVELS",
   c(1L, 3L, 6L, 9L, 12L, 15L, 19L, 22L)
@@ -444,7 +444,7 @@ report <- c(
   "",
   "- `raw.csv`: every timed observation and execution position.",
   "- `summary.csv`: medians, baseline deltas, correctness, and Pareto status.",
-  "- `environment.csv`: hardware, software, source, and sweep parameters."
+  "- `environment.csv`: hardware, software, source, and comparison parameters."
 )
 writeLines(report, file.path(output_dir, "summary.md"))
 

@@ -6,7 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/../../../.." && pwd -P)"
 before_ref="${1:-99d305c0}"
 after_ref="${2:-35128c51}"
-output_dir="${3:-$repo_root/tests/bench/results/engineering/runs/$(date -u +%Y%m%dT%H%M%SZ)-backend}"
+output_dir="${3:-$repo_root/tests/bench/results/component/backend/$(date -u +%Y%m%dT%H%M%SZ)-backend}"
 repeats="${REPEATS:-3}"
 cache_dir="${CEREBRO_LARGE_CACHE:-}"
 
