@@ -2353,14 +2353,26 @@ get_or_load_crb <- function(
 .validateExternalCellIdentity <- function(obj) {
   cells <- colnames(obj$expression)
   metadata <- obj$meta_data
+  metadata_cells <- if (
+    is.data.frame(metadata) && "cell_barcode" %in% names(metadata)
+  ) {
+    as.character(metadata$cell_barcode)
+  } else if (is.data.frame(metadata)) {
+    rownames(metadata)
+  } else {
+    NULL
+  }
   if (
     !is.character(cells) ||
       anyNA(cells) ||
       any(!nzchar(cells)) ||
       anyDuplicated(cells) ||
       !is.data.frame(metadata) ||
-      !"cell_barcode" %in% names(metadata) ||
-      !identical(as.character(metadata$cell_barcode), cells)
+      !is.character(metadata_cells) ||
+      anyNA(metadata_cells) ||
+      any(!nzchar(metadata_cells)) ||
+      anyDuplicated(metadata_cells) ||
+      !identical(metadata_cells, cells)
   ) {
     stop(
       "The external expression sidecar and CRB metadata must contain the ",
