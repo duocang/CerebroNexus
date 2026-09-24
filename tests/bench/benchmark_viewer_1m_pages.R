@@ -431,6 +431,21 @@ skip_visual_check <- identical(
   tolower(Sys.getenv("VIEWER_BENCH_SKIP_VISUAL_CHECK", unset = "false")),
   "true"
 )
+repeat_skip_warm_socket_meter <- identical(
+  tolower(Sys.getenv(
+    "VIEWER_REPEAT_SKIP_WARM_SOCKET_METER",
+    unset = "false"
+  )),
+  "true"
+)
+skip_socket_meter <- identical(
+  tolower(Sys.getenv("VIEWER_BENCH_SKIP_SOCKET_METER", unset = "false")),
+  "true"
+)
+skip_settled_wait <- identical(
+  tolower(Sys.getenv("VIEWER_BENCH_SKIP_SETTLED_WAIT", unset = "false")),
+  "true"
+)
 
 only <- Sys.getenv("VIEWER_PAGES_ONLY")
 if (nzchar(only)) {
@@ -776,6 +791,7 @@ page_visible_pixels <- function(app, page) {
 }
 
 start_socket_meter <- function(app) {
+  if (isTRUE(skip_socket_meter)) return(invisible(TRUE))
   app$run_js(paste0(
     "(() => {if(window.__cerebroPageBenchSocketMeter){",
     "throw new Error('Socket meter is already active');}",
@@ -822,6 +838,7 @@ cleanup_socket_meter <- function(app) {
 }
 
 stop_socket_meter <- function(app) {
+  if (isTRUE(skip_socket_meter)) return(list(sent = 0, received = 0))
   value <- app$get_js(paste0(
     "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
     "if(!meter)throw new Error('Socket meter is not active');",
@@ -960,6 +977,9 @@ assert_clean_logs <- function(app) {
 }
 
 socket_meter_snapshot <- function(app) {
+  if (isTRUE(skip_socket_meter)) {
+    return(list(sent = 0, received = 0, quietMs = Inf))
+  }
   value <- app$get_js(paste0(
     "(() => {const meter=window.__cerebroPageBenchSocketMeter;",
     "if(!meter)throw new Error('Socket meter is not active');",
@@ -976,6 +996,7 @@ socket_meter_snapshot <- function(app) {
 }
 
 wait_for_socket_quiet <- function(app, quiet_ms = 1200) {
+  if (isTRUE(skip_socket_meter)) return(invisible(TRUE))
   app$wait_for_js(
     sprintf(
       paste0(
@@ -990,6 +1011,12 @@ wait_for_socket_quiet <- function(app, quiet_ms = 1200) {
 }
 
 page_completion_elapsed <- function(app, page) {
+  if (isTRUE(skip_settled_wait)) {
+    return(as.numeric(app$get_js(paste0(
+      "window.__cerebroPageBenchEventAt-",
+      "window.__cerebroPageBenchClickStart"
+    ))))
+  }
   if (!is.null(page$completion_ready)) {
     app$run_js(sprintf(
       paste0(
@@ -1267,9 +1294,13 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   }
   warmed <- FALSE
   if (identical(schedule_row$visit, "repeat")) {
-    start_socket_meter(app)
+    if (!isTRUE(repeat_skip_warm_socket_meter)) start_socket_meter(app)
     open_page(app, page, require_event = TRUE)
-    wait_for_socket_quiet(app)
+    if (isTRUE(repeat_skip_warm_socket_meter)) {
+      Sys.sleep(2)
+    } else {
+      wait_for_socket_quiet(app)
+    }
     warmed <- TRUE
     app$run_js(
       "document.querySelector(\"a[href='#shiny-tab-loadData']\").click();"
@@ -1278,8 +1309,12 @@ run_observation <- function(schedule_row, candidate, page, crb) {
       "document.getElementById('shiny-tab-loadData').classList.contains('active')",
       timeout = 120000
     )
-    wait_for_socket_quiet(app)
-    stop_socket_meter(app)
+    if (isTRUE(repeat_skip_warm_socket_meter)) {
+      Sys.sleep(2)
+    } else {
+      wait_for_socket_quiet(app)
+      stop_socket_meter(app)
+    }
   }
 
   session$Performance$enable()
