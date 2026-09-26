@@ -20,11 +20,14 @@ resolve_configured_colors <- function(
   if (is.null(configured_files) || is.null(labels)) {
     return(list())
   }
-  match_at <- which(unname(configured_files) == selected_path)
-  if (!length(match_at)) {
-    return(list())
+  dataset_id <- if (selected_path %in% labels) {
+    selected_path
+  } else {
+    match_at <- which(unname(configured_files) == selected_path)
+    if (!length(match_at)) return(list())
+    labels[[match_at[[1L]]]]
   }
-  palette <- color_config[[labels[match_at[[1L]]]]]
+  palette <- color_config[[dataset_id]]
   if (!is.list(palette) || !length(palette)) {
     return(list())
   }

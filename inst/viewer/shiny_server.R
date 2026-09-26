@@ -236,13 +236,14 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
 
   ## reactive values holding available .crb files and the current selection.
-  ## In single-file mode only 'selected' is used; when >1 files are provided via
-  ## Cerebro.options$crb_file_to_load, 'files'/'names' drive the sidebar dataset
-  ## switcher rendered below.
+  ## In single-file mode only 'selected' is used. For configured datasets,
+  ## `files` is keyed by stable dataset id, `labels` is display-only, and
+  ## `selected` stores the id rather than a label or path.
   available_crb_files <- reactiveValues(
     files = NULL,
     selected = NULL,
-    names = NULL
+    names = NULL,
+    labels = NULL
   )
   dataset_load_requested <- reactiveVal(FALSE)
   crb_prefetch_tasks <- new.env(parent = emptyenv())
@@ -308,13 +309,14 @@ server <- function(input, output, session) {
 
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
-    path_to_load <- viewerUploadPath(input[["input_file"]], Cerebro.options)
-    if (nzchar(path_to_load)) {
+    selection <- viewerUploadPath(input[["input_file"]], Cerebro.options)
+    if (nzchar(selection)) {
       ## an uploaded file replaces the pre-configured data sets, so clear the
       ## switcher state — otherwise the dropdown keeps offering the old data
       ## sets, which no longer match what is loaded.
       available_crb_files$files <- NULL
       available_crb_files$names <- NULL
+      available_crb_files$labels <- NULL
       ## take path or object from 'Cerebro.options' if it is set and points to an
       ## existing file or object
     } else if (
@@ -331,8 +333,20 @@ server <- function(input, output, session) {
             length(file_names) == length(file_to_load)
         ) {
           available_crb_files$names <- file_names
+          configured_labels <- Cerebro.options[["dataset_labels"]]
+          if (
+            !is.character(configured_labels) ||
+              is.null(names(configured_labels)) ||
+              !identical(names(configured_labels), file_names) ||
+              anyNA(configured_labels) ||
+              any(!nzchar(configured_labels))
+          ) {
+            configured_labels <- stats::setNames(file_names, file_names)
+          }
+          available_crb_files$labels <- unname(configured_labels[file_names])
         } else {
           available_crb_files$names <- NULL
+          available_crb_files$labels <- NULL
         }
 
         ##--------------------------------------------------------------------##
@@ -364,26 +378,34 @@ server <- function(input, output, session) {
           }
         }
 
-        ## try to match url_dataset against available files
+        ## URL/state identity is always the stable dataset id. Filename matching
+        ## remains as a compatibility fallback for old shared links.
         if (!is.null(url_dataset)) {
-          path_to_load <- match_dataset_by_url(
+          selection <- match_dataset_id_by_url(
             url_dataset,
-            available_crb_files$files,
-            available_crb_files$names
+            available_crb_files$files
           )
-          if (path_to_load != '') {
+          if (selection != '') {
             print(glue::glue(
-              "[{Sys.time()}] Dataset selected via URL: {url_dataset} -> {path_to_load}"
+              "[{Sys.time()}] Dataset selected via URL: {url_dataset} -> {selection}"
             ))
           }
         }
 
         ## if not chosen via URL: keep current selection, else pick default.
         ## crb_pick_smallest_file TRUE/NULL -> smallest file; FALSE -> first.
-        if (path_to_load != '') {
+        if (selection != '') {
           ## already set by URL logic
-        } else if (!is.null(available_crb_files$selected)) {
-          path_to_load <- available_crb_files$selected
+        } else if (
+          !is.null(available_crb_files$selected) &&
+            available_crb_files$selected %in% names(file_to_load)
+        ) {
+          selection <- available_crb_files$selected
+        } else if (
+          !is.null(Cerebro.options[["initial_dataset"]]) &&
+            Cerebro.options[["initial_dataset"]] %in% names(file_to_load)
+        ) {
+          selection <- Cerebro.options[["initial_dataset"]]
         } else {
           pick_smallest <- TRUE
           if (!is.null(Cerebro.options[["crb_pick_smallest_file"]])) {
@@ -399,28 +421,29 @@ server <- function(input, output, session) {
                 Inf ## variable/object -> infinite size, skipped
               }
             })
-            path_to_load <- file_to_load[which.min(file_sizes)]
+            selection <- names(file_to_load)[[which.min(file_sizes)]]
           } else {
-            path_to_load <- file_to_load[1]
+            selection <- names(file_to_load)[[1L]]
           }
         }
       } else {
         ## single unnamed file
         available_crb_files$files <- NULL
         available_crb_files$names <- NULL
+        available_crb_files$labels <- NULL
         if (file.exists(file_to_load) || exists(file_to_load)) {
-          path_to_load <- file_to_load
+          selection <- file_to_load
         }
       }
     }
     ## assign path to example file if none of the above apply
-    if (length(path_to_load) == 0 || all(path_to_load == '')) {
+    if (length(selection) == 0 || all(selection == '')) {
       ## Resolve relative to cerebro_root, never via the package: the exported
       ## bundle, inst/app.R and the installed launcher all point cerebro_root at
       ## a directory that carries extdata/, so this fallback stays self-contained
       ## even when the app runs without CerebroNexus installed (a package
       ## lookup would then resolve to "" and silently break the fallback).
-      path_to_load <- file.path(
+      selection <- file.path(
         Cerebro.options[["cerebro_root"]],
         "extdata/examples/example.crb"
       )
@@ -428,9 +451,9 @@ server <- function(input, output, session) {
     ## set reactive value to selected file path
     if (
       is.null(available_crb_files$selected) ||
-        available_crb_files$selected != path_to_load
+        available_crb_files$selected != selection
     ) {
-      available_crb_files$selected <- path_to_load
+      available_crb_files$selected <- selection
     }
   })
 
@@ -441,15 +464,22 @@ server <- function(input, output, session) {
       !is.null(available_crb_files$files) &&
         length(available_crb_files$files) > 1
     ) {
-      choices <- available_crb_files$files
-      names(choices) <- if (!is.null(available_crb_files$names)) {
-        available_crb_files$names
-      } else {
-        basename(available_crb_files$files)
+      ids <- names(available_crb_files$files)
+      labels <- available_crb_files$labels
+      if (is.null(ids)) {
+        ids <- unname(available_crb_files$files)
       }
+      if (is.null(labels) || length(labels) != length(ids)) {
+        labels <- if (!is.null(available_crb_files$names)) {
+          available_crb_files$names
+        } else {
+          basename(available_crb_files$files)
+        }
+      }
+      choices <- stats::setNames(ids, labels)
       selected <- available_crb_files$selected
       if (is.null(selected)) {
-        selected <- choices[1]
+        selected <- unname(choices[[1L]])
       }
       tagList(
         ## The "Select sample dataset" title already labels this control, so the
@@ -492,7 +522,7 @@ server <- function(input, output, session) {
       } else {
         NULL
       }
-      info <- viewerDatasetInfo(catalog, available_crb_files$selected)
+      info <- viewerDatasetInfo(catalog, viewerDatasetPath(available_crb_files$files, available_crb_files$selected))
       dataset_load_requested(viewerDatasetLoadRequired(
         isolate(input[["sidebar"]]),
         info,
@@ -512,7 +542,7 @@ server <- function(input, output, session) {
                 length(current) == 1L &&
                   identical(as.character(current), as.character(selected))
               ) {
-                start_crb_prefetch(selected)
+                start_crb_prefetch(viewerDatasetPath(available_crb_files$files, selected))
               }
             })
           },
@@ -543,7 +573,7 @@ server <- function(input, output, session) {
     } else {
       NULL
     }
-    info <- viewerDatasetInfo(catalog, selected)
+    info <- viewerDatasetInfo(catalog, viewerDatasetPath(available_crb_files$files, selected))
     if (!is.null(info)) {
       return(info)
     }
@@ -582,11 +612,11 @@ server <- function(input, output, session) {
   data_set <- reactive({
     req(!is.null(available_crb_files$selected))
     req(isTRUE(dataset_load_requested()))
-    dataset_to_load <- available_crb_files$selected
-    dataset_label <- viewerDatasetName(
+    dataset_to_load <- viewerDatasetPath(
       available_crb_files$files,
-      dataset_to_load
+      available_crb_files$selected
     )
+    dataset_label <- viewerDatasetName(available_crb_files$files, available_crb_files$selected)
     datasetLoadProgress(dataset_label, 8, "Preparing dataset")
     if (exists(dataset_to_load)) {
       print(glue::glue(

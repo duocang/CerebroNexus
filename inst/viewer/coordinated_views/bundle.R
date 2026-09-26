@@ -223,21 +223,14 @@ cv_authorized_external_image_path <- function(path, cerebro_root) {
   if (!inside) NULL else image_path
 }
 
-## Resolve the currently selected dataset label used by all per-dataset Viewer
-## configuration. `available_crb_files$selected` is the file path; the public
-## createShinyApp() contract is keyed by the corresponding user-facing label.
+## Resolve the stable dataset id used by all per-dataset Viewer configuration.
 cv_selected_dataset_name <- function() {
-  nm <- NULL
-  if (exists("available_crb_files") && !is.null(available_crb_files$selected)) {
-    sel <- available_crb_files$selected
-    idx <- which(available_crb_files$files == sel)
-    if (length(idx)) {
-      nm <- names(available_crb_files$files)[idx[1]]
-      if (is.null(nm) || is.na(nm)) {
-        nm <- available_crb_files$names[idx[1]]
-      }
-    }
-  }
+  nm <- if (exists("available_crb_files")) {
+    viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    )
+  } else NULL
   if (is.null(nm) || !length(nm) || is.na(nm) || !nzchar(nm)) {
     NULL
   } else {
@@ -2027,17 +2020,10 @@ cv_build_bundle <- function(
           exists("available_crb_files") &&
             !is.null(available_crb_files$selected)
         ) {
-          selected <- as.character(available_crb_files$selected)
-          index <- match(selected, as.character(available_crb_files$files))
-          if (
-            length(index) == 1L &&
-              !is.na(index) &&
-              length(available_crb_files$names) >= index
-          ) {
-            as.character(available_crb_files$names[[index]])
-          } else {
-            basename(selected)
-          }
+          viewerDatasetName(
+            available_crb_files$files,
+            available_crb_files$selected
+          ) %||% basename(as.character(available_crb_files$selected))
         } else {
           paste0("cells:", n, ":", if (n) cells[1] else "")
         }

@@ -1276,6 +1276,19 @@ dedent <- function(string) {
   )
 }
 
+.datasetBundleTarget <- function(dataset_id) {
+  if (
+    !is.character(dataset_id) ||
+      length(dataset_id) != 1L ||
+      is.na(dataset_id) ||
+      !nzchar(dataset_id)
+  ) {
+    stop("A non-empty dataset identity is required.", call. = FALSE)
+  }
+  digest <- unclass(as.character(openssl::md5(charToRaw(enc2utf8(dataset_id)))))
+  paste0("private-data/dataset-", digest, ".crb")
+}
+
 .bundleBackendOverrideKey <- function(backend, cerebro_options) {
   if (isTRUE(backend$legacy)) {
     if (!is.null(cerebro_options[["expression_matrix_h5"]])) {
@@ -2164,8 +2177,11 @@ dedent <- function(string) {
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
 #'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
-#'   used as dataset labels. Every path must resolve to a distinct canonical
-#'   source file.
+#'   used as stable dataset identities. Paths may repeat.
+#' @param dataset_labels Optional named character vector mapping every dataset
+#'   identity in \code{cerebro_data} to its display label. Values must be
+#'   non-empty but may repeat. When omitted, the dataset identities are also
+#'   used as display labels for backward compatibility.
 #' @param result_dir Output directory. Its basename must be portable, its path
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
@@ -2198,6 +2214,9 @@ dedent <- function(string) {
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui One non-missing logical controlling whether users may
 #'   upload their own data; defaults to \code{FALSE}.
+#' @param initial_dataset Optional exact dataset identity to load initially. This
+#'   does not change the order of \code{cerebro_data}. URL selection and a
+#'   session's current selection take precedence.
 #' @param initial_page Optional initial Viewer page. Supported stable IDs are
 #'   \code{"data_info"}, \code{"projection"}, \code{"linked_views"},
 #'   \code{"groups"}, \code{"marker_genes"},
@@ -2321,7 +2340,9 @@ createShinyApp <- function(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  initial_page = NULL
+  dataset_labels = NULL,
+  initial_page = NULL,
+  initial_dataset = NULL
 ) {
   # Validate inputs ----------------------------------------------------------##
   if (is.list(cerebro_data)) {
@@ -2376,12 +2397,34 @@ createShinyApp <- function(
       any(data_labels == "")
   ) {
     stop(
-      "cerebro_data labels must be non-empty and non-missing.",
+      "cerebro_data identities must be non-empty and non-missing.",
       call. = FALSE
     )
   }
   if (anyDuplicated(data_labels)) {
-    stop("cerebro_data labels must be unique.", call. = FALSE)
+    stop("cerebro_data identities must be unique.", call. = FALSE)
+  }
+  if (is.null(dataset_labels)) {
+    dataset_labels <- stats::setNames(data_labels, data_labels)
+  } else {
+    if (
+      !is.character(dataset_labels) ||
+        is.object(dataset_labels) ||
+        length(dataset_labels) != length(data_labels) ||
+        is.null(names(dataset_labels)) ||
+        anyNA(names(dataset_labels)) ||
+        any(!nzchar(names(dataset_labels))) ||
+        anyDuplicated(names(dataset_labels)) ||
+        !setequal(names(dataset_labels), data_labels) ||
+        anyNA(dataset_labels) ||
+        any(!nzchar(trimws(dataset_labels)))
+    ) {
+      stop(
+        "dataset_labels must map every cerebro_data identity to one non-empty display label.",
+        call. = FALSE
+      )
+    }
+    dataset_labels <- dataset_labels[data_labels]
   }
   point_size <- .normalizeDatasetNumericOption(
     point_size,
@@ -2454,6 +2497,18 @@ createShinyApp <- function(
   ) {
     stop("'show_upload_ui' must be TRUE or FALSE.", call. = FALSE)
   }
+  if (
+    !is.null(initial_dataset) &&
+      (!is.character(initial_dataset) ||
+        length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !initial_dataset %in% data_labels)
+  ) {
+    stop(
+      "'initial_dataset' must be NULL or exactly one cerebro_data identity.",
+      call. = FALSE
+    )
+  }
   initial_pages <- .viewerInitialPageTabs()
   if (
     !is.null(initial_page) &&
@@ -2494,26 +2549,6 @@ createShinyApp <- function(
     winslash = "/",
     mustWork = TRUE
   )
-  crb_source_keys <- vapply(
-    resolved_crb_sources,
-    .nativePathKey,
-    character(1)
-  )
-  duplicate_source <- anyDuplicated(crb_source_keys)
-  if (duplicate_source != 0L) {
-    original_source <- match(
-      crb_source_keys[[duplicate_source]],
-      crb_source_keys
-    )
-    stop(
-      "cerebro_data labels '",
-      data_labels[[original_source]],
-      "' and '",
-      data_labels[[duplicate_source]],
-      "' resolve to the same Cerebro data file.",
-      call. = FALSE
-    )
-  }
   extra_table_plan <- .bundleExtraTables(
     extra_tables = extra_tables,
     extra_tables_sheets = extra_tables_sheets
@@ -2705,6 +2740,16 @@ createShinyApp <- function(
     )
   }
   crb_targets <- paste0(private_data_root, "/", basename(cerebro_data))
+  colliding_targets <- duplicated(tolower(crb_targets)) |
+    duplicated(tolower(crb_targets), fromLast = TRUE)
+  crb_targets[colliding_targets] <- vapply(
+    data_labels[colliding_targets],
+    .datasetBundleTarget,
+    character(1)
+  )
+  if (anyDuplicated(tolower(crb_targets))) {
+    stop("Dataset identities generated colliding bundle filenames.", call. = FALSE)
+  }
   for (index in seq_along(dataset_catalog)) {
     if (!is.null(dataset_catalog[[index]])) {
       dataset_catalog[[index]]$path <- crb_targets[[index]]
@@ -3115,6 +3160,8 @@ createShinyApp <- function(
     ".bundle_run_options",
     ".dataset_catalog",
     ".viewer_auth",
+    "dataset_labels",
+    "initial_dataset",
     "initial_page",
     "extra_tables"
   )
@@ -3124,6 +3171,8 @@ createShinyApp <- function(
       option_names %in% internal_option_names
     cerebro_options <- cerebro_options[!remove_internal]
   }
+  cerebro_options[["initial_dataset"]] <- initial_dataset
+  cerebro_options[["dataset_labels"]] <- dataset_labels
   cerebro_options[[".bundle_backend_plan"]] <- list(
     schema_version = 1L,
     entries = effective_backend_entries

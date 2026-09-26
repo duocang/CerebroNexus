@@ -87,13 +87,10 @@ color_input_id <- function(variable, level) {
   } else {
     NULL
   }
-  selected_path <- available_crb_files$selected
-  configured_index <- match(selected_path, unname(configured_files))
-  dataset <- if (length(configured_index) == 1L && !is.na(configured_index)) {
-    names(configured_files)[[configured_index]]
-  } else {
-    selected_path
-  }
+  dataset <- viewerDatasetName(
+    configured_files,
+    available_crb_files$selected
+  ) %||% available_crb_files$selected
   encode <- function(value) {
     paste(format(charToRaw(enc2utf8(as.character(value)))), collapse = "")
   }

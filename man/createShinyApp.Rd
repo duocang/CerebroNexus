@@ -36,14 +36,19 @@ createShinyApp(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
-  initial_page = NULL
+  dataset_labels = NULL,
+  initial_page = NULL,
+  initial_dataset = NULL
 )
 }
 \arguments{
 \item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
 (or \code{.rds}) file paths. Names must be non-missing and unique and are
-used as dataset labels. Every path must resolve to a distinct canonical
-source file.}
+used as stable dataset identities. Paths may repeat.}
+
+\item{dataset_labels}{Optional named character vector mapping every dataset
+identity in \code{cerebro_data} to its display label. Values must be non-empty
+but may repeat. When omitted, dataset identities are also used as labels.}
 
 \item{result_dir}{Output directory. Its basename must be portable, its path
 must not use the reserved build-lock namespace, and its final target must
@@ -89,6 +94,10 @@ directory is rejected before any files are written.}
 
 \item{show_upload_ui}{One non-missing logical controlling whether users may
 upload their own data; defaults to \code{FALSE}.}
+
+\item{initial_dataset}{Optional exact dataset identity to load initially. This
+does not change the order of \code{cerebro_data}. URL selection and a
+session's current selection take precedence.}
 
 \item{initial_page}{Optional initial Viewer page. Supported stable IDs are
 \code{"data_info"}, \code{"projection"}, \code{"linked_views"},

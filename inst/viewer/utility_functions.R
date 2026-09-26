@@ -39,12 +39,35 @@ viewerDatasetName <- function(files, selected) {
   if (is.null(files) || is.null(selected) || is.null(names(files))) {
     return(NULL)
   }
+  if (selected %in% names(files)) {
+    return(as.character(selected))
+  }
   index <- which(files == selected)
   if (!length(index)) {
     return(NULL)
   }
   name <- names(files)[[index[[1L]]]]
   if (is.na(name) || !nzchar(name)) NULL else name
+}
+
+viewerDatasetPath <- function(files, selected) {
+  if (
+    !is.null(files) &&
+      !is.null(names(files)) &&
+      !is.null(selected) &&
+      selected %in% names(files)
+  ) {
+    return(unname(files[[selected]]))
+  }
+  selected
+}
+
+viewerSelectedDatasetName <- function() {
+  if (!exists("available_crb_files", inherits = TRUE)) {
+    return(NULL)
+  }
+  available <- get("available_crb_files", inherits = TRUE)
+  viewerDatasetName(available$files, available$selected)
 }
 
 viewerDatasetInfo <- function(catalog, selected) {
@@ -2817,6 +2840,28 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
   return('')
 }
 
+match_dataset_id_by_url <- function(url_dataset, files) {
+  ids <- names(files)
+  if (
+    !is.character(url_dataset) ||
+      length(url_dataset) != 1L ||
+      is.na(url_dataset) ||
+      !nzchar(url_dataset) ||
+      is.null(ids)
+  ) {
+    return("")
+  }
+  if (url_dataset %in% ids) {
+    return(url_dataset)
+  }
+  basenames <- basename(files)
+  index <- which(basenames == url_dataset)
+  if (!length(index)) {
+    index <- which(tools::file_path_sans_ext(basenames) == url_dataset)
+  }
+  if (length(index)) ids[[index[[1L]]]] else ""
+}
+
 ##----------------------------------------------------------------------------##
 ## Functions to interact with data set.
 ##
@@ -2994,10 +3039,10 @@ getVariableToCompareChoices <- function() {
         !is.null(available_crb_files$files) &&
         !is.null(available_crb_files$selected)
     ) {
-      idx <- which(available_crb_files$files == available_crb_files$selected)
-      if (length(idx) > 0 && !is.null(available_crb_files$names)) {
-        current_name <- available_crb_files$names[idx[1]]
-      }
+      current_name <- viewerDatasetName(
+        available_crb_files$files,
+        available_crb_files$selected
+      )
     }
 
     ## check if current file name exists in the named list/vector
