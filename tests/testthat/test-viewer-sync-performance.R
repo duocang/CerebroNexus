@@ -298,6 +298,20 @@ test_that("viewer source reuses process-safe utility functions", {
       inherits = TRUE
     )("runtime dependency check")
   )
+  expect_false(identical(
+    first$extra_material_table_groups,
+    second$extra_material_table_groups
+  ))
+  dataset <- new.env(parent = emptyenv())
+  class(dataset) <- c("Cerebro", "R6")
+  dataset$getExtraMaterial <- function() {
+    list(tables = list(fixture = data.frame(value = 1L)))
+  }
+  first$data_set <- function() dataset
+  expect_named(
+    first$extra_material_table_groups(),
+    "Embedded tables"
+  )
   expect_false(identical(first$get_or_load_crb, second$get_or_load_crb))
   expect_identical(
     environment(first$get_or_load_crb),
