@@ -9,6 +9,10 @@ library(DT)
 library(plotly)
 library(dplyr)
 
+## Opt-in large atlases: CEREBRO_1M_DEMO_CRB / CEREBRO_REN_DEMO_CRB add a
+## dataset to the switcher; both are no-ops when unset.
+source("viewer/million_cell_demo.R", local = TRUE)
+
 ##----------------------------------------------------------------------------##
 ## set options
 ##----------------------------------------------------------------------------##
@@ -167,6 +171,8 @@ Cerebro.options <<- list(
   "percentage_cells_to_show" = 100,
   "projections_show_hover_info" = FALSE
 )
+Cerebro.options <<- viewerAddMillionCellDemo(Cerebro.options)
+Cerebro.options <<- viewerAddRenDemo(Cerebro.options)
 
 options(shiny.maxRequestSize = 6 * 1024^2)
 
