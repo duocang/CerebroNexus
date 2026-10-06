@@ -49,6 +49,11 @@ treats that as \code{"embedded"} for backward compatibility.}
 restored from its external expression sidecar. Legacy and embedded CRBs
 leave this as \code{NULL}.}
 
+    \item{\code{immune_repertoire_backend}}{Descriptor for a large immune
+repertoire stored inside a BPCells expression sidecar. The runtime-only
+\code{root} member is attached when the CRB is opened; legacy CRBs continue to
+use the embedded \code{immune_repertoire} field.}
+
     \item{\code{cell_fingerprint}}{Stable identity of the cell population used by
 portable saved views. Older CRBs leave this as \code{NULL}.}
 

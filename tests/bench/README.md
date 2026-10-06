@@ -4,6 +4,7 @@
 
 - [Directory layout](#directory-layout)
 - [Dataset scope](#dataset-scope)
+- [Prepare interactive demo data](#prepare-interactive-demo-data)
 - [Run the benchmark](#run-the-benchmark)
 - [Scale profile](#scale-profile)
 - [Script map](#script-map)
@@ -46,6 +47,22 @@ from each of these same two sources; those are not additional datasets.
 The component Viewer/CRB harness uses one exact 1,000,000-cell subset of the
 same 10x mouse-brain source. An optional 4,140,453-cell MSSM source is registered
 for opt-in experiments, but it is not part of the default or committed results.
+
+## Prepare interactive demo data
+
+The compatibility entry points below build or reuse the CRB plus its sibling
+BPCells directory. Set `CEREBRO_LARGE_CACHE` to the shared data root used by the
+Viewer environment; completed artifacts are detected and returned without
+reprocessing the source files.
+
+```bash
+Rscript -e 'devtools::load_all(".", quiet=TRUE); source("tests/bench/prepare_viewer_1m_data.R"); cat(prepareViewer1mBenchmarkData(), "\n")'
+Rscript -e 'devtools::load_all(".", quiet=TRUE); source("tests/bench/prepare_viewer_ren_data.R"); cat(prepareViewerRenDemoData(), "\n")'
+```
+
+The Ren CRB stores `immune_repertoire.qs2` inside its BPCells directory and
+keeps only a checksum-validated descriptor in the CRB. This avoids duplicating
+the large repertoire table while keeping the artifact relocatable.
 
 ## Run the benchmark
 
@@ -108,6 +125,8 @@ external scratch directory and are not inventoried.
 | `benchmark/reporting.R`, `resources.R` | summaries, figures, and capacity checks |
 | `benchmark/cli.R`, `cli_*.R` | dispatch isolated benchmark stages |
 | `acceptance/check.R` | evaluate normalized PR acceptance evidence |
+| `prepare_viewer_1m_data.R` | compatibility entry point for the canonical 1M CRB fixture |
+| `prepare_viewer_ren_data.R` | download and build the 1.46M-cell Ren CRB and immune sidecar |
 
 The reproducibility harnesses are grouped by responsibility:
 

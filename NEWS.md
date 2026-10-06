@@ -4,7 +4,9 @@
 
 - New `saveCerebro()`, `readCerebro()`, and `convertCerebro()` APIs support codec-independent `.crb` files, automatically read legacy RDS and thin RDS/qs2 CRBs, and use qs2 by default for new files.
 - BPCells-backed thin CRBs omit duplicated cell indexes, projection row names, and live expression handles while validating the shared sidecar checksum during hydration.
+- BPCells-backed CRBs can keep large immune-repertoire tables in a checksum-validated sidecar file and load them only when the Viewer opens an immune-repertoire page; existing PR #184 Ren artifacts remain readable.
 - The reproducible one-million-cell benchmark records source-to-artifact processing, physical file layouts, host and package versions, and comparisons against PR #165.
+- Restored stable `prepare_viewer_1m_data.R` and `prepare_viewer_ren_data.R` entry points for regenerating the two interactive demo datasets.
 
 # CerebroNexus 4.4.3
 

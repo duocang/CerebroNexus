@@ -2244,6 +2244,7 @@ get_or_load_crb <- function(
   ))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
+  obj <- .attachImmuneRepertoireBackend(obj, path, effective_backend)
   .crb_cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
@@ -2263,6 +2264,77 @@ get_or_load_crb <- function(
 ## Direct launches and uploads read only the ordinary expression_backend field;
 ## serialized getter code is never invoked by this internal loading path.
 ##----------------------------------------------------------------------------##
+.attachImmuneRepertoireBackend <- function(
+  obj,
+  crb_path,
+  effective_backend = NULL
+) {
+  field <- "immune_repertoire_backend"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(obj)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend <- obj[[field]]
+  if (is.null(backend)) {
+    return(obj)
+  }
+  valid <- is.list(backend) &&
+    identical(backend$type, "bpcells-file") &&
+    is.character(backend$file) &&
+    length(backend$file) == 1L &&
+    !is.na(backend$file) &&
+    nzchar(backend$file) &&
+    !backend$file %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$file) &&
+    is.character(backend$md5) &&
+    length(backend$md5) == 1L &&
+    !is.na(backend$md5) &&
+    grepl("^[[:xdigit:]]{32}$", backend$md5)
+  expression_backend <- if (is.null(effective_backend)) {
+    .fallbackRuntimeBackendPlan(obj, crb_path)
+  } else {
+    .validateRuntimeBackendEntry(effective_backend, crb_path)
+  }
+  valid <- valid && identical(expression_backend$type, "bpcells")
+  if (!valid) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- unique(as.character(backend$samples %||% character()))
+  backend$chains <- unique(as.character(backend$chains %||% character()))
+  if (anyNA(backend$samples) || anyNA(backend$chains)) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- backend$samples[nzchar(backend$samples)]
+  backend$chains <- backend$chains[nzchar(backend$chains)]
+  root <- if (identical(expression_backend$mode, "host_override")) {
+    expression_backend$location
+  } else {
+    file.path(
+      dirname(normalizePath(crb_path, mustWork = FALSE)),
+      expression_backend$location
+    )
+  }
+  if (!is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)) {
+    stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
+  }
+  repertoire_file <- file.path(root, backend$file)
+  if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
+    stop(
+      "The immune repertoire sidecar is missing: ",
+      repertoire_file,
+      call. = FALSE
+    )
+  }
+  backend$root <- root
+  obj[[field]] <- backend
+  obj
+}
+
 .readRuntimeCrbSchema <- function(obj, crb_path) {
   field <- "crb_schema"
   if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
