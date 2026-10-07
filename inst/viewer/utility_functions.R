@@ -567,10 +567,55 @@ viewerExpressionCells <- function(data_set, cells) {
   if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
 }
 
+## The Viewer already owns canonical cell indices and does not need expression
+## column names. Read small BPCells slices in storage order, then restore the
+## requested order on dense vectors. Reordering the lazy matrix first rebuilds
+## million-cell dimension names that the Viewer immediately discards.
+viewerBpcellsValues <- function(data_set, cells, genes) {
+  expression <- tryCatch(data_set$expression, error = function(e) NULL)
+  if (
+    !inherits(expression, "IterableMatrix") ||
+      !is.numeric(cells) || !length(cells) || anyNA(cells) ||
+      any(!is.finite(cells)) || any(cells < 1L) ||
+      any(cells > ncol(expression)) || any(cells != as.integer(cells)) ||
+      !is.character(genes) || !length(genes) || length(genes) > 9L ||
+      anyNA(genes)
+  ) {
+    return(NULL)
+  }
+  gene_indices <- match(genes, rownames(expression))
+  if (anyNA(gene_indices)) {
+    return(NULL)
+  }
+  indices <- as.integer(cells)
+  restore <- NULL
+  if (is.unsorted(indices)) {
+    read_order <- order(indices)
+    indices <- indices[read_order]
+    restore <- order(read_order)
+  }
+  if (is.unsorted(indices, strictly = TRUE)) {
+    return(NULL)
+  }
+  slice <- expression[gene_indices, indices, drop = FALSE]
+  dimnames(slice) <- list(NULL, NULL)
+  values <- as.matrix(slice)
+  stats::setNames(lapply(seq_along(genes), function(index) {
+    value <- as.numeric(values[index, , drop = TRUE])
+    if (is.null(restore)) value else value[restore]
+  }), genes)
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
   cells <- viewerExpressionCells(data_set, cells)
   all_cells <- is.null(cells)
   cell_indices <- is.numeric(cells)
+  if (is.character(gene) && length(gene) == 1L && !is.na(gene)) {
+    values <- viewerBpcellsValues(data_set, cells, gene)
+    if (!is.null(values)) {
+      return(values[[1L]])
+    }
+  }
   get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
   if (is.function(get_row)) {
     return(as.numeric(get_row(gene = gene, cells = cells)))
@@ -622,6 +667,11 @@ viewerExpressionValues <- function(data_set, cells, genes) {
       return(list())
     }
     return(stats::setNames(list(value), genes))
+  }
+
+  values <- viewerBpcellsValues(data_set, cells, genes)
+  if (!is.null(values)) {
+    return(values)
   }
 
   expression_matrix <- data_set$getExpressionMatrix(

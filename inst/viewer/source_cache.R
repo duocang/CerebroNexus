@@ -16,6 +16,7 @@
   "rotateSpatialCoordinates",
   "viewerOutputTab",
   "viewerExpressionCells",
+  "viewerBpcellsValues",
   "viewerExpressionRow",
   "viewerExpressionValues",
   "findColumnsInteger",

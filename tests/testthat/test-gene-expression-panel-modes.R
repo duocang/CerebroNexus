@@ -77,6 +77,68 @@ test_that("RGB summaries preserve repeated channels and omit empty ones", {
   )
 })
 
+test_that("Viewer BPCells reads preserve values and canonical cell order", {
+  skip_if_not_installed("BPCells")
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  source <- matrix(
+    c(0, 1.25, -2, 4, 0, 5.5, 3, 6, NA_real_, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(c("g1", "g2", "g3"), c("c1", "c2", "c3", "c4"))
+  )
+  iterable <- methods::as(
+    methods::as(Matrix::Matrix(source, sparse = TRUE), "CsparseMatrix"),
+    "IterableMatrix"
+  )
+  directory <- withr::local_tempdir()
+  for (row_major in c(FALSE, TRUE)) {
+    path <- file.path(directory, if (row_major) "row" else "column")
+    if (row_major) {
+      BPCells::transpose_storage_order(iterable, outdir = path)
+    } else {
+      BPCells::write_matrix_dir(iterable, dir = path)
+    }
+    dataset <- new.env(parent = emptyenv())
+    dataset$expression <- BPCells::open_matrix_dir(path)
+    reads <- 0L
+    dataset$getExpressionMatrix <- function(cells, genes) {
+      reads <<- reads + 1L
+      source[genes, cells, drop = FALSE]
+    }
+    dataset$getExpressionRow <- function(gene, cells) {
+      reads <<- reads + 1L
+      as.numeric(source[gene, cells])
+    }
+    for (cells in list(1:4, c(4L, 1L, 3L), 2L)) {
+      expect_identical(
+        scope$viewerExpressionValues(dataset, cells, c("g3", "g1")),
+        list(g3 = as.numeric(source["g3", cells]), g1 = as.numeric(source["g1", cells]))
+      )
+      expect_identical(
+        scope$viewerExpressionRow(dataset, cells, "g2"),
+        as.numeric(source["g2", cells])
+      )
+    }
+    expect_identical(reads, 0L)
+    expect_identical(
+      scope$viewerExpressionValues(dataset, c(4L, 1L, 4L), c("g3", "g1")),
+      list(g3 = c(9, -2, 9), g1 = c(7, 0, 7))
+    )
+    expect_identical(reads, 1L)
+    expect_identical(dimnames(dataset$expression), dimnames(source))
+    expect_identical(as.matrix(dataset$expression), source)
+    expect_identical(
+      scope$viewerExpressionValues(dataset, c("c4", "c1"), c("g2", "g1")),
+      list(g2 = c(8, 1.25), g1 = c(7, 0))
+    )
+    expect_identical(reads, 2L)
+    expect_null(scope$viewerBpcellsValues(dataset, c(NA_integer_, 1L), "g1"))
+    expect_null(scope$viewerBpcellsValues(dataset, c(0L, 1L), "g1"))
+    expect_null(scope$viewerBpcellsValues(dataset, 1.5, "g1"))
+    expect_null(scope$viewerBpcellsValues(dataset, 1L, "missing"))
+  }
+})
+
 test_that("RGB expression reads all channels in one backend call", {
   scope <- new.env(parent = globalenv())
   scope$reactive <- shiny::reactive
