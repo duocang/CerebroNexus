@@ -83,6 +83,78 @@ test_that("the browser restores compact linked-view vectors", {
   expect_equal(unlist(restored$projections$umap$y), c(-2.5, 3.75))
 })
 
+test_that("hover code remapping preserves observed order and missing labels", {
+  helpers <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = helpers)
+  for (values in list(
+    factor(c("b", NA, "a", "NA", "b"), levels = c("unused", "NA", "a", "b")),
+    ordered(c("b", "a", NA), levels = c("a", "b")),
+    factor(c("b", NA, "a"), exclude = NULL)
+  )) {
+    for (registered in list(c("a", "b", "NA"), "a", character())) {
+      actual <- helpers$cerebroProjectionHoverColumns(
+        data.frame(group = values), "group", function(group) registered)
+      expected <- helpers$cerebroProjectionHoverColumns(
+        data.frame(group = as.character(values)), "group", function(group) registered)
+      expect_identical(actual, expected)
+      labels <- as.character(values)
+      labels[is.na(labels)] <- "NA"
+      expect_identical(actual[[1L]]$levels, unique(labels))
+      expect_identical(actual[[1L]]$values, match(labels, unique(labels)) - 1L)
+    }
+  }
+})
+
+test_that("binary envelopes also preserve messages without packed vectors", {
+  helpers <- new.env(parent = globalenv())
+  sys.source(bundle_file, envir = helpers)
+  message <- list(id = "empty", data = list(n = 0L), labels = c("a", "b"))
+  packed <- helpers$cv_wire_pack_message(message)
+  expect_type(packed, "raw")
+  header <- wire_header(packed)
+  expect_identical(header$id, "empty")
+  expect_identical(header$data$n, 0L)
+  expect_identical(unlist(header$labels), c("a", "b"))
+  expect_identical(length(packed) %% 4L, 0L)
+})
+
+test_that("cell identities travel separately from the first frame", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_not_installed("jsonlite")
+
+  helpers <- new.env(parent = globalenv())
+  sys.source(bundle_file, envir = helpers)
+  payload <- tempfile(fileext = ".bin")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(c(payload, runner)), add = TRUE)
+  writeBin(
+    helpers$cv_wire_pack_cells("dataset-1", c("cell-1", "cell-2")),
+    payload
+  )
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      "global.window = global;",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(wire_file, quote = "\"")
+      ),
+      sprintf(
+        "const input = fs.readFileSync(%s);",
+        encodeString(payload, quote = "\"")
+      ),
+      "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
+      "console.log(JSON.stringify(window.CBViewWire.unpackCells(buffer)));"
+    ),
+    runner
+  )
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(attr(output, "status"), NULL)
+  restored <- jsonlite::fromJSON(output, simplifyVector = FALSE)
+  expect_identical(restored$dataset_id, "dataset-1")
+  expect_identical(unlist(restored$cells), c("cell-1", "cell-2"))
+})
+
 test_that("specialist cell views use the same binary envelope", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")

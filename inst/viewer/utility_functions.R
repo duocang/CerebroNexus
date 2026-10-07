@@ -2383,7 +2383,7 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ##----------------------------------------------------------------------------##
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
-cerebroProjectionHoverColumns <- function(table, groups = getGroups()) {
+cerebroProjectionHoverColumns <- function(table, groups = getGroups(), group_levels = getGroupLevels) {
   if (!is.data.frame(table)) {
     stop("projection hover data must be a data frame")
   }
@@ -2405,12 +2405,31 @@ cerebroProjectionHoverColumns <- function(table, groups = getGroups()) {
       next
     }
     values <- as.character(table[[group]])
-    values[is.na(values)] <- "NA"
-    levels <- unique(values)
+    # Registered levels are a small dictionary. Avoid hashing every string
+    # again with unique() after the million-cell rows have been shuffled.
+    levels <- tryCatch(as.character(group_levels(group)),
+      error = function(e) character())
+    levels[is.na(levels)] <- "NA"
+    levels <- unique(c(levels, "NA"))
+    codes <- match(values, levels)
+    codes[is.na(values)] <- match("NA", levels)
+    if (anyNA(codes)) {
+      # Unregistered metadata and incomplete legacy dictionaries retain the
+      # original first-occurrence encoding, including literal/missing NA.
+      values[is.na(values)] <- "NA"
+      levels <- unique(values)
+      codes <- match(values, levels)
+    }
+    observed <- unique(codes)
+    ## Codes already index the registered dictionary; remap by integer lookup
+    ## rather than hashing the full cell vector again with match().
+    remap <- integer(length(levels))
+    remap[observed] <- seq_along(observed) - 1L
+    levels <- levels[observed]
     columns[[length(columns) + 1L]] <- list(
       label = group,
       levels = levels,
-      values = match(values, levels) - 1L
+      values = remap[codes]
     )
   }
   columns
