@@ -145,7 +145,7 @@ hla_detect_chains <- function(data) {
   }
   all_ct <- unique(unlist(lapply(data, function(df) {
     if ("CTgene" %in% names(df)) as.character(df$CTgene) else character(0)
-  })))
+  }), use.names = FALSE))
   chains <- c(HLA_TCR_CHAINS, HLA_BCR_CHAINS)
   chains[vapply(chains, function(ch) any(grepl(ch, all_ct)), logical(1))]
 }
