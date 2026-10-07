@@ -7,10 +7,28 @@
 ##----------------------------------------------------------------------------##
 ## UI element with input selection (which group to show) and plot.
 ##----------------------------------------------------------------------------##
+## Only layout changes should replace plot hosts and their input bindings.
+## Keep this observer dormant while the Gene page is hidden.
+expression_summary_group_height <- reactiveVal(NULL)
+expression_summary_show_genes <- reactiveVal(FALSE)
+observe({
+  req(identical(input[["sidebar"]], "geneExpression"),
+      input[["expression_summary_viewport_request"]],
+      expression_projection_summary_ready())
+  summary <- tryCatch(expression_summary_data(),
+    shiny.silent.error = function(e) NULL)
+  expression_summary_group_height(if (is.null(summary)) NULL else {
+    max(400, ceiling(length(summary$series) / 3) * 300)
+  })
+  expression_summary_show_genes(!is.null(summary) && length(summary$genes) > 1)
+})
+
 output[["expression_by_group_UI"]] <- renderUI({
-  req(input[["expression_summary_viewport_request"]])
-  req(expression_projection_summary_ready())
-  summary <- expression_summary_data()
+  height <- expression_summary_group_height()
+  req(height)
+  groups <- getGroups()
+  selected <- isolate(input[["expression_by_group_selected_group"]])
+  if (!length(selected) || !selected %in% groups) selected <- groups[1]
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -21,15 +39,13 @@ output[["expression_by_group_UI"]] <- renderUI({
         selectInput(
           "expression_by_group_selected_group",
           label = "Select a group to show expression by:",
-          choices = getGroups(),
+          choices = groups,
+          selected = selected,
           width = "100%"
         ),
         plotly::plotlyOutput(
           "expression_by_group",
-          height = paste0(
-            max(400, ceiling(length(summary$series) / 3) * 300),
-            "px"
-          )
+          height = paste0(height, "px")
         )
       )
     )

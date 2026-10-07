@@ -6,9 +6,7 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene_UI"]] <- renderUI({
-  req(input[["expression_summary_viewport_request"]])
-  req(expression_projection_summary_ready())
-  req(length(expression_summary_data()$genes) > 1)
+  req(expression_summary_show_genes())
   fluidRow(
     cerebroBox(
       title = tagList(
