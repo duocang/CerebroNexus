@@ -85,11 +85,20 @@ hla_choose_initial_samples <- function(
   ) {
     return(samples)
   }
-  sample_cdr3 <- lapply(samples, function(sample) {
-    unique(as.character(
-      segments$cdr3[as.character(segments$sample) == sample]
-    ))
-  })
+  sample_values <- as.character(segments$sample)
+  if (anyNA(sample_values)) {
+    ## Preserve the existing NA-subsetting contract for incomplete metadata.
+    sample_cdr3 <- lapply(samples, function(sample) {
+      unique(as.character(segments$cdr3[sample_values == sample]))
+    })
+  } else {
+    ## Partition once instead of scanning every cell for every sample.
+    by_sample <- split(segments$cdr3, sample_values)
+    sample_cdr3 <- lapply(
+      by_sample[match(samples, names(by_sample))],
+      function(values) unique(as.character(values))
+    )
+  }
   names(sample_cdr3) <- samples
   counts <- vapply(sample_cdr3, length, integer(1))
   ordered <- samples[order(-counts, samples)]
