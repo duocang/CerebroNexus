@@ -8876,7 +8876,7 @@
     if (indices && indices.some(function (index) {
       return !Number.isInteger(index) || index < 0 || index >= D.n;
     })) configError('The file selects cells that are unavailable here.');
-    var cells = singleIndex();
+    var cells = !indices && config.selection.cells.length ? singleIndex() : null;
     if (!indices && config.selection.cells.some(function (cell) {
       return !cells.has(String(cell));
     })) configError('The file selects cells that are unavailable here.');
