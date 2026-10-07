@@ -8,6 +8,8 @@
 ##----------------------------------------------------------------------------##
 
 output[["color_assignments_UI"]] <- renderUI({
+  req(data_set())
+  initial_colors <- isolate(reactive_colors())
   fluidRow(
     tagList({
       group_list <- list()
@@ -27,7 +29,7 @@ output[["color_assignments_UI"]] <- renderUI({
               color_list[[group_level]] <- colourpicker::colourInput(
                 inputId = color_input_id(group_name, group_level),
                 label = group_level,
-                value = reactive_colors()[[group_name]][group_level]
+                value = initial_colors[[group_name]][group_level]
               )
             }
             color_list
@@ -54,7 +56,7 @@ output[["color_assignments_UI"]] <- renderUI({
                 color_list[[state]] <- colourpicker::colourInput(
                   inputId = color_input_id(column, state),
                   label = state,
-                  value = reactive_colors()[[column]][state]
+                  value = initial_colors[[column]][state]
                 )
               }
               color_list
