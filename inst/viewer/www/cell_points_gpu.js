@@ -497,11 +497,13 @@ void main() {
       backend: 'webgl2', ready: true, pointCount: 0, positionUploads: 0,
       initializationMs: performance.now() - initializationStarted
     };
+    var lastFrame = null;
     var resolveFailure;
     var failed = new Promise(function (resolve) { resolveFailure = resolve; });
 
     function fail(error) {
       if (!ready && gpuError) return;
+      lastFrame = null;
       gpuError = error && error.message ? error.message : String(error || 'WebGL2 failed.');
       ready = false;
       metrics.ready = false;
@@ -515,6 +517,7 @@ void main() {
     });
 
     function resize(cssWidth, cssHeight, dpr) {
+      lastFrame = null;
       width = Math.max(1, Number(cssWidth) || 1);
       height = Math.max(1, Number(cssHeight) || 1);
       pixelRatio = Math.max(1, Number(dpr) || 1);
@@ -556,6 +559,7 @@ void main() {
       if (data && data.positions === next.positions && data.colors === next.colors &&
           data.layers === next.layers && data.count === count &&
           data.foreground === !!next.foreground) return;
+      lastFrame = null;
       var started = performance.now();
       gl.useProgram(program);
       if (!data || data.positions !== next.positions) {
@@ -592,6 +596,23 @@ void main() {
       var rect = options.rect || { x: 0, y: 0, width: width, height: height };
       var border = options.border || null;
       var borderValue = border && border.color ? border.color : [0, 0, 0, 0];
+      // Hover and drag outlines live on the separate 2-D overlay. WebGL keeps
+      // its drawing buffer, so an unchanged point layer can remain on screen.
+      // Copy scalar values: callers may mutate their view/rect objects in place.
+      var frame = [
+        Number(view.cx), Number(view.cy), Math.max(1e-9, Number(view.span)),
+        Number(rect.x), Number(rect.y), Number(rect.width), Number(rect.height),
+        Math.max(0, Number(options.pointSize) || 0),
+        border ? Math.max(0, Number(border.width) || 0) : 0,
+        borderValue[0], borderValue[1], borderValue[2], borderValue[3],
+        width, height, pixelRatio, canvas.width, canvas.height
+      ];
+      if (lastFrame && frame.every(function (value, i) { return value === lastFrame[i]; })) {
+        if (gl.getError() !== gl.NO_ERROR) { lastFrame = null; return false; }
+        metrics.drawSubmitMs = 0;
+        return true;
+      }
+      lastFrame = null;
       gl.useProgram(program);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clearColor(0, 0, 0, 0);
@@ -637,10 +658,13 @@ void main() {
       }
       gl.flush();
       metrics.drawSubmitMs = performance.now() - started;
-      return gl.getError() === gl.NO_ERROR;
+      var succeeded = gl.getError() === gl.NO_ERROR;
+      if (succeeded) lastFrame = frame;
+      return succeeded;
     }
 
     function clear() {
+      lastFrame = null;
       if (!ready) return;
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
