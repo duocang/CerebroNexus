@@ -573,6 +573,7 @@ ui <- dashboardPage(
       cerebro_js("coordviews-config.js", defer = TRUE),
       cerebro_js("viewer-shell.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
+      cerebro_js("gene-selector.js", defer = TRUE),
       cerebro_js("cell_views.js"),
       cerebro_js("settings_drawer.js", defer = TRUE),
       cerebro_js("specialist-view-state.js", defer = TRUE)
