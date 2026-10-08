@@ -103,6 +103,17 @@ While iterating on the package, use `devtools::test()` — it picks up edits to 
 
 ## Pitfalls and FAQ
 
+### Linux authentication deployment permissions
+
+`test-viewer-auth-runtime.R` covers secret source precedence, content and
+file-type errors, and the exact POSIX `0600` requirement. POSIX checks are
+explicitly skipped on Windows; fault-injected read failures are not presented
+as cross-UID integration coverage.
+
+See the [deployment note](../inst/viewer/AUTHENTICATION-DEPLOYMENT.md) for host
+bind mounts and Windows-to-Linux transfer limitations.
+
+
 ### How `inst_dir` is resolved in `test-app-inst.R`
 
 ```r
