@@ -104,7 +104,9 @@ if (length(args) && identical(args[[1L]], "--measure")) {
     function(gene) timed(object$getExpressionRow(gene))$seconds,
     numeric(1)
   )
-  block <- timed(object$getExpressionBlock(plan$panel))
+  # getExpressionBlock() returns a lazy view for both external backends.
+  # Include materialization here; otherwise this only times view construction.
+  block <- timed(as.matrix(object$getExpressionBlock(plan$panel)))
   row_ok <- identical(fingerprint(first$value), plan$row_fingerprint)
   block_ok <- identical(fingerprint(block$value), plan$block_fingerprint)
   result <- data.frame(
@@ -184,6 +186,9 @@ for (round in seq_len(rounds)) {
     at <- at + 1L
     rows[[at]] <- readRDS(result)
     unlink(result)
+    message("Completed round ", round, ": ", backend,
+      "; first gene ", sprintf("%.3fs", rows[[at]]$first_gene_seconds),
+      "; materialized block ", sprintf("%.3fs", rows[[at]]$twelve_gene_seconds))
   }
 }
 results <- do.call(rbind, rows)
@@ -198,7 +203,7 @@ metrics <- c(
   startup_seconds = "Startup",
   first_gene_seconds = "First gene",
   hot_gene_p50_seconds = "Warm gene p50",
-  twelve_gene_seconds = "12-gene block"
+  twelve_gene_seconds = "12-gene block (materialized)"
 )
 long <- do.call(rbind, lapply(names(metrics), function(metric) {
   data.frame(
