@@ -2227,8 +2227,10 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     data,
     hover,
     extra,
-    deferred_aux
+    deferred_aux,
+    core_aux = NULL
   ) {
+    captured$core_aux <- core_aux
     captured$data <- data
     captured$deferred_aux <- deferred_aux
   }
@@ -2314,8 +2316,10 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     data,
     hover,
     extra,
-    deferred_aux
+    deferred_aux,
+    core_aux = NULL
   ) {
+    captured$core_aux <- core_aux
     captured$data <- data
     captured$deferred_aux <- deferred_aux
   }
