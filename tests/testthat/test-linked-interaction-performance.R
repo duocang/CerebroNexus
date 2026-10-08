@@ -1,4 +1,4 @@
-test_that("Linked views defaults large data to static but keeps an override", {
+test_that("Linked views keeps selection enabled and an explicit static override", {
   ui <- paste(
     readLines(
       viewer_test_path("coordinated_views", "UI.R"),
@@ -12,10 +12,10 @@ test_that("Linked views defaults large data to static but keeps an override", {
   )
 
   expect_match(ui, 'id = "cv-linked-interaction-toggle"', fixed = TRUE)
-  expect_match(javascript, "var LINKED_STATIC_ABOVE = 200000;", fixed = TRUE)
+  expect_no_match(javascript, "var LINKED_STATIC_ABOVE", fixed = TRUE)
   expect_match(
     javascript,
-    "linkedInteractionEnabled = Number(D.n) <= LINKED_STATIC_ABOVE;",
+    "linkedInteractionEnabled = true;",
     fixed = TRUE
   )
   expect_match(javascript, "function toggleLinkedInteraction()", fixed = TRUE)
