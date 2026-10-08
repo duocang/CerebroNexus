@@ -28,12 +28,32 @@ remotes::install_github('mihem/CerebroNexus')
 
 ## 2. Run the complete large-data demo
 
+For the PR6 review build, use the performance branch below. Record the printed
+commit ID when reporting results; the official default branch can contain a
+different Viewer version. The launcher loads the checked-out source directly.
+
 ```bash
-git clone https://github.com/mihem/CerebroNexus.git
+git clone --branch perf/pr6-ui-accessibility-polish https://github.com/duocang/CerebroNexus.git
 cd CerebroNexus
-Rscript -e "remotes::install_local('.', dependencies = TRUE)"
+git rev-parse HEAD
+Rscript -e "install.packages(c('remotes', 'pkgload')); remotes::install_local('.', dependencies = TRUE)"
 Rscript run-demo.R
 ```
+
+To test Ren without also preparing the 10x dataset:
+
+```bash
+Rscript run-demo.R --ren-only --prepare-only
+Rscript run-demo.R --ren-only --no-browser
+```
+
+Open `http://127.0.0.1:7451`. The launcher reports the source directory and Ren
+data version (currently **2**), and reuses a complete compatible cache. Keep the
+`.crb` and its `.bpcells/` directory together. `--prepare-only` exits before
+starting Shiny, so download/preparation failures are separate from Viewer errors.
+Prepared versions use separate directories (`ren/cerebro-v2/`); preparation
+never upgrades the earlier `ren/cerebro/` atlas in place. Failed builds are not
+published, and source downloads are shared between versions.
 
 The first run downloads and prepares both the official 10x one-million-neuron
 matrix and the Ren et al. [COVID-19 immune atlas](https://explore.data.humancellatlas.org/projects/5f607e50-ba22-4598-b1e9-f3d9d7a35dcc)

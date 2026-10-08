@@ -1,6 +1,10 @@
 .viewerRenVersion <- 2L
 
 .viewerRenCacheDir <- function(path = NULL) {
+  if (is.null(path)) {
+    configured <- Sys.getenv("CEREBRO_LARGE_CACHE", "")
+    if (nzchar(configured)) path <- configured
+  }
   if (!is.null(path)) {
     if (
       !is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path)
@@ -14,6 +18,7 @@
 
 .viewerRenPaths <- function(cache_dir = NULL) {
   root <- file.path(.viewerRenCacheDir(cache_dir), "ren")
+  prepared <- file.path(root, paste0("cerebro-v", .viewerRenVersion))
   list(
     root = root,
     source_dir = file.path(root, "source"),
@@ -31,13 +36,12 @@
       "GSE158055_covid19_bcr_vdjnt_pclone.tsv"
     ),
     clinical = file.path(root, "source", "GSE158055_sample_metadata.xlsx"),
-    crb = file.path(root, "cerebro", "cerebro_ren_covid_1.46m.crb"),
+    crb = file.path(prepared, "cerebro_ren_covid_1.46m.crb"),
     sidecar = file.path(
-      root,
-      "cerebro",
+      prepared,
       "cerebro_ren_covid_1.46m.bpcells"
     ),
-    stamp = file.path(root, "cerebro", "demo-version")
+    stamp = file.path(prepared, "demo-version")
   )
 }
 
@@ -687,5 +691,26 @@ prepareViewerRenDemoData <- function(cache_dir = NULL) {
     .viewerRenDownload(manifest[[name]], paths[[name]])
   }
   .viewerRenExtractH5ad(paths)
-  .viewerRenBuildObject(paths)
+  ## Build privately. A failed preparation must not delete a working atlas,
+  ## including the unversioned cache used by earlier Viewer revisions.
+  stage <- tempfile(paste0("cerebro-v", .viewerRenVersion, "-stage-"), paths$root)
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  staged <- paths
+  for (name in c("crb", "sidecar", "stamp")) {
+    staged[[name]] <- file.path(stage, basename(paths[[name]]))
+  }
+  .viewerRenBuildObject(staged)
+  if (!.viewerRenComplete(staged)) stop("Ren preparation did not finish.")
+  target <- dirname(paths$crb)
+  backup <- NULL
+  if (dir.exists(target)) {
+    backup <- tempfile(paste0(basename(target), "-previous-"), paths$root)
+    if (!file.rename(target, backup)) stop("Cannot preserve previous Ren cache.")
+  }
+  if (!file.rename(stage, target)) {
+    if (!is.null(backup)) file.rename(backup, target)
+    stop("Cannot publish prepared Ren cache; previous cache was preserved.")
+  }
+  paths$crb
 }

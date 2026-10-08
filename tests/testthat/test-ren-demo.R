@@ -130,3 +130,40 @@ test_that("run-demo prepares both full-scale datasets", {
   expect_match(script, "prepareViewerRenDemoData()", fixed = TRUE)
   expect_match(script, "CEREBRO_REN_DEMO_CRB", fixed = TRUE)
 })
+
+test_that("Ren preparation preserves prior datasets on failure and upgrade", {
+  script <- ren_demo_script()
+  skip_if_not(file.exists(script), "benchmark tree not present")
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+  root <- tempfile("ren-versioned-")
+  dir.create(file.path(root, "ren", "cerebro"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  legacy <- file.path(root, "ren", "cerebro", "legacy-matrix")
+  writeLines("preserve legacy data", legacy)
+  paths <- env$.viewerRenPaths(root)
+  dir.create(dirname(paths$crb))
+  writeLines("preserve incomplete current data", paths$crb)
+  env$.viewerRenRequire <- function(...) NULL
+  env$.viewerRenFiles <- function() list()
+  env$.viewerRenExtractH5ad <- function(...) NULL
+  env$.viewerRenBuildObject <- function(paths) {
+    writeLines("partial build", paths$crb)
+    stop("simulated preparation failure")
+  }
+  expect_error(env$prepareViewerRenDemoData(root), "simulated preparation failure")
+  expect_identical(readLines(legacy), "preserve legacy data")
+  expect_identical(readLines(paths$crb), "preserve incomplete current data")
+  expect_length(list.files(paths$root, pattern = "stage-"), 0L)
+  env$.viewerRenBuildObject <- function(paths) {
+    writeLines("new data", paths$crb)
+    dir.create(paths$sidecar)
+    file.create(file.path(paths$sidecar, "immune_repertoire.qs2"))
+    writeLines("2", paths$stamp)
+  }
+  expect_identical(env$prepareViewerRenDemoData(root), paths$crb)
+  expect_identical(readLines(legacy), "preserve legacy data")
+  expect_identical(readLines(paths$crb), "new data")
+  env$.viewerRenBuildObject <- function(...) stop("must reuse complete cache")
+  expect_identical(env$prepareViewerRenDemoData(root), paths$crb)
+})
