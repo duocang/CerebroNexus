@@ -1035,37 +1035,35 @@ ir_parse_segments <- function(data, chain, columns = NULL) {
   # (1-based) of the chain matching `chain`, then return that slot's value from
   # both CTgene and CTaa in parallel so gene and CDR3 stay aligned.
   # Returns NA when the chain is absent or its slot is "NA".
-  chain_slot_index <- function(ct_gene_vec) {
-    ct_gene_vec <- as.character(ct_gene_vec)
-    vapply(
-      strsplit(ct_gene_vec, "_", fixed = TRUE),
-      function(parts) {
-        # Take first allele of each slot to test chain membership.
-        first <- sub(";.*$", "", parts)
-        idx <- which(grepl(chain, first, fixed = TRUE) & first != "NA")
-        if (length(idx) == 0) NA_integer_ else idx[1]
-      },
-      integer(1)
-    )
+  chain_slot_index <- function(parts) {
+    sizes <- lengths(parts)
+    owners <- rep.int(seq_along(parts), sizes)
+    first <- sub(";.*$", "", unlist(parts, use.names = FALSE))
+    hits <- which(grepl(chain, first, fixed = TRUE) & first != "NA")
+    hits <- hits[!duplicated(owners[hits])]
+    slots <- rep(NA_integer_, length(parts))
+    offsets <- cumsum(sizes) - sizes
+    slots[owners[hits]] <- hits - offsets[owners[hits]]
+    slots
   }
   # Given a CT* vector and a per-row slot index, pick that slot's value.
-  # strsplit the whole vector once, then index each row's slot in one mapply
-  # pass (avoids re-splitting per cell). NA slot, out-of-range slot, and a
+  # strsplit the whole vector once, then index the flattened slots in one
+  # vector operation. NA slot, out-of-range slot, and a
   # literal "NA" / empty value all collapse to NA_character_, as before.
-  pick_slot <- function(ct_vec, slot_idx) {
+  pick_slot <- function(ct_vec, slot_idx, split_all = NULL) {
     if (length(ct_vec) == 0) {
       return(character(0))
     }
-    split_all <- strsplit(as.character(ct_vec), "_", fixed = TRUE)
-    val <- mapply(
-      function(parts, i) {
-        if (is.na(i) || i > length(parts)) NA_character_ else parts[i]
-      },
-      split_all,
-      slot_idx,
-      SIMPLIFY = TRUE,
-      USE.NAMES = FALSE
-    )
+    if (is.null(split_all)) {
+      split_all <- strsplit(as.character(ct_vec), "_", fixed = TRUE)
+    }
+    sizes <- lengths(split_all)
+    valid <- !is.na(slot_idx) & slot_idx <= sizes
+    val <- rep(NA_character_, length(split_all))
+    offsets <- cumsum(sizes) - sizes
+    val[valid] <- unlist(split_all, use.names = FALSE)[
+      offsets[valid] + slot_idx[valid]
+    ]
     val[is.na(val) | val == "NA" | !nzchar(val)] <- NA_character_
     val
   }
@@ -1089,8 +1087,9 @@ ir_parse_segments <- function(data, chain, columns = NULL) {
     first <- !duplicated(pair_key)
     unique_gene <- df$CTgene[first]
     unique_aa <- df$CTaa[first]
-    slot_idx <- chain_slot_index(unique_gene)
-    gene_unique <- first_allele(pick_slot(unique_gene, slot_idx))
+    gene_parts <- strsplit(as.character(unique_gene), "_", fixed = TRUE)
+    slot_idx <- chain_slot_index(gene_parts)
+    gene_unique <- first_allele(pick_slot(unique_gene, slot_idx, gene_parts))
     cdr3_unique <- first_allele(pick_slot(unique_aa, slot_idx))
     pair_index <- match(pair_key, pair_key[first])
     gene_seg <- gene_unique[pair_index]

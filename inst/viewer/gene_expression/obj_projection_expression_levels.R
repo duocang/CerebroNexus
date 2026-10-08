@@ -294,6 +294,10 @@ expression_projection_expression_levels <- reactive({
         cells_to_show,
         genes_present[[1L]]
       )
+    } else if (length(genes_present) >= 2 && length(genes_present) <= 9L) {
+      expressionProjectionProgressUpdate(0.3, "Calculating mean expression...")
+      rows <- expressionProjectionCachedRows(data_set(), cells_to_show, genes_present)
+      expression_levels <- unname(Reduce(`+`, rows) / length(rows))
     } else if (length(genes_present) >= 2) {
       expressionProjectionProgressUpdate(0.3, "Calculating mean expression...")
       ## Per-cell mean across the requested genes, restricted to cells_to_show.

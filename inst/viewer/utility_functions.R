@@ -283,22 +283,24 @@ cachePlot <- function(x, ...) {
 ## Return the first complete reactive value immediately; debounce only later
 ## invalidations caused by interactive controls.
 debounceAfterFirst <- function(reactive, millis) {
-  value <- NULL
-  delayed <- NULL
-  observer <- NULL
+  initialized <- FALSE
+  current <- NULL
+  revision <- shiny::reactiveVal(0L)
   shiny::reactive({
-    if (is.null(value)) {
-      initial <- reactive()
-      value <<- shiny::reactiveVal(initial)
-      delayed <<- shiny::debounce(reactive, millis)
-      observer <<- shiny::observeEvent(
-        delayed(),
-        value(delayed()),
-        ignoreInit = TRUE
-      )
-      return(initial)
+    revision()
+    if (!initialized) {
+      current <<- reactive()
+      initialized <<- TRUE
+      delayed <- shiny::debounce(reactive, millis)
+      shiny::observeEvent(delayed(), {
+        next_value <- delayed()
+        if (!identical(current, next_value)) {
+          current <<- next_value
+          revision(shiny::isolate(revision()) + 1L)
+        }
+      }, ignoreInit = TRUE)
     }
-    value()
+    current
   })
 }
 
@@ -4479,8 +4481,11 @@ serverSideGeneSelector <- function(
     genes <- sort(choices())
     req(!is.null(genes), length(genes) > 0)
 
-    send_update <- function() {
+    initial_selection <- isolate(input[[input_id]])
+    send_update <- function(retry_update = FALSE) {
       selected <- isolate(input[[input_id]])
+      if (retry_update && any(nzchar(selected)) &&
+          !identical(selected, initial_selection)) return(invisible(NULL))
       updateSelectizeInput(
         session,
         input_id,
@@ -4500,10 +4505,10 @@ serverSideGeneSelector <- function(
     ## retries so a delayed choices update cannot clear newer browser state.
     if (isTRUE(retry)) {
       session$onFlushed(send_update, once = TRUE)
-      later::later(send_update, delay = 0.3)
-      later::later(send_update, delay = 1.0)
+      later::later(function() send_update(TRUE), delay = 0.3)
+      later::later(function() send_update(TRUE), delay = 1.0)
     } else {
-      later::later(send_update, delay = 0.3)
+      later::later(function() send_update(TRUE), delay = 0.3)
     }
   })
 }
