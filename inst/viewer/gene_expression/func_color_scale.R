@@ -52,6 +52,7 @@ expressionPanelColorScales <- function(genes, mode, shared_scale) {
     "#7f3b08",
     "#4d4d4d"
   )
+  high <- rep(high, length.out = length(genes))
   scales <- lapply(seq_along(genes), function(i) {
     colors <- grDevices::colorRampPalette(c("#d9dde0", high[[i]]))(5)
     Map(list, seq(0, 1, length.out = length(colors)), colors)
