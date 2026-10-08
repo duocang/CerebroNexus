@@ -370,6 +370,11 @@
         begin(currentPane());
       });
 
+    window.addEventListener("cerebro:dataset-context", function (event) {
+      var detail = event && event.detail || {};
+      if (detail.changed || detail.phase !== "ready") resetPages();
+    });
+
     window.addEventListener("cerebro:cell-view-ready", function (event) {
       if (!event.detail || !event.detail.painted) return;
       var id = event.detail && event.detail.id;
