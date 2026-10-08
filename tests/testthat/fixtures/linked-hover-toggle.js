@@ -15,7 +15,8 @@ function interactionIsStatic(){return false;}
 function requestSingleAux(){}
 function nearest(){lookups++;return 42;}
 function singleHoverEnabledAt(){return true;}
-function hoverHtml(i){return 'cell '+i;}
+let hoverValue = 'cell';
+function hoverHtml(i){return hoverValue+' '+i;}
 function placeTip(){}
 eval(source.slice(source.indexOf('  function syncLinkedHoverDefault('),
   source.indexOf('  // ---- brush + pick')));
@@ -34,6 +35,11 @@ assert.deepStrictEqual([...selection],[42]);
 singleActive='expression_projection';
 listeners.mousemove({clientX:10,clientY:10});
 assert.strictEqual(lookups,2); // Linked preference must not disable Gene hover.
+hoverValue='updated RGB'; refreshPanelHover(p);
+assert.strictEqual(hoverCell,42);
+assert.strictEqual(tip.innerHTML,'updated RGB 42');
+listeners.mouseleave(); refreshPanelHover(p);
+assert.strictEqual(hoverCell,null); assert.strictEqual(tip.style.opacity,0);
 singleActive=null; D={n:1476}; syncLinkedHoverDefault(true);
 assert.strictEqual(linkedHoverOn,true);
 setLinkedHover(false); syncLinkedHoverDefault(false);

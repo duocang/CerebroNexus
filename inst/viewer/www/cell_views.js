@@ -4135,40 +4135,51 @@
     }
   }
 
+  function refreshPanelHover(p) {
+    var tip = $(p.tipId);
+    if (!p.hoverPointer) {
+      if (tip && pinnedTip.panel !== p) tip.style.opacity = 0;
+      return;
+    }
+    if (interactionIsStatic()) return;
+    // Linked hover is optional; specialist pages retain their own settings.
+    // Return before nearest-point lookup. Click and brush handlers stay active.
+    if (!singleActive && !linkedHoverOn) return;
+    var space = singleActive && spaceById[p.spaceId];
+    if (space && space._hoverEnabled === false) {
+      tip.style.opacity = 0; setHoverCell(null); return;
+    }
+    var r = p.canvas.getBoundingClientRect();
+    var mx = p.hoverPointer.x - r.left, my = p.hoverPointer.y - r.top;
+    // A pinned tooltip owns this panel's tooltip element until it is closed —
+    // but the cross-panel mark still follows the cursor.
+    var own = pinnedTip.panel !== p;
+    if (p.drag || p.panning) {
+      if (own) tip.style.opacity = 0;
+      setHoverCell(null);
+      return;
+    }
+    var i = nearest(p, mx, my);
+    if (i < 0 || (space && !singleHoverEnabledAt(space, i))) {
+      if (own) tip.style.opacity = 0;
+      setHoverCell(null);
+      return;
+    }
+    requestSingleAux();
+    setHoverCell(i);
+    if (!own) return;
+    tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
+    placeTip(p, tip, i);
+  }
+
   function wireHover(p) {
     var tip = $(p.tipId);
     p.canvas.addEventListener('mousemove', function (e) {
-      if (interactionIsStatic()) return;
-      // Linked hover is optional; specialist pages retain their own settings.
-      // Return before nearest-point lookup. Click and brush handlers stay active.
-      if (!singleActive && !linkedHoverOn) return;
-      var space = singleActive && spaceById[p.spaceId];
-      if (space && space._hoverEnabled === false) {
-        tip.style.opacity = 0; setHoverCell(null); return;
-      }
-      var r = p.canvas.getBoundingClientRect();
-      var mx = e.clientX - r.left, my = e.clientY - r.top;
-      // A pinned tooltip owns this panel's tooltip element until it is closed —
-      // but the cross-panel mark still follows the cursor.
-      var own = pinnedTip.panel !== p;
-      if (p.drag || p.panning) {
-        if (own) tip.style.opacity = 0;
-        setHoverCell(null);
-        return;
-      }
-      var i = nearest(p, mx, my);
-      if (i < 0 || (space && !singleHoverEnabledAt(space, i))) {
-        if (own) tip.style.opacity = 0;
-        setHoverCell(null);
-        return;
-      }
-      requestSingleAux();
-      setHoverCell(i);
-      if (!own) return;
-      tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
-      placeTip(p, tip, i);
+      p.hoverPointer = { x: e.clientX, y: e.clientY };
+      refreshPanelHover(p);
     });
     p.canvas.addEventListener('mouseleave', function () {
+      p.hoverPointer = null;
       setHoverCell(null);
       if (pinnedTip.panel === p) return;
       tip.style.opacity = 0;
@@ -7946,11 +7957,14 @@
       if (title) title.textContent = space.label;
 
     });
-    pick = null; hoverCell = null; unpinTip(); closeCard(); cardMeta = null;
+    pick = null; unpinTip(); closeCard(); cardMeta = null;
     renderLegend(); renderSelbar();
     // A mode/label change can alter header and colourbar height. Refit the
     // existing panels without rebuilding their geometry or restoring state.
     _layoutKey = null; resizeAll(); drawAll();
+    // A second RGB packet can land while the pointer is stationary. Re-pick
+    // against the retained geometry and refresh values after the colour change.
+    activePanels.forEach(refreshPanelHover);
     reportSinglePainted(id, view, D);
     scheduleSingleMetadata(id);
 

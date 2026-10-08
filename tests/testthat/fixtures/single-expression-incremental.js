@@ -15,6 +15,7 @@ function renderLegend() { calls.legend++; }
 function renderSelbar() {}
 function resizeAll() {}
 function drawAll() { calls.draw++; }
+function refreshPanelHover() { calls.hoverRefresh = (calls.hoverRefresh || 0) + 1; }
 function scheduleSingleMetadata() {}
 function reportSelection() {}
 function hydrateSparseSingleColor() {}
@@ -47,8 +48,10 @@ function update(data, meta = {}) { return recolorSingle({id,
 (async function() {
   setup(); const original = {D, cells:D.cells, index:singleIndexMap, space:spaceById[spaceId],
     unit:spaceById[spaceId]._unit, view:panels[0].view, sx:panels[0].sx, lasso:panels[0].lassoData};
+  hoverCell = 2;
   assert(update({color:new Float32Array([9,NaN,-2,5]),paint_order:'highest'}));
   assert.equal(calls.activate, 0); assert.strictEqual(D, original.D);
+  assert.equal(hoverCell, 2); assert.equal(calls.hoverRefresh, 1);
   assert.strictEqual(D.cells,original.cells); assert.strictEqual(singleIndexMap,original.index);
   assert.strictEqual(spaceById[spaceId],original.space); assert.strictEqual(spaceById[spaceId]._unit,original.unit);
   assert.strictEqual(panels[0].view,original.view); assert.strictEqual(panels[0].sx,original.sx);
