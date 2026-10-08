@@ -1,6 +1,20 @@
 (function () {
   "use strict";
 
+  // shinydashboard 0.7.3 assumes its sidebar input is already bound when a
+  // transition ends. Initial navigation animations can finish before Shiny
+  // connects; defer those notifications until the binding actually exists.
+  function guardSidebarTransition(event) {
+    var sidebar = event.target.closest && event.target.closest(".main-sidebar");
+    if (!sidebar || !window.jQuery) return;
+    var binding = window.jQuery(sidebar).data("shiny-input-binding");
+    if (!binding) event.stopPropagation();
+  }
+  ["transitionend", "webkitTransitionEnd", "otransitionend",
+    "oTransitionEnd", "msTransitionEnd"].forEach(function (name) {
+    document.addEventListener(name, guardSidebarTransition, true);
+  });
+
   var MOBILE_QUERY = "(max-width: 767px)";
   function ready(fn) {
     if (document.readyState === "loading") {
