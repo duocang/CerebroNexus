@@ -6,7 +6,7 @@
 ## data reactive. Labels, borders and square layout are browser-only appearance
 ## patches; region outlines remain reactive because they require hull geometry.
 spatial_projection_appearance <- reactiveValues(
-  group_labels = TRUE,
+  group_labels = FALSE,
   draw_border = FALSE,
   keep_square = FALSE
 )

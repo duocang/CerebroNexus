@@ -43,14 +43,15 @@ tab_spatial <- tabItem(
         class = "cerebro-viz-toolbar",
         div(
           class = "cerebro-viz-primary",
-          uiOutput("spatial_projection_main_parameters_UI")
-        ),
-        cerebroToolbarActions(
-          cerebroSettingsButton(
-            "spatial_projection_more_button",
-            "spatial_projection_more"
-          ),
-          cerebroShareButton("spatial_projection")
+          uiOutput("spatial_projection_main_parameters_UI"),
+          uiOutput("spatial_projection_background_selector_UI"),
+          cerebroToolbarActions(
+            cerebroSettingsButton(
+              "spatial_projection_more_button",
+              "spatial_projection_more"
+            ),
+            cerebroShareButton("spatial_projection")
+          )
         ),
         cerebroSettingsDrawer(
           "spatial_projection_more",
@@ -75,7 +76,6 @@ tab_spatial <- tabItem(
             "Background image",
             div(
               class = "spatial-image-controls",
-              uiOutput("spatial_projection_background_selector_UI"),
               uiOutput("spatial_projection_background_parameters_UI")
             )
           ),

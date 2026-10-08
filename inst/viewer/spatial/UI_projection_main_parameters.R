@@ -107,7 +107,6 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
 spatial_background_selection_scope <- reactiveVal(NULL)
 
 output[["spatial_projection_background_selector_UI"]] <- renderUI({
-  req(input[["spatial_projection_more_render_request"]])
   req(
     identical(input[["sidebar"]], "spatial") ||
       inherits(session, "MockShinySession")

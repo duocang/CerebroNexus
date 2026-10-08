@@ -314,7 +314,7 @@ test_that("background-image selection only recreates image calibration controls"
     perl = TRUE
   )
   selector_request <- regexpr(
-    'req(input[["spatial_projection_more_render_request"]])',
+    'identical(input[["sidebar"]], "spatial")',
     selector_source,
     fixed = TRUE
   )[[1]]
@@ -1888,4 +1888,20 @@ test_that(".getSpatialData tolerates a real Slide-seq object (NA-named coord col
   expect_true(nrow(res$coordinates) > 0)
   # the NA-named column must not have leaked through the sanitiser
   expect_false(any(is.na(colnames(res$coordinates))))
+})
+
+
+test_that("Spatial background picker is in the toolbar and labels default off", {
+  shell <- paste(readLines(viewer_test_path("spatial", "UI.R")), collapse = "\n")
+  selector <- paste(readLines(viewer_test_path("spatial", "UI_projection_main_parameters.R")), collapse = "\n")
+  parameters <- paste(readLines(viewer_test_path("spatial", "obj_projection_parameters_plot.R")), collapse = "\n")
+  drawer <- regexpr("cerebroSettingsDrawer(", shell, fixed = TRUE)[[1L]]
+  picker <- regexpr('uiOutput("spatial_projection_background_selector_UI")', shell, fixed = TRUE)[[1L]]
+  expect_gt(picker, 0L)
+  expect_lt(picker, drawer)
+  picker_source <- strsplit(selector, 'output[["spatial_projection_background_selector_UI"]] <- renderUI({', fixed = TRUE)[[1L]][[2L]]
+  picker_source <- strsplit(picker_source, "serverSideGeneSelector(", fixed = TRUE)[[1L]][[1L]]
+  expect_no_match(picker_source, "spatial_projection_more_render_request", fixed = TRUE)
+  expect_match(parameters, "group_labels = FALSE", fixed = TRUE)
+  expect_match(parameters, 'spatial_update_appearance("group_labels", value)', fixed = TRUE)
 })
