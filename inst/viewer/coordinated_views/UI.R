@@ -353,6 +353,11 @@ tab_coordinated_views <- tabItem(
                 value = 1
               ),
               checkboxInput(
+                "cv-hover",
+                "Show cell hover",
+                value = TRUE
+              ),
+              checkboxInput(
                 "cv-labels",
                 "Group labels",
                 value = TRUE

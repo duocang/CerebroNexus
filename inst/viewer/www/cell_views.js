@@ -84,6 +84,7 @@
   // in the others -- that is how the eye carries a position in the embedding over
   // to a position in tissue. Null when the cursor is not on a cell.
   var hoverCell = null;
+  var linkedHoverOn = true;
   // The gene a reply is still wanted for. Set when one is asked for and cleared by
   // the reply, so a late answer for a gene the user has moved on from is dropped
   // rather than drawn under the current gene's name.
@@ -101,7 +102,6 @@
   // The data set the current state belongs to. Compared against the incoming
   // bundle's identity to tell a new data set from a re-sent one.
   var dataShown = null;
-  var LINKED_STATIC_ABOVE = 200000;
   var linkedInteractionEnabled = true;
   var wireToken = 0;
   // Guards the async decode: a fast switch could have an earlier image finish
@@ -4095,10 +4095,31 @@
     return singleActive ? singleInteractionIsStatic() : linkedInteractionIsStatic();
   }
 
+  function syncLinkedHoverDefault(dataChanged) {
+    if (dataChanged) linkedHoverOn = Number(D.n) < 200000;
+    var control = $('cv-hover');
+    if (control) control.checked = linkedHoverOn;
+  }
+
+  function setLinkedHover(enabled) {
+    linkedHoverOn = !!enabled;
+    syncLinkedHoverDefault(false);
+    if (!linkedHoverOn) {
+      panels.forEach(function (panel) {
+        var tip = $(panel.tipId);
+        if (tip && pinnedTip.panel !== panel) tip.style.opacity = 0;
+      });
+      setHoverCell(null);
+    }
+  }
+
   function wireHover(p) {
     var tip = $(p.tipId);
     p.canvas.addEventListener('mousemove', function (e) {
       if (interactionIsStatic()) return;
+      // Linked hover is optional; specialist pages retain their own settings.
+      // Return before nearest-point lookup. Click and brush handlers stay active.
+      if (!singleActive && !linkedHoverOn) return;
       var space = singleActive && spaceById[p.spaceId];
       if (space && space._hoverEnabled === false) {
         tip.style.opacity = 0; setHoverCell(null); return;
@@ -8472,6 +8493,7 @@
     // away.
     var datasetIdentity = String(D.dataset_id || '') + '\u0000' + configFingerprint();
     var dataChanged = datasetIdentity !== dataShown;
+    syncLinkedHoverDefault(dataChanged);
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
@@ -8481,7 +8503,8 @@
       imgChoice = {};
       pendingCloneDetails.clear();
       pendingCloneSupplement = null;
-      linkedInteractionEnabled = Number(D.n) <= LINKED_STATIC_ABOVE;
+      // Preserve PR6 interaction defaults; static mode remains an explicit choice.
+      linkedInteractionEnabled = true;
     }
     dataShown = datasetIdentity;
     imgToken++;
@@ -9797,6 +9820,10 @@
     }
     function updateLinkedToggle(target) {
       var id = target && target.id;
+      if (id === 'cv-hover') {
+        setLinkedHover(target.checked);
+        return true;
+      }
       if (id === 'cv-labels') {
         var nextLabels = !!target.checked;
         if (labelsOn === nextLabels) return true;
