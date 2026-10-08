@@ -1,3 +1,6 @@
+expression_projection_render_state <- new.env(parent = emptyenv())
+expression_projection_render_state$geometry <- NULL
+
 expressionSparseColor <- function(values, max_density = 0.5) {
   if (!is.numeric(values) || length(values) < 4096L) {
     return(NULL)
@@ -281,6 +284,24 @@ expression_projection_update_plot <- function(input) {
       hover = hover
     )
   }
+  geometry <- list(
+    dataset = if (exists("data_set", mode = "function")) data_set() else NULL,
+    coordinates = coordinates, plot_parameters = plot_parameters,
+    cells = cell_indices, trajectory = trajectory,
+    separate = isTRUE(separate_panels),
+    request = input[["render_request"]]
+  )
+  send_render <- function(id, meta, data, hover, extra, deferred_aux) {
+    can_recolor <- !isTRUE(reset_axes) && !no_gene_selected &&
+      !isTRUE(separate_panels) && length(coordinates) == 2L &&
+      identical(expression_projection_render_state$geometry, geometry)
+    if (can_recolor) {
+      cerebroCellViewRecolor(id, meta, data)
+    } else {
+      cerebroCellViewRender(id, meta, data, hover, extra, deferred_aux)
+    }
+    expression_projection_render_state$geometry <- geometry
+  }
   if (identical(display_mode, "rgb") && !no_gene_selected) {
     rgb_levels <- expression_levels[c("r", "g", "b")]
     rgb_genes <- color_settings[["rgb_genes"]][c("r", "g", "b")]
@@ -291,7 +312,7 @@ expression_projection_update_plot <- function(input) {
       n_cells
     )
     output_data[["rgb_genes"]] <- color_settings[["rgb_genes"]]
-    cerebroCellViewRender(
+    send_render(
       "expression_projection",
       list(
         color_type = "rgb",
@@ -322,7 +343,7 @@ expression_projection_update_plot <- function(input) {
       paste0("Mean expression (", length(color_settings[["genes"]]), " genes)")
     }
     output_data[["shared_zero_color"]] <- no_gene_selected
-    cerebroCellViewRender(
+    send_render(
       "expression_projection",
       list(
         color_type = "continuous",

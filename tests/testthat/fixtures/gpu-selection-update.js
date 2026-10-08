@@ -1,6 +1,8 @@
 const fs=require('fs'),assert=require('assert');
 const source=fs.readFileSync(process.argv[2],'utf8');
 const n=97,RGB_MODE='rgb';
+const window={},spaceById={};
+function catOf(){return null;}
 let D={n},sel=null,nicheSet=null,mode='field',opacity=.73,revision=0;
 let unit={nx:new Float32Array(n),ny:new Float32Array(n),ok:new Uint8Array(n)};
 for(let i=0;i<n;i++){unit.nx[i]=i/n;unit.ny[i]=1-i/n;unit.ok[i]=i%13!==0;}

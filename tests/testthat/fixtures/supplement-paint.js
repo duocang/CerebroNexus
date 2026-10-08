@@ -15,7 +15,7 @@ const window={CBViewWire:{unpack:x=>x}};
 const CBViewState={telemetry:{snapshot:x=>x}};
 let transportMetrics={},pendingCloneSupplement=null;
 eval(source.slice(source.indexOf('  var drawAllDeferred = false;'),source.indexOf('  // Drop any committed lasso')));
-eval(source.slice(source.indexOf('  function applyHydratedSupplement('),source.indexOf('  function applyHydratedSupplement(')));
+eval(source.slice(source.indexOf('  function applyHydratedSupplement('),source.indexOf('  function onBinarySupplement(')));
 function reset(){D={dataset_id:'a',progressive_token:4,progressive:true,n:2,cells:['a','b']};selection=[1,2];paint=[];}
 const extra={dataset_id:'a',dataset_fingerprint:'fp',progressive_token:4,spaces:[{id:'other'}]};
 reset();applyHydratedSupplement(extra);assert.equal(paint.length,2);assert(paint.every(p=>!p.progressive));assert.deepStrictEqual(paint[0].selection,[1,2]);assert.equal(reports,1);assert.equal(fallback,0);

@@ -954,6 +954,20 @@ cerebroCellViewResolveDeferredAux <- function(message) {
   message
 }
 
+cerebroCellViewRecolor <- function(id, meta, data) {
+  message <- cerebroCellViewMessage(id, meta, data)
+  fields <- c("color", "rgb", "rgb_scaled", "rgb_genes", "colorscale",
+    "panel_colorscales", "color_range", "reversescale", "paint_order",
+    "render_key", "sparse_color", "color_cache_key", "packed_rgb",
+    "packed_rgb_cache_keys", "zero_color")
+  message$data <- message$data[intersect(fields, names(message$data))]
+  if (isTRUE(input[["coordviews_wire_supported"]])) {
+    session$sendBinaryMessage("cell_view_recolor_binary", cv_wire_pack_message(message))
+  } else {
+    session$sendCustomMessage("cell_view_recolor", message)
+  }
+}
+
 cerebroCellViewRender <- function(
   id,
   meta,

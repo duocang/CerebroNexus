@@ -7286,8 +7286,8 @@
       levels: levels, colors: colors, hover: hover, hoverEnabled: hoverEnabled,
       hoverColumns: hoverColumns };
   }
-  function quantisedField(label, raw, keys, data, panelScale) {
-    var index = singleIndex(), min = Infinity, max = -Infinity;
+  function quantisedField(label, raw, keys, data, panelScale, aligned) {
+    var index = aligned ? null : singleIndex(), min = Infinity, max = -Infinity;
     var direct = !keys || !keys.length;
     if (data && data.zero_color && (!raw || !raw.length)) {
       var zeroPalette = singlePalette(panelScale || data.colorscale,
@@ -7309,7 +7309,7 @@
     var values = direct && ArrayBuffer.isView(raw) ? raw : emptyVector(null);
     var complete = direct && values.length === (D && D.n || 0);
     for (var i = 0; i < raw.length; i++) {
-      var at = direct ? i : index.get(String(keys[i]));
+      var at = direct || aligned ? i : index.get(String(keys[i]));
       var value = Number(raw[i]);
       if (at == null || !isFinite(value)) { complete = false; continue; }
       values[at] = value; if (value < min) min = value; if (value > max) max = value;
@@ -7349,10 +7349,10 @@
       channelColors: Array.isArray(meta.coexpr_colors) ? meta.coexpr_colors : []
     };
   }
-  function singleRgbData(data) {
-    var index = singleIndex(), keys = Array.isArray(data.selection_key)
+  function singleRgbData(data, aligned) {
+    var index = aligned ? null : singleIndex(), keys = Array.isArray(data.selection_key)
       ? data.selection_key : [], raw = data.rgb || {}, out = {};
-    var direct = !keys.length;
+    var direct = !keys.length || aligned;
     ['r', 'g', 'b'].forEach(function (channel) {
       var source = raw[channel] || [], maximum = 0;
       var values = new Float32Array(D && D.n || 0);
@@ -7362,7 +7362,9 @@
         values[at] = value; if (value > maximum) maximum = value;
       }
       var scaled = new Uint8Array(values.length);
-      if (maximum > 0) {
+      if (data.rgb_scaled) {
+        scaled.set(values);
+      } else if (maximum > 0) {
         for (i = 0; i < values.length; i++) {
           scaled[i] = Math.round(values[i] / maximum * 255);
         }
@@ -7630,6 +7632,45 @@
         lassoData: p.lassoData && p.lassoData.map(function (q) { return q.slice(); }) };
     });
   }
+  function singleGpuReady(panel) {
+    var renderer = panel && panel.gpu;
+    if (!renderer || !renderer.ready) return Promise.resolve();
+    return Promise.resolve(renderer.ready).catch(function () {}).then(function () {
+      if (panel.gpu && panel.gpu !== renderer) return singleGpuReady(panel);
+    });
+  }
+  function reportSinglePainted(id, payload, paintedData) {
+    var paintedMeta = payload.meta;
+    var activePanels = panels.filter(function (panel) { return panel.spaceId; });
+    Promise.all(activePanels.map(singleGpuReady)).then(function () {
+      if (singleActive !== id || D !== paintedData || payload.meta !== paintedMeta ||
+          visibleSingleId() !== id) {
+        return false;
+      }
+      drawAll();
+      return Promise.all(activePanels.map(function (panel) {
+        return panel.gpu && typeof panel.gpu.idle === 'function'
+          ? panel.gpu.idle().catch(function () {})
+          : Promise.resolve();
+      }));
+    }).then(function (settled) {
+      if (settled === false) return;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          if (singleActive !== id || D !== paintedData || payload.meta !== paintedMeta ||
+              visibleSingleId() !== id) return;
+          reportSelection('primary');
+          window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
+            detail: {
+              id: id,
+              painted: true,
+              renderToken: paintedMeta.render_token
+            }
+          }));
+        });
+      });
+    });
+  }
   function activateSingle(id, resetAxes, preserveTargetState, eventKind) {
     var activationStarted = performance.now();
     var timing = CBViewState.specialistLifecycle.activate(
@@ -7790,6 +7831,104 @@
     } else if (visibleSingleId() === id) {
       activateSingle(id, !!data.reset_axes, false, 'primary');
     }
+  }
+
+  function updateSingleExpression(id, previousMeta, previousData, message) {
+    var view = singleViews[id], data = view.data, meta = view.meta;
+    // The R recolor protocol guarantees unchanged geometry. Keep the shortcut
+    // narrow: an active, fully identified, flat Gene canvas with one panel.
+    // Other views, layouts and geometry changes retain the full activation path.
+    if (id !== 'expression_projection' || singleActive !== id || !D ||
+        rebuildingBase || singleSpaceIds.length !== 1 ||
+        singleSpaceIds[0] !== 'single::' + id || data.z || data.panels ||
+        !Array.isArray(D.cells) || D.cells.length !== D.n ||
+        !Array.isArray(data.selection_key) || data.selection_key.length !== D.n ||
+        data.x !== previousData.x || data.y !== previousData.y ||
+        data.selection_key !== previousData.selection_key ||
+        !['continuous', 'rgb'].includes(previousMeta.color_type) ||
+        !['continuous', 'rgb'].includes(meta.color_type)) return false;
+    var allowed = ['color', 'rgb', 'rgb_scaled', 'rgb_genes', 'colorscale',
+      'panel_colorscales', 'color_range', 'reversescale', 'paint_order',
+      'render_key', 'sparse_color', 'color_cache_key', 'packed_rgb', 'packed_rgb_cache_keys', 'zero_color'];
+    if (Object.keys(message.data || {}).some(function (key) {
+      return allowed.indexOf(key) < 0;
+    }) || Object.keys(message.meta || {}).some(function (key) {
+      return ['color_type', 'color_variable', 'render_token'].indexOf(key) < 0 &&
+        JSON.stringify(meta[key]) !== JSON.stringify(previousMeta[key]);
+    })) return false;
+    var spaceId = singleSpaceIds[0], space = spaceById[spaceId];
+    var activePanels = panels.filter(function (p) { return p.spaceId; });
+    if (!space || space.z || activePanels.length !== 1 ||
+        activePanels[0].spaceId !== spaceId) return false;
+    var rgb = meta.color_type === 'rgb';
+    if (rgb) {
+      if (!data.rgb || ['r', 'g', 'b'].some(function (channel) {
+        return !data.rgb[channel] || data.rgb[channel].length !== D.n;
+      })) return false;
+    } else if (!(Array.isArray(data.color) || ArrayBuffer.isView(data.color)) ||
+        data.color.length !== D.n) return false;
+    // Legacy payloads may contain duplicate stringified IDs. Their Map-based
+    // alignment must keep its existing semantics rather than assuming an order.
+    if (singleIndex().size !== D.n) return false;
+    var fieldName = 'single:' + id + ':0', mode;
+    if (rgb) {
+      // Flat single-view cells and coordinates were built in selection_key
+      // order. An unchanged geometry payload needs no per-cell Map lookup.
+      D.rgb = singleRgbData(data, true);
+      delete D.fields[fieldName];
+      mode = RGB_MODE;
+    } else {
+      var label = meta.color_variable || 'Value';
+      D.fields[fieldName] = quantisedField(label, data.color,
+        data.selection_key, data, data.panel_colorscales && data.panel_colorscales[label], true);
+      delete D.rgb;
+      mode = FIELD_PREFIX + fieldName;
+    }
+    space.label = rgb ? (meta.space_label || id) : (meta.color_variable || 'Value');
+    colorBy = mode; singleSpaceModes[spaceId] = mode;
+    // These caches used to be invalidated incidentally by replacing D.
+    // A new expression can change paint order even when its field name is equal.
+    _ordD = null; _clipD = null;
+    activePanels.forEach(function (p) {
+      p.colorBy = mode; p.miniBg = null;
+      var title = $('cv-title-' + p.key.toLowerCase());
+      if (title) title.textContent = space.label;
+
+    });
+    pick = null; hoverCell = null; unpinTip(); closeCard(); cardMeta = null;
+    renderLegend(); renderSelbar();
+    // A mode/label change can alter header and colourbar height. Refit the
+    // existing panels without rebuilding their geometry or restoring state.
+    _layoutKey = null; resizeAll(); drawAll();
+    reportSinglePainted(id, view, D);
+
+    return true;
+  }
+
+  function recolorSingle(message) {
+    if (!message || !message.id) return false;
+    var view = singleViews[message.id];
+    if (!view || !view.data || view.data.x == null || view.data.y == null) {
+      return false;
+    }
+    var colorFields = [
+      'color', 'rgb', 'rgb_scaled', 'rgb_genes', 'colorscale', 'panel_colorscales',
+      'color_range', 'reversescale', 'paint_order', 'render_key', 'sparse_color',
+      'color_cache_key', 'packed_rgb', 'packed_rgb_cache_keys', 'zero_color'
+    ];
+    var previousMeta = view.meta || {}, previousData = view.data;
+    var data = Object.assign({}, view.data);
+    colorFields.forEach(function (name) { delete data[name]; });
+    view.meta = Object.assign({}, view.meta || {}, message.meta || {});
+    view.data = Object.assign(data, message.data || {});
+    hydrateSparseSingleColor(view.data);
+    hydrateColorPacketMap(view.data, 'packed_rgb', 'packed_rgb_cache_keys', 'rgb');
+    view.hiddenGroups = [];
+    if (visibleSingleId() === message.id &&
+        !updateSingleExpression(message.id, previousMeta, previousData, message)) {
+      activateSingle(message.id, false, false, 'primary');
+    }
+    return true;
   }
 
   function clearSingleSelection(id) {
@@ -9135,6 +9274,10 @@
       applyDeferredAsset(message.key, message.uri);
     });
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
+    Shiny.addCustomMessageHandler('cell_view_recolor', recolorSingle);
+    Shiny.addCustomMessageHandler('cell_view_recolor_binary', function(buffer) {
+      recolorSingle(window.CBViewWire.unpack(buffer));
+    });
     Shiny.addCustomMessageHandler('cell_view_aux_binary', onSingleAuxBinary);
     Shiny.addCustomMessageHandler(
       'cell_view_resource_catalog',

@@ -28,6 +28,8 @@ expression_projection_data_to_plot_raw <- reactive({
     )
   }
   to_return <- list(
+    dataset = data_set(),
+    render_request = input[["expression_projection_render_request"]],
     coordinates = coordinates,
     reset_axes = isolate(expression_projection_parameters_other[[
       'reset_axes'
