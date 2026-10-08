@@ -2,6 +2,11 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_main_parameters_UI"]] <- renderUI({
+  defaults <- viewerProjectionDefaults(
+    viewerProjectionFirstFrameMetadata(),
+    availableProjections(),
+    tryCatch(getParameters(), error = function(e) list())
+  )
   colour_groups <- viewerColourGroupChoices()
   tagList(
     selectInput(

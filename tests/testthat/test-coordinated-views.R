@@ -1076,10 +1076,8 @@ test_that("primary bundle materializes only the first visible projection and col
   expect_named(supplement$projections, "tsne")
   expect_true(isTRUE(supplement$groups$sample$deferred))
   expect_null(supplement$groups$sample$values)
-  expect_true(isTRUE(supplement$cat_extra$donor$deferred))
-  expect_null(supplement$cat_extra$donor$values)
-  expect_true(isTRUE(supplement$fields[["meta:score"]]$deferred))
-  expect_null(supplement$fields[["meta:score"]]$v)
+  expect_null(supplement$cat_extra$donor)
+  expect_null(supplement$fields[["meta:score"]])
 })
 
 test_that("primary bundle reuses thin CRB first-frame fields", {
@@ -2423,8 +2421,7 @@ test_that("compact supplement avoids full CRB hydration", {
 
   expect_true(isTRUE(supplement$groups$sample$deferred))
   expect_null(supplement$groups$sample$values)
-  expect_true(isTRUE(supplement$fields[["meta:score"]]$deferred))
-  expect_null(supplement$fields[["meta:score"]]$v)
+  expect_null(supplement$fields[["meta:score"]])
   expect_identical(as.integer(supplement$clone$index), c(1L, 3L))
   expect_named(supplement$groups, c("sample", "clone_expansion"))
   expect_identical(projection_catalog_calls, 0L)

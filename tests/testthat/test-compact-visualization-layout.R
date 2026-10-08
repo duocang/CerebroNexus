@@ -359,7 +359,7 @@ test_that("viewer legends wrap outside their visualizations", {
 test_that("Immune repertoire keeps its status row across subtabs", {
   source <- paste(
     readLines(
-      viewer_test_path("immune_repertoire/UI.R"),
+      viewer_test_path("immune_repertoire/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -374,7 +374,7 @@ test_that("immune analysis pages share the compact tab strip", {
   )
   repertoire <- paste(
     readLines(
-      viewer_test_path("immune_repertoire/UI.R"),
+      viewer_test_path("immune_repertoire/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
