@@ -2207,6 +2207,16 @@
   // here: its visibility predicate (p.ok + shown) and fixed hit radius are this
   // engine's, not shared.
   function nearest(p, mx, my) {
+    var sp = spaceById[p.spaceId], unit = sp && sp._unit;
+    // A flat view can hit-test the same normalized geometry used by the GPU.
+    // Keep the full scan for 3-D and incomplete geometry. Visibility is checked
+    // at query time, so filters, hidden groups and selections stay current.
+    if (D.n >= GPU_MIN_CELLS && unit && !unit.nz && !unit._pending &&
+        unit.nx && unit.ny && unit.ok && p._SX > 0 && p._SY > 0) {
+      return CBGeom.nearestInGrid(CBGeom.pointGrid(unit, D.n), p.view, {
+        x: p._sox, y: p._soy, width: p._SX, height: p._SY
+      }, mx, my, function (i) { return shown(i, p); });
+    }
     ensureScreenProjection(p);
     var best = -1, bd = 200, n = D.n, i;
     for (i = 0; i < n; i++) {
