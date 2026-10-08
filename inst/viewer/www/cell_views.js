@@ -1939,12 +1939,18 @@
   }
 
   function requestSingleAux() {
-    var view = singleActive && singleViews[singleActive];
+    var id = singleActive, view = id && singleViews[id];
     var token = CBViewState.specialistLifecycle.requestAux(view);
     if (token == null) return;
-    Shiny.setInputValue('cell_view_aux_request', {
-      id: singleActive, wire_token: token
-    }, { priority: 'event' });
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (singleViews[id] !== view || view.data.wire_token !== token || singleActive !== id) {
+          if (view._auxPending === token) view._auxPending = null;
+          return;
+        }
+        Shiny.setInputValue('cell_view_aux_request', {id:id, wire_token:token}, {priority:'event'});
+      });
+    });
   }
 
   function cloneBaseState(p) {
@@ -3667,6 +3673,22 @@
   function hoverHtml(i, pinned) {
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
+      var singleView = singleViews[singleActive];
+      if (singleView && singleView.hover && singleView.hover.pending) {
+        var basic = ['Cell: ' + cellLabel(i)];
+        var group = catOf(colorBy), value = fieldOf();
+        if (group) {
+          var level = group.levels[group.values[i]];
+          basic.push(singleView.meta.color_variable + ': ' + (level == null ? 'NA' : level));
+        }
+        if (value && value.v) {
+          var numeric = fieldValue(value, i);
+          basic.push(value.label + ': ' + (numeric == null ? 'NA' : fmtVal(numeric)));
+        }
+        basic.push('Additional metadata loading…');
+        return '<div class="cv-tip-row">' +
+          esc(basic.join('\n')).replace(/\n/g, '<br>') + '</div>';
+      }
         var columns = singleSpace && singleSpace._hoverColumns;
         if (Array.isArray(columns) && columns.length) {
           var lines = ['Cell: ' + cellLabel(i)];
@@ -7814,6 +7836,8 @@
     timing.firstDrawMs = performance.now() - drawStarted;
     timing.activationMs = performance.now() - activationStarted;
     reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
+    requestSingleAux();
+    scheduleSingleMetadata(id);
     return true;
   }
   function activateLinked() {
@@ -7928,6 +7952,7 @@
     // existing panels without rebuilding their geometry or restoring state.
     _layoutKey = null; resizeAll(); drawAll();
     reportSinglePainted(id, view, D);
+    scheduleSingleMetadata(id);
 
     return true;
   }
@@ -8400,20 +8425,21 @@
       }
       var view = message && singleViews[message.id];
       if (!CBViewState.specialistLifecycle.acceptAux(view, message)) return;
-      view.data.selection_key = message.selection_key;
+      var hasCells = message.selection_key != null;
+      if (hasCells) view.data.selection_key = message.selection_key;
       view.hover = message.hover || {};
       if (singleActive !== message.id) return;
-      var cells = singlePayloadCells(view);
       var canonicalGroups = view.data.canonical_group;
-      if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === D.n) {
-        cells = canonicalAuxValues(view.data.selection_key, canonicalGroups, '');
+      if (hasCells) {
+        var cells = singlePayloadCells(view);
+        if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === D.n) {
+          cells = canonicalAuxValues(view.data.selection_key, canonicalGroups, '');
+        }
+        if (cells.length !== D.n) return;
+        D.cells = cells;
+        singleIndexCells = null; singleIndexMap = null;
+        reportSelection('aux');
       }
-      if (cells.length !== D.n) return;
-      D.cells = cells;
-      singleIndexCells = null; singleIndexMap = null;
-      // A user may select immediately after the fast first frame. Complete
-      // that deferred report now that stable cell identities are available.
-      reportSelection('aux');
       var nested = view.meta && view.meta.color_type === 'categorical' &&
         !ArrayBuffer.isView(canonicalGroups);
       var offsets = null;
@@ -8454,9 +8480,33 @@
           D.n
         );
       }
+      panels.forEach(function (panel) {
+        var tip = $(panel.tipId);
+        var cell = pinnedTip.panel === panel ? pinnedTip.cell : hoverCell;
+        if (tip && cell != null && Number(tip.style.opacity) > 0) {
+          tip.innerHTML = hoverHtml(cell, pinnedTip.panel === panel);
+        }
+      });
+      scheduleSingleMetadata(message.id);
     } catch (error) {
       return;
     }
+  }
+
+  function scheduleSingleMetadata(id) {
+    var view = singleViews[id], token = view && view.data && view.data.wire_token;
+    if (!view || !view.hover || !view.hover.pending || token == null ||
+        view._metadataRequested === token || singleActive !== id) return;
+    view._metadataRequested = token;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (singleViews[id] !== view || view.data.wire_token !== token) return;
+        if (singleActive !== id) { view._metadataRequested = null; return; }
+        Shiny.setInputValue('cell_view_aux_request', {
+          id: id, wire_token: token, stage: 'metadata'
+        }, { priority: 'event' });
+      });
+    });
   }
 
   function applyData(bundle) {

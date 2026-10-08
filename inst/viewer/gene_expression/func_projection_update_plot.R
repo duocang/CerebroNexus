@@ -231,6 +231,17 @@ expression_projection_update_plot <- function(input) {
     }
   }
   output_hover <- list(hoverinfo = "skip", text = list(), columns = list())
+  data_snapshot <- if (exists("data_set", mode = "function")) data_set() else NULL
+  core_aux <- function() {
+    metadata <- if (is.null(data_snapshot)) getMetaData() else data_snapshot$getMetaData()
+    core <- cerebroCellViewDeferredAux(
+      selection_rows = seq_len(n_cells),
+      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
+      hover = isTRUE(plot_parameters[["hover_info"]])
+    )
+    core$hover$pending <- isTRUE(plot_parameters[["hover_info"]])
+    core
+  }
   deferred_aux <- function() {
     full_metadata <- if (
       !is.null(metadata) && "cell_barcode" %in% colnames(metadata)
@@ -298,7 +309,7 @@ expression_projection_update_plot <- function(input) {
     if (can_recolor) {
       cerebroCellViewRecolor(id, meta, data)
     } else {
-      cerebroCellViewRender(id, meta, data, hover, extra, deferred_aux)
+      cerebroCellViewRender(id, meta, data, hover, extra, deferred_aux, core_aux)
     }
     expression_projection_render_state$geometry <- geometry
   }

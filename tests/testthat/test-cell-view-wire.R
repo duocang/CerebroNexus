@@ -507,3 +507,42 @@ test_that("zero-color specialist frames reuse shared browser geometry", {
   expect_match(javascript, "previous.unit", fixed = TRUE)
   expect_match(javascript, "gpuPositionCount", fixed = TRUE)
 })
+
+
+test_that("core auxiliary identities precede full metadata and reject duplicate stages", {
+  env <- new.env(parent = globalenv())
+  sys.source(utility_file, env)
+  sent <- list()
+  core_builds <- 0L
+  full_builds <- 0L
+  env$cv_wire_pack_message <- identity
+  env$session <- list(sendBinaryMessage = function(type, value) {
+    sent[[length(sent) + 1L]] <<- value
+  })
+  env$.cerebro_cell_view_aux_pending[["gene:7"]] <- list(
+    id = "gene", wire_token = 7L,
+    core_builder = function() {
+      core_builds <<- core_builds + 1L
+      list(selection_key = c("a", "b"), hover = list(hoverinfo = "text", pending = TRUE))
+    },
+    build = function() {
+      full_builds <<- full_builds + 1L
+      list(selection_key = c("a", "b"), hover = list(columns = list("metadata")))
+    }
+  )
+  request <- list(id = "gene", wire_token = 7L)
+  expect_true(env$cerebroCellViewAuxRequest(request))
+  expect_identical(core_builds, 1L)
+  expect_identical(full_builds, 0L)
+  expect_identical(sent[[1L]]$selection_key, c("a", "b"))
+  expect_true(sent[[1L]]$hover$pending)
+  expect_false(env$cerebroCellViewAuxRequest(request))
+  request$stage <- "metadata"
+  expect_true(env$cerebroCellViewAuxRequest(request))
+  expect_identical(full_builds, 1L)
+  expect_null(sent[[2L]]$selection_key)
+  expect_identical(sent[[2L]]$hover$columns, list("metadata"))
+  expect_false(env$cerebroCellViewAuxRequest(request))
+  request$wire_token <- 6L
+  expect_false(env$cerebroCellViewAuxRequest(request))
+})

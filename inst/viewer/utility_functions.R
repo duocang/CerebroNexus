@@ -1032,13 +1032,49 @@ cerebroCellViewRecolor <- function(id, meta, data) {
   }
 }
 
+cerebroCellViewAuxRequest <- function(request) {
+  if (!is.list(request) || is.null(request$id) || is.null(request$wire_token)) {
+    return(invisible(FALSE))
+  }
+  key <- paste(request$id, request$wire_token, sep = ":")
+  message <- .cerebro_cell_view_aux_pending[[key]]
+  if (is.null(message)) return(invisible(FALSE))
+  if (is.function(message$core_builder)) {
+    core <- message$core_builder()
+    message$core_builder <- NULL
+    message$core <- c(list(id = message$id, wire_token = message$wire_token), core)
+  }
+  if (!is.null(message$core) && !isTRUE(message$core_sent)) {
+    core <- message$core
+    message$core <- NULL
+    message$core_sent <- TRUE
+    .cerebro_cell_view_aux_pending[[key]] <- message
+    if (!isTRUE(core$hover$pending)) {
+      rm(list = key, envir = .cerebro_cell_view_aux_pending)
+    }
+    session$sendBinaryMessage("cell_view_aux_binary", cv_wire_pack_message(core))
+    return(invisible(TRUE))
+  }
+  if (isTRUE(message$core_sent) && !identical(request$stage, "metadata")) {
+    return(invisible(FALSE))
+  }
+  rm(list = key, envir = .cerebro_cell_view_aux_pending)
+  core_sent <- isTRUE(message$core_sent)
+  message$core_sent <- NULL
+  message <- cerebroCellViewResolveDeferredAux(message)
+  if (core_sent) message$selection_key <- NULL
+  session$sendBinaryMessage("cell_view_aux_binary", cv_wire_pack_message(message))
+  invisible(TRUE)
+}
+
 cerebroCellViewRender <- function(
   id,
   meta,
   data,
   hover = list(),
   extra = list(),
-  deferred_aux = NULL
+  deferred_aux = NULL,
+  core_aux = NULL
 ) {
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
   deferred_selection_lengths <- suppressWarnings(as.integer(
@@ -1160,7 +1196,7 @@ cerebroCellViewRender <- function(
       .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
         is.function(deferred_aux)
       ) {
-        list(id = id, wire_token = token, build = deferred_aux)
+        list(id = id, wire_token = token, build = deferred_aux, core_builder = core_aux)
       } else {
         list(
           id = id,

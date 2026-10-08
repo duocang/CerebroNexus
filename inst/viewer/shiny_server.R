@@ -111,16 +111,7 @@ server <- function(input, output, session) {
     input[["cell_view_aux_request"]],
     {
       request <- input[["cell_view_aux_request"]]
-      req(is.list(request), request$id, request$wire_token)
-      key <- paste(request$id, request$wire_token, sep = ":")
-      message <- .cerebro_cell_view_aux_pending[[key]]
-      req(!is.null(message))
-      rm(list = key, envir = .cerebro_cell_view_aux_pending)
-      message <- cerebroCellViewResolveDeferredAux(message)
-      session$sendBinaryMessage(
-        "cell_view_aux_binary",
-        cv_wire_pack_message(message)
-      )
+      cerebroCellViewAuxRequest(request)
     },
     ignoreInit = TRUE
   )

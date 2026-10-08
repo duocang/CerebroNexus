@@ -11,6 +11,8 @@ const p = {spaceId:'main', tipId:'tip', canvas:{
 const panels = [p], pinnedTip = {panel:null};
 function $(id){return id==='cv-hover'?checkbox:tip;}
 function setHoverCell(i){if(i!==hoverCell){hoverCell=i;draws++;}}
+function interactionIsStatic(){return false;}
+function requestSingleAux(){}
 function nearest(){lookups++;return 42;}
 function singleHoverEnabledAt(){return true;}
 function hoverHtml(i){return 'cell '+i;}
