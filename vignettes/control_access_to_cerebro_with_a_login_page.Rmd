@@ -270,8 +270,8 @@ sudo journalctl -u shiny-server -f
 **Run it on:** the host that contains `my-deployment/` and the external env
 file.
 
-**What happens:** Docker Compose reads `compose.yaml`, builds a runtime containing
-CerebroNexus and `shinymanager`, injects the env-file assignments into the
+**What happens:** Docker Compose reads `compose.yaml`, uses a runtime built from
+your checked-out CerebroNexus revision, injects the env-file assignments into the
 container, and maps host port 3838 to the App.
 
 **Verify:** open <http://localhost:3838>, test valid and invalid login, and check
@@ -287,14 +287,29 @@ my-deployment/
 └── my_app/
 ```
 
-The Dockerfile packages the App, not the secret:
+First build the runtime from the same checkout used to generate `my_app`.
+This installs and verifies all required packages, including `qs2`, `BPCells`,
+and `shinymanager`. Record the commit with the image tag:
+
+```bash
+# Terminal — run from the CerebroNexus repository checkout.
+git rev-parse HEAD
+docker build -f deploy/Dockerfile -t cerebronexus-viewer:review .
+```
+
+Generate authenticated apps on a filesystem that supports private file modes
+(for WSL, use a directory under `/home`, not `/mnt/c`). The database must retain
+its private permissions; do not fix deployment by making it world-readable.
+
+The Dockerfile packages the App with the runtime user's ownership:
 
 ```dockerfile
 # Dockerfile — save this as `my-deployment/Dockerfile`.
-FROM rocker/shiny:latest
-RUN R -q -e 'install.packages(c("remotes", "shinymanager")); remotes::install_github("mihem/CerebroNexus", dependencies=TRUE)'
-COPY my_app /srv/shiny-server/my_app
-RUN chown -R shiny:shiny /srv/shiny-server/my_app
+FROM cerebronexus-viewer:review
+USER root
+COPY --chown=shiny:shiny my_app /srv/shiny-server/my_app
+RUN chmod 700 /srv/shiny-server/my_app/private-data/auth \
+    && chmod 600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
 USER shiny
 CMD ["R", "-q", "-e", "shiny::runApp('/srv/shiny-server/my_app', host='0.0.0.0', port=3838)"]
 ```
