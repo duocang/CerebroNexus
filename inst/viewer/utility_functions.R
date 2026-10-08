@@ -4806,7 +4806,64 @@ filterSelectionByHiddenGroups <- function(
   selection[keep, , drop = FALSE]
 }
 
+viewerPersistentSelection <- function(selection, dataset_context) {
+  if (
+    !is.null(selection) &&
+      (!is.list(selection) || !viewerDatasetContextEqual(
+        selection[["dataset_context"]], dataset_context
+      ))
+  ) {
+    return(NULL)
+  }
+  if (is.null(selection) || !length(selection[["x"]])) {
+    return(NULL)
+  }
+  x <- as.numeric(selection[["x"]])
+  y <- as.numeric(selection[["y"]])
+  result <- data.frame(
+    x = x, y = y, identifier = paste0(x, "-", y),
+    stringsAsFactors = FALSE
+  )
+  if (length(selection[["ids"]]) == nrow(result)) {
+    result[["selection_key"]] <- as.character(selection[["ids"]])
+  }
+  result
+}
+
+## Prepare only the compared variable and cohort labels for distribution plots.
+prepareSelectedCellDistribution <- function(
+  coordinates, metadata, selection, color_variable, coordinate_keys = FALSE
+) {
+  cells_df <- cbind(coordinates, metadata)
+  if (is.null(selection)) {
+    cells_df[["group"]] <- rep("not selected", nrow(cells_df))
+  } else {
+    cells_df <- dplyr::rename(cells_df, X1 = 1, X2 = 2)
+    identifier <- function() paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
+    selection_key <- if ("cell_barcode" %in% names(cells_df)) {
+      as.character(cells_df[["cell_barcode"]])
+    } else if (coordinate_keys) {
+      identifier()
+    } else {
+      as.character(seq_len(nrow(cells_df)))
+    }
+    cells_df[["group"]] <- factor(
+      ifelse(selectedCellMask(selection_key, cells_df[c("X1", "X2")], selection),
+             "selected", "not selected"),
+      levels = c("selected", "not selected")
+    )
+    if (identical(color_variable, "identifier")) cells_df[[color_variable]] <- identifier()
+    if (identical(color_variable, "selection_key")) cells_df[[color_variable]] <- selection_key
+  }
+  cells_df[, unique(c("group", color_variable)), drop = FALSE]
+}
+
 selectedCellMask <- function(selection_key, identifier, selection) {
+  coordinate_frame <- is.data.frame(identifier)
+  if (coordinate_frame) {
+    if (ncol(identifier) != 2L) stop("Selection coordinates must have two columns.", call. = FALSE)
+    if (length(selection_key) != nrow(identifier)) stop("Selection identity vectors must have equal length.", call. = FALSE)
+  }
   if (is.null(selection) || !is.data.frame(selection)) {
     return(rep(FALSE, length(selection_key)))
   }
@@ -4822,6 +4879,7 @@ selectedCellMask <- function(selection_key, identifier, selection) {
   if (is.null(identifier)) {
     return(rep(FALSE, length(selection_key)))
   }
+  if (coordinate_frame) identifier <- paste0(identifier[[1L]], "-", identifier[[2L]])
   if (length(selection_key) != length(identifier)) {
     stop("Selection identity vectors must have equal length.", call. = FALSE)
   }
@@ -4987,30 +5045,10 @@ cerebroSelectedCellsPlot <- function(
   fallback_key = c("row", "identifier")
 ) {
   fallback_key <- match.arg(fallback_key)
-  selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
-    as.character(cells_df[["cell_barcode"]])
-  } else {
-    as.character(seq_len(nrow(cells_df)))
-  }
-  stable_selection <- is.data.frame(selection) &&
-    "selection_key" %in% colnames(selection) &&
-    any(!is.na(selection[["selection_key"]]) &
-      nzchar(as.character(selection[["selection_key"]])))
-  identifier <- if (!stable_selection) {
-    paste0(cells_df[[1L]], "-", cells_df[[2L]])
-  } else {
-    NULL
-  }
-  if (!stable_selection && identical(fallback_key, "identifier")) {
-    selection_key <- identifier
-  }
-  cells_df[["group"]] <- factor(
-    ifelse(
-      selectedCellMask(selection_key, identifier, selection),
-      "selected",
-      "not selected"
-    ),
-    levels = c("selected", "not selected")
+  cells_df <- prepareSelectedCellDistribution(
+    cells_df[, 1:2, drop = FALSE],
+    cells_df[, -(1:2), drop = FALSE], selection, color_variable,
+    coordinate_keys = identical(fallback_key, "identifier")
   )
 
   if (is.factor(cells_df[[color_variable]]) ||

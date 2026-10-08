@@ -14,28 +14,12 @@ overview_projection_selected_cells <- reactive({
   ## is NOT used, because a re-render would wipe it. The identifier is built the
   ## same way the table keys cells (paste0 with '-'), so downstream filtering is
   ## unchanged.
-  sel <- input[["overview_projection_persistent_selection"]]
-  if (
-    !is.null(sel) &&
-      (!is.list(sel) || !viewerDatasetContextEqual(
-        sel[["dataset_context"]],
-        viewer_loaded_dataset_context()
-      ))
-  ) {
-    return(NULL)
-  }
-  if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
-    return(NULL)
-  }
-  selection <- data.frame(
-    x = as.numeric(sel[["x"]]),
-    y = as.numeric(sel[["y"]]),
-    identifier = paste0(as.numeric(sel[["x"]]), '-', as.numeric(sel[["y"]])),
-    stringsAsFactors = FALSE
+  selection <- viewerPersistentSelection(
+    input[["overview_projection_persistent_selection"]],
+    viewer_loaded_dataset_context()
   )
-  if (length(sel[["ids"]]) == nrow(selection)) {
-    selection[["selection_key"]] <- as.character(sel[["ids"]])
-  }
+  if (is.null(selection)) return(NULL)
+
 
   ## Drop cells whose group is currently hidden via the legend, so the count and
   ## the selected-cells panels reflect only visible groups. The shared JS pushes

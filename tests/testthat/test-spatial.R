@@ -1471,12 +1471,12 @@ test_that("empty spatial selection returns before million-cell plot data", {
     collapse = "\n"
   )
   selection_read <- regexpr(
-    'sel <- input[["spatial_projection_persistent_selection"]]',
+    'selection <- viewerPersistentSelection(',
     selected_source,
     fixed = TRUE
   )[[1L]]
   empty_return <- regexpr(
-    'if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0)',
+    'if (is.null(selection)) return(NULL)',
     selected_source,
     fixed = TRUE
   )[[1L]]
