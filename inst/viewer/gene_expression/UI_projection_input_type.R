@@ -83,7 +83,7 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
             var control = input && input.selectize;
             if (!control) return;
             var gene = genes[index] || '';
-            if (gene) control.addOption({value: gene, text: gene});
+            if (gene) control.addOption({value: gene, label: gene, text: gene});
             control.setValue(gene);
           });
         }
