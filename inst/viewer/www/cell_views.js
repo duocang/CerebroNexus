@@ -1740,9 +1740,39 @@
       (space.hulls && space.hulls.length)));
   }
 
+  function updateGpuSelection(p, state, hiSet) {
+    var previous = p.gpuData, oldState = p.gpuDataState;
+    if (!previous || !oldState || !previous.opaque || !previous.vertexIndex ||
+        panelColorMode(p) === RGB_MODE || Object.keys(state).some(function (key) {
+          return key !== 'selection' && key !== 'niche' && state[key] !== oldState[key];
+        })) return null;
+    // Selection only changes alpha and foreground layers. Keep the sorted
+    // positions and RGB bytes; the vertex map preserves filtered/invalid cells.
+    // Translucent palettes and RGB retain the general colour preparation path.
+    var colors = previous.colors.slice(), layers = new Uint32Array(previous.layers.length);
+    var alpha = Math.round(255 * (hiSet ? 0.05 : pointOpacityOf(p)));
+    for (var i = 0; i < previous.count; i++) colors[i * 4 + 3] = alpha;
+    var foreground = false;
+    if (hiSet) hiSet.forEach(function (cell) {
+      var vertex = previous.vertexIndex[cell] - 1;
+      if (!(vertex >= 0)) return;
+      colors[vertex * 4 + 3] = Math.round(255 * 0.95);
+      layers[vertex] = 1; foreground = true;
+    });
+    p.gpuDataState = state;
+    p.gpuData = {positions: previous.positions, colors: colors, layers: layers,
+      count: previous.count, foreground: foreground, opaque: true,
+      vertexIndex: previous.vertexIndex};
+    return p.gpuData;
+  }
+
   function buildGpuData(p, shownMask, shownCount) {
     var state = gpuDataState(p);
     if (sameGpuDataState(state, p.gpuDataState)) return p.gpuData;
+    var rgb = panelColorMode(p) === RGB_MODE;
+    var hiSet = (sel && sel.size) ? sel : nicheSet;
+    var selectionData = updateGpuSelection(p, state, hiSet);
+    if (selectionData) return selectionData;
     var unit = state.unit, order = paintOrder(p), n = D.n;
     var shared = window.CerebroSharedDatasetState;
     var sharedName = null;
@@ -1766,7 +1796,6 @@
     }
     var colors = new Uint8Array(shownCount * 4);
     var layers = new Uint32Array(shownCount);
-    var rgb = panelColorMode(p) === RGB_MODE;
     var categoricalGroup = rgb ? null : catOf(panelColorMode(p));
     var categoricalRgba = categoricalGroup
       ? categoricalGroup.levels.map(function (_level, index) {
@@ -1774,7 +1803,7 @@
           PAL[index % PAL.length]);
       }) : null;
     var missingCategoricalRgba = categoricalGroup ? gpuColor('#cccccc') : null;
-    var hiSet = (sel && sel.size) ? sel : nicheSet;
+    var vertexIndex = rgb ? null : new Int32Array(n), opaque = true;
     var foreground = false, out = 0;
     var pending = unit._pending, cmx = 0, cmy = 0, validCount = 0;
     var singleGroup = !order && !hiSet && !rgb && shownCount === n &&
@@ -1786,6 +1815,10 @@
     if (flatColor) {
       if (sharedPositionsReady && !pending) {
         out = projectionCache.gpuPositionCount;
+        if (vertexIndex) {
+          var vertex = 0;
+          for (var i = 0; i < n; i++) if (unit.ok[i]) vertexIndex[i] = ++vertex;
+        }
       } else {
         for (var i = 0; i < n; i++) {
           if (pending) {
@@ -1799,12 +1832,14 @@
             }
           }
           if (!unit.ok[i]) continue;
+          if (vertexIndex) vertexIndex[i] = out + 1;
           positions[out * 2] = unit.nx[i];
           positions[out * 2 + 1] = unit.ny[i];
           out++;
         }
       }
       var flatRgba = gpuColor(flatColor);
+      opaque = flatRgba[3] === 255;
       var flatAlpha = Math.round(flatRgba[3] * pointOpacityOf(p));
       var packedRgba = (flatRgba[0] | (flatRgba[1] << 8) |
         (flatRgba[2] << 16) | (flatAlpha << 24)) >>> 0;
@@ -1823,6 +1858,7 @@
           }
         }
         if (!unit.ok[i] || !shownMask[i]) continue;
+        if (vertexIndex) vertexIndex[i] = out + 1;
         positions[out * 2] = unit.nx[i];
         positions[out * 2 + 1] = unit.ny[i];
         var packedRgb = rgb
@@ -1841,6 +1877,7 @@
             ? (category == null || category < 0 || category >= categoricalRgba.length
               ? missingCategoricalRgba : categoricalRgba[category])
             : gpuColor(colorOf(i, p));
+          if (rgba[3] !== 255) opaque = false;
           colors[out * 4] = rgba[0];
           colors[out * 4 + 1] = rgba[1];
           colors[out * 4 + 2] = rgba[2];
@@ -1867,6 +1904,8 @@
       colors: colors,
       layers: layers,
       count: out,
+      opaque: !rgb && opaque,
+      vertexIndex: vertexIndex,
       foreground: foreground
     };
     return p.gpuData;
