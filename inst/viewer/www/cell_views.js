@@ -7639,7 +7639,8 @@
       var fieldName = 'single:' + id + ':value';
       D.fields[fieldName] = quantisedField(
         meta.color_variable || 'Value',
-        Array.isArray(data.color) ? data.color : [],
+        (Array.isArray(data.color) || ArrayBuffer.isView(data.color))
+          ? data.color : [],
         keys,
         data
       );
