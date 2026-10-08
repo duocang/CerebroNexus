@@ -58,6 +58,15 @@ sys.source(
 )
 sys.source(data_r, envir = ir_env, keep.source = FALSE)
 
+test_that("immune metadata joins follow only active analysis controls", {
+  fields <- ir_env$ir_requested_metadata_fields
+  expect_length(fields("SizeDist", "", "cell_type", "patient"), 0L)
+  expect_identical(fields("Clone Sharing", "", "cell_type", "patient"), "patient")
+  expect_identical(fields("Clonal UMAP", "", "cell_type", "patient"), "cell_type")
+  expect_identical(fields("SizeDist", "sample"), "sample")
+  expect_identical(fields("Clone Sharing", "", NULL, "sample"), character())
+})
+
 ir_parse_segments <- ir_env$ir_parse_segments
 ir_definition_counts <- ir_env$ir_definition_counts
 ir_sharing_classify <- ir_env$ir_sharing_classify

@@ -36,14 +36,25 @@ ir_scr_cols <- c(
 ## the active grouping controls and attach just those columns, using one match
 ## over the concatenated barcode vector rather than rebuilding a 1M-cell lookup
 ## for every sample.
-ir_requested_metadata_columns <- reactive({
-  requested <- c(
-    input[["ir_groupBy"]],
-    input[["ir_p_umap_group_by"]],
-    input[["ir_sharing_unit"]]
-  )
+ir_requested_metadata_fields <- function(
+  tab, group_by = NULL, umap_group = NULL, sharing_unit = NULL
+) {
+  requested <- group_by
+  if (identical(tab, "Clonal UMAP")) {
+    requested <- c(requested, umap_group)
+  }
+  if (identical(tab, "Clone Sharing") && !identical(sharing_unit, "sample")) {
+    requested <- c(requested, sharing_unit)
+  }
   requested <- as.character(requested)
   unique(requested[!is.na(requested) & nzchar(requested)])
+}
+
+ir_requested_metadata_columns <- reactive({
+  ir_requested_metadata_fields(
+    input[["ir_tabs"]], input[["ir_groupBy"]],
+    input[["ir_p_umap_group_by"]], input[["ir_sharing_unit"]]
+  )
 })
 
 ir_annotate_metadata <- function(data, metadata, columns = character()) {
@@ -104,8 +115,10 @@ ir_data_annotated <- reactive({
   if (is.null(data)) {
     return(NULL)
   }
+  columns <- ir_requested_metadata_columns()
+  if (!length(columns)) return(data)
   md <- tryCatch(getMetaData(), error = function(e) NULL)
-  ir_annotate_metadata(data, md, ir_requested_metadata_columns())
+  ir_annotate_metadata(data, md, columns)
 })
 
 ## ---- Reactive: repertoire data --------------------------------------- ##

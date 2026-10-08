@@ -568,6 +568,8 @@ ir_clonal_umap_last_request <- reactiveVal(NULL)
 observe({
   render_request <- input[["ir_clonalUMAP_projection_render_request"]]
   req(render_request)
+  req(identical(input[["sidebar"]], "immune_repertoire"),
+      identical(input[["ir_tabs"]], "Clonal UMAP"))
   group_by <- ir_param("ir_p_umap_group_by", "")
   ## Faceting is handled by the static ggplot path; nothing to push here.
   if (!is.null(group_by) && nzchar(group_by)) {
@@ -1826,6 +1828,7 @@ output$ir_plot_clonalScatter <- renderPlot({
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   req_scRepertoire()
   req_plot_space("ir_plot_clonalSizeDistribution")
+  req(input$ir_chain, !is.null(input$ir_groupBy))
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
@@ -2284,6 +2287,7 @@ output$ir_plot_cloneSharing <- plotly::renderPlotly({
   ## the namespace here.
   req(has_scRepertoire())
   req_plot_space("ir_plot_cloneSharing")
+  req(input$ir_chain, input$ir_sharing_unit, !is.null(input$ir_groupBy))
   fig <- ir_render_ggplotly(
     ir_build_sharing_plot(
       ir_data_annotated(),
