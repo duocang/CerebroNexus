@@ -72,6 +72,13 @@ expression_selected_genes_input <- reactive({
   gene_sets[["genes_to_display_missing"]] <- gene_sets[[
     "genes_to_display"
   ]][which(is.na(genes_to_display_here))]
+  ## Channel names must use the same dataset spelling as expression rows.
+  ## Preserve channel positions (including repeated and absent genes).
+  gene_sets[["rgb_genes"]] <- lapply(gene_sets[["rgb_genes"]], function(gene) {
+    if (length(gene) != 1L || is.na(gene) || !nzchar(gene)) return(NULL)
+    index <- match(tolower(gene), tolower(list_of_genes()))
+    if (is.na(index)) NULL else unname(list_of_genes()[index])
+  })
   return(gene_sets)
 })
 

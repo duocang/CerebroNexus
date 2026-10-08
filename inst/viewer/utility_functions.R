@@ -4702,15 +4702,27 @@ viewerSpatialCoordinates <- function(name) {
   spatial_data <- getSpatialData(name)
   if (is.null(spatial_data)) NULL else spatial_data[["coordinates"]]
 }
+canonicalGeneSelection <- function(selected, genes) {
+  if (!length(selected)) return(selected)
+  index <- match(tolower(selected), tolower(genes))
+  found <- !is.na(index)
+  selected[found] <- genes[index[found]]
+  selected
+}
+
 serverSideGeneSelector <- function(
   session,
   input_id,
   extra_triggers = function() NULL,
   active = function() TRUE,
   choices = function() getGeneNames(),
-  retry = TRUE
+  retry = TRUE,
+  canonical_selection = FALSE
 ) {
+  update_generation <- 0L
   observe({
+    update_generation <<- update_generation + 1L
+    generation <- update_generation
     extra_triggers()
     ## The caller can gate this observer so it does nothing until its own tab is
     ## relevant. The spatial module registers this at module-source time, which
@@ -4718,15 +4730,29 @@ serverSideGeneSelector <- function(
     ## ungated observer would then schedule later::later() callbacks that keep
     ## the app from ever reaching idle and break unrelated tabs' tests.
     req(isTRUE(active()))
-    req(data_set())
+    dataset <- data_set()
+    req(dataset)
     genes <- sort(choices())
     req(!is.null(genes), length(genes) > 0)
 
     initial_selection <- isolate(input[[input_id]])
     send_update <- function(retry_update = FALSE) {
+      ## Timers from a previous dataset/activation can run after a slow load.
+      ## They must not re-register obsolete choices over the current selector.
+      if (generation != update_generation ||
+          !identical(isolate(data_set()), dataset)) return(invisible(NULL))
       selected <- isolate(input[[input_id]])
-      if (retry_update && any(nzchar(selected)) &&
-          !identical(selected, initial_selection)) return(invisible(NULL))
+      ## A choices refresh briefly clears the browser control before its AJAX
+      ## response restores the selection. Do not register that transient empty
+      ## value as the selection for a retry (or overwrite a deliberate clear).
+      if (retry_update &&
+          !identical(selected, initial_selection) &&
+          (any(nzchar(selected)) || any(nzchar(initial_selection)))) {
+        return(invisible(NULL))
+      }
+      if (isTRUE(canonical_selection)) {
+        selected <- canonicalGeneSelection(selected, genes)
+      }
       updateSelectizeInput(
         session,
         input_id,

@@ -134,6 +134,7 @@ observeEvent(
         serverSideGeneSelector(
           session,
           id,
+          canonical_selection = TRUE,
           active = function() identical(input[["sidebar"]], "geneExpression")
         )
       })
