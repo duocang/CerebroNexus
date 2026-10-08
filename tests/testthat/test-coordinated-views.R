@@ -163,7 +163,7 @@ test_that("Linked views excludes unregistered metadata colourings", {
   expect_length(bundle$cat_extra, 0L)
   expect_length(grep("^meta:", names(bundle$fields)), 0L)
   expect_identical(bundle$default_group, "seurat_clusters")
-  expect_identical(as.character(bundle$genes), c("ACTB", "GAPDH"))
+  expect_null(bundle$genes) # PR5 populates the gene selector on demand.
 })
 
 test_that("trajectory coordinates and graph enter Linked views", {

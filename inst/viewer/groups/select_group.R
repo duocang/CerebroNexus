@@ -24,7 +24,7 @@ output[["groups_controls_UI"]] <- renderUI({
         width = 3,
         shinyWidgets::radioGroupButtons(
           inputId = "groups_by_other_group_plot_type",
-          label = NULL,
+          label = "Plot type",
           choices = c("Bar chart", "Sankey plot"),
           status = "primary",
           justified = TRUE,

@@ -1628,12 +1628,12 @@ cv_primary_group_resource <- function(crb, md, resource_fn) {
   }
   group_names <- tryCatch(crb$getGroups(), error = function(error) character())
   group_candidates <- intersect(group_names, colnames(md))
-  column_candidates <- setdiff(colnames(md), "cell_barcode")
   parameters <- tryCatch(crb$getParameters(), error = function(error) list())
-  name <- cv_default_group(
-    unique(c(group_candidates, column_candidates)),
+  name <- viewerColourGroupChoices(
+    md,
+    group_candidates,
     parameters[["main_group"]]
-  )
+  )$selected
   value <- if (!is.null(name)) md[[name]] else NULL
   if (!(is.factor(value) || is.character(value) || is.logical(value))) {
     return(NULL)
@@ -2005,43 +2005,7 @@ cv_build_deferred_metadata <- function(crb, md, primary) {
   }
   cat_extra <- list()
   cat_skipped <- list()
-  max_levels <- max(2L, min(60L, as.integer(nrow(md) / 2)))
-  for (name in setdiff(names(md), c(group_names, names(primary$cat_extra)))) {
-    value <- md[[name]]
-    if (!(is.character(value) || is.factor(value) || is.logical(value))) {
-      next
-    }
-    group <- deferred_group(name, value)
-    if (is.null(group)) {
-      next
-    }
-    if (length(group$levels) > max_levels) {
-      cat_skipped[[name]] <- length(group$levels)
-    } else {
-      cat_extra[[name]] <- group
-    }
-  }
   fields <- list()
-  primary_fields <- sub("^meta:", "", names(primary$fields))
-  for (name in setdiff(names(md), primary_fields)) {
-    value <- md[[name]]
-    if (!is.numeric(value)) {
-      next
-    }
-    range <- suppressWarnings(range(value, na.rm = TRUE))
-    if (!all(is.finite(range)) || range[[2L]] <= range[[1L]]) {
-      next
-    }
-    field <- cv_field(
-      name,
-      integer(),
-      round(range[[1L]], 4),
-      round(range[[2L]], 4)
-    )
-    field$v <- NULL
-    field$deferred <- TRUE
-    fields[[paste0("meta:", name)]] <- field
-  }
   list(
     groups = groups,
     cat_extra = cat_extra,

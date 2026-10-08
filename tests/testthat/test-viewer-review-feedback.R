@@ -331,7 +331,7 @@ test_that("cell scatter pages share defaults with a Gene Expression override", {
     viewer_source("overview", "UI_projection_additional_parameters.R"),
     viewer_source("spatial", "UI_projection_additional_parameters.R"),
     viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
-    viewer_source("trajectory", "select_method_and_name.R")
+    viewer_source("trajectory", "projection.R")
   )
 
   expect_match(server, "current_scatter_defaults", fixed = TRUE)
