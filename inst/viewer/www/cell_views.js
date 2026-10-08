@@ -356,8 +356,11 @@
   // two categorical sources never have to be special-cased at the call site.
   function catOf(name) {
     if (!D || !name) return null;
-    return (D.groups && D.groups[name]) ||
-      (D.cat_extra && D.cat_extra[name]) || null;
+    var group = (D.groups && D.groups[name]) ||
+      (D.cat_extra && D.cat_extra[name]);
+    // Deferred descriptors expose labels before their per-cell codes arrive.
+    // Readouts and selection must not treat these descriptors as usable data.
+    return group && group.values && group.levels ? group : null;
   }
   // The categorical variable the composition readout summarises by: cell_type
   // when present, else the active categorical colouring, else the first one
@@ -365,11 +368,11 @@
   // categorical at all, so it is used only when catOf() resolves it.
   function compGroupName() {
     if (!D) return null;
-    if (D.groups && D.groups['cell_type']) return 'cell_type';
+    if (catOf('cell_type')) return 'cell_type';
     if (catOf(colorBy)) return colorBy;
-    var k = D.groups ? Object.keys(D.groups) : [];
+    var k = D.groups ? Object.keys(D.groups).filter(catOf) : [];
     if (k.length) return k[0];
-    var e = D.cat_extra ? Object.keys(D.cat_extra) : [];
+    var e = D.cat_extra ? Object.keys(D.cat_extra).filter(catOf) : [];
     return e.length ? e[0] : null;
   }
   // True value behind a field's quantised code (fields travel 0..scale to keep
@@ -8509,6 +8512,7 @@
         extra.spaces[0].id === 'clone' &&
         (!extra.projections || !Object.keys(extra.projections).length));
       if (cloneOnly && applyCloneSupplement(extra)) {
+        if (extra.progressive_complete !== false) D.progressive = false;
         reportWorkspaceReady();
       } else if (structural) {
         var saved = exportWorkspace();
