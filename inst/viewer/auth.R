@@ -46,6 +46,88 @@
   }
 }
 
+.viewer_auth_load_local_passphrase <- function(root, env_name) {
+  current <- Sys.getenv(env_name, unset = NA_character_)
+  if (
+    is.character(current) &&
+      length(current) == 1L &&
+      !is.na(current) &&
+      nzchar(current)
+  ) {
+    return(invisible(FALSE))
+  }
+  path <- file.path(root, "viewer-auth.env")
+  info <- suppressWarnings(tryCatch(
+    fs::file_info(path, follow = FALSE, fail = FALSE),
+    error = function(condition) NULL
+  ))
+  if (is.null(info) || nrow(info) != 1L || is.na(info$type[[1L]])) {
+    if (.Platform$OS.type != "windows" && !isTRUE(file.access(root, mode = 1L) == 0L)) {
+      .viewer_auth_error(paste0(
+        "viewer-auth.env could not be inspected because the App directory is not accessible. ",
+        "Check parent directory access for the actual Shiny/R runtime UID/GID."
+      ))
+    }
+    .viewer_auth_error(paste0(
+      "viewer-auth.env was not found in the App directory. ",
+      "Restore the file matching credentials.sqlite ",
+      "or provide ", env_name, " to the application process."
+    ))
+  }
+  type <- as.character(info$type[[1L]])
+  if (identical(type, "symlink")) {
+    .viewer_auth_error(
+      "viewer-auth.env is a symbolic link; authentication requires a regular file, not a symlink."
+    )
+  }
+  if (!identical(type, "file")) {
+    .viewer_auth_error(
+      "viewer-auth.env is not a regular file; authentication rejected this file type."
+    )
+  }
+  if (.Platform$OS.type != "windows") {
+    # fs includes the file type; retain permission and special bits (07777).
+    mode <- bitwAnd(as.integer(info$permissions[[1L]]), 4095L)
+    if (!identical(mode, 384L)) {
+      .viewer_auth_error(paste0(
+        "viewer-auth.env has insecure permissions: ", sprintf("%04o", mode), ". ",
+        "Required permissions: 0600. Set ownership for the actual Shiny/R runtime ",
+        "UID/GID and run chmod 600 on this file. For a read-only Docker bind mount, ",
+        "change the host file, not the container mount."
+      ))
+    }
+  }
+  unreadable <- function() {
+    .viewer_auth_error(paste0(
+      "viewer-auth.env ",
+      if (.Platform$OS.type != "windows") "has secure permissions but " else "",
+      "is not readable by the current application user. ",
+      "Check file ownership, parent directory access and the actual Shiny/R runtime UID/GID. ",
+      "For a read-only Docker bind mount, correct ownership on the host."
+    ))
+  }
+  if (!isTRUE(file.access(path, mode = 4L) == 0L)) {
+    unreadable()
+  }
+  lines <- suppressWarnings(tryCatch(
+    readLines(path, n = 2L, warn = FALSE, encoding = "UTF-8"),
+    error = function(condition) NULL
+  ))
+  if (is.null(lines)) unreadable()
+  pattern <- paste0("^", env_name, "=([0-9a-f]{64})$")
+  if (length(lines) != 1L || !grepl(pattern, lines, perl = TRUE)) {
+    .viewer_auth_error(paste0(
+      "viewer-auth.env has invalid content. Expected exactly one line: ",
+      env_name, "=<64 lowercase hexadecimal characters>, without quotes or export. ",
+      "Restore the original file matching credentials.sqlite; do not use a login password."
+    ))
+  }
+  value <- sub(paste0("^", env_name, "="), "", lines)
+  on.exit(value <- NULL, add = TRUE)
+  do.call(Sys.setenv, stats::setNames(list(value), env_name))
+  invisible(TRUE)
+}
+
 .viewer_auth_brand <- function(cerebro_root) {
   www <- file.path(cerebro_root, "viewer", "www")
   css <- file.path(www, "auth.css")
@@ -101,10 +183,17 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
     isTRUE(file.access(dirname(database), mode = 1L) == 0L)
   if (!accessible) {
     .viewer_auth_error(
-      "Authentication credentials database is not accessible."
+      paste0(
+        "Authentication credentials database is not accessible. Check ",
+        "private-data/auth/credentials.sqlite and parent directory access for ",
+        "the actual Shiny/R runtime UID/GID. Recommended permissions: database ",
+        "0600, auth directory 0700. For a read-only Docker bind mount, correct ",
+        "ownership and permissions on the host."
+      )
     )
   }
 
+  .viewer_auth_load_local_passphrase(root, config$passphrase_env)
   passphrase <- Sys.getenv(config$passphrase_env, unset = NA_character_)
   on.exit(passphrase <- NULL, add = TRUE)
   if (
