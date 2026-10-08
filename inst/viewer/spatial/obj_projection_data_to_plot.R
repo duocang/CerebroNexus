@@ -70,6 +70,7 @@ spatial_projection_group_hulls <- reactive({
 })
 
 spatial_projection_data_to_plot_raw <- reactive({
+  dataset_context <- viewer_loaded_dataset_context()
   req(
     spatial_projection_parameters_plot(),
     reactive_colors()
@@ -80,10 +81,7 @@ spatial_projection_data_to_plot_raw <- reactive({
   ## Resolve the canonical geometry contract before materializing the displayed
   ## metadata and coordinates. The common full, unrotated ImageDimPlot frame can
   ## then stream both arrays from the Viewer Pack in the browser.
-  current_name <- viewerDatasetName(
-    available_crb_files$files,
-    available_crb_files$selected
-  )
+  current_name <- dataset_context$dataset_key
   rotation_angle <- spatialPlotRotation(
     Cerebro.options,
     current_name,
@@ -259,6 +257,7 @@ spatial_projection_data_to_plot_raw <- reactive({
 
   ## return collect data
   to_return <- list(
+    dataset_context = dataset_context,
     cells_df = metadata,
     coordinates = coordinates,
     reset_axes = reset_axes,

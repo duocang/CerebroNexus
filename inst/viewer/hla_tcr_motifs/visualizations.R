@@ -499,6 +499,8 @@ observe({
   req(identical(input[["sidebar"]], "hla_tcr_motifs"))
   req(identical(input[["hla_tabs"]], "Motif Network"))
   render_request <- input[["hla_motif_network_render_request"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(render_request), viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
   req(render_request)
   req(hla_active_chain() %in% hla_tcr_chains())
   req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
@@ -511,6 +513,7 @@ observe({
   to <- as.integer(vn$edges$to)
   point_sizes <- 2 * vn$nodes$size
   render_signature <- list(
+    dataset_context = dataset_context,
     dataset = available_crb_files$selected,
     legend_title = vn$legend_title,
     layout = vn$layout,
@@ -568,7 +571,8 @@ observe({
         from = from,
         to = to
       )
-    )
+    ),
+    dataset_context = dataset_context
   )
   hla_motif_last_render_signature(render_signature)
 }, priority = 100)

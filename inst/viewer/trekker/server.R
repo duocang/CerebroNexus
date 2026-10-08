@@ -132,7 +132,10 @@ output[["trekker_main_parameters_ui"]] <- renderUI({
 ## viewport state, selection and toolbars all stay in cell_views.js.
 observe({
   req(identical(input[["sidebar"]], "trekker"))
-  input[["trekker_projection_render_request"]]
+  render_request <- input[["trekker_projection_render_request"]]
+  req(is.list(render_request), is.list(render_request$dataset_context))
+  dataset_context <- viewer_loaded_dataset_context()
+  req(viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
   tk <- req(trekker_slot())
   mode <- input[["trekker_mode"]] %||% "celltype"
   view <- input[["trekker_view"]] %||% "pair"
@@ -248,13 +251,23 @@ observe({
       point_size = appearance$point_size,
       point_opacity = appearance$point_opacity,
       percentage_cells_to_show = appearance$percentage_cells_to_show
-    )
+    ),
+    dataset_context = dataset_context
   )
 })
 
 output[["trekker_number_of_selected_cells"]] <- renderUI({
   selected <- input[["trekker_projection_persistent_selection"]] %||%
     character()
+  if (
+    length(selected) &&
+      (!is.list(selected) || !viewerDatasetContextEqual(
+        selected[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    selected <- character()
+  }
   tags$span(
     format(cerebroSelectionCount(selected), big.mark = ","),
     " cells selected"

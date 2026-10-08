@@ -87,10 +87,20 @@ color_input_id <- function(variable, level) {
   } else {
     NULL
   }
-  dataset <- viewerDatasetName(
+  dataset <- if (
+    exists("viewer_requested_dataset_context", mode = "function")
+  ) {
+    tryCatch(
+      viewer_requested_dataset_context()$dataset_key,
+      error = function(error) NULL
+    )
+  } else {
+    NULL
+  }
+  dataset <- dataset %||% viewerDatasetName(
     configured_files,
     available_crb_files$selected
-  ) %||% available_crb_files$selected
+  ) %||% "__single__"
   encode <- function(value) {
     paste(format(charToRaw(enc2utf8(as.character(value)))), collapse = "")
   }

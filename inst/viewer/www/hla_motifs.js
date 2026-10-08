@@ -13,10 +13,28 @@
   var selectedCells = [];
   var selectionFocused = false;
   var pendingState = null;
+  var networkContextKey = '';
   var syncingSelection = false;
   var shinyBound = false;
   var associationObserver = null;
   var associationRequested = false;
+
+  function contextApi() {
+    return window.CerebroDatasetContext || null;
+  }
+  function currentContext() {
+    var api = contextApi();
+    return api && api.phase && api.phase() === 'ready' ? api.current() : null;
+  }
+  function currentContextKey() {
+    var api = contextApi();
+    var context = currentContext();
+    return api && api.key && context ? api.key(context) : '';
+  }
+  function fresh(message) {
+    var api = contextApi();
+    return !!(api && api.accepts && api.accepts(message));
+  }
 
   function requestAssociations() {
     if (associationRequested || !window.Shiny || !Shiny.setInputValue) return;
@@ -157,7 +175,10 @@
   }
   function sendSelectedKeys(keys) {
     if (window.Shiny && Shiny.setInputValue) {
-      Shiny.setInputValue('hla_motif_selected_keys', keys, { priority: 'event' });
+      Shiny.setInputValue('hla_motif_selected_keys', {
+        node_keys: keys,
+        dataset_context: currentContext()
+      }, { priority: 'event' });
     }
   }
   function chooseNodes(polygon) {
@@ -361,7 +382,9 @@
   }
   function captureState() {
     var network = net();
-    if (!network) return null;
+    if (!network || !networkContextKey || networkContextKey !== currentContextKey()) {
+      return null;
+    }
     return {
       cells: selectedCells.slice(),
       geometry: committedCanvas && committedCanvas.length > 2 ? {
@@ -380,7 +403,12 @@
   function applyPendingState() {
     var network = net();
     if (!network || !pendingState) return;
-    var saved = pendingState;
+    if (!pendingState.contextKey || pendingState.contextKey !== currentContextKey()) {
+      pendingState = null;
+      return;
+    }
+    if (networkContextKey !== currentContextKey()) return;
+    var saved = pendingState.saved;
     pendingState = null;
     var view = saved.view || {};
     var viewport = view.viewport;
@@ -408,11 +436,15 @@
     drawOverlay();
   }
   function applyState(_id, saved) {
-    pendingState = saved;
+    var datasetContext = currentContext();
+    var contextKey = currentContextKey();
+    if (!datasetContext || !contextKey) return { selectedCells: 0 };
+    pendingState = { saved: saved, contextKey: contextKey };
     if (window.Shiny && Shiny.setInputValue) {
       Shiny.setInputValue('hla_motif_restore_cells', {
         nonce: Date.now().toString(36),
-        cells: saved && saved.selection ? saved.selection.cells || [] : []
+        cells: saved && saved.selection ? saved.selection.cells || [] : [],
+        dataset_context: datasetContext
       }, { priority: 'event' });
     }
     applyPendingState();
@@ -422,17 +454,20 @@
   }
   function reportState() {
     var fingerprint = (window.cerebroSavedViewDataset || {}).cell_fingerprint || '';
-    if (!fingerprint) return;
+    if (!fingerprint || !currentContextKey() || networkContextKey !== currentContextKey()) return;
     window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
       detail: {
         viewId: 'hla_motif_network',
+        dataset_context: contextApi().current(),
         selectedCells: selectedCells.length,
         datasetFingerprint: fingerprint
       }
     }));
   }
   function receiveSelection(result) {
+    if (!fresh(result)) return;
     var network = net();
+    networkContextKey = currentContextKey();
     selectionFocused = false;
     selectedKeys = result && Array.isArray(result.node_keys)
       ? result.node_keys.map(String) : [];
@@ -448,6 +483,7 @@
       syncingSelection = false;
     }
     syncModeButtons();
+    applyPendingState();
     reportState();
   }
   function connectShiny() {
@@ -456,7 +492,7 @@
     observeAssociations();
     Shiny.addCustomMessageHandler('hla_motif_selection_state', receiveSelection);
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
-      if (!request) return;
+      if (!request || !fresh(request)) return;
       if (request.action === 'clear') clearSelection(false);
       else if (request.action === 'focus') zoomSelection();
     });
@@ -518,6 +554,19 @@
       if (changed && network) reportState();
     }
   };
+
+  window.addEventListener('cerebro:dataset-context', function (event) {
+    var detail = event && event.detail || {};
+    if (!detail.changed && detail.phase === 'ready') return;
+    pendingState = null;
+    networkContextKey = '';
+    committedCanvas = null;
+    selectedKeys = [];
+    selectedCells = [];
+    selectionFocused = false;
+    syncModeButtons();
+    drawOverlay();
+  });
 
   if (window.jQuery) {
     window.jQuery(document).on('shiny:connected', function () { tryBuild(30); });

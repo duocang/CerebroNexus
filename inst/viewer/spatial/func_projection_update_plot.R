@@ -107,6 +107,7 @@ spatialBackgroundDataUri <- local({
 
 spatial_projection_update_plot <- function(input) {
   ## assign input data to new variables
+  dataset_context <- input[["dataset_context"]]
   metadata <- input[['cells_df']]
   coordinates <- input[['coordinates']]
   reset_axes <- input[['reset_axes']]
@@ -374,8 +375,7 @@ spatial_projection_update_plot <- function(input) {
       output_hover,
       deferred_aux = function() {
         build_deferred_aux(output_data[["selection_key"]])
-      }
-    )
+      }, dataset_context = input[["dataset_context"]])
     return(invisible(NULL))
   }
 
@@ -437,6 +437,5 @@ spatial_projection_update_plot <- function(input) {
       } else {
         payload[["data"]][["selection_key"]]
       })
-    }
-  )
+    }, dataset_context = input[["dataset_context"]])
 }

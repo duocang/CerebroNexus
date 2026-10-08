@@ -190,6 +190,11 @@ test_that("large specialist views send their first frame before hover data", {
     }
   )
   keys <- sprintf("cell-%04d", seq_len(4096L))
+  dataset_context <- runtime$viewerDatasetContext(
+    "wire-test-session",
+    "dataset-a",
+    1L
+  )
 
   runtime$cerebroCellViewRender(
     "overview_projection",
@@ -200,7 +205,8 @@ test_that("large specialist views send their first frame before hover data", {
       selection_key = list(I(keys)),
       color = list("#123456")
     ),
-    hover = list(text = list(I(keys)), hoverinfo = "text")
+    hover = list(text = list(I(keys)), hoverinfo = "text"),
+    dataset_context = dataset_context
   )
 
   expect_identical(vapply(sent, `[[`, character(1), "type"), "cell_view_binary")
@@ -208,6 +214,12 @@ test_that("large specialist views send their first frame before hover data", {
   auxiliary <- runtime$.cerebro_cell_view_aux_pending[[
     paste("overview_projection", first$data$wire_token, sep = ":")
   ]]
+  expect_identical(first$dataset_context$epoch, dataset_context$epoch)
+  expect_identical(
+    first$dataset_context$dataset_key,
+    dataset_context$dataset_key
+  )
+  expect_equal(first$dataset_context$generation, dataset_context$generation)
   expect_identical(first$data$n, 4096L)
   expect_identical(
     first$dataset_identity,
@@ -222,7 +234,23 @@ test_that("large specialist views send their first frame before hover data", {
   expect_identical(first$data$x[[1L]]$`__cv_wire__`, "f32")
   expect_identical(first$hover$hoverinfo, "skip")
   expect_identical(auxiliary$id, "overview_projection")
+  expect_identical(auxiliary$dataset_context, dataset_context)
   expect_identical(unlist(auxiliary$selection_key, use.names = FALSE), keys)
+  auxiliary_response <- wire_header(
+    runtime$cv_wire_pack_message(auxiliary, min_length = 1L)
+  )
+  expect_identical(
+    auxiliary_response$dataset_context$epoch,
+    dataset_context$epoch
+  )
+  expect_identical(
+    auxiliary_response$dataset_context$dataset_key,
+    dataset_context$dataset_key
+  )
+  expect_equal(
+    auxiliary_response$dataset_context$generation,
+    dataset_context$generation
+  )
 })
 
 test_that("deferred specialist IDs can declare trace lengths without placeholders", {
@@ -261,7 +289,7 @@ test_that("deferred specialist IDs can declare trace lengths without placeholder
         ),
         hover = list(hoverinfo = "skip")
       )
-    }
+    }, dataset_context = list(epoch="wire-test",dataset_key="A",generation=1)
   )
 
   expect_identical(length(sent), 1L)
@@ -341,7 +369,7 @@ test_that("specialist views can reference validated shared coordinates", {
       color = rep(0, 4096L),
       selection_key = keys,
       shared_zero_color = TRUE
-    )
+    ), dataset_context = list(epoch="wire-test",dataset_key="A",generation=1)
   )
 
   first <- wire_header(sent[[1L]]$payload)
@@ -363,7 +391,7 @@ test_that("specialist views can reference validated shared coordinates", {
       color = numeric(),
       selection_key = keys,
       shared_zero_color = TRUE
-    )
+    ), dataset_context = list(epoch="wire-test",dataset_key="A",generation=1)
   )
   unshared <- wire_header(sent[[1L]]$payload)
   expect_null(unshared$shared_projection)
@@ -391,12 +419,17 @@ test_that("specialist selections wait for stable IDs and replay after aux", {
   )
   expect_match(
     javascript,
-    "pendingStableSelection ? null",
+    "ids: pendingStableSelection || !arr ? [] : arr",
     fixed = TRUE
   )
   expect_match(
     javascript,
-    "onSingleAuxBinary[\\s\\S]+D.cells = cells;[\\s\\S]+reportSelection\\(\\);",
+    "dataset_context: activeView && activeView.dataset_context",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "onSingleAuxBinary[\\s\\S]+D.cells = cells;[\\s\\S]+reportSelection\\('aux'\\);",
     perl = TRUE
   )
   expect_match(
@@ -443,7 +476,8 @@ test_that("dataset changes invalidate cached specialist plots", {
       "const resetEnd = source.indexOf('  function mountSingleSurface', resetStart);",
       "const attachStart = source.indexOf('  function attachSingleDatasetIdentity');",
       "const attachEnd = source.indexOf('  function reportSingleHiddenGroups', attachStart);",
-      "let restored = 0;",
+      "let restored = 0, singleAsyncEpoch = 0;",
+      "function singleView(id) {return singleViews[id];}",
       "function restoreLinkedSurface() { restored += 1; }",
       "function reportSelection() {}",
       "let singleViews = {overview_projection:{datasetIdentity:{cell_fingerprint:'dataset-a'}}};",
@@ -490,7 +524,8 @@ test_that("JSON specialist payloads retain dataset identity", {
     fixed = TRUE
   )[[1L]][[1L]]
 
-  expect_match(handler, "message.dataset_identity", fixed = TRUE)
+  expect_match(handler, "renderSingle(message)", fixed = TRUE)
+  expect_match(javascript, "datasetIdentity: message.dataset_identity", fixed = TRUE)
 })
 
 test_that("zero-color specialist frames reuse shared browser geometry", {
@@ -519,7 +554,10 @@ test_that("core auxiliary identities precede full metadata and reject duplicate 
   env$session <- list(sendBinaryMessage = function(type, value) {
     sent[[length(sent) + 1L]] <<- value
   })
+  context <- env$viewerDatasetContext("wire-test", "A", 1)
+  env$viewer_loaded_dataset_context <- function() context
   env$.cerebro_cell_view_aux_pending[["gene:7"]] <- list(
+    dataset_context = context, render_token = 1,
     id = "gene", wire_token = 7L,
     core_builder = function() {
       core_builds <<- core_builds + 1L
@@ -530,7 +568,7 @@ test_that("core auxiliary identities precede full metadata and reject duplicate 
       list(selection_key = c("a", "b"), hover = list(columns = list("metadata")))
     }
   )
-  request <- list(id = "gene", wire_token = 7L)
+  request <- list(id = "gene", wire_token = 7L, dataset_context = context)
   expect_true(env$cerebroCellViewAuxRequest(request))
   expect_identical(core_builds, 1L)
   expect_identical(full_builds, 0L)

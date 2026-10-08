@@ -17,6 +17,15 @@ expression_projection_selected_cells <- reactive({
   ## built the same way the table keys cells (paste0 with '-'), so downstream
   ## filtering is unchanged.
   sel <- input[["expression_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    return(NULL)
+  }
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }

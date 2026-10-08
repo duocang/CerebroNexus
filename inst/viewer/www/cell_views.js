@@ -24,12 +24,17 @@
 
   var D = null;                 // the data bundle
   var linkedBundle = null;      // cached while a dedicated page owns the canvas
-  var singleViews = {};         // latest specialist payload per plot id
-  var singleRequests = new Set(); // visible hosts awaiting their first payload
+  // Specialist payloads and requests are scoped to one exact server-session
+  // dataset load. A page id alone is not an identity: every data set has a
+  // `spatial_projection`, and a late response from the previous one must never
+  // be allowed to recreate that cache entry after a switch.
+  var singleViews = {};
+  var singleRequests = new Set();
   var singleResourceDescriptors = new Map();
   var singleDefaultResourceNames = new Map();
   var singleCategoryResourceDescriptors = new Map();
   var singleActive = null;      // plot id currently using the shared surface
+  var singleAsyncEpoch = 0;     // invalidates delayed specialist callbacks
   var singleIndexCells = null;  // cells array behind the cached barcode index
   var singleIndexMap = null;
   var singleSpaceIds = [];      // one space, or one per gene in multi-panel mode
@@ -146,6 +151,49 @@
   var focusAnimating = false;
   // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
   // identity. The alignment bar edits only activeSpatialId.
+
+  function datasetContextApi() {
+    return window.CerebroDatasetContext || null;
+  }
+  function currentDatasetContext() {
+    var api = datasetContextApi();
+    return api && api.current ? api.current() : null;
+  }
+  function currentDatasetContextKey() {
+    var api = datasetContextApi();
+    return api && api.key ? api.key(currentDatasetContext()) : '';
+  }
+  function datasetMessageFresh(message) {
+    var api = datasetContextApi();
+    return !!(api && api.accepts && api.accepts(message));
+  }
+  function sameDatasetContext(left, right) {
+    var api = datasetContextApi();
+    return !!(api && api.same && api.same(left, right));
+  }
+  function singleCacheKey(id, context) {
+    var api = datasetContextApi();
+    var contextKey = api && api.key
+      ? api.key(context || currentDatasetContext()) : '';
+    return id && contextKey ? contextKey + '\u0000' + id : '';
+  }
+  function singleView(id, context) {
+    var cacheKey = singleCacheKey(id, context);
+    return cacheKey ? singleViews[cacheKey] : null;
+  }
+  function singleRequestKey(id, context) {
+    return singleCacheKey(id, context);
+  }
+  function canonicalIdentity(value) {
+    if (value == null) return '';
+    if (typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) {
+      return '[' + value.map(canonicalIdentity).join(',') + ']';
+    }
+    return '{' + Object.keys(value).sort().map(function (name) {
+      return JSON.stringify(name) + ':' + canonicalIdentity(value[name]);
+    }).join(',') + '}';
+  }
 
   // Categorical fallback palette (mirrors the app).
   var PAL = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3',
@@ -1939,16 +1987,16 @@
   }
 
   function requestSingleAux() {
-    var id = singleActive, view = id && singleViews[id];
+    var id = singleActive, view = id && singleView(id);
     var token = CBViewState.specialistLifecycle.requestAux(view);
     if (token == null) return;
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        if (singleViews[id] !== view || view.data.wire_token !== token || singleActive !== id) {
+        if (singleView(id) !== view || view.data.wire_token !== token || singleActive !== id) {
           if (view._auxPending === token) view._auxPending = null;
           return;
         }
-        Shiny.setInputValue('cell_view_aux_request', {id:id, wire_token:token}, {priority:'event'});
+        Shiny.setInputValue('cell_view_aux_request', {id:id, wire_token:token, dataset_context:view.dataset_context}, {priority:'event'});
       });
     });
   }
@@ -2969,9 +3017,13 @@
         // gated off instead of retaining stale/empty Plot and Table shells.
         // onSingleAuxBinary() reports only the then-current selection as soon
         // as the deferred IDs have been attached.
-        Shiny.setInputValue(singleActive + '_persistent_selection',
-          pendingStableSelection ? null : (arr ? { x: x, y: y, ids: arr } : null));
-        var activeView = singleViews[singleActive];
+        var activeView = singleView(singleActive);
+        Shiny.setInputValue(singleActive + '_persistent_selection', {
+          x: pendingStableSelection || !arr ? [] : x,
+          y: pendingStableSelection || !arr ? [] : y,
+          ids: pendingStableSelection || !arr ? [] : arr,
+          dataset_context: activeView && activeView.dataset_context
+        });
         var renderKey = activeView && activeView.data && activeView.data.render_key;
         if (eventKind === 'primary' && renderKey != null) {
           Shiny.setInputValue(
@@ -2981,8 +3033,7 @@
           );
         }
       } else {
-        Shiny.setInputValue('coordviews_selection_indices', hasSelection
-          ? Array.from(sel) : null);
+        Shiny.setInputValue('coordviews_selection_indices', {indices:hasSelection ? Array.from(sel) : [], dataset_context:D && D.dataset_context});
       }
     }
     if (singleActive) {
@@ -3018,6 +3069,7 @@
       { detail: singleActive
         ? {
           viewId: singleActive,
+          dataset_context: activeView && activeView.dataset_context,
           selectedCells: specialistReport
             ? specialistReport.selectedCells
             : (hasSelection ? sel.size : 0),
@@ -3063,7 +3115,11 @@
     var names = group ? Array.from(hidden).map(function (index) {
       return group.levels[index];
     }).filter(function (name) { return name != null; }) : [];
-    Shiny.setInputValue(singleActive + '_hidden_groups', names);
+    var view = singleView(singleActive);
+    Shiny.setInputValue(singleActive + '_hidden_groups', {
+      groups: names,
+      dataset_context: view && view.dataset_context
+    });
   }
 
   // ---- readouts (composition + top clonotypes) — fully client-side --------
@@ -3345,6 +3401,7 @@
     });
     if (!missing.length) return;
     Shiny.setInputValue('coordviews_clone_details_request', {
+      dataset_context: D.dataset_context,
       dataset_fingerprint: configFingerprint(),
       ids: missing,
       nonce: Date.now()
@@ -3507,7 +3564,7 @@
   }
   function renderLegend() {
     var L = $('cv-legend'); if (!L) return;
-    var singlePayload = singleActive && singleViews[singleActive];
+    var singlePayload = singleActive && singleView(singleActive);
     var hideSingleLegend = !!(singlePayload && singlePayload.meta &&
       singlePayload.meta.legend_position === 'none');
     L.style.display = hideSingleLegend ? 'none' : '';
@@ -3673,13 +3730,13 @@
   function hoverHtml(i, pinned) {
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
-      var singleView = singleViews[singleActive];
-      if (singleView && singleView.hover && singleView.hover.pending) {
+      var activeSingleView = singleView(singleActive);
+      if (activeSingleView && activeSingleView.hover && activeSingleView.hover.pending) {
         var basic = ['Cell: ' + cellLabel(i)];
         var group = catOf(colorBy), value = fieldOf();
         if (group) {
           var level = group.levels[group.values[i]];
-          basic.push(singleView.meta.color_variable + ': ' + (level == null ? 'NA' : level));
+          basic.push(activeSingleView.meta.color_variable + ': ' + (level == null ? 'NA' : level));
         }
         if (value && value.v) {
           var numeric = fieldValue(value, i);
@@ -3994,7 +4051,7 @@
     cardFlyFrom(p, i);
     // ask for the exact meta row; the card is already on screen either way
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', { index: i },
+      Shiny.setInputValue('coordviews_cell_detail', { index: i, dataset_context:D.dataset_context },
         { priority: 'event' });
     }
   }
@@ -4005,7 +4062,7 @@
     renderCard();
     openTrekkerInsights('cell');
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', { index: i },
+      Shiny.setInputValue('coordviews_cell_detail', { index: i, dataset_context:D.dataset_context },
         { priority: 'event' });
     }
   }
@@ -5057,6 +5114,7 @@
       if (!deferred.value.requested && typeof Shiny !== 'undefined') {
         deferred.value.requested = true;
         Shiny.setInputValue('coordviews_attribute_request', {
+      dataset_context: D.dataset_context,
           dataset_id: D.dataset_id,
           dataset_fingerprint: configFingerprint(),
           kind: deferred.kind,
@@ -5325,17 +5383,36 @@
     // Only the newest request may paint. Without the token a large image chosen
     // first can finish decoding after a small one chosen second and replace it.
     var mine = space._imgToken;
+    var imageDatasetContext = currentDatasetContext();
+    var imageIdentity = canonicalIdentity(img.id || img.uri);
+    var stillCurrent = function () {
+      var activeImage = currentImage(space);
+      return mine === space._imgToken &&
+        sameDatasetContext(imageDatasetContext, currentDatasetContext()) &&
+        datasetContextApi().phase() === 'ready' &&
+        canonicalIdentity(activeImage && (activeImage.id || activeImage.uri)) === imageIdentity;
+    };
     var im = new Image();
     im.onload = function () {
-      if (mine !== space._imgToken) return;
+      if (!stillCurrent()) return;
       space._imgReady = true; drawAll();
+    };
+    im.onerror = function () {
+      if (!stillCurrent()) return;
+      space._imgReady = false;
+      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+        Shiny.setInputValue('coordviews_spatial_image_load_error', {
+          space: space.label || space.id || 'Spatial', image: img.label || img.id || 'background image',
+          dataset_context: imageDatasetContext, nonce: Date.now()
+        }, {priority:'event'});
+      }
     };
     im.src = img.uri;
     space._imgEl = im;
   }
 
   function deferredAssetCacheKey(key) {
-    return String(configFingerprint() || '') + '\u0000' + String(key || '');
+    return currentDatasetContextKey() + '\u0000' + String(configFingerprint() || '') + '\u0000' + String(key || '');
   }
 
   function requestDeferredAsset(key) {
@@ -5348,6 +5425,7 @@
     if (pendingAssets.has(cacheKey)) return;
     pendingAssets.add(cacheKey);
     Shiny.setInputValue('coordviews_asset_request', {
+      dataset_context: D.dataset_context,
       dataset_id: D.dataset_id,
       dataset_fingerprint: configFingerprint(),
       key: key,
@@ -6204,7 +6282,8 @@
   }
 
   function applyColorPatch(patch) {
-    if (!D || !patch || patch.dataset_id !== D.dataset_id) return false;
+    if (!D || !patch || !datasetMessageFresh(patch) ||
+        !sameDatasetContext(patch.dataset_context, D.dataset_context)) return false;
     ['groups', 'cat_extra'].forEach(function (kind) {
       var update = patch[kind] || {};
       var target = D[kind] || {};
@@ -6282,12 +6361,12 @@
     return !!config && count > config.threshold;
   }
   function singleInteractionIsStatic() {
-    var view = singleActive && singleViews[singleActive];
+    var view = singleActive && singleView(singleActive);
     return singleInteractionRecommendedStatic(view) &&
       view.interactionEnabled !== true;
   }
   function updateSingleInteractionMode() {
-    var view = singleActive && singleViews[singleActive];
+    var view = singleActive && singleView(singleActive);
     var host = singleActive && singleHost(singleActive);
     if (!view || !host) return;
     var recommended = singleInteractionRecommendedStatic(view);
@@ -6325,7 +6404,7 @@
     }
   }
   function toggleSingleInteraction() {
-    var view = singleActive && singleViews[singleActive];
+    var view = singleActive && singleView(singleActive);
     if (!view || !singleInteractionRecommendedStatic(view)) return;
     view.interactionEnabled = singleInteractionIsStatic();
     updateSingleInteractionMode();
@@ -6372,6 +6451,12 @@
   }
   function resetSingleViews() {
     restoreLinkedSurface();
+    Object.keys(singleViews).forEach(function (cacheKey) {
+      var view = singleViews[cacheKey];
+      if (view && view._auxTimer) clearTimeout(view._auxTimer);
+      if (view) { view._auxTimer = null; view._auxPending = null; }
+    });
+    singleAsyncEpoch++;
     singleViews = {}; singleActive = null;
     singleRequests.clear();
     singleSpaceIds = []; singleSpaceModes = {};
@@ -6381,6 +6466,64 @@
     singleResourceDescriptors.clear();
     singleDefaultResourceNames.clear();
     singleCategoryResourceDescriptors.clear();
+  }
+  function markSingleHosts(phase, context) {
+    var hosts = document.querySelectorAll('[data-cell-view-id]');
+    Array.prototype.forEach.call(hosts, function (host) {
+      host.dataset.renderState = phase || 'idle';
+      if (context) {
+        host.dataset.datasetEpoch = String(context.epoch);
+        host.dataset.datasetKey = String(context.dataset_key);
+        host.dataset.renderGeneration = String(context.generation);
+      } else {
+        delete host.dataset.datasetEpoch;
+        delete host.dataset.datasetKey;
+        delete host.dataset.renderGeneration;
+      }
+      if (phase !== 'ready') {
+        delete host.dataset.backgroundIdentity;
+        delete host.dataset.pointCount;
+      }
+    });
+  }
+  function invalidateDatasetViewState(detail) {
+    resetSingleViews();
+    Object.keys(spaceById || {}).forEach(function (spaceId) {
+      var space = spaceById[spaceId];
+      if (!space) return;
+      space._imgToken = ++imgToken;
+      space._imgEl = null;
+      space._imgReady = false;
+    });
+    imgToken++;
+    imgStates = {};
+    imgChoice = {};
+    geneWanted = null;
+    pendingColorPatch = null;
+    progressiveRequestedKey = null;
+    linkedBundle = null;
+    sel = null;
+    selectionSource = null;
+    selectionSourceSpace = null;
+    pick = null;
+    hoverCell = null;
+    D = null;
+    dataShown = null;
+    spaceById = {};
+    selectedSpatial = [];
+    activeSpatialId = null;
+    spatialTemplate = null;
+    markSingleHosts(
+      detail && detail.phase === 'ready'
+        ? 'waiting'
+        : detail && detail.phase || 'pending',
+      detail && detail.dataset_context || currentDatasetContext()
+    );
+    showUnavailable(
+      detail && detail.phase === 'error'
+        ? 'This data set could not be loaded.'
+        : 'Loading data set…'
+    );
   }
   function mountSingleSurface(id) {
     rememberSurfaceHome();
@@ -6437,7 +6580,9 @@
     var n = Number(payload.data && payload.data.n) || cells.length;
     var identity = payload.datasetIdentity || {};
     return {
-      dataset_id: 'single:' + id + ':' + n,
+      dataset_id: payload.dataset_context.dataset_key,
+      dataset_context: payload.dataset_context,
+      dataset_generation: payload.dataset_context.generation,
       dataset_fingerprint: identity.cell_fingerprint || '',
       cells: cells,
       n: n,
@@ -7678,8 +7823,8 @@
     return { spaces: spaces, modes: modes };
   }
   function stashSingleState() {
-    if (!singleActive || !singleViews[singleActive]) return;
-    var view = singleViews[singleActive];
+    var view = singleActive && singleView(singleActive);
+    if (!view) return;
     view.selection = selectedCellIds();
     var group = catOf(singleSpaceModes[singleSpaceIds[0]]);
     view.hiddenGroups = group ? Array.from(hidden).map(function (index) {
@@ -7736,8 +7881,9 @@
     var timing = CBViewState.specialistLifecycle.activate(
       singleTiming, id, activationStarted
     );
-    var payload = singleViews[id];
-    if (!payload || rebuildingBase) return false;
+    var payload = singleView(id);
+    if (!payload || rebuildingBase ||
+        !sameDatasetContext(payload.dataset_context, currentDatasetContext())) return false;
     if (!singleActive && linkedBundle && D && !linkedState) {
       linkedState = exportWorkspace();
     }
@@ -7775,7 +7921,12 @@
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (isSpatialSpace(space)) loadSpaceImage(space);
     });
-    if (payload.backgroundState) updateSingleBackground(id, payload.backgroundState);
+    if (payload.backgroundState) updateSingleBackground({
+      id: id,
+      dataset_context: payload.dataset_context,
+      background_identity: payload.background_identity_value,
+      values: payload.backgroundState
+    });
     colorBy = singleSpaceModes[singleSpaceIds[0]] || colorBy;
     hidden = new Set(); groupFilter = {}; sel = null; selectionSource = null;
     selectionSourceSpace = null;
@@ -7866,37 +8017,77 @@
     linkedState = null;
   }
 
-  function registerSingle(id) {
-    if (!id) return null;
-    if (!singleViews[id]) singleViews[id] = { id: id };
-    return singleViews[id];
+  function registerSingle(id, context) {
+    context = context || currentDatasetContext();
+    var cacheKey = singleCacheKey(id, context);
+    if (!cacheKey || !sameDatasetContext(context, currentDatasetContext())) return null;
+    if (!singleViews[cacheKey]) {
+      singleViews[cacheKey] = { id: id, dataset_context: context };
+    }
+    return singleViews[cacheKey];
   }
 
-  function renderSingle(
-    id, meta, data, hover, extra, datasetIdentity, transportProfile
-  ) {
-    var previous = registerSingle(id); if (!previous) return;
-    singleRequests.delete(id);
+  function renderSingle(message) {
+    if (!message || !message.id || !datasetMessageFresh(message)) return false;
+    var api = datasetContextApi();
+    var context = api.fromMessage(message);
+    var id = message.id;
+    var cacheKey = singleCacheKey(id, context);
+    var renderToken = Number(message.render_token);
+    if (!Number.isSafeInteger(renderToken) || renderToken < 1) {
+      return false;
+    }
+    var previous = registerSingle(id, context); if (!previous) return false;
+    if (previous.render_token != null && renderToken <= previous.render_token) {
+      return false;
+    }
+    singleRequests.delete(singleRequestKey(id, context));
+    var meta = message.meta || {};
+    var data = message.data || {};
+    var hover = message.hover || {};
+    var extra = message.extra || {};
     meta = meta || {}; data = data || {};
+    var host = singleHost(id), keys = data.selection_key || [];
+    var pointCount = data.n != null ? Number(data.n) : (Array.isArray(keys[0])
+      ? keys.reduce(function (total, values) { return total + values.length; }, 0)
+      : keys.length);
+    var backgroundIdentityValue = message.background_identity != null
+      ? message.background_identity : meta.background_identity;
+    var backgroundIdentity = canonicalIdentity(backgroundIdentityValue);
+    if (previous.background_identity !== backgroundIdentity) {
+      previous.backgroundState = null;
+    }
+    if (host) {
+      host.dataset.datasetEpoch = String(context.epoch);
+      host.dataset.datasetKey = String(context.dataset_key);
+      host.dataset.renderGeneration = String(context.generation);
+      host.dataset.renderState = 'received';
+      host.dataset.pointCount = String(isFinite(pointCount) ? pointCount : 0);
+      if (backgroundIdentity) host.dataset.backgroundIdentity = backgroundIdentity;
+      else delete host.dataset.backgroundIdentity;
+    }
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
-    singleViews[id] = Object.assign(previous, {
+    singleViews[cacheKey] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
-      extra: extra || {}, datasetIdentity: datasetIdentity || {},
-      transportProfile: transportProfile || {}
+      extra: extra || {}, dataset_context: context,
+      render_token: renderToken, aux_render_token: renderToken,
+      datasetIdentity: message.dataset_identity || {}, transportProfile: message.transport_profile || {},
+      background_identity: backgroundIdentity,
+      background_identity_value: backgroundIdentityValue
     });
-    if (changedGroup) singleViews[id].hiddenGroups = [];
-    if (data.reset_axes) singleViews[id].lenses = [];
-    var pending = singleViews[id].pendingSavedState;
+    if (changedGroup) singleViews[cacheKey].hiddenGroups = [];
+    if (data.reset_axes) singleViews[cacheKey].lenses = [];
+    var pending = singleViews[cacheKey].pendingSavedState;
     if (pending) {
-      singleViews[id].pendingSavedState = null;
+      singleViews[cacheKey].pendingSavedState = null;
       applySingleState(id, pending);
     } else if (visibleSingleId() === id) {
       activateSingle(id, !!data.reset_axes, false, 'primary');
     }
+    return true;
   }
-
   function updateSingleExpression(id, previousMeta, previousData, message) {
-    var view = singleViews[id], data = view.data, meta = view.meta;
+    var view = singleView(id), data = view.data, meta = view.meta;
     // The R recolor protocol guarantees unchanged geometry. Keep the shortcut
     // narrow: an active, fully identified, flat Gene canvas with one panel.
     // Other views, layouts and geometry changes retain the full activation path.
@@ -7972,11 +8163,14 @@
   }
 
   function recolorSingle(message) {
-    if (!message || !message.id) return false;
-    var view = singleViews[message.id];
+    if (!message || !message.id || !datasetMessageFresh(message)) return false;
+    var view = singleView(message.id, message.dataset_context);
     if (!view || !view.data || view.data.x == null || view.data.y == null) {
       return false;
     }
+    if (!sameDatasetContext(view.dataset_context, message.dataset_context) ||
+        Number(message.render_token) <= Number(view.render_token)) return false;
+    view.render_token = Number(message.render_token);
     var colorFields = [
       'color', 'rgb', 'rgb_scaled', 'rgb_genes', 'colorscale', 'panel_colorscales',
       'color_range', 'reversescale', 'paint_order', 'render_key', 'sparse_color',
@@ -8009,7 +8203,7 @@
   }
 
   function captureSingleState(id) {
-    var view = singleViews[id];
+    var view = singleView(id);
     if (!view || !view.data) return null;
     if (singleActive === id) stashSingleState();
     var lens = view.lenses && view.lenses[0] || {};
@@ -8027,6 +8221,48 @@
         hidden_groups: (view.hiddenGroups || []).slice()
       }
     };
+  }
+
+  function numericExtent(value) {
+    var min = Infinity, max = -Infinity, count = 0;
+    function visit(entry) {
+      if (Array.isArray(entry) || ArrayBuffer.isView(entry)) {
+        Array.prototype.forEach.call(entry, visit);
+        return;
+      }
+      var number = Number(entry);
+      if (!isFinite(number)) return;
+      min = Math.min(min, number); max = Math.max(max, number); count++;
+    }
+    visit(value);
+    return count ? Object.freeze({ min: min, max: max, count: count }) : null;
+  }
+
+  function singleSummary(id) {
+    var context = currentDatasetContext();
+    var view = singleView(id, context);
+    var ready = datasetContextApi().phase() === 'ready' && !!(view && view.data &&
+      sameDatasetContext(view.dataset_context, context));
+    var keys = ready && view.data.selection_key || [];
+    var pointCount = ready && view.data.n != null
+      ? Number(view.data.n)
+      : (ready && Array.isArray(keys[0])
+        ? keys.reduce(function (total, values) { return total + values.length; }, 0)
+        : (ready ? keys.length : 0));
+    return Object.freeze({
+      ready: ready,
+      viewId: id,
+      dataset_context: context,
+      datasetKey: context && context.dataset_key || null,
+      generation: context && context.generation || null,
+      epoch: context && context.epoch || null,
+      pointCount: isFinite(pointCount) ? pointCount : 0,
+      xExtent: ready ? numericExtent(view.data.x) : null,
+      yExtent: ready ? numericExtent(view.data.y) : null,
+      backgroundIdentity: ready ? view.background_identity || null : null,
+      wireToken: ready && view.data.wire_token != null
+        ? view.data.wire_token : null
+    });
   }
 
   function downloadSinglePNG(id) {
@@ -8068,16 +8304,20 @@
     return { selectedCells: target.selection.length };
   }
 
-  function updateSingleBackground(id, values) {
-    var view = singleViews[id]; if (!view) return;
-    values = values || {};
+  function updateSingleBackground(message) {
+    if (!message || !message.id || !datasetMessageFresh(message)) return false;
+    var id = message.id;
+    var view = singleView(id); if (!view) return false;
+    var incomingIdentity = canonicalIdentity(message.background_identity);
+    if (!incomingIdentity || incomingIdentity !== view.background_identity) return false;
+    var values = message.values || {};
     var names = {
       opacity: 'opacity', offsetX: 'offsetX', offsetY: 'offsetY',
       scaleX: 'scaleX', scaleY: 'scaleY', flipX: 'flipX',
       flipY: 'flipY', rotate: 'rotate'
     };
     view.backgroundState = Object.assign({}, view.backgroundState || {}, values);
-    if (singleActive !== id) return;
+    if (singleActive !== id) return true;
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (!space || !space._imgState) return;
       Object.keys(names).forEach(function (name) {
@@ -8086,17 +8326,21 @@
       stashImgState(space);
     });
     drawAll();
+    return true;
   }
 
   function onData(bundle) {
+    if (!datasetMessageFresh(bundle)) return false;
     wireToken++;
     applyData(bundle);
+    return true;
   }
 
   function requestWireFallback(datasetId, fingerprint) {
     Shiny.setInputValue('coordviews_wire_fallback', {
       dataset_id: datasetId || '',
       dataset_fingerprint: fingerprint || '',
+      dataset_context: currentDatasetContext(),
       nonce: Date.now()
     }, { priority: 'event' });
   }
@@ -8251,7 +8495,7 @@
   }
 
   function applyHydratedSupplement(extra, metric) {
-    if (!D || extra.dataset_id !== D.dataset_id ||
+    if (!datasetMessageFresh(extra) || !D || !sameDatasetContext(extra.dataset_context, D.dataset_context) || extra.dataset_id !== D.dataset_id ||
         extra.dataset_fingerprint !== configFingerprint() ||
         extra.progressive_token !== D.progressive_token) return;
     var drawStarted = performance.now();
@@ -8327,7 +8571,7 @@
     try {
       var extra = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!D) return;
+      if (!D || !datasetMessageFresh(extra)) return;
       if (!extra) throw new Error('Linked views supplement is empty');
       if (extra.dataset_id !== D.dataset_id ||
           extra.dataset_fingerprint !== configFingerprint() ||
@@ -8352,7 +8596,7 @@
   function onBinaryAttribute(buffer) {
     try {
       var message = window.CBViewWire.unpack(buffer);
-      if (!D || !message || message.dataset_id !== D.dataset_id ||
+      if (!datasetMessageFresh(message) || !D || !message || message.dataset_id !== D.dataset_id ||
           message.dataset_fingerprint !== configFingerprint()) return;
       var target = D[message.kind];
       if (!target || !target[message.name] || !message.value) return;
@@ -8370,7 +8614,7 @@
     try {
       var decoded = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!decoded || !decoded.id) return;
+      if (!decoded || !decoded.id || !datasetMessageFresh(decoded)) return;
       recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
       var profile = decoded.transport_profile || {};
       var transportTiming = CBViewState.telemetry.transport(
@@ -8392,27 +8636,22 @@
       var message = reuseSharedSingleProjection(decoded);
       timing.geometryReused = requestedSharedProjection && !!message;
       if (!message) {
-        singleRequests.delete(decoded.id);
+        singleRequests.delete(singleRequestKey(decoded.id, decoded.dataset_context));
         Shiny.setInputValue('coordviews_shared_base', {}, { priority: 'event' });
-        Shiny.setInputValue(decoded.id + '_render_request', Date.now(), {
+        Shiny.setInputValue(decoded.id + '_render_request', {nonce:Date.now(), dataset_context:currentDatasetContext()}, {
           priority: 'event'
         });
         return;
       }
+      if (!datasetMessageFresh(message)) return;
       hydrateSingleProjectionResource(message).then(function (hydrated) {
+        if (!datasetMessageFresh(hydrated)) return;
         if (hydrated.dataset_identity) {
           window.cerebroSavedViewDataset = hydrated.dataset_identity;
         }
-        renderSingle(
-          hydrated.id,
-          hydrated.meta,
-          hydrated.data,
-          hydrated.hover,
-          hydrated.extra,
-          hydrated.dataset_identity,
-          hydrated.transport_profile
-        );
+        renderSingle(hydrated);
       }).catch(function () {
+        if (!datasetMessageFresh(message)) return;
         var failed = message.data && (
           message.data.projection_resource ||
           (message.data.trajectory_frame_resource &&
@@ -8437,7 +8676,10 @@
       if (message && message.id) {
         recordSpecialistPayload('aux', message.id, buffer.byteLength);
       }
-      var view = message && singleViews[message.id];
+      if (!datasetMessageFresh(message)) return;
+      var view = message && singleView(message.id, message.dataset_context);
+      if (!view || !sameDatasetContext(view.dataset_context, message.dataset_context) ||
+          Number(view.aux_render_token) !== Number(message.render_token)) return;
       if (!CBViewState.specialistLifecycle.acceptAux(view, message)) return;
       var hasCells = message.selection_key != null;
       if (hasCells) view.data.selection_key = message.selection_key;
@@ -8508,22 +8750,23 @@
   }
 
   function scheduleSingleMetadata(id) {
-    var view = singleViews[id], token = view && view.data && view.data.wire_token;
+    var view = singleView(id), token = view && view.data && view.data.wire_token;
     if (!view || !view.hover || !view.hover.pending || token == null ||
         view._metadataRequested === token || singleActive !== id) return;
     view._metadataRequested = token;
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        if (singleViews[id] !== view || view.data.wire_token !== token) return;
+        if (singleView(id) !== view || view.data.wire_token !== token) return;
         if (singleActive !== id) { view._metadataRequested = null; return; }
         Shiny.setInputValue('cell_view_aux_request', {
-          id: id, wire_token: token, stage: 'metadata'
+          id: id, wire_token: token, stage: 'metadata', dataset_context: view.dataset_context
         }, { priority: 'event' });
       });
     });
   }
 
   function applyData(bundle) {
+    if (!datasetMessageFresh(bundle)) return;
     // A data set the builders cannot turn into a bundle (no embedding, or a
     // build error) arrives as {error: "..."}. Blank the workspace and SAY so —
     // returning early would leave the PREVIOUS data set's panels on screen,
@@ -8555,7 +8798,7 @@
     // arrives. A bundle can be re-sent when returning to the tab; clearing on
     // every push meant a user's alignment work survived only until they looked
     // away.
-    var datasetIdentity = String(D.dataset_id || '') + '\u0000' + configFingerprint();
+    var datasetIdentity = datasetContextApi().key(D.dataset_context);
     var dataChanged = datasetIdentity !== dataShown;
     syncLinkedHoverDefault(dataChanged);
     var previousSelected = selectedSpatial.slice();
@@ -8721,7 +8964,7 @@
     reportWorkspaceReady();
     if (!rebuildingBase) {
       var singleId = visibleSingleId();
-      if (singleId && singleViews[singleId]) activateSingle(singleId);
+      if (singleId && singleView(singleId)) activateSingle(singleId);
     }
   }
 
@@ -9236,6 +9479,7 @@
       if (progressiveRequestedKey !== key) {
         progressiveRequestedKey = key;
         Shiny.setInputValue('coordviews_primary_ready', {
+          dataset_context: D.dataset_context,
           dataset_id: D.dataset_id,
           dataset_fingerprint: configFingerprint(),
           progressive_token: D.progressive_token,
@@ -9322,6 +9566,7 @@
   });
 
   window.cerebroCellViews = Object.freeze({
+    summary: singleSummary,
     captureState: captureSingleState,
     applyState: applySingleState,
     downloadPNG: downloadSinglePNG,
@@ -9342,7 +9587,7 @@
     Shiny.addCustomMessageHandler('coordviews_attribute', onBinaryAttribute);
     Shiny.addCustomMessageHandler('coordviews_supplement', onBinarySupplement);
     Shiny.addCustomMessageHandler('coordviews_clone_details', function (message) {
-      if (!D || !D.clone || !message ||
+      if (!D || !D.clone || !message || !datasetMessageFresh(message) ||
           message.dataset_fingerprint !== configFingerprint() ||
           !Array.isArray(message.ids) || !Array.isArray(message.labels)) return;
       if (!Array.isArray(D.clone.label)) D.clone.label = [];
@@ -9358,7 +9603,7 @@
       if (cardOpen()) renderCard();
     });
     Shiny.addCustomMessageHandler('coordviews_asset', function (message) {
-      if (!D || !message ||
+      if (!D || !message || !datasetMessageFresh(message) ||
           message.dataset_fingerprint !== configFingerprint() ||
           !message.key || !message.uri) return;
       var cacheKey = deferredAssetCacheKey(message.key);
@@ -9375,7 +9620,7 @@
     Shiny.addCustomMessageHandler(
       'cell_view_resource_catalog',
       function (message) {
-        if (!message || !Array.isArray(message.resources)) return;
+        if (!datasetMessageFresh(message) || !Array.isArray(message.resources)) return;
         if (typeof message.default_resource_name === 'string' &&
             message.default_resource_name) {
           singleDefaultResourceNames.set(
@@ -9402,36 +9647,28 @@
         // controls and their resource descriptors arrive in the same Shiny
         // flush. Retry as soon as the catalog is registered so the immutable
         // geometry download overlaps the remaining server preparation.
-        if (singleRequests.has(message.id)) {
+        if (singleRequests.has(singleRequestKey(message.id, message.dataset_context))) {
           prefetchRegisteredSingleResource(message.id);
           prefetchRegisteredSingleCategory(message.id);
         }
       }
     );
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
+      if (!datasetMessageFresh(patch)) return;
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
     });
     Shiny.addCustomMessageHandler('cell_view_render', function (message) {
-      if (!message || !message.id) return;
+      if (!message || !message.id || !datasetMessageFresh(message)) return;
       message = reuseSharedSingleProjection(message);
       if (!message) return;
-      renderSingle(
-        message.id,
-        message.meta,
-        message.data,
-        message.hover,
-        message.extra,
-        message.dataset_identity,
-        message.transport_profile
-      );
+      renderSingle(message);
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
-      if (!message || !message.id) return;
-      updateSingleBackground(message.id, message.values);
+      updateSingleBackground(message);
     });
     Shiny.addCustomMessageHandler('cell_view_appearance', function (message) {
-      if (!message || !message.id || !message.values) return;
-      var view = singleViews[message.id];
+      if (!message || !message.id || !message.values || !datasetMessageFresh(message)) return;
+      var view = singleView(message.id, message.dataset_context);
       var identity = view && view.datasetIdentity || {};
       if (!view || String(identity.cell_fingerprint || '') !==
           String(message.dataset_fingerprint || '')) return;
@@ -9465,7 +9702,8 @@
     // provide left the previous one's colours on screen under its name, with
     // nothing to say the request had failed.
     Shiny.addCustomMessageHandler('coordviews_geneval', function (m) {
-      if (!D || !m) return;
+      if (!D || !m || !datasetMessageFresh(m) ||
+          !sameDatasetContext(m.dataset_context, D.dataset_context)) return;
       if (m.ok && geneWanted != null && m.gene !== geneWanted) return; // stale reply
       geneWanted = null;
       if (!m.ok) {
@@ -9485,7 +9723,8 @@
       if (colorBy === GENE_MODE) { renderLegend(); drawAll(); updateMoranBadges(); }
     });
     Shiny.addCustomMessageHandler('coordviews_genepanels', function (m) {
-      if (!D || !m) return;
+      if (!D || !m || !datasetMessageFresh(m) ||
+          !sameDatasetContext(m.dataset_context, D.dataset_context)) return;
       if (!m.ok) {
         window.CBViewState.clearExpression(D, 'panels');
         if (colorBy === GENE_PANELS_MODE) {
@@ -9538,7 +9777,8 @@
     });
     // Three 0-255 channels for RGB co-expression.
     Shiny.addCustomMessageHandler('coordviews_rgbval', function (m) {
-      if (!D || !m) return;
+      if (!D || !m || !datasetMessageFresh(m) ||
+          !sameDatasetContext(m.dataset_context, D.dataset_context)) return;
       if (!m.ok) {
         window.CBViewState.clearExpression(D, 'rgb');
         if (colorBy === RGB_MODE) { renderLegend(); drawAll(); }
@@ -9583,10 +9823,21 @@
         }
       );
     }
+    window.addEventListener('cerebro:dataset-context', function (event) {
+      var detail = event && event.detail || {};
+      if (!detail.changed && detail.phase === 'ready' && !detail.phaseChanged) return;
+      if (detail.changed || detail.phase !== 'ready') invalidateDatasetViewState(detail);
+      else markSingleHosts('waiting', detail.dataset_context);
+      lastVis = null;
+      reportVisibility();
+    });
     function requestSingleView(id) {
-      if (!id || singleViews[id] || singleRequests.has(id) ||
+      var context = currentDatasetContext();
+      if (!context || !datasetContextApi() || datasetContextApi().phase() !== 'ready') return false;
+      var requestKey = singleRequestKey(id, context);
+      if (!id || singleView(id) || singleRequests.has(requestKey) ||
           !Shiny.setInputValue) return false;
-      singleRequests.add(id);
+      singleRequests.add(requestKey);
       var requestedAt = performance.now();
       var timing = CBViewState.specialistLifecycle.begin(
         singleTiming, id, true
@@ -9596,7 +9847,7 @@
         ? requestedAt - window.__cerebroPageBenchClickStart : null;
       prefetchRegisteredSingleResource(id);
       prefetchRegisteredSingleCategory(id);
-      Shiny.setInputValue(id + '_render_request', Date.now(), {
+      Shiny.setInputValue(id + '_render_request', {nonce:Date.now(), dataset_context:context}, {
         priority: 'event'
       });
       return true;
@@ -9624,7 +9875,7 @@
       var enteringCachedLinked = linkedVis && !!(D && workspaceSummary().primaryReady);
       lastVis = key;
       requestSingleView(singleId);
-      if (singleId && singleViews[singleId]) {
+      if (singleId && singleView(singleId)) {
         var cachedAt = performance.now();
         var cachedTiming = CBViewState.specialistLifecycle.begin(
           singleTiming, singleId, false
@@ -9679,8 +9930,11 @@
         reportVisibility();
       }, 0);
     }, true);
-    // A reconnect gives a fresh server session that knows nothing, so the state
-    // has to be sent again rather than suppressed as unchanged.
+    // Re-advertise client capabilities after either a resumed connection or a
+    // fresh server session. Keep an already-confirmed context usable here: a
+    // resumed session need not replay its ready message, while a fresh session
+    // will immediately publish pending/ready with its new epoch and invalidate
+    // this state through the authoritative context gate.
     var onConnected = function () {
       progressiveRequestedKey = null;
       Shiny.setInputValue(

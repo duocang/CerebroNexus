@@ -14,6 +14,19 @@
 
   function byId(id) { return document.getElementById(id); }
 
+  function datasetContextApi() {
+    return window.CerebroDatasetContext || null;
+  }
+  function currentDatasetContext() {
+    var api = datasetContextApi();
+    return api && api.phase && api.phase() === 'ready' ? api.current() : null;
+  }
+  function currentDatasetContextKey() {
+    var api = datasetContextApi();
+    var context = currentDatasetContext();
+    return api && api.key && context ? api.key(context) : '';
+  }
+
   function adapterFor(viewId) {
     if (viewId === 'linked_views') return window.cerebroLinkedViewsState || null;
     var specialist = window.cerebroSpecialistViews;
@@ -85,7 +98,11 @@
   }
 
   function startPending(nonce, action) {
-    pending = { nonce: nonce, action: action };
+    pending = {
+      nonce: nonce,
+      action: action,
+      datasetContextKey: currentDatasetContextKey()
+    };
     if (pendingTimer) window.clearTimeout(pendingTimer);
     pendingTimer = window.setTimeout(function () {
       if (!pending || pending.nonce !== nonce) return;
@@ -188,6 +205,7 @@
     Shiny.setInputValue('coordviews_config_request', {
       nonce: nonce,
       action: 'prepare',
+      dataset_context: currentDatasetContext(),
       config: config
     }, { priority: 'event' });
   }
@@ -248,7 +266,10 @@
   }
 
   function receive(result) {
-    if (!result || !pending || String(result.nonce) !== pending.nonce) return;
+    var contextApi = datasetContextApi();
+    if (!result || !pending || !contextApi || !contextApi.accepts(result) ||
+        pending.datasetContextKey !== currentDatasetContextKey() ||
+        String(result.nonce) !== pending.nonce) return;
     var expectedAction = pending.action;
     clearPending();
     if (result.action !== expectedAction) {
@@ -305,6 +326,7 @@
       Shiny.setInputValue('coordviews_config_upload_request', {
         nonce: nonce,
         action: 'apply',
+        dataset_context: currentDatasetContext(),
         name: file.name,
         size: file.size,
         text: String(reader.result || '')
@@ -366,6 +388,7 @@
     shinyBound = true;
     Shiny.addCustomMessageHandler('coordviews_config_result', receive);
     Shiny.addCustomMessageHandler('cerebro_saved_view_dataset', function (identity) {
+      if (!window.CerebroDatasetContext || !window.CerebroDatasetContext.accepts(identity)) return;
       window.cerebroSavedViewDataset = identity;
       var cellViews = window.cerebroCellViews;
       if (cellViews && cellViews.attachDatasetIdentity) {
@@ -435,6 +458,13 @@
         var state = adapterFor(detail.viewId);
         setReadyFor(detail.viewId, !!(state && state.ready()), detail.selectedCells);
       }, 0);
+    });
+    window.addEventListener('cerebro:dataset-context', function (event) {
+      var detail = event && event.detail || {};
+      if (!detail.changed && detail.phase === 'ready') return;
+      if (pending) clearPending();
+      exportReady = false;
+      refreshExportControls();
     });
     window.addEventListener('cerebro:png-result', announceExternalPNG);
     refreshActiveState();

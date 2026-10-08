@@ -281,6 +281,15 @@ test_that("background identity includes its full logical image location", {
     spatial_background_identity("Atlas", "sliceA", descriptor),
     spatial_background_identity("Other", "sliceB", descriptor)
   ))
+  expect_true(spatial_background_identity_equal(
+    spatial_background_identity("Atlas", "sliceA", descriptor),
+    spatial_background_identity("Atlas", "sliceA", descriptor)
+  ))
+  expect_false(spatial_background_identity_equal(
+    spatial_background_identity("Atlas", "sliceA", descriptor),
+    spatial_background_identity("Other", "sliceB", descriptor)
+  ))
+  expect_false(spatial_background_identity_equal(list(), list()))
   expect_null(spatial_background_identity("Atlas", "sliceA", NULL))
 })
 

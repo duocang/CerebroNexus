@@ -4,13 +4,19 @@
 overview_projection_last_render <- NULL
 observe({
   req(identical(input[["sidebar"]], "overview"))
-  req(input[["overview_projection_render_request"]])
+  render_request <- input[["overview_projection_render_request"]]
+  req(is.list(render_request), is.list(render_request$dataset_context))
+  current_context <- viewer_loaded_dataset_context()
+  req(viewerDatasetContextEqual(render_request$dataset_context, current_context))
   render_request <- input[["overview_projection_render_request"]]
   projection_resource_failed <- input[[
     "overview_projection_projection_resource_failed"
   ]]
   data <- overview_projection_data_to_plot()
-  req(data)
+  if (!viewerDatasetContextEqual(data$dataset_context, current_context)) {
+    data <- overview_projection_data_to_plot_raw()
+  }
+  req(data, viewerDatasetContextEqual(data$dataset_context, current_context))
   render <- list(
     request = render_request,
     projection_resource_failed = projection_resource_failed,

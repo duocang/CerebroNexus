@@ -567,6 +567,8 @@ ir_clonal_umap_last_request <- reactiveVal(NULL)
 
 observe({
   render_request <- input[["ir_clonalUMAP_projection_render_request"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(render_request), viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
   req(render_request)
   req(identical(input[["sidebar"]], "immune_repertoire"),
       identical(input[["ir_tabs"]], "Clonal UMAP"))
@@ -621,7 +623,7 @@ observe({
   }
   identity <- tryCatch(viewerDatasetIdentity(), error = function(e) list())
   request_signature <- list(
-    render_request = as.numeric(render_request),
+    render_request = render_request,
     dataset_fingerprint = as.character(identity$fingerprint %||% ""),
     cell_order_fingerprint = as.character(identity$order_fingerprint %||% ""),
     receptor = as.character(receptor),
@@ -757,8 +759,7 @@ observe({
       output_meta,
       output_data,
       output_hover,
-      deferred_aux = deferred_aux
-    )
+      deferred_aux = deferred_aux, dataset_context = dataset_context)
   )
   ir_clonal_umap_last_request(request_signature)
 }, priority = 1000)
@@ -766,11 +767,29 @@ observe({
 ## ---- Clonal UMAP selection summaries ----------------------------------- ##
 output[["ir_clonalUMAP_number_of_selected_cells"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    sel <- NULL
+  }
   cerebroSelectionSummary(sel, "Clonal projection")
 })
 
 output[["ir_clonalUMAP_projection_composition"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    sel <- NULL
+  }
   cerebroSelectionSummary(sel, "Clonal projection", composition = TRUE)
 })
 

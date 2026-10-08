@@ -24,6 +24,11 @@ function activateSingle() { calls.activate++; }
 function requestAnimationFrame(cb) { cb(); }
 function CustomEvent(type, args) { this.type = type; this.detail = args.detail; }
 var window = {dispatchEvent: e => emitted.push(e)};
+const datasetContext = {epoch:'incremental-test',dataset_key:'A',generation:1};
+function singleView(id) { return singleViews[id]; }
+function sameDatasetContext(a,b) { return JSON.stringify(a) === JSON.stringify(b); }
+function currentDatasetContext() { return datasetContext; }
+function datasetMessageFresh(message) { return sameDatasetContext(message.dataset_context,datasetContext); }
 eval(between('  function singleIndex()', '  function singlePayloadCells'));
 eval(between('  function quantisedField(', '  function singleEdges('));
 eval(between('  function singleGpuReady(', '  function activateSingle('));
@@ -37,13 +42,14 @@ function setup() {
     y: new Float64Array([8,4,2,6]), _unit: {ok: [1,1,1,1]}}};
   panels = [{key:'A', spaceId, view:{cx:.4,cy:.6,span:.3},
     lassoData:[[0,0],[1,0],[1,1]], sx:new Float32Array(4), gpu:null}];
-  singleViews = {[id]: {meta:{color_type:'continuous',color_variable:'old',render_token:1},
+  singleViews = {[id]: {dataset_context:datasetContext,render_token:1,meta:{color_type:'continuous',color_variable:'old',render_token:1},
     data:{x:spaceById[spaceId].x,y:spaceById[spaceId].y,
       selection_key:D.cells.slice(),color:[1,2,3,4]},selection:['b'],mode:'box'}};
   singleIndexCells = null; singleIndexMap = null; singleIndex();
   _ordD = D; _clipD = D;
 }
 function update(data, meta = {}) { return recolorSingle({id,
+  dataset_context:datasetContext,render_token:Number(singleViews[id].render_token)+1,
   meta:{color_type:'continuous',color_variable:'new',render_token:2,...meta},data}); }
 (async function() {
   setup(); const original = {D, cells:D.cells, index:singleIndexMap, space:spaceById[spaceId],

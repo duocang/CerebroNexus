@@ -95,6 +95,7 @@ spatial_send_appearance <- function(values) {
     "cell_view_appearance",
     list(
       id = "spatial_projection",
+      dataset_context = viewer_loaded_dataset_context(),
       dataset_fingerprint = identity$fingerprint,
       values = values
     )
@@ -217,15 +218,10 @@ spatial_projection_parameters_plot <- reactive({
     spatial_name,
     image_label
   )
-  ## Interaction changes travel through the decoupled background observer. Only
-  ## isolate the current value here so the first payload starts at the preset
-  ## even if the dynamic control has not been created yet.
-  background_opacity <- isolate(
-    input[["spatial_projection_background_opacity"]]
-  )
-  if (is.null(background_opacity)) {
-    background_opacity <- background_preset$opacity
-  }
+  ## Every new image starts from its own preset. Interactive appearance changes
+  ## arrive later as one context-and-image-scoped atomic payload, so stale
+  ## dynamic input bindings can never seed a new render.
+  background_opacity <- background_preset$opacity
 
   parameters <- list(
     projection = controls$projection,

@@ -51,6 +51,7 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
 ## The image-specific controls may safely be regenerated when the selected
 ## image changes: their initial values come from that image's preset.
 output[["spatial_projection_background_parameters_UI"]] <- renderUI({
+  dataset_context <- viewer_loaded_dataset_context()
   req(input[["spatial_projection_more_render_request"]])
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
@@ -104,6 +105,7 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     embedded_images,
     external_images
   )
+  background_identity <- spatial_background_identity(dataset, spatial_name, selected_descriptor)
   image_label <- if (is.null(selected_descriptor)) {
     NULL
   } else {
@@ -181,7 +183,16 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     )
   }
 
-  tagList(
+  tags$div(
+    id = "spatial_projection_background_control_scope",
+    `data-dataset-epoch` = dataset_context$epoch,
+    `data-dataset-key` = dataset_context$dataset_key,
+    `data-dataset-generation` = dataset_context$generation,
+    `data-background-identity` = jsonlite::toJSON(
+      background_identity,
+      auto_unbox = TRUE,
+      null = "null"
+    ),
     ## Background-image adjustments. Shown only when an image is selected. Every
     ## control here is DECOUPLED from the scatter plot: it re-styles the image
     ## <div> via the independent JS channel and never re-renders the points.

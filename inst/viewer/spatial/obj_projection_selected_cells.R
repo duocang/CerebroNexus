@@ -22,6 +22,15 @@ spatial_projection_selected_cells <- reactive({
   ## The shared renderer pushes the persistent selection under
   ## <plot_id>_persistent_selection; the spatial plot id is 'spatial_projection'.
   sel <- input[["spatial_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    return(NULL)
+  }
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }
@@ -44,7 +53,18 @@ spatial_projection_selected_cells <- reactive({
   ## the selected-cells panels reflect only visible groups (shared helper in
   ## utility_functions.R). The plotted coordinates come from
   ## spatial_projection_data_to_plot(), keyed the same way as the selection.
-  hidden_groups <- input[["spatial_projection_hidden_groups"]]
+  hidden_request <- input[["spatial_projection_hidden_groups"]]
+  hidden_groups <- if (
+    is.list(hidden_request) &&
+      viewerDatasetContextEqual(
+        hidden_request[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      )
+  ) {
+    as.character(hidden_request[["groups"]] %||% character())
+  } else {
+    character()
+  }
   if (length(hidden_groups) > 0) {
     color_variable <- input[["spatial_projection_point_color"]]
     plot_data <- spatial_projection_data_to_plot()

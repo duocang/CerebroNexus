@@ -160,7 +160,40 @@ cv_start_clone_task <- function(spec) {
   invisible(TRUE)
 }
 
+observeEvent(input[["coordviews_spatial_image_load_error"]], {
+  event <- input[["coordviews_spatial_image_load_error"]]
+  if (
+    !is.list(event) ||
+      !viewerDatasetContextEqual(
+        event$dataset_context,
+        viewer_loaded_dataset_context()
+      )
+  ) {
+    return()
+  }
+  space <- as.character(event$space %||% "Spatial")
+  image <- as.character(event$image %||% "background image")
+  if (
+    length(space) != 1L || is.na(space) || !nzchar(space) ||
+      length(image) != 1L || is.na(image) || !nzchar(image)
+  ) {
+    return()
+  }
+  showNotification(
+    paste0(
+      "Could not display “",
+      image,
+      "” in “",
+      space,
+      "”. The browser could not decode the image or retrieve its local file."
+    ),
+    type = "error",
+    duration = 8
+  )
+})
+
 cv_build_bundle_safe <- function(primary_only = FALSE) {
+  dataset_context <- viewer_loaded_dataset_context()
   tryCatch(
     {
       started <- proc.time()[["elapsed"]]
@@ -205,12 +238,14 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
         primary_only,
         first_frame = first_frame,
         primary_projection_resource = projection_resource,
+        dataset_context = dataset_context,
         primary_group_resource = group_resource
       )
       bundle_build_ms <-
         (proc.time()[["elapsed"]] - bundle_started) * 1000
       if (is.null(b)) {
         list(
+          dataset_context = dataset_context,
           error = paste(
             "This data set carries no dimensional reduction, so there is",
             "nothing to link its modalities on."
@@ -234,7 +269,10 @@ cv_build_bundle_safe <- function(primary_only = FALSE) {
         conditionMessage(e),
         call. = FALSE
       )
-      list(error = "Linked views could not be built for this data set.")
+      list(
+        dataset_context = dataset_context,
+        error = "Linked views could not be built for this data set."
+      )
     }
   )
 }
@@ -373,11 +411,13 @@ observe({
   coordviews_clone_details(list(
     primary_n = as.integer(sent_primary_n),
     dataset_fingerprint = source$dataset_fingerprint,
+    dataset_context = source$dataset_context,
     label = deferred_clone$details$label,
     n_cdr3 = deferred_clone$details$n_cdr3
   ))
   supplement <- list(
     dataset_id = source$dataset_id,
+    dataset_context = source$dataset_context,
     dataset_fingerprint = source$dataset_fingerprint,
     progressive_token = sent_primary_n,
     groups = list(clone_expansion = clone$group),
@@ -414,6 +454,8 @@ observeEvent(
     req(
       is.list(request),
       is.list(details),
+      viewerDatasetContextEqual(request$dataset_context, details$dataset_context),
+      viewerDatasetContextEqual(details$dataset_context, viewer_loaded_dataset_context()),
       identical(
         as.character(request$dataset_fingerprint %||% ""),
         as.character(details$dataset_fingerprint)
@@ -432,6 +474,7 @@ observeEvent(
     session$sendCustomMessage(
       "coordviews_clone_details",
       list(
+        dataset_context = details$dataset_context,
         dataset_fingerprint = details$dataset_fingerprint,
         ids = I(ids),
         labels = I(details$label[at]),
@@ -446,6 +489,14 @@ observeEvent(
 ## (gene vectors, histology controls) need real cells, not an error payload.
 cv_ok <- function(b) {
   if (is.null(b) || !is.null(b$error)) NULL else b
+}
+
+cv_context_payload <- function(payload, dataset_context) {
+  if (!is.list(payload)) {
+    payload <- list(value = payload)
+  }
+  payload$dataset_context <- dataset_context
+  payload
 }
 
 ## Palette edits do not change cells, coordinates, or available spaces. Keep the
@@ -466,7 +517,13 @@ coordviews_color_patch <- reactive({
 ## this boundary. Only canonical JSON reaches the clipboard/download path, and
 ## only normalized state reaches the browser after upload.
 ##----------------------------------------------------------------------------##
-cv_config_send_result <- function(nonce, action, ok, ...) {
+cv_config_send_result <- function(
+  nonce,
+  action,
+  ok,
+  dataset_context,
+  ...
+) {
   if (is.null(nonce)) {
     nonce <- ""
   }
@@ -479,7 +536,8 @@ cv_config_send_result <- function(nonce, action, ok, ...) {
       list(
         nonce = as.character(nonce),
         action = as.character(action),
-        ok = isTRUE(ok)
+        ok = isTRUE(ok),
+        dataset_context = dataset_context
       ),
       list(...)
     )
@@ -570,6 +628,16 @@ observeEvent(
   input[["coordviews_config_request"]],
   {
     request <- input[["coordviews_config_request"]]
+    request_context <- if (is.list(request)) {
+      request$dataset_context
+    } else {
+      NULL
+    }
+    current_context <- viewer_loaded_dataset_context()
+    if (!viewerDatasetContextEqual(request_context, current_context)) {
+      return()
+    }
+    dataset_context <- current_context
     raw_nonce <- if (is.list(request)) request$nonce else NULL
     raw_action <- if (is.list(request)) request$action else NULL
     nonce <- if (
@@ -597,7 +665,7 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config"),
+          c("nonce", "action", "dataset_context", "config"),
           required = c("nonce", "action"),
           path = "$.request"
         )
@@ -608,6 +676,12 @@ observeEvent(
           "prepare"
         )
         dataset <- cv_saved_view_dataset()
+        if (!viewerDatasetContextEqual(
+          dataset$dataset_context,
+          dataset_context
+        )) {
+          return()
+        }
         prepared <- cv_config_prepare(
           cv_config_materialize_selection(request$config, dataset$cells),
           cells = dataset$cells,
@@ -617,6 +691,7 @@ observeEvent(
           nonce,
           action,
           TRUE,
+          dataset_context,
           json = prepared$json,
           filename = paste0(
             if (identical(prepared$config$schema, CV_CONFIG_SCHEMA)) {
@@ -636,6 +711,7 @@ observeEvent(
           nonce,
           action,
           FALSE,
+          dataset_context,
           code = if (inherits(error, "cv_config_error")) {
             error$code
           } else {
@@ -653,6 +729,16 @@ observeEvent(
   input[["coordviews_config_upload_request"]],
   {
     upload <- input[["coordviews_config_upload_request"]]
+    request_context <- if (is.list(upload)) {
+      upload$dataset_context
+    } else {
+      NULL
+    }
+    current_context <- viewer_loaded_dataset_context()
+    if (!viewerDatasetContextEqual(request_context, current_context)) {
+      return()
+    }
+    dataset_context <- current_context
     raw_nonce <- if (is.list(upload)) upload$nonce else NULL
     nonce <- if (
       is.character(raw_nonce) &&
@@ -669,13 +755,26 @@ observeEvent(
         cv_config_check_node_limit(upload)
         upload <- cv_config_record(
           upload,
-          c("nonce", "action", "name", "size", "text"),
+          c(
+            "nonce",
+            "action",
+            "dataset_context",
+            "name",
+            "size",
+            "text"
+          ),
           path = "$.upload"
         )
         nonce <- cv_config_string(raw_nonce, "$.upload.nonce", 128L)
         action <- cv_config_choice(upload$action, "$.upload.action", "apply")
         text <- cv_config_read_upload(upload)
         dataset <- cv_saved_view_dataset()
+        if (!viewerDatasetContextEqual(
+          dataset$dataset_context,
+          dataset_context
+        )) {
+          return()
+        }
         normalized <- cv_config_decode(
           enc2utf8(text),
           cells = dataset$cells,
@@ -686,6 +785,7 @@ observeEvent(
           nonce,
           action,
           TRUE,
+          dataset_context,
           config = cv_config_json_document(normalized),
           colour_data = colour_data,
           selection_indices = I(as.integer(
@@ -700,6 +800,7 @@ observeEvent(
           nonce,
           "apply",
           FALSE,
+          dataset_context,
           code = if (inherits(error, "cv_config_error")) {
             error$code
           } else {
@@ -853,8 +954,13 @@ observeEvent(
     modalities <- unique(as.character(request$modalities %||% character()))
     req(
       !is.null(request$dataset_id),
+      is.list(request$dataset_context),
       !is.null(request$dataset_fingerprint),
       !is.null(request$progressive_token),
+      viewerDatasetContextEqual(
+        request$dataset_context,
+        primary$dataset_context
+      ),
       identical(as.character(request$dataset_id), primary$dataset_id),
       identical(
         as.character(request$dataset_fingerprint),
@@ -907,6 +1013,8 @@ observeEvent(
     req(
       is.list(request),
       !is.null(source),
+      viewerDatasetContextEqual(request$dataset_context, source$dataset_context),
+      viewerDatasetContextEqual(source$dataset_context, viewer_loaded_dataset_context()),
       identical(as.character(request$dataset_id), source$dataset_id),
       identical(
         as.character(request$dataset_fingerprint),
@@ -941,6 +1049,7 @@ observeEvent(
       "coordviews_attribute",
       cv_wire_pack_message(list(
         dataset_id = source$dataset_id,
+    dataset_context = source$dataset_context,
         dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
         kind = kind,
         name = name,
@@ -955,7 +1064,7 @@ observeEvent(
   input[["coordviews_asset_request"]],
   {
     request <- input[["coordviews_asset_request"]]
-    req(is.list(request))
+    req(is.list(request), viewerDatasetContextEqual(request$dataset_context, viewer_loaded_dataset_context()))
     key <- as.character(request$key %||% "")
     assets <- isolate(coordviews_assets())
     req(
@@ -976,6 +1085,7 @@ observeEvent(
     session$sendCustomMessage(
       "coordviews_asset",
       list(
+        dataset_context = request$dataset_context,
         dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
         key = key,
         uri = uri
@@ -993,6 +1103,10 @@ observeEvent(input[["coordviews_wire_fallback"]], {
   requested_dataset <- as.character(request$dataset_id %||% "")
   requested_fingerprint <- as.character(request$dataset_fingerprint %||% "")
   req(
+    viewerDatasetContextEqual(
+      request$dataset_context,
+      bundle$dataset_context
+    ),
     !nzchar(requested_dataset) ||
       identical(requested_dataset, bundle$dataset_id),
     !nzchar(requested_fingerprint) ||
@@ -1017,10 +1131,13 @@ observeEvent(input[["coordviews_wire_fallback"]], {
 ##----------------------------------------------------------------------------##
 coordviews_selected_barcodes <- reactive({
   indices <- input[["coordviews_selection_indices"]]
-  if (!is.null(indices) && length(indices)) {
-    return(cv_cells_at_indices(cv_saved_view_cells(), indices))
+  current <- viewer_loaded_dataset_context()
+  if (is.list(indices) && viewerDatasetContextEqual(indices$dataset_context, current)) {
+    return(cv_cells_at_indices(cv_saved_view_cells(), indices$indices))
   }
-  sel <- input[["coordviews_selection"]]
+  selection <- input[["coordviews_selection"]]
+  if (!is.list(selection) || !viewerDatasetContextEqual(selection$dataset_context, current)) return(NULL)
+  sel <- selection$cells
   if (is.null(sel) || !length(sel)) NULL else as.character(sel)
 })
 
@@ -1342,14 +1459,21 @@ observeEvent(
   ),
   {
     req(coordviews_visible())
+    dataset_context <- viewer_loaded_dataset_context()
     genes <- unique(input[["coordviews_gene"]])
     genes <- genes[!is.na(genes) & nzchar(genes)]
     if (length(genes) == 0) {
       session$sendCustomMessage(
         "coordviews_geneval",
-        list(gene = "", ok = FALSE)
+        cv_context_payload(
+          list(gene = "", ok = FALSE),
+          dataset_context
+        )
       )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_genepanels",
+        cv_context_payload(list(ok = FALSE), dataset_context)
+      )
       return()
     }
     cells <- cv_expression_cells()
@@ -1361,30 +1485,42 @@ observeEvent(
     if (length(values) == 0) {
       session$sendCustomMessage(
         "coordviews_geneval",
-        list(gene = "", ok = FALSE)
+        cv_context_payload(
+          list(gene = "", ok = FALSE),
+          dataset_context
+        )
       )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_genepanels",
+        cv_context_payload(list(ok = FALSE), dataset_context)
+      )
       return()
     }
     mode <- input[["coordviews_expression_mode"]]
     if (identical(mode, "panels")) {
       session$sendCustomMessage(
         "coordviews_genepanels",
-        cv_gene_panels_payload(genes, values)
+        cv_context_payload(
+          cv_gene_panels_payload(genes, values),
+          dataset_context
+        )
       )
     } else {
       mean_values <- Reduce(`+`, values) / length(values)
       gv <- cv_scale_gene_values(mean_values)
       session$sendCustomMessage(
         "coordviews_geneval",
-        cv_gene_message(
-          if (length(genes) == 1) {
-            genes[[1]]
-          } else {
-            paste0("Mean expression (", length(genes), " genes)")
-          },
-          gv$v,
-          gv$max
+        cv_context_payload(
+          cv_gene_message(
+            if (length(genes) == 1) {
+              genes[[1]]
+            } else {
+              paste0("Mean expression (", length(genes), " genes)")
+            },
+            gv$v,
+            gv$max
+          ),
+          dataset_context
         )
       )
     }
@@ -1424,12 +1560,15 @@ observeEvent(
     g <- chan("coordviews_gene_g")
     bl <- chan("coordviews_gene_b")
     if (!nzchar(r$gene) && !nzchar(g$gene) && !nzchar(bl$gene)) {
-      session$sendCustomMessage("coordviews_rgbval", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_rgbval",
+        cv_context_payload(list(ok = FALSE), b$dataset_context)
+      )
       return()
     }
     session$sendCustomMessage(
       "coordviews_rgbval",
-      cv_rgb_message(r, g, bl)
+      cv_context_payload(cv_rgb_message(r, g, bl), b$dataset_context)
     )
   },
   ignoreInit = TRUE
@@ -1653,6 +1792,8 @@ cv_fmt_value <- function(v) {
 
 observeEvent(input[["coordviews_cell_detail"]], {
   request <- input[["coordviews_cell_detail"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(request), viewerDatasetContextEqual(request$dataset_context, dataset_context))
   index <- if (is.list(request) && length(request$index) == 1L) {
     suppressWarnings(as.integer(request$index[[1L]]))
   } else {
@@ -1661,7 +1802,7 @@ observeEvent(input[["coordviews_cell_detail"]], {
   bc <- if (!is.na(index)) {
     cv_cells_at_indices(cv_saved_view_cells(), index)
   } else {
-    as.character(request)
+    as.character(request$cell)
   }
   if (length(bc) != 1L || is.na(bc) || !nzchar(bc)) {
     return()
@@ -1680,6 +1821,7 @@ observeEvent(input[["coordviews_cell_detail"]], {
   session$sendCustomMessage(
     "coordviews_cell_meta",
     list(
+      dataset_context = dataset_context,
       index = if (is.na(index)) NULL else index,
       cell = as.character(bc),
       rows = rows

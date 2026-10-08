@@ -25,6 +25,7 @@ trajectory_projection_lines <- function(trajectory_edges) {
 ## the coordinates sent to the plot match those used for selection and hover.
 ##----------------------------------------------------------------------------##
 trajectory_projection_prepared_raw <- reactive({
+  dataset_context <- viewer_loaded_dataset_context()
   req(
     trajectory_selection_ok(),
     input[["trajectory_point_color"]]
@@ -62,6 +63,7 @@ trajectory_projection_prepared_raw <- reactive({
   ## previous Canvas frame visible.
   if (nrow(cells_df) == 0L) {
     return(list(
+      dataset_context = dataset_context,
       cells_df = cells_df,
       trajectory_lines = list(),
       hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
@@ -85,6 +87,7 @@ trajectory_projection_prepared_raw <- reactive({
   trajectory_lines <- trajectory_projection_lines(trajectory_data[["edges"]])
 
   list(
+    dataset_context = dataset_context,
     cells_df = cells_df,
     trajectory_lines = trajectory_lines,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
@@ -215,7 +218,9 @@ observeEvent(viewerDatasetIdentity()$fingerprint, {
 }, ignoreInit = TRUE)
 
 observe({
-  req(input[["trajectory_projection_render_request"]])
+  render_request <- input[["trajectory_projection_render_request"]]
+  req(is.list(render_request), viewerDatasetContextEqual(render_request$dataset_context, viewer_loaded_dataset_context()))
+  current_context <- viewer_loaded_dataset_context()
 
   ## resolve current reset_axes, then clear it so only a trajectory switch (not
   ## a colour / point-size tweak) triggers the next autorange.
@@ -297,8 +302,7 @@ observe({
       primary,
       list(hoverinfo = "skip"),
       extra = list(shapes = static_frame$trajectory_lines),
-      deferred_aux = deferred_aux
-    )
+      deferred_aux = deferred_aux, dataset_context = current_context)
     if (!isolate(trajectory_projection_sent())) {
       session$onFlushed(
         function() trajectory_projection_sent(TRUE),
@@ -309,7 +313,10 @@ observe({
   }
 
   prepared <- trajectory_projection_prepared()
-  req(prepared)
+  req(
+    prepared,
+    viewerDatasetContextEqual(prepared$dataset_context, current_context)
+  )
 
   cells_df <- prepared[["cells_df"]]
   color_variable <- prepared[["color_variable"]]
@@ -409,8 +416,7 @@ observe({
     payload[["data"]],
     payload[["hover"]],
     extra = list(shapes = prepared[["trajectory_lines"]]),
-    deferred_aux = deferred_aux
-  )
+    deferred_aux = deferred_aux, dataset_context = prepared[["dataset_context"]])
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
       function() trajectory_projection_sent(TRUE),
@@ -448,6 +454,15 @@ trajectory_projection_selected_cells <- reactive({
   ## The identifier matches how the selected-cells table keys cells
   ## (paste0 of the two projection coordinates with '-').
   sel <- input[["trajectory_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    return(NULL)
+  }
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }
@@ -465,7 +480,18 @@ trajectory_projection_selected_cells <- reactive({
   ## the selected-cells panels reflect only visible groups (shared helper in
   ## utility_functions.R). Coordinates come from the trajectory's DR_1 / DR_2,
   ## keyed the same way as the selection and the selected-cells table.
-  hidden_groups <- input[["trajectory_projection_hidden_groups"]]
+  hidden_request <- input[["trajectory_projection_hidden_groups"]]
+  hidden_groups <- if (
+    is.list(hidden_request) &&
+      viewerDatasetContextEqual(
+        hidden_request[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      )
+  ) {
+    as.character(hidden_request[["groups"]] %||% character())
+  } else {
+    character()
+  }
   if (length(hidden_groups) > 0) {
     color_variable <- input[["trajectory_point_color"]]
     metadata <- trajectory_cells_reactive(

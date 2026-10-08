@@ -200,6 +200,22 @@ spatial_background_identity <- function(dataset, spatial_name, descriptor) {
   values
 }
 
+spatial_background_identity_equal <- function(left, right) {
+  if (!is.list(left) || !is.list(right)) {
+    return(FALSE)
+  }
+  left_names <- sort(names(left) %||% character())
+  right_names <- sort(names(right) %||% character())
+  if (!identical(left_names, right_names) || !length(left_names)) {
+    return(FALSE)
+  }
+  all(vapply(
+    left_names,
+    function(name) identical(left[[name]], right[[name]]),
+    logical(1)
+  ))
+}
+
 format_spatial_preset_code <- function(
   dataset,
   spatial_name,

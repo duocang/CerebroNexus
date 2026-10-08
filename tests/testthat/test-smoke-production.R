@@ -384,7 +384,7 @@ test_that("the generated real-data app boots with the Spatial tab", {
   withr::defer(driver$stop())
   driver$wait_for_idle(timeout = 30000)
 
-  driver$set_inputs(crb_file_selector = app_info$visium_crb, wait_ = FALSE)
+  driver$set_inputs(crb_file_selector = "Visium", wait_ = FALSE)
   driver$wait_for_idle(timeout = 30000)
   spatial_tab <- driver$get_js(
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"

@@ -225,7 +225,9 @@ cv_authorized_external_image_path <- function(path, cerebro_root) {
 
 ## Resolve the stable dataset id used by all per-dataset Viewer configuration.
 cv_selected_dataset_name <- function() {
-  nm <- if (exists("available_crb_files")) {
+  nm <- if (exists("viewer_current_dataset_key", mode = "function")) {
+    tryCatch(viewer_current_dataset_key(), error = function(error) NULL)
+  } else if (exists("available_crb_files")) {
     viewerDatasetName(
       available_crb_files$files,
       available_crb_files$selected
@@ -558,11 +560,15 @@ cv_color_patch <- function(bundle, color_map = NULL) {
       names(groups)
     )
   }
-  list(
+  patch <- list(
     dataset_id = bundle$dataset_id,
     groups = patch_groups(bundle$groups),
     cat_extra = patch_groups(bundle$cat_extra)
   )
+  if (!is.null(bundle$dataset_context)) {
+    patch$dataset_context <- bundle$dataset_context
+  }
+  patch
 }
 
 cv_apply_color_patch <- function(bundle, patch) {
@@ -1809,7 +1815,8 @@ cv_build_bundle <- function(
   primary_only = FALSE,
   first_frame = NULL,
   primary_projection_resource = NULL,
-  primary_group_resource = NULL
+  primary_group_resource = NULL,
+  dataset_context = NULL
 ) {
   use_first_frame <- isTRUE(primary_only) &&
     is.list(first_frame) &&
@@ -2014,22 +2021,17 @@ cv_build_bundle <- function(
     ## Without an identity to compare, "a new bundle" and "a new data set" look
     ## the same and the user's alignment work is thrown away by walking away and
     ## back.
-    dataset_id = tryCatch(
-      {
-        if (
-          exists("available_crb_files") &&
-            !is.null(available_crb_files$selected)
-        ) {
-          viewerDatasetName(
-            available_crb_files$files,
-            available_crb_files$selected
-          ) %||% basename(as.character(available_crb_files$selected))
-        } else {
-          paste0("cells:", n, ":", if (n) cells[1] else "")
-        }
-      },
-      error = function(e) paste0("cells:", n)
-    ),
+    dataset_id = if (
+      is.list(dataset_context) &&
+        is.character(dataset_context$dataset_key) &&
+        length(dataset_context$dataset_key) == 1L &&
+        nzchar(dataset_context$dataset_key)
+    ) {
+      dataset_context$dataset_key
+    } else {
+      paste0("cells:", n, ":", if (n) cells[1] else "")
+    },
+    dataset_context = dataset_context,
     canonical_order_id = canonical_order_id,
     pack_dataset_fingerprint = pack_dataset_fingerprint,
     cells = I(cells),
@@ -2181,6 +2183,7 @@ cv_build_compact_supplement <- function(
   }
   list(
     dataset_id = primary$dataset_id,
+    dataset_context = primary$dataset_context,
     dataset_fingerprint = primary$dataset_fingerprint,
     progressive_token = primary$progressive_token,
     groups = metadata$groups,
@@ -2238,6 +2241,7 @@ cv_build_progressive_supplement <- function(
   }
   list(
     dataset_id = primary$dataset_id,
+    dataset_context = primary$dataset_context,
     dataset_fingerprint = primary$dataset_fingerprint,
     progressive_token = primary$progressive_token,
     groups = metadata$groups,

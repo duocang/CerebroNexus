@@ -206,7 +206,16 @@ hla_selection_values <- function(value, maximum = 10000L) {
 observeEvent(
   input[["hla_motif_selected_keys"]],
   {
-    keys <- hla_selection_values(input[["hla_motif_selected_keys"]])
+    request <- input[["hla_motif_selected_keys"]]
+    req(
+      is.list(request),
+      viewerDatasetContextEqual(
+        request$dataset_context,
+        viewer_loaded_dataset_context()
+      )
+    )
+    request <- request$node_keys %||% request$keys %||% request$cells
+    keys <- hla_selection_values(request)
     graph <- isolate(hla_motif_graph())
     available <- hla_graph_node_keys(graph)
     hla_selected_node_keys(intersect(keys, available))
@@ -218,6 +227,15 @@ observeEvent(
   input[["hla_motif_network_persistent_selection"]],
   {
     selection <- input[["hla_motif_network_persistent_selection"]]
+    if (
+      !is.null(selection) &&
+        (!is.list(selection) || !viewerDatasetContextEqual(
+          selection[["dataset_context"]],
+          viewer_loaded_dataset_context()
+        ))
+    ) {
+      return()
+    }
     keys <- hla_selection_values(
       if (is.list(selection)) selection$ids else NULL
     )
@@ -286,7 +304,11 @@ observe({
   cells <- hla_selected_cells()
   session$sendCustomMessage(
     "hla_motif_selection_state",
-    list(node_keys = I(keys), cells = I(cells))
+    list(
+      node_keys = I(keys),
+      cells = I(cells),
+      dataset_context = viewer_loaded_dataset_context()
+    )
   )
 })
 
@@ -296,7 +318,10 @@ observeEvent(
     hla_selected_node_keys(character(0))
     session$sendCustomMessage(
       "hla_motif_selection_command",
-      list(action = "clear")
+      list(
+        action = "clear",
+        dataset_context = viewer_loaded_dataset_context()
+      )
     )
   },
   ignoreInit = TRUE
@@ -306,7 +331,10 @@ observeEvent(
   input[["hla_motif_network_focus_selection"]],
   session$sendCustomMessage(
     "hla_motif_selection_command",
-    list(action = "focus")
+    list(
+      action = "focus",
+      dataset_context = viewer_loaded_dataset_context()
+    )
   ),
   ignoreInit = TRUE
 )
@@ -315,6 +343,13 @@ observeEvent(
   input[["hla_motif_restore_cells"]],
   {
     request <- input[["hla_motif_restore_cells"]]
+    req(
+      is.list(request),
+      viewerDatasetContextEqual(
+        request$dataset_context,
+        viewer_loaded_dataset_context()
+      )
+    )
     cells <- hla_selection_values(if (is.list(request)) request$cells else NULL)
     graph <- isolate(hla_motif_graph())
     keys <- hla_node_keys_for_cells(

@@ -14,10 +14,18 @@ run_specialist_state_node <- function(body) {
       "const fs = require('fs');",
       "const timers = []; const controls = {}; const applied = []; const handlers = {};",
       "const windowHandlers = {};",
+      "let datasetContext = {epoch:'session',dataset_key:'dataset-a',generation:1};",
+      "let datasetPhase = 'ready';",
       "global.window = {",
       "  setTimeout: (fn, delay) => { fn.delay = delay; timers.push(fn); return fn; },",
       "  clearTimeout: fn => { const at = timers.indexOf(fn); if (at >= 0) timers.splice(at, 1); },",
       "  addEventListener: (name, fn) => { windowHandlers[name] = fn; }",
+      "};",
+      "window.CerebroDatasetContext = {",
+      "  current: () => datasetContext, phase: () => datasetPhase,",
+      "  key: value => value ? JSON.stringify([value.epoch,value.dataset_key,value.generation]) : '',",
+      "  same: (left, right) => !!left && !!right && left.epoch === right.epoch &&",
+      "    left.dataset_key === right.dataset_key && left.generation === right.generation",
       "};",
       "global.document = {",
       "  getElementById: id => id === 'shiny-tab-overview' ?",
@@ -100,7 +108,7 @@ test_that("HLA exposes the shared cohort controls and a network saved-view adapt
   expect_match(client, "applyState", fixed = TRUE)
   expect_match(client, "downloadPNG", fixed = TRUE)
   expect_match(client, "cerebro:png-result", fixed = TRUE)
-  expect_match(client, "if (!fingerprint) return;", fixed = TRUE)
+  expect_match(client, "networkContextKey !== currentContextKey()", fixed = TRUE)
   expect_match(adapter, "hla_motif_network", fixed = TRUE)
   expect_match(adapter, "downloadPNG", fixed = TRUE)
   expect_match(config, "hla_motif_network", fixed = TRUE)
@@ -130,7 +138,7 @@ test_that("Projection adapter captures shared JSON and downloads its PNG", {
     "  downloadPNG: id => { calls.push(id); return true; }",
     "};",
     "windowHandlers['cerebro:specialist-state']({detail:{",
-    "  viewId:'overview_projection',datasetFingerprint:'cells'}});",
+    "  viewId:'overview_projection',dataset_context:datasetContext}});",
     "const adapter = window.cerebroSpecialistViews.get('overview_projection');",
     "const captured = adapter.capture();",
     "console.log(JSON.stringify({schema:captured.schema,page:captured.page.id,",
@@ -158,6 +166,7 @@ test_that("HLA PNG adapter reports browser export success and failure", {
     c(
       "const fs = require('fs');",
       "global.window = global;",
+      "window.addEventListener = () => {};",
       "let fail = false; let clicks = 0;",
       "const canvas = {toDataURL: () => { if (fail) throw Error('blocked'); return 'data:image/png'; }};",
       "window.HTMLWidgets = {find: () => ({network:{canvas:{frame:{canvas:canvas}}}})};",
@@ -202,22 +211,42 @@ test_that("successful specialist restoration does not replay stale state", {
   )
 })
 
-test_that("specialist sharing waits for state from the current dataset", {
+test_that("specialist sharing requires the current dataset generation", {
   output <- run_specialist_state_node(c(
     "window.cerebroCellViews = {captureState: () => ({cells:['cell-1']})};",
     "const adapter = window.cerebroSpecialistViews.get('overview_projection');",
-    "window.cerebroSavedViewDataset = {cell_fingerprint:'dataset-a'};",
+    "const a1 = datasetContext;",
+    "const b2 = {epoch:'session',dataset_key:'dataset-b',generation:2};",
+    "const a3 = {epoch:'session',dataset_key:'dataset-a',generation:3};",
+    "window.cerebroSavedViewDataset = {cell_fingerprint:'same-cells'};",
     "windowHandlers['cerebro:specialist-state']({detail:{",
-    "  viewId:'overview_projection',datasetFingerprint:'dataset-a'}});",
+    "  viewId:'overview_projection',dataset_context:a1}});",
     "const before = adapter.ready();",
-    "window.cerebroSavedViewDataset = {cell_fingerprint:'dataset-b'};",
-    "console.log(JSON.stringify({before:before,after:adapter.ready()}));"
+    "datasetContext = b2;",
+    "windowHandlers['cerebro:dataset-context']({detail:{",
+    "  phase:'ready',changed:true,dataset_context:b2}});",
+    "const afterB = adapter.ready();",
+    "datasetContext = a3;",
+    "windowHandlers['cerebro:dataset-context']({detail:{",
+    "  phase:'ready',changed:true,dataset_context:a3}});",
+    "windowHandlers['cerebro:specialist-state']({detail:{",
+    "  viewId:'overview_projection',dataset_context:a1}});",
+    "const afterLateA1 = adapter.ready();",
+    "windowHandlers['cerebro:specialist-state']({detail:{",
+    "  viewId:'overview_projection',dataset_context:a3}});",
+    "console.log(JSON.stringify({before:before,afterB:afterB,",
+    "  afterLateA1:afterLateA1,currentA3:adapter.ready()}));"
   ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
-    list(before = TRUE, after = FALSE)
+    list(
+      before = TRUE,
+      afterB = FALSE,
+      afterLateA1 = FALSE,
+      currentA3 = TRUE
+    )
   )
 })
 

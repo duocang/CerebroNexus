@@ -286,23 +286,96 @@ server <- function(input, output, session) {
     invisible(NULL)
   }
 
+  ## One immutable context identifies every load attempt. `epoch` changes with
+  ## the Shiny session; `generation` advances before the public selection is
+  ## changed. Browser messages never receive the path/object stored in target.
+  viewer_dataset_epoch <- paste0(
+    sample(c(letters, LETTERS, 0:9), 24L, replace = TRUE),
+    collapse = ""
+  )
+  viewer_dataset_generation <- 0
+  viewer_upload_serial <- 0L
+  viewer_dataset_request <- reactiveVal(NULL)
+
+  viewer_send_dataset_phase <- function(phase, dataset_context) {
+    session$sendCustomMessage(
+      "cerebro_dataset_context",
+      list(
+        phase = as.character(phase),
+        dataset_context = dataset_context
+      )
+    )
+  }
+
+  viewer_clear_cell_view_aux <- function() {
+    pending <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+    if (length(pending)) {
+      rm(list = pending, envir = .cerebro_cell_view_aux_pending)
+    }
+  }
+
+  viewer_request_dataset <- function(
+    selection,
+    target,
+    dataset_key,
+    source,
+    force = FALSE
+  ) {
+    current <- isolate(viewer_dataset_request())
+    same_request <- is.list(current) &&
+      identical(current$selection, selection) &&
+      identical(current$target, target) &&
+      identical(current$source, source) &&
+      identical(current$dataset_context$dataset_key, dataset_key)
+    if (same_request && !isTRUE(force)) {
+      if (!identical(isolate(available_crb_files$selected), selection)) {
+        available_crb_files$selected <- selection
+      }
+      return(invisible(current))
+    }
+
+    viewer_dataset_generation <<- viewer_dataset_generation + 1
+    dataset_context <- viewerDatasetContext(
+      viewer_dataset_epoch,
+      dataset_key,
+      viewer_dataset_generation
+    )
+    request <- list(
+      selection = selection,
+      target = target,
+      source = source,
+      dataset_context = dataset_context
+    )
+
+    ## Publish the invalidation before changing the selector-backed state. This
+    ## makes the browser reject every previous generation while the new object
+    ## is loading, and prevents old progressive aux data crossing the boundary.
+    viewer_clear_cell_view_aux()
+    viewer_send_dataset_phase("pending", dataset_context)
+    viewer_dataset_request(request)
+    if (!identical(isolate(available_crb_files$selected), selection)) {
+      available_crb_files$selected <- selection
+    }
+    invisible(request)
+  }
+
+  viewer_requested_dataset_context <- reactive({
+    request <- viewer_dataset_request()
+    req(is.list(request), is.list(request$dataset_context))
+    request$dataset_context
+  })
+
   current_scatter_defaults <- reactive({
     viewerScatterDefaults(
       Cerebro.options,
-      viewerDatasetName(
-        available_crb_files$files,
-        available_crb_files$selected
-      )
+      viewer_requested_dataset_context()$dataset_key
     )
   })
 
   current_expression_scatter_defaults <- reactive({
     viewerScatterDefaults(
       Cerebro.options,
-      viewerDatasetName(
-        available_crb_files$files,
-        available_crb_files$selected
-      ),
+      viewer_requested_dataset_context()$dataset_key,
       page = "expression"
     )
   })
@@ -310,7 +383,14 @@ server <- function(input, output, session) {
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
     selection <- viewerUploadPath(input[["input_file"]], Cerebro.options)
+    dataset_key <- NULL
+    dataset_source <- NULL
+    dataset_target <- NULL
     if (nzchar(selection)) {
+      viewer_upload_serial <<- viewer_upload_serial + 1L
+      dataset_key <- paste0("__upload_", viewer_upload_serial, "__")
+      dataset_source <- "upload"
+      dataset_target <- selection
       ## an uploaded file replaces the pre-configured data sets, so clear the
       ## switcher state — otherwise the dropdown keeps offering the old data
       ## sets, which no longer match what is loaded.
@@ -324,6 +404,19 @@ server <- function(input, output, session) {
         !is.null(Cerebro.options[["crb_file_to_load"]])
     ) {
       file_to_load <- Cerebro.options[["crb_file_to_load"]]
+      ## Older launch configurations could provide more than one unnamed path.
+      ## Give those entries deterministic opaque ids rather than falling back to
+      ## paths as browser-visible identity.
+      file_names <- names(file_to_load)
+      valid_file_names <- is.character(file_names) &&
+        length(file_names) == length(file_to_load) &&
+        !anyNA(file_names) &&
+        all(nzchar(file_names)) &&
+        !anyDuplicated(file_names)
+      if (length(file_to_load) > 1L && !valid_file_names) {
+        file_names <- paste0("legacy-", seq_along(file_to_load))
+        names(file_to_load) <- file_names
+      }
       ## multiple files (or a single named file) -> enable dataset switcher
       if (length(file_to_load) > 1 || !is.null(names(file_to_load))) {
         available_crb_files$files <- file_to_load
@@ -433,6 +526,9 @@ server <- function(input, output, session) {
         available_crb_files$labels <- NULL
         if (file.exists(file_to_load) || exists(file_to_load)) {
           selection <- file_to_load
+          dataset_key <- "__single__"
+          dataset_source <- "single"
+          dataset_target <- selection
         }
       }
     }
@@ -447,14 +543,27 @@ server <- function(input, output, session) {
         Cerebro.options[["cerebro_root"]],
         "extdata/examples/example.crb"
       )
+      dataset_key <- "__example__"
+      dataset_source <- "example"
+      dataset_target <- selection
     }
-    ## set reactive value to selected file path
-    if (
-      is.null(available_crb_files$selected) ||
-        available_crb_files$selected != selection
-    ) {
-      available_crb_files$selected <- selection
+    if (is.null(dataset_key)) {
+      dataset_key <- viewerDatasetName(
+        available_crb_files$files,
+        selection
+      )
+      dataset_source <- "configured"
+      dataset_target <- viewerDatasetPath(
+        available_crb_files$files,
+        selection
+      )
     }
+    viewer_request_dataset(
+      selection = selection,
+      target = dataset_target,
+      dataset_key = dataset_key,
+      source = dataset_source
+    )
   })
 
   ## renderUI for the dataset switcher; shown only when >1 .crb files are
@@ -464,19 +573,11 @@ server <- function(input, output, session) {
       !is.null(available_crb_files$files) &&
         length(available_crb_files$files) > 1
     ) {
-      ids <- names(available_crb_files$files)
       labels <- available_crb_files$labels
-      if (is.null(ids)) {
-        ids <- unname(available_crb_files$files)
+      if (is.null(labels) && !is.null(available_crb_files$names)) {
+        labels <- available_crb_files$names
       }
-      if (is.null(labels) || length(labels) != length(ids)) {
-        labels <- if (!is.null(available_crb_files$names)) {
-          available_crb_files$names
-        } else {
-          basename(available_crb_files$files)
-        }
-      }
-      choices <- stats::setNames(ids, labels)
+      choices <- viewerDatasetChoices(available_crb_files$files, labels)
       selected <- available_crb_files$selected
       if (is.null(selected)) {
         selected <- unname(choices[[1L]])
@@ -506,7 +607,15 @@ server <- function(input, output, session) {
         is.null(available_crb_files$selected) ||
           available_crb_files$selected != input[['crb_file_selector']]
       ) {
-        available_crb_files$selected <- input[['crb_file_selector']]
+        viewer_request_dataset(
+          selection = input[['crb_file_selector']],
+          target = viewerDatasetPath(
+            available_crb_files$files,
+            input[['crb_file_selector']]
+          ),
+          dataset_key = as.character(input[['crb_file_selector']]),
+          source = "configured"
+        )
       }
     }
   })
@@ -542,7 +651,7 @@ server <- function(input, output, session) {
                 length(current) == 1L &&
                   identical(as.character(current), as.character(selected))
               ) {
-                start_crb_prefetch(viewerDatasetPath(available_crb_files$files, selected))
+                start_crb_prefetch(isolate(viewerDatasetPath(available_crb_files$files, selected)))
               }
             })
           },
@@ -608,16 +717,14 @@ server <- function(input, output, session) {
     )
   }
 
-  ## create reactive value holding the current data set
-  data_set <- reactive({
-    req(!is.null(available_crb_files$selected))
+  viewer_dataset_snapshot <- reactive({
+    request <- viewer_dataset_request()
+    req(is.list(request), is.list(request$dataset_context), !is.null(request$target))
     req(isTRUE(dataset_load_requested()))
-    dataset_to_load <- viewerDatasetPath(
-      available_crb_files$files,
-      available_crb_files$selected
-    )
-    dataset_label <- viewerDatasetName(available_crb_files$files, available_crb_files$selected)
+    dataset_to_load <- request$target
+    dataset_label <- request$dataset_context$dataset_key
     datasetLoadProgress(dataset_label, 8, "Preparing dataset")
+    tryCatch({
     if (exists(dataset_to_load)) {
       print(glue::glue(
         "[{Sys.time()}] Load data set from variable: {dataset_to_load}"
@@ -727,9 +834,71 @@ server <- function(input, output, session) {
     datasetLoadProgress(dataset_label, 94, "Finalizing the workspace")
     attr(data, "cerebro_viewer_pack") <- viewer_pack
     datasetLoadProgress(dataset_label, 100, "Ready", done = TRUE)
-    ## return loaded data
-    return(data)
+      list(ok = TRUE, data = data, dataset_context = request$dataset_context)
+    }, error = function(error) {
+      if (inherits(error, "shiny.silent.error")) stop(error)
+      list(ok = FALSE, error = error, dataset_context = request$dataset_context)
+    })
   })
+
+  data_set <- reactive({
+    snapshot <- viewer_dataset_snapshot()
+    if (!isTRUE(snapshot$ok)) {
+      stop(snapshot$error)
+    }
+    snapshot$data
+  })
+
+  viewer_loaded_dataset_context <- reactive({
+    snapshot <- viewer_dataset_snapshot()
+    req(isTRUE(snapshot$ok), is.list(snapshot$dataset_context))
+    snapshot$dataset_context
+  })
+
+  viewer_current_dataset_key <- reactive({
+    viewer_loaded_dataset_context()$dataset_key
+  })
+
+  observe(
+    {
+      snapshot <- viewer_dataset_snapshot()
+      if (isTRUE(snapshot$ok)) {
+        viewer_send_dataset_phase("ready", snapshot$dataset_context)
+      } else {
+        warning(
+          "Viewer data set failed to load: ",
+          conditionMessage(snapshot$error),
+          call. = FALSE
+        )
+        viewer_send_dataset_phase("error", snapshot$dataset_context)
+      }
+    },
+    priority = 1000
+  )
+
+  ## A websocket reconnect may resume the same Shiny session, in which case the
+  ## snapshot reactive does not invalidate by itself. The browser enters a
+  ## fail-closed pending phase on every connection and asks the session to replay
+  ## the exact loaded snapshot before any cached view becomes usable again.
+  observeEvent(
+    input[["viewer_dataset_context_sync"]],
+    {
+      request <- isolate(viewer_dataset_request())
+      if (!is.list(request) || !is.list(request$dataset_context)) {
+        return()
+      }
+      snapshot <- isolate(viewer_dataset_snapshot())
+      if (!is.list(snapshot) || !is.list(snapshot$dataset_context)) {
+        return()
+      }
+      viewer_send_dataset_phase(
+        if (isTRUE(snapshot$ok)) "ready" else "error",
+        snapshot$dataset_context
+      )
+    },
+    ignoreInit = TRUE,
+    priority = 1001
+  )
 
   ## The page benchmark must separate full dataset materialization from page
   ## readiness. Data Info intentionally uses the lightweight catalog and does
@@ -1383,7 +1552,8 @@ server <- function(input, output, session) {
     cells <- cv_saved_view_cells()
     list(
       cells = cells,
-      fingerprint = viewerDatasetIdentity()$fingerprint
+      fingerprint = viewerDatasetIdentity()$fingerprint,
+      dataset_context = viewer_loaded_dataset_context()
     )
   })
 
@@ -1391,6 +1561,8 @@ server <- function(input, output, session) {
     input[["sidebar"]]
     identity <- viewerDatasetIdentity()
     dataset_identity <- list(
+      dataset_context = viewer_loaded_dataset_context(),
+      dataset_id = viewer_current_dataset_key(),
       cell_count = as.integer(identity$cell_count),
       cell_fingerprint = as.character(identity$fingerprint),
       cell_order_fingerprint = as.character(identity$order_fingerprint %||% ""),
@@ -1427,6 +1599,7 @@ server <- function(input, output, session) {
           id = "spatial_projection",
           resources = unname(resources),
           default_resource_name = default_resource_name,
+          dataset_context = viewer_loaded_dataset_context(),
           dataset_identity = dataset_identity
         )
       )
@@ -1448,6 +1621,7 @@ server <- function(input, output, session) {
           id = "overview_projection",
           resources = unname(projection_resources),
           category_resources = unname(category_resources),
+          dataset_context = viewer_loaded_dataset_context(),
           dataset_identity = dataset_identity
         )
       )

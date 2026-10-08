@@ -50,6 +50,78 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
+## A data-set context is the only browser-visible identity for one loaded
+## object.  It deliberately contains no file path: `dataset_key` is the stable
+## configured id (or an opaque runtime id for single/upload mode), `generation`
+## advances before every real load/switch, and `epoch` separates reconnects.
+viewerDatasetContext <- function(epoch, dataset_key, generation) {
+  valid_text <- function(value) {
+    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+  }
+  generation <- suppressWarnings(as.numeric(generation))
+  if (
+    !valid_text(epoch) ||
+      !valid_text(dataset_key) ||
+      length(generation) != 1L ||
+      is.na(generation) ||
+      !is.finite(generation) ||
+      generation < 1 ||
+      generation != floor(generation)
+  ) {
+    stop("Invalid Viewer data-set context.", call. = FALSE)
+  }
+  list(
+    epoch = as.character(epoch),
+    dataset_key = as.character(dataset_key),
+    generation = unname(generation)
+  )
+}
+
+viewerDatasetContextEqual <- function(left, right) {
+  if (!is.list(left) || !is.list(right)) {
+    return(FALSE)
+  }
+  left <- tryCatch(
+    viewerDatasetContext(
+      left[["epoch"]],
+      left[["dataset_key"]],
+      left[["generation"]]
+    ),
+    error = function(error) NULL
+  )
+  right <- tryCatch(
+    viewerDatasetContext(
+      right[["epoch"]],
+      right[["dataset_key"]],
+      right[["generation"]]
+    ),
+    error = function(error) NULL
+  )
+  !is.null(left) &&
+    !is.null(right) &&
+    identical(left$epoch, right$epoch) &&
+    identical(left$dataset_key, right$dataset_key) &&
+    isTRUE(left$generation == right$generation)
+}
+
+viewerDatasetContextToken <- function(context) {
+  context <- viewerDatasetContext(
+    context[["epoch"]],
+    context[["dataset_key"]],
+    context[["generation"]]
+  )
+  paste0(
+    nchar(context$epoch, type = "bytes"),
+    ":",
+    context$epoch,
+    nchar(context$dataset_key, type = "bytes"),
+    ":",
+    context$dataset_key,
+    ":",
+    format(context$generation, scientific = FALSE, trim = TRUE)
+  )
+}
+
 viewerDatasetPath <- function(files, selected) {
   if (
     !is.null(files) &&
@@ -62,7 +134,35 @@ viewerDatasetPath <- function(files, selected) {
   selected
 }
 
+viewerDatasetChoices <- function(files, display_labels = NULL) {
+  ids <- names(files)
+  if (is.null(ids)) {
+    ids <- unname(files)
+  }
+  labels <- display_labels
+  if (
+    !is.null(labels) &&
+      !is.null(names(labels)) &&
+      all(ids %in% names(labels))
+  ) {
+    labels <- labels[ids]
+  }
+  if (is.null(labels) || length(labels) != length(ids)) {
+    labels <- ids
+  }
+  stats::setNames(ids, unname(labels))
+}
+
 viewerSelectedDatasetName <- function() {
+  if (exists("viewer_current_dataset_key", mode = "function", inherits = TRUE)) {
+    current <- tryCatch(
+      viewer_current_dataset_key(),
+      error = function(error) NULL
+    )
+    if (is.character(current) && length(current) == 1L && nzchar(current)) {
+      return(current)
+    }
+  }
   if (!exists("available_crb_files", inherits = TRUE)) {
     return(NULL)
   }
@@ -739,7 +839,8 @@ cerebroCellViewMessage <- function(
   meta,
   data,
   hover = list(),
-  extra = list()
+  extra = list(),
+  dataset_context = NULL
 ) {
   wire_array <- function(value) {
     if (is.null(value)) NULL else I(unname(value))
@@ -993,6 +1094,7 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 }
 
 .cerebro_cell_view_wire_serial <- 0L
+.cerebro_cell_view_render_serial <- 0
 .cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
 
 cerebroCellViewDeferredAux <- function(
@@ -1041,8 +1143,19 @@ cerebroCellViewResolveDeferredAux <- function(message) {
   message
 }
 
-cerebroCellViewRecolor <- function(id, meta, data) {
+.runtimeDiagnostic <- function(x) {
+  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) print(x)
+}
+
+cerebroCellViewRecolor <- function(id, meta, data, dataset_context) {
+  dataset_context <- viewerDatasetContext(dataset_context$epoch,
+    dataset_context$dataset_key, dataset_context$generation)
+  meta$dataset_id <- dataset_context$dataset_key
+  meta$dataset_generation <- dataset_context$generation
   message <- cerebroCellViewMessage(id, meta, data)
+  .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
+  message$dataset_context <- dataset_context
+  message$render_token <- .cerebro_cell_view_render_serial
   fields <- c("color", "rgb", "rgb_scaled", "rgb_genes", "colorscale",
     "panel_colorscales", "color_range", "reversescale", "paint_order",
     "render_key", "sparse_color", "color_cache_key", "packed_rgb",
@@ -1059,13 +1172,16 @@ cerebroCellViewAuxRequest <- function(request) {
   if (!is.list(request) || is.null(request$id) || is.null(request$wire_token)) {
     return(invisible(FALSE))
   }
+  if (!viewerDatasetContextEqual(request$dataset_context, viewer_loaded_dataset_context())) {
+    return(invisible(FALSE))
+  }
   key <- paste(request$id, request$wire_token, sep = ":")
   message <- .cerebro_cell_view_aux_pending[[key]]
-  if (is.null(message)) return(invisible(FALSE))
+  if (is.null(message) || !viewerDatasetContextEqual(message$dataset_context, request$dataset_context)) return(invisible(FALSE))
   if (is.function(message$core_builder)) {
     core <- message$core_builder()
     message$core_builder <- NULL
-    message$core <- c(list(id = message$id, wire_token = message$wire_token), core)
+    message$core <- c(list(id = message$id, wire_token = message$wire_token, dataset_context = message$dataset_context, render_token = message$render_token), core)
   }
   if (!is.null(message$core) && !isTRUE(message$core_sent)) {
     core <- message$core
@@ -1097,16 +1213,24 @@ cerebroCellViewRender <- function(
   hover = list(),
   extra = list(),
   deferred_aux = NULL,
-  core_aux = NULL
+  core_aux = NULL,
+  dataset_context = NULL
 ) {
+  dataset_context <- viewerDatasetContext(dataset_context$epoch,
+    dataset_context$dataset_key, dataset_context$generation)
+  meta$dataset_id <- dataset_context$dataset_key
+  meta$dataset_generation <- dataset_context$generation
   message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
+  message$dataset_context <- dataset_context
+  message$render_token <- .cerebro_cell_view_render_serial
   deferred_selection_lengths <- suppressWarnings(as.integer(
     message$data$deferred_selection_lengths
   ))
   message$data$deferred_selection_lengths <- NULL
   stamp_transport_profile <- function(message) {
     request_at_ms <- tryCatch(
-      suppressWarnings(as.numeric(input[[paste0(id, "_render_request")]])),
+      suppressWarnings(as.numeric(input[[paste0(id, "_render_request")]]$nonce)),
       error = function(error) NA_real_
     )
     if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
@@ -1212,18 +1336,23 @@ cerebroCellViewRender <- function(
         cv_wire_pack_message(message)
       )
       stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
-      stale <- stale[startsWith(stale, paste0(id, ":"))]
+      stale <- stale[vapply(stale, function(key) {
+        pending <- .cerebro_cell_view_aux_pending[[key]]
+        is.list(pending) && identical(pending$id, id)
+      }, logical(1))]
       if (length(stale)) {
         rm(list = stale, envir = .cerebro_cell_view_aux_pending)
       }
       .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
         is.function(deferred_aux)
       ) {
-        list(id = id, wire_token = token, build = deferred_aux, core_builder = core_aux)
+        list(id = id, wire_token = token, dataset_context = dataset_context, render_token = message$render_token, build = deferred_aux, core_builder = core_aux)
       } else {
         list(
           id = id,
           wire_token = token,
+          dataset_context = dataset_context,
+          render_token = message$render_token,
           selection_key = selection_keys,
           hover = full_hover
         )
@@ -1249,6 +1378,28 @@ cerebroCellViewRender <- function(
     message <- stamp_transport_profile(message)
     session$sendCustomMessage("cell_view_render", message)
   }
+}
+
+cerebroCellViewBackground <- function(
+  id,
+  values,
+  dataset_context,
+  background_identity = NULL
+) {
+  dataset_context <- viewerDatasetContext(
+    dataset_context[["epoch"]],
+    dataset_context[["dataset_key"]],
+    dataset_context[["generation"]]
+  )
+  session$sendCustomMessage(
+    "cell_view_background",
+    list(
+      id = id,
+      values = values,
+      dataset_context = dataset_context,
+      background_identity = background_identity
+    )
+  )
 }
 
 cerebroCellViewScatterPayload <- function(

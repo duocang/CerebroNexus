@@ -15,6 +15,15 @@ overview_projection_selected_cells <- reactive({
   ## same way the table keys cells (paste0 with '-'), so downstream filtering is
   ## unchanged.
   sel <- input[["overview_projection_persistent_selection"]]
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    return(NULL)
+  }
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }
@@ -33,7 +42,18 @@ overview_projection_selected_cells <- reactive({
   ## the hidden group names under <plot_id>_hidden_groups; the grouping variable
   ## is whatever the projection is coloured by. Cells are mapped to their group
   ## through an `identifier` (X1-X2) built the same way as the selection key.
-  hidden_groups <- input[["overview_projection_hidden_groups"]]
+  hidden_request <- input[["overview_projection_hidden_groups"]]
+  hidden_groups <- if (
+    is.list(hidden_request) &&
+      viewerDatasetContextEqual(
+        hidden_request[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      )
+  ) {
+    as.character(hidden_request[["groups"]] %||% character())
+  } else {
+    character()
+  }
   if (length(hidden_groups) > 0) {
     color_variable <- input[["overview_projection_point_color"]]
     projection <- getProjection(input[["overview_projection_to_display"]])

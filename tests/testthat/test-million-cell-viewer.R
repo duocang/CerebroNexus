@@ -308,7 +308,7 @@ test_that("specialist pages do not request the full linked bundle", {
   expect_no_match(engine, "linkedVis || !!singleId", fixed = TRUE)
 })
 
-test_that("specialist pages resend whenever they become visible again", {
+test_that("specialist pages bind every render request to a dataset context", {
   pages <- list(
     list(
       c("overview", "event_projection_update_plot.R"),
@@ -335,7 +335,7 @@ test_that("specialist pages resend whenever they become visible again", {
     )
     expect_match(
       source,
-      sprintf('req(input[["%s"]]', page[[2]]),
+      sprintf('input[["%s"]]', page[[2]]),
       fixed = TRUE,
       info = page[[2]]
     )
@@ -1087,10 +1087,10 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
       "const end = source.indexOf('  function alignSingleCoordinates', start);",
       "global.window = {cerebroSavedViewDataset:{cell_fingerprint:'stale'}};",
       "eval(source.slice(start, end));",
-      "const payload = {datasetIdentity:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'},data:{n:2,selection_key:['c1','c2']}};",
+      "const payload = {dataset_context:{epoch:'test',dataset_key:'a',generation:1},datasetIdentity:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'},data:{n:2,selection_key:['c1','c2']}};",
       "const present = singlePayloadBundle('overview', payload).dataset_fingerprint;",
       "delete window.cerebroSavedViewDataset;",
-      "const missing = singlePayloadBundle('overview', {data:payload.data}).dataset_fingerprint;",
+      "const missing = singlePayloadBundle('overview', {data:payload.data,dataset_context:payload.dataset_context}).dataset_fingerprint;",
       "console.log(JSON.stringify({present:present,missing:missing}));"
     ),
     runner
@@ -2228,8 +2228,10 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     hover,
     extra,
     deferred_aux,
-    core_aux = NULL
+    core_aux = NULL,
+    dataset_context = NULL
   ) {
+    captured$dataset_context <- dataset_context
     captured$core_aux <- core_aux
     captured$data <- data
     captured$deferred_aux <- deferred_aux
@@ -2240,6 +2242,11 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
   )
   input <- list(
     coordinates = data.frame(x = c(3, 1, 2), y = c(6, 4, 5)),
+    dataset_context = list(
+      epoch = "session",
+      dataset_key = "dataset-a",
+      generation = 1
+    ),
     reset_axes = FALSE,
     expression_levels = c(30, 10, 20),
     plot_parameters = list(
@@ -2277,6 +2284,7 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     c("c3", "c1", "c2")
   )
   expect_identical(captured$data$paint_order, "highest")
+  expect_identical(captured$dataset_context, input$dataset_context)
   input$plot_parameters$plot_order <- "Random"
   runtime$expression_projection_update_plot(input)
   expect_identical(captured$data$paint_order, "natural")
@@ -2317,8 +2325,10 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     hover,
     extra,
     deferred_aux,
-    core_aux = NULL
+    core_aux = NULL,
+    dataset_context = NULL
   ) {
+    captured$dataset_context <- dataset_context
     captured$core_aux <- core_aux
     captured$data <- data
     captured$deferred_aux <- deferred_aux

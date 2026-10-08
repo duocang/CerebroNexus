@@ -396,6 +396,7 @@ test_that("background-image selection only recreates image calibration controls"
   expect_match(projection_ui, '"Background image"', fixed = TRUE)
 })
 
+
 test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
   # getExpressionMatrix / getMeanExpressionForCells are Cerebro R6 methods,
   # not bare functions — they must be called through data_set()$. A bare
@@ -895,8 +896,13 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   )
   rendered <- NULL
   renderer$cerebroCellViewRender <- function(id, meta, data, ...) {
-    rendered <<- list(meta = meta, data = data)
+    rendered <<- c(list(meta = meta, data = data), list(...))
   }
+  dataset_context <- list(
+    epoch = "spatial-render-test",
+    dataset_key = "atlas",
+    generation = 1
+  )
 
   params <- list(
     color_variable = "score",
@@ -933,6 +939,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   )
   call_renderer <- function(plot_parameters) {
     renderer$spatial_projection_update_plot(list(
+      dataset_context = dataset_context,
       cells_df = data.frame(score = c(1, 2)),
       coordinates = data.frame(x = c(20, 80), y = c(30, 70)),
       reset_axes = FALSE,
@@ -944,6 +951,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   }
 
   call_renderer(params)
+  expect_identical(rendered$dataset_context, dataset_context)
   expect_identical(
     unlist(rendered$meta$image_bounds[c("xmin", "xmax", "ymin", "ymax")]),
     c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
@@ -1156,6 +1164,24 @@ test_that("shared Canvas owns spatial background identity and appearance", {
     )),
     collapse = "\n"
   )
+  background_ui <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "UI_projection_additional_parameters.R"
+    )),
+    collapse = "\n"
+  )
+  page_helpers <- paste(
+    readLines(viewer_test_path("spatial", "js_page_helpers.js")),
+    collapse = "\n"
+  )
+  parameters <- paste(
+    readLines(viewer_test_path(
+      "spatial",
+      "obj_projection_parameters_plot.R"
+    )),
+    collapse = "\n"
+  )
 
   expect_match(engine, "JSON.stringify(meta.background_identity)", fixed = TRUE)
   expect_match(
@@ -1165,7 +1191,57 @@ test_that("shared Canvas owns spatial background identity and appearance", {
   )
   expect_match(engine, "function updateSingleBackground", fixed = TRUE)
   expect_match(engine, "stashImgState(space)", fixed = TRUE)
-  expect_match(controls, '"cell_view_background"', fixed = TRUE)
+  expect_match(controls, "cerebroCellViewBackground(", fixed = TRUE)
+  expect_match(
+    controls,
+    "dataset_context = dataset_context",
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    "background_identity = background_identity",
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    'input[["spatial_projection_background_controls"]]',
+    fixed = TRUE
+  )
+  expect_match(
+    controls,
+    "spatial_background_identity_equal(",
+    fixed = TRUE
+  )
+  expect_match(
+    background_ui,
+    'id = "spatial_projection_background_control_scope"',
+    fixed = TRUE
+  )
+  expect_match(background_ui, "data-background-identity", fixed = TRUE)
+  expect_match(
+    page_helpers,
+    "spatial_projection_background_controls",
+    fixed = TRUE
+  )
+  expect_match(
+    page_helpers,
+    "dataset_context: datasetContext",
+    fixed = TRUE
+  )
+  expect_match(
+    page_helpers,
+    "background_identity: backgroundIdentity",
+    fixed = TRUE
+  )
+  expect_match(parameters, "background_opacity <- background_preset$opacity", fixed = TRUE)
+  expect_no_match(
+    parameters,
+    'isolate(\n    input[["spatial_projection_background_opacity"]]',
+    fixed = TRUE
+  )
+  expect_match(controls, "dataset_context = dataset_context", fixed = TRUE)
+  expect_match(controls, "background_identity = background_identity", fixed = TRUE)
+  expect_match(page_helpers, "stillCurrent(message)", fixed = TRUE)
 
   renderer_src <- paste(
     readLines(viewer_test_path("spatial", "func_projection_update_plot.R")),
@@ -1380,7 +1456,7 @@ test_that("Spatial geometry catalog is registered but fetched only on page reque
   )
   expect_match(
     browser_source,
-    "if (singleRequests.has(message.id)) {",
+    "if (singleRequests.has(singleRequestKey(message.id, message.dataset_context))) {",
     fixed = TRUE
   )
   expect_false(grepl("cell_view_resource_prefetch", browser_source, fixed = TRUE))
@@ -1444,6 +1520,9 @@ test_that("empty spatial selection returns before million-cell plot data", {
     collapse = "\n"
   )
   server <- function(input, output, session) {
+    dataset_context <- list(epoch="test", dataset_key="a", generation=1)
+    viewer_loaded_dataset_context <- function() dataset_context
+    viewerDatasetContextEqual <- identical
     spatial_projection_data_to_plot <- reactive({
       calls$plot_data <- calls$plot_data + 1L
       list(cells_df = data.frame(cell_index = 1L), coordinates = data.frame(
@@ -1466,7 +1545,8 @@ test_that("empty spatial selection returns before million-cell plot data", {
     session$setInputs(spatial_projection_persistent_selection = list(
       x = 1,
       y = 2,
-      ids = "cell-1"
+      ids = "cell-1",
+      dataset_context = dataset_context
     ))
     selection <- shiny::isolate(spatial_projection_selected_cells())
     expect_identical(calls$plot_data, 1L)
@@ -1495,6 +1575,16 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     )
   )
   server <- function(input, output, session) {
+    dataset_context <- list(
+      epoch = "spatial-test-session",
+      dataset_key = "Atlas",
+      generation = 1
+    )
+    viewer_loaded_dataset_context <- function() dataset_context
+    viewer_current_dataset_key <- function() dataset_context$dataset_key
+    viewer_dataset_request <- function() {
+      list(dataset_context = dataset_context)
+    }
     data_set <- function() TRUE
     availableSpatial <- function() names(atlas)
     getSpatialData <- function(name) atlas[[name]]

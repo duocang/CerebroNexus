@@ -2,6 +2,7 @@
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
 overview_projection_data_to_plot_raw <- reactive({
+  dataset_context <- viewer_loaded_dataset_context()
   plot_parameters <- overview_projection_parameters_plot()
   req(plot_parameters)
   cell_indices <- overview_projection_cells_to_show()
@@ -47,6 +48,7 @@ overview_projection_data_to_plot_raw <- reactive({
     overview_projection_coordinates()
   }
   list(
+    dataset_context = dataset_context,
     cells_df = cells_df,
     cell_indices = cell_indices,
     cell_count = length(cell_indices),

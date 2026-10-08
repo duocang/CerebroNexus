@@ -24,47 +24,65 @@
 ## scatter plot is never re-rendered when the user nudges the background — the
 ## dimensional-reduction plot stays a function of its own parameters alone.
 ##----------------------------------------------------------------------------##
-observe({
-  ## Depend on each appearance control. These are the ONLY inputs that reach the
-  ## background div directly; everything else about the plot is untouched.
-  opacity <- input[["spatial_projection_background_opacity"]]
-  offset_x <- input[["spatial_projection_background_offset_x"]]
-  offset_y <- input[["spatial_projection_background_offset_y"]]
-  flip_x <- input[["spatial_projection_background_flip_x"]]
-  flip_y <- input[["spatial_projection_background_flip_y"]]
-  rotate <- input[["spatial_projection_background_rotate"]]
-
-  ## Resolve X/Y scale from the lock state: locked -> the single slider drives
-  ## both axes; unlocked -> the independent X/Y sliders. Whichever sliders are
-  ## hidden may report NULL, so fall back to the visible source.
-  locked <- isTRUE(input[["spatial_projection_background_scale_lock"]])
-  if (locked) {
-    scale_x <- input[["spatial_projection_background_scale"]]
-    scale_y <- scale_x
-  } else {
-    scale_x <- input[["spatial_projection_background_scale_x"]]
-    scale_y <- input[["spatial_projection_background_scale_y"]]
-  }
-
-  ## Pass NULL for any control that has not been created yet (e.g. before an
-  ## image is chosen); the JS side leaves the corresponding style unchanged.
-  session$sendCustomMessage(
-    "cell_view_background",
-    list(
-      id = "spatial_projection",
-      values = list(
-        opacity = if (is.null(opacity)) NULL else opacity,
-        offsetX = if (is.null(offset_x)) NULL else offset_x,
-        offsetY = if (is.null(offset_y)) NULL else offset_y,
-        flipX = if (is.null(flip_x)) NULL else isTRUE(flip_x),
-        flipY = if (is.null(flip_y)) NULL else isTRUE(flip_y),
-        scaleX = if (is.null(scale_x)) NULL else scale_x,
-        scaleY = if (is.null(scale_y)) NULL else scale_y,
-        rotate = if (is.null(rotate)) NULL else rotate
-      )
+observeEvent(input[["spatial_projection_background_controls"]], {
+  payload <- input[["spatial_projection_background_controls"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(
+    is.list(payload),
+    viewerDatasetContextEqual(
+      payload[["dataset_context"]],
+      dataset_context
     )
   )
-})
+  plot_parameters <- spatial_projection_parameters_plot()
+  background_identity <- plot_parameters[["background_identity"]]
+  req(
+    !is.null(background_identity),
+    spatial_background_identity_equal(
+      payload[["background_identity"]],
+      background_identity
+    ),
+    is.list(payload[["values"]])
+  )
+  values <- payload[["values"]]
+  finite_value <- function(name) {
+    value <- values[[name]]
+    if (
+      length(value) == 1L &&
+        is.numeric(value) &&
+        !is.na(value) &&
+        is.finite(value)
+    ) {
+      return(unname(as.numeric(value)))
+    }
+    NULL
+  }
+  logical_value <- function(name) {
+    value <- values[[name]]
+    if (is.logical(value) && length(value) == 1L && !is.na(value)) {
+      return(isTRUE(value))
+    }
+    NULL
+  }
+
+  cerebroCellViewBackground(
+    id = "spatial_projection",
+    values = list(
+      opacity = finite_value("opacity"),
+      offsetX = finite_value("offsetX"),
+      offsetY = finite_value("offsetY"),
+      flipX = logical_value("flipX"),
+      flipY = logical_value("flipY"),
+      scaleX = finite_value("scaleX"),
+      scaleY = finite_value("scaleY"),
+      rotate = finite_value("rotate")
+    ),
+    dataset_context = dataset_context,
+    background_identity = background_identity
+  )
+  },
+  ignoreInit = TRUE
+)
 
 ##----------------------------------------------------------------------------##
 ## While locked, the single Scale slider drives both axes. Mirror its value into
@@ -256,7 +274,17 @@ local({
 ##----------------------------------------------------------------------------##
 spatial_preset_code <- reactiveVal(NULL)
 
+observeEvent(
+  list(
+    viewer_loaded_dataset_context(),
+    spatial_projection_parameters_plot()[["background_identity"]]
+  ),
+  spatial_preset_code(NULL),
+  ignoreInit = TRUE
+)
+
 observeEvent(input[["spatial_projection_background_copy_preset"]], {
+  dataset_context <- viewer_loaded_dataset_context()
   spatial_name <- input[["spatial_projection_to_display"]]
   dataset <- spatial_dataset_name(
     if (exists("available_crb_files")) available_crb_files$files else NULL,
@@ -276,6 +304,15 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
     )
   )
   if (is.null(descriptor)) {
+    spatial_preset_code(NULL)
+    return()
+  }
+  background_identity <- spatial_background_identity(
+    dataset,
+    spatial_name,
+    descriptor
+  )
+  if (is.null(background_identity)) {
     spatial_preset_code(NULL)
     return()
   }
@@ -312,7 +349,11 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
   spatial_preset_code(code)
   session$sendCustomMessage(
     "spatial_copy_preset",
-    list(text = code)
+    list(
+      text = code,
+      dataset_context = dataset_context,
+      background_identity = background_identity
+    )
   )
 })
 

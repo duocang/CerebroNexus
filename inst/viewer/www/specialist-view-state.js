@@ -29,15 +29,21 @@
   var controlRestoreHandler = null;
   var controlRestoreTimer = null;
   var stateRestoreSequence = 0;
-  var readyFingerprints = Object.create(null);
+  var readyContexts = Object.create(null);
 
-  function datasetFingerprint() {
-    var identity = window.cerebroSavedViewDataset || {};
-    return identity.cell_fingerprint || '';
+  function contextApi() {
+    return window.CerebroDatasetContext || null;
+  }
+
+  function currentContextKey() {
+    var api = contextApi();
+    return api && api.key && api.phase && api.phase() === 'ready'
+      ? api.key(api.current()) : '';
   }
 
   function currentState(id, api) {
-    if (readyFingerprints[id] !== datasetFingerprint()) return null;
+    var contextKey = currentContextKey();
+    if (!contextKey || readyContexts[id] !== contextKey) return null;
     return api && api.captureState ? api.captureState(id) : null;
   }
 
@@ -45,7 +51,19 @@
     window.addEventListener('cerebro:specialist-state', function (event) {
       var detail = event && event.detail;
       var id = detail && detail.viewId;
-      if (id && SPECS[id]) readyFingerprints[id] = detail.datasetFingerprint || '';
+      var api = contextApi();
+      var eventContext = detail && detail.dataset_context;
+      if (id && SPECS[id] && api && api.same &&
+          api.phase() === 'ready' && api.same(eventContext, api.current())) {
+        readyContexts[id] = api.key(eventContext);
+      }
+    });
+    window.addEventListener('cerebro:dataset-context', function (event) {
+      var detail = event && event.detail || {};
+      if (!detail.changed && detail.phase === 'ready') return;
+      readyContexts = Object.create(null);
+      stateRestoreSequence++;
+      stopControlRestore();
     });
   }
 
@@ -197,10 +215,12 @@
         navigate(spec);
         restoreControls(config.controls || []);
         var restoreSequence = ++stateRestoreSequence;
+        var restoreContext = currentContextKey();
         var applied = false;
         [0, 250, 750].forEach(function (delay) {
           window.setTimeout(function () {
-            if (applied || restoreSequence !== stateRestoreSequence) return;
+            if (applied || restoreSequence !== stateRestoreSequence ||
+                !restoreContext || restoreContext !== currentContextKey()) return;
             var api = engine(spec);
             if (api && api.applyState) applied = !!api.applyState(id, config);
           }, delay);
@@ -211,9 +231,12 @@
         var api = engine(spec);
         var state = currentState(id, api);
         var identity = window.cerebroSavedViewDataset || {};
+        var datasetContext = contextApi() && contextApi().current();
         return {
           ready: !!state,
           datasetFingerprint: identity.cell_fingerprint || null,
+          datasetKey: datasetContext && datasetContext.dataset_key || null,
+          generation: datasetContext && datasetContext.generation || null,
           selectedCells: state ? state.cells.length : 0,
           page: spec.label
         };

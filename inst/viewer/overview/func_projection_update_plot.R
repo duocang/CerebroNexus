@@ -91,6 +91,5 @@ overview_projection_update_plot <- function(input) {
     payload[["data"]],
     payload[["hover"]],
     deferred_aux = deferred_aux,
-    core_aux = core_aux
-  )
+    core_aux = core_aux, dataset_context = input[["dataset_context"]])
 }

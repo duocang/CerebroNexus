@@ -2,6 +2,7 @@
 ## Object that combines all data required for updating projection plot.
 ##----------------------------------------------------------------------------##
 expression_projection_data_to_plot_raw <- reactive({
+  dataset_context <- viewer_loaded_dataset_context()
   coordinates <- expression_projection_coordinates()
   parameters <- expression_projection_parameters_plot()
   expression_levels <- expression_projection_expression_levels()
@@ -28,6 +29,7 @@ expression_projection_data_to_plot_raw <- reactive({
     )
   }
   to_return <- list(
+    dataset_context = dataset_context,
     dataset = data_set(),
     render_request = input[["expression_projection_render_request"]],
     coordinates = coordinates,
