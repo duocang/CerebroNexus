@@ -1947,6 +1947,53 @@
     }, { priority: 'event' });
   }
 
+  function cloneBaseState(p) {
+    var space = spaceById[p.spaceId];
+    // The clonal chart uses batched Canvas paths to preserve their overlap
+    // semantics. Its unchanged base must not be repainted for hover elsewhere.
+    if (!D || D.n < GPU_MIN_CELLS || !space || space !== spaceById.clone ||
+        !space._axisSpec || !space._unit || space._unit.nz ||
+        space.trajectory || (space.hulls && space.hulls.length) || isSpatialSpace(space)) {
+      p.cloneBase = null;
+      return null;
+    }
+    var state = gpuDataState(p), border = space.pointBorder;
+    if (!border && bordersOn) border = {color:'rgba(90,90,90,.42)',width:0.7};
+    state.axes = space._axisSpec;
+    state.width = p.canvas.width; state.height = p.canvas.height;
+    state.logicalWidth = p.W; state.logicalHeight = p.H;
+    state.pixelRatio = window.devicePixelRatio || 1;
+    state.pointSize = p._renderPointSize;
+    state.borderColor = border && border.color; state.borderWidth = border && border.width;
+    state.viewX = p.view && p.view.cx; state.viewY = p.view && p.view.cy;
+    state.viewSpan = p.view && p.view.span;
+    return state;
+  }
+
+  function restoreCloneBase(p, state) {
+    var cached = p.cloneBase;
+    if (!state || !cached || !sameGpuDataState(state, cached.state)) return false;
+    var c = p.ctx;
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1; c.globalCompositeOperation = 'copy';
+    c.drawImage(cached.canvas, 0, 0); c.restore();
+    c.globalAlpha = cached.alpha; c.fillStyle = cached.fill;
+    c.strokeStyle = cached.stroke; c.lineWidth = cached.lineWidth;
+    return true;
+  }
+
+  function rememberCloneBase(p, state) {
+    var previous = p.cloneBase;
+    var canvas = previous ? previous.canvas : document.createElement('canvas');
+    if (canvas.width !== p.canvas.width) canvas.width = p.canvas.width;
+    if (canvas.height !== p.canvas.height) canvas.height = p.canvas.height;
+    var copy = canvas.getContext('2d');
+    copy.setTransform(1, 0, 0, 1, 0, 0); copy.globalAlpha = 1;
+    copy.globalCompositeOperation = 'copy'; copy.drawImage(p.canvas, 0, 0);
+    p.cloneBase = {state:state,canvas:canvas,alpha:p.ctx.globalAlpha,
+      fill:p.ctx.fillStyle,stroke:p.ctx.strokeStyle,lineWidth:p.ctx.lineWidth};
+  }
+
   function draw(p, shownMask, shownCount) {
     var c = p.ctx; clearPanelLayers(p);
     if (needsUnderlay(p)) attachUnderlay(p);
@@ -1954,10 +2001,13 @@
     if (!p.ok) { hideGpu(p); return; }
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
-    drawImage(p, underlay);
-    drawHulls(p, underlay);
-    drawTrajectory(p, underlay);
-    drawAxes(p);
+    var cloneState = cloneBaseState(p), cachedBase = restoreCloneBase(p, cloneState);
+    if (!cachedBase) {
+      drawImage(p, underlay);
+      drawHulls(p, underlay);
+      drawTrajectory(p, underlay);
+      drawAxes(p);
+    }
     // One two-layer pass: background on layer 0, foreground on layer 1 (on top).
     // The foreground is the "meaningful" set — expressing cells in RGB mode,
     // otherwise the selected cells. Alpha: with a selection, selected stay solid
@@ -1996,11 +2046,11 @@
     // otherwise. In the batched path this also fixes the ORDER OF THE BUCKETS:
     // they are created as their first member is met, and object keys keep
     // insertion order, so filling them low-to-high paints them low-to-high.
-    var gpuDrawn = drawGpuPoints(p, shownMask, shownCount, border);
-    if (!gpuDrawn && p.gpuTransformOnly) return;
-    if (!gpuDrawn) ensureScreenProjection(p);
-    var ord = gpuDrawn ? null : paintOrder(p);
-    for (var layer = 0; !gpuDrawn && layer < 2; layer++) {
+    var pointsDrawn = cachedBase || drawGpuPoints(p, shownMask, shownCount, border);
+    if (!pointsDrawn && p.gpuTransformOnly) return;
+    if (!pointsDrawn) ensureScreenProjection(p);
+    var ord = pointsDrawn ? null : paintOrder(p);
+    for (var layer = 0; !pointsDrawn && layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
         : rgb ? (layer === 1 ? 1 : 0.5 * panelPointOpacity) : panelPointOpacity;
       if (n >= BATCH_MIN) {
@@ -2040,6 +2090,7 @@
         paintCell(p, i, alpha, border);
       }
     }
+    if (!pointsDrawn && cloneState) rememberCloneBase(p, cloneState);
     // Trekker: ring nuclei that carry positioning evidence.
     if (evidenceOn && D.trekker && D.trekker.evidence) {
       c.globalAlpha = 1; c.strokeStyle = '#1f2937'; c.lineWidth = 1.4;
@@ -2138,7 +2189,7 @@
   function drawAll() {
     var first = null;
     panels.forEach(function (p) {
-      if (!p.spaceId) return;
+      if (!p.spaceId) { p.cloneBase = null; return; }
       var state = shownState(p);
       if (!first) first = state;
       draw(p, state.mask, state.count);
