@@ -65,7 +65,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
       selected_sheet <- unname(sheet_choices)[[1L]]
     }
     tagList(
-      if (length(file_choices) > 1L) {
+      if (length(file_choices)) {
         selectInput(
           "extra_material_selected_file",
           label = "File:",
@@ -74,7 +74,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
           width = "100%"
         )
       },
-      if (length(sheet_choices) > 1L) {
+      if (length(sheet_choices)) {
         selectInput(
           "extra_material_selected_content",
           label = "Table:",

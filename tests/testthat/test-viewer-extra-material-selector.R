@@ -57,3 +57,29 @@ test_that("embedded table display labels preserve identity and dataset isolation
   expect_identical(legacy[[1L]]$key, "embedded")
   expect_identical(vapply(legacy[[1L]]$sheets, `[[`, character(1), "label"), names(tables))
 })
+
+test_that("single-sheet workbooks still show their table display names", {
+  source_path <- testthat::test_path("..", "..", "inst", "viewer", "extra_material", "select_content.R")
+  server <- function(input, output, session) {
+    getExtraMaterialCategories <- function() "tables"
+    checkForExtraTables <- function() TRUE
+    extra_material_table_groups <- function() list(
+      book_a = list(sheets = list(list(key = "a", label = "QA CAM renamed"))),
+      book_b = list(sheets = list(list(key = "b", label = "CAM original")))
+    )
+    extra_material_table_choices <- function(groups) c("QA workbook" = "book_a", "Original workbook" = "book_b")
+    extra_material_table_selection <- function(groups, file_key, load) list(group = groups[[file_key]])
+    sys.source(source_path, envir = environment())
+  }
+  shiny::testServer(server, {
+    session$setInputs(extra_material_selected_category = "tables", extra_material_selected_file = "book_a")
+    first <- paste(unlist(output$extra_material_selected_content_UI), collapse = "")
+    expect_match(first, "QA CAM renamed", fixed = TRUE)
+    session$setInputs(extra_material_selected_file = "book_b")
+    second <- paste(unlist(output$extra_material_selected_content_UI), collapse = "")
+    expect_match(second, "CAM original", fixed = TRUE)
+    expect_false(grepl("QA CAM renamed", second, fixed = TRUE))
+    session$setInputs(extra_material_selected_file = "book_a")
+    expect_match(paste(unlist(output$extra_material_selected_content_UI), collapse = ""), "QA CAM renamed", fixed = TRUE)
+  })
+})
