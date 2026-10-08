@@ -46,7 +46,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
   ) {
     groups <- extra_material_table_groups()
     file_choices <- extra_material_table_choices(groups)
-    selected_file <- isolate(input[["extra_material_selected_file"]])
+    selected_file <- input[["extra_material_selected_file"]]
     if (is.null(selected_file) || !selected_file %in% unname(file_choices)) {
       selected_file <- unname(file_choices)[[1L]]
     }

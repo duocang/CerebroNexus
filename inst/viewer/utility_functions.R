@@ -4306,7 +4306,7 @@ extra_material_table_filter <- function(row_count, column_count) {
   }
 }
 
-extra_material_table_groups <- function(external_manifest, embedded) {
+extra_material_table_groups <- function(external_manifest, embedded, table_index = NULL) {
   if (missing(external_manifest)) {
     external_manifest <- if (
       exists("Cerebro.options", inherits = TRUE) &&
@@ -4319,6 +4319,11 @@ extra_material_table_groups <- function(external_manifest, embedded) {
   }
   if (missing(embedded)) {
     data <- data_set()
+    dataset <- viewerSelectedDatasetName()
+    if (is.null(table_index) && !is.null(dataset) &&
+        exists("Cerebro.options", inherits = TRUE)) {
+      table_index <- Cerebro.options$viewer_content[[dataset]]$extra_material_table_index
+    }
     embedded <- if (is_cerebro_dataset(data)) {
       data$getExtraMaterial()$tables
     } else {
@@ -4328,26 +4333,30 @@ extra_material_table_groups <- function(external_manifest, embedded) {
 
   groups <- list()
   if (is.list(embedded) && length(embedded)) {
-    sheets <- Filter(
-      Negate(is.null),
-      lapply(seq_along(embedded), function(index) {
-        table <- embedded[[index]]
-        if (!is.data.frame(table)) {
-          return(NULL)
-        }
-        label <- names(embedded)[[index]]
-        if (is.null(label) || is.na(label) || !nzchar(label)) {
-          label <- paste("Table", index)
-        }
-        list(key = paste0("embedded:", index), label = label, table = table)
-      })
-    )
-    if (length(sheets)) {
-      groups[["Embedded tables"]] <- list(
-        key = "embedded",
-        label = "Embedded tables",
-        sheets = sheets
-      )
+    valid_label <- function(value) {
+      is.character(value) && length(value) == 1L && !is.na(value) && nzchar(trimws(value))
+    }
+    for (index in seq_along(embedded)) {
+      table <- embedded[[index]]
+      if (!is.data.frame(table)) next
+      name <- names(embedded)[index]
+      if (!valid_label(name)) name <- paste("Table", index)
+      record <- if (is.list(table_index)) table_index[[name]] else NULL
+      if (!is.list(record)) record <- list()
+      label <- if (valid_label(record$display_name)) record$display_name else name
+      workbook <- if (valid_label(record$workbook_name)) record$workbook_name else NULL
+      group_key <- if (is.null(workbook)) "embedded" else paste0("embedded-workbook:", workbook)
+      matches <- which(vapply(groups, function(group) identical(group$key, group_key), logical(1)))
+      if (!length(matches)) {
+        group_name <- if (is.null(workbook)) "Embedded tables" else workbook
+        unique_name <- make.unique(c(names(groups), group_name))[[length(groups) + 1L]]
+        groups[[unique_name]] <- list(key = group_key, label = group_name, sheets = list())
+        matches <- length(groups)
+      }
+      group <- matches[[1L]]
+      groups[[group]]$sheets <- append(groups[[group]]$sheets, list(list(
+        key = paste0("embedded:", index), label = label, table = table
+      )))
     }
   }
 
