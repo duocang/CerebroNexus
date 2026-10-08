@@ -12,22 +12,14 @@ expression_projection_parameters_color <- reactive({
   req(no_gene_selected || length(expression_levels) > 0L)
   ## collect parameters
   parameters <- list(
-    color_scale = "Cerebro orange",
+    color_scale = current_expression_color_defaults()$palette,
+    panel_palette = current_expression_color_defaults()$panel_palette,
     color_range = if (no_gene_selected || rgb_mode) {
       c(0, 1)
     } else {
       expressionValueRange(expression_levels)
     },
-    color_mode = if (
-      identical(
-        input[["expression_projection_gene_color_mode"]],
-        "different"
-      )
-    ) {
-      "different"
-    } else {
-      "shared"
-    },
+    color_mode = expression_panel_color_mode(),
     genes = genes,
     rgb_genes = expression_selected_genes()[["rgb_genes"]]
   )

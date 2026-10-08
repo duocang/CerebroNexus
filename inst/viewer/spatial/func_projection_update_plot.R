@@ -406,6 +406,14 @@ spatial_projection_update_plot <- function(input) {
       NULL
     }
   )
+  if (identical(plot_parameters[["plot_type"]], "ImageFeaturePlot")) {
+    settings <- viewerExpressionColorSettings(
+      if (exists("Cerebro.options")) Cerebro.options else list(),
+      dataset_context$dataset_key
+    )
+    payload$data$colorscale <- expressionColorScale(settings$palette)
+    payload$data$reversescale <- FALSE
+  }
   payload[["meta"]] <- c(background_meta, payload[["meta"]])
   if (!resource_first) {
     payload[["data"]] <- attach_geometry_resource(payload[["data"]])

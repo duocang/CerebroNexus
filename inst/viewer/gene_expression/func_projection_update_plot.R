@@ -204,7 +204,8 @@ expression_projection_update_plot <- function(input) {
     output_data[["panel_colorscales"]] <- expressionPanelColorScales(
       names(expression_levels),
       color_settings[["color_mode"]],
-      color_settings[["color_scale"]]
+      color_settings[["color_scale"]],
+      panel_palette = color_settings[["panel_palette"]]
     )
   }
   output_data[["color_range"]] <- color_settings[["color_range"]]
