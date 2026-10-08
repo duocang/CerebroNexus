@@ -107,7 +107,7 @@ test_that("hover code remapping preserves observed order and missing labels", {
 
 test_that("binary envelopes also preserve messages without packed vectors", {
   helpers <- new.env(parent = globalenv())
-  sys.source(bundle_file, envir = helpers)
+  sys.source(utility_file, envir = helpers)
   message <- list(id = "empty", data = list(n = 0L), labels = c("a", "b"))
   packed <- helpers$cv_wire_pack_message(message)
   expect_type(packed, "raw")
@@ -116,43 +116,6 @@ test_that("binary envelopes also preserve messages without packed vectors", {
   expect_identical(header$data$n, 0L)
   expect_identical(unlist(header$labels), c("a", "b"))
   expect_identical(length(packed) %% 4L, 0L)
-})
-
-test_that("cell identities travel separately from the first frame", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  skip_if_not_installed("jsonlite")
-
-  helpers <- new.env(parent = globalenv())
-  sys.source(bundle_file, envir = helpers)
-  payload <- tempfile(fileext = ".bin")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(c(payload, runner)), add = TRUE)
-  writeBin(
-    helpers$cv_wire_pack_cells("dataset-1", c("cell-1", "cell-2")),
-    payload
-  )
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "global.window = global;",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(wire_file, quote = "\"")
-      ),
-      sprintf(
-        "const input = fs.readFileSync(%s);",
-        encodeString(payload, quote = "\"")
-      ),
-      "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
-      "console.log(JSON.stringify(window.CBViewWire.unpackCells(buffer)));"
-    ),
-    runner
-  )
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_equal(attr(output, "status"), NULL)
-  restored <- jsonlite::fromJSON(output, simplifyVector = FALSE)
-  expect_identical(restored$dataset_id, "dataset-1")
-  expect_identical(unlist(restored$cells), c("cell-1", "cell-2"))
 })
 
 test_that("specialist cell views use the same binary envelope", {

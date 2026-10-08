@@ -836,16 +836,28 @@ cv_wire_pack_bundle <- function(
   cv_wire_pack_message(bundle, min_length = min_length)
 }
 
+cv_wire_json_strings <- function(values) {
+  values <- enc2utf8(as.character(values))
+  if (!length(values)) return(charToRaw("[]"))
+  if (
+    !anyNA(values) && all(validUTF8(values)) &&
+      !any(grepl('["\\\\[:cntrl:]]', values, perl = TRUE))
+  ) {
+    return(charToRaw(paste0('["', paste(values, collapse = '","'), '"]')))
+  }
+  charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    values,
+    auto_unbox = FALSE,
+    na = "null"
+  ))))
+}
+
 cv_wire_pack_message <- function(message, min_length = 4096L) {
   chunks <- list()
   data_size <- 0L
   pack <- function(values, type) {
     bytes <- if (identical(type, "json")) {
-      charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-        as.character(values),
-        auto_unbox = FALSE,
-        na = "null"
-      ))))
+      cv_wire_json_strings(values)
     } else {
       size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
       writeBin(
@@ -939,20 +951,20 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
     na = "null"
   ))))
   header_padding <- (4L - length(header) %% 4L) %% 4L
-  data_start <- 4L + length(header) + header_padding
-  payload <- raw(data_start + data_size)
-  payload[seq_len(4L)] <- writeBin(
-    as.integer(length(header)),
-    raw(),
-    size = 4L,
-    endian = "little"
+  ## Concatenate raw blocks once. Indexing the final buffer by every byte
+  ## creates large integer index vectors and copies for atlas-sized messages.
+  parts <- list(
+    writeBin(as.integer(length(header)), raw(), size = 4L, endian = "little"),
+    header,
+    raw(header_padding)
   )
-  payload[4L + seq_along(header)] <- header
+  cursor <- 0L
   for (chunk in chunks) {
-    first <- data_start + chunk$offset + 1L
-    payload[seq.int(first, length.out = length(chunk$bytes))] <- chunk$bytes
+    parts[[length(parts) + 1L]] <- raw(chunk$offset - cursor)
+    parts[[length(parts) + 1L]] <- chunk$bytes
+    cursor <- chunk$offset + length(chunk$bytes)
   }
-  payload
+  unlist(parts, use.names = FALSE)
 }
 
 .cerebro_cell_view_wire_serial <- 0L
