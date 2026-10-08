@@ -7196,6 +7196,10 @@
     }
     var x = new Float64Array(n), y = new Float64Array(n);
     var z = data.data.z ? new Float64Array(n) : null;
+    // Missing spatial coordinates belong to cells outside this section.
+    // Preserve them as missing: Number(null) would invent a point at zero.
+    x.fill(NaN); y.fill(NaN);
+    if (z) z.fill(NaN);
     var groups = nested ? new Int32Array(n) : null;
     if (groups) groups.fill(-1);
     var levels = [], colors = [], hover = new Array(n);
@@ -7246,7 +7250,8 @@
         var limit = Math.min(gx.length, n - offset);
         for (var j = 0; j < limit; j++) {
           var at = offset + j;
-          x[at] = Number(gx[j]); y[at] = Number(gy[j]);
+          x[at] = gx[j] == null ? NaN : Number(gx[j]);
+          y[at] = gy[j] == null ? NaN : Number(gy[j]);
           if (z && gz[j] != null) z[at] = Number(gz[j]);
           groups[at] = group; hover[at] = gh[j] || '';
           hoverEnabled[at] = hoverMode !== 'skip';
@@ -7272,7 +7277,8 @@
         };
       }
       for (var k = 0; k < Math.min(hx.length, n); k++) {
-        x[k] = Number(hx[k]); y[k] = Number(hy[k]);
+        x[k] = hx[k] == null ? NaN : Number(hx[k]);
+        y[k] = hy[k] == null ? NaN : Number(hy[k]);
         if (z && hz[k] != null) z[k] = Number(hz[k]);
         hover[k] = hh[k] || '';
         hoverEnabled[k] = enabled;
