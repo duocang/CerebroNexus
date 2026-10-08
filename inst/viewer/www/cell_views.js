@@ -2186,7 +2186,9 @@
     el.style.display = '';
     el.textContent = 'showing ' + fmt(n) + ' of ' + fmt(D.n) + ' cells';
   }
+  var drawAllDeferred = false;
   function drawAll() {
+    if (drawAllDeferred) return;
     var first = null;
     panels.forEach(function (p) {
       if (!p.spaceId) { p.cloneBase = null; return; }
@@ -8072,8 +8074,14 @@
           progressive: extra.progressive_complete === false
             ? D.progressive : false
         });
-        applyData(merged);
-        restoreWorkspace(saved);
+        drawAllDeferred = true;
+        try {
+          applyData(merged);
+          restoreWorkspace(saved);
+        } finally {
+          drawAllDeferred = false;
+        }
+        drawAll();
         reportWorkspaceReady();
       } else {
         D.groups = Object.assign({}, D.groups, extra.groups);
