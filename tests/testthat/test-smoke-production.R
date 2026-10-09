@@ -390,14 +390,14 @@ test_that("the generated real-data app boots with the Spatial tab", {
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"
   )
   expect_true(isTRUE(spatial_tab))
-  spatial_active <- driver$get_js(
+  driver$wait_for_js(
     paste0(
       "document.querySelector('a[href=\"#shiny-tab-spatial\"]')",
       ".parentElement.classList.contains('active') && ",
       "document.querySelector('.tab-pane.active').id === 'shiny-tab-spatial';"
-    )
+    ),
+    timeout = 30000
   )
-  expect_true(isTRUE(spatial_active))
 })
 
 test_that("the generated multi-crb app boots and switches datasets", {
@@ -419,6 +419,7 @@ test_that("the generated multi-crb app boots and switches datasets", {
   config <- readRDS(file.path(app_info$app_dir, "cerebro_config.rds"))
   configured_crbs <- config[["crb_file_to_load"]]
   configured_values <- unname(configured_crbs)
+  configured_ids <- names(configured_crbs)
   ## Selectize keeps only the selected item in its hidden source <select>.
   ## Open its rendered dropdown and inspect the public option DOM instead.
   driver$wait_for_js(
@@ -471,13 +472,13 @@ test_that("the generated multi-crb app boots and switches datasets", {
     use.names = FALSE
   )
   expect_identical(option_labels, names(configured_crbs))
-  expect_identical(option_values, configured_values)
+  expect_identical(option_values, configured_ids)
   expect_identical(anyDuplicated(option_values), 0L)
 
   ## Load the first dataset and confirm the Spatial tab appears (it is only
   ## inserted when the active dataset carries spatial data).
   driver$set_inputs(
-    crb_file_selector = configured_values[[1L]],
+    crb_file_selector = configured_ids[[1L]],
     wait_ = FALSE
   )
   driver$wait_for_idle(timeout = 30000)
@@ -489,13 +490,13 @@ test_that("the generated multi-crb app boots and switches datasets", {
   ## Switch to the second dataset; the Spatial tab must still be present, proving
   ## multi-crb switching keeps the spatial module wired for each dataset.
   driver$set_inputs(
-    crb_file_selector = configured_values[[2L]],
+    crb_file_selector = configured_ids[[2L]],
     wait_ = FALSE
   )
   driver$wait_for_idle(timeout = 30000)
   expect_identical(
     driver$get_value(input = "crb_file_selector"),
-    configured_values[[2L]]
+    configured_ids[[2L]]
   )
   spatial_tab_b <- driver$get_js(
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"

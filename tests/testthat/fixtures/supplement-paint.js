@@ -11,13 +11,19 @@ function applyData(d){D=d;selection=[];drawAll();drawAll();}
 function restoreWorkspace(saved){drawAll();if(fail)throw Error('restore failed');selection=saved.selection;drawAll();}
 function reportWorkspaceReady(){reports++;}
 function requestWireFallback(){fallback++;}
-const window={CBViewWire:{unpack:x=>x}};
+const context={epoch:'test',dataset_key:'a',generation:1};
+const window={CBViewWire:{unpack:x=>x},CerebroDatasetContext:{
+  accepts:x=>!!x&&x.dataset_context===context,
+  same:(a,b)=>a===b
+}};
+function datasetMessageFresh(message){return window.CerebroDatasetContext.accepts(message);}
+function sameDatasetContext(left,right){return window.CerebroDatasetContext.same(left,right);}
 const CBViewState={telemetry:{snapshot:x=>x}};
 let transportMetrics={},pendingCloneSupplement=null;
 eval(source.slice(source.indexOf('  var drawAllDeferred = false;'),source.indexOf('  // Drop any committed lasso')));
 eval(source.slice(source.indexOf('  function applyHydratedSupplement('),source.indexOf('  function onBinarySupplement(')));
-function reset(){D={dataset_id:'a',progressive_token:4,progressive:true,n:2,cells:['a','b']};selection=[1,2];paint=[];}
-const extra={dataset_id:'a',dataset_fingerprint:'fp',progressive_token:4,spaces:[{id:'other'}]};
+function reset(){D={dataset_id:'a',dataset_context:context,progressive_token:4,progressive:true,n:2,cells:['a','b']};selection=[1,2];paint=[];}
+const extra={dataset_id:'a',dataset_context:context,dataset_fingerprint:'fp',progressive_token:4,spaces:[{id:'other'}]};
 reset();applyHydratedSupplement(extra);assert.equal(paint.length,2);assert(paint.every(p=>!p.progressive));assert.deepStrictEqual(paint[0].selection,[1,2]);assert.equal(reports,1);assert.equal(fallback,0);
 reset();applyHydratedSupplement({...extra,dataset_id:'old'});assert.equal(paint.length,0);assert(D.progressive);
 reset();fail=true;applyHydratedSupplement(extra);assert.equal(fallback,1);assert.equal(drawAllDeferred,false);drawAll();assert.equal(paint.length,2);

@@ -37,14 +37,14 @@ createShinyApp(
   extra_tables = NULL,
   extra_tables_sheets = NULL,
   dataset_labels = NULL,
-  initial_page = NULL,
-  initial_dataset = NULL
+  initial_dataset = NULL,
+  initial_page = NULL
 )
 }
 \arguments{
 \item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
 (or \code{.rds}) file paths. Names must be non-missing and unique and are
-used as stable dataset identities. Paths may repeat.}
+used as stable dataset identities. Paths must resolve to distinct files.}
 
 \item{dataset_labels}{Optional named character vector mapping every dataset
 identity in \code{cerebro_data} to its display label. Values must be non-empty

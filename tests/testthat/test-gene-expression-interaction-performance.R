@@ -10,7 +10,7 @@ test_that("Gene expression hydrates auxiliary cell data only on interaction", {
     source,
     fixed = TRUE
   ))
-  expect_match(source, "requestSingleAux();\n      setHoverCell(i);", fixed = TRUE)
+  expect_match(source, "requestSingleAux\\(\\);\\s*setHoverCell\\(i\\);")
   expect_false(grepl("scheduleSingleAux();", source, fixed = TRUE))
   expect_false(grepl("}, 5000);", source, fixed = TRUE))
 })

@@ -879,6 +879,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
 
   renderer <- new.env(parent = globalenv())
   renderer$Cerebro.options <- list(cerebro_root = root)
+  renderer$viewerExpressionColorSettings <- function(...) list()
+  renderer$expressionColorScale <- function(...) list()
   sys.source(
     file.path(
       system.file("viewer", package = "CerebroNexus"),

@@ -3495,7 +3495,7 @@ test_that("Cerebro data labels cannot be missing", {
 
   expect_error(
     build_test_app(setNames(crb, NA_character_), app),
-    "labels must be non-empty and non-missing"
+    "identities must be non-empty and non-missing"
   )
   expect_false(dir.exists(app))
 })
@@ -3508,7 +3508,7 @@ test_that("Cerebro data labels must be unique", {
 
   expect_error(
     build_test_app(c("Dataset" = first, "Dataset" = second), app),
-    "labels must be unique"
+    "identities must be unique"
   )
   expect_false(dir.exists(app))
 })

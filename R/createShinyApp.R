@@ -2177,7 +2177,7 @@ dedent <- function(string) {
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
 #'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
-#'   used as stable dataset identities. Paths may repeat.
+#'   used as stable dataset identities. Paths must resolve to distinct files.
 #' @param dataset_labels Optional named character vector mapping every dataset
 #'   identity in \code{cerebro_data} to its display label. Values must be
 #'   non-empty but may repeat. When omitted, the dataset identities are also
@@ -2306,6 +2306,7 @@ dedent <- function(string) {
 #' }
 #'
 #' @importFrom later later
+#' @importFrom mirai mirai
 #' @importFrom stats setNames
 #' @export
 createShinyApp <- function(
@@ -2341,8 +2342,8 @@ createShinyApp <- function(
   extra_tables = NULL,
   extra_tables_sheets = NULL,
   dataset_labels = NULL,
-  initial_page = NULL,
-  initial_dataset = NULL
+  initial_dataset = NULL,
+  initial_page = NULL
 ) {
   # Validate inputs ----------------------------------------------------------##
   if (is.list(cerebro_data)) {
@@ -2549,6 +2550,12 @@ createShinyApp <- function(
     winslash = "/",
     mustWork = TRUE
   )
+  if (anyDuplicated(resolved_crb_sources)) {
+    stop(
+      "Two cerebro_data entries resolve to the same Cerebro data file.",
+      call. = FALSE
+    )
+  }
   extra_table_plan <- .bundleExtraTables(
     extra_tables = extra_tables,
     extra_tables_sheets = extra_tables_sheets

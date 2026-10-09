@@ -411,7 +411,10 @@ test_that("gene-expression deferred hover selects rows and columns first", {
   ) {
     list(selection_rows = selection_rows, cell_barcodes = cell_barcodes)
   }
-  scope$cerebroCellViewRender <- function(..., deferred_aux) {
+  scope$cerebroCellViewRender <- function(
+    id, meta, data, hover, extra, deferred_aux, core_aux,
+    dataset_context = NULL
+  ) {
     scope$aux <- deferred_aux()
   }
   sys.source(
@@ -537,7 +540,7 @@ test_that("projection rendering has one first-frame debounce entry point", {
     event_source,
     fixed = TRUE
   ))
-  expect_false(grepl(
+  expect_true(grepl(
     "overview_projection_data_to_plot_raw()",
     event_source,
     fixed = TRUE
@@ -591,9 +594,12 @@ test_that("projection can render before its dynamic controls bind", {
 test_that("a new projection mount redraws unchanged data", {
   server <- function(input, output, session) {
     renders <- 0L
+    context <- list(dataset_key = "test", generation = 1L)
+    viewer_loaded_dataset_context <- function() context
+    viewerDatasetContextEqual <- identical
     overview_projection_data_to_plot <- reactive({
       input[["late_bound_control"]]
-      list(value = 1L)
+      list(value = 1L, dataset_context = context)
     })
     overview_projection_update_plot <- function(data) {
       renders <<- renders + 1L
@@ -608,7 +614,7 @@ test_that("a new projection mount redraws unchanged data", {
   shiny::testServer(server, {
     session$setInputs(
       sidebar = "coordinated_views",
-      overview_projection_render_request = 1,
+      overview_projection_render_request = list(dataset_context = context, sequence = 1L),
       late_bound_control = 1
     )
     expect_identical(session$userData$render_count(), 0L)
@@ -619,7 +625,7 @@ test_that("a new projection mount redraws unchanged data", {
     session$setInputs(late_bound_control = 2)
     expect_identical(session$userData$render_count(), 1L)
 
-    session$setInputs(overview_projection_render_request = 2)
+    session$setInputs(overview_projection_render_request = list(dataset_context = context, sequence = 2L))
     expect_identical(session$userData$render_count(), 2L)
   })
 })

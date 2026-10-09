@@ -574,21 +574,28 @@ test_that("IR page uses the compact top toolbar and settings drawer", {
 })
 
 test_that("Clonal UMAP has Show-all toggle and group filters", {
-  app <- shared_app()
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "ir_umap_show_all",
+    height = 950,
+    width = 1619,
+    load_timeout = 60000
+  )
+  withr::defer(app$stop())
   activate_ir_tab(app)
 
   exists_el <- function(sel) {
     app$get_js(sprintf("document.querySelector('%s') !== null;", sel))
   }
 
-  # Default tab is Clonal UMAP: the primary Show-all checkbox should exist.
-  # Group choices mount on the first drawer request; this shared AppDriver may
-  # already have received that request in an earlier test.
-  expect_true(isTRUE(exists_el("#ir_p_umap_show_all")))
-  has_group_filter <- app$get_js(
-    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
+  # Show-all and group filters are deferred until the settings drawer opens.
+  app$click(selector = "#ir_more_button")
+  app$wait_for_js(
+    "document.querySelector('#ir_p_umap_show_all') !== null",
+    timeout = 60000
   )
-
+  expect_true(isTRUE(exists_el("#ir_p_umap_show_all")))
   # The non-faceted host renders through the shared Canvas engine.
   wait_for_ir_canvas(app)
   has_canvas <- app$get_js(
@@ -596,9 +603,6 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
   )
   expect_true(isTRUE(has_canvas))
 
-  if (!isTRUE(has_group_filter)) {
-    app$click(selector = "#ir_more_button")
-  }
   app$wait_for_js(
     "document.querySelector('[id^=\"ir_group_filter_\"]') !== null",
     timeout = 45000

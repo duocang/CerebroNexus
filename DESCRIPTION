@@ -46,6 +46,7 @@ Imports:
   methods,
   mirai,
   msigdbr (>= 6.2.1),
+  openssl,
   pbapply (>= 1.4),
   plotly (>= 4.9.0),
   qvalue (>= 2.14.0),

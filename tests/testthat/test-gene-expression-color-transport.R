@@ -55,7 +55,9 @@ test_that("single-gene primary frames choose sparse colour transport", {
     data,
     hover,
     extra,
-    deferred_aux
+    deferred_aux,
+    core_aux,
+    dataset_context = NULL
   ) {
     runtime$captured <- data
   }
@@ -119,7 +121,9 @@ test_that("RGB and separate panels use one packed colour map", {
     data,
     hover,
     extra,
-    deferred_aux
+    deferred_aux,
+    core_aux,
+    dataset_context = NULL
   ) {
     runtime$captured <- data
   }

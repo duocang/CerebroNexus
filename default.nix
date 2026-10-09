@@ -30,6 +30,7 @@
 #  > "Matrix",
 #  > "mirai",
 #  > "msigdbr",
+#  > "openssl",
 #  > "pbapply",
 #  > "plotly",
 #  > "qvalue",
@@ -88,6 +89,7 @@ let
       Matrix
       mirai
       msigdbr
+      openssl
       pbapply
       pkgdown
       plotly

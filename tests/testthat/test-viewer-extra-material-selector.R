@@ -1,5 +1,5 @@
 test_that("changing workbooks refreshes sheet choices and retains their display names", {
-  source_path <- testthat::test_path("..", "..", "inst", "viewer", "extra_material", "select_content.R")
+  source_path <- viewer_test_path("extra_material", "select_content.R")
   server <- function(input, output, session) {
     getExtraMaterialCategories <- function() "tables"
     checkForExtraTables <- function() TRUE
@@ -59,7 +59,7 @@ test_that("embedded table display labels preserve identity and dataset isolation
 })
 
 test_that("single-sheet workbooks still show their table display names", {
-  source_path <- testthat::test_path("..", "..", "inst", "viewer", "extra_material", "select_content.R")
+  source_path <- viewer_test_path("extra_material", "select_content.R")
   server <- function(input, output, session) {
     getExtraMaterialCategories <- function() "tables"
     checkForExtraTables <- function() TRUE

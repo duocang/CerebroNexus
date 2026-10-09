@@ -127,7 +127,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   app$wait_for_idle(timeout = 30000)
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_merfish.crb",
+    crb_file_selector = "Mouse ileum (MERFISH)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -141,7 +141,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   )
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   app$wait_for_js(
@@ -178,7 +178,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_idle(timeout = 20000)
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_visium.crb",
+    crb_file_selector = "Mouse brain (Visium)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -246,7 +246,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -295,7 +295,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_slideseq.crb",
+    crb_file_selector = "Mouse hippocampus (Slide-seq v2)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -346,7 +346,7 @@ test_that("Linked views resets the active background to its preset", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   activate_tab(app, "coordinated_views", timeout = 30000)
@@ -659,7 +659,7 @@ test_that("{shinytest2} recording: gene_expression", {
     paste0(
       "document.getElementById('expression_projection_genes_in_separate_panels')",
       "?.disabled === false && ",
-      "document.getElementById('expression_projection_gene_color_mode')",
+      "document.querySelector('select[id^=expression_projection_gene_color_mode_]')",
       " === null"
     ),
     timeout = 10000
@@ -683,7 +683,7 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   app$wait_for_js(
     paste0(
-      "document.getElementById('expression_projection_gene_color_mode')",
+      "document.querySelector('select[id^=expression_projection_gene_color_mode_]')",
       "?.disabled === false"
     ),
     timeout = 10000
@@ -698,10 +698,10 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   expect_false(isTRUE(enabled_style$disabled))
   expect_identical(enabled_style$animation, "cerebro-control-enter")
-  app$set_inputs(
-    expression_projection_gene_color_mode = "different",
-    wait_ = FALSE
+  panel_mode_id <- app$get_js(
+    "document.querySelector('select[id^=expression_projection_gene_color_mode_]')?.id"
   )
+  do.call(app$set_inputs, c(stats::setNames(list("different"), panel_mode_id), list(wait_ = FALSE)))
   app$wait_for_js(
     paste0(
       "document.querySelectorAll(",
@@ -734,8 +734,8 @@ test_that("{shinytest2} recording: gene_expression", {
       "(() => {",
       "const display=document.getElementById(",
       "'expression_projection_genes_in_separate_panels');",
-      "const colour=document.getElementById(",
-      "'expression_projection_gene_color_mode');",
+      "const colour=document.querySelector(",
+      "'select[id^=expression_projection_gene_color_mode_]');",
       "return !display?.disabled && display.value==='separate' && ",
       "colour===null;",
       "})()"
