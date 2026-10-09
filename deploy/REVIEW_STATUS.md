@@ -14,7 +14,7 @@ to the maintainer or deployed into his running service.
 | cloneSharing and SizeDist | Passed on current Ren v2 | Real browser: both Plotly outputs rendered, then Projection rendered all 1,462,702 cells. Browser/server logs had no errors. This is functional acceptance, not a latency benchmark. |
 | Spatial multiple samples | Concrete defect fixed; fixture acceptance passed | Missing coordinates were converted by `Number(null)` into zero coordinates. Commit `7cc203ee` preserves missing values. A two-section fixture split from Visium now draws 1,000 / 1,696 / 1,000 valid points when switching A→B→A, while retaining the 2,696-cell canonical index. The original failing user dataset remains untested. |
 | Linked hover lag / disable control | Fixed and browser-tested | “Show cell hover” control; off by default at 200,000+ cells. Ren: enable gives a tooltip; disable retains box selection. Ren→1,476-cell dataset restores the small-data default. Commit `87f9625d`. |
-| Gene regression against mihem's old version | Unresolved comparison | No matching historical revision/environment has been identified for a controlled page A/B. Backend reads and auxiliary completion times cannot answer this page-regression question. |
+| Gene regression against mihem's old version | Earlier controlled comparison found no first-visit regression | The five-round, same-data PR4/PR5 browser benchmark measured Gene Expression first visit at 3.061 s versus 3.025 s, and repeat visit at 0.614 s versus 0.009 s. This does not identify or reproduce mihem's separate ~7 s versus ~8 s Ren observation. |
 | HDF5 versus BPCells | Measured; workload-dependent | Three interleaved fresh-process rounds; identical single-gene and 12-gene results. HDF5 is faster for single-gene access here; BPCells is faster for the materialized 12-gene block. See below. |
 | Unified version / review communication | Local handoff prepared | Same checkout used for runtime and generated app, final container accepted. External push, official merge and maintainer notification have not been performed. |
 
@@ -87,6 +87,21 @@ sidecar. Keep it available, but use a controlled Gene-page HDF5/BPCells A/B and
 profile the single-row API before deciding which backend should be preferred.
 No backend was silently switched in the application. A historical Gene
 regression claim still requires the matching old revision/environment.
+
+![Ren v2 expression backend comparison](../tests/bench/acceptance/ren-backends-20261008.png)
+
+The chart is generated from the checked TSV with
+`Rscript tests/bench/plot_ren_backend_acceptance.R`.
+
+## Earlier Gene Expression page comparison
+
+The five-round PR4/PR5 browser comparison in
+`tests/bench/VIEWER_1M_RESULTS.md` used the same one-million-cell CRB and
+balanced fresh R/Chrome sessions. Median Gene Expression first visits were
+3.061 s (PR4) and 3.025 s (PR5); repeat visits were 0.614 s and 0.009 s.
+This supports no regression between those two revisions on that dataset. It
+does not directly resolve the reported ~7 s to ~8 s Ren observation, because
+the dataset and revision pair differ.
 
 ## Data preparation incident
 
