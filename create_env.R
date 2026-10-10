@@ -150,10 +150,12 @@ if (length(bp_start) == 1 && !is.na(bp_end)) {
     "    };",
     "",
     "    BPCells = (pkgs.rPackages.buildRPackage {",
+    "      pname = \"BPCells\";",
     "      name = \"BPCells\";",
     "      src = \"${BPCells-src}/r\";",
     "      postPatch = \"patchShebangs configure\";",
-    "      nativeBuildInputs = [ pkgs.hdf5.dev ];"
+    "      nativeBuildInputs = [ pkgs.pkg-config ];",
+    "      buildInputs = [ pkgs.hdf5 ];"
   )
 
   propagatedBuildInputs <- grep(
