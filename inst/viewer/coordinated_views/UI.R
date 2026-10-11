@@ -184,7 +184,7 @@ tab_coordinated_views <- tabItem(
       class = "cv-topbar",
       div(
         class = "cv-ctl",
-        tags$label("Colour by"),
+        tags$label("Colour by", `for` = "cv-pick-color"),
         tags$select(id = "cv-pick-color")
       ),
       ## Projections are a multi-select. Every selected embedding receives its
@@ -193,7 +193,7 @@ tab_coordinated_views <- tabItem(
       div(
         class = "cv-ctl cv-multiselect-ctl",
         id = "cv-proj-ctl",
-        tags$label("Projection"),
+        tags$label("Projection", `for` = "cv-pick-proj"),
         tags$select(id = "cv-pick-proj", multiple = "multiple")
       ),
       ## Spatial sections are a multi-select. Every selected section receives an

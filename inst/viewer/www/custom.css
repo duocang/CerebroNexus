@@ -2307,7 +2307,8 @@ body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom in"]::before { conten
 body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom out"]::before { content: "\f010"; }
 body .js-plotly-plot .plotly .modebar-btn[data-title="Reset axes"]::before { content: "\f015"; }
 body .js-plotly-plot .plotly .modebar-btn[data-title="Download plot as a png"]::before { content: "\f019"; }
-body .js-plotly-plot .plotly .modebar-btn:hover {
+body .js-plotly-plot .plotly .modebar-btn:hover,
+body .js-plotly-plot .plotly .modebar-btn:focus-visible {
   color: var(--c-amber-700) !important;
   background: var(--c-amber-50) !important;
   border-color: var(--c-amber-200);
@@ -2347,6 +2348,32 @@ body .js-plotly-plot .plotly .modebar-btn.disabled {
 body .shiny-bound-output.recalculating::before,
 body .loading-spinner,
 body .fa-spinner { color: var(--c-amber) !important; }
+
+/* Keep materialSwitch's native checkbox in the keyboard/accessibility tree.
+   Its existing label and checked-state styling still own the visual switch. */
+body .material-switch > input[type="checkbox"] {
+  display: block !important;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+body .material-switch > input[type="checkbox"]:focus-visible + label::before {
+  outline: 2px solid var(--c-amber-700);
+  outline-offset: 4px;
+  opacity: 1;
+}
+body .js-plotly-plot .plotly .modebar:focus-within {
+  opacity: 1 !important;
+}
+body .js-plotly-plot .plotly .modebar-btn:focus-visible {
+  outline: 2px solid var(--c-amber-700);
+  outline-offset: 2px;
+}
 
 /* Scrollbars — thin, quiet, rounded */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

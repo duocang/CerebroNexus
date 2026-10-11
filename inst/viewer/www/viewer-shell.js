@@ -159,12 +159,46 @@
     function syncTabs(root) {
       root.querySelectorAll('.nav-tabs > li > a[data-toggle="tab"]').forEach(function (tab) {
         var selected = tab.parentElement.classList.contains("active");
+        tab.parentElement.parentElement.setAttribute("role", "tablist");
+        tab.parentElement.setAttribute("role", "presentation");
+        tab.setAttribute("role", "tab");
+        var target = tab.getAttribute("href");
+        var panel = target && target.charAt(0) === "#" && document.getElementById(target.slice(1));
+        if (panel) {
+          if (!tab.id) tab.id = panel.id + "-tab";
+          tab.setAttribute("aria-controls", panel.id);
+          panel.setAttribute("role", "tabpanel");
+          panel.setAttribute("aria-labelledby", tab.id);
+        }
         tab.setAttribute("aria-selected", selected ? "true" : "false");
         tab.setAttribute("aria-expanded", selected ? "true" : "false");
         tab.setAttribute("tabindex", selected ? "0" : "-1");
       });
     }
     syncTabs(document);
+    // Capture before Bootstrap's legacy accessibility handler, so one key
+    // produces one activation for both initial and renderUI-created tabsets.
+    document.addEventListener("keydown", function (event) {
+      var tab = event.target.closest && event.target.closest('.nav-tabs > li > a[data-toggle="tab"]');
+      if (!tab || event.altKey || event.ctrlKey || event.metaKey) return;
+      var keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Enter", " "];
+      if (keys.indexOf(event.key) < 0) return;
+      var tabs = Array.prototype.filter.call(tab.parentElement.parentElement.children, function (li) {
+        var link = li.querySelector('a[data-toggle="tab"]');
+        return link && !li.classList.contains("disabled") &&
+          link.getAttribute("aria-disabled") !== "true" && link.getClientRects().length;
+      }).map(function (li) { return li.querySelector('a[data-toggle="tab"]'); });
+      var index = tabs.indexOf(tab);
+      if (index < 0) return;
+      if (event.key === "Home") index = 0;
+      else if (event.key === "End") index = tabs.length - 1;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") index = (index + tabs.length - 1) % tabs.length;
+      else if (event.key === "ArrowRight" || event.key === "ArrowDown") index = (index + 1) % tabs.length;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.jQuery(tabs[index]).tab("show");
+      tabs[index].focus();
+    }, true);
     window.jQuery(document).on("shown.bs.tab.cerebroTabs", '[data-toggle="tab"]', function () {
       // Bootstrap's accessibility activate wrapper marks every descendant of
       // the opened pane selected after emitting shown. Reconcile on return.
@@ -182,6 +216,10 @@
     // mandatory dialogs (static backdrop / keyboard dismissal disabled).
     window.jQuery(document).on("show.bs.modal.cerebroDialog", "#shiny-modal", function () {
       var modal = this;
+      var invoker = document.activeElement;
+      if (invoker && invoker !== document.body && !modal.contains(invoker)) {
+        modal.__cerebroInvoker = invoker;
+      }
       modal.setAttribute("role", "dialog");
       modal.setAttribute("aria-modal", "true");
       var title = modal.querySelector(".modal-title");
@@ -201,6 +239,88 @@
         close.textContent = "×";
         header.insertBefore(close, header.firstChild);
       }
+    }).on("hidden.bs.modal.cerebroDialog", "#shiny-modal", function () {
+      var invoker = this.__cerebroInvoker;
+      delete this.__cerebroInvoker;
+      if (invoker && invoker.isConnected && !invoker.disabled &&
+          invoker.getClientRects().length && !document.querySelector(".modal.in")) {
+        invoker.focus();
+      }
+    });
+  });
+
+  ready(function () {
+    var nextBoxId = 0;
+    function syncBox(box) {
+      var header = box.querySelector(':scope > .box-header');
+      var body = box.querySelector(':scope > .box-body');
+      var button = header && header.querySelector('[data-widget="collapse"]');
+      if (!button || !body) return;
+      if (!body.id) body.id = "cerebro-box-body-" + (++nextBoxId);
+      var title = header.querySelector(".box-title");
+      var name = "section";
+      if (title) {
+        var label = title.cloneNode(true);
+        label.querySelectorAll("button, .cerebro-info-btn").forEach(function (node) { node.remove(); });
+        name = label.textContent.trim() || name;
+      }
+      var expanded = !box.classList.contains("collapsed-box");
+      button.setAttribute("aria-label", (expanded ? "Collapse " : "Expand ") + name);
+      button.setAttribute("aria-expanded", String(expanded));
+      button.setAttribute("aria-controls", body.id);
+      button.querySelectorAll("i").forEach(function (icon) {
+        icon.removeAttribute("aria-label");
+        icon.setAttribute("aria-hidden", "true");
+      });
+    }
+    function syncModebar(bar) {
+      bar.querySelectorAll(".modebar-btn").forEach(function (button) {
+        var name = button.getAttribute("data-title");
+        if (name) button.setAttribute("aria-label", name);
+        // Preserve actual links (for example Plotly's logo) and native buttons.
+        if (button.tagName === "A" && !button.hasAttribute("href")) {
+          button.setAttribute("role", "button");
+          button.setAttribute("tabindex", button.getAttribute("aria-disabled") === "true" ? "-1" : "0");
+        }
+        if (button.getAttribute("data-toggle") === "true" ||
+            button.getAttribute("data-attr") === "dragmode") {
+          button.setAttribute("aria-pressed", String(button.classList.contains("active")));
+        }
+      });
+    }
+    function enhance(root) {
+      if (!root.querySelectorAll) return;
+      var nodes = Array.prototype.slice.call(root.querySelectorAll(".box, .modebar"));
+      if (root.matches && root.matches(".box, .modebar")) nodes.push(root);
+      nodes.forEach(function (node) {
+        var isBox = node.classList.contains("box");
+        var sync = isBox ? syncBox : syncModebar;
+        sync(node);
+        if (node.__cerebroAccessibleChrome || !window.MutationObserver) return;
+        node.__cerebroAccessibleChrome = true;
+        // Observe only each widget's chrome, never its plot data or canvas.
+        new MutationObserver(function () { sync(node); }).observe(node, {
+          attributes: true, attributeFilter: isBox ? ["class"] : ["class", "data-title"],
+          childList: !isBox, subtree: !isBox
+        });
+      });
+    }
+    enhance(document);
+    var content = document.getElementById("main-content");
+    if (content && window.MutationObserver) {
+      new MutationObserver(function (records) {
+        records.forEach(function (record) {
+          record.addedNodes.forEach(function (node) {
+            if (node.nodeType === 1 && node.namespaceURI === "http://www.w3.org/1999/xhtml") enhance(node);
+          });
+        });
+      }).observe(content, {childList: true, subtree: true});
+    }
+    document.addEventListener("keydown", function (event) {
+      var button = event.target.closest && event.target.closest('.modebar-btn[role="button"]');
+      if (!button || button.tagName !== "A" || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      if (!event.repeat && button.getAttribute("aria-disabled") !== "true" && !button.classList.contains("disabled")) button.click();
     });
   });
 

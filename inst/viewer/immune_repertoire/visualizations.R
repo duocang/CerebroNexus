@@ -1290,6 +1290,9 @@ output$ir_plot_clonalAbundance <- plotly::renderPlotly({
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
+  ## Tab navigation can reach this output before renderUI has bound its
+  ## controls. Do not pass NULL chain/cloneCall into scRepertoire during that gap.
+  req(pars$chain, pars$cloneCall)
   scale <- isTRUE(ir_param("ir_p_scale", FALSE))
   order_by <- ir_order_by()
   if (

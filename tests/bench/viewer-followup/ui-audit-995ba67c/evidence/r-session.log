@@ -1,0 +1,132 @@
+[2026-10-10 22:46:22.730162] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:46:22.749358] Format of expression data: dgCMatrix
+[2026-10-10 22:46:23.06558] WebGL status: TRUE
+[2026-10-10 22:46:23.068487] Show hover info status: TRUE
+[2026-10-10 22:46:55.375564] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+[2026-10-10 22:46:56.091927] Data loaded; expression backend will attach on first use.
+[2026-10-10 22:47:45.505597] CRB cache hit: cerebro_spatial_canonical_1m_acceptance_v1.crb
+[2026-10-10 22:47:46.073941] Data loaded; expression backend will attach on first use.
+[2026-10-10 22:47:59.181369] CRB cache hit: cerebro_spatial_canonical_1m_acceptance_v1.crb
+[2026-10-10 22:47:59.772942] Data loaded; expression backend will attach on first use.
+[2026-10-10 22:48:45.205326] CRB cache hit: demo_trekker.crb
+class: Cerebro
+exporter package version: 2.3.0
+experiment name: Trekker mouse brain (TrekkerU_C, demo)
+organism: mm
+date of analysis: 
+date of export: 2026-07-17
+number of cells: 2,536
+number of genes: 21,374
+grouping variables (2): cluster, celltype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:48:45.210386] Format of expression data: dgCMatrix
+[2026-10-10 22:49:04.452402] CRB cache hit: demo_trekker.crb
+class: Cerebro
+exporter package version: 2.3.0
+experiment name: Trekker mouse brain (TrekkerU_C, demo)
+organism: mm
+date of analysis: 
+date of export: 2026-07-17
+number of cells: 2,536
+number of genes: 21,374
+grouping variables (2): cluster, celltype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:49:04.45743] Format of expression data: dgCMatrix
+[2026-10-10 22:51:00.692819] CRB cache hit: demo_hla_tcr_dextramer.crb
+class: Cerebro
+exporter package version: 
+experiment name: Antigen-selected CD8 T cells - real 10x dextramer cohort
+organism: hg
+date of analysis: 
+date of export: 2026-07-21
+number of cells: 12,000
+number of genes: 2,000
+grouping variables (5): sample, cell_type, dextramer_antigen, dextramer_allele, restriction_in_genotype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:donor1, donor2, donor3, donor4
+HLA typing: 4 sample(s), 12 allele(s) [genotyped]
+Spatial data:
+
+
+[2026-10-10 22:51:00.697863] Format of expression data: dgCMatrix
+[2026-10-10 22:51:14.771484] CRB cache hit: demo_hla_tcr_dextramer.crb
+class: Cerebro
+exporter package version: 
+experiment name: Antigen-selected CD8 T cells - real 10x dextramer cohort
+organism: hg
+date of analysis: 
+date of export: 2026-07-21
+number of cells: 12,000
+number of genes: 2,000
+grouping variables (5): sample, cell_type, dextramer_antigen, dextramer_allele, restriction_in_genotype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:donor1, donor2, donor3, donor4
+HLA typing: 4 sample(s), 12 allele(s) [genotyped]
+Spatial data:
+
+
+[2026-10-10 22:51:14.775417] Format of expression data: dgCMatrix

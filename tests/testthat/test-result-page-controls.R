@@ -60,3 +60,68 @@ test_that("stored expression metric preference survives a grouping change", {
     expect_error(most_expressed_genes_selected_tables(), class = "shiny.silent.error")
   })
 })
+
+test_that("ambiguous legacy pct values reach the table without unit conversion", {
+  expressions <- as.list(parse(viewer_test_path("most_expressed_genes", "table.R")))
+  wanted <- c("most_expressed_genes_available_groups", "most_expressed_genes_selected_tables",
+    "most_expressed_genes_selected_table", 'output[["most_expressed_genes_table"]]')
+  definitions <- Filter(function(e) is.call(e) && identical(e[[1L]], quote(`<-`)) &&
+    paste(deparse(e[[2L]]), collapse = "") %in% wanted, expressions)
+  shiny::testServer(function(input, output, session) {
+    captured <- new.env(parent = emptyenv())
+    getGroupsWithMostExpressedGenes <- function() c("fraction", "percent")
+    getGroupsWithMeanExpression <- function() character()
+    getMetaData <- function() stop("must not materialize metadata")
+    viewerGetMostExpressedGenes <- function(group) {
+      data.frame(group = "x", gene = c("A", "B"),
+        pct = if (group == "fraction") c(0.000123456789, 0.5) else c(0.5, 50))
+    }
+    cerebroFilterResultRows <- function(results_df, ...) results_df
+    cerebroResultTable <- function(results_df, ..., number_formatting = TRUE,
+                                  columns_percentage = NULL) {
+      captured$result <- list(data = results_df, formatting = number_formatting,
+                              percentage = columns_percentage)
+      DT::datatable(results_df)
+    }
+    for (definition in definitions) eval(definition, environment())
+  }, {
+    session$setInputs(most_expressed_genes_selected_group = "fraction",
+      most_expressed_genes_metric_type = "pct", most_expressed_genes_table_filter_switch = TRUE)
+    invisible(output$most_expressed_genes_table)
+    expect_identical(captured$result$data[["Stored score"]], c(0.000123456789, 0.5))
+    expect_false(captured$result$formatting)
+    expect_null(captured$result$percentage)
+    session$setInputs(most_expressed_genes_selected_group = "percent")
+    invisible(output$most_expressed_genes_table)
+    expect_identical(captured$result$data[["Stored score"]], c(0.5, 50))
+    expect_false(captured$result$formatting)
+    expect_null(captured$result$percentage)
+  })
+})
+
+test_that("Abundance waits for dynamic controls before choosing a renderer", {
+  expressions <- as.list(parse(viewer_test_path("immune_repertoire", "visualizations.R")))
+  definition <- Filter(function(e) is.call(e) && identical(e[[1L]], quote(`<-`)) &&
+    identical(e[[2L]], quote(output$ir_plot_clonalAbundance)), expressions)[[1L]]
+  # Evaluate the production renderPlotly body, without the output/cache wrapper.
+  scope <- new.env(parent = environment())
+  scope$req <- shiny::req
+  scope$req_plot_space <- function(...) NULL
+  scope$ir_data <- function() list(sample = data.frame(CTgene = "a"))
+  scope$parameters <- list(chain = NULL, cloneCall = NULL, groupBy = NULL)
+  scope$ir_params <- function() scope$parameters
+  scope$ir_param <- function(id, default) default
+  scope$ir_order_by <- function() NULL
+  scope$req_scRepertoire <- function() stop("must not send unbound controls upstream")
+  scope$ir_clonecall_col <- identity
+  scope$ir_clonal_abundance_counts <- function(data, clone_col) clone_col
+  scope$ir_clonal_abundance_plotly <- identity
+  render <- eval(call("function", pairlist(), definition[[3L]][[2L]][[2L]]), scope)
+  expect_error(render(), class = "shiny.silent.error")
+  scope$parameters$chain <- "both"
+  expect_error(render(), class = "shiny.silent.error")
+  scope$parameters$cloneCall <- "gene"
+  expect_identical(render(), "gene")
+  scope$parameters$cloneCall <- character()
+  expect_error(render(), class = "shiny.silent.error")
+})

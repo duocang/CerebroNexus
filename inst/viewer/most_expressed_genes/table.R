@@ -52,7 +52,7 @@ output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
   pct_data <- tables$pct
 
   if (!is.null(pct_data) && is.data.frame(pct_data) && nrow(pct_data) > 0) {
-    metric_choices <- c(metric_choices, "Percent expressed" = "pct")
+    metric_choices <- c(metric_choices, "Stored expression score (pct)" = "pct")
   }
 
   mean_data <- tables$mean_expr
@@ -117,11 +117,7 @@ most_expressed_genes_metric_description <- function(metric_type) {
     tagList(
       tags$p(
         style = "color: #888; font-size: 12px; margin-top: -10px; margin-bottom: 5px;",
-        "Percentage of cells expressing each gene. Based on normalized read counts, shows what proportion of cells in each group have detectable expression (count > 0)."
-      ),
-      tags$p(
-        style = "color: #888; font-size: 12px; text-align: center; font-style: italic; margin-bottom: 15px;",
-        "Percent = (Number of cells with count > 0) / (Total cells in group) × 100%"
+        "Gene-ranking values as stored in this data set. The definition and scale of pct depend on the generating method; check the data set's analysis documentation. Values are shown without percentage conversion."
       )
     )
   } else {
@@ -178,10 +174,10 @@ output[["most_expressed_genes_table"]] <- DT::renderDataTable({
     grouped,
     input[["most_expressed_genes_table_select_group_level"]]
   )
-  value_col <- NULL
   if (identical(metric_type, "pct") && "pct" %in% colnames(results_df)) {
-    results_df <- dplyr::rename(results_df, "% of cells expressing" = pct)
-    value_col <- 3
+    ## Legacy producers use pct for different quantities and scales. Without
+    ## metric provenance, neither the values nor their range identify a unit.
+    results_df <- dplyr::rename(results_df, "Stored score" = pct)
   } else if (
     !identical(metric_type, "pct") &&
       "mean_expr" %in% colnames(results_df)
@@ -193,13 +189,13 @@ output[["most_expressed_genes_table"]] <- DT::renderDataTable({
     paste0(
       ifelse(
         metric_type == "pct",
-        "percent_expressed_",
+        "stored_expression_score_",
         "mean_expression_"
       ),
       input[["most_expressed_genes_selected_group"]]
     ),
     hide_long_columns = FALSE,
-    columns_percentage = value_col
+    number_formatting = !identical(metric_type, "pct")
   )
 })
 
@@ -221,8 +217,8 @@ most_expressed_genes_info <- list(
     "
     Table showing gene expression statistics for each group. These lists can help to identify/verify the dominant cell types.
     <h4>Expression metrics</h4>
-    <b>Percent expressed</b><br>
-    The percentage of cells in each group that have detectable expression (count > 0) of each gene. For example, if a gene shows 80%, it means 80% of cells in that group express this gene.<br>
+    <b>Stored expression score (pct)</b><br>
+    Values are shown as stored, without percentage conversion. Legacy generating methods use pct for different quantities: getMostExpressedGenes stores a gene's fraction of total transcript counts (0–1), while convertSeuratToCerebro can store the percentage of cells with nonzero expression (0–100). These quantities are not interchangeable. The table does not identify which definition was used; consult the data set's analysis documentation before interpreting the values.<br>
     <br>
     <b>Mean expression</b><br>
     The average normalized expression level of each gene across all cells in each group. Higher values indicate genes with stronger overall expression in the group.<br>

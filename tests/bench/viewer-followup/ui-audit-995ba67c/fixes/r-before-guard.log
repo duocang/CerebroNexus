@@ -1,0 +1,221 @@
+[2026-10-10 22:56:36.376256] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:56:36.391301] Format of expression data: dgCMatrix
+[2026-10-10 22:56:36.673332] WebGL status: TRUE
+[2026-10-10 22:56:36.676287] Show hover info status: TRUE
+[2026-10-10 22:57:03.101218] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:57:03.265595] Format of expression data: dgCMatrix
+[2026-10-10 22:59:04.352938] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:59:04.360129] Format of expression data: dgCMatrix
+[2026-10-10 22:59:04.501446] WebGL status: TRUE
+[2026-10-10 22:59:04.504995] Show hover info status: TRUE
+[2026-10-10 22:59:12.797616] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:59:12.802048] Format of expression data: dgCMatrix
+[2026-10-10 22:59:22.220775] CRB cache hit: demo_hla_tcr_dextramer.crb
+class: Cerebro
+exporter package version: 
+experiment name: Antigen-selected CD8 T cells - real 10x dextramer cohort
+organism: hg
+date of analysis: 
+date of export: 2026-07-21
+number of cells: 12,000
+number of genes: 2,000
+grouping variables (5): sample, cell_type, dextramer_antigen, dextramer_allele, restriction_in_genotype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:donor1, donor2, donor3, donor4
+HLA typing: 4 sample(s), 12 allele(s) [genotyped]
+Spatial data:
+
+
+[2026-10-10 22:59:22.224634] Format of expression data: dgCMatrix
+[2026-10-10 22:59:25.826541] CRB cache hit: demo_hla_tcr_dextramer.crb
+class: Cerebro
+exporter package version: 
+experiment name: Antigen-selected CD8 T cells - real 10x dextramer cohort
+organism: hg
+date of analysis: 
+date of export: 2026-07-21
+number of cells: 12,000
+number of genes: 2,000
+grouping variables (5): sample, cell_type, dextramer_antigen, dextramer_allele, restriction_in_genotype
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:donor1, donor2, donor3, donor4
+HLA typing: 4 sample(s), 12 allele(s) [genotyped]
+Spatial data:
+
+
+[2026-10-10 22:59:25.830258] Format of expression data: dgCMatrix
+[2026-10-10 22:59:42.644249] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:59:42.649229] Format of expression data: dgCMatrix
+[2026-10-10 22:59:48.836459] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-10 22:59:48.842196] Format of expression data: dgCMatrix
+[IR ERROR] Plot 'clonalAbundance' failed: argument is of length zero
