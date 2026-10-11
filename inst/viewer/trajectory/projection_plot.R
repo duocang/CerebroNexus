@@ -64,6 +64,11 @@ trajectory_projection_prepared_raw <- reactive({
   if (nrow(cells_df) == 0L) {
     return(list(
       dataset_context = dataset_context,
+      feedback = cerebroFeedbackControls("trajectory_projection", input, list(
+        trajectory_point_size = trajectory_projection_appearance$point_size,
+        trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+        trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
+      )),
       cells_df = cells_df,
       trajectory_lines = list(),
       hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
@@ -88,6 +93,11 @@ trajectory_projection_prepared_raw <- reactive({
 
   list(
     dataset_context = dataset_context,
+    feedback = cerebroFeedbackControls("trajectory_projection", input, list(
+        trajectory_point_size = trajectory_projection_appearance$point_size,
+        trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+        trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
+      )),
     cells_df = cells_df,
     trajectory_lines = trajectory_lines,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
@@ -302,7 +312,12 @@ observe({
       primary,
       list(hoverinfo = "skip"),
       extra = list(shapes = static_frame$trajectory_lines),
-      deferred_aux = deferred_aux, dataset_context = current_context)
+      deferred_aux = deferred_aux, dataset_context = current_context,
+      feedback = cerebroFeedbackControls("trajectory_projection", input, list(
+        trajectory_point_size = trajectory_projection_appearance$point_size,
+        trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+        trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
+      )))
     if (!isolate(trajectory_projection_sent())) {
       session$onFlushed(
         function() trajectory_projection_sent(TRUE),
@@ -416,7 +431,8 @@ observe({
     payload[["data"]],
     payload[["hover"]],
     extra = list(shapes = prepared[["trajectory_lines"]]),
-    deferred_aux = deferred_aux, dataset_context = prepared[["dataset_context"]])
+    deferred_aux = deferred_aux, dataset_context = prepared[["dataset_context"]],
+    feedback = prepared[["feedback"]])
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
       function() trajectory_projection_sent(TRUE),

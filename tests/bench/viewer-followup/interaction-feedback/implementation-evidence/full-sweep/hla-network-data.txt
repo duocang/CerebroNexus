@@ -1,0 +1,560 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs" [expanded]:
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓         
+  - tabpanel:
+    - heading "HLA & TCR Motifs" [level=1]
+    - generic: Exploratory HLA context and association — not inferred restriction.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: "Chain:"
+    - generic: TRB
+    - combobox "Chain:"
+    - generic: "Network scope:"
+    - generic: All cells
+    - combobox "Network scope:"
+    - generic: Colour by
+    - generic: Motif cluster
+    - textbox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - tablist:
+      - tab "Motif Network"
+      - tab "Network data" [expanded] [active] [selected]
+      - tab "HLA Associations"
+      - tab "Data & QC"
+    - text: 
+    - tabpanel "Network data":
+      - radiogroup "Rows:":
+        - generic: "Rows:"
+        - radio "By motif (node)" [checked]
+        - text: By motif (node)
+        - radio "By cell"
+        - text: By cell
+      - paragraph: The rows behind the network shown on Motif Network, under the current chain / scope / allele / min-size filters. 'By motif' is one row per CDR3 node; 'By cell' is one row per cell.
+      - text: Show
+      - combobox "Show entries":
+        - option "10"
+        - option "25" [selected]
+        - option "50"
+        - option "100"
+      - text: entries
+      - text: "Search:"
+      - searchbox "Search:"
+      - table:
+        - rowgroup:
+          - 'row "CDR3: activate to sort column ascending V: activate to sort column ascending J: activate to sort column ascending cells: activate to sort column ascending motif cluster: activate to sort column ascending MHC context: activate to sort column ascending cell_type: activate to sort column ascending dextramer_antigen: activate to sort column ascending dextramer_allele: activate to sort column ascending restriction_in_genotype: activate to sort column ascending samples: activate to sort column ascending sample origin: activate to sort column ascending"':
+            - 'columnheader "CDR3: activate to sort column ascending"': CDR3
+            - 'columnheader "V: activate to sort column ascending"': V
+            - 'columnheader "J: activate to sort column ascending"': J
+            - 'columnheader "cells: activate to sort column ascending"': cells
+            - 'columnheader "motif cluster: activate to sort column ascending"': motif cluster
+            - 'columnheader "MHC context: activate to sort column ascending"': MHC context
+            - 'columnheader "cell_type: activate to sort column ascending"': cell_type
+            - 'columnheader "dextramer_antigen: activate to sort column ascending"': dextramer_antigen
+            - 'columnheader "dextramer_allele: activate to sort column ascending"': dextramer_allele
+            - 'columnheader "restriction_in_genotype: activate to sort column ascending"': restriction_in_genotype
+            - 'columnheader "samples: activate to sort column ascending"': samples
+            - 'columnheader "sample origin: activate to sort column ascending"': sample origin
+          - row "All All All All All All All All All All All All":
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All" [disabled]
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All" [disabled]
+              - text: 
+            - cell "All":
+              - searchbox "All" [disabled]
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+            - cell "All":
+              - searchbox "All"
+              - text: 
+      - table:
+        - rowgroup:
+          - 'row "CDR3: activate to sort column ascending V: activate to sort column ascending J: activate to sort column ascending cells: activate to sort column ascending motif cluster: activate to sort column ascending MHC context: activate to sort column ascending cell_type: activate to sort column ascending dextramer_antigen: activate to sort column ascending dextramer_allele: activate to sort column ascending restriction_in_genotype: activate to sort column ascending samples: activate to sort column ascending sample origin: activate to sort column ascending"':
+            - 'columnheader "CDR3: activate to sort column ascending"'
+            - 'columnheader "V: activate to sort column ascending"'
+            - 'columnheader "J: activate to sort column ascending"'
+            - 'columnheader "cells: activate to sort column ascending"'
+            - 'columnheader "motif cluster: activate to sort column ascending"'
+            - 'columnheader "MHC context: activate to sort column ascending"'
+            - 'columnheader "cell_type: activate to sort column ascending"'
+            - 'columnheader "dextramer_antigen: activate to sort column ascending"'
+            - 'columnheader "dextramer_allele: activate to sort column ascending"'
+            - 'columnheader "restriction_in_genotype: activate to sort column ascending"'
+            - 'columnheader "samples: activate to sort column ascending"'
+            - 'columnheader "sample origin: activate to sort column ascending"'
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+        - rowgroup:
+          - row "CASSAGAYGYTF TRBV19 TRBJ1-2 3 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSAGAYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "3"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSAGSYGYTF TRBV19 TRBJ1-2 2 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSAGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "2"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSFGSYGYTF TRBV19 TRBJ1-2 4 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSFGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "4"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSIGAYGYTF TRBV19 TRBJ1-2 3 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSIGAYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "3"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSIGIYGYTF TRBV19 TRBJ1-2 1 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSIGIYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "1"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSIGLYGYTF TRBV19 TRBJ1-2 14 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSIGLYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "14"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSIGSHGYTF TRBV19 TRBJ1-2 1 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASSIGSHGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "1"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASSIGSYGYTF TRBV19 TRBJ1-2 21 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSIGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "21"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSIGVHGYTF TRBV19 TRBJ1-2 27 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASSIGVHGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "27"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASSIGVYGYTF TRBV19 TRBJ1-2 13 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSIGVYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "13"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSIGYYGYTF TRBV19 TRBJ1-2 4 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSIGYYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "4"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSLGSYGYTF TRBV19 TRBJ1-2 1 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASSLGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "1"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASSMGSYGYTF TRBV19 TRBJ1-2 2 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSMGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "2"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSQGAYGYTF TRBV19 TRBJ1-2 29 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSQGAYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "29"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSQGNYGYTF TRBV19 TRBJ1-2 2 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSQGNYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "2"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSQGSYGYTF TRBV19 TRBJ1-2 3 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSQGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "3"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASSTGIYGYTF TRBV19 TRBJ1-2 1 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASSTGIYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "1"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASSVGSYGYTF TRBV19 TRBJ1-2 2 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1… Shared":
+            - cell "CASSVGSYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "2"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSWGAYGYTF TRBV19 TRBJ1-2 15 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSWGAYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "15"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CATSQGAYGYTF TRBV19 TRBJ1-2 1 1 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CATSQGAYGYTF"
+            - cell "TRBV19"
+            - cell "TRBJ1-2"
+            - cell "1"
+            - cell "1"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - row "CASAFYSNQPQHF TRBV19 TRBJ1-5 3 2 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASAFYSNQPQHF"
+            - cell "TRBV19"
+            - cell "TRBJ1-5"
+            - cell "3"
+            - cell "2"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASGVYSNQPQHF TRBV19 TRBJ1-5 1 2 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASGVYSNQPQHF"
+            - cell "TRBV19"
+            - cell "TRBJ1-5"
+            - cell "1"
+            - cell "2"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+          - 'row "CASSARSSTEQYF TRBV19 TRBJ2-7 58 3 Class I CD8 T 2 types: Flu-MP_Influenza (57), EBNA-3B_EBV (1) 2 types: HLA-A*02:01 (57), HLA-A*11:01 (1) yes donor1… Shared"':
+            - cell "CASSARSSTEQYF"
+            - cell "TRBV19"
+            - cell "TRBJ2-7"
+            - cell "58"
+            - cell "3"
+            - cell "Class I"
+            - cell "CD8 T"
+            - 'cell "2 types: Flu-MP_Influenza (57), EBNA-3B_EBV (1)"'
+            - 'cell "2 types: HLA-A*02:01 (57), HLA-A*11:01 (1)"'
+            - cell "yes"
+            - cell "donor1…"
+            - cell "Shared"
+          - row "CASSARSSYEQYF TRBV19 TRBJ2-7 31 3 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor2 donor2":
+            - cell "CASSARSSYEQYF"
+            - cell "TRBV19"
+            - cell "TRBJ2-7"
+            - cell "31"
+            - cell "3"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor2"
+            - cell "donor2"
+          - row "CASSARSTGELFF TRBV19 TRBJ2-2 1 4 Class I CD8 T Flu-MP_Influenza HLA-A*02:01 yes donor1 donor1":
+            - cell "CASSARSTGELFF"
+            - cell "TRBV19"
+            - cell "TRBJ2-2"
+            - cell "1"
+            - cell "4"
+            - cell "Class I"
+            - cell "CD8 T"
+            - cell "Flu-MP_Influenza"
+            - cell "HLA-A*02:01"
+            - cell "yes"
+            - cell "donor1"
+            - cell "donor1"
+      - status: Showing 1 to 25 of 94 entries
+      - list:
+        - link "Previous" [disabled]
+        - link "1":
+          - /url: "#"
+        - link "2":
+          - /url: "#"
+        - link "3":
+          - /url: "#"
+        - link "4":
+          - /url: "#"
+        - link "Next":
+          - /url: "#"
+      - link "download icon Download CSV":
+        - /url: session/a7c57a8b19b5e2dff321a37e12b74355/download/hla_network_download?w=
+        - generic "download icon": 
+        - text: Download CSV
+    - text:  
+  - text:      Preparing table…  Preparing results…
+- text:   
+- generic: search or type a gene...
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: HLA
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log

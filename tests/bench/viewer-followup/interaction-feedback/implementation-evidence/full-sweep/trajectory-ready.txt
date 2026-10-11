@@ -1,0 +1,183 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - link "Trajectory" [expanded]:
+      - /url: "#shiny-tab-trajectory"
+      - generic: 
+      - text: Trajectory
+    - text:  
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…   
+  - tabpanel:
+    - heading "Trajectory" [level=1]
+    - generic: Explore inferred cell-state transitions and pseudotime.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: Choose a method
+    - generic: Marker-guided
+    - combobox "Choose a method"
+    - generic: Choose a trajectory
+    - generic: E18_neurogenesis
+    - combobox "Choose a trajectory"
+    - generic: Colour by
+    - generic: seurat_clusters
+    - combobox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings" [active]:
+      - generic: 
+      - generic: Settings
+    - text: ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - text: "0"
+    - generic: (202879)
+    - text: "10"
+    - generic: (49482)
+    - text: "11"
+    - generic: (17226)
+    - text: "12"
+    - generic: (37654)
+    - text: "13"
+    - generic: (29417)
+    - text: "14"
+    - generic: (16512)
+    - text: "15"
+    - generic: (13470)
+    - text: "16"
+    - generic: (30286)
+    - text: "17"
+    - generic: (25494)
+    - text: "18"
+    - generic: (3953)
+    - text: "19"
+    - generic: (12630)
+    - text: "2"
+    - generic: (154574)
+    - text: "21"
+    - generic: (14890)
+    - text: "22"
+    - generic: (8649)
+    - text: "23"
+    - generic: (18113)
+    - text: "25"
+    - generic: (1006)
+    - text: "26"
+    - generic: (11684)
+    - text: "27"
+    - generic: (504)
+    - text: "28"
+    - generic: (793)
+    - text: "29"
+    - generic: (779)
+    - text: "3"
+    - generic: (49133)
+    - text: "32"
+    - generic: (236)
+    - text: "4"
+    - generic: (88555)
+    - text: "5"
+    - generic: (89509)
+    - text: "6"
+    - generic: (7544)
+    - text: "7"
+    - generic: (62380)
+    - text: "8"
+    - generic: (34455)
+    - generic: E18_neurogenesis
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - text:  Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - text:  Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "E18_neurogenesis cell view"
+    - generic: E18_neurogenesis view with 981807 points; 0 selected.
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+  - text:                    Preparing table…  Preparing results…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: Mouse
+- log
+- log
+- log

@@ -1,0 +1,177 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material" [expanded]:
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:            Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Loading controls…   Loading result…                       
+  - tabpanel:
+    - heading "Extra material" [active] [level=1]
+    - generic: "File:"
+    - generic: Embedded tables
+    - combobox "File:"
+    - generic: "Table:"
+    - generic: cluster_cell_counts
+    - combobox "Table:"
+    - heading "Extra material info" [level=3]:
+      - paragraph: Extra material
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Automatically format numbers:"
+    - generic: "Highlight values with colours:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - text: "Search:"
+    - searchbox "Search:"
+    - table:
+      - rowgroup:
+        - 'row "cluster: activate to sort column ascending n_cells: activate to sort column ascending"':
+          - 'columnheader "cluster: activate to sort column ascending"': cluster
+          - 'columnheader "n_cells: activate to sort column ascending"': n_cells
+        - row "Filter cluster Filter n_cells":
+          - cell "Filter cluster":
+            - searchbox "Filter cluster"
+            - text: 
+          - cell "Filter n_cells":
+            - searchbox "Filter n_cells"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "cluster: activate to sort column ascending n_cells: activate to sort column ascending"':
+          - 'columnheader "cluster: activate to sort column ascending"'
+          - 'columnheader "n_cells: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+      - rowgroup:
+        - row "0 322":
+          - cell "0"
+          - cell "322"
+        - row "1 280":
+          - cell "1"
+          - cell "280"
+        - row "2 215":
+          - cell "2"
+          - cell "215"
+        - row "3 213":
+          - cell "3"
+          - cell "213"
+        - row "4 129":
+          - cell "4"
+          - cell "129"
+        - row "5 91":
+          - cell "5"
+          - cell "91"
+        - row "6 78":
+          - cell "6"
+          - cell "78"
+        - row "7 68":
+          - cell "7"
+          - cell "68"
+        - row "8 58":
+          - cell "8"
+          - cell "58"
+        - row "9 22":
+          - cell "9"
+          - cell "22"
+    - text: Show
+    - combobox "Show entries":
+      - option "20" [selected]
+      - option "50"
+      - option "100"
+    - text: entries
+    - status: Showing 1 to 10 of 10 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "Next" [disabled]
+  - text:                           Loading table…  Loading result…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: "1"
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log

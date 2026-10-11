@@ -1187,7 +1187,7 @@ cerebroCellViewResolveDeferredAux <- function(message) {
   if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) print(x)
 }
 
-cerebroCellViewRecolor <- function(id, meta, data, dataset_context) {
+cerebroCellViewRecolor <- function(id, meta, data, dataset_context, feedback = NULL) {
   dataset_context <- viewerDatasetContext(dataset_context$epoch,
     dataset_context$dataset_key, dataset_context$generation)
   meta$dataset_id <- dataset_context$dataset_key
@@ -1196,6 +1196,7 @@ cerebroCellViewRecolor <- function(id, meta, data, dataset_context) {
   .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
   message$dataset_context <- dataset_context
   message$render_token <- .cerebro_cell_view_render_serial
+  cerebroSendViewFeedback(id, message$render_token, dataset_context, feedback)
   fields <- c("color", "rgb", "rgb_scaled", "rgb_genes", "colorscale",
     "panel_colorscales", "color_range", "reversescale", "paint_order",
     "render_key", "sparse_color", "color_cache_key", "packed_rgb",
@@ -1246,6 +1247,36 @@ cerebroCellViewAuxRequest <- function(request) {
   invisible(TRUE)
 }
 
+## Small UI snapshots only. Never enumerate values of all Shiny inputs: those
+## include million-cell selections and transport caches. Reads are isolated so
+## feedback cannot add a dependency to an existing preparation path.
+cerebroFeedbackControls <- function(id, input, overrides = list()) {
+  pattern <- switch(id,
+    overview_projection = "^overview_projection_(to_display|point_color|point_size|point_opacity|point_border|group_labels|keep_square|percentage_cells_to_show|group_filter_.+)$",
+    expression_projection = "^expression_projection_(to_display|point_size|point_opacity|point_border|group_labels|keep_square|percentage_cells_to_show|group_filter_.+)$",
+    spatial_projection = "^spatial_projection_(to_display|plot_type|point_color|point_size|point_opacity|group_labels|point_border|keep_square|percentage_cells_to_show|feature_to_display|coexpr_[rgb]|show_region_outlines|background_image|group_filter_.+)$",
+    trajectory_projection = "^trajectory_(selected_method|selected_name|point_color|point_size|point_opacity|projection_group_labels|projection_point_border|projection_keep_square|percentage_cells_to_show|projection_group_filter_.+)$",
+    hla_motif_network = "^hla_(chain|scope|color_by|color_allele|pair_allele_i|pair_allele_ii|min_nodes|by_v|show_isolated|node_scale|legend_mode|group_filter_.+)$",
+    "a^"
+  )
+  shiny::isolate({
+    ids <- grep(pattern, names(input), value = TRUE)
+    values <- stats::setNames(lapply(ids, function(key) input[[key]]), ids)
+    values <- utils::modifyList(values, overrides, keep.null = TRUE)
+    lapply(values, function(value) {
+      if (is.logical(value)) tolower(as.character(value)) else as.character(value)
+    })
+  })
+}
+
+cerebroSendViewFeedback <- function(id, token, context, controls) {
+  if (!is.null(controls)) {
+    session$sendCustomMessage("cerebro_view_feedback", list(
+      id = id, renderToken = token, dataset_context = context, controls = controls
+    ))
+  }
+}
+
 cerebroCellViewRender <- function(
   id,
   meta,
@@ -1254,7 +1285,8 @@ cerebroCellViewRender <- function(
   extra = list(),
   deferred_aux = NULL,
   core_aux = NULL,
-  dataset_context = NULL
+  dataset_context = NULL,
+  feedback = NULL
 ) {
   dataset_context <- viewerDatasetContext(dataset_context$epoch,
     dataset_context$dataset_key, dataset_context$generation)
@@ -1264,6 +1296,7 @@ cerebroCellViewRender <- function(
   .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
   message$dataset_context <- dataset_context
   message$render_token <- .cerebro_cell_view_render_serial
+  cerebroSendViewFeedback(id, message$render_token, dataset_context, feedback)
   deferred_selection_lengths <- suppressWarnings(as.integer(
     message$data$deferred_selection_lengths
   ))
@@ -1419,6 +1452,7 @@ cerebroCellViewRender <- function(
     message <- stamp_transport_profile(message)
     session$sendCustomMessage("cell_view_render", message)
   }
+  invisible(message$render_token)
 }
 
 cerebroCellViewBackground <- function(
@@ -5269,7 +5303,7 @@ registerCellViewPointBorder <- function(output, prefix) {
   shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
 }
 
-cerebroResultTableControls <- function(prefix) {
+cerebroResultTableControls <- function(prefix, results_df, grouped) {
   shiny::fluidRow(
     shiny::column(
       12,
@@ -5295,7 +5329,11 @@ cerebroResultTableControls <- function(prefix) {
         inline = TRUE
       )
     ),
-    shiny::column(12, shiny::uiOutput(paste0(prefix, "_filter_subgroups_UI"))),
+    shiny::column(12, shiny::conditionalPanel(
+      paste0("!input.", prefix, "_table_filter_switch"),
+      cerebroResultSubgroupUI(results_df, FALSE, grouped,
+        paste0(prefix, "_table_select_group_level"))
+    )),
     shiny::column(12, DT::dataTableOutput(paste0(prefix, "_table")))
   )
 }

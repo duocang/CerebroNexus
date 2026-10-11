@@ -8,15 +8,13 @@
 ## UI element to select which group should be shown.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_select_group_UI"]] <- renderUI({
-  if (
-    !is.null(getGroupsWithMostExpressedGenes()) &&
-      length(getGroupsWithMostExpressedGenes()) > 0
-  ) {
+  groups <- unique(c(getGroupsWithMostExpressedGenes(), getGroupsWithMeanExpression()))
+  if (length(groups)) {
     selectInput(
       "most_expressed_genes_selected_group",
       label = "Grouping variable",
-      choices = getGroupsWithMostExpressedGenes(),
+      choices = groups,
       width = "100%"
     )
-  }
+  } else p("No stored expression summaries available.")
 })

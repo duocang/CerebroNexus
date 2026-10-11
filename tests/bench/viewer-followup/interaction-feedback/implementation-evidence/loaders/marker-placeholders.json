@@ -1,0 +1,14 @@
+[
+  {
+    "class": "shiny-html-output cerebro-result-controls shiny-bound-output recalculating",
+    "empty": true,
+    "glyph": "16px",
+    "text": "\"Loading controls…\""
+  },
+  {
+    "class": "shiny-html-output cerebro-result-slot shiny-bound-output recalculating",
+    "empty": true,
+    "glyph": "16px",
+    "text": "\"Loading result…\""
+  }
+]

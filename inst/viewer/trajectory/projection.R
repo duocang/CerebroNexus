@@ -164,6 +164,7 @@ observeEvent(input[["trajectory_projection_group_labels"]], {
       "cell_view_appearance",
       list(
         id = "trajectory_projection",
+        dataset_context = viewer_loaded_dataset_context(),
         dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
         values = list(
           group_labels = trajectory_projection_appearance$group_labels

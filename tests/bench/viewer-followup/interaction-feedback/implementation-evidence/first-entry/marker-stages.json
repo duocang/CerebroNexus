@@ -1,0 +1,18 @@
+[
+  {
+    "stage": "controls observed",
+    "ms": 2303
+  },
+  {
+    "stage": "table observed",
+    "ms": 2992,
+    "globalBusy": false,
+    "loader": true,
+    "pending": [],
+    "rows": 20
+  },
+  {
+    "stage": "loader hidden observed",
+    "ms": 5291
+  }
+]

@@ -30,6 +30,7 @@ expression_projection_data_to_plot_raw <- reactive({
   }
   to_return <- list(
     dataset_context = dataset_context,
+    feedback = cerebroFeedbackControls("expression_projection", input),
     dataset = data_set(),
     render_request = input[["expression_projection_render_request"]],
     coordinates = coordinates,

@@ -82,7 +82,8 @@ function update(data, meta = {}) { return recolorSingle({id,
   assert.equal(D.rgb,undefined); assert.equal(D.fields['single:'+id+':0'].paintOrder,false);
   await new Promise(setImmediate);
   // Previous paints used the same D object; only the newest metadata may report ready.
-  assert.equal(emitted.length,1); assert.equal(emitted[0].detail.renderToken,2);
+  assert.equal(emitted.length,1);
+  assert.equal(emitted[0].detail.renderToken,singleViews[id].render_token);
   // Stable IDs may still be deferred, but the same progressive geometry has
   // a known canonical position for every exact expression value.
   setup(); D.cells=[]; delete singleViews[id].data.selection_key;

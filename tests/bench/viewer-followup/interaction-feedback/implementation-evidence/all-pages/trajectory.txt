@@ -1,0 +1,451 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - link "Trajectory" [expanded]:
+      - /url: "#shiny-tab-trajectory"
+      - generic: 
+      - text: Trajectory
+    - text:  
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓           
+  - tabpanel [active]:
+    - heading "Trajectory" [level=1]
+    - generic: Explore inferred cell-state transitions and pseudotime.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · 603 selected
+    - generic: Choose a method
+    - generic: Marker-guided
+    - combobox "Choose a method"
+    - generic: Choose a trajectory
+    - generic: E18_neurogenesis
+    - combobox "Choose a trajectory"
+    - generic: Colour by
+    - generic: State
+    - combobox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: Active cohort
+    - generic: Selected 603 / 1,000,000 cells
+    - generic: 0 · 80%
+    - generic: Selected in E18_neurogenesis
+    - button "Focus":
+      - generic: 
+      - text: Focus
+    - button "Clear":
+      - generic: 
+      - text: Clear
+    - text: Neural progenitor
+    - generic: (333820)
+    - text: Neuroblast
+    - generic: (333806)
+    - text: Maturing neuron
+    - generic: (79066)
+    - text: Excitatory neuron
+    - generic: (199919)
+    - text: Inhibitory neuron
+    - generic: (35196)
+    - generic: E18_neurogenesis
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - button "Zoom this panel to the selection":
+      - generic "crop-simple icon": 
+      - text: Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - button "Clear selection":
+      - generic "eraser icon": 
+      - text: Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "E18_neurogenesis cell view"
+    - generic: E18_neurogenesis view with 981807 points; 603 selected.
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+    - status:
+      - button "Move composition card; use arrow keys": ⠇
+      - strong: Composition
+      - generic: 603 / 1,000,000
+      - generic: Selected cells · by sample
+      - generic: 10x E18 mouse brain (1M subset)
+      - generic: 603 · 100%
+    - heading "Table of selected cells info" [level=3]:
+      - paragraph: Table of selected cells
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Automatically format numbers:"
+    - generic: "Highlight values with colours:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - table:
+      - rowgroup:
+        - 'row "cell_barcode: activate to sort column ascending DR_1: activate to sort column ascending DR_2: activate to sort column ascending pseudotime: activate to sort column ascending state: activate to sort column ascending sample: activate to sort column ascending seurat_clusters: activate to sort column ascending nUMI: activate to sort column ascending nGene: activate to sort column ascending orig.ident: activate to sort column ascending cell_index: activate to sort column ascending"':
+          - 'columnheader "cell_barcode: activate to sort column ascending"': cell_barcode
+          - 'columnheader "DR_1: activate to sort column ascending"': DR_1
+          - 'columnheader "DR_2: activate to sort column ascending"': DR_2
+          - 'columnheader "pseudotime: activate to sort column ascending"': pseudotime
+          - 'columnheader "state: activate to sort column ascending"': state
+          - 'columnheader "sample: activate to sort column ascending"': sample
+          - 'columnheader "seurat_clusters: activate to sort column ascending"': seurat_clusters
+          - 'columnheader "nUMI: activate to sort column ascending"': nUMI
+          - 'columnheader "nGene: activate to sort column ascending"': nGene
+          - 'columnheader "orig.ident: activate to sort column ascending"': orig.ident
+          - 'columnheader "cell_index: activate to sort column ascending"': cell_index
+        - row "Filter cell_barcode Filter DR_1 Filter DR_2 Filter pseudotime Filter state Filter sample Filter seurat_clusters Filter nUMI Filter nGene Filter orig.ident Filter cell_index":
+          - cell "Filter cell_barcode":
+            - searchbox "Filter cell_barcode"
+            - text: 
+          - cell "Filter DR_1":
+            - searchbox "Filter DR_1"
+            - text: 
+          - cell "Filter DR_2":
+            - searchbox "Filter DR_2"
+            - text: 
+          - cell "Filter pseudotime":
+            - searchbox "Filter pseudotime"
+            - text: 
+          - cell "Filter state":
+            - searchbox "Filter state"
+            - text: 
+          - cell "Filter sample":
+            - searchbox "Filter sample" [disabled]
+            - text: 
+          - cell "Filter seurat_clusters":
+            - searchbox "Filter seurat_clusters"
+            - text: 
+          - cell "Filter nUMI":
+            - searchbox "Filter nUMI"
+            - text: 
+          - cell "Filter nGene":
+            - searchbox "Filter nGene"
+            - text: 
+          - cell "Filter orig.ident":
+            - searchbox "Filter orig.ident" [disabled]
+            - text: 
+          - cell "Filter cell_index":
+            - searchbox "Filter cell_index"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "cell_barcode: activate to sort column ascending DR_1: activate to sort column ascending DR_2: activate to sort column ascending pseudotime: activate to sort column ascending state: activate to sort column ascending sample: activate to sort column ascending seurat_clusters: activate to sort column ascending nUMI: activate to sort column ascending nGene: activate to sort column ascending orig.ident: activate to sort column ascending cell_index: activate to sort column ascending"':
+          - 'columnheader "cell_barcode: activate to sort column ascending"'
+          - 'columnheader "DR_1: activate to sort column ascending"'
+          - 'columnheader "DR_2: activate to sort column ascending"'
+          - 'columnheader "pseudotime: activate to sort column ascending"'
+          - 'columnheader "state: activate to sort column ascending"'
+          - 'columnheader "sample: activate to sort column ascending"'
+          - 'columnheader "seurat_clusters: activate to sort column ascending"'
+          - 'columnheader "nUMI: activate to sort column ascending"'
+          - 'columnheader "nGene: activate to sort column ascending"'
+          - 'columnheader "orig.ident: activate to sort column ascending"'
+          - 'columnheader "cell_index: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+      - rowgroup:
+        - row "ATTACTCGTGTTGAGG-1 -4.77 -0.606 0.787 Neuroblast 10x E18 mouse brain (1M subset) 0 2,969 1,652 mouse_brain_1m 1,595":
+          - cell "ATTACTCGTGTTGAGG-1"
+          - cell "-4.77"
+          - cell "-0.606"
+          - cell "0.787"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "2,969"
+          - cell "1,652"
+          - cell "mouse_brain_1m"
+          - cell "1,595"
+        - row "CAGGTGCCATCACGAT-1 -6.51 1.88 0.907 Maturing neuron 10x E18 mouse brain (1M subset) 5 4,660 2,102 mouse_brain_1m 2,129":
+          - cell "CAGGTGCCATCACGAT-1"
+          - cell "-6.51"
+          - cell "1.88"
+          - cell "0.907"
+          - cell "Maturing neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "5"
+          - cell "4,660"
+          - cell "2,102"
+          - cell "mouse_brain_1m"
+          - cell "2,129"
+        - row "CCTCTGACAGCCTTTC-1 -5.77 0.814 0.874 Excitatory neuron 10x E18 mouse brain (1M subset) 0 9,557 3,543 mouse_brain_1m 2,717":
+          - cell "CCTCTGACAGCCTTTC-1"
+          - cell "-5.77"
+          - cell "0.814"
+          - cell "0.874"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "9,557"
+          - cell "3,543"
+          - cell "mouse_brain_1m"
+          - cell "2,717"
+        - row "TTTCCTCCACGGCTAC-1 -5.89 0.981 0.881 Excitatory neuron 10x E18 mouse brain (1M subset) 0 5,902 2,579 mouse_brain_1m 7,575":
+          - cell "TTTCCTCCACGGCTAC-1"
+          - cell "-5.89"
+          - cell "0.981"
+          - cell "0.881"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "5,902"
+          - cell "2,579"
+          - cell "mouse_brain_1m"
+          - cell "7,575"
+        - row "AACTCTTGTAAGGATT-2 -5.64 0.625 0.877 Excitatory neuron 10x E18 mouse brain (1M subset) 0 4,486 2,258 mouse_brain_1m 7,827":
+          - cell "AACTCTTGTAAGGATT-2"
+          - cell "-5.64"
+          - cell "0.625"
+          - cell "0.877"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "4,486"
+          - cell "2,258"
+          - cell "mouse_brain_1m"
+          - cell "7,827"
+        - row "AAGGTTCGTTGATTCG-2 -5.91 1.03 0.803 Neuroblast 10x E18 mouse brain (1M subset) 0 2,739 1,454 mouse_brain_1m 7,940":
+          - cell "AAGGTTCGTTGATTCG-2"
+          - cell "-5.91"
+          - cell "1.03"
+          - cell "0.803"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "2,739"
+          - cell "1,454"
+          - cell "mouse_brain_1m"
+          - cell "7,940"
+        - row "ACACTGAAGGCGTACA-2 -5.55 0.503 0.849 Neuroblast 10x E18 mouse brain (1M subset) 0 3,458 1,725 mouse_brain_1m 8,048":
+          - cell "ACACTGAAGGCGTACA-2"
+          - cell "-5.55"
+          - cell "0.503"
+          - cell "0.849"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "3,458"
+          - cell "1,725"
+          - cell "mouse_brain_1m"
+          - cell "8,048"
+        - row "ACGAGGATCTGATACG-2 -4.58 -0.886 0.846 Neuroblast 10x E18 mouse brain (1M subset) 0 3,426 1,771 mouse_brain_1m 8,238":
+          - cell "ACGAGGATCTGATACG-2"
+          - cell "-4.58"
+          - cell "-0.886"
+          - cell "0.846"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "3,426"
+          - cell "1,771"
+          - cell "mouse_brain_1m"
+          - cell "8,238"
+        - row "CAGCTGGGTTTAAGCC-2 -4.69 -0.727 0.880 Excitatory neuron 10x E18 mouse brain (1M subset) 0 3,594 1,874 mouse_brain_1m 9,742":
+          - cell "CAGCTGGGTTTAAGCC-2"
+          - cell "-4.69"
+          - cell "-0.727"
+          - cell "0.880"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "3,594"
+          - cell "1,874"
+          - cell "mouse_brain_1m"
+          - cell "9,742"
+        - row "CATCAGACATGGTCTA-2 -5.85 0.927 0.874 Maturing neuron 10x E18 mouse brain (1M subset) 0 7,910 3,127 mouse_brain_1m 9,839":
+          - cell "CATCAGACATGGTCTA-2"
+          - cell "-5.85"
+          - cell "0.927"
+          - cell "0.874"
+          - cell "Maturing neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "7,910"
+          - cell "3,127"
+          - cell "mouse_brain_1m"
+          - cell "9,839"
+        - row "TTCCCAGTCAGCATGT-2 -4.72 -0.691 0.831 Neuroblast 10x E18 mouse brain (1M subset) 0 2,192 1,252 mouse_brain_1m 14,633":
+          - cell "TTCCCAGTCAGCATGT-2"
+          - cell "-4.72"
+          - cell "-0.691"
+          - cell "0.831"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "2,192"
+          - cell "1,252"
+          - cell "mouse_brain_1m"
+          - cell "14,633"
+        - row "ACTGAACCACTCTGTC-3 -5.79 0.837 0.907 Excitatory neuron 10x E18 mouse brain (1M subset) 0 4,536 2,112 mouse_brain_1m 15,636":
+          - cell "ACTGAACCACTCTGTC-3"
+          - cell "-5.79"
+          - cell "0.837"
+          - cell "0.907"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "4,536"
+          - cell "2,112"
+          - cell "mouse_brain_1m"
+          - cell "15,636"
+        - row "CATCCACCAGGGATTG-3 -5.42 0.324 0.864 Excitatory neuron 10x E18 mouse brain (1M subset) 0 4,886 2,226 mouse_brain_1m 17,065":
+          - cell "CATCCACCAGGGATTG-3"
+          - cell "-5.42"
+          - cell "0.324"
+          - cell "0.864"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "4,886"
+          - cell "2,226"
+          - cell "mouse_brain_1m"
+          - cell "17,065"
+        - row "CTTACCGCACGGCTAC-3 -5.28 0.114 0.803 Neuroblast 10x E18 mouse brain (1M subset) 0 3,294 1,680 mouse_brain_1m 18,637":
+          - cell "CTTACCGCACGGCTAC-3"
+          - cell "-5.28"
+          - cell "0.114"
+          - cell "0.803"
+          - cell "Neuroblast"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "3,294"
+          - cell "1,680"
+          - cell "mouse_brain_1m"
+          - cell "18,637"
+        - row "GACTGCGAGACAGGCT-3 -4.89 -0.431 0.877 Excitatory neuron 10x E18 mouse brain (1M subset) 0 4,212 2,094 mouse_brain_1m 18,967":
+          - cell "GACTGCGAGACAGGCT-3"
+          - cell "-4.89"
+          - cell "-0.431"
+          - cell "0.877"
+          - cell "Excitatory neuron"
+          - cell "10x E18 mouse brain (1M subset)"
+          - cell "0"
+          - cell "4,212"
+          - cell "2,094"
+          - cell "mouse_brain_1m"
+          - cell "18,967"
+    - text: Show
+    - combobox "Show entries":
+      - option "15" [selected]
+      - option "30"
+      - option "50"
+      - option "100"
+      - option "1,000"
+    - text: entries
+    - status: Showing 1 to 15 of 603 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "2":
+        - /url: "#"
+      - link "3":
+        - /url: "#"
+      - link "4":
+        - /url: "#"
+      - link "5":
+        - /url: "#"
+      - link "…" [disabled]
+      - link "41":
+        - /url: "#"
+      - link "Next":
+        - /url: "#"
+  - text:            ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓        
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: Mouse
+- log
+- log:
+  - generic: cell_type
+- log
+- log
+- log:
+  - generic: State
+- log

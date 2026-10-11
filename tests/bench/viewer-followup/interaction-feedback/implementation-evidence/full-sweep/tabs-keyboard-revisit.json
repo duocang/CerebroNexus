@@ -1,0 +1,22 @@
+[
+  {
+    "selected": "false",
+    "tabindex": "-1",
+    "text": "Motif Network"
+  },
+  {
+    "selected": "false",
+    "tabindex": "-1",
+    "text": "Network data"
+  },
+  {
+    "selected": "true",
+    "tabindex": "0",
+    "text": "HLA Associations"
+  },
+  {
+    "selected": "false",
+    "tabindex": "-1",
+    "text": "Data & QC"
+  }
+]

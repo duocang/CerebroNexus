@@ -309,9 +309,9 @@ expression_projection_update_plot <- function(input) {
       !isTRUE(separate_panels) && length(coordinates) == 2L &&
       identical(expression_projection_render_state$geometry, geometry)
     if (can_recolor) {
-      cerebroCellViewRecolor(id, meta, data, dataset_context = input[["dataset_context"]])
+      cerebroCellViewRecolor(id, meta, data, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
     } else {
-      cerebroCellViewRender(id, meta, data, hover, extra, deferred_aux, core_aux, dataset_context = input[["dataset_context"]])
+      cerebroCellViewRender(id, meta, data, hover, extra, deferred_aux, core_aux, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
     }
     expression_projection_render_state$geometry <- geometry
   }

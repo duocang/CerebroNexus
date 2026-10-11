@@ -1,0 +1,52 @@
+{
+  "canvases": [
+    {
+      "id": "cv-cv-a",
+      "transition": "none"
+    },
+    {
+      "id": "",
+      "transition": "none"
+    },
+    {
+      "id": "cv-mini-a",
+      "transition": "none"
+    },
+    {
+      "id": "cv-cv-b",
+      "transition": "none"
+    },
+    {
+      "id": "",
+      "transition": "none"
+    },
+    {
+      "id": "cv-mini-b",
+      "transition": "none"
+    }
+  ],
+  "reducedMotion": true,
+  "results": [
+    {
+      "animation": "none",
+      "element": "cv-readcol cv-rise"
+    },
+    {
+      "animation": "none",
+      "element": "cv-readcol cv-rise"
+    },
+    {
+      "animation": "none",
+      "element": "row cv-rise"
+    },
+    {
+      "animation": "none",
+      "element": "row cv-rise"
+    }
+  ],
+  "status": [
+    "View ready · 3 selected",
+    "",
+    "Showing 1 to 3 of 3 entries"
+  ]
+}

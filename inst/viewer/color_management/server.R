@@ -14,11 +14,6 @@ output[["color_assignments_UI"]] <- renderUI({
   ## Group, cell-cycle and dataset dependencies below still rebuild the UI.
   initial_colors <- isolate(reactive_colors())
   tagList(
-    cerebroVizPageHeader(
-      "Colour management",
-      "color_assignments_info",
-      "Set the group colours used throughout CerebroNexus."
-    ),
     fluidRow(
       tagList({
         group_list <- list()

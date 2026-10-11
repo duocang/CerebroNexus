@@ -943,18 +943,13 @@ test_that("Gene expression display and colour modes are linked", {
     fixed = TRUE
   )
   expect_match(input_ui, 'class = "cerebro-gene-rgb-channel"', fixed = TRUE)
-  expect_match(
-    css,
-    ".cerebro-gene-control.cerebro-control-unlocked .selectize-input",
-    fixed = TRUE
-  )
   expect_no_match(css, ".cerebro-gene-control.is-disabled", fixed = TRUE)
-  expect_match(
+  expect_no_match(
     css,
-    ".cerebro-gene-rgb-channel:nth-child(3)",
+    "animation: cerebro-control-enter",
     fixed = TRUE
   )
-  expect_match(
+  expect_no_match(
     js,
     "shiny:outputinvalidated.cerebroGeneControls",
     fixed = TRUE
@@ -1026,8 +1021,7 @@ test_that("cell scatter pages debounce only complete render snapshots", {
   )
   snapshot_files <- c(
     viewer_path("overview", "obj_projection_data_to_plot.R"),
-    viewer_path("spatial", "obj_projection_data_to_plot.R"),
-    viewer_path("gene_expression", "obj_projection_data_to_plot.R")
+    viewer_path("spatial", "obj_projection_data_to_plot.R")
   )
 
   for (path in parameter_files) {
@@ -1038,6 +1032,10 @@ test_that("cell scatter pages debounce only complete render snapshots", {
     source <- paste(readLines(path, warn = FALSE), collapse = "\n")
     expect_match(source, "<- debounceAfterFirst(", fixed = TRUE)
   }
+  # Gene's prepared-value relay was removed in f4e4fe3b. It deliberately uses
+  # Shiny's direct debounce; the overview/spatial first-value path is unchanged.
+  expect_match(viewer_source("gene_expression", "obj_projection_data_to_plot.R"),
+    "<- shiny::debounce(", fixed = TRUE)
 
   spatial_update <- viewer_source(
     "spatial",

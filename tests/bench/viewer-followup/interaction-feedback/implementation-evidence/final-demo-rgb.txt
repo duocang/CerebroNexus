@@ -1,0 +1,527 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression" [expanded]:
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:                                
+  - tabpanel [active]:
+    - heading "Gene expression" [level=1]
+    - generic: Explore gene expression across cells in projection or trajectory space.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - generic: Display mode
+    - generic: RGB co-expression
+    - combobox "Display mode"
+    - generic: Projection
+    - generic: umap
+    - combobox "Projection"
+    - generic: Red channel
+    - generic: MS4A1
+    - combobox "Red channel"
+    - generic: Green channel
+    - combobox "Green channel"
+    - generic: Blue channel
+    - combobox "Blue channel"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: Active cohort
+    - generic: Selected 733 / 1,476 cells
+    - generic: 0 · 44%
+    - generic: Selected in umap
+    - button "Focus":
+      - generic: 
+      - text: Focus
+    - button "Clear":
+      - generic: 
+      - text: Clear
+    - status: "Showing: RGB: MS4A1, —, —"
+    - generic: R
+    - text: MS4A1
+    - generic: G
+    - generic: not set
+    - generic: B
+    - generic: not set
+    - generic: Low expression
+    - generic: R + G
+    - generic: R + B
+    - generic: G + B
+    - generic: R + G + B
+    - generic: Each channel is scaled independently to its gene’s expression range.
+    - generic: umap
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - button "Zoom this panel to the selection":
+      - generic "crop-simple icon": 
+      - text: Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - button "Clear selection":
+      - generic "eraser icon": 
+      - text: Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "umap cell view"
+    - generic: umap view with 1476 points; 733 selected.
+    - text: "Cell: TCTTTCCCATGCAACT-1"
+    - text: "Transcripts: 5,629"
+    - text: "Expressed genes: 1,592"
+    - text: "sample: sample_3"
+    - text: "seurat_clusters: 1"
+    - text: "cell_type: B cells"
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+    - status:
+      - button "Move composition card; use arrow keys": ⠇
+      - strong: Composition
+      - generic: 733 / 1,476
+      - generic: Selected cells · by cell_type
+      - generic: B cells
+      - generic: 733 · 100%
+    - heading "Details of selected cells info" [level=3]:
+      - paragraph: Details of selected cells
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Automatically format numbers:"
+    - generic: "Highlight values with colours:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - table:
+      - rowgroup:
+        - 'row "cell_barcode: activate to sort column ascending R · MS4A1: activate to sort column ascending sample: activate to sort column ascending seurat_clusters: activate to sort column ascending cell_type: activate to sort column ascending nUMI: activate to sort column ascending nGene: activate to sort column ascending orig.ident: activate to sort column ascending nCount_RNA: activate to sort column ascending nFeature_RNA: activate to sort column ascending percent.mt: activate to sort column ascending RNA_snn_res.0.6: activate to sort column ascending"':
+          - 'columnheader "cell_barcode: activate to sort column ascending"': cell_barcode
+          - 'columnheader "R · MS4A1: activate to sort column ascending"': R · MS4A1
+          - 'columnheader "sample: activate to sort column ascending"': sample
+          - 'columnheader "seurat_clusters: activate to sort column ascending"': seurat_clusters
+          - 'columnheader "cell_type: activate to sort column ascending"': cell_type
+          - 'columnheader "nUMI: activate to sort column ascending"': nUMI
+          - 'columnheader "nGene: activate to sort column ascending"': nGene
+          - 'columnheader "orig.ident: activate to sort column ascending"': orig.ident
+          - 'columnheader "nCount_RNA: activate to sort column ascending"': nCount_RNA
+          - 'columnheader "nFeature_RNA: activate to sort column ascending"': nFeature_RNA
+          - 'columnheader "percent.mt: activate to sort column ascending"': percent.mt
+          - 'columnheader "RNA_snn_res.0.6: activate to sort column ascending"': RNA_snn_res.0.6
+        - row "Filter cell_barcode Filter R · MS4A1 Filter sample Filter seurat_clusters Filter cell_type Filter nUMI Filter nGene Filter orig.ident Filter nCount_RNA Filter nFeature_RNA Filter percent.mt Filter RNA_snn_res.0.6":
+          - cell "Filter cell_barcode":
+            - searchbox "Filter cell_barcode"
+            - text: 
+          - cell "Filter R · MS4A1":
+            - searchbox "Filter R · MS4A1"
+            - text: 
+          - cell "Filter sample":
+            - searchbox "Filter sample"
+            - text: 
+          - cell "Filter seurat_clusters":
+            - searchbox "Filter seurat_clusters"
+            - text: 
+          - cell "Filter cell_type":
+            - searchbox "Filter cell_type" [disabled]
+            - text: 
+          - cell "Filter nUMI":
+            - searchbox "Filter nUMI"
+            - text: 
+          - cell "Filter nGene":
+            - searchbox "Filter nGene"
+            - text: 
+          - cell "Filter orig.ident":
+            - searchbox "Filter orig.ident"
+            - text: 
+          - cell "Filter nCount_RNA":
+            - searchbox "Filter nCount_RNA"
+            - text: 
+          - cell "Filter nFeature_RNA":
+            - searchbox "Filter nFeature_RNA"
+            - text: 
+          - cell "Filter percent.mt":
+            - searchbox "Filter percent.mt"
+            - text: 
+          - cell "Filter RNA_snn_res.0.6":
+            - searchbox "Filter RNA_snn_res.0.6"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "cell_barcode: activate to sort column ascending R · MS4A1: activate to sort column ascending sample: activate to sort column ascending seurat_clusters: activate to sort column ascending cell_type: activate to sort column ascending nUMI: activate to sort column ascending nGene: activate to sort column ascending orig.ident: activate to sort column ascending nCount_RNA: activate to sort column ascending nFeature_RNA: activate to sort column ascending percent.mt: activate to sort column ascending RNA_snn_res.0.6: activate to sort column ascending"':
+          - 'columnheader "cell_barcode: activate to sort column ascending"'
+          - 'columnheader "R · MS4A1: activate to sort column ascending"'
+          - 'columnheader "sample: activate to sort column ascending"'
+          - 'columnheader "seurat_clusters: activate to sort column ascending"'
+          - 'columnheader "cell_type: activate to sort column ascending"'
+          - 'columnheader "nUMI: activate to sort column ascending"'
+          - 'columnheader "nGene: activate to sort column ascending"'
+          - 'columnheader "orig.ident: activate to sort column ascending"'
+          - 'columnheader "nCount_RNA: activate to sort column ascending"'
+          - 'columnheader "nFeature_RNA: activate to sort column ascending"'
+          - 'columnheader "percent.mt: activate to sort column ascending"'
+          - 'columnheader "RNA_snn_res.0.6: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+      - rowgroup:
+        - row "AAACCTGTCCGTTGTC-1 2.35 sample_2 0 B cells 7,343 2,112 sample_2 7,343 2,112 4.03% 0":
+          - cell "AAACCTGTCCGTTGTC-1"
+          - cell "2.35"
+          - cell "sample_2"
+          - cell "0"
+          - cell "B cells"
+          - cell "7,343"
+          - cell "2,112"
+          - cell "sample_2"
+          - cell "7,343"
+          - cell "2,112"
+          - cell "4.03%"
+          - cell "0"
+        - row "AAACCTGTCGAGAACG-1 3.47 sample_2 3 B cells 5,469 1,872 sample_2 5,469 1,872 4.79% 3":
+          - cell "AAACCTGTCGAGAACG-1"
+          - cell "3.47"
+          - cell "sample_2"
+          - cell "3"
+          - cell "B cells"
+          - cell "5,469"
+          - cell "1,872"
+          - cell "sample_2"
+          - cell "5,469"
+          - cell "1,872"
+          - cell "4.79%"
+          - cell "3"
+        - row "AAACCTGTCTTGAGAC-1 2.96 sample_3 0 B cells 4,393 1,691 sample_3 4,393 1,691 4.05% 0":
+          - cell "AAACCTGTCTTGAGAC-1"
+          - cell "2.96"
+          - cell "sample_3"
+          - cell "0"
+          - cell "B cells"
+          - cell "4,393"
+          - cell "1,691"
+          - cell "sample_3"
+          - cell "4,393"
+          - cell "1,691"
+          - cell "4.05%"
+          - cell "0"
+        - row "AAACGGGAGCGACGTA-1 2.49 sample_2 0 B cells 2,711 1,065 sample_2 2,711 1,065 4.17% 0":
+          - cell "AAACGGGAGCGACGTA-1"
+          - cell "2.49"
+          - cell "sample_2"
+          - cell "0"
+          - cell "B cells"
+          - cell "2,711"
+          - cell "1,065"
+          - cell "sample_2"
+          - cell "2,711"
+          - cell "1,065"
+          - cell "4.17%"
+          - cell "0"
+        - row "AAACGGGCACTGTTAG-1 2.61 sample_3 0 B cells 3,165 1,431 sample_3 3,165 1,431 5.66% 0":
+          - cell "AAACGGGCACTGTTAG-1"
+          - cell "2.61"
+          - cell "sample_3"
+          - cell "0"
+          - cell "B cells"
+          - cell "3,165"
+          - cell "1,431"
+          - cell "sample_3"
+          - cell "3,165"
+          - cell "1,431"
+          - cell "5.66%"
+          - cell "0"
+        - row "AAAGATGAGGATGCGT-1 3.31 sample_3 1 B cells 5,297 1,875 sample_3 5,297 1,875 5.40% 1":
+          - cell "AAAGATGAGGATGCGT-1"
+          - cell "3.31"
+          - cell "sample_3"
+          - cell "1"
+          - cell "B cells"
+          - cell "5,297"
+          - cell "1,875"
+          - cell "sample_3"
+          - cell "5,297"
+          - cell "1,875"
+          - cell "5.40%"
+          - cell "1"
+        - row "AAAGATGGTCGAATCT-1 2.81 sample_1 1 B cells 5,098 1,826 sample_1 5,098 1,826 3.83% 1":
+          - cell "AAAGATGGTCGAATCT-1"
+          - cell "2.81"
+          - cell "sample_1"
+          - cell "1"
+          - cell "B cells"
+          - cell "5,098"
+          - cell "1,826"
+          - cell "sample_1"
+          - cell "5,098"
+          - cell "1,826"
+          - cell "3.83%"
+          - cell "1"
+        - row "AAAGATGGTGAGGGAG-1 3.10 sample_1 0 B cells 4,738 1,568 sample_1 4,738 1,568 5.59% 0":
+          - cell "AAAGATGGTGAGGGAG-1"
+          - cell "3.10"
+          - cell "sample_1"
+          - cell "0"
+          - cell "B cells"
+          - cell "4,738"
+          - cell "1,568"
+          - cell "sample_1"
+          - cell "4,738"
+          - cell "1,568"
+          - cell "5.59%"
+          - cell "0"
+        - row "AAAGTAGCAGATCCAT-1 2.70 sample_2 1 B cells 6,476 2,000 sample_2 6,476 2,000 4.09% 1":
+          - cell "AAAGTAGCAGATCCAT-1"
+          - cell "2.70"
+          - cell "sample_2"
+          - cell "1"
+          - cell "B cells"
+          - cell "6,476"
+          - cell "2,000"
+          - cell "sample_2"
+          - cell "6,476"
+          - cell "2,000"
+          - cell "4.09%"
+          - cell "1"
+        - row "AAAGTAGGTACAAGTA-1 2.81 sample_3 0 B cells 5,743 1,928 sample_3 5,743 1,928 5.26% 0":
+          - cell "AAAGTAGGTACAAGTA-1"
+          - cell "2.81"
+          - cell "sample_3"
+          - cell "0"
+          - cell "B cells"
+          - cell "5,743"
+          - cell "1,928"
+          - cell "sample_3"
+          - cell "5,743"
+          - cell "1,928"
+          - cell "5.26%"
+          - cell "0"
+        - row "AACACGTAGACACGAC-1 2.77 sample_2 1 B cells 4,687 1,720 sample_2 4,687 1,720 5.04% 1":
+          - cell "AACACGTAGACACGAC-1"
+          - cell "2.77"
+          - cell "sample_2"
+          - cell "1"
+          - cell "B cells"
+          - cell "4,687"
+          - cell "1,720"
+          - cell "sample_2"
+          - cell "4,687"
+          - cell "1,720"
+          - cell "5.04%"
+          - cell "1"
+        - row "AACACGTCACAGACAG-1 3.05 sample_3 0 B cells 4,491 1,497 sample_3 4,491 1,497 5.68% 0":
+          - cell "AACACGTCACAGACAG-1"
+          - cell "3.05"
+          - cell "sample_3"
+          - cell "0"
+          - cell "B cells"
+          - cell "4,491"
+          - cell "1,497"
+          - cell "sample_3"
+          - cell "4,491"
+          - cell "1,497"
+          - cell "5.68%"
+          - cell "0"
+        - row "AACACGTTCCCTTGTG-1 2.98 sample_3 3 B cells 5,365 1,947 sample_3 5,365 1,947 5.29% 3":
+          - cell "AACACGTTCCCTTGTG-1"
+          - cell "2.98"
+          - cell "sample_3"
+          - cell "3"
+          - cell "B cells"
+          - cell "5,365"
+          - cell "1,947"
+          - cell "sample_3"
+          - cell "5,365"
+          - cell "1,947"
+          - cell "5.29%"
+          - cell "3"
+        - row "AACCATGCAAGCTGTT-1 3.80 sample_2 0 B cells 4,597 1,645 sample_2 4,597 1,645 2.98% 0":
+          - cell "AACCATGCAAGCTGTT-1"
+          - cell "3.80"
+          - cell "sample_2"
+          - cell "0"
+          - cell "B cells"
+          - cell "4,597"
+          - cell "1,645"
+          - cell "sample_2"
+          - cell "4,597"
+          - cell "1,645"
+          - cell "2.98%"
+          - cell "0"
+        - row "AACCATGTCAGTCCCT-1 2.89 sample_1 0 B cells 4,713 1,611 sample_1 4,713 1,611 5.09% 0":
+          - cell "AACCATGTCAGTCCCT-1"
+          - cell "2.89"
+          - cell "sample_1"
+          - cell "0"
+          - cell "B cells"
+          - cell "4,713"
+          - cell "1,611"
+          - cell "sample_1"
+          - cell "4,713"
+          - cell "1,611"
+          - cell "5.09%"
+          - cell "0"
+    - text: Show
+    - combobox "Show entries":
+      - option "15" [selected]
+      - option "30"
+      - option "50"
+      - option "100"
+      - option "1,000"
+    - text: entries
+    - status: Showing 1 to 15 of 733 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "2":
+        - /url: "#"
+      - link "3":
+        - /url: "#"
+      - link "4":
+        - /url: "#"
+      - link "5":
+        - /url: "#"
+      - link "…" [disabled]
+      - link "49":
+        - /url: "#"
+      - link "Next":
+        - /url: "#"
+    - heading "Expression levels in selected cells info" [level=3]:
+      - paragraph: Expression levels in selected cells
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - heading "Expression levels by group info" [level=3]:
+      - paragraph: Expression levels by group
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Select a group to show expression by:"
+    - generic: sample
+    - combobox "Select a group to show expression by:"
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+  - text: 
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: ABCB9
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: RGB co-expression
+- log
+- log

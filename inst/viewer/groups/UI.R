@@ -27,14 +27,15 @@ tab_groups <- tabItem(
     }
     "
   ),
-  uiOutput("groups_controls_UI"),
+  div(class = "cerebro-viz-page-heading", h1("Groups")),
+  uiOutput("groups_controls_UI", class = "cerebro-groups-controls"),
   fluidRow(
     cerebroBox(
       title = tagList(
         boxTitle("Composition by other group"),
         cerebroInfoButton("groups_by_other_group_info")
       ),
-      tagList(
+      div(class = "cerebro-page-loading-region",
         plotly::plotlyOutput("groups_by_other_group_plot"),
         conditionalPanel(
           condition = "input.groups_by_other_group_show_table === true",
@@ -45,8 +46,15 @@ tab_groups <- tabItem(
   ),
   div(
     id = "groups_expression_metrics_gate",
-    style = "min-height: 1px;",
-    uiOutput("groups_expression_metrics_UI")
+    fluidRow(
+      cerebroBox(
+        title = tagList(
+          boxTitle("Expression metrics"),
+          cerebroInfoButton("groups_expression_metrics_info")
+        ),
+        uiOutput("groups_expression_metrics_UI", class = "cerebro-result-slot")
+      )
+    )
   ),
   tags$script(HTML(
     "
@@ -136,9 +144,11 @@ tab_groups <- tabItem(
       }
 
       function bind(plot) {
-        if (!plot || plot.__cerebroGroupsReadyBound ||
+        if (!plot || plot.__cerebroGroupsReadyBound === plot.on ||
             typeof plot.on !== 'function') return;
-        plot.__cerebroGroupsReadyBound = true;
+        // Plotly.newPlot replaces its emitter on dataset replacement even
+        // when Shiny reuses the same output element.
+        plot.__cerebroGroupsReadyBound = plot.on;
         plot.on('plotly_afterplot', function () { report(plot, 'primary'); });
       }
 

@@ -1,0 +1,149 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:     
+    - link "Trajectory":
+      - /url: "#shiny-tab-trajectory"
+      - generic: 
+      - text: Trajectory
+    - link "Spatial" [expanded]:
+      - /url: "#shiny-tab-spatial"
+      - generic: 
+      - text: Spatial
+    - text:  
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓                            
+  - tabpanel:
+    - heading "Spatial" [level=1]
+    - generic: Explore spatial organization, expression, and tissue context.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: "View ready · Background loaded: canonical_grid · No selection"
+    - generic: Spatial data
+    - generic: canonical_grid
+    - combobox "Spatial data"
+    - generic: Plot type
+    - generic: ImageDimPlot
+    - combobox "Plot type"
+    - generic: Colour by
+    - generic: sample
+    - combobox "Colour by" [active]
+    - generic: Background image
+    - generic: alignment
+    - combobox "Background image"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - text: 
+    - text: 10x E18 mouse brain (1M subset)
+    - generic: (1000000)
+    - generic: canonical_grid
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - button "Zoom this panel to the selection":
+      - generic "crop-simple icon": 
+      - text: Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - button "Clear selection":
+      - generic "eraser icon": 
+      - text: Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "canonical_grid cell view"
+    - generic: canonical_grid view with 1000000 points; 0 selected.
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+  - text:       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓        
+- text:   
+- generic: Gene for blue...
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: Spatial
+- log
+- log:
+  - generic: cell_type
+- log
+- log
+- log:
+  - generic: State
+- log
+- log
+- log
+- log
+- log:
+  - generic: sample
+- log
+- log
+- log
+- log
+- log

@@ -1,0 +1,192 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression" [expanded]:
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status: Content updated
+- main:
+  - text:       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓                                                                                                                       
+  - tabpanel:
+    - heading "Gene expression" [level=1]
+    - generic: Explore gene expression across cells in projection or trajectory space.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: Display mode
+    - generic: Mean expression
+    - combobox "Display mode"
+    - generic: Projection
+    - generic: umap
+    - combobox "Projection"
+    - generic: Gene(s)
+    - text: CD74
+    - link "×":
+      - /url: javascript:void(0)
+    - combobox "Gene(s)" [active]
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - status: "Showing: CD74"
+    - generic: "0.0"
+    - generic: "6.5"
+    - generic: CD74
+    - generic: CD74
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - text:  Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - text:  Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "CD74 cell view"
+    - generic: CD74 view with 1476 points; 0 selected.
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+    - heading "Expression levels by group info" [level=3]:
+      - paragraph: Expression levels by group
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Select a group to show expression by:"
+    - generic: sample
+    - combobox "Select a group to show expression by:"
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+    - generic: 
+  - text:     
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: cerebro_GSVA
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log
+- log
+- log

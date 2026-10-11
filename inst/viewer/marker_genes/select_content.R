@@ -3,66 +3,36 @@
 ##----------------------------------------------------------------------------##
 
 ##----------------------------------------------------------------------------##
-## UI element to set layout for selection of method and group, which are split
-## because the group depends on which method is selected.
+## Resolve both initial selectors together. Changing the method updates only
+## the group choices, so the surrounding controls do not disappear and rebind.
 ##----------------------------------------------------------------------------##
 output[["marker_genes_select_method_and_table_UI"]] <- renderUI({
-  if (
-    !is.null(getMethodsForMarkerGenes()) &&
-      length(getMethodsForMarkerGenes()) > 0
-  ) {
-    tagList(
-      fluidRow(
-        column(
-          6,
-          uiOutput("marker_genes_selected_method_UI")
-        ),
-        column(
-          6,
-          uiOutput("marker_genes_selected_table_UI")
-        )
-      )
-    )
+  methods <- getMethodsForMarkerGenes()
+  if (!length(methods)) return(p("No marker-gene methods available."))
+  fluidRow(
+    column(6, selectInput(
+      "marker_genes_selected_method", label = "Method",
+      choices = methods, selected = methods[[1L]], width = "100%"
+    )),
+    column(6, selectInput(
+      "marker_genes_selected_table", label = "Grouping variable",
+      choices = getGroupsWithMarkerGenes(methods[[1L]]), width = "100%"
+    ))
+  )
+})
+
+observeEvent(input[["marker_genes_selected_method"]], {
+  method <- input[["marker_genes_selected_method"]]
+  req(method %in% getMethodsForMarkerGenes())
+  choices <- getGroupsWithMarkerGenes(method)
+  current <- isolate(input[["marker_genes_selected_table"]])
+  selected <- if (length(current) == 1L && current %in% choices) {
+    current
+  } else if (length(choices)) {
+    choices[[1L]]
   } else {
-    fluidRow(
-      cerebroBox(
-        title = boxTitle("Marker genes"),
-        textOutput("marker_genes_message_no_method_found")
-      )
-    )
+    character()
   }
-})
-
-##----------------------------------------------------------------------------##
-## UI element to select from which method the results should be shown.
-##----------------------------------------------------------------------------##
-output[["marker_genes_selected_method_UI"]] <- renderUI({
-  selectInput(
-    "marker_genes_selected_method",
-    label = "Method",
-    choices = getMethodsForMarkerGenes(),
-    width = "100%"
-  )
-})
-
-##----------------------------------------------------------------------------##
-## UI element to select which group should be shown.
-##----------------------------------------------------------------------------##
-output[["marker_genes_selected_table_UI"]] <- renderUI({
-  req(input[["marker_genes_selected_method"]])
-  selectInput(
-    "marker_genes_selected_table",
-    label = "Grouping variable",
-    choices = getGroupsWithMarkerGenes(input[[
-      "marker_genes_selected_method"
-    ]]),
-    width = "100%"
-  )
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if data is missing.
-##----------------------------------------------------------------------------##
-output[["marker_genes_message_no_method_found"]] <- renderText({
-  "Marker-gene results are not included in this data set. Choose a data set that includes marker-gene results."
-})
+  updateSelectInput(session, "marker_genes_selected_table",
+    choices = choices, selected = selected)
+}, ignoreInit = TRUE)

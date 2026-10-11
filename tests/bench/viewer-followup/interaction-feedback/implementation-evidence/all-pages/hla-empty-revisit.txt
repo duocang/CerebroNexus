@@ -1,0 +1,132 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs" [expanded]:
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus                 
+  - tabpanel:
+    - heading "HLA & TCR Motifs" [active] [level=1]
+    - generic: Exploratory HLA context and association — not inferred restriction.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: No CDR3 motif clusters at Hamming distance 1 with the current settings. Try lowering the minimum motif size or enabling 'Show unconnected CDR3s'.
+    - generic: "Chain:"
+    - generic: TRB
+    - combobox "Chain:"
+    - generic: Colour by
+    - generic: Motif cluster
+    - textbox "Colour by"
+    - button "Share" [disabled]:
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - tablist:
+      - tab "Motif Network" [expanded] [selected]
+      - tab "Network data" [expanded] [selected]
+      - tab "HLA Associations" [expanded] [selected]
+      - tab "Data & QC" [expanded] [selected]
+    - tabpanel "Motif Network":
+      - paragraph: No CDR3 motif clusters at Hamming distance 1 with the current settings. Try lowering the minimum motif size or enabling 'Show unconnected CDR3s'.
+      - link "download icon Download analysis (tables + manifest)":
+        - /url: session/ab32a5eb51514585d8862978e8abaa68/download/hla_export_analysis?w=
+        - generic "download icon": 
+        - text: Download analysis (tables + manifest)
+    - text: 
+  - text:             
+- text:   
+- generic: Select…
+- log:
+  - generic: MS4A4A
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log
+- log
+- log
+- log
+- log

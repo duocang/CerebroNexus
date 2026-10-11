@@ -32,7 +32,8 @@ test_that("data controls and conversion table remain usable on narrow screens", 
 })
 
 test_that("colour management renders one information action", {
-  source <- viewer_design_source("color_management", "server.R")
+  source <- paste(viewer_design_source("color_management", "UI.R"),
+    viewer_design_source("color_management", "server.R"))
 
   expect_match(
     source,

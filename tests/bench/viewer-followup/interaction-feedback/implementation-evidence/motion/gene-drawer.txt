@@ -1,0 +1,227 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression" [expanded]:
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓                             
+  - tabpanel:
+    - heading "Gene expression" [level=1]
+    - generic: Explore gene expression across cells in projection or trajectory space.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: Display mode
+    - generic: RGB co-expression
+    - combobox "Display mode"
+    - generic: Projection
+    - generic: umap
+    - combobox "Projection"
+    - generic: Red channel
+    - combobox "Red channel"
+    - generic: Green channel
+    - combobox "Green channel"
+    - generic: Blue channel
+    - combobox "Blue channel"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings" [expanded]:
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - status: "Showing: RGB: —, —, —"
+    - generic: "0.0"
+    - generic: "1.0"
+    - generic: Mean expression (0 genes)
+    - generic: Mean expression (0 genes)
+    - text:  Trekker coordinate source, QC & Moran's I
+    - button "Box select":
+      - generic "vector-square icon": 
+      - text: Box select
+    - button "Lasso select":
+      - generic "draw-polygon icon": 
+      - text: Lasso select
+    - button "Pan · or shift-drag":
+      - generic "up-down-left-right icon": 
+      - text: Pan · or shift-drag
+    - text:  Rotate · 3-D embedding
+    - button "Zoom in":
+      - generic "magnifying-glass-plus icon": 
+      - text: Zoom in
+    - button "Zoom out":
+      - generic "magnifying-glass-minus icon": 
+      - text: Zoom out
+    - button "Zoom this panel to the selection":
+      - generic "crop-simple icon": 
+      - text: Zoom this panel to the selection
+    - button "Reset view" [disabled]:
+      - generic "house icon": 
+      - text: Reset view
+    - button "Clear selection":
+      - generic "eraser icon": 
+      - text: Clear selection
+    - button "Download PNG":
+      - generic "download icon": 
+      - text: Download PNG
+    - text:  Make this the focus
+    - img "Mean expression (0 genes) cell view"
+    - generic: Mean expression (0 genes) view with 1476 points; 0 selected.
+    - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+  - text: 
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: AAK1
+- log:
+  - generic: RGB co-expression
+- log
+- log
+- log
+- log
+- log
+- dialog "Settings":
+  - generic: Settings
+  - button "Close Settings" [active]: ×
+  - generic: Appearance
+  - button "info"
+  - generic: Point size
+  - generic: "1"
+  - generic: "20"
+  - generic: "5"
+  - generic: "1"
+  - generic: "3"
+  - generic: "5"
+  - generic: "7"
+  - generic: "9"
+  - generic: "11"
+  - generic: "13"
+  - generic: "15"
+  - generic: "17"
+  - generic: "19"
+  - generic: "20"
+  - textbox "Point size": "5"
+  - generic: Point opacity
+  - generic: "0.1"
+  - generic: "1"
+  - generic: "0.1"
+  - generic: "0.3"
+  - generic: "0.5"
+  - generic: "0.7"
+  - generic: "0.9"
+  - generic: "1"
+  - textbox "Point opacity": "1"
+  - checkbox "Draw border around cells"
+  - generic: Draw border around cells
+  - checkbox "Keep plots square"
+  - generic: Keep plots square
+  - generic: Data
+  - generic: Plotting order
+  - generic: Highest expression on top
+  - combobox "Plotting order"
+  - generic: Show % of cells
+  - generic: "10"
+  - generic: "100"
+  - generic: "10"
+  - generic: "20"
+  - generic: "30"
+  - generic: "40"
+  - generic: "50"
+  - generic: "60"
+  - generic: "70"
+  - generic: "80"
+  - generic: "90"
+  - textbox "Show % of cells": "100"
+  - generic: Group filters
+  - button "info"
+  - group "sample":
+    - button "sample 3/3"
+    - text: ✓ ✓ ✓
+  - group "seurat_clusters":
+    - button "seurat_clusters 10/10"
+    - text: ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓
+  - group "cell_type":
+    - button "cell_type 3/3"
+    - text: ✓ ✓ ✓

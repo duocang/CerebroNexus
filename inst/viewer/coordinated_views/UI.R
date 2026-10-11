@@ -622,7 +622,7 @@ tab_coordinated_views <- tabItem(
     ## selected Spatial sections, Trekker and Clonal. cell_views.js
     ## assigns spaces, hides unused slots, creates extras as needed, and wraps
     ## panels automatically while keeping each canvas at least 300px wide.
-    div(
+    div(class = "cerebro-page-loading-region", div(
       class = "cv-panes",
       cv_pane("A"),
       cv_pane("B"),
@@ -661,7 +661,7 @@ tab_coordinated_views <- tabItem(
           div(class = "cv-card-body", id = "cv-card-body")
         )
       )
-    ),
+    )),
 
     ## Selection results appear only after there is something to show, leaving
     ## the initial workspace entirely available to the visualisations.

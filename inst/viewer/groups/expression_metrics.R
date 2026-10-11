@@ -51,15 +51,7 @@ output[["groups_expression_metrics_UI"]] <- renderUI({
       c(list(title = NULL, width = 12, id = "groups_expression_metrics_tabs"), tabs)
     )
   }
-  fluidRow(
-    cerebroBox(
-      title = tagList(
-        boxTitle("Expression metrics"),
-        cerebroInfoButton("groups_expression_metrics_info")
-      ),
-      content
-    )
-  )
+  content
 })
 
 output[["groups_nUMI_plot"]] <- plotly::renderPlotly({

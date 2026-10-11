@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CerebroNexus · Feedback design lab</title><link rel="stylesheet" href="style.css"></head>
+<body data-design="A" data-phase="ready">
+<header class="lab-header"><div><strong>Viewer interaction lab</strong><span>Loading & transition 原型</span></div><span class="prototype-label">独立演示 · 合成数据 · 非性能测量</span></header>
+<main>
+  <section class="design-picker" aria-label="选择原型">
+    <button data-design="A" aria-pressed="true"><b>A</b><span><strong>Minimal / Professional</strong><small>轻量提示，保留上下文</small></span></button>
+    <button data-design="B" aria-pressed="false"><b>B</b><span><strong>Skeleton / Structured</strong><small>固定占位，结构先出现</small></span></button>
+    <button data-design="C" aria-pressed="false"><b>C</b><span><strong>Progressive Reveal</strong><small>主图先可用，内容逐步补齐</small></span></button>
+    <button data-design="D" aria-pressed="false"><b>D</b><span><strong>Overlay / Data app</strong><small>局部遮罩，明确更新范围</small></span></button>
+  </section>
+  <section class="scenario-bar" aria-label="演示场景">
+    <span>演示</span><button id="first">首次进入</button><button id="update">切换参数</button><button id="secondary">主图已就绪</button><button id="revisit">页面返回</button>
+    <label class="inline"><input id="hold" type="checkbox">停在当前阶段</label><label class="inline"><input id="motion" type="checkbox">减少动态效果</label>
+    <label class="state-picker">状态<select id="special" aria-label="状态"><option value="normal">正常</option><option value="empty">No data</option><option value="unselected">No selection</option><option value="error">Error</option></select></label>
+  </section>
+  <section class="viewer" aria-label="Viewer 原型">
+    <aside class="sidebar"><div class="brand">Cerebro<span>Nexus</span></div>
+      <label for="dataset">Dataset</label><select id="dataset"><option value="Mouse">Mouse · 1M</option><option value="Demo">Demo</option></select><p class="muted">演示点云，不读取真实数据</p>
+      <nav aria-label="Viewer pages"><button data-page="Overview">Overview</button><button class="active" data-page="Gene Expression">Gene Expression</button><button data-page="Linked Views">Linked Views</button><button data-page="Trajectory">Trajectory</button><button data-page="Spatial">Spatial</button><button data-page="HLA / TCR Motifs">HLA / TCR Motifs</button></nav>
+      <div class="sidebar-note"><strong id="dataset-name">Mouse</strong><span>当前数据集</span><p>切换数据集时，旧图与旧选择立即退出视图。</p></div>
+    </aside>
+    <div class="workspace">
+      <div class="page-heading"><div><h1 id="page-name">Gene Expression</h1><p id="page-description">Explore expression across cells in projection space.</p></div><span class="status" id="workspace-status" role="status" aria-live="polite">Ready</span></div>
+      <div class="analysis-layout">
+        <aside class="controls"><h2>View controls</h2><label for="parameter" id="parameter-label">Gene</label><div class="select-wrap"><select id="parameter"><option>Gad1</option><option>Gad2</option><option>Slc17a7</option></select><span id="selector-pending" hidden>Updating…</span></div>
+          <label for="projection">Projection</label><select id="projection"><option>UMAP</option><option>tSNE</option></select>
+          <button id="apply" class="primary">Update view</button>
+          <div class="control-rule"></div><h2>Selection</h2><p class="muted">在图上拖动框选，或使用示例选择。</p><button id="select">Select example region</button><button id="clear" class="quiet">Clear selection</button>
+          <div class="selection-readout"><strong id="selected-count">0</strong><span id="selection-label">selected cells</span></div>
+          <p class="muted" id="control-note">Hover 查看演示细胞。图中每个点均为合成数据。</p>
+        </aside>
+        <div class="results">
+          <section class="plot-panel" id="plot-panel" aria-label="主图" aria-busy="false">
+            <div class="panel-heading"><strong id="plot-title">Gad1 · UMAP</strong><span id="plot-status">Primary ready</span></div>
+            <div class="thin-progress" aria-hidden="true"><span></span></div>
+            <div class="plot-stage" id="plot-stage"><canvas id="plot" aria-label="合成点云，可拖动框选"></canvas><canvas id="transition-frame" aria-hidden="true" hidden></canvas><canvas id="selection-layer" aria-hidden="true"></canvas>
+              <div id="old-label" class="old-label" hidden></div><div class="axis axis-x">UMAP 1</div><div class="axis axis-y">UMAP 2</div>
+              <div id="placeholder" class="placeholder" hidden><div class="frame-glyph" aria-hidden="true"></div><strong id="placeholder-title">Preparing view</strong><p id="placeholder-detail">Plot frame is ready. Waiting for data.</p><div class="skeleton-plot" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><button id="retry" hidden>Retry</button></div>
+              <div class="updating-overlay" id="overlay" hidden><span class="mini-spinner" aria-hidden="true"></span><strong id="overlay-label">Updating view…</strong><small>Previous result remains visible</small></div>
+              <div id="tooltip" role="tooltip" hidden></div>
+            </div>
+            <div class="plot-footer"><span id="provenance">Mouse / Gad1</span><span id="primary-note">主图可用 · 可 hover / 框选</span><span class="legend"><i></i> Low → High</span></div>
+          </section>
+          <div class="progressive-steps" aria-label="加载阶段"><span id="step-frame">Frame</span><span id="step-primary">Primary plot</span><span id="step-identity">Cell details</span><span id="step-secondary">Summary & table</span></div>
+          <div class="secondary-grid">
+            <section class="secondary-panel" id="stats-panel" aria-busy="false"><div class="panel-heading"><strong>Statistics</strong><span class="secondary-status" id="stats-status">Ready</span></div><div class="secondary-content" id="statistics"></div></section>
+            <section class="secondary-panel" id="table-panel" aria-busy="false"><div class="panel-heading"><strong>Selected cells</strong><span class="secondary-status" id="table-status">No selection</span></div><div class="secondary-content" id="table-content"></div></section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="review-strip"><div><strong id="design-title">A · Minimal / Professional</strong><p id="design-note">更新时保留旧图，用轻量顶部状态明确告诉用户请求已收到。</p></div><div class="timeline" aria-label="演示阶段"><span id="event-input">Input received</span><span id="event-primary">Primary ready</span><span id="event-secondary">Secondary ready</span></div></section>
+  <p class="footnote">四套方案共用相同演示时序：输入状态同步更新，主图约 1.8 s，secondary 约 3.6 s。时间是脚本设定，不代表 Viewer 实测速度。可勾选“停在当前阶段”比较外观。</p>
+  <details><summary>如何比较与本轮边界</summary><p>先在 A/B/C/D 之间切换，再依次点击“首次进入”“切换参数”“主图已就绪”。也可切换 Dataset、点击页面、快速连续改参数、模拟 empty/error，并在主图上 hover 或框选。只有主图就绪才开放新的主图交互；已有图更新时会明确标出旧结果来源。原型使用独立的 DOM/canvas 和模拟调度，不能直接移植成生产 ready 逻辑。</p><p>建议讨论：A 是否足够明确？B 是否太像网页？C 的阶段是否有帮助？D 是否挡住图？本轮不修改任何生产 Viewer 文件。</p></details>
+</main>
+<script src="app.js"></script>
+</body></html>

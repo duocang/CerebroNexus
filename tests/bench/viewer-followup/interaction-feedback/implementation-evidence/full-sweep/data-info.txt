@@ -1,0 +1,105 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info" [expanded]:
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - tabpanel:
+    - heading "Data info" [level=1]
+    - paragraph: This app uses pre-loaded data. Choose a data set below to begin exploring.
+    - generic: Sample data set
+    - generic: Demo
+    - combobox "Sample data set"
+    - heading "Sample information" [level=3]
+    - heading "1,476" [level=3]
+    - paragraph: Cells
+    - generic "list icon": 
+    - heading "hg" [level=3]
+    - paragraph: Organism
+    - generic "user icon": 
+    - heading "2026-06-25" [level=3]
+    - paragraph: Date
+    - generic "calendar-day icon": 
+    - heading "Preferences advanced" [level=3]:
+      - text: Preferences
+      - generic: advanced
+    - paragraph: Optional performance settings — the defaults work well for most users.
+    - checkbox "Use WebGL rendering" [checked]
+    - generic: Use WebGL rendering
+    - generic: Improves performance but may not work in every browser.
+    - checkbox "Show cell details on hover" [checked]
+    - generic: Show cell details on hover
+    - generic: Shows additional cell metadata and may increase plotting time.
+  - text:         Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…                           Preparing table…  Preparing results…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log

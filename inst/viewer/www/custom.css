@@ -507,6 +507,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 .cerebro-viz-toolbar,
 .coordviews-page .cv-topbar {
   display: flex;
+  min-height: 76px;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px 10px;
@@ -746,7 +747,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background .18s ease, border-color .18s ease, transform .12s ease;
+  transition: background .12s ease, border-color .12s ease;
 }
 .cerebro-more-btn:hover,
 .cerebro-more-btn[aria-expanded="true"],
@@ -755,8 +756,6 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   border-color: var(--c-amber);
   background: var(--c-amber-100);
 }
-.cerebro-more-btn:active,
-.cerebro-page-info-btn:active { transform: scale(.955); }
 
 .cerebro-viz-toolbar .cerebro-toolbar-export {
   height: var(--c-toolbar-control-height);
@@ -781,7 +780,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   border-bottom: 4.5px solid transparent;
   border-left: 5.5px solid currentColor;
   transform-origin: 2.5px 50%;
-  transition: transform .2s ease;
+  transition: transform .12s ease;
 }
 .cerebro-more-btn[aria-expanded="true"] .cerebro-more-caret {
   transform: rotate(90deg);
@@ -802,8 +801,8 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   background: color-mix(in srgb, var(--c-surface) 90%, transparent);
   box-shadow: -12px 0 34px rgba(0, 0, 0, .16);
   opacity: 0;
-  transform: translateX(100%);
-  transition: transform .22s var(--ease), opacity .16s ease;
+  pointer-events: none;
+  transition: opacity .12s ease;
 }
 .cerebro-settings-drawer.is-mounted {
   display: flex;
@@ -811,7 +810,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-settings-drawer.is-open {
   opacity: 1;
-  transform: none;
+  pointer-events: auto;
 }
 .cerebro-settings-titlebar {
   display: flex;
@@ -1369,7 +1368,7 @@ body .nav-tabs-custom > .tab-content { padding: 20px; background: var(--c-surfac
 /* -------------------------------------------------------------------------
    valueBox / small-box / bg-boxes — Console stat card (white, big number)
    Replaces AdminLTE's saturated solid-fill stat blocks with a calm white
-   card: large tabular number, muted label, soft shadow that lifts on hover.
+   card: large tabular number, muted label, stable position and shadow.
    ------------------------------------------------------------------------- */
 body .small-box,
 body .small-box[class*="bg-"] {
@@ -1380,9 +1379,7 @@ body .small-box[class*="bg-"] {
   box-shadow: var(--shadow-1) !important;
   padding: 0;
   min-height: auto;
-  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
-body .small-box:hover { box-shadow: var(--shadow-2) !important; transform: translateY(-1px); }
 body .small-box > .inner { padding: 20px 22px 18px !important; }
 body .small-box h3 {
   color: var(--c-text) !important;
@@ -2012,7 +2009,7 @@ body .shiny-progress-container .progress-text {
   color: var(--c-text) !important;
   border: 1px solid var(--c-border) !important;
   border-radius: var(--r-md) !important;
-  box-shadow: var(--shadow-3) !important;
+  box-shadow: none !important;
   padding: 10px 14px;
   font-family: var(--font-sans);
   font-size: 13px;
@@ -2023,19 +2020,17 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 .cerebro-dataset-loading {
   position: fixed; inset: 0; z-index: 20000;
   display: grid; place-items: center; padding: 24px;
-  background: rgba(20, 27, 38, .38);
-  backdrop-filter: blur(2px);
+  background: var(--c-bg);
 }
 .cerebro-dataset-loading[hidden] { display: none; }
 .cerebro-dataset-loading-card {
   box-sizing: border-box; width: min(430px, calc(100vw - 48px));
   padding: 24px 26px 20px;
   border: 1px solid var(--c-border); border-radius: var(--r-lg);
-  background: var(--c-surface); box-shadow: var(--shadow-4);
+  background: var(--c-surface); box-shadow: var(--shadow-3);
 }
 .cerebro-dataset-loading-kicker {
-  color: var(--c-amber-700); font-size: 10.5px; font-weight: 750;
-  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--c-text); font-size: 16px; font-weight: 600;
 }
 .cerebro-dataset-loading-label {
   margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2059,51 +2054,189 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 }
 .cerebro-dataset-loading-percent { color: var(--c-amber-700); font-weight: 700; }
 #main-content { position: relative; }
+.cerebro-page-loading-region, .cerebro-page-loader-host { position: relative; }
 .cerebro-page-loader {
   position: absolute;
-  z-index: 1040;
-  inset: 0;
-  min-height: min(520px, calc(100vh - 72px));
+  z-index: 10;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: 400px;
+  min-height: 104px;
+  max-width: calc(100% - 32px);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 32px;
-  background: var(--c-bg);
-  background: color-mix(in srgb, var(--c-bg) 92%, transparent);
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: 0 2px 6px rgba(17, 17, 26, .04);
   color: var(--c-text);
   opacity: 0;
   pointer-events: none;
   transition: opacity .14s var(--ease);
 }
+.cerebro-cell-view-host > .cerebro-page-loader,
+.cerebro-viz-col > .cerebro-page-loader,
+.linked-views-page > .cerebro-page-loading-region > .cerebro-page-loader { top: 80px; }
 .cerebro-page-loader.is-visible {
   opacity: 1;
-  pointer-events: auto;
-}
-.cerebro-page-loader-spinner {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border: 3px solid var(--c-amber-100);
-  border-top-color: var(--c-amber-700);
-  border-radius: 50%;
-  animation: cerebro-page-loader-spin .8s linear infinite;
+  pointer-events: none;
 }
 .cerebro-page-loader-copy {
   display: grid;
   gap: 2px;
   line-height: 1.35;
 }
-.cerebro-page-loader-copy strong { font-size: 14px; }
 .cerebro-page-loader-copy span {
-  color: var(--c-text-2);
-  font-size: 12.5px;
+  color: var(--c-text);
+  font-size: 16px;
+  font-weight: 600;
 }
-@keyframes cerebro-page-loader-spin { to { transform: rotate(360deg); } }
+.cerebro-view-feedback {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  color: var(--c-text-2);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  transition: color .14s var(--ease);
+}
+.cerebro-view-feedback.is-pending {
+  color: var(--c-text);
+  background: var(--c-surface);
+  border-color: var(--c-border);
+}
+.cerebro-page-feedback {
+  border-bottom: 1px solid var(--c-border);
+  margin: -4px 0 10px;
+  min-height: 44px;
+}
+.cerebro-view-feedback.is-error { color: #a13a2b; }
+.cerebro-view-terminal { visibility: hidden; }
+.cerebro-control-pending .irs-bar { background-color: var(--c-amber-700); }
+.cerebro-control-pending .selectize-input,
+.cerebro-control-pending select {
+  border-color: var(--c-amber-700) !important;
+}
+.cerebro-secondary-status {
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  font-size: 14px;
+}
+.cerebro-secondary-status.is-error { color: #a13a2b; }
+.cerebro-secondary-status[hidden], .cerebro-page-loader[hidden] { display: none; }
+body.cerebro-dataset-is-loading .cerebro-page-loader { visibility: hidden; }
+/* One loading glyph across page entry, output placeholders, legacy plot
+   spinners, local updates and server progress. Owners still control lifetime. */
+.cerebro-page-loader-spinner,
+body .cv-config-status.is-working::before,
+.cerebro-view-feedback.is-pending::before,
+.cerebro-dataset-loading-kicker::before,
+.cerebro-secondary-status:not(.is-error)::before,
+.cerebro-groups-controls:empty::before,
+.cerebro-result-controls:empty::before,
+.cerebro-result-slot:empty::before,
+.cerebro-result-slot .datatables:empty::before,
+body .shiny-spinner-output-container .load-container > .loader,
+body .shiny-progress-notification .progress-message::before,
+body .shiny-progress-container .progress-message::before {
+  content: "";
+  box-sizing: border-box;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  vertical-align: -5px;
+  margin: 0 10px 0 0;
+  border: 2px solid var(--c-amber-100);
+  border-top-color: var(--c-amber-700);
+  border-radius: 50%;
+  background: transparent;
+  animation: cerebro-loading-spin .8s linear infinite;
+}
+.cerebro-page-loader-spinner,
+.cerebro-dataset-loading-kicker::before {
+  width: 28px; height: 28px; flex-basis: 28px;
+  border-width: 3px; vertical-align: -7px;
+}
+.cerebro-page-loader-spinner { margin: 0; }
+@keyframes cerebro-loading-spin { to { transform: rotate(360deg); } }
+
+/* Keep shinycssloaders' own hidden/busy lifecycle and proxy sizing. Replace
+   its large animated bars with a compact card inside the pending result. */
+body .shiny-spinner-output-container > .load-container {
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(320px, calc(100% - 24px));
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  text-align: left;
+  padding: 20px;
+  pointer-events: none;
+}
+body .shiny-spinner-output-container .load-container > .loader {
+  margin: 0 10px 0 0 !important;
+  background: transparent !important;
+  color: transparent !important;
+  font-size: 0;
+  text-indent: 0;
+  box-shadow: none;
+}
+body .shiny-spinner-output-container .loader::before,
+body .shiny-spinner-output-container .loader::after { content: none; }
+body .shiny-spinner-output-container > .load-container::after {
+  content: "Loading result…";
+  color: var(--c-text-2);
+  font: 400 14px/20px var(--font-sans);
+}
+body .shiny-notification:has(.shiny-progress-notification) {
+  padding: 16px 20px !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-3) !important;
+}
+body .shiny-progress-notification .progress-message,
+body .shiny-progress-container .progress-message {
+  color: var(--c-text-2) !important;
+  font: 600 14px/20px var(--font-sans) !important;
+}
+body .shiny-progress-notification .progress-detail,
+body .shiny-progress-container .progress-detail {
+  display: block;
+  margin-left: 30px;
+  color: var(--c-text-2);
+  font: 400 12.5px/20px var(--font-sans) !important;
+}
+
+/* One prominent page-entry card, rather than simultaneous copies in each
+   unfinished slot. Actual results, progress bars and errors stay visible. */
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-view-feedback.is-pending,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-controls:empty::before,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-controls:empty::after,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-groups-controls:empty::before,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-groups-controls:empty::after,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-slot:empty::before,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-slot:empty::after,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-slot .datatables:empty::before,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-result-slot .datatables:empty::after {
+  visibility: hidden;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .cerebro-page-loader { transition: none; }
   .cerebro-page-loader-spinner { animation: none; }
+  .cerebro-view-feedback { transition: none; }
 }
 
 /* Native Plotly charts use the same compact tool language as Linked views. */
@@ -2221,41 +2354,9 @@ body .fa-spinner { color: var(--c-amber) !important; }
 ::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: var(--r-pill); border: 2px solid var(--c-bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-text-3); }
 
-/* Sidebar item fade-in — gentle opacity hint only */
-.skin-blue .sidebar-menu > li { animation: console-fadeIn .22s var(--ease) forwards; }
-@keyframes console-fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-/* -------------------------------------------------------------------------
-   Motion — console-grade micro-interactions
-   A soft rise-and-fade when a tab's content mounts, and a subtle lift on
-   cards and primary buttons on hover. Kept short and eased so it reads as
-   polish, never as a slideshow.
-   ------------------------------------------------------------------------- */
-/* Opacity-only fade-in. We deliberately do NOT translateY here: a transform
-   on the content wrapper creates a stacking context that traps selectize
-   dropdowns behind the cards below them (they render see-through and clicks
-   miss). A gentle fade gives the same "content settled in" feel without that
-   trap. Fill-mode is `backwards` only, so nothing lingers after it runs. */
-.tab-pane.active > * { animation: console-fadeInContent .28s var(--ease) backwards; }
+/* Navigation and revisits reveal existing content immediately. Loading and
+   updating feedback have their own small, local opacity transitions. */
 .cerebro-page-focus-target:focus { outline: none !important; }
-@keyframes console-fadeInContent {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-/* A `.cerebro-fill` plot has its OWN reveal gate (hidden until fill_height.js
-   measures a settled height, then shown). The tab-content fade-in above would
-   re-run that opacity 0->1 animation every time its sub-tab is shown — an
-   already-rendered plot visibly fading in again on each switch (the IR "flash").
-   Exempt fills; their gate is the single source of truth. Higher specificity
-   than `.tab-pane.active > *` so it wins. */
-.tab-pane.active > .cerebro-fill { animation: none; }
-
-/* Primary buttons press in slightly for tactile feedback. Stat cards already
-   lift on hover (see .small-box); content/parameter boxes deliberately do NOT
-   move on hover — the page is dense with panels and constant motion would be
-   noise rather than polish. */
-body .btn-primary:active { transform: translateY(1px); }
-body .btn:active { transform: translateY(0.5px); }
 
 body .shiny-bound-output {
   transition: opacity var(--dur) var(--ease);
@@ -2439,7 +2540,10 @@ body .shiny-bound-output.cerebro-output-waiting {
   body .right-side {
     scroll-behavior: auto !important;
   }
-  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Selection workspace / Active cohort share one slot so selecting cells does
@@ -2459,7 +2563,7 @@ body .shiny-bound-output.cerebro-output-waiting {
   box-sizing: border-box;
   border-radius: var(--r-sm);
   font-size: 11.5px;
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity .12s ease;
 }
 .cerebro-selection-status-guide {
   padding: 7px 10px;
@@ -2841,48 +2945,39 @@ body .shiny-bound-output.cerebro-output-waiting {
   }
 }
 
-.cerebro-gene-control.cerebro-control-unlocked .selectize-input {
-  animation: cerebro-control-enter .2s var(--ease) both;
+/* Gene mode controls retain their occupied space until Shiny replaces them.
+   Do not collapse or stagger controls while a requested mode is preparing. */
+
+/* Result pages keep their page frame while demanded outputs arrive.
+   Reserve real layout space, without an animated skeleton or a reveal gate. */
+.cerebro-groups-controls { min-height: 246px; }
+.cerebro-result-controls { min-height: 90px; }
+.cerebro-result-slot { min-height: 460px; }
+.cerebro-result-slot:has(> p:only-child) { min-height: 0; }
+.cerebro-dataset-stats .shiny-html-output { min-height: 104px; }
+.cerebro-groups-controls:empty::before,
+.cerebro-result-controls:empty::before,
+.cerebro-result-slot:empty::before {
+  margin-top: 12px;
 }
-.cerebro-gene-input-output > * {
-  transition: opacity .18s var(--ease), transform .18s var(--ease),
-    max-height .22s var(--ease);
+.cerebro-groups-controls:empty::after,
+.cerebro-result-controls:empty::after,
+.cerebro-result-slot:empty::after {
+  color: var(--c-text-2);
+  font: 400 14px/20px var(--font-sans);
+  content: "Loading controls…";
 }
-.cerebro-gene-input-output.is-changing > * {
-  max-height: 0 !important;
-  opacity: 0;
-  transform: translateY(-5px);
+.cerebro-result-slot:empty::after { content: "Loading result…"; }
+.cerebro-result-slot .datatables:empty {
+  min-height: 300px;
 }
-.cerebro-gene-rgb-row.cerebro-control-enter {
-  animation: cerebro-control-group-enter .22s var(--ease) both;
+.cerebro-result-slot .datatables:empty::before { margin-top: 12px; }
+.cerebro-result-slot .datatables:empty::after {
+  color: var(--c-text-2);
+  font: 400 14px/20px var(--font-sans);
+  content: "Loading table…";
 }
-.cerebro-gene-rgb-channel {
-  animation: cerebro-control-enter .2s var(--ease) both;
-}
-.cerebro-gene-rgb-channel:nth-child(2) {
-  animation-delay: 35ms;
-}
-.cerebro-gene-rgb-channel:nth-child(3) {
-  animation-delay: 70ms;
-}
-@keyframes cerebro-control-enter {
-  0% {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@keyframes cerebro-control-group-enter {
-  0% { max-height: 0; opacity: 0; transform: translateY(-5px); }
-  100% { max-height: 90px; opacity: 1; transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cerebro-gene-control.cerebro-control-unlocked .selectize-input,
-  .cerebro-gene-rgb-row.cerebro-control-enter,
-  .cerebro-gene-rgb-channel {
-    animation: none;
-  }
+@media (max-width: 767px) {
+  .cerebro-groups-controls { min-height: 320px; }
+  .cerebro-result-controls { min-height: 170px; }
 }

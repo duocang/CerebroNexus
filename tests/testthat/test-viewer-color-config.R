@@ -113,13 +113,12 @@ test_that("colour pickers stay mounted while shared colours update", {
     getGroups <- function() "group"
     getGroupLevels <- function(group) c("a", "b")
     getCellCycle <- function() "cycle"
-    box <- shinydashboard::box
+    box <- function(...) {
+      renders <<- renders + 1L
+      shinydashboard::box(...)
+    }
     boxTitle <- function(x) x
     renders <- 0L
-    cerebroVizPageHeader <- function(...) {
-      renders <<- renders + 1L
-      NULL
-    }
     scope <- environment()
     sys.source(viewer_test_path("color_config.R"), envir = scope)
     sys.source(viewer_test_path("color_setup.R"), envir = scope)

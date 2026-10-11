@@ -7,7 +7,9 @@
 ##----------------------------------------------------------------------------##
 output[["groups_controls_UI"]] <- renderUI({
   groups <- getGroups()
-  req(length(groups) >= 2L)
+  if (length(groups) < 2L) {
+    return(p("At least two grouping variables are needed to compare composition."))
+  }
   selected_group <- groups[[1L]]
   tagList(
     selectInput(
@@ -54,6 +56,7 @@ output[["groups_controls_UI"]] <- renderUI({
 
 observeEvent(input[["groups_selected_group"]], {
   groups <- getGroups()
+  req(length(groups) >= 2L, input[["groups_selected_group"]] %in% groups)
   choices <- groups[groups != input[["groups_selected_group"]]]
   current <- input[["groups_by_other_group_second_group"]]
   selected <- if (!is.null(current) && current %in% choices) {

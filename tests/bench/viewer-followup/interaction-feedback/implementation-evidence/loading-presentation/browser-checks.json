@@ -1,0 +1,671 @@
+{
+  "environment": {
+    "announcementOutsideBusy": true,
+    "build": "2026-10-10T22:30:34.497667",
+    "linkedGridRestored": true,
+    "reducedMotion": true,
+    "spinnerAnimation": "none",
+    "timerInsideLive": false,
+    "viewport": [
+      1438,
+      1084
+    ]
+  },
+  "checks": [
+    {
+      "phase": "entry",
+      "announcement": "Loading Groups…",
+      "controls": {
+        "bottom": 309.5,
+        "height": 246,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-groups",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "rect": {
+        "bottom": 510.9166870117187,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 406.9166870117187,
+        "width": 400,
+        "x": 629,
+        "y": 406.9166870117187
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 312.1666717529297,
+        "height": 248.6666717529297,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-groups",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 6,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-markerGenes",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 20
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading Most expressed genes…",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-mostExpressedGenes",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "rect": {
+        "bottom": 354.9166717529297,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 250.9166717529297,
+        "width": 400,
+        "x": 629,
+        "y": 250.9166717529297
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-mostExpressedGenes",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 20
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading Enriched pathways…",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-enrichedPathways",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "rect": {
+        "bottom": 354.9166717529297,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 250.9166717529297,
+        "width": 400,
+        "x": 629,
+        "y": 250.9166717529297
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-enrichedPathways",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 20
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading Extra material…",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-extra_material",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "rect": {
+        "bottom": 354.9166717529297,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 250.9166717529297,
+        "width": 400,
+        "x": 629,
+        "y": 250.9166717529297
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 153.5,
+        "height": 90,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-extra_material",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 0,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 10
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading Gene expression…",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-geneExpression",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 0,
+      "rect": {
+        "bottom": 479,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 375,
+        "width": 400,
+        "x": 629,
+        "y": 375
+      },
+      "tables": 0
+    },
+    {
+      "phase": "settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-geneExpression",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 16,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading HLA / TCR motifs…",
+      "controls": {
+        "bottom": 225,
+        "height": 100,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-hla_tcr_motifs",
+      "parent": "hla_motif_network_cell_view_host",
+      "plots": 0,
+      "rect": {
+        "bottom": 458.6666870117187,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 354.66668701171875,
+        "width": 400,
+        "x": 629,
+        "y": 354.66668701171875
+      },
+      "tables": 0
+    },
+    {
+      "phase": "terminal",
+      "announcement": "",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-hla_tcr_motifs",
+      "parent": "hla_motif_network_cell_view_host",
+      "plots": 0,
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "revisit",
+      "announcement": "",
+      "controls": {
+        "bottom": 312.1666717529297,
+        "height": 248.6666717529297,
+        "left": 256,
+        "right": 1402,
+        "top": 63.5,
+        "width": 1146,
+        "x": 256,
+        "y": 63.5
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-groups",
+      "parent": "hla_motif_network_cell_view_host",
+      "plots": 6,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "revisit",
+      "announcement": "",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-geneExpression",
+      "parent": "hla_motif_network_cell_view_host",
+      "plots": 16,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "gene-local-settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-geneExpression",
+      "parent": "hla_motif_network_cell_view_host",
+      "plots": 19,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0,
+      "feedback": "Showing: CD74"
+    },
+    {
+      "phase": "entry",
+      "announcement": "Loading Linked views…",
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-coordinated_views",
+      "parent": "shiny-tab-coordinated_views",
+      "plots": 16,
+      "rect": {
+        "bottom": 161,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 57,
+        "width": 400,
+        "x": 629,
+        "y": 57
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-linked-entry",
+      "announcement": "Loading Linked views…",
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-coordinated_views",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 16,
+      "rect": {
+        "bottom": 403,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 299,
+        "width": 400,
+        "x": 629,
+        "y": 299
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-linked-settled",
+      "announcement": "",
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-coordinated_views",
+      "parent": "cerebro-page-loading-region cerebro-page-loader-host",
+      "plots": 16,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-gene-entry",
+      "announcement": "Loading Gene expression…",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": false,
+      "page": "shiny-tab-geneExpression",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 16,
+      "rect": {
+        "bottom": 483,
+        "height": 104,
+        "left": 629,
+        "right": 1029,
+        "top": 379,
+        "width": 400,
+        "x": 629,
+        "y": 379
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-gene-settled",
+      "announcement": "",
+      "controls": {
+        "bottom": 251,
+        "height": 126,
+        "left": 256,
+        "right": 1402,
+        "top": 125,
+        "width": 1146,
+        "x": 256,
+        "y": 125
+      },
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-geneExpression",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 16,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-linked-revisit",
+      "announcement": "",
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-coordinated_views",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 0,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    },
+    {
+      "phase": "final-linked-revisit-painted",
+      "announcement": "",
+      "errors": [],
+      "hidden": true,
+      "page": "shiny-tab-coordinated_views",
+      "parent": "expression_projection_cell_view_host",
+      "plots": 16,
+      "ready": "true",
+      "rect": {
+        "bottom": 0,
+        "height": 0,
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "width": 0,
+        "x": 0,
+        "y": 0
+      },
+      "tables": 0
+    }
+  ],
+  "console": []
+}

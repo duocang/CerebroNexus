@@ -375,7 +375,7 @@ spatial_projection_update_plot <- function(input) {
       output_hover,
       deferred_aux = function() {
         build_deferred_aux(output_data[["selection_key"]])
-      }, dataset_context = input[["dataset_context"]])
+      }, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
     return(invisible(NULL))
   }
 
@@ -445,5 +445,5 @@ spatial_projection_update_plot <- function(input) {
       } else {
         payload[["data"]][["selection_key"]]
       })
-    }, dataset_context = input[["dataset_context"]])
+    }, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
 }

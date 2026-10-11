@@ -37,37 +37,15 @@ most_expressed_genes_selected_table <- reactive({
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
-output[["most_expressed_genes_table_UI"]] <- renderUI({
-  selected_group <- input[['most_expressed_genes_selected_group']]
-  if (
-    is.null(selected_group) ||
-      selected_group %in% most_expressed_genes_available_groups() == FALSE
-  ) {
-    fluidRow(
-      cerebroBox(
-        title = boxTitle("Gene counts"),
-        textOutput("most_expressed_genes_message_no_data_found")
-      )
-    )
-  } else {
-    fluidRow(
-      cerebroBox(
-        title = tagList(
-          boxTitle("Gene counts"),
-          cerebroInfoButton("most_expressed_genes_info")
-        ),
-        uiOutput("most_expressed_genes_table_or_text_UI")
-      )
-    )
-  }
-})
-
 ##----------------------------------------------------------------------------##
 ## UI element that shows either a table with a switch to toggle sub-filtering
 ## of results and the corresponding selector, or a text message if data is
 ## missing.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
+  if (!length(most_expressed_genes_available_groups())) {
+    return(p("Expression summaries are not included in this data set. Choose a data set with stored expression summaries."))
+  }
   ## Build available metric choices based on data availability
   metric_choices <- c()
   tables <- most_expressed_genes_selected_tables()
@@ -102,9 +80,19 @@ output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
         inputId = "most_expressed_genes_metric_type",
         label = "Expression metric:",
         choices = metric_choices,
-        selected = metric_choices[1]
+        selected = {
+          current <- isolate(input[["most_expressed_genes_metric_type"]])
+          if (length(current) == 1L && current %in% metric_choices) current else metric_choices[[1L]]
+        }
       ),
-      uiOutput("most_expressed_genes_metric_description_UI")
+      conditionalPanel(
+        "input.most_expressed_genes_metric_type === 'pct'",
+        most_expressed_genes_metric_description("pct")
+      ),
+      conditionalPanel(
+        "input.most_expressed_genes_metric_type === 'mean_expr'",
+        most_expressed_genes_metric_description("mean_expr")
+      )
     ),
     column(
       12,
@@ -124,10 +112,7 @@ output[["most_expressed_genes_table_or_text_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## UI element for metric description.
 ##----------------------------------------------------------------------------##
-output[["most_expressed_genes_metric_description_UI"]] <- renderUI({
-  req(input[["most_expressed_genes_metric_type"]])
-  metric_type <- input[["most_expressed_genes_metric_type"]]
-
+most_expressed_genes_metric_description <- function(metric_type) {
   if (metric_type == "pct") {
     tagList(
       tags$p(
@@ -151,7 +136,7 @@ output[["most_expressed_genes_metric_description_UI"]] <- renderUI({
       )
     )
   }
-})
+}
 
 ##----------------------------------------------------------------------------##
 ## UI element for sub-filtering of results (if toggled).
@@ -216,13 +201,6 @@ output[["most_expressed_genes_table"]] <- DT::renderDataTable({
     hide_long_columns = FALSE,
     columns_percentage = value_col
   )
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if data is missing.
-##----------------------------------------------------------------------------##
-output[["most_expressed_genes_message_no_data_found"]] <- renderText({
-  "Choose a grouping variable to view its stored expression summary."
 })
 
 ##----------------------------------------------------------------------------##

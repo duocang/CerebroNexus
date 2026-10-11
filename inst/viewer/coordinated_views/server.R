@@ -1478,6 +1478,18 @@ lapply(
   }
 )
 
+cv_expression_feedback <- function(ok, rgb = FALSE) {
+  shiny::isolate({
+    ids <- if (rgb) paste0("coordviews_gene_", c("r", "g", "b")) else
+      c("coordviews_gene", "coordviews_expression_mode")
+    controls <- stats::setNames(lapply(ids, function(id) as.character(input[[id]])), ids)
+    session$sendCustomMessage("cerebro_linked_expression_feedback", list(
+      controls = controls, ok = isTRUE(ok), rgb = rgb,
+      dataset_context = viewer_loaded_dataset_context()
+    ))
+  })
+}
+
 observeEvent(
   list(
     input[["coordviews_gene"]],
@@ -1500,6 +1512,7 @@ observeEvent(
         "coordviews_genepanels",
         cv_context_payload(list(ok = FALSE), dataset_context)
       )
+      cv_expression_feedback(FALSE)
       return()
     }
     cells <- cv_expression_cells()
@@ -1520,6 +1533,7 @@ observeEvent(
         "coordviews_genepanels",
         cv_context_payload(list(ok = FALSE), dataset_context)
       )
+      cv_expression_feedback(FALSE)
       return()
     }
     mode <- input[["coordviews_expression_mode"]]
@@ -1550,6 +1564,7 @@ observeEvent(
         )
       )
     }
+    cv_expression_feedback(TRUE)
   }
 )
 
@@ -1590,12 +1605,14 @@ observeEvent(
         "coordviews_rgbval",
         cv_context_payload(list(ok = FALSE), b$dataset_context)
       )
+      cv_expression_feedback(FALSE, rgb = TRUE)
       return()
     }
     session$sendCustomMessage(
       "coordviews_rgbval",
       cv_context_payload(cv_rgb_message(r, g, bl), b$dataset_context)
     )
+    cv_expression_feedback(TRUE, rgb = TRUE)
   },
   ignoreInit = TRUE
 )

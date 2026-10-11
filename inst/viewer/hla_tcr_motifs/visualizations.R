@@ -495,6 +495,7 @@ output$hla_motif_readout <- renderUI({
 })
 
 hla_motif_last_render_signature <- reactiveVal(NULL)
+hla_motif_last_feedback_token <- NULL
 
 observe({
   req(identical(input[["sidebar"]], "hla_tcr_motifs"))
@@ -525,15 +526,22 @@ observe({
     from = from,
     to = to
   )
+  feedback <- cerebroFeedbackControls("hla_motif_network", input, list(
+    hla_min_nodes = if (isTRUE(hla_first_frame_graph_matches())) {
+      hla_param("hla_min_nodes", hla_default_min_nodes())
+    } else hla_min_nodes_debounced()
+  ))
   # Input widgets and the client request lifecycle initialise independently.
   # Several invalidations can therefore arrive with the same effective graph.
   # Compare the actual frame, not its input controls: controls can move from a
   # server default to the same explicit browser value without changing one pixel.
   if (identical(hla_motif_last_render_signature(), render_signature)) {
+    cerebroSendViewFeedback("hla_motif_network", hla_motif_last_feedback_token,
+      dataset_context, feedback)
     return()
   }
 
-  cerebroCellViewRender(
+  hla_motif_last_feedback_token <<- cerebroCellViewRender(
     "hla_motif_network",
     meta = list(
       color_type = "coexpression",
@@ -573,7 +581,8 @@ observe({
         to = to
       )
     ),
-    dataset_context = dataset_context
+    dataset_context = dataset_context,
+    feedback = feedback
   )
   hla_motif_last_render_signature(render_signature)
 }, priority = 100)
@@ -710,14 +719,14 @@ output$hla_motif_note <- renderUI({
   hla_require_active_page()
   if (!hla_has_deps()) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       "The motif network requires the 'visNetwork' and 'stringdist' packages."
     ))
   }
   seg <- hla_segments()
   if (is.null(seg) || nrow(seg) == 0) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       sprintf(
         "No %s cells with a complete V / J / CDR3 to build a network.",
         hla_active_chain()
@@ -727,11 +736,11 @@ output$hla_motif_note <- renderUI({
   g <- hla_motif_graph()
   guard <- attr(g, "guard")
   if (!is.null(guard)) {
-    return(tags$p(class = "text-danger", guard))
+    return(tags$p(class = "text-danger", `data-view-state` = "error", guard))
   }
   if (hla_motif_graph_ok(g) && igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
     return(tags$p(
-      class = "text-danger",
+      class = "text-danger", `data-view-state` = "error",
       sprintf(
         "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
         format(igraph::vcount(g), big.mark = ","),
@@ -741,7 +750,7 @@ output$hla_motif_note <- renderUI({
   }
   if (!hla_motif_graph_ok(g)) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       paste(
         "No CDR3 motif clusters at Hamming distance 1 with the current",
         "settings. Try lowering the minimum motif size or enabling",

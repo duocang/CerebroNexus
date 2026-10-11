@@ -1,0 +1,358 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs" [expanded]:
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓         
+  - tabpanel:
+    - heading "HLA & TCR Motifs" [level=1]
+    - generic: Exploratory HLA context and association — not inferred restriction.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: "Chain:"
+    - generic: TRB
+    - combobox "Chain:"
+    - generic: "Network scope:"
+    - generic: All cells
+    - combobox "Network scope:"
+    - generic: Colour by
+    - generic: Motif cluster
+    - textbox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - tablist:
+      - tab "Motif Network"
+      - tab "Network data"
+      - tab "HLA Associations" [expanded] [active] [selected]
+      - tab "Data & QC"
+    - text:              
+    - tabpanel "HLA Associations":
+      - generic: "Selected repertoire - read the contrast as suggestive, not as a test. Cells were sorted for binding to a pooled dCODE dextramer panel, so this repertoire is antigen-SELECTED -- which is exactly why its motif network is legible where an unselected repertoire's is not. It is therefore not an unbiased sample of the donors' repertoires: which receptors are present was decided by the panel. The donor HLA genotypes are the published ones (table S1 of the source paper), measured independently of these cells, so they are not circular with the selection -- but that is a narrower claim than it sounds. Independent genotypes remove circularity; they do not remove ASCERTAINMENT: the repertoire being compared was itself captured by the panel, the panel's reagents are restricted by particular alleles, and there are four donors, so donor and panel remain confounded with genotype. Read a carrier contrast here as suggestive, not as a test. IMPORTANT: the per-cell dextramer_* columns are 10x's RAW BINDER CALLS for a reagent, not validated peptide specificity. Dextramer staining is strongly cross-reactive here -- for most cells the bound reagent's HLA restriction is not even among the alleles that donor carries (see the restriction_in_genotype column, and colour the projection by it). Treat them as a reagent label, not as biology, and do not read the HLA associations as being driven by them."
+      - generic: Descriptive overlap only. The selected node/motif is locked to the Hamming-1 graph over ALL cells, whatever the network scope. Counts are donor-level only with complete donor mapping, otherwise sample-level. No p-value or restriction claim is produced.
+      - generic: "HLA allele:"
+      - generic: HLA-A*02:01
+      - combobox "HLA allele:"
+      - 'radiogroup "Feature type: circle-info icon"':
+        - text: "Feature type:"
+        - generic "circle-info icon": 
+        - radio "Motif component" [checked]
+        - text: Motif component
+        - radio "CDR3 node"
+        - text: CDR3 node
+      - text: "Locked feature:"
+      - generic "circle-info icon": 
+      - generic: TRBV19::M13_15 (30 CDR3)
+      - 'combobox "Locked feature: circle-info icon"'
+      - heading "Observed overlap summary circle-info icon" [level=4]:
+        - text: Observed overlap summary
+        - generic "circle-info icon": 
+      - table:
+        - rowgroup:
+          - 'row "HLA status: activate to sort column ascending Analysis units: activate to sort column ascending Units with feature: activate to sort column ascending Observed feature prevalence: activate to sort column ascending"':
+            - 'columnheader "HLA status: activate to sort column ascending"': HLA status
+            - 'columnheader "Analysis units: activate to sort column ascending"': Analysis units
+            - 'columnheader "Units with feature: activate to sort column ascending"': Units with feature
+            - 'columnheader "Observed feature prevalence: activate to sort column ascending"': Observed feature prevalence
+      - table:
+        - rowgroup:
+          - 'row "HLA status: activate to sort column ascending Analysis units: activate to sort column ascending Units with feature: activate to sort column ascending Observed feature prevalence: activate to sort column ascending"':
+            - 'columnheader "HLA status: activate to sort column ascending"'
+            - 'columnheader "Analysis units: activate to sort column ascending"'
+            - 'columnheader "Units with feature: activate to sort column ascending"'
+            - 'columnheader "Observed feature prevalence: activate to sort column ascending"'
+        - rowgroup:
+          - row "carrier 2 2 100.0%":
+            - cell "carrier"
+            - cell "2"
+            - cell "2"
+            - cell "100.0%"
+          - row "non-carrier 2 0 0.0%":
+            - cell "non-carrier"
+            - cell "2"
+            - cell "0"
+            - cell "0.0%"
+          - row "untyped 0 0 —":
+            - cell "untyped"
+            - cell "0"
+            - cell "0"
+            - cell "—"
+      - heading "Per-unit breadth and cell fraction circle-info icon" [level=4]:
+        - text: Per-unit breadth and cell fraction
+        - generic "circle-info icon": 
+      - paragraph: Fractions are of the cells and clonotypes present IN THIS DATA SET for each unit, which holds only receptors that bound a reagent in the panel - not of the unit's full repertoire.
+      - table:
+        - rowgroup:
+          - 'row "analysis_unit: activate to sort column ascending unit_type: activate to sort column ascending hla_status: activate to sort column ascending feature_present: activate to sort column ascending n_cells: activate to sort column ascending n_feature_cells: activate to sort column ascending n_unique_clonotypes: activate to sort column ascending n_feature_clonotypes: activate to sort column ascending unique_clonotype_fraction: activate to sort column ascending cell_fraction: activate to sort column ascending"':
+            - 'columnheader "analysis_unit: activate to sort column ascending"': analysis_unit
+            - 'columnheader "unit_type: activate to sort column ascending"': unit_type
+            - 'columnheader "hla_status: activate to sort column ascending"': hla_status
+            - 'columnheader "feature_present: activate to sort column ascending"': feature_present
+            - 'columnheader "n_cells: activate to sort column ascending"': n_cells
+            - 'columnheader "n_feature_cells: activate to sort column ascending"': n_feature_cells
+            - 'columnheader "n_unique_clonotypes: activate to sort column ascending"': n_unique_clonotypes
+            - 'columnheader "n_feature_clonotypes: activate to sort column ascending"': n_feature_clonotypes
+            - 'columnheader "unique_clonotype_fraction: activate to sort column ascending"': unique_clonotype_fraction
+            - 'columnheader "cell_fraction: activate to sort column ascending"': cell_fraction
+      - table:
+        - rowgroup:
+          - 'row "analysis_unit: activate to sort column ascending unit_type: activate to sort column ascending hla_status: activate to sort column ascending feature_present: activate to sort column ascending n_cells: activate to sort column ascending n_feature_cells: activate to sort column ascending n_unique_clonotypes: activate to sort column ascending n_feature_clonotypes: activate to sort column ascending unique_clonotype_fraction: activate to sort column ascending cell_fraction: activate to sort column ascending"':
+            - 'columnheader "analysis_unit: activate to sort column ascending"'
+            - 'columnheader "unit_type: activate to sort column ascending"'
+            - 'columnheader "hla_status: activate to sort column ascending"'
+            - 'columnheader "feature_present: activate to sort column ascending"'
+            - 'columnheader "n_cells: activate to sort column ascending"'
+            - 'columnheader "n_feature_cells: activate to sort column ascending"'
+            - 'columnheader "n_unique_clonotypes: activate to sort column ascending"'
+            - 'columnheader "n_feature_clonotypes: activate to sort column ascending"'
+            - 'columnheader "unique_clonotype_fraction: activate to sort column ascending"'
+            - 'columnheader "cell_fraction: activate to sort column ascending"'
+        - rowgroup:
+          - row "donor1 donor carrier true 3000 306 828 21 0.0254 0.102":
+            - cell "donor1"
+            - cell "donor"
+            - cell "carrier"
+            - cell "true"
+            - cell "3000"
+            - cell "306"
+            - cell "828"
+            - cell "21"
+            - cell "0.0254"
+            - cell "0.102"
+          - row "donor2 donor carrier true 3000 316 507 20 0.0394 0.1053":
+            - cell "donor2"
+            - cell "donor"
+            - cell "carrier"
+            - cell "true"
+            - cell "3000"
+            - cell "316"
+            - cell "507"
+            - cell "20"
+            - cell "0.0394"
+            - cell "0.1053"
+          - row "donor3 donor non-carrier false 3000 0 1495 0 0 0":
+            - cell "donor3"
+            - cell "donor"
+            - cell "non-carrier"
+            - cell "false"
+            - cell "3000"
+            - cell "0"
+            - cell "1495"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+          - row "donor4 donor non-carrier false 3000 0 507 0 0 0":
+            - cell "donor4"
+            - cell "donor"
+            - cell "non-carrier"
+            - cell "false"
+            - cell "3000"
+            - cell "0"
+            - cell "507"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+      - status: Showing 1 to 4 of 4 entries
+      - list:
+        - link "Previous" [disabled]
+        - link "1":
+          - /url: "#"
+        - link "Next" [disabled]
+      - heading "Analysis-unit × HLA allele matrix circle-info icon" [level=4]:
+        - text: Analysis-unit × HLA allele matrix
+        - generic "circle-info icon": 
+      - paragraph: 1 = carrier, 0 = locus-typed non-carrier, blank = locus untyped.
+      - table:
+        - rowgroup:
+          - 'row "analysis_unit: activate to sort column ascending unit_type: activate to sort column ascending HLA-A*01:01: activate to sort column ascending HLA-A*02:01: activate to sort column ascending HLA-A*03:01: activate to sort column ascending HLA-A*11:01: activate to sort column ascending HLA-A*24:02: activate to sort column ascending HLA-A*29:02: activate to sort column ascending HLA-B*07:02: activate to sort column ascending HLA-B*08:01: activate to sort column ascending HLA-B*35:01: activate to sort column ascending HLA-B*35:02: activate to sort column ascending HLA-B*44:03: activate to sort column ascending HLA-B*57:01: activate to sort column ascending"':
+            - 'columnheader "analysis_unit: activate to sort column ascending"': analysis_unit
+            - 'columnheader "unit_type: activate to sort column ascending"': unit_type
+            - 'columnheader "HLA-A*01:01: activate to sort column ascending"': HLA-A*01:01
+            - 'columnheader "HLA-A*02:01: activate to sort column ascending"': HLA-A*02:01
+            - 'columnheader "HLA-A*03:01: activate to sort column ascending"': HLA-A*03:01
+            - 'columnheader "HLA-A*11:01: activate to sort column ascending"': HLA-A*11:01
+            - 'columnheader "HLA-A*24:02: activate to sort column ascending"': HLA-A*24:02
+            - 'columnheader "HLA-A*29:02: activate to sort column ascending"': HLA-A*29:02
+            - 'columnheader "HLA-B*07:02: activate to sort column ascending"': HLA-B*07:02
+            - 'columnheader "HLA-B*08:01: activate to sort column ascending"': HLA-B*08:01
+            - 'columnheader "HLA-B*35:01: activate to sort column ascending"': HLA-B*35:01
+            - 'columnheader "HLA-B*35:02: activate to sort column ascending"': HLA-B*35:02
+            - 'columnheader "HLA-B*44:03: activate to sort column ascending"': HLA-B*44:03
+            - 'columnheader "HLA-B*57:01: activate to sort column ascending"': HLA-B*57:01
+      - table:
+        - rowgroup:
+          - 'row "analysis_unit: activate to sort column ascending unit_type: activate to sort column ascending HLA-A*01:01: activate to sort column ascending HLA-A*02:01: activate to sort column ascending HLA-A*03:01: activate to sort column ascending HLA-A*11:01: activate to sort column ascending HLA-A*24:02: activate to sort column ascending HLA-A*29:02: activate to sort column ascending HLA-B*07:02: activate to sort column ascending HLA-B*08:01: activate to sort column ascending HLA-B*35:01: activate to sort column ascending HLA-B*35:02: activate to sort column ascending HLA-B*44:03: activate to sort column ascending HLA-B*57:01: activate to sort column ascending"':
+            - 'columnheader "analysis_unit: activate to sort column ascending"'
+            - 'columnheader "unit_type: activate to sort column ascending"'
+            - 'columnheader "HLA-A*01:01: activate to sort column ascending"'
+            - 'columnheader "HLA-A*02:01: activate to sort column ascending"'
+            - 'columnheader "HLA-A*03:01: activate to sort column ascending"'
+            - 'columnheader "HLA-A*11:01: activate to sort column ascending"'
+            - 'columnheader "HLA-A*24:02: activate to sort column ascending"'
+            - 'columnheader "HLA-A*29:02: activate to sort column ascending"'
+            - 'columnheader "HLA-B*07:02: activate to sort column ascending"'
+            - 'columnheader "HLA-B*08:01: activate to sort column ascending"'
+            - 'columnheader "HLA-B*35:01: activate to sort column ascending"'
+            - 'columnheader "HLA-B*35:02: activate to sort column ascending"'
+            - 'columnheader "HLA-B*44:03: activate to sort column ascending"'
+            - 'columnheader "HLA-B*57:01: activate to sort column ascending"'
+        - rowgroup:
+          - row "donor1 donor 0 1 0 1 0 0 1":
+            - cell "donor1"
+            - cell "donor"
+            - cell "0"
+            - cell "1"
+            - cell "0"
+            - cell "1"
+            - cell "0"
+            - cell "0"
+            - cell
+            - cell
+            - cell "1"
+            - cell
+            - cell
+            - cell
+          - row "donor2 donor 1 1 0 0 0 0 1":
+            - cell "donor2"
+            - cell "donor"
+            - cell "1"
+            - cell "1"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell
+            - cell "1"
+            - cell
+            - cell
+            - cell
+            - cell
+          - row "donor3 donor 0 0 0 0 1 1 0 0 0 1 1 0":
+            - cell "donor3"
+            - cell "donor"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "1"
+            - cell "1"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "1"
+            - cell "1"
+            - cell "0"
+          - row "donor4 donor 0 0 1 0 0 0 1 0 0 0 0 1":
+            - cell "donor4"
+            - cell "donor"
+            - cell "0"
+            - cell "0"
+            - cell "1"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "1"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "0"
+            - cell "1"
+      - status: Showing 1 to 4 of 4 entries
+      - list:
+        - link "Previous" [disabled]
+        - link "1":
+          - /url: "#"
+        - link "Next" [disabled]
+    - text:  
+  - text:      Preparing table…  Preparing results…
+- text:   
+- generic: Type to search a motif or CDR3...
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: HLA
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log

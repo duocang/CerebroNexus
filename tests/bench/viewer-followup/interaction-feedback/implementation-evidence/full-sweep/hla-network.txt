@@ -1,0 +1,164 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs" [expanded]:
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓         
+  - tabpanel:
+    - heading "HLA & TCR Motifs" [level=1]
+    - generic: Exploratory HLA context and association — not inferred restriction.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: "Chain:"
+    - generic: TRB
+    - combobox "Chain:"
+    - generic: "Network scope:"
+    - generic: All cells
+    - combobox "Network scope:"
+    - generic: Colour by
+    - generic: Motif cluster
+    - textbox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - tablist:
+      - tab "Motif Network" [expanded] [active] [selected]
+      - tab "Network data"
+      - tab "HLA Associations"
+      - tab "Data & QC"
+    - tabpanel "Motif Network":
+      - generic: Motif cluster
+      - generic: Motif 1
+      - generic: Motif 2
+      - generic: Motif 3
+      - generic: Motif 4
+      - generic: Motif 5
+      - generic: Motif network
+      - text:  Trekker coordinate source, QC & Moran's I
+      - button "Box select":
+        - generic "vector-square icon": 
+        - text: Box select
+      - button "Lasso select":
+        - generic "draw-polygon icon": 
+        - text: Lasso select
+      - button "Pan · or shift-drag":
+        - generic "up-down-left-right icon": 
+        - text: Pan · or shift-drag
+      - text:  Rotate · 3-D embedding
+      - button "Zoom in":
+        - generic "magnifying-glass-plus icon": 
+        - text: Zoom in
+      - button "Zoom out":
+        - generic "magnifying-glass-minus icon": 
+        - text: Zoom out
+      - text:  Zoom this panel to the selection
+      - button "Reset view" [disabled]:
+        - generic "house icon": 
+        - text: Reset view
+      - text:  Clear selection
+      - button "Download PNG":
+        - generic "download icon": 
+        - text: Download PNG
+      - text:  Make this the focus
+      - img "Motif network cell view"
+      - generic: Motif network view with 94 points; 0 selected.
+      - generic: ACGCACGTCTGGGCGT-1
+      - text:  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus
+      - paragraph: Node AREA is proportional to the number of cells carrying that CDR3, up to 25; above that every node is the same size — read the tooltip for the exact count.
+      - link "download icon Download analysis (tables + manifest)":
+        - /url: session/a7c57a8b19b5e2dff321a37e12b74355/download/hla_export_analysis?w=
+        - generic "download icon": 
+        - text: Download analysis (tables + manifest)
+    - text:                    
+  - text:      Preparing table…  Preparing results…
+- text:   
+- generic: Type to search a motif or CDR3...
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: HLA
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log

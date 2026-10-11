@@ -1,0 +1,18 @@
+[
+  {
+    "stage": "controls observed",
+    "ms": 2438
+  },
+  {
+    "stage": "plot observed",
+    "ms": 3237
+  },
+  {
+    "stage": "at plot observation",
+    "loader": true
+  },
+  {
+    "stage": "loader hidden observed",
+    "ms": 5330
+  }
+]

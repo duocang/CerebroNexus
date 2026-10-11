@@ -46,6 +46,21 @@ boxTitle <- function(title) {
   p(title, style = "padding-right: 5px; display: inline")
 }
 
+## Stored-result pages share a stable frame; only their demanded content is
+## dynamic. This does not gate rendering or read any dataset contents.
+cerebroResultPage <- function(title, controls_id, result_id, info_id) {
+  tagList(
+    div(class = "cerebro-viz-page-heading", h1(title)),
+    uiOutput(controls_id, class = "cerebro-result-controls"),
+    fluidRow(cerebroBox(
+      title = tagList(boxTitle(title), cerebroInfoButton(info_id)),
+      div(class = "cerebro-page-loading-region",
+        uiOutput(result_id, class = "cerebro-result-slot")
+      )
+    ))
+  )
+}
+
 cerebroSettingsButton <- function(id, target) {
   tags$button(
     type = "button",
@@ -120,7 +135,7 @@ cerebroSettingsDrawer <- function(id, ...) {
 cerebroCellViewOutput <- function(id) {
   div(
     id = paste0(id, "_cell_view_host"),
-    class = "coordviews-page cerebro-cell-view-host",
+    class = "coordviews-page cerebro-cell-view-host cerebro-page-loading-region",
     `data-cell-view-id` = id,
     div(class = "cerebro-cell-view-surface", `aria-live` = "polite"),
     shiny::uiOutput(
@@ -664,6 +679,8 @@ ui <- dashboardPage(
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews-config.js", defer = TRUE),
       cerebro_js("viewer-shell.js", defer = TRUE),
+      cerebro_js("gene-feedback.js", defer = TRUE),
+      cerebro_js("view-feedback.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
       cerebro_js("gene-selector.js", defer = TRUE),
       cerebro_js("cell_views.js"),
@@ -674,11 +691,13 @@ ui <- dashboardPage(
       id = "main-content",
       tabindex = "-1",
       tags$div(
+        id = "cerebro-page-loader-announcement", class = "sr-only",
+        role = "status", `aria-live` = "polite", `aria-atomic` = "true"
+      ),
+      tags$div(
         id = "cerebro-page-loader",
         class = "cerebro-page-loader",
-        role = "status",
-        `aria-live` = "polite",
-        `aria-atomic` = "true",
+        `aria-hidden` = "true",
         hidden = "hidden",
         tags$span(
           class = "cerebro-page-loader-spinner",
@@ -686,7 +705,6 @@ ui <- dashboardPage(
         ),
         tags$span(
           class = "cerebro-page-loader-copy",
-          tags$strong("Loading view"),
           tags$span(
             id = "cerebro-page-loader-detail",
             "Preparing data and visualisation…"

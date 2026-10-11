@@ -49,6 +49,7 @@ overview_projection_data_to_plot_raw <- reactive({
   }
   list(
     dataset_context = dataset_context,
+    feedback = cerebroFeedbackControls("overview_projection", input),
     cells_df = cells_df,
     cell_indices = cell_indices,
     cell_count = length(cell_indices),

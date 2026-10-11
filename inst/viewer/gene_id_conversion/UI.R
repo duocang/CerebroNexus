@@ -15,7 +15,7 @@ tab_gene_id_conversion <- tabItem(
           "Organism:",
           choices = c("mouse", "human")
         ),
-        DT::dataTableOutput("gene_info")
+        div(class = "cerebro-result-slot", DT::dataTableOutput("gene_info"))
       )
     )
   )

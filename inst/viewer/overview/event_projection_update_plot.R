@@ -2,6 +2,7 @@
 ## Update projection plot when overview_projection_data_to_plot() changes.
 ##----------------------------------------------------------------------------##
 overview_projection_last_render <- NULL
+overview_projection_last_feedback_token <- NULL
 observe({
   req(identical(input[["sidebar"]], "overview"))
   render_request <- input[["overview_projection_render_request"]]
@@ -20,12 +21,14 @@ observe({
   render <- list(
     request = render_request,
     projection_resource_failed = projection_resource_failed,
-    data = data
+    data = data[setdiff(names(data), "feedback")]
   )
   if (identical(render, overview_projection_last_render)) {
+    cerebroSendViewFeedback("overview_projection", overview_projection_last_feedback_token,
+      current_context, data$feedback)
     return()
   }
   overview_projection_last_render <<- render
   data$projection_resource_failed <- projection_resource_failed
-  overview_projection_update_plot(data)
+  overview_projection_last_feedback_token <<- overview_projection_update_plot(data)
 })

@@ -258,6 +258,7 @@ spatial_projection_data_to_plot_raw <- reactive({
   ## return collect data
   to_return <- list(
     dataset_context = dataset_context,
+    feedback = cerebroFeedbackControls("spatial_projection", input),
     cells_df = metadata,
     coordinates = coordinates,
     reset_axes = reset_axes,

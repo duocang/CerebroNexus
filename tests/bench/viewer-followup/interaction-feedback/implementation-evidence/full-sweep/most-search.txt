@@ -1,0 +1,149 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes" [expanded]:
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:            Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Preparing controls…   Preparing results… Preparing controls…  Preparing results…
+  - tabpanel:
+    - heading "Most expressed genes" [level=1]
+    - generic: Grouping variable
+    - generic: cell_type
+    - combobox "Grouping variable"
+    - heading "Most expressed genes info" [level=3]:
+      - paragraph: Most expressed genes
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Expression metric:"
+    - generic: Percent expressed
+    - combobox "Expression metric:"
+    - paragraph: Percentage of cells expressing each gene. Based on normalized read counts, shows what proportion of cells in each group have detectable expression (count > 0).
+    - paragraph: Percent = (Number of cells with count > 0) / (Total cells in group) × 100%
+    - generic: "Show results for all subgroups (no pre-filtering):"
+    - generic: "Filter results for subgroup:"
+    - generic: T cells
+    - combobox "Filter results for subgroup:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - text: "Search:"
+    - searchbox "Search:" [active]: CD74
+    - table:
+      - rowgroup:
+        - 'row "cell_type: activate to sort column ascending gene: activate to sort column ascending % of cells expressing: activate to sort column ascending"':
+          - 'columnheader "cell_type: activate to sort column ascending"': cell_type
+          - 'columnheader "gene: activate to sort column ascending"': gene
+          - 'columnheader "% of cells expressing: activate to sort column ascending"': "% of cells expressing"
+        - row "Filter cell_type Filter gene Filter % of cells expressing":
+          - cell "Filter cell_type":
+            - searchbox "Filter cell_type" [disabled]
+            - text: 
+          - cell "Filter gene":
+            - searchbox "Filter gene"
+            - text: 
+          - cell "Filter % of cells expressing":
+            - searchbox "Filter % of cells expressing"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "cell_type: activate to sort column ascending gene: activate to sort column ascending % of cells expressing: activate to sort column ascending"':
+          - 'columnheader "cell_type: activate to sort column ascending"'
+          - 'columnheader "gene: activate to sort column ascending"'
+          - 'columnheader "% of cells expressing: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+          - cell
+      - rowgroup:
+        - row "No matching records found":
+          - cell "No matching records found"
+    - text: Show
+    - combobox "Show entries":
+      - option "20" [selected]
+      - option "50"
+      - option "100"
+    - text: entries
+    - status: Showing 0 to 0 of 0 entries (filtered from 100 total entries)
+    - list:
+      - link "Previous" [disabled]
+      - link "Next" [disabled]
+  - text: Preparing controls…  Preparing results… Preparing controls…  Preparing results…                           Preparing table…  Preparing results…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: cell_type
+- log
+- log
+- log
+- log
+- log

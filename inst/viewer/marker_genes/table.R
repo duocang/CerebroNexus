@@ -3,32 +3,23 @@
 ##----------------------------------------------------------------------------##
 
 ##----------------------------------------------------------------------------##
-## UI element for output.
-##----------------------------------------------------------------------------##
-output[["marker_genes_table_UI"]] <- renderUI({
-  req(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]]
-  )
-  fluidRow(
-    cerebroBox(
-      title = tagList(
-        boxTitle("Marker genes"),
-        cerebroInfoButton("marker_genes_info")
-      ),
-      uiOutput("marker_genes_table_or_text_UI")
-    )
-  )
-})
-
-##----------------------------------------------------------------------------##
 ## UI element that shows table and toggle switches (for sub-filtering of
 ## results, automatic number formatting, automatic coloring of values), or text
 ## messages if no marker genes were found or data is missing.
 ##----------------------------------------------------------------------------##
 output[["marker_genes_table_or_text_UI"]] <- renderUI({
+  methods <- getMethodsForMarkerGenes()
+  if (!length(methods)) {
+    return(p("Marker-gene results are not included in this data set. Choose a data set that includes marker-gene results."))
+  }
+  method <- input[["marker_genes_selected_method"]]
+  req(method %in% methods)
+  if (!length(getGroupsWithMarkerGenes(method))) {
+    return(p("No marker-gene table is available for this method. Choose another method."))
+  }
   req(
     input[["marker_genes_selected_method"]],
+    input[["marker_genes_selected_method"]] %in% methods,
     input[["marker_genes_selected_table"]],
     input[["marker_genes_selected_table"]] %in%
       getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]])
@@ -40,42 +31,17 @@ output[["marker_genes_table_or_text_UI"]] <- renderUI({
   )
   if (length(results_type) > 0) {
     if (is.data.frame(results_type)) {
-      cerebroResultTableControls("marker_genes")
+      cerebroResultTableControls("marker_genes", results_type,
+        colnames(results_type)[[1L]] %in% getGroups())
     } else if (
       is.character(results_type) &&
         results_type == "no_markers_found"
     ) {
-      textOutput("marker_genes_table_no_markers_found")
+      p("No marker genes meet the stored thresholds for this grouping variable. Choose another method or grouping variable.")
     }
   } else {
-    textOutput("marker_genes_table_no_data")
+    p("No marker-gene table is available for this method and grouping variable. Choose another method or grouping variable.")
   }
-})
-
-##----------------------------------------------------------------------------##
-## UI element for sub-filtering of results if toggled.
-##----------------------------------------------------------------------------##
-output[["marker_genes_filter_subgroups_UI"]] <- renderUI({
-  req(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]],
-    input[["marker_genes_selected_table"]] %in%
-      getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]]),
-    !is.null(input[["marker_genes_table_filter_switch"]])
-  )
-  ## fetch results
-  results_df <- getMarkerGenes(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]]
-  )
-  ## don't proceed if input is not a data frame
-  req(is.data.frame(results_df))
-  cerebroResultSubgroupUI(
-    results_df,
-    input[["marker_genes_table_filter_switch"]],
-    colnames(results_df)[[1L]] %in% getGroups(),
-    "marker_genes_table_select_group_level"
-  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -118,20 +84,6 @@ output[["marker_genes_table"]] <- DT::renderDataTable({
     number_formatting = input[["marker_genes_table_number_formatting"]],
     color_highlighting = input[["marker_genes_table_color_highlighting"]]
   )
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if no marker genes were found.
-##----------------------------------------------------------------------------##
-output[["marker_genes_table_no_markers_found"]] <- renderText({
-  "No marker genes meet the stored thresholds for this grouping variable. Choose another method or grouping variable."
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if data is missing.
-##----------------------------------------------------------------------------##
-output[["marker_genes_table_no_data"]] <- renderText({
-  "No marker-gene table is available for this method and grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##

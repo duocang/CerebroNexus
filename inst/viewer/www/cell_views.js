@@ -3139,6 +3139,7 @@
           selectedCells: specialistReport
             ? specialistReport.selectedCells
             : (hasSelection ? sel.size : 0),
+          selectionPending: pendingStableSelection,
           datasetFingerprint: datasetFingerprint,
           eventKind: eventKind,
           renderKey: renderKey == null ? null : String(renderKey),
@@ -3149,7 +3150,7 @@
           renderedPointCount: renderedPointCount,
           timing: specialistTiming
         }
-        : { selectedCells: hasSelection ? sel.size : 0 } }
+        : { selectedCells: hasSelection ? sel.size : 0, dataset_context: D && D.dataset_context } }
     ));
   }
 
@@ -5202,6 +5203,7 @@
   function setColorBy(mode) {
     var deferred = deferredColor(mode);
     if (deferred) {
+      viewOperation('linked', 'Loading colour field: ' + deferred.name + '…');
       if (!deferred.value.requested && typeof Shiny !== 'undefined') {
         deferred.value.requested = true;
         Shiny.setInputValue('coordviews_attribute_request', {
@@ -5240,6 +5242,7 @@
       ensurePanelSlots(Math.min(12, order.length)); buildPanels(); layoutPanels();
     }
     renderLegend(); drawAll(); renderReadout(); updateMoranBadges();
+    if (!singleActive && mode !== GENE_MODE) viewOperation('linked', 'Colour mode changed');
   }
 
   // ---- projection multi-picker --------------------------------------------
@@ -5452,6 +5455,11 @@
     for (var f in sp._imgState) copy[f] = sp._imgState[f];
     imgStates[k] = copy;
   }
+  function viewOperation(id, text) {
+    window.dispatchEvent(new CustomEvent('cerebro:view-operation', {
+      detail: { id: id, text: text, dataset_context: currentDatasetContext() }
+    }));
+  }
   function loadSpaceImage(space) {
     if (!space) return;
     space._imgEl = null; space._imgReady = false;
@@ -5463,12 +5471,20 @@
     // relayout the data asked for.
     _layoutKey = null;
     var img = currentImage(space);
-    if (!img) return;
+    if (!img) {
+      if (singleActive === 'spatial_projection') viewOperation(singleActive, 'No background image');
+      return;
+    }
+    var feedbackId = singleActive || 'linked';
+    viewOperation(feedbackId, 'Loading background: ' + (space.label || space.id) + '…');
     if (!img.uri && img.asset_key) {
       requestDeferredAsset(img.asset_key);
       return;
     }
-    if (!img.uri) return;
+    if (!img.uri) {
+      viewOperation(feedbackId, 'Background unavailable: ' + (space.label || space.id));
+      return;
+    }
     var k = imgKey(space, img);
     space._imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     // Only the newest request may paint. Without the token a large image chosen
@@ -5487,10 +5503,12 @@
     im.onload = function () {
       if (!stillCurrent()) return;
       space._imgReady = true; drawAll();
+      viewOperation(feedbackId, 'Background loaded: ' + (space.label || space.id));
     };
     im.onerror = function () {
       if (!stillCurrent()) return;
       space._imgReady = false;
+      viewOperation(feedbackId, 'Background unavailable: ' + (space.label || space.id));
       if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
         Shiny.setInputValue('coordviews_spatial_image_load_error', {
           space: space.label || space.id || 'Spatial', image: img.label || img.id || 'background image',
@@ -7938,7 +7956,10 @@
   }
   function reportSinglePainted(id, payload, paintedData) {
     var paintedMeta = payload.meta;
+    var paintedKey = payload.data && payload.data.render_key;
+    var paintedToken = payload.render_token;
     var activePanels = panels.filter(function (panel) { return panel.spaceId; });
+    var paintedCount = activePanels[0] && activePanels[0].canvas && Number(activePanels[0].canvas.dataset.pointCount);
     Promise.all(activePanels.map(singleGpuReady)).then(function () {
       if (singleActive !== id || D !== paintedData || payload.meta !== paintedMeta ||
           visibleSingleId() !== id) {
@@ -7961,7 +7982,10 @@
             detail: {
               id: id,
               painted: true,
-              renderToken: paintedMeta.render_token
+              renderKey: paintedKey,
+              pointCount: paintedCount,
+              dataset_context: payload.dataset_context,
+              renderToken: paintedToken
             }
           }));
         });
@@ -8099,12 +8123,20 @@
     // painted frame is actually visible; otherwise users see a blank gap
     // between the loader and the specialist view.
     var paintedSingleData = D;
+    var paintedSingleKey = payload.data && payload.data.render_key;
+    var paintedSingleToken = payload.render_token;
+    var paintedPanel = panels.filter(function (panel) { return panel.spaceId; })[0];
+    var paintedSingleCount = paintedPanel && paintedPanel.canvas && Number(paintedPanel.canvas.dataset.pointCount);
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
         if (singleActive !== id || D !== paintedSingleData ||
             visibleSingleId() !== id) return;
         window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
-          detail: { id: id, painted: true }
+          detail: { id: id, painted: true,
+            renderKey: paintedSingleKey,
+            renderToken: paintedSingleToken,
+            pointCount: paintedSingleCount,
+            dataset_context: payload.dataset_context }
         }));
       });
     });
@@ -9616,6 +9648,7 @@
     window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
       detail: {
         page: 'coordinated_views',
+        dataset_context: D && D.dataset_context,
         primaryReady: summary.primaryReady,
         ready: summary.ready,
         painted: !!painted,
@@ -9869,6 +9902,9 @@
       renderLegend();
       resizeAll();
       drawAll();
+      window.dispatchEvent(new CustomEvent('cerebro:view-appearance', { detail: {
+        id: message.id, values: message.values, dataset_context: message.dataset_context
+      } }));
     });
 
     // Single-gene expression vector (0-255) for the current gene.

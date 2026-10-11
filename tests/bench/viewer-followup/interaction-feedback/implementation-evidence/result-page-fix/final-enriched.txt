@@ -1,0 +1,397 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways" [expanded]:
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:            Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus                              
+  - tabpanel:
+    - heading "Enriched pathways" [active] [level=1]
+    - generic: Method
+    - generic: cerebro_seurat_enrichr
+    - combobox "Method"
+    - generic: Grouping variable
+    - generic: seurat_clusters
+    - combobox "Grouping variable"
+    - heading "Enriched pathways info" [level=3]:
+      - paragraph: Enriched pathways
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Show results for all subgroups (no pre-filtering):"
+    - generic: "Automatically format numbers:"
+    - generic: "Highlight values with colours:"
+    - generic: "Filter results for subgroup:"
+    - generic: "0"
+    - combobox "Filter results for subgroup:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - text: "Search:"
+    - searchbox "Search:"
+    - table:
+      - rowgroup:
+        - 'row "seurat_clusters: activate to sort column ascending db: activate to sort column ascending Term: activate to sort column ascending Overlap: activate to sort column ascending P.value: activate to sort column ascending Adjusted.P.value: activate to sort column ascending Odds.Ratio: activate to sort column ascending Combined.Score: activate to sort column ascending Genes: activate to sort column ascending"':
+          - 'columnheader "seurat_clusters: activate to sort column ascending"': seurat_clusters
+          - 'columnheader "db: activate to sort column ascending"': db
+          - 'columnheader "Term: activate to sort column ascending"': Term
+          - 'columnheader "Overlap: activate to sort column ascending"': Overlap
+          - 'columnheader "P.value: activate to sort column ascending"': P.value
+          - 'columnheader "Adjusted.P.value: activate to sort column ascending"': Adjusted.P.value
+          - 'columnheader "Odds.Ratio: activate to sort column ascending"': Odds.Ratio
+          - 'columnheader "Combined.Score: activate to sort column ascending"': Combined.Score
+          - 'columnheader "Genes: activate to sort column ascending"': Genes
+        - row "Filter seurat_clusters Filter db Filter Term Filter Overlap Filter P.value Filter Adjusted.P.value Filter Old.P.value Filter Old.Adjusted.P.value Filter Odds.Ratio":
+          - cell "Filter seurat_clusters":
+            - searchbox "Filter seurat_clusters" [disabled]
+            - text: 
+          - cell "Filter db":
+            - searchbox "Filter db" [disabled]
+            - text: 
+          - cell "Filter Term":
+            - searchbox "Filter Term"
+            - text: 
+          - cell "Filter Overlap":
+            - searchbox "Filter Overlap"
+            - text: 
+          - cell "Filter P.value":
+            - searchbox "Filter P.value"
+            - text: 
+          - cell "Filter Adjusted.P.value":
+            - searchbox "Filter Adjusted.P.value"
+            - text: 
+          - cell "Filter Old.P.value":
+            - searchbox "Filter Old.P.value"
+            - text: 
+          - cell "Filter Old.Adjusted.P.value":
+            - searchbox "Filter Old.Adjusted.P.value"
+            - text: 
+          - cell "Filter Odds.Ratio":
+            - searchbox "Filter Odds.Ratio"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "seurat_clusters: activate to sort column ascending db: activate to sort column ascending Term: activate to sort column ascending Overlap: activate to sort column ascending P.value: activate to sort column ascending Adjusted.P.value: activate to sort column ascending Odds.Ratio: activate to sort column ascending Combined.Score: activate to sort column ascending Genes: activate to sort column ascending"':
+          - 'columnheader "seurat_clusters: activate to sort column ascending"'
+          - 'columnheader "db: activate to sort column ascending"'
+          - 'columnheader "Term: activate to sort column ascending"'
+          - 'columnheader "Overlap: activate to sort column ascending"'
+          - 'columnheader "P.value: activate to sort column ascending"'
+          - 'columnheader "Adjusted.P.value: activate to sort column ascending"'
+          - 'columnheader "Odds.Ratio: activate to sort column ascending"'
+          - 'columnheader "Combined.Score: activate to sort column ascending"'
+          - 'columnheader "Genes: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+      - rowgroup:
+        - row "0 KEGG_2016 Leishmaniasis Homo sapiens hsa05140 16/73 1.16e-19 1.82e-17 42.4 1.85e+3 HLA-DRB5;NCF1;PRKCB;IFNGR2;CYBA;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;PTPN6;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Leishmaniasis Homo sapiens hsa05140"
+          - cell "16/73"
+          - cell "1.16e-19"
+          - cell "1.82e-17"
+          - cell "42.4"
+          - cell "1.85e+3"
+          - cell "HLA-DRB5;NCF1;PRKCB;IFNGR2;CYBA;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;PTPN6;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Asthma Homo sapiens hsa05310 12/31 1.97e-18 1.55e-16 92.8 3.78e+3 CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Asthma Homo sapiens hsa05310"
+          - cell "12/31"
+          - cell "1.97e-18"
+          - cell "1.55e-16"
+          - cell "92.8"
+          - cell "3.78e+3"
+          - cell "CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Intestinal immune network for IgA production Homo sapiens hsa04672 13/48 1.65e-17 8.61e-16 54.9 2.12e+3 CD40;HLA-DRB5;CXCR4;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Intestinal immune network for IgA production Homo sapiens hsa04672"
+          - cell "13/48"
+          - cell "1.65e-17"
+          - cell "8.61e-16"
+          - cell "54.9"
+          - cell "2.12e+3"
+          - cell "CD40;HLA-DRB5;CXCR4;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Allograft rejection Homo sapiens hsa05330 12/38 3.62e-17 1.42e-15 67.8 2.57e+3 CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Allograft rejection Homo sapiens hsa05330"
+          - cell "12/38"
+          - cell "3.62e-17"
+          - cell "1.42e-15"
+          - cell "67.8"
+          - cell "2.57e+3"
+          - cell "CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Viral myocarditis Homo sapiens hsa05416 13/59 3.22e-16 1.01e-14 41.8 1.49e+3 CD40;HLA-DRB5;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;CD55;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Viral myocarditis Homo sapiens hsa05416"
+          - cell "13/59"
+          - cell "3.22e-16"
+          - cell "1.01e-14"
+          - cell "41.8"
+          - cell "1.49e+3"
+          - cell "CD40;HLA-DRB5;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;CD55;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Inflammatory bowel disease (IBD) Homo sapiens hsa05321 13/65 1.26e-15 3.30e-14 36.9 1.27e+3 HLA-DRB5;IL4R;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Inflammatory bowel disease (IBD) Homo sapiens hsa05321"
+          - cell "13/65"
+          - cell "1.26e-15"
+          - cell "3.30e-14"
+          - cell "36.9"
+          - cell "1.27e+3"
+          - cell "HLA-DRB5;IL4R;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Phagosome Homo sapiens hsa04145 17/154 1.52e-15 3.42e-14 18.8 642 ATP6V1G1;HLA-DRB5;NCF1;STX7;CYBB;CYBA;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Phagosome Homo sapiens hsa04145"
+          - cell "17/154"
+          - cell "1.52e-15"
+          - cell "3.42e-14"
+          - cell "18.8"
+          - cell "642"
+          - cell "ATP6V1G1;HLA-DRB5;NCF1;STX7;CYBB;CYBA;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Autoimmune thyroid disease Homo sapiens hsa05320 12/53 3.24e-15 6.37e-14 43.0 1.43e+3 CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Autoimmune thyroid disease Homo sapiens hsa05320"
+          - cell "12/53"
+          - cell "3.24e-15"
+          - cell "6.37e-14"
+          - cell "43.0"
+          - cell "1.43e+3"
+          - cell "CD40;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Graft-versus-host disease Homo sapiens hsa05332 11/41 6.05e-15 1.06e-13 53.4 1.75e+3 HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Graft-versus-host disease Homo sapiens hsa05332"
+          - cell "11/41"
+          - cell "6.05e-15"
+          - cell "1.06e-13"
+          - cell "53.4"
+          - cell "1.75e+3"
+          - cell "HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Type I diabetes mellitus Homo sapiens hsa04940 11/43 1.09e-14 1.71e-13 50.1 1.61e+3 HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Type I diabetes mellitus Homo sapiens hsa04940"
+          - cell "11/43"
+          - cell "1.09e-14"
+          - cell "1.71e-13"
+          - cell "50.1"
+          - cell "1.61e+3"
+          - cell "HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Antigen processing and presentation Homo sapiens hsa04612 13/77 1.31e-14 1.87e-13 30.0 959 CD74;HLA-DRB5;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Antigen processing and presentation Homo sapiens hsa04612"
+          - cell "13/77"
+          - cell "1.31e-14"
+          - cell "1.87e-13"
+          - cell "30.0"
+          - cell "959"
+          - cell "CD74;HLA-DRB5;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Toxoplasmosis Homo sapiens hsa05145 14/118 1.94e-13 2.54e-12 20.0 585 HLA-DRB5;CD40;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;BIRC3;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Toxoplasmosis Homo sapiens hsa05145"
+          - cell "14/118"
+          - cell "1.94e-13"
+          - cell "2.54e-12"
+          - cell "20.0"
+          - cell "585"
+          - cell "HLA-DRB5;CD40;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;BIRC3;HLA-DQB1"
+        - row "0 KEGG_2016 Staphylococcus aureus infection Homo sapiens hsa05150 11/56 2.60e-13 3.14e-12 35.6 1.03e+3 HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Staphylococcus aureus infection Homo sapiens hsa05150"
+          - cell "11/56"
+          - cell "2.60e-13"
+          - cell "3.14e-12"
+          - cell "35.6"
+          - cell "1.03e+3"
+          - cell "HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Cell adhesion molecules (CAMs) Homo sapiens hsa04514 14/142 2.57e-12 2.77e-11 16.2 433 HLA-DRB5;CD40;HLA-DMA;HLA-DMB;SELL;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;CD22;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Cell adhesion molecules (CAMs) Homo sapiens hsa04514"
+          - cell "14/142"
+          - cell "2.57e-12"
+          - cell "2.77e-11"
+          - cell "16.2"
+          - cell "433"
+          - cell "HLA-DRB5;CD40;HLA-DMA;HLA-DMB;SELL;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;CD22;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Rheumatoid arthritis Homo sapiens hsa05323 12/90 2.64e-12 2.77e-11 22.5 601 ATP6V1G1;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Rheumatoid arthritis Homo sapiens hsa05323"
+          - cell "12/90"
+          - cell "2.64e-12"
+          - cell "2.77e-11"
+          - cell "22.5"
+          - cell "601"
+          - cell "ATP6V1G1;HLA-DMA;HLA-DRB5;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Tuberculosis Homo sapiens hsa05152 14/178 5.57e-11 5.46e-10 12.6 298 CD74;HLA-DRB5;IFNGR2;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Tuberculosis Homo sapiens hsa05152"
+          - cell "14/178"
+          - cell "5.57e-11"
+          - cell "5.46e-10"
+          - cell "12.6"
+          - cell "298"
+          - cell "CD74;HLA-DRB5;IFNGR2;CTSS;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Herpes simplex infection Homo sapiens hsa05168 14/185 9.33e-11 8.62e-10 12.1 280 CD74;HLA-DRB5;SP100;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Herpes simplex infection Homo sapiens hsa05168"
+          - cell "14/185"
+          - cell "9.33e-11"
+          - cell "8.62e-10"
+          - cell "12.1"
+          - cell "280"
+          - cell "CD74;HLA-DRB5;SP100;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Systemic lupus erythematosus Homo sapiens hsa05322 12/135 3.37e-10 2.94e-9 14.3 311 HLA-DRB5;CD40;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Systemic lupus erythematosus Homo sapiens hsa05322"
+          - cell "12/135"
+          - cell "3.37e-10"
+          - cell "2.94e-9"
+          - cell "14.3"
+          - cell "311"
+          - cell "HLA-DRB5;CD40;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Influenza A Homo sapiens hsa05164 13/175 5.66e-10 4.68e-9 11.8 251 HLA-DRB5;PRKCB;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Influenza A Homo sapiens hsa05164"
+          - cell "13/175"
+          - cell "5.66e-10"
+          - cell "4.68e-9"
+          - cell "11.8"
+          - cell "251"
+          - cell "HLA-DRB5;PRKCB;IFNGR2;HLA-DMA;HLA-DMB;HLA-DPB1;HLA-DRA;HLA-DOB;HLA-DQA2;HLA-DQA1;HLA-DRB1;HLA-DPA1;HLA-DQB1"
+        - row "0 KEGG_2016 Hematopoietic cell lineage Homo sapiens hsa04640 10/88 9.35e-10 7.34e-9 18.5 385 FCER2;HLA-DRB5;IL4R;CD19;HLA-DRA;CD37;MS4A1;CD55;CD22;HLA-DRB1":
+          - cell "0"
+          - cell "KEGG_2016"
+          - cell "Hematopoietic cell lineage Homo sapiens hsa04640"
+          - cell "10/88"
+          - cell "9.35e-10"
+          - cell "7.34e-9"
+          - cell "18.5"
+          - cell "385"
+          - cell "FCER2;HLA-DRB5;IL4R;CD19;HLA-DRA;CD37;MS4A1;CD55;CD22;HLA-DRB1"
+    - text: Show
+    - combobox "Show entries":
+      - option "20" [selected]
+      - option "50"
+      - option "100"
+    - text: entries
+    - status: Showing 1 to 20 of 38 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "2":
+        - /url: "#"
+      - link "Next":
+        - /url: "#"
+  - text: Loading controls…  Loading result…                           Loading table…  Loading result…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: Demo
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log

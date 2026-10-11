@@ -1,0 +1,10 @@
+[
+  {
+    "animation": "none",
+    "colour": "rgb(167, 67, 8)",
+    "font": "11.7px",
+    "height": "16px",
+    "text": "Loading gene expression...",
+    "width": "16px"
+  }
+]

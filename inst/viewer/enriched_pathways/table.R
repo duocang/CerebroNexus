@@ -11,7 +11,10 @@
 enriched_pathways_data <- reactive({
   req(
     input[["enriched_pathways_selected_method"]],
-    input[["enriched_pathways_selected_table"]]
+    input[["enriched_pathways_selected_table"]],
+    input[["enriched_pathways_selected_method"]] %in% getMethodsForEnrichedPathways(),
+    input[["enriched_pathways_selected_table"]] %in%
+      getGroupsWithEnrichedPathways(input[["enriched_pathways_selected_method"]])
   )
   getEnrichedPathways(
     input[["enriched_pathways_selected_method"]],
@@ -23,35 +26,6 @@ enriched_pathways_data <- reactive({
 ## UI element for output.
 ##----------------------------------------------------------------------------##
 
-output[["enriched_pathways_table_UI"]] <- renderUI({
-  selected_method <- input[["enriched_pathways_selected_method"]]
-  if (
-    is.null(selected_method) ||
-      selected_method %in% getMethodsForEnrichedPathways() == FALSE
-  ) {
-    fluidRow(
-      cerebroBox(
-        title = boxTitle("Enriched pathways"),
-        textOutput("enriched_pathways_message_no_method_found")
-      )
-    )
-  } else {
-    req(
-      input[["enriched_pathways_selected_method"]],
-      input[["enriched_pathways_selected_table"]]
-    )
-    fluidRow(
-      cerebroBox(
-        title = tagList(
-          boxTitle("Enriched pathways"),
-          cerebroInfoButton("enriched_pathways_info")
-        ),
-        uiOutput("enriched_pathways_table_or_text_UI")
-      )
-    )
-  }
-})
-
 ##----------------------------------------------------------------------------##
 ## UI element that shows table and toggle switches (for sub-filtering of
 ## results, automatic number formatting, automatic coloring of values), or text
@@ -60,6 +34,13 @@ output[["enriched_pathways_table_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 
 output[["enriched_pathways_table_or_text_UI"]] <- renderUI({
+  methods <- getMethodsForEnrichedPathways()
+  if (!length(methods)) return(p("Pathway-enrichment results are not included in this data set."))
+  method <- input[["enriched_pathways_selected_method"]]
+  req(method %in% methods)
+  if (!length(getGroupsWithEnrichedPathways(method))) {
+    return(p("No enrichment table is available for this method. Choose another method."))
+  }
   req(
     input[["enriched_pathways_selected_method"]],
     input[["enriched_pathways_selected_table"]],
@@ -68,62 +49,30 @@ output[["enriched_pathways_table_or_text_UI"]] <- renderUI({
         "enriched_pathways_selected_method"
       ]])
   )
-  results_type <- getEnrichedPathways(
-    input[["enriched_pathways_selected_method"]],
-    input[["enriched_pathways_selected_table"]]
-  )
+  results_type <- enriched_pathways_data()
   ## depending on the content of the results slot, show a text message or
   ## switches and table
   if (
     is.character(results_type) &&
       results_type == "no_markers_found"
   ) {
-    textOutput("enriched_pathways_message_no_markers_found")
+    p("Enrichr cannot run because this grouping variable has no stored marker genes. Choose another method or grouping variable.")
   } else if (
     is.character(results_type) &&
       results_type == "no_pathways_found"
   ) {
-    textOutput("enriched_pathways_message_no_pathways_found")
+    p("Enrichr found no enriched pathways for this grouping variable. Choose another method or grouping variable.")
   } else if (
     is.character(results_type) &&
       results_type == "no_gene_sets_enriched"
   ) {
-    textOutput("enriched_pathways_message_no_gene_sets_enriched")
+    p("No gene sets meet the stored GSVA thresholds for this grouping variable. Choose another method or grouping variable.")
   } else if (is.data.frame(results_type)) {
-    cerebroResultTableControls("enriched_pathways")
+    cerebroResultTableControls("enriched_pathways", results_type,
+      colnames(results_type)[[1L]] %in% getGroups())
   } else {
-    textOutput("enriched_pathways_message_no_data_found")
+    p("No enrichment table is available for this method and grouping variable. Choose another method or grouping variable.")
   }
-})
-
-##----------------------------------------------------------------------------##
-## UI element for sub-filtering of results if toggled.
-##----------------------------------------------------------------------------##
-
-output[["enriched_pathways_filter_subgroups_UI"]] <- renderUI({
-  ##
-  req(
-    input[["enriched_pathways_selected_method"]],
-    input[["enriched_pathways_selected_table"]],
-    input[["enriched_pathways_selected_table"]] %in%
-      getGroupsWithEnrichedPathways(input[[
-        "enriched_pathways_selected_method"
-      ]]),
-    !is.null(input[["enriched_pathways_table_filter_switch"]])
-  )
-
-  ## fetch results
-  results_df <- enriched_pathways_data()
-
-  ## don't proceed if input is not a data frame
-  req(is.data.frame(results_df))
-
-  cerebroResultSubgroupUI(
-    results_df,
-    input[["enriched_pathways_table_filter_switch"]],
-    colnames(results_df)[[1L]] %in% getGroups(),
-    "enriched_pathways_table_select_group_level"
-  )
 })
 
 ##----------------------------------------------------------------------------##
@@ -191,38 +140,6 @@ output[["enriched_pathways_table"]] <- DT::renderDataTable({
       columns_hide = columns_hide
     )
   })
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if no marker genes were found.
-##----------------------------------------------------------------------------##
-
-output[["enriched_pathways_message_no_markers_found"]] <- renderText({
-  "Enrichr cannot run because this grouping variable has no stored marker genes. Choose another method or grouping variable."
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if no pathways were enriched (Enrichr).
-##----------------------------------------------------------------------------##
-
-output[["enriched_pathways_message_no_pathways_found"]] <- renderText({
-  "Enrichr found no enriched pathways for this grouping variable. Choose another method or grouping variable."
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if no gene sets were enriched (GSVA).
-##----------------------------------------------------------------------------##
-
-output[["enriched_pathways_message_no_gene_sets_enriched"]] <- renderText({
-  "No gene sets meet the stored GSVA thresholds for this grouping variable. Choose another method or grouping variable."
-})
-
-##----------------------------------------------------------------------------##
-## Alternative text message if data is missing.
-##----------------------------------------------------------------------------##
-
-output[["enriched_pathways_message_no_data_found"]] <- renderText({
-  "No enrichment table is available for this method and grouping variable. Choose another method or grouping variable."
 })
 
 ##----------------------------------------------------------------------------##

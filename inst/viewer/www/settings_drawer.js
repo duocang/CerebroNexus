@@ -64,7 +64,7 @@
       }
     };
     if (immediate) unmount();
-    else drawer._cerebroUnmountTimer = window.setTimeout(unmount, 240);
+    else drawer._cerebroUnmountTimer = window.setTimeout(unmount, 140);
     activeDrawer = null;
     activeButton = null;
     if (restoreFocus !== false && button && button.isConnected) {
@@ -238,25 +238,6 @@
         }
         closeDrawer(false, true);
       }
-    }
-  );
-
-  window.jQuery(document).on(
-    'shiny:outputinvalidated.cerebroGeneControls',
-    '#expression_projection_input_type_UI',
-    function () {
-      this.classList.add('is-changing');
-    }
-  );
-
-  window.jQuery(document).on(
-    'shiny:value.cerebroGeneControls',
-    '#expression_projection_input_type_UI',
-    function () {
-      var output = this;
-      window.requestAnimationFrame(function () {
-        output.classList.remove('is-changing');
-      });
     }
   );
 

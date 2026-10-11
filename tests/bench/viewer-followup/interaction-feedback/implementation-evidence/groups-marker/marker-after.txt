@@ -1,0 +1,370 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes" [expanded]:
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:         Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus                        
+  - tabpanel:
+    - heading "Marker genes" [active] [level=1]
+    - generic: Method
+    - generic: cerebro_seurat
+    - combobox "Method"
+    - generic: Grouping variable
+    - generic: seurat_clusters
+    - combobox "Grouping variable"
+    - heading "Marker genes info" [level=3]:
+      - paragraph: Marker genes
+      - button "info"
+    - button "minus icon":
+      - generic "minus icon": 
+    - generic: "Show results for all subgroups (no pre-filtering):"
+    - generic: "Automatically format numbers:"
+    - generic: "Highlight values with colours:"
+    - generic: "Filter results for subgroup:"
+    - generic: "1"
+    - combobox "Filter results for subgroup:"
+    - button "Column visibility": Column visibility
+    - button "Download": Download
+    - text: "Search:"
+    - searchbox "Search:"
+    - table:
+      - rowgroup:
+        - 'row "seurat_clusters: activate to sort column ascending gene: activate to sort column ascending p_val: activate to sort column ascending avg_log2FC: activate to sort column ascending pct.1: activate to sort column ascending pct.2: activate to sort column ascending p_val_adj: activate to sort column ascending on_cell_surface: activate to sort column ascending"':
+          - 'columnheader "seurat_clusters: activate to sort column ascending"': seurat_clusters
+          - 'columnheader "gene: activate to sort column ascending"': gene
+          - 'columnheader "p_val: activate to sort column ascending"': p_val
+          - 'columnheader "avg_log2FC: activate to sort column ascending"': avg_log2FC
+          - 'columnheader "pct.1: activate to sort column ascending"': pct.1
+          - 'columnheader "pct.2: activate to sort column ascending"': pct.2
+          - 'columnheader "p_val_adj: activate to sort column ascending"': p_val_adj
+          - 'columnheader "on_cell_surface: activate to sort column ascending"': on_cell_surface
+        - row "Filter seurat_clusters Filter gene Filter p_val Filter avg_log2FC Filter pct.1 Filter pct.2 Filter p_val_adj Filter on_cell_surface":
+          - cell "Filter seurat_clusters":
+            - searchbox "Filter seurat_clusters" [disabled]
+            - text: 
+          - cell "Filter gene":
+            - searchbox "Filter gene"
+            - text: 
+          - cell "Filter p_val":
+            - searchbox "Filter p_val"
+            - text: 
+          - cell "Filter avg_log2FC":
+            - searchbox "Filter avg_log2FC"
+            - text: 
+          - cell "Filter pct.1":
+            - searchbox "Filter pct.1"
+            - text: 
+          - cell "Filter pct.2":
+            - searchbox "Filter pct.2"
+            - text: 
+          - cell "Filter p_val_adj":
+            - searchbox "Filter p_val_adj"
+            - text: 
+          - cell "Filter on_cell_surface":
+            - searchbox "Filter on_cell_surface"
+            - text: 
+    - table:
+      - rowgroup:
+        - 'row "seurat_clusters: activate to sort column ascending gene: activate to sort column ascending p_val: activate to sort column ascending avg_log2FC: activate to sort column ascending pct.1: activate to sort column ascending pct.2: activate to sort column ascending p_val_adj: activate to sort column ascending on_cell_surface: activate to sort column ascending"':
+          - 'columnheader "seurat_clusters: activate to sort column ascending"'
+          - 'columnheader "gene: activate to sort column ascending"'
+          - 'columnheader "p_val: activate to sort column ascending"'
+          - 'columnheader "avg_log2FC: activate to sort column ascending"'
+          - 'columnheader "pct.1: activate to sort column ascending"'
+          - 'columnheader "pct.2: activate to sort column ascending"'
+          - 'columnheader "p_val_adj: activate to sort column ascending"'
+          - 'columnheader "on_cell_surface: activate to sort column ascending"'
+        - row:
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+          - cell
+      - rowgroup:
+        - row "1 TCL1A 1.54e-78 1.757 94.30% 38.50% 3.11e-74 false":
+          - cell "1"
+          - cell "TCL1A"
+          - cell "1.54e-78"
+          - cell "1.757"
+          - cell "94.30%"
+          - cell "38.50%"
+          - cell "3.11e-74"
+          - cell "false"
+        - row "1 CD79A 1.36e-69 1.252 100.00% 59.10% 2.76e-65 false":
+          - cell "1"
+          - cell "CD79A"
+          - cell "1.36e-69"
+          - cell "1.252"
+          - cell "100.00%"
+          - cell "59.10%"
+          - cell "2.76e-65"
+          - cell "false"
+        - row "1 CD74 9.11e-57 1.019 100.00% 92.10% 1.84e-52 true":
+          - cell "1"
+          - cell "CD74"
+          - cell "9.11e-57"
+          - cell "1.019"
+          - cell "100.00%"
+          - cell "92.10%"
+          - cell "1.84e-52"
+          - cell "true"
+        - row "1 MS4A1 2.97e-56 1.093 100.00% 57.30% 6.02e-52 true":
+          - cell "1"
+          - cell "MS4A1"
+          - cell "2.97e-56"
+          - cell "1.093"
+          - cell "100.00%"
+          - cell "57.30%"
+          - cell "6.02e-52"
+          - cell "true"
+        - row "1 FCER2 2.37e-55 1.446 89.60% 44.00% 4.80e-51 false":
+          - cell "1"
+          - cell "FCER2"
+          - cell "2.37e-55"
+          - cell "1.446"
+          - cell "89.60%"
+          - cell "44.00%"
+          - cell "4.80e-51"
+          - cell "false"
+        - row "1 NCF1 4.51e-54 1.161 96.40% 66.80% 9.12e-50 false":
+          - cell "1"
+          - cell "NCF1"
+          - cell "4.51e-54"
+          - cell "1.161"
+          - cell "96.40%"
+          - cell "66.80%"
+          - cell "9.12e-50"
+          - cell "false"
+        - row "1 CD79B 9.39e-54 1.198 99.30% 59.10% 1.90e-49 false":
+          - cell "1"
+          - cell "CD79B"
+          - cell "9.39e-54"
+          - cell "1.198"
+          - cell "99.30%"
+          - cell "59.10%"
+          - cell "1.90e-49"
+          - cell "false"
+        - row "1 CD37 7.15e-51 0.833 100.00% 97.70% 1.45e-46 false":
+          - cell "1"
+          - cell "CD37"
+          - cell "7.15e-51"
+          - cell "0.833"
+          - cell "100.00%"
+          - cell "97.70%"
+          - cell "1.45e-46"
+          - cell "false"
+        - row "1 HLA-DRA 2.81e-50 1.021 100.00% 60.30% 5.69e-46 true":
+          - cell "1"
+          - cell "HLA-DRA"
+          - cell "2.81e-50"
+          - cell "1.021"
+          - cell "100.00%"
+          - cell "60.30%"
+          - cell "5.69e-46"
+          - cell "true"
+        - row "1 HLA-DQB1 9.85e-50 1.081 98.90% 57.70% 1.99e-45 false":
+          - cell "1"
+          - cell "HLA-DQB1"
+          - cell "9.85e-50"
+          - cell "1.081"
+          - cell "98.90%"
+          - cell "57.70%"
+          - cell "1.99e-45"
+          - cell "false"
+        - row "1 HLA-DPA1 1.21e-48 0.992 100.00% 66.10% 2.45e-44 true":
+          - cell "1"
+          - cell "HLA-DPA1"
+          - cell "1.21e-48"
+          - cell "0.992"
+          - cell "100.00%"
+          - cell "66.10%"
+          - cell "2.45e-44"
+          - cell "true"
+        - row "1 HLA-DRB1 1.76e-48 0.979 100.00% 63.40% 3.55e-44 true":
+          - cell "1"
+          - cell "HLA-DRB1"
+          - cell "1.76e-48"
+          - cell "0.979"
+          - cell "100.00%"
+          - cell "63.40%"
+          - cell "3.55e-44"
+          - cell "true"
+        - row "1 HLA-DQA1 2.03e-48 1.061 99.60% 57.30% 4.11e-44 false":
+          - cell "1"
+          - cell "HLA-DQA1"
+          - cell "2.03e-48"
+          - cell "1.061"
+          - cell "99.60%"
+          - cell "57.30%"
+          - cell "4.11e-44"
+          - cell "false"
+        - row "1 HVCN1 1.95e-47 1.183 93.20% 52.00% 3.95e-43 false":
+          - cell "1"
+          - cell "HVCN1"
+          - cell "1.95e-47"
+          - cell "1.183"
+          - cell "93.20%"
+          - cell "52.00%"
+          - cell "3.95e-43"
+          - cell "false"
+        - row "1 NIBAN3 1.97e-47 1.121 92.90% 47.70% 3.99e-43 false":
+          - cell "1"
+          - cell "NIBAN3"
+          - cell "1.97e-47"
+          - cell "1.121"
+          - cell "92.90%"
+          - cell "47.70%"
+          - cell "3.99e-43"
+          - cell "false"
+        - row "1 HLA-DRB5 3.79e-46 1.049 98.20% 59.50% 7.66e-42 false":
+          - cell "1"
+          - cell "HLA-DRB5"
+          - cell "3.79e-46"
+          - cell "1.049"
+          - cell "98.20%"
+          - cell "59.50%"
+          - cell "7.66e-42"
+          - cell "false"
+        - row "1 FCRLA 6.97e-46 1.508 78.60% 33.90% 1.41e-41 false":
+          - cell "1"
+          - cell "FCRLA"
+          - cell "6.97e-46"
+          - cell "1.508"
+          - cell "78.60%"
+          - cell "33.90%"
+          - cell "1.41e-41"
+          - cell "false"
+        - row "1 VPREB3 2.87e-44 1.533 74.30% 32.70% 5.80e-40 false":
+          - cell "1"
+          - cell "VPREB3"
+          - cell "2.87e-44"
+          - cell "1.533"
+          - cell "74.30%"
+          - cell "32.70%"
+          - cell "5.80e-40"
+          - cell "false"
+        - row "1 CD72 6.08e-44 1.619 68.20% 27.10% 1.23e-39 false":
+          - cell "1"
+          - cell "CD72"
+          - cell "6.08e-44"
+          - cell "1.619"
+          - cell "68.20%"
+          - cell "27.10%"
+          - cell "1.23e-39"
+          - cell "false"
+        - row "1 IGHM 1.75e-43 0.855 96.80% 50.30% 3.54e-39 true":
+          - cell "1"
+          - cell "IGHM"
+          - cell "1.75e-43"
+          - cell "0.855"
+          - cell "96.80%"
+          - cell "50.30%"
+          - cell "3.54e-39"
+          - cell "true"
+    - text: Show
+    - combobox "Show entries":
+      - option "20" [selected]
+      - option "50"
+      - option "100"
+    - text: entries
+    - status: Showing 1 to 20 of 216 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "2":
+        - /url: "#"
+      - link "3":
+        - /url: "#"
+      - link "4":
+        - /url: "#"
+      - link "5":
+        - /url: "#"
+      - link "…" [disabled]
+      - link "11":
+        - /url: "#"
+      - link "Next":
+        - /url: "#"
+  - text:                          
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: cell_type
+- log
+- log
+- log
+- log:
+  - generic: "1"

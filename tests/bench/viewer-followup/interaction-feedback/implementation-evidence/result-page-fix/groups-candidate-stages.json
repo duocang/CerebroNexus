@@ -1,0 +1,10 @@
+[
+  {
+    "stage": "plot observed",
+    "ms": 2854
+  },
+  {
+    "stage": "loader hidden observed",
+    "ms": 4283
+  }
+]

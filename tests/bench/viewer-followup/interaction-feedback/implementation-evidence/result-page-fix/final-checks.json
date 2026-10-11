@@ -1,0 +1,63 @@
+[
+  {
+    "page": "Groups",
+    "dataset": "Demo",
+    "fingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+    "loaderHidden": true,
+    "plot": true
+  },
+  {
+    "page": "Groups",
+    "dataset": "Mouse 1M",
+    "fingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+    "loaderHidden": true,
+    "plot": true,
+    "plotText": "0: 202,8791: 10,35010: 49,48211: 17,22612: 37,65413: 29,41714: 16,51215: 13,47016: 30,28617: 25,49418: 3,95319: 12,6302: 154,57420: 2,77821: 14,89022: 8,64923: 18,11324: 1,19225: 1,00626: 11,68427: 50428: 79329: 7793: 49,13330: 17031: 8532: 2364: 88,5555: 89,5096: 7,5447: 62,3808: 34,4559: 3,61810x E18 mouse brain (1M subset)0200,000400,000600,000800,0001,000,00098765432313032928272625242322212021918171615141312111010Number of cells"
+  },
+  {
+    "page": "Groups",
+    "dataset": "Demo after Mouse",
+    "fingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+    "loaderHidden": true,
+    "plot": true,
+    "plotText": "0: 1050: 1110: 1061: 981: 1001: 822: 692: 632: 833: 523: 883: 734: 444: 414: 445: 335: 245: 346: 236: 296: 267: 287: 237: 178: 238: 218: 149: 69: 89: 8sample_1sample_2sample_301002003004005009876543210Number of cells"
+  },
+  {
+    "page": "Marker genes",
+    "dataset": "Demo after Mouse",
+    "info": "Showing 1 to 20 of 147 entries",
+    "loaderHidden": true,
+    "subgroup": "0"
+  },
+  {
+    "page": "Most expressed genes",
+    "dataset": "Demo after Mouse",
+    "info": "Showing 1 to 20 of 100 entries",
+    "loaderHidden": true
+  },
+  {
+    "page": "Enriched pathways",
+    "dataset": "Demo after Mouse",
+    "info": "Showing 1 to 20 of 38 entries",
+    "loaderHidden": true
+  },
+  {
+    "page": "Extra material",
+    "dataset": "Demo after Mouse",
+    "info": "Showing 1 to 10 of 10 entries",
+    "loaderHidden": true
+  },
+  {
+    "page": "Marker genes revisit",
+    "dataset": "Demo",
+    "info": "Showing 1 to 20 of 147 entries",
+    "loaderHidden": true
+  },
+  {
+    "page": "Marker genes subgroup 1",
+    "dataset": "Demo",
+    "info": "Showing 1 to 20 of 216 entries",
+    "loaderHidden": true,
+    "subgroup": "1"
+  }
+]

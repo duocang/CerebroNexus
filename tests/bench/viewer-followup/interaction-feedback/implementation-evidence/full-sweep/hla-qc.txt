@@ -1,0 +1,329 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups":
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - text:    
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs" [expanded]:
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - text:              Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Preparing controls…   Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results… Preparing controls…  Preparing results…       ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓         
+  - tabpanel:
+    - heading "HLA & TCR Motifs" [level=1]
+    - generic: Exploratory HLA context and association — not inferred restriction.
+    - button "Info":
+      - generic: 
+      - generic: Info
+    - status: View ready · No selection
+    - generic: "Chain:"
+    - generic: TRB
+    - combobox "Chain:"
+    - generic: "Network scope:"
+    - generic: All cells
+    - combobox "Network scope:"
+    - generic: Colour by
+    - generic: Motif cluster
+    - textbox "Colour by"
+    - button "Share":
+      - generic: 
+      - generic: Share
+    - button "Settings":
+      - generic: 
+      - generic: Settings
+    - generic: 
+    - text: Selection workspace
+    - generic: Drag on the plot to create an active cohort.
+    - tablist:
+      - tab "Motif Network"
+      - tab "Network data"
+      - tab "HLA Associations"
+      - tab "Data & QC" [expanded] [active] [selected]
+    - text:  
+    - tabpanel "Data & QC":
+      - heading "Provide HLA typing" [level=4]
+      - paragraph: "Upload a CSV/TSV. Accepted shapes: a long table (sample, locus, allele) or a wide table (a 'sample' column plus HLA-*_1 / HLA-*_2 columns). Uploads are session-only and never modify the .crb."
+      - generic: "Data provenance:"
+      - generic: Unknown
+      - combobox "Data provenance:"
+      - text: Browse...
+      - button "Browse..."
+      - textbox "No file selected"
+      - button "Clear session override"
+      - separator
+      - link "download icon Download CSV template":
+        - /url: session/a7c57a8b19b5e2dff321a37e12b74355/download/hla_download_template?w=
+        - generic "download icon": 
+        - text: Download CSV template
+      - heading "Coverage" [level=4]
+      - paragraph: "Active HLA source: stored .crb (genotyped)"
+      - paragraph: "Immune-repertoire samples: 4"
+      - table:
+        - rowgroup:
+          - 'row "Sample: activate to sort column ascending # alleles: activate to sort column ascending Loci: activate to sort column ascending"':
+            - 'columnheader "Sample: activate to sort column ascending"': Sample
+            - 'columnheader "# alleles: activate to sort column ascending"': "# alleles"
+            - 'columnheader "Loci: activate to sort column ascending"': Loci
+      - table:
+        - rowgroup:
+          - 'row "Sample: activate to sort column ascending # alleles: activate to sort column ascending Loci: activate to sort column ascending"':
+            - 'columnheader "Sample: activate to sort column ascending"'
+            - 'columnheader "# alleles: activate to sort column ascending"'
+            - 'columnheader "Loci: activate to sort column ascending"'
+        - rowgroup:
+          - row "donor1 3 HLA-A, HLA-B":
+            - cell "donor1"
+            - cell "3"
+            - cell "HLA-A, HLA-B"
+          - row "donor2 3 HLA-A, HLA-B":
+            - cell "donor2"
+            - cell "3"
+            - cell "HLA-A, HLA-B"
+          - row "donor3 4 HLA-A, HLA-B":
+            - cell "donor3"
+            - cell "4"
+            - cell "HLA-A, HLA-B"
+          - row "donor4 3 HLA-A, HLA-B":
+            - cell "donor4"
+            - cell "3"
+            - cell "HLA-A, HLA-B"
+      - separator
+      - heading "Normalized active typing preview" [level=4]
+      - table:
+        - rowgroup:
+          - 'row "sample: activate to sort column ascending donor_id: activate to sort column ascending locus: activate to sort column ascending copy: activate to sort column ascending allele: activate to sort column ascending resolution: activate to sort column ascending source_type: activate to sort column ascending typing_method: activate to sort column ascending source_reference: activate to sort column ascending confidence: activate to sort column ascending"':
+            - 'columnheader "sample: activate to sort column ascending"': sample
+            - 'columnheader "donor_id: activate to sort column ascending"': donor_id
+            - 'columnheader "locus: activate to sort column ascending"': locus
+            - 'columnheader "copy: activate to sort column ascending"': copy
+            - 'columnheader "allele: activate to sort column ascending"': allele
+            - 'columnheader "resolution: activate to sort column ascending"': resolution
+            - 'columnheader "source_type: activate to sort column ascending"': source_type
+            - 'columnheader "typing_method: activate to sort column ascending"': typing_method
+            - 'columnheader "source_reference: activate to sort column ascending"': source_reference
+            - 'columnheader "confidence: activate to sort column ascending"': confidence
+      - table:
+        - rowgroup:
+          - 'row "sample: activate to sort column ascending donor_id: activate to sort column ascending locus: activate to sort column ascending copy: activate to sort column ascending allele: activate to sort column ascending resolution: activate to sort column ascending source_type: activate to sort column ascending typing_method: activate to sort column ascending source_reference: activate to sort column ascending confidence: activate to sort column ascending"':
+            - 'columnheader "sample: activate to sort column ascending"'
+            - 'columnheader "donor_id: activate to sort column ascending"'
+            - 'columnheader "locus: activate to sort column ascending"'
+            - 'columnheader "copy: activate to sort column ascending"'
+            - 'columnheader "allele: activate to sort column ascending"'
+            - 'columnheader "resolution: activate to sort column ascending"'
+            - 'columnheader "source_type: activate to sort column ascending"'
+            - 'columnheader "typing_method: activate to sort column ascending"'
+            - 'columnheader "source_reference: activate to sort column ascending"'
+            - 'columnheader "confidence: activate to sort column ascending"'
+        - rowgroup:
+          - row "donor1 donor1 HLA-A 1 HLA-A*02:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor1"
+            - cell "donor1"
+            - cell "HLA-A"
+            - cell "1"
+            - cell "HLA-A*02:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor1 donor1 HLA-A 2 HLA-A*11:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor1"
+            - cell "donor1"
+            - cell "HLA-A"
+            - cell "2"
+            - cell "HLA-A*11:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor1 donor1 HLA-B 1 HLA-B*35:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor1"
+            - cell "donor1"
+            - cell "HLA-B"
+            - cell "1"
+            - cell "HLA-B*35:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor2 donor2 HLA-A 1 HLA-A*02:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor2"
+            - cell "donor2"
+            - cell "HLA-A"
+            - cell "1"
+            - cell "HLA-A*02:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor2 donor2 HLA-A 2 HLA-A*01:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor2"
+            - cell "donor2"
+            - cell "HLA-A"
+            - cell "2"
+            - cell "HLA-A*01:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor2 donor2 HLA-B 1 HLA-B*08:01 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor2"
+            - cell "donor2"
+            - cell "HLA-B"
+            - cell "1"
+            - cell "HLA-B*08:01"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor3 donor3 HLA-A 1 HLA-A*24:02 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor3"
+            - cell "donor3"
+            - cell "HLA-A"
+            - cell "1"
+            - cell "HLA-A*24:02"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+          - row "donor3 donor3 HLA-A 2 HLA-A*29:02 2-field genotyped HLA typing published in table S1 of Zhang et al., Sci Adv 2021 10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835":
+            - cell "donor3"
+            - cell "donor3"
+            - cell "HLA-A"
+            - cell "2"
+            - cell "HLA-A*29:02"
+            - cell "2-field"
+            - cell "genotyped"
+            - cell "HLA typing published in table S1 of Zhang et al., Sci Adv 2021"
+            - cell "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+            - cell
+      - status: Showing 1 to 8 of 14 entries
+      - list:
+        - link "Previous" [disabled]
+        - link "1":
+          - /url: "#"
+        - link "2":
+          - /url: "#"
+        - link "Next":
+          - /url: "#"
+      - link "download icon Download normalized CSV":
+        - /url: session/a7c57a8b19b5e2dff321a37e12b74355/download/hla_download_normalized?w=
+        - generic "download icon": 
+        - text: Download normalized CSV
+      - heading "Sample → analysis-unit mapping" [level=4]
+      - table:
+        - rowgroup:
+          - 'row "IR sample: activate to sort column ascending Analysis unit: activate to sort column ascending Unit type: activate to sort column ascending"':
+            - 'columnheader "IR sample: activate to sort column ascending"': IR sample
+            - 'columnheader "Analysis unit: activate to sort column ascending"': Analysis unit
+            - 'columnheader "Unit type: activate to sort column ascending"': Unit type
+      - table:
+        - rowgroup:
+          - 'row "IR sample: activate to sort column ascending Analysis unit: activate to sort column ascending Unit type: activate to sort column ascending"':
+            - 'columnheader "IR sample: activate to sort column ascending"'
+            - 'columnheader "Analysis unit: activate to sort column ascending"'
+            - 'columnheader "Unit type: activate to sort column ascending"'
+        - rowgroup:
+          - row "donor1 donor1 donor":
+            - cell "donor1"
+            - cell "donor1"
+            - cell "donor"
+          - row "donor2 donor2 donor":
+            - cell "donor2"
+            - cell "donor2"
+            - cell "donor"
+          - row "donor3 donor3 donor":
+            - cell "donor3"
+            - cell "donor3"
+            - cell "donor"
+          - row "donor4 donor4 donor":
+            - cell "donor4"
+            - cell "donor4"
+            - cell "donor"
+      - separator
+      - heading "Quality control" [level=4]
+      - paragraph: No QC warnings.
+  - text:      Preparing table…  Preparing results…
+- text:   
+- generic: search or type a gene...
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: HLA
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
+- log
