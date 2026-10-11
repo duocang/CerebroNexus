@@ -1119,7 +1119,7 @@ dedent <- function(string) {
   )
 }
 
-.datasetCatalogFromFiles <- function(files, retain_prototypes = FALSE) {
+.datasetCatalogFromFiles <- function(files, retain_prototypes = FALSE, prototype_limit = 2L) {
   if (is.null(files) || !is.character(files) || !length(files)) {
     return(list())
   }
@@ -1140,7 +1140,7 @@ dedent <- function(string) {
       labels[[index]],
       path
     )
-    if (isTRUE(retain_prototypes)) {
+    if (isTRUE(retain_prototypes) && length(prototypes) < prototype_limit) {
       prototypes[[path]] <- object
     }
     object <- NULL

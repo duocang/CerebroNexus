@@ -558,6 +558,8 @@
 #'   travels with it; the Shiny runtime re-resolves paths via
 #'   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
 #'   parent directory (step 7.3 runtime attach).
+#'   Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
+#'   a temporary block-written HDF5 file instead of a full dense realization.
 #'   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
 #'   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
 #'   \code{<stem>.h5}) and tags the backend with that relative location. The
@@ -1012,16 +1014,28 @@ exportFromSeurat <- function(
       unlink(bpc_abs, recursive = TRUE)
     }
 
-    ## BPCells sources stream directly into the output sidecar. Dense and
-    ## delayed inputs retain the existing conversion path.
+    ## Delayed inputs go through a block-written disk bridge. Never realize
+    ## the complete delayed matrix just to convert it back to sparse storage.
+    delayed_bridge <- NULL
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
       } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-        expression_data <- methods::as(
-          as.matrix(expression_data),
-          "CsparseMatrix"
+        if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+          stop("Exporting delayed expression to BPCells requires HDF5Array.", call. = FALSE)
+        }
+        integer_counts <- all(unlist(DelayedArray::blockApply(expression_data, function(block) {
+          all(is.finite(block)) && all(block >= 0) &&
+            all(block <= .Machine$integer.max) && all(block == floor(block))
+        }), use.names = FALSE))
+        delayed_bridge <- tempfile("delayed-expression-", tmpdir = crb_dir, fileext = ".h5")
+        HDF5Array::writeTENxMatrix(
+          DelayedArray::t(expression_data), delayed_bridge, group = "matrix"
         )
+        expression_data <- t(BPCells::open_matrix_10x_hdf5(delayed_bridge))
+        if (integer_counts) {
+          expression_data <- BPCells::convert_matrix_type(expression_data, type = "uint32_t")
+        }
       }
     }
 
@@ -1061,6 +1075,7 @@ exportFromSeurat <- function(
     ## Keep Cerebro's genes x cells dimensions, but physically store rows
     ## contiguously so per-gene and small gene-set queries avoid a full scan.
     mat_handle <- .writeBpcellsGeneMajor(bpc_iter, bpc_abs)
+    if (!is.null(delayed_bridge)) unlink(delayed_bridge)
 
     ## Carry the live handle (absolute path inside @dir -- BPCells normalises
     ## it on open_matrix_dir()) AND the portable relative location tag. Step
@@ -1081,16 +1096,15 @@ exportFromSeurat <- function(
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
-      } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-        expression_data <- methods::as(
-          as.matrix(expression_data),
-          "CsparseMatrix"
-        )
       }
     }
 
     ## transpose genes x cells -> cells x genes for storage
-    m_disk <- methods::as(Matrix::t(expression_data), "CsparseMatrix")
+    m_disk <- if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
+      DelayedArray::t(expression_data)
+    } else {
+      methods::as(Matrix::t(expression_data), "CsparseMatrix")
+    }
 
     if (verbose) {
       message(sprintf(

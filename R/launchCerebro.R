@@ -201,6 +201,10 @@ launchCerebro <- function(
     ),
     local = TRUE
   )
+  ## The server's one-time handoff now owns these references. Keeping copies
+  ## in launch options/closure would defeat later prototype eviction.
+  .GlobalEnv$Cerebro.options[[".dataset_prototypes"]] <- NULL
+  rm(dataset_prototypes, cerebro_options)
 
   ##--------------------------------------------------------------------------##
   ## Launch Cerebro.

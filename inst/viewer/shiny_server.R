@@ -44,16 +44,19 @@ source(
 ## browser session while the large immutable fields and on-disk handles remain
 ## shared through R's copy-on-modify semantics.
 .crb_process_cache <- new.env(parent = emptyenv())
+.crb_backend_identities <- new.env(parent = emptyenv())
+crb_prefetch_tasks <- new.env(parent = emptyenv())
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
-.crb_launch_prototypes <- Cerebro.options[[".dataset_prototypes"]]
-if (!is.list(.crb_launch_prototypes)) {
-  .crb_launch_prototypes <- list()
+.crb_launch_state <- new.env(parent = emptyenv())
+.crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
+if (!is.list(.crb_launch_state$prototypes)) {
+  .crb_launch_state$prototypes <- list()
 }
-if (length(.crb_launch_prototypes)) {
-  for (prototype_path in names(.crb_launch_prototypes)) {
+if (length(.crb_launch_state$prototypes)) {
+  for (prototype_path in names(.crb_launch_state$prototypes)) {
     viewerPackOpenCached(
       prototype_path,
-      .crb_launch_prototypes[[prototype_path]],
+      .crb_launch_state$prototypes[[prototype_path]],
       .viewer_pack_process_cache
     )
   }
@@ -82,12 +85,12 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
-  if (length(.crb_launch_prototypes)) {
+  if (length(.crb_launch_state$prototypes)) {
     backend_plan <- Cerebro.options[[".bundle_backend_plan"]]
     configured_paths <- unname(
       Cerebro.options[["crb_file_to_load"]] %||% character()
     )
-    for (prototype_path in names(.crb_launch_prototypes)) {
+    for (prototype_path in names(.crb_launch_state$prototypes)) {
       effective_backend <- .configuredRuntimeBackendPlan(
         prototype_path,
         backend_plan,
@@ -95,10 +98,11 @@ server <- function(input, output, session) {
       )
       .cacheCrbPrototype(
         prototype_path,
-        .crb_launch_prototypes[[prototype_path]],
+        .crb_launch_state$prototypes[[prototype_path]],
         .runtimeBackendCacheIdentity(effective_backend)
       )
     }
+    .crb_launch_state$prototypes <- NULL
   }
   source(
     paste0(
@@ -246,7 +250,6 @@ server <- function(input, output, session) {
     labels = NULL
   )
   dataset_load_requested <- reactiveVal(FALSE)
-  crb_prefetch_tasks <- new.env(parent = emptyenv())
 
   start_crb_prefetch <- function(path) {
     path <- as.character(path[[1L]])
@@ -256,11 +259,17 @@ server <- function(input, output, session) {
     cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
     if (
       !is.null(.crb_process_cache[[cache_key]]) ||
-        !is.null(crb_prefetch_tasks[[cache_key]])
+        !is.null(crb_prefetch_tasks[[cache_key]]) ||
+        length(crb_prefetch_tasks) >= 2L
     ) {
       return(invisible(NULL))
     }
-    prefetch_task <- shiny::ExtendedTask$new(function(path) {
+    effective_backend <- .configuredRuntimeBackendPlan(
+      path, Cerebro.options[[".bundle_backend_plan"]],
+      unname(Cerebro.options[["crb_file_to_load"]] %||% character())
+    )
+    backend_identity <- .runtimeBackendCacheIdentity(effective_backend)
+    prefetch_task <- shiny::withReactiveDomain(NULL, shiny::ExtendedTask$new(function(path) {
       mirai::mirai(
         {
           connection <- file(path, open = "rb")
@@ -277,12 +286,30 @@ server <- function(input, output, session) {
         },
         path = path
       )
-    })
+    }))
     crb_prefetch_tasks[[cache_key]] <- prefetch_task
     print(glue::glue(
       "[{Sys.time()}] CRB background prefetch started: {.crbLogLabel(path)}"
     ))
-    prefetch_task$invoke(path)
+    shiny::withReactiveDomain(NULL, prefetch_task$invoke(path))
+    ## Completion belongs to the process, not the first requesting session.
+    ## Publish once, then release the task's retained result even when the
+    ## initiating user has left the dataset or disconnected.
+    completion <- shiny::observe({
+      status <- prefetch_task$status()
+      if (!status %in% c("success", "error")) return()
+      on.exit({
+        rm(list = cache_key, envir = crb_prefetch_tasks)
+        completion$destroy()
+      }, add = TRUE)
+      if (identical(status, "success")) {
+        .cacheCrbPrototype(path, prefetch_task$result()$prototype, backend_identity)
+      } else {
+        tryCatch(prefetch_task$result(), error = function(error) {
+          warning("CRB background prefetch failed: ", conditionMessage(error), call. = FALSE)
+        })
+      }
+    }, domain = NULL)
     invisible(NULL)
   }
 

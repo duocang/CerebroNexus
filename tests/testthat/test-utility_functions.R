@@ -29,6 +29,9 @@ skip_if_not(file.exists(utils_file), "utility_functions.R not found")
 
 utils_env <- new.env()
 source(utils_file, local = utils_env)
+## These legacy-response fixtures exercise the older public API fallback.
+## Collection-wise queries are covered separately with explicit mock metadata.
+utils_env$.msigdbCollectionsFunction <- function() NULL
 prettifyTable <- utils_env$prettifyTable
 cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled

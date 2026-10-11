@@ -642,7 +642,8 @@ test_that("launchCerebro builds dataset information for configured files", {
     inherits = FALSE
   )
   catalog <- launch_options[[".dataset_catalog"]]
-  prototypes <- launch_options[[".dataset_prototypes"]]
+  expect_null(launch_options[[".dataset_prototypes"]])
+  prototypes <- environment(app$serverFuncSource())$.crb_launch_state$prototypes
 
   expect_s3_class(app, "shiny.appobj")
   expect_named(catalog, crb)

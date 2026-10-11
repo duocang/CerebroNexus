@@ -88,6 +88,8 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   travels with it; the Shiny runtime re-resolves paths via
   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
   parent directory (step 7.3 runtime attach).
+  Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
+  a temporary block-written HDF5 file instead of a full dense realization.
   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
   \code{<stem>.h5}) and tags the backend with that relative location. The

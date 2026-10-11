@@ -1,0 +1,95 @@
+createShinyApp-sibling: .......................................................................................................................................................................................................................[2026-10-11 11:11:21.438238] CRB cache miss, loading: dataset.crb
+..[2026-10-11 11:11:21.537423] CRB cache miss, loading: dataset.crb
+[2026-10-11 11:11:21.573421] CRB cache hit: dataset.crb
+..............[2026-10-11 11:11:23.313927] CRB cache miss, loading: upload.crb
+..[2026-10-11 11:11:23.454692] CRB cache miss, loading: upload.crb
+.............................................................................................................................................[2026-10-11 11:11:33.102595] CRB cache miss, loading: dataset.crb
+[2026-10-11 11:11:33.111797] Attaching h5 backend (lazy TENxMatrix): /tmp/Rtmpc8mj6l/fileba2931815c24/host/matrix.h5
+.....123.456...........................................................................................[2026-10-11 11:11:44.796758] CRB cache miss, loading: modern.crb
+[2026-10-11 11:11:44.807916] Attaching h5 backend (lazy TENxMatrix): /tmp/Rtmpc8mj6l/fileba294521855a/modern/matrix.h5
+...[2026-10-11 11:11:44.931825] CRB cache miss, loading: legacy.crb
+[2026-10-11 11:11:44.950983] Attaching h5 backend (lazy TENxMatrix): /tmp/Rtmpc8mj6l/fileba294521855a/host/matrix.h5
+.........7.8......[2026-10-11 11:11:47.109791] CRB cache miss, loading: dataset.crb
+[2026-10-11 11:11:47.119197] Attaching h5 backend (lazy TENxMatrix): /tmp/Rtmpc8mj6l/fileba2966380af3/app/private-data/expression.h5
+.......[2026-10-11 11:11:47.974096] CRB cache miss, loading: dataset.crb
+[2026-10-11 11:11:47.983768] Attaching bpcells backend: /tmp/Rtmpc8mj6l/fileba297e875e53/app/private-data/expression.bpcells
+...[2026-10-11 11:11:48.64663] CRB cache miss, loading: dataset.crb
+[2026-10-11 11:11:48.652975] CRB cache hit: dataset.crb
+...[2026-10-11 11:11:48.680553] Attaching bpcells backend: /tmp/Rtmpc8mj6l/fileba291f3bf433/app/private-data/dataset.bpcells
+......
+exportFromSeurat: .................................S.[2026-10-11 11:11:51.190578] Attaching h5 backend (lazy TENxMatrix): /tmp/Rtmpc8mj6l/h5_attach_1791709911/trip.h5
+......
+r-functions: ................................................................................................................................
+resource-boundaries: .......[2026-10-11 11:11:55.377682] CRB background prefetch started: fileba29774da2d.crb
+.[2026-10-11 11:11:55.412705] CRB background prefetch started: fileba294d307c8b.crb
+.....[2026-10-11 11:11:55.488626] CRB background prefetch started: fileba29f1ad152.crb
+...[2026-10-11 11:11:55.576355] CRB background prefetch started: fileba29f1ad152.crb
+............................................
+utility_functions: ..............................................................................................................................................................
+viewer-review-feedback: ..................................................................................................................................................................................................................................................................................................................................................
+viewer-sync-performance: ..........................................
+
+══ Skipped ═════════════════════════════════════════════════════════════════════
+1. exportFromSeurat: h5 mode errors clearly when HDF5Array is missing ('test-exportFromSeurat.R:205:3') - Reason: requireNamespace("HDF5Array", quietly = TRUE) is TRUE
+
+══ Failed ══════════════════════════════════════════════════════════════════════
+── 1. Failure ('test-createShinyApp-sibling.R:2476:5'): one CRB cannot be reused
+Expected `build_test_app(...)` to throw a error.
+
+── 2. Failure ('test-createShinyApp-sibling.R:2488:5'): one CRB cannot be reused
+Expected `list.files(app, all.files = TRUE, no.. = TRUE)` to be identical to "marker.txt".
+Differences:
+Lengths differ: 5 is not 1
+
+── 3. Failure ('test-createShinyApp-sibling.R:2493:5'): one CRB cannot be reused
+Expected `marker_exists` to be TRUE.
+Differences:
+`actual`:   FALSE
+`expected`: TRUE 
+
+
+── 4. Failure ('test-createShinyApp-sibling.R:2476:5'): one CRB cannot be reused
+Expected `build_test_app(...)` to throw a error.
+
+── 5. Failure ('test-createShinyApp-sibling.R:2488:5'): one CRB cannot be reused
+Expected `list.files(app, all.files = TRUE, no.. = TRUE)` to be identical to "marker.txt".
+Differences:
+Lengths differ: 5 is not 1
+
+── 6. Failure ('test-createShinyApp-sibling.R:2493:5'): one CRB cannot be reused
+Expected `marker_exists` to be TRUE.
+Differences:
+`actual`:   FALSE
+`expected`: TRUE 
+
+
+── 7. Failure ('test-createShinyApp-sibling.R:3496:3'): Cerebro data labels cann
+`build_test_app(setNames(crb, NA_character_), app)` threw an error with unexpected message.
+Expected match: "labels must be non-empty and non-missing"
+Actual message: "cerebro_data identities must be non-empty and non-missing."
+Backtrace:
+    ▆
+ 1. ├─testthat::expect_error(...) at test-createShinyApp-sibling.R:3496:3
+ 2. │ └─testthat:::quasi_capture(...)
+ 3. │   ├─testthat (local) .capture(...)
+ 4. │   │ └─base::withCallingHandlers(...)
+ 5. │   └─rlang::eval_bare(quo_get_expr(.quo), quo_get_env(.quo))
+ 6. └─CerebroNexus (local) build_test_app(setNames(crb, NA_character_), app)
+ 7.   └─CerebroNexus::createShinyApp(...) at test-createShinyApp-sibling.R:239:3
+
+── 8. Failure ('test-createShinyApp-sibling.R:3509:3'): Cerebro data labels must
+`build_test_app(c(Dataset = first, Dataset = second), app)` threw an error with unexpected message.
+Expected match: "labels must be unique"
+Actual message: "cerebro_data identities must be unique."
+Backtrace:
+    ▆
+ 1. ├─testthat::expect_error(...) at test-createShinyApp-sibling.R:3509:3
+ 2. │ └─testthat:::quasi_capture(...)
+ 3. │   ├─testthat (local) .capture(...)
+ 4. │   │ └─base::withCallingHandlers(...)
+ 5. │   └─rlang::eval_bare(quo_get_expr(.quo), quo_get_env(.quo))
+ 6. └─CerebroNexus (local) build_test_app(c(Dataset = first, Dataset = second), app)
+ 7.   └─CerebroNexus::createShinyApp(...) at test-createShinyApp-sibling.R:239:3
+
+══ DONE ════════════════════════════════════════════════════════════════════════
+TOTAL 1275 passed 8 failed 0 errors 1 skipped 0 warnings
