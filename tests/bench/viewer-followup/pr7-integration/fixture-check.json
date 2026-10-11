@@ -1,0 +1,39 @@
+{
+  "environment": "WSL R 4.6.1",
+  "scope": "offline production render bodies; synthetic expression sentinels; no browser or performance claim",
+  "results": [
+    {
+      "dataset": "Mouse",
+      "generation": 1,
+      "cells": 1000000,
+      "indices": [1000000, 1, 500000],
+      "selected": ["TTTGTCATCTGAAAGA-133", "ATCGAGTGTATATGGA-69"],
+      "summary": ["selected", "not selected", "selected"],
+      "metadata_reads_before_selection": 0,
+      "checks": "passed",
+      "crb_sha256": "cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38"
+    },
+    {
+      "dataset": "Demo",
+      "generation": 2,
+      "cells": 1476,
+      "indices": [1476, 1, 738],
+      "selected": ["TTTGTCATCTTCGAGA-1", "CTCGAGGAGACGCTTT-1"],
+      "summary": ["selected", "not selected", "selected"],
+      "metadata_reads_before_selection": 0,
+      "checks": "passed",
+      "crb_sha256": "12db391431628db6c42fb226befc7fa8fe27392c50c74911f87415ae4a274e47"
+    },
+    {
+      "dataset": "Mouse",
+      "generation": 3,
+      "cells": 1000000,
+      "indices": [1000000, 1, 500000],
+      "selected": ["TTTGTCATCTGAAAGA-133", "ATCGAGTGTATATGGA-69"],
+      "summary": ["selected", "not selected", "selected"],
+      "metadata_reads_before_selection": 0,
+      "checks": "passed",
+      "crb_sha256": "cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38"
+    }
+  ]
+}

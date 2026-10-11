@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-10",
+  "production_head": "023b73249ae0be687665953dd0a6d9b0484b6f3d",
+  "source": "cb770fe9328fb7037a0008a1bb54fc2744cf86ae",
+  "files": [
+    {
+      "sha256": "e1f970964cb66ec2a188a80d39365d8a238c4a8676ee6ef7996282ed26ec0548",
+      "path": "inst/viewer/gene_expression/UI_expression_in_selected_cells.R"
+    },
+    {
+      "sha256": "fcb2bf7c0924b614ff7f598dad112cee21a2850482e8aeee3abbeb45b31d34c5",
+      "path": "inst/viewer/gene_expression/UI_table_of_selected_cells.R"
+    },
+    {
+      "sha256": "9dba14d4649409ed990cd668394374de1bf3a38f3005fd3d800354ae1b01b730",
+      "path": "inst/viewer/gene_expression/UI_expression_by_group.R"
+    },
+    {
+      "sha256": "c73c77db31c6014f7576e674fb005fa2ceb3ee77a846edff1c76615ce5805984",
+      "path": "inst/viewer/gene_expression/obj_projection_expression_levels.R"
+    },
+    {
+      "sha256": "e1c090d1c95909500ba602335714033c5fb1d9dfccc19a9667a48dcb59610626",
+      "path": "inst/viewer/www/cell_views.js"
+    },
+    {
+      "sha256": "28912e11c4c6dfb0d3801f9b943112a63a644c51081c372111c27a770908f6dd",
+      "path": "inst/viewer/utility_functions.R"
+    },
+    {
+      "sha256": "9a6fe25b8e31dfd5dc6520e236e1bc6aa92cd7e26d0a1b937856410edf059cd7",
+      "path": "tests/bench/viewer-followup/pr7-integration/AUDIT.md"
+    },
+    {
+      "sha256": "e687dd0015206bc0e120ed281bb950324e9a1f54702f0bf3524de18e84cc1e45",
+      "path": "tests/bench/viewer-followup/pr7-integration/baseline-tests.txt"
+    },
+    {
+      "sha256": "e5b82c316e82492fd9e9b795ef9df2193e690f9266f180a8a620c81a6346318c",
+      "path": "tests/bench/viewer-followup/pr7-integration/compatibility-tests.txt"
+    },
+    {
+      "sha256": "46b0551a4f88beaa4191dfdd3e21935466b250037b4aa0cac7f7623ed01ec045",
+      "path": "tests/bench/viewer-followup/pr7-integration/fixture-check.json"
+    },
+    {
+      "sha256": "7164c82b1a477bd46b7359029ec004c6eae265224e6848bf16ca6aba6a6b63bd",
+      "path": "tests/bench/viewer-followup/pr7-integration/fixture-check.R"
+    },
+    {
+      "sha256": "b2f20788b5695e079f08d1cde87551d10dea9b8a7c7b1b3a3f0ad8ebb45bc187",
+      "path": "tests/bench/viewer-followup/pr7-integration/lifecycle-tests.md"
+    },
+    {
+      "sha256": "4e63774823d42b74748483f02292ed63757669ba1cffe7a85452e6dedfefcd52",
+      "path": "tests/bench/viewer-followup/pr7-integration/reproduce.R"
+    },
+    {
+      "sha256": "f4a9b55fe7b9a19770fa8563d3d3708d6568009815c849b28373b6058a2f5dda",
+      "path": "tests/bench/viewer-followup/pr7-integration/RESULTS.md"
+    },
+    {
+      "sha256": "bbbd4abe092d0693b885491ce91197a35b73ebe45a348914ebb7e2f517dd2e53",
+      "path": "tests/bench/viewer-followup/pr7-integration/run-tests.R"
+    },
+    {
+      "sha256": "569a828ddf8c91de359cbca468ef7c0fd08bb53ed483d596a0df04b2cc132d29",
+      "path": "tests/bench/viewer-followup/pr7-integration/selection-tests.txt"
+    },
+    {
+      "sha256": "5962d7fb3182f8a43a732f161be03fb27ed44dfc7f1d42df2b3c436061a3e80c",
+      "path": "tests/bench/viewer-followup/pr7-integration/targeted-tests.txt"
+    },
+    {
+      "sha256": "528baf48168cc5100486472ef61fd69955b1c4c0b4936bc3147524c0ddc85276",
+      "path": "tests/testthat/test-gene-selection-canonical.R"
+    },
+    {
+      "sha256": "07c0c10fe7c0bb1be4aeb9d40e6ca783d558219f05bb794bd431a1dcb35804d5",
+      "path": "tests/testthat/test-gene-progress-lifecycle.R"
+    }
+  ],
+  "baseline": "2dbd6668744f5eb6c6898771a1c2cc566b0aa6c3",
+  "final_closeout": {
+    "date": "2026-10-10",
+    "starting_head": "33c5d71c3aaa7b07a6617260a0644673811c6c40",
+    "result": "Native Brave acceptance incomplete: Computer Use could not verify current URL. User-defined stop condition reached; production and test conclusions unchanged.",
+    "previous_results_sha256": "67c18b184b354414a01748b929de292743eec113232eeac5e0c144818bf76018"
+  }
+}

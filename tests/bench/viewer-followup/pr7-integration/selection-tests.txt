@@ -1,0 +1,17 @@
+WSL R 4.6.1, 2026-10-10; testthat::test_local, production candidate.
+cell-view-state: 34 PASS
+gene-hover-demand: 2 PASS
+gene-selection-canonical: 10 PASS
+viewer-dataset-context: 101 PASS
+viewer-shared-selection: 36 PASS
+Total: 183 PASS; no failures, warnings or skips.
+
+Baseline production-body replay via reproduce.R: 6 failures / 4 passes.
+Numeric barcode 1 incorrectly matched subset row 2 instead of canonical cell 3;
+expression 0 returned instead of NA; mixed stable barcode cohorts and full-frame
+non-numeric barcode selection also failed. Candidate fixes all six failures.
+
+Browser boundary: sky.get_window/get_window_state was blocked by Computer Use:
+"could not determine the current browser URL on Windows with enough confidence
+to enforce policy." No browser input issued, no bypass attempted, no native
+Brave pass claimed. Offline tests do not substitute for that acceptance.

@@ -182,6 +182,12 @@ observeEvent(input[["expression_projection_rendered_key"]], {
   )
 }, ignoreInit = TRUE)
 
+observeEvent(input[["sidebar"]], {
+  if (!identical(input[["sidebar"]], "geneExpression")) {
+    expressionProjectionProgressClose()
+  }
+}, ignoreInit = FALSE)
+
 if (
   exists("session", inherits = TRUE) &&
     is.function(tryCatch(session$onSessionEnded, error = function(error) NULL))
@@ -239,9 +245,13 @@ expression_projection_expression_levels <- reactive({
   )
   render_key <- expression_projection_render_key()
   painted_key <- isolate(input[["expression_projection_rendered_key"]])
+  ## Visibility/request state controls the progress UI, not expression reads.
+  ## Navigation and request acknowledgements must not invalidate these values.
   if (
-    length(genes_present) ||
-      (!is.null(painted_key) && !identical(painted_key, render_key))
+    identical(isolate(input[["sidebar"]]), "geneExpression") &&
+      !is.null(isolate(input[["expression_projection_render_request"]])) &&
+      !identical(painted_key, render_key) &&
+      (length(genes_present) || !is.null(painted_key))
   ) {
     expressionProjectionProgressStart(render_key)
   } else {

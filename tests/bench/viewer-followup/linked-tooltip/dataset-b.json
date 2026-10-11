@@ -1,0 +1,504 @@
+{
+  "text": "Linked views\n1,476 cells · 2 linked spaces (umap (expression) · Clonal expansion (TCR)) · 595 receptor-bearing cells, 587 clonotypes\nInfo\nColour by\nseurat_clusters\nProjection\numap\n×\nClonal layout\nRank\nstack\nExpansion\nbands\nShare\nSettings\nLINKED WORKSPACE\nDrag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked.\nInteraction enabled for 1,476 cells: hover and linked selection are active.\nUse static mode\n0\n(322)\n1\n(280)\n2\n(215)\n3\n(213)\n4\n(129)\n5\n(91)\n6\n(78)\n7\n(68)\n8\n(58)\n9\n(22)\numap (expression)\nFocus\numap (expression) view with 1476 points; 0 selected.\n0\nClone Expansion: No receptor\nDetails\nClose\nClonal expansion (TCR)\nFocus\nClonal expansion (TCR) view with 1476 points; 0 selected.\n0",
+  "tips": [
+    {
+      "id": "cv-tip-a",
+      "opacity": "0",
+      "text": "0Clone Expansion: No receptorDetailsClose"
+    },
+    {
+      "id": "cv-tip-b",
+      "opacity": "0",
+      "text": "0"
+    },
+    {
+      "id": "cv-tip-c",
+      "opacity": "0",
+      "text": ""
+    },
+    {
+      "id": "cv-tip-d",
+      "opacity": "0",
+      "text": ""
+    }
+  ],
+  "probe": {
+    "events": [
+      {
+        "at": 27553.60000014305,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": false,
+          "painted": true,
+          "complete": false,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+          "renderedPointCount": 1000000,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 11.399999856948853,
+          "gpuPositionUploads": 1,
+          "primary": {
+            "bytes": 2604,
+            "serverPrepareMs": 274.0000000000009,
+            "serializeTransferMs": 579.241943359375,
+            "decodeMs": 0.2999999523162842,
+            "serverResourceMs": 262.9999999999981,
+            "serverBundleMs": 11.000000000002785,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 2143.4000000953674,
+            "projectionFetchMs": 345,
+            "projectionBytes": 8000000,
+            "projectionDownloadMs": 332.2999999523163,
+            "projectionDecodeMs": 13.099999904632568,
+            "metadataFetchMs": 109.59999990463257,
+            "metadataBytes": 1000000,
+            "applyMs": 184.60000014305115,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 530.4000000953674
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Mouse",
+          "generation": 2
+        }
+      },
+      {
+        "at": 32335.10000014305,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": true,
+          "painted": true,
+          "complete": true,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+          "renderedPointCount": 1000000,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 17.800000429153442,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 2604,
+            "serverPrepareMs": 274.0000000000009,
+            "serializeTransferMs": 579.241943359375,
+            "decodeMs": 0.2999999523162842,
+            "serverResourceMs": 262.9999999999981,
+            "serverBundleMs": 11.000000000002785,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 2143.4000000953674,
+            "projectionFetchMs": 345,
+            "projectionBytes": 8000000,
+            "projectionDownloadMs": 332.2999999523163,
+            "projectionDecodeMs": 13.099999904632568,
+            "metadataFetchMs": 109.59999990463257,
+            "metadataBytes": 1000000,
+            "applyMs": 184.60000014305115,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 530.4000000953674
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Mouse",
+          "generation": 2
+        }
+      },
+      {
+        "at": 127682.30000019073,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": true,
+          "painted": true,
+          "complete": true,
+          "selectedCells": 163941,
+          "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+          "renderedPointCount": 1000000,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 2604,
+            "serverPrepareMs": 274.0000000000009,
+            "serializeTransferMs": 579.241943359375,
+            "decodeMs": 0.2999999523162842,
+            "serverResourceMs": 262.9999999999981,
+            "serverBundleMs": 11.000000000002785,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 2143.4000000953674,
+            "projectionFetchMs": 345,
+            "projectionBytes": 8000000,
+            "projectionDownloadMs": 332.2999999523163,
+            "projectionDecodeMs": 13.099999904632568,
+            "metadataFetchMs": 109.59999990463257,
+            "metadataBytes": 1000000,
+            "applyMs": 184.60000014305115,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 530.4000000953674
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Mouse",
+          "generation": 2
+        }
+      },
+      {
+        "at": 139496.40000009537,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": true,
+          "painted": false,
+          "complete": true,
+          "selectedCells": 163941,
+          "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+          "renderedPointCount": 1000000,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 2604,
+            "serverPrepareMs": 274.0000000000009,
+            "serializeTransferMs": 579.241943359375,
+            "decodeMs": 0.2999999523162842,
+            "serverResourceMs": 262.9999999999981,
+            "serverBundleMs": 11.000000000002785,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 2143.4000000953674,
+            "projectionFetchMs": 345,
+            "projectionBytes": 8000000,
+            "projectionDownloadMs": 332.2999999523163,
+            "projectionDecodeMs": 13.099999904632568,
+            "metadataFetchMs": 109.59999990463257,
+            "metadataBytes": 1000000,
+            "applyMs": 184.60000014305115,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 530.4000000953674
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Mouse",
+          "generation": 2
+        }
+      },
+      {
+        "at": 149742.90000009537,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": false,
+          "painted": true,
+          "complete": false,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+          "renderedPointCount": 1476,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 55756,
+            "serverPrepareMs": 98.99999999998954,
+            "serializeTransferMs": 45.931396484375,
+            "decodeMs": 0.40000009536743164,
+            "serverResourceMs": 0,
+            "serverBundleMs": 94.99999999999886,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 199.90000009536743,
+            "projectionFetchMs": 0,
+            "projectionBytes": 0,
+            "projectionDownloadMs": 0,
+            "projectionDecodeMs": 0,
+            "metadataFetchMs": 0,
+            "metadataBytes": 0,
+            "applyMs": 33.799999952316284,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 33.799999952316284
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Demo",
+          "generation": 3
+        }
+      },
+      {
+        "at": 149814,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": false,
+          "painted": true,
+          "complete": false,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+          "renderedPointCount": 1476,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 55756,
+            "serverPrepareMs": 98.99999999998954,
+            "serializeTransferMs": 45.931396484375,
+            "decodeMs": 0.40000009536743164,
+            "serverResourceMs": 0,
+            "serverBundleMs": 94.99999999999886,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 199.90000009536743,
+            "projectionFetchMs": 0,
+            "projectionBytes": 0,
+            "projectionDownloadMs": 0,
+            "projectionDecodeMs": 0,
+            "metadataFetchMs": 0,
+            "metadataBytes": 0,
+            "applyMs": 33.799999952316284,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 33.799999952316284
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Demo",
+          "generation": 3
+        }
+      },
+      {
+        "at": 149866,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": false,
+          "painted": true,
+          "complete": false,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+          "renderedPointCount": 1476,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 55756,
+            "serverPrepareMs": 98.99999999998954,
+            "serializeTransferMs": 45.931396484375,
+            "decodeMs": 0.40000009536743164,
+            "serverResourceMs": 0,
+            "serverBundleMs": 94.99999999999886,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 199.90000009536743,
+            "projectionFetchMs": 0,
+            "projectionBytes": 0,
+            "projectionDownloadMs": 0,
+            "projectionDecodeMs": 0,
+            "metadataFetchMs": 0,
+            "metadataBytes": 0,
+            "applyMs": 33.799999952316284,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 33.799999952316284
+          },
+          "supplement": {
+            "bytes": 74888,
+            "serverPrepareMs": 2253,
+            "serializeTransferMs": 22.9091796875,
+            "decodeMs": 0.5,
+            "decodeToDrawMs": 342.40000009536743
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Demo",
+          "generation": 3
+        }
+      },
+      {
+        "at": 152897.40000009537,
+        "detail": {
+          "page": "coordinated_views",
+          "primaryReady": true,
+          "ready": true,
+          "painted": true,
+          "complete": true,
+          "selectedCells": 0,
+          "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+          "renderedPointCount": 1476,
+          "projections": [
+            "umap"
+          ],
+          "spatialSections": [],
+          "benchmarkGeneration": 0,
+          "eventKind": "primary"
+        },
+        "transport": {
+          "gpuUploadMs": 22.399999856948853,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 55756,
+            "serverPrepareMs": 98.99999999998954,
+            "serializeTransferMs": 45.931396484375,
+            "decodeMs": 0.40000009536743164,
+            "serverResourceMs": 0,
+            "serverBundleMs": 94.99999999999886,
+            "clickToRequestMs": null,
+            "requestToBinaryMs": 199.90000009536743,
+            "projectionFetchMs": 0,
+            "projectionBytes": 0,
+            "projectionDownloadMs": 0,
+            "projectionDecodeMs": 0,
+            "metadataFetchMs": 0,
+            "metadataBytes": 0,
+            "applyMs": 33.799999952316284,
+            "rendererInitializationMs": 200.5,
+            "decodeToDrawMs": 33.799999952316284
+          },
+          "supplement": {
+            "bytes": 29164,
+            "serverPrepareMs": 298.9999999999782,
+            "serializeTransferMs": 12.966796875,
+            "decodeMs": 0.20000004768371582,
+            "decodeToDrawMs": 12.699999809265137
+          },
+          "clone": {
+            "bytes": 601240,
+            "serverPrepareMs": 144,
+            "serializeTransferMs": 7.689697265625,
+            "decodeMs": 2.799999952316284,
+            "decodeToDrawMs": 184.70000004768372
+          }
+        },
+        "context": {
+          "epoch": "lc9Egq4qYpVdHl3mUCRdyzSl",
+          "dataset_key": "Demo",
+          "generation": 3
+        }
+      }
+    ],
+    "errors": []
+  }
+}

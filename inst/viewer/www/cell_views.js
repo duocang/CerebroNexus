@@ -3847,6 +3847,9 @@
       gn.slice(0, HOVER_MAX_GROUPS).forEach(function (k) {
         if (k === colorBy) return;
         var gg = D.groups[k];
+        // Pinned summaries show available groups without loading deferred columns.
+        // The Details action already requests the complete metadata row on demand.
+        if (!gg || gg.values == null) return;
         rows.push([groupLabel(k), gg.levels[gg.values[i]]]);
       });
     }

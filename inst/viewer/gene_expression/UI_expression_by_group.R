@@ -66,6 +66,10 @@ output[["expression_by_group"]] <- plotly::renderPlotly({
   )
   cells_df <- expression_projection_data()
   selected_group <- input[["expression_by_group_selected_group"]]
+  req(
+    selected_group %in% colnames(cells_df),
+    length(cells_df[[selected_group]]) == nrow(cells_df)
+  )
   plotExpressionSummary(
     expression_summary_data()$series,
     cells_df[[selected_group]],

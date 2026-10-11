@@ -72,11 +72,12 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
   }
   cells_df <- cells_df %>%
     dplyr::rename(X1 = 1, X2 = 2)
-  cells_df[["selection_key"]] <- if ("cell_barcode" %in% colnames(cells_df)) {
-    as.character(cells_df[["cell_barcode"]])
-  } else {
-    as.character(seq_len(nrow(cells_df)))
-  }
+  ## Read canonical identity only for a requested, nonempty selection. The
+  ## compact first-frame cell_barcode column may contain numeric placeholders.
+  cells_df[["selection_key"]] <- as.character(
+    getMetaData()[["cell_barcode"]][expression_projection_cells_to_show()]
+  )
+  cells_df[["cell_barcode"]] <- cells_df[["selection_key"]]
   stable_selection <- "selection_key" %in% colnames(selected_cells) &&
     any(!is.na(selected_cells[["selection_key"]]) &
       nzchar(as.character(selected_cells[["selection_key"]])))

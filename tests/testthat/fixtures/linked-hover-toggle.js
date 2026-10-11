@@ -17,6 +17,8 @@ function nearest(){lookups++;return 42;}
 function singleHoverEnabledAt(){return true;}
 let hoverValue = 'cell';
 function hoverHtml(i){return hoverValue+' '+i;}
+function scheduleSingleMetadata(){}
+function singleView(){return null;}
 function placeTip(){}
 eval(source.slice(source.indexOf('  function syncLinkedHoverDefault('),
   source.indexOf('  // ---- brush + pick')));
