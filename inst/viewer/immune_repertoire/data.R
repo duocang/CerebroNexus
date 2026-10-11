@@ -891,6 +891,8 @@ ir_clonal_umap_data <- function(
     barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
     clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
   }
+  # Display filters and sampling must not redefine the biological clone size.
+  full_expansion <- if (is.null(packed)) ir_clone_expansion(clones) else NULL
   if (!indexed_pack) {
     valid <- !is.na(clones) & nzchar(clones)
     coord_index <- match(barcodes, coord_bc)
@@ -915,7 +917,7 @@ ir_clonal_umap_data <- function(
         labels = IR_CLONE_LABELS
       )
     } else {
-      ir_clone_expansion(clones)
+      full_expansion[valid]
     }
   }
   receptor_indices <- unique(coord_index)

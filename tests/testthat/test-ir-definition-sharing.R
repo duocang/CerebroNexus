@@ -627,3 +627,34 @@ test_that("ir_build_sharing_plot keeps 3-class x order Private -> within -> acro
     c("Private (1 sample)", "Shared within group", "Shared across groups")
   )
 })
+
+
+test_that("clonal expansion is independent of display filtering and pack presence", {
+  scope <- new.env(parent = ir_env)
+  # Rebind the actual helper to an isolated fixture, without changing other tests.
+  f <- ir_env$ir_clonal_umap_data
+  environment(f) <- scope
+  cells <- paste0("c", 1:6)
+  coords <- data.frame(x = 1:6, y = 6:1, row.names = cells)
+  scope$availableProjections <- function() "umap"
+  scope$getProjection <- function(...) coords
+  scope$ir_data_annotated <- function() list(sample = data.frame(
+    barcode = cells, CTgene = rep("TRB-clone", 6)))
+  scope$ir_clonecall_col <- function(...) "CTgene"
+  scope$ir_umap_chains <- function(...) "TRB"
+  packed <- NULL
+  scope$viewerPackCurrent <- function() list(cells = cells)
+  scope$viewerPackImmuneIndex <- function(...) packed
+  plain <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(as.character(plain$expansion), "Medium (5 < X <= 20)")
+  packed <- list(cell_index = 1:6, clone = rep("TRB-clone", 6),
+    expansion = as.integer(ir_env$ir_clone_expansion(rep("TRB-clone", 6))))
+  cached <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(cached, plain)
+  scope$viewerPackCurrent <- function() list(cells = cells, canonical_order = TRUE)
+  scope$viewerProjectionFirstFrameCoordinates <- function(...) coords
+  scope$viewerPackCellBarcodes <- function(...) cells
+  indexed <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(indexed$expansion, plain$expansion)
+  expect_equal(indexed$x, plain$x)
+})
