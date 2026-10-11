@@ -519,6 +519,10 @@ viewerProjectionFirstFrameCoordinates <- function(name) {
   if (!is.null(projection) && name %in% cache$canonical_projections) return(projection)
   projection <- getProjection(name)
   cells <- getMetaData()[["cell_barcode"]]
+  viewerAlignProjection(projection, cells)
+}
+
+viewerAlignProjection <- function(projection, cells) {
   ids <- rownames(projection)
   if (is.null(cells) || is.null(ids) || anyNA(cells) || anyNA(ids) ||
       any(!nzchar(cells)) || any(!nzchar(ids)) || anyDuplicated(cells) ||
@@ -3857,6 +3861,7 @@ get_or_load_crb <- function(
     meta_data = metadata,
     projections = projections,
     canonical_projections = schema$projection_rownames,
+    aligned_projections = new.env(parent = emptyenv()),
     gene_names = gene_names
   )
   hydrate <- local({

@@ -877,7 +877,12 @@ cv_build_attribute <- function(
 ## A 3-D embedding also sends its third dimension, so the client can orbit it
 ## rather than show a flattened shadow of it. `ndim` travels either way — the
 ## client needs to know which panels can rotate and which are flat.
-cv_build_projections <- function(crb, cells, only = NULL, preloaded = NULL) {
+cv_build_projections <- function(crb, cells, only = NULL, preloaded = NULL,
+                                 canonical_projections = character(),
+                                 aligned_cache = NULL) {
+  # Only unverified thin projections need canonical barcodes. Keep this lazy
+  # so ordinary canonical first frames never hydrate the full metadata.
+  canonical_cells <- NULL
   proj_names <- if (is.list(preloaded)) {
     names(preloaded)
   } else {
@@ -896,7 +901,23 @@ cv_build_projections <- function(crb, cells, only = NULL, preloaded = NULL) {
     if (is.null(pj)) {
       next
     }
-    aligned <- is.list(preloaded) && nrow(pj) == length(cells)
+    aligned <- FALSE
+    if (is.list(preloaded)) {
+      if (nrow(pj) != length(cells)) {
+        stop("Preloaded projection does not match the canonical cell count.", call. = FALSE)
+      }
+      if (!pn %in% canonical_projections) {
+        cached <- if (is.environment(aligned_cache)) aligned_cache[[pn]] else NULL
+        if (is.null(cached) && is.null(canonical_cells)) {
+          canonical_cells <- crb$getMetaData()$cell_barcode
+        }
+        pj <- if (!is.null(cached)) cached else viewerAlignProjection(pj, canonical_cells)
+        if (is.null(cached) && is.environment(aligned_cache)) aligned_cache[[pn]] <- pj
+      }
+      # Reaching this branch means schema-verified or barcode-aligned, not
+      # merely the same row count. `cells` is the thin frame's integer index.
+      aligned <- TRUE
+    }
     projection_cells <- if (aligned) {
       NULL
     } else {
@@ -1838,7 +1859,9 @@ cv_build_bundle <- function(
           crb,
           cells,
           projection_name,
-          preloaded = if (use_first_frame) first_frame$projections else NULL
+          preloaded = if (use_first_frame) first_frame$projections else NULL,
+          canonical_projections = first_frame$canonical_projections,
+          aligned_cache = first_frame$aligned_projections
         )
         if (length(built)) {
           break
@@ -2074,7 +2097,9 @@ cv_build_compact_supplement <- function(
       crb,
       seq_len(primary$n),
       setdiff(projection_names, names(primary$projections)),
-      first_frame$projections
+      first_frame$projections,
+      canonical_projections = first_frame$canonical_projections,
+      aligned_cache = first_frame$aligned_projections
     ),
     spaces = if (is.null(clone)) list() else list(clone$space),
     clone = if (is.null(clone)) NULL else clone$bundle,
