@@ -1,0 +1,95 @@
+##---------------------------------------------------------------------------##
+## Launching CerebroNexus
+##---------------------------------------------------------------------------##
+Loading required package: shiny
+
+Listening on http://127.0.0.1:8947
+[2026-10-11 10:49:22.308605] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 10:49:22.343471] Format of expression data: dgCMatrix
+[2026-10-11 10:49:22.616488] WebGL status: TRUE
+[2026-10-11 10:49:22.623224] Show hover info status: TRUE
+[2026-10-11 10:49:47.942509] CRB cache hit: cerebro_ren_covid_1.46m.crb
+[2026-10-11 10:49:49.113783] Data loaded; expression backend will attach on first use.
+[2026-10-11 10:50:39.662194] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 10:50:39.742595] Format of expression data: dgCMatrix
+[2026-10-11 10:50:47.905554] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 10:50:47.923073] Format of expression data: dgCMatrix
+[IR ERROR] Plot 'clonalHomeostasis' failed: Homeostasis clone or grouping column is missing.

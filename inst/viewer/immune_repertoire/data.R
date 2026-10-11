@@ -500,18 +500,50 @@ ir_homeostasis_counts <- function(data, clone_col) {
   do.call(rbind, rows)
 }
 
+## Pool clonotypes across samples within each metadata group. Keep only the two
+## required columns; scRepertoire's wide rbind/split copies every receptor field.
+## Blank clones count, NA clones do not. Match its removal of all-NA samples
+## before grouping, and split()'s missing-group/unused-factor-level semantics.
+ir_grouped_homeostasis_counts <- function(data, clone_col, group_by) {
+  frames <- lapply(data, function(frame) {
+    if (!all(c(clone_col, group_by) %in% names(frame))) {
+      stop("Homeostasis clone or grouping column is missing.")
+    }
+    if (!nrow(frame) || all(is.na(frame[[clone_col]]))) return(NULL)
+    frame <- frame[, unique(c(clone_col, group_by)), drop = FALSE]
+    rownames(frame) <- NULL
+    frame
+  })
+  frames <- Filter(Negate(is.null), frames)
+  if (!length(frames)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
+  pooled <- do.call(rbind, unname(frames))
+  groups <- split(as.character(pooled[[clone_col]]), pooled[[group_by]])
+  rows <- Map(function(clones, group) {
+    clones <- clones[!is.na(clones)]
+    if (!length(clones)) return(data.frame(sample = group, abundance = 0L, n_clones = 0L))
+    sizes <- tabulate(match(clones, unique(clones)))
+    bins <- table(sizes)
+    data.frame(sample = group, abundance = as.integer(names(bins)),
+      n_clones = as.integer(bins), stringsAsFactors = FALSE)
+  }, groups, names(groups))
+  if (!length(rows)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
+  do.call(rbind, rows)
+}
+
 ir_homeostasis_matrix <- function(counts, clone_size) {
   samples <- unique(counts$sample)
   bounds <- c(0, unname(clone_size))
   labels <- paste0(names(clone_size), " (", head(bounds, -1), " < X <= ", tail(bounds, -1), ")")
   result <- matrix(0, length(samples), length(clone_size), dimnames = list(samples, labels))
-  for (sample in samples) {
+  for (sample_index in seq_along(samples)) {
+    sample <- samples[[sample_index]]
     rows <- counts[counts$sample == sample, , drop = FALSE]
     total <- sum(as.double(rows$abundance) * rows$n_clones)
+    if (total == 0) next
     fraction <- rows$abundance / total
     for (i in seq_along(clone_size)) {
       keep <- fraction > bounds[[i]] & fraction <= bounds[[i + 1L]]
-      result[sample, i] <- sum(fraction[keep] * rows$n_clones[keep])
+      result[sample_index, i] <- sum(fraction[keep] * rows$n_clones[keep])
     }
   }
   result

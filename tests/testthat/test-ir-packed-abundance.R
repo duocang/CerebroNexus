@@ -126,7 +126,16 @@ test_that("Homeostasis renderer defers hydration and preserves analytical fallba
   expect_error(render(), "analytical fallback")
   pars$chain <- "both"
   pars$groupBy <- "patient"
-  expect_error(render(), "analytical fallback")
+  env$getGroups <- function() "patient"
+  env$ir_data <- function() "current raw data"
+  env$ir_grouped_homeostasis_counts <- function(data, column, group) {
+    expect_identical(data, "current raw data")
+    expect_identical(group, "patient")
+    "grouped counts"
+  }
+  expect_identical(render(), "grouped counts")
+  env$getGroups <- function() "new_dataset_group"
+  expect_error(render(), class = "shiny.silent.error")
   pars$groupBy <- NULL
   order <- "alphanumeric"
   expect_error(render(), "analytical fallback")

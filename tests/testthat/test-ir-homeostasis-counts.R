@@ -60,3 +60,50 @@ test_that("Homeostasis plot preserves stacked cell proportions", {
   expected <- ggplot2::ggplot_build(reference)$data[[1]]
   expect_equal(actual[c("x", "y", "ymin", "ymax", "fill")], expected[c("x", "y", "ymin", "ymax", "fill")], ignore_attr = TRUE)
 })
+
+test_that("grouped Homeostasis pools exact clone identities and preserves empty levels", {
+  skip_if_not_installed("scRepertoire")
+  make <- function(clones, groups) {
+    data.frame(CTgene = clones, CTnt = clones, CTaa = clones, CTstrict = clones,
+      severity = groups, stringsAsFactors = FALSE)
+  }
+  raw <- list(B = make(c("same", "same", "", "NA", NA, "克隆", "a\034b"),
+    c("mild", "severe", "mild", "", "zero", NA, "g\034x")),
+    A = make(c("same", "same", "", "a\034b"), c("mild", "mild", "severe", "g\034x")),
+    empty = make(character(), character()),
+    missing = make(NA_character_, "all_missing_sample"))
+  for (factor_groups in c(FALSE, TRUE)) {
+    data <- raw
+    if (factor_groups) data <- lapply(data, function(x) {
+      x$severity <- factor(x$severity,
+        levels = c("severe", "mild", "", "zero", "g\034x", "unused", "all_missing_sample"))
+      x
+    })
+    for (call in c("gene", "nt", "aa", "strict")) {
+      counts <- ir_home_env$ir_grouped_homeostasis_counts(data, paste0("CT", call), "severity")
+      for (breaks in list(c(A = .25, B = .5, C = 1), c(A = .25, B = .5))) {
+        expected <- scRepertoire::clonalHomeostasis(data, cloneCall = call,
+          chain = "both", group.by = "severity", cloneSize = breaks, exportTable = TRUE)
+        expect_equal(ir_home_env$ir_homeostasis_matrix(counts, breaks), expected, tolerance = 1e-12)
+      }
+    }
+    # Shared clone "same" has three cells in mild, even across source samples.
+    mild <- counts[counts$sample == "mild", ]
+    expect_equal(mild$abundance, c(1L, 3L))
+    expect_equal(mild$n_clones, c(1L, 1L))
+  }
+  data <- list(B = make(c("x", "x", "y"), c("severe", "mild", "mild")),
+    A = make(c("x", "z"), c("mild", "severe")))
+  breaks <- c(Small = .5, Large = 1)
+  actual <- ir_home_env$ir_homeostasis_plot(
+    ir_home_env$ir_grouped_homeostasis_counts(data, "CTgene", "severity"), breaks, "inferno")
+  expected <- scRepertoire::clonalHomeostasis(data, cloneCall = "gene", group.by = "severity",
+    cloneSize = breaks, palette = "inferno")
+  cols <- c("x", "y", "ymin", "ymax", "fill")
+  expect_equal(ggplot2::ggplot_build(actual)$data[[1]][cols],
+    ggplot2::ggplot_build(expected)$data[[1]][cols], ignore_attr = TRUE)
+  expect_error(ir_home_env$ir_grouped_homeostasis_counts(data, "CTgene", "absent"), "missing")
+  # A new dataset must produce its own labels, not reuse a grouped result.
+  other <- list(C = make(c("q", "q"), c("new", "new")))
+  expect_identical(ir_home_env$ir_grouped_homeostasis_counts(other, "CTgene", "severity")$sample, "new")
+})

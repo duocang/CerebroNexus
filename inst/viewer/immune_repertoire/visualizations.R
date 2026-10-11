@@ -1565,11 +1565,17 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
   req_plot_space("ir_plot_clonalHomeostasis")
   pars <- ir_params()
   req(pars$chain, pars$cloneCall)
-  if (identical(pars$chain, "both") && is.null(pars$groupBy) && is.null(ir_order_by())) {
-    return(ir_render_ggplotly(
-      ir_homeostasis_plot(ir_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall)),
-        ir_clone_size(), IR_PALETTE), "clonalHomeostasis"
-    ))
+  # Dataset switches can deliver the old grouping before its selector resets.
+  if (!is.null(pars$groupBy)) req(pars$groupBy %in% getGroups())
+  if (identical(pars$chain, "both") && is.null(ir_order_by())) {
+    return(ir_render_ggplotly({
+      counts <- if (is.null(pars$groupBy)) {
+        ir_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall))
+      } else {
+        ir_grouped_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall), pars$groupBy)
+      }
+      ir_homeostasis_plot(counts, ir_clone_size(), IR_PALETTE)
+    }, "clonalHomeostasis"))
   }
   req_scRepertoire()
   data <- ir_data()
