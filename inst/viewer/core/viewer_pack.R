@@ -374,7 +374,8 @@ viewerPackSpatialFrame <- function(pack, name) {
 }
 
 viewerPackGroupMetric <- function(pack, group, metric) {
-  if (is.null(pack) || !is.list(pack)) {
+  if (is.null(pack) || !is.list(pack) ||
+      !identical(pack$manifest$violin_summary_version, 1L)) {
     return(NULL)
   }
   frames <- pack$manifest$group_metric_frames
@@ -403,7 +404,7 @@ viewerPackGroupMetric <- function(pack, group, metric) {
   ) {
     return(NULL)
   }
-  value[, c(group, metric), drop = FALSE]
+  value
 }
 
 viewerPackHlaSegments <- function(pack, chain) {

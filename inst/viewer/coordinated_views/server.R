@@ -1288,9 +1288,9 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       x = violin_data[["group"]],
       y = violin_data[["value"]],
       type = "violin",
-      box = list(visible = TRUE),
-      meanline = list(visible = TRUE),
-      color = grp,
+      box = list(visible = FALSE),
+      meanline = list(visible = FALSE),
+      color = violin_data[["group"]],
       colors = setNames(
         c("#e74c3c", "#7f8c8d"),
         c("selected", "not selected")
@@ -1299,6 +1299,7 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       hoverinfo = "y",
       marker = list(size = 5)
     )
+    plot <- addExactViolinSummary(plot, violin_data)
     y_axis_title <- var
   } else {
     return(NULL)

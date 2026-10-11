@@ -662,54 +662,18 @@
   )
 }
 
-.viewerPackCompactViolinData <- function(
-  metadata,
-  group,
-  metric,
-  max_points_per_group = 4096L
-) {
-  table <- metadata[, c(group, metric), drop = FALSE]
-  values <- table[[metric]]
-  groups <- table[[group]]
-  valid <- !is.na(values) & is.finite(values) & !is.na(groups)
-  rows_by_group <- split(which(valid), groups[valid], drop = TRUE)
-  if (!length(rows_by_group)) {
-    return(table[integer(), , drop = FALSE])
+.viewerPackCompactViolinData <- local({
+  compact <- NULL
+  function(metadata, group, metric, max_points_per_group = 4096L) {
+    if (is.null(compact)) {
+      scope <- new.env(parent = baseenv())
+      sys.source(system.file("viewer", "plotting_functions.R",
+        package = "CerebroNexus", mustWork = TRUE), envir = scope)
+      compact <<- scope$compactViolinData
+    }
+    compact(metadata, metric, group, max_points_per_group)
   }
-  compact <- lapply(rows_by_group, function(rows) {
-    if (length(rows) <= max_points_per_group) {
-      return(table[rows, , drop = FALSE])
-    }
-    sampled_values <- unname(stats::quantile(
-      values[rows],
-      probs = (seq_len(max_points_per_group) - 0.5) /
-        max_points_per_group,
-      type = 8
-    ))
-    target_mean <- mean(values[rows])
-    sampled_mean <- mean(sampled_values)
-    if (
-      length(unique(sampled_values)) == 1L &&
-        min(values[rows]) != max(values[rows])
-    ) {
-      sampled_values[[length(sampled_values)]] <-
-        target_mean * length(sampled_values) -
-        sampled_values[[1L]] * (length(sampled_values) - 1L)
-      sampled_mean <- mean(sampled_values)
-    }
-    if (sampled_mean != target_mean && all(values[rows] >= 0)) {
-      sampled_values <- sampled_values * target_mean / sampled_mean
-    } else if (sampled_mean != target_mean) {
-      sampled_values <- sampled_values + target_mean - sampled_mean
-    }
-    result <- table[rep(rows[[1L]], max_points_per_group), , drop = FALSE]
-    result[[metric]] <- sampled_values
-    result
-  })
-  result <- do.call(rbind, compact)
-  rownames(result) <- NULL
-  result
-}
+})
 
 .viewerPackGroupMetricAssets <- function(object, metadata, stage) {
   groups <- intersect(
@@ -1139,6 +1103,7 @@ buildViewerPack <- function(
   manifest <- list(
     schema_version = .viewerPackSchemaVersion,
     projection_identity_version = 1L,
+    violin_summary_version = 1L,
     dataset_fingerprint = paste0("md5-crb-v1:", .viewerPackMd5(file)),
     cell_order_fingerprint = .viewerPackCellOrderFingerprint(cells),
     n_cells = length(cells),

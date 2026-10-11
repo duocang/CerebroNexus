@@ -803,3 +803,25 @@ test_that("Viewer wires valid HLA assets behind the CRB fallback", {
   )
   expect_match(linked, "viewerPackImmuneIndex(pack,", fixed = TRUE)
 })
+
+
+test_that("packed violin summaries survive serialization without altering statistics", {
+  root <- tempfile("pack-violin-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  crb <- viewer_pack_fixture(file.path(root, "data.crb"), n = 10000L, groups = TRUE)
+  object <- readCerebro(crb)
+  object$meta_data$nUMI <- rep(1:10, 1000)
+  object$meta_data$nUMI[10000] <- 1e9
+  saveCerebro(object, crb, codec = "rds")
+  buildViewerPack(crb, viewer_binary = "always")
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
+  pack <- scope$viewerPackOpen(crb, object)
+  value <- scope$viewerPackGroupMetric(pack, "group", "nUMI")
+  expected <- CerebroNexus:::.viewerPackCompactViolinData(object$getMetaData(),
+    "group", "nUMI")
+  expect_identical(value, expected)
+  pack$manifest$violin_summary_version <- NULL
+  expect_null(scope$viewerPackGroupMetric(pack, "group", "nUMI"))
+})

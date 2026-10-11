@@ -5082,8 +5082,8 @@ cerebroSelectedCellsPlot <- function(
       x = ~cells_df[["group"]],
       y = ~cells_df[[color_variable]],
       type = "violin",
-      box = list(visible = TRUE),
-      meanline = list(visible = TRUE),
+      box = list(visible = FALSE),
+      meanline = list(visible = FALSE),
       color = ~cells_df[[1L]],
       colors = stats::setNames(
         c("#e74c3c", "#7f8c8d"),
@@ -5094,6 +5094,7 @@ cerebroSelectedCellsPlot <- function(
       hoverinfo = "y",
       marker = list(size = 5)
     )
+    plot <- addExactViolinSummary(plot, cells_df)
     y_axis_title <- colnames(cells_df)[[2L]]
   }
 

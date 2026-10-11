@@ -94,8 +94,8 @@ plotExpressionSummary <- function(series, groups, colors) {
         showlegend = FALSE,
         hoverinfo = "y",
         marker = list(size = 5),
-        box = list(visible = TRUE),
-        meanline = list(visible = TRUE)
+        box = list(visible = FALSE),
+        meanline = list(visible = FALSE)
       )
     } else {
       plot <- plotly::plot_ly(
@@ -109,10 +109,11 @@ plotExpressionSummary <- function(series, groups, colors) {
         showlegend = FALSE,
         hoverinfo = "y",
         marker = list(size = 5, color = item$color),
-        box = list(visible = TRUE),
-        meanline = list(visible = TRUE)
+        box = list(visible = FALSE),
+        meanline = list(visible = FALSE)
       )
     }
+    plot <- addExactViolinSummary(plot, plot_data)
     plotly::layout(
       plot,
       title = "",
