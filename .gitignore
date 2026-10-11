@@ -52,3 +52,7 @@ tests/bench/result/runs/**/logs/
 !tests/bench/result/archive/**/summary.md
 !tests/bench/result/archive/**/README.md
 tests/bench/scratch/
+
+# Historical one-off Viewer investigations are archived outside the checkout.
+/tests/bench/viewer-followup/
+/tests/bench/viewer-final-protocol/

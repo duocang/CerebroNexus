@@ -1,8 +1,0 @@
-  iteration preparation_ms cluster_ms profile_rows profile_columns
-1         1           3085          1          194              10
-2         2           1430          1          194              10
-3         3           1377          1          194              10
-  profile_bytes full_result_bytes
-1         29704          86276272
-2         29704          86276272
-3         29704          86276272

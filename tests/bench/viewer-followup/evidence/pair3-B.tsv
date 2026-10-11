@@ -1,2 +1,0 @@
-"operation"	"status"	"genes"	"cells"	"first_usable_ms"	"complete_ms"	"quiet_ms"	"click_to_request_ms"	"server_prepare_ms"	"transfer_ms"	"decode_ms"	"first_draw_ms"	"primary_payload"	"websocket_bytes"	"message_count"	"visible_errors"
-"single_first"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	5027.69999992847	6056.39999997616	7095.5	NA	NA	NA	NA	NA	NA	23247614	65	""

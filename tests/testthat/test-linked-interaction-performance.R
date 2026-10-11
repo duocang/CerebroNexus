@@ -11,7 +11,10 @@ test_that("Linked views keeps selection enabled independently of hover", {
     collapse = "\n"
   )
 
-  expect_match(ui, 'checkboxInput("cv-hover", "Show linked cell hover", value = TRUE)', fixed = TRUE)
+  expect_match(ui, paste0(
+    'shinyWidgets::materialSwitch\\(\\s*',
+    'inputId = "cv-hover",\\s*label = "Show linked cell hover:",\\s*value = TRUE'
+  ), perl = TRUE)
   expect_no_match(ui, 'cv-linked-interaction-toggle', fixed = TRUE)
   expect_no_match(javascript, "var LINKED_STATIC_ABOVE", fixed = TRUE)
   expect_match(

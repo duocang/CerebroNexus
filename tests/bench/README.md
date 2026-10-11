@@ -1,5 +1,9 @@
 # Real-data expression-backend benchmark
 
+For the PR184 closeout, validation limits and archived investigation evidence,
+see [PR184_ACCEPTANCE.md](PR184_ACCEPTANCE.md). Keep new one-off diagnostic
+output outside the checkout; the reusable benchmark tools below remain here.
+
 This directory compares the `embedded`, `bpcells`, and `h5` backends on public single-cell matrices. This page explains how to run it. Read [METHODOLOGY.md](METHODOLOGY.md) for the experimental design and [RESULTS.md](RESULTS.md) before interpreting any number.
 
 ## Million-cell page readiness

@@ -1,6 +1,0 @@
-{
-  "canvas": true,
-  "feedback": "View ready · No selection",
-  "note": "\n  Node AREA is proportional to the number of cells carrying that CDR3, up to 25; above that every node is the same size — read the tooltip for the exact count.\n  \n  The legend is hidden: 573 motifs, and motif numbers are arbitrary, so past 12 swatches it maps to nothing. Hover a node for its motif, or force it on under Additional parameters.\n",
-  "showIsolated": true
-}

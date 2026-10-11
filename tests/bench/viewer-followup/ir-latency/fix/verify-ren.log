@@ -1,5 +1,0 @@
-gene PASS 194 samples; maximum absolute error 1.110223e-16 
-nt PASS 194 samples; maximum absolute error 2.220446e-16 
-aa PASS 194 samples; maximum absolute error 2.220446e-16 
-strict PASS 194 samples; maximum absolute error 2.220446e-16 
-Direct unchanged scRepertoire fallback, strict / TRB: undefined columns selected 

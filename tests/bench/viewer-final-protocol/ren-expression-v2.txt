@@ -1,8 +1,0 @@
-Protocol: viewer-final-protocol v2, Level 1 Ren expression probe
-Source commit: 0e2ec540961030ee4b43382b4d36942b368538e0
-Dataset SHA-256: f8abf678730715c8214be94a74a4eacf8a25f7692e6dfa6f367203387321b4d6
-Probe SHA-256: 3cd0abd71b7bf77ac7bcbaf72e84d665fc981afec38ccc1bc2252bdd8eb83ffc
-Command: /usr/bin/time -f 'max_rss_kib %M' Rscript tests/bench/viewer-final-protocol/probe-ren-expression.R ROOT REN_CRB
-Output: genes MALAT1,ACTB,GAPDH cells 1462702 block_s 2.436 single_s 1.311 nonzero 1458974,1451507,1267512 protocol dense-f64-v1,dense-f64-v1,dense-f64-v1 actual_values_exact TRUE duplicate TRUE mean 1462702 separate 3
-Maximum RSS: 1834792 KiB
-Expected warning: converting the explicitly requested three-row block to a dense matrix may use excessive memory.

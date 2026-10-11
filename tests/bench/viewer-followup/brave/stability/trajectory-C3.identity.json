@@ -1,9 +1,0 @@
-{
-  "base": "5a511f56",
-  "arm": "trajectory-C3",
-  "sha256": {
-    "inst/viewer/trajectory/server.R": "aef1a2d71daaeffd994bc3e0a2307907371056cf8b19fa8ed83b545144f486f8",
-    "tests/bench/viewer-followup/brave/stability/perf-server.R": "4b037730c78e78b502aea0513fc925ad4173d03869b366bd2e03a559316f9133",
-    "tests/bench/viewer-followup/brave/stability/perf.js": "7cf445952f60b9ee0aca924a6bd21b923ac01faf02ce7683d5649a824194aa0d"
-  }
-}

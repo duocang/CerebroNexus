@@ -1,9 +1,0 @@
-{"braveTotalRss":3419607040.0,"rRss":1465585664.0,"rPeak":1465585664.0,"phase":"start-demo","at":"2026-10-10T11:15:02.5620054Z"}
-{"rRss":2268229632.0,"rPeak":2268229632.0,"phase":"mouse-gene","braveTotalRss":3635224576.0,"at":"2026-10-10T11:16:23.9521322Z"}
-{"phase":"mouse-brush","braveTotalRss":3406389248.0,"at":"2026-10-10T11:17:10.1467602Z","rPeak":2382032896.0,"rRss":2213576704.0}
-{"at":"2026-10-10T11:19:02.3786015Z","rRss":2366193664.0,"braveTotalRss":3370618880.0,"phase":"before-reload","rPeak":2382032896.0}
-{"rRss":2214027264.0,"braveTotalRss":3561742336.0,"phase":"after-reload-mouse","at":"2026-10-10T11:19:34.2200899Z","rPeak":2382032896.0}
-{"braveTotalRss":3752591360.0,"rRss":2589343744.0,"rPeak":2589343744.0,"at":"2026-10-10T11:20:27.3064264Z","phase":"mouse-linked-return"}
-{"at":"2026-10-10T11:20:52.4909341Z","phase":"demo-return","rPeak":2589343744.0,"rRss":2589343744.0,"braveTotalRss":3467472896.0}
-{"rRss":2589343744.0,"rPeak":2589343744.0,"phase":"second-mouse","at":"2026-10-10T11:21:46.6787583Z","braveTotalRss":3592544256.0}
-{"phase":"end","rRss":2678501376.0,"braveTotalRss":3663618048.0,"at":"2026-10-10T11:22:30.3417402Z","rPeak":2686828544.0}

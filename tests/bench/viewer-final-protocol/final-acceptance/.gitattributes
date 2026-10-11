@@ -1,2 +1,0 @@
-# Preserve hashed evidence byte-for-byte across Windows and WSL checkouts.
-* -text -whitespace

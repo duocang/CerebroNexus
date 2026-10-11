@@ -1,8 +1,0 @@
-step	selection	generation	r_after_mib	browser_after_mib
-start	B	1	1329.98828125	1736.87109375
-dataset 0 A	A	2	1330.1171875	1744.375
-gene A Gad1	A	2	1857.875	2054.7265625
-before_disconnect	A	2	1857.875	2054.75390625
-dataset 9 A	A	2	1869.03515625	1723.7421875
-gene A Gad1	A	2	1978.0390625	1836.30078125
-reloaded	A	2	1978.0390625	1840.1953125

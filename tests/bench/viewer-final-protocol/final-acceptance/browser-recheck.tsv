@@ -1,5 +1,0 @@
-"file"	"context"	"test"	"nb"	"failed"	"skipped"	"error"	"warning"	"user"	"system"	"real"	"passed"
-"test-final-browser-recheck.R"	"final-browser-recheck"	"Projection switches categorical spatial datasets coherently"	1	0	FALSE	FALSE	0	15.16	1.107	18.732	1
-"test-final-browser-recheck.R"	"final-browser-recheck"	"Spatial backgrounds reset when the spatial dataset changes"	5	0	FALSE	FALSE	0	16.745	0.284	20.955	5
-"test-final-browser-recheck.R"	"final-browser-recheck"	"Linked views resets the active background to its preset"	6	0	FALSE	FALSE	0	11.968	0.364	14.608	6
-"test-final-browser-recheck.R"	"final-browser-recheck"	"{shinytest2} recording: gene_expression"	2	0	FALSE	TRUE	0	15.91	0.342	19.21	2
