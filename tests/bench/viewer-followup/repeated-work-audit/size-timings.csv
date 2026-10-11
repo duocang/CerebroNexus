@@ -1,0 +1,4 @@
+"iteration","preparation_ms","cluster_ms","profile_rows","profile_columns","profile_bytes","full_result_bytes"
+1,3085,1,194,10,29704,86276272
+2,1430,1,194,10,29704,86276272
+3,1377,1,194,10,29704,86276272
