@@ -1,0 +1,101 @@
+{
+  "start": 17536.4,
+  "events": [
+    {
+      "at": 23204.9,
+      "detail": {
+        "viewId": "trajectory_projection",
+        "dataset_context": {
+          "epoch": "G69quSzpgfymWxjSTUgL1HIf",
+          "dataset_key": "A",
+          "generation": 2
+        },
+        "selectedCells": 0,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "eventKind": "aux",
+        "renderKey": {},
+        "generation": 1,
+        "benchmarkGeneration": 0,
+        "renderRequestSent": true,
+        "renderedPointCount": 981807,
+        "timing": {
+          "generation": 1,
+          "renderRequestSent": true,
+          "cached": false,
+          "requestAtMs": 13237.6,
+          "clickToRequestMs": {},
+          "bytes": 8838639,
+          "serverPrepareMs": 1724.0503,
+          "serializeTransferMs": 1341.9497,
+          "decodeMs": 27.3,
+          "binaryReceivedAtMs": 16276.9,
+          "requestToBinaryMs": 3066,
+          "geometryReused": false,
+          "activationStartedAtMs": 16305.6,
+          "buildSpacesMs": 0.3,
+          "preDrawMs": 2.4,
+          "firstDrawMs": 118.8,
+          "activationMs": 121.2,
+          "readyAtMs": 23204.6,
+          "requestToReadyMs": 9967
+        }
+      }
+    },
+    {
+      "at": 23423.6,
+      "detail": {
+        "viewId": "trajectory_projection",
+        "dataset_context": {
+          "epoch": "G69quSzpgfymWxjSTUgL1HIf",
+          "dataset_key": "A",
+          "generation": 2
+        },
+        "selectedCells": 0,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "eventKind": "primary",
+        "renderKey": {},
+        "generation": 1,
+        "benchmarkGeneration": 0,
+        "renderRequestSent": true,
+        "renderedPointCount": 981807,
+        "timing": {
+          "generation": 1,
+          "renderRequestSent": true,
+          "cached": false,
+          "requestAtMs": 13237.6,
+          "clickToRequestMs": {},
+          "bytes": 3248,
+          "serverPrepareMs": 9872.7131,
+          "serializeTransferMs": 97.2869,
+          "decodeMs": 0.3,
+          "binaryReceivedAtMs": 23208.2,
+          "requestToBinaryMs": 9970,
+          "geometryReused": true,
+          "activationStartedAtMs": 23318.8,
+          "buildSpacesMs": 0,
+          "preDrawMs": 3,
+          "firstDrawMs": 101.3,
+          "activationMs": 104.3,
+          "projectionFetchMs": 0,
+          "projectionBytes": 8000000,
+          "projectionDownloadMs": 0,
+          "projectionDecodeMs": 0,
+          "projectionCacheHit": true,
+          "projectionSubsetFetchMs": 33.9,
+          "projectionSubsetBytes": 72772,
+          "projectionSubsetDownloadMs": 33.6,
+          "projectionSubsetDecodeMs": 0.7,
+          "projectionSubsetCacheHit": false,
+          "projectionSubsetMaterializeMs": 11.1,
+          "categoricalFetchMs": 97.3,
+          "categoricalBytes": 981807,
+          "geometryReuseProtocol": "canonical-projection-v1",
+          "geometryReuseSubset": "exclude_uint32",
+          "readyAtMs": 23423.5,
+          "requestToReadyMs": 10185.9
+        }
+      }
+    }
+  ],
+  "color": "state"
+}

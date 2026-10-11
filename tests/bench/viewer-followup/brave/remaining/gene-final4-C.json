@@ -1,0 +1,2072 @@
+{
+  "ops": [
+    {
+      "name": "crb_file_selector",
+      "value": "Demo",
+      "start": 4338,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 0.6,
+          "bytes": 2490
+        },
+        {
+          "ms": 20.6,
+          "bytes": 15
+        },
+        {
+          "ms": 46.9,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 70289275,
+      "heapPeak": 73776971,
+      "maxFrameGap": 1031.1
+    },
+    {
+      "name": "crb_file_selector",
+      "value": "Mouse",
+      "start": 5695.1,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 45.7,
+          "bytes": 15
+        },
+        {
+          "ms": 59.7,
+          "bytes": 190
+        },
+        {
+          "ms": 62.9,
+          "bytes": 95
+        },
+        {
+          "ms": 64.5,
+          "bytes": 88
+        },
+        {
+          "ms": 65.6,
+          "bytes": 94
+        },
+        {
+          "ms": 127.7,
+          "bytes": 153
+        },
+        {
+          "ms": 132.5,
+          "bytes": 160
+        },
+        {
+          "ms": 141.4,
+          "bytes": 158
+        },
+        {
+          "ms": 142.8,
+          "bytes": 156
+        },
+        {
+          "ms": 152.3,
+          "bytes": 158
+        },
+        {
+          "ms": 155,
+          "bytes": 151
+        },
+        {
+          "ms": 156.3,
+          "bytes": 149
+        },
+        {
+          "ms": 158.8,
+          "bytes": 149
+        },
+        {
+          "ms": 161.7,
+          "bytes": 155
+        },
+        {
+          "ms": 184.1,
+          "bytes": 79
+        },
+        {
+          "ms": 188.1,
+          "bytes": 78
+        },
+        {
+          "ms": 189,
+          "bytes": 72
+        },
+        {
+          "ms": 192,
+          "bytes": 71
+        },
+        {
+          "ms": 192.6,
+          "bytes": 78
+        },
+        {
+          "ms": 196.9,
+          "bytes": 77
+        },
+        {
+          "ms": 197.4,
+          "bytes": 15
+        },
+        {
+          "ms": 208.1,
+          "bytes": 1563
+        },
+        {
+          "ms": 217.8,
+          "bytes": 15
+        },
+        {
+          "ms": 219.5,
+          "bytes": 15
+        },
+        {
+          "ms": 4044.7,
+          "bytes": 15
+        },
+        {
+          "ms": 4047.8,
+          "bytes": 59
+        },
+        {
+          "ms": 4048.2,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 75363505,
+      "maxFrameGap": 1031.1,
+      "heapPeak": 79938008
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-geneExpression",
+      "start": 10681.9,
+      "events": [],
+      "outputs": [
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_additional_parameters_UI",
+          "ms": 1265.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_additional_parameters_UI",
+          "ms": 1276.6,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_data_parameters_UI",
+          "ms": 1277.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_data_parameters_UI",
+          "ms": 1285.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 1286.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 1315.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 1318.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 1324.4,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_group_filters_UI",
+          "ms": 1325.3,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_group_filters_UI",
+          "ms": 1327.5,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 1565.1,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 1570.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_data_parameters_UI",
+          "ms": 1572.6,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_additional_parameters_UI",
+          "ms": 1580.2,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_genes_displayed",
+          "ms": 1596.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_genes_displayed",
+          "ms": 1603.2,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_composition",
+          "ms": 1603.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_composition",
+          "ms": 1638.2,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_by_gene_UI",
+          "ms": 1640.1,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_by_gene_UI",
+          "ms": 1641.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_by_group_UI",
+          "ms": 1642.7,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_by_group_UI",
+          "ms": 1643.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 1644.7,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 1646,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_input_type_UI",
+          "ms": 1647,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_input_type_UI",
+          "ms": 1648,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_select_projection_UI",
+          "ms": 1649,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_select_projection_UI",
+          "ms": 1650.1,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 1651,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 1652.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_select_projection_UI",
+          "ms": 1655.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_input_type_UI",
+          "ms": 1662.7,
+          "visible": false
+        }
+      ],
+      "messages": [
+        {
+          "ms": 66.1,
+          "bytes": 15
+        },
+        {
+          "ms": 72.8,
+          "bytes": 107
+        },
+        {
+          "ms": 73.3,
+          "bytes": 117
+        },
+        {
+          "ms": 842.9,
+          "bytes": 112
+        },
+        {
+          "ms": 884.9,
+          "bytes": 115
+        },
+        {
+          "ms": 885.5,
+          "bytes": 96
+        },
+        {
+          "ms": 887.3,
+          "bytes": 188
+        },
+        {
+          "ms": 912.8,
+          "bytes": 398
+        },
+        {
+          "ms": 1265.3,
+          "bytes": 2307
+        },
+        {
+          "ms": 1267.2,
+          "bytes": 100
+        },
+        {
+          "ms": 1277.5,
+          "bytes": 99
+        },
+        {
+          "ms": 1278.2,
+          "bytes": 94
+        },
+        {
+          "ms": 1286.6,
+          "bytes": 93
+        },
+        {
+          "ms": 1287,
+          "bytes": 94
+        },
+        {
+          "ms": 1316,
+          "bytes": 93
+        },
+        {
+          "ms": 1319.5,
+          "bytes": 103
+        },
+        {
+          "ms": 1325.1,
+          "bytes": 102
+        },
+        {
+          "ms": 1325.6,
+          "bytes": 92
+        },
+        {
+          "ms": 1328.1,
+          "bytes": 91
+        },
+        {
+          "ms": 1556.7,
+          "bytes": 15
+        },
+        {
+          "ms": 1591,
+          "bytes": 5095
+        },
+        {
+          "ms": 1595.2,
+          "bytes": 15
+        },
+        {
+          "ms": 1595.6,
+          "bytes": 15
+        },
+        {
+          "ms": 1596.1,
+          "bytes": 637
+        },
+        {
+          "ms": 1596.5,
+          "bytes": 15
+        },
+        {
+          "ms": 1597.8,
+          "bytes": 80
+        },
+        {
+          "ms": 1603.3,
+          "bytes": 79
+        },
+        {
+          "ms": 1604,
+          "bytes": 87
+        },
+        {
+          "ms": 1639.3,
+          "bytes": 86
+        },
+        {
+          "ms": 1641,
+          "bytes": 75
+        },
+        {
+          "ms": 1642.3,
+          "bytes": 74
+        },
+        {
+          "ms": 1643.5,
+          "bytes": 76
+        },
+        {
+          "ms": 1644.4,
+          "bytes": 75
+        },
+        {
+          "ms": 1645.6,
+          "bytes": 85
+        },
+        {
+          "ms": 1646.7,
+          "bytes": 84
+        },
+        {
+          "ms": 1647.7,
+          "bytes": 89
+        },
+        {
+          "ms": 1648.6,
+          "bytes": 88
+        },
+        {
+          "ms": 1649.8,
+          "bytes": 96
+        },
+        {
+          "ms": 1650.8,
+          "bytes": 95
+        },
+        {
+          "ms": 1651.9,
+          "bytes": 90
+        },
+        {
+          "ms": 1653.7,
+          "bytes": 89
+        },
+        {
+          "ms": 1654.5,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 79991122,
+      "maxFrameGap": 1000.3,
+      "heapPeak": 81525525,
+      "inputs": [
+        {
+          "name": "expression_projection_render_request",
+          "ms": 887,
+          "value": {
+            "nonce": 1791633363121,
+            "dataset_context": {
+              "epoch": "kMci7BQMwJlOCXuuCakogITf",
+              "dataset_key": "Mouse",
+              "generation": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 12361,
+      "events": [],
+      "outputs": [
+        {
+          "kind": "shiny:value",
+          "id": "expression_genes_displayed",
+          "ms": 1.3,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_number_of_selected_cells",
+          "ms": 9.3,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_number_of_selected_cells",
+          "ms": 19.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 135.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 145,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 148.7,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 150.1,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 151.9,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 153.4,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_genes_displayed",
+          "ms": 154.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_genes_displayed",
+          "ms": 156,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 157.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 162.9,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_composition",
+          "ms": 164.9,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_composition",
+          "ms": 370.9,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_number_of_selected_cells",
+          "ms": 372,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_number_of_selected_cells",
+          "ms": 373.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_number_of_selected_cells",
+          "ms": 382.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_composition",
+          "ms": 385.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_genes_in_separate_panels_UI",
+          "ms": 386.1,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_genes_displayed",
+          "ms": 391.6,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 391.6,
+          "visible": false
+        }
+      ],
+      "messages": [
+        {
+          "ms": 7.2,
+          "bytes": 6820
+        },
+        {
+          "ms": 8.5,
+          "bytes": 15
+        },
+        {
+          "ms": 12.8,
+          "bytes": 89
+        },
+        {
+          "ms": 20.1,
+          "bytes": 88
+        },
+        {
+          "ms": 20.7,
+          "bytes": 15
+        },
+        {
+          "ms": 21.6,
+          "bytes": 153
+        },
+        {
+          "ms": 22.1,
+          "bytes": 15
+        },
+        {
+          "ms": 25.5,
+          "bytes": 15
+        },
+        {
+          "ms": 35.5,
+          "bytes": 110
+        },
+        {
+          "ms": 39.7,
+          "bytes": 15
+        },
+        {
+          "ms": 42,
+          "bytes": 101
+        },
+        {
+          "ms": 43.7,
+          "bytes": 106
+        },
+        {
+          "ms": 45.2,
+          "bytes": 96
+        },
+        {
+          "ms": 46.5,
+          "bytes": 119
+        },
+        {
+          "ms": 48.6,
+          "bytes": 103
+        },
+        {
+          "ms": 49.9,
+          "bytes": 105
+        },
+        {
+          "ms": 136.5,
+          "bytes": 94
+        },
+        {
+          "ms": 146.3,
+          "bytes": 93
+        },
+        {
+          "ms": 149.8,
+          "bytes": 85
+        },
+        {
+          "ms": 151.5,
+          "bytes": 84
+        },
+        {
+          "ms": 153,
+          "bytes": 90
+        },
+        {
+          "ms": 154.5,
+          "bytes": 89
+        },
+        {
+          "ms": 155.5,
+          "bytes": 80
+        },
+        {
+          "ms": 157.3,
+          "bytes": 79
+        },
+        {
+          "ms": 159,
+          "bytes": 103
+        },
+        {
+          "ms": 164.3,
+          "bytes": 102
+        },
+        {
+          "ms": 165.9,
+          "bytes": 87
+        },
+        {
+          "ms": 371.2,
+          "bytes": 86
+        },
+        {
+          "ms": 373.2,
+          "bytes": 89
+        },
+        {
+          "ms": 375.4,
+          "bytes": 88
+        },
+        {
+          "ms": 376.5,
+          "bytes": 15
+        },
+        {
+          "ms": 392.1,
+          "bytes": 1540
+        },
+        {
+          "ms": 392.9,
+          "bytes": 15
+        },
+        {
+          "ms": 484.9,
+          "bytes": 1733
+        },
+        {
+          "ms": 489.1,
+          "bytes": 15
+        },
+        {
+          "ms": 492.5,
+          "bytes": 15
+        },
+        {
+          "ms": 498.7,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 85246028,
+      "heapPeak": 88095594
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 12881.4,
+      "events": [
+        {
+          "ms": 325.1,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "kMci7BQMwJlOCXuuCakogITf",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 11568.7,
+              "clickToRequestMs": {},
+              "bytes": 1716,
+              "serverPrepareMs": 1256.9543,
+              "serializeTransferMs": 18.0457,
+              "decodeMs": 0.1,
+              "binaryReceivedAtMs": 12843.5,
+              "requestToBinaryMs": 1275,
+              "geometryReused": false,
+              "projectionFetchMs": 286.2,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 274,
+              "projectionDecodeMs": 13.1,
+              "projectionCacheHit": false,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 13132.6,
+              "buildSpacesMs": 2.1,
+              "preDrawMs": 7.6,
+              "firstDrawMs": 64.9,
+              "activationMs": 72.5,
+              "readyAtMs": 13206.2,
+              "requestToReadyMs": 1637.5
+            }
+          },
+          "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected."
+        },
+        {
+          "ms": 382.4,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "kMci7BQMwJlOCXuuCakogITf",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 11568.7,
+              "clickToRequestMs": {},
+              "bytes": 1712,
+              "serverPrepareMs": 1634.5254,
+              "serializeTransferMs": 39.4746,
+              "decodeMs": 0,
+              "binaryReceivedAtMs": 13242.9,
+              "requestToBinaryMs": 1674,
+              "geometryReused": false,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 274,
+              "projectionDecodeMs": 13.1,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 13243.4,
+              "buildSpacesMs": 1,
+              "preDrawMs": 4.2,
+              "firstDrawMs": 15.4,
+              "activationMs": 19.6,
+              "readyAtMs": 13263.7,
+              "requestToReadyMs": 1695
+            }
+          },
+          "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected."
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_composition",
+          "ms": 82.4,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_composition",
+          "ms": 84.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_number_of_selected_cells",
+          "ms": 86.6,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_number_of_selected_cells",
+          "ms": 88.8,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_number_of_selected_cells",
+          "ms": 95.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_composition",
+          "ms": 97,
+          "visible": true
+        }
+      ],
+      "messages": [
+        {
+          "ms": 1.2,
+          "bytes": 193
+        },
+        {
+          "ms": 2.4,
+          "bytes": 15
+        },
+        {
+          "ms": 5.1,
+          "bytes": 103
+        },
+        {
+          "ms": 7.4,
+          "bytes": 105
+        },
+        {
+          "ms": 83.8,
+          "bytes": 87
+        },
+        {
+          "ms": 85.9,
+          "bytes": 86
+        },
+        {
+          "ms": 88.2,
+          "bytes": 89
+        },
+        {
+          "ms": 90.5,
+          "bytes": 88
+        },
+        {
+          "ms": 92,
+          "bytes": 15
+        },
+        {
+          "ms": 98.3,
+          "bytes": 294
+        },
+        {
+          "ms": 117.9,
+          "bytes": 202
+        },
+        {
+          "ms": 119,
+          "bytes": 15
+        },
+        {
+          "ms": 386.1,
+          "bytes": 1729
+        },
+        {
+          "ms": 388.4,
+          "bytes": 15
+        },
+        {
+          "ms": 389.9,
+          "bytes": 202
+        },
+        {
+          "ms": 390.4,
+          "bytes": 15
+        },
+        {
+          "ms": 424.8,
+          "bytes": 15
+        },
+        {
+          "ms": 427.1,
+          "bytes": 202
+        }
+      ],
+      "heapStart": 89583922,
+      "heapPeak": 98433951,
+      "maxFrameGap": 1000.1,
+      "inputs": [
+        {
+          "name": "expression_projection_rendered_key",
+          "ms": 324,
+          "value": "combined\u001d\u001d\u001c\u001c"
+        },
+        {
+          "name": "expression_projection_rendered_key",
+          "ms": 381.8,
+          "value": "combined\u001d\u001d\u001c\u001c"
+        }
+      ],
+      "longTasks": [
+        {
+          "ms": 236.8,
+          "duration": 93
+        }
+      ]
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 13309.8,
+      "events": [],
+      "outputs": [
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_composition",
+          "ms": 34.3,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_composition",
+          "ms": 38.1,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_number_of_selected_cells",
+          "ms": 40.5,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_number_of_selected_cells",
+          "ms": 43,
+          "visible": false
+        }
+      ],
+      "messages": [
+        {
+          "ms": 0.8,
+          "bytes": 193
+        },
+        {
+          "ms": 6.2,
+          "bytes": 202
+        },
+        {
+          "ms": 21.3,
+          "bytes": 202
+        },
+        {
+          "ms": 25.5,
+          "bytes": 103
+        },
+        {
+          "ms": 26.2,
+          "bytes": 15
+        },
+        {
+          "ms": 28.5,
+          "bytes": 105
+        },
+        {
+          "ms": 30.7,
+          "bytes": 101
+        },
+        {
+          "ms": 32.7,
+          "bytes": 106
+        },
+        {
+          "ms": 37,
+          "bytes": 87
+        },
+        {
+          "ms": 39.9,
+          "bytes": 86
+        },
+        {
+          "ms": 42,
+          "bytes": 89
+        },
+        {
+          "ms": 45,
+          "bytes": 88
+        }
+      ],
+      "heapStart": 89840169,
+      "heapPeak": 90651298
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 13618.9,
+      "events": [
+        {
+          "ms": 96.2,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": false,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected."
+        },
+        {
+          "ms": 150.3,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": false,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected."
+        },
+        {
+          "ms": 4651.6,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "kMci7BQMwJlOCXuuCakogITf",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 11568.7,
+              "clickToRequestMs": {},
+              "bytes": 1712,
+              "serverPrepareMs": 1634.5254,
+              "serializeTransferMs": 39.4746,
+              "decodeMs": 0,
+              "binaryReceivedAtMs": 13242.9,
+              "requestToBinaryMs": 1674,
+              "geometryReused": false,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 274,
+              "projectionDecodeMs": 13.1,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 13243.4,
+              "buildSpacesMs": 1,
+              "preDrawMs": 4.2,
+              "firstDrawMs": 15.4,
+              "activationMs": 19.6,
+              "readyAtMs": 18270.3,
+              "requestToReadyMs": 6701.6
+            }
+          },
+          "text": "0.0\n10.0\nGad1\nGad1\nGad1 view with 1000000 points; 0 selected."
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 921.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 922.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 925.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 928.1,
+          "visible": true
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_number_of_selected_cells",
+          "ms": 933,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_composition",
+          "ms": 934.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 961.6,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 964.3,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 966.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 968.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 2266.7,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 2269.9,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 2271.4,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 2272.6,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 2274,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 2276.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_genes_displayed",
+          "ms": 2278.1,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_genes_displayed",
+          "ms": 2279.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_genes_displayed",
+          "ms": 2283.6,
+          "visible": false
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_projection_gene_color_mode_UI",
+          "ms": 2283.7,
+          "visible": false
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 4684.5,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_in_selected_cells_UI",
+          "ms": 4686.2,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 4686.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_details_selected_cells_UI",
+          "ms": 4689.2,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_by_group_UI",
+          "ms": 4691.9,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_by_group_UI",
+          "ms": 4698.2,
+          "visible": true
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_by_group_UI",
+          "ms": 4702.8,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculating",
+          "id": "expression_by_group",
+          "ms": 4729.6,
+          "visible": true
+        },
+        {
+          "kind": "shiny:recalculated",
+          "id": "expression_by_group",
+          "ms": 5270.4,
+          "visible": true
+        },
+        {
+          "kind": "shiny:value",
+          "id": "expression_by_group",
+          "ms": 5275.6,
+          "visible": true
+        }
+      ],
+      "messages": [
+        {
+          "ms": 922.1,
+          "bytes": 85
+        },
+        {
+          "ms": 924.6,
+          "bytes": 84
+        },
+        {
+          "ms": 927.6,
+          "bytes": 90
+        },
+        {
+          "ms": 929.3,
+          "bytes": 89
+        },
+        {
+          "ms": 929.7,
+          "bytes": 15
+        },
+        {
+          "ms": 935.5,
+          "bytes": 510
+        },
+        {
+          "ms": 949.6,
+          "bytes": 202
+        },
+        {
+          "ms": 952.9,
+          "bytes": 15
+        },
+        {
+          "ms": 955.6,
+          "bytes": 101
+        },
+        {
+          "ms": 958.7,
+          "bytes": 106
+        },
+        {
+          "ms": 963.8,
+          "bytes": 85
+        },
+        {
+          "ms": 966,
+          "bytes": 84
+        },
+        {
+          "ms": 967.9,
+          "bytes": 90
+        },
+        {
+          "ms": 971.7,
+          "bytes": 89
+        },
+        {
+          "ms": 972.8,
+          "bytes": 15
+        },
+        {
+          "ms": 975.8,
+          "bytes": 260
+        },
+        {
+          "ms": 1151.7,
+          "bytes": 15
+        },
+        {
+          "ms": 1159.8,
+          "bytes": 15
+        },
+        {
+          "ms": 1331.9,
+          "bytes": 15
+        },
+        {
+          "ms": 1359.5,
+          "bytes": 101
+        },
+        {
+          "ms": 1363.1,
+          "bytes": 106
+        },
+        {
+          "ms": 1365.3,
+          "bytes": 110
+        },
+        {
+          "ms": 1367.5,
+          "bytes": 96
+        },
+        {
+          "ms": 1383.1,
+          "bytes": 87
+        },
+        {
+          "ms": 1385.2,
+          "bytes": 181
+        },
+        {
+          "ms": 1386.1,
+          "bytes": 149
+        },
+        {
+          "ms": 2237.2,
+          "bytes": 147
+        },
+        {
+          "ms": 2269.3,
+          "bytes": 85
+        },
+        {
+          "ms": 2271,
+          "bytes": 84
+        },
+        {
+          "ms": 2272.3,
+          "bytes": 90
+        },
+        {
+          "ms": 2273.5,
+          "bytes": 89
+        },
+        {
+          "ms": 2276.3,
+          "bytes": 94
+        },
+        {
+          "ms": 2277.6,
+          "bytes": 93
+        },
+        {
+          "ms": 2279.5,
+          "bytes": 80
+        },
+        {
+          "ms": 2280.6,
+          "bytes": 79
+        },
+        {
+          "ms": 2281,
+          "bytes": 15
+        },
+        {
+          "ms": 2284.1,
+          "bytes": 341
+        },
+        {
+          "ms": 2313.8,
+          "bytes": 15
+        },
+        {
+          "ms": 2361.9,
+          "bytes": 148
+        },
+        {
+          "ms": 2646.6,
+          "bytes": 873229
+        },
+        {
+          "ms": 2810.7,
+          "bytes": 142
+        },
+        {
+          "ms": 2811.5,
+          "bytes": 15
+        },
+        {
+          "ms": 4658.1,
+          "bytes": 15
+        },
+        {
+          "ms": 4661.9,
+          "bytes": 101
+        },
+        {
+          "ms": 4664.8,
+          "bytes": 106
+        },
+        {
+          "ms": 4666.8,
+          "bytes": 88
+        },
+        {
+          "ms": 4681.8,
+          "bytes": 92
+        },
+        {
+          "ms": 4684.7,
+          "bytes": 85
+        },
+        {
+          "ms": 4686.4,
+          "bytes": 84
+        },
+        {
+          "ms": 4688.5,
+          "bytes": 90
+        },
+        {
+          "ms": 4691.5,
+          "bytes": 89
+        },
+        {
+          "ms": 4693.7,
+          "bytes": 76
+        },
+        {
+          "ms": 4699.6,
+          "bytes": 75
+        },
+        {
+          "ms": 4700.3,
+          "bytes": 15
+        },
+        {
+          "ms": 4711,
+          "bytes": 3041
+        },
+        {
+          "ms": 4717,
+          "bytes": 15
+        },
+        {
+          "ms": 4724.6,
+          "bytes": 15
+        },
+        {
+          "ms": 4728.2,
+          "bytes": 15
+        },
+        {
+          "ms": 4735.8,
+          "bytes": 73
+        },
+        {
+          "ms": 5270.7,
+          "bytes": 72
+        },
+        {
+          "ms": 5272,
+          "bytes": 15
+        },
+        {
+          "ms": 5418.7,
+          "bytes": 172999
+        }
+      ],
+      "heapStart": 92921610,
+      "maxFrameGap": 1031.7,
+      "heapPeak": 162043013,
+      "longTasks": [
+        {
+          "ms": 1013.3,
+          "duration": 64
+        },
+        {
+          "ms": 1587.2,
+          "duration": 145
+        },
+        {
+          "ms": 2455,
+          "duration": 191
+        },
+        {
+          "ms": 5274.7,
+          "duration": 144
+        }
+      ],
+      "inputs": [
+        {
+          "name": "expression_projection_rendered_key",
+          "ms": 4650.9,
+          "value": "combined\u001dGad1\u001d\u001c\u001c"
+        }
+      ],
+      "groupPaint": 6714
+    }
+  ],
+  "clock": [
+    {
+      "id": 9683,
+      "start": 9683,
+      "mono": 990787379,
+      "end": 9742.6
+    }
+  ],
+  "memory": [],
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "viewport": [
+    1619,
+    950
+  ],
+  "resources": [
+    {
+      "name": "http://localhost:8876/jquery-3.7.1/jquery.min.js",
+      "bytes": 0,
+      "ms": 105.4
+    },
+    {
+      "name": "http://localhost:8876/shiny-css-1.14.0/shiny.min.css",
+      "bytes": 0,
+      "ms": 106.4
+    },
+    {
+      "name": "http://localhost:8876/shiny-busy-indicators-1.14.0/busy-indicators.css",
+      "bytes": 0,
+      "ms": 106.5
+    },
+    {
+      "name": "http://localhost:8876/shiny-javascript-1.14.0/shiny.min.js",
+      "bytes": 0,
+      "ms": 109.8
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/all.min.css",
+      "bytes": 0,
+      "ms": 108.1
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/v4-shims.min.css",
+      "bytes": 0,
+      "ms": 108.2
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/css/selectize.bootstrap3.css",
+      "bytes": 0,
+      "ms": 108.3
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/js/selectize.min.js",
+      "bytes": 0,
+      "ms": 108.5
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/accessibility/js/selectize-plugin-a11y.min.js",
+      "bytes": 0,
+      "ms": 108.5
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-css-2.3.1/css/ion.rangeSlider.css",
+      "bytes": 0,
+      "ms": 109.1
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-javascript-2.3.1/js/ion.rangeSlider.min.js",
+      "bytes": 0,
+      "ms": 108.5
+    },
+    {
+      "name": "http://localhost:8876/strftime-0.9.2/strftime-min.js",
+      "bytes": 0,
+      "ms": 108.7
+    },
+    {
+      "name": "http://localhost:8876/htmltools-fill-0.5.9/fill.css",
+      "bytes": 0,
+      "ms": 109.1
+    },
+    {
+      "name": "http://localhost:8876/htmlwidgets-1.6.4/htmlwidgets.js",
+      "bytes": 0,
+      "ms": 109.3
+    },
+    {
+      "name": "http://localhost:8876/plotly-binding-4.12.1/plotly.js",
+      "bytes": 0,
+      "ms": 109.3
+    },
+    {
+      "name": "http://localhost:8876/typedarray-0.1/typedarray.min.js",
+      "bytes": 0,
+      "ms": 109.5
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/css/crosstalk.min.css",
+      "bytes": 0,
+      "ms": 110.1
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/js/crosstalk.min.js",
+      "bytes": 0,
+      "ms": 110.2
+    },
+    {
+      "name": "http://localhost:8876/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css",
+      "bytes": 0,
+      "ms": 110.1
+    },
+    {
+      "name": "http://localhost:8876/plotly-main-2.25.2/plotly-latest.min.js",
+      "bytes": 0,
+      "ms": 225.3
+    },
+    {
+      "name": "http://localhost:8876/datatables-css-0.0.0/datatables-crosstalk.css",
+      "bytes": 0,
+      "ms": 111
+    },
+    {
+      "name": "http://localhost:8876/datatables-binding-0.34.0/datatables.js",
+      "bytes": 0,
+      "ms": 111.8
+    },
+    {
+      "name": "http://localhost:8876/sw-buttons-group-0.9.1/buttons-group.js",
+      "bytes": 0,
+      "ms": 112
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/css/bootstrap.min.css",
+      "bytes": 0,
+      "ms": 136.4
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/css/bootstrap-accessibility.min.css",
+      "bytes": 0,
+      "ms": 136.5
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/js/bootstrap.min.js",
+      "bytes": 0,
+      "ms": 136.6
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/js/bootstrap-accessibility.min.js",
+      "bytes": 0,
+      "ms": 136.6
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/AdminLTE.min.css",
+      "bytes": 0,
+      "ms": 136.8
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/_all-skins.min.css",
+      "bytes": 0,
+      "ms": 136.9
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/app.min.js",
+      "bytes": 0,
+      "ms": 137.2
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.css",
+      "bytes": 0,
+      "ms": 138.4
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.min.js",
+      "bytes": 0,
+      "ms": 138.4
+    },
+    {
+      "name": "http://localhost:8876/shinyjs/shinyjs-default-funcs.js",
+      "bytes": 0,
+      "ms": 138.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/custom.css?v=90006cb110",
+      "bytes": 0,
+      "ms": 138.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/trekker.css?v=19f5a38912",
+      "bytes": 0,
+      "ms": 138.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.css?v=9d74a3209c",
+      "bytes": 0,
+      "ms": 138.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews.css?v=f91b3e64bf",
+      "bytes": 0,
+      "ms": 138.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/fill_height.js?v=c5783221be",
+      "bytes": 0,
+      "ms": 285.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cv-geom.js?v=672ceba0e9",
+      "bytes": 0,
+      "ms": 287.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_state.js?v=2e07c78e00",
+      "bytes": 0,
+      "ms": 340.3
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/dataset-context.js?v=363559965e",
+      "bytes": 0,
+      "ms": 138.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_points_gpu.js?v=dbb49a6879",
+      "bytes": 0,
+      "ms": 138.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_wire.js?v=557f276ebd",
+      "bytes": 0,
+      "ms": 138.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.js?v=0e3f24fa45",
+      "bytes": 0,
+      "ms": 340.3
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews-config.js?v=68d41a2f3c",
+      "bytes": 0,
+      "ms": 340.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/viewer-shell.js?v=ab537c0eec",
+      "bytes": 0,
+      "ms": 340.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/multiselect.js?v=023b53834b",
+      "bytes": 0,
+      "ms": 352.1
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views.js?v=5cdd310e37",
+      "bytes": 0,
+      "ms": 140.1
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/gene-selector.js?v=8fb9ca7f49",
+      "bytes": 0,
+      "ms": 352.1
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/settings_drawer.js?v=57ddfc345a",
+      "bytes": 0,
+      "ms": 355.2
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/specialist-view-state.js?v=cb4cd2a0ee",
+      "bytes": 0,
+      "ms": 355.2
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-v4compatibility.woff2",
+      "bytes": 0,
+      "ms": 7.1
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-solid-900.woff2",
+      "bytes": 0,
+      "ms": 8.2
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-regular-400.woff2",
+      "bytes": 0,
+      "ms": 8.2
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-brands-400.woff2",
+      "bytes": 0,
+      "ms": 4.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro-projection-0e19c57f65f772c0ad4b08d353211737-1/001.bin",
+      "bytes": 7439834,
+      "ms": 265.9
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_genes_input?w=&nonce=7b3e023ef9f134c0&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 1750.3
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_r?w=&nonce=4e5797a3bad15c25&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 1704
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_g?w=&nonce=1fc0c5675e2ca9fe&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 1504.6
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_b?w=&nonce=7ff661485bb32e33&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 1641.9
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_genes_input?w=&nonce=6fad35039be73961&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 2622.5
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_r?w=&nonce=5df9729bed45f7e2&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 2804.9
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_g?w=&nonce=25163cc689651b11&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 2885.3
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_genes_input?w=&nonce=6fad35039be73961&query=Gad1&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 365,
+      "ms": 2330.9
+    },
+    {
+      "name": "http://localhost:8876/session/0e19c57f65f772c0ad4b08d353211737/dataobj/expression_rgb_gene_b?w=&nonce=5d18c6e5c7dc3d6c&query=&field=%5B%5B%22label%22%5D%5D&value=value&conju=and&maxop=1000",
+      "bytes": 6277,
+      "ms": 1700.1
+    }
+  ],
+  "context": {
+    "epoch": "kMci7BQMwJlOCXuuCakogITf",
+    "dataset_key": "Mouse",
+    "generation": 2
+  },
+  "errors": []
+}

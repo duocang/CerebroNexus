@@ -1,0 +1,6 @@
+PASS: actual Gene hover restores exact cell/count values; repeat deduplicated; box selection identities and canonical order
+Cell: GACTACACACATGTGT-73
+Transcripts: 3,858
+Expressed genes: 1,287
+sample: 0
+seurat_clusters: 9

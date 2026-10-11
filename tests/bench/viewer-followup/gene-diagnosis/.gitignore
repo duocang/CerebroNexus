@@ -1,0 +1,8 @@
+# Reproducible instrumented copy; build.py regenerates it from recorded HEAD.
+/cell_views.js
+# Full raw files remain locally; lossless .gz counterparts are versioned.
+/*.Rprof
+/*.reactlog.json
+/run[1-5].json
+/closeout.json
+/timelines.json

@@ -45,6 +45,10 @@ profile <- Sys.getenv("VIEWER_BENCH_PROFILE", unset = "quick")
 benchmark_mode <- tolower(Sys.getenv("VIEWER_BENCH_MODE", unset = "timing"))
 validate_benchmark_mode(benchmark_mode)
 memory_mode <- identical(benchmark_mode, "memory")
+expected_renderer <- tolower(Sys.getenv("VIEWER_EXPECTED_RENDERER", unset = "webgpu"))
+if (!expected_renderer %in% c("webgpu", "webgl2")) {
+  stop("VIEWER_EXPECTED_RENDERER must be webgpu or webgl2.", call. = FALSE)
+}
 expected_cells <- suppressWarnings(as.integer(Sys.getenv(
   "VIEWER_EXPECTED_CELLS",
   unset = "1000000"
@@ -501,8 +505,7 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "window.__cerebroPageBenchSeen=true;",
         "window.__cerebroPageBenchEventDetail=e.detail||null;",
         "window.__cerebroPageBenchEventAt=e.timeStamp;",
-        "if(!completionRequired&&",
-        "!document.documentElement.classList.contains('shiny-busy')){",
+        "if(!completionRequired){",
         "window.__cerebroPageBenchSettledAt=e.timeStamp;}",
         "window.removeEventListener(%s,h);}});"
       ),
@@ -548,15 +551,6 @@ arm_and_click_page <- function(app, page, selector, require_event = TRUE) {
         "window.__cerebroPageBenchEventAt=null;",
         "window.__cerebroPageBenchCompleteAt=null;",
         "window.__cerebroPageBenchSettledAt=null;",
-        "if(window.jQuery){",
-        "window.jQuery(document).off('shiny:idle.cerebroPageBenchSettled');",
-        "window.jQuery(document).on('shiny:idle.cerebroPageBenchSettled',",
-        "function(){if(!completionRequired&&",
-        "window.__cerebroPageBenchGeneration===generation&&",
-        "window.__cerebroPageBenchSeen===true&&",
-        "!Number.isFinite(window.__cerebroPageBenchSettledAt)){",
-        "window.__cerebroPageBenchSettledAt=performance.now();",
-        "window.jQuery(document).off('shiny:idle.cerebroPageBenchSettled');}});}",
         "%s%sdocument.querySelector(%s).click();})()"
       ),
       if (is.null(page$completion_ready)) "false" else "true",
@@ -1441,15 +1435,32 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   ), specialist_timing)
 }
 
+git_args_at <- function(root, ...) {
+  marker <- file.path(root, ".git")
+  if (.Platform$OS.type == "unix" && file.exists(marker) && !dir.exists(marker)) {
+    pointer <- readLines(marker, warn = FALSE, n = 1L)
+    git_dir <- sub("^gitdir: ", "", pointer)
+    if (grepl("^[A-Za-z]:/", git_dir)) {
+      drive <- tolower(substr(git_dir, 1L, 1L))
+      git_dir <- paste0("/mnt/", drive, substring(git_dir, 3L))
+    }
+    if (dir.exists(git_dir)) {
+      return(c("-c", "core.autocrlf=true", paste0("--git-dir=", git_dir),
+        paste0("--work-tree=", root), ...))
+    }
+  }
+  c("-C", root, ...)
+}
+
 git_value <- function(root, ...) {
-  value <- system2("git", c("-C", root, ...), stdout = TRUE, stderr = TRUE)
+  value <- system2("git", git_args_at(root, ...), stdout = TRUE, stderr = TRUE)
   if (!length(value)) NA_character_ else value[[1L]]
 }
 
 git_dirty <- function(root) {
   length(system2(
     "git",
-    c("-C", root, "status", "--porcelain"),
+    git_args_at(root, "status", "--porcelain"),
     stdout = TRUE,
     stderr = TRUE
   )) >
@@ -1483,6 +1494,7 @@ provenance <- do.call(
         chromote_version = as.character(utils::packageVersion("chromote")),
         profile = profile,
         benchmark_mode = benchmark_mode,
+        expected_renderer = expected_renderer,
         profiler_instrumented = isTRUE(memory_mode),
         rounds = rounds,
         stringsAsFactors = FALSE
@@ -1619,7 +1631,7 @@ rows <- lapply(seq_len(nrow(schedule)), function(index) {
     stringsAsFactors = FALSE
   )
   row$performance_applicable <- identical(benchmark_mode, "timing") &&
-    (!row$requires_webgpu || identical(row$renderer_backend, "webgpu"))
+    (!row$requires_webgpu || identical(row$renderer_backend, expected_renderer))
   row$pass <- if (isTRUE(row$performance_applicable)) {
     row$status == "ok" && page_budget_pass(row$performance_ms, row$budget_ms)
   } else {

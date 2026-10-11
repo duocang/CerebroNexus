@@ -1,0 +1,19 @@
+"step"	"selection"	"generation"	"r_after_mib"	"browser_after_mib"
+"start"	"B"	1	1330.04296875	1733.63671875
+"dataset 0 A"	"A"	2	1330.16796875	1747.17578125
+"gene A Gad1"	"A"	2	1857.9453125	2027.96484375
+"trajectory A shared geometry warm"	"A"	2	1895.16796875	1868.0625
+"trajectory A State static frame"	"A"	2	2121.03125	1871.109375
+"linked A"	"A"	2	2087.8828125	2124.78125
+"gene A Slc17a7"	"A"	2	2284.01953125	2200.28125
+"linked A"	"A"	2	2284.01953125	2230.9375
+"dataset 1 B"	"B"	3	2284.01953125	2299.4765625
+"gene B TNFRSF4"	"B"	3	2284.08203125	2336.63671875
+"linked B"	"B"	3	2284.0859375	2333.40625
+"dataset 2 A"	"A"	4	2284.0859375	2352.1015625
+"gene A Gad1"	"A"	4	2356.77734375	2218.27734375
+"linked A"	"A"	4	2364.40625	2302.83203125
+"gene A Slc17a7"	"A"	4	2364.40625	2276.3515625
+"gene A Gad1"	"A"	4	2368.22265625	2303.76171875
+"before_disconnect"	"A"	4	2368.22265625	2304.36328125
+"dataset 9 A"	"A"	2	2368.22265625	1965.45703125

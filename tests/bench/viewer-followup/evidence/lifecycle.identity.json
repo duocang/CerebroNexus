@@ -1,0 +1,13 @@
+{
+  "candidate_sha": "af738383672b72121cb63d3ef9f025dab95720ce",
+  "dataset_a_sha256": "cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38",
+  "dataset_b_sha256": "12db391431628db6c42fb226befc7fa8fe27392c50c74911f87415ae4a274e47",
+  "harnesses": {
+    "lifecycle.R": "f771838fba41f740c6232c5acd08b85482f01eea5e1e6a805892d037b6c21432",
+    "reconnect.R": "d1899f9d447c9d16a0e843f0518f1c5ce65c62de265defc395473d46dee93aea"
+  },
+  "finite_exit": 1,
+  "finite_failure": "shinytest2 idle controller after reload; pre-disconnect finite operations passed",
+  "recovery_exit": 0,
+  "same_session_reconnect": "BLOCKED: allowReconnect=false"
+}

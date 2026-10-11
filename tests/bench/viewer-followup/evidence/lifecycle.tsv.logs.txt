@@ -1,0 +1,612 @@
+{shinytest2} R  info   11:59:45.23 Start AppDriver initialization
+{shinytest2} R  info   11:59:45.23 Starting Shiny app
+{shinytest2} R  info   12:00:00.90 Creating new ChromoteSession
+{shinytest2} R  info   12:00:01.57 Setting window size: 950x1619
+{shinytest2} R  info   12:00:01.57 Setting window size to `1619`x`950`
+{shinytest2} R  info   12:00:01.59 Navigating to Shiny app
+{shinytest2} R  info   12:00:01.85 Injecting shiny-tracer.js
+{chromote}   JS info   12:00:01.87 shinytest2; jQuery not found
+{chromote}   JS info   12:00:01.87 shinytest2; Loaded
+{shinytest2} R  info   12:00:01.88 Waiting for Shiny to become ready
+{chromote}   JS info   12:00:01.93 shinytest2; jQuery found
+{chromote}   JS info   12:00:01.93 shinytest2; Waiting for shiny session to connect
+{chromote}   JS info   12:00:02.68 shinytest2; Connected
+{shinytest2} R  info   12:00:02.75 Waiting for Shiny to become idle for 200ms within 120000ms
+{chromote}   JS info   12:00:02.75 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:00:02.93 shinytest2; shiny:busy
+{chromote}   JS info   12:00:04.24 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.24 shinytest2; shiny:value expression_projection_point_border_UI
+{chromote}   JS info   12:00:04.25 shinytest2; shiny:value overview_projection_point_border_UI
+{chromote}   JS info   12:00:04.25 shinytest2; shiny:value preferences_options
+{chromote}   JS info   12:00:04.25 shinytest2; shiny:value load_data_sample_info_UI
+{chromote}   JS info   12:00:04.25 shinytest2; shiny:value load_data_select_file_UI
+{chromote}   JS info   12:00:04.27 shinytest2; shiny:busy
+{chromote}   JS info   12:00:04.28 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.28 shinytest2; shiny:busy
+{chromote}   JS info   12:00:04.28 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.48 shinytest2; Shiny has been idle for 200ms
+{chromote}   JS info   12:00:04.48 shinytest2; shiny:busy
+{shinytest2} R  info   12:00:04.48 Shiny app started
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:value load_data_date_of_export
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:value load_data_organism
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:value load_data_number_of_cells
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:value load_data_mode_closed
+{chromote}   JS info   12:00:04.51 shinytest2; shiny:value crb_file_selector_UI
+{chromote}   JS info   12:00:04.84 shinytest2; shiny:busy
+{chromote}   JS info   12:00:04.84 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.92 shinytest2; shiny:busy
+{chromote}   JS info   12:00:04.99 shinytest2; shiny:idle
+{chromote}   JS info   12:00:04.99 shinytest2; shiny:value load_data_date_of_export
+{chromote}   JS info   12:00:04.99 shinytest2; shiny:value load_data_organism
+{chromote}   JS info   12:00:04.99 shinytest2; shiny:value load_data_number_of_cells
+{chromote}   JS info   12:00:05.01 shinytest2; shiny:busy
+{chromote}   JS info   12:00:06.24 shinytest2; shiny:idle
+{chromote}   JS info   12:00:06.24 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_genes_in_separate_panels_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_data_parameters_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_additional_parameters_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_select_projection_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_input_type_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_genes_in_separate_panels_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.25 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.26 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.38 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.38 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:00:08.38 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:00:08.38 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.39 shinytest2; shiny:idle
+{chromote}   JS info   12:00:08.40 shinytest2; shiny:busy
+{chromote}   JS info   12:00:08.41 shinytest2; shiny:idle
+{shinytest2} R  info   12:00:09.97 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:00:09.98 shinytest2; shiny:busy
+{chromote}   JS info   12:00:09.99 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:00:10.68 shinytest2; shiny:idle
+{chromote}   JS info   12:00:10.68 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:00:10.68 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:00:10.68 shinytest2; shiny:busy
+{chromote}   JS info   12:00:10.69 shinytest2; shiny:idle
+{chromote}   JS info   12:00:11.19 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:00:11.19 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:00:11.19 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:00:14.42 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:00:14.46 shinytest2; shiny:busy
+{chromote}   JS info   12:00:14.47 shinytest2; shiny:idle
+{chromote}   JS info   12:00:14.67 shinytest2; shiny:busy
+{chromote}   JS info   12:00:15.66 shinytest2; shiny:idle
+{chromote}   JS info   12:00:15.66 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:15.66 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:15.70 shinytest2; shiny:busy
+{chromote}   JS info   12:00:15.92 shinytest2; shiny:idle
+{chromote}   JS info   12:00:16.41 shinytest2; shiny:busy
+{chromote}   JS info   12:00:16.98 shinytest2; shiny:idle
+{chromote}   JS info   12:00:16.98 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:00:17.00 shinytest2; shiny:busy
+{chromote}   JS info   12:00:17.01 shinytest2; shiny:idle
+{chromote}   JS info   12:00:17.01 shinytest2; shiny:busy
+{chromote}   JS info   12:00:17.49 shinytest2; shiny:idle
+{chromote}   JS info   12:00:17.49 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:00:17.61 shinytest2; shiny:busy
+{chromote}   JS info   12:00:17.69 shinytest2; shiny:idle
+{chromote}   JS info   12:00:17.69 shinytest2; shiny:busy
+{chromote}   JS info   12:00:17.76 shinytest2; shiny:idle
+{chromote}   JS info   12:00:17.76 shinytest2; shiny:busy
+{chromote}   JS info   12:00:17.76 shinytest2; shiny:idle
+{chromote}   JS info   12:00:17.76 shinytest2; shiny:value trajectory_primary_controls_UI
+{chromote}   JS info   12:00:17.78 shinytest2; shiny:busy
+{chromote}   JS info   12:00:22.09 shinytest2; shiny:idle
+{chromote}   JS info   12:00:22.09 shinytest2; shiny:value trajectory_projection_composition
+{chromote}   JS info   12:00:22.09 shinytest2; shiny:value trajectory_number_of_selected_cells
+{chromote}   JS info   12:00:22.10 shinytest2; shiny:busy
+{chromote}   JS info   12:00:22.10 shinytest2; shiny:idle
+{chromote}   JS info   12:00:22.10 shinytest2; shiny:busy
+{chromote}   JS info   12:00:22.11 shinytest2; shiny:idle
+{chromote}   JS info   12:00:22.12 shinytest2; shiny:value trajectory_projection_composition
+{chromote}   JS info   12:00:22.12 shinytest2; shiny:value trajectory_number_of_selected_cells
+{chromote}   JS info   12:00:22.12 shinytest2; shiny:busy
+{chromote}   JS info   12:00:27.03 shinytest2; shiny:idle
+{chromote}   JS info   12:00:27.03 shinytest2; shiny:busy
+{chromote}   JS info   12:00:27.04 shinytest2; shiny:idle
+{chromote}   JS info   12:00:27.04 shinytest2; shiny:value trajectory_number_of_selected_cells
+{chromote}   JS info   12:00:27.04 shinytest2; shiny:busy
+{chromote}   JS info   12:00:27.04 shinytest2; shiny:idle
+{chromote}   JS info   12:00:27.70 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.27 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.45 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.89 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.89 shinytest2; shiny:busy
+{chromote}   JS info   12:00:31.91 shinytest2; shiny:idle
+{chromote}   JS info   12:00:31.91 shinytest2; shiny:busy
+{chromote}   JS info   12:00:35.79 shinytest2; shiny:idle
+{chromote}   JS info   12:00:35.79 shinytest2; shiny:value coordviews_image_ui
+{chromote}   JS info   12:00:35.79 shinytest2; shiny:busy
+{chromote}   JS info   12:00:35.81 shinytest2; shiny:idle
+{chromote}   JS info   12:00:35.81 shinytest2; shiny:busy
+{chromote}   JS info   12:00:38.52 shinytest2; shiny:idle
+{chromote}   JS info   12:00:38.52 shinytest2; shiny:busy
+{chromote}   JS info   12:00:38.52 shinytest2; shiny:idle
+{chromote}   JS info   12:00:38.52 shinytest2; shiny:busy
+{chromote}   JS info   12:00:38.52 shinytest2; shiny:idle
+{chromote}   JS info   12:00:39.96 shinytest2; shiny:busy
+{chromote}   JS info   12:00:40.19 shinytest2; shiny:idle
+{chromote}   JS info   12:00:40.29 shinytest2; shiny:busy
+{chromote}   JS info   12:00:40.39 shinytest2; shiny:idle
+{chromote}   JS info   12:00:40.42 shinytest2; shiny:busy
+{chromote}   JS info   12:00:40.60 shinytest2; shiny:idle
+{shinytest2} R  info   12:00:41.16 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:busy
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:idle
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:busy
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:idle
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:busy
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:idle
+{chromote}   JS info   12:00:41.22 shinytest2; shiny:busy
+{chromote}   JS info   12:00:41.23 shinytest2; shiny:idle
+{chromote}   JS info   12:00:41.23 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:41.23 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:41.23 shinytest2; shiny:busy
+{chromote}   JS info   12:00:41.24 shinytest2; shiny:idle
+{chromote}   JS info   12:00:41.24 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.19 shinytest2; shiny:idle
+{chromote}   JS info   12:00:42.19 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:00:42.19 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.19 shinytest2; shiny:idle
+{chromote}   JS info   12:00:42.28 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:idle
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:idle
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:idle
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:42.29 shinytest2; shiny:busy
+{chromote}   JS info   12:00:42.97 shinytest2; shiny:idle
+{chromote}   JS info   12:00:43.42 shinytest2; shiny:busy
+{chromote}   JS info   12:00:43.46 shinytest2; shiny:idle
+{chromote}   JS info   12:00:43.46 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:00:43.47 shinytest2; shiny:busy
+{chromote}   JS info   12:00:43.62 shinytest2; shiny:idle
+{chromote}   JS info   12:00:43.63 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:00:46.36 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:00:46.36 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:00:46.36 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:00:47.37 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:00:47.41 shinytest2; shiny:busy
+{chromote}   JS info   12:00:47.45 shinytest2; shiny:idle
+{chromote}   JS info   12:00:47.63 shinytest2; shiny:busy
+{chromote}   JS info   12:00:48.49 shinytest2; shiny:idle
+{chromote}   JS info   12:00:48.49 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:00:48.49 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:00:48.53 shinytest2; shiny:busy
+{chromote}   JS info   12:00:49.30 shinytest2; shiny:idle
+{chromote}   JS info   12:00:49.31 shinytest2; shiny:busy
+{chromote}   JS info   12:00:49.46 shinytest2; shiny:idle
+{chromote}   JS info   12:00:49.47 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:00:55.05 shinytest2; shiny:busy
+{chromote}   JS info   12:00:55.05 shinytest2; shiny:idle
+{chromote}   JS info   12:00:55.05 shinytest2; shiny:busy
+{chromote}   JS info   12:00:55.06 shinytest2; shiny:idle
+{chromote}   JS info   12:00:55.07 shinytest2; shiny:value coordviews_image_ui
+{chromote}   JS info   12:00:55.07 shinytest2; shiny:busy
+{chromote}   JS info   12:00:55.09 shinytest2; shiny:idle
+{chromote}   JS info   12:00:55.09 shinytest2; shiny:busy
+{chromote}   JS info   12:00:55.09 shinytest2; shiny:idle
+{chromote}   JS info   12:00:55.09 shinytest2; shiny:busy
+{chromote}   JS info   12:00:55.09 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.20 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.20 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.21 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.21 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.21 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.21 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.22 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.22 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.22 shinytest2; shiny:value coordviews_selected_cells_UI
+{chromote}   JS info   12:01:02.26 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.54 shinytest2; shiny:idle
+{chromote}   JS error  12:01:02.54 [shiny] Error on client while running Shiny app - Shiny server has sent a error for the output 'coordviews_selected_cells_UI',
+                                             but the output is in an unexpected state of: 'invalidated'.
+                                   Tr                   @ shiny-javascript-1.14.0/shiny.min.js:435:181
+                                   Cn                   @ shiny-javascript-1.14.0/shiny.min.js:435:643
+                                   startActionQueueLoop @ shiny-javascript-1.14.0/shiny.min.js:443:5222
+{chromote}   JS error  12:01:02.54 Error: Shiny server has sent a error for the output 'coordviews_selected_cells_UI',
+                                             but the output is in an unexpected state of: 'invalidated'.
+                                       at _n.zi (http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:443:185)
+                                       at _n.Dr (http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:440:176)
+                                       at _n.updateStateFromMessage (http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:438:7254)
+                                       at On.dispatchMessage (http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:444:8957)
+                                       at http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:444:4925
+                                       at On.startActionQueueLoop (http://127.0.0.1:7901/shiny-javascript-1.14.0/shiny.min.js:444:5211)
+                                   startActionQueueLoop @ shiny-javascript-1.14.0/shiny.min.js:443:5236
+{chromote}   JS info   12:01:02.55 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.56 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.64 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.74 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.77 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.78 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.85 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.89 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.92 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.92 shinytest2; shiny:idle
+{chromote}   JS info   12:01:02.95 shinytest2; shiny:busy
+{chromote}   JS info   12:01:02.99 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.03 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.13 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.13 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:03.13 shinytest2; shiny:busy
+{shinytest2} R  info   12:01:03.13 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:01:03.15 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:03.17 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.17 shinytest2; shiny:value expression_projection_select_projection_UI
+{chromote}   JS info   12:01:03.18 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:01:03.18 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:01:03.19 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:03.19 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.22 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.41 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.43 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.44 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:03.44 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:03.45 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.47 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.47 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:01:03.47 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:01:03.48 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.50 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.58 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.58 shinytest2; shiny:idle
+{chromote}   JS info   12:01:03.59 shinytest2; shiny:busy
+{chromote}   JS info   12:01:03.59 shinytest2; shiny:idle
+{chromote}   JS info   12:01:04.05 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:01:04.05 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:01:04.06 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:05.06 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:01:05.09 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.09 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.29 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.34 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.34 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:05.35 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:05.38 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.43 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.44 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.48 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.48 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:01:05.50 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.64 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.64 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:01:05.67 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.76 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.77 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.77 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.77 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.79 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.80 shinytest2; shiny:value coordviews_selected_cells_table
+{chromote}   JS info   12:01:05.91 shinytest2; shiny:busy
+{chromote}   JS info   12:01:05.91 shinytest2; shiny:idle
+{chromote}   JS info   12:01:05.92 shinytest2; shiny:value coordviews_selected_cells_table
+{chromote}   JS info   12:01:05.92 shinytest2; shiny:busy
+{chromote}   JS info   12:01:06.26 shinytest2; shiny:idle
+{chromote}   JS info   12:01:06.26 shinytest2; shiny:value coordviews_image_ui
+{chromote}   JS info   12:01:06.38 shinytest2; shiny:busy
+{chromote}   JS info   12:01:07.33 shinytest2; shiny:idle
+{chromote}   JS info   12:01:07.34 shinytest2; shiny:busy
+{chromote}   JS info   12:01:07.35 shinytest2; shiny:idle
+{chromote}   JS info   12:01:07.40 shinytest2; shiny:busy
+{chromote}   JS info   12:01:07.40 shinytest2; shiny:idle
+{chromote}   JS info   12:01:07.40 shinytest2; shiny:value load_data_date_of_export
+{chromote}   JS info   12:01:07.40 shinytest2; shiny:value load_data_organism
+{chromote}   JS info   12:01:07.40 shinytest2; shiny:value load_data_number_of_cells
+{chromote}   JS info   12:01:07.41 shinytest2; shiny:busy
+{chromote}   JS info   12:01:08.31 shinytest2; shiny:idle
+{chromote}   JS info   12:01:08.34 shinytest2; shiny:busy
+{chromote}   JS info   12:01:08.58 shinytest2; shiny:idle
+{chromote}   JS info   12:01:08.62 shinytest2; shiny:busy
+{chromote}   JS info   12:01:08.63 shinytest2; shiny:idle
+{chromote}   JS info   12:01:08.64 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.01 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:value expression_projection_select_projection_UI
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.70 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.76 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.77 shinytest2; shiny:busy
+{shinytest2} R  info   12:01:11.77 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:01:11.90 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.90 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:busy
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:idle
+{chromote}   JS info   12:01:11.91 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:01:11.92 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:01:11.92 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:01:12.37 shinytest2; shiny:busy
+{chromote}   JS info   12:01:13.01 shinytest2; shiny:idle
+{chromote}   JS info   12:01:13.01 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:13.01 shinytest2; shiny:busy
+{chromote}   JS info   12:01:13.01 shinytest2; shiny:idle
+{chromote}   JS info   12:01:13.51 shinytest2; shiny:busy
+{chromote}   JS info   12:01:13.55 shinytest2; shiny:idle
+{chromote}   JS info   12:01:13.55 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:01:14.02 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:01:14.02 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:01:14.03 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:15.03 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:01:15.06 shinytest2; shiny:busy
+{chromote}   JS info   12:01:15.08 shinytest2; shiny:idle
+{chromote}   JS info   12:01:15.28 shinytest2; shiny:busy
+{chromote}   JS info   12:01:15.35 shinytest2; shiny:idle
+{chromote}   JS info   12:01:15.35 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:15.36 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:15.36 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.29 shinytest2; shiny:idle
+{chromote}   JS info   12:01:18.30 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.45 shinytest2; shiny:idle
+{chromote}   JS info   12:01:18.45 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:01:18.54 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.73 shinytest2; shiny:idle
+{chromote}   JS info   12:01:18.73 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.74 shinytest2; shiny:idle
+{chromote}   JS info   12:01:18.74 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.74 shinytest2; shiny:idle
+{chromote}   JS info   12:01:18.74 shinytest2; shiny:busy
+{chromote}   JS info   12:01:18.75 shinytest2; shiny:idle
+{chromote}   JS info   12:01:19.27 shinytest2; shiny:busy
+{chromote}   JS info   12:01:19.27 shinytest2; shiny:idle
+{chromote}   JS info   12:01:19.29 shinytest2; shiny:busy
+{chromote}   JS info   12:01:26.26 shinytest2; shiny:idle
+{chromote}   JS info   12:01:26.26 shinytest2; shiny:value coordviews_image_ui
+{chromote}   JS info   12:01:26.26 shinytest2; shiny:busy
+{chromote}   JS info   12:01:26.26 shinytest2; shiny:idle
+{chromote}   JS info   12:01:26.27 shinytest2; shiny:busy
+{chromote}   JS info   12:01:26.27 shinytest2; shiny:idle
+{chromote}   JS info   12:01:27.71 shinytest2; shiny:busy
+{chromote}   JS info   12:01:27.99 shinytest2; shiny:idle
+{chromote}   JS info   12:01:28.02 shinytest2; shiny:busy
+{chromote}   JS info   12:01:28.04 shinytest2; shiny:idle
+{chromote}   JS info   12:01:28.09 shinytest2; shiny:busy
+{chromote}   JS info   12:01:28.10 shinytest2; shiny:idle
+{chromote}   JS info   12:01:28.10 shinytest2; shiny:busy
+{chromote}   JS info   12:01:28.93 shinytest2; shiny:idle
+{chromote}   JS info   12:01:28.93 shinytest2; shiny:busy
+{chromote}   JS info   12:01:28.93 shinytest2; shiny:idle
+{shinytest2} R  info   12:01:28.94 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:busy
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:idle
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:busy
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:idle
+{chromote}   JS info   12:01:29.03 shinytest2; shiny:busy
+{chromote}   JS info   12:01:29.07 shinytest2; shiny:idle
+{chromote}   JS info   12:01:29.07 shinytest2; shiny:busy
+{chromote}   JS info   12:01:29.07 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:29.97 shinytest2; shiny:idle
+{chromote}   JS info   12:01:30.00 shinytest2; shiny:busy
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:idle
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:busy
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:idle
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:30.05 shinytest2; shiny:busy
+{chromote}   JS info   12:01:31.21 shinytest2; shiny:idle
+{chromote}   JS info   12:01:31.21 shinytest2; shiny:busy
+{chromote}   JS info   12:01:31.25 shinytest2; shiny:idle
+{chromote}   JS info   12:01:31.25 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:01:31.27 shinytest2; shiny:busy
+{chromote}   JS info   12:01:31.53 shinytest2; shiny:idle
+{chromote}   JS info   12:01:31.53 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:01:32.03 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:01:32.03 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:01:32.04 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:33.04 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:01:33.07 shinytest2; shiny:busy
+{chromote}   JS info   12:01:33.08 shinytest2; shiny:idle
+{chromote}   JS info   12:01:33.28 shinytest2; shiny:busy
+{chromote}   JS info   12:01:34.74 shinytest2; shiny:idle
+{chromote}   JS info   12:01:34.74 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:34.74 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:34.78 shinytest2; shiny:busy
+{chromote}   JS info   12:01:35.38 shinytest2; shiny:idle
+{chromote}   JS info   12:01:35.39 shinytest2; shiny:busy
+{shinytest2} R  info   12:01:35.45 Waiting for Shiny to become idle for 500ms within 120000ms
+{chromote}   JS info   12:01:35.45 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:35.53 shinytest2; shiny:idle
+{chromote}   JS info   12:01:35.53 shinytest2; shiny:value expression_by_group
+{chromote}   JS info   12:01:36.02 shinytest2; Shiny has been idle for 500ms
+{shinytest2} R  info   12:01:36.02 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:01:36.02 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:01:37.02 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:01:37.06 shinytest2; shiny:busy
+{chromote}   JS info   12:01:37.08 shinytest2; shiny:idle
+{chromote}   JS info   12:01:37.28 shinytest2; shiny:busy
+{chromote}   JS info   12:01:37.33 shinytest2; shiny:idle
+{chromote}   JS info   12:01:37.33 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:01:37.34 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:01:37.37 shinytest2; shiny:busy
+{chromote}   JS info   12:01:38.15 shinytest2; shiny:idle
+{chromote}   JS info   12:01:38.15 shinytest2; shiny:busy
+{chromote}   JS info   12:01:38.27 shinytest2; shiny:idle
+{chromote}   JS info   12:01:38.28 shinytest2; shiny:value expression_by_group
+{shinytest2} R  info   12:01:43.19 Waiting for Shiny to become idle for 500ms within 120000ms
+{shiny}      R  stderr ----------- Loading required package: shiny
+{shiny}      R  stderr ----------- ##---------------------------------------------------------------------------##
+{shiny}      R  stderr ----------- ## Launching CerebroNexus
+{shiny}      R  stderr ----------- ##---------------------------------------------------------------------------##
+{shiny}      R  stderr ----------- Running application in test mode.
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- Listening on http://127.0.0.1:7901
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- Warning: Converting to a dense matrix may use excessive memory
+{shiny}      R  stderr ----------- This message is displayed once every 8 hours.
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stdout ----------- Overriding `library()` / `require()` to load local package: CerebroNexus 
+{shiny}      R  stdout ----------- [2026-10-10 12:00:04.048227] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:00:04.063551] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:00:04.274033] WebGL status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:00:04.280605] Show hover info status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:00:05.026505] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:00:05.786569] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:00:09.271307] Attaching bpcells backend: /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+{shiny}      R  stdout ----------- [2026-10-10 12:01:02.329152] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:02.403752] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:01:02.671704] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:02.679621] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:01:06.43512] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:07.16223] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:01:07.425948] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:08.137427] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:01:08.656809] Attaching bpcells backend: /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+{shiny}      R  stdout ----------- [2026-10-10 12:01:39.908048] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:39.913535] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:01:40.065474] WebGL status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:01:40.068738] Show hover info status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:01:40.328501] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:01:41.032788] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:01:42.366256] Attaching bpcells backend: /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells

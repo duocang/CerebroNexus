@@ -334,20 +334,26 @@ test_that("specialist views can reference validated shared coordinates", {
     order_fingerprint = "order-a"
   )
   shared <- list(
+    dataset_context = list(epoch="wire-test",dataset_key="A",generation=1),
     dataset_fingerprint = "dataset-a",
     cell_count = 4096L,
     canonical_order_id = "order-a",
     projection = "umap"
   )
   expect_identical(
-    runtime$viewerSharedProjectionName("umap", 4096L, shared, identity),
+    runtime$viewerSharedProjectionName("umap", 4096L, shared, identity, shared$dataset_context),
     "umap"
   )
+  expect_null(runtime$viewerSharedProjectionName("umap",4096L,shared,identity,
+    list(epoch="wire-test",dataset_key="A",generation=2)))
+  expect_null(runtime$viewerSharedProjectionName("umap",4096L,shared,identity,
+    list(epoch="new-epoch",dataset_key="A",generation=1)))
   expect_null(runtime$viewerSharedProjectionName(
     "umap",
     4096L,
     within(shared, dataset_fingerprint <- "dataset-b"),
-    identity
+    identity,
+    shared$dataset_context
   ))
 
   sent <- list()
@@ -476,7 +482,7 @@ test_that("dataset changes invalidate cached specialist plots", {
       "const resetEnd = source.indexOf('  function mountSingleSurface', resetStart);",
       "const attachStart = source.indexOf('  function attachSingleDatasetIdentity');",
       "const attachEnd = source.indexOf('  function reportSingleHiddenGroups', attachStart);",
-      "let restored = 0, singleAsyncEpoch = 0;",
+      "let restored = 0;",
       "function singleView(id) {return singleViews[id];}",
       "function restoreLinkedSurface() { restored += 1; }",
       "function reportSelection() {}",

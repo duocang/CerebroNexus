@@ -8,10 +8,10 @@
 ## large slides (it's an estimate of the same statistic on a random subset).
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_morans_i"]] <- renderText({
+  req(identical(input[["sidebar"]], "spatial"))
   ## Guard on the raw input before touching spatial_projection_parameters_plot(),
-  ## which reads getSpatialData() to derive image bounds. The output is kept
-  ## active so it is ready when ImageFeaturePlot appears, but the default hidden
-  ## ImageDimPlot path must exit without hydrating or validating coordinates.
+  ## which reads getSpatialData() to derive image bounds. The default
+  ## ImageDimPlot path must exit without hydrating coordinates.
   req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))
   plot_parameters <- spatial_projection_parameters_plot()
   req(identical(plot_parameters[["plot_type"]], "ImageFeaturePlot"))
@@ -49,18 +49,22 @@ output[["spatial_projection_morans_i"]] <- renderText({
     if (n > max_cells) paste0(" (", max_cells, "-cell subsample)") else ""
   )
 }) %>%
-  cachePlot(
-    spatial_projection_parameters_plot()[["projection"]],
-    spatial_projection_parameters_plot()[["feature_to_display"]],
-    viewerDatasetContextToken(viewer_loaded_dataset_context())
-  )
+  cachePlot({
+    ## Cache keys run before the render body, so gate both paths.
+    req(identical(input[["sidebar"]], "spatial"))
+    req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))
+    list(
+      input[["spatial_projection_to_display"]],
+      input[["spatial_projection_feature_to_display"]],
+      viewerDatasetContextToken(viewer_loaded_dataset_context())
+    )
+  })
 
-## Keep it computed even when the title-bar span is momentarily hidden (e.g.
-## while switching plot type), so the value is ready as soon as it reappears.
+## Compute the score only while its feature-mode title bar is visible.
 outputOptions(
   output,
   "spatial_projection_morans_i",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 
 ## Info box explaining the score, shown when pressing the "info" button next to

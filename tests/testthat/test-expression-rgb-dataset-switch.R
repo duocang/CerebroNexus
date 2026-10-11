@@ -43,6 +43,48 @@ test_that("gene choice refresh preserves canonical selections and unknown input"
   expect_identical(canonicalGeneSelection(character(), "SNAP25"), character())
 })
 
+test_that("mounted Gene selectors do not restore old input on return", {
+  callbacks <- list()
+  sent <- list()
+  testthat::local_mocked_bindings(later = function(func, ...) {
+    callbacks[[length(callbacks) + 1L]] <<- func
+  }, .package = "later")
+  shiny::testServer(function(input, output, session) {
+    sys.source(viewer_test_path("utility_functions.R"), environment())
+    data_set <- shiny::reactiveVal(list(genes = c("Gad1", "Slc17a7")))
+    getGeneNames <- function() data_set()$genes
+    updateSelectizeInput <- function(session, inputId, choices, selected, ...) {
+      sent[[length(sent) + 1L]] <<- list(choices=choices, selected=selected)
+    }
+    serverSideGeneSelector(session,"gene",canonical_selection=TRUE,
+      refresh_on_activation=FALSE,
+      active=function() identical(input$sidebar,"geneExpression"))
+  }, {
+    session$setInputs(sidebar="geneExpression",gene="Gad1")
+    lapply(callbacks,function(f) f())
+    n <- length(sent); expect_gt(n,0L)
+    old_callbacks <- callbacks
+    session$setInputs(sidebar="coordinated_views")
+    session$setInputs(sidebar="geneExpression",gene="Slc17a7")
+    lapply(old_callbacks,function(f) f())
+    expect_length(sent,n)
+    expect_identical(input$gene,"Slc17a7")
+    session$setInputs(gene="")
+    session$setInputs(sidebar="coordinated_views")
+    session$setInputs(sidebar="geneExpression")
+    expect_length(sent,n)
+    session$setInputs(sidebar="coordinated_views")
+    data_set(list(genes="NEW")); session$flushReact()
+    expect_length(sent,n)
+    session$setInputs(sidebar="geneExpression")
+    expect_gt(length(sent),n)
+    expect_identical(tail(sent,1)[[1]]$choices,"NEW")
+    n <- length(sent)
+    lapply(old_callbacks,function(f) f())
+    expect_length(sent,n)
+  })
+})
+
 test_that("obsolete selector retries cannot replace a new dataset's choices", {
   callbacks <- list()
   recorded <- new.env(parent = emptyenv())

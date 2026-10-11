@@ -1,0 +1,17 @@
+Shiny 1.14.0
+public_methods allowReconnect
+function (value) 
+{
+    if (!(identical(value, TRUE) || identical(value, FALSE) || 
+        identical(value, "force"))) {
+        stop("value must be TRUE, FALSE, or \"force\"")
+    }
+    private$write(toJSON(list(allowReconnect = value)))
+}
+<bytecode: 0x55ea4c702ad8>
+<environment: namespace:shiny>
+6357:       this.$allowReconnect = false;
+6596:       if (this.$allowReconnect === true && this.$socket.allowReconnect === true || this.$allowReconnect === "force") {
+6935:       addMessageHandler("allowReconnect", (message) => {
+6940:             this.$allowReconnect = message;
+6943:             throw "Invalid value for allowReconnect: " + message;

@@ -1,0 +1,660 @@
+{
+  "ops": [
+    {
+      "name": "crb_file_selector",
+      "value": "Demo",
+      "start": 4414.1,
+      "events": []
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-geneExpression",
+      "start": 29619.2,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "TNFRSF4"
+      ],
+      "start": 30178.5,
+      "events": [
+        {
+          "ms": 247.5,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Demo",
+              "generation": 1
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1476,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 29678,
+              "clickToRequestMs": {},
+              "bytes": 113852,
+              "serverPrepareMs": 309.0198,
+              "serializeTransferMs": 420.9802,
+              "decodeMs": 0.8,
+              "binaryReceivedAtMs": 30407.3,
+              "requestToBinaryMs": 730,
+              "geometryReused": false,
+              "activationStartedAtMs": 30408.9,
+              "buildSpacesMs": 2.5,
+              "preDrawMs": 6,
+              "firstDrawMs": 10.2,
+              "activationMs": 16.2,
+              "readyAtMs": 30425.7,
+              "requestToReadyMs": 747.7
+            }
+          }
+        },
+        {
+          "ms": 718,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Demo",
+              "generation": 1
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1476,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 29678,
+              "clickToRequestMs": {},
+              "bytes": 113852,
+              "serverPrepareMs": 754.637,
+              "serializeTransferMs": 453.363,
+              "decodeMs": 0.6,
+              "binaryReceivedAtMs": 30885.9,
+              "requestToBinaryMs": 1208,
+              "geometryReused": false,
+              "activationStartedAtMs": 30886.8,
+              "buildSpacesMs": 1.9,
+              "preDrawMs": 6.1,
+              "firstDrawMs": 1.9,
+              "activationMs": 8,
+              "readyAtMs": 30896.1,
+              "requestToReadyMs": 1218.1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "TNFRSF4"
+      ],
+      "start": 30947.1,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "TNFRSF4"
+      ],
+      "start": 31239.1,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "TNFRSF4"
+      ],
+      "start": 36624.5,
+      "events": [
+        {
+          "ms": 2547.6,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Demo",
+              "generation": 1
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:1d32fd5a3a84ba9998cf93408abbfd1b",
+            "eventKind": "primary",
+            "renderKey": "combined\u001dTNFRSF4\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1476,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 29678,
+              "clickToRequestMs": {},
+              "bytes": 113852,
+              "serverPrepareMs": 754.637,
+              "serializeTransferMs": 453.363,
+              "decodeMs": 0.6,
+              "binaryReceivedAtMs": 30885.9,
+              "requestToBinaryMs": 1208,
+              "geometryReused": false,
+              "activationStartedAtMs": 30886.8,
+              "buildSpacesMs": 1.9,
+              "preDrawMs": 6.1,
+              "firstDrawMs": 1.9,
+              "activationMs": 8,
+              "readyAtMs": 39171.7,
+              "requestToReadyMs": 9493.7
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-coordinated_views",
+      "start": 43246.1,
+      "events": []
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-loadData",
+      "start": 54087.2,
+      "events": []
+    },
+    {
+      "name": "crb_file_selector",
+      "value": "Mouse",
+      "start": 80465.8,
+      "events": []
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-geneExpression",
+      "start": 88554.5,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 89882.5,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 89887.4,
+      "events": []
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 92327.2,
+      "events": [
+        {
+          "ms": 519.6,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001dTnfrsf4\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 17596,
+              "serverPrepareMs": 3192.1877,
+              "serializeTransferMs": 238.8123,
+              "decodeMs": 0.2,
+              "binaryReceivedAtMs": 92064.4,
+              "requestToBinaryMs": 3431,
+              "geometryReused": false,
+              "projectionFetchMs": 460.1,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": false,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 92528.9,
+              "buildSpacesMs": 48.3,
+              "preDrawMs": 53.4,
+              "firstDrawMs": 262.8,
+              "activationMs": 316.2,
+              "readyAtMs": 92846.1,
+              "requestToReadyMs": 4212.8
+            }
+          }
+        },
+        {
+          "ms": 805.9,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1716,
+              "serverPrepareMs": 3842.1599,
+              "serializeTransferMs": 616.8401,
+              "decodeMs": 0.1,
+              "binaryReceivedAtMs": 93092,
+              "requestToBinaryMs": 4459,
+              "geometryReused": false,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 93093.4,
+              "buildSpacesMs": 0.5,
+              "preDrawMs": 3.5,
+              "firstDrawMs": 34.7,
+              "activationMs": 38.2,
+              "readyAtMs": 93132.4,
+              "requestToReadyMs": 4499.1
+            }
+          }
+        },
+        {
+          "ms": 2785.4,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001dTnfrsf4\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1716,
+              "serverPrepareMs": 3842.1599,
+              "serializeTransferMs": 616.8401,
+              "decodeMs": 0.1,
+              "binaryReceivedAtMs": 93092,
+              "requestToBinaryMs": 4459,
+              "geometryReused": false,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 93093.4,
+              "buildSpacesMs": 0.5,
+              "preDrawMs": 3.5,
+              "firstDrawMs": 34.7,
+              "activationMs": 38.2,
+              "readyAtMs": 95112.4,
+              "requestToReadyMs": 6479.1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 99172.7,
+      "events": [
+        {
+          "ms": 429.2,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001d\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1252,
+              "serverPrepareMs": 10342.7676,
+              "serializeTransferMs": 601.2324,
+              "decodeMs": 0.2,
+              "binaryReceivedAtMs": 99577.2,
+              "requestToBinaryMs": 10944,
+              "geometryReused": true,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 99579.2,
+              "buildSpacesMs": 1,
+              "preDrawMs": 8.1,
+              "firstDrawMs": 13.7,
+              "activationMs": 21.8,
+              "readyAtMs": 99601.5,
+              "requestToReadyMs": 10968.2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expression_genes_input",
+      "value": [
+        "Gad1"
+      ],
+      "start": 99692.2,
+      "events": [
+        {
+          "ms": 4354.7,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1252,
+              "serverPrepareMs": 10342.7676,
+              "serializeTransferMs": 601.2324,
+              "decodeMs": 0.2,
+              "binaryReceivedAtMs": 99577.2,
+              "requestToBinaryMs": 10944,
+              "geometryReused": true,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 99579.2,
+              "buildSpacesMs": 1,
+              "preDrawMs": 8.1,
+              "firstDrawMs": 13.7,
+              "activationMs": 21.8,
+              "readyAtMs": 104046.4,
+              "requestToReadyMs": 15413.1
+            }
+          }
+        },
+        {
+          "ms": 38114.4,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "aux",
+            "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1252,
+              "serverPrepareMs": 10342.7676,
+              "serializeTransferMs": 601.2324,
+              "decodeMs": 0.2,
+              "binaryReceivedAtMs": 99577.2,
+              "requestToBinaryMs": 10944,
+              "geometryReused": true,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 99579.2,
+              "buildSpacesMs": 1,
+              "preDrawMs": 8.1,
+              "firstDrawMs": 13.7,
+              "activationMs": 21.8,
+              "readyAtMs": 137805.9,
+              "requestToReadyMs": 49172.6
+            }
+          }
+        },
+        {
+          "ms": 39920.6,
+          "detail": {
+            "viewId": "expression_projection",
+            "dataset_context": {
+              "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 5,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "interaction",
+            "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 1000000,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 88633.3,
+              "clickToRequestMs": {},
+              "bytes": 1252,
+              "serverPrepareMs": 10342.7676,
+              "serializeTransferMs": 601.2324,
+              "decodeMs": 0.2,
+              "binaryReceivedAtMs": 99577.2,
+              "requestToBinaryMs": 10944,
+              "geometryReused": true,
+              "projectionFetchMs": 0,
+              "projectionBytes": 8000000,
+              "projectionDownloadMs": 443.8,
+              "projectionDecodeMs": 16.7,
+              "projectionCacheHit": true,
+              "projectionSubsetFetchMs": 0,
+              "projectionSubsetBytes": 0,
+              "projectionSubsetDownloadMs": 0,
+              "projectionSubsetDecodeMs": 0,
+              "projectionSubsetCacheHit": false,
+              "projectionSubsetMaterializeMs": 0,
+              "categoricalFetchMs": 0,
+              "categoricalBytes": 0,
+              "activationStartedAtMs": 99579.2,
+              "buildSpacesMs": 1,
+              "preDrawMs": 8.1,
+              "firstDrawMs": 13.7,
+              "activationMs": 21.8,
+              "readyAtMs": 139612.3,
+              "requestToReadyMs": 50979
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "context": {
+    "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+    "dataset_key": "Mouse",
+    "generation": 2
+  },
+  "gene": [
+    "Gad1"
+  ],
+  "state": {
+    "ready": false,
+    "dataset_context": {
+      "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+      "dataset_key": "Mouse",
+      "generation": 2
+    },
+    "datasetKey": "Mouse",
+    "generation": 2,
+    "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+    "pointCount": 0,
+    "xExtent": {},
+    "yExtent": {},
+    "backgroundIdentity": {},
+    "wireToken": {}
+  },
+  "heap": 180094834,
+  "staleContexts": [
+    {
+      "context": {
+        "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+        "dataset_key": "Demo",
+        "generation": 1
+      },
+      "accepted": false
+    },
+    {
+      "context": {
+        "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+        "dataset_key": "Demo",
+        "generation": 1
+      },
+      "accepted": false
+    },
+    {
+      "context": {
+        "epoch": "nfiEXf7ZNYZCm0zU0nmDbnvm",
+        "dataset_key": "Demo",
+        "generation": 1
+      },
+      "accepted": false
+    }
+  ],
+  "oldEpochRejected": true
+}

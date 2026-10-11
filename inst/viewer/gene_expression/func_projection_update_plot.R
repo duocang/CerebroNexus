@@ -10,7 +10,7 @@ expressionSparseColor <- function(values, max_density = 0.5) {
     return(NULL)
   }
   list(
-    protocol = "sparse-f32-v1",
+    protocol = "sparse-f64-v1",
     length = length(values),
     index = as.integer(present - 1L),
     color = unname(values[present])
@@ -23,7 +23,7 @@ expressionPackedColor <- function(values) {
     return(sparse)
   }
   list(
-    protocol = "dense-f32-v1",
+    protocol = "dense-f64-v1",
     length = length(values),
     color = unname(values)
   )
@@ -165,7 +165,8 @@ expression_projection_update_plot <- function(input) {
   ) {
     viewerSharedProjectionName(
       plot_parameters[["projection"]],
-      length(cell_indices)
+      length(cell_indices),
+      dataset_context = input[["dataset_context"]]
     )
   } else {
     NULL

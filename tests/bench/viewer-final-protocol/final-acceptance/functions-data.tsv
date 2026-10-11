@@ -1,0 +1,97 @@
+"file"	"context"	"test"	"nb"	"failed"	"skipped"	"error"	"warning"	"user"	"system"	"real"	"passed"
+"test-cerebro-io.R"	"cerebro-io"	"BPCells v2 writer keeps both input orders row-major"	4	0	FALSE	FALSE	0	0.365	0.959	1.238	4
+"test-cerebro-io.R"	"cerebro-io"	"legacy RDS CRBs rebuild the current Cerebro class"	3	0	FALSE	FALSE	0	0.0779999999999994	0.0129999999999999	0.0860000000000003	3
+"test-cerebro-io.R"	"cerebro-io"	"spatial molecules are loaded one FOV at a time from a sidecar"	9	0	FALSE	FALSE	0	0.172000000000001	0.056	0.226000000000001	9
+"test-cerebro-io.R"	"cerebro-io"	"immune repertoires can load lazily from a BPCells sidecar"	7	0	FALSE	FALSE	0	0.145	0.00800000000000001	0.146999999999998	7
+"test-cerebro-io.R"	"cerebro-io"	"bundled demo CRBs use the current qs2 codec"	19	0	FALSE	FALSE	0	1.227	0.0739999999999998	1.388	19
+"test-cerebro-io.R"	"cerebro-io"	"thin RDS and qs2 CRBs share one validated BPCells sidecar"	50	0	FALSE	FALSE	0	0.603	0.0270000000000001	0.619	50
+"test-cerebro-io.R"	"cerebro-io"	"Data Info reads the v2 cell count without forcing metadata"	5	0	FALSE	FALSE	0	0.0180000000000007	0.00499999999999989	0.0350000000000001	5
+"test-cerebro-io.R"	"cerebro-io"	"thin schema v2 hydrates row-major BPCells sidecars"	11	0	FALSE	FALSE	0	0.267000000000001	0.483	0.757999999999999	11
+"test-clone-base-cache.R"	"clone-base-cache"	"Clonal base caching invalidates when its rendered content changes"	1	0	FALSE	FALSE	0	0.00699999999999967	0	0.0549999999999997	1
+"test-export-data-integrity.R"	"export-data-integrity"	"external modes require a distinct .crb output path"	2	0	FALSE	FALSE	0	2.688	0.0270000000000001	2.537	2
+"test-export-data-integrity.R"	"export-data-integrity"	"external export basenames are portable across filesystems"	12	0	FALSE	FALSE	0	1.31	0.004	1.24	12
+"test-export-data-integrity.R"	"export-data-integrity"	"the export stage and new artifacts are owner-only"	3	0	FALSE	FALSE	0	0.121000000000002	0.004	0.119	3
+"test-export-data-integrity.R"	"export-data-integrity"	"replacing a CRB preserves its existing mode"	1	0	FALSE	FALSE	0	0.0240000000000009	0	0.0229999999999997	1
+"test-export-data-integrity.R"	"export-data-integrity"	"publication refuses to replace an unowned sidecar"	3	0	FALSE	FALSE	0	0.0229999999999997	0	0.0229999999999997	3
+"test-export-data-integrity.R"	"export-data-integrity"	"backend ownership checks do not execute serialized bindings"	7	0	FALSE	FALSE	0	0.0660000000000025	0.00199999999999978	0.0700000000000003	7
+"test-export-data-integrity.R"	"export-data-integrity"	"publisher accepts only its fixed sidecar name"	3	0	FALSE	FALSE	0	0.0169999999999995	0	0.0169999999999995	3
+"test-export-data-integrity.R"	"export-data-integrity"	"publisher rejects a symbolic-link staged sidecar"	5	0	FALSE	FALSE	0	0.0110000000000028	0.00400000000000045	0.0169999999999995	5
+"test-export-data-integrity.R"	"export-data-integrity"	"publisher rejects a sidecar with the wrong artifact type"	2	0	FALSE	FALSE	0	0.00999999999999801	0	0.0100000000000016	2
+"test-export-data-integrity.R"	"export-data-integrity"	"H5 replacement updates only its owned portable sibling"	4	0	FALSE	FALSE	0	1.511	0.00399999999999956	1.438	4
+"test-export-data-integrity.R"	"export-data-integrity"	"createShinyApp bundles the sidecar produced by the exporter"	2	0	FALSE	FALSE	0	1.404	0.0800000000000001	1.79	2
+"test-export-data-integrity.R"	"export-data-integrity"	"switching to embedded removes the old owned sidecar"	3	0	FALSE	FALSE	0	1.339	0.004	1.269	3
+"test-export-data-integrity.R"	"export-data-integrity"	"a publication error restores the previous BPCells export"	4	0	FALSE	FALSE	0	0.0309999999999988	0	0.032	4
+"test-export-data-integrity.R"	"export-data-integrity"	"late validation cannot replace an existing H5 export"	4	0	FALSE	FALSE	0	1.261	0.004	3.267	4
+"test-multi_crb.R"	"multi_crb"	"matches a named dataset by its name"	1	0	FALSE	FALSE	0	0.00600000000000023	0	0.00600000000000023	1
+"test-multi_crb.R"	"multi_crb"	"matches by basename when names are absent"	1	0	FALSE	FALSE	0	0.0120000000000005	0	0.0120000000000005	1
+"test-multi_crb.R"	"multi_crb"	"matches by basename without extension"	1	0	FALSE	FALSE	0	0.00500000000000256	0	0.00600000000000023	1
+"test-multi_crb.R"	"multi_crb"	"returns empty string when nothing matches"	1	0	FALSE	FALSE	0	0.00500000000000256	0	0.00600000000000023	1
+"test-multi_crb.R"	"multi_crb"	"name match takes precedence over basename"	1	0	FALSE	FALSE	0	0.00400000000000134	0.00099999999999989	0.00499999999999901	1
+"test-seurat-pipeline.R"	"seurat-pipeline"	"bundled PBMC Seurat input converts into a standalone Shiny app"	5	0	FALSE	FALSE	0	2.515	0.0740000000000003	2.875	5
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"a normal split is one unique partition"	3	0	FALSE	FALSE	0	0.00199999999999889	0.004	0.0069999999999979	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"full, empty, and overlapping custom layers stay outside the partition"	3	0	FALSE	FALSE	0	0.0559999999999974	0	0.0549999999999997	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"an incomplete candidate set has no partition"	3	0	FALSE	FALSE	0	0.00400000000000134	0	0.00499999999999901	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"two exact covers are reported as ambiguous"	5	0	FALSE	FALSE	0	0.00900000000000034	0	0.0100000000000016	5
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"ambiguous solutions are deterministic across candidate order"	2	0	FALSE	FALSE	0	0.00300000000000011	0	0.00399999999999778	2
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"ambiguous examples are independent of assay-cell order"	2	0	FALSE	FALSE	0	0.00399999999999778	0	0.00399999999999778	2
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"partition resolution is independent of candidate order"	3	0	FALSE	FALSE	0	0.00400000000000134	0	0.00500000000000256	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"structurally invalid memberships fail rather than disappear"	3	0	FALSE	FALSE	0	0.0150000000000006	0	0.0150000000000006	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"solution caps are finite integers and never pad results"	8	0	FALSE	FALSE	0	0.0289999999999999	0.00300000000000011	0.0340000000000025	8
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"pathological overlap stops at deterministic work budgets"	17	0	FALSE	FALSE	0	0.0910000000000011	0.0169999999999999	0.108999999999998	17
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"deep conflicting partitions stop before exhausting R's call stack"	3	0	FALSE	FALSE	0	0.221999999999998	0.0640000000000001	0.27	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"the normal partition path scales to 50000 cells"	3	0	FALSE	FALSE	0	1.123	0	1.064	3
+"test-seurat-v5-layer-partition.R"	"seurat-v5-layer-partition"	"overlapping noise stays scalable on a large partition"	3	0	FALSE	FALSE	0	1.333	0.00299999999999967	1.26300000000001	3
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"calculatePercentGenes handles split counts layers"	4	0	FALSE	FALSE	0	1.147	0	1.086	4
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"getMostExpressedGenes handles split counts layers"	5	0	FALSE	FALSE	0	1.131	0	1.066	5
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"addPercentMtRibo handles split counts layers"	4	0	FALSE	FALSE	0	1.117	0.00200000000000022	1.038	4
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"gene-set enrichment gets past split data resolution"	1	0	FALSE	FALSE	0	1.099	0.00300000000000011	1.006	1
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"spatial extraction can reuse an already resolved matrix"	6	0	FALSE	FALSE	0	1.098	0.004	1.007	6
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"spatial payload records a cross-semantic fallback honestly"	3	0	FALSE	FALSE	0	0.143999999999998	0	0.134	3
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"public consumers do not cross semantic classes"	1	0	FALSE	FALSE	0	1.088	0.00699999999999967	0.999000000000002	1
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"resolution records distinguish requested and physical layers"	5	0	FALSE	FALSE	0	0.0279999999999987	0	0.0289999999999964	5
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"expression-cell validation preserves or restores object order"	3	0	FALSE	FALSE	0	0.00100000000000477	0.00400000000000045	0.00500000000000256	3
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"expression-cell validation reports both sides of a mismatch"	5	0	FALSE	FALSE	0	0.0159999999999982	0	0.0160000000000053	5
+"test-seurat-v5-layered-public-functions.R"	"seurat-v5-layered-public-functions"	"expression-cell validation requires usable column names"	1	0	FALSE	FALSE	0	0.00500000000000256	0	0.00500000000000256	1
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a sample-name-split object resolves to the joined `data` layer"	5	0	FALSE	FALSE	0	1.15499999999999	0.00299999999999967	1.057	5
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"the legacy numeric split form keeps resolving as before"	4	0	FALSE	FALSE	0	1.118	0.00300000000000011	1.023	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a full-cell dotted custom layer is not treated as split"	3	0	FALSE	FALSE	0	1.195	0	1.13	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a full-cell custom layer is excluded from a real split join"	4	0	FALSE	FALSE	0	1.212	0	1.145	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"Seurat-prefix custom layers are excluded from a real split join"	4	0	FALSE	FALSE	0	2.369	0	2.23200000000001	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"an unrelated partial layer does not hide a real split partition"	4	0	FALSE	FALSE	0	1.154	0	1.08799999999999	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a requested custom root resolves its complete split partition"	5	0	FALSE	FALSE	0	1.17100000000001	0	1.105	5
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a requested custom root may itself contain a dot"	2	0	FALSE	FALSE	0	1.179	0	1.11	2
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a dotted requested root is matched literally, not as a regex"	3	0	FALSE	FALSE	0	1.217	0	1.146	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"an exact custom root takes precedence over its split siblings"	3	0	FALSE	FALSE	0	1.288	0	1.21400000000001	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"an ambiguous real Assay5 partition names both covers and is refused"	6	0	FALSE	FALSE	0	1.19	0.00599999999999978	1.131	6
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"an incomplete real Assay5 partition is refused"	4	0	FALSE	FALSE	0	1.14	0.00800000000000001	1.084	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a full custom prefix is not substituted for an absent exact root"	3	0	FALSE	FALSE	0	1.172	0	1.10700000000001	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a missing split root is not partially read when joins are disabled"	1	0	FALSE	FALSE	0	1.10899999999999	0	1.046	1
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"cross-semantic fallback resolves a split replacement root"	3	0	FALSE	FALSE	0	1.139	0	3.141	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"incomplete requested-prefix noise does not block compatibility"	5	0	FALSE	FALSE	0	1.134	0	1.07100000000001	5
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"strict incomplete-root errors carry actionable diagnostics"	3	0	FALSE	FALSE	0	1.172	0.00200000000000022	1.108	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"resolving a partition leaves every caller layer unchanged"	12	0	FALSE	FALSE	0	1.17299999999999	0.00300000000000011	1.111	12
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a sample-split object exports every cell in embedded mode"	4	0	FALSE	FALSE	0	1.148	0.0089999999999999	1.092	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"conversion can hand one validated layer resolution to export"	3	0	FALSE	FALSE	0	1.198	0	1.131	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a sample-split object exports every cell in h5 mode"	3	0	FALSE	FALSE	0	1.351	0	1.27499999999999	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a sample-split object exports every cell in bpcells mode"	8	0	FALSE	FALSE	0	1.217	0.46	1.587	8
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a layer asked for by name is not joined away underneath the caller"	3	0	FALSE	FALSE	0	1.145	0	1.07899999999999	3
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a disk-backed assay is refused with the reason, not just a class"	6	0	FALSE	FALSE	0	0.134	0.00399999999999956	0.135999999999996	6
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"every selected split layer is checked for disk-backed storage"	2	0	FALSE	FALSE	0	1.31399999999999	0.00100000000000033	1.21900000000001	2
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"exporting one named split layer fails on the cell count, clearly"	2	0	FALSE	FALSE	0	1.121	0.00100000000000033	1.03500000000001	2
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"a partial expression matrix is rejected identically in every mode"	4	0	FALSE	FALSE	0	1.157	0.00599999999999934	1.074	4
+"test-seurat-v5-split-layers.R"	"seurat-v5-split-layers"	"convertSeuratToCerebro propagates export failures"	2	0	FALSE	FALSE	0	1.248	0.00600000000000023	1.155	2
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack gating is dataset-level"	6	0	FALSE	FALSE	0	0.263999999999996	0.00900000000000034	0.254000000000005	6
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack stores canonical trajectory row indexes"	8	0	FALSE	FALSE	0	0.138000000000005	0	0.135000000000005	8
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack links exact trajectory geometry to canonical projection"	5	0	FALSE	FALSE	0	0.0739999999999981	0.00800000000000001	0.0829999999999984	5
+"test-viewer-pack.R"	"viewer-pack"	"validated Viewer Pack descriptors are reused with session-local caches"	4	0	FALSE	FALSE	0	0.113	0.00499999999999989	0.114000000000004	4
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack stores canonical spatial row indexes"	5	0	FALSE	FALSE	0	0.0730000000000075	0.00800000000000001	0.0829999999999984	5
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack stores compact group metric frames"	5	0	FALSE	FALSE	0	0.174999999999997	0.00900000000000034	0.176000000000002	5
+"test-viewer-pack.R"	"viewer-pack"	"saveCerebro forwards dataset-level Viewer Pack policy"	1	0	FALSE	FALSE	0	0.061000000000007	0.00800000000000001	0.0649999999999977	1
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack manifest validates canonical identity and assets"	12	0	FALSE	FALSE	0	0.137	0.00499999999999989	0.134	12
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack rejects corruption and preserves the CRB fallback"	5	0	FALSE	FALSE	0	0.123999999999995	0.00899999999999945	0.125	5
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack runtime loads HLA assets with exact fallback"	25	0	FALSE	FALSE	0	0.373000000000005	0.00900000000000034	0.363	25
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack runtime fails closed on incompatible identity"	2	0	FALSE	FALSE	0	0.0700000000000074	0.0119999999999996	0.0820000000000078	2
+"test-viewer-pack.R"	"viewer-pack"	"thin CRBs open Viewer Packs without hydrating cell barcodes"	6	0	FALSE	FALSE	0	0.0649999999999977	0.00400000000000045	0.0699999999999932	6
+"test-viewer-pack.R"	"viewer-pack"	"full CRBs open Viewer Packs without hydrating metadata"	5	0	FALSE	FALSE	0	0.070999999999998	0	0.070999999999998	5
+"test-viewer-pack.R"	"viewer-pack"	"Viewer Pack IR indexes first-frame coordinates without barcodes"	9	0	FALSE	FALSE	0	0.0999999999999943	0.00499999999999989	0.113	9
+"test-viewer-pack.R"	"viewer-pack"	"Viewer wires valid HLA assets behind the CRB fallback"	12	0	FALSE	FALSE	0	0.0240000000000009	0.00399999999999956	0.0510000000000019	12

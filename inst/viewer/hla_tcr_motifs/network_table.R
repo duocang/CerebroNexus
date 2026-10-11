@@ -404,6 +404,7 @@ output$hla_network_table <- DT::renderDataTable({
     ))
   }
   DT::datatable(
+    style = "bootstrap",
     df,
     rownames = FALSE,
     filter = "top",

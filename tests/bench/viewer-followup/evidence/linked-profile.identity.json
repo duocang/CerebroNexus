@@ -1,0 +1,11 @@
+{
+  "commit": "af738383672b72121cb63d3ef9f025dab95720ce",
+  "dataset_sha256": "cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38",
+  "browser": "Chrome/153.0.8010.52 headless SwiftShader WebGL2",
+  "instrumented": true,
+  "runs": 1,
+  "harnesses": {
+    "profile-linked.R": "0e55516ac9973ad7850e78aae123eb28be68d02f79ba7eaaf0c07c9a28461084",
+    "profile-linked-server.R": "81c6918013f3649e27ee59a4adb8d7921ff682365b182cd7a3eb49c9d7b601d9"
+  }
+}

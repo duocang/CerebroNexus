@@ -1,0 +1,980 @@
+{
+  "trajectory": [
+    {
+      "run": "trajectory-B1",
+      "primary_draw_ms": 4325.299999999999,
+      "cell_prep_ms": 814,
+      "selector_init_ms": 1543.699999999999,
+      "warm_state_ms": 2112.8,
+      "revisit_ms": 170.9,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 12414.4,
+        "clickToRequestMs": {},
+        "bytes": 8838643,
+        "serverPrepareMs": 3130.4004,
+        "serializeTransferMs": 218.5996,
+        "decodeMs": 11.8,
+        "binaryReceivedAtMs": 15752.1,
+        "requestToBinaryMs": 3349,
+        "geometryReused": false,
+        "activationStartedAtMs": 15765.9,
+        "buildSpacesMs": 0.9,
+        "preDrawMs": 5.6,
+        "firstDrawMs": 140.4,
+        "activationMs": 146,
+        "readyAtMs": 15912.2,
+        "requestToReadyMs": 3497.8
+      },
+      "initial_ws_bytes": 11530416,
+      "r_peak_MiB": 1815.50390625,
+      "js_heap_peak_MiB": 131.42486667633057,
+      "errors": []
+    },
+    {
+      "run": "trajectory-B2",
+      "primary_draw_ms": 4411.5999999999985,
+      "cell_prep_ms": 805,
+      "selector_init_ms": 1647.699999999999,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 16512.2,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 3172.1123,
+        "serializeTransferMs": 230.8877,
+        "decodeMs": 12.4,
+        "binaryReceivedAtMs": 19903.4,
+        "requestToBinaryMs": 3403,
+        "geometryReused": false,
+        "activationStartedAtMs": 19916.9,
+        "buildSpacesMs": 0.9,
+        "preDrawMs": 4.8,
+        "firstDrawMs": 139.5,
+        "activationMs": 144.3,
+        "readyAtMs": 20061.4,
+        "requestToReadyMs": 3549.2
+      },
+      "initial_ws_bytes": 11530384,
+      "r_peak_MiB": 1805.0390625,
+      "js_heap_peak_MiB": 112.29667472839355,
+      "errors": []
+    },
+    {
+      "run": "trajectory-B3",
+      "primary_draw_ms": 4403.7,
+      "cell_prep_ms": 830,
+      "selector_init_ms": 1615.3999999999996,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 14299.3,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 3208.2053,
+        "serializeTransferMs": 210.7947,
+        "decodeMs": 10.4,
+        "binaryReceivedAtMs": 17707.2,
+        "requestToBinaryMs": 3419,
+        "geometryReused": false,
+        "activationStartedAtMs": 17718.4,
+        "buildSpacesMs": 0.8,
+        "preDrawMs": 4.2,
+        "firstDrawMs": 141.9,
+        "activationMs": 146.1,
+        "readyAtMs": 17864.9,
+        "requestToReadyMs": 3565.6
+      },
+      "initial_ws_bytes": 11530413,
+      "r_peak_MiB": 1815.90234375,
+      "js_heap_peak_MiB": 124.22053718566895,
+      "errors": []
+    },
+    {
+      "run": "trajectory-C1",
+      "primary_draw_ms": 3552.3000000000006,
+      "cell_prep_ms": 50,
+      "selector_init_ms": 1627.7000000000007,
+      "warm_state_ms": 853.7,
+      "revisit_ms": 202.2,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 10955.1,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 2299.8042,
+        "serializeTransferMs": 194.1958,
+        "decodeMs": 10,
+        "binaryReceivedAtMs": 13439.2,
+        "requestToBinaryMs": 2494,
+        "geometryReused": false,
+        "activationStartedAtMs": 13449.9,
+        "buildSpacesMs": 0.5,
+        "preDrawMs": 3.2,
+        "firstDrawMs": 134.3,
+        "activationMs": 137.6,
+        "readyAtMs": 13587.8,
+        "requestToReadyMs": 2632.7
+      },
+      "initial_ws_bytes": 11530390,
+      "r_peak_MiB": 1801.82421875,
+      "js_heap_peak_MiB": 126.9542064666748,
+      "errors": []
+    },
+    {
+      "run": "trajectory-C2",
+      "primary_draw_ms": 3531.2999999999997,
+      "cell_prep_ms": 40,
+      "selector_init_ms": 1557.8999999999996,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 11859.2,
+        "clickToRequestMs": {},
+        "bytes": 8838643,
+        "serverPrepareMs": 2307.627,
+        "serializeTransferMs": 244.373,
+        "decodeMs": 11.6,
+        "binaryReceivedAtMs": 14399.9,
+        "requestToBinaryMs": 2552,
+        "geometryReused": false,
+        "activationStartedAtMs": 14412.7,
+        "buildSpacesMs": 0.8,
+        "preDrawMs": 5.2,
+        "firstDrawMs": 151.6,
+        "activationMs": 156.8,
+        "readyAtMs": 14569.8,
+        "requestToReadyMs": 2710.6
+      },
+      "initial_ws_bytes": 11530459,
+      "r_peak_MiB": 1780.609375,
+      "js_heap_peak_MiB": 127.43442344665527,
+      "errors": []
+    },
+    {
+      "run": "trajectory-C3",
+      "primary_draw_ms": 3679.3000000000006,
+      "cell_prep_ms": 45,
+      "selector_init_ms": 1749.2000000000007,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 13025.5,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 2435.8796,
+        "serializeTransferMs": 201.1204,
+        "decodeMs": 9.4,
+        "binaryReceivedAtMs": 15652.6,
+        "requestToBinaryMs": 2637,
+        "geometryReused": false,
+        "activationStartedAtMs": 15662.7,
+        "buildSpacesMs": 0.5,
+        "preDrawMs": 3.3,
+        "firstDrawMs": 155.2,
+        "activationMs": 158.5,
+        "readyAtMs": 15821.5,
+        "requestToReadyMs": 2796
+      },
+      "initial_ws_bytes": 11530386,
+      "r_peak_MiB": 1782.81640625,
+      "js_heap_peak_MiB": 118.82076835632324,
+      "errors": []
+    },
+    {
+      "run": "trajectory-C4",
+      "primary_draw_ms": 3726.9,
+      "cell_prep_ms": 54,
+      "selector_init_ms": 1679,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 10856.9,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 2504.6118,
+        "serializeTransferMs": 217.3882,
+        "decodeMs": 11.2,
+        "binaryReceivedAtMs": 13568.1,
+        "requestToBinaryMs": 2722,
+        "geometryReused": false,
+        "activationStartedAtMs": 13580.4,
+        "buildSpacesMs": 0.9,
+        "preDrawMs": 5.3,
+        "firstDrawMs": 142.5,
+        "activationMs": 147.8,
+        "readyAtMs": 13728.7,
+        "requestToReadyMs": 2871.8
+      },
+      "initial_ws_bytes": 11530536,
+      "r_peak_MiB": 1804.3671875,
+      "js_heap_peak_MiB": 123.71632862091064,
+      "errors": []
+    },
+    {
+      "run": "trajectory-C5",
+      "primary_draw_ms": 3485.800000000001,
+      "cell_prep_ms": 42,
+      "selector_init_ms": 1549.800000000001,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 11490.9,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 2350.8464,
+        "serializeTransferMs": 179.1536,
+        "decodeMs": 11.1,
+        "binaryReceivedAtMs": 14009.9,
+        "requestToBinaryMs": 2530,
+        "geometryReused": false,
+        "activationStartedAtMs": 14022.3,
+        "buildSpacesMs": 0.9,
+        "preDrawMs": 5.4,
+        "firstDrawMs": 138.6,
+        "activationMs": 144,
+        "readyAtMs": 14166.5,
+        "requestToReadyMs": 2675.6
+      },
+      "initial_ws_bytes": 11530387,
+      "r_peak_MiB": 1804.91796875,
+      "js_heap_peak_MiB": 118.03815174102783,
+      "errors": []
+    },
+    {
+      "run": "trajectory-D1",
+      "primary_draw_ms": 2390.299999999999,
+      "cell_prep_ms": 57,
+      "selector_init_ms": 1621.199999999999,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 13388.1,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 1199.9773,
+        "serializeTransferMs": 174.0227,
+        "decodeMs": 10.9,
+        "binaryReceivedAtMs": 14750.5,
+        "requestToBinaryMs": 1374,
+        "geometryReused": false,
+        "activationStartedAtMs": 14762.7,
+        "buildSpacesMs": 0.8,
+        "preDrawMs": 5.5,
+        "firstDrawMs": 143.9,
+        "activationMs": 149.4,
+        "readyAtMs": 14912.3,
+        "requestToReadyMs": 1524.2
+      },
+      "initial_ws_bytes": 11530536,
+      "r_peak_MiB": 1781.26953125,
+      "js_heap_peak_MiB": 119.33985614776611,
+      "errors": []
+    },
+    {
+      "run": "trajectory-D2",
+      "primary_draw_ms": 2311.9000000000015,
+      "cell_prep_ms": 52,
+      "selector_init_ms": 1581.9000000000015,
+      "warm_state_ms": null,
+      "revisit_ms": null,
+      "points": 981807,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 10171.5,
+        "clickToRequestMs": {},
+        "bytes": 8838647,
+        "serverPrepareMs": 1192.1489,
+        "serializeTransferMs": 130.8511,
+        "decodeMs": 8.8,
+        "binaryReceivedAtMs": 11486.5,
+        "requestToBinaryMs": 1323,
+        "geometryReused": false,
+        "activationStartedAtMs": 11496,
+        "buildSpacesMs": 0.5,
+        "preDrawMs": 3,
+        "firstDrawMs": 138.3,
+        "activationMs": 141.3,
+        "readyAtMs": 11637.6,
+        "requestToReadyMs": 1466.1
+      },
+      "initial_ws_bytes": 11530390,
+      "r_peak_MiB": 1771.05859375,
+      "js_heap_peak_MiB": 118.87668037414551,
+      "errors": []
+    }
+  ],
+  "memory": [
+    {
+      "label": "3",
+      "dataset": {
+        "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+        "dataset_key": "Mouse",
+        "generation": 2
+      },
+      "rss_MiB": 1623.09375,
+      "gc_live_MiB": 983.1,
+      "caches": [
+        {
+          "name": "expression_projection_row_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".extra_material_process_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".crb_process_cache",
+          "entries": 2,
+          "keys": [
+            "/mnt/c/Users/wangx/Projects/CerebroNexus/inst/extdata/examples/example.crb",
+            "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb"
+          ],
+          "bytes": 2656,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".viewer_pack_process_cache",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb",
+          "bytes": 20824,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".cerebro_cell_view_aux_pending",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": []
+        },
+        {
+          "name": "viewer_projection_resources",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer::projections/001.bin",
+          "bytes": 2520,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_trajectory_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_spatial_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        }
+      ],
+      "wrong_epoch_accepted": false,
+      "stale": [
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 1
+          },
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "label": "10",
+      "dataset": {
+        "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+        "dataset_key": "Demo",
+        "generation": 3
+      },
+      "rss_MiB": 1694.16015625,
+      "gc_live_MiB": 1006.8,
+      "caches": [
+        {
+          "name": "expression_projection_row_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".extra_material_process_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".crb_process_cache",
+          "entries": 2,
+          "keys": [
+            "/mnt/c/Users/wangx/Projects/CerebroNexus/inst/extdata/examples/example.crb",
+            "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb"
+          ],
+          "bytes": 2656,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".viewer_pack_process_cache",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb",
+          "bytes": 20824,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".cerebro_cell_view_aux_pending",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": []
+        },
+        {
+          "name": "viewer_projection_resources",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer::projections/001.bin",
+          "bytes": 2520,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_trajectory_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_spatial_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        }
+      ],
+      "wrong_epoch_accepted": false,
+      "stale": [
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 1
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Mouse",
+            "generation": 2
+          },
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "label": "15",
+      "dataset": {
+        "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+        "dataset_key": "Mouse",
+        "generation": 4
+      },
+      "rss_MiB": 1716.93359375,
+      "gc_live_MiB": 1021.3,
+      "caches": [
+        {
+          "name": "expression_projection_row_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".extra_material_process_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".crb_process_cache",
+          "entries": 2,
+          "keys": [
+            "/mnt/c/Users/wangx/Projects/CerebroNexus/inst/extdata/examples/example.crb",
+            "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb"
+          ],
+          "bytes": 2656,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".viewer_pack_process_cache",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb",
+          "bytes": 20824,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".cerebro_cell_view_aux_pending",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": []
+        },
+        {
+          "name": "viewer_projection_resources",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer::projections/001.bin",
+          "bytes": 2520,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_trajectory_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_spatial_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        }
+      ],
+      "wrong_epoch_accepted": false,
+      "stale": [
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 1
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Mouse",
+            "generation": 2
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 3
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 3
+          },
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "label": "23",
+      "dataset": {
+        "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+        "dataset_key": "Mouse",
+        "generation": 4
+      },
+      "rss_MiB": 2057.64453125,
+      "gc_live_MiB": 1087.5,
+      "caches": [
+        {
+          "name": "expression_projection_row_cache",
+          "entries": 2,
+          "keys": [
+            "md5-crb-v1:2d0c3b821c42851ed5da92c333723c5d::Gad1",
+            "md5-crb-v1:2d0c3b821c42851ed5da92c333723c5d::Slc17a7"
+          ],
+          "bytes": 16000096,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".extra_material_process_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".crb_process_cache",
+          "entries": 2,
+          "keys": [
+            "/mnt/c/Users/wangx/Projects/CerebroNexus/inst/extdata/examples/example.crb",
+            "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb"
+          ],
+          "bytes": 2656,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".viewer_pack_process_cache",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb",
+          "bytes": 20824,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".cerebro_cell_view_aux_pending",
+          "entries": 2,
+          "keys": [
+            "expression_projection:4",
+            "trajectory_projection:5"
+          ],
+          "bytes": 191088,
+          "pending_contexts": [
+            {
+              "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+              "dataset_key": "Mouse",
+              "generation": 4
+            },
+            {
+              "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+              "dataset_key": "Mouse",
+              "generation": 4
+            }
+          ]
+        },
+        {
+          "name": "viewer_projection_resources",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer::projections/001.bin",
+          "bytes": 2520,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_trajectory_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_spatial_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        }
+      ],
+      "wrong_epoch_accepted": false,
+      "stale": [
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 1
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Mouse",
+            "generation": 2
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 3
+          },
+          "accepted": false
+        },
+        {
+          "context": {
+            "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+            "dataset_key": "Demo",
+            "generation": 3
+          },
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "label": "32",
+      "dataset": {
+        "epoch": "uHC4aEF7uv0aVluriDHRrhRy",
+        "dataset_key": "Mouse",
+        "generation": 6
+      },
+      "rss_MiB": 2154.296875,
+      "gc_live_MiB": 1056.6,
+      "caches": [
+        {
+          "name": "expression_projection_row_cache",
+          "entries": 2,
+          "keys": [
+            "md5-crb-v1:2d0c3b821c42851ed5da92c333723c5d::Gad1",
+            "md5-crb-v1:2d0c3b821c42851ed5da92c333723c5d::Slc17a7"
+          ],
+          "bytes": 16000096,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".extra_material_process_cache",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".crb_process_cache",
+          "entries": 2,
+          "keys": [
+            "/mnt/c/Users/wangx/Projects/CerebroNexus/inst/extdata/examples/example.crb",
+            "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb"
+          ],
+          "bytes": 2656,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".viewer_pack_process_cache",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb",
+          "bytes": 20824,
+          "pending_contexts": {}
+        },
+        {
+          "name": ".cerebro_cell_view_aux_pending",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": []
+        },
+        {
+          "name": "viewer_projection_resources",
+          "entries": 1,
+          "keys": "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer::projections/001.bin",
+          "bytes": 2520,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_trajectory_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        },
+        {
+          "name": "viewer_spatial_resources",
+          "entries": 0,
+          "keys": [],
+          "bytes": 0,
+          "pending_contexts": {}
+        }
+      ],
+      "wrong_epoch_accepted": null,
+      "stale": null
+    }
+  ],
+  "r_peak_MiB": 2215.20703125,
+  "js_heap_peak_MiB": 408.9044990539551,
+  "comparisons": {
+    "original_baseline": {
+      "runs": [
+        "trajectory-B1",
+        "trajectory-B2",
+        "trajectory-B3"
+      ],
+      "primary_draw_ms": {
+        "median": 4403.7,
+        "min": 4325.299999999999,
+        "max": 4411.5999999999985,
+        "n": 3
+      },
+      "r_peak_MiB": {
+        "median": 1815.50390625,
+        "min": 1805.0390625,
+        "max": 1815.90234375,
+        "n": 3
+      },
+      "js_heap_peak_MiB": {
+        "median": 124.22053718566895,
+        "min": 112.29667472839355,
+        "max": 131.42486667633057,
+        "n": 3
+      },
+      "initial_ws_bytes": {
+        "median": 11530413,
+        "min": 11530384,
+        "max": 11530416,
+        "n": 3
+      }
+    },
+    "column_candidate": {
+      "runs": [
+        "trajectory-C1",
+        "trajectory-C2",
+        "trajectory-C3"
+      ],
+      "primary_draw_ms": {
+        "median": 3552.3000000000006,
+        "min": 3531.2999999999997,
+        "max": 3679.3000000000006,
+        "n": 3
+      },
+      "r_peak_MiB": {
+        "median": 1782.81640625,
+        "min": 1780.609375,
+        "max": 1801.82421875,
+        "n": 3
+      },
+      "js_heap_peak_MiB": {
+        "median": 126.9542064666748,
+        "min": 118.82076835632324,
+        "max": 127.43442344665527,
+        "n": 3
+      },
+      "initial_ws_bytes": {
+        "median": 11530390,
+        "min": 11530386,
+        "max": 11530459,
+        "n": 3
+      }
+    },
+    "summary_baseline": {
+      "runs": [
+        "trajectory-C3",
+        "trajectory-C4",
+        "trajectory-C5"
+      ],
+      "primary_draw_ms": {
+        "median": 3679.3000000000006,
+        "min": 3485.800000000001,
+        "max": 3726.9,
+        "n": 3
+      },
+      "r_peak_MiB": {
+        "median": 1804.3671875,
+        "min": 1782.81640625,
+        "max": 1804.91796875,
+        "n": 3
+      },
+      "js_heap_peak_MiB": {
+        "median": 118.82076835632324,
+        "min": 118.03815174102783,
+        "max": 123.71632862091064,
+        "n": 3
+      },
+      "initial_ws_bytes": {
+        "median": 11530387,
+        "min": 11530386,
+        "max": 11530536,
+        "n": 3
+      }
+    },
+    "summary_candidate": {
+      "runs": [
+        "trajectory-D1",
+        "trajectory-D2"
+      ],
+      "primary_draw_ms": {
+        "median": 2351.1000000000004,
+        "min": 2311.9000000000015,
+        "max": 2390.299999999999,
+        "n": 2
+      },
+      "r_peak_MiB": {
+        "median": 1776.1640625,
+        "min": 1771.05859375,
+        "max": 1781.26953125,
+        "n": 2
+      },
+      "js_heap_peak_MiB": {
+        "median": 119.10826826095581,
+        "min": 118.87668037414551,
+        "max": 119.33985614776611,
+        "n": 2
+      },
+      "initial_ws_bytes": {
+        "median": 11530463.0,
+        "min": 11530390,
+        "max": 11530536,
+        "n": 2
+      }
+    },
+    "final_candidate": {
+      "runs": [
+        "trajectory-D1",
+        "trajectory-D2"
+      ],
+      "primary_draw_ms": {
+        "median": 2351.1000000000004,
+        "min": 2311.9000000000015,
+        "max": 2390.299999999999,
+        "n": 2
+      },
+      "r_peak_MiB": {
+        "median": 1776.1640625,
+        "min": 1771.05859375,
+        "max": 1781.26953125,
+        "n": 2
+      },
+      "js_heap_peak_MiB": {
+        "median": 119.10826826095581,
+        "min": 118.87668037414551,
+        "max": 119.33985614776611,
+        "n": 2
+      },
+      "initial_ws_bytes": {
+        "median": 11530463.0,
+        "min": 11530390,
+        "max": 11530536,
+        "n": 2
+      }
+    }
+  }
+}

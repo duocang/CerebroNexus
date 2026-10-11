@@ -529,10 +529,17 @@ trajectory_projection_selected_cells <- reactive({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_number_of_selected_cells"]] <- renderUI({
+  selection <- trajectory_projection_selected_cells()
   cerebroSelectionSummary(
-    trajectory_projection_selected_cells(),
+    selection,
     input[["trajectory_selected_name"]],
-    input[["trajectory_point_color"]]
+    input[["trajectory_point_color"]],
+    ## Match Gene's empty-selection path: only the validated count is needed.
+    metadata = if (is.null(selection)) {
+      viewerProjectionFirstFrameMetadata()
+    } else {
+      getMetaData()
+    }
   )
 })
 

@@ -36,6 +36,7 @@ coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
 coordviews_build_log$primary_n <- 0L
 coordviews_build_log$sent_n <- 0L
+coordviews_build_log$sent_palette <- NULL
 coordviews_build_log$sent_primary_n <- 0L
 coordviews_build_log$supplemented_primary_n <- 0L
 coordviews_build_log$clone_started_key <- ""
@@ -318,6 +319,7 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   if (is.null(supplement)) {
     return(NULL)
   }
+  supplement <- cv_reference_trajectory_geometry(supplement, primary, data_set())
   attr(supplement, "server_prepare_ms") <-
     (proc.time()[["elapsed"]] - started) * 1000
   list(primary_n = primary_n, value = supplement, clone_spec = clone_spec)
@@ -854,6 +856,7 @@ observe(
       shared <- input[["coordviews_shared_base"]]
       if (
         is.list(shared) &&
+          viewerDatasetContextEqual(shared$dataset_context, primary$dataset_context) &&
           identical(
             as.character(shared$dataset_fingerprint %||% ""),
             primary$dataset_fingerprint
@@ -897,6 +900,10 @@ observe(
       coordviews_sent_primary(0L)
       coordviews_requested_modalities(character())
       coordviews_color_source(primary)
+      coordviews_build_log$sent_palette <- list(
+        context = viewer_loaded_dataset_context(),
+        patch = isolate(coordviews_color_patch())
+      )
       primary$progressive <- TRUE
       primary$progressive_token <- primary_n
       primary$transport_profile <- list(
@@ -925,21 +932,27 @@ observe(
       coordviews_image_spaces(bundle$spaces %||% list())
       coordviews_assets(list())
       coordviews_color_source(bundle)
+      coordviews_build_log$sent_palette <- list(
+        context = viewer_loaded_dataset_context(),
+        patch = isolate(coordviews_color_patch())
+      )
       coordviews_background_ready(TRUE)
       coordviews_build_log$sent_n <- bundle_n
     }
     if (!isTRUE(coordviews_build_log$color_observer_started)) {
       coordviews_build_log$color_observer_started <- TRUE
-      observeEvent(
-        reactive_colors(),
-        {
-          session$sendCustomMessage(
-            "coordviews_colors",
-            coordviews_color_patch()
-          )
-        },
-        ignoreInit = TRUE
-      )
+      observe({
+        ## Gate before evaluating the patch: hidden palette changes must not
+        ## hydrate or redraw the million-cell Linked workspace.
+        req(coordviews_visible())
+        palette <- list(
+          context = viewer_loaded_dataset_context(),
+          patch = coordviews_color_patch()
+        )
+        if (identical(palette, coordviews_build_log$sent_palette)) return()
+        session$sendCustomMessage("coordviews_colors", palette$patch)
+        coordviews_build_log$sent_palette <- palette
+      })
     }
   },
   priority = 1
@@ -1000,6 +1013,10 @@ observeEvent(
     session$sendCustomMessage(
       "coordviews_colors",
       isolate(coordviews_color_patch())
+    )
+    coordviews_build_log$sent_palette <- list(
+      context = viewer_loaded_dataset_context(),
+      patch = isolate(coordviews_color_patch())
     )
   },
   ignoreInit = TRUE
@@ -1153,6 +1170,11 @@ coordviews_selected_barcodes <- reactive({
 ## scratch on every selection change — a new element has nothing to transition
 ## from. Definition: www/coordviews.css, @keyframes cvRise.
 output[["coordviews_selected_cells_UI"]] <- renderUI({
+  ## Drop dataset/selection dependencies as soon as this page is left. The
+  ## small visibility gate must still run while hidden (see outputOptions
+  ## below), so a pending result cannot be invalidated and then suspended
+  ## before Shiny flushes it during a dataset transition.
+  req(identical(input[["sidebar"]], "coordinated_views"))
   req(coordviews_selected_barcodes())
   meta_cols <- colnames(getMetaData())
   tagList(
@@ -1206,6 +1228,10 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
     )
   )
 })
+
+## Deliberately bypass the page-scoped outputOptions wrapper: only the gate
+## above stays awake; metadata and the plot/table outputs remain demand-driven.
+shiny::outputOptions(output, "coordviews_selected_cells_UI", suspendWhenHidden = FALSE)
 
 ## Plot: categorical variable -> bar of selected-cell counts per group (coloured
 ## by the SAME assignColorsToGroups() the Projection tab uses); numeric variable

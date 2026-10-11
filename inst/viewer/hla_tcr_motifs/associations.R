@@ -368,6 +368,7 @@ output$hla_overlap_summary <- DT::renderDataTable(
   # named after the data set's own unit, so its width is not something this
   # layout can assume. Without it the table pushes the page sideways.
   DT::datatable(
+    style = "bootstrap",
     data.frame(
       "HLA status" = character(),
       "Analysis units" = integer(),
@@ -437,6 +438,7 @@ output$hla_overlap_table <- DT::renderDataTable({
   headers[headers == "n_feature_cells"] <- sprintf("n_feature_%ss", noun)
   headers[headers == "cell_fraction"] <- sprintf("%s_fraction", noun)
   DT::datatable(
+    style = "bootstrap",
     hla_overlap_breadth_skeleton(),
     rownames = FALSE,
     colnames = headers,
@@ -469,6 +471,7 @@ output$hla_allele_matrix <- DT::renderDataTable({
     samples = hla_ir_samples()
   )
   DT::datatable(
+    style = "bootstrap",
     mat,
     rownames = FALSE,
     class = "display nowrap",

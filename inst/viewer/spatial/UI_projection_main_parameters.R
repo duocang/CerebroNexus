@@ -2,21 +2,13 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_main_parameters_UI"]] <- renderUI({
-  req(
-    identical(input[["sidebar"]], "spatial") ||
-      inherits(session, "MockShinySession")
-  )
   req(data_set())
-  ## This output is evaluated even while the Spatial tab is hidden
-  ## (suspendWhenHidden = FALSE below). For a data set without spatial data
-  ## there is nothing to configure, so bail out early instead of building the
-  ## full control set (and, when spatial_images is set, the background-image
-  ## picker) on every app start — that extra startup work otherwise competes
-  ## with other tabs' first render.
+  ## Hidden outputs are suspended below. Sidebar changes must not rebuild the
+  ## mounted plot-type selector and reset Feature/RGB to ImageDimPlot.
   req(length(availableSpatial()) > 0)
   colour_groups <- viewerColourGroupChoices()
 
-  current_spatial <- input[["spatial_projection_to_display"]]
+  current_spatial <- isolate(input[["spatial_projection_to_display"]])
   if (
     is.null(current_spatial) ||
       !(current_spatial %in% availableSpatial())
@@ -107,10 +99,6 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
 spatial_background_selection_scope <- reactiveVal(NULL)
 
 output[["spatial_projection_background_selector_UI"]] <- renderUI({
-  req(
-    identical(input[["sidebar"]], "spatial") ||
-      inherits(session, "MockShinySession")
-  )
   req(data_set())
   req(length(availableSpatial()) > 0)
 
@@ -206,18 +194,16 @@ lapply(
   }
 )
 
-## Keep the output bindings active while hidden. The main parameters remain
-## available immediately; the background selector body is separately gated on
-## an explicit Settings request above so it cannot hydrate Spatial data early.
+## The browser mounts these controls when the Spatial page is shown.
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 outputOptions(
   output,
   "spatial_projection_background_selector_UI",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.

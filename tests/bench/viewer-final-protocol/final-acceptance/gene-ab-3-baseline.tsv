@@ -1,0 +1,7 @@
+"operation"	"status"	"genes"	"cells"	"first_usable_ms"	"complete_ms"	"quiet_ms"	"click_to_request_ms"	"server_prepare_ms"	"transfer_ms"	"decode_ms"	"first_draw_ms"	"primary_payload"	"websocket_bytes"	"message_count"	"visible_errors"
+"single_first"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	6795.89999997616	NA	8312.5	NA	NA	NA	NA	NA	NA	31257425	155	""
+"single_second_gene"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	2050.89999997616	NA	3457.5	NA	NA	NA	NA	NA	NA	269920	48	""
+"single_cached_return"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	1131.10000002384	NA	2371.70000004768	NA	NA	NA	NA	NA	NA	1050316	46	""
+"mean_three"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	1803.80000007153	NA	3460.30000007153	NA	NA	NA	NA	NA	NA	4201749	56	""
+"separate_three"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	1336.80000007153	NA	6086.40000009537	NA	NA	NA	NA	NA	NA	35031432	69	""
+"rgb_three"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	320.199999928474	NA	2463.89999997616	NA	NA	NA	NA	NA	NA	4312882	80	""

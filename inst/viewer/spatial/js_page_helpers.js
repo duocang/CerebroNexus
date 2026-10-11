@@ -1,36 +1,39 @@
 // Spatial-only page chrome.
 shinyjs.showScrollDownIndicator = function (message) {
   shinyjs.hideScrollDownIndicator();
+  const page = document.getElementById('shiny-tab-spatial');
+  if (!page || !page.classList.contains('active') ||
+      (window.CerebroDatasetContext && window.CerebroDatasetContext.phase() !== 'ready')) return;
 
-  const indicator = document.createElement('div');
+  const indicator = document.createElement('button');
+  indicator.type = 'button';
   indicator.id = 'scroll-down-indicator';
   indicator.className = 'scroll-down-indicator';
   indicator.innerHTML = `
-    <div class="scroll-down-arrow">
-      <svg viewBox="0 0 24 24">
+    <span class="scroll-down-arrow">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <polyline points="6 9 12 15 18 9"></polyline>
       </svg>
-    </div>
-    <div class="scroll-down-text"></div>
+    </span>
+    <span class="scroll-down-text"></span>
   `;
   indicator.querySelector('.scroll-down-text').textContent =
     message || 'Charts generated below';
   document.body.appendChild(indicator);
 
   indicator.onclick = function () {
-    window.scrollBy({ top: 300, behavior: 'smooth' });
+    const reducedMotion = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const content = page.closest('.content-wrapper');
+    if (content) content.scrollBy({ top: 300, behavior: reducedMotion ? 'auto' : 'smooth' });
     shinyjs.hideScrollDownIndicator();
   };
 
-  let scrollTimeout;
   const onScroll = function () {
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(function () {
-      shinyjs.hideScrollDownIndicator();
-      window.removeEventListener('scroll', onScroll);
-    }, 100);
+    shinyjs.hideScrollDownIndicator();
   };
-  window.addEventListener('scroll', onScroll);
+  // .content-wrapper scroll events do not bubble, so listen in capture phase.
+  window.addEventListener('scroll', onScroll, true);
 
   const onClickOutside = function (event) {
     if (!indicator.contains(event.target)) {
@@ -38,9 +41,7 @@ shinyjs.showScrollDownIndicator = function (message) {
       document.removeEventListener('click', onClickOutside);
     }
   };
-  setTimeout(function () {
-    document.addEventListener('click', onClickOutside);
-  }, 100);
+  document.addEventListener('click', onClickOutside);
 
   indicator._onScroll = onScroll;
   indicator._onClickOutside = onClickOutside;
@@ -50,16 +51,22 @@ shinyjs.hideScrollDownIndicator = function () {
   const indicator = document.getElementById('scroll-down-indicator');
   if (!indicator) return;
   if (indicator._onScroll) {
-    window.removeEventListener('scroll', indicator._onScroll);
+    window.removeEventListener('scroll', indicator._onScroll, true);
   }
   if (indicator._onClickOutside) {
     document.removeEventListener('click', indicator._onClickOutside);
   }
-  indicator.classList.add('hiding');
-  setTimeout(function () {
-    if (indicator.parentElement) indicator.remove();
-  }, 400);
+  indicator.remove();
 };
+
+window.addEventListener('cerebro:dataset-context', function (event) {
+  if (event.detail && event.detail.phase === 'pending') shinyjs.hideScrollDownIndicator();
+});
+if (window.jQuery) {
+  window.jQuery(document).on('shiny:inputchanged', function (event) {
+    if (event.name === 'sidebar' && event.value !== 'spatial') shinyjs.hideScrollDownIndicator();
+  });
+}
 
 // Send background controls as one identity-scoped snapshot. Dynamic Shiny UI
 // replaces these inputs when the dataset, section, ROI, or image changes; a

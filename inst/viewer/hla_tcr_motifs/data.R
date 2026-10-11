@@ -30,6 +30,16 @@ hla_bindCache <- function(x, ..., cache = "session") {
 }
 
 ## ---- Metadata-annotated IR data (barcode-joined) ---------------------- ##
+hla_page_active <- reactive({
+  identical(input[["sidebar"]], "hla_tcr_motifs")
+})
+
+hla_require_active_page <- function() {
+  if (!isolate(hla_page_active())) {
+    req(hla_page_active(), cancelOutput = TRUE)
+  }
+}
+
 ## Reuse the same join contract as the IR module: the IR tables carry only
 ## scRepertoire columns; biological grouping lives in cell metadata, attached
 ## here by barcode so the page can colour by any metadata column.
@@ -1027,6 +1037,9 @@ hla_scope_key <- reactive({
 ## set with no analysable allele renders that uiOutput as a bare "no alleles"
 ## message and creates no input at all, so requiring one would wait forever.
 hla_params_ready <- reactive({
+  if (!hla_page_active()) {
+    return(FALSE)
+  }
   if (
     is.null(input$hla_color_by) ||
       is.null(input$hla_min_nodes) ||

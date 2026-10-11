@@ -323,8 +323,11 @@ test_that("background-image selection only recreates image calibration controls"
     selector_source,
     fixed = TRUE
   )[[1]]
-  expect_gt(selector_request, 0)
-  expect_gt(selector_spatial_read, selector_request)
+  ## Sidebar navigation must not reconstruct a mounted selector. Shiny
+  ## suspends this output while hidden instead.
+  expect_identical(selector_request, -1L)
+  expect_gt(selector_spatial_read, 0)
+  expect_match(main_parameters_ui, "suspendWhenHidden = TRUE", fixed = TRUE)
   expect_match(
     projection_ui,
     'uiOutput\\("spatial_projection_background_selector_UI"\\)'
@@ -492,6 +495,12 @@ test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested
       morans_i <- function(x, y, values, k = 6) 0.5
       cachePlot <- function(x, ...) x
       available_crb_files <- shiny::reactiveValues(selected = "dataset.crb")
+      viewer_loaded_dataset_context <- shiny::reactive(list(
+        epoch = "spatial-test", dataset_key = "dataset.crb", generation = 1L
+      ))
+      viewerDatasetContextToken <- function(context) paste(
+        context$epoch, context$dataset_key, context$generation, sep = ":"
+      )
 
       sys.source(
         file.path(shiny_root, "spatial", "out_morans_i.R"),
@@ -500,6 +509,7 @@ test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested
     },
     {
       session$setInputs(
+        sidebar = "spatial",
         spatial_projection_plot_type = "ImageDimPlot",
         spatial_projection_feature_to_display = "GeneA"
       )
@@ -885,6 +895,13 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     file.path(
       system.file("viewer", package = "CerebroNexus"),
       "utility_functions.R"
+    ),
+    envir = renderer
+  )
+  sys.source(
+    file.path(
+      system.file("viewer", package = "CerebroNexus"),
+      "gene_expression", "func_color_scale.R"
     ),
     envir = renderer
   )

@@ -1,0 +1,8 @@
+{
+  "source": "Real Brave DOM #results at http://localhost:8877/frame.html; intervals rounded to 0.1 ms",
+  "foreground_native_window_confirmed": false,
+  "captures": [
+    {"paint":false,"visibility":"visible","focus":true,"start":4671.7,"deltas_ms":[24.2,31.4,187.7,32,30.4,31.3,31,31,1000.4,156.1,1031.2,1000.4,593.4,1031.2,1031.4,343.5,93.8,1000,1031,1000.2]},
+    {"paint":true,"visibility":"visible","focus":true,"start":139391.1,"deltas_ms":[54.8,31.6,31.3,30.8,31.2,31.1,1000.1,1031.2,1031.2,1000.1,1031.4,1031.4,1031.3,1031.1,1000.5,1031,1030.9,1000.8,1031,1031]}
+  ]
+}

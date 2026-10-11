@@ -1,0 +1,9 @@
+{
+  "cells": 580,
+  "nodes": 579,
+  "bin_sizes": [4, 15, 55, 99, 127, 149, 75, 30, 13, 6, 4],
+  "configured_threads": 23,
+  "default_seconds": 4.153,
+  "one_thread_seconds": 0.01,
+  "identical": true
+}

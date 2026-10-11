@@ -1,0 +1,10 @@
+{
+  "protocol": "spatial-canonical-grid-v1",
+  "cells": 1000000,
+  "fingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+  "grid": "x varies first; x,y=0:999; canonical cell order",
+  "source_sha256": "bd668249342e4d9258faf0c94fc1d5cb1484aa4251e0eecbb48328269a85222b",
+  "dataset_sha256": "e261ef7053c9b57d8b41b84ece40e3ed492dc0bdf5ab551cff447bd0f200095f",
+  "alignment_sha256": "54659fc75addc7145b40607ff8ea6cd9ec015c708adcda080bbcc6dd6c6ad717",
+  "generator_sha256": "9c3e8ebe79011b5947cbceb8fbda852986b8bdd8e6598c597a0354a20a230e1a"
+}

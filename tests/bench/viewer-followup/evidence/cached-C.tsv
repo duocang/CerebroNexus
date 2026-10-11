@@ -1,0 +1,8 @@
+"operation"	"status"	"genes"	"cells"	"first_usable_ms"	"complete_ms"	"quiet_ms"	"click_to_request_ms"	"server_prepare_ms"	"transfer_ms"	"decode_ms"	"first_draw_ms"	"primary_payload"	"websocket_bytes"	"message_count"	"r_after_mib"	"browser_after_mib"	"visible_errors"
+"single_first"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	2459.5	NA	4411	NA	NA	NA	NA	NA	NA	1054940	80	1872.578125	1782.18359375	""
+"single_second_gene"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	1921	NA	3330.10000002384	NA	NA	NA	NA	NA	NA	269920	48	1968.4609375	1813.765625	""
+"single_cached_return"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	2310.20000004768	NA	3667.89999997616	NA	NA	NA	NA	NA	NA	1050316	46	2056.19921875	1832.80078125	""
+"cached_second_2"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	975.5	NA	2282.89999997616	NA	NA	NA	NA	NA	NA	269894	46	2056.19921875	1832.890625	""
+"cached_first_2"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	958.399999976158	NA	2271.79999995232	NA	NA	NA	NA	NA	NA	1050316	46	2056.19921875	1844.2578125	""
+"cached_second_3"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	1065.39999997616	NA	2388.29999995232	NA	NA	NA	NA	NA	NA	269894	46	2063.828125	1891.58203125	""
+"cached_first_3"	"ok"	"Gad1,Slc17a7,Snap25"	1000000	951.199999928474	NA	2340.29999995232	NA	NA	NA	NA	NA	NA	1050316	46	1991.34765625	1723.3359375	""

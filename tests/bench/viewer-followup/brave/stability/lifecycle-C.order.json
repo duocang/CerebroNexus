@@ -1,0 +1,36 @@
+{
+  "run": "lifecycle-C",
+  "browser_saved_violations": [],
+  "server_full_violations": [],
+  "counts": {
+    "shiny:recalculating": 18,
+    "wire": 71,
+    "shiny:recalculated": 18,
+    "shiny:error": 17,
+    "shiny:outputinvalidated": 17,
+    "shiny:value": 1
+  },
+  "max_nodes": 1,
+  "pages": [
+    {
+      "first_ms": 5387.7,
+      "last_complete_ms": 10450.5,
+      "ws_bytes": 714698
+    },
+    {
+      "first_ms": 4457.9,
+      "last_complete_ms": 9551.8,
+      "ws_bytes": 685375
+    },
+    {
+      "first_ms": null,
+      "last_complete_ms": null,
+      "ws_bytes": 8844387
+    },
+    {
+      "first_ms": 4541.7,
+      "last_complete_ms": 9698.2,
+      "ws_bytes": 685761
+    }
+  ]
+}

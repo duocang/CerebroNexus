@@ -1,0 +1,6 @@
+cell_views.js
+*.Rprof
+*.json
+!IDENTITY.json
+diagnostic.rss
+diagnostic.stages.jsonl

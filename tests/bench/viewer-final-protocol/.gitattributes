@@ -1,0 +1,4 @@
+# These supplemental protocol hashes identify exact executed bytes.
+probe-gene-memory.R -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+probe-gene-operations-v3.R -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+prepare-fixed-spatial.R -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

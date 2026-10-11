@@ -1,0 +1,57 @@
+[
+  {
+    "at": 16810.7,
+    "detail": {
+      "viewId": "expression_projection",
+      "dataset_context": {
+        "epoch": "lNO0TBNbCu3hxTFuf38BEuZF",
+        "dataset_key": "Operations",
+        "generation": 1
+      },
+      "selectedCells": 0,
+      "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+      "eventKind": "primary",
+      "renderKey": "combined\u001dSlc17a7\u001d\u001c\u001c",
+      "generation": 1,
+      "benchmarkGeneration": 0,
+      "renderRequestSent": true,
+      "renderedPointCount": 1000000,
+      "timing": {
+        "generation": 1,
+        "renderRequestSent": true,
+        "cached": false,
+        "requestAtMs": 5359,
+        "clickToRequestMs": {},
+        "bytes": 1724,
+        "serverPrepareMs": 3398.249,
+        "serializeTransferMs": 555.751,
+        "decodeMs": 0.1,
+        "binaryReceivedAtMs": 9312.4,
+        "requestToBinaryMs": 3954,
+        "geometryReused": false,
+        "projectionFetchMs": 0.1,
+        "projectionBytes": 8000000,
+        "projectionDownloadMs": 252.9,
+        "projectionDecodeMs": 10.5,
+        "projectionCacheHit": true,
+        "projectionSubsetFetchMs": 0,
+        "projectionSubsetBytes": 0,
+        "projectionSubsetDownloadMs": 0,
+        "projectionSubsetDecodeMs": 0,
+        "projectionSubsetCacheHit": false,
+        "projectionSubsetMaterializeMs": 0,
+        "categoricalFetchMs": 0,
+        "categoricalBytes": 0,
+        "activationStartedAtMs": 9313.1,
+        "buildSpacesMs": 0.6,
+        "preDrawMs": 3.5,
+        "firstDrawMs": 17,
+        "activationMs": 20.5,
+        "readyAtMs": 16810.7,
+        "requestToReadyMs": 11451.7
+      }
+    },
+    "text": "0.0\n1.0\nMean expression (0 genes)\nSlc17a7\nSlc17a7 view with 1000000 points; 0 selected.",
+    "panels": 1
+  }
+]

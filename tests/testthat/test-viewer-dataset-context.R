@@ -610,3 +610,26 @@ test_that("same-context renders are monotonically ordered", {
     fixed = TRUE
   )
 })
+
+test_that("a rapid selector A/B/A sequence rejects stale ready messages", {
+  output <- run_dataset_context_node(c(
+    "const C = window.CerebroDatasetContext;",
+    "const a1={epoch:'s',dataset_key:'A',generation:1};",
+    "const b2={epoch:'s',dataset_key:'B',generation:2};",
+    "const a3={epoch:'s',dataset_key:'A',generation:3};",
+    "const msg=c=>({dataset_context:c});",
+    "C.receive({phase:'ready',dataset_context:a1,selection:'A',selection_nonce:0});",
+    "C.beginSelection('A'); C.beginSelection('B');",
+    "const blockedImmediately=!C.accepts(msg(a1));",
+    "const staleRejected=!C.receive({phase:'ready',dataset_context:b2,selection:'B',selection_nonce:0});",
+    "C.beginSelection('A');",
+    "const staleARejected=!C.receive({phase:'ready',dataset_context:a1,selection:'A',selection_nonce:0});",
+    "const finalAccepted=C.receive({phase:'ready',dataset_context:a3,selection:'A',selection_nonce:2});",
+    "console.log(JSON.stringify({blockedImmediately,staleRejected,staleARejected,finalAccepted,fresh:C.accepts(msg(a3))}));"
+  ))
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_identical(jsonlite::fromJSON(output), list(
+    blockedImmediately = TRUE, staleRejected = TRUE,
+    staleARejected = TRUE, finalAccepted = TRUE, fresh = TRUE
+  ))
+})

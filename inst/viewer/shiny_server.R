@@ -297,12 +297,18 @@ server <- function(input, output, session) {
   viewer_upload_serial <- 0L
   viewer_dataset_request <- reactiveVal(NULL)
 
-  viewer_send_dataset_phase <- function(phase, dataset_context) {
+  viewer_send_dataset_phase <- function(
+    phase,
+    dataset_context,
+    request = isolate(viewer_dataset_request())
+  ) {
     session$sendCustomMessage(
       "cerebro_dataset_context",
       list(
         phase = as.character(phase),
-        dataset_context = dataset_context
+        dataset_context = dataset_context,
+        selection = as.character(request$selection %||% ""),
+        selection_nonce = request$selection_nonce %||% 0
       )
     )
   }
@@ -319,13 +325,15 @@ server <- function(input, output, session) {
     target,
     dataset_key,
     source,
-    force = FALSE
+    force = FALSE,
+    selection_nonce = 0
   ) {
     current <- isolate(viewer_dataset_request())
     same_request <- is.list(current) &&
       identical(current$selection, selection) &&
       identical(current$target, target) &&
       identical(current$source, source) &&
+      identical(current$selection_nonce, selection_nonce) &&
       identical(current$dataset_context$dataset_key, dataset_key)
     if (same_request && !isTRUE(force)) {
       if (!identical(isolate(available_crb_files$selected), selection)) {
@@ -344,6 +352,7 @@ server <- function(input, output, session) {
       selection = selection,
       target = target,
       source = source,
+      selection_nonce = selection_nonce,
       dataset_context = dataset_context
     )
 
@@ -351,7 +360,7 @@ server <- function(input, output, session) {
     ## makes the browser reject every previous generation while the new object
     ## is loading, and prevents old progressive aux data crossing the boundary.
     viewer_clear_cell_view_aux()
-    viewer_send_dataset_phase("pending", dataset_context)
+    viewer_send_dataset_phase("pending", dataset_context, request)
     viewer_dataset_request(request)
     if (!identical(isolate(available_crb_files$selected), selection)) {
       available_crb_files$selected <- selection
@@ -578,7 +587,7 @@ server <- function(input, output, session) {
         labels <- available_crb_files$names
       }
       choices <- viewerDatasetChoices(available_crb_files$files, labels)
-      selected <- available_crb_files$selected
+      selected <- isolate(available_crb_files$selected)
       if (is.null(selected)) {
         selected <- unname(choices[[1L]])
       }
@@ -593,25 +602,26 @@ server <- function(input, output, session) {
   })
 
   ## listen to the dataset switcher and update the current selection
-  observeEvent(input[['crb_file_selector']], {
+  observeEvent(list(input[['crb_file_selector']], input[['viewer_dataset_selection']]), {
     if (
       !is.null(input[['crb_file_selector']]) &&
         !is.null(available_crb_files$files)
     ) {
-      if (
-        is.null(available_crb_files$selected) ||
-          available_crb_files$selected != input[['crb_file_selector']]
-      ) {
-        viewer_request_dataset(
-          selection = input[['crb_file_selector']],
-          target = viewerDatasetPath(
-            available_crb_files$files,
-            input[['crb_file_selector']]
-          ),
-          dataset_key = as.character(input[['crb_file_selector']]),
-          source = "configured"
-        )
-      }
+      pending <- input[['viewer_dataset_selection']]
+      nonce <- if (is.list(pending) &&
+        identical(pending$value, input[['crb_file_selector']])) {
+        as.numeric(pending$nonce)
+      } else 0
+      viewer_request_dataset(
+        selection = input[['crb_file_selector']],
+        target = viewerDatasetPath(
+          available_crb_files$files,
+          input[['crb_file_selector']]
+        ),
+        dataset_key = as.character(input[['crb_file_selector']]),
+        source = "configured",
+        selection_nonce = nonce
+      )
     }
   })
 
@@ -1663,32 +1673,6 @@ server <- function(input, output, session) {
     req(data_set())
     getGeneNames()
   })
-
-  # hover info for projection.
-  # Cached by (dataset path, hover toggle): selecting a different gene does
-  # not re-build the per-cell hover strings because they only depend on the
-  # metadata of the current dataset, not on the active gene. Unlike the
-  # expression-level reactive, this chain has no gene dependency and no
-  # isolate(), so the cache key stays consistent across gene switches.
-  hover_info_projections <- reactive({
-    # message('--> trigger "hover_info_projections"')
-    if (
-      !is.null(preferences[["show_hover_info_in_projections"]]) &&
-        preferences[['show_hover_info_in_projections']] == TRUE
-    ) {
-      cells_df <- getMetaData()
-      hover_info <- buildHoverInfoForProjections(cells_df)
-      hover_info <- setNames(hover_info, cells_df$cell_barcode)
-    } else {
-      hover_info <- 'none'
-    }
-    # message(str(hover_info))
-    return(hover_info)
-  }) %>%
-    cachePlot(
-      preferences[["show_hover_info_in_projections"]],
-      available_crb_files$selected
-    )
 
   ## Dynamic sidebar: conditional tabs are shown or hidden based on dataset
   ## content (see toggleConditionalTab() below).

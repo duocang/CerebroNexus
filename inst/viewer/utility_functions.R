@@ -522,7 +522,8 @@ viewerSharedProjectionName <- function(
   projection,
   n_cells,
   shared = NULL,
-  identity = NULL
+  identity = NULL,
+  dataset_context = NULL
 ) {
   if (is.null(shared)) {
     if (!exists("input", inherits = TRUE)) {
@@ -538,6 +539,7 @@ viewerSharedProjectionName <- function(
   }
   if (
     !is.list(shared) ||
+      !viewerDatasetContextEqual(shared$dataset_context, dataset_context) ||
       !is.list(identity) ||
       !is.character(projection) ||
       length(projection) != 1L ||
@@ -1093,11 +1095,7 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
               "from_y",
               "to_x",
               "to_y",
-              "point_sizes",
-              "color",
-              "r",
-              "g",
-              "b"
+              "point_sizes"
             )
         ) {
           "f32"
@@ -1115,7 +1113,8 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
     message,
     auto_unbox = TRUE,
     null = "null",
-    na = "null"
+    na = "null",
+    digits = 17
   ))))
   header_padding <- (4L - length(header) %% 4L) %% 4L
   ## Concatenate raw blocks once. Indexing the final buffer by every byte
@@ -1332,7 +1331,8 @@ cerebroCellViewRender <- function(
     }
     shared_projection <- viewerSharedProjectionName(
       meta$space_label,
-      n_cells
+      n_cells,
+      dataset_context = dataset_context
     )
     shared_zero_color <- isTRUE(message$data$shared_zero_color)
     message$data$shared_zero_color <- NULL
@@ -2778,14 +2778,31 @@ cerebroProjectionHoverColumns <- function(table, groups = getGroups(), group_lev
 }
 
 buildHoverInfoForProjections <- function(table) {
-  ## put together cell ID, number of transcripts and number of expressed genes
-  hover_info <- glue::glue(
-    "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
-    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
-    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
-  )
+  ## Count fields have many repeated values. Format each distinct value once,
+  ## then restore cell order without changing the displayed precision.
+  format_counts <- function(values) {
+    distinct <- unique(values)
+    formatC(distinct, format = "f", big.mark = ",", digits = 0)[
+      match(values, distinct)
+    ]
+  }
+  cell_ids <- if ("cell_barcode" %in% names(table)) {
+    table[["cell_barcode"]]
+  } else {
+    rownames(table)
+  }
+  template <- c("<b>Cell</b>: {cell_ids}")
+  if ("nUMI" %in% names(table)) {
+    umi <- format_counts(table[["nUMI"]])
+    template <- c(template, "<br><b>Transcripts</b>: {umi}")
+  }
+  if ("nGene" %in% names(table)) {
+    genes <- format_counts(table[["nGene"]])
+    template <- c(template, "<br><b>Expressed genes</b>: {genes}")
+  }
+  hover_info <- glue::glue(paste0(template, collapse = ""))
   ## add info for known grouping variables
-  for (group in getGroups()) {
+  for (group in intersect(getGroups(), names(table))) {
     hover_info <- glue::glue(
       "{hover_info}<br>",
       "<b>{group}</b>: {table[[ group ]]}"
@@ -4771,13 +4788,19 @@ serverSideGeneSelector <- function(
   active = function() TRUE,
   choices = function() getGeneNames(),
   retry = TRUE,
-  canonical_selection = FALSE
+  canonical_selection = FALSE,
+  refresh_on_activation = TRUE
 ) {
   update_generation <- 0L
+  registered_dataset <- NULL
   observe({
     update_generation <<- update_generation + 1L
     generation <- update_generation
     extra_triggers()
+    if (!isTRUE(refresh_on_activation)) {
+      ## Drop the previous R6 reference even when this selector's tab is hidden.
+      if (!identical(data_set(), registered_dataset)) registered_dataset <<- NULL
+    }
     ## The caller can gate this observer so it does nothing until its own tab is
     ## relevant. The spatial module registers this at module-source time, which
     ## also runs for datasets that carry no spatial data (e.g. the PBMC set); an
@@ -4786,6 +4809,10 @@ serverSideGeneSelector <- function(
     req(isTRUE(active()))
     dataset <- data_set()
     req(dataset)
+    ## Mounted Gene controls keep their registered search endpoint on return.
+    ## Re-sending choices starts an AJAX restore that can overwrite new typing.
+    if (!isTRUE(refresh_on_activation) &&
+        identical(dataset, registered_dataset)) return(invisible(NULL))
     genes <- sort(choices())
     req(!is.null(genes), length(genes) > 0)
 
@@ -4814,6 +4841,7 @@ serverSideGeneSelector <- function(
         selected = selected,
         server = TRUE
       )
+      if (!isTRUE(refresh_on_activation)) registered_dataset <<- dataset
     }
 
     ## Dynamic renderUI() + updateSelectizeInput(server=TRUE) race on the

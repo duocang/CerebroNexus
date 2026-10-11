@@ -1,0 +1,174 @@
+{shinytest2} R  info   12:02:50.00 Start AppDriver initialization
+{shinytest2} R  info   12:02:50.00 Starting Shiny app
+{shinytest2} R  info   12:03:07.86 Creating new ChromoteSession
+{shinytest2} R  info   12:03:08.52 Setting window size: 950x1619
+{shinytest2} R  info   12:03:08.53 Setting window size to `1619`x`950`
+{shinytest2} R  info   12:03:08.54 Navigating to Shiny app
+{shinytest2} R  info   12:03:08.81 Injecting shiny-tracer.js
+{chromote}   JS info   12:03:08.87 shinytest2; jQuery found
+{chromote}   JS info   12:03:08.88 shinytest2; Waiting for shiny session to connect
+{chromote}   JS info   12:03:08.88 shinytest2; Loaded
+{shinytest2} R  info   12:03:08.88 Waiting for Shiny to become ready
+{chromote}   JS info   12:03:09.65 shinytest2; Connected
+{shinytest2} R  info   12:03:09.69 Waiting for Shiny to become idle for 200ms within 120000ms
+{chromote}   JS info   12:03:09.69 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:03:09.89 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.17 shinytest2; shiny:idle
+{chromote}   JS info   12:03:11.17 shinytest2; shiny:value expression_projection_point_border_UI
+{chromote}   JS info   12:03:11.17 shinytest2; shiny:value overview_projection_point_border_UI
+{chromote}   JS info   12:03:11.17 shinytest2; shiny:value preferences_options
+{chromote}   JS info   12:03:11.18 shinytest2; shiny:value load_data_sample_info_UI
+{chromote}   JS info   12:03:11.18 shinytest2; shiny:value load_data_select_file_UI
+{chromote}   JS info   12:03:11.19 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.21 shinytest2; shiny:idle
+{chromote}   JS info   12:03:11.21 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.21 shinytest2; shiny:idle
+{chromote}   JS info   12:03:11.41 shinytest2; Shiny has been idle for 200ms
+{shinytest2} R  info   12:03:11.41 Shiny app started
+{chromote}   JS info   12:03:11.42 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.44 shinytest2; shiny:idle
+{chromote}   JS info   12:03:11.45 shinytest2; shiny:value load_data_date_of_export
+{chromote}   JS info   12:03:11.45 shinytest2; shiny:value load_data_organism
+{chromote}   JS info   12:03:11.45 shinytest2; shiny:value load_data_number_of_cells
+{chromote}   JS info   12:03:11.45 shinytest2; shiny:value load_data_mode_closed
+{chromote}   JS info   12:03:11.45 shinytest2; shiny:value crb_file_selector_UI
+{chromote}   JS info   12:03:11.50 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.50 shinytest2; shiny:idle
+{chromote}   JS info   12:03:11.85 shinytest2; shiny:busy
+{chromote}   JS info   12:03:11.95 shinytest2; shiny:idle
+{chromote}   JS info   12:03:12.00 shinytest2; shiny:value load_data_date_of_export
+{chromote}   JS info   12:03:12.00 shinytest2; shiny:value load_data_organism
+{chromote}   JS info   12:03:12.00 shinytest2; shiny:value load_data_number_of_cells
+{chromote}   JS info   12:03:12.00 shinytest2; shiny:busy
+{chromote}   JS info   12:03:13.20 shinytest2; shiny:idle
+{chromote}   JS info   12:03:13.21 shinytest2; shiny:busy
+{chromote}   JS info   12:03:14.65 shinytest2; shiny:idle
+{chromote}   JS info   12:03:14.66 shinytest2; shiny:value expression_projection_genes_in_separate_panels_UI
+{chromote}   JS info   12:03:14.66 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:03:14.66 shinytest2; shiny:value expression_projection_data_parameters_UI
+{chromote}   JS info   12:03:14.66 shinytest2; shiny:value expression_projection_additional_parameters_UI
+{chromote}   JS info   12:03:14.67 shinytest2; shiny:busy
+{chromote}   JS info   12:03:14.68 shinytest2; shiny:idle
+{chromote}   JS info   12:03:14.73 shinytest2; shiny:busy
+{chromote}   JS info   12:03:14.73 shinytest2; shiny:idle
+{chromote}   JS info   12:03:14.73 shinytest2; shiny:busy
+{chromote}   JS info   12:03:14.73 shinytest2; shiny:idle
+{chromote}   JS info   12:03:14.73 shinytest2; shiny:value expression_projection_select_projection_UI
+{chromote}   JS info   12:03:14.74 shinytest2; shiny:value expression_projection_input_type_UI
+{chromote}   JS info   12:03:14.75 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:03:14.76 shinytest2; shiny:busy
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:idle
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:value expression_projection_genes_in_separate_panels_UI
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:busy
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:idle
+{chromote}   JS info   12:03:15.01 shinytest2; shiny:busy
+{chromote}   JS info   12:03:15.23 shinytest2; shiny:idle
+{chromote}   JS info   12:03:15.24 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:03:15.24 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:03:15.24 shinytest2; shiny:busy
+{chromote}   JS info   12:03:15.24 shinytest2; shiny:idle
+{chromote}   JS info   12:03:15.26 shinytest2; shiny:busy
+{chromote}   JS info   12:03:15.26 shinytest2; shiny:idle
+{shinytest2} R  info   12:03:16.92 Waiting for Shiny to become idle for 1000ms within 120000ms
+{chromote}   JS info   12:03:16.93 shinytest2; shiny:busy
+{chromote}   JS info   12:03:16.93 shinytest2; Waiting for Shiny to be stable
+{chromote}   JS info   12:03:17.56 shinytest2; shiny:idle
+{chromote}   JS info   12:03:17.56 shinytest2; shiny:value expression_number_of_selected_cells
+{chromote}   JS info   12:03:17.56 shinytest2; shiny:value expression_projection_composition
+{chromote}   JS info   12:03:17.57 shinytest2; shiny:busy
+{chromote}   JS info   12:03:17.57 shinytest2; shiny:idle
+{chromote}   JS info   12:03:18.57 shinytest2; Shiny has been idle for 1000ms
+{chromote}   JS info   12:03:18.61 shinytest2; shiny:busy
+{chromote}   JS info   12:03:18.62 shinytest2; shiny:idle
+{chromote}   JS info   12:03:18.82 shinytest2; shiny:busy
+{chromote}   JS info   12:03:19.77 shinytest2; shiny:idle
+{chromote}   JS info   12:03:19.77 shinytest2; shiny:value expression_genes_displayed
+{chromote}   JS info   12:03:19.77 shinytest2; shiny:value expression_projection_gene_color_mode_UI
+{chromote}   JS info   12:03:19.81 shinytest2; shiny:busy
+{chromote}   JS info   12:03:20.02 shinytest2; shiny:idle
+{chromote}   JS info   12:03:20.52 shinytest2; shiny:busy
+{chromote}   JS info   12:03:20.55 shinytest2; shiny:idle
+{chromote}   JS info   12:03:20.55 shinytest2; shiny:value expression_by_group_UI
+{chromote}   JS info   12:03:21.05 shinytest2; shiny:busy
+{chromote}   JS info   12:03:21.07 shinytest2; shiny:idle
+{chromote}   JS info   12:03:21.08 shinytest2; shiny:busy
+{shiny}      R  stderr ----------- Loading required package: shiny
+{shiny}      R  stderr ----------- ##---------------------------------------------------------------------------##
+{shiny}      R  stderr ----------- ## Launching CerebroNexus
+{shiny}      R  stderr ----------- ##---------------------------------------------------------------------------##
+{shiny}      R  stderr ----------- Running application in test mode.
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- Listening on http://127.0.0.1:4655
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- Warning: Converting to a dense matrix may use excessive memory
+{shiny}      R  stderr ----------- This message is displayed once every 8 hours.
+{shiny}      R  stderr ----------- class: Cerebro
+{shiny}      R  stderr ----------- exporter package version: 1.7.3
+{shiny}      R  stderr ----------- experiment name: pbmc5p_v2_hs
+{shiny}      R  stderr ----------- organism: hg
+{shiny}      R  stderr ----------- date of analysis: 
+{shiny}      R  stderr ----------- date of export: 2026-06-25
+{shiny}      R  stderr ----------- number of cells: 1,476
+{shiny}      R  stderr ----------- number of genes: 967
+{shiny}      R  stderr ----------- grouping variables (3): sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- cell cycle variables (0): 
+{shiny}      R  stderr ----------- projections (1): umap
+{shiny}      R  stderr ----------- trees (0): 
+{shiny}      R  stderr ----------- most expressed genes: sample, seurat_clusters, cell_type
+{shiny}      R  stderr ----------- marker genes:
+{shiny}      R  stderr -----------   - cerebro_seurat (1): seurat_clusters
+{shiny}      R  stderr ----------- enriched pathways:
+{shiny}      R  stderr -----------   - cerebro_seurat_enrichr (1): seurat_clusters, 
+{shiny}      R  stderr -----------   - cerebro_GSVA (1): seurat_clusters
+{shiny}      R  stderr ----------- trajectories:
+{shiny}      R  stderr ----------- extra material:
+{shiny}      R  stderr -----------   - tables (1): cluster_cell_counts
+{shiny}      R  stderr ----------- Immune repertoire:sample_1, sample_2, sample_3
+{shiny}      R  stderr ----------- HLA typing: none
+{shiny}      R  stderr ----------- Spatial data:
+{shiny}      R  stderr ----------- 
+{shiny}      R  stderr ----------- 
+{shiny}      R  stdout ----------- Overriding `library()` / `require()` to load local package: CerebroNexus 
+{shiny}      R  stdout ----------- [2026-10-10 12:03:10.997449] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:03:11.014604] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:03:11.200248] WebGL status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:03:11.205265] Show hover info status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:03:11.986761] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:03:12.767684] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:03:16.193118] Attaching bpcells backend: /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+{shiny}      R  stdout ----------- [2026-10-10 12:03:23.138803] CRB cache hit: example.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:03:23.235757] Format of expression data: dgCMatrix
+{shiny}      R  stdout ----------- [2026-10-10 12:03:23.388142] WebGL status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:03:23.391304] Show hover info status: TRUE
+{shiny}      R  stdout ----------- [2026-10-10 12:03:23.652657] CRB cache hit: cerebro_mouse_brain_1m_pages_clean_v1.crb
+{shiny}      R  stdout ----------- [2026-10-10 12:03:24.382739] Data loaded; expression backend will attach on first use.
+{shiny}      R  stdout ----------- [2026-10-10 12:03:27.904221] Attaching bpcells backend: /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells

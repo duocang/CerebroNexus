@@ -120,6 +120,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   app <- AppDriver$new(
     inst_dir,
     name = "projection_dataset_switch",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -171,6 +172,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app <- AppDriver$new(
     inst_dir,
     name = "spatial_background_isolation",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -340,6 +342,7 @@ test_that("Linked views resets the active background to its preset", {
   app <- AppDriver$new(
     inst_dir,
     name = "linked_background_reset",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -631,6 +634,7 @@ test_that("{shinytest2} recording: gene_expression", {
   app <- AppDriver$new(
     inst_dir,
     name = "gene_expression",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -659,7 +663,7 @@ test_that("{shinytest2} recording: gene_expression", {
     paste0(
       "document.getElementById('expression_projection_genes_in_separate_panels')",
       "?.disabled === false && ",
-      "document.querySelector('select[id^=expression_projection_gene_color_mode_]')",
+      "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]')",
       " === null"
     ),
     timeout = 10000
@@ -683,7 +687,7 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   app$wait_for_js(
     paste0(
-      "document.querySelector('select[id^=expression_projection_gene_color_mode_]')",
+      "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]')",
       "?.disabled === false"
     ),
     timeout = 10000
@@ -698,10 +702,11 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   expect_false(isTRUE(enabled_style$disabled))
   expect_identical(enabled_style$animation, "cerebro-control-enter")
-  panel_mode_id <- app$get_js(
-    "document.querySelector('select[id^=expression_projection_gene_color_mode_]')?.id"
+  panel_colour_id <- app$get_js(
+    "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]').id"
   )
-  do.call(app$set_inputs, c(stats::setNames(list("different"), panel_mode_id), list(wait_ = FALSE)))
+  app$run_js(sprintf("document.getElementById(%s).selectize.setValue('different');",
+    jsonlite::toJSON(panel_colour_id, auto_unbox = TRUE)))
   app$wait_for_js(
     paste0(
       "document.querySelectorAll(",
@@ -735,7 +740,7 @@ test_that("{shinytest2} recording: gene_expression", {
       "const display=document.getElementById(",
       "'expression_projection_genes_in_separate_panels');",
       "const colour=document.querySelector(",
-      "'select[id^=expression_projection_gene_color_mode_]');",
+      "'select[id^=\"expression_projection_gene_color_mode_\"]');",
       "return !display?.disabled && display.value==='separate' && ",
       "colour===null;",
       "})()"

@@ -1,0 +1,1050 @@
+{
+  "ops": [
+    {
+      "name": "crb_file_selector",
+      "value": "Demo",
+      "start": 4468.6,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 0.4,
+          "bytes": 2490
+        },
+        {
+          "ms": 11.7,
+          "bytes": 15
+        },
+        {
+          "ms": 44.7,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 55976514,
+      "heapPeak": 59258106,
+      "maxFrameGap": 1031.1
+    },
+    {
+      "name": "crb_file_selector",
+      "value": "Mouse",
+      "start": 5281.4,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 54.9,
+          "bytes": 15
+        },
+        {
+          "ms": 64.7,
+          "bytes": 190
+        },
+        {
+          "ms": 71.5,
+          "bytes": 95
+        },
+        {
+          "ms": 72.7,
+          "bytes": 88
+        },
+        {
+          "ms": 73.5,
+          "bytes": 94
+        },
+        {
+          "ms": 97.4,
+          "bytes": 153
+        },
+        {
+          "ms": 99,
+          "bytes": 160
+        },
+        {
+          "ms": 100.6,
+          "bytes": 158
+        },
+        {
+          "ms": 103.5,
+          "bytes": 156
+        },
+        {
+          "ms": 108.2,
+          "bytes": 158
+        },
+        {
+          "ms": 110.9,
+          "bytes": 151
+        },
+        {
+          "ms": 111.5,
+          "bytes": 149
+        },
+        {
+          "ms": 113.3,
+          "bytes": 149
+        },
+        {
+          "ms": 116,
+          "bytes": 155
+        },
+        {
+          "ms": 137.2,
+          "bytes": 79
+        },
+        {
+          "ms": 142.2,
+          "bytes": 78
+        },
+        {
+          "ms": 144.1,
+          "bytes": 72
+        },
+        {
+          "ms": 147.7,
+          "bytes": 71
+        },
+        {
+          "ms": 148.4,
+          "bytes": 78
+        },
+        {
+          "ms": 153.5,
+          "bytes": 77
+        },
+        {
+          "ms": 154.2,
+          "bytes": 15
+        },
+        {
+          "ms": 160.3,
+          "bytes": 1563
+        },
+        {
+          "ms": 172.8,
+          "bytes": 15
+        },
+        {
+          "ms": 176.3,
+          "bytes": 15
+        },
+        {
+          "ms": 6265.8,
+          "bytes": 15
+        },
+        {
+          "ms": 6267.4,
+          "bytes": 72
+        },
+        {
+          "ms": 6267.8,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 59442064,
+      "heapPeak": 66223055,
+      "maxFrameGap": 1031.3
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-trajectory",
+      "start": 12522.2,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 59.8,
+          "bytes": 15
+        },
+        {
+          "ms": 63,
+          "bytes": 107
+        },
+        {
+          "ms": 63.5,
+          "bytes": 117
+        },
+        {
+          "ms": 851.2,
+          "bytes": 112
+        },
+        {
+          "ms": 861.3,
+          "bytes": 115
+        },
+        {
+          "ms": 862.2,
+          "bytes": 96
+        },
+        {
+          "ms": 866.7,
+          "bytes": 188
+        },
+        {
+          "ms": 1132.8,
+          "bytes": 398
+        },
+        {
+          "ms": 1538.6,
+          "bytes": 2307
+        },
+        {
+          "ms": 1561.9,
+          "bytes": 15
+        },
+        {
+          "ms": 1563.8,
+          "bytes": 15
+        },
+        {
+          "ms": 1567.6,
+          "bytes": 15
+        },
+        {
+          "ms": 1572.2,
+          "bytes": 15
+        },
+        {
+          "ms": 1573.9,
+          "bytes": 84
+        },
+        {
+          "ms": 1594.7,
+          "bytes": 83
+        },
+        {
+          "ms": 1596,
+          "bytes": 89
+        },
+        {
+          "ms": 1599.8,
+          "bytes": 88
+        },
+        {
+          "ms": 1601.2,
+          "bytes": 87
+        },
+        {
+          "ms": 1602.3,
+          "bytes": 86
+        },
+        {
+          "ms": 1603.4,
+          "bytes": 88
+        },
+        {
+          "ms": 1604.4,
+          "bytes": 87
+        },
+        {
+          "ms": 1605,
+          "bytes": 97
+        },
+        {
+          "ms": 1606.5,
+          "bytes": 96
+        },
+        {
+          "ms": 1608.2,
+          "bytes": 83
+        },
+        {
+          "ms": 1609.4,
+          "bytes": 82
+        },
+        {
+          "ms": 1610.1,
+          "bytes": 86
+        },
+        {
+          "ms": 1611.5,
+          "bytes": 85
+        },
+        {
+          "ms": 1612.5,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 66279324,
+      "maxFrameGap": 1031.1,
+      "heapPeak": 67640141,
+      "inputs": [
+        {
+          "name": "trajectory_projection_render_request",
+          "ms": 866.1,
+          "value": {
+            "nonce": 1791637842541,
+            "dataset_context": {
+              "epoch": "7MMI5pSZLdHMTtoAUHi8nkx5",
+              "dataset_key": "Mouse",
+              "generation": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "trajectory_point_color",
+      "value": "seurat_clusters",
+      "start": 14143.4,
+      "events": [
+        {
+          "ms": 769.1,
+          "detail": {
+            "viewId": "trajectory_projection",
+            "dataset_context": {
+              "epoch": "7MMI5pSZLdHMTtoAUHi8nkx5",
+              "dataset_key": "Mouse",
+              "generation": 2
+            },
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "eventKind": "primary",
+            "renderKey": {},
+            "generation": 1,
+            "benchmarkGeneration": 0,
+            "renderRequestSent": true,
+            "renderedPointCount": 981807,
+            "timing": {
+              "generation": 1,
+              "renderRequestSent": true,
+              "cached": false,
+              "requestAtMs": 13388.1,
+              "clickToRequestMs": {},
+              "bytes": 8838647,
+              "serverPrepareMs": 1199.9773,
+              "serializeTransferMs": 174.0227,
+              "decodeMs": 10.9,
+              "binaryReceivedAtMs": 14750.5,
+              "requestToBinaryMs": 1374,
+              "geometryReused": false,
+              "activationStartedAtMs": 14762.7,
+              "buildSpacesMs": 0.8,
+              "preDrawMs": 5.5,
+              "firstDrawMs": 143.9,
+              "activationMs": 149.4,
+              "readyAtMs": 14912.3,
+              "requestToReadyMs": 1524.2
+            }
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 2900.2,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": false,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 981807,
+            "projections": [],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        }
+      ],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 0.8,
+          "bytes": 2885
+        },
+        {
+          "ms": 3.6,
+          "bytes": 15
+        },
+        {
+          "ms": 62.9,
+          "bytes": 15
+        },
+        {
+          "ms": 110.5,
+          "bytes": 15
+        },
+        {
+          "ms": 111.8,
+          "bytes": 105
+        },
+        {
+          "ms": 112.5,
+          "bytes": 103
+        },
+        {
+          "ms": 113,
+          "bytes": 104
+        },
+        {
+          "ms": 113.2,
+          "bytes": 89
+        },
+        {
+          "ms": 291.1,
+          "bytes": 88
+        },
+        {
+          "ms": 293.2,
+          "bytes": 87
+        },
+        {
+          "ms": 293.9,
+          "bytes": 86
+        },
+        {
+          "ms": 774.1,
+          "bytes": 8838664
+        },
+        {
+          "ms": 777.1,
+          "bytes": 88
+        },
+        {
+          "ms": 777.4,
+          "bytes": 87
+        },
+        {
+          "ms": 777.7,
+          "bytes": 15
+        },
+        {
+          "ms": 787.9,
+          "bytes": 569
+        },
+        {
+          "ms": 788.5,
+          "bytes": 15
+        },
+        {
+          "ms": 789,
+          "bytes": 92
+        },
+        {
+          "ms": 789.4,
+          "bytes": 91
+        },
+        {
+          "ms": 789.9,
+          "bytes": 15
+        },
+        {
+          "ms": 790.5,
+          "bytes": 156
+        },
+        {
+          "ms": 794.2,
+          "bytes": 105
+        },
+        {
+          "ms": 797.8,
+          "bytes": 15
+        },
+        {
+          "ms": 800,
+          "bytes": 103
+        },
+        {
+          "ms": 801.4,
+          "bytes": 104
+        },
+        {
+          "ms": 801.9,
+          "bytes": 89
+        },
+        {
+          "ms": 805.8,
+          "bytes": 88
+        },
+        {
+          "ms": 806.4,
+          "bytes": 87
+        },
+        {
+          "ms": 806.8,
+          "bytes": 86
+        },
+        {
+          "ms": 807.3,
+          "bytes": 88
+        },
+        {
+          "ms": 816.1,
+          "bytes": 87
+        },
+        {
+          "ms": 816.6,
+          "bytes": 15
+        },
+        {
+          "ms": 819.7,
+          "bytes": 414
+        },
+        {
+          "ms": 846.5,
+          "bytes": 99
+        },
+        {
+          "ms": 847.2,
+          "bytes": 15
+        },
+        {
+          "ms": 890,
+          "bytes": 83
+        },
+        {
+          "ms": 892.7,
+          "bytes": 82
+        },
+        {
+          "ms": 893.5,
+          "bytes": 15
+        },
+        {
+          "ms": 895.8,
+          "bytes": 5258
+        },
+        {
+          "ms": 896.1,
+          "bytes": 102
+        },
+        {
+          "ms": 896.3,
+          "bytes": 15
+        },
+        {
+          "ms": 896.5,
+          "bytes": 86
+        },
+        {
+          "ms": 2296.7,
+          "bytes": 85
+        },
+        {
+          "ms": 2345.9,
+          "bytes": 15
+        },
+        {
+          "ms": 2352,
+          "bytes": 2337
+        },
+        {
+          "ms": 2356.2,
+          "bytes": 113
+        },
+        {
+          "ms": 2356.6,
+          "bytes": 15
+        },
+        {
+          "ms": 2356.8,
+          "bytes": 97
+        },
+        {
+          "ms": 2357,
+          "bytes": 96
+        },
+        {
+          "ms": 2357.2,
+          "bytes": 15
+        },
+        {
+          "ms": 2358.4,
+          "bytes": 7813
+        },
+        {
+          "ms": 2358.7,
+          "bytes": 15
+        },
+        {
+          "ms": 2358.7,
+          "bytes": 15
+        },
+        {
+          "ms": 2359.1,
+          "bytes": 15
+        },
+        {
+          "ms": 2385.7,
+          "bytes": 78
+        },
+        {
+          "ms": 2395.2,
+          "bytes": 77
+        },
+        {
+          "ms": 2395.6,
+          "bytes": 15
+        },
+        {
+          "ms": 2396.7,
+          "bytes": 807
+        },
+        {
+          "ms": 2397,
+          "bytes": 15
+        },
+        {
+          "ms": 2397.4,
+          "bytes": 15
+        },
+        {
+          "ms": 2397.8,
+          "bytes": 15
+        },
+        {
+          "ms": 2398,
+          "bytes": 79
+        },
+        {
+          "ms": 2409.1,
+          "bytes": 78
+        },
+        {
+          "ms": 2410.1,
+          "bytes": 15
+        },
+        {
+          "ms": 2411.3,
+          "bytes": 815
+        },
+        {
+          "ms": 2433.7,
+          "bytes": 15
+        },
+        {
+          "ms": 2434.7,
+          "bytes": 99
+        },
+        {
+          "ms": 2483.6,
+          "bytes": 87
+        },
+        {
+          "ms": 2486.1,
+          "bytes": 143
+        },
+        {
+          "ms": 2486.9,
+          "bytes": 131
+        },
+        {
+          "ms": 3071.2,
+          "bytes": 152
+        },
+        {
+          "ms": 4790,
+          "bytes": 88
+        },
+        {
+          "ms": 4886.8,
+          "bytes": 98
+        },
+        {
+          "ms": 4887.8,
+          "bytes": 15
+        },
+        {
+          "ms": 5180,
+          "bytes": 682593
+        },
+        {
+          "ms": 5195.7,
+          "bytes": 15
+        },
+        {
+          "ms": 5196.5,
+          "bytes": 74
+        },
+        {
+          "ms": 5428.1,
+          "bytes": 73
+        },
+        {
+          "ms": 5429.5,
+          "bytes": 15
+        },
+        {
+          "ms": 5525.3,
+          "bytes": 4537
+        },
+        {
+          "ms": 5527.6,
+          "bytes": 15
+        },
+        {
+          "ms": 5528.7,
+          "bytes": 81
+        },
+        {
+          "ms": 5951.2,
+          "bytes": 80
+        },
+        {
+          "ms": 5952.1,
+          "bytes": 15
+        },
+        {
+          "ms": 6228.2,
+          "bytes": 1979150
+        }
+      ],
+      "heapStart": 68940109,
+      "heapPeak": 125136909,
+      "linked": {
+        "primaryReady": true,
+        "ready": true,
+        "complete": true,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "renderedPointCount": 981807,
+        "selectedCells": 0,
+        "selectedCellBarcodes": [],
+        "colourMode": "__single_group__trajectory_projection",
+        "projections": [],
+        "spatialSections": [],
+        "activeSpatial": {},
+        "transport": {
+          "gpuUploadMs": 11.3,
+          "gpuPositionUploads": 1
+        }
+      },
+      "longTasks": [
+        {
+          "ms": 602.6,
+          "duration": 171
+        },
+        {
+          "ms": 4893.3,
+          "duration": 289
+        },
+        {
+          "ms": 5430,
+          "duration": 95
+        },
+        {
+          "ms": 5963.2,
+          "duration": 269
+        }
+      ],
+      "maxFrameGap": 1031.3
+    }
+  ],
+  "clock": [
+    {
+      "id": 11489.7,
+      "start": 11489.7,
+      "mono": 995263014,
+      "end": 11548.6
+    }
+  ],
+  "memory": [],
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "viewport": [
+    1369,
+    859
+  ],
+  "resources": [
+    {
+      "name": "http://localhost:8876/jquery-3.7.1/jquery.min.js",
+      "bytes": 0,
+      "ms": 85.3
+    },
+    {
+      "name": "http://localhost:8876/shiny-css-1.14.0/shiny.min.css",
+      "bytes": 0,
+      "ms": 87.3
+    },
+    {
+      "name": "http://localhost:8876/shiny-busy-indicators-1.14.0/busy-indicators.css",
+      "bytes": 0,
+      "ms": 87.4
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/all.min.css",
+      "bytes": 0,
+      "ms": 89.9
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/v4-shims.min.css",
+      "bytes": 0,
+      "ms": 90
+    },
+    {
+      "name": "http://localhost:8876/shiny-javascript-1.14.0/shiny.min.js",
+      "bytes": 0,
+      "ms": 92.7
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/css/selectize.bootstrap3.css",
+      "bytes": 0,
+      "ms": 90
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/accessibility/js/selectize-plugin-a11y.min.js",
+      "bytes": 0,
+      "ms": 91.8
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/js/selectize.min.js",
+      "bytes": 0,
+      "ms": 91.5
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-javascript-2.3.1/js/ion.rangeSlider.min.js",
+      "bytes": 0,
+      "ms": 91.9
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-css-2.3.1/css/ion.rangeSlider.css",
+      "bytes": 0,
+      "ms": 91.9
+    },
+    {
+      "name": "http://localhost:8876/strftime-0.9.2/strftime-min.js",
+      "bytes": 0,
+      "ms": 91.8
+    },
+    {
+      "name": "http://localhost:8876/htmltools-fill-0.5.9/fill.css",
+      "bytes": 0,
+      "ms": 91.8
+    },
+    {
+      "name": "http://localhost:8876/htmlwidgets-1.6.4/htmlwidgets.js",
+      "bytes": 0,
+      "ms": 91.9
+    },
+    {
+      "name": "http://localhost:8876/plotly-binding-4.12.1/plotly.js",
+      "bytes": 0,
+      "ms": 92.1
+    },
+    {
+      "name": "http://localhost:8876/typedarray-0.1/typedarray.min.js",
+      "bytes": 0,
+      "ms": 92.2
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/css/crosstalk.min.css",
+      "bytes": 0,
+      "ms": 92.2
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/js/crosstalk.min.js",
+      "bytes": 0,
+      "ms": 92.3
+    },
+    {
+      "name": "http://localhost:8876/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css",
+      "bytes": 0,
+      "ms": 92.2
+    },
+    {
+      "name": "http://localhost:8876/datatables-css-0.0.0/datatables-crosstalk.css",
+      "bytes": 0,
+      "ms": 92.6
+    },
+    {
+      "name": "http://localhost:8876/datatables-binding-0.34.0/datatables.js",
+      "bytes": 0,
+      "ms": 92.9
+    },
+    {
+      "name": "http://localhost:8876/plotly-main-2.25.2/plotly-latest.min.js",
+      "bytes": 0,
+      "ms": 208.1
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/css/bootstrap.min.css",
+      "bytes": 0,
+      "ms": 93.2
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/css/bootstrap-accessibility.min.css",
+      "bytes": 0,
+      "ms": 93.3
+    },
+    {
+      "name": "http://localhost:8876/sw-buttons-group-0.9.1/buttons-group.js",
+      "bytes": 0,
+      "ms": 92.9
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/js/bootstrap.min.js",
+      "bytes": 0,
+      "ms": 93.5
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/AdminLTE.min.css",
+      "bytes": 0,
+      "ms": 93.9
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/js/bootstrap-accessibility.min.js",
+      "bytes": 0,
+      "ms": 93.5
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/_all-skins.min.css",
+      "bytes": 0,
+      "ms": 94
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.css",
+      "bytes": 0,
+      "ms": 94.2
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/app.min.js",
+      "bytes": 0,
+      "ms": 94
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/custom.css?v=90006cb110",
+      "bytes": 0,
+      "ms": 96.8
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.min.js",
+      "bytes": 0,
+      "ms": 94.2
+    },
+    {
+      "name": "http://localhost:8876/shinyjs/shinyjs-default-funcs.js",
+      "bytes": 0,
+      "ms": 95.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/trekker.css?v=19f5a38912",
+      "bytes": 0,
+      "ms": 102.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.css?v=9d74a3209c",
+      "bytes": 0,
+      "ms": 102.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews.css?v=f91b3e64bf",
+      "bytes": 0,
+      "ms": 102.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/dataset-context.js?v=363559965e",
+      "bytes": 0,
+      "ms": 102.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/fill_height.js?v=c5783221be",
+      "bytes": 0,
+      "ms": 256.3
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cv-geom.js?v=672ceba0e9",
+      "bytes": 0,
+      "ms": 257.4
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_state.js?v=2e07c78e00",
+      "bytes": 0,
+      "ms": 291.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_points_gpu.js?v=dbb49a6879",
+      "bytes": 0,
+      "ms": 104.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_wire.js?v=557f276ebd",
+      "bytes": 0,
+      "ms": 104.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.js?v=0e3f24fa45",
+      "bytes": 0,
+      "ms": 291.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews-config.js?v=68d41a2f3c",
+      "bytes": 0,
+      "ms": 292
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views.js?v=ca930ad2c7",
+      "bytes": 300,
+      "ms": 123.4
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/gene-selector.js?v=8fb9ca7f49",
+      "bytes": 0,
+      "ms": 292
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/multiselect.js?v=023b53834b",
+      "bytes": 0,
+      "ms": 291.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/specialist-view-state.js?v=cb4cd2a0ee",
+      "bytes": 0,
+      "ms": 301
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/viewer-shell.js?v=ab537c0eec",
+      "bytes": 0,
+      "ms": 291.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/settings_drawer.js?v=57ddfc345a",
+      "bytes": 0,
+      "ms": 300.6
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-v4compatibility.woff2",
+      "bytes": 0,
+      "ms": 12.2
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-solid-900.woff2",
+      "bytes": 0,
+      "ms": 12.9
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-regular-400.woff2",
+      "bytes": 0,
+      "ms": 3.9
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-brands-400.woff2",
+      "bytes": 0,
+      "ms": 3.7
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/shinyWidgets.min.css",
+      "bytes": 0,
+      "ms": 5.2
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/shinyWidgets-bindings.min.js",
+      "bytes": 0,
+      "ms": 4.8
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/awesome-bootstrap-checkbox/awesome-bootstrap-checkbox.min.css",
+      "bytes": 0,
+      "ms": 3.6
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/dropdown/dropdown-click.js",
+      "bytes": 0,
+      "ms": 3.2
+    }
+  ],
+  "context": {
+    "epoch": "7MMI5pSZLdHMTtoAUHi8nkx5",
+    "dataset_key": "Mouse",
+    "generation": 2
+  },
+  "errors": []
+}

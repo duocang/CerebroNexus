@@ -1,0 +1,670 @@
+{
+  "start": 10032,
+  "events": [
+    {
+      "at": 11082.3,
+      "detail": {
+        "viewId": "expression_projection",
+        "dataset_context": {
+          "epoch": "CHhNwQHWRpMh8osG1vZ9icve",
+          "dataset_key": "Operations",
+          "generation": 1
+        },
+        "selectedCells": 0,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "eventKind": "primary",
+        "renderKey": "combined\u001d\u001d\u001c\u001c",
+        "generation": 1,
+        "benchmarkGeneration": 0,
+        "renderRequestSent": true,
+        "renderedPointCount": 1000000,
+        "timing": {
+          "generation": 1,
+          "renderRequestSent": true,
+          "cached": false,
+          "requestAtMs": 5418.8,
+          "clickToRequestMs": {},
+          "bytes": 1728,
+          "serverPrepareMs": 7788.8479,
+          "serializeTransferMs": 44.1521,
+          "decodeMs": 0.3,
+          "binaryReceivedAtMs": 11056,
+          "requestToBinaryMs": 7833,
+          "geometryReused": false,
+          "projectionFetchMs": 0,
+          "projectionBytes": 8000000,
+          "projectionDownloadMs": 247.8,
+          "projectionDecodeMs": 11.1,
+          "projectionCacheHit": true,
+          "projectionSubsetFetchMs": 0,
+          "projectionSubsetBytes": 0,
+          "projectionSubsetDownloadMs": 0,
+          "projectionSubsetDecodeMs": 0,
+          "projectionSubsetCacheHit": false,
+          "projectionSubsetMaterializeMs": 0,
+          "categoricalFetchMs": 0,
+          "categoricalBytes": 0,
+          "activationStartedAtMs": 11057.2,
+          "buildSpacesMs": 0.5,
+          "preDrawMs": 3.2,
+          "firstDrawMs": 21,
+          "activationMs": 24.2,
+          "readyAtMs": 11082.1,
+          "requestToReadyMs": 5663.3
+        }
+      },
+      "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected.",
+      "panels": 1
+    },
+    {
+      "at": 14365.2,
+      "detail": {
+        "viewId": "expression_projection",
+        "dataset_context": {
+          "epoch": "CHhNwQHWRpMh8osG1vZ9icve",
+          "dataset_key": "Operations",
+          "generation": 1
+        },
+        "selectedCells": 0,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "eventKind": "aux",
+        "renderKey": "combined\u001d\u001d\u001c\u001c",
+        "generation": 1,
+        "benchmarkGeneration": 0,
+        "renderRequestSent": true,
+        "renderedPointCount": 1000000,
+        "timing": {
+          "generation": 1,
+          "renderRequestSent": true,
+          "cached": false,
+          "requestAtMs": 5418.8,
+          "clickToRequestMs": {},
+          "bytes": 1728,
+          "serverPrepareMs": 7788.8479,
+          "serializeTransferMs": 44.1521,
+          "decodeMs": 0.3,
+          "binaryReceivedAtMs": 11056,
+          "requestToBinaryMs": 7833,
+          "geometryReused": false,
+          "projectionFetchMs": 0,
+          "projectionBytes": 8000000,
+          "projectionDownloadMs": 247.8,
+          "projectionDecodeMs": 11.1,
+          "projectionCacheHit": true,
+          "projectionSubsetFetchMs": 0,
+          "projectionSubsetBytes": 0,
+          "projectionSubsetDownloadMs": 0,
+          "projectionSubsetDecodeMs": 0,
+          "projectionSubsetCacheHit": false,
+          "projectionSubsetMaterializeMs": 0,
+          "categoricalFetchMs": 0,
+          "categoricalBytes": 0,
+          "activationStartedAtMs": 11057.2,
+          "buildSpacesMs": 0.5,
+          "preDrawMs": 3.2,
+          "firstDrawMs": 21,
+          "activationMs": 24.2,
+          "readyAtMs": 14365,
+          "requestToReadyMs": 8946.2
+        }
+      },
+      "text": "0.0\n1.0\nMean expression (0 genes)\nMean expression (0 genes)\nMean expression (0 genes) view with 1000000 points; 0 selected.",
+      "panels": 1
+    },
+    {
+      "at": 17636.1,
+      "detail": {
+        "viewId": "expression_projection",
+        "dataset_context": {
+          "epoch": "CHhNwQHWRpMh8osG1vZ9icve",
+          "dataset_key": "Operations",
+          "generation": 1
+        },
+        "selectedCells": 0,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "eventKind": "primary",
+        "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+        "generation": 1,
+        "benchmarkGeneration": 0,
+        "renderRequestSent": true,
+        "renderedPointCount": 1000000,
+        "timing": {
+          "generation": 1,
+          "renderRequestSent": true,
+          "cached": false,
+          "requestAtMs": 5418.8,
+          "clickToRequestMs": {},
+          "bytes": 1728,
+          "serverPrepareMs": 7788.8479,
+          "serializeTransferMs": 44.1521,
+          "decodeMs": 0.3,
+          "binaryReceivedAtMs": 11056,
+          "requestToBinaryMs": 7833,
+          "geometryReused": false,
+          "projectionFetchMs": 0,
+          "projectionBytes": 8000000,
+          "projectionDownloadMs": 247.8,
+          "projectionDecodeMs": 11.1,
+          "projectionCacheHit": true,
+          "projectionSubsetFetchMs": 0,
+          "projectionSubsetBytes": 0,
+          "projectionSubsetDownloadMs": 0,
+          "projectionSubsetDecodeMs": 0,
+          "projectionSubsetCacheHit": false,
+          "projectionSubsetMaterializeMs": 0,
+          "categoricalFetchMs": 0,
+          "categoricalBytes": 0,
+          "activationStartedAtMs": 11057.2,
+          "buildSpacesMs": 0.5,
+          "preDrawMs": 3.2,
+          "firstDrawMs": 21,
+          "activationMs": 24.2,
+          "readyAtMs": 17636,
+          "requestToReadyMs": 12217.2
+        }
+      },
+      "text": "0.0\n1.0\nMean expression (0 genes)\nGad1\nGad1 view with 1000000 points; 0 selected.",
+      "panels": 1
+    }
+  ],
+  "trace": [
+    {
+      "kind": "send",
+      "at": 10039.6,
+      "epoch": 1791624675627,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_genes_input\":[\"Gad1\"],\"expression_rgb_gene_r\":\"Gad1\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 10039.9,
+      "epoch": 1791624675628,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_number_of_selected_cells",
+      "at": 10606.8,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_number_of_selected_cells",
+      "at": 10611.4,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_composition",
+      "at": 10613.3,
+      "visible": true
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_genes_in_separate_panels_UI",
+      "at": 10613.8,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_genes_displayed",
+      "at": 10620.3,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_gene_color_mode_UI",
+      "at": 10620.6,
+      "visible": false
+    },
+    {
+      "kind": "send",
+      "at": 10641.1,
+      "epoch": 1791624676229,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_genes_input\":[\"Gad1\"],\"expression_rgb_gene_r\":\"Gad1\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 10641.5,
+      "epoch": 1791624676229,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 10641.8,
+      "epoch": 1791624676229,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 10641.8,
+      "epoch": 1791624676229,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 10649,
+      "epoch": 1791624676237,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_rgb_gene_r\":\"\"}}"
+    },
+    {
+      "kind": "decode",
+      "start": 11056.1,
+      "end": 11056.3,
+      "id": "expression_projection",
+      "renderKey": "combined\u001d\u001d\u001c\u001c",
+      "bytes": 1728
+    },
+    {
+      "kind": "send",
+      "at": 11058.6,
+      "epoch": 1791624676646,
+      "data": "{\"method\":\"update\",\"data\":{\"coordviews_shared_base\":{\"dataset_fingerprint\":\"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4\",\"cell_count\":1000000,\"canonical_order_id\":\"md5-cell-order-v1:396eed9b71d09c1304ef261c07045826\",\"projection\":\"umap\"}}}"
+    },
+    {
+      "kind": "send",
+      "at": 11081.7,
+      "epoch": 1791624676669,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_projection_rendered_key\":\"combined\\u001d\\u001d\\u001c\\u001c\"}}"
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_projection_composition",
+      "at": 11549.7,
+      "visible": true
+    },
+    {
+      "kind": "send",
+      "at": 11551.1,
+      "epoch": 1791624677139,
+      "data": "{\"method\":\"update\",\"data\":{\"cell_view_aux_request\":{\"id\":\"expression_projection\",\"wire_token\":2,\"dataset_context\":{\"epoch\":\"CHhNwQHWRpMh8osG1vZ9icve\",\"dataset_key\":\"Operations\",\"generation\":1}}}}"
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_projection_composition",
+      "at": 11565.7,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_number_of_selected_cells",
+      "at": 11567.4,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_number_of_selected_cells",
+      "at": 11568,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_number_of_selected_cells",
+      "at": 11569.9,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_composition",
+      "at": 11570.9,
+      "visible": true
+    },
+    {
+      "kind": "send",
+      "at": 11588.1,
+      "epoch": 1791624677176,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_genes_input\":[\"Gad1\"],\"expression_rgb_gene_r\":\"Gad1\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 11588.3,
+      "epoch": 1791624677176,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 11588.5,
+      "epoch": 1791624677176,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 11591.8,
+      "epoch": 1791624677179,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_rgb_gene_r\":\"\"}}"
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_projection_composition",
+      "at": 11598.4,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_projection_composition",
+      "at": 11598.6,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_number_of_selected_cells",
+      "at": 11598.8,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_number_of_selected_cells",
+      "at": 11598.9,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_in_selected_cells_UI",
+      "at": 12955.5,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_in_selected_cells_UI",
+      "at": 12956.5,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_details_selected_cells_UI",
+      "at": 12957.2,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_details_selected_cells_UI",
+      "at": 12958.3,
+      "visible": true
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_number_of_selected_cells",
+      "at": 12963.3,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_composition",
+      "at": 12964.9,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_in_selected_cells_UI",
+      "at": 13104.2,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_in_selected_cells_UI",
+      "at": 13106,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_details_selected_cells_UI",
+      "at": 13107.3,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_details_selected_cells_UI",
+      "at": 13109.8,
+      "visible": true
+    },
+    {
+      "kind": "decode",
+      "start": 14238.9,
+      "end": 14353.5,
+      "id": "expression_projection",
+      "bytes": 22194382
+    },
+    {
+      "kind": "send",
+      "at": 14365.8,
+      "epoch": 1791624679953,
+      "data": "{\"method\":\"update\",\"data\":{\"coordviews_shared_base\":{\"dataset_fingerprint\":\"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4\",\"cell_count\":1000000,\"canonical_order_id\":\"md5-cell-order-v1:396eed9b71d09c1304ef261c07045826\",\"projection\":\"umap\"}}}"
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_projection_gene_color_mode_UI",
+      "at": 16350.4,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_projection_gene_color_mode_UI",
+      "at": 16350.8,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_in_selected_cells_UI",
+      "at": 16352.7,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_in_selected_cells_UI",
+      "at": 16353.7,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_details_selected_cells_UI",
+      "at": 16354.3,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_details_selected_cells_UI",
+      "at": 16355.1,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_genes_displayed",
+      "at": 16355.9,
+      "visible": false
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_genes_displayed",
+      "at": 16356.3,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_genes_displayed",
+      "at": 16363.3,
+      "visible": false
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_projection_gene_color_mode_UI",
+      "at": 16363.8,
+      "visible": false
+    },
+    {
+      "kind": "decode",
+      "start": 16512.6,
+      "end": 16515,
+      "id": "expression_projection",
+      "renderKey": "combined\u001dGad1\u001d\u001c\u001c",
+      "bytes": 873212
+    },
+    {
+      "kind": "send",
+      "at": 17579.4,
+      "epoch": 1791624683167,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_rgb_gene_r\":\"0610007P14Rik\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 17632.8,
+      "epoch": 1791624683220,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_rgb_gene_r\":\"\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 17635.6,
+      "epoch": 1791624683223,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_projection_rendered_key\":\"combined\\u001dGad1\\u001d\\u001c\\u001c\"}}"
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_in_selected_cells_UI",
+      "at": 17711.2,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_in_selected_cells_UI",
+      "at": 17711.8,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_details_selected_cells_UI",
+      "at": 17712.1,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_details_selected_cells_UI",
+      "at": 17714,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_by_group_UI",
+      "at": 17715.2,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_by_group_UI",
+      "at": 17730.8,
+      "visible": true
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_by_group_UI",
+      "at": 17735.1,
+      "visible": true
+    },
+    {
+      "kind": "send",
+      "at": 17741.1,
+      "epoch": 1791624683329,
+      "data": "{\"method\":\"update\",\"data\":{\"expression_by_group_info:shiny.action\":0,\"expression_by_group_selected_group\":\"sample\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 17741.3,
+      "epoch": 1791624683329,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{\".clientdata_output_expression_by_group_hidden\":false,\".clientdata_output_expression_by_group_width\":1285,\".clientdata_output_expression_by_group_height\":400,\".clientdata_output_expression_by_group_bg\":\"rgb(255, 255, 255)\",\".clientdata_output_expression_by_group_fg\":\"rgb(28, 28, 30)\",\".clientdata_output_expression_by_group_accent\":\"rgb(47, 111, 214)\",\".clientdata_output_expression_by_group_font\":{\"families\":[\"-apple-system\",\"BlinkMacSystemFont\",\"Segoe UI\",\"Inter\",\"Helv"
+    },
+    {
+      "kind": "send",
+      "at": 17748.2,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748.3,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748.3,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748.3,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748.4,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "send",
+      "at": 17748.4,
+      "epoch": 1791624683336,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    },
+    {
+      "kind": "shiny:recalculating",
+      "id": "expression_by_group",
+      "at": 17790.4,
+      "visible": true
+    },
+    {
+      "kind": "shiny:recalculated",
+      "id": "expression_by_group",
+      "at": 18056.1,
+      "visible": true
+    },
+    {
+      "kind": "shiny:value",
+      "id": "expression_by_group",
+      "at": 18060.2,
+      "visible": true
+    },
+    {
+      "kind": "send",
+      "at": 18186.7,
+      "epoch": 1791624683774,
+      "data": "{\"method\":\"update\",\"data\":{\".clientValue-default-plotlyCrosstalkOpts\":{\"on\":\"plotly_click\",\"persistent\":false,\"dynamic\":false,\"selectize\":false,\"opacityDim\":0.2,\"selected\":{\"opacity\":1},\"debounce\":0,\"color\":[]},\"plotly_afterplot-subset\":\"\\\"expression_by_group\\\"\"}}"
+    },
+    {
+      "kind": "send",
+      "at": 18188.1,
+      "epoch": 1791624683776,
+      "data": "{\"method\":\"update\",\"data\":{}}"
+    }
+  ],
+  "complete": [
+    {
+      "key": "combined\u001d\u001d\u001c\u001c",
+      "at": 1791624678557.1689,
+      "received": 12970
+    },
+    {
+      "key": "combined\u001d\u001d\u001c\u001c",
+      "at": 1791624678705.291,
+      "received": 13118.1
+    },
+    {
+      "key": "combined\u001dGad1\u001d\u001c\u001c",
+      "at": 1791624683327.634,
+      "received": 17744.2
+    }
+  ],
+  "visibleOutputs": [
+    "expression_projection_composition",
+    "expression_details_selected_cells_UI",
+    "expression_in_selected_cells_UI",
+    "expression_by_group_UI",
+    "expression_by_group",
+    "expression_by_gene_UI"
+  ]
+}

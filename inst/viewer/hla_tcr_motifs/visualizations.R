@@ -472,6 +472,7 @@ hla_visnet <- reactive({
 ## threshold keeps. Reads the same finalized graph the network draws, so it
 ## always agrees with what is on screen and updates when the slider settles.
 output$hla_motif_readout <- renderUI({
+  hla_require_active_page()
   req(hla_ready_latch())
   g <- hla_motif_graph_cached()
   if (!hla_motif_graph_ok(g)) {
@@ -706,6 +707,7 @@ output$hla_export_analysis <- downloadHandler(
 
 ## ---- Note under the network (guard messages / empty state) ------------- ##
 output$hla_motif_note <- renderUI({
+  hla_require_active_page()
   if (!hla_has_deps()) {
     return(tags$p(
       class = "text-muted",

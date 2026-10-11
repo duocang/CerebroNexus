@@ -1,0 +1,1079 @@
+{
+  "ops": [
+    {
+      "name": "crb_file_selector",
+      "value": "Demo",
+      "start": 4416.9,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 0.6,
+          "bytes": 2490
+        },
+        {
+          "ms": 12.1,
+          "bytes": 15
+        },
+        {
+          "ms": 51.3,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 72707653,
+      "heapPeak": 77658621,
+      "maxFrameGap": 1031.3
+    },
+    {
+      "name": "crb_file_selector",
+      "value": "Mouse",
+      "start": 9471.8,
+      "events": [],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 58,
+          "bytes": 15
+        },
+        {
+          "ms": 76.1,
+          "bytes": 190
+        },
+        {
+          "ms": 78.7,
+          "bytes": 95
+        },
+        {
+          "ms": 80.3,
+          "bytes": 88
+        },
+        {
+          "ms": 81.9,
+          "bytes": 94
+        },
+        {
+          "ms": 140.1,
+          "bytes": 153
+        },
+        {
+          "ms": 144,
+          "bytes": 160
+        },
+        {
+          "ms": 149.1,
+          "bytes": 158
+        },
+        {
+          "ms": 152.5,
+          "bytes": 156
+        },
+        {
+          "ms": 156.9,
+          "bytes": 158
+        },
+        {
+          "ms": 159.7,
+          "bytes": 151
+        },
+        {
+          "ms": 160.5,
+          "bytes": 149
+        },
+        {
+          "ms": 161.7,
+          "bytes": 149
+        },
+        {
+          "ms": 165.3,
+          "bytes": 155
+        },
+        {
+          "ms": 191.5,
+          "bytes": 79
+        },
+        {
+          "ms": 195.6,
+          "bytes": 78
+        },
+        {
+          "ms": 196.8,
+          "bytes": 72
+        },
+        {
+          "ms": 202.4,
+          "bytes": 71
+        },
+        {
+          "ms": 203.4,
+          "bytes": 78
+        },
+        {
+          "ms": 210.6,
+          "bytes": 77
+        },
+        {
+          "ms": 212,
+          "bytes": 15
+        },
+        {
+          "ms": 221.3,
+          "bytes": 1563
+        },
+        {
+          "ms": 232.9,
+          "bytes": 15
+        },
+        {
+          "ms": 235.4,
+          "bytes": 15
+        }
+      ],
+      "heapStart": 77846729,
+      "maxFrameGap": 1031.3,
+      "heapPeak": 82429174
+    },
+    {
+      "name": "page",
+      "value": "#shiny-tab-coordinated_views",
+      "start": 15811.8,
+      "events": [
+        {
+          "ms": 5804.6,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": false,
+            "painted": true,
+            "complete": false,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 9021.4,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 12055,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 43085.7,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 43148.2,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 54491.1,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 54554.5,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 0,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        },
+        {
+          "ms": 85055.2,
+          "detail": {
+            "page": "coordinated_views",
+            "primaryReady": true,
+            "ready": true,
+            "painted": true,
+            "complete": true,
+            "selectedCells": 22279,
+            "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+            "renderedPointCount": 1000000,
+            "projections": [
+              "umap"
+            ],
+            "spatialSections": [],
+            "benchmarkGeneration": 0,
+            "eventKind": "primary"
+          },
+          "text": "\n                    \n                    \n                  "
+        }
+      ],
+      "outputs": [],
+      "messages": [
+        {
+          "ms": 61.7,
+          "bytes": 15
+        },
+        {
+          "ms": 231,
+          "bytes": 15
+        },
+        {
+          "ms": 274.1,
+          "bytes": 15
+        },
+        {
+          "ms": 275.3,
+          "bytes": 107
+        },
+        {
+          "ms": 276,
+          "bytes": 117
+        },
+        {
+          "ms": 1193.2,
+          "bytes": 112
+        },
+        {
+          "ms": 1201.3,
+          "bytes": 115
+        },
+        {
+          "ms": 1201.8,
+          "bytes": 96
+        },
+        {
+          "ms": 1203.9,
+          "bytes": 188
+        },
+        {
+          "ms": 1655,
+          "bytes": 2622
+        },
+        {
+          "ms": 1690,
+          "bytes": 398
+        },
+        {
+          "ms": 1875.9,
+          "bytes": 2307
+        },
+        {
+          "ms": 1877.2,
+          "bytes": 73
+        },
+        {
+          "ms": 1882.4,
+          "bytes": 72
+        },
+        {
+          "ms": 2224.6,
+          "bytes": 15
+        },
+        {
+          "ms": 2232.5,
+          "bytes": 137
+        },
+        {
+          "ms": 2234.1,
+          "bytes": 15
+        },
+        {
+          "ms": 2234.4,
+          "bytes": 15
+        },
+        {
+          "ms": 2234.7,
+          "bytes": 15
+        },
+        {
+          "ms": 2234.9,
+          "bytes": 82
+        },
+        {
+          "ms": 2235.1,
+          "bytes": 81
+        },
+        {
+          "ms": 2235.2,
+          "bytes": 15
+        },
+        {
+          "ms": 2235.5,
+          "bytes": 146
+        },
+        {
+          "ms": 2235.8,
+          "bytes": 15
+        },
+        {
+          "ms": 2236,
+          "bytes": 15
+        },
+        {
+          "ms": 2237.1,
+          "bytes": 98
+        },
+        {
+          "ms": 2237.4,
+          "bytes": 15
+        },
+        {
+          "ms": 2237.5,
+          "bytes": 82
+        },
+        {
+          "ms": 2253.4,
+          "bytes": 81
+        },
+        {
+          "ms": 2253.8,
+          "bytes": 15
+        },
+        {
+          "ms": 2254.9,
+          "bytes": 146
+        },
+        {
+          "ms": 5810.7,
+          "bytes": 15
+        },
+        {
+          "ms": 8953.4,
+          "bytes": 74922
+        },
+        {
+          "ms": 8967.1,
+          "bytes": 89
+        },
+        {
+          "ms": 9004.5,
+          "bytes": 544
+        },
+        {
+          "ms": 9006.1,
+          "bytes": 73
+        },
+        {
+          "ms": 9006.6,
+          "bytes": 72
+        },
+        {
+          "ms": 9007.3,
+          "bytes": 15
+        },
+        {
+          "ms": 9009.5,
+          "bytes": 70
+        },
+        {
+          "ms": 9010.1,
+          "bytes": 15
+        },
+        {
+          "ms": 9010.8,
+          "bytes": 35
+        },
+        {
+          "ms": 9011.3,
+          "bytes": 15
+        },
+        {
+          "ms": 9011.8,
+          "bytes": 15
+        },
+        {
+          "ms": 9012.3,
+          "bytes": 15
+        },
+        {
+          "ms": 9012.7,
+          "bytes": 15
+        },
+        {
+          "ms": 9059.6,
+          "bytes": 148
+        },
+        {
+          "ms": 9061.4,
+          "bytes": 141
+        },
+        {
+          "ms": 9061.7,
+          "bytes": 15
+        },
+        {
+          "ms": 9064,
+          "bytes": 15
+        },
+        {
+          "ms": 9258.5,
+          "bytes": 601278
+        },
+        {
+          "ms": 9274.5,
+          "bytes": 624
+        },
+        {
+          "ms": 9275.4,
+          "bytes": 15
+        },
+        {
+          "ms": 76717.6,
+          "bytes": 15
+        },
+        {
+          "ms": 76768.9,
+          "bytes": 272
+        },
+        {
+          "ms": 76772,
+          "bytes": 15
+        },
+        {
+          "ms": 76818.2,
+          "bytes": 98
+        },
+        {
+          "ms": 76864.5,
+          "bytes": 15
+        },
+        {
+          "ms": 76866.7,
+          "bytes": 82
+        },
+        {
+          "ms": 76877.1,
+          "bytes": 81
+        },
+        {
+          "ms": 76881.2,
+          "bytes": 15
+        },
+        {
+          "ms": 76888.3,
+          "bytes": 6282
+        },
+        {
+          "ms": 76943.5,
+          "bytes": 15
+        },
+        {
+          "ms": 76945.6,
+          "bytes": 15
+        },
+        {
+          "ms": 76946.8,
+          "bytes": 15
+        },
+        {
+          "ms": 76947.7,
+          "bytes": 84
+        },
+        {
+          "ms": 77168.2,
+          "bytes": 83
+        },
+        {
+          "ms": 77169.7,
+          "bytes": 85
+        },
+        {
+          "ms": 77541.4,
+          "bytes": 84
+        },
+        {
+          "ms": 77543.1,
+          "bytes": 15
+        },
+        {
+          "ms": 77990.5,
+          "bytes": 20145
+        }
+      ],
+      "heapStart": 82545138,
+      "maxFrameGap": 1031.6,
+      "heapPeak": 239113871,
+      "longTasks": [
+        {
+          "ms": 1999.9,
+          "duration": 223
+        },
+        {
+          "ms": 8571,
+          "duration": 383
+        },
+        {
+          "ms": 9094,
+          "duration": 164
+        },
+        {
+          "ms": 36777.3,
+          "duration": 72
+        },
+        {
+          "ms": 39097.9,
+          "duration": 54
+        },
+        {
+          "ms": 54338.4,
+          "duration": 60
+        },
+        {
+          "ms": 76558.4,
+          "duration": 122
+        },
+        {
+          "ms": 77543.7,
+          "duration": 447
+        },
+        {
+          "ms": 78038.7,
+          "duration": 52
+        }
+      ],
+      "linked": {
+        "primaryReady": true,
+        "ready": true,
+        "complete": true,
+        "datasetFingerprint": "md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4",
+        "renderedPointCount": 1000000,
+        "selectedCells": 22279,
+        "selectedCellBarcodes": [],
+        "colourMode": "seurat_clusters",
+        "projections": [
+          "umap"
+        ],
+        "spatialSections": [],
+        "activeSpatial": {},
+        "transport": {
+          "gpuUploadMs": 18.5,
+          "gpuPositionUploads": 5,
+          "primary": {
+            "bytes": 2604,
+            "serverPrepareMs": 324,
+            "serializeTransferMs": 586.9167,
+            "decodeMs": 0.3,
+            "serverResourceMs": 304,
+            "serverBundleMs": 20,
+            "clickToRequestMs": {},
+            "requestToBinaryMs": 1652.3,
+            "projectionFetchMs": 359,
+            "projectionBytes": 8000000,
+            "projectionDownloadMs": 347,
+            "projectionDecodeMs": 12.8,
+            "metadataFetchMs": 107.1,
+            "metadataBytes": 1000000,
+            "applyMs": 203.7,
+            "rendererInitializationMs": 230,
+            "decodeToDrawMs": 564.2
+          },
+          "supplement": {
+            "bytes": 74900,
+            "serverPrepareMs": 2683,
+            "serializeTransferMs": 49.0723,
+            "decodeMs": 1,
+            "decodeToDrawMs": 344.9
+          },
+          "clone": {
+            "bytes": 601256,
+            "serverPrepareMs": 185,
+            "serializeTransferMs": 29.2456,
+            "decodeMs": 2.9,
+            "decodeToDrawMs": 153.4
+          }
+        }
+      }
+    }
+  ],
+  "clock": [],
+  "memory": [],
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "viewport": [
+    1619,
+    950
+  ],
+  "resources": [
+    {
+      "name": "http://localhost:8876/jquery-3.7.1/jquery.min.js",
+      "bytes": 0,
+      "ms": 68.2
+    },
+    {
+      "name": "http://localhost:8876/shiny-css-1.14.0/shiny.min.css",
+      "bytes": 0,
+      "ms": 68.4
+    },
+    {
+      "name": "http://localhost:8876/shiny-busy-indicators-1.14.0/busy-indicators.css",
+      "bytes": 0,
+      "ms": 68.5
+    },
+    {
+      "name": "http://localhost:8876/shiny-javascript-1.14.0/shiny.min.js",
+      "bytes": 0,
+      "ms": 69.7
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/all.min.css",
+      "bytes": 0,
+      "ms": 70
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/css/v4-shims.min.css",
+      "bytes": 0,
+      "ms": 70.2
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/css/selectize.bootstrap3.css",
+      "bytes": 0,
+      "ms": 70.4
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/js/selectize.min.js",
+      "bytes": 0,
+      "ms": 70.5
+    },
+    {
+      "name": "http://localhost:8876/selectize-0.15.2/accessibility/js/selectize-plugin-a11y.min.js",
+      "bytes": 0,
+      "ms": 70.5
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-javascript-2.3.1/js/ion.rangeSlider.min.js",
+      "bytes": 0,
+      "ms": 70.8
+    },
+    {
+      "name": "http://localhost:8876/strftime-0.9.2/strftime-min.js",
+      "bytes": 0,
+      "ms": 72.6
+    },
+    {
+      "name": "http://localhost:8876/ionrangeslider-css-2.3.1/css/ion.rangeSlider.css",
+      "bytes": 0,
+      "ms": 72.6
+    },
+    {
+      "name": "http://localhost:8876/htmltools-fill-0.5.9/fill.css",
+      "bytes": 0,
+      "ms": 72.7
+    },
+    {
+      "name": "http://localhost:8876/htmlwidgets-1.6.4/htmlwidgets.js",
+      "bytes": 0,
+      "ms": 73.1
+    },
+    {
+      "name": "http://localhost:8876/plotly-binding-4.12.1/plotly.js",
+      "bytes": 0,
+      "ms": 73.2
+    },
+    {
+      "name": "http://localhost:8876/typedarray-0.1/typedarray.min.js",
+      "bytes": 0,
+      "ms": 73.4
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/css/crosstalk.min.css",
+      "bytes": 0,
+      "ms": 73.3
+    },
+    {
+      "name": "http://localhost:8876/crosstalk-1.2.2/js/crosstalk.min.js",
+      "bytes": 0,
+      "ms": 73.4
+    },
+    {
+      "name": "http://localhost:8876/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css",
+      "bytes": 0,
+      "ms": 73.4
+    },
+    {
+      "name": "http://localhost:8876/datatables-css-0.0.0/datatables-crosstalk.css",
+      "bytes": 0,
+      "ms": 73.8
+    },
+    {
+      "name": "http://localhost:8876/datatables-binding-0.34.0/datatables.js",
+      "bytes": 0,
+      "ms": 87.7
+    },
+    {
+      "name": "http://localhost:8876/plotly-main-2.25.2/plotly-latest.min.js",
+      "bytes": 0,
+      "ms": 163
+    },
+    {
+      "name": "http://localhost:8876/sw-buttons-group-0.9.1/buttons-group.js",
+      "bytes": 0,
+      "ms": 90.6
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/css/bootstrap.min.css",
+      "bytes": 0,
+      "ms": 90.7
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/css/bootstrap-accessibility.min.css",
+      "bytes": 0,
+      "ms": 90.8
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/js/bootstrap.min.js",
+      "bytes": 0,
+      "ms": 90.9
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/accessibility/js/bootstrap-accessibility.min.js",
+      "bytes": 0,
+      "ms": 90.9
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/AdminLTE.min.css",
+      "bytes": 0,
+      "ms": 91
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/_all-skins.min.css",
+      "bytes": 0,
+      "ms": 91.1
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.css",
+      "bytes": 0,
+      "ms": 91.2
+    },
+    {
+      "name": "http://localhost:8876/AdminLTE-2.0.6/app.min.js",
+      "bytes": 0,
+      "ms": 91.1
+    },
+    {
+      "name": "http://localhost:8876/shinydashboard-0.7.3/shinydashboard.min.js",
+      "bytes": 0,
+      "ms": 91.2
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/custom.css?v=90006cb110",
+      "bytes": 0,
+      "ms": 92.7
+    },
+    {
+      "name": "http://localhost:8876/shinyjs/shinyjs-default-funcs.js",
+      "bytes": 0,
+      "ms": 91.3
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/trekker.css?v=19f5a38912",
+      "bytes": 0,
+      "ms": 92.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.css?v=9d74a3209c",
+      "bytes": 0,
+      "ms": 92.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews.css?v=f91b3e64bf",
+      "bytes": 0,
+      "ms": 92.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/fill_height.js?v=c5783221be",
+      "bytes": 0,
+      "ms": 184.3
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/dataset-context.js?v=363559965e",
+      "bytes": 0,
+      "ms": 92.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_points_gpu.js?v=dbb49a6879",
+      "bytes": 0,
+      "ms": 92.9
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cv-geom.js?v=672ceba0e9",
+      "bytes": 0,
+      "ms": 204
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_state.js?v=2e07c78e00",
+      "bytes": 0,
+      "ms": 278.5
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views_wire.js?v=557f276ebd",
+      "bytes": 0,
+      "ms": 93
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/hla_motifs.js?v=0e3f24fa45",
+      "bytes": 0,
+      "ms": 279.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/coordviews-config.js?v=68d41a2f3c",
+      "bytes": 0,
+      "ms": 279.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/viewer-shell.js?v=ab537c0eec",
+      "bytes": 0,
+      "ms": 279.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/multiselect.js?v=023b53834b",
+      "bytes": 0,
+      "ms": 279.7
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/gene-selector.js?v=8fb9ca7f49",
+      "bytes": 0,
+      "ms": 279.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/cell_views.js?v=128c50ca07",
+      "bytes": 121432,
+      "ms": 95.1
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/settings_drawer.js?v=57ddfc345a",
+      "bytes": 0,
+      "ms": 286.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro_www/specialist-view-state.js?v=cb4cd2a0ee",
+      "bytes": 0,
+      "ms": 287
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-v4compatibility.woff2",
+      "bytes": 0,
+      "ms": 22.4
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-solid-900.woff2",
+      "bytes": 0,
+      "ms": 3.4
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-regular-400.woff2",
+      "bytes": 0,
+      "ms": 2.6
+    },
+    {
+      "name": "http://localhost:8876/font-awesome-6.5.2/webfonts/fa-brands-400.woff2",
+      "bytes": 0,
+      "ms": 3.6
+    },
+    {
+      "name": "http://localhost:8876/cerebro-projection-c7921486cb6bad168bdbed0715ae1a89-1/001.bin",
+      "bytes": 7439834,
+      "ms": 339.8
+    },
+    {
+      "name": "http://localhost:8876/cerebro-metadata-c7921486cb6bad168bdbed0715ae1a89-1/002.codes.bin",
+      "bytes": 555419,
+      "ms": 101.9
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/shinyWidgets.min.css",
+      "bytes": 0,
+      "ms": 10.1
+    },
+    {
+      "name": "http://localhost:8876/shinyWidgets/shinyWidgets-bindings.min.js",
+      "bytes": 0,
+      "ms": 9.3
+    },
+    {
+      "name": "http://localhost:8876/dt-core-bootstrap-1.13.6/css/dataTables.bootstrap.min.css",
+      "bytes": 0,
+      "ms": 2.1
+    },
+    {
+      "name": "http://localhost:8876/dt-core-bootstrap-1.13.6/css/dataTables.bootstrap.extra.css",
+      "bytes": 0,
+      "ms": 2
+    },
+    {
+      "name": "http://localhost:8876/dt-core-bootstrap-1.13.6/js/jquery.dataTables.min.js",
+      "bytes": 0,
+      "ms": 3.5
+    },
+    {
+      "name": "http://localhost:8876/dt-core-bootstrap-1.13.6/js/dataTables.bootstrap.min.js",
+      "bytes": 0,
+      "ms": 3.3
+    },
+    {
+      "name": "http://localhost:8876/jszip-1.13.6/jszip.min.js",
+      "bytes": 28770,
+      "ms": 4.6
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/css/buttons.bootstrap.min.css",
+      "bytes": 2021,
+      "ms": 43.8
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/js/dataTables.buttons.min.js",
+      "bytes": 8418,
+      "ms": 3.5
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/js/buttons.html5.min.js",
+      "bytes": 7078,
+      "ms": 47.6
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/js/buttons.colVis.min.js",
+      "bytes": 1451,
+      "ms": 46.4
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/js/buttons.print.min.js",
+      "bytes": 1604,
+      "ms": 43.4
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-buttons-bootstrap-1.13.6/js/buttons.bootstrap.min.js",
+      "bytes": 954,
+      "ms": 47.3
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-colreorder-bootstrap-1.13.6/css/colReorder.bootstrap.min.css",
+      "bytes": 513,
+      "ms": 46.6
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-colreorder-bootstrap-1.13.6/js/dataTables.colReorder.min.js",
+      "bytes": 4510,
+      "ms": 4.3
+    },
+    {
+      "name": "http://localhost:8876/dt-ext-colreorder-bootstrap-1.13.6/js/colReorder.bootstrap.min.js",
+      "bytes": 665,
+      "ms": 49.5
+    },
+    {
+      "name": "http://localhost:8876/nouislider-7.0.10/jquery.nouislider.min.css",
+      "bytes": 1062,
+      "ms": 46.8
+    },
+    {
+      "name": "http://localhost:8876/nouislider-7.0.10/jquery.nouislider.min.js",
+      "bytes": 4791,
+      "ms": 47.8
+    },
+    {
+      "name": "http://localhost:8876/bootstrap-3.4.1/fonts/glyphicons-halflings-regular.woff2",
+      "bytes": 18356,
+      "ms": 117.1
+    },
+    {
+      "name": "http://localhost:8876/session/c7921486cb6bad168bdbed0715ae1a89/dataobj/coordviews_selected_cells_table?w=&nonce=bfc71609c47ce5f8",
+      "bytes": 49505,
+      "ms": 109.8
+    }
+  ],
+  "context": {
+    "epoch": "B0DshlrtFKDTfTMaF1g8xabY",
+    "dataset_key": "Mouse",
+    "generation": 2
+  },
+  "errors": []
+}

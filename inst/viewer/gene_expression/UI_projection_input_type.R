@@ -135,6 +135,7 @@ observeEvent(
           session,
           id,
           canonical_selection = TRUE,
+          refresh_on_activation = FALSE,
           active = function() identical(input[["sidebar"]], "geneExpression")
         )
       })

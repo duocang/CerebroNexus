@@ -1,0 +1,10 @@
+{
+  "base": "5a511f56",
+  "arm": "paint/B3",
+  "sha256": {
+    "inst/viewer/trajectory/server.R": "f2b23dc17995b5fef9b211700404fb58e34eaee0baf1a8b3edab5d99e785f38e",
+    "inst/viewer/trajectory/projection_plot.R": "e4330e7598b3d59c2f18afe9bed7384b88d70b648819b496965474d46e0739cc",
+    "tests/bench/viewer-followup/brave/stability/paint-server.R": "591da0c464c5fdb1d840661258d8493736f3fe1007cd3358ce7a82a931f1ef36",
+    "tests/bench/viewer-followup/brave/stability/paint.js": "099a78f51f19d13fea48dbe3b777272c7250d3b1b5050748259c077c4d521c5b"
+  }
+}

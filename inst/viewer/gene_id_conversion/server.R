@@ -18,6 +18,7 @@ output[["gene_info"]] <- DT::renderDataTable({
     )
   }
   DT::datatable(
+    style = "bootstrap",
     conversion_table,
     filter = "none",
     selection = "multiple",

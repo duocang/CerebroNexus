@@ -34,7 +34,6 @@
   var singleDefaultResourceNames = new Map();
   var singleCategoryResourceDescriptors = new Map();
   var singleActive = null;      // plot id currently using the shared surface
-  var singleAsyncEpoch = 0;     // invalidates delayed specialist callbacks
   var singleIndexCells = null;  // cells array behind the cached barcode index
   var singleIndexMap = null;
   var singleSpaceIds = [];      // one space, or one per gene in multi-panel mode
@@ -3778,8 +3777,10 @@
   }
   function singleHoverColumnValue(column, i, space) {
     var value = singleNestedValue(space, column.values, i);
-    if (Array.isArray(column.levels)) {
-      value = column.levels[Number(value)];
+    if (column.levels != null && value != null) {
+      // JSON auto-unboxing can represent a one-level dictionary as a string.
+      var levels = Array.isArray(column.levels) ? column.levels : [column.levels];
+      value = levels[Number(value)];
     }
     if (value == null || (typeof value === 'number' && !isFinite(value))) {
       return 'NA';
@@ -4270,7 +4271,10 @@
     // Return before nearest-point lookup. Click and brush handlers stay active.
     if (!singleActive && !linkedHoverOn) return;
     var space = singleActive && spaceById[p.spaceId];
-    if (space && space._hoverEnabled === false) {
+    var demandView = (singleActive === 'expression_projection' || singleActive === 'trajectory_projection') && singleView(singleActive);
+    var pendingIds = demandView && demandView.data && demandView.data.wire_token != null &&
+      demandView._auxToken !== demandView.data.wire_token;
+    if (space && space._hoverEnabled === false && !pendingIds) {
       tip.style.opacity = 0; setHoverCell(null); return;
     }
     var r = p.canvas.getBoundingClientRect();
@@ -4284,6 +4288,9 @@
       return;
     }
     var i = nearest(p, mx, my);
+    // These views paint with indices before stable IDs are needed. A real
+    // point hover must request IDs even while hover content is pending.
+    if (i >= 0 && demandView) requestSingleAux();
     if (i < 0 || (space && !singleHoverEnabledAt(space, i))) {
       if (own) tip.style.opacity = 0;
       setHoverCell(null);
@@ -4291,6 +4298,7 @@
     }
     requestSingleAux();
     setHoverCell(i);
+    scheduleSingleMetadata(singleActive, true);
     if (!own) return;
     tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
     placeTip(p, tip, i);
@@ -5114,6 +5122,16 @@
   }
   // Registered groups are the only metadata options. Specialist continuous
   // fields and gene-expression modes remain available as non-metadata modes.
+  function destroyPicker(select) {
+    if (!select.selectize) return;
+    select.selectize.destroy();
+    // Selectize leaves an unnamespaced validation listener on reused selects.
+    // It retains the old dropdown and its full option catalogue.
+    if (window.jQuery) window.jQuery(select).off('invalid');
+    delete select.dataset.cerebroDropdownReady;
+    delete select.dataset.cerebroMultiSelectReady;
+  }
+
   function fillColorPicker() {
     var sel = $('cv-pick-color'); if (!sel) return;
     var optsOf = function (keys, prefix, labelOf) {
@@ -5144,7 +5162,7 @@
       '<option value="' + GENE_MODE + '">Mean gene expression</option>' +
       '<option value="' + GENE_PANELS_MODE + '">Per-gene expression panels</option>' +
       '<option value="' + RGB_MODE + '">RGB co-expression</option>');
-    if (sel.selectize) sel.selectize.destroy();
+    destroyPicker(sel);
     sel.innerHTML = html;
     if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
       window.jQuery(sel).selectize({
@@ -5276,7 +5294,7 @@
     var selEl = $('cv-pick-proj'); if (!selEl) return;
     var names = D.projections ? Object.keys(D.projections) : [];
     var ctl = $('cv-proj-ctl');
-    if (selEl.selectize) selEl.selectize.destroy();
+    destroyPicker(selEl);
     if (ctl) ctl.style.display = names.length ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
@@ -5776,7 +5794,7 @@
   function fillSpatialPicker() {
     var selEl = $('cv-pick-spatial'), ctl = $('cv-spatial-ctl');
     if (!selEl || !ctl) return;
-    if (selEl.selectize) selEl.selectize.destroy();
+    destroyPicker(selEl);
     var samples = spatialSamples();
     if (!samples.length) {
       ctl.style.display = 'none'; selEl.innerHTML = ''; return;
@@ -6507,7 +6525,6 @@
       if (view && view._auxTimer) clearTimeout(view._auxTimer);
       if (view) { view._auxTimer = null; view._auxPending = null; }
     });
-    singleAsyncEpoch++;
     singleViews = {}; singleActive = null;
     singleRequests.clear();
     singleSpaceIds = []; singleSpaceModes = {};
@@ -6539,6 +6556,12 @@
   }
   function invalidateDatasetViewState(detail) {
     resetSingleViews();
+    clearStaticResourceCaches();
+    // Deferred image keys include the exact generation; retired entries cannot
+    // be reused, even when the same dataset is selected again.
+    assetCache = Object.create(null);
+    pendingAssets.clear();
+    _fldCacheD = null; _fldCacheVal = null;
     Object.keys(spaceById || {}).forEach(function (spaceId) {
       var space = spaceById[spaceId];
       if (!space) return;
@@ -6676,6 +6699,7 @@
     };
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
       Shiny.setInputValue('coordviews_shared_base', {
+        dataset_context: currentDatasetContext(),
         dataset_fingerprint: base.datasetFingerprint,
         cell_count: base.cellCount,
         canonical_order_id: base.orderFingerprint,
@@ -6733,7 +6757,10 @@
         };
       });
       cache.set(key, pending);
-      pending.catch(function () { cache.delete(key); });
+      pending.catch(function () {
+        // A failed old request must not evict a new generation's same-URL fetch.
+        if (cache.get(key) === pending) cache.delete(key);
+      });
     }
     var started = performance.now();
     return pending.then(function (entry) {
@@ -6878,22 +6905,26 @@
     }
     if (!Number.isInteger(n) || n < 0) return null;
     var source = packet.color;
-    if (packet.protocol === 'dense-f32-v1') {
+    if (packet.protocol === 'dense-f64-v1') {
       if (!ArrayBuffer.isView(source) && !Array.isArray(source)) return null;
       if (source.length !== n) return null;
-      var dense = source instanceof Float32Array
-        ? source : Float32Array.from(source, Number);
+      var dense = source instanceof Float64Array
+        ? source : Float64Array.from(source, function(value) {
+          return value === null ? NaN : Number(value);
+        });
       return cacheSingleColor(key, dense);
     }
-    if (packet.protocol !== 'sparse-f32-v1') return null;
+    if (packet.protocol !== 'sparse-f64-v1') return null;
     var index = packet.index;
     if ((!ArrayBuffer.isView(index) && !Array.isArray(index)) ||
         (!ArrayBuffer.isView(source) && !Array.isArray(source)) ||
         index.length !== source.length) return null;
-    var values = new Float32Array(n);
+    var values = new Float64Array(n);
     for (var i = 0; i < index.length; i++) {
       var at = Number(index[i]);
-      if (at >= 0 && at < n) values[at] = Number(source[i]);
+      if (at >= 0 && at < n) {
+        values[at] = source[i] === null ? NaN : Number(source[i]);
+      }
     }
     return cacheSingleColor(key, values);
   }
@@ -7269,6 +7300,12 @@
   }
   var metadataCodesResourceCache = new Map();
   var categoricalResourceCache = new Map();
+  function clearStaticResourceCaches() {
+    projectionResourceCache.clear();
+    projectionSubsetResourceCache.clear();
+    metadataCodesResourceCache.clear();
+    categoricalResourceCache.clear();
+  }
   function fetchCategoricalResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
       cells: expectedCells, dtypes: ['uint8', 'uint16', 'uint32'],
@@ -8050,7 +8087,9 @@
     timing.firstDrawMs = performance.now() - drawStarted;
     timing.activationMs = performance.now() - activationStarted;
     reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
-    requestSingleAux();
+    // Gene's selection core is requested by hover or brush. Sending all cell
+    // IDs here competes with the user's first gene operation on the R thread.
+    if (id !== 'expression_projection' && id !== 'trajectory_projection') requestSingleAux();
     scheduleSingleMetadata(id);
     // Canvas drawing is synchronous, but the browser does not composite it
     // until a later frame. Keep the page loader in place until that first
@@ -8154,14 +8193,19 @@
   }
   function updateSingleExpression(id, previousMeta, previousData, message) {
     var view = singleView(id), data = view.data, meta = view.meta;
+    var pendingIds = D && Array.isArray(D.cells) && D.cells.length === 0 &&
+      data.selection_key == null && previousData.selection_key == null &&
+      Number.isSafeInteger(data.wire_token) &&
+      data.wire_token === previousData.wire_token && Number(data.n) === D.n;
     // The R recolor protocol guarantees unchanged geometry. Keep the shortcut
-    // narrow: an active, fully identified, flat Gene canvas with one panel.
+    // narrow: an active, flat Gene canvas with one panel. An unchanged
+    // progressive frame also has canonical positions before its IDs arrive.
     // Other views, layouts and geometry changes retain the full activation path.
     if (id !== 'expression_projection' || singleActive !== id || !D ||
         rebuildingBase || singleSpaceIds.length !== 1 ||
         singleSpaceIds[0] !== 'single::' + id || data.z || data.panels ||
-        !Array.isArray(D.cells) || D.cells.length !== D.n ||
-        !Array.isArray(data.selection_key) || data.selection_key.length !== D.n ||
+        (!pendingIds && (!Array.isArray(D.cells) || D.cells.length !== D.n ||
+          !Array.isArray(data.selection_key) || data.selection_key.length !== D.n)) ||
         data.x !== previousData.x || data.y !== previousData.y ||
         data.selection_key !== previousData.selection_key ||
         !['continuous', 'rgb'].includes(previousMeta.color_type) ||
@@ -8188,7 +8232,7 @@
         data.color.length !== D.n) return false;
     // Legacy payloads may contain duplicate stringified IDs. Their Map-based
     // alignment must keep its existing semantics rather than assuming an order.
-    if (singleIndex().size !== D.n) return false;
+    if (!pendingIds && singleIndex().size !== D.n) return false;
     var fieldName = 'single:' + id + ':0', mode;
     if (rgb) {
       // Flat single-view cells and coordinates were built in selection_key
@@ -8208,6 +8252,7 @@
     // These caches used to be invalidated incidentally by replacing D.
     // A new expression can change paint order even when its field name is equal.
     _ordD = null; _clipD = null;
+    _fldCacheD = null; _fldCacheVal = null;
     activePanels.forEach(function (p) {
       p.colorBy = mode; p.miniBg = null;
       var title = $('cv-title-' + p.key.toLowerCase());
@@ -8462,6 +8507,30 @@
     });
   }
 
+  function hydrateLinkedGeometry(extra) {
+    (extra.spaces || []).forEach(function (space) {
+      var ref = space.geometry_ref;
+      if (!ref) return;
+      var base = D.projections && D.projections[ref.projection];
+      if (!base || !base.x || !base.y || base.x.length !== D.n || base.y.length !== D.n ||
+          !ref.exclude || typeof ref.exclude.length !== 'number') throw new Error('Invalid linked geometry reference');
+      var last = -1;
+      for (var j = 0; j < ref.exclude.length; j++) {
+        var index = ref.exclude[j];
+        if (!Number.isInteger(index) || index <= last || index >= D.n) throw new Error('Invalid linked geometry subset');
+        last = index;
+      }
+      space.x = ref.exclude.length ? base.x.slice() : base.x;
+      space.y = ref.exclude.length ? base.y.slice() : base.y;
+      for (var k = 0; k < ref.exclude.length; k++) {
+        space.x[ref.exclude[k]] = NaN; space.y[ref.exclude[k]] = NaN;
+      }
+      var original = spaceById[projectionId(ref.projection)];
+      if (!ref.exclude.length && original) space._unit = original._unit;
+    });
+    return extra;
+  }
+
   function hydrateSparseLinked(extra) {
     var cloneIndex = extra.clone && extra.clone.index;
     var hydrateGroups = function (groups) {
@@ -8643,7 +8712,7 @@
       if (extra.dataset_id !== D.dataset_id ||
           extra.dataset_fingerprint !== configFingerprint() ||
           extra.progressive_token !== D.progressive_token) return;
-      extra = hydrateSparseLinked(extra);
+      extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
       var metric = CBViewState.telemetry.transport(
         extra.transport_profile,
         {bytes: buffer.byteLength, decodeMs: decodedAt - started},
@@ -8816,10 +8885,13 @@
     }
   }
 
-  function scheduleSingleMetadata(id) {
+  function scheduleSingleMetadata(id, fromHover) {
     var view = singleView(id), token = view && view.data && view.data.wire_token;
     if (!view || !view.hover || !view.hover.pending || token == null ||
         view._metadataRequested === token || singleActive !== id) return;
+    // Gene changes need expression colors, not every cell's hover columns.
+    // Preserve the selection core and fetch the exact metadata on first hover.
+    if ((id === 'expression_projection' || id === 'trajectory_projection') && fromHover !== true) return;
     view._metadataRequested = token;
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
@@ -8887,7 +8959,8 @@
     spaceById = {};
     spatialTemplate = null;
     D.spaces.forEach(function (s) {
-      s._unit = null;
+      var referenced = s.geometry_ref && D.projections[s.geometry_ref.projection];
+      if (!referenced || s.x !== referenced.x || s.y !== referenced.y) s._unit = null;
       if (s.id === 'spatial') spatialTemplate = s;
       else if (s.id === 'expression') { /* rebuilt from D.projections below */ }
       else {

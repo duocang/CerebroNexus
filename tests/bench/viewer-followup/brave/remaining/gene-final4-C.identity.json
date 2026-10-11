@@ -1,0 +1,12 @@
+{
+  "baseline": "28444813",
+  "arm": "C",
+  "candidate": "standard Shiny 50 ms prepared-value debounce",
+  "sources": {
+    "inst/viewer/gene_expression/obj_projection_data_to_plot.R": "5102508a1c2d02e19e4990c23aaab8b3b8638f5ded8be5349b66d4b80c9ac3b6"
+  },
+  "harness": {
+    "remaining-server.R": "35587668d0866dc16f28e71a865412877620793e668b8bd6b0c60e5797af7651",
+    "remaining.js": "20ae9cb71380580a627fccc3518b4eb3e3331d8b2db9dfef6dcf5df5a21ba698"
+  }
+}

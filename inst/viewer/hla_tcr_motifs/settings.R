@@ -40,6 +40,7 @@ hla_settings_requested <- reactive({
 
 ## ---- Primary parameters ------------------------------------------------ ##
 output$hla_parameters_ui <- renderUI({
+  hla_require_active_page()
   chains <- hla_tcr_chains()
   # The panel is rebuilt only when the DATA changes (which controls exist), so
   # its own inputs are read under isolate() below: reading them live made every
@@ -122,6 +123,7 @@ output$hla_parameters_ui <- renderUI({
 
 ## ---- Secondary analysis parameters ------------------------------------ ##
 output$hla_more_parameters_ui <- renderUI({
+  hla_require_active_page()
   tagList(
     sliderInput(
       "hla_min_nodes",
@@ -175,7 +177,10 @@ output$hla_more_parameters_ui <- renderUI({
   )
 })
 
-outputOptions(output, "hla_more_parameters_ui", suspendWhenHidden = FALSE)
+observe({
+  outputOptions(output, "hla_more_parameters_ui",
+    suspendWhenHidden = !hla_page_active())
+}, priority = 100)
 
 ## ---- Cohort filters (settings drawer) --------------------------------- ##
 ## Atlas-scale repertoires open on a deterministic sample subset that stays

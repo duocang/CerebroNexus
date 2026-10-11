@@ -1,0 +1,45 @@
+Linked views
+1,476 cells · 2 linked spaces (umap (expression) · Clonal expansion (TCR)) · 595 receptor-bearing cells, 587 clonotypes
+Info
+Colour by
+seurat_clusters
+Projection
+umap
+×
+Clonal layout
+Rank
+stack
+Expansion
+bands
+Share
+Settings
+LINKED WORKSPACE
+Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked.
+Interaction enabled for 1,476 cells: hover and linked selection are active.
+Use static mode
+0
+(322)
+1
+(280)
+2
+(215)
+3
+(213)
+4
+(129)
+5
+(91)
+6
+(78)
+7
+(68)
+8
+(58)
+9
+(22)
+umap (expression)
+Focus
+umap (expression) view with 1476 points; 0 selected.
+Clonal expansion (TCR)
+Focus
+Clonal expansion (TCR) view with 1476 points; 0 selected.

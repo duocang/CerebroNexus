@@ -55,7 +55,9 @@ expression_projection_data_to_plot_raw <- reactive({
   return(to_return)
 })
 
-expression_projection_data_to_plot <- debounceAfterFirst(
+## This prepared value already contains the million-cell expression vector.
+## Use Shiny's debounce directly instead of relaying it through another observer.
+expression_projection_data_to_plot <- shiny::debounce(
   expression_projection_data_to_plot_raw,
   50
 )

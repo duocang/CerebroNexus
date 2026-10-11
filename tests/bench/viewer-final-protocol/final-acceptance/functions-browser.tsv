@@ -1,0 +1,42 @@
+"file"	"context"	"test"	"nb"	"failed"	"skipped"	"error"	"warning"	"user"	"system"	"real"	"passed"
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Clonal projection defers full repertoire controls"	6	0	FALSE	FALSE	0	0.0329999999999995	0	0.0449999999999999	6
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"first IR plot tab is Clonal UMAP"	1	0	FALSE	FALSE	0	6.119	0.499	8.175	1
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"immune_repertoire tab is present with example data (has TCR)"	1	0	FALSE	FALSE	0	6.289	0.361	9.706	1
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Group by is visible on plots whose grouping it drives"	11	0	FALSE	FALSE	0	18.985	0.219	19.661	11
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Chain is visible on plots whose scRepertoire API accepts it"	2	0	FALSE	FALSE	0	11.142	0	12.483	2
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"changing 'Group by' keeps the current plot tab"	2	0	FALSE	FALSE	0	4.282	0.00499999999999989	3.997	2
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"settings dropdowns render all their options (not just selected)"	3	0	FALSE	FALSE	0	2.162	0	2.014	3
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"immune_repertoire tab can be opened and renders settings"	1	0	FALSE	FALSE	0	2.139	0.00900000000000034	1.999	1
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"immune_repertoire module loads without breaking main app"	1	0	FALSE	FALSE	0	6.078	0.386	7.89400000000001	1
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Clonal UMAP tab renders with receptor + projection selectors"	4	0	FALSE	FALSE	0	2.23699999999999	0.0170000000000003	2.113	4
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Display options panel exposes scatter params on scatter-type tabs"	11	0	FALSE	FALSE	0	4.11999999999999	0.17	4.033	11
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Linked views shows the dataset point size in More settings"	2	0	FALSE	FALSE	0	0.0650000000000119	0	0.0609999999999928	2
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"IR page uses the compact top toolbar and settings drawer"	8	0	FALSE	FALSE	0	0.103000000000009	0.0169999999999999	0.114999999999995	8
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Clonal UMAP has Show-all toggle and group filters"	3	0	FALSE	FALSE	0	0.0640000000000072	0.004	0.0649999999999977	3
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Clonal UMAP switches to static facets only when grouped"	9	0	FALSE	FALSE	0	8.91699999999999	0.203	12.511	9
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"Clone call is hidden on the Clonal UMAP tab"	2	0	FALSE	FALSE	0	1.38	0.0100000000000002	1.26700000000001	2
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"page info button opens the repertoire guide"	2	0	FALSE	FALSE	0	16.601	0.312	17.488	2
+"test-app-immune_repertoire.R"	"app-immune_repertoire"	"lazy-load boundary: self-made plots stay unloaded, scRepertoire plots load + render"	18	0	FALSE	FALSE	0	23.351	0.542	28.095	18
+"test-app-inst.R"	"app-inst"	"retry_get_value reports the last error after timing out"	2	0	FALSE	FALSE	0	0.00800000000000978	0.00399999999999956	0.0180000000000007	2
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: overview"	3	0	FALSE	FALSE	0	5.94999999999999	0.187	9.643	3
+"test-app-inst.R"	"app-inst"	"Projection switches categorical spatial datasets coherently"	0	0	FALSE	TRUE	0	35.941	0.292	37.635	0
+"test-app-inst.R"	"app-inst"	"Spatial backgrounds reset when the spatial dataset changes"	0	0	FALSE	TRUE	0	36.989	0.401	38.425	0
+"test-app-inst.R"	"app-inst"	"Linked views resets the active background to its preset"	0	0	FALSE	TRUE	0	35.268	0.299	37.005	0
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: main"	7	0	FALSE	FALSE	0	11.217	0.273	15.044	7
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: groups"	4	0	FALSE	FALSE	0	9.18900000000002	0.415	11.195	4
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: marker_genes"	10	0	FALSE	FALSE	0	9.18299999999999	0.327	11.039	10
+"test-app-inst.R"	"app-inst"	"app startup does not eagerly load scRepertoire"	4	0	FALSE	FALSE	0	8.61699999999996	0.544	14.04	4
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: gene_expression"	0	0	FALSE	TRUE	0	20.794	0.207000000000001	21.362	0
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: gene_id_conversion"	1	0	FALSE	FALSE	0	7.25200000000001	0.316	11.08	1
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: color_management"	1	0	FALSE	FALSE	0	7.46700000000004	0.310999999999999	9.00999999999999	1
+"test-app-inst.R"	"app-inst"	"{shinytest2} recording: about"	2	0	FALSE	FALSE	0	7.31599999999997	0.331000000000001	9.03800000000001	2
+"test-app-inst.R"	"app-inst"	"createShinyApp bundles a working app"	1	0	FALSE	FALSE	0	5.85000000000002	0.423	10.186	1
+"test-app-new-modules.R"	"app-new-modules"	"most_expressed_genes tab navigates and renders table"	2	0	FALSE	FALSE	0	7.42500000000001	0.350999999999999	9.19	2
+"test-app-new-modules.R"	"app-new-modules"	"enriched_pathways tab content exists in DOM"	1	0	FALSE	FALSE	0	0.00900000000001455	0	0.0100000000000477	1
+"test-app-new-modules.R"	"app-new-modules"	"extra_material tab content exists in DOM"	1	0	FALSE	FALSE	0	0.00999999999999091	0	0.0109999999999673	1
+"test-app-new-modules.R"	"app-new-modules"	"all three new tabs are visible in sidebar after data load"	3	0	FALSE	FALSE	0	0.0240000000000009	0	0.0230000000000246	3
+"test-app-new-modules.R"	"app-new-modules"	"toggleConditionalTab is defined and wired to conditional tabs"	5	0	FALSE	FALSE	0	0.0109999999999673	0.00399999999999956	0.0240000000000009	5
+"test-app-new-modules.R"	"app-new-modules"	"conditional sidebar items exist in the initial UI"	2	0	FALSE	FALSE	0	0.00999999999999091	0	0.0169999999999959	2
+"test-app-trajectory.R"	"app-trajectory"	"Trajectory tab is present on the default (full T+B) data set"	1	0	FALSE	FALSE	0	6.43400000000003	0.5	8.178	1
+"test-app-trajectory.R"	"app-trajectory"	"trajectory module loads without breaking the main app"	1	0	FALSE	FALSE	0	4.815	0.00300000000000011	4.53999999999996	1
+"test-app-trajectory.R"	"app-trajectory"	"trajectory projection fits the viewport with selectors in the top bar"	10	0	FALSE	FALSE	0	1.72200000000004	0.0170000000000012	1.63299999999998	10

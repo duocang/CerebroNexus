@@ -1,0 +1,61 @@
+diff --git a/inst/viewer/gene_expression/obj_projection_expression_levels.R b/inst/viewer/gene_expression/obj_projection_expression_levels.R
+index b84a91a5..03fae740 100644
+--- a/inst/viewer/gene_expression/obj_projection_expression_levels.R
++++ b/inst/viewer/gene_expression/obj_projection_expression_levels.R
+@@ -132,7 +132,13 @@ expressionProjectionCachedRows <- function(data, cells, genes) {
+   values <- stats::setNames(lapply(keys, expressionProjectionRowCacheGet), genes)
+   missing <- genes[vapply(values, is.null, logical(1))]
+   if (length(missing)) {
+-    fetched <- viewerExpressionValues(data, cells, missing)
++    # Preserve canonical integer indices for the existing BPCells reader.
++    # The compatibility accessor normalizes a full selection to NULL, which
++    # bypasses the unnamed storage-order path and materializes column names.
++    fetched <- viewerBpcellsValues(data, cells, missing)
++    if (is.null(fetched)) {
++      fetched <- viewerExpressionValues(data, cells, missing)
++    }
+     for (gene in intersect(missing, names(fetched))) {
+       value <- unname(fetched[[gene]])
+       values[[gene]] <- value
+diff --git a/tests/testthat/test-gene-expression-panel-modes.R b/tests/testthat/test-gene-expression-panel-modes.R
+index d47fb092..9e25810a 100644
+--- a/tests/testthat/test-gene-expression-panel-modes.R
++++ b/tests/testthat/test-gene-expression-panel-modes.R
+@@ -139,6 +139,37 @@ test_that("Viewer BPCells reads preserve values and canonical cell order", {
+   }
+ })
+ 
++test_that("Gene cached BPCells rows retain exact canonical values", {
++  skip_if_not_installed("BPCells")
++  scope <- new.env(parent = globalenv())
++  sys.source(viewer_test_path("utility_functions.R"), scope)
++  expressions <- parse(viewer_test_path("gene_expression", "obj_projection_expression_levels.R"))
++  for (expr in expressions) {
++    if (is.call(expr) && identical(expr[[1L]], as.name("<-")) &&
++        identical(expr[[2L]], as.name("expressionProjectionCachedRows"))) eval(expr, scope)
++  }
++  scope$expressionProjectionDatasetKey <- function() "test-generation"
++  scope$expressionProjectionFullCellSelection <- function(...) TRUE
++  scope$expressionProjectionRowCacheGet <- function(...) NULL
++  scope$expressionProjectionRowCacheSet <- function(...) NULL
++  source <- matrix(c(0, 1.25, NA_real_, -2, 4, 5.5), nrow = 2L,
++    dimnames = list(c("A", "B"), c("c1", "c2", "c3")))
++  iterable <- methods::as(methods::as(Matrix::Matrix(source, sparse=TRUE), "CsparseMatrix"), "IterableMatrix")
++  directory <- withr::local_tempdir()
++  for (row_major in c(FALSE, TRUE)) {
++    path <- file.path(directory, if (row_major) "row" else "column")
++    if (row_major) BPCells::transpose_storage_order(iterable, outdir=path)
++    else BPCells::write_matrix_dir(iterable, dir=path)
++    dataset <- Cerebro$new()
++    dataset$expression <- BPCells::open_matrix_dir(path)
++    for (cells in list(1:3, c(3L, 1L))) {
++      actual <- scope$expressionProjectionCachedRows(dataset, cells, c("B", "A", "B"))
++      expect_identical(actual, list(B=as.numeric(source["B",cells]), A=as.numeric(source["A",cells])))
++    }
++    expect_identical(as.matrix(dataset$expression), source)
++  }
++})
++
+ test_that("RGB expression reads all channels in one backend call", {
+   scope <- new.env(parent = globalenv())
+   scope$reactive <- shiny::reactive

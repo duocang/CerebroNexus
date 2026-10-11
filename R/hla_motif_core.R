@@ -242,10 +242,26 @@ hla_parse_ir_segments <- function(data, chain) {
   if (is.null(data) || length(data) == 0 || is.null(chain) || !nzchar(chain)) {
     return(NULL)
   }
+  # Keep this helper outside the sample callback: its closure must not retain
+  # each sample's temporary split vectors until a later garbage collection.
+  pull_token <- function(tokens, token_rows, size, prefix) {
+    hits <- which(grepl(paste0("^", chain, prefix), tokens))
+    hits <- hits[!duplicated(token_rows[hits])]
+    out <- rep(NA_character_, size)
+    out[token_rows[hits]] <- tokens[hits]
+    out
+  }
   rows <- lapply(data, function(df) {
     if (is.null(df) || !all(c("barcode", "CTgene", "CTaa") %in% colnames(df))) {
       return(NULL)
     }
+    # Keep the existing zero-row input error; filtering nonempty inputs to
+    # zero matching receptors still returns NULL below.
+    if (nrow(df) == 0L) {
+      stop("non-character argument")
+    }
+    # Flatten once and keep the first matching slot per input row.
+    # Row indices, rather than barcodes, preserve duplicate cells and order.
     gene_parts <- strsplit(as.character(df$CTgene), "_", fixed = TRUE)
     gene_lengths <- lengths(gene_parts)
     gene_flat <- unlist(gene_parts, use.names = FALSE)
@@ -261,29 +277,25 @@ hla_parse_ir_segments <- function(data, chain) {
     selected_slots <- gene_slots[hits]
     gene_seg <- first_gene[hits]
 
-    aa_parts <- strsplit(as.character(df$CTaa), "_", fixed = TRUE)
+    aa_parts <- strsplit(as.character(df$CTaa)[selected_rows], "_", fixed = TRUE)
     aa_lengths <- lengths(aa_parts)
     aa_flat <- unlist(aa_parts, use.names = FALSE)
     aa_starts <- cumsum(c(1L, utils::head(aa_lengths, -1L)))
     cdr3 <- rep(NA_character_, length(selected_rows))
-    has_aa <- selected_slots <= aa_lengths[selected_rows]
-    aa_index <- aa_starts[selected_rows[has_aa]] + selected_slots[has_aa] - 1L
-    cdr3[has_aa] <- sub(";.*$", "", aa_flat[aa_index])
+    has_aa <- selected_slots <= aa_lengths
+    aa_index <- aa_starts[has_aa] + selected_slots[has_aa] - 1L
+    cdr3[has_aa] <- aa_flat[aa_index]
     cdr3[is.na(cdr3) | cdr3 == "NA" | !nzchar(cdr3)] <- NA_character_
+    # Normalize the raw slot before taking its first receptor, as before.
+    # A literal "NA;alternative" therefore remains the string "NA".
+    cdr3 <- sub(";.*$", "", cdr3)
 
     token_parts <- strsplit(gene_seg, ".", fixed = TRUE)
     token_lengths <- lengths(token_parts)
     token_flat <- unlist(token_parts, use.names = FALSE)
     token_rows <- rep.int(seq_along(token_parts), token_lengths)
-    pull_token <- function(prefix) {
-      token_hits <- which(startsWith(token_flat, paste0(chain, prefix)))
-      token_hits <- token_hits[!duplicated(token_rows[token_hits])]
-      out <- rep(NA_character_, length(gene_seg))
-      out[token_rows[token_hits]] <- token_flat[token_hits]
-      out
-    }
-    v_gene <- pull_token("V")
-    j_gene <- pull_token("J")
+    v_gene <- pull_token(token_flat, token_rows, length(gene_seg), "V")
+    j_gene <- pull_token(token_flat, token_rows, length(gene_seg), "J")
     # V + CDR3 are required (they define the node key and the optional V split);
     # J is OPTIONAL. Requiring it is a paired-single-cell assumption: bulk
     # repertoire sources routinely report only a V family and the CDR3, and
@@ -314,7 +326,33 @@ hla_parse_ir_segments <- function(data, chain) {
     }
     df[, all_cols, drop = FALSE]
   })
-  out <- do.call(rbind, rows)
+  # Uniform atomic columns can be concatenated once. rbind.data.frame grows
+  # columns for each sample, repeatedly allocating and copying their contents.
+  columns <- lapply(seq_along(all_cols), function(j) lapply(rows, `[[`, j))
+  uniform <- all(vapply(rows, function(df) identical(class(df), "data.frame"), logical(1))) &&
+    all(vapply(columns, function(parts) {
+      first <- parts[[1]]
+      attrs <- attributes(first)
+      simple <- is.null(attrs) || ((identical(class(first), "factor") ||
+        identical(class(first), c("ordered", "factor"))) &&
+        setequal(names(attrs), c("levels", "class")))
+      typeof(first) %in% c("logical", "integer", "double", "complex", "character", "raw") &&
+        simple && all(vapply(parts, function(x)
+        identical(typeof(x), typeof(first)) && identical(attributes(x), attrs), logical(1)))
+    }, logical(1)))
+  if (uniform) {
+    out <- lapply(columns, function(parts) {
+      column <- unlist(lapply(parts, unclass), use.names = FALSE)
+      attributes(column) <- attributes(parts[[1]])
+      column
+    })
+    names(out) <- all_cols
+    out <- structure(out, class = "data.frame",
+      row.names = .set_row_names(sum(vapply(rows, nrow, integer(1)))))
+  } else {
+    # Preserve base coercion and attribute handling for heterogeneous metadata.
+    out <- do.call(rbind, c(rows, list(make.row.names = FALSE)))
+  }
   rownames(out) <- NULL
   out
 }
@@ -375,7 +413,11 @@ hla_process_length_group <- function(df) {
 
   # Single distance measure (Hamming); edge and adjacency use the SAME
   # threshold (== 1) so component membership and drawn edges never diverge.
-  dist_mat <- stringdist::stringdistmatrix(seqs, seqs, method = "hamming")
+  # Small bins have too little work to amortize OpenMP worker startup. Keep
+  # larger bins on stringdist's configured thread count; distances are exact
+  # in either case and no process-wide option is changed.
+  dist_mat <- stringdist::stringdistmatrix(seqs, seqs, method = "hamming",
+    nthread = if (n <= 256L) 1L else getOption("sd_num_thread", 1L))
   idx <- which(dist_mat == 1 & upper.tri(dist_mat), arr.ind = TRUE)
   edges <- if (nrow(idx) == 0) {
     NULL
@@ -566,6 +608,14 @@ hla_group_dist <- function(t, k) {
   out
 }
 
+.hla_cdr3_node_keys <- function(seg, by_v) {
+  if (isTRUE(by_v)) {
+    interaction(seg$v_gene, seg$cdr3, drop = TRUE, lex.order = TRUE)
+  } else {
+    factor(seg$cdr3)
+  }
+}
+
 #' Aggregate parsed segments into unique-CDR3 nodes carrying distributions
 #'
 #' Node key = unique CDR3 amino-acid string, or `(V gene, CDR3)` when `by_v` is
@@ -587,6 +637,7 @@ hla_group_dist <- function(t, k) {
 #'   call because these columns share one property that the plain mode destroys:
 #'   a node spanning BOTH values is the finding, not a tie to be broken.
 #' @param by_v When TRUE, aggregate with `(v_gene, cdr3)` as the node key.
+#' @param .keys Precomputed node keys for internal graph construction.
 #' @return A per-node data.frame, or NULL when `seg` is empty.
 #' @keywords internal
 hla_aggregate_cdr3_nodes <- function(
@@ -594,7 +645,8 @@ hla_aggregate_cdr3_nodes <- function(
   meta_cols = character(0),
   context_col = NULL,
   by_v = FALSE,
-  context_summary = hla_context_summary
+  context_summary = hla_context_summary,
+  .keys = NULL
 ) {
   if (is.null(seg) || nrow(seg) == 0) {
     return(NULL)
@@ -603,11 +655,7 @@ hla_aggregate_cdr3_nodes <- function(
   # One group id per row, and the row indices behind each group. Splitting the
   # INDICES, not `seg` itself, is deliberate: splitting the wide data.frame
   # copies every column of every group and cost more than the tallies do.
-  keys <- if (isTRUE(by_v)) {
-    interaction(seg$v_gene, seg$cdr3, drop = TRUE, lex.order = TRUE)
-  } else {
-    factor(seg$cdr3)
-  }
+  keys <- if (is.null(.keys)) .hla_cdr3_node_keys(seg, by_v) else .keys
   g <- as.integer(keys)
   k <- nlevels(keys)
   idx <- split(seq_len(nrow(seg)), keys, drop = FALSE)
@@ -857,12 +905,26 @@ hla_build_motif_graph_raw <- function(
   if (is.null(seg) || nrow(seg) == 0) {
     return(NULL)
   }
+  # Count the same node keys used below before wide aggregation allocates.
+  keys <- .hla_cdr3_node_keys(seg, by_v)
+  node_count <- nlevels(keys)
+  if (node_count > HLA_MOTIF_MAX_TOTAL) {
+    return(guard(sprintf(
+      paste(
+        "Too many unique CDR3s (%s > %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
+      format(node_count, big.mark = ","),
+      format(HLA_MOTIF_MAX_TOTAL, big.mark = ",")
+    )))
+  }
   agg <- hla_aggregate_cdr3_nodes(
     seg,
     meta_cols = meta_cols,
     context_col = context_col,
     by_v = by_v,
-    context_summary = context_summary
+    context_summary = context_summary,
+    .keys = keys
   )
   if (is.null(agg) || nrow(agg) == 0) {
     return(NULL)

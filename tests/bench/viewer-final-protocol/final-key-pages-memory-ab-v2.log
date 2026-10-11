@@ -1,0 +1,200 @@
+Loading required package: shiny
+baseline round 1 overview first: ok 1905 ms primary
+candidate round 1 overview first: ok 2038 ms primary
+baseline round 1 gene_expression first: ok 2149 ms primary
+candidate round 1 gene_expression first: ok 2180 ms primary
+ candidate schedule_position round candidate_position            page visit
+  baseline                 1     1                  1        overview first
+ candidate                 2     1                  2        overview first
+  baseline                 3     1                  1 gene_expression first
+ candidate                 4     1                  2 gene_expression first
+ required requires_webgpu budget_ms dataset_load_ms dataset_load_driver_ms
+     TRUE            TRUE      2000           780.8                   1698
+     TRUE            TRUE      2000           732.8                   3708
+     TRUE            TRUE      2000           774.1                   1663
+     TRUE            TRUE      2000           797.9                   1729
+                              dataset_fingerprint dataset_cell_count status
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ error startup_attempts startup_errors elapsed_ms primary_ready_ms
+                      1                      2427           1904.7
+                      1                      2586           2038.0
+                      1                      2677           2148.8
+                      1                      2724           2180.4
+ performance_ms settled_ms complete_elapsed_ms ready_event_required
+         1904.7     1904.8              1904.8                 TRUE
+         2038.0     2038.1              2038.1                 TRUE
+         2148.8     2148.9              2148.9                 TRUE
+         2180.4     2180.6              2180.6                 TRUE
+ correctness_pass rendered_point_count expected_point_count trajectory_method
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+ trajectory_name expected_trajectory_method expected_trajectory_name
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      correctness_detail
+                                                          {"viewId":"overview_projection","dataset_context":{"epoch":"m5GeEaZIInhL5XTJ97xk10gH","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6486.200000047684,"clickToRequestMs":12.800000071525574,"bytes":2756,"serverPrepareMs":1408.6345,"serializeTransferMs":16.365478515625,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":7910.5,"requestToBinaryMs":1425,"geometryReused":false,"projectionFetchMs":342,"projectionBytes":8000000,"projectionDownloadMs":333.7999999523163,"projectionDecodeMs":8.800000071525574,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":134.5,"categoricalBytes":1000000,"activationStartedAtMs":8254.5,"buildSpacesMs":0.3999999761581421,"preDrawMs":7.800000071525574,"firstDrawMs":115.59999990463257,"activationMs":123.39999997615814,"readyAtMs":8378.100000023842,"requestToReadyMs":1891.8999999761581}}
+                                                        {"viewId":"overview_projection","dataset_context":{"epoch":"mLatqC6oaK2XZSzgmde6oT15","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5790.100000023842,"clickToRequestMs":10.5,"bytes":2764,"serverPrepareMs":1512.257080078125,"serializeTransferMs":16.742919921875,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":7319.300000071526,"requestToBinaryMs":1529,"geometryReused":false,"projectionFetchMs":366.5,"projectionBytes":8000000,"projectionDownloadMs":357.1999999284744,"projectionDecodeMs":9.900000095367432,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":98.19999992847443,"categoricalBytes":1000000,"activationStartedAtMs":7688.100000023842,"buildSpacesMs":0.3999999761581421,"preDrawMs":8,"firstDrawMs":121.30000007152557,"activationMs":129.30000007152557,"readyAtMs":7817.600000023842,"requestToReadyMs":2027.5}}
+                                         {"viewId":"expression_projection","dataset_context":{"epoch":"1AS3KMhmBNdTeT1uQF84KbeD","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6015.399999976158,"clickToRequestMs":9.399999976158142,"bytes":1684,"serverPrepareMs":1770.6848,"serializeTransferMs":11.315185546875,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7797.5,"requestToBinaryMs":1782,"geometryReused":false,"projectionFetchMs":259.39999997615814,"projectionBytes":8000000,"projectionDownloadMs":250.19999992847443,"projectionDecodeMs":10,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":8059.199999928474,"buildSpacesMs":1.1999999284744263,"preDrawMs":9,"firstDrawMs":85.70000004768372,"activationMs":94.70000004768372,"readyAtMs":8154.799999952316,"requestToReadyMs":2139.399999976158}}
+ {"viewId":"expression_projection","dataset_context":{"epoch":"WTtZI7q5ZsCwGONDeOwl7eMg","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6357.100000023842,"clickToRequestMs":9.600000023841858,"bytes":1724,"serverPrepareMs":1810.433837890625,"serializeTransferMs":11.566162109375,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":8178.700000047684,"requestToBinaryMs":1822,"geometryReused":false,"projectionFetchMs":251.60000002384186,"projectionBytes":8000000,"projectionDownloadMs":242.90000009536743,"projectionDecodeMs":9.399999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":8432.5,"buildSpacesMs":1.1999999284744263,"preDrawMs":8.300000071525574,"firstDrawMs":86.09999990463257,"activationMs":94.39999997615814,"readyAtMs":8527.899999976158,"requestToReadyMs":2170.7999999523163}}
+ navigator_gpu renderer_backend renderer_adapter renderer_context_lost
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+ renderer_error known_dashboard_error_count visible_pixel_count
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+ visible_pixels_pass r_peak_rss_kib chrome_peak_rss_kib js_heap_used_bytes
+                TRUE        1611460             1945352           11767540
+                TRUE        1621408             1950548           10933776
+                TRUE        1725200             2116724           72932236
+                TRUE        1725224             2133952           72946212
+ websocket_sent_payload_bytes websocket_received_payload_bytes
+                         3052                            32412
+                         3052                            32398
+                         4481                         22224798
+                         4481                         22224874
+ websocket_received_at_ready_bytes websocket_post_ready_received_bytes
+                             32412                                   0
+                             32398                                   0
+                             21661                            22203137
+                             21701                            22203173
+ primary_payload_count_at_ready primary_payload_bytes_at_ready
+                              2                           5540
+                              2                           5556
+                              1                           1684
+                              1                           1724
+ aux_payload_count_at_ready aux_payload_bytes_at_ready primary_payload_count
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     2
+ primary_payload_meter_bytes aux_payload_count aux_payload_bytes
+                        5540                 0                 0
+                        5556                 0                 0
+                        3368                 1          22194378
+                        3444                 1          22194378
+       chrome_version shared_projection_primed specialist_event_kind
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ specialist_generation render_request_sent cached_activation geometry_reused
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+ click_to_request_ms server_prepare_ms server_resource_ms server_bundle_ms
+                12.8          1408.634                 NA               NA
+                10.5          1512.257                 NA               NA
+                 9.4          1770.685                 NA               NA
+                 9.6          1810.434                 NA               NA
+ serialize_transfer_ms binary_decode_ms projection_fetch_ms
+              16.36548        0.2000000               342.0
+              16.74292        0.1999999               366.5
+              11.31519        0.3000000               259.4
+              11.56616        0.3000000               251.6
+ projection_download_ms projection_decode_ms projection_cache_hit
+                  333.8                  8.8                FALSE
+                  357.2                  9.9                FALSE
+                  250.2                 10.0                FALSE
+                  242.9                  9.4                FALSE
+ projection_subset_fetch_ms projection_subset_download_ms
+                          0                             0
+                          0                             0
+                          0                             0
+                          0                             0
+ projection_subset_decode_ms projection_subset_materialize_ms
+                           0                                0
+                           0                                0
+                           0                                0
+                           0                                0
+ projection_subset_cache_hit geometry_reuse_protocol geometry_reuse_subset
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+ metadata_fetch_ms renderer_initialization_ms renderer_apply_ms build_spaces_ms
+                NA                         NA                NA             0.4
+                NA                         NA                NA             0.4
+                NA                         NA                NA             1.2
+                NA                         NA                NA             1.2
+ pre_draw_ms first_draw_ms activation_ms request_to_ready_ms click_to_ready_ms
+         7.8         115.6         123.4              1891.9            1904.7
+         8.0         121.3         129.3              2027.5            2038.0
+         9.0          85.7          94.7              2139.4            2148.8
+         8.3          86.1          94.4              2170.8            2180.4
+ primary_payload_bytes projection_asset_bytes projection_subset_asset_bytes
+                  2756                  8e+06                             0
+                  2764                  8e+06                             0
+                  1684                  8e+06                             0
+                  1724                  8e+06                             0
+ metadata_asset_bytes performance_applicable pass
+                   NA                  FALSE   NA
+                   NA                  FALSE   NA
+                   NA                  FALSE   NA
+                   NA                  FALSE   NA
+                                       candidate_root
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+                        candidate_git_sha candidate_git_dirty  host
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+                                             os                    r_version
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ package_version shinytest2_version chromote_version profile benchmark_mode
+           4.6.4              0.5.1            0.5.1   quick         memory
+           4.6.4              0.5.1            0.5.1   quick         memory
+           4.6.4              0.5.1            0.5.1   quick         memory
+           4.6.4              0.5.1            0.5.1   quick         memory
+ expected_renderer profiler_instrumented rounds
+            webgl2                  TRUE      1
+            webgl2                  TRUE      1
+            webgl2                  TRUE      1
+            webgl2                  TRUE      1
+                                                                                                              artifact
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+                                                  artifact_sha256
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+                                                                                            bpcells_sidecar
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+                                           bpcells_sidecar_sha256
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+                                                                                                                   viewer_pack_manifest
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+                                      viewer_pack_manifest_sha256
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee

@@ -47,14 +47,9 @@ output[["trajectory_selected_cells_table_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_details_selected_cells_table"]] <- DT::renderDataTable({
-  ## don't do anything before these inputs are selected
-  req(
-    trajectory_selection_ok(),
-    input[["trajectory_percentage_cells_to_show"]],
-    input[["trajectory_point_color"]],
-    input[["trajectory_point_size"]],
-    input[["trajectory_point_opacity"]]
-  )
+  ## Selection identity is sufficient; appearance controls are initialized
+  ## lazily and must not prevent a selected-cell table from rendering.
+  req(trajectory_selection_ok())
 
   ## get info of selected cells and create identifier from X-Y coordinates
   selected_cells <- trajectory_projection_selected_cells()

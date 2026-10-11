@@ -568,12 +568,36 @@
     if (!detail.changed && detail.phase === 'ready') return;
     pendingState = null;
     networkContextKey = '';
-    committedCanvas = null;
-    selectedKeys = [];
-    selectedCells = [];
+    // The old viewport is being retired; do not animate it during a switch.
     selectionFocused = false;
-    syncModeButtons();
-    drawOverlay();
+    clearSelection(false);
+    hideNodeTooltip();
+    if (detail.phase !== 'pending') return;
+    if (detail.changed || detail.selectionPending) {
+      // The upload host stays mounted across datasets. Retire its old file.
+      var upload = document.getElementById('hla_upload');
+      if (upload) {
+        var jq = window.jQuery;
+        var uploader = jq && jq(upload).data('currentUploader');
+        if (uploader && typeof uploader.abort === 'function') uploader.abort();
+        if (jq) jq(upload).removeData('currentUploader').removeAttr('data-restore');
+        upload.value = '';
+        var group = upload.closest('.form-group');
+        var filename = group && group.querySelector('input[type="text"]');
+        var progress = group && group.querySelector('.progress');
+        if (filename) filename.value = '';
+        if (progress) progress.style.visibility = 'hidden';
+        if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('hla_upload', null);
+      }
+      var provenance = document.getElementById('hla_upload_source_type');
+      if (provenance && provenance.selectize) provenance.selectize.setValue('unknown');
+    }
+    ['hla_motif_network_composition', 'hla_selected_count'].forEach(function (id) {
+      var root = document.getElementById(id);
+      if (!root) return;
+      if (window.Shiny && Shiny.unbindAll) Shiny.unbindAll(root);
+      root.replaceChildren();
+    });
   });
 
   if (window.jQuery) {

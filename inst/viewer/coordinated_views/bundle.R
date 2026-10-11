@@ -2139,6 +2139,32 @@ cv_build_progressive_supplement <- function(
   )
 }
 
+## Reference only geometry whose Viewer Pack explicitly validates the same
+## canonical projection. Legacy/custom coordinate systems retain their arrays.
+cv_reference_trajectory_geometry <- function(supplement, primary, crb) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  if (!is.list(pack) || !identical(primary$canonical_order_id,
+      pack$manifest$cell_order_fingerprint) || primary$n != pack$cell_count) {
+    return(supplement)
+  }
+  supplement$spaces <- lapply(supplement$spaces, function(space) {
+    if (!isTRUE(space$trajectory)) return(space)
+    frame <- viewerPackTrajectoryFrame(pack, space$method, space$name)
+    if (is.null(frame) || frame$geometry_kind != "canonical_projection" ||
+        !frame$projection_name %in% names(primary$projections) ||
+        !identical(as.integer(primary$projections[[frame$projection_name]]$ndim), 2L) ||
+        length(space$x) != primary$n || length(space$y) != primary$n ||
+        !identical(is.na(space$x), is.na(space$y))) return(space)
+    present <- is.finite(space$x) & is.finite(space$y)
+    if (sum(present) != frame$cells) return(space)
+    space$geometry_ref <- list(projection = frame$projection_name,
+      exclude = I(as.integer(which(!present) - 1L)))
+    space$x <- NULL; space$y <- NULL
+    space
+  })
+  supplement
+}
+
 ## Remove heavyweight browser-only assets from a bundle while keeping the
 ## descriptors needed to render controls. The server retains the returned map
 ## and sends one asset only when the browser displays that image or opens the

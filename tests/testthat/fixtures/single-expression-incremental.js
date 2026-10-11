@@ -11,7 +11,8 @@ function $(id) { return null; }
 function updateCanvasDescription() {}
 function unpinTip() {}
 function closeCard() {}
-function renderLegend() { calls.legend++; }
+function panelColorMode(p) { return p && p.colorBy || colorBy; }
+function renderLegend() { calls.legend++; calls.legendField = fieldOf(); }
 function renderSelbar() {}
 function resizeAll() {}
 function drawAll() { calls.draw++; }
@@ -30,6 +31,7 @@ function sameDatasetContext(a,b) { return JSON.stringify(a) === JSON.stringify(b
 function currentDatasetContext() { return datasetContext; }
 function datasetMessageFresh(message) { return sameDatasetContext(message.dataset_context,datasetContext); }
 eval(between('  function singleIndex()', '  function singlePayloadCells'));
+eval(between('  var _fldCacheD =', '  function fieldForMode('));
 eval(between('  function quantisedField(', '  function singleEdges('));
 eval(between('  function singleGpuReady(', '  function activateSingle('));
 eval(between('  function updateSingleExpression(', '  function clearSingleSelection('));
@@ -47,6 +49,9 @@ function setup() {
       selection_key:D.cells.slice(),color:[1,2,3,4]},selection:['b'],mode:'box'}};
   singleIndexCells = null; singleIndexMap = null; singleIndex();
   _ordD = D; _clipD = D;
+  colorBy = FIELD_PREFIX + 'single:' + id + ':0';
+  D.fields['single:' + id + ':0'] = {label:'old', min:0, max:4, raw:[1,2,3,4]};
+  fieldOf(); // Prime the real per-cell lookup cache before recoloring.
 }
 function update(data, meta = {}) { return recolorSingle({id,
   dataset_context:datasetContext,render_token:Number(singleViews[id].render_token)+1,
@@ -64,6 +69,8 @@ function update(data, meta = {}) { return recolorSingle({id,
   assert.strictEqual(panels[0].lassoData,original.lasso);
   assert.deepStrictEqual(singleViews[id].selection,['b']);
   let field=D.fields['single:'+id+':0']; assert.deepStrictEqual(field.raw,[9,null,-2,5]);
+  assert.strictEqual(fieldOf(),field); assert.strictEqual(calls.legendField,field);
+  assert.equal(calls.legendField.max,9); assert.equal(calls.legendField.label,'new');
   assert.deepStrictEqual(field.v,[1000,null,0,636]); assert.equal(field.label,'new');
   assert.equal(_ordD,null); assert.equal(_clipD,null);
   assert.equal(panels[0].colorBy,FIELD_PREFIX+'single:'+id+':0');
@@ -76,6 +83,20 @@ function update(data, meta = {}) { return recolorSingle({id,
   await new Promise(setImmediate);
   // Previous paints used the same D object; only the newest metadata may report ready.
   assert.equal(emitted.length,1); assert.equal(emitted[0].detail.renderToken,2);
+  // Stable IDs may still be deferred, but the same progressive geometry has
+  // a known canonical position for every exact expression value.
+  setup(); D.cells=[]; delete singleViews[id].data.selection_key;
+  singleViews[id].data.n=4; singleViews[id].data.wire_token=17;
+  const pendingD=D, pendingSpace=spaceById[spaceId], pendingScreen=panels[0].sx;
+  update({color:new Float64Array([0,1.25,NaN,-2])});
+  assert.equal(calls.activate,0); assert.strictEqual(D,pendingD);
+  assert.strictEqual(spaceById[spaceId],pendingSpace);
+  assert.strictEqual(panels[0].sx,pendingScreen);
+  assert.deepStrictEqual(Array.from(D.fields['single:'+id+':0'].raw),[0,1.25,NaN,-2]);
+  assert.deepStrictEqual(D.cells,[]);
+  setup(); D.cells=[]; delete singleViews[id].data.selection_key;
+  singleViews[id].data.n=4;
+  update({color:[0,1,2,3]}); assert.equal(calls.activate,1);
   for (const mutate of [
     () => {singleActive='overview_projection';},
     () => {D.cells=[];},

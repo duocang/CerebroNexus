@@ -1,0 +1,59 @@
+{
+  "cells": 1000000,
+  "spaces": [
+    {
+      "id": "trajectory::marker_guided::E18_neurogenesis",
+      "cells": 1000000,
+      "present": 981807,
+      "excluded": 18193,
+      "coordinateBytes": 8000000,
+      "canonicalEqualX": true,
+      "canonicalEqualY": true,
+      "maxAbsDifferenceX": 0,
+      "maxAbsDifferenceY": 0
+    },
+    {
+      "id": "trajectory::monocle2::synthetic_1m",
+      "cells": 1000000,
+      "present": 1000000,
+      "excluded": 0,
+      "coordinateBytes": 8000000,
+      "canonicalEqualX": true,
+      "canonicalEqualY": true,
+      "maxAbsDifferenceX": 0,
+      "maxAbsDifferenceY": 0
+    }
+  ],
+  "frames": [
+    {
+      "method": "marker_guided",
+      "name": "E18_neurogenesis",
+      "cells": 981807,
+      "geometry_kind": "canonical_projection",
+      "geometry_path": "",
+      "projection_name": "umap",
+      "subset_kind": "exclude_uint32",
+      "subset_path": "trajectory/001.subset.bin",
+      "subset_dtype": "uint32",
+      "edges_path": "trajectory/001.edges.qs2",
+      "state_codes_path": "trajectory/001.state.codes.bin",
+      "state_dictionary_path": "trajectory/001.state.dictionary.json",
+      "state_dtype": "uint8"
+    },
+    {
+      "method": "monocle2",
+      "name": "synthetic_1m",
+      "cells": 1000000,
+      "geometry_kind": "canonical_projection",
+      "geometry_path": "",
+      "projection_name": "umap",
+      "subset_kind": "identity",
+      "subset_path": "",
+      "subset_dtype": "",
+      "edges_path": "trajectory/002.edges.qs2",
+      "state_codes_path": "trajectory/002.state.codes.bin",
+      "state_dictionary_path": "trajectory/002.state.dictionary.json",
+      "state_dtype": "uint8"
+    }
+  ]
+}

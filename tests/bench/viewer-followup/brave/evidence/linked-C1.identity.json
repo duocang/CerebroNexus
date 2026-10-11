@@ -1,0 +1,10 @@
+{
+  "arm": "C",
+  "baseline": "c108c7e0",
+  "source_sha256": "f332336c4b5f713f73e9c8ce58a638ba7ea6046584261d2a952b4ae60de576bd",
+  "harness": {
+    "server.R": "65f2de04a31ed342c275c07ac16793dab40798d8985fd1604e4fe095f8f55408",
+    "measure.js": "b59385bb9ed62ef8f995d8f8e61e15edb814be64d2d64d8d4bdffc4107585146",
+    "arm.py": "a6be31402766e6382b95f5fae0892fed96904f5eaa6977d70dad126850ebf86f"
+  }
+}

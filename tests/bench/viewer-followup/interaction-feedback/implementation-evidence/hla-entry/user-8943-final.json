@@ -1,0 +1,5 @@
+{
+  "build": "2026-10-10T22:08:32.406527",
+  "loaderHidden": true,
+  "note": "No CDR3 motif clusters at Hamming distance 1 with the current settings. Try lowering the minimum motif size or enabling 'Show unconnected CDR3s'."
+}

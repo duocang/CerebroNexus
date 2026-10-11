@@ -1,3 +1,24 @@
+/* Spatial scroll hint stays compact and keyboard accessible. */
+.scroll-down-indicator {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  z-index: 1025;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 48px);
+  padding: 9px 14px;
+  border: 1px solid var(--c-border-2);
+  border-radius: 8px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: 0 3px 12px #0002;
+  cursor: pointer;
+}
+.scroll-down-indicator .scroll-down-arrow { display: flex; flex: 0 0 20px; }
+.scroll-down-indicator svg { width: 20px; height: 20px; }
+
 /* =========================================================================
    Cerebro theme — "Console" design language.
    Warm, calm, card-based surfaces inspired by modern developer consoles:

@@ -8,6 +8,9 @@
   var acceptNewEpoch = true;
   var retiredEpochs = new Set();
   var connectionSequence = 0;
+  var selectedValue = null;
+  var pendingSelection = null;
+  var selectionSequence = 0;
 
   function scalar(value) {
     if (value == null || (typeof value !== 'string' && typeof value !== 'number')) {
@@ -72,6 +75,10 @@
     var next = normalize(message && message.dataset_context);
     var nextPhase = scalar(message && message.phase).toLowerCase();
     if (!next || ['pending', 'ready', 'error'].indexOf(nextPhase) < 0) return false;
+    // A server response for an earlier selector choice cannot reopen the gate.
+    if (pendingSelection !== null &&
+        (message.selection !== pendingSelection ||
+          message.selection_nonce !== selectionSequence)) return false;
 
     var previous = currentContext;
     var previousPhase = currentPhase;
@@ -97,6 +104,8 @@
     }
     currentContext = next;
     currentPhase = nextPhase;
+    if (typeof message.selection === 'string') selectedValue = message.selection;
+    if (nextPhase !== 'pending') pendingSelection = null;
     acceptNewEpoch = false;
 
     var identity = Object.assign(
@@ -142,6 +151,10 @@
   }
 
   function onConnected() {
+    var selector = document.getElementById &&
+      document.getElementById('crb_file_selector');
+    selectedValue = selector ? selector.value : null;
+    pendingSelection = null;
     // A reconnected browser may be attached to a fresh server session whose
     // generation starts at one. Only this connection boundary authorises an
     // unseen epoch; ordinary late control messages cannot switch epochs. Enter
@@ -195,6 +208,27 @@
     }
   }
 
+  function beginSelection(value) {
+    if (typeof value !== 'string' || value === selectedValue) return;
+    selectedValue = value;
+    if (!currentContext) return;
+    pendingSelection = value;
+    selectionSequence += 1;
+    var previousPhase = currentPhase;
+    currentPhase = 'pending';
+    window.dispatchEvent(new CustomEvent('cerebro:dataset-context', { detail: {
+      phase: 'pending', previousPhase: previousPhase,
+      dataset_context: currentContext, previous_context: currentContext,
+      changed: false, phaseChanged: previousPhase !== 'pending',
+      selectionPending: true
+    } }));
+    if (window.Shiny && Shiny.setInputValue) {
+      Shiny.setInputValue('viewer_dataset_selection', {
+        value: value, nonce: selectionSequence
+      });
+    }
+  }
+
   window.CerebroDatasetContext = Object.freeze({
     normalize: normalize,
     key: key,
@@ -205,10 +239,19 @@
     phase: phase,
     snapshot: snapshot,
     receive: receive,
-    beginConnection: onConnected
+    beginConnection: onConnected,
+    beginSelection: beginSelection
   });
 
-  if (window.jQuery) window.jQuery(document).on('shiny:connected', onConnected);
-  else document.addEventListener('shiny:connected', onConnected);
+  function onInputChanged(event) {
+    if (event.name === 'crb_file_selector') beginSelection(event.value);
+  }
+  if (window.jQuery) {
+    window.jQuery(document).on('shiny:connected', onConnected);
+    window.jQuery(document).on('shiny:inputchanged', onInputChanged);
+  } else {
+    document.addEventListener('shiny:connected', onConnected);
+    document.addEventListener('shiny:inputchanged', onInputChanged);
+  }
   if (!bindShiny()) window.setTimeout(bindShiny, 0);
 })();

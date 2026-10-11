@@ -22,7 +22,7 @@ test_that("sparse expression colour transport is exact and density-gated", {
   values[c(2L, 100L, 9999L)] <- c(1.5, Inf, NA_real_)
   packed <- sparse_color(values)
 
-  expect_identical(packed$protocol, "sparse-f32-v1")
+  expect_identical(packed$protocol, "sparse-f64-v1")
   expect_identical(packed$length, length(values))
   expect_identical(packed$index, c(1L, 99L, 9998L))
   restored <- numeric(packed$length)
@@ -38,6 +38,44 @@ test_that("sparse expression colour transport is exact and density-gated", {
   )))
   dense_wire <- wire$cv_wire_pack_message(list(data = list(color = values)))
   expect_lt(length(sparse_wire), length(dense_wire) / 100)
+})
+
+test_that("browser hydrates Gene colours without float32 rounding", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  runner <- testthat::test_path("fixtures", "gene-color-f64.js")
+  expect_identical(system2("node", c(shQuote(runner),
+    shQuote(viewer_test_path("www", "cell_views.js")))), 0L)
+})
+
+test_that("binary colour payload retains R doubles", {
+  wire <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  values <- rep(0, 4096L)
+  values[[1L]] <- 1 + 2^-40
+  payload <- wire$cv_wire_pack_message(list(data = list(color = values)))
+  header_length <- readBin(payload[1:4], integer(), size = 4L,
+    endian = "little")
+  header <- rawToChar(payload[seq.int(5L, 4L + header_length)])
+  descriptor <- jsonlite::fromJSON(header)$data$color
+  expect_identical(descriptor$`__cv_wire__`, "f64")
+  data_start <- 5L + header_length + (4L - header_length %% 4L) %% 4L
+  data_start <- data_start + descriptor$offset
+  decoded <- readBin(payload[seq.int(data_start, data_start + 7L)],
+    double(), size = 8L, endian = "little")
+  expect_identical(decoded, values[[1L]])
+})
+
+test_that("short JSON colour payload also retains double precision", {
+  wire <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  exact <- 1 + 2^-40
+  payload <- wire$cv_wire_pack_message(list(data = list(color = c(exact, 0))))
+  header_length <- readBin(payload[1:4], integer(), size = 4L,
+    endian = "little")
+  header <- rawToChar(payload[seq.int(5L, 4L + header_length)])
+  restored <- jsonlite::fromJSON(header)$data$color
+  expect_identical(restored[[1L]], exact)
+  expect_identical(restored[[2L]], 0)
 })
 
 test_that("single-gene primary frames choose sparse colour transport", {
@@ -56,8 +94,7 @@ test_that("single-gene primary frames choose sparse colour transport", {
     hover,
     extra,
     deferred_aux,
-    core_aux,
-    dataset_context = NULL
+    ...
   ) {
     runtime$captured <- data
   }
@@ -122,8 +159,7 @@ test_that("RGB and separate panels use one packed colour map", {
     hover,
     extra,
     deferred_aux,
-    core_aux,
-    dataset_context = NULL
+    ...
   ) {
     runtime$captured <- data
   }
@@ -172,11 +208,11 @@ test_that("RGB and separate panels use one packed colour map", {
   expect_null(runtime$captured$color)
   expect_identical(
     runtime$captured$packed_colors$GeneA$protocol,
-    "sparse-f32-v1"
+    "sparse-f64-v1"
   )
   expect_identical(
     runtime$captured$packed_colors$GeneB$protocol,
-    "dense-f32-v1"
+    "dense-f64-v1"
   )
 
   rgb <- base
@@ -187,7 +223,7 @@ test_that("RGB and separate panels use one packed colour map", {
   expect_null(runtime$captured$color)
   expect_null(runtime$captured[["rgb"]])
   expect_named(runtime$captured$packed_rgb, c("r", "g", "b"))
-  expect_identical(runtime$captured$packed_rgb$r$protocol, "sparse-f32-v1")
+  expect_identical(runtime$captured$packed_rgb$r$protocol, "sparse-f64-v1")
 })
 
 test_that("full canonical expression reads omit the million-index slice", {

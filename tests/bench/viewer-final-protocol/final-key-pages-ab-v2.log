@@ -1,0 +1,1642 @@
+Loading required package: shiny
+baseline round 1 overview first: ok 1792 ms primary
+candidate round 1 overview first: ok 1752 ms primary
+baseline round 1 overview repeat: ok 59 ms primary
+candidate round 1 overview repeat: ok 60 ms primary
+baseline round 1 gene_expression first: ok 2328 ms primary
+candidate round 1 gene_expression first: ok 2176 ms primary
+baseline round 1 gene_expression repeat: ok 524 ms primary
+candidate round 1 gene_expression repeat: ok 504 ms primary
+candidate round 2 overview first: ok 1785 ms primary
+baseline round 2 overview first: ok 1813 ms primary
+candidate round 2 overview repeat: ok 63 ms primary
+baseline round 2 overview repeat: ok 66 ms primary
+candidate round 2 gene_expression first: ok 2043 ms primary
+baseline round 2 gene_expression first: ok 2057 ms primary
+candidate round 2 gene_expression repeat: ok 511 ms primary
+baseline round 2 gene_expression repeat: ok 540 ms primary
+baseline round 3 overview first: ok 1792 ms primary
+candidate round 3 overview first: ok 2096 ms primary
+baseline round 3 overview repeat: ok 34 ms primary
+candidate round 3 overview repeat: ok 60 ms primary
+baseline round 3 gene_expression first: ok 2083 ms primary
+candidate round 3 gene_expression first: ok 2054 ms primary
+baseline round 3 gene_expression repeat: ok 582 ms primary
+candidate round 3 gene_expression repeat: ok 549 ms primary
+candidate round 4 overview first: ok 1806 ms primary
+baseline round 4 overview first: ok 1957 ms primary
+candidate round 4 overview repeat: ok 70 ms primary
+baseline round 4 overview repeat: ok 62 ms primary
+candidate round 4 gene_expression first: ok 2228 ms primary
+baseline round 4 gene_expression first: ok 2106 ms primary
+candidate round 4 gene_expression repeat: ok 539 ms primary
+baseline round 4 gene_expression repeat: ok 544 ms primary
+baseline round 5 overview first: ok 2070 ms primary
+candidate round 5 overview first: ok 1780 ms primary
+baseline round 5 overview repeat: ok 38 ms primary
+candidate round 5 overview repeat: ok 66 ms primary
+baseline round 5 gene_expression first: ok 2108 ms primary
+candidate round 5 gene_expression first: ok 2111 ms primary
+baseline round 5 gene_expression repeat: ok 549 ms primary
+candidate round 5 gene_expression repeat: ok 559 ms primary
+ candidate schedule_position round candidate_position            page  visit
+  baseline                 1     1                  1        overview  first
+ candidate                 2     1                  2        overview  first
+  baseline                 3     1                  1        overview repeat
+ candidate                 4     1                  2        overview repeat
+  baseline                 5     1                  1 gene_expression  first
+ candidate                 6     1                  2 gene_expression  first
+  baseline                 7     1                  1 gene_expression repeat
+ candidate                 8     1                  2 gene_expression repeat
+ candidate                 9     2                  1        overview  first
+  baseline                10     2                  2        overview  first
+ candidate                11     2                  1        overview repeat
+  baseline                12     2                  2        overview repeat
+ candidate                13     2                  1 gene_expression  first
+  baseline                14     2                  2 gene_expression  first
+ candidate                15     2                  1 gene_expression repeat
+  baseline                16     2                  2 gene_expression repeat
+  baseline                17     3                  1        overview  first
+ candidate                18     3                  2        overview  first
+  baseline                19     3                  1        overview repeat
+ candidate                20     3                  2        overview repeat
+  baseline                21     3                  1 gene_expression  first
+ candidate                22     3                  2 gene_expression  first
+  baseline                23     3                  1 gene_expression repeat
+ candidate                24     3                  2 gene_expression repeat
+ candidate                25     4                  1        overview  first
+  baseline                26     4                  2        overview  first
+ candidate                27     4                  1        overview repeat
+  baseline                28     4                  2        overview repeat
+ candidate                29     4                  1 gene_expression  first
+  baseline                30     4                  2 gene_expression  first
+ candidate                31     4                  1 gene_expression repeat
+  baseline                32     4                  2 gene_expression repeat
+  baseline                33     5                  1        overview  first
+ candidate                34     5                  2        overview  first
+  baseline                35     5                  1        overview repeat
+ candidate                36     5                  2        overview repeat
+  baseline                37     5                  1 gene_expression  first
+ candidate                38     5                  2 gene_expression  first
+  baseline                39     5                  1 gene_expression repeat
+ candidate                40     5                  2 gene_expression repeat
+ required requires_webgpu budget_ms dataset_load_ms dataset_load_driver_ms
+     TRUE            TRUE      2000           750.9                   1659
+     TRUE            TRUE      2000           816.1                   3733
+     TRUE            TRUE       500           824.8                   1776
+     TRUE            TRUE       500           768.9                   1702
+     TRUE            TRUE      2000           754.0                   1656
+     TRUE            TRUE      2000           747.3                   1624
+     TRUE            TRUE       500           729.8                   1626
+     TRUE            TRUE       500           713.4                   1592
+     TRUE            TRUE      2000           731.9                   1621
+     TRUE            TRUE      2000           671.6                   1584
+     TRUE            TRUE       500           750.4                   1675
+     TRUE            TRUE       500           702.3                   1601
+     TRUE            TRUE      2000           804.0                   1706
+     TRUE            TRUE      2000           723.1                   1641
+     TRUE            TRUE       500           773.7                   2761
+     TRUE            TRUE       500           743.5                   1636
+     TRUE            TRUE      2000           776.5                   1679
+     TRUE            TRUE      2000           979.9                   2017
+     TRUE            TRUE       500           817.1                   1721
+     TRUE            TRUE       500           743.3                   1663
+     TRUE            TRUE      2000           750.3                   1689
+     TRUE            TRUE      2000           752.9                   1656
+     TRUE            TRUE       500           925.8                   1931
+     TRUE            TRUE       500           793.9                   1682
+     TRUE            TRUE      2000           802.3                   1727
+     TRUE            TRUE      2000           927.3                   1875
+     TRUE            TRUE       500           876.6                   1824
+     TRUE            TRUE       500           980.7                   1931
+     TRUE            TRUE      2000           832.9                   3747
+     TRUE            TRUE      2000           847.3                   1813
+     TRUE            TRUE       500           758.5                   1638
+     TRUE            TRUE       500           740.6                   1637
+     TRUE            TRUE      2000           903.7                   1882
+     TRUE            TRUE      2000           757.4                   1681
+     TRUE            TRUE       500           768.7                   1716
+     TRUE            TRUE       500           779.0                   1700
+     TRUE            TRUE      2000           794.2                   1686
+     TRUE            TRUE      2000           772.1                   1750
+     TRUE            TRUE       500           781.1                   1678
+     TRUE            TRUE       500           716.7                   1649
+                              dataset_fingerprint dataset_cell_count status
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4              1e+06     ok
+ error startup_attempts startup_errors elapsed_ms primary_ready_ms
+                      1                      2307           1792.0
+                      1                      2261           1751.6
+                      1                        65             58.7
+                      1                        68             60.3
+                      1                      2898           2328.3
+                      1                      2670           2176.4
+                      1                       979            523.6
+                      1                       968            503.7
+                      1                      2271           1785.2
+                      1                      2322           1813.2
+                      1                       553             62.9
+                      1                        73             65.6
+                      1                      2532           2043.2
+                      1                      2552           2057.4
+                      1                       964            510.6
+                      1                       986            539.6
+                      1                      2294           1792.1
+                      1                      3245           2095.5
+                      1                       552             34.0
+                      1                        65             59.7
+                      1                      2665           2083.1
+                      1                      2544           2053.5
+                      1                      1041            581.9
+                      1                      1024            549.1
+                      1                      2379           1805.5
+                      1                      2504           1957.1
+                      1                      1993             70.0
+                      1                       515             61.5
+                      1                      2744           2228.1
+                      1                      2604           2105.7
+                      1                      1039            539.3
+                      1                      1009            544.1
+                      1                      2648           2070.3
+                      1                      2270           1779.6
+                      1                       559             38.0
+                      1                        97             66.0
+                      1                      2607           2108.4
+                      1                      2624           2110.6
+                      1                      1031            549.3
+                      1                      1005            559.4
+ performance_ms settled_ms complete_elapsed_ms ready_event_required
+         1792.0     1792.1              1792.1                 TRUE
+         1751.6     1751.8              1751.8                 TRUE
+           58.7       58.8                58.8                 TRUE
+           60.3       60.4                60.4                 TRUE
+         2328.3     2328.5              2328.5                 TRUE
+         2176.4     2176.6              2176.6                 TRUE
+          523.6      523.7               523.7                 TRUE
+          503.7      503.8               503.8                 TRUE
+         1785.2     1785.3              1785.3                 TRUE
+         1813.2     1813.2              1813.2                 TRUE
+           62.9       62.9                62.9                 TRUE
+           65.6       65.6                65.6                 TRUE
+         2043.2     2043.4              2043.4                 TRUE
+         2057.4     2057.6              2057.6                 TRUE
+          510.6      510.7               510.7                 TRUE
+          539.6      539.6               539.6                 TRUE
+         1792.1     1792.2              1792.2                 TRUE
+         2095.5     2095.7              2095.7                 TRUE
+           34.0       34.1                34.1                 TRUE
+           59.7       59.8                59.8                 TRUE
+         2083.1     2083.1              2083.1                 TRUE
+         2053.5     2053.5              2053.5                 TRUE
+          581.9      581.9               581.9                 TRUE
+          549.1      549.2               549.2                 TRUE
+         1805.5     1805.6              1805.6                 TRUE
+         1957.1     1957.2              1957.2                 TRUE
+           70.0       70.0                70.0                 TRUE
+           61.5       61.5                61.5                 TRUE
+         2228.1     2228.3              2228.3                 TRUE
+         2105.7     2105.8              2105.8                 TRUE
+          539.3      539.3               539.3                 TRUE
+          544.1      544.2               544.2                 TRUE
+         2070.3     2070.4              2070.4                 TRUE
+         1779.6     1779.6              1779.6                 TRUE
+           38.0       38.0                38.0                 TRUE
+           66.0       66.0                66.0                 TRUE
+         2108.4     2108.5              2108.5                 TRUE
+         2110.6     2110.7              2110.7                 TRUE
+          549.3      549.3               549.3                 TRUE
+          559.4      559.4               559.4                 TRUE
+ correctness_pass rendered_point_count expected_point_count trajectory_method
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+             TRUE                1e+06              1000000              <NA>
+ trajectory_name expected_trajectory_method expected_trajectory_name
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+            <NA>                       <NA>                     <NA>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        correctness_detail
+                                      {"viewId":"overview_projection","dataset_context":{"epoch":"W5wrO9EYnUhf0LheSXJZQOYo","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5779.700000047684,"clickToRequestMs":8.300000071525574,"bytes":2756,"serverPrepareMs":1305.1333,"serializeTransferMs":12.86669921875,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7098.200000047684,"requestToBinaryMs":1318,"geometryReused":false,"projectionFetchMs":334.90000009536743,"projectionBytes":8000000,"projectionDownloadMs":325.5,"projectionDecodeMs":9.899999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":95.5,"categoricalBytes":1000000,"activationStartedAtMs":7435.700000047684,"buildSpacesMs":0.40000009536743164,"preDrawMs":7.399999976158142,"firstDrawMs":119.89999997615814,"activationMs":127.29999995231628,"readyAtMs":7563.399999976158,"requestToReadyMs":1783.6999999284744}}
+                                                                                       {"viewId":"overview_projection","dataset_context":{"epoch":"PLKYxyoePd2V64a7Y2qhvhw8","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5626.5,"clickToRequestMs":9.5,"bytes":2764,"serverPrepareMs":1271.846923828125,"serializeTransferMs":13.153076171875,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":6911.300000071526,"requestToBinaryMs":1285,"geometryReused":false,"projectionFetchMs":330.2000000476837,"projectionBytes":8000000,"projectionDownloadMs":321.8000000715256,"projectionDecodeMs":9,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":129.29999995231628,"categoricalBytes":1000000,"activationStartedAtMs":7243.800000071526,"buildSpacesMs":0.3999999761581421,"preDrawMs":8,"firstDrawMs":116.5,"activationMs":124.5,"readyAtMs":7368.600000023842,"requestToReadyMs":1742.1000000238419}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    {"viewId":"overview_projection","dataset_context":{"epoch":"YfmeroV4mvi9nOVty2u2kPoK","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12647.299999952316,"clickToRequestMs":5.100000023841858,"activationStartedAtMs":12647.299999952316,"buildSpacesMs":0.09999990463256836,"preDrawMs":11.200000047683716,"firstDrawMs":42.199999928474426,"activationMs":53.39999997615814,"readyAtMs":12700.899999976158,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    {"viewId":"overview_projection","dataset_context":{"epoch":"V61Pocr9P8qUOx3sGlTMtHRI","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12359.100000023842,"clickToRequestMs":6.100000023841858,"activationStartedAtMs":12359.100000023842,"buildSpacesMs":0.10000002384185791,"preDrawMs":12.099999904632568,"firstDrawMs":42,"activationMs":54.09999990463257,"readyAtMs":12413.299999952316,"requestToReadyMs":null}}
+                         {"viewId":"expression_projection","dataset_context":{"epoch":"HJxFi7o6q43GOPXgTquBQXGr","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5648.899999976158,"clickToRequestMs":12.399999976158142,"bytes":1684,"serverPrepareMs":1957.6111,"serializeTransferMs":13.388916015625,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7619.5,"requestToBinaryMs":1971,"geometryReused":false,"projectionFetchMs":250.10000002384186,"projectionBytes":8000000,"projectionDownloadMs":239.40000009536743,"projectionDecodeMs":11.399999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7872.099999904633,"buildSpacesMs":1.3000000715255737,"preDrawMs":9.400000095367432,"firstDrawMs":82.59999990463257,"activationMs":92,"readyAtMs":7964.799999952316,"requestToReadyMs":2315.899999976158}}
+                                  {"viewId":"expression_projection","dataset_context":{"epoch":"iUktKPBXfWgsbDON0SzRT5T3","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5531,"clickToRequestMs":9.5,"bytes":1724,"serverPrepareMs":1800.250244140625,"serializeTransferMs":11.749755859375,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7342.700000047684,"requestToBinaryMs":1812,"geometryReused":false,"projectionFetchMs":244.09999990463257,"projectionBytes":8000000,"projectionDownloadMs":235,"projectionDecodeMs":9.600000023841858,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7588.900000095367,"buildSpacesMs":1.100000023841858,"preDrawMs":7.899999976158142,"firstDrawMs":99.79999995231628,"activationMs":107.69999992847443,"readyAtMs":7697.900000095367,"requestToReadyMs":2166.9000000953674}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       {"viewId":"expression_projection","dataset_context":{"epoch":"WnMTjO7A0hCvMR6EoNk1lhnE","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15072.899999976158,"clickToRequestMs":8,"activationStartedAtMs":15072.899999976158,"buildSpacesMs":430.5,"preDrawMs":441.7999999523163,"firstDrawMs":73.70000004768372,"activationMs":515.5,"readyAtMs":15588.5,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        {"viewId":"expression_projection","dataset_context":{"epoch":"MIO3DmXbPFLdPGoPiVwpamTp","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":14718.100000023842,"clickToRequestMs":7.300000071525574,"activationStartedAtMs":14718.200000047684,"buildSpacesMs":399.5,"preDrawMs":416,"firstDrawMs":80.09999990463257,"activationMs":496.09999990463257,"readyAtMs":15214.5,"requestToReadyMs":null}}
+                              {"viewId":"overview_projection","dataset_context":{"epoch":"aOGPH3OwnKkpcBMwXRwMNd4C","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5466,"clickToRequestMs":10.299999952316284,"bytes":2764,"serverPrepareMs":1286.585205078125,"serializeTransferMs":14.414794921875,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":6767.200000047684,"requestToBinaryMs":1301,"geometryReused":false,"projectionFetchMs":332.8000000715256,"projectionBytes":8000000,"projectionDownloadMs":324.1999999284744,"projectionDecodeMs":9.300000071525574,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":99.60000002384186,"categoricalBytes":1000000,"activationStartedAtMs":7102,"buildSpacesMs":0.3999999761581421,"preDrawMs":7.399999976158142,"firstDrawMs":131.20000004768372,"activationMs":138.60000002384186,"readyAtMs":7240.899999976158,"requestToReadyMs":1774.8999999761581}}
+             {"viewId":"overview_projection","dataset_context":{"epoch":"uFxdyqOZtqsawD03BBjXf1nk","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5590.700000047684,"clickToRequestMs":9.799999952316284,"bytes":2756,"serverPrepareMs":1325.323,"serializeTransferMs":12.677001953125,"decodeMs":0.3999999761581421,"binaryReceivedAtMs":6928.200000047684,"requestToBinaryMs":1338,"geometryReused":false,"projectionFetchMs":326.40000009536743,"projectionBytes":8000000,"projectionDownloadMs":316.7999999523163,"projectionDecodeMs":10.300000071525574,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":89.60000002384186,"categoricalBytes":1000000,"activationStartedAtMs":7256.900000095367,"buildSpacesMs":0.3999999761581421,"preDrawMs":8.099999904632568,"firstDrawMs":128.80000007152557,"activationMs":136.89999997615814,"readyAtMs":7394.100000023842,"requestToReadyMs":1803.3999999761581}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     {"viewId":"overview_projection","dataset_context":{"epoch":"y1SHk98l29buWBuDrBOzpERb","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12432.399999976158,"clickToRequestMs":6.399999976158142,"activationStartedAtMs":12432.399999976158,"buildSpacesMs":0,"preDrawMs":12.399999976158142,"firstDrawMs":43.800000071525574,"activationMs":56.299999952316284,"readyAtMs":12488.899999976158,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      {"viewId":"overview_projection","dataset_context":{"epoch":"IDFDSUTP8b3tag76Hp6NPtDr","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12456.600000023842,"clickToRequestMs":8.100000023841858,"activationStartedAtMs":12456.600000023842,"buildSpacesMs":0,"preDrawMs":14.699999928474426,"firstDrawMs":42.60000002384186,"activationMs":57.299999952316284,"readyAtMs":12514.100000023842,"requestToReadyMs":null}}
+                   {"viewId":"expression_projection","dataset_context":{"epoch":"ICwQ7nckGHo56JwPWBbvSp9L","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5564.400000095367,"clickToRequestMs":8.700000047683716,"bytes":1720,"serverPrepareMs":1684.56689453125,"serializeTransferMs":11.43310546875,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":7260.100000023842,"requestToBinaryMs":1696,"geometryReused":false,"projectionFetchMs":246.30000007152557,"projectionBytes":8000000,"projectionDownloadMs":236.20000004768372,"projectionDecodeMs":10.600000023841858,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7508.300000071526,"buildSpacesMs":1.5,"preDrawMs":8.399999976158142,"firstDrawMs":80.79999995231628,"activationMs":89.19999992847443,"readyAtMs":7598.900000095367,"requestToReadyMs":2034.5}}
+                                             {"viewId":"expression_projection","dataset_context":{"epoch":"53P68dlByXkGUL8wvug8ZSaK","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5762.399999976158,"clickToRequestMs":9,"bytes":1684,"serverPrepareMs":1701.0315,"serializeTransferMs":11.968505859375,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7476,"requestToBinaryMs":1713,"geometryReused":false,"projectionFetchMs":244.79999995231628,"projectionBytes":8000000,"projectionDownloadMs":235.39999997615814,"projectionDecodeMs":9.799999952316284,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7722.899999976158,"buildSpacesMs":1.1999999284744263,"preDrawMs":7.799999952316284,"firstDrawMs":79.20000004768372,"activationMs":87,"readyAtMs":7810.799999952316,"requestToReadyMs":2048.399999976158}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              {"viewId":"expression_projection","dataset_context":{"epoch":"llF4f3rkxCJeIshE4dTGNolj","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15229.700000047684,"clickToRequestMs":7.700000047683716,"activationStartedAtMs":15229.700000047684,"buildSpacesMs":395.59999990463257,"preDrawMs":410.10000002384186,"firstDrawMs":92.5,"activationMs":502.60000002384186,"readyAtMs":15732.600000023842,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          {"viewId":"expression_projection","dataset_context":{"epoch":"ZpEPMD8jEPE05SiWYe6158US","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":14977.600000023842,"clickToRequestMs":7.899999976158142,"activationStartedAtMs":14977.600000023842,"buildSpacesMs":441.90000009536743,"preDrawMs":454.5,"firstDrawMs":77,"activationMs":531.5,"readyAtMs":15509.300000071526,"requestToReadyMs":null}}
+                                                      {"viewId":"overview_projection","dataset_context":{"epoch":"OQKXf3fnzP3FtVlNqvjDWhQ9","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5813.600000023842,"clickToRequestMs":9.100000023841858,"bytes":2756,"serverPrepareMs":1310.8679,"serializeTransferMs":14.132080078125,"decodeMs":0.30000007152557373,"binaryReceivedAtMs":7138.399999976158,"requestToBinaryMs":1325,"geometryReused":false,"projectionFetchMs":335.7999999523163,"projectionBytes":8000000,"projectionDownloadMs":326.89999997615814,"projectionDecodeMs":9.5,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":93.60000002384186,"categoricalBytes":1000000,"activationStartedAtMs":7476.600000023842,"buildSpacesMs":0.3999999761581421,"preDrawMs":7.5,"firstDrawMs":112.19999992847443,"activationMs":119.69999992847443,"readyAtMs":7596.600000023842,"requestToReadyMs":1783}}
+                                                                                {"viewId":"overview_projection","dataset_context":{"epoch":"NIgxI6ZBx1XSJmKOPZona4Y1","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6660,"clickToRequestMs":10,"bytes":2764,"serverPrepareMs":1507.660888671875,"serializeTransferMs":17.339111328125,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":8185.399999976158,"requestToBinaryMs":1525,"geometryReused":false,"projectionFetchMs":403.10000002384186,"projectionBytes":8000000,"projectionDownloadMs":391.39999997615814,"projectionDecodeMs":12.5,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":111.59999990463257,"categoricalBytes":1000000,"activationStartedAtMs":8592.199999928474,"buildSpacesMs":0.7999999523162842,"preDrawMs":10.200000047683716,"firstDrawMs":142.79999995231628,"activationMs":153,"readyAtMs":8745.5,"requestToReadyMs":2085.5}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     {"viewId":"overview_projection","dataset_context":{"epoch":"nG7V6RArljWnEdLaVQkKFChr","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":11896.799999952316,"clickToRequestMs":7,"activationStartedAtMs":11896.799999952316,"buildSpacesMs":0,"preDrawMs":1.2000000476837158,"firstDrawMs":25.600000023841858,"activationMs":26.800000071525574,"readyAtMs":11923.799999952316,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          {"viewId":"overview_projection","dataset_context":{"epoch":"sLnVD4cVmaOUd92tWtX60wbP","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12893,"clickToRequestMs":5.700000047683716,"activationStartedAtMs":12893,"buildSpacesMs":0.10000002384185791,"preDrawMs":10.599999904632568,"firstDrawMs":43.200000047683716,"activationMs":53.799999952316284,"readyAtMs":12947,"requestToReadyMs":null}}
+                                                                  {"viewId":"expression_projection","dataset_context":{"epoch":"up5uUMeukHdyCKfaAflTFd9b","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5808,"clickToRequestMs":9.099999904632568,"bytes":1684,"serverPrepareMs":1719.5181,"serializeTransferMs":12.48193359375,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":7539.300000071526,"requestToBinaryMs":1732,"geometryReused":false,"projectionFetchMs":245.19999992847443,"projectionBytes":8000000,"projectionDownloadMs":235.89999997615814,"projectionDecodeMs":9.799999952316284,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7786.5,"buildSpacesMs":1.1999999284744263,"preDrawMs":8.600000023841858,"firstDrawMs":86,"activationMs":94.60000002384186,"readyAtMs":7882,"requestToReadyMs":2074}}
+                      {"viewId":"expression_projection","dataset_context":{"epoch":"2CICYu6609E1yitcMhm6pb30","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5559.700000047684,"clickToRequestMs":9.400000095367432,"bytes":1720,"serverPrepareMs":1686.79052734375,"serializeTransferMs":12.20947265625,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":7258.899999976158,"requestToBinaryMs":1699,"geometryReused":false,"projectionFetchMs":248.60000002384186,"projectionBytes":8000000,"projectionDownloadMs":239.60000002384186,"projectionDecodeMs":9.5,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7509.700000047684,"buildSpacesMs":1.2000000476837158,"preDrawMs":8.299999952316284,"firstDrawMs":85,"activationMs":93.29999995231628,"readyAtMs":7603.799999952316,"requestToReadyMs":2044.0999999046326}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             {"viewId":"expression_projection","dataset_context":{"epoch":"8m7xdw610Ery0OKmgE9Nct0K","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":16729.399999976158,"clickToRequestMs":9.5,"activationStartedAtMs":16729.5,"buildSpacesMs":482.6999999284744,"preDrawMs":496.2999999523163,"firstDrawMs":75.79999995231628,"activationMs":572.1999999284744,"readyAtMs":17301.799999952316,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       {"viewId":"expression_projection","dataset_context":{"epoch":"p4kQiGpMPTzwOcwnYG7rWjb2","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15091.5,"clickToRequestMs":7.600000023841858,"activationStartedAtMs":15091.5,"buildSpacesMs":450.2999999523163,"preDrawMs":462.2999999523163,"firstDrawMs":79.10000002384186,"activationMs":541.3999999761581,"readyAtMs":15633,"requestToReadyMs":null}}
+                                                                 {"viewId":"overview_projection","dataset_context":{"epoch":"eknF2ay2pkkwCc7bSW1ojmue","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5618,"clickToRequestMs":13.300000071525574,"bytes":2760,"serverPrepareMs":1300.05859375,"serializeTransferMs":12.94140625,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":6930.899999976158,"requestToBinaryMs":1313,"geometryReused":false,"projectionFetchMs":334.89999997615814,"projectionBytes":8000000,"projectionDownloadMs":324.2999999523163,"projectionDecodeMs":11.200000047683716,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":96.90000009536743,"categoricalBytes":1000000,"activationStartedAtMs":7268.399999976158,"buildSpacesMs":0.3999999761581421,"preDrawMs":9,"firstDrawMs":132.5,"activationMs":141.5,"readyAtMs":7410.199999928474,"requestToReadyMs":1792.1999999284744}}
+                           {"viewId":"overview_projection","dataset_context":{"epoch":"PNAuAPdoe0s4wraj2bGM9v7Q","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6068.100000023842,"clickToRequestMs":10.899999976158142,"bytes":2756,"serverPrepareMs":1464.5579,"serializeTransferMs":13.442138671875,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":7546.200000047684,"requestToBinaryMs":1478,"geometryReused":false,"projectionFetchMs":343.7999999523163,"projectionBytes":8000000,"projectionDownloadMs":335.1999999284744,"projectionDecodeMs":9.600000023841858,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":106.20000004768372,"categoricalBytes":1000000,"activationStartedAtMs":7892.600000023842,"buildSpacesMs":0.3999999761581421,"preDrawMs":8,"firstDrawMs":113.39999997615814,"activationMs":121.39999997615814,"readyAtMs":8014.299999952316,"requestToReadyMs":1946.1999999284744}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 {"viewId":"overview_projection","dataset_context":{"epoch":"lJMqhmdMz466Phq2Gww5Hqno","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12894.300000071526,"clickToRequestMs":9.400000095367432,"activationStartedAtMs":12894.399999976158,"buildSpacesMs":0.20000004768371582,"preDrawMs":17.700000047683716,"firstDrawMs":42.5,"activationMs":60.200000047683716,"readyAtMs":12954.899999976158,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   {"viewId":"overview_projection","dataset_context":{"epoch":"gzUN6Ba140xq9ivfEfbX2S7d","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":13682.599999904633,"clickToRequestMs":5.5,"activationStartedAtMs":13682.699999928474,"buildSpacesMs":0.10000002384185791,"preDrawMs":11.700000047683716,"firstDrawMs":43.89999997615814,"activationMs":55.60000002384186,"readyAtMs":13738.599999904633,"requestToReadyMs":null}}
+                                      {"viewId":"expression_projection","dataset_context":{"epoch":"49JgFNfanKoLoUPhMOav4oHo","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5696.800000071526,"clickToRequestMs":13.5,"bytes":1720,"serverPrepareMs":1854.49169921875,"serializeTransferMs":13.50830078125,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":7564.400000095367,"requestToBinaryMs":1868,"geometryReused":false,"projectionFetchMs":247.10000002384186,"projectionBytes":8000000,"projectionDownloadMs":237.70000004768372,"projectionDecodeMs":10,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7813.900000095367,"buildSpacesMs":1.3000000715255737,"preDrawMs":8,"firstDrawMs":88.79999995231628,"activationMs":96.79999995231628,"readyAtMs":7911.400000095367,"requestToReadyMs":2214.600000023842}}
+        {"viewId":"expression_projection","dataset_context":{"epoch":"3mJK2RraUQ1J7O7GI9rhoNV7","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6213.5,"clickToRequestMs":11.299999952316284,"bytes":1684,"serverPrepareMs":1739.2854,"serializeTransferMs":11.714599609375,"decodeMs":0.19999992847442627,"binaryReceivedAtMs":7964.800000071526,"requestToBinaryMs":1751,"geometryReused":false,"projectionFetchMs":248.89999997615814,"projectionBytes":8000000,"projectionDownloadMs":237.89999997615814,"projectionDecodeMs":11.399999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":8215.700000047684,"buildSpacesMs":1.2000000476837158,"preDrawMs":9.100000023841858,"firstDrawMs":82.29999995231628,"activationMs":91.39999997615814,"readyAtMs":8307.900000095367,"requestToReadyMs":2094.4000000953674}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    {"viewId":"expression_projection","dataset_context":{"epoch":"Q7UhdFKRXJgCxC1iF7UODGzu","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15048.799999952316,"clickToRequestMs":7.399999976158142,"activationStartedAtMs":15048.899999976158,"buildSpacesMs":443.2999999523163,"preDrawMs":454.2000000476837,"firstDrawMs":77.39999997615814,"activationMs":531.6000000238419,"readyAtMs":15580.700000047684,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   {"viewId":"expression_projection","dataset_context":{"epoch":"OJUJ2tsynbLsoGbsJUKVtR01","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15280.900000095367,"clickToRequestMs":7.600000023841858,"activationStartedAtMs":15280.900000095367,"buildSpacesMs":443.2000000476837,"preDrawMs":454.09999990463257,"firstDrawMs":82.10000002384186,"activationMs":536.1999999284744,"readyAtMs":15817.400000095367,"requestToReadyMs":null}}
+                                                     {"viewId":"overview_projection","dataset_context":{"epoch":"H88kUEoUaftBOAjHrJofhIuK","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6265.5,"clickToRequestMs":8.200000047683716,"bytes":2756,"serverPrepareMs":1542.2578,"serializeTransferMs":13.7421875,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":7821.099999904633,"requestToBinaryMs":1556,"geometryReused":false,"projectionFetchMs":360.6999999284744,"projectionBytes":8000000,"projectionDownloadMs":350.10000002384186,"projectionDecodeMs":11.599999904632568,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":106.39999997615814,"categoricalBytes":1000000,"activationStartedAtMs":8184.799999952316,"buildSpacesMs":0.5,"preDrawMs":13.100000023841858,"firstDrawMs":129.5,"activationMs":142.60000002384186,"readyAtMs":8327.599999904633,"requestToReadyMs":2062.0999999046326}}
+                                             {"viewId":"overview_projection","dataset_context":{"epoch":"WMXlrE3TrJMmylIPJcmA0eMq","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":null,"generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":6083.200000047684,"clickToRequestMs":11.600000023841858,"bytes":2764,"serverPrepareMs":1307.125732421875,"serializeTransferMs":12.874267578125,"decodeMs":0.2999999523162842,"binaryReceivedAtMs":7402.700000047684,"requestToBinaryMs":1320,"geometryReused":false,"projectionFetchMs":327.5,"projectionBytes":8000000,"projectionDownloadMs":319.2000000476837,"projectionDecodeMs":8.899999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":94.70000004768372,"categoricalBytes":1000000,"activationStartedAtMs":7732.100000023842,"buildSpacesMs":0.40000009536743164,"preDrawMs":7.699999928474426,"firstDrawMs":111,"activationMs":118.69999992847443,"readyAtMs":7851.200000047684,"requestToReadyMs":1768}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     {"viewId":"overview_projection","dataset_context":{"epoch":"hucUp32cL0GmGl1JNj3oFSDm","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":11827.300000071526,"clickToRequestMs":6,"activationStartedAtMs":11827.300000071526,"buildSpacesMs":0.10000002384185791,"preDrawMs":1.600000023841858,"firstDrawMs":30.09999990463257,"activationMs":31.699999928474426,"readyAtMs":11859.300000071526,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     {"viewId":"overview_projection","dataset_context":{"epoch":"eQf3PaT7ffb4Ejj9IdILM6RD","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":null,"generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":12371.299999952316,"clickToRequestMs":6.199999928474426,"activationStartedAtMs":12371.299999952316,"buildSpacesMs":0.10000002384185791,"preDrawMs":16.600000023841858,"firstDrawMs":42.89999997615814,"activationMs":59.60000002384186,"readyAtMs":12431.100000023842,"requestToReadyMs":null}}
+ {"viewId":"expression_projection","dataset_context":{"epoch":"shgIAyuvhA7mbekJfpPp2tFu","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5740.699999928474,"clickToRequestMs":8.799999952316284,"bytes":1684,"serverPrepareMs":1735.7307,"serializeTransferMs":13.269287109375,"decodeMs":0.20000004768371582,"binaryReceivedAtMs":7489.699999928474,"requestToBinaryMs":1749,"geometryReused":false,"projectionFetchMs":248.60000002384186,"projectionBytes":8000000,"projectionDownloadMs":239.20000004768372,"projectionDecodeMs":9.899999976158142,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7740.399999976158,"buildSpacesMs":1.100000023841858,"preDrawMs":8.700000047683716,"firstDrawMs":90.39999997615814,"activationMs":99.20000004768372,"readyAtMs":7840.299999952316,"requestToReadyMs":2099.600000023842}}
+                                {"viewId":"expression_projection","dataset_context":{"epoch":"7XaDtAaZoVTyjwoj84ZZnklu","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"primary","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":1,"benchmarkGeneration":1,"renderRequestSent":true,"renderedPointCount":1000000,"timing":{"generation":1,"renderRequestSent":true,"cached":false,"requestAtMs":5552.800000071526,"clickToRequestMs":10.100000023841858,"bytes":1720,"serverPrepareMs":1740.4189453125,"serializeTransferMs":13.5810546875,"decodeMs":0.30000007152557373,"binaryReceivedAtMs":7306.5,"requestToBinaryMs":1754,"geometryReused":false,"projectionFetchMs":256.1999999284744,"projectionBytes":8000000,"projectionDownloadMs":247.30000007152557,"projectionDecodeMs":9.5,"projectionCacheHit":false,"projectionSubsetFetchMs":0,"projectionSubsetBytes":0,"projectionSubsetDownloadMs":0,"projectionSubsetDecodeMs":0,"projectionSubsetCacheHit":false,"projectionSubsetMaterializeMs":0,"categoricalFetchMs":0,"categoricalBytes":0,"activationStartedAtMs":7564.700000047684,"buildSpacesMs":1.1999999284744263,"preDrawMs":8.100000023841858,"firstDrawMs":79.59999990463257,"activationMs":87.69999992847443,"readyAtMs":7653.300000071526,"requestToReadyMs":2100.5}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   {"viewId":"expression_projection","dataset_context":{"epoch":"nUgTkTajq2dTn1VE4gPYgPWF","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15072.899999976158,"clickToRequestMs":8.399999976158142,"activationStartedAtMs":15072.899999976158,"buildSpacesMs":442.6999999284744,"preDrawMs":458.10000002384186,"firstDrawMs":82.59999990463257,"activationMs":540.6999999284744,"readyAtMs":15613.799999952316,"requestToReadyMs":null}}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              {"viewId":"expression_projection","dataset_context":{"epoch":"2KP2uQ6AHvuZlV7zPXlyZA6k","dataset_key":"1M pages","generation":1},"selectedCells":0,"datasetFingerprint":"md5-cell-set-v1:fa3fbe15b4aac9ce03ebcd5abb50acb4","eventKind":"cached","renderKey":"combined\\u001d\\u001d\\u001c\\u001c","generation":2,"benchmarkGeneration":2,"renderRequestSent":false,"renderedPointCount":1000000,"timing":{"generation":2,"renderRequestSent":false,"cached":true,"activationRequestAtMs":15372.700000047684,"clickToRequestMs":6.5,"activationStartedAtMs":15372.700000047684,"buildSpacesMs":463.5,"preDrawMs":476.7999999523163,"firstDrawMs":75.80000007152557,"activationMs":552.6000000238419,"readyAtMs":15925.600000023842,"requestToReadyMs":null}}
+ navigator_gpu renderer_backend renderer_adapter renderer_context_lost
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+          TRUE           webgl2     WebKit WebGL                 FALSE
+ renderer_error known_dashboard_error_count visible_pixel_count
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              166077
+                                          0              173523
+                                          0              173523
+                                          0              173523
+                                          0              173523
+ visible_pixels_pass r_peak_rss_kib chrome_peak_rss_kib js_heap_used_bytes
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+                TRUE             NA                  NA                 NA
+ websocket_sent_payload_bytes websocket_received_payload_bytes
+                         3052                            32382
+                         3052                            32394
+                         1560                          8003754
+                         1560                          8003754
+                         4358                         22224796
+                         4358                         22224876
+                         1528                             5057
+                         1528                             5057
+                         3052                            32428
+                         3052                            32382
+                         1560                          8003754
+                         1289                             2791
+                         3780                            30400
+                         4358                         22224796
+                         1528                             5057
+                         1528                             5057
+                         3052                            32382
+                         3052                            32398
+                         1560                         22200020
+                         1560                          8003754
+                         4358                         22224796
+                         3244                            21697
+                         1528                             5057
+                         1528                             5057
+                         3052                            32394
+                         3052                            32382
+                         1289                             2791
+                         1317                             2791
+                         4481                         22224874
+                         4358                         22224796
+                         1528                             5057
+                         1528                             5057
+                         3052                            32382
+                         2861                            32355
+                         1560                         22200020
+                         1289                             2791
+                         4358                         22224796
+                         4358                         22224868
+                         1528                             5057
+                         1528                             5057
+ websocket_received_at_ready_bytes websocket_post_ready_received_bytes
+                             32382                                   0
+                             32394                                   0
+                              2791                             8000963
+                              2791                             8000963
+                             21661                            22203135
+                             21701                            22203175
+                              5057                                   0
+                              4855                                 202
+                             32428                                   0
+                             32382                                   0
+                              2791                             8000963
+                              2791                                   0
+                             21697                                8703
+                             21661                            22203135
+                              4640                                 417
+                              4653                                 404
+                             32382                                   0
+                             32398                                   0
+                                 0                            22200020
+                              2791                             8000963
+                             21661                            22203135
+                             21697                                   0
+                              5044                                  13
+                              5057                                   0
+                             32394                                   0
+                             32382                                   0
+                              2791                                   0
+                              2791                                   0
+                             21697                            22203177
+                             21661                            22203135
+                              5057                                   0
+                              4855                                 202
+                             32382                                   0
+                             32355                                   0
+                                 0                            22200020
+                              2791                                   0
+                             21661                            22203135
+                             21697                            22203171
+                              5044                                  13
+                              5057                                   0
+ primary_payload_count_at_ready primary_payload_bytes_at_ready
+                              2                           5540
+                              2                           5552
+                              0                              0
+                              0                              0
+                              1                           1684
+                              1                           1724
+                              0                              0
+                              0                              0
+                              2                           5556
+                              2                           5540
+                              0                              0
+                              0                              0
+                              1                           1720
+                              1                           1684
+                              0                              0
+                              0                              0
+                              2                           5540
+                              2                           5556
+                              0                              0
+                              0                              0
+                              1                           1684
+                              1                           1720
+                              0                              0
+                              0                              0
+                              2                           5552
+                              2                           5540
+                              0                              0
+                              0                              0
+                              1                           1720
+                              1                           1684
+                              0                              0
+                              0                              0
+                              2                           5540
+                              2                           5556
+                              0                              0
+                              0                              0
+                              1                           1684
+                              1                           1720
+                              0                              0
+                              0                              0
+ aux_payload_count_at_ready aux_payload_bytes_at_ready primary_payload_count
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     1
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+                          0                          0                     2
+                          0                          0                     2
+                          0                          0                     0
+                          0                          0                     0
+ primary_payload_meter_bytes aux_payload_count aux_payload_bytes
+                        5540                 0                 0
+                        5552                 0                 0
+                           0                 1           8000888
+                           0                 1           8000888
+                        3368                 1          22194378
+                        3448                 1          22194378
+                           0                 0                 0
+                           0                 0                 0
+                        5556                 0                 0
+                        5540                 0                 0
+                           0                 1           8000888
+                           0                 0                 0
+                        3440                 0                 0
+                        3368                 1          22194378
+                           0                 0                 0
+                           0                 0                 0
+                        5540                 0                 0
+                        5556                 0                 0
+                           0                 1          22194378
+                           0                 1           8000888
+                        3368                 1          22194378
+                        1720                 0                 0
+                           0                 0                 0
+                           0                 0                 0
+                        5552                 0                 0
+                        5540                 0                 0
+                           0                 0                 0
+                           0                 0                 0
+                        3444                 1          22194378
+                        3368                 1          22194378
+                           0                 0                 0
+                           0                 0                 0
+                        5540                 0                 0
+                        5556                 0                 0
+                           0                 1          22194378
+                           0                 0                 0
+                        3368                 1          22194378
+                        3440                 1          22194378
+                           0                 0                 0
+                           0                 0                 0
+       chrome_version shared_projection_primed specialist_event_kind
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE               primary
+ Chrome/153.0.8010.52                    FALSE                cached
+ Chrome/153.0.8010.52                    FALSE                cached
+ specialist_generation render_request_sent cached_activation geometry_reused
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+                     1                TRUE             FALSE           FALSE
+                     1                TRUE             FALSE           FALSE
+                     2               FALSE              TRUE              NA
+                     2               FALSE              TRUE              NA
+ click_to_request_ms server_prepare_ms server_resource_ms server_bundle_ms
+                 8.3          1305.133                 NA               NA
+                 9.5          1271.847                 NA               NA
+                 5.1                NA                 NA               NA
+                 6.1                NA                 NA               NA
+                12.4          1957.611                 NA               NA
+                 9.5          1800.250                 NA               NA
+                 8.0                NA                 NA               NA
+                 7.3                NA                 NA               NA
+                10.3          1286.585                 NA               NA
+                 9.8          1325.323                 NA               NA
+                 6.4                NA                 NA               NA
+                 8.1                NA                 NA               NA
+                 8.7          1684.567                 NA               NA
+                 9.0          1701.032                 NA               NA
+                 7.7                NA                 NA               NA
+                 7.9                NA                 NA               NA
+                 9.1          1310.868                 NA               NA
+                10.0          1507.661                 NA               NA
+                 7.0                NA                 NA               NA
+                 5.7                NA                 NA               NA
+                 9.1          1719.518                 NA               NA
+                 9.4          1686.791                 NA               NA
+                 9.5                NA                 NA               NA
+                 7.6                NA                 NA               NA
+                13.3          1300.059                 NA               NA
+                10.9          1464.558                 NA               NA
+                 9.4                NA                 NA               NA
+                 5.5                NA                 NA               NA
+                13.5          1854.492                 NA               NA
+                11.3          1739.285                 NA               NA
+                 7.4                NA                 NA               NA
+                 7.6                NA                 NA               NA
+                 8.2          1542.258                 NA               NA
+                11.6          1307.126                 NA               NA
+                 6.0                NA                 NA               NA
+                 6.2                NA                 NA               NA
+                 8.8          1735.731                 NA               NA
+                10.1          1740.419                 NA               NA
+                 8.4                NA                 NA               NA
+                 6.5                NA                 NA               NA
+ serialize_transfer_ms binary_decode_ms projection_fetch_ms
+              12.86670        0.3000000               334.9
+              13.15308        0.1999999               330.2
+                    NA               NA                  NA
+                    NA               NA                  NA
+              13.38892        0.3000000               250.1
+              11.74976        0.3000000               244.1
+                    NA               NA                  NA
+                    NA               NA                  NA
+              14.41479        0.1999999               332.8
+              12.67700        0.4000000               326.4
+                    NA               NA                  NA
+                    NA               NA                  NA
+              11.43311        0.2000000               246.3
+              11.96851        0.3000000               244.8
+                    NA               NA                  NA
+                    NA               NA                  NA
+              14.13208        0.3000001               335.8
+              17.33911        0.1999999               403.1
+                    NA               NA                  NA
+                    NA               NA                  NA
+              12.48193        0.1999999               245.2
+              12.20947        0.2000000               248.6
+                    NA               NA                  NA
+                    NA               NA                  NA
+              12.94141        0.2000000               334.9
+              13.44214        0.1999999               343.8
+                    NA               NA                  NA
+                    NA               NA                  NA
+              13.50830        0.1999999               247.1
+              11.71460        0.1999999               248.9
+                    NA               NA                  NA
+                    NA               NA                  NA
+              13.74219        0.2000000               360.7
+              12.87427        0.3000000               327.5
+                    NA               NA                  NA
+                    NA               NA                  NA
+              13.26929        0.2000000               248.6
+              13.58105        0.3000001               256.2
+                    NA               NA                  NA
+                    NA               NA                  NA
+ projection_download_ms projection_decode_ms projection_cache_hit
+                  325.5                  9.9                FALSE
+                  321.8                  9.0                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  239.4                 11.4                FALSE
+                  235.0                  9.6                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  324.2                  9.3                FALSE
+                  316.8                 10.3                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  236.2                 10.6                FALSE
+                  235.4                  9.8                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  326.9                  9.5                FALSE
+                  391.4                 12.5                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  235.9                  9.8                FALSE
+                  239.6                  9.5                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  324.3                 11.2                FALSE
+                  335.2                  9.6                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  237.7                 10.0                FALSE
+                  237.9                 11.4                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  350.1                 11.6                FALSE
+                  319.2                  8.9                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+                  239.2                  9.9                FALSE
+                  247.3                  9.5                FALSE
+                     NA                   NA                   NA
+                     NA                   NA                   NA
+ projection_subset_fetch_ms projection_subset_download_ms
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+                          0                             0
+                          0                             0
+                         NA                            NA
+                         NA                            NA
+ projection_subset_decode_ms projection_subset_materialize_ms
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+                           0                                0
+                           0                                0
+                          NA                               NA
+                          NA                               NA
+ projection_subset_cache_hit geometry_reuse_protocol geometry_reuse_subset
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                       FALSE                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+                          NA                    <NA>                  <NA>
+ metadata_fetch_ms renderer_initialization_ms renderer_apply_ms build_spaces_ms
+                NA                         NA                NA       0.4000001
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.0999999
+                NA                         NA                NA       0.1000000
+                NA                         NA                NA       1.3000001
+                NA                         NA                NA       1.1000000
+                NA                         NA                NA     430.5000000
+                NA                         NA                NA     399.5000000
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.0000000
+                NA                         NA                NA       0.0000000
+                NA                         NA                NA       1.5000000
+                NA                         NA                NA       1.1999999
+                NA                         NA                NA     395.5999999
+                NA                         NA                NA     441.9000001
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.8000000
+                NA                         NA                NA       0.0000000
+                NA                         NA                NA       0.1000000
+                NA                         NA                NA       1.1999999
+                NA                         NA                NA       1.2000000
+                NA                         NA                NA     482.6999999
+                NA                         NA                NA     450.3000000
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.4000000
+                NA                         NA                NA       0.2000000
+                NA                         NA                NA       0.1000000
+                NA                         NA                NA       1.3000001
+                NA                         NA                NA       1.2000000
+                NA                         NA                NA     443.3000000
+                NA                         NA                NA     443.2000000
+                NA                         NA                NA       0.5000000
+                NA                         NA                NA       0.4000001
+                NA                         NA                NA       0.1000000
+                NA                         NA                NA       0.1000000
+                NA                         NA                NA       1.1000000
+                NA                         NA                NA       1.1999999
+                NA                         NA                NA     442.6999999
+                NA                         NA                NA     463.5000000
+ pre_draw_ms first_draw_ms activation_ms request_to_ready_ms click_to_ready_ms
+         7.4         119.9         127.3              1783.7            1792.0
+         8.0         116.5         124.5              1742.1            1751.6
+        11.2          42.2          53.4                  NA              58.7
+        12.1          42.0          54.1                  NA              60.3
+         9.4          82.6          92.0              2315.9            2328.3
+         7.9          99.8         107.7              2166.9            2176.4
+       441.8          73.7         515.5                  NA             523.6
+       416.0          80.1         496.1                  NA             503.7
+         7.4         131.2         138.6              1774.9            1785.2
+         8.1         128.8         136.9              1803.4            1813.2
+        12.4          43.8          56.3                  NA              62.9
+        14.7          42.6          57.3                  NA              65.6
+         8.4          80.8          89.2              2034.5            2043.2
+         7.8          79.2          87.0              2048.4            2057.4
+       410.1          92.5         502.6                  NA             510.6
+       454.5          77.0         531.5                  NA             539.6
+         7.5         112.2         119.7              1783.0            1792.1
+        10.2         142.8         153.0              2085.5            2095.5
+         1.2          25.6          26.8                  NA              34.0
+        10.6          43.2          53.8                  NA              59.7
+         8.6          86.0          94.6              2074.0            2083.1
+         8.3          85.0          93.3              2044.1            2053.5
+       496.3          75.8         572.2                  NA             581.9
+       462.3          79.1         541.4                  NA             549.1
+         9.0         132.5         141.5              1792.2            1805.5
+         8.0         113.4         121.4              1946.2            1957.1
+        17.7          42.5          60.2                  NA              70.0
+        11.7          43.9          55.6                  NA              61.5
+         8.0          88.8          96.8              2214.6            2228.1
+         9.1          82.3          91.4              2094.4            2105.7
+       454.2          77.4         531.6                  NA             539.3
+       454.1          82.1         536.2                  NA             544.1
+        13.1         129.5         142.6              2062.1            2070.3
+         7.7         111.0         118.7              1768.0            1779.6
+         1.6          30.1          31.7                  NA              38.0
+        16.6          42.9          59.6                  NA              66.0
+         8.7          90.4          99.2              2099.6            2108.4
+         8.1          79.6          87.7              2100.5            2110.6
+       458.1          82.6         540.7                  NA             549.3
+       476.8          75.8         552.6                  NA             559.4
+ primary_payload_bytes projection_asset_bytes projection_subset_asset_bytes
+                  2756                  8e+06                             0
+                  2764                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  1684                  8e+06                             0
+                  1724                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  2764                  8e+06                             0
+                  2756                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  1720                  8e+06                             0
+                  1684                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  2756                  8e+06                             0
+                  2764                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  1684                  8e+06                             0
+                  1720                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  2760                  8e+06                             0
+                  2756                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  1720                  8e+06                             0
+                  1684                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  2756                  8e+06                             0
+                  2764                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+                  1684                  8e+06                             0
+                  1720                  8e+06                             0
+                    NA                     NA                            NA
+                    NA                     NA                            NA
+ metadata_asset_bytes performance_applicable  pass
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE  TRUE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                   NA                   TRUE FALSE
+                                       candidate_root
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+  /mnt/c/Users/wangx/Projects/worktrees/pr6-reference
+ /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf
+                        candidate_git_sha candidate_git_dirty  host
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+ cbd65fe0fa2ca3b65e6b68180c42f5ced8bb9303               FALSE nuioi
+ 87c616c5a0491f21fe666fc5b78726dcb84711b9                TRUE nuioi
+                                             os                    r_version
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ Linux 6.18.33.2-microsoft-standard-WSL2 x86_64 R version 4.6.1 (2026-06-24)
+ package_version shinytest2_version chromote_version profile benchmark_mode
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+           4.6.4              0.5.1            0.5.1   quick         timing
+ expected_renderer profiler_instrumented rounds
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+            webgl2                 FALSE      5
+                                                                                                              artifact
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.crb
+                                                  artifact_sha256
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+ cd6f4aed684ecefc73e8136db692faf9b6a633fe3e6918e11e07771c31814e38
+                                                                                            bpcells_sidecar
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m.bpcells
+                                           bpcells_sidecar_sha256
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+ dd3f3c155d585f89cbeba0baabb7f00f2d4a1f571905cde47f967d94c602bd9b
+                                                                                                                   viewer_pack_manifest
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+ /mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_mouse_brain_1m_pages_clean_v1.viewer/manifest.json
+                                      viewer_pack_manifest_sha256
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+ a6b6f6b1bc35aa4f2fb9c2516532fd0df618ad238e686a753cd76038b7521aee
+Error: One or more available 1M page budgets failed; see /mnt/c/Users/wangx/Projects/worktrees/pr6-clean-perf/tests/bench/viewer-final-protocol/final-key-pages-ab-v2.tsv
+Execution halted

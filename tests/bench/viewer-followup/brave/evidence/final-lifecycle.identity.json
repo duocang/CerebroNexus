@@ -1,0 +1,18 @@
+{
+  "base_commit": "c108c7e0",
+  "parent_commit": "9b8524b26d5162caa87d04fd511aeb9957d1c9d5",
+  "scope": "final-lifecycle: production cache and field memo corrections; benchmark server diagnostic wrapper; no latency A/B claim",
+  "env": {
+    "BENCH_MULTI_DATASET": "true"
+  },
+  "sha256": {
+    "inst/viewer/www/cell_views.js": "9d04a291568adc3ba14038d393eb1affaaa5806a99d2a819672a1aadc87a3307",
+    "inst/viewer/utility_functions.R": "880d20820b4742189164fac994ed1baa46127e55b06280749d2b24db940f42c8",
+    "inst/viewer/gene_expression/UI_projection_input_type.R": "4d29f8f313b3b9e8115c447d903d87801696b8ff078f66623a84d8a0e3891d09",
+    "tests/bench/viewer-followup/brave/server.R": "a3a62b5511da137f465b89d447b96a4dc7c6f4189f3f84ef175a52bb4ed790cf",
+    "tests/bench/viewer-followup/brave/measure.js": "b59385bb9ed62ef8f995d8f8e61e15edb814be64d2d64d8d4bdffc4107585146",
+    "tests/bench/viewer-followup/brave/diagnostic-server.R": "a6d430c1a657b58dbcb6a3cb21996696f0f4e19b260178774a3aeca66a905cde",
+    "tests/bench/viewer-followup/brave/diagnostic.js": "51bd1c5f6eca9d49eaaf91589ff2dcd513367aa494d0e4c4953cf8a40d747b63"
+  },
+  "diagnostic_limitation": "Raw state field used summary() without a view id; ignore it. Actual primary events and visible DOM verify current-generation 1000000 points. Future harness is corrected after this run."
+}

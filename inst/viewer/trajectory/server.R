@@ -90,10 +90,12 @@ trajectory_cells_reactive <- function(columns = character(), barcodes = FALSE) {
     colnames(cells)
   )
   if (length(columns)) {
-    cells <- cbind(
-      cells,
-      viewerProjectionSubsetRows(metadata, cell_index, columns)
-    )
+    ## Integer indices already establish the exact row mapping. Assign vectors
+    ## directly to retain trajectory row names without rebuilding a joined
+    ## data frame and validating its million row names for every consumer.
+    for (column in columns) {
+      cells[[column]] <- metadata[[column]][cell_index]
+    }
   }
   cells[["cell_index"]] <- cell_index
   if (isTRUE(barcodes)) {

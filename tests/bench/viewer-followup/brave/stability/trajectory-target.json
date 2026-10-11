@@ -1,0 +1,16 @@
+[
+  {
+    "columns": "seurat_clusters",
+    "baseline": 0.527,
+    "candidate": 0.011,
+    "identical": true,
+    "rows": 981807
+  },
+  {
+    "columns": ["nUMI", "nGene", "sample", "seurat_clusters"],
+    "baseline": 0.789,
+    "candidate": 0.011,
+    "identical": true,
+    "rows": 981807
+  }
+]
