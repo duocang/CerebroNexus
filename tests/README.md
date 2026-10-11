@@ -110,8 +110,9 @@ file-type errors, and the exact POSIX `0600` requirement. POSIX checks are
 explicitly skipped on Windows; fault-injected read failures are not presented
 as cross-UID integration coverage.
 
-See the [deployment note](../inst/viewer/AUTHENTICATION-DEPLOYMENT.md) for host
-bind mounts and Windows-to-Linux transfer limitations.
+See the [authentication guide](../vignettes/control_access_to_cerebro_with_a_login_page.Rmd)
+for deployment and Windows-to-Linux transfer limitations. Generated Apps retain
+a brief offline checklist.
 
 
 ### How `inst_dir` is resolved in `test-app-inst.R`

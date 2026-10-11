@@ -6,7 +6,7 @@ param(
     [string]$BPCellsSidecar = '',
     [string]$RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [string]$ReferenceRef = '6c9718d78ef5e8f895281aad95d0c6594a8026ba',
-    [string]$CandidateRef = 'temp/pr5-dead-code-prune-v2',
+    [string]$CandidateRef = 'HEAD',
     [ValidateRange(1, 100)]
     [int]$Rounds = 3,
     [string[]]$Pages = @(),

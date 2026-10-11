@@ -6,7 +6,7 @@ param(
     [string]$RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [string]$BaselineRef = '892097a10d013fe9db0c35a78b4ced0dd09a3fdd',
     [string]$ReferenceRef = '6c9718d78ef5e8f895281aad95d0c6594a8026ba',
-    [string]$CandidateRef = 'temp/pr5-dead-code-prune-v2',
+    [string]$CandidateRef = 'HEAD',
 
     [ValidateSet('quick', 'publication')]
     [string]$Profile = 'quick',

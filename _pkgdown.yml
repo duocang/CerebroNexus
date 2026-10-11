@@ -56,15 +56,16 @@ articles:
       - seurat_v5_layered_assays
       - create_a_self_contained_shiny_app
       - create_expression_matrix_in_h5_format
-      - expression_backend_benchmark
       - million_cell_crb_artifacts
-      - million_cell_backend_hot_paths
-      - million_cell_viewer_benchmark
       - launch_cerebro_with_pre-loaded_data_set
       - multi_crb
       - export_and_visualize_custom_tables_and_plots
       - control_access_to_cerebro_with_a_login_page
       - host_cerebro_on_shinyapps
+  - title: "Benchmarks"
+    navbar: Benchmarks
+    contents:
+      - expression_backend_benchmark
   - title: "Module guides"
     navbar: Modules
     contents:

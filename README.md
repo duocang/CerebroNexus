@@ -28,12 +28,13 @@ remotes::install_github('mihem/CerebroNexus')
 
 ## 2. Run the complete large-data demo
 
-For the PR6 review build, use the performance branch below. Record the printed
-commit ID when reporting results; the official default branch can contain a
-different Viewer version. The launcher loads the checked-out source directly.
+Use the supported project checkout below, or check out a published release tag
+before installing. Record the printed commit ID when reporting results. The
+launcher loads that checkout directly; preparation is optional and can download
+large datasets. See [Working with large datasets](https://mihem.github.io/CerebroNexus/articles/million_cell_crb_artifacts.html).
 
 ```bash
-git clone --branch perf/pr6-ui-accessibility-polish https://github.com/duocang/CerebroNexus.git
+git clone https://github.com/mihem/CerebroNexus.git
 cd CerebroNexus
 git rev-parse HEAD
 Rscript -e "install.packages(c('remotes', 'pkgload')); remotes::install_local('.', dependencies = TRUE)"
@@ -91,11 +92,9 @@ createShinyApp(
 )
 ```
 
-For login-protected Apps, follow the [Linux / Shiny Server
-authentication deployment note](inst/viewer/AUTHENTICATION-DEPLOYMENT.md).
-It is also included in every generated App under `viewer/`. Check permissions
-and the actual R worker's ownership after copying the App, especially when
-transferring a Windows build to Linux.
+For login-protected Apps, follow the [authentication guide](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html).
+Generated Apps also include a brief offline deployment checklist in
+`viewer/AUTHENTICATION-DEPLOYMENT.md`.
 
 ## License
 

@@ -1,314 +1,161 @@
 ---
-title: "Reproduce the one-million-cell CRB artifacts"
+title: "Working with large datasets"
 author: "Xuesong Wang"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     toc: true
     number_sections: true
-    self_contained: yes
-    mode: selfcontained
 vignette: >
-  %\VignetteIndexEntry{Reproduce the one-million-cell CRB artifacts}
+  %\VignetteIndexEntry{Working with large datasets}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+# Choose an expression backend
 
-run_full <- identical(
-  tolower(Sys.getenv("CEREBRO_RUN_1M_VIGNETTE", unset = "false")),
-  "true"
-)
-cache_root <- Sys.getenv(
-  "CEREBRO_LARGE_CACHE",
-  unset = file.path(
-    tools::R_user_dir("CerebroNexus", "cache"),
-    "large-examples"
-  )
-)
-data_root <- file.path(cache_root, "1m")
-repo_root <- normalizePath(
-  Sys.getenv("CEREBRO_REPO_ROOT", unset = ".."),
-  mustWork = TRUE
-)
-paths <- list(
-  source_h5 = file.path(
-    data_root,
-    "source",
-    "1M_neurons_filtered_gene_bc_matrices_h5.h5"
-  ),
-  seurat_rds = file.path(data_root, "seurat", "mouse_brain_1m.rds"),
-  seurat_bpcells = file.path(
-    data_root,
-    "seurat",
-    "mouse_brain_1m.bpcells"
-  ),
-  source_crb = file.path(
-    data_root,
-    "cerebro",
-    "cerebro_mouse_brain_1m.crb"
-  ),
-  cerebro_bpcells = file.path(
-    data_root,
-    "cerebro",
-    "cerebro_mouse_brain_1m.bpcells"
-  ),
-  thin_rds = file.path(
-    data_root,
-    "cerebro",
-    "cerebro_mouse_brain_1m_thin_rds.crb"
-  ),
-  thin_qs2 = file.path(
-    data_root,
-    "cerebro",
-    "cerebro_mouse_brain_1m_thin_qs2.crb"
-  )
-)
+CerebroNexus supports embedded matrices, sparse HDF5 and BPCells. Select the
+backend with `expression_matrix_mode` in `exportFromSeurat()` or
+`convertSeuratToCerebro()`:
 
-path_size <- function(path) {
-  if (file.exists(path) && !dir.exists(path)) {
-    return(unname(file.info(path)$size))
-  }
-  if (!dir.exists(path)) {
-    return(NA_real_)
-  }
-  files <- list.files(path, recursive = TRUE, full.names = TRUE)
-  sum(file.info(files)$size, na.rm = TRUE)
-}
-
-detect_crb_codec <- function(path) {
-  if (!file.exists(path) || dir.exists(path)) {
-    return("RDS or qs2 (auto-detected)")
-  }
-  connection <- file(path, open = "rb")
-  on.exit(close(connection), add = TRUE)
-  magic <- readBin(connection, "raw", n = 4L)
-  if (identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))) {
-    "qs2"
-  } else {
-    "RDS"
-  }
-}
-
-artifact_table <- function() {
-  bytes <- vapply(paths, path_size, numeric(1))
-  data.frame(
-    stage = c(
-      "Public source",
-      "Processed Seurat object",
-      "Seurat expression sidecar",
-      "Input CRB",
-      "Cerebro expression sidecar",
-      "Thin compatibility CRB",
-      "Thin default CRB"
-    ),
-    file_name = basename(unlist(paths, use.names = FALSE)),
-    logical_format = c(
-      "10x feature-barcode matrix",
-      "Seurat",
-      "Expression matrix",
-      "Cerebro CRB",
-      "Expression matrix",
-      "Cerebro CRB",
-      "Cerebro CRB"
-    ),
-    physical_format = c(
-      "HDF5",
-      "RDS",
-      "BPCells directory (uint32)",
-      detect_crb_codec(paths$source_crb),
-      "BPCells directory (uint32)",
-      "RDS",
-      "qs2"
-    ),
-    exists = vapply(
-      paths,
-      function(path) file.exists(path) || dir.exists(path),
-      logical(1)
-    ),
-    size_gib = ifelse(is.na(bytes), NA, round(bytes / 1024^3, 3)),
-    relative_path = substring(unlist(paths, use.names = FALSE), nchar(data_root) + 2L),
-    check.names = FALSE
-  )
-}
-```
-
-# Purpose
-
-This vignette records exactly which public data are used for the one-million-cell CRB benchmark, how the data are transformed, where every artifact is stored, and how to reproduce both physical CRB codecs. It measures storage and I/O engineering behavior; the deterministic one-million-cell subset is not a new biological analysis cohort.
-
-# Source data
-
-The source is the 10x Genomics **1M Neurons** data set: E18 mouse brain nuclei processed by Cell Ranger 1.3.0. The public HDF5 matrix contains 1,306,127 cell barcodes and 27,998 features.
-
-```text
-https://cf.10xgenomics.com/samples/cell-exp/1.3.0/1M_neurons/
-  1M_neurons_filtered_gene_bc_matrices_h5.h5
-```
-
-The preparation script downloads this file without modifying it. The generated data do **not** live under the repository root. The repository contains the preparation and benchmark code, while the large source and derived artifacts live in an external user-cache directory.
-
-| Location | Resolved path | Relationship |
+| Backend | Practical use | Files to keep together |
 |---|---|---|
-| Repository root | `r repo_root` | Git-tracked source, tests, and vignette only |
-| Large-example cache root | `r normalizePath(cache_root, mustWork = FALSE)` | External to the repository; replaces `<cache-root>` below |
-| One-million-cell data root | `r normalizePath(data_root, mustWork = FALSE)` | `<cache-root>/1m/` |
+| `embedded` | Small datasets and simple single-file distribution | `.crb` |
+| `h5` | On-disk sparse expression, including single-gene queries | `.crb` and its recorded `.h5` sidecar |
+| `bpcells` | On-disk expression, block access and large-data workflows | `.crb` and its complete `.bpcells/` directory |
 
-By default, `<cache-root>` is `file.path(tools::R_user_dir("CerebroNexus", "cache"), "large-examples")`. On the recorded macOS host this resolves to `/Users/nuioi/Library/Caches/org.R-project.R/R/CerebroNexus/large-examples/`. Set `CEREBRO_LARGE_CACHE` to replace that complete cache-root path; for example, `CEREBRO_LARGE_CACHE=/Volumes/FastSSD/cerebro-large-examples` stores the dataset at `/Volumes/FastSSD/cerebro-large-examples/1m/`. A fresh run needs approximately 16 GiB of free space.
+There is no universal fastest backend. Use the [benchmark guide](expression_backend_benchmark.html)
+for measured workloads and their limits. Avoid converting a large delayed or
+on-disk matrix into a dense matrix merely to inspect or export it.
 
-# Processing steps
+# Export, read, save and convert
 
-The transformation is deterministic:
+This small example creates a portable CRB without downloading a dataset:
 
-1. Open the public 10x HDF5 matrix with BPCells.
-2. Select exactly 1,000,000 barcodes at evenly spaced source indexes.
-3. Replace Ensembl row identifiers with unique `gene_names` symbols.
-4. Convert non-negative integer counts to BPCells `uint32_t` storage.
-5. Run `NormalizeData()` and `FindVariableFeatures()`.
-6. Draw a 50,000-cell leverage-score sketch with seed 123.
-7. Run 30-component PCA, neighbours, clustering at resolution 1, and UMAP with seed 123 on the sketch.
-8. Project the PCA, cluster labels, and UMAP back to all 1,000,000 cells.
-9. Save a Seurat RDS plus its BPCells expression sidecar.
-10. Export counts, `sample`, `seurat_clusters`, and the full UMAP to a BPCells-backed CRB.
-11. Re-encode only the CRB control payload as thin RDS and thin qs2. Both files reuse the same unchanged Cerebro BPCells sidecar.
-
-The thin CRB uses the sidecar's ordered `col_names` as its canonical cell index. It omits the live expression handle, `meta_data$cell_barcode`, and projection barcode row names, records the `col_names` checksum and portable-view cell fingerprint, and restores the omitted fields in `readCerebro()`. Computing the order-independent fingerprint once during export avoids sorting and hashing one million barcodes whenever the Viewer starts; older CRBs remain readable and calculate it at runtime.
-
-# Files and formats
-
-The following table is generated by the code in this vignette. `exists` and `size_gib` reflect the current cache; the file names, formats, and relative locations are fixed by the preparation workflow.
-
-```{r artifact-manifest}
-knitr::kable(artifact_table(), row.names = FALSE)
+```{r small-roundtrip}
+library(CerebroNexus)
+cells <- c("cell-a", "cell-b", "cell-c")
+object <- Cerebro$new()
+object$expression <- matrix(c(1, 0, 2, 3, 0, 4), nrow = 2,
+  dimnames = list(c("gene-a", "gene-b"), cells))
+object$setMetaData(data.frame(cell_barcode = cells, sample = c("A", "A", "B")))
+object$addProjection("umap", data.frame(x = 1:3, y = c(0, 1, 0), row.names = cells))
+work <- tempfile("cerebro-guide-")
+dir.create(work)
+file <- file.path(work, "example.crb")
+saveCerebro(object, file)
+restored <- readCerebro(file)
+stopifnot(identical(restored$getMetaData()$cell_barcode, cells))
 ```
 
-The resulting directory layout is relative to the external `<cache-root>`, not to `<repository-root>`:
+For a prepared Seurat object, export with the required grouping/projection
+arguments for your dataset (see `?exportFromSeurat`). For example:
+
+```{r seurat-export, eval=FALSE}
+exportFromSeurat(seurat_object, file = "study.crb", experiment_name = "Study",
+  organism = "hg", groups = c("sample", "seurat_clusters"),
+  expression_matrix_mode = "bpcells")
+```
+
+Use `readCerebro()` for legacy RDS and newer CRBs; `.crb` describes the logical
+format, not its physical codec. `saveCerebro(..., codec = "rds")` requests RDS
+compatibility, while the default uses qs2. `convertCerebro()` changes a CRB's
+serialization without replacing its external expression data:
+
+```{r convert, eval=FALSE}
+convertCerebro("study.crb", "study-rds.crb", codec = "rds")
+```
+
+# Move the complete dataset
+
+Keep paths recorded inside the CRB valid. A typical layout is:
 
 ```text
-<cache-root>/
-└── 1m/
-    ├── source/
-    │   └── 1M_neurons_filtered_gene_bc_matrices_h5.h5
-    ├── seurat/
-    │   ├── mouse_brain_1m.rds
-    │   └── mouse_brain_1m.bpcells/
-    └── cerebro/
-        ├── cerebro_mouse_brain_1m.crb
-        ├── cerebro_mouse_brain_1m.bpcells/
-        ├── cerebro_mouse_brain_1m_thin_rds.crb
-        └── cerebro_mouse_brain_1m_thin_qs2.crb
+study.crb
+study.bpcells/
+study.viewer/
 ```
 
-`.crb` identifies the logical Cerebro data format, not the physical codec. Use `readCerebro()` for every new or old CRB. Direct `readRDS()` remains valid only for files explicitly written with `codec = "rds"` and legacy RDS CRBs.
+Additional spatial molecule/image resources and a lazy immune-repertoire
+sidecar must also travel with their dataset. Do not rename or partially copy
+sidecars independently. RDS and qs2 versions can share the same unchanged
+sidecar. Cell-order checksums reject mismatched BPCells cell indexes.
 
-# Comparison against PR #165
+For distribution, `createShinyApp()` builds a self-contained Viewer directory
+and copies the required resources. It resolves colliding CRB basenames and
+places each Viewer Pack beside the final CRB name. Follow the
+[app creation guide](create_a_self_contained_shiny_app.html).
 
-The benchmark baseline is the legacy RDS CRB from PR #165 (`69893a2b`, CerebroNexus 4.4.3). The optimization branch is based directly on that merge commit and develops the CRB changes as CerebroNexus 4.5.0.
+# Viewer Packs and fallback
 
-## Recorded environment
+Viewer Packs are optional derived assets for projection geometry, metadata and
+other prepared views. The CRB remains the source of truth. Build and validate a
+pack explicitly:
 
-| Item | Recorded value |
-|---|---|
-| Machine | MacBook Pro (`MacBookPro18,1`) |
-| CPU | Apple M1 Pro, 10 cores (8 performance + 2 efficiency) |
-| Memory | 32 GiB |
-| Storage | Apple SSD `AP1024R`, 1 TB, APFS, Apple Fabric |
-| Operating system | macOS 27.0, build `26A5421a` |
-| Architecture | `arm64` |
-| R | 4.6.1 (`aarch64-apple-darwin23`) |
-| BPCells | 0.3.1 |
-| qs2 | 0.2.2 |
-| Seurat / SeuratObject | 5.5.1 / 5.4.0 |
-| Benchmark baseline | PR #165 (`69893a2b`), CerebroNexus 4.4.3 |
-| Optimization candidate | `perf/pr0-million-cell-crb-qs2`, based on PR #165 (`69893a2b`), CerebroNexus 4.5.0 development version |
-
-Measurements are warm-cache medians from five alternating rounds on the same unchanged BPCells sidecar. The benchmark loads the source checkout with `pkgload::load_all()`; the separately installed CerebroNexus 5.0.0 package is not used.
-
-`Write` includes thin-payload compaction and serialization. `Decode` measures only physical deserialization. `Hydrated read` measures `readCerebro()`, including reopening the BPCells sidecar, validating its canonical cell index checksum, and restoring omitted metadata and projection row names.
-
-```{r benchmark-data, include=FALSE}
-benchmark_results <- data.frame(
-  candidate = c(
-    "PR #165 legacy CRB (69893a2b, v4.4.3)",
-    "Thin CRB without qs2 (v4.5.0-dev)",
-    "Thin CRB with qs2 (v4.5.0-dev)"
-  ),
-  codec = c("RDS", "RDS", "qs2"),
-  size_mib = c(26.8290309906006, 13.9180183410645, 13.2125005722046),
-  write_median_ms = c(8001, 2947, 231),
-  decode_median_ms = c(1296, 93, 41),
-  hydrated_median_ms = c(1479, 356, 297)
-)
-
-baseline <- benchmark_results[1, ]
-benchmark_results$size_reduction_pct <- 100 * (1 - benchmark_results$size_mib / baseline$size_mib)
-benchmark_results$write_speedup <- baseline$write_median_ms / benchmark_results$write_median_ms
-benchmark_results$decode_speedup <- baseline$decode_median_ms / benchmark_results$decode_median_ms
-benchmark_results$hydrated_speedup <- baseline$hydrated_median_ms / benchmark_results$hydrated_median_ms
+```{r small-pack}
+pack <- buildViewerPack(file, viewer_binary = "always")
+stopifnot(validateViewerPack(file, pack)$valid)
 ```
 
-| Candidate | Codec | CRB size | Write median | Decode median | Hydrated read median | Size reduction vs PR #165 | Write speedup | Decode speedup | Hydrated read speedup |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| PR #165 legacy CRB (`69893a2b`, v4.4.3) | RDS | `r sprintf("%.2f MiB", benchmark_results$size_mib[1])` | `r sprintf("%.0f ms", benchmark_results$write_median_ms[1])` | `r sprintf("%.0f ms", benchmark_results$decode_median_ms[1])` | `r sprintf("%.0f ms", benchmark_results$hydrated_median_ms[1])` | — | — | — | — |
-| Thin CRB without qs2 (v4.5.0-dev) | RDS | `r sprintf("%.2f MiB", benchmark_results$size_mib[2])` | `r sprintf("%.0f ms", benchmark_results$write_median_ms[2])` | `r sprintf("%.0f ms", benchmark_results$decode_median_ms[2])` | `r sprintf("%.0f ms", benchmark_results$hydrated_median_ms[2])` | `r sprintf("%.2f%%", benchmark_results$size_reduction_pct[2])` | `r sprintf("%.2fx", benchmark_results$write_speedup[2])` | `r sprintf("%.2fx", benchmark_results$decode_speedup[2])` | `r sprintf("%.2fx", benchmark_results$hydrated_speedup[2])` |
-| Thin CRB with qs2 (v4.5.0-dev) | qs2 | `r sprintf("%.2f MiB", benchmark_results$size_mib[3])` | `r sprintf("%.0f ms", benchmark_results$write_median_ms[3])` | `r sprintf("%.0f ms", benchmark_results$decode_median_ms[3])` | `r sprintf("%.0f ms", benchmark_results$hydrated_median_ms[3])` | `r sprintf("%.2f%%", benchmark_results$size_reduction_pct[3])` | `r sprintf("%.2fx", benchmark_results$write_speedup[3])` | `r sprintf("%.2fx", benchmark_results$decode_speedup[3])` | `r sprintf("%.2fx", benchmark_results$hydrated_speedup[3])` |
+Projection rows are aligned by barcode to canonical metadata order. Missing,
+duplicate or unmatched identities are rejected, even when row counts agree.
+Keep actual barcode row names on manually supplied projections.
 
-Without qs2, thin CRB reduces the control file by 48.12%, accelerates writing by 2.71x, physical decoding by 13.94x, and hydrated `readCerebro()` by 4.15x relative to PR #165. With qs2, the reductions are 50.75%, 34.64x, 31.61x, and 4.98x respectively. The incremental file-size benefit of qs2 over thin RDS is only 5.07%; most of the size reduction therefore comes from removing redundant CRB fields rather than changing codec.
+After changing the CRB, rebuild with
+`buildViewerPack(file, viewer_binary = "always", overwrite = TRUE)`. A missing,
+incompatible or stale asset falls back to the ordinary data path. Older packs
+without verified projection identity do not supply projection coordinates;
+independent safe assets remain usable in the Viewer. Old violin assets lacking
+exact-summary metadata also fall back. Rebuilding restores the affected fast paths.
+Do not suppress checksum failures or edit a manifest to make a pack appear valid.
 
-The checksum failure covered by the automated test is deliberately injected to prove that a CRB cannot silently attach the wrong BPCells sidecar. The genuine one-million-cell RDS and qs2 files used here both pass checksum validation.
+# Understand large-group plots
 
-The following command reruns all five alternating benchmark rounds and regenerates the source CSV used to record these measurements:
+Violin density uses at most 4,096 mid-quantile values per group on the original
+measurement scale. It is an approximation and can omit rare tails. Box quartiles,
+median, whiskers and mean are computed separately from all finite observations;
+hover also reports sample count, minimum and maximum. Missing/non-finite values
+are excluded. Approximate density is labelled in the summary hover. Display
+compaction never rescales observations to force an equal mean.
+
+# Launch the demos
+
+The installed package includes small examples:
+
+```{r launch-small, eval=FALSE}
+launchCerebro(crb_file_to_load = system.file(
+  "extdata", "examples", "example.crb", package = "CerebroNexus"))
+```
+
+The optional complete large-data launcher requires a repository checkout:
 
 ```{bash, eval=FALSE}
-BASELINE=$(Rscript -e 'cat(file.path(tools::R_user_dir("CerebroNexus", "cache"), "large-examples", "1m", "cerebro", "cerebro_mouse_brain_1m.crb"))')
-Rscript tests/bench/benchmark_million_cell_crb.R "$BASELINE" 5 tests/bench/results/million_cell_crb_pr165.csv
+git clone https://github.com/mihem/CerebroNexus.git
+cd CerebroNexus
+Rscript -e "install.packages(c('remotes', 'pkgload')); remotes::install_local('.', dependencies = TRUE)"
+Rscript run-demo.R --ren-only --prepare-only
+Rscript run-demo.R --ren-only --no-browser
 ```
 
-# Run the complete preparation
+Omit `--ren-only` to prepare both mouse-million and Ren data. The launcher prints
+the URL, exact source directory and dataset version, and reuses compatible
+prepared caches. Preparation can download large files and take substantial time;
+see the [benchmark guide](expression_backend_benchmark.html) before starting.
+Set `CEREBRO_LARGE_CACHE` to choose an external cache location. The marker-guided
+mouse trajectory is a labelled demonstration, not a formal inference result.
 
-The expensive chunks are disabled during ordinary package builds. Run the complete workflow from the repository root with:
+# Troubleshooting
 
-```{bash, eval=FALSE}
-CEREBRO_RUN_1M_VIGNETTE=true \
-Rscript -e 'rmarkdown::render("vignettes/million_cell_crb_artifacts.Rmd")'
+- **Missing backend/sidecar:** install the backend package and restore the recorded
+  sibling file/directory. A control CRB alone is not a complete external dataset.
+- **Identity/checksum mismatch:** restore the matching sidecar or re-export from
+  a consistent source. Equal cell counts do not prove correct cell correspondence.
+- **Pack rejected or slower fallback:** rebuild the optional pack from the current
+  CRB; preserve the CRB and expression data.
+- **Memory pressure:** inspect matrix density and format; avoid dense realization.
+  A disk backend does not make every upstream Seurat operation out-of-core.
+- **Slow first operation:** distinguish package loading, backend reads and browser
+  painting. A warm revisit is not a cold-start measurement.
+
+```{r cleanup, include=FALSE}
+unlink(work, recursive = TRUE)
 ```
-
-The following code performs the actual download, analysis, export, and codec conversion when `CEREBRO_RUN_1M_VIGNETTE=true`.
-
-```{r prepare-one-million, eval=run_full, message=TRUE}
-source(file.path(repo_root, "tests", "bench", "prepare_viewer_1m_data.R"))
-pkgload::load_all(repo_root, quiet = TRUE)
-
-source_crb <- prepareViewer1mBenchmarkData(cache_dir = cache_root)
-object <- readCerebro(source_crb)
-stopifnot(length(object$getCellNames()) == 1000000L)
-
-saveCerebro(object, paths$thin_rds, codec = "rds")
-saveCerebro(object, paths$thin_qs2, codec = "qs2")
-```
-
-# Verify the outputs and regenerate the table
-
-This final chunk reads both physical codecs through the same public API, checks their exact cell and UMAP ordering, and regenerates the artifact table from the files on disk.
-
-```{r verify-and-tabulate, eval=run_full}
-expected_cells <- object$getCellNames()
-expected_umap_cells <- rownames(object$getProjection("umap"))
-
-for (path in c(paths$thin_rds, paths$thin_qs2)) {
-  restored <- readCerebro(path)
-  stopifnot(
-    identical(restored$getCellNames(), expected_cells),
-    identical(rownames(restored$getProjection("umap")), expected_umap_cells),
-    identical(restored$meta_data$cell_barcode, expected_cells)
-  )
-  rm(restored)
-  gc()
-}
-
-knitr::kable(artifact_table(), row.names = FALSE)
-```
-
-The BPCells directory is intentionally not copied for each codec. The RDS and qs2 `.crb` files contain alternative serializations of the same Cerebro control data and both point to `cerebro_mouse_brain_1m.bpcells/`.

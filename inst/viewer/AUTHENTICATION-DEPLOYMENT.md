@@ -1,95 +1,22 @@
-# Linux / Shiny Server authentication deployment
+# Authentication: offline deployment checklist
 
-This note ships with generated Apps at `viewer/AUTHENTICATION-DEPLOYMENT.md`.
-Apply the checks to the **final deployed App**, after copying or extracting it.
+Full setup, Shiny Server/systemd commands, rotation and troubleshooting:
+[Authentication guide](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html).
 
-## Authentication sources
-
-`CEREBRO_AUTH_PASSPHRASE` is the key for the encrypted authentication database,
-**not a user's login password**. Keep `viewer-auth.env` and
-`private-data/auth/credentials.sqlite` from the same build together. Do not
-generate a replacement key for an existing database.
-
-The application uses a nonempty process environment variable first. When it
-is set, the local `viewer-auth.env` is not read. Otherwise, Builder Apps load
-that file from their own App directory. A shell export is not automatically
-inherited by an already running Shiny Server or systemd service;
-the key must reach the actual R application process through the deployment's
-secret/environment configuration. Do not put the key in logs, build scripts,
-version control or a command that prints it.
-
-The local file must contain exactly one line, without quotes or `export`:
-
-```text
-CEREBRO_AUTH_PASSPHRASE=<64 lowercase hexadecimal characters>
-```
-
-The angle-bracket text above is a description, not a key to copy. Restore the
-original generated file if its content is damaged. Scripted `createShinyApp()`
-exports using an externally supplied key must provide the configured process
-environment variable; that API does not generate a local secret file.
-
-## Ownership and permissions
-
-Recommended final Linux permissions:
-
-| Path relative to the App directory | Mode |
-| --- | --- |
-| `viewer-auth.env` | `0600` (required for local-file loading) |
-| `private-data/auth/credentials.sqlite` | `0600` |
-| `private-data/auth` | `0700` |
-
-The actual Shiny/R application user must be able to read both files and
-traverse every parent directory. With these modes, set ownership to that
-user. Do not assume a fixed UID/GID, or use the Shiny Server master process's
-root identity in place of the R worker's identity. Check `run_as` in Shiny
-Server's configuration and inspect the R processes, for example:
-
-```bash
-ps -eo user,uid,gid,comm
-```
-
-From the deployed App directory, replace the placeholders with the verified
-runtime IDs before running:
-
-```bash
-sudo chown <shiny_uid>:<shiny_gid> viewer-auth.env \
-  private-data/auth private-data/auth/credentials.sqlite
-sudo chmod 600 viewer-auth.env private-data/auth/credentials.sqlite
-sudo chmod 700 private-data/auth
-stat -c '%a %u:%g %n' viewer-auth.env \
-  private-data/auth private-data/auth/credentials.sqlite
-```
-
-Then restart the App using the deployment's normal procedure and verify
-startup and login as the application user. If using only an externally
-configured key, omit the local-file commands. Read-only database access is
-supported; do not make the database or mount writable merely to start the App.
-
-## Windows builds and transfers
-
-Windows does not provide the same POSIX permission semantics. A successful
-Windows build does **not** certify Linux `0600`/`0700` modes. Copies, ZIP
-extraction, upload tools and bind mounts can change permissions or ownership.
-Apply and verify the final settings on the Linux host after transfer, even
-when Linux-to-Linux tools claim to preserve permissions.
-
-## Startup errors
-
-- **Not found / could not be inspected:** check the App directory, missing
-  files and traversal permissions. Restore the matching file or provide the
-  configured process environment variable.
-- **Insecure permissions (for example `0664` or `0644`):** local-file loading
-  requires exactly `0600`; correct the final file's mode and ownership.
-- **Secure permissions but not readable:** `chmod 600` alone is insufficient
-  when the file belongs to another user. Check the R worker's UID/GID,
-  ownership and parent directories.
-- **Symbolic link / not a regular file:** the local-file security check
-  rejects it. Deploy the real file or use the process environment source.
-- **Invalid content:** restore the original matching file; do not insert a
-  login password or a new random database key.
-- **Database not accessible:** check both `private-data/auth` and
-  `credentials.sqlite` ownership and access.
-- **Database or passphrase invalid:** ensure the database and key match. A
-  stale process environment variable takes precedence over a correct local
-  file.
+- Keep `private-data/auth/credentials.sqlite` paired with its original database
+  passphrase. The passphrase is not a user's login password.
+- Supply the configured passphrase environment variable to the actual R worker,
+  not only your interactive shell. A nonempty process variable takes precedence
+  over a generated App's local `viewer-auth.env`.
+- If a generated App includes `viewer-auth.env`, preserve it privately. Its
+  generated format is `CEREBRO_AUTH_PASSPHRASE=<64 lowercase hexadecimal characters>`
+  on one line, without quotes or `export`. Restore the original if damaged.
+  Scripted exports using an external key do not generate this file.
+- On Linux the local secret requires mode `0600`. Recommended modes are `0600`
+  for the database and `0700` for its directory. The actual Shiny/R runtime user
+  must own or have appropriate access and traverse every parent directory.
+- Verify permissions after copying, especially from Windows to Linux. A Windows
+  startup does not test POSIX ownership. For read-only storage, correct source
+  permissions before deployment; the App does not change them automatically.
+- Keep secrets out of source control and logs. Test valid/invalid login on the
+  deployed host, and use HTTPS for access beyond the local machine.

@@ -55,7 +55,7 @@ pwsh tests/bench/run_viewer_page_comparison.ps1 `
 ```
 
 The defaults compare the merge base before PR0 (`892097a1`), the fixed PR5
-reference (`6c9718d7`), and the current `temp/pr5-dead-code-prune-v2` tip. Refs
+reference (`6c9718d7`), and the current checkout’s committed `HEAD`. Refs
 are recorded together with their resolved SHA in `run-config.tsv`. The default
 output root is the `CerebroNexus-benchmarks` directory beside the repository.
 Each run writes `raw.tsv`, `raw_schedule.tsv`, `raw_manifest.tsv`, `run.log`,
@@ -81,7 +81,7 @@ three times with `VIEWER_VISITS_ONLY=first`, and stores raw data, manifests,
 logs, resolved Git SHAs, and summaries below the sibling
 `CerebroNexus-benchmarks` directory.
 
-> **Current status:** a complete five-round `publication` profile comparison between clean PR4 and PR5 revisions is recorded in `results/million_cell_pages_pr4_pr5_4_6_3.tsv`. All 140 observations passed status and correctness checks. The overall comparison does not pass the publication gate because both candidates contain budget failures. PR5 itself passes 11/14 page/visit gates; only its first-visit Gene Expression, Immune Repertoire, and Coordinated Views remain over budget. Use the run as a complete diagnostic comparison under its historical completion-ready Coordinated Views contract, not as a current primary-frame result. The archived pilot is retained for provenance only.
+> **Historical result:** a complete five-round `publication` profile comparison between clean PR4 and PR5 revisions is recorded in `results/million_cell_pages_pr4_pr5_4_6_3.tsv`. All 140 observations passed status and correctness checks. The overall comparison does not pass the publication gate because both candidates contain budget failures. PR5 itself passes 11/14 page/visit gates; only its first-visit Gene Expression, Immune Repertoire, and Coordinated Views remain over budget. Use the run as a complete diagnostic comparison under its historical completion-ready Coordinated Views contract, not as a current primary-frame result. The archived pilot is retained for provenance only.
 
 ## Quick start
 
@@ -151,3 +151,24 @@ The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 
 The two default public sources are 10x mouse brain E18 (4.2 GB) and the HBCC human prefrontal-cortex atlas (14.2 GB). The MSSM cohort is opt-in through `BENCH_SOURCES_EXTRA=human_pfc_mssm`.
+
+
+## Recorded figures and installed documentation
+
+The canonical small records used by the large-data benchmark vignette are in
+`inst/extdata/benchmarks/`, including the Ren comparison, historical backend
+hot paths, CRB lifecycle summaries and their provenance manifest. They were
+moved from `tests/bench/acceptance/` and `tests/bench/results/`; do not maintain
+second numerical copies. They are installed so documentation can render offline.
+
+From the repository root, reproduce the Ren figure without measurements:
+
+```bash
+Rscript tests/bench/plot_ren_backend_acceptance.R inst/extdata/benchmarks/ren-backends-20261008.tsv ren-backends.png
+```
+
+See `vignettes/expression_backend_benchmark.Rmd` for boundaries and optional
+reruns, and `vignettes/million_cell_crb_artifacts.Rmd` for user workflows.
+`tests/bench/` is excluded from R source-package builds, so measurement reruns
+require a checkout. The comparison wrappers resolve committed `HEAD`; uncommitted
+changes are not included. Supply explicit revisions for historical experiments.
