@@ -3656,3 +3656,37 @@ test_that("the runtime rejects an H5 backend that is a directory", {
     "missing or not a file"
   )
 })
+
+
+test_that("colliding CRB basenames keep each pack beside its final bundled name", {
+  for (both in c(FALSE, TRUE)) {
+    root <- tempfile("bundle-pack-collision-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    sources <- file.path(root, c("study-a", "study-b"), "sample.crb")
+    for (i in seq_along(sources)) {
+      dir.create(dirname(sources[i]))
+      object <- Cerebro$new()
+      object$setMetaData(data.frame(cell_barcode = c("c1", "c2"), group = c("A", "B")))
+      object$addProjection("umap", data.frame(x = c(i, i+1), y = 2:1,
+        row.names = c("c1", "c2")))
+      saveCerebro(object, sources[i], codec = "rds",
+        viewer_binary = if (i == 1L || both) "always" else "never")
+    }
+    labels <- c("Study A", "Study B")
+    app <- file.path(root, "app")
+    build_test_app(stats::setNames(sources, labels), app)
+    scope <- new.env(parent = globalenv())
+    sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
+    for (i in seq_along(sources)) {
+      target <- file.path(app, CerebroNexus:::.datasetBundleTarget(labels[i]))
+      expect_true(file.exists(target))
+      pack <- scope$viewerPackOpen(target, readCerebro(target))
+      if (i == 1L || both) {
+        expect_true(validateViewerPack(target)$valid)
+        expect_false(is.null(pack))
+        expect_identical(scope$viewerPackCellBarcodes(pack), c("c1", "c2"))
+      } else expect_null(pack)
+    }
+  }
+})

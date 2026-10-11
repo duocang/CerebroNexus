@@ -2841,7 +2841,8 @@ createShinyApp <- function(
       )
     ) {
       claim_target(
-        paste0(private_data_root, "/", basename(viewer_pack)),
+        file.path(dirname(crb_targets[[index]]), paste0(
+          tools::file_path_sans_ext(basename(crb_targets[[index]])), ".viewer")),
         viewer_pack,
         "Viewer Pack",
         directory = TRUE
@@ -3088,7 +3089,14 @@ createShinyApp <- function(
     target <- file.path(stage_result_dir, entry$target)
     dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
     copied <- if (isTRUE(entry$directory)) {
-      build_ops$copy(entry$source, dirname(target), recursive = TRUE)
+      if (identical(basename(entry$source), basename(target))) {
+        build_ops$copy(entry$source, dirname(target), recursive = TRUE)
+      } else {
+        dir.create(target, showWarnings = FALSE)
+        children <- list.files(entry$source, all.files = TRUE, no.. = TRUE,
+          full.names = TRUE)
+        all(build_ops$copy(children, target, recursive = TRUE))
+      }
     } else {
       build_ops$copy(entry$source, target, overwrite = FALSE)
     }
