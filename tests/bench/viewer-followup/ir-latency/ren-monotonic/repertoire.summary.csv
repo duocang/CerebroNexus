@@ -1,0 +1,10 @@
+"","total.time","total.pct","self.time","self.pct"
+"""force""",5.85,100,0,0
+"""measure""",5.85,100,0,0
+"""obj$getImmuneRepertoire""",5.85,100,0,0
+"""tryCatch""",5.85,100,0,0
+"""tryCatchList""",5.85,100,0,0
+"""qs2::qs_read""",5.62,96.07,5.62,96.07
+"""structure""",0.23,3.93,0.23,3.93
+"""tools::md5sum""",0.23,3.93,0,0
+"""unname""",0.23,3.93,0,0
