@@ -516,7 +516,7 @@ viewerProjectionFirstFrameCoordinates <- function(name) {
   cache <- viewerProjectionFirstFrameCache()
   projection <- cache$projections[[name]]
   # Only the validated thin-CRB reader creates this identity-free cache.
-  if (!is.null(projection)) return(projection)
+  if (!is.null(projection) && name %in% cache$canonical_projections) return(projection)
   projection <- getProjection(name)
   cells <- getMetaData()[["cell_barcode"]]
   ids <- rownames(projection)
@@ -3856,6 +3856,7 @@ get_or_load_crb <- function(
   attr(obj, "cerebro_projection_first_frame") <- list(
     meta_data = metadata,
     projections = projections,
+    canonical_projections = schema$projection_rownames,
     gene_names = gene_names
   )
   hydrate <- local({

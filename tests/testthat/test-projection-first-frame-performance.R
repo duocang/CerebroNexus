@@ -88,6 +88,7 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
   projection <- data.frame(x = 1:2, y = 3:4)
   attr(object, "cerebro_projection_first_frame") <- list(
     meta_data = metadata,
+    canonical_projections = "umap",
     projections = list(umap = projection)
   )
   scope$data_set <- function() object
@@ -719,4 +720,29 @@ test_that("thin CRBs discard duplicate metadata row names", {
   expect_identical(.row_names_info(runtime_object$meta_data, 1L), -4L)
   expect_identical(runtime_object$meta_data$cell_barcode, cells)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
+})
+
+
+test_that("noncanonical thin projections cannot bypass barcode alignment", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), scope)
+  sidecar <- tempfile("thin-shuffled-")
+  dir.create(sidecar)
+  on.exit(unlink(sidecar, recursive = TRUE), add = TRUE)
+  cells <- c("1", "2", "3")
+  writeLines(cells, file.path(sidecar, "col_names"))
+  object <- new.env(parent = emptyenv())
+  object$meta_data <- data.frame(group = c("A", "B", "C"))
+  object$projections <- list(umap = data.frame(x = c(30, 20, 10), y = 3:1,
+    row.names = c("3", "2", "1")))
+  schema <- list(version = 2L, n_cells = 3L, projection_rownames = character(),
+    cell_names_md5 = unname(tools::md5sum(file.path(sidecar, "col_names"))))
+  scope$.deferThinCrbHydration(object, "data.crb", sidecar, schema)
+  scope$data_set <- function() object
+  scope$getProjection <- function(name) object$projections[[name]]
+  scope$getMetaData <- function() object$meta_data
+  expect_identical(scope$availableProjections(), "umap")
+  aligned <- scope$viewerProjectionFirstFrameCoordinates("umap")
+  expect_identical(rownames(aligned), cells)
+  expect_identical(aligned$x, c(10, 20, 30))
 })
