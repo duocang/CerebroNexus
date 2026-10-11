@@ -1,0 +1,210 @@
+- link "Skip to main content":
+  - /url: "#main-content"
+- banner:
+  - navigation:
+    - text: 
+    - button "Open navigation":
+      - generic: Toggle navigation
+    - list
+- complementary:
+  - img "CerebroNexus"
+  - list:
+    - link "Data info":
+      - /url: "#shiny-tab-loadData"
+      - generic: 
+      - text: Data info
+    - link "Projection":
+      - /url: "#shiny-tab-overview"
+      - generic: 
+      - text: Projection
+    - link "Linked views":
+      - /url: "#shiny-tab-coordinated_views"
+      - generic: 
+      - text: Linked views
+    - link "Groups" [expanded]:
+      - /url: "#shiny-tab-groups"
+      - generic: 
+      - text: Groups
+    - link "Marker genes":
+      - /url: "#shiny-tab-markerGenes"
+      - generic: 
+      - text: Marker genes
+    - link "Most expressed genes":
+      - /url: "#shiny-tab-mostExpressedGenes"
+      - generic: 
+      - text: Most expressed genes
+    - link "Enriched pathways":
+      - /url: "#shiny-tab-enrichedPathways"
+      - generic: 
+      - text: Enriched pathways
+    - link "Extra material":
+      - /url: "#shiny-tab-extra_material"
+      - generic: 
+      - text: Extra material
+    - link "Immune repertoire":
+      - /url: "#shiny-tab-immune_repertoire"
+      - generic: 
+      - text: Immune repertoire
+    - text:   
+    - link "HLA & TCR Motifs":
+      - /url: "#shiny-tab-hla_tcr_motifs"
+      - generic: 
+      - text: HLA & TCR Motifs
+    - link "Gene expression":
+      - /url: "#shiny-tab-geneExpression"
+      - generic: 
+      - text: Gene expression
+    - link "Gene ID conversion":
+      - /url: "#shiny-tab-geneIdConversion"
+      - generic: 
+      - text: Gene ID conversion
+    - link "Colour management":
+      - /url: "#shiny-tab-color_management"
+      - generic: 
+      - text: Colour management
+    - link "About":
+      - /url: "#shiny-tab-about"
+      - generic: "@"
+      - text: About
+- status
+- main:
+  - status
+  - text:              Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus  Trekker coordinate source, QC & Moran's I  Box select  Lasso select  Pan · or shift-drag  Rotate · 3-D embedding  Zoom in  Zoom out  Zoom this panel to the selection  Reset view  Clear selection  Download PNG  Make this the focus 
+  - tabpanel:
+    - heading "Groups" [level=1]
+    - generic: Grouping variable
+    - generic: sample
+    - combobox "Grouping variable"
+    - generic: "Group to compare to:"
+    - generic: seurat_clusters
+    - combobox "Group to compare to:"
+    - generic: Plot type
+    - group "Plot type":
+      - button "Bar chart":
+        - radio
+        - text: Bar chart
+      - button "Sankey plot" [active]:
+        - radio [checked]
+        - text: Sankey plot
+    - generic: "Show composition as percent [%] (not in Sankey plot):"
+    - checkbox "Show composition as percent [%] (not in Sankey plot):"
+    - generic: "Show table:"
+    - checkbox "Show table:" [checked]
+    - heading "Composition by other group info" [level=3]:
+      - paragraph: Composition by other group
+      - button "info"
+    - button "Collapse Composition by other group" [expanded]:
+      - generic: 
+    - button "Download plot as a png": 
+    - table:
+      - rowgroup:
+        - 'row "sample: activate to sort column ascending # of cells: activate to sort column ascending 0: activate to sort column ascending 1: activate to sort column ascending 2: activate to sort column ascending 3: activate to sort column ascending 4: activate to sort column ascending 5: activate to sort column ascending 6: activate to sort column ascending 7: activate to sort column ascending 8: activate to sort column ascending 9: activate to sort column ascending"':
+          - 'columnheader "sample: activate to sort column ascending"': sample
+          - 'columnheader "# of cells: activate to sort column ascending"': "# of cells"
+          - 'columnheader "0: activate to sort column ascending"': "0"
+          - 'columnheader "1: activate to sort column ascending"': "1"
+          - 'columnheader "2: activate to sort column ascending"': "2"
+          - 'columnheader "3: activate to sort column ascending"': "3"
+          - 'columnheader "4: activate to sort column ascending"': "4"
+          - 'columnheader "5: activate to sort column ascending"': "5"
+          - 'columnheader "6: activate to sort column ascending"': "6"
+          - 'columnheader "7: activate to sort column ascending"': "7"
+          - 'columnheader "8: activate to sort column ascending"': "8"
+          - 'columnheader "9: activate to sort column ascending"': "9"
+    - table:
+      - rowgroup:
+        - 'row "sample: activate to sort column ascending # of cells: activate to sort column ascending 0: activate to sort column ascending 1: activate to sort column ascending 2: activate to sort column ascending 3: activate to sort column ascending 4: activate to sort column ascending 5: activate to sort column ascending 6: activate to sort column ascending 7: activate to sort column ascending 8: activate to sort column ascending 9: activate to sort column ascending"':
+          - 'columnheader "sample: activate to sort column ascending"'
+          - 'columnheader "# of cells: activate to sort column ascending"'
+          - 'columnheader "0: activate to sort column ascending"'
+          - 'columnheader "1: activate to sort column ascending"'
+          - 'columnheader "2: activate to sort column ascending"'
+          - 'columnheader "3: activate to sort column ascending"'
+          - 'columnheader "4: activate to sort column ascending"'
+          - 'columnheader "5: activate to sort column ascending"'
+          - 'columnheader "6: activate to sort column ascending"'
+          - 'columnheader "7: activate to sort column ascending"'
+          - 'columnheader "8: activate to sort column ascending"'
+          - 'columnheader "9: activate to sort column ascending"'
+      - rowgroup:
+        - row "sample_1 481 105 98 69 52 44 33 23 28 23 6":
+          - cell "sample_1"
+          - cell "481"
+          - cell "105"
+          - cell "98"
+          - cell "69"
+          - cell "52"
+          - cell "44"
+          - cell "33"
+          - cell "23"
+          - cell "28"
+          - cell "23"
+          - cell "6"
+        - row "sample_2 508 111 100 63 88 41 24 29 23 21 8":
+          - cell "sample_2"
+          - cell "508"
+          - cell "111"
+          - cell "100"
+          - cell "63"
+          - cell "88"
+          - cell "41"
+          - cell "24"
+          - cell "29"
+          - cell "23"
+          - cell "21"
+          - cell "8"
+        - row "sample_3 487 106 82 83 73 44 34 26 17 14 8":
+          - cell "sample_3"
+          - cell "487"
+          - cell "106"
+          - cell "82"
+          - cell "83"
+          - cell "73"
+          - cell "44"
+          - cell "34"
+          - cell "26"
+          - cell "17"
+          - cell "14"
+          - cell "8"
+    - text: Show
+    - combobox "Show entries":
+      - option "15" [selected]
+      - option "30"
+      - option "50"
+      - option "100"
+      - option "1,000"
+    - text: entries
+    - status: Showing 1 to 3 of 3 entries
+    - list:
+      - link "Previous" [disabled]
+      - link "1":
+        - /url: "#"
+      - link "Next" [disabled]
+    - heading "Expression metrics info" [level=3]:
+      - paragraph: Expression metrics
+      - button "info"
+    - button "Collapse Expression metrics" [expanded]:
+      - generic: 
+    - tablist:
+      - tab "Number of transcripts" [expanded] [selected]
+      - tab "Number of expressed genes"
+    - tabpanel "Number of transcripts":
+      - button "Box Select": 
+      - button "Lasso Select" [pressed]: 
+      - button "Pan": 
+      - button "Zoom in": 
+      - button "Zoom out": 
+      - button "Reset axes": 
+      - button "Download plot as a png": 
+  - text: Loading controls…  Loading result… Loading controls…  Loading result… Loading controls…  Loading result… Loading controls…  Loading result…      Loading result… Loading result… Loading result… Loading result… Loading result… Loading result… Loading result… Loading result… Loading result…                        Loading table…  Loading result…
+- text:   
+- generic: Select…
+- log
+- log
+- log
+- log
+- log
+- log:
+  - generic: Demo
+- log
+- log

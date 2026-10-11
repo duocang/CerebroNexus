@@ -35,6 +35,9 @@ groups_test_function <- function(name) {
   }, expressions)
   stopifnot(length(assignment) == 1L)
   scope <- new.env(parent = globalenv())
+  if (!identical(name, "groupsFormatComposition")) {
+    scope$groupsFormatComposition <- groups_test_function("groupsFormatComposition")
+  }
   eval(assignment[[1L]], envir = scope)
   scope[[name]]
 }

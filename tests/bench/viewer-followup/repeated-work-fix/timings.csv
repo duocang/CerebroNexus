@@ -1,0 +1,4 @@
+"pair","method","baseline_ms","candidate_ms","equal","retained_bytes"
+1,"ward.D2",2059,148,TRUE,30120
+2,"complete",2362,105,TRUE,30120
+3,"average",1745,92,TRUE,30120

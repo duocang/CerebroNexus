@@ -21,6 +21,24 @@ ir_test_body <- function(file, output, wrapper, env) {
   eval(call("function", as.pairlist(list()), body), env)
 }
 
+test_that("native SizeDist does not initialize the unused analytical fallback", {
+  env <- new.env(parent = asNamespace("shiny"))
+  env$input <- list(ir_chain = "both", ir_groupBy = "")
+  env$req_plot_space <- function(...) NULL
+  env$ir_params <- function() list(chain = "both", groupBy = NULL)
+  env$ir_param <- function(name, default) default
+  data <- list(A = data.frame(CTstrict = rep("x", 100000)))
+  env$ir_data <- function() data
+  env$req_scRepertoire <- function() stop("analytical fallback")
+  env$ir_size_distribution_profile <- function() "compact profile"
+  env$ir_size_profile_plot <- function(profiles, method) profiles
+  env$ir_render_ggplotly <- function(p, ...) p
+  render <- ir_test_body("visualizations.R", "ir_plot_clonalSizeDistribution", "plotly::renderPlotly", env)
+  expect_identical(render(), "compact profile")
+  data <- list(A = data[[1]][1:2, , drop = FALSE])
+  expect_error(render(), "analytical fallback")
+})
+
 test_that("Abundance renderer reads the current pack before repertoire data", {
   env <- new.env(parent = asNamespace("shiny"))
   for (expr in parse(file.path(ir_test_root, "data.R"))) {

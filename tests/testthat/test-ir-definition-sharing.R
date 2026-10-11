@@ -37,6 +37,7 @@ ir_env$reactive <- function(x) function() eval(substitute(x))
 ir_env$reactiveVal <- function(...) function(...) NULL
 ir_env$req <- function(...) invisible(NULL)
 ir_env$observeEvent <- function(...) invisible(NULL)
+ir_env$observe <- function(...) invisible(NULL)
 ir_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 # Stub out CerebroNexus package functions referenced at top-level in data.R
 ir_env$getImmuneRepertoire <- function(...) NULL

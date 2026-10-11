@@ -2166,12 +2166,13 @@ prettifyTable <- function(
 
   ## identify columns which contain integer despite not being stored as
   ## integer type
-  columns_integer <- findColumnsInteger(table, columns_numeric)
+  classify_values <- number_formatting || color_highlighting
+  columns_integer <- if (classify_values) findColumnsInteger(table, columns_numeric) else integer()
 
   ## identify which columns might contain percentages, p-values, and logFC
-  columns_percent <- findColumnsPercentage(table)
-  columns_p_value <- findColumnsPValues(table)
-  columns_logFC <- findColumnsLogFC(table)
+  columns_percent <- if (classify_values) findColumnsPercentage(table) else integer()
+  columns_p_value <- if (classify_values) findColumnsPValues(table) else integer()
+  columns_logFC <- if (classify_values) findColumnsLogFC(table) else integer()
 
   ## find columns with very long (character) content so that they can be
   ## hidden

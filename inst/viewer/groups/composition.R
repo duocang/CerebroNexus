@@ -59,13 +59,18 @@ groupsCalculateTableAB <- function(table, groupA, groupB, mode, percent) {
   )
   names(counts)[1:2] <- c(groupA, groupB)
 
+  groupsFormatComposition(counts, groupA, groupB, mode, percent, levels(values_b))
+}
+
+groupsFormatComposition <- function(counts, groupA, groupB, mode, percent,
+                                    levels_group_b = levels(counts[[groupB]])) {
+
   if (isTRUE(percent)) {
     counts[["count"]] <- counts[["count"]] / counts[["total_cell_count"]]
     counts <- counts[, c(groupA, "total_cell_count", groupB, "count")]
   }
 
   if (identical(mode, "wide")) {
-    levels_group_b <- levels(values_b)
     counts <- tidyr::pivot_wider(
       counts,
       id_cols = dplyr::all_of(c(groupA, "total_cell_count")),
@@ -89,6 +94,20 @@ groupsCalculateTableAB <- function(table, groupA, groupB, mode, percent) {
   counts
 }
 
+groups_composition_counts <- reactive({
+  first <- input[["groups_selected_group"]]
+  second <- input[["groups_by_other_group_second_group"]]
+  req(first %in% getGroups(), second %in% getGroups(), first != second)
+  groupsCalculateTableAB(groupsMetadataColumns(c(first, second)),
+    first, second, "long", FALSE)
+})
+
+groupsCompositionTable <- function(mode, percent) {
+  groupsFormatComposition(groups_composition_counts(),
+    input[["groups_selected_group"]], input[["groups_by_other_group_second_group"]],
+    mode, percent)
+}
+
 ##----------------------------------------------------------------------------##
 ## Plot showing composition of groups, either as a bar chart or a Sankey plot.
 ##----------------------------------------------------------------------------##
@@ -105,14 +124,7 @@ output[["groups_by_other_group_plot"]] <- plotly::renderPlotly({
   ##
   if (input[["groups_by_other_group_plot_type"]] == "Bar chart") {
     ## calculate table
-    group_metadata <- groupsMetadataColumns(c(
-      input[["groups_selected_group"]],
-      input[["groups_by_other_group_second_group"]]
-    ))
-    composition_df <- groupsCalculateTableAB(
-      group_metadata,
-      input[["groups_selected_group"]],
-      input[["groups_by_other_group_second_group"]],
+    composition_df <- groupsCompositionTable(
       mode = "long",
       percent = input[["groups_by_other_group_show_as_percent"]]
     )
@@ -131,13 +143,7 @@ output[["groups_by_other_group_plot"]] <- plotly::renderPlotly({
     ##
   } else if (input[["groups_by_other_group_plot_type"]] == "Sankey plot") {
     ## calculate table
-    composition_df <- groupsCalculateTableAB(
-      groupsMetadataColumns(c(
-        input[["groups_selected_group"]],
-        input[["groups_by_other_group_second_group"]]
-      )),
-      input[["groups_selected_group"]],
-      input[["groups_by_other_group_second_group"]],
+    composition_df <- groupsCompositionTable(
       mode = "long",
       percent = FALSE
     )
@@ -178,13 +184,7 @@ output[["groups_by_other_group_table"]] <- DT::renderDataTable({
       input[["groups_by_other_group_second_group"]]
   )
   ## generate table
-  composition_df <- groupsCalculateTableAB(
-    groupsMetadataColumns(c(
-      input[["groups_selected_group"]],
-      input[["groups_by_other_group_second_group"]]
-    )),
-    input[["groups_selected_group"]],
-    input[["groups_by_other_group_second_group"]],
+  composition_df <- groupsCompositionTable(
     mode = "wide",
     percent = input[["groups_by_other_group_show_as_percent"]]
   )

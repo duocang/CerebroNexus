@@ -50,12 +50,15 @@ ir_requested_metadata_fields <- function(
   unique(requested[!is.na(requested) & nzchar(requested)])
 }
 
-ir_requested_metadata_columns <- reactive({
-  ir_requested_metadata_fields(
+ir_requested_metadata_columns <- reactiveVal(character())
+observe({
+  # reactiveVal only invalidates consumers when the fields actually change.
+  # This observer reads small control values, never repertoire or metadata.
+  ir_requested_metadata_columns(ir_requested_metadata_fields(
     input[["ir_tabs"]], input[["ir_groupBy"]],
     input[["ir_p_umap_group_by"]], input[["ir_sharing_unit"]]
-  )
-})
+  ))
+}, priority = 100)
 
 ir_annotate_metadata <- function(data, metadata, columns = character()) {
   if (
@@ -654,6 +657,17 @@ ir_clone_size_profiles <- function(
   list(profile = profile, clone_counts = counts, threshold = threshold)
 }
 
+ir_size_distribution_profile <- reactive({
+  data <- ir_data()
+  chain <- req(input$ir_chain)
+  group <- ir_param("ir_groupBy", NULL)
+  profiles <- ir_clone_size_profiles(data, chain, group,
+    ir_param("ir_p_sd_threshold", 1))
+  # Keep just the current compact matrix, not the large named clone counts.
+  if (!is.null(profiles)) profiles$clone_counts <- NULL
+  profiles
+})
+
 ir_empirical_size_distribution_plot <- function(
   data,
   chain = "both",
@@ -662,6 +676,10 @@ ir_empirical_size_distribution_plot <- function(
   threshold = 1
 ) {
   profiles <- ir_clone_size_profiles(data, chain, group_by, threshold)
+  ir_size_profile_plot(profiles, method)
+}
+
+ir_size_profile_plot <- function(profiles, method = "ward.D2") {
   if (is.null(profiles)) {
     return(NULL)
   }

@@ -1084,13 +1084,16 @@ ir_paired_scatter_panel <- function(
   title,
   show_title = TRUE
 ) {
+  dot_size <- ir_param("ir_p_dot_size", "total")
+  needed <- unique(c(x_axis, y_axis, if (!identical(dot_size, "total")) dot_size))
+  if (length(needed) && all(needed %in% names(data))) data <- data[needed]
   p <- scRepertoire::clonalScatter(
     data,
     cloneCall = pars$cloneCall,
     chain = pars$chain,
     x.axis = x_axis,
     y.axis = y_axis,
-    dot.size = ir_param("ir_p_dot_size", "total"),
+    dot.size = dot_size,
     graph = ir_param("ir_p_graph", "proportion"),
     exportTable = FALSE,
     palette = IR_PALETTE
@@ -1855,7 +1858,6 @@ output$ir_plot_clonalScatter <- renderPlot({
   )
 
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalSizeDistribution")
   req(input$ir_chain, !is.null(input$ir_groupBy))
   data <- ir_data()
@@ -1877,14 +1879,12 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
       # close to a minute and made every subsequently selected tab appear
       # broken. Cluster exact empirical clone-size profiles instead; this path
       # is linear in repertoire rows and keeps the same group/linkage controls.
-      ir_empirical_size_distribution_plot(
-        data,
-        chain = pars$chain,
-        group_by = pars$groupBy,
-        method = ir_param("ir_p_sd_method", "ward.D2"),
-        threshold = threshold
+      ir_size_profile_plot(
+        ir_size_distribution_profile(),
+        method = ir_param("ir_p_sd_method", "ward.D2")
       )
     } else {
+      req_scRepertoire()
       p <- scRepertoire::clonalSizeDistribution(
         data,
         cloneCall = "strict",
@@ -1903,7 +1903,6 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   )
 }) %>%
   ir_bindCache(
-    input$ir_cloneCall,
     input$ir_chain,
     input$ir_groupBy,
     input$ir_p_sd_method,

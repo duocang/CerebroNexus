@@ -375,20 +375,25 @@ ir_analysis_panel <- function(more = FALSE) {
     # making the panel depend on the inputs it creates.
     current <- isolate(input[[p$id]])
     if (identical(p$type, "numeric")) {
+      valid <- is.numeric(current) && length(current) == 1L &&
+        is.finite(current) && (is.null(p$min) || current >= p$min) &&
+        (is.null(p$max) || current <= p$max)
       return(numericInput(
         p$id,
         p$label,
-        value = p$value,
+        value = if (valid) current else p$value,
         min = p$min,
         max = p$max,
         step = p$step
       ))
     }
     if (identical(p$type, "checkbox")) {
-      return(checkboxInput(p$id, p$label, value = isTRUE(p$value)))
+      value <- if (is.logical(current) && length(current) == 1L && !is.na(current)) current else p$value
+      return(checkboxInput(p$id, p$label, value = isTRUE(value)))
     }
     if (identical(p$type, "text")) {
-      return(textInput(p$id, p$label, value = p$value))
+      value <- if (is.character(current) && length(current) == 1L && !is.na(current)) current else p$value
+      return(textInput(p$id, p$label, value = value))
     }
     # select
     choices <- p$choices
