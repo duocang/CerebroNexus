@@ -1,0 +1,92 @@
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+    stage                   arm iteration   ms
+ read-crb current-first-process         1 8752
+              stage                   arm iteration   ms
+ hydrate-ir-sidecar current-first-process         1 5438
+        stage                   arm iteration ms
+ get-metadata current-first-process         1  0
+                  stage                   arm iteration   ms
+ scRepertoire-namespace current-first-process         1 3031
+IDENTITY 194 samples 503432 IR rows
+            stage     arm iteration   ms
+ sizedist-profile current         1 1576
+                stage     arm iteration  ms
+ sizedist-plot-object current         1 355
+             stage     arm iteration  ms
+ sizedist-ggplotly current         1 151
+         stage     arm iteration ms
+ sizedist-json current         1 39
+SIZEDIST_JSON_BYTES 206472 
+            stage     arm iteration   ms
+ sizedist-profile current         2 2892
+                stage     arm iteration ms
+ sizedist-plot-object current         2 74
+             stage     arm iteration  ms
+ sizedist-ggplotly current         2 119
+         stage     arm iteration ms
+ sizedist-json current         2 15
+SIZEDIST_JSON_BYTES 206474 
+            stage     arm iteration   ms
+ sizedist-profile current         3 1622
+                stage     arm iteration ms
+ sizedist-plot-object current         3 63
+             stage     arm iteration  ms
+ sizedist-ggplotly current         3 116
+         stage     arm iteration ms
+ sizedist-json current         3 16
+SIZEDIST_JSON_BYTES 206472 
+                 stage      arm iteration  ms
+ same-field-tab-change baseline         1 193
+                 stage     arm iteration ms
+ same-field-tab-change current         1  2
+                 stage      arm iteration  ms
+ same-field-tab-change baseline         2 462
+                 stage     arm iteration ms
+ same-field-tab-change current         2  3
+                 stage      arm iteration  ms
+ same-field-tab-change baseline         3 202
+                 stage     arm iteration ms
+ same-field-tab-change current         3  2
+ANNOTATION_CALLS 4 1 including initial demand
+NULL
+                    stage      arm iteration ms
+ groups-wide-presentation baseline         1 29
+                    stage     arm iteration ms
+ groups-wide-presentation current         1 16
+                      stage      arm iteration ms
+ paired-scatter-plot-object baseline         1 75
+                      stage     arm iteration ms
+ paired-scatter-plot-object current         1 57
+                    stage      arm iteration ms
+ groups-wide-presentation baseline         2 52
+                    stage     arm iteration ms
+ groups-wide-presentation current         2  8
+                      stage      arm iteration ms
+ paired-scatter-plot-object baseline         2 68
+                      stage     arm iteration  ms
+ paired-scatter-plot-object current         2 306
+                    stage      arm iteration ms
+ groups-wide-presentation baseline         3 22
+                    stage     arm iteration ms
+ groups-wide-presentation current         3  8
+                      stage      arm iteration ms
+ paired-scatter-plot-object baseline         3 66
+                      stage     arm iteration ms
+ paired-scatter-plot-object current         3 63
+DEMO_MARKER 3213 8 
+       stage      arm iteration ms
+ demo-marker baseline         1 11
+       stage     arm iteration ms
+ demo-marker current         1  5
+Error: identical(a$x, b$x) is not TRUE
+Execution halted
