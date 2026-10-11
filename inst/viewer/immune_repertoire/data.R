@@ -219,47 +219,37 @@ ir_compare_groups <- reactive({
 ## metadata column that is categorical (character/factor with > 1 distinct
 ## non-empty value) and is not a raw scRepertoire column (ir_scr_cols). `sample`
 ## is placed first so it becomes the default selection.
-ir_sharing_unit_choices <- reactive({
-  data <- ir_data()
-  if (is.null(data)) {
-    return(character(0))
-  }
+ir_discover_sharing_units <- function(data, metadata = NULL) {
+  if (!length(data)) return(character())
   common <- Reduce(intersect, lapply(data, colnames))
-  cand <- setdiff(common, ir_scr_cols)
-  keep <- vapply(
-    cand,
-    function(col) {
-      eligible <- all(vapply(
-        data,
-        function(df) is.character(df[[col]]) || is.factor(df[[col]]),
-        logical(1)
-      ))
-      if (!eligible) {
-        return(FALSE)
-      }
-      # Stop as soon as two values are known. Building one rbind() of every
-      # repertoire row merely to populate this selector copied the complete Ren
-      # sidecar and blocked all tab changes.
-      seen <- character()
-      for (df in data) {
-        values <- as.character(df[[col]])
-        values <- values[!is.na(values) & nzchar(values)]
-        if (length(values)) {
-          seen <- unique(c(seen, unique(values)))
-        }
-        if (length(seen) > 1L) {
-          return(TRUE)
-        }
-      }
-      FALSE
-    },
-    logical(1)
-  )
-  cols <- cand[keep]
-  if (!("sample" %in% cols) && length(data) > 1L) {
-    cols <- c("sample", cols)
-  }
-  if ("sample" %in% cols) c("sample", setdiff(cols, "sample")) else cols
+  candidates <- setdiff(union(common, colnames(metadata)),
+    c(ir_scr_cols, "cell_barcode"))
+  categorical <- function(x) is.character(x) || is.factor(x)
+  # One barcode match, then inspect one candidate column at a time. No wide join.
+  indices <- if (is.data.frame(metadata) && "cell_barcode" %in% names(metadata)) {
+    lapply(data, function(df) match(df$barcode, metadata$cell_barcode))
+  } else rep(list(integer()), length(data))
+  keep <- vapply(candidates, function(column) {
+    seen <- character()
+    for (i in seq_along(data)) {
+      values <- if (column %in% names(data[[i]])) data[[i]][[column]] else
+        metadata[[column]][indices[[i]]]
+      if (!categorical(values)) return(FALSE)
+      values <- as.character(values)
+      values <- values[!is.na(values) & nzchar(values)]
+      seen <- unique(c(seen, unique(values)))
+    }
+    length(seen) > 1L
+  }, logical(1))
+  choices <- candidates[keep]
+  if (length(data) > 1L) choices <- union("sample", choices)
+  if ("sample" %in% choices) c("sample", setdiff(choices, "sample")) else choices
+}
+
+ir_sharing_unit_choices <- reactive({
+  req(identical(input[["ir_tabs"]], "Clone Sharing"))
+  # Discovery is independent of ir_data_annotated and the selected sharing unit.
+  ir_discover_sharing_units(ir_data_raw(), getMetaData())
 })
 
 ## ---- Reactive: parameters --------------------------------------------- ##

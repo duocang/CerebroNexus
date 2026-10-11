@@ -658,3 +658,24 @@ test_that("clonal expansion is independent of display filtering and pack presenc
   expect_identical(indexed$expansion, plain$expansion)
   expect_equal(indexed$x, plain$x)
 })
+
+
+test_that("sharing choices discover metadata fields before any field is selected", {
+  data <- list(a = data.frame(barcode = c("c3", "c1"), CTgene = "TRB-a"),
+    b = data.frame(barcode = "c2", CTgene = "TRB-a"))
+  metadata <- data.frame(cell_barcode = c("c1", "c2", "c3", "unmatched"),
+    patient = c("p1", "p2", "p1", "p3"),
+    condition = c("case", "control", "case", "other"),
+    constant = c("x", "x", "x", "different"), score = 1:4)
+  choices <- ir_env$ir_discover_sharing_units(data, metadata)
+  expect_identical(choices, c("sample", "patient", "condition"))
+  expect_named(data$a, c("barcode", "CTgene"))
+  joined <- ir_env$ir_annotate_metadata(data, metadata, "patient")
+  expect_identical(joined$a$patient, c("p1", "p1"))
+  expect_identical(joined$b$patient, "p2")
+  expect_false("condition" %in% names(joined$a))
+  expect_identical(ir_env$ir_discover_sharing_units(joined, metadata), choices)
+  data$a$native <- c("n1", "n2")
+  data$b$native <- "n3"
+  expect_true("native" %in% ir_env$ir_discover_sharing_units(data, metadata))
+})
