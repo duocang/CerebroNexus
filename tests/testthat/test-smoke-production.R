@@ -551,6 +551,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
       config <- readRDS("cerebro_config.rds")
       assign("Cerebro.options", config, envir = .GlobalEnv)
       runtime <- new.env(parent = globalenv())
+      sys.source(file.path("viewer", "crb_cache.R"), envir = runtime)
       sys.source(
         file.path("viewer", "utility_functions.R"),
         envir = runtime

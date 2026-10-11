@@ -429,6 +429,37 @@ ir_clone_expansion <- function(clones) {
   )
 }
 
+## Exact clone-size histogram. Callers decide whether blank identities count
+## and whether an empty group must remain visible; counting itself is shared.
+ir_clone_histogram <- function(clones, sample, keep_empty = FALSE) {
+  clones <- as.character(clones)
+  clones <- clones[!is.na(clones)]
+  if (!length(clones)) {
+    if (!keep_empty) return(NULL)
+    return(data.frame(sample = sample, abundance = 0L, n_clones = 0L))
+  }
+  bins <- table(tabulate(match(clones, unique(clones))))
+  data.frame(sample = sample, abundance = as.integer(names(bins)),
+    n_clones = as.integer(bins), stringsAsFactors = FALSE)
+}
+
+ir_bind_clone_histograms <- function(rows) {
+  rows <- Filter(Negate(is.null), rows)
+  if (!length(rows)) {
+    return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
+  }
+  do.call(rbind, rows)
+}
+
+ir_sample_clone_histograms <- function(data, clone_col, drop_empty = FALSE) {
+  samples <- names(data) %||% as.character(seq_along(data))
+  ir_bind_clone_histograms(Map(function(frame, sample) {
+    clones <- as.character(frame[[clone_col]])
+    if (drop_empty) clones <- clones[!is.na(clones) & nzchar(clones)]
+    ir_clone_histogram(clones, sample)
+  }, data, samples))
+}
+
 ir_clonal_abundance_counts <- function(data, clone_col) {
   packed <- if (
     exists("viewerPackCurrent", mode = "function") &&
@@ -441,63 +472,17 @@ ir_clonal_abundance_counts <- function(data, clone_col) {
   if (!is.null(packed)) {
     return(packed)
   }
-  samples <- names(data)
-  if (is.null(samples)) {
-    samples <- as.character(seq_along(data))
-  }
-  rows <- Map(
-    function(frame, sample) {
-      if (is.null(frame) || !(clone_col %in% colnames(frame))) {
-        return(NULL)
-      }
-      clones <- as.character(frame[[clone_col]])
-      clones <- clones[!is.na(clones) & nzchar(clones)]
-      if (!length(clones)) {
-        return(NULL)
-      }
-      clone_ids <- match(clones, unique(clones))
-      abundance <- tabulate(clone_ids)
-      bins <- base::table(abundance)
-      data.frame(
-        sample = sample,
-        abundance = as.integer(names(bins)),
-        n_clones = as.integer(bins),
-        stringsAsFactors = FALSE
-      )
-    },
-    data,
-    samples
-  )
-  rows <- rows[!vapply(rows, is.null, logical(1))]
-  if (!length(rows)) {
-    return(data.frame(
-      sample = character(),
-      abundance = integer(),
-      n_clones = integer()
-    ))
-  }
-  do.call(rbind, rows)
+  ir_sample_clone_histograms(data, clone_col, drop_empty = TRUE)
 }
 
 ## ---- Scalable clone-size distribution -------------------------------- ##
-## Exact all-chain, ungrouped Homeostasis. The histogram preserves cell-weighted
+## Exact all-chain Homeostasis. The histogram preserves cell-weighted
 ## clone proportions without sorting long clone strings or loading scRepertoire.
 ir_homeostasis_counts <- function(data, clone_col) {
   pack <- viewerPackCurrent()
   packed <- viewerPackReadAsset(pack, "immune/homeostasis.qs2")
   if (!is.null(packed[[clone_col]])) return(packed[[clone_col]])
-  rows <- Map(function(frame, sample) {
-    clones <- as.character(frame[[clone_col]])
-    clones <- clones[!is.na(clones)]
-    if (!length(clones)) return(NULL)
-    sizes <- tabulate(match(clones, unique(clones)))
-    bins <- table(sizes)
-    data.frame(sample = sample, abundance = as.integer(names(bins)),
-      n_clones = as.integer(bins), stringsAsFactors = FALSE)
-  }, data, names(data) %||% as.character(seq_along(data)))
-  rows <- Filter(Negate(is.null), rows)
-  if (!length(rows)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
-  do.call(rbind, rows)
+  ir_sample_clone_histograms(data, clone_col)
 }
 
 ## Pool clonotypes across samples within each metadata group. Keep only the two
@@ -515,19 +500,11 @@ ir_grouped_homeostasis_counts <- function(data, clone_col, group_by) {
     frame
   })
   frames <- Filter(Negate(is.null), frames)
-  if (!length(frames)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
+  if (!length(frames)) return(ir_bind_clone_histograms(list()))
   pooled <- do.call(rbind, unname(frames))
   groups <- split(as.character(pooled[[clone_col]]), pooled[[group_by]])
-  rows <- Map(function(clones, group) {
-    clones <- clones[!is.na(clones)]
-    if (!length(clones)) return(data.frame(sample = group, abundance = 0L, n_clones = 0L))
-    sizes <- tabulate(match(clones, unique(clones)))
-    bins <- table(sizes)
-    data.frame(sample = group, abundance = as.integer(names(bins)),
-      n_clones = as.integer(bins), stringsAsFactors = FALSE)
-  }, groups, names(groups))
-  if (!length(rows)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
-  do.call(rbind, rows)
+  ir_bind_clone_histograms(Map(ir_clone_histogram, groups, names(groups),
+    MoreArgs = list(keep_empty = TRUE)))
 }
 
 ir_homeostasis_matrix <- function(counts, clone_size) {

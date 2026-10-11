@@ -9,6 +9,27 @@ for (expr in parse(ir_home_file)) {
       identical(expr[[3]][[1]], as.name("function"))) eval(expr, ir_home_env)
 }
 
+test_that("shared clone histograms preserve distinct Abundance and Homeostasis policies", {
+  values <- c("", "", NA, "NA", "01", "1", "克隆", "克隆", "a\034b")
+  frame <- data.frame(CTgene = values, CTnt = values, CTaa = values, CTstrict = values)
+  for (named in c(FALSE, TRUE)) {
+    raw <- list(frame, frame[FALSE, ], NULL, data.frame(unrelated = "x"))
+    if (named) names(raw) <- c("z10", "z2", "absent", "missing_column")
+    abundance <- CerebroNexus:::.viewerPackImmuneAbundance(raw)
+    homeostasis <- CerebroNexus:::.viewerPackImmuneAbundance(raw, drop_empty = FALSE)
+    for (column in names(abundance)) {
+      # The unchanged Pack builder is an independent reference for each policy.
+      expect_identical(as.list(ir_home_env$ir_clonal_abundance_counts(raw, column)),
+        as.list(abundance[[column]]))
+      expect_identical(as.list(ir_home_env$ir_homeostasis_counts(raw, column)),
+        as.list(homeostasis[[column]]))
+    }
+  }
+  empty <- data.frame(sample = character(), abundance = integer(), n_clones = integer())
+  expect_identical(ir_home_env$ir_clonal_abundance_counts(list(), "CTgene"), empty)
+  expect_identical(ir_home_env$ir_homeostasis_counts(list(), "CTgene"), empty)
+})
+
 test_that("Homeostasis exact bins match scRepertoire, including blanks and thresholds", {
   skip_if_not_installed("scRepertoire")
   frames <- list(z10 = c(rep("a", 4), rep("b", 2), "", NA, "NA"),

@@ -1,8 +1,7 @@
 boundary_utils <- function() {
   env <- new.env(parent = globalenv())
-  env$.crb_process_cache <- new.env(parent = emptyenv())
-  env$.crb_backend_identities <- new.env(parent = emptyenv())
-  env$.msigdb_process_cache <- new.env(parent = emptyenv())
+  sys.source(viewer_test_path("crb_cache.R"), envir = env)
+  sys.source(viewer_test_path("msigdb.R"), envir = env)
   source(viewer_test_path("utility_functions.R"), local = env)
   env
 }
@@ -29,6 +28,10 @@ test_that("CRB eviction bounds prototypes and preserves active clones and identi
                "backend configuration changed")
   env$.cacheCrbPrototype(paths[2], objects[[2]], list(type = "embedded"))
   expect_length(ls(env$.crb_process_cache), 2)
+  # A live prototype must remain protected even without its registry entry.
+  rm(list = keys[2], envir = env$.crb_backend_identities)
+  expect_error(env$.checkCrbBackendIdentity(keys[2], list(type = "h5")),
+    "backend configuration changed")
 })
 
 test_that("catalogue construction retains only two launch prototypes", {
@@ -42,25 +45,9 @@ test_that("catalogue construction retains only two launch prototypes", {
 
 test_that("prefetch is shared across sessions and releases completed task results", {
   env <- boundary_utils()
-  env$.crb_process_cache <- new.env(parent = emptyenv())
-  env$.crb_backend_identities <- new.env(parent = emptyenv())
-  env$crb_prefetch_tasks <- new.env(parent = emptyenv())
-  env$Cerebro.options <- list()
-  env$.runtimeBackendCacheIdentity <- function(...) list(type = "embedded")
-  # Exercise the actual production function with two independent Shiny domains.
-  find_assignment <- function(node) {
-    if (!is.call(node) && !is.expression(node)) return(NULL)
-    if (is.call(node) && identical(node[[1L]], as.name("<-")) &&
-        identical(node[[2L]], as.name("start_crb_prefetch"))) return(node)
-    for (child in as.list(node)) {
-      result <- find_assignment(child)
-      if (!is.null(result)) return(result)
-    }
-    NULL
-  }
-  node <- find_assignment(parse(viewer_test_path("shiny_server.R")))
-  expect_false(is.null(node))
-  eval(node, env)
+  # The directly loaded process module must not capture either session below.
+  expect_identical(environment(env$start_crb_prefetch), env)
+  start <- function(path) env$start_crb_prefetch(path, list(type = "embedded"))
   files <- vapply(1:3, function(i) tempfile(fileext = ".crb"), character(1))
   for (i in 1:3) saveRDS(list(marker = i), files[i])
   on.exit(unlink(files), add = TRUE)
@@ -69,13 +56,15 @@ test_that("prefetch is shared across sessions and releases completed task result
   on.exit({first$close(); second$close()}, add = TRUE)
   mirai::daemons(1L)
   on.exit(mirai::daemons(0L), add = TRUE)
-  shiny::withReactiveDomain(first, env$start_crb_prefetch(files[1]))
+  identity <- list(type = "embedded")
+  shiny::withReactiveDomain(first, env$start_crb_prefetch(files[1], identity))
+  identity$type <- "changed-after-start"
   key <- normalizePath(files[1], winslash = "/")
   task <- env$crb_prefetch_tasks[[key]]
-  shiny::withReactiveDomain(second, env$start_crb_prefetch(files[1]))
+  shiny::withReactiveDomain(second, start(files[1]))
   expect_identical(env$crb_prefetch_tasks[[key]], task)
-  shiny::withReactiveDomain(second, env$start_crb_prefetch(files[2]))
-  shiny::withReactiveDomain(second, env$start_crb_prefetch(files[3]))
+  shiny::withReactiveDomain(second, start(files[2]))
+  shiny::withReactiveDomain(second, start(files[3]))
   expect_length(ls(env$crb_prefetch_tasks), 2)
   first$close() # the initiating session must not own process completion
   deadline <- Sys.time() + 15
@@ -86,11 +75,12 @@ test_that("prefetch is shared across sessions and releases completed task result
   }
   expect_length(ls(env$crb_prefetch_tasks), 0)
   expect_identical(env$.crb_process_cache[[key]]$object$marker, 1L)
+  expect_identical(env$.crb_process_cache[[key]]$backend_identity, list(type = "embedded"))
   expect_length(ls(env$.crb_process_cache), 2)
-  shiny::withReactiveDomain(second, env$start_crb_prefetch(files[1]))
+  shiny::withReactiveDomain(second, start(files[1]))
   expect_length(ls(env$crb_prefetch_tasks), 0) # completed cache prevents another read
   writeLines("invalid CRB", files[3])
-  env$start_crb_prefetch(files[3])
+  start(files[3])
   warnings <- character()
   deadline <- Sys.time() + 15
   withCallingHandlers({
@@ -107,7 +97,7 @@ test_that("prefetch is shared across sessions and releases completed task result
   expect_true(any(grepl("CRB background prefetch failed", warnings)))
   expect_null(env$.crb_process_cache[[normalizePath(files[3], winslash = "/")]])
   saveRDS(list(marker = 3L), files[3])
-  env$start_crb_prefetch(files[3])
+  start(files[3])
   deadline <- Sys.time() + 15
   while (length(env$crb_prefetch_tasks) && Sys.time() < deadline) {
     later::run_now(0.05)

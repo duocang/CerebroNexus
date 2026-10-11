@@ -28,6 +28,8 @@ if (is.na(utils_file)) {
 skip_if_not(file.exists(utils_file), "utility_functions.R not found")
 
 utils_env <- new.env()
+sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
+sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
 source(utils_file, local = utils_env)
 ## These legacy-response fixtures exercise the older public API fallback.
 ## Collection-wise queries are covered separately with explicit mock metadata.
@@ -124,9 +126,10 @@ test_that("Data Info starts a non-blocking CRB prefetch", {
     collapse = "\n"
   )
 
-  expect_match(server, "crb_prefetch_tasks <- new.env", fixed = TRUE)
-  expect_match(server, "shiny::ExtendedTask$new", fixed = TRUE)
-  expect_match(server, "mirai::mirai", fixed = TRUE)
+  prefetch <- paste(readLines(file.path(viewer_root, "crb_cache.R")), collapse = "\n")
+  expect_match(prefetch, "crb_prefetch_tasks <- new.env", fixed = TRUE)
+  expect_match(prefetch, "shiny::ExtendedTask$new", fixed = TRUE)
+  expect_match(prefetch, "mirai::mirai", fixed = TRUE)
   expect_match(server, "session$onFlushed", fixed = TRUE)
   expect_match(server, "prefetch_task$result()", fixed = TRUE)
 })

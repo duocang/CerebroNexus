@@ -34,18 +34,9 @@ source(
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
 
-## Keep only the compact MSigDB catalogue and resolved gene vectors across
-## sessions. The complete msigdbr table is discarded after each public query.
-.msigdb_process_cache <- new.env(parent = emptyenv())
-
-## Immutable CRB prototypes are shared by all sessions in this R process.
-## get_or_load_crb() always returns a shallow R6 clone, so session-local lazy
-## hydration (for example one spatial FOV's molecules) cannot leak to another
-## browser session while the large immutable fields and on-disk handles remain
-## shared through R's copy-on-modify semantics.
-.crb_process_cache <- new.env(parent = emptyenv())
-.crb_backend_identities <- new.env(parent = emptyenv())
-crb_prefetch_tasks <- new.env(parent = emptyenv())
+## Process-owned query/cache functions do not capture a browser session.
+source(file.path(Cerebro.options[["cerebro_root"]], "viewer", "msigdb.R"), local = TRUE)
+source(file.path(Cerebro.options[["cerebro_root"]], "viewer", "crb_cache.R"), local = TRUE)
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
 .crb_launch_state <- new.env(parent = emptyenv())
 .crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
@@ -250,68 +241,6 @@ server <- function(input, output, session) {
     labels = NULL
   )
   dataset_load_requested <- reactiveVal(FALSE)
-
-  start_crb_prefetch <- function(path) {
-    path <- as.character(path[[1L]])
-    if (!file.exists(path)) {
-      return(invisible(NULL))
-    }
-    cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
-    if (
-      !is.null(.crb_process_cache[[cache_key]]) ||
-        !is.null(crb_prefetch_tasks[[cache_key]]) ||
-        length(crb_prefetch_tasks) >= 2L
-    ) {
-      return(invisible(NULL))
-    }
-    effective_backend <- .configuredRuntimeBackendPlan(
-      path, Cerebro.options[[".bundle_backend_plan"]],
-      unname(Cerebro.options[["crb_file_to_load"]] %||% character())
-    )
-    backend_identity <- .runtimeBackendCacheIdentity(effective_backend)
-    prefetch_task <- shiny::withReactiveDomain(NULL, shiny::ExtendedTask$new(function(path) {
-      mirai::mirai(
-        {
-          connection <- file(path, open = "rb")
-          on.exit(close(connection), add = TRUE)
-          magic <- readBin(connection, "raw", n = 4L)
-          prototype <- if (
-            identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))
-          ) {
-            qs2::qs_read(path)
-          } else {
-            readRDS(path)
-          }
-          list(path = path, prototype = prototype)
-        },
-        path = path
-      )
-    }))
-    crb_prefetch_tasks[[cache_key]] <- prefetch_task
-    print(glue::glue(
-      "[{Sys.time()}] CRB background prefetch started: {.crbLogLabel(path)}"
-    ))
-    shiny::withReactiveDomain(NULL, prefetch_task$invoke(path))
-    ## Completion belongs to the process, not the first requesting session.
-    ## Publish once, then release the task's retained result even when the
-    ## initiating user has left the dataset or disconnected.
-    completion <- shiny::observe({
-      status <- prefetch_task$status()
-      if (!status %in% c("success", "error")) return()
-      on.exit({
-        rm(list = cache_key, envir = crb_prefetch_tasks)
-        completion$destroy()
-      }, add = TRUE)
-      if (identical(status, "success")) {
-        .cacheCrbPrototype(path, prefetch_task$result()$prototype, backend_identity)
-      } else {
-        tryCatch(prefetch_task$result(), error = function(error) {
-          warning("CRB background prefetch failed: ", conditionMessage(error), call. = FALSE)
-        })
-      }
-    }, domain = NULL)
-    invisible(NULL)
-  }
 
   ## One immutable context identifies every load attempt. `epoch` changes with
   ## the Shiny session; `generation` advances before the public selection is
@@ -683,7 +612,12 @@ server <- function(input, output, session) {
                 length(current) == 1L &&
                   identical(as.character(current), as.character(selected))
               ) {
-                start_crb_prefetch(isolate(viewerDatasetPath(available_crb_files$files, selected)))
+                path <- isolate(viewerDatasetPath(available_crb_files$files, selected))
+                start_crb_prefetch(path, .runtimeBackendCacheIdentity(
+                  .configuredRuntimeBackendPlan(path,
+                    Cerebro.options[[".bundle_backend_plan"]],
+                    unname(Cerebro.options[["crb_file_to_load"]] %||% character()))
+                ))
               }
             })
           },
@@ -763,7 +697,7 @@ server <- function(input, output, session) {
       ))
       data <- get(dataset_to_load)
     } else {
-      ## Route through the session cache defined in utility_functions.R.
+      ## Clone the process-cached prototype and attach session-local backends.
       ## Configured bundle CRBs consume the exact backend plan validated during
       ## createShinyApp(). Uploads and older configurations fall back to the
       ## ordinary expression_backend field; serialized getters are not called.

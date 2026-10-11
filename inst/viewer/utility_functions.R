@@ -2918,206 +2918,6 @@ getXYranges <- function(table) {
 ##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
-if (!exists(".msigdb_process_cache", inherits = TRUE)) {
-  .msigdb_process_cache <- new.env(parent = emptyenv())
-}
-
-.emptyMsigdbCatalogue <- function() {
-  data.frame(
-    gs_name = character(),
-    collection = character(),
-    stringsAsFactors = FALSE
-  )
-}
-
-.msigdbCache <- function() {
-  get(".msigdb_process_cache", inherits = TRUE)
-}
-
-.msigdbGeneCacheKey <- function(species, gene_set) {
-  paste("genes", species, gene_set, sep = "\r")
-}
-
-.msigdbFunction <- function() {
-  msigdbr::msigdbr
-}
-
-.msigdbCollectionsFunction <- function() {
-  if ("msigdbr_collections" %in% getNamespaceExports("msigdbr")) {
-    msigdbr::msigdbr_collections()
-  } else NULL
-}
-
-.msigdbCatalogueRows <- function() {
-  query <- .msigdbFunction()
-  collections <- .msigdbCollectionsFunction()
-  column <- intersect(c("gs_collection", "gs_cat"), names(collections))
-  argument <- intersect(c("collection", "category"), names(formals(query)))
-  if (!length(column) || !length(argument)) {
-    return(query(species = "Homo sapiens")) # compatibility with older msigdbr
-  }
-  # Discard each wide table before requesting the next collection. The public
-  # API does not expose gene-set names alone; never retain the full database.
-  pieces <- lapply(unique(collections[[column[[1L]]]]), function(collection) {
-    args <- list(species = "Homo sapiens")
-    args[[argument[[1L]]]] <- collection
-    table <- do.call(query, args)
-    column <- intersect(c("gs_collection", "gs_cat"), names(table))
-    if (!length(column) || !"gs_name" %in% names(table)) {
-      stop("MSigDB query returned unexpected columns.")
-    }
-    unique(data.frame(gs_name = table$gs_name, gs_collection = table[[column[[1L]]]]))
-  })
-  if (!length(pieces)) return(NULL)
-  do.call(rbind, pieces)
-}
-
-.cacheMsigdbGenes <- function(cache, key, genes) {
-  # Resolved single sets have a separate small FIFO budget; large sets can be
-  # returned without retaining them. Size accounting here is ordinary vectors.
-  present <- grep("^genes\\r", ls(cache, all.names = TRUE), value = TRUE)
-  keys <- unique(c(intersect(cache[["gene_order"]], present), present))
-  if (as.numeric(object.size(genes)) <= 4 * 1024^2) {
-    cache[[key]] <- genes
-    keys <- unique(c(setdiff(keys, key), key))
-  }
-  while (length(keys) > 128L ||
-         sum(vapply(keys, function(k) as.numeric(object.size(cache[[k]])), numeric(1))) > 4 * 1024^2) {
-    rm(list = keys[[1L]], envir = cache)
-    keys <- keys[-1L]
-  }
-  cache[["gene_order"]] <- keys
-}
-
-getMsigdbCatalogue <- function() {
-  cache <- .msigdbCache()
-  if (exists("catalogue", envir = cache, inherits = FALSE)) {
-    return(cache[["catalogue"]])
-  }
-  if (!requireNamespace("msigdbr", quietly = TRUE)) {
-    warning("The 'msigdbr' package is required to resolve gene sets.")
-    return(.emptyMsigdbCatalogue())
-  }
-  table <- tryCatch(
-    .msigdbCatalogueRows(),
-    error = function(error_condition) {
-      warning("MSigDB query failed: ", conditionMessage(error_condition))
-      NULL
-    }
-  )
-  collection_column <- if (
-    !is.null(table) && "gs_collection" %in% colnames(table)
-  ) {
-    "gs_collection"
-  } else if (!is.null(table) && "gs_cat" %in% colnames(table)) {
-    "gs_cat"
-  } else {
-    NULL
-  }
-  if (
-    is.null(collection_column) ||
-      !is.data.frame(table) ||
-      !"gs_name" %in% colnames(table)
-  ) {
-    if (!is.null(table)) {
-      warning("MSigDB query returned unexpected columns.")
-    }
-    return(.emptyMsigdbCatalogue())
-  }
-  catalogue <- unique(data.frame(
-    gs_name = trimws(as.character(table[["gs_name"]])),
-    collection = trimws(as.character(table[[collection_column]])),
-    stringsAsFactors = FALSE
-  ))
-  catalogue <- catalogue[
-    !is.na(catalogue$gs_name) &
-      nzchar(catalogue$gs_name) &
-      !is.na(catalogue$collection) &
-      nzchar(catalogue$collection),
-    ,
-    drop = FALSE
-  ]
-  ambiguous <- duplicated(catalogue$gs_name) |
-    duplicated(catalogue$gs_name, fromLast = TRUE)
-  catalogue <- catalogue[!ambiguous, , drop = FALSE]
-  row.names(catalogue) <- NULL
-  if (nrow(catalogue) == 0L) {
-    warning("MSigDB query returned an empty catalogue.")
-    return(.emptyMsigdbCatalogue())
-  }
-  cache[["catalogue"]] <- catalogue
-  rm(table)
-  catalogue
-}
-
-getGeneSetNames <- function() {
-  sort(unique(getMsigdbCatalogue()$gs_name))
-}
-
-getMsigdbGenes <- function(species, gene_set) {
-  cache <- .msigdbCache()
-  key <- .msigdbGeneCacheKey(species, gene_set)
-  if (exists(key, envir = cache, inherits = FALSE)) {
-    return(cache[[key]])
-  }
-  catalogue <- getMsigdbCatalogue()
-  collection <- catalogue$collection[match(gene_set, catalogue$gs_name)]
-  if (length(collection) != 1L || is.na(collection) || !nzchar(collection)) {
-    return(character())
-  }
-  compact <- cache[["compact_collection"]]
-  if (!is.null(compact) && identical(compact$species, species) &&
-      identical(compact$collection, collection)) {
-    genes <- compact$genes[[gene_set]]
-    if (length(genes)) {
-      .cacheMsigdbGenes(cache, key, genes)
-      return(genes)
-    }
-  }
-  arguments <- list(species = species)
-  query <- .msigdbFunction()
-  if ("collection" %in% names(formals(query))) {
-    arguments[["collection"]] <- collection
-  } else {
-    arguments[["category"]] <- collection
-  }
-  table <- tryCatch(
-    do.call(query, arguments),
-    error = function(error_condition) {
-      warning("MSigDB query failed: ", conditionMessage(error_condition))
-      NULL
-    }
-  )
-  if (is.null(table)) {
-    return(character())
-  }
-  if (
-    !is.data.frame(table) ||
-      !all(c("gs_name", "gene_symbol") %in% colnames(table))
-  ) {
-    warning("MSigDB gene query returned unexpected columns.")
-    return(character())
-  }
-  returned_names <- trimws(as.character(table[["gs_name"]]))
-  matches <- !is.na(returned_names) & returned_names == gene_set
-  genes <- trimws(as.character(table[["gene_symbol"]][matches]))
-  genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
-  if (length(genes) > 0L) {
-    .cacheMsigdbGenes(cache, key, genes)
-  }
-  # Reuse only the two relevant fields for the most recent small collection.
-  # Large collections are not retained, and the wide query table is never cached.
-  symbols <- trimws(as.character(table[["gene_symbol"]]))
-  valid <- !is.na(returned_names) & nzchar(returned_names) & !is.na(symbols) & nzchar(symbols)
-  if (as.numeric(object.size(returned_names)) + as.numeric(object.size(symbols)) <= 8 * 1024^2) {
-    mapping <- lapply(split(symbols[valid], returned_names[valid]), function(x) sort(unique(x)))
-    compact <- list(species = species, collection = collection, genes = mapping)
-    cache[["compact_collection"]] <- if (as.numeric(object.size(compact)) <= 8 * 1024^2) compact else NULL
-  }
-  rm(table)
-  genes
-}
-
 getGenesForGeneSet <- function(gene_set) {
   if (
     !is.null(getExperiment()$organism) &&
@@ -3498,26 +3298,9 @@ read_cerebro_file <- function(file) {
 ##----------------------------------------------------------------------------##
 ## Process-scoped cache for loaded .crb files (B8).
 ##
-## shiny_server.R owns this environment. The fallback keeps utility_functions.R
-## independently sourceable in tests and tools. Cached objects are prototypes;
-## callers receive shallow R6 clones so per-session lazy fields stay isolated.
+## crb_cache.R owns process-retained prototypes; this session adapter attaches
+## lazy backends only to shallow R6 clones, keeping session fields isolated.
 ##----------------------------------------------------------------------------##
-if (!exists(".crb_process_cache", inherits = TRUE)) {
-  .crb_process_cache <- new.env(parent = emptyenv())
-}
-if (!exists(".crb_backend_identities", inherits = TRUE)) {
-  .crb_backend_identities <- new.env(parent = emptyenv())
-}
-
-.touchCrbPrototype <- function(key) {
-  cached <- .crb_process_cache[[key]]
-  if (!is.null(cached)) {
-    cached$last_used <- as.numeric(Sys.time())
-    .crb_process_cache[[key]] <- cached
-  }
-  cached
-}
-
 .cloneCachedCrb <- function(object) {
   can_clone <-
     is.environment(object) &&
@@ -3710,44 +3493,6 @@ if (!exists(".crb_backend_identities", inherits = TRUE)) {
   )
 }
 
-.cacheCrbPrototype <- function(path, prototype, backend_identity) {
-  cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
-  .checkCrbBackendIdentity(cache_key, backend_identity)
-  cached <- .touchCrbPrototype(cache_key)
-  if (!is.null(cached)) {
-    if (!identical(cached$backend_identity, backend_identity)) {
-      stop(
-        "The cached CRB '",
-        path,
-        "' backend configuration changed after it was loaded. Start a new ",
-        "app session before using the new configuration.",
-        call. = FALSE
-      )
-    }
-    return(invisible(cached))
-  }
-  cached <- list(object = prototype, backend_identity = backend_identity,
-                 last_used = as.numeric(Sys.time()))
-  .crb_process_cache[[cache_key]] <- cached
-  ## Bound retained prototypes by count: object.size(R6) cannot measure their
-  ## referenced payload reliably. Active session clones remain valid on eviction.
-  keys <- ls(.crb_process_cache, all.names = TRUE)
-  if (length(keys) > 2L) {
-    older <- setdiff(keys, cache_key)
-    ages <- vapply(older, function(key) .crb_process_cache[[key]]$last_used %||% 0, numeric(1))
-    rm(list = older[order(ages)][seq_len(length(keys) - 2L)], envir = .crb_process_cache)
-  }
-  invisible(cached)
-}
-
-.checkCrbBackendIdentity <- function(key, identity) {
-  previous <- .crb_backend_identities[[key]]
-  if (!is.null(previous) && !identical(previous$identity, identity)) {
-    stop("The cached CRB backend configuration changed after it was loaded. Start a new app session.", call. = FALSE)
-  }
-  .crb_backend_identities[[key]] <- list(identity = identity)
-}
-
 get_or_load_crb <- function(
   path,
   backend_plan = NULL,
@@ -3763,15 +3508,6 @@ get_or_load_crb <- function(
   .checkCrbBackendIdentity(cache_key, cache_identity)
   cached <- .touchCrbPrototype(cache_key)
   if (!is.null(cached)) {
-    if (!identical(cached$backend_identity, cache_identity)) {
-      stop(
-        "The cached CRB '",
-        path,
-        "' backend configuration changed after it was loaded. Start a new ",
-        "app session before using the new configuration.",
-        call. = FALSE
-      )
-    }
     print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
     prototype <- cached$object
   } else {

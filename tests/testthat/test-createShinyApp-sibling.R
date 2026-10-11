@@ -519,6 +519,7 @@ source_bundle_runtime <- function(app = NULL) {
   }
   stopifnot(file.exists(utility))
   runtime <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(utility), "crb_cache.R"), envir = runtime)
   sys.source(utility, envir = runtime)
   runtime
 }
