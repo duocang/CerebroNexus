@@ -1,0 +1,15 @@
+"file","test","nb","failed","passed","skipped","warning","error"
+"test-app-inst.R","retry_get_value reports the last error after timing out",2,0,2,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: overview",3,0,3,FALSE,0,FALSE
+"test-app-inst.R","Projection switches categorical spatial datasets coherently",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","Spatial backgrounds reset when the spatial dataset changes",5,0,5,FALSE,0,FALSE
+"test-app-inst.R","Linked views resets the active background to its preset",6,0,6,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: main",7,0,7,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: groups",4,0,4,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: marker_genes",10,0,10,FALSE,0,FALSE
+"test-app-inst.R","app startup does not eagerly load scRepertoire",4,0,4,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: gene_expression",7,0,7,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: gene_id_conversion",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: color_management",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: about",2,0,2,FALSE,0,FALSE
+"test-app-inst.R","createShinyApp bundles a working app",1,0,1,FALSE,0,FALSE

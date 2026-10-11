@@ -701,7 +701,8 @@ test_that("{shinytest2} recording: gene_expression", {
     )
   )
   expect_false(isTRUE(enabled_style$disabled))
-  expect_identical(enabled_style$animation, "cerebro-control-enter")
+  ## Controls now reveal immediately; the old staggered entrance was removed.
+  expect_identical(enabled_style$animation, "none")
   panel_colour_id <- app$get_js(
     "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]').id"
   )
@@ -787,7 +788,7 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   expect_identical(
     unname(unlist(rgb_animations)),
-    rep("cerebro-control-enter", 3)
+    rep("none", 3)
   )
 
   app$stop()

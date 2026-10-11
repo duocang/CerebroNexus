@@ -1,0 +1,43 @@
+"file","test","nb","failed","passed","skipped","warning","error"
+"test-app-immune_repertoire.R","Clonal projection defers full repertoire controls",6,0,6,FALSE,0,FALSE
+"test-app-immune_repertoire.R","first IR plot tab is Clonal UMAP",1,0,1,FALSE,0,FALSE
+"test-app-immune_repertoire.R","immune_repertoire tab is present with example data (has TCR)",1,0,1,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Group by is visible on plots whose grouping it drives",11,0,11,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Chain is visible on plots whose scRepertoire API accepts it",2,0,2,FALSE,0,FALSE
+"test-app-immune_repertoire.R","changing 'Group by' keeps the current plot tab",2,0,2,FALSE,0,FALSE
+"test-app-immune_repertoire.R","settings dropdowns render all their options (not just selected)",3,0,3,FALSE,0,FALSE
+"test-app-immune_repertoire.R","immune_repertoire tab can be opened and renders settings",1,0,1,FALSE,0,FALSE
+"test-app-immune_repertoire.R","immune_repertoire module loads without breaking main app",1,0,1,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Clonal UMAP tab renders with receptor + projection selectors",4,0,4,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Display options panel exposes scatter params on scatter-type tabs",11,0,11,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Linked views shows the dataset point size in More settings",2,0,2,FALSE,0,FALSE
+"test-app-immune_repertoire.R","IR page uses the compact top toolbar and settings drawer",8,0,8,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Clonal UMAP has Show-all toggle and group filters",3,0,3,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Clonal UMAP switches to static facets only when grouped",9,0,9,FALSE,0,FALSE
+"test-app-immune_repertoire.R","Clone call is hidden on the Clonal UMAP tab",2,0,2,FALSE,0,FALSE
+"test-app-immune_repertoire.R","page info button opens the repertoire guide",2,0,2,FALSE,0,FALSE
+"test-app-immune_repertoire.R","lazy-load boundary: self-made plots stay unloaded, scRepertoire plots load + render",18,0,18,FALSE,0,FALSE
+"test-app-inst.R","retry_get_value reports the last error after timing out",2,0,2,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: overview",3,0,3,FALSE,0,FALSE
+"test-app-inst.R","Projection switches categorical spatial datasets coherently",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","Spatial backgrounds reset when the spatial dataset changes",5,0,5,FALSE,0,FALSE
+"test-app-inst.R","Linked views resets the active background to its preset",6,0,6,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: main",7,0,7,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: groups",4,0,4,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: marker_genes",10,0,10,FALSE,0,FALSE
+"test-app-inst.R","app startup does not eagerly load scRepertoire",4,0,4,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: gene_expression",7,2,5,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: gene_id_conversion",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: color_management",1,0,1,FALSE,0,FALSE
+"test-app-inst.R","{shinytest2} recording: about",2,0,2,FALSE,0,FALSE
+"test-app-inst.R","createShinyApp bundles a working app",1,0,1,FALSE,0,FALSE
+"test-smoke-production.R","convertSeuratToCerebro produces a .crb carrying spatial data",4,0,4,FALSE,0,FALSE
+"test-smoke-production.R","createShinyApp bundles the app directory and config",7,0,7,FALSE,0,FALSE
+"test-smoke-production.R","multi-crb config lists both datasets by name",9,0,9,FALSE,0,FALSE
+"test-smoke-production.R","each dataset keeps its own background image + alignment params",8,0,8,FALSE,0,FALSE
+"test-smoke-production.R","createShinyApp bundles real spatial demos with mixed image paths",10,0,10,FALSE,0,FALSE
+"test-smoke-production.R","the generated app remains self-contained at runtime",6,0,6,FALSE,0,FALSE
+"test-smoke-production.R","the generated real-data app boots with the Spatial tab",1,0,1,FALSE,0,FALSE
+"test-smoke-production.R","the generated multi-crb app boots and switches datasets",7,0,7,FALSE,0,FALSE
+"test-smoke-production.R","a bundled dataset deserializes and works without CerebroNexus",6,0,6,FALSE,0,FALSE
+"test-smoke-production.R","an exported bundle resolves the HLA core with no CerebroNexus installed",2,0,2,FALSE,0,FALSE

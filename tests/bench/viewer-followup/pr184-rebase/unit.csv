@@ -1,0 +1,693 @@
+"file","test","nb","failed","passed","skipped","warning","error"
+"test-createShinyApp-sibling.R","CRB preflight reads, inspects, and releases one dataset at a time",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial preflight does not hydrate molecule sidecars",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","CRB preflight releases the current dataset after an inspection error",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","CRB preflight preserves an inspection error when release also fails",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","valid Viewer Packs are bundled beside their CRB",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","scatter defaults accept one value or one value per dataset",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","Viewer resolves scatter defaults for the selected dataset",5,0,5,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","createShinyApp stores dataset scatter defaults directly",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","createShinyApp freezes compact dataset information",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","tagged H5 and BPCells backends are copied to their exact paths",14,0,14,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","build and runtime share the portable backend path contract",59,0,59,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","build and runtime share the backend descriptor contract",37,0,37,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","build and runtime share the backend override decision contract",12,0,12,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","backend locations must be portable relative paths",12,0,12,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","backend locations reject a trailing separator before staging",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime overrides do not bypass backend path validation",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","every copied artifact has a portable bundle target",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","malformed backend descriptors are rejected",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","arbitrary RDS objects are not accepted as Cerebro data",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a Cerebro class label alone is not a valid Cerebro object",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","an empty classed environment is not a Cerebro object",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","the minimum runtime Cerebro API is required before publication",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","every mandatory runtime Cerebro method is checked",26,0,26,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","preflight never invokes a serialized backend getter",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","bundle config freezes the validated field backend",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","configured runtime consumes the frozen plan without calling getter",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","cached CRBs reject a different effective backend plan",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","configured runtime fails closed when its plan entry is missing",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","configured runtime rejects malformed backend manifests",8,0,8,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime field fallback never invokes a serialized getter",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","uploaded CRBs use field fallback even when a manifest exists",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","uploaded CRBs ignore an unrelated malformed manifest",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime field fallback rejects non-portable backend locations",26,0,26,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","preflight rejects field-only modern backend state",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","preflight rejects getter-only modern backend state",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime fallback rejects mixed backend binding states",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime fallback rejects active and lazy bindings without forcing",8,0,8,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","preflight rejects active backend bindings without reading them",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","legacy detection rejects an active backend field",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","preflight rejects lazy CRB bindings without forcing them",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a missing tagged backend stops the build",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","failed preflight leaves an existing deployment untouched",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","inputs inside result_dir survive until the staged copy completes",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime override paths must be absolute for both backends",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","forward-slash UNC overrides are rejected outside Windows",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime overrides cannot target the result tree before publishing",16,0,16,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","runtime override symlinks cannot resolve into the result tree",10,0,10,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","broken override symlinks cannot become result-tree paths",12,0,12,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","broken external override symlinks remain valid host paths",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","override symlink cycles fail instead of hanging",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","native resolver canonicalizes reparse prefixes without readlink",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","native resolver rejects opaque broken filesystem entries",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","override canonicalization resolves symlinks before dot segments",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","external absolute runtime overrides are normalized and preserved",10,0,10,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","non-existing absolute host-managed overrides remain supported",10,0,10,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a configured runtime override skips the tagged backend copy",5,0,5,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a configured host override attaches the generated H5 plan",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","one global override cannot serve multiple Cerebro data files",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","one CRB cannot be reused under two labels",10,0,10,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","different sources cannot write the same private bundle target",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","private and spatial targets may share a basename",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","different datasets isolate equal spatial image basenames",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","duplicate spatial image data set names are rejected",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial images and settings preserve dataset spatial image nesting",5,0,5,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial image bundle targets use encoded portable components",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","builder-owned spatial options cannot bypass formal parameters",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial image preflight rejects unknown and conflicting references",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial image targets distinguish equal basenames and preserve logical names",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial image targets bound long logical names and filenames",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","spatial image settings accept only strict scalar fields",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","legacy spatial image paths require one unambiguous spatial",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","legacy non-spatial Cerebro objects remain bundleable",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","legacy non-spatial Cerebro objects reject external spatial images clearly",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","current Cerebro objects missing spatial accessors are rejected",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","partial, active, and lazy spatial accessors are rejected",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","unambiguous legacy multi-path vectors bundle every image",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","one spatial image can be shared by multiple data sets",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","external spatial images render from disk without an HTTP mapping",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","forged spatial backgrounds cannot read unconfigured files",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","unknown spatial image datasets fail before bundling",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","missing spatial images fail before bundling",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","parent and child bundle targets conflict before copying",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","backend paths cannot resolve through symbolic links",4,0,4,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","embedded and legacy CRBs do not require sibling files",12,0,12,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","legacy CRBs freeze the selected global override",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","old configs and legacy overrides attach through field fallback",6,0,6,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","overwrite FALSE rejects a non-empty destination without mutation",3,0,3,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","staged replacement preserves deployment root permissions",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","named lists of scalar paths are accepted",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","Cerebro data labels cannot be missing",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","Cerebro data labels must be unique",2,0,2,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","at least one Cerebro data set is required",1,0,1,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a bundled real H5 backend attaches with exact data",7,0,7,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","a bundled real BPCells backend attaches with exact data",7,0,7,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","process cache clones keep thin BPCells expression lazy",7,0,7,FALSE,0,FALSE
+"test-createShinyApp-sibling.R","the runtime rejects an H5 backend that is a directory",2,0,2,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects non-Seurat object",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects missing group column",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects missing nUMI column",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects missing nGene column",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects missing assay",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: rejects missing cell_cycle column",1,0,1,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: produces a valid .crb file from pbmc_seurat.rds",15,0,15,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: h5 mode writes a TENxMatrix-compatible sibling
+           and keeps crb$expression NULL so saveRDS does not embed the
+           matrix; round-trips bit-exact via lazy HDF5Array::TENxMatrix",12,0,12,FALSE,0,FALSE
+"test-exportFromSeurat.R","exportFromSeurat: h5 mode errors clearly when HDF5Array is missing",1,0,0,TRUE,0,FALSE
+"test-exportFromSeurat.R","h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
+           seed, not an eagerly materialised dgCMatrix (low RAM, instant attach)",7,0,7,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","sparse expression colour transport is exact and density-gated",7,0,7,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","browser hydrates Gene colours without float32 rounding",1,0,1,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","binary colour payload retains R doubles",2,0,2,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","short JSON colour payload also retains double precision",2,0,2,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","single-gene primary frames choose sparse colour transport",3,0,3,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","RGB and separate panels use one packed colour map",7,0,7,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","full canonical expression reads omit the million-index slice",2,0,2,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","gene primary colours do not materialize metadata",2,0,2,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","single-gene colour caches are bounded on both sides",8,0,8,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","secondary expression summaries wait for the painted primary frame",9,0,9,FALSE,0,FALSE
+"test-gene-expression-color-transport.R","gene expression progress remains open until the browser paints",6,0,6,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","Gene expression hydrates auxiliary cell data only on interaction",5,0,5,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","Gene selection settles before expression extraction starts",3,0,3,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","RGB mode reuses mounted selectors without resending all genes",4,0,4,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","Gene projection host is present before dynamic controls bind",4,0,4,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","empty Gene selection keeps the same summary without hydrating IDs",4,0,4,FALSE,0,FALSE
+"test-gene-expression-interaction-performance.R","Gene hover loads pending IDs without bypassing hover or lifecycle guards",1,0,1,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","gene expression summary modes keep their intended series",10,0,10,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","RGB summaries preserve repeated channels and omit empty ones",1,0,1,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","Viewer BPCells reads preserve values and canonical cell order",34,0,34,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","RGB expression reads all channels in one backend call",2,0,2,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","RGB violin outliers use the channel color",1,0,1,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","gene summary hosts change only when their layout changes",12,0,12,FALSE,0,FALSE
+"test-gene-expression-panel-modes.R","gene expression panels follow gene, selection, and display mode",6,0,6,FALSE,0,FALSE
+"test-groups-performance.R","Groups reads only the active columns after its viewport gate",8,0,8,FALSE,0,FALSE
+"test-groups-performance.R","Groups builds its first-frame controls without a renderUI cascade",5,0,5,FALSE,0,FALSE
+"test-groups-performance.R","Groups reports passive request-bound Plotly readiness",8,0,8,FALSE,0,FALSE
+"test-groups-performance.R","Groups composition counts factors without sorting every cell",9,0,9,FALSE,0,FALSE
+"test-groups-performance.R","Groups resolves only the colours used by the active plot",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","HLA Associations is wired to a frozen motif feature",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","the HLA motif network uses the shared Canvas renderer",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","Associations takes its features from the allele-independent graph",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","the allele scope cache key carries the carrier set, not just a name",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","Data and QC exposes normalized and donor mapping previews",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","motif network exposes a stable selected-node detail panel",9,0,9,FALSE,0,FALSE
+"test-hla-app-contract.R","HLA cohort filters are visible and drive every graph cache",10,0,10,FALSE,0,FALSE
+"test-hla-app-contract.R","core shim binds locally without polluting globalenv",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","bundled core shim resolves without an installed package",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo declares antigen selection, cells and its receptor key",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo HLA is genotyped and covers every sample",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo carries donor ids, so counting is donor-level",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo yields a readable TRB motif network on real sequences",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo measures real genes for every cell",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo keeps its expression block sparse",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","every shipped observation is paired alpha/beta",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo labels dextramer calls as reagent calls, not specificity",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","shipped demo exposes its cross-reactivity instead of describing it",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","an incompletely called locus is unknown, never a confirmed negative",6656,0,6656,FALSE,0,FALSE
+"test-hla-app-contract.R","the shipped demo's selection is a caveat the page can actually show",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","the shipped demo ships its CC-BY attribution beside the data",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","motif network nodes carry no group column",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","core_shim sources every R/hla_*.R core file",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","bundled HLA core/ is byte-identical to the R/ source",10,0,10,FALSE,0,FALSE
+"test-hla-app-contract.R","the panel info button is wired to a sourced guide",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the guide covers every tab the page actually shows",6,0,6,FALSE,0,FALSE
+"test-hla-app-contract.R","the guide states the page's evidence ceiling",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","guide schematics are self-contained inline SVG",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the renderer sets node size itself, never via vis `value`",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","the network caption states area encoding and the cap",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","guide palette constants match the renderer's scales",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","the guide draws no unnamed colour",1,0,1,FALSE,0,FALSE
+"test-hla-app-contract.R","the carrier and MHC-context scales share no hue but grey",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","MHC context is a fixed scale, not a data-order palette",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the page's nav gate scans every sample, like the core does",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","node colouring is offered from the declared groupings",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the lineage column is found by its labels, not by its name",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","every scrolling table keeps its cells on one line",7,0,7,FALSE,0,FALSE
+"test-hla-app-contract.R","scope guards test for 'all', never for one scope's name",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the parameter gate stays OUTSIDE the cached graph reactives",23,0,23,FALSE,0,FALSE
+"test-hla-app-contract.R","the parameter panel renders once, then updates in place",6,0,6,FALSE,0,FALSE
+"test-hla-app-contract.R","hidden HLA controls do not scan the repertoire",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","HLA heavy consumers require their visible subtab",8,0,8,FALSE,0,FALSE
+"test-hla-app-contract.R","the page's allele lives outside both pickers",8,0,8,FALSE,0,FALSE
+"test-hla-app-contract.R","the parameter gate covers the conditional allele pickers",6,0,6,FALSE,0,FALSE
+"test-hla-app-contract.R","the pair scope is offered only when both classes can be picked",2,0,2,FALSE,0,FALSE
+"test-hla-app-contract.R","the Network data tab exposes grain radio, table and download",8,0,8,FALSE,0,FALSE
+"test-hla-app-contract.R","the network table reads the graph and the segments, not the render cap",8,0,8,FALSE,0,FALSE
+"test-hla-app-contract.R","the network table carries the data set's own annotations",7,0,7,FALSE,0,FALSE
+"test-hla-app-contract.R","the network table renders and downloads the current view",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","Viewer Pack first frames bypass cold HLA preparation",6,0,6,FALSE,0,FALSE
+"test-hla-app-contract.R","HLA cohort filter inputs are isolated by chain",3,0,3,FALSE,0,FALSE
+"test-hla-app-contract.R","the motif Canvas receives the complete layout and compact edges",10,0,10,FALSE,0,FALSE
+"test-hla-app-contract.R","a colour change reuses the cached graph and Canvas viewport",5,0,5,FALSE,0,FALSE
+"test-hla-app-contract.R","the network table is nowrap-scrollable and truncates samples on hover",4,0,4,FALSE,0,FALSE
+"test-hla-app-contract.R","the samples column cannot inject HTML",7,0,7,FALSE,0,FALSE
+"test-hla-association-core.R","analysis unit collapses samples only with complete donor mapping",4,0,4,FALSE,0,FALSE
+"test-hla-association-core.R","allele status is locus-specific at the analysis-unit level",3,0,3,FALSE,0,FALSE
+"test-hla-association-core.R","locus call completeness needs two copies at the locus",3,0,3,FALSE,0,FALSE
+"test-hla-association-core.R","a homozygous call written twice still reads as complete",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","a half-typed locus cannot rule an allele out",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","a half-typed locus can still rule an allele IN",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","donor completeness comes from one sample, not pooled samples",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","feature overlap reports donor-level presence breadth and cell fraction",10,0,10,FALSE,0,FALSE
+"test-hla-association-core.R","feature overlap can freeze V-specific members",5,0,5,FALSE,0,FALSE
+"test-hla-association-core.R","node carrier status summarises the node's samples for one allele",6,0,6,FALSE,0,FALSE
+"test-hla-association-core.R","carrier counts expose untyped units a label alone would hide",4,0,4,FALSE,0,FALSE
+"test-hla-association-core.R","carrier label is always consistent with its counts",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","carrier counts count donors once, not each of their samples",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","node carrier status is Untyped without usable typing",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","node carrier status handles empty and NA sample sets",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","unit by allele matrix distinguishes non-carrier from locus-untyped",4,0,4,FALSE,0,FALSE
+"test-hla-association-core.R","a class I allele scopes to carriers' class I cells only",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","a class II allele scopes to carriers' class II cells only",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","an allele both samples carry still splits by class",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","scoping drops Unknown context rather than assuming a class",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","without a context column the scope is carrier-only",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","an allele nobody carries scopes to nothing, not to everything",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","scoping refuses rather than guesses without usable inputs",3,0,3,FALSE,0,FALSE
+"test-hla-association-core.R","scoping a carrier's cells keeps every class I allele's receptors",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","coarser typing than the query is untyped, never non-carrier",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","finer typing than the query is a carrier",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","a real mismatch is still a non-carrier",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","an exact match is still a carrier",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","a definite carrier at one copy beats an ambiguous other copy",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","ambiguity at one copy and a mismatch at the other is untyped",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","an untyped locus stays untyped",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","field prefixes do not match across loci or on partial digits",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","the per-allele scope follows the same resolution rule",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","an all-Unknown context column empties a class-matched scope",2,0,2,FALSE,0,FALSE
+"test-hla-association-core.R","coarse annotation resolves to no lineage at all",3,0,3,FALSE,0,FALSE
+"test-hla-association-core.R","the pair scope assigns each cell the allele its lineage would use",5,0,5,FALSE,0,FALSE
+"test-hla-association-core.R","the pair scope needs a lineage to assign anything",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","the pair scope refuses two alleles of the same class",1,0,1,FALSE,0,FALSE
+"test-hla-association-core.R","a CDR3 in both compartments summarises as Mixed",3,0,3,FALSE,0,FALSE
+"test-hla-class-slot.R","addHLATyping / getHLATyping round-trips a named list",3,0,3,FALSE,0,FALSE
+"test-hla-class-slot.R","addHLATyping accepts a pre-normalized canonical table unchanged",2,0,2,FALSE,0,FALSE
+"test-hla-class-slot.R","addHLATyping validates a canonical-looking table, not stores it raw",6,0,6,FALSE,0,FALSE
+"test-hla-class-slot.R","getHLATyping returns an empty canonical table when none is set",3,0,3,FALSE,0,FALSE
+"test-hla-class-slot.R","an object predating the field still returns an empty table",3,0,3,FALSE,0,FALSE
+"test-hla-class-slot.R","stored typing is queryable by carrier index",1,0,1,FALSE,0,FALSE
+"test-hla-export.R","manifest records the parameters needed to recompute the view",7,0,7,FALSE,0,FALSE
+"test-hla-export.R","manifest records the scope, pair alleles and lineage column",4,0,4,FALSE,0,FALSE
+"test-hla-export.R","scope fields fall back to (none) when not supplied",2,0,2,FALSE,0,FALSE
+"test-hla-export.R","manifest states the evidence ceiling and the denominator",5,0,5,FALSE,0,FALSE
+"test-hla-export.R","an association-conditioned data set gets a warning in the export",3,0,3,FALSE,0,FALSE
+"test-hla-export.R","a synthetic data set gets its own, stronger export warning",4,0,4,FALSE,0,FALSE
+"test-hla-export.R","an unselected data set gets no interpretation warning",1,0,1,FALSE,0,FALSE
+"test-hla-export.R","manifest carries QC warnings",2,0,2,FALSE,0,FALSE
+"test-hla-export.R","graph tables export nodes and edges",3,0,3,FALSE,0,FALSE
+"test-hla-export.R","graph tables are empty frames for an unusable graph",2,0,2,FALSE,0,FALSE
+"test-hla-export.R","motif summary reports size, consensus and max mismatch",5,0,5,FALSE,0,FALSE
+"test-hla-export.R","motif summary is an empty frame for an unusable graph",1,0,1,FALSE,0,FALSE
+"test-hla-graph-guard-equivalence.R","early total guard preserves counts, boundaries and normal graph payloads",114,0,114,FALSE,0,FALSE
+"test-hla-graph-guard-equivalence.R","over-limit graphs skip aggregation and normal graphs group only once",5,0,5,FALSE,0,FALSE
+"test-hla-graph-guard-equivalence.R","node keys preserve existing missing, factor and by-V semantics",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","HLA metadata is joined across samples without changing IR columns",6,0,6,FALSE,0,FALSE
+"test-hla-motif-core.R","rows with a V gene but no J gene are kept, with J as NA",6,0,6,FALSE,0,FALSE
+"test-hla-motif-core.R","rows without a V gene are still dropped",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","hla_detect_chains reports chains present in CTgene",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","hla_detect_chains handles empty / NULL input",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","hla_detect_chains scans beyond the first three samples",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","consensus marks differing positions with x",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","variable_aa returns residues only at consensus x positions",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","edges join only equal-length CDR3 at Hamming distance 1",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","distance-2 pairs get no direct edge",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","transitive component keeps A,C together and reports max mismatch 2",5,0,5,FALSE,0,FALSE
+"test-hla-motif-core.R","min_nodes keeps components with size >= N",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","show_isolated keeps degree-0 CDR3 as points",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","split-by-V does not connect same CDR3 across different V genes",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","split-by-V preserves the same CDR3 in multiple V bins",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","duplicate CDR3 across cells aggregates clone_count",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","metadata distribution is carried per node without collapsing",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","total size guard trips with a guard message (not a usable graph)",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","large repertoires get a deterministic initial sample cohort",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","initial cohorts retain sample order and empty declared samples",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","the graph carries igraph-computed draw coordinates",5,0,5,FALSE,0,FALSE
+"test-hla-motif-core.R","the layout is deterministic for the same graph",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","raw build keeps every node; finalize applies the min-size filter",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","split build matches the wrapper across thresholds",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","raising the threshold keeps surviving clusters in place",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","positions also hold when isolated CDR3s are shown",7,0,7,FALSE,0,FALSE
+"test-hla-motif-core.R","computing the layout leaves the caller's RNG stream alone",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","hla_motif_layout declines a graph that is not drawable",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","a tied mode resolves to the alphabetically first value",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","the distribution is ordered by count, ties alphabetically",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","a single-level distribution says 'type', not 'types'",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","NA and empty values are dropped from mode and distribution",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","a node whose column is entirely NA summarises to NA",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","samples_all is the sorted unique sample set, not the modal sample",1,0,1,FALSE,0,FALSE
+"test-hla-motif-core.R","the context column is summarised by context_summary, not by mode",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","by_v keys nodes on (V gene, CDR3) and keeps both",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","sample origin names a single sample and collapses the rest",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","sample origin is NA when the node tracks no sample",3,0,3,FALSE,0,FALSE
+"test-hla-motif-core.R","sample origin is not the modal sample",4,0,4,FALSE,0,FALSE
+"test-hla-motif-core.R","sample origin reaches the graph as a vertex attribute",2,0,2,FALSE,0,FALSE
+"test-hla-motif-core.R","max mismatch is the Hamming spread, NOT the graph diameter",6,0,6,FALSE,0,FALSE
+"test-hla-motif-core.R","no user-facing string calls the max mismatch a diameter",4,0,4,FALSE,0,FALSE
+"test-hla-network-selection.R","HLA node selection maps cleanly between motif keys and cells",4,0,4,FALSE,0,FALSE
+"test-hla-network-selection.R","HLA exposes the shared cohort controls and a network saved-view adapter",22,0,22,FALSE,0,FALSE
+"test-hla-network-selection.R","HLA node details stay in the hover tooltip",8,0,8,FALSE,0,FALSE
+"test-hla-network-selection.R","Projection adapter captures shared JSON and downloads its PNG",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","HLA PNG adapter reports browser export success and failure",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","HLA retires drawn selection geometry on a dataset request",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","successful specialist restoration does not replay stale state",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist sharing requires the current dataset generation",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist restoration follows dynamically bound controls",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist restoration waits for late Shiny-bound controls",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist restoration keeps waiting for unresolved controls",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist restoration retains only unresolved controls after the grace period",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","specialist restoration retries a replaced binding that initially throws",2,0,2,FALSE,0,FALSE
+"test-hla-network-selection.R","a new specialist restore cancels unresolved controls from the previous one",2,0,2,FALSE,0,FALSE
+"test-hla-parser-equivalence.R","vectorized segments preserve the complete bd47f107 parser contract",120,0,120,FALSE,0,FALSE
+"test-hla-parser-equivalence.R","parser equivalence preserves downstream graph inputs and identities",3,0,3,FALSE,0,FALSE
+"test-hla-parser-equivalence.R","segment binding preserves metadata types and attributes",34,0,34,FALSE,0,FALSE
+"test-hla-small-bin-threads.R","small HLA bins avoid thread startup without changing motif results",20,0,20,FALSE,0,FALSE
+"test-hla-typing.R","allele normalization accepts common input forms",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","allele normalization treats NNNN / empty / NA as missing",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","bare fields without a locus are unrecognisable",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","more than one '*' is rejected, not silently truncated",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","resolution is preserved, not padded",3,0,3,FALSE,0,FALSE
+"test-hla-typing.R","expression suffix is accepted",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","official G and P group suffixes are preserved",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","garbage alleles are rejected",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","locus class maps I / II / other",3,0,3,FALSE,0,FALSE
+"test-hla-typing.R","named list normalizes to canonical long table",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","wide table normalizes to canonical long table",5,0,5,FALSE,0,FALSE
+"test-hla-typing.R","wide table preserves donor mapping",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","donor_id survives normalization of a long table",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","a named list has no donor column, so donor_id is NA",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","missing source_type defaults to unknown with a QC warning",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","unrecognisable alleles are reported in QC, not silently dropped",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","carrier index maps allele -> samples",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","coverage-by-sample summarises loci and allele counts",3,0,3,FALSE,0,FALSE
+"test-hla-typing.R","lineage context maps CD8 -> Class I, CD4/Treg -> Class II",5,0,5,FALSE,0,FALSE
+"test-hla-typing.R","coarse or non-T labels map to Unknown, never guessed",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","lineage context is vectorised",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","context summary collapses per-cell contexts to a node label",4,0,4,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary counts carriers / non-carriers / untyped",5,0,5,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary uses locus-specific typing denominators",3,0,3,FALSE,0,FALSE
+"test-hla-typing.R","a one-copy locus call is untyped, not a non-carrier",3,0,3,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary collapses repeated samples to donor when complete",5,0,5,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary is ordered by descending carrier count",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary is empty on empty typing",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","empty input yields an empty canonical table",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","a wide CSV survives the read the upload path uses",5,0,5,FALSE,0,FALSE
+"test-hla-typing.R","a wide TSV is read on its name, not its temp path",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","a long CSV still reads unchanged",1,0,1,FALSE,0,FALSE
+"test-hla-typing.R","carrier summary is empty, not an error, when no sample matches",2,0,2,FALSE,0,FALSE
+"test-hla-typing.R","validation survives factor-valued canonical columns",7,0,7,FALSE,0,FALSE
+"test-hla-typing.R","lineage inference ignores treatment and study-arm labels",6,0,6,FALSE,0,FALSE
+"test-hla-visual-helpers.R","categorical colours stay unique beyond the base palette length",2,0,2,FALSE,0,FALSE
+"test-hla-visual-helpers.R","empty colour levels return an empty named vector",1,0,1,FALSE,0,FALSE
+"test-hla-visual-helpers.R","node area is proportional to the clone count",1,0,1,FALSE,0,FALSE
+"test-hla-visual-helpers.R","a single-unit node sits at the minimum radius",1,0,1,FALSE,0,FALSE
+"test-hla-visual-helpers.R","radius is capped, and the documented threshold is where it bites",4,0,4,FALSE,0,FALSE
+"test-hla-visual-helpers.R","radius floors degenerate counts to one unit",4,0,4,FALSE,0,FALSE
+"test-hla-visual-helpers.R","radius grows as the square root, never linearly",2,0,2,FALSE,0,FALSE
+"test-hla-visual-helpers.R","the node size multiplier scales radii without changing the encoding",7,0,7,FALSE,0,FALSE
+"test-immune_repertoire.R","immune_repertoire module files parse without errors",11,0,11,FALSE,0,FALSE
+"test-immune_repertoire.R","Clonal UMAP forwards the shared point-size unit unchanged",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","default abundance bypasses scRepertoire cell expansion",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","immune_repertoire UI defines correct tabName",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","example.crb contains real immune repertoire data",11,0,11,FALSE,0,FALSE
+"test-immune_repertoire.R","example.crb IR barcodes align with cell metadata",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","IR grouping variables are recoverable from cell metadata by barcode",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","example.crb IR contains both TCR and BCR clonotypes",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","example.crb IR has TCR chains detectable from CTgene",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","data.R joins metadata so grouping is not limited to IR columns",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","core IR params update immediately to keep bindCache keys and values aligned",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","Comparison-units re-split is removed; grouping is unified on group.by",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","renderers pass supported scRepertoire parameters",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","Diversity x.axis uses grouped bootstrap plot, not scRepertoire's continuous-axis boxplot",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","clonalScatter render guards against invalid group selection",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","safeRenderPlot lets validate/req conditions pass through",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","server.R translates cryptic scRepertoire errors to empty-state",5,0,5,FALSE,0,FALSE
+"test-immune_repertoire.R","paired scatter falls back to manual sample selection",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","ir_bindCache injects dataset identity into cache key",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","ir_bindCache keeps only global cache keys centralized",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","example.crb preserves core data fields",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","renderers enforce scRepertoire parameter constraints",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","Clonal UMAP does not depend on the hidden Clone call control",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","Clonal UMAP waits for its raw grouping input",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","Clonal projection reuses grouped renderer data without placeholder IDs",12,0,12,FALSE,0,FALSE
+"test-immune_repertoire.R","Clonal UMAP split layout avoids empty facet slots on wide canvases",9,0,9,FALSE,0,FALSE
+"test-immune_repertoire.R","ir_bindCache keys cover all per-plot ir_param() calls",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","renderers pass order.by to scRepertoire functions that support it",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","clonalHomeostasis renderer passes a cloneSize binning",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","vizGenes renderer passes a y.axis",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","order.by control is declared in param_spec",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","tab-dependent label uses a NULL-safe %in% guard",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","IR cold landing defers drawer controls and metadata hydration",17,0,17,FALSE,0,FALSE
+"test-immune_repertoire.R","Length renderer only facets when a grouping is selected",2,0,2,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep stacks two groups and links only shared clones",8,0,8,FALSE,0,FALSE
+"test-immune_repertoire.R","compare ribbon ends have different widths when the clone changes size",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep detects the Count column in count mode",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep stacks every column in one shared clone order",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep reports per-clone totals in clone order",5,0,5,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep links only adjacent groups across three groups",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep preserves the requested group order",1,0,1,FALSE,0,FALSE
+"test-immune_repertoire.R","compare prep returns friendly empty states",4,0,4,FALSE,0,FALSE
+"test-immune_repertoire.R","compare plotly shows exactly one legend entry per clone",5,0,5,FALSE,0,FALSE
+"test-immune_repertoire.R","compare hover comes from single-tooltip anchor markers",12,0,12,FALSE,0,FALSE
+"test-immune_repertoire.R","compare plotly hover keeps the full clone and honours the value mode",7,0,7,FALSE,0,FALSE
+"test-immune_repertoire.R","Compare renderer is interactive plotly and drops the area graph param",3,0,3,FALSE,0,FALSE
+"test-immune_repertoire.R","IR panel has an info button wired to an illustrated guide modal",5,0,5,FALSE,0,FALSE
+"test-ir-definition-sharing.R","immune metadata joins follow only active analysis controls",5,0,5,FALSE,0,FALSE
+"test-ir-definition-sharing.R","immune metadata joins only requested columns in one aligned pass",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","segment parsing keeps only requested columns and supplies sample",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","empirical clone-size profiles preserve exact observed counts",5,0,5,FALSE,0,FALSE
+"test-ir-definition-sharing.R","clonal projection bounds the contextual background before rendering",9,0,9,FALSE,0,FALSE
+"test-ir-definition-sharing.R","clonal expansion sizes avoid sorting clone labels",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","default abundance reduces cells to clone-count bins",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments extracts TRB V/J/CDR3 from CT* columns",5,0,5,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments drops rows lacking the requested chain",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments carries metadata columns through",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments returns NULL on empty or null input",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments returns NULL when no row has the chain",1,0,1,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_parse_segments preserves per-sample metadata via column union",4,0,4,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_definition_counts returns the 7 resolution levels in order",9,0,9,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_definition_counts splits by group when given",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_definition_counts returns NULL on empty input",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_sharing_classify assigns Private / within / cross correctly",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_sharing_classify degrades to two classes without a group",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_sharing_classify returns NULL on empty input or missing unit col",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_sharing_classify sharing factor levels match the mode",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_sharing_classify ignores NA unit/group values when counting",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_definition_plot returns a ggplot for valid TCR data",1,0,1,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_definition_plot returns NULL when no cells for the chain",1,0,1,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_definition_plot adds a BCR caveat to the subtitle for IGH",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_is_bcr_chain is TRUE for BCR chains, FALSE otherwise and safe on NA/NULL",6,0,6,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_sharing_plot returns a ggplot and maps display labels",3,0,3,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_sharing_plot returns NULL when the unit column is absent",1,0,1,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_sharing_plot adds a BCR caveat to the subtitle for IGH",2,0,2,FALSE,0,FALSE
+"test-ir-definition-sharing.R","ir_build_sharing_plot keeps 3-class x order Private -> within -> across",1,0,1,FALSE,0,FALSE
+"test-ir-help-demo-helpers.R","the bundled IR help-demo helper exists and parses",2,0,2,FALSE,0,FALSE
+"test-ir-help-demo-helpers.R","help-demo routing separates local, backed, and absent examples",7,0,7,FALSE,0,FALSE
+"test-ir-help-demo-helpers.R","synthetic help data is deterministic without changing caller RNG",5,0,5,FALSE,0,FALSE
+"test-ir-help-demo-helpers.R","local seeding restores an initially absent RNG state",1,0,1,FALSE,0,FALSE
+"test-ir-help-demo-helpers.R","backed help examples keep an explicit load boundary",3,0,3,FALSE,0,FALSE
+"test-ir-homeostasis-counts.R","Homeostasis exact bins match scRepertoire, including blanks and thresholds",26,0,26,FALSE,0,FALSE
+"test-ir-homeostasis-counts.R","Homeostasis reads only the current dataset's optional asset",6,0,6,FALSE,0,FALSE
+"test-ir-homeostasis-counts.R","Homeostasis plot preserves stacked cell proportions",1,0,1,FALSE,0,FALSE
+"test-ir-homeostasis-counts.R","grouped Homeostasis pools exact clone identities and preserves empty levels",23,0,23,FALSE,0,FALSE
+"test-ir-packed-abundance.R","native SizeDist does not initialize the unused analytical fallback",2,0,2,FALSE,0,FALSE
+"test-ir-packed-abundance.R","Abundance renderer reads the current pack before repertoire data",8,0,8,FALSE,0,FALSE
+"test-ir-packed-abundance.R","IR controls use descriptor chains and retain legacy detection",7,0,7,FALSE,0,FALSE
+"test-ir-packed-abundance.R","Homeostasis renderer defers hydration and preserves analytical fallbacks",8,0,8,FALSE,0,FALSE
+"test-ir-plots.R","ir_length_facet_plot draws one panel per group",4,0,4,FALSE,0,FALSE
+"test-ir-plots.R","ir_length_facet_plot scale=TRUE yields within-group proportions",1,0,1,FALSE,0,FALSE
+"test-ir-plots.R","ir_length_facet_plot preserves export table group order",1,0,1,FALSE,0,FALSE
+"test-ir-plots.R","ir_length_facet_plot can facet by the selected group column",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","core clonal plots render a non-empty ggplot on example.crb",8,0,8,FALSE,0,FALSE
+"test-ir-plots.R","order.by reorders the groups in scRepertoire output",3,0,3,FALSE,0,FALSE
+"test-ir-plots.R","clonalHomeostasis accepts a custom cloneSize binning",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","vizGenes accepts a y.axis for paired gene usage",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","paired scatter manual fallback renders on example.crb",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","paired scatter renders after splitting by a metadata category",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","gene-usage and CDR3 plots render on example.crb",6,0,6,FALSE,0,FALSE
+"test-ir-plots.R","BCR isotype/SHM helpers produce a plot for the bundled BCR data",2,0,2,FALSE,0,FALSE
+"test-ir-plots.R","BCR isotype extraction preserves sample names from the IR list",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","a full projection preserves canonical row order",1,0,1,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection payload selects only required metadata columns",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection first frame excludes cell identities and hover metadata",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","thin CRB first frames do not force cell-barcode hydration",3,0,3,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","first-frame cache is optional outside a loaded dataset",1,0,1,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection auxiliary data is built only after it is requested",6,0,6,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection auxiliary rows preserve plotted group order",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","trajectory first frame defers identities and hover",3,0,3,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","spatial first frame defers identities and hover",6,0,6,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","gene-expression first frame defers identities and hover",16,0,16,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","unmounted group filters preserve canonical rows without level scans",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","Gene group filters mount only after the settings drawer opens",2,0,2,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","gene-expression deferred hover selects rows and columns first",4,0,4,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","cached BPCells gene names do not force the expression backend",4,0,4,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","thin BPCells first-frame cache includes its small gene index",1,0,1,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection rendering has one first-frame debounce entry point",3,0,3,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","projection can render before its dynamic controls bind",6,0,6,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","a new projection mount redraws unchanged data",5,0,5,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","full ordered projection rows bypass row subsetting",4,0,4,FALSE,0,FALSE
+"test-projection-first-frame-performance.R","thin CRBs discard duplicate metadata row names",6,0,6,FALSE,0,FALSE
+"test-r-functions.R","Cerebro object can be instantiated",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","legacy serialized Cerebro objects remain readable",3,0,3,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: addGroup / getGroups round-trip",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: getGroupLevels returns correct levels",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: checkIfGroupExists works correctly",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: addProjection / getProjection round-trip",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: availableProjections lists added projections",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: setMetaData / getMetaData round-trip",3,0,3,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: addMarkerGenes / getMarkerGenes round-trip",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: setExpression / getExpressionMatrix round-trip",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: getMeanExpressionForGenes returns numeric vector",4,0,4,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: per-cell means preserve dense and sparse semantics",14,0,14,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: expression access accepts canonical cell indices",12,0,12,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: zero-column matrices preserve empty-cell semantics",6,0,6,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: non-empty per-cell means request one native block",6,0,6,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: DelayedArray means stay native",11,0,11,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: HDF5Array means stay native",7,0,7,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: BPCells means stay native",9,0,9,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: addGeneList / getGeneLists round-trip",3,0,3,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: addExperiment / getExperiment round-trip",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","Cerebro: version can be set and retrieved",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","example.crb loads successfully and has correct structure",5,0,5,FALSE,0,FALSE
+"test-r-functions.R","example.crb contains expected groups and projections",3,0,3,FALSE,0,FALSE
+"test-r-functions.R","example.crb sample levels are as expected",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","example.h5 file exists and is non-empty",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","calculatePercentGenes stops if Seurat is not installed or object is wrong class",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","addPercentMtRibo rejects unsupported organism",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","addPercentMtRibo rejects unsupported gene_nomenclature",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro rejects invalid mode",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro rejects out-of-range point size",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro rejects out-of-range opacity",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro rejects out-of-range percentage",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro rejects non-logical projections_show_hover_info",1,0,1,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro loads the installed Viewer",2,0,2,FALSE,0,FALSE
+"test-r-functions.R","launchCerebro builds dataset information for configured files",7,0,7,FALSE,0,FALSE
+"test-r-functions.R",".getExpressionMatrix falls back counts-only v5 with a warning",5,0,5,FALSE,0,FALSE
+"test-repeated-viewer-work.R","IR joins and compact profiles follow semantic data changes only",19,0,19,FALSE,0,FALSE
+"test-repeated-viewer-work.R","IR non-select controls preserve valid values including false and empty",6,0,6,FALSE,0,FALSE
+"test-repeated-viewer-work.R","Groups shares counts across display forms but refreshes data",5,0,5,FALSE,0,FALSE
+"test-repeated-viewer-work.R","compact SizeDist renders the identical geometry",3,0,3,FALSE,0,FALSE
+"test-repeated-viewer-work.R","table classification is skipped only when neither feature uses it",3,0,3,FALSE,0,FALSE
+"test-repeated-viewer-work.R","paired scatter retains a third dot-size sample",1,0,1,FALSE,0,FALSE
+"test-resource-boundaries.R","CRB eviction bounds prototypes and preserves active clones and identities",4,0,4,FALSE,0,FALSE
+"test-resource-boundaries.R","catalogue construction retains only two launch prototypes",2,0,2,FALSE,0,FALSE
+"test-resource-boundaries.R","prefetch is shared across sessions and releases completed task results",11,0,11,FALSE,0,FALSE
+"test-resource-boundaries.R","MSigDB catalogue queries collections separately and shares compact gene results",11,0,11,FALSE,0,FALSE
+"test-resource-boundaries.R","Enrichr applies timeout and rejects HTTP errors before parsing",12,0,12,FALSE,0,FALSE
+"test-resource-boundaries.R","delayed exports round-trip without whole-matrix as.matrix",20,0,20,FALSE,0,FALSE
+"test-result-page-controls.R","mean-only expression groups are reachable without expression reads",2,0,2,FALSE,0,FALSE
+"test-result-page-controls.R","enrichment method changes preserve valid choices and reject stale methods",5,0,5,FALSE,0,FALSE
+"test-result-page-controls.R","stored expression metric preference survives a grouping change",4,0,4,FALSE,0,FALSE
+"test-result-page-controls.R","ambiguous legacy pct values reach the table without unit conversion",6,0,6,FALSE,0,FALSE
+"test-result-page-controls.R","Abundance waits for dynamic controls before choosing a renderer",4,0,4,FALSE,0,FALSE
+"test-spatial.R","demo_spatial.crb exposes spatial data via class methods",2,0,2,FALSE,0,FALSE
+"test-spatial.R","demo_spatial.crb spatial data is accessible and complete",7,0,7,FALSE,0,FALSE
+"test-spatial.R","getSpatialData errors on unknown spatial entry",1,0,1,FALSE,0,FALSE
+"test-spatial.R","spatial accessor methods are defined on the class",3,0,3,FALSE,0,FALSE
+"test-spatial.R","addSpatialData validates its input structure",2,0,2,FALSE,0,FALSE
+"test-spatial.R","spatial utility wrappers are defined in the app scope",3,0,3,FALSE,0,FALSE
+"test-spatial.R","exportFromSeurat carries the spatial extraction path",2,0,2,FALSE,0,FALSE
+"test-spatial.R","all spatial module files parse without errors",26,0,26,FALSE,0,FALSE
+"test-spatial.R","spatial coordinate reuse requires exact canonical full order",6,0,6,FALSE,0,FALSE
+"test-spatial.R","validated spatial coordinates reuse canonical storage with fallback",4,0,4,FALSE,0,FALSE
+"test-spatial.R","spatial coordinates retain subset and dataset-switch fallbacks",4,0,4,FALSE,0,FALSE
+"test-spatial.R","background-image selection only recreates image calibration controls",35,0,35,FALSE,0,FALSE
+"test-spatial.R","ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method",50,0,50,FALSE,0,FALSE
+"test-spatial.R","hidden Moran's I exits before reading Spatial data",5,0,5,FALSE,0,FALSE
+"test-spatial.R","Moran's I reads Spatial data only after ImageFeaturePlot is requested",4,0,4,FALSE,0,FALSE
+"test-spatial.R","group_filters widget the spatial tab depends on is present",2,0,2,FALSE,0,FALSE
+"test-spatial.R","spatial UI defines correct tabName",1,0,1,FALSE,0,FALSE
+"test-spatial.R","Spatial tab is wired into the app UI and server",6,0,6,FALSE,0,FALSE
+"test-spatial.R","createShinyApp preserves legacy and nested spatial settings APIs",5,0,5,FALSE,0,FALSE
+"test-spatial.R","createShinyApp migrates legacy spatial settings into its bundle",7,0,7,FALSE,0,FALSE
+"test-spatial.R","Spatial UI seeds and resets every field from the shared image preset",10,0,10,FALSE,0,FALSE
+"test-spatial.R","createShinyApp bundles a spatial image and writes the option",4,0,4,FALSE,0,FALSE
+"test-spatial.R","createShinyApp rejects unmatched spatial_images",2,0,2,FALSE,0,FALSE
+"test-spatial.R","Visium ships its H&E as an EXTERNAL image, not embedded",5,0,5,FALSE,0,FALSE
+"test-spatial.R","renderer uses selected descriptor bounds without changing cell axes",16,0,16,FALSE,0,FALSE
+"test-spatial.R","external spatial image encoding is cached by file version",3,0,3,FALSE,0,FALSE
+"test-spatial.R","spatial hull geometry is prepared outside the renderer",3,0,3,FALSE,0,FALSE
+"test-spatial.R","hidden Spatial appearance controls do not rebuild primary data",9,0,9,FALSE,0,FALSE
+"test-spatial.R","first Spatial frame uses deduplicated server-side control defaults",6,0,6,FALSE,0,FALSE
+"test-spatial.R","shared Canvas owns spatial background identity and appearance",21,0,21,FALSE,0,FALSE
+"test-spatial.R","spatial first frames replace only exact flat geometry with an asset",12,0,12,FALSE,0,FALSE
+"test-spatial.R","Spatial first-frame data bypasses the legacy full accessor",3,0,3,FALSE,0,FALSE
+"test-spatial.R","bounded Spatial backgrounds remain eligible for resource first frames",2,0,2,FALSE,0,FALSE
+"test-spatial.R","Spatial geometry catalog is registered but fetched only on page request",14,0,14,FALSE,0,FALSE
+"test-spatial.R","empty spatial selection returns before million-cell plot data",9,0,9,FALSE,0,FALSE
+"test-spatial.R","multi-spatial main UI preserves sliceB and uses its image choices",6,0,6,FALSE,0,FALSE
+"test-spatial.R","spatial gene selectors initialize only for their visible plot type",12,0,12,FALSE,0,FALSE
+"test-spatial.R","bundled real demos embed a genuine tissue image in the .crb",4,0,4,FALSE,0,FALSE
+"test-spatial.R","each real spatial demo exposes coordinates with x/y",24,0,24,FALSE,0,FALSE
+"test-spatial.R","real spatial demos are wired into the bundled dropdown",8,0,8,FALSE,0,FALSE
+"test-spatial.R","image-free demo (Slide-seq) carries no histology image",1,0,1,FALSE,0,FALSE
+"test-spatial.R","embedded image demos store the image natively with no flip flag",2,0,2,FALSE,0,FALSE
+"test-spatial.R","app.R ships the Visium H&E overlay pre-aligned",4,0,4,FALSE,0,FALSE
+"test-spatial.R","app.R configures MERFISH plot and image rotations separately",2,0,2,FALSE,0,FALSE
+"test-spatial.R",".getSpatialData tolerates a real Slide-seq object (NA-named coord col)",4,0,4,FALSE,0,FALSE
+"test-spatial.R","Spatial background picker is in the toolbar and labels default off",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","dataset info resolves only the selected catalog entry",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","catalog-backed Data Info defers the full dataset load",10,0,10,FALSE,0,FALSE
+"test-utility_functions.R","Data Info uses the catalog before the full dataset",4,0,4,FALSE,0,FALSE
+"test-utility_functions.R","Data Info starts a non-blocking CRB prefetch",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","dataset changes reset Data Info before full-load reactives run",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","a prefetched CRB prototype enters the process cache",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","the lightweight TCR gate scans every sample",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","infinite values are replaced without changing other columns",4,0,4,FALSE,0,FALSE
+"test-utility_functions.R","spreadsheet formulas are neutralized in cells and column names",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","ordinary Viewer tables escape HTML by default",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","Viewer tables can explicitly opt out of HTML escaping",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","embedded Extra material escapes CRB-controlled HTML",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","MSigDB helpers retain only compact process-level results",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","MSigDB catalogue retries failures and malformed responses",9,0,9,FALSE,0,FALSE
+"test-utility_functions.R","MSigDB catalogue rejects empty and invalid results",7,0,7,FALSE,0,FALSE
+"test-utility_functions.R","MSigDB gene queries retry failures and ignore invalid names",8,0,8,FALSE,0,FALSE
+"test-utility_functions.R","conditional initial routing is consumed by the first dataset",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","duplicate Extra material labels identify the embedded source",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","CRB cache log labels omit directory paths",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","Viewer uploads require explicit open mode",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","Viewer ignores uploaded files unless upload mode is open",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","spatial offset ranges require finite coordinates",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","cell scatter payload rejects incoherent categorical snapshots",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","single-cell scatter payloads remain arrays on the wire",5,0,5,FALSE,0,FALSE
+"test-utility_functions.R","single-view scatter payloads carry their display label",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","direct one-cell renderer messages retain array fields",15,0,15,FALSE,0,FALSE
+"test-utility_functions.R","categorical scatter payloads retain cells with missing metadata",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","large canonical categorical payloads keep coordinates contiguous",7,0,7,FALSE,0,FALSE
+"test-utility_functions.R","large canonical factor payloads encode groups without expanding labels",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","canonical scatter resources avoid materializing million-cell vectors",11,0,11,FALSE,0,FALSE
+"test-utility_functions.R","selection counts use payload cell IDs",2,0,2,FALSE,0,FALSE
+"test-utility_functions.R","selected-cell tables preserve identity and skip eager cell work",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","stable selected-cell keys skip coordinate identifiers",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","shared result filtering keeps grouped and all-row semantics",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","prettifyTable does not crash on an all-NA percentage column",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","prettifyTable still rescales a 0-100 percentage column to 0-1",1,0,1,FALSE,0,FALSE
+"test-utility_functions.R","prettifyTable tolerates NA / NULL toggle inputs",3,0,3,FALSE,0,FALSE
+"test-utility_functions.R","cachePlot caches by key and invalidates on key or dataset change",8,0,8,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","mobile settings drawer behaves as a modal",3,0,3,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","data controls and conversion table remain usable on narrow screens",6,0,6,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","colour management renders one information action",2,0,2,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","viewer shell provides landmark, skip link, and page headings",6,0,6,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","legacy result selectors use real visible labels",15,0,15,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","canvas views expose a text alternative and hide minimaps",6,0,6,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","shared column filters are named from their headers",3,0,3,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","async output updates are announced",19,0,19,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","inactivity warning gives users a way to continue",6,0,6,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","visual tokens remain readable and responsive",11,0,11,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","network motion follows the reduced-motion preference",1,0,1,FALSE,0,FALSE
+"test-viewer-accessibility-design.R","empty and welcome states explain the next step",5,0,5,FALSE,0,FALSE
+"test-viewer-extra-material-selector.R","changing workbooks refreshes sheet choices and retains their display names",4,0,4,FALSE,0,FALSE
+"test-viewer-extra-material-selector.R","embedded table display labels preserve identity and dataset isolation",9,0,9,FALSE,0,FALSE
+"test-viewer-extra-material-selector.R","single-sheet workbooks still show their table display names",4,0,4,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack gating is dataset-level",6,0,6,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack stores canonical trajectory row indexes",8,0,8,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack links exact trajectory geometry to canonical projection",5,0,5,FALSE,0,FALSE
+"test-viewer-pack.R","validated Viewer Pack descriptors are reused with session-local caches",4,0,4,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack stores canonical spatial row indexes",5,0,5,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack stores compact group metric frames",5,0,5,FALSE,0,FALSE
+"test-viewer-pack.R","saveCerebro forwards dataset-level Viewer Pack policy",1,0,1,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack manifest validates canonical identity and assets",12,0,12,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack rejects corruption and preserves the CRB fallback",5,0,5,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack runtime loads HLA assets with exact fallback",25,0,25,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack runtime fails closed on incompatible identity",2,0,2,FALSE,0,FALSE
+"test-viewer-pack.R","thin CRBs open Viewer Packs without hydrating cell barcodes",6,0,6,FALSE,0,FALSE
+"test-viewer-pack.R","full CRBs open Viewer Packs without hydrating metadata",5,0,5,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer Pack IR indexes first-frame coordinates without barcodes",9,0,9,FALSE,0,FALSE
+"test-viewer-pack.R","Viewer wires valid HLA assets behind the CRB fallback",12,0,12,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer shell uses native sidebar scrolling",2,0,2,FALSE,0,FALSE
+"test-viewer-review-feedback.R","gene conversion table escapes cell content",2,0,2,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer gene sets use the public msigdbr API",6,0,6,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer omits server-side PDF exports",4,0,4,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer no longer depends on shinyFiles",4,0,4,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer copy uses British colour spelling",12,0,12,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Cell-view colouring controls share one label",13,0,13,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Informational Canvas text uses the readable secondary token",12,0,12,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Projection uses registered groups and their shared default",3,0,3,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Viewer metadata Colour by controls share registered group choices",7,0,7,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Cell-view More settings expose only effective appearance controls",25,0,25,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Cell-view appearance uses the existing payload lifecycle",8,0,8,FALSE,0,FALSE
+"test-viewer-review-feedback.R","cell scatter pages share defaults with a Gene Expression override",15,0,15,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Projection pages use automatic ranges instead of axis sliders",16,0,16,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Standalone cell views cannot enter linked-view focus",3,0,3,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Standalone view routing only considers visible canvas hosts",4,0,4,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Standalone cell-view toolbars reach the panel top-right",7,0,7,FALSE,0,FALSE
+"test-viewer-review-feedback.R","2-D views fill fluid panels without changing spatial scale",8,0,8,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Runtime-linked view slots create exactly one WebGL layer",4,0,4,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Trekker uses the shared top toolbar and settings drawer",10,0,10,FALSE,0,FALSE
+"test-viewer-review-feedback.R","HLA keeps zoom-to-selection in its panel toolbar",3,0,3,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Linked actions stay compact and match their scope",13,0,13,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Trekker transition accepts Shiny slider change events",15,0,15,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Settings drawer controls use one spacing system",5,0,5,FALSE,0,FALSE
+"test-viewer-review-feedback.R","All settings drawers use the shared shell and responsive grid",58,0,58,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Info modals render above settings drawers",2,0,2,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Settings drawer pickers have only one visible border",1,0,1,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Specialist group filters share inclusive empty-selection behavior",6,0,6,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Cell scatter pages share one percentage default",10,0,10,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Projection renders an empty filter result instead of retaining cells",4,0,4,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Specialist group filters reuse the Linked views control",23,0,23,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Gene expression display and colour modes are linked",15,0,15,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Gene expression panels share one global numeric range",2,0,2,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Different gene colours are stable and visually distinct",3,0,3,FALSE,0,FALSE
+"test-viewer-review-feedback.R","Canvas renderer accepts a palette per gene panel",6,0,6,FALSE,0,FALSE
+"test-viewer-review-feedback.R","cell scatter pages debounce only complete render snapshots",7,0,7,FALSE,0,FALSE
+"test-viewer-sync-performance.R","expression rows are fetched once and aligned by cell",5,0,5,FALSE,0,FALSE
+"test-viewer-sync-performance.R","single-gene expression uses row access with a matrix fallback",5,0,5,FALSE,0,FALSE
+"test-viewer-sync-performance.R","expression helpers preserve canonical cell indices",2,0,2,FALSE,0,FALSE
+"test-viewer-sync-performance.R","legacy expression accessors receive cell barcodes",2,0,2,FALSE,0,FALSE
+"test-viewer-sync-performance.R","already aligned expression cells skip the string match",1,0,1,FALSE,0,FALSE
+"test-viewer-sync-performance.R","projection filtering and sampling preserve original row indices",7,0,7,FALSE,0,FALSE
+"test-viewer-sync-performance.R","the first reactive value bypasses debounce",4,0,4,FALSE,0,FALSE
+"test-viewer-sync-performance.R","hidden outputs resolve to their owning sidebar tabs",1,0,1,FALSE,0,FALSE
+"test-viewer-sync-performance.R","viewer source parsing is cached but evaluation stays local",3,0,3,FALSE,0,FALSE
+"test-viewer-sync-performance.R","viewer source reuses process-safe utility functions",12,0,12,FALSE,0,FALSE
