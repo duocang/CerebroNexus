@@ -7,15 +7,20 @@
 ##----------------------------------------------------------------------------##
 output[["groups_controls_UI"]] <- renderUI({
   groups <- getGroups()
-  if (length(groups) < 2L) {
-    return(p("At least two grouping variables are needed to compare composition."))
+  if (!length(groups)) {
+    return(p("No grouping variables are available."))
   }
   selected_group <- groups[[1L]]
+  primary <- selectInput(
+    "groups_selected_group", label = "Grouping variable",
+    choices = groups, selected = selected_group, width = "100%"
+  )
+  if (length(groups) == 1L) {
+    return(tagList(primary,
+      p("At least two grouping variables are needed to compare composition.")))
+  }
   tagList(
-    selectInput(
-      "groups_selected_group", label = "Grouping variable",
-      choices = groups, selected = selected_group, width = "100%"
-    ),
+    primary,
     selectInput(
       "groups_by_other_group_second_group",
       label = "Group to compare to:",
