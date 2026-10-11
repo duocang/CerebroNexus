@@ -20,6 +20,9 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -114,7 +117,9 @@ exportFromSeurat(
     is portable as long as the sibling `.bpcells/` directory travels
     with it; the Shiny runtime re-resolves paths via
     `getExpressionBackend()$location` relative to the `.crb`'s parent
-    directory (step 7.3 runtime attach).
+    directory (step 7.3 runtime attach). Delayed/Rle matrix inputs
+    additionally require HDF5Array; they use a temporary block-written
+    HDF5 file instead of a full dense realization.
 
   - `"h5"` writes the matrix via
     [`HDF5Array::writeTENxMatrix()`](https://rdrr.io/pkg/HDF5Array/man/writeTENxMatrix.html)
@@ -143,6 +148,21 @@ exportFromSeurat(
   this multi-path transaction guarantee. Only POSIX mode bits are set or
   preserved; ownership, ACLs, extended attributes, and security labels
   remain the deployment system's responsibility on every platform.
+
+- codec:
+
+  Serialization codec for the CRB payload. Defaults to `"qs2"`; use
+  `"rds"` when direct compatibility with
+  [`readRDS()`](https://rdrr.io/r/base/readRDS.html) is required.
+
+- viewer_binary:
+
+  Build the derived Viewer Pack `"auto"`matically for large datasets,
+  `"always"`, or `"never"`.
+
+- viewer_binary_threshold:
+
+  Dataset-level cell threshold used by `viewer_binary = "auto"`.
 
 - spatial_images:
 
@@ -203,22 +223,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [20:04:13] Initializing Cerebro object...
-#> [20:04:13] Adding expression data (embedded)...
-#> [20:04:13] Collecting available meta data...
-#> [20:04:13] Extracting all meta data columns...
-#> [20:04:13] Extracting dimensional reductions...
-#> [20:04:13] Will export the following dimensional reductions: umap
-#> [20:04:13] Extracting marker genes table...
-#> [20:04:13] No trajectories to extract...
-#> [20:04:13] Checking for spatial data...
-#> [20:04:13] Overview of Cerebro object:
+#> [16:05:21] Initializing Cerebro object...
+#> [16:05:21] Adding expression data (embedded)...
+#> [16:05:21] Collecting available meta data...
+#> [16:05:21] Extracting all meta data columns...
+#> [16:05:21] Extracting dimensional reductions...
+#> [16:05:21] Will export the following dimensional reductions: umap
+#> [16:05:21] Extracting marker genes table...
+#> [16:05:21] No trajectories to extract...
+#> [16:05:21] Checking for spatial data...
+#> [16:05:21] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 4.4.2
+#> exporter package version: 5.0.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-09-14
+#> date of export: 2026-10-11
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -234,6 +254,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [20:04:13] Saving Cerebro object to: /tmp/nix-shell-4352-1249487940/Rtmph2ixLU/pbmc_Seurat.crb
-#> [20:04:13] Done!
+#> [16:05:21] Saving Cerebro object to: /tmp/nix-shell-4392-492068311/RtmpCDyGOh/pbmc_Seurat.crb
+#> [16:05:21] Done!
 ```
