@@ -95,6 +95,54 @@ viewer_pack_fixture <- function(
   path
 }
 
+test_that("packed projections and first frames align shuffled cell identities", {
+  root <- tempfile("pack-order-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  crb <- viewer_pack_fixture(file.path(root, "data.crb"))
+  object <- readCerebro(crb)
+  expected <- object$projections$umap
+  object$projections$umap <- expected[3:1, , drop = FALSE]
+  saveCerebro(object, crb, codec = "rds")
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  expect_true(validateViewerPack(crb)$valid)
+  actual <- matrix(readBin(file.path(pack, "projections/001.bin"),
+    numeric(), n = 6, size = 4, endian = "little"), ncol = 2, byrow = TRUE)
+  expect_equal(unname(actual), unname(as.matrix(expected)))
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope$getProjection <- function(name) object$projections[[name]]
+  scope$getMetaData <- function() object$getMetaData()
+  expect_identical(scope$viewerProjectionFirstFrameCoordinates("umap"), expected)
+  for (ids in list(NULL, c("x", "y", "z"), c("1", "1", "3"))) {
+    bad <- as.matrix(expected)
+    rownames(bad) <- ids
+    object$projections$umap <- bad
+    saveCerebro(object, crb, codec = "rds")
+    expect_error(buildViewerPack(crb, viewer_binary = "always", overwrite = TRUE), "cell identities")
+    expect_error(scope$viewerProjectionFirstFrameCoordinates("umap"), "cell identities")
+  }
+})
+
+test_that("old packs retain independent assets but cannot publish unchecked projections", {
+  root <- tempfile("pack-legacy-order-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  crb <- viewer_pack_fixture(file.path(root, "data.crb"), immune = TRUE)
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  path <- file.path(pack, "manifest.json")
+  manifest <- jsonlite::read_json(path, simplifyVector = TRUE)
+  manifest$projection_identity_version <- NULL
+  jsonlite::write_json(manifest, path, auto_unbox = TRUE, dataframe = "rows")
+  expect_match(validateViewerPack(crb)$reason, "Rebuild Viewer Pack")
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
+  expect_message(opened <- scope$viewerPackOpen(crb, readCerebro(crb)), "Rebuild")
+  expect_length(opened$manifest$projection_names, 0)
+  expect_identical(scope$viewerPackCellBarcodes(opened), readCerebro(crb)$getMetaData()$cell_barcode)
+  expect_false(is.null(scope$viewerPackImmuneIndex(opened, "TCR")))
+})
+
 test_that("Viewer Pack gating is dataset-level", {
   root <- tempfile("viewer-pack-gating-")
   dir.create(root)

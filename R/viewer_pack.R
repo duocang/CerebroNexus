@@ -786,6 +786,13 @@
       if (!is.numeric(value) || nrow(value) != length(cells)) {
         stop("Viewer Pack projection is not cell-aligned.", call. = FALSE)
       }
+      ids <- rownames(value)
+      if (is.null(ids) || anyNA(ids) || any(!nzchar(ids)) ||
+          anyDuplicated(ids) || !setequal(ids, cells)) {
+        stop("Viewer Pack projection requires unique, matching cell identities.",
+          call. = FALSE)
+      }
+      if (!identical(ids, cells)) value <- value[match(cells, ids), , drop = FALSE]
       projection_values[[i]] <- value
       assets <- rbind(
         assets,
@@ -1018,6 +1025,10 @@ validateViewerPack <- function(
   ) {
     return(.viewerPackInvalid("Viewer Pack dataset fingerprint mismatch"))
   }
+  if (length(manifest$projection_names) &&
+      !identical(manifest$projection_identity_version, 1L)) {
+    return(.viewerPackInvalid("Rebuild Viewer Pack: projection identity is unverified"))
+  }
   object <- tryCatch(readCerebro(file), error = function(error) NULL)
   if (is.null(object)) {
     return(.viewerPackInvalid("CRB could not be read"))
@@ -1127,6 +1138,7 @@ buildViewerPack <- function(
   built <- .viewerPackBuildAssets(object, stage)
   manifest <- list(
     schema_version = .viewerPackSchemaVersion,
+    projection_identity_version = 1L,
     dataset_fingerprint = paste0("md5-crb-v1:", .viewerPackMd5(file)),
     cell_order_fingerprint = .viewerPackCellOrderFingerprint(cells),
     n_cells = length(cells),

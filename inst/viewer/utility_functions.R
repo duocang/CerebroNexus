@@ -515,7 +515,17 @@ viewerProjectionFirstFrameMetadata <- function() {
 viewerProjectionFirstFrameCoordinates <- function(name) {
   cache <- viewerProjectionFirstFrameCache()
   projection <- cache$projections[[name]]
-  if (!is.null(projection)) projection else getProjection(name)
+  # Only the validated thin-CRB reader creates this identity-free cache.
+  if (!is.null(projection)) return(projection)
+  projection <- getProjection(name)
+  cells <- getMetaData()[["cell_barcode"]]
+  ids <- rownames(projection)
+  if (is.null(cells) || is.null(ids) || anyNA(cells) || anyNA(ids) ||
+      any(!nzchar(cells)) || any(!nzchar(ids)) || anyDuplicated(cells) ||
+      anyDuplicated(ids) || length(ids) != length(cells) || !setequal(ids, cells)) {
+    stop("Projection requires unique, matching cell identities.", call. = FALSE)
+  }
+  if (identical(ids, cells)) projection else projection[match(cells, ids), , drop = FALSE]
 }
 
 viewerSharedProjectionName <- function(
