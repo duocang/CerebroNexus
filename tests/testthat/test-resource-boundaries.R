@@ -3,7 +3,7 @@ boundary_utils <- function() {
   env$.crb_process_cache <- new.env(parent = emptyenv())
   env$.crb_backend_identities <- new.env(parent = emptyenv())
   env$.msigdb_process_cache <- new.env(parent = emptyenv())
-  source(test_path("../../inst/viewer/utility_functions.R"), local = env)
+  source(viewer_test_path("utility_functions.R"), local = env)
   env
 }
 
@@ -58,7 +58,7 @@ test_that("prefetch is shared across sessions and releases completed task result
     }
     NULL
   }
-  node <- find_assignment(parse(test_path("../../inst/viewer/shiny_server.R")))
+  node <- find_assignment(parse(viewer_test_path("shiny_server.R")))
   expect_false(is.null(node))
   eval(node, env)
   files <- vapply(1:3, function(i) tempfile(fileext = ".crb"), character(1))

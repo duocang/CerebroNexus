@@ -34,7 +34,8 @@ test_that("Gene feedback uses canonical keys without preparing expression", {
 test_that("Gene feedback survives rapid input, missing genes and dataset generations", {
   node <- Sys.which("node")
   skip_if(!nzchar(node), "Node is unavailable")
-  result <- system2(node, shQuote(test_path("fixtures", "gene-feedback.js")), stdout = TRUE, stderr = TRUE)
+  result <- system2(node, shQuote(c(test_path("fixtures", "gene-feedback.js"),
+    viewer_test_path("www", "gene-feedback.js"))), stdout = TRUE, stderr = TRUE)
   expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
   expect_match(paste(result, collapse = "\n"), "23 Gene feedback assertions passed", fixed = TRUE)
 })

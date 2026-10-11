@@ -232,7 +232,7 @@ test_that("viewer legends wrap outside their visualizations", {
   )
   expect_match(
     cell_view_helper,
-    'class = "coordviews-page cerebro-cell-view-host"',
+    'class = "coordviews-page cerebro-cell-view-host cerebro-page-loading-region"',
     fixed = TRUE
   )
 

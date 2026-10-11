@@ -121,7 +121,7 @@ test_that("compact SizeDist renders the identical geometry", {
 test_that("table classification is skipped only when neither feature uses it", {
   env <- new.env(parent = globalenv())
   repeat_definitions(viewer_test_path("utility_functions.R"), env)
-  env$`%>%` <- magrittr::`%>%`
+  env$`%>%` <- dplyr::`%>%`
   for (name in c("findColumnsInteger", "findColumnsPercentage", "findColumnsPValues", "findColumnsLogFC")) {
     env[[name]] <- function(...) stop("classification requested")
   }

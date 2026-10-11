@@ -537,8 +537,22 @@ test_that("portable-view requests and responses use one captured context", {
     2L
   )
   expect_match(server, "dataset_context = dataset_context", fixed = TRUE)
+  # Restrict this contract to portable-view handlers and their response helper.
+  # The synchronous expression-feedback helper legitimately captures live context.
+  config_expressions <- Filter(function(expr) {
+    if (!is.call(expr)) return(FALSE)
+    if (identical(expr[[1L]], as.name("<-"))) {
+      return(identical(expr[[2L]], as.name("cv_config_send_result")))
+    }
+    identical(expr[[1L]], as.name("observeEvent")) &&
+      any(vapply(c("coordviews_config_request", "coordviews_config_upload_request"),
+        function(id) grepl(id, paste(deparse(expr[[2L]]), collapse = ""), fixed = TRUE),
+        logical(1)))
+  }, as.list(parse(text = server)))
+  expect_length(config_expressions, 3L)
   expect_no_match(
-    server,
+    paste(vapply(config_expressions, function(expr) paste(deparse(expr), collapse = "\n"),
+      character(1)), collapse = "\n"),
     "dataset_context = viewer_loaded_dataset_context()",
     fixed = TRUE
   )

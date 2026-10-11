@@ -1538,12 +1538,12 @@ test_that("the page benchmark has a publication-grade contract", {
   expect_match(benchmark, "dataset_load_ms", fixed = TRUE)
   expect_match(
     benchmark,
-    '"if(!completionRequired&&"',
+    '"if(!completionRequired){"',
     fixed = TRUE
   )
-  expect_match(
+  expect_no_match(
     benchmark,
-    '"!document.documentElement.classList.contains',
+    'document.documentElement.classList.contains',
     fixed = TRUE
   )
   expect_match(benchmark, "benchmark_mode", fixed = TRUE)
@@ -2229,7 +2229,8 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     extra,
     deferred_aux,
     core_aux = NULL,
-    dataset_context = NULL
+    dataset_context = NULL,
+    feedback = NULL
   ) {
     captured$dataset_context <- dataset_context
     captured$core_aux <- core_aux
@@ -2326,7 +2327,8 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     extra,
     deferred_aux,
     core_aux = NULL,
-    dataset_context = NULL
+    dataset_context = NULL,
+    feedback = NULL
   ) {
     captured$dataset_context <- dataset_context
     captured$core_aux <- core_aux

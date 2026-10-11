@@ -5,7 +5,7 @@ test_that("ImageFeaturePlot preserves values and uses the saved expression palet
     sys.source(viewer_test_path(path), envir = runtime)
   }
   rendered <- NULL
-  runtime$cerebroCellViewRender <- function(id, meta, data, hover, extra, deferred_aux, dataset_context) {
+  runtime$cerebroCellViewRender <- function(id, meta, data, hover, extra, deferred_aux, dataset_context, feedback = NULL) {
     rendered <<- list(meta = meta, data = data)
   }
   parameters <- list(plot_type = "ImageFeaturePlot", color_variable = "GENE",

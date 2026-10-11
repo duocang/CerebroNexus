@@ -29,7 +29,8 @@ test_that("feedback reads only small controls without reactive dependencies", {
 test_that("feedback matches painted operations and rejects stale datasets", {
   node <- Sys.which("node")
   skip_if(!nzchar(node), "Node unavailable")
-  result <- system2(node, shQuote(test_path("fixtures", "view-feedback.js")), stdout = TRUE, stderr = TRUE)
+  result <- system2(node, shQuote(c(test_path("fixtures", "view-feedback.js"),
+    viewer_test_path("www", "view-feedback.js"))), stdout = TRUE, stderr = TRUE)
   expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
   expect_match(paste(result, collapse = "\n"), "feedback assertions passed", fixed = TRUE)
 })

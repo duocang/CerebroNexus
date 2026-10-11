@@ -33,7 +33,7 @@ const window = {jQuery() { return jq; },
     return phase === 'ready' && JSON.stringify(m.dataset_context) === JSON.stringify(context);
   }}
 };
-vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,
+vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,
   '../../../inst/viewer/www/gene-feedback.js'), 'utf8'), {window, document});
 let count = 0;
 function check(value) { assert.ok(value); count++; }

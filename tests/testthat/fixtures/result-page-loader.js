@@ -175,7 +175,7 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   check(s.loader.hidden,'Extra PNG completes after load and two frames');
 }
 {
-  const ui=fs.readFileSync(path.resolve(__dirname,'../../../inst/viewer/groups/UI.R'),'utf8');
+  const ui=fs.readFileSync(process.argv[3] || path.resolve(__dirname,'../../../inst/viewer/groups/UI.R'),'utf8');
   const bind=ui.match(/function bind\(plot\) \{[\s\S]+?\n      \}/)[0];
   const listeners=[];const context={report:()=>{},plot:{on:(name,fn)=>listeners.push(fn)}};
   vm.runInNewContext(bind+'; bind(plot); bind(plot);',context);

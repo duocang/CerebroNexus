@@ -1,0 +1,132 @@
+
+R version 4.6.1 (2026-06-24) -- "Happy Hop"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(testthat)
+> library(CerebroNexus)
+> 
+> test_check("CerebroNexus")
+Successfully exported: cerebro_renamed_sample.crb 
+Error in startup(port = port, ...) : 
+  Chrome debugging port not open after 10 seconds.
+[2026-10-11 12:19:01.959506] Attaching bpcells backend: /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a3878d20b/expression.bpcells
+[2026-10-11 12:19:02.598048] Attaching bpcells backend: /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a6673a970/expression.bpcells
+PASS clonal base reuse and invalidation for view, geometry, dataset, size, color, selection and unsupported scenes
+[2026-10-11 12:19:43.356195] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:43.405613] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:43.438564] CRB cache hit: dataset.crb
+[2026-10-11 12:19:43.85146] CRB cache miss, loading: upload.crb
+[2026-10-11 12:19:43.938804] CRB cache miss, loading: upload.crb
+[2026-10-11 12:19:46.660839] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:46.664733] Attaching h5 backend (lazy TENxMatrix): /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a12cc1a81/host/matrix.h5
+[2026-10-11 12:19:48.1732] CRB cache miss, loading: modern.crb
+[2026-10-11 12:19:48.176928] Attaching h5 backend (lazy TENxMatrix): /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a415caa2b/modern/matrix.h5
+[2026-10-11 12:19:48.26689] CRB cache miss, loading: legacy.crb
+[2026-10-11 12:19:48.278732] Attaching h5 backend (lazy TENxMatrix): /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a415caa2b/host/matrix.h5
+[2026-10-11 12:19:48.552626] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:48.556334] Attaching h5 backend (lazy TENxMatrix): /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a163d0781/app/private-data/expression.h5
+[2026-10-11 12:19:48.650867] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:48.654343] Attaching bpcells backend: /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a695ea1c2/app/private-data/expression.bpcells
+[2026-10-11 12:19:48.714658] CRB cache miss, loading: dataset.crb
+[2026-10-11 12:19:48.718442] CRB cache hit: dataset.crb
+[2026-10-11 12:19:48.730302] Attaching bpcells backend: /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/file12b2a34b027a5/app/private-data/dataset.bpcells
+PASS deferred image ownership A -> B -> A, same-generation reuse, pending deduplication, stale-response rejection
+[2026-10-11 12:19:54.89589] Attaching h5 backend (lazy TENxMatrix): /tmp/RtmpKAeJK4/working_dir/RtmpAmbdqL/h5_attach_1791713994/trip.h5
+PASS full-precision dense/sparse Gene colours, NA, zero and cache
+PASS pending Gene IDs, actual-point demand, deduplication, hover settings and stale frame cancellation
+PASS 32 selection-only GPU updates equal full rebuild, filters/invalid cells/order/alpha/clear/niche/RGB/geometry
+PASS webgpu independent attribute uploads, unchanged buffers and count-only changes
+PASS webgl2 independent attribute uploads, unchanged buffers and count-only changes
+PASS Linked hover defaults, no picking when disabled, retained selection and specialist hover
+linked-pinned-deferred: 12 assertions passed
+PASS 1200 indexed nearest vs full scan, views/aspect/filters/invalid coordinates/ties/cache replacement
+[2026-10-11 12:20:41.584797] CRB background prefetch started: file12b2a79f0ed0.crb
+[2026-10-11 12:20:41.608275] CRB background prefetch started: file12b2a5acd67f4.crb
+[2026-10-11 12:20:41.663925] CRB background prefetch started: file12b2a60bfa060.crb
+[2026-10-11 12:20:41.739291] CRB background prefetch started: file12b2a60bfa060.crb
+Successfully exported: cerebro_pbmc_seurat.crb 
+PASS incremental expression state, numeric/NA/RGB values, order invalidation, stale paint and fallbacks
+Successfully exported: cerebro_Synthetic_A.crb 
+Successfully exported: cerebro_Synthetic_A.crb 
+Successfully exported: cerebro_Synthetic_B.crb 
+Successfully exported: cerebro_Forward_images.crb 
+PASS missing spatial coordinates remain missing in flat, grouped and typed payloads
+PASS supplement paints final restored state once, ignores stale datasets, recovers after errors
+[ FAIL 0 | WARN 0 | SKIP 74 | PASS 13696 ]
+
+══ Skipped tests (74) ══════════════════════════════════════════════════════════
+• !nzchar(artifact) || !file.exists(artifact) is TRUE (1):
+  'test-million-cell-viewer.R:1897:3'
+• R/ source tree not present (installed-package layout) (1):
+  'test-hla-app-contract.R:574:3'
+• `shinytest2::AppDriver` can not be initialized as {chromote} can not be
+  started (1): 'test-app-immune_repertoire.R:144:3'
+• benchmark scripts are unavailable (1): 'test-ren-backend-benchmark.R:8:3'
+• benchmark tree not present (8): 'test-million-cell-viewer.R:1502:3',
+  'test-million-cell-viewer.R:1841:3', 'test-million-cell-viewer.R:1876:3',
+  'test-million-cell-viewer.R:1926:3', 'test-million-cell-viewer.R:1967:3',
+  'test-ren-demo.R:82:3', 'test-ren-demo.R:108:3', 'test-ren-demo.R:136:3'
+• benchmark tree not present (expected when checking a built package) (41):
+  'test-bench-access-metrics.R:13:3', 'test-bench-access-metrics.R:41:3',
+  'test-bench-access-metrics.R:93:3', 'test-bench-access-metrics.R:124:3',
+  'test-bench-cli-contract.R:14:3', 'test-bench-cli-contract.R:25:3',
+  'test-bench-cli-contract.R:73:3', 'test-bench-cli-contract.R:102:3',
+  'test-bench-cli-contract.R:122:3', 'test-bench-protocol.R:11:3',
+  'test-bench-protocol.R:36:3', 'test-bench-protocol.R:61:3',
+  'test-bench-protocol.R:76:3', 'test-bench-protocol.R:97:3',
+  'test-bench-protocol.R:113:3', 'test-bench-protocol.R:178:3',
+  'test-bench-protocol.R:189:3', 'test-bench-publication.R:34:3',
+  'test-bench-publication.R:67:3', 'test-bench-publication.R:91:3',
+  'test-bench-remote-reader.R:18:3', 'test-bench-remote-reader.R:35:3',
+  'test-bench-remote-reader.R:55:3', 'test-bench-remote-reader.R:74:3',
+  'test-bench-reporting.R:13:3', 'test-bench-reporting.R:40:3',
+  'test-bench-reporting.R:55:3', 'test-bench-reporting.R:69:3',
+  'test-bench-reporting.R:84:3', 'test-bench-reporting.R:104:3',
+  'test-bench-resources.R:11:3', 'test-bench-resources.R:41:3',
+  'test-bench-resources.R:72:3', 'test-bench-resources.R:85:3',
+  'test-million-cell-viewer.R:44:3', 'test-million-cell-viewer.R:128:3',
+  'test-million-cell-viewer.R:1473:3', 'test-million-cell-viewer.R:1519:3',
+  'test-million-cell-viewer.R:2004:3', 'test-million-cell-viewer.R:2076:3',
+  'test-ren-demo.R:39:3'
+• current source tree is not present in the installed-package layout (3):
+  'test-versionless-layout-contract.R:75:3',
+  'test-versionless-layout-contract.R:107:3',
+  'test-versionless-layout-contract.R:140:3'
+• file.exists(description_file) is not TRUE (1):
+  'test-immune_repertoire.R:671:3'
+• file.exists(server_file) is not TRUE (1): 'test-ir-plots.R:356:3'
+• repository-only demo launcher is not installed with the package (2):
+  'test-ren-demo.R:120:3', 'test-run-demo.R:3:3'
+• requireNamespace("HDF5Array", quietly = TRUE) is TRUE (1):
+  'test-exportFromSeurat.R:205:3'
+• source tree not present (installed-package layout) (1):
+  'test-hla-app-contract.R:261:3'
+• static source-tree contract (6): 'test-package-check-contract.R:13:3',
+  'test-package-check-contract.R:27:3', 'test-package-check-contract.R:38:3',
+  'test-package-check-contract.R:64:3', 'test-package-check-contract.R:84:3',
+  'test-package-check-contract.R:94:3'
+• static source-tree documentation contract (1):
+  'test-createShinyApp-auth.R:635:3'
+• static source-tree vignette contract (1): 'test-h5-vignette-contract.R:30:3'
+• viewer sources not found (3): 'test-coordinated-views.R:3219:3',
+  'test-coordinated-views.R:3275:3', 'test-coordinated-views.R:3310:3'
+• {ssHippo.SeuratData} is not installed (1): 'test-spatial.R:1890:3'
+
+[ FAIL 0 | WARN 0 | SKIP 74 | PASS 13696 ]
+> 
+> proc.time()
+   user  system elapsed 
+562.188  67.000 461.445 

@@ -462,7 +462,7 @@ test_that("Linked views highlights only the visualization under the pointer", {
   expect_match(ui, 'class = "coordviews-page linked-views-page"', fixed = TRUE)
   expect_match(
     css,
-    ".linked-views-page > .cv-panes > .cv-pane:hover",
+    ".linked-views-page > .cerebro-page-loading-region > .cv-panes > .cv-pane:hover",
     fixed = TRUE
   )
   expect_false(grepl(

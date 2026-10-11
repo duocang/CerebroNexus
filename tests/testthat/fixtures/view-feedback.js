@@ -22,7 +22,7 @@ const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
   addEventListener:(name,fn)=>events[name]=fn, dispatchEvent:event=>{if(events[event.type])events[event.type](event);},
   Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn},
   CerebroDatasetContext:{phase:()=> 'ready', accepts:m=>m.dataset_context?.generation===generation}};
-vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
+vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
   {window,document,CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
 let count=0;
 function check(v){assert.ok(v);count++;}

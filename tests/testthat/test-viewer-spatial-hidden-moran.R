@@ -6,7 +6,7 @@ test_that("hidden Moran cache key does not prepare Spatial data", {
     renderText <- shiny::renderText
     req <- shiny::req
     cachePlot <- helpers$cachePlot
-    `%>%` <- magrittr::`%>%`
+    `%>%` <- dplyr::`%>%`
     work <- new.env(parent = emptyenv())
     work$parameters <- work$reads <- 0L
     spatial_projection_parameters_plot <- function() {
