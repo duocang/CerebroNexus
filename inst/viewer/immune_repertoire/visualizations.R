@@ -38,12 +38,6 @@ ir_fill_plot <- function(
   if (fill) tags$div(class = "cerebro-fill", plot) else plot
 }
 
-## Wrap an already-built output (e.g. a uiOutput whose server side computes a
-## facet-aware pixel height) — passed through unchanged for now.
-ir_fill_wrap <- function(output) {
-  output
-}
-
 ## ---- Visualizations UI ------------------------------------------------ ##
 output$ir_visualizations_UI <- renderUI({
   if (!has_scRepertoire()) {
@@ -109,9 +103,9 @@ output$ir_visualizations_UI <- renderUI({
     # ),
     tabPanel(
       "Paired Scatter",
-      ir_fill_wrap(shinycssloaders::withSpinner(uiOutput(
+      shinycssloaders::withSpinner(uiOutput(
         "ir_ui_pairedScatter"
-      )))
+      ))
     ),
     # Hidden by default (kept available; renderer/help/param_spec retained).
     # The clone-definition waterfall is an exploratory tool for choosing a
@@ -143,21 +137,21 @@ output$ir_visualizations_UI <- renderUI({
     #   "Quant",
     #   ir_fill_plot("ir_plot_clonalQuant")
     # ),
-    # tabPanel("Rarefaction", ir_fill_wrap(uiOutput("ir_ui_clonalRarefaction"))),
-    # tabPanel("Gene usage", ir_fill_wrap(uiOutput("ir_ui_percentGeneUsage"))),
-    # tabPanel("vizGenes", ir_fill_wrap(uiOutput("ir_ui_vizGenes"))),
-    # tabPanel("percentGenes", ir_fill_wrap(uiOutput("ir_ui_percentGenes"))),
-    # tabPanel("percentVJ", ir_fill_wrap(uiOutput("ir_ui_percentVJ"))),
-    # tabPanel("AA %", ir_fill_wrap(uiOutput("ir_ui_percentAA"))),
+    # tabPanel("Rarefaction", uiOutput("ir_ui_clonalRarefaction")),
+    # tabPanel("Gene usage", uiOutput("ir_ui_percentGeneUsage")),
+    # tabPanel("vizGenes", uiOutput("ir_ui_vizGenes")),
+    # tabPanel("percentGenes", uiOutput("ir_ui_percentGenes")),
+    # tabPanel("percentVJ", uiOutput("ir_ui_percentVJ")),
+    # tabPanel("AA %", uiOutput("ir_ui_percentAA")),
     # tabPanel(
     #   "Entropy",
     #   ir_fill_plot("ir_plot_positionalEntropy")
     # ),
-    # tabPanel("Property", ir_fill_wrap(uiOutput("ir_ui_positionalProperty"))),
+    # tabPanel("Property", uiOutput("ir_ui_positionalProperty")),
     # tabPanel(
     #   # Top motifs now lives in the settings panel (IR_PARAM_SPEC "K-mer").
     #   "K-mer",
-    #   ir_fill_wrap(uiOutput("ir_ui_percentKmer"))
+    #   uiOutput("ir_ui_percentKmer")
     # )
   )
 

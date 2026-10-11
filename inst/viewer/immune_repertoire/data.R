@@ -700,17 +700,6 @@ ir_size_distribution_profile <- reactive({
   profiles
 })
 
-ir_empirical_size_distribution_plot <- function(
-  data,
-  chain = "both",
-  group_by = NULL,
-  method = "ward.D2",
-  threshold = 1
-) {
-  profiles <- ir_clone_size_profiles(data, chain, group_by, threshold)
-  ir_size_profile_plot(profiles, method)
-}
-
 ir_size_profile_plot <- function(profiles, method = "ward.D2") {
   if (is.null(profiles)) {
     return(NULL)

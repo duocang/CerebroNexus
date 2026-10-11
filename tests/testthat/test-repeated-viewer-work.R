@@ -109,10 +109,11 @@ test_that("compact SizeDist renders the identical geometry", {
   env <- new.env(parent = globalenv())
   repeat_definitions(viewer_test_path("immune_repertoire", "data.R"), env)
   raw <- list(A = data.frame(CTstrict = c("x", "x", "y")), B = data.frame(CTstrict = c("q", "r")))
-  profiles <- env$ir_clone_size_profiles(raw)
+  full_profiles <- env$ir_clone_size_profiles(raw)
+  profiles <- full_profiles
   profiles$clone_counts <- NULL
   for (method in c("ward.D2", "complete", "average")) {
-    expected <- ggplot2::ggplot_build(env$ir_empirical_size_distribution_plot(raw, method = method))$data
+    expected <- ggplot2::ggplot_build(env$ir_size_profile_plot(full_profiles, method))$data
     actual <- ggplot2::ggplot_build(env$ir_size_profile_plot(profiles, method))$data
     expect_equal(actual, expected)
   }

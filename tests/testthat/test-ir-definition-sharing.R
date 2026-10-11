@@ -76,8 +76,7 @@ ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
 ir_chain_clone_values <- ir_env$ir_chain_clone_values
 ir_clone_size_profiles <- ir_env$ir_clone_size_profiles
-ir_empirical_size_distribution_plot <-
-  ir_env$ir_empirical_size_distribution_plot
+ir_size_profile_plot <- ir_env$ir_size_profile_plot
 
 test_that("immune metadata joins only requested columns in one aligned pass", {
   data <- list(
@@ -136,11 +135,7 @@ test_that("empirical clone-size profiles preserve exact observed counts", {
   expect_equal(rowSums(profiles$profile), c(A = 1, B = 1))
 
   skip_if_not_installed("ggdendro")
-  plot <- ir_empirical_size_distribution_plot(
-    list(sample_1 = frame),
-    chain = "TRB",
-    group_by = "cohort"
-  )
+  plot <- ir_size_profile_plot(profiles)
   expect_s3_class(plot, "ggplot")
 })
 
