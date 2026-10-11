@@ -815,6 +815,7 @@ ir_clonal_umap_data <- function(
     max_background <- 100000L
   }
   visible_indices <- seq_len(nrow(coords))
+  repertoire_cells <- rownames(coords)
   if (!is.null(cells) && indexed_pack) {
     canonical <- if (exists("viewerPackCellBarcodes", mode = "function")) {
       viewerPackCellBarcodes(pack)
@@ -880,6 +881,13 @@ ir_clonal_umap_data <- function(
     rows <- rows[!vapply(rows, is.null, logical(1))]
     barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
     clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
+    # Match the pack's dataset population and first-row-per-barcode contract.
+    keep <- !is.na(clones) & nzchar(clones)
+    barcodes <- barcodes[keep]
+    clones <- clones[keep]
+    keep <- !duplicated(barcodes) & barcodes %in% repertoire_cells
+    barcodes <- barcodes[keep]
+    clones <- clones[keep]
   }
   # Display filters and sampling must not redefine the biological clone size.
   full_expansion <- if (is.null(packed)) ir_clone_expansion(clones) else NULL

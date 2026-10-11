@@ -679,3 +679,26 @@ test_that("sharing choices discover metadata fields before any field is selected
   data$b$native <- "n3"
   expect_true("native" %in% ir_env$ir_discover_sharing_units(data, metadata))
 })
+
+
+test_that("packed and fallback clone sizes use the same unique dataset cells", {
+  scope <- new.env(parent = ir_env)
+  f <- ir_env$ir_clonal_umap_data
+  environment(f) <- scope
+  cells <- paste0("c", 1:5)
+  data <- list(sample = data.frame(barcode = c(cells, "c1", "outside"),
+    CTgene = rep("TRB-clone", 7)))
+  scope$availableProjections <- function() "umap"
+  scope$getProjection <- function(...) data.frame(x=1:5, y=5:1, row.names=cells)
+  scope$ir_data_annotated <- function() data
+  scope$ir_clonecall_col <- function(...) "CTgene"
+  scope$ir_umap_chains <- function(...) "TRB"
+  packed <- NULL
+  scope$viewerPackCurrent <- function() list(cells=cells)
+  scope$viewerPackImmuneIndex <- function(...) packed
+  plain <- f("umap", "TCR", cells="c1", show_all=FALSE)
+  packed <- CerebroNexus:::.viewerPackImmuneIndex(data, cells, "TCR")
+  cached <- f("umap", "TCR", cells="c1", show_all=FALSE)
+  expect_identical(cached, plain)
+  expect_identical(as.character(plain$expansion), "Small (1 < X <= 5)")
+})
