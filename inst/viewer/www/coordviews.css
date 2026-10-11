@@ -457,7 +457,9 @@
 }
 .coordviews-page .cv-performance-mode[hidden] { display: none; }
 .coordviews-page .cv-performance-mode button { flex: 0 0 auto; }
-.coordviews-page .cv-linked-performance { margin: 10px 0 8px; }
+.coordviews-page .cv-linked-hover { margin: 10px 0 8px; }
+.coordviews-page .cv-linked-hover .form-group,
+.coordviews-page .cv-linked-hover .checkbox { margin: 0; }
 .coordviews-page.cv-static-performance .cv-panebar .cv-tbtn:not([data-act="png"]) {
   display: none !important;
 }

@@ -367,11 +367,6 @@ tab_coordinated_views <- tabItem(
                 value = 1
               ),
               checkboxInput(
-                "cv-hover",
-                "Show cell hover",
-                value = TRUE
-              ),
-              checkboxInput(
                 "cv-labels",
                 "Group labels",
                 value = TRUE
@@ -585,24 +580,11 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## Large data sets remain immediately readable without paying continuous
-    ## hover hit-testing and linked-selection costs. The user can opt back in,
-    ## while smaller workspaces retain the fully interactive default.
+    ## Linked hover is independent of the Data info hover-detail preference.
+    ## Disabling it leaves zoom, brushing and selection available.
     div(
-      class = "cv-performance-mode cv-linked-performance",
-      id = "cv-linked-performance",
-      hidden = "hidden",
-      tags$span(
-        class = "cv-performance-mode-text",
-        id = "cv-linked-performance-text"
-      ),
-      tags$button(
-        type = "button",
-        class = "btn btn-xs btn-default",
-        id = "cv-linked-interaction-toggle",
-        `aria-pressed` = "true",
-        "Use static mode"
-      )
+      class = "cv-linked-hover",
+      checkboxInput("cv-hover", "Show linked cell hover", value = TRUE)
     ),
 
     ## ---- legend (categorical) or colourbar (continuous gene) ------------ ##

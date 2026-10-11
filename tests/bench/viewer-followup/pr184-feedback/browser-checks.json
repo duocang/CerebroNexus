@@ -1,0 +1,186 @@
+[
+  {
+    "case": "Demo Linked hover-off selection",
+    "state": {
+      "errors": [],
+      "hover": false,
+      "selection": "\n                      \n                        \n                        1 / 1,476 selected\n                        2 · 100%\n                        From UMAP\n                        TCR 1\n                      \n                      \n                        \n                          \n                          Focus\n                        \n                        \n                          \n                          Clear\n                        \n                      \n                    ",
+      "views": [
+        "umap (expression) cell view",
+        "Clonal expansion (TCR) cell view",
+        "Cell cell view",
+        "Cell cell view"
+      ]
+    }
+  },
+  {
+    "case": "Demo Abundance",
+    "state": {
+      "errors": [],
+      "plots": [
+        {
+          "id": "ir_plot_clonalAbundance",
+          "traces": 3
+        }
+      ],
+      "spinners": [
+        {
+          "class": "load-container load1 shiny-spinner-hidden",
+          "height": "104px",
+          "visibility": "visible",
+          "width": "400px"
+        }
+      ]
+    }
+  },
+  {
+    "case": "Demo Homeostasis after first dependency load",
+    "state": {
+      "errors": [],
+      "plots": [
+        {
+          "id": "ir_plot_clonalHomeostasis",
+          "traces": 5
+        }
+      ],
+      "spinners": [
+        {
+          "height": "104px",
+          "visibility": "visible",
+          "width": "400px"
+        }
+      ]
+    }
+  },
+  {
+    "case": "Final CSS Demo Abundance",
+    "state": {
+      "errors": [],
+      "spinner": [
+        {
+          "class": "load-container load1 shiny-spinner-hidden",
+          "display": "none"
+        }
+      ],
+      "traces": 3
+    }
+  },
+  {
+    "case": "Final CSS Demo Homeostasis",
+    "state": {
+      "errors": [],
+      "spinner": [
+        {
+          "class": "load-container load1 shiny-spinner-hidden",
+          "display": "none"
+        }
+      ],
+      "traces": 5
+    }
+  },
+  {
+    "case": "Ren Linked default hover and deferred tooltip",
+    "state": {
+      "checked": true,
+      "errors": [],
+      "summary": "\n                \n                  Linked views\n                  1,462,702 cells · 2 linked spaces (tsne (expression) · Clonal expansion (TCR)) · 220,968 receptor-bearing cells, 125,978 clonotypes\n                  Info\n                View ready · No selection\n                \n                  \n                    Colour by\n                    major_typemajor_type\n                  \n                  \n                    Projection\n          ",
+      "tip": "EpiDetailsClose"
+    }
+  },
+  {
+    "case": "Ren hover disabled box selection",
+    "state": {
+      "checked": false,
+      "counts": [],
+      "errors": [],
+      "summary": "\n                      \n                        \n                        3,397 / 1,462,702 selected\n                        Epi · 99%\n                        From TSNE\n                        TCR 0\n                      \n                      \n                        \n                          \n                          Focus\n                        \n                        \n                          \n                          Clear\n                        \n                      \n                    "
+    }
+  },
+  {
+    "case": "Ren Homeostasis final",
+    "state": {
+      "errors": [],
+      "spinner": [
+        {
+          "class": "load-container shiny-spinner-hidden load1",
+          "display": "none"
+        }
+      ],
+      "traces": 5
+    }
+  },
+  {
+    "case": "Ren Abundance final",
+    "state": {
+      "errors": [],
+      "spinner": [
+        {
+          "class": "load-container load1 shiny-spinner-hidden",
+          "display": "none"
+        }
+      ],
+      "traces": 194
+    }
+  },
+  {
+    "case": "Ren Clonal projection final",
+    "state": {
+      "errors": [],
+      "visibleCanvas": [
+        {
+          "height": 1330,
+          "id": "cv-cv-a",
+          "text": "",
+          "width": 1767
+        },
+        {
+          "height": 1330,
+          "id": "",
+          "text": "",
+          "width": 1767
+        },
+        {
+          "height": 1331,
+          "id": "",
+          "text": "",
+          "width": 1767
+        },
+        {
+          "height": 126,
+          "id": "cv-mini-a",
+          "text": "",
+          "width": 126
+        }
+      ]
+    }
+  },
+  {
+    "case": "Ren Linked revisit after Immune",
+    "state": {
+      "hover": false,
+      "pointerEvents": "",
+      "selection": "\n                      \n                        \n                        3,397 / 1,462,702 selected\n                        Epi · 99%\n                        From TSNE\n                        TCR 0\n                      \n                      \n                        \n                          \n                          Focus\n                        \n                        \n                          \n                          Clear\n                        \n                      \n                    ",
+      "staticPanes": 0
+    }
+  },
+  {
+    "case": "Final Demo after Ren: default restored, no selection leak",
+    "state": {
+      "errors": [],
+      "hover": true,
+      "text": "\n                \n                  Linked views\n                  1,476 cells · 2 linked spaces (umap (expression) · Clonal expansion (TCR)) · 595 receptor-bearing cells, 587 clonotypes\n                  Info\n                View ready · No selection\n                \n                  \n                    Colour by\n                    seurat_clustersseurat_clusters\n                  \n                  \n                    Projection\n                    umapumap×\n                  \n             ",
+      "tipOpacity": "0",
+      "selectionHasLayoutBox": true,
+      "selectionDisplay": {
+        "counts": [
+          "umap (expression) view with 1476 points; 0 selected.",
+          "Clonal expansion (TCR) view with 1476 points; 0 selected.",
+          "Cell view with 1476 points; 0 selected.",
+          "Cell view with 1476 points; 0 selected."
+        ],
+        "text": "",
+        "visibility": "hidden"
+      }
+    }
+  }
+]

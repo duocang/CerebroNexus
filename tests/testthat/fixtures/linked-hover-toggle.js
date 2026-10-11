@@ -23,8 +23,9 @@ function placeTip(){}
 eval(source.slice(source.indexOf('  function syncLinkedHoverDefault('),
   source.indexOf('  // ---- brush + pick')));
 syncLinkedHoverDefault(true); wireHover(p);
-assert.strictEqual(linkedHoverOn,false);
-assert.strictEqual(checkbox.checked,false);
+assert.strictEqual(linkedHoverOn,true);
+assert.strictEqual(checkbox.checked,true);
+setLinkedHover(false);
 listeners.mousemove({clientX:10,clientY:10});
 assert.strictEqual(lookups,0);
 setLinkedHover(true);
@@ -47,5 +48,17 @@ assert.strictEqual(linkedHoverOn,true);
 setLinkedHover(false); syncLinkedHoverDefault(false);
 assert.strictEqual(linkedHoverOn,false); // Supplements preserve the choice.
 D={n:200000}; syncLinkedHoverDefault(true);
-assert.strictEqual(linkedHoverOn,false);
+assert.strictEqual(linkedHoverOn,true);
+// The same canvas can return from an HLA network's optional static mode.
+let surfaceHome = {}, restored = 0;
+function restoreNode(){restored++;}
+p.canvas.style={pointerEvents:'none'};
+const classes=new Set(['cv-pane-static']);
+p.pane={classList:{remove:name=>classes.delete(name)}};
+eval(source.slice(source.indexOf('  function restoreLinkedSurface() {'),
+  source.indexOf('  function singleInteractionConfig(')));
+restoreLinkedSurface();
+assert.strictEqual(p.canvas.style.pointerEvents,'');
+assert.strictEqual(classes.has('cv-pane-static'),false);
+assert.strictEqual(restored,4);
 console.log('PASS Linked hover defaults, no picking when disabled, retained selection and specialist hover');

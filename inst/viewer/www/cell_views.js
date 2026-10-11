@@ -106,7 +106,6 @@
   // The data set the current state belongs to. Compared against the incoming
   // bundle's identity to tell a new data set from a re-sent one.
   var dataShown = null;
-  var linkedInteractionEnabled = true;
   var wireToken = 0;
   // Guards the async decode: a fast switch could have an earlier image finish
   // loading after a later one and paint itself over the current choice.
@@ -4238,16 +4237,12 @@
     drawHoverAll();
   }
 
-  function linkedInteractionIsStatic() {
-    return !singleActive && linkedInteractionEnabled === false;
-  }
-
   function interactionIsStatic() {
-    return singleActive ? singleInteractionIsStatic() : linkedInteractionIsStatic();
+    return singleActive ? singleInteractionIsStatic() : false;
   }
 
   function syncLinkedHoverDefault(dataChanged) {
-    if (dataChanged) linkedHoverOn = Number(D.n) < 200000;
+    if (dataChanged) linkedHoverOn = true;
     var control = $('cv-hover');
     if (control) control.checked = linkedHoverOn;
   }
@@ -6429,6 +6424,12 @@
   }
   function restoreLinkedSurface() {
     if (!surfaceHome) return;
+    // A specialist network may have disabled this shared canvas in static mode.
+    // Linked views always restores its zoom and selection controls.
+    panels.forEach(function (panel) {
+      if (panel.canvas) panel.canvas.style.pointerEvents = '';
+      if (panel.pane) panel.pane.classList.remove('cv-pane-static');
+    });
     restoreNode(surfaceHome.panes, surfaceHome.panesParent, surfaceHome.panesNext);
     restoreNode(surfaceHome.cbar, surfaceHome.cbarParent, surfaceHome.cbarNext);
     restoreNode(surfaceHome.legend, surfaceHome.legendParent, surfaceHome.legendNext);
@@ -6498,46 +6499,6 @@
     if (!view || !singleInteractionRecommendedStatic(view)) return;
     view.interactionEnabled = singleInteractionIsStatic();
     updateSingleInteractionMode();
-  }
-  function updateLinkedInteractionMode() {
-    if (singleActive || !D) return;
-    var host = document.querySelector('.linked-views-page');
-    var notice = $('cv-linked-performance');
-    var count = Number(D.n || (D.cells || []).length) || 0;
-    var isStatic = !linkedInteractionEnabled;
-    if (host) host.classList.toggle('cv-static-performance', isStatic);
-    if (notice) {
-      notice.hidden = false;
-      var message = $('cv-linked-performance-text');
-      if (message) {
-        message.textContent = isStatic
-          ? 'Performance mode: ' + count.toLocaleString() +
-            ' cells are rendered without hover or linked selection.'
-          : 'Interaction enabled for ' + count.toLocaleString() +
-            ' cells: hover and linked selection are active.';
-      }
-      var button = $('cv-linked-interaction-toggle');
-      if (button) {
-        button.textContent = isStatic ? 'Enable interaction' : 'Use static mode';
-        button.setAttribute('aria-pressed', isStatic ? 'false' : 'true');
-      }
-    }
-    panels.forEach(function (panel) {
-      if (panel.pane) panel.pane.classList.toggle('cv-pane-static', isStatic);
-    });
-    if (isStatic) {
-      panels.forEach(function (panel) {
-        panel.drag = false; panel.panning = false; panel.orbiting = false;
-        var tip = $(panel.tipId); if (tip) tip.style.opacity = 0;
-      });
-      unpinTip();
-      setHoverCell(null);
-    }
-  }
-  function toggleLinkedInteraction() {
-    if (singleActive || !D) return;
-    linkedInteractionEnabled = !linkedInteractionEnabled;
-    updateLinkedInteractionMode();
   }
   function resetSingleViews() {
     restoreLinkedSurface();
@@ -8984,8 +8945,6 @@
       imgChoice = {};
       pendingCloneDetails.clear();
       pendingCloneSupplement = null;
-      // Preserve PR6 interaction defaults; static mode remains an explicit choice.
-      linkedInteractionEnabled = true;
     }
     dataShown = datasetIdentity;
     imgToken++;
@@ -9089,7 +9048,6 @@
     // Give every present space its own panel and hide the unused slots (this also
     // places the Trekker info button on the Trekker panel).
     layoutPanels();
-    updateLinkedInteractionMode();
     syncModeButtons();
     updateSelActions();   // hide Clear until a selection exists
     updateZselButtons();
@@ -10006,11 +9964,6 @@
       if (colorBy !== GENE_PANELS_MODE) return;
       layoutPanels(); renderLegend(); drawAll();
     };
-    var linkedInteractionToggle = $('cv-linked-interaction-toggle');
-    if (linkedInteractionToggle) {
-      linkedInteractionToggle.addEventListener('click', toggleLinkedInteraction);
-    }
-
     // The first panel is persistent across data sets. Initialise its GPU
     // renderer while the app is becoming interactive so the first Linked views
     // click does not also pay for context creation and shader compilation.

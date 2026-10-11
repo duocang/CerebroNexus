@@ -1,4 +1,4 @@
-test_that("Linked views keeps selection enabled and an explicit static override", {
+test_that("Linked views keeps selection enabled independently of hover", {
   ui <- paste(
     readLines(
       viewer_test_path("coordinated_views", "UI.R"),
@@ -11,18 +11,15 @@ test_that("Linked views keeps selection enabled and an explicit static override"
     collapse = "\n"
   )
 
-  expect_match(ui, 'id = "cv-linked-interaction-toggle"', fixed = TRUE)
+  expect_match(ui, 'checkboxInput("cv-hover", "Show linked cell hover", value = TRUE)', fixed = TRUE)
+  expect_no_match(ui, 'cv-linked-interaction-toggle', fixed = TRUE)
   expect_no_match(javascript, "var LINKED_STATIC_ABOVE", fixed = TRUE)
   expect_match(
     javascript,
-    "linkedInteractionEnabled = true;",
+    "return singleActive ? singleInteractionIsStatic() : false;",
     fixed = TRUE
   )
-  expect_match(javascript, "function toggleLinkedInteraction()", fixed = TRUE)
+  expect_no_match(javascript, "toggleLinkedInteraction", fixed = TRUE)
   expect_match(javascript, "if (interactionIsStatic()) return;", fixed = TRUE)
-  expect_match(
-    javascript,
-    "cells are rendered without hover or linked selection.",
-    fixed = TRUE
-  )
+  expect_no_match(javascript, "linkedInteractionEnabled", fixed = TRUE)
 })

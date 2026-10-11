@@ -1,0 +1,30 @@
+[
+  {
+    "path": "inst/viewer/coordinated_views/UI.R",
+    "sha256": "0B859A928DAEEBECBFE05D79E829056AF92B795E2DC2F86A76A5A7DFB5772993"
+  },
+  {
+    "path": "inst/viewer/www/cell_views.js",
+    "sha256": "4EC832E1CF38A2AB811FE3E799A1F5387A3FFB77693C2528BDD10BFF61F2DD67"
+  },
+  {
+    "path": "inst/viewer/www/coordviews.css",
+    "sha256": "C54462D52EFAD2FEE9B0545D735EFFC99B2CE7079C55D7696A89FA59C182245A"
+  },
+  {
+    "path": "inst/viewer/www/custom.css",
+    "sha256": "445B395B22DEEC93B10D17AD7DE44DD1E822327D69BA7764692F74E50DF51155"
+  },
+  {
+    "path": "tests/testthat/fixtures/linked-hover-toggle.js",
+    "sha256": "C0BDF8D6CB4FC2EFC47F58F7830FF5A27296966FFCD2EA950F32E19F4BFD05C5"
+  },
+  {
+    "path": "tests/testthat/test-linked-interaction-performance.R",
+    "sha256": "B81E959B139131D2D3D01BBFEB5B310B125C9FA4414152E059AE96A69F42D3B5"
+  },
+  {
+    "path": "tests/bench/viewer-followup/pr184-feedback/server.R",
+    "sha256": "87F10F0895B628BF162E66950BBE54DBB3A038E178EDB53BB541B73978A753E1"
+  }
+]

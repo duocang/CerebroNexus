@@ -351,15 +351,24 @@ body.skin-blue .sidebar-menu > li > a > .ion {
   transition: color var(--dur) var(--ease);
 }
 
-/* One neutral icon colour keeps the rail quiet; the current page alone carries
-   the amber accent. */
-body.skin-blue .sidebar-menu > li.active > a > i,
-body.skin-blue .sidebar-menu > li.active > a > .fa,
-body.skin-blue .sidebar-menu > li.active > a[data-value] > i,
-body.skin-blue .sidebar-menu > li.active > a > .glyphicon,
-body.skin-blue .sidebar-menu > li.active > a > .ion {
-  color: var(--c-amber) !important;
-}
+/* Stable page colours; the active pill and text still mark navigation. */
+body.skin-blue .sidebar-menu > li > a[data-value="loadData"] > i { color: #3b82f6 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="overview"] > i { color: #f59e0b !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="groups"] > i { color: #10b981 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="markerGenes"] > i { color: #8b5cf6 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="mostExpressedGenes"] > i { color: #ec4899 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="enrichedPathways"] > i { color: #14b8a6 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="extra_material"] > i { color: #ca8a04 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="immune_repertoire"] > i { color: #ef4444 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="spatial"] > i { color: #0891b2 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="trajectory"] > i { color: #06b6d4 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="geneExpression"] > i { color: #6366f1 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="geneIdConversion"] > i { color: #84cc16 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="color_management"] > i { color: #d946ef !important; }
+body.skin-blue .sidebar-menu > li > a[data-value="about"] > i { color: #64748b !important; }
+body.skin-blue .sidebar-menu > li > a[data-value='coordinated_views'] > i { color: #0d9488 !important; }
+body.skin-blue .sidebar-menu > li > a[data-value='trekker'] > i { color: #2563eb !important; }
+body.skin-blue .sidebar-menu > li > a[data-value='hla_tcr_motifs'] > i { color: #be185d !important; }
 body.skin-blue .sidebar-menu > li.header {
   background: transparent !important;
   color: var(--c-text-3) !important;
@@ -2055,7 +2064,8 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 .cerebro-dataset-loading-percent { color: var(--c-amber-700); font-weight: 700; }
 #main-content { position: relative; }
 .cerebro-page-loading-region, .cerebro-page-loader-host { position: relative; }
-.cerebro-page-loader {
+.cerebro-page-loader,
+body .shiny-spinner-output-container > .load-container {
   position: absolute;
   z-index: 10;
   top: 24px;
@@ -2075,8 +2085,10 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
   background: var(--c-surface);
   box-shadow: 0 2px 6px rgba(17, 17, 26, .04);
   color: var(--c-text);
-  opacity: 0;
   pointer-events: none;
+}
+.cerebro-page-loader {
+  opacity: 0;
   transition: opacity .14s var(--ease);
 }
 .cerebro-cell-view-host > .cerebro-page-loader,
@@ -2164,6 +2176,7 @@ body .shiny-progress-container .progress-message::before {
   animation: cerebro-loading-spin .8s linear infinite;
 }
 .cerebro-page-loader-spinner,
+body .shiny-spinner-output-container .load-container > .loader,
 .cerebro-dataset-loading-kicker::before {
   width: 28px; height: 28px; flex-basis: 28px;
   border-width: 3px; vertical-align: -7px;
@@ -2171,23 +2184,13 @@ body .shiny-progress-container .progress-message::before {
 .cerebro-page-loader-spinner { margin: 0; }
 @keyframes cerebro-loading-spin { to { transform: rotate(360deg); } }
 
-/* Keep shinycssloaders' own hidden/busy lifecycle and proxy sizing. Replace
-   its large animated bars with a compact card inside the pending result. */
-body .shiny-spinner-output-container > .load-container {
-  top: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  box-sizing: border-box;
-  width: min(320px, calc(100% - 24px));
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  background: var(--c-surface);
-  text-align: left;
-  padding: 20px;
-  pointer-events: none;
+/* Same card and ring as page entry. shinycssloaders retains its own hidden/
+   busy lifecycle and proxy sizing, including subtab updates after page entry. */
+body .shiny-spinner-output-container > .load-container.shiny-spinner-hidden {
+  display: none;
 }
 body .shiny-spinner-output-container .load-container > .loader {
-  margin: 0 10px 0 0 !important;
+  margin: 0 !important;
   background: transparent !important;
   color: transparent !important;
   font-size: 0;
@@ -2198,8 +2201,8 @@ body .shiny-spinner-output-container .loader::before,
 body .shiny-spinner-output-container .loader::after { content: none; }
 body .shiny-spinner-output-container > .load-container::after {
   content: "Loading result…";
-  color: var(--c-text-2);
-  font: 400 14px/20px var(--font-sans);
+  color: var(--c-text);
+  font: 600 16px/1.35 var(--font-sans);
 }
 body .shiny-notification:has(.shiny-progress-notification) {
   padding: 16px 20px !important;

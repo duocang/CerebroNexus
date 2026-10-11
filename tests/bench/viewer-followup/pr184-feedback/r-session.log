@@ -1,0 +1,192 @@
+##---------------------------------------------------------------------------##
+## Launching CerebroNexus
+##---------------------------------------------------------------------------##
+Loading required package: shiny
+
+Listening on http://127.0.0.1:8947
+[2026-10-11 08:35:43.454114] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:35:43.473016] Format of expression data: dgCMatrix
+[2026-10-11 08:35:43.639978] WebGL status: TRUE
+[2026-10-11 08:35:43.644387] Show hover info status: TRUE
+[2026-10-11 08:35:45.950806] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:35:46.236246] Format of expression data: dgCMatrix
+[2026-10-11 08:37:12.170313] CRB cache hit: cerebro_ren_covid_1.46m.crb
+[2026-10-11 08:37:13.459165] Data loaded; expression backend will attach on first use.
+[2026-10-11 08:37:32.267305] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:37:32.275599] Format of expression data: dgCMatrix
+[2026-10-11 08:37:32.428039] WebGL status: TRUE
+[2026-10-11 08:37:32.433154] Show hover info status: TRUE
+[2026-10-11 08:37:41.238704] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:37:41.249151] Format of expression data: dgCMatrix
+[2026-10-11 08:38:29.92555] CRB cache hit: cerebro_ren_covid_1.46m.crb
+[2026-10-11 08:38:30.769177] Data loaded; expression backend will attach on first use.
+[2026-10-11 08:38:57.90256] CRB cache hit: cerebro_ren_covid_1.46m.crb
+[2026-10-11 08:38:58.732536] Data loaded; expression backend will attach on first use.
+Warning in RColorBrewer::brewer.pal(max(N, 3L), "Set2") :
+  n too large, allowed maximum for palette Set2 is 8
+Returning the palette you asked for with that many colors
+
+Warning in RColorBrewer::brewer.pal(max(N, 3L), "Set2") :
+  n too large, allowed maximum for palette Set2 is 8
+Returning the palette you asked for with that many colors
+
+[2026-10-11 08:41:01.881456] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:41:01.893112] Format of expression data: dgCMatrix
+[2026-10-11 08:41:11.766816] CRB cache hit: example.crb
+class: Cerebro
+exporter package version: 1.7.3
+experiment name: pbmc5p_v2_hs
+organism: hg
+date of analysis: 
+date of export: 2026-06-25
+number of cells: 1,476
+number of genes: 967
+grouping variables (3): sample, seurat_clusters, cell_type
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: sample, seurat_clusters, cell_type
+marker genes:
+  - cerebro_seurat (1): seurat_clusters
+enriched pathways:
+  - cerebro_seurat_enrichr (1): seurat_clusters, 
+  - cerebro_GSVA (1): seurat_clusters
+trajectories:
+extra material:
+  - tables (1): cluster_cell_counts
+Immune repertoire:sample_1, sample_2, sample_3
+HLA typing: none
+Spatial data:
+
+
+[2026-10-11 08:41:11.777194] Format of expression data: dgCMatrix
