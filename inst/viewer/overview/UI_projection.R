@@ -1,12 +1,12 @@
 ##----------------------------------------------------------------------------##
 ## Layout of the UI elements.
 ##----------------------------------------------------------------------------##
-output[["overview_projection_UI"]] <- renderUI({
+overviewProjectionUI <- function() {
   tagList(
     cerebroVizPageHeader(
       "Projection",
       "overview_projection_info",
-      "Explore cells in dimensional-reduction space and colour them by metadata."
+      "Explore cells in dimensional-reduction space and colour them by registered groups."
     ),
     fluidRow(
       class = "cerebro-viz-row cerebro-viz-top-layout",
@@ -71,4 +71,4 @@ output[["overview_projection_UI"]] <- renderUI({
       )
     )
   )
-})
+}

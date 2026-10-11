@@ -9,6 +9,8 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_by_group_UI"]] <- renderUI({
+  req(input[["trajectory_states_section_visible"]])
+  req(trajectory_projection_sent())
   req(trajectory_selection_ok())
 
   fluidRow(
@@ -91,24 +93,15 @@ output[["states_by_group_plot"]] <- plotly::renderPlotly({
     input[["states_by_group_plot_type"]]
   )
 
-  ## collect trajectory data
-  trajectory_data <- getTrajectory(
-    input[["trajectory_selected_method"]],
-    input[["trajectory_selected_name"]]
-  )
-
-  ## merge trajectory data with meta data
-  cells_df <- mergeTrajectoryWithMetaData(trajectory_data)
-
   ##
   grouping_variable <- input[["states_by_group_select_other_group"]]
+  cells_df <- trajectory_cells_reactive(grouping_variable)
 
   ## check which plot type is chosen
   ## ... bar chart
   if (input[["states_by_group_plot_type"]] == "Bar chart") {
     ##
     composition_df <- cells_df %>%
-      dplyr::filter(!is.na(pseudotime)) %>%
       calculateTableAB(
         "state",
         grouping_variable,
@@ -132,7 +125,6 @@ output[["states_by_group_plot"]] <- plotly::renderPlotly({
   } else if (input[["states_by_group_plot_type"]] == "Sankey plot") {
     ##
     composition_df <- cells_df %>%
-      dplyr::filter(!is.na(pseudotime)) %>%
       calculateTableAB(
         "state",
         grouping_variable,
@@ -167,21 +159,12 @@ output[["states_by_group_table"]] <- DT::renderDataTable({
     input[["states_by_group_select_other_group"]]
   )
 
-  ## collect trajectory data
-  trajectory_data <- getTrajectory(
-    input[["trajectory_selected_method"]],
-    input[["trajectory_selected_name"]]
-  )
-
-  ## merge trajectory data with meta data
-  cells_df <- mergeTrajectoryWithMetaData(trajectory_data)
-
   ##
   grouping_variable <- input[["states_by_group_select_other_group"]]
+  cells_df <- trajectory_cells_reactive(grouping_variable)
 
   ## generate table
   composition_df <- cells_df %>%
-    dplyr::filter(!is.na(pseudotime)) %>%
     calculateTableAB(
       "state",
       grouping_variable,
@@ -213,17 +196,7 @@ output[["states_by_group_table"]] <- DT::renderDataTable({
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["states_by_group_info"]], {
-  showModal(
-    modalDialog(
-      states_by_group_info[["text"]],
-      title = states_by_group_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "states_by_group_info", states_by_group_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

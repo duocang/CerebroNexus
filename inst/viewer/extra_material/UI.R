@@ -13,6 +13,6 @@ tab_extra_material <- tabItem(
     }
     "
   ),
-  uiOutput("extra_material_select_category_and_content_UI"),
-  uiOutput("extra_material_content_UI")
+  cerebroResultPage("Extra material", "extra_material_select_category_and_content_UI",
+    "extra_material_content_UI", "extra_material_info")
 )

@@ -8,39 +8,27 @@
 ## large slides (it's an estimate of the same statistic on a random subset).
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_morans_i"]] <- renderText({
+  req(identical(input[["sidebar"]], "spatial"))
+  ## Guard on the raw input before touching spatial_projection_parameters_plot(),
+  ## which reads getSpatialData() to derive image bounds. The default
+  ## ImageDimPlot path must exit without hydrating coordinates.
+  req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))
   plot_parameters <- spatial_projection_parameters_plot()
   req(identical(plot_parameters[["plot_type"]], "ImageFeaturePlot"))
   gene <- plot_parameters[["feature_to_display"]]
   req(gene, gene %in% getGeneNames())
 
-  metadata <- getMetaData()
   spatial_data <- getSpatialData(plot_parameters[["projection"]])
   coords <- spatial_data$coordinates
   req(nrow(coords) >= 2)
-
-  ## Align expression to coordinates BY BARCODE, not by position: the coordinate
-  ## table is stored in .getSpatialData()'s own cell order (a possibly reordered
-  ## subset), so a positional pairing would match each cell's expression to a
-  ## different cell's (x, y). Restrict to the barcodes present in both tables.
-  if ("cell_barcode" %in% colnames(metadata)) {
-    cells <- as.character(metadata$cell_barcode)
-  } else {
-    cells <- rownames(metadata)
-  }
-  common <- intersect(cells, rownames(coords))
-  req(length(common) >= 2)
-
-  expression_data <- data_set()$getExpressionMatrix(
-    cells = common,
-    genes = gene
-  )
-  req(!is.null(expression_data), gene %in% rownames(expression_data))
-  expr <- as.vector(expression_data[gene, common])
-  coords <- coords[common, , drop = FALSE]
+  cell_index <- spatial_projection_cell_index()
+  req(length(cell_index) == nrow(coords))
+  expr <- viewerExpressionRow(data_set(), cell_index, gene)
+  req(!is.null(expr))
 
   ## Down-sample for the O(n^2) neighbour search so large slides stay responsive.
   max_cells <- 2000
-  n <- length(common)
+  n <- length(cell_index)
   idx <- seq_len(n)
   if (n > max_cells) {
     set.seed(42) # stable score across re-renders
@@ -61,33 +49,31 @@ output[["spatial_projection_morans_i"]] <- renderText({
     if (n > max_cells) paste0(" (", max_cells, "-cell subsample)") else ""
   )
 }) %>%
-  cachePlot(
-    spatial_projection_parameters_plot()[["projection"]],
-    spatial_projection_parameters_plot()[["feature_to_display"]],
-    available_crb_files$selected
-  )
+  cachePlot({
+    ## Cache keys run before the render body, so gate both paths.
+    req(identical(input[["sidebar"]], "spatial"))
+    req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))
+    list(
+      input[["spatial_projection_to_display"]],
+      input[["spatial_projection_feature_to_display"]],
+      viewerDatasetContextToken(viewer_loaded_dataset_context())
+    )
+  })
 
-## Keep it computed even when the title-bar span is momentarily hidden (e.g.
-## while switching plot type), so the value is ready as soon as it reappears.
+## Compute the score only while its feature-mode title bar is visible.
 outputOptions(
   output,
   "spatial_projection_morans_i",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 
 ## Info box explaining the score, shown when pressing the "info" button next to
 ## the Moran's I value in the projection title bar.
-observeEvent(input[["spatial_projection_morans_i_info"]], {
-  showModal(
-    modalDialog(
-      spatial_projection_morans_i_info[["text"]],
-      title = spatial_projection_morans_i_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "spatial_projection_morans_i_info",
+  spatial_projection_morans_i_info
+)
 
 spatial_projection_morans_i_info <- list(
   title = "Spatial autocorrelation (Moran's I)",

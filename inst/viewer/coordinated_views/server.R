@@ -24,65 +24,240 @@ source(
   local = TRUE
 )
 
-source(
-  paste0(
-    Cerebro.options[["cerebro_root"]],
-    "/viewer/coordinated_views/config.R"
-  ),
-  local = TRUE
-)
-
-cv_saved_view_dataset <- reactive({
-  metadata <- getMetaData()
-  cells <- if ("cell_barcode" %in% colnames(metadata)) {
-    as.character(metadata$cell_barcode)
-  } else {
-    rownames(metadata)
-  }
-  list(
-    cells = cells,
-    fingerprint = cv_config_cell_fingerprint(cells)
-  )
-})
-
-observe({
-  dataset <- cv_saved_view_dataset()
-  session$sendCustomMessage(
-    "cerebro_saved_view_dataset",
-    list(
-      cell_count = length(dataset$cells),
-      cell_fingerprint = dataset$fingerprint
-    )
-  )
-})
 ## Always resolves to something sendable: the bundle, or a list(error = <text>)
 ## describing why this data set has no linked views. Never NULL — see the observe
 ## below for why silence is the one outcome we cannot afford.
 ## How many times the bundle has actually been built this session. A plain
 ## environment rather than a reactiveVal: it is written from inside the reactive
 ## that it counts, and a reactive value would make that a dependency on itself.
-## Read back through exportTestValues -- "was any work done for a tab nobody
-## opened" is otherwise invisible from the outside, which is how it went
-## unnoticed in the first place.
+## Read back through exportTestValues so tests can distinguish the primary and
+## full progressive stages from accidental builds while the page is hidden.
 coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
+coordviews_build_log$primary_n <- 0L
 coordviews_build_log$sent_n <- 0L
+coordviews_build_log$sent_palette <- NULL
+coordviews_build_log$sent_primary_n <- 0L
+coordviews_build_log$supplemented_primary_n <- 0L
+coordviews_build_log$clone_started_key <- ""
+coordviews_build_log$clone_sent_primary_n <- 0L
+coordviews_build_log$color_observer_started <- FALSE
+coordviews_background_ready <- reactiveVal(FALSE)
+coordviews_image_spaces <- reactiveVal(NULL)
+coordviews_color_source <- reactiveVal(NULL)
+coordviews_assets <- reactiveVal(list())
+coordviews_clone_details <- reactiveVal(NULL)
+coordviews_sent_primary <- reactiveVal(0L)
+coordviews_requested_modalities <- reactiveVal(character())
 
-coordviews_bundle <- reactive({
-  req(!is.null(data_set()))
-  coordviews_build_log$n <- coordviews_build_log$n + 1L
+cv_async_clone_spec <- function(crb, primary) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  receptors <- if (is.list(pack)) {
+    as.character(pack$manifest$immune_receptors %||% character())
+  } else {
+    character()
+  }
+  if (
+    !isTRUE(pack$canonical_order) ||
+      !length(receptors) ||
+      !identical(as.integer(pack$cell_count), as.integer(primary$n))
+  ) {
+    return(NULL)
+  }
+  list(
+    pack_path = pack$path,
+    manifest = pack$manifest,
+    receptor = receptors[[1L]],
+    n = as.integer(primary$n)
+  )
+}
+
+cv_clone_task_key <- function(spec) {
+  if (is.null(spec)) {
+    ""
+  } else {
+    paste(
+      spec$pack_path,
+      spec$receptor,
+      spec$manifest$dataset_fingerprint %||% "",
+      sep = "\r"
+    )
+  }
+}
+
+coordviews_clone_task <- shiny::ExtendedTask$new(function(
+  spec,
+  target,
+  bundle_file,
+  clone_contract_file,
+  viewer_pack_file
+) {
+  mirai::mirai(
+    {
+      started <- proc.time()[["elapsed"]]
+      scope <- new.env(parent = globalenv())
+      sys.source(clone_contract_file, envir = scope)
+      sys.source(viewer_pack_file, envir = scope)
+      sys.source(bundle_file, envir = scope)
+      pack <- list(
+        path = spec$pack_path,
+        manifest = spec$manifest,
+        cells = NULL,
+        cell_count = spec$n,
+        canonical_order = TRUE,
+        cache = new.env(parent = emptyenv())
+      )
+      packed <- scope$viewerPackImmuneIndex(pack, spec$receptor)
+      clone <- if (is.null(packed)) {
+        NULL
+      } else {
+        scope$cv_build_clone_rows(
+          as.character(packed$clone),
+          as.character(packed$ctaa),
+          as.character(packed$receptor),
+          as.integer(packed$cell_index),
+          spec$n,
+          TRUE
+        )
+      }
+      list(
+        target = target,
+        clone = clone,
+        server_prepare_ms = (proc.time()[["elapsed"]] - started) * 1000
+      )
+    },
+    spec = spec,
+    target = target,
+    bundle_file = bundle_file,
+    clone_contract_file = clone_contract_file,
+    viewer_pack_file = viewer_pack_file
+  )
+})
+
+cv_start_clone_task <- function(spec) {
+  key <- cv_clone_task_key(spec)
+  if (!nzchar(key) || identical(coordviews_build_log$clone_started_key, key)) {
+    return(invisible(FALSE))
+  }
+  root <- normalizePath(
+    Cerebro.options[["cerebro_root"]],
+    winslash = "/",
+    mustWork = TRUE
+  )
+  coordviews_build_log$clone_started_key <- key
+  coordviews_clone_task$invoke(
+    spec,
+    list(
+      key = key,
+      pack_path = spec$pack_path,
+      receptor = spec$receptor,
+      n = spec$n,
+      cell_order_fingerprint = spec$manifest$cell_order_fingerprint %||% ""
+    ),
+    file.path(root, "viewer/coordinated_views/bundle.R"),
+    file.path(root, "viewer/clone_contract.R"),
+    file.path(root, "viewer/core/viewer_pack.R")
+  )
+  invisible(TRUE)
+}
+
+observeEvent(input[["coordviews_spatial_image_load_error"]], {
+  event <- input[["coordviews_spatial_image_load_error"]]
+  if (
+    !is.list(event) ||
+      !viewerDatasetContextEqual(
+        event$dataset_context,
+        viewer_loaded_dataset_context()
+      )
+  ) {
+    return()
+  }
+  space <- as.character(event$space %||% "Spatial")
+  image <- as.character(event$image %||% "background image")
+  if (
+    length(space) != 1L || is.na(space) || !nzchar(space) ||
+      length(image) != 1L || is.na(image) || !nzchar(image)
+  ) {
+    return()
+  }
+  showNotification(
+    paste0(
+      "Could not display “",
+      image,
+      "” in “",
+      space,
+      "”. The browser could not decode the image or retrieve its local file."
+    ),
+    type = "error",
+    duration = 8
+  )
+})
+
+cv_build_bundle_safe <- function(primary_only = FALSE) {
+  dataset_context <- viewer_loaded_dataset_context()
   tryCatch(
     {
-      b <- cv_build_bundle(data_set())
+      started <- proc.time()[["elapsed"]]
+      first_frame <- if (isTRUE(primary_only)) {
+        viewerProjectionFirstFrameCache()
+      } else {
+        NULL
+      }
+      resource_started <- proc.time()[["elapsed"]]
+      projection_resource <- NULL
+      group_resource <- NULL
+      if (
+        is.list(first_frame) &&
+          is.list(first_frame$projections) &&
+          length(first_frame$projections)
+      ) {
+        configured <- cv_selected_viewer_content()[["default_projection"]]
+        projection_name <- cv_preferred_projection_name(
+          names(first_frame$projections),
+          configured
+        )
+        descriptor <- viewerProjectionAsset(projection_name)
+        if (is.list(descriptor)) {
+          projection_resource <- list(
+            name = projection_name,
+            descriptor = descriptor
+          )
+        }
+      }
+      if (is.list(first_frame) && is.data.frame(first_frame$meta_data)) {
+        group_resource <- cv_primary_group_resource(
+          data_set(),
+          first_frame$meta_data,
+          viewerMetadataCodesAsset
+        )
+      }
+      resource_prepare_ms <-
+        (proc.time()[["elapsed"]] - resource_started) * 1000
+      bundle_started <- proc.time()[["elapsed"]]
+      b <- cv_build_bundle(
+        data_set(),
+        primary_only,
+        first_frame = first_frame,
+        primary_projection_resource = projection_resource,
+        dataset_context = dataset_context,
+        primary_group_resource = group_resource
+      )
+      bundle_build_ms <-
+        (proc.time()[["elapsed"]] - bundle_started) * 1000
       if (is.null(b)) {
         list(
+          dataset_context = dataset_context,
           error = paste(
             "This data set carries no dimensional reduction, so there is",
             "nothing to link its modalities on."
           )
         )
       } else {
-        b$dataset_fingerprint <- cv_config_cell_fingerprint(b$cells)
+        b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint
+        attr(b, "server_prepare_ms") <-
+          (proc.time()[["elapsed"]] - started) * 1000
+        attr(b, "server_resource_ms") <- resource_prepare_ms
+        attr(b, "server_bundle_ms") <- bundle_build_ms
         b
       }
     },
@@ -95,10 +270,222 @@ coordviews_bundle <- reactive({
         conditionMessage(e),
         call. = FALSE
       )
-      list(error = "Linked views could not be built for this data set.")
+      list(
+        dataset_context = dataset_context,
+        error = "Linked views could not be built for this data set."
+      )
     }
   )
+}
+
+coordviews_bundle <- reactive({
+  req(!is.null(data_set()))
+  coordviews_build_log$n <- coordviews_build_log$n + 1L
+  cv_build_bundle_safe()
 })
+
+coordviews_primary_bundle <- reactive({
+  req(!is.null(data_set()))
+  coordviews_build_log$primary_n <- coordviews_build_log$primary_n + 1L
+  cv_build_bundle_safe(primary_only = TRUE)
+})
+
+cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
+  started <- proc.time()[["elapsed"]]
+  wants_clone <- "all" %in% modalities || "clone" %in% modalities
+  clone_spec <- if (wants_clone) {
+    cv_async_clone_spec(data_set(), primary)
+  } else {
+    NULL
+  }
+  supplement <- tryCatch({
+    value <- cv_build_compact_supplement(
+      data_set(),
+      primary,
+      viewerProjectionFirstFrameCache(),
+      include_clone = wants_clone && is.null(clone_spec)
+    )
+    if (is.null(value)) {
+      value <- cv_build_progressive_supplement(
+        data_set(),
+        primary,
+        include_clone = wants_clone && is.null(clone_spec)
+      )
+    }
+    value
+  },
+    error = function(error) NULL
+  )
+  if (is.null(supplement)) {
+    return(NULL)
+  }
+  supplement <- cv_reference_trajectory_geometry(supplement, primary, data_set())
+  attr(supplement, "server_prepare_ms") <-
+    (proc.time()[["elapsed"]] - started) * 1000
+  list(primary_n = primary_n, value = supplement, clone_spec = clone_spec)
+}
+
+cv_send_progressive_supplement <- function(prepared) {
+  primary_n <- prepared$primary_n
+  if (identical(coordviews_build_log$supplemented_primary_n, primary_n)) {
+    return(invisible(FALSE))
+  }
+  deferred <- cv_defer_assets(prepared$value)
+  supplement <- deferred$value
+  coordviews_assets(deferred$assets)
+  current_colors <- coordviews_color_source()
+  current_colors$groups <- c(
+    current_colors$groups %||% list(),
+    supplement$groups %||% list()
+  )
+  current_colors$cat_extra <- c(
+    current_colors$cat_extra %||% list(),
+    supplement$cat_extra %||% list()
+  )
+  current_colors$fields <- c(
+    current_colors$fields %||% list(),
+    supplement$fields %||% list()
+  )
+  coordviews_color_source(current_colors)
+  supplement$transport_profile <- list(
+    server_prepare_ms = attr(supplement, "server_prepare_ms") %||% NA_real_,
+    sent_at_ms = as.numeric(Sys.time()) * 1000
+  )
+  session$sendBinaryMessage(
+    "coordviews_supplement",
+    cv_wire_pack_message(supplement)
+  )
+  coordviews_image_spaces(supplement$spaces %||% list())
+  coordviews_background_ready(TRUE)
+  coordviews_build_log$supplemented_primary_n <- primary_n
+  invisible(TRUE)
+}
+
+observe({
+  sent_primary_n <- coordviews_sent_primary()
+  req(sent_primary_n > 0L)
+  requested <- coordviews_requested_modalities()
+  req("all" %in% requested || "clone" %in% requested)
+  req(identical(coordviews_clone_task$status(), "success"))
+  result <- coordviews_clone_task$result()
+  target <- result$target
+  clone <- result$clone
+  source <- isolate(coordviews_color_source())
+  pack <- attr(isolate(data_set()), "cerebro_viewer_pack", exact = TRUE)
+  req(
+    is.list(target),
+    is.list(clone),
+    is.list(source),
+    is.list(pack),
+    isTRUE(pack$canonical_order),
+    identical(
+      as.character(target$key),
+      cv_clone_task_key(list(
+        pack_path = pack$path,
+        receptor = target$receptor,
+        manifest = pack$manifest
+      ))
+    ),
+    identical(
+      normalizePath(pack$path, winslash = "/", mustWork = TRUE),
+      as.character(target$pack_path)
+    ),
+    identical(as.integer(target$n), as.integer(source$n)),
+    identical(
+      as.integer(sent_primary_n),
+      as.integer(coordviews_build_log$sent_primary_n)
+    ),
+    identical(
+      as.character(target$cell_order_fingerprint),
+      as.character(source$canonical_order_id %||% "")
+    )
+  )
+  if (
+    identical(
+      coordviews_build_log$clone_sent_primary_n,
+      as.integer(sent_primary_n)
+    )
+  ) {
+    return()
+  }
+  deferred_clone <- cv_defer_clone_details(clone)
+  clone <- deferred_clone$value
+  coordviews_clone_details(list(
+    primary_n = as.integer(sent_primary_n),
+    dataset_fingerprint = source$dataset_fingerprint,
+    dataset_context = source$dataset_context,
+    label = deferred_clone$details$label,
+    n_cdr3 = deferred_clone$details$n_cdr3
+  ))
+  supplement <- list(
+    dataset_id = source$dataset_id,
+    dataset_context = source$dataset_context,
+    dataset_fingerprint = source$dataset_fingerprint,
+    progressive_token = sent_primary_n,
+    groups = list(clone_expansion = clone$group),
+    cat_extra = list(),
+    fields = list(),
+    projections = list(),
+    spaces = list(clone$space),
+    clone = clone$bundle,
+    trekker = NULL,
+    progressive_complete = FALSE,
+    transport_profile = list(
+      server_prepare_ms = result$server_prepare_ms,
+      sent_at_ms = as.numeric(Sys.time()) * 1000
+    )
+  )
+  current_colors <- isolate(coordviews_color_source())
+  current_colors$groups <- c(
+    current_colors$groups %||% list(),
+    supplement$groups
+  )
+  coordviews_color_source(current_colors)
+  session$sendBinaryMessage(
+    "coordviews_supplement",
+    cv_wire_pack_message(supplement)
+  )
+  coordviews_build_log$clone_sent_primary_n <- as.integer(sent_primary_n)
+})
+
+observeEvent(
+  input[["coordviews_clone_details_request"]],
+  {
+    request <- input[["coordviews_clone_details_request"]]
+    details <- isolate(coordviews_clone_details())
+    req(
+      is.list(request),
+      is.list(details),
+      viewerDatasetContextEqual(request$dataset_context, details$dataset_context),
+      viewerDatasetContextEqual(details$dataset_context, viewer_loaded_dataset_context()),
+      identical(
+        as.character(request$dataset_fingerprint %||% ""),
+        as.character(details$dataset_fingerprint)
+      ),
+      identical(
+        as.integer(details$primary_n),
+        as.integer(coordviews_build_log$sent_primary_n)
+      )
+    )
+    ids <- unique(suppressWarnings(as.integer(request$ids)))
+    ids <- ids[
+      !is.na(ids) & ids >= 0L & ids < length(details$label)
+    ]
+    req(length(ids) > 0L, length(ids) <= 32L)
+    at <- ids + 1L
+    session$sendCustomMessage(
+      "coordviews_clone_details",
+      list(
+        dataset_context = details$dataset_context,
+        dataset_fingerprint = details$dataset_fingerprint,
+        ids = I(ids),
+        labels = I(details$label[at]),
+        n_cdr3 = I(details$n_cdr3[at])
+      )
+    )
+  },
+  ignoreInit = TRUE
+)
 
 ## The bundle when it actually built; NULL otherwise. Server-side consumers
 ## (gene vectors, histology controls) need real cells, not an error payload.
@@ -106,11 +493,19 @@ cv_ok <- function(b) {
   if (is.null(b) || !is.null(b$error)) NULL else b
 }
 
+cv_context_payload <- function(payload, dataset_context) {
+  if (!is.list(payload)) {
+    payload <- list(value = payload)
+  }
+  payload$dataset_context <- dataset_context
+  payload
+}
+
 ## Palette edits do not change cells, coordinates, or available spaces. Keep the
 ## expensive bundle reactive independent of Colour management and send only the
 ## categorical colours that changed.
 coordviews_color_patch <- reactive({
-  b <- cv_ok(coordviews_bundle())
+  b <- coordviews_color_source()
   req(!is.null(b))
   colors <- tryCatch(reactive_colors(), error = function(e) NULL)
   cv_color_patch(b, colors)
@@ -124,7 +519,13 @@ coordviews_color_patch <- reactive({
 ## this boundary. Only canonical JSON reaches the clipboard/download path, and
 ## only normalized state reaches the browser after upload.
 ##----------------------------------------------------------------------------##
-cv_config_send_result <- function(nonce, action, ok, ...) {
+cv_config_send_result <- function(
+  nonce,
+  action,
+  ok,
+  dataset_context,
+  ...
+) {
   if (is.null(nonce)) {
     nonce <- ""
   }
@@ -137,7 +538,8 @@ cv_config_send_result <- function(nonce, action, ok, ...) {
       list(
         nonce = as.character(nonce),
         action = as.character(action),
-        ok = isTRUE(ok)
+        ok = isTRUE(ok),
+        dataset_context = dataset_context
       ),
       list(...)
     )
@@ -210,10 +612,34 @@ cv_config_validate_genes <- function(config, cells) {
   )
 }
 
+cv_config_materialize_selection <- function(config, cells) {
+  if (
+    is.list(config) &&
+      identical(config$schema, CV_CONFIG_SCHEMA) &&
+      is.list(config$selection) &&
+      !is.null(config$selection$indices)
+  ) {
+    resolved <- cv_cells_at_indices(cells, config$selection$indices)
+    config$selection$cells <- if (is.null(resolved)) character() else resolved
+    config$selection$indices <- NULL
+  }
+  config
+}
+
 observeEvent(
   input[["coordviews_config_request"]],
   {
     request <- input[["coordviews_config_request"]]
+    request_context <- if (is.list(request)) {
+      request$dataset_context
+    } else {
+      NULL
+    }
+    current_context <- viewer_loaded_dataset_context()
+    if (!viewerDatasetContextEqual(request_context, current_context)) {
+      return()
+    }
+    dataset_context <- current_context
     raw_nonce <- if (is.list(request)) request$nonce else NULL
     raw_action <- if (is.list(request)) request$action else NULL
     nonce <- if (
@@ -241,7 +667,7 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config"),
+          c("nonce", "action", "dataset_context", "config"),
           required = c("nonce", "action"),
           path = "$.request"
         )
@@ -252,8 +678,14 @@ observeEvent(
           "prepare"
         )
         dataset <- cv_saved_view_dataset()
+        if (!viewerDatasetContextEqual(
+          dataset$dataset_context,
+          dataset_context
+        )) {
+          return()
+        }
         prepared <- cv_config_prepare(
-          request$config,
+          cv_config_materialize_selection(request$config, dataset$cells),
           cells = dataset$cells,
           fingerprint = dataset$fingerprint
         )
@@ -261,6 +693,7 @@ observeEvent(
           nonce,
           action,
           TRUE,
+          dataset_context,
           json = prepared$json,
           filename = paste0(
             if (identical(prepared$config$schema, CV_CONFIG_SCHEMA)) {
@@ -280,6 +713,7 @@ observeEvent(
           nonce,
           action,
           FALSE,
+          dataset_context,
           code = if (inherits(error, "cv_config_error")) {
             error$code
           } else {
@@ -297,6 +731,16 @@ observeEvent(
   input[["coordviews_config_upload_request"]],
   {
     upload <- input[["coordviews_config_upload_request"]]
+    request_context <- if (is.list(upload)) {
+      upload$dataset_context
+    } else {
+      NULL
+    }
+    current_context <- viewer_loaded_dataset_context()
+    if (!viewerDatasetContextEqual(request_context, current_context)) {
+      return()
+    }
+    dataset_context <- current_context
     raw_nonce <- if (is.list(upload)) upload$nonce else NULL
     nonce <- if (
       is.character(raw_nonce) &&
@@ -313,13 +757,26 @@ observeEvent(
         cv_config_check_node_limit(upload)
         upload <- cv_config_record(
           upload,
-          c("nonce", "action", "name", "size", "text"),
+          c(
+            "nonce",
+            "action",
+            "dataset_context",
+            "name",
+            "size",
+            "text"
+          ),
           path = "$.upload"
         )
         nonce <- cv_config_string(raw_nonce, "$.upload.nonce", 128L)
         action <- cv_config_choice(upload$action, "$.upload.action", "apply")
         text <- cv_config_read_upload(upload)
         dataset <- cv_saved_view_dataset()
+        if (!viewerDatasetContextEqual(
+          dataset$dataset_context,
+          dataset_context
+        )) {
+          return()
+        }
         normalized <- cv_config_decode(
           enc2utf8(text),
           cells = dataset$cells,
@@ -330,8 +787,12 @@ observeEvent(
           nonce,
           action,
           TRUE,
+          dataset_context,
           config = cv_config_json_document(normalized),
           colour_data = colour_data,
+          selection_indices = I(as.integer(
+            match(normalized$selection$cells, dataset$cells) - 1L
+          )),
           selected_cells = length(normalized$selection$cells)
         )
       },
@@ -341,6 +802,7 @@ observeEvent(
           nonce,
           "apply",
           FALSE,
+          dataset_context,
           code = if (inherits(error, "cv_config_error")) {
             error$code
           } else {
@@ -355,12 +817,9 @@ observeEvent(
 )
 
 
-## Nothing is built or sent until the user actually opens the tab.
-##
-## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
-## spatial coordinates, the immune repertoire -- and the result is sizeable.
-## Doing that on connect made every session pay for a tab most of them never
-## open; colour edits now stay in the small patch reactive above.
+## Nothing is sent until the user opens the tab. Large datasets first receive
+## one projection and one colour field; the browser requests the expensive
+## trajectories/spatial/clone supplement only after that primary frame paints.
 ##
 ## The client reports whether the workspace is on screen (`coordviews_visible`)
 ## -- see www/cell_views.js for why that signal rather than the sidebar's
@@ -373,10 +832,7 @@ observeEvent(input[["coordviews_visible"]], {
   coordviews_visible(isTRUE(input[["coordviews_visible"]]))
 })
 
-## Push the full bundle while visible and when the data set changes. The error
-## payload is pushed too, and that is the point: staying silent would leave the
-## PREVIOUS data set's panels on screen, presenting one data set's cells as
-## another's. Colour changes use the patch observer below.
+## Push the primary bundle while visible. Generation catches same-path reloads.
 ##
 ## The req() has to come FIRST. It is what keeps this observer from taking a
 ## dependency on the bundle while hidden -- nothing is built until the user
@@ -384,29 +840,303 @@ observeEvent(input[["coordviews_visible"]], {
 observe(
   {
     req(coordviews_visible())
-    bundle <- coordviews_bundle()
-    if (identical(coordviews_build_log$sent_n, coordviews_build_log$n)) {
-      return()
+    progressive <- isTRUE(input[["coordviews_wire_supported"]])
+    if (progressive) {
+      primary <- coordviews_primary_bundle()
+      primary_n <- coordviews_build_log$primary_n
+      if (identical(coordviews_build_log$sent_primary_n, primary_n)) {
+        return()
+      }
+      if (!is.null(primary$error)) {
+        session$sendCustomMessage("coordviews_data", primary)
+        coordviews_background_ready(TRUE)
+        coordviews_build_log$sent_primary_n <- primary_n
+        return()
+      }
+      shared <- input[["coordviews_shared_base"]]
+      if (
+        is.list(shared) &&
+          viewerDatasetContextEqual(shared$dataset_context, primary$dataset_context) &&
+          identical(
+            as.character(shared$dataset_fingerprint %||% ""),
+            primary$dataset_fingerprint
+          ) &&
+          identical(as.integer(shared$cell_count), as.integer(primary$n)) &&
+          nzchar(primary$canonical_order_id %||% "") &&
+          identical(
+            as.character(shared$canonical_order_id %||% ""),
+            primary$canonical_order_id
+          ) &&
+          as.character(shared$projection %||% "") %in%
+            names(primary$projections)
+      ) {
+        projection <- as.character(shared$projection)
+        primary$shared_projection <- projection
+        primary$projections[[projection]]$x <- NULL
+        primary$projections[[projection]]$y <- NULL
+        primary$projections[[projection]]$z <- NULL
+        primary$projections[[projection]]$projection_resource <- NULL
+      }
+      if (is.null(primary$shared_projection)) {
+        projection <- primary$default_projection
+        resource <- primary$projections[[projection]]$projection_resource
+        if (is.null(resource)) {
+          resource <- viewerProjectionAsset(projection, primary$cells)
+        }
+        if (
+          is.list(resource) &&
+            projection %in% names(primary$projections)
+        ) {
+          primary$projections[[projection]]$projection_resource <- resource
+          primary$projections[[projection]]$x <- NULL
+          primary$projections[[projection]]$y <- NULL
+          primary$projections[[projection]]$z <- NULL
+        }
+      }
+      coordviews_background_ready(FALSE)
+      coordviews_image_spaces(NULL)
+      coordviews_assets(list())
+      coordviews_clone_details(NULL)
+      coordviews_sent_primary(0L)
+      coordviews_requested_modalities(character())
+      coordviews_color_source(primary)
+      coordviews_build_log$sent_palette <- list(
+        context = viewer_loaded_dataset_context(),
+        patch = isolate(coordviews_color_patch())
+      )
+      primary$progressive <- TRUE
+      primary$progressive_token <- primary_n
+      primary$transport_profile <- list(
+        server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
+        server_resource_ms = attr(primary, "server_resource_ms") %||% NA_real_,
+        server_bundle_ms = attr(primary, "server_bundle_ms") %||% NA_real_,
+        sent_at_ms = as.numeric(Sys.time()) * 1000
+      )
+      session$sendBinaryMessage(
+        "coordviews_binary",
+        cv_wire_pack_bundle(primary, include_cells = FALSE)
+      )
+      coordviews_build_log$sent_primary_n <- primary_n
+      coordviews_sent_primary(primary_n)
+    } else {
+      colors <- tryCatch(reactive_colors(), error = function(e) NULL)
+      bundle <- coordviews_bundle()
+      bundle_n <- coordviews_build_log$n
+      if (identical(coordviews_build_log$sent_n, bundle_n)) {
+        return()
+      }
+      if (is.null(bundle$error)) {
+        bundle <- cv_apply_color_patch(bundle, cv_color_patch(bundle, colors))
+      }
+      session$sendCustomMessage("coordviews_data", bundle)
+      coordviews_image_spaces(bundle$spaces %||% list())
+      coordviews_assets(list())
+      coordviews_color_source(bundle)
+      coordviews_build_log$sent_palette <- list(
+        context = viewer_loaded_dataset_context(),
+        patch = isolate(coordviews_color_patch())
+      )
+      coordviews_background_ready(TRUE)
+      coordviews_build_log$sent_n <- bundle_n
     }
-    if (is.null(bundle$error)) {
-      bundle <- cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
+    if (!isTRUE(coordviews_build_log$color_observer_started)) {
+      coordviews_build_log$color_observer_started <- TRUE
+      observe({
+        ## Gate before evaluating the patch: hidden palette changes must not
+        ## hydrate or redraw the million-cell Linked workspace.
+        req(coordviews_visible())
+        palette <- list(
+          context = viewer_loaded_dataset_context(),
+          patch = coordviews_color_patch()
+        )
+        if (identical(palette, coordviews_build_log$sent_palette)) return()
+        session$sendCustomMessage("coordviews_colors", palette$patch)
+        coordviews_build_log$sent_palette <- palette
+      })
     }
-    session$sendCustomMessage("coordviews_data", bundle)
-    coordviews_build_log$sent_n <- coordviews_build_log$n
   },
   priority = 1
 )
 
 observeEvent(
-  reactive_colors(),
+  input[["coordviews_primary_ready"]],
   {
-    if (coordviews_build_log$sent_n == 0L) {
+    request <- input[["coordviews_primary_ready"]]
+    primary <- isolate(coordviews_primary_bundle())
+    primary_n <- coordviews_build_log$primary_n
+    modalities <- unique(as.character(request$modalities %||% character()))
+    req(
+      !is.null(request$dataset_id),
+      is.list(request$dataset_context),
+      !is.null(request$dataset_fingerprint),
+      !is.null(request$progressive_token),
+      viewerDatasetContextEqual(
+        request$dataset_context,
+        primary$dataset_context
+      ),
+      identical(as.character(request$dataset_id), primary$dataset_id),
+      identical(
+        as.character(request$dataset_fingerprint),
+        primary$dataset_fingerprint
+      ),
+      identical(as.integer(request$progressive_token), primary_n),
+      length(modalities) > 0L,
+      all(
+        modalities %in%
+          c(
+            "all",
+            "attributes",
+            "projections",
+            "trajectory",
+            "spatial",
+            "trekker",
+            "clone"
+          )
+      )
+    )
+    if (identical(coordviews_build_log$supplemented_primary_n, primary_n)) {
       return()
     }
-    session$sendCustomMessage("coordviews_colors", coordviews_color_patch())
+    coordviews_requested_modalities(modalities)
+    primary$progressive_token <- primary_n
+    prepared <- cv_prepare_progressive_supplement(
+      primary,
+      primary_n,
+      modalities
+    )
+    req(!is.null(prepared))
+    cv_send_progressive_supplement(prepared)
+    ## Clone preparation can saturate CPU and disk long enough to delay the GPU
+    ## frame. The client reaches this observer only after the primary frame is
+    ## correct and visible, so progressive work cannot compete with first paint.
+    cv_start_clone_task(prepared$clone_spec)
+    session$sendCustomMessage(
+      "coordviews_colors",
+      isolate(coordviews_color_patch())
+    )
+    coordviews_build_log$sent_palette <- list(
+      context = viewer_loaded_dataset_context(),
+      patch = isolate(coordviews_color_patch())
+    )
   },
   ignoreInit = TRUE
 )
+
+observeEvent(
+  input[["coordviews_attribute_request"]],
+  {
+    request <- input[["coordviews_attribute_request"]]
+    source <- isolate(coordviews_color_source())
+    req(
+      is.list(request),
+      !is.null(source),
+      viewerDatasetContextEqual(request$dataset_context, source$dataset_context),
+      viewerDatasetContextEqual(source$dataset_context, viewer_loaded_dataset_context()),
+      identical(as.character(request$dataset_id), source$dataset_id),
+      identical(
+        as.character(request$dataset_fingerprint),
+        viewerDatasetIdentity()$fingerprint
+      )
+    )
+    kind <- as.character(request$kind %||% "")
+    name <- as.character(request$name %||% "")
+    req(length(kind) == 1L, length(name) == 1L, nzchar(name))
+    descriptor <- source[[kind]][[name]]
+    req(!is.null(descriptor), isTRUE(descriptor$deferred))
+    first_frame <- viewerProjectionFirstFrameCache()
+    metadata <- if (is.data.frame(first_frame$meta_data)) {
+      first_frame$meta_data
+    } else {
+      cv_canonical_metadata(getMetaData())
+    }
+    value <- cv_build_attribute(
+      data_set(),
+      metadata,
+      kind,
+      name,
+      function(group_name, levels) {
+        tryCatch(
+          cerebro_group_colors(length(levels)),
+          error = function(error) cv_colors_for(levels)
+        )
+      }
+    )
+    req(!is.null(value))
+    session$sendBinaryMessage(
+      "coordviews_attribute",
+      cv_wire_pack_message(list(
+        dataset_id = source$dataset_id,
+    dataset_context = source$dataset_context,
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
+        kind = kind,
+        name = name,
+        value = value
+      ))
+    )
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["coordviews_asset_request"]],
+  {
+    request <- input[["coordviews_asset_request"]]
+    req(is.list(request), viewerDatasetContextEqual(request$dataset_context, viewer_loaded_dataset_context()))
+    key <- as.character(request$key %||% "")
+    assets <- isolate(coordviews_assets())
+    req(
+      length(key) == 1L,
+      nzchar(key),
+      identical(
+        as.character(request$dataset_fingerprint %||% ""),
+        viewerDatasetIdentity()$fingerprint
+      ),
+      !is.null(assets[[key]])
+    )
+    uri <- cv_asset_data_uri(assets[[key]])
+    req(!is.null(uri))
+    if (!is.character(assets[[key]])) {
+      assets[[key]] <- uri
+      coordviews_assets(assets)
+    }
+    session$sendCustomMessage(
+      "coordviews_asset",
+      list(
+        dataset_context = request$dataset_context,
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
+        key = key,
+        uri = uri
+      )
+    )
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(input[["coordviews_wire_fallback"]], {
+  req(coordviews_visible())
+  request <- input[["coordviews_wire_fallback"]]
+  bundle <- cv_ok(coordviews_bundle())
+  req(!is.null(bundle))
+  requested_dataset <- as.character(request$dataset_id %||% "")
+  requested_fingerprint <- as.character(request$dataset_fingerprint %||% "")
+  req(
+    viewerDatasetContextEqual(
+      request$dataset_context,
+      bundle$dataset_context
+    ),
+    !nzchar(requested_dataset) ||
+      identical(requested_dataset, bundle$dataset_id),
+    !nzchar(requested_fingerprint) ||
+      identical(requested_fingerprint, bundle$dataset_fingerprint)
+  )
+  session$sendCustomMessage(
+    "coordviews_data",
+    cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
+  )
+  coordviews_image_spaces(bundle$spaces %||% list())
+  coordviews_background_ready(TRUE)
+  coordviews_build_log$supplemented_primary_n <- coordviews_build_log$primary_n
+})
 
 ##----------------------------------------------------------------------------##
 ## Selected-cell detail views — mirror the Overview/Projection tab. When cells
@@ -417,11 +1147,15 @@ observeEvent(
 ## The client-side composition + top-clonotype readout is unaffected and stays.
 ##----------------------------------------------------------------------------##
 coordviews_selected_barcodes <- reactive({
-  sel <- input[["coordviews_selection"]]
-  if (is.null(sel) || !length(sel)) {
-    return(NULL)
+  indices <- input[["coordviews_selection_indices"]]
+  current <- viewer_loaded_dataset_context()
+  if (is.list(indices) && viewerDatasetContextEqual(indices$dataset_context, current)) {
+    return(cv_cells_at_indices(cv_saved_view_cells(), indices$indices))
   }
-  as.character(sel)
+  selection <- input[["coordviews_selection"]]
+  if (!is.list(selection) || !viewerDatasetContextEqual(selection$dataset_context, current)) return(NULL)
+  sel <- selection$cells
+  if (is.null(sel) || !length(sel)) NULL else as.character(sel)
 })
 
 ## Boxes appear only while a selection exists (same gating as the Overview tab).
@@ -436,6 +1170,11 @@ coordviews_selected_barcodes <- reactive({
 ## scratch on every selection change — a new element has nothing to transition
 ## from. Definition: www/coordviews.css, @keyframes cvRise.
 output[["coordviews_selected_cells_UI"]] <- renderUI({
+  ## Drop dataset/selection dependencies as soon as this page is left. The
+  ## small visibility gate must still run while hidden (see outputOptions
+  ## below), so a pending result cannot be invalidated and then suspended
+  ## before Shiny flushes it during a dataset transition.
+  req(identical(input[["sidebar"]], "coordinated_views"))
   req(coordviews_selected_barcodes())
   meta_cols <- colnames(getMetaData())
   tagList(
@@ -490,6 +1229,10 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
   )
 })
 
+## Deliberately bypass the page-scoped outputOptions wrapper: only the gate
+## above stays awake; metadata and the plot/table outputs remain demand-driven.
+shiny::outputOptions(output, "coordviews_selected_cells_UI", suspendWhenHidden = FALSE)
+
 ## Plot: categorical variable -> bar of selected-cell counts per group (coloured
 ## by the SAME assignColorsToGroups() the Projection tab uses); numeric variable
 ## -> violin/box of selected vs. not-selected. Barcode-keyed, so it needs no
@@ -536,13 +1279,18 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       ifelse(is_selected, "selected", "not selected"),
       levels = c("selected", "not selected")
     )
+    violin_data <- compactViolinData(
+      data.frame(group = grp, value = cells_df[[var]]),
+      "value",
+      "group"
+    )
     plot <- plotly::plot_ly(
-      x = grp,
-      y = cells_df[[var]],
+      x = violin_data[["group"]],
+      y = violin_data[["value"]],
       type = "violin",
-      box = list(visible = TRUE),
-      meanline = list(visible = TRUE),
-      color = grp,
+      box = list(visible = FALSE),
+      meanline = list(visible = FALSE),
+      color = violin_data[["group"]],
       colors = setNames(
         c("#e74c3c", "#7f8c8d"),
         c("selected", "not selected")
@@ -551,6 +1299,7 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       hoverinfo = "y",
       marker = list(size = 5)
     )
+    plot <- addExactViolinSummary(plot, violin_data)
     y_axis_title <- var
   } else {
     return(NULL)
@@ -647,12 +1396,22 @@ cv_has_expression <- function() {
   isTRUE(tryCatch(nrow(data_set()$expression) > 0, error = function(e) FALSE))
 }
 
+cv_expression_cells <- function() {
+  identity <- viewerDatasetIdentity()
+  if (nzchar(identity$order_fingerprint %||% "")) {
+    return(NULL)
+  }
+  cv_saved_view_cells()
+}
+
 ## Pull one gene aligned to `cells`. Returns NULL if unavailable.
-cv_gene_values <- function(gene, cells) {
+cv_gene_values <- function(gene, cells = NULL, n = NULL) {
   if (is.null(gene) || !nzchar(gene)) {
     return(NULL)
   }
-  cells <- as.character(cells)
+  if (!is.null(cells)) {
+    cells <- as.character(cells)
+  }
   m <- tryCatch(
     data_set()$getExpressionMatrix(cells = cells, genes = gene),
     error = function(e) NULL
@@ -664,11 +1423,14 @@ cv_gene_values <- function(gene, cells) {
     v <- as.numeric(m)
   } else {
     cn <- colnames(m)
-    v <- if (!is.null(cn)) {
+    v <- if (!is.null(cells) && !is.null(cn)) {
       as.numeric(m[1, match(cells, cn)])
     } else {
       as.numeric(m[1, ])
     }
+  }
+  if (!is.null(n) && length(v) != as.integer(n)) {
+    return(NULL)
   }
   v[is.na(v)] <- 0
   v
@@ -685,25 +1447,49 @@ cv_scale_gene_values <- function(v) {
   list(v = q, max = round(mx, 3))
 }
 
-cv_gene_vector <- function(gene, cells) {
-  v <- cv_gene_values(gene, cells)
-  if (is.null(v)) {
-    return(NULL)
-  }
-  cv_scale_gene_values(v)
-}
+coordviews_gene_names <- reactive({
+  req(coordviews_visible())
+  req(input[["coordviews_gene_controls_active"]] %in% c("gene", "rgb"))
+  sort(getGeneNames())
+})
 
 serverSideGeneSelector(
   session,
   "coordviews_gene",
-  active = function() cv_has_expression()
+  active = function() {
+    coordviews_visible() &&
+      identical(input[["coordviews_gene_controls_active"]], "gene") &&
+      cv_has_expression()
+  },
+  choices = function() coordviews_gene_names()
 )
 lapply(
   c("coordviews_gene_r", "coordviews_gene_g", "coordviews_gene_b"),
   function(channel_id) {
-    serverSideGeneSelector(session, channel_id, active = cv_has_expression)
+    serverSideGeneSelector(
+      session,
+      channel_id,
+      active = function() {
+        coordviews_visible() &&
+          identical(input[["coordviews_gene_controls_active"]], "rgb") &&
+          cv_has_expression()
+      },
+      choices = function() coordviews_gene_names()
+    )
   }
 )
+
+cv_expression_feedback <- function(ok, rgb = FALSE) {
+  shiny::isolate({
+    ids <- if (rgb) paste0("coordviews_gene_", c("r", "g", "b")) else
+      c("coordviews_gene", "coordviews_expression_mode")
+    controls <- stats::setNames(lapply(ids, function(id) as.character(input[[id]])), ids)
+    session$sendCustomMessage("cerebro_linked_expression_feedback", list(
+      controls = controls, ok = isTRUE(ok), rgb = rgb,
+      dataset_context = viewer_loaded_dataset_context()
+    ))
+  })
+}
 
 observeEvent(
   list(
@@ -712,51 +1498,74 @@ observeEvent(
   ),
   {
     req(coordviews_visible())
-    b <- cv_ok(coordviews_bundle())
+    dataset_context <- viewer_loaded_dataset_context()
     genes <- unique(input[["coordviews_gene"]])
     genes <- genes[!is.na(genes) & nzchar(genes)]
-    if (is.null(b) || length(genes) == 0) {
+    if (length(genes) == 0) {
       session$sendCustomMessage(
         "coordviews_geneval",
-        list(gene = "", ok = FALSE)
+        cv_context_payload(
+          list(gene = "", ok = FALSE),
+          dataset_context
+        )
       )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_genepanels",
+        cv_context_payload(list(ok = FALSE), dataset_context)
+      )
+      cv_expression_feedback(FALSE)
       return()
     }
-    values <- lapply(genes, cv_gene_values, cells = b$cells)
+    cells <- cv_expression_cells()
+    n <- getNumberOfCells()
+    values <- lapply(genes, cv_gene_values, cells = cells, n = n)
     keep <- !vapply(values, is.null, logical(1))
     genes <- genes[keep]
     values <- values[keep]
     if (length(values) == 0) {
       session$sendCustomMessage(
         "coordviews_geneval",
-        list(gene = "", ok = FALSE)
+        cv_context_payload(
+          list(gene = "", ok = FALSE),
+          dataset_context
+        )
       )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_genepanels",
+        cv_context_payload(list(ok = FALSE), dataset_context)
+      )
+      cv_expression_feedback(FALSE)
       return()
     }
     mode <- input[["coordviews_expression_mode"]]
     if (identical(mode, "panels")) {
       session$sendCustomMessage(
         "coordviews_genepanels",
-        cv_gene_panels_payload(genes, values)
+        cv_context_payload(
+          cv_gene_panels_payload(genes, values),
+          dataset_context
+        )
       )
     } else {
       mean_values <- Reduce(`+`, values) / length(values)
       gv <- cv_scale_gene_values(mean_values)
       session$sendCustomMessage(
         "coordviews_geneval",
-        cv_gene_message(
-          if (length(genes) == 1) {
-            genes[[1]]
-          } else {
-            paste0("Mean expression (", length(genes), " genes)")
-          },
-          gv$v,
-          gv$max
+        cv_context_payload(
+          cv_gene_message(
+            if (length(genes) == 1) {
+              genes[[1]]
+            } else {
+              paste0("Mean expression (", length(genes), " genes)")
+            },
+            gv$v,
+            gv$max
+          ),
+          dataset_context
         )
       )
     }
+    cv_expression_feedback(TRUE)
   }
 )
 
@@ -775,30 +1584,36 @@ observeEvent(
   ),
   {
     req(coordviews_visible())
-    b <- cv_ok(coordviews_bundle())
-    if (is.null(b)) {
-      return()
-    }
-    zero <- rep(0L, b$n)
+    cells <- cv_expression_cells()
+    n <- getNumberOfCells()
+    zero <- rep(0L, n)
     chan <- function(id) {
       g <- input[[id]]
       if (is.null(g) || !nzchar(g)) {
         return(list(v = zero, gene = ""))
       }
-      gv <- cv_gene_vector(g, b$cells)
+      gv <- cv_gene_values(g, cells = cells, n = n)
+      if (!is.null(gv)) {
+        gv <- cv_scale_gene_values(gv)
+      }
       if (is.null(gv)) list(v = zero, gene = "") else list(v = gv$v, gene = g)
     }
     r <- chan("coordviews_gene_r")
     g <- chan("coordviews_gene_g")
     bl <- chan("coordviews_gene_b")
     if (!nzchar(r$gene) && !nzchar(g$gene) && !nzchar(bl$gene)) {
-      session$sendCustomMessage("coordviews_rgbval", list(ok = FALSE))
+      session$sendCustomMessage(
+        "coordviews_rgbval",
+        cv_context_payload(list(ok = FALSE), b$dataset_context)
+      )
+      cv_expression_feedback(FALSE, rgb = TRUE)
       return()
     }
     session$sendCustomMessage(
       "coordviews_rgbval",
-      cv_rgb_message(r, g, bl)
+      cv_context_payload(cv_rgb_message(r, g, bl), b$dataset_context)
     )
+    cv_expression_feedback(TRUE, rgb = TRUE)
   },
   ignoreInit = TRUE
 )
@@ -810,13 +1625,9 @@ observeEvent(
 ## the canvas instantly and never round-trips to the server.
 ##----------------------------------------------------------------------------##
 output[["coordviews_image_ui"]] <- renderUI({
-  ## suspendWhenHidden = FALSE below keeps these controls in the DOM for
-  ## cell_views.js to wire, which also means this output runs while the tab is
-  ## hidden -- and it reads the bundle. Without the same gate as the push, it
-  ## would build the bundle on connect on its own and the laziness would be
-  ## worth nothing.
   req(coordviews_visible())
-  b <- cv_ok(coordviews_bundle())
+  spaces <- coordviews_image_spaces()
+  req(!is.null(spaces))
   ## Two separate questions, and conflating them is what went wrong before.
   ##
   ## DOES a bar exist? Any section carrying an image is enough. A space's own
@@ -830,18 +1641,16 @@ output[["coordviews_image_ui"]] <- renderUI({
   ## span -- from a section the user is not looking at.
   img <- NULL
   seed <- NULL
-  if (!is.null(b)) {
-    for (s in b$spaces) {
-      if (!is.null(s$image)) {
-        img <- s$image
-        if (is.null(seed)) {
-          seed <- s$image
-        }
+  for (s in spaces) {
+    if (!is.null(s$image)) {
+      img <- s$image
+      if (is.null(seed)) {
+        seed <- s$image
       }
-      for (smp in (s$samples %||% list())) {
-        if (!is.null(smp$image)) {
-          img <- smp$image
-        }
+    }
+    for (smp in (s$samples %||% list())) {
+      if (!is.null(smp$image)) {
+        img <- smp$image
       }
     }
   }
@@ -1026,8 +1835,20 @@ cv_fmt_value <- function(v) {
 }
 
 observeEvent(input[["coordviews_cell_detail"]], {
-  bc <- input[["coordviews_cell_detail"]]
-  if (is.null(bc) || !nzchar(bc)) {
+  request <- input[["coordviews_cell_detail"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(request), viewerDatasetContextEqual(request$dataset_context, dataset_context))
+  index <- if (is.list(request) && length(request$index) == 1L) {
+    suppressWarnings(as.integer(request$index[[1L]]))
+  } else {
+    NA_integer_
+  }
+  bc <- if (!is.na(index)) {
+    cv_cells_at_indices(cv_saved_view_cells(), index)
+  } else {
+    as.character(request$cell)
+  }
+  if (length(bc) != 1L || is.na(bc) || !nzchar(bc)) {
     return()
   }
   md <- tryCatch(
@@ -1043,7 +1864,12 @@ observeEvent(input[["coordviews_cell_detail"]], {
   })
   session$sendCustomMessage(
     "coordviews_cell_meta",
-    list(cell = as.character(bc), rows = rows)
+    list(
+      dataset_context = dataset_context,
+      index = if (is.na(index)) NULL else index,
+      cell = as.character(bc),
+      rows = rows
+    )
   )
 })
 

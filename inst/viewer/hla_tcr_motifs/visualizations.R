@@ -1,17 +1,14 @@
 ##----------------------------------------------------------------------------##
 ## HLA & TCR Motifs — visualization layer
 ##
-## igraph -> visNetwork data + the renderVisNetwork output, plus the parameter
-## and status panels. Colour / legend are applied HERE from the already-built
+## igraph -> shared Canvas payload, plus the parameter and status panels.
+## Colour / legend are applied HERE from the already-built
 ## graph, so changing colour never rebuilds the graph (see data.R).
 ##----------------------------------------------------------------------------##
 
 ## Above this many colour levels a per-cluster legend is unreadable noise, so it
 ## is suppressed (metadata legends are unaffected).
 HLA_MOTIF_MAX_LEGEND_CLUSTERS <- 12
-
-## Categorical palette shared by nodes and the legend (plotly/D3-ish).
-HLA_MOTIF_MAX_PHYSICS <- 1000L
 
 ## Carrier-status colouring is a fixed scale, not an arbitrary categorical one:
 ## the four states always mean the same thing, so they keep the same order and
@@ -46,15 +43,7 @@ HLA_CONTEXT_COLORS <- c(
   "Unknown" = "#b8bcc4"
 )
 
-## ---- HTML-escape helper ----------------------------------------------- ##
-hla_esc <- function(x) {
-  x <- as.character(x)
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  gsub(">", "&gt;", x, fixed = TRUE)
-}
-
-## ---- Build visNetwork data from a motif igraph ------------------------- ##
+## ---- Build Canvas data from a motif igraph ----------------------------- ##
 ## Node area is proportional to clone_count; colour follows `color_by` (a node attribute) or the
 ## motif cluster by default. Tooltip shows CDR3, clone size + fraction, motif
 ## cluster + consensus + MAX MISMATCH (so a transitive component is never
@@ -77,11 +66,22 @@ hla_build_motif_visnet <- function(
   lineage_col = NULL,
   node_scale = 1
 ) {
-  if (!hla_motif_graph_ok(graph)) {
-    return(NULL)
+  snapshot <- is.list(graph) &&
+    identical(graph$version, 1L) &&
+    is.list(graph$vertex_attrs)
+  if (snapshot) {
+    va <- graph$vertex_attrs
+    n <- length(va$name)
+    if (!n) {
+      return(NULL)
+    }
+  } else {
+    if (!hla_motif_graph_ok(graph)) {
+      return(NULL)
+    }
+    va <- igraph::vertex_attr(graph)
+    n <- igraph::vcount(graph)
   }
-  va <- igraph::vertex_attr(graph)
-  n <- igraph::vcount(graph)
   get_attr <- function(nm) if (nm %in% names(va)) va[[nm]] else rep(NA, n)
 
   # Carrier status is not a graph attribute; splice it in for this render only.
@@ -206,11 +206,12 @@ hla_build_motif_visnet <- function(
     character(1)
   )
 
-  deg <- igraph::degree(graph)
-  total_cells <- tryCatch(
-    igraph::graph_attr(graph, "total_cells"),
-    error = function(e) NA_real_
-  )
+  deg <- if (snapshot) graph$degree else igraph::degree(graph)
+  total_cells <- if (snapshot) {
+    graph$total_cells
+  } else {
+    tryCatch(igraph::graph_attr(graph, "total_cells"), error = function(e) NA_real_)
+  }
   if (length(total_cells) != 1 || is.na(total_cells)) {
     total_cells <- NA_real_
   }
@@ -238,70 +239,65 @@ hla_build_motif_visnet <- function(
     rep(NA_character_, n)
   }
 
-  titles <- vapply(
-    seq_len(n),
-    function(i) {
-      frac <- if (
-        !is.na(total_cells) && total_cells > 0 && !is.na(clone_count[i])
-      ) {
-        sprintf(" (%.1f%%)", 100 * clone_count[i] / total_cells)
-      } else {
-        ""
-      }
-      lines <- c(
-        sprintf("<b>%s</b>", hla_esc(cdr3[i])),
-        if (!is.na(consensus[i])) {
-          sprintf(
-            "Motif %s &middot; consensus %s &middot; max mismatch %s",
-            hla_esc(topo_cluster[i]),
-            hla_esc(consensus[i]),
-            hla_esc(diameter[i])
-          )
-        },
-        if (nzchar(node_label[i])) {
-          sprintf("Variable residue: %s", hla_esc(node_label[i]))
-        },
-        # Name the unit for what it actually is. On bulk data there are no
-        # cells, so calling this a clone size would invent a measurement.
-        sprintf(
-          "%s: %s%s",
-          if (identical(unit_noun, "cell")) "Clone size" else "Analysis units",
-          hla_esc(clone_count[i]),
-          frac
-        ),
-        sprintf("Neighbours: %s", hla_esc(deg[i])),
-        if (use_carrier) {
-          # Never let the label stand alone: "Carrier" can mean ten carriers or
-          # one carrier and nine untyped, and the colour cannot tell them apart.
-          cnt <- if (!is.null(carrier_counts)) {
-            sprintf(
-              "<br>&nbsp;&nbsp;%d carrier / %d non-carrier / %d untyped %s",
-              carrier_counts$n_carrier[i],
-              carrier_counts$n_noncarrier[i],
-              carrier_counts$n_untyped[i],
-              if (identical(unit_noun, "cell")) "sample(s)" else "donor(s)"
-            )
-          } else {
-            ""
-          }
-          sprintf(
-            "%s: <b>%s</b>%s%s",
-            hla_esc(carrier_allele %||% "HLA carrier status"),
-            hla_esc(group_raw[i]),
-            cnt,
-            "<br>&nbsp;&nbsp;<i>candidate co-occurrence, not restriction</i>"
-          )
-        },
-        if (!is.na(cell_dist[i])) hla_esc(cell_dist[i]),
-        if (!is.na(color_dist[i])) {
-          sprintf("%s: %s", hla_esc(color_col), hla_esc(color_dist[i]))
-        },
-        if (!is.null(chain)) sprintf("Chain: %s", hla_esc(chain)),
-        sprintf("V/J: %s / %s", hla_esc(v_gene[i]), hla_esc(j_gene[i]))
-      )
-      paste(lines[!vapply(lines, is.null, logical(1))], collapse = "<br>")
-    },
-    character(1)
+  # Send tooltip fields as compact columns. Repeating the full HTML template for
+  # every node made hover text the second-largest part of the HLA frame. The
+  # browser already knows how to expand dictionary-coded categorical columns.
+  hover_categorical <- function(label, values) {
+    values <- as.character(values)
+    missing <- is.na(values) | !nzchar(values)
+    levels <- unique(values[!missing])
+    if (!length(levels)) {
+      return(NULL)
+    }
+    codes <- match(values, levels) - 1L
+    codes[missing] <- NA_integer_
+    list(label = label, levels = levels, values = codes)
+  }
+  hover_numeric <- function(label, values, format = NULL, digits = NULL) {
+    values <- suppressWarnings(as.numeric(values))
+    if (!length(values) || all(is.na(values))) {
+      return(NULL)
+    }
+    out <- list(label = label, values = values)
+    if (!is.null(format)) out$format <- format
+    if (!is.null(digits)) out$digits <- digits
+    out
+  }
+  carrier_detail <- if (use_carrier && !is.null(carrier_counts)) {
+    sprintf(
+      "%d carrier / %d non-carrier / %d untyped %s",
+      carrier_counts$n_carrier,
+      carrier_counts$n_noncarrier,
+      carrier_counts$n_untyped,
+      if (identical(unit_noun, "cell")) "sample(s)" else "donor(s)"
+    )
+  } else {
+    rep(NA_character_, n)
+  }
+  hover_columns <- Filter(
+    Negate(is.null),
+    list(
+      hover_categorical("Motif", topo_cluster),
+      hover_categorical("Consensus", consensus),
+      hover_numeric("Max mismatch", diameter, "integer"),
+      hover_categorical("Variable residue", node_label),
+      hover_numeric(
+        if (identical(unit_noun, "cell")) "Clone size" else "Analysis units",
+        clone_count,
+        "integer"
+      ),
+      if (!is.na(total_cells) && total_cells > 0) {
+        hover_numeric("Fraction (%)", 100 * clone_count / total_cells, "fixed", 1)
+      },
+      hover_numeric("Neighbours", deg, "integer"),
+      if (use_carrier) hover_categorical(carrier_allele %||% "HLA carrier", group_raw),
+      if (use_carrier) hover_categorical("Carrier counts", carrier_detail),
+      if (!is.na(lineage_col)) hover_categorical(lineage_col, cell_dist),
+      if (!color_col %in% skip_dist) hover_categorical(color_col, color_dist),
+      if (!is.null(chain)) hover_categorical("Chain", rep(chain, n)),
+      hover_categorical("V gene", v_gene),
+      hover_categorical("J gene", j_gene)
+    )
   )
 
   ## NO `group` column, deliberately. vis-network auto-registers any group it
@@ -314,21 +310,19 @@ hla_build_motif_visnet <- function(
   ## `color` alone. Re-adding `group` requires a matching visGroups() call.
   nodes <- data.frame(
     id = seq_len(n),
-    node_key = as.character(igraph::V(graph)$name),
+    node_key = as.character(get_attr("name")),
     label = node_label,
     # `size`, not `value`: vis scales `value` linearly onto the radius, which
     # squares the difference the eye reads. See hla_node_radius().
     size = hla_node_radius(clone_count, node_scale),
     color = node_color,
-    title = titles,
-    detail = titles,
     font.size = 16,
     font.color = "#2a3f5f",
     font.vadjust = -20,
     stringsAsFactors = FALSE
   )
 
-  el <- igraph::as_edgelist(graph, names = FALSE)
+  el <- if (snapshot) graph$edges else igraph::as_edgelist(graph, names = FALSE)
   edges <- if (nrow(el) == 0) {
     data.frame(from = integer(0), to = integer(0), stringsAsFactors = FALSE)
   } else {
@@ -362,7 +356,11 @@ hla_build_motif_visnet <- function(
     )
   }
 
-  n_multi <- sum(igraph::components(graph)$csize >= 2)
+  n_multi <- if (snapshot) {
+    sum(graph$component_sizes >= 2L)
+  } else {
+    sum(igraph::components(graph)$csize >= 2L)
+  }
   subtitle <- sprintf(
     "%d CDR3 in %d motif(s). Edge = Hamming distance 1.",
     n,
@@ -383,6 +381,7 @@ hla_build_motif_visnet <- function(
     nodes = nodes,
     edges = edges,
     layout = layout,
+    hover_columns = hover_columns,
     legend = legend,
     legend_title = if (color_col == "cluster") {
       "Motif cluster"
@@ -412,13 +411,20 @@ hla_visnet <- reactive({
   if (!hla_has_deps()) {
     return(NULL)
   }
-  g <- hla_motif_graph()
+  g <- hla_first_frame_graph_snapshot()
+  if (is.null(g)) {
+    g <- hla_motif_graph()
+  }
+  snapshot <- is.list(g) &&
+    identical(g$version, 1L) &&
+    is.list(g$vertex_attrs)
   # A tripped size guard returns NA carrying a message; surface it as a note
   # (handled by output$hla_motif_note) and draw nothing.
-  if (!hla_motif_graph_ok(g)) {
+  if (!snapshot && !hla_motif_graph_ok(g)) {
     return(NULL)
   }
-  if (igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
+  n_nodes <- if (snapshot) length(g$vertex_attrs$name) else igraph::vcount(g)
+  if (n_nodes > HLA_MOTIF_MAX_RENDER) {
     return(NULL)
   }
   color_by <- hla_param("hla_color_by", "cluster")
@@ -435,9 +441,13 @@ hla_visnet <- reactive({
   carrier <- NULL
   carrier_cnt <- NULL
   if (use_carrier && !is.null(allele)) {
-    sa <- igraph::vertex_attr(g, "samples_all")
+    sa <- if (snapshot) {
+      g$vertex_attrs$samples_all
+    } else {
+      igraph::vertex_attr(g, "samples_all")
+    }
     typing <- hla_active_typing()
-    smp <- names(getImmuneRepertoire())
+    smp <- hla_ir_samples()
     carrier <- hla_node_carrier_status(sa, typing, smp, allele)
     carrier_cnt <- hla_node_carrier_counts(sa, typing, smp, allele)
   }
@@ -452,8 +462,8 @@ hla_visnet <- reactive({
     legend_mode = hla_param("hla_legend_mode", "auto"),
     lineage_col = hla_celltype_col(),
     # Display only. Read here so a size change flows through the SAME colour
-    # path: the graph is untouched, so the proxy below pushes the new radii onto
-    # the existing network instead of rebuilding and re-fitting it.
+    # path: the graph is untouched, so Canvas receives new radii without
+    # rebuilding or re-fitting the layout.
     node_scale = hla_param("hla_node_scale", 1)
   )
 })
@@ -462,6 +472,7 @@ hla_visnet <- reactive({
 ## threshold keeps. Reads the same finalized graph the network draws, so it
 ## always agrees with what is on screen and updates when the slider settles.
 output$hla_motif_readout <- renderUI({
+  hla_require_active_page()
   req(hla_ready_latch())
   g <- hla_motif_graph_cached()
   if (!hla_motif_graph_ok(g)) {
@@ -483,146 +494,98 @@ output$hla_motif_readout <- renderUI({
   )
 })
 
-output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
-  # Re-render only on a STRUCTURE change. Gate on the readiness latch rather than
-  # the colour-reading hla_params_ready() gate, depend on the cached graph for
-  # structure, and read the coloured visnet ISOLATED so a colour-only change does
-  # NOT re-render -- no spinner, no re-fit, no flash. That path recolours the
-  # existing network in place via the visNetworkProxy observer below.
-  req(hla_ready_latch())
-  hla_motif_graph_cached()
-  vn <- isolate(hla_visnet())
-  if (is.null(vn)) {
-    return(NULL)
-  }
+hla_motif_last_render_signature <- reactiveVal(NULL)
+hla_motif_last_feedback_token <- NULL
 
-  net <- visNetwork::visNetwork(
-    vn$nodes,
-    vn$edges
-  )
-  # No `scaling`: it only applies to nodes carrying a `value`, and the radius is
-  # already computed per node by hla_node_radius().
-  net <- visNetwork::visNodes(net, shape = "dot")
-  net <- visNetwork::visEdges(net, color = list(color = "#cccccc"))
-  # Draw at the coordinates igraph already computed; the browser runs no physics
-  # at all.
-  #
-  # It used to: visPhysics(stabilization = list(iterations = 150)) made
-  # vis-network settle the graph in JS on every open. That work happens AFTER
-  # Shiny's output is delivered, so shinycssloaders had already taken its spinner
-  # away — and vis-network draws nothing until it finishes. Measured on the
-  # 430-node demo: ~1.8s of blank canvas with no spinner, main thread blocked
-  # throughout. The same layout out of igraph takes ~75ms in C, off the browser's
-  # thread entirely.
-  #
-  # `layout.norm` is visIgraphLayout's documented "coordinates supplied" mode: it
-  # normalises them and sets the flag the vis-network binding needs to scale them
-  # to the canvas. It is used INSTEAD of visIgraphLayout's own layout= /
-  # randomSeed= because that path calls set.seed() on the global RNG and never
-  # restores it — a render must not silently re-seed the user's session.
-  # physics = FALSE excludes the nodes from the simulation; they stay put and
-  # stay draggable.
-  net <- if (!is.null(vn$layout)) {
-    visNetwork::visIgraphLayout(
-      net,
-      layout = "layout.norm",
-      layoutMatrix = vn$layout,
-      type = "full",
-      physics = FALSE
-    )
-  } else {
-    # No coordinates (a graph from before hla_motif_layout existed): fall back to
-    # the browser settling it, rather than drawing every node at the origin.
-    visNetwork::visPhysics(
-      net,
-      enabled = vn$n_render <= HLA_MOTIF_MAX_PHYSICS,
-      stabilization = list(iterations = 150)
-    )
-  }
-  net <- visNetwork::visInteraction(
-    net,
-    hover = TRUE,
-    tooltipDelay = 100,
-    # visNetwork's own green navigation buttons clash with the app's plotly
-    # modebar; turn them off and let a matching modebar (www/hla_motifs.js) drive
-    # zoom via its buttons. Drag-to-pan stays on; zoom-by-scroll is off (below).
-    navigationButtons = FALSE,
-    # Zoom is button-only: scroll-to-zoom would let the graph shrink into empty
-    # canvas past the opening fit. Pan (drag) stays on.
-    zoomView = FALSE,
-    dragView = TRUE
-  )
-  net <- visNetwork::visEvents(
-    net,
-    selectNode = htmlwidgets::JS(
-      paste(
-        "function(p) {",
-        "if (window.cerebroHlaMotifs) {",
-        "window.cerebroHlaMotifs.handleNativeSelection(p.nodes);",
-        "}",
-        "}"
-      )
-    ),
-    deselectNode = htmlwidgets::JS(
-      paste(
-        "function() {",
-        "if (window.cerebroHlaMotifs) {",
-        "window.cerebroHlaMotifs.handleNativeSelection([]);",
-        "}",
-        "}"
-      )
-    ),
-    # The opening view (igraph coords, fitted to the canvas) is the smallest the
-    # network may get. Zoom is button-only (zoomView = FALSE), so the floor is
-    # enforced by www/hla_motifs.js's zoom-out button; here we just capture that
-    # floor and grey the button out once the network sits at it. vis-network
-    # binds `this` to the emitter, not the network, so the instance is looked up
-    # via HTMLWidgets (the same handle www/hla_motifs.js uses).
-    afterDrawing = htmlwidgets::JS(
-      "function() {",
-      "  var w = HTMLWidgets.find('#hla_plot_motifNetwork');",
-      "  var net = w && w.network; if (!net) { return; }",
-      "  var s = net.getScale();",
-      "  if (!(s > 0)) { return; }",
-      # The opening fit settles over a few draws (scale keeps shrinking to fit
-      # the graph), so track the smallest scale seen rather than the first: that
-      # converges to the true fit floor. Zoom-IN only raises it, never lowers.
-      "  net.hlaMinScale = (net.hlaMinScale == null)",
-      "    ? s : Math.min(net.hlaMinScale, s);",
-      # Grey the zoom-out button when the network is already at that floor.
-      "  var b = document.querySelector('#hla-modebar [data-act=\"zoomout\"]');",
-      "  if (b) { b.classList.toggle('hla-mb-btn--off', s <= net.hlaMinScale + 1e-6); }",
-      "  if (window.cerebroHlaMotifs) { window.cerebroHlaMotifs.onDraw(); }",
-      "}"
-    )
-  )
-  # No visLegend: it can only sit left or right and eats 15% of the canvas width.
-  # The legend is drawn above the plot as a single horizontally scrolling row.
-  net
-})
-
-## ---- Recolour in place ------------------------------------------------ ##
-## When only the colour layer changes (colour-by, the allele under the "all"
-## scope, or the legend mode), the graph is identical -- every node carries every
-## colourable column -- so push the new node colours and tooltips onto the
-## existing network via a proxy instead of re-rendering it. This is what makes a
-## colour switch instant: no spinner, no re-fit, no flash. Structure changes go
-## through the renderer above (which rebuilds); ignoreInit skips the first fire,
-## which the initial render already painted.
-observeEvent(hla_visnet(), ignoreInit = TRUE, {
+observe({
+  req(identical(input[["sidebar"]], "hla_tcr_motifs"))
+  req(identical(input[["hla_tabs"]], "Motif Network"))
+  render_request <- input[["hla_motif_network_render_request"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(render_request), viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
+  req(render_request)
+  req(hla_active_chain() %in% hla_tcr_chains())
+  req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
   vn <- hla_visnet()
-  if (is.null(vn)) {
+  if (is.null(vn) || is.null(vn$layout)) {
     return()
   }
-  proxy <- visNetwork::visNetworkProxy("hla_plot_motifNetwork")
-  # `size` travels with the colour update: the node-size multiplier is display
-  # only, so it must resize in place exactly like a recolour rather than trigger
-  # a rebuild and re-fit.
-  visNetwork::visUpdateNodes(
-    proxy,
-    nodes = vn$nodes[, c("id", "color", "title", "detail", "size")]
+
+  from <- as.integer(vn$edges$from)
+  to <- as.integer(vn$edges$to)
+  point_sizes <- 2 * vn$nodes$size
+  render_signature <- list(
+    dataset_context = dataset_context,
+    dataset = available_crb_files$selected,
+    legend_title = vn$legend_title,
+    layout = vn$layout,
+    node_key = vn$nodes$node_key,
+    color = vn$nodes$color,
+    point_sizes = point_sizes,
+    hover_columns = vn$hover_columns,
+    from = from,
+    to = to
   )
-})
+  feedback <- cerebroFeedbackControls("hla_motif_network", input, list(
+    hla_min_nodes = if (isTRUE(hla_first_frame_graph_matches())) {
+      hla_param("hla_min_nodes", hla_default_min_nodes())
+    } else hla_min_nodes_debounced()
+  ))
+  # Input widgets and the client request lifecycle initialise independently.
+  # Several invalidations can therefore arrive with the same effective graph.
+  # Compare the actual frame, not its input controls: controls can move from a
+  # server default to the same explicit browser value without changing one pixel.
+  if (identical(hla_motif_last_render_signature(), render_signature)) {
+    cerebroSendViewFeedback("hla_motif_network", hla_motif_last_feedback_token,
+      dataset_context, feedback)
+    return()
+  }
+
+  hla_motif_last_feedback_token <<- cerebroCellViewRender(
+    "hla_motif_network",
+    meta = list(
+      color_type = "coexpression",
+      color_variable = vn$legend_title,
+      appearance = list(
+        group_labels = FALSE,
+        draw_border = TRUE,
+        keep_square = FALSE
+      ),
+      space_label = "Motif network"
+    ),
+    data = list(
+      x = vn$layout[, 1],
+      y = vn$layout[, 2],
+      selection_key = vn$nodes$node_key,
+      color = vn$nodes$color,
+      point_sizes = point_sizes,
+      point_size = min(20, stats::median(point_sizes)),
+      point_opacity = 1,
+      reset_axes = FALSE
+    ),
+    hover = list(
+      hoverinfo = "text",
+      columns = vn$hover_columns
+    ),
+    extra = list(
+      interaction = list(
+        # Dense motif networks are primarily overview figures. Above this size,
+        # per-node hit testing and drag interaction are opt-in so the rest of the
+        # page stays responsive; the user can re-enable them from the notice.
+        static_above = 200L
+      ),
+      edges = list(
+        # The browser already owns the node coordinates. Integer endpoints avoid
+        # repeating four double vectors for every edge (the dominant HLA payload).
+        from = from,
+        to = to
+      )
+    ),
+    dataset_context = dataset_context,
+    feedback = feedback
+  )
+  hla_motif_last_render_signature(render_signature)
+}, priority = 100)
 
 ## ---- Export: tables + manifest ---------------------------------------- ##
 ## A screenshot of the network is not a result. This writes what the page shows
@@ -642,7 +605,7 @@ output$hla_export_analysis <- downloadHandler(
     tabs <- hla_graph_tables(g)
     motifs <- hla_motif_summary(g)
     typing <- hla_active_typing()
-    ir_samples <- names(getImmuneRepertoire())
+    ir_samples <- hla_ir_samples()
     unit_map <- tryCatch(
       hla_analysis_unit_map(typing, ir_samples),
       error = function(e) NULL
@@ -753,16 +716,17 @@ output$hla_export_analysis <- downloadHandler(
 
 ## ---- Note under the network (guard messages / empty state) ------------- ##
 output$hla_motif_note <- renderUI({
+  hla_require_active_page()
   if (!hla_has_deps()) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       "The motif network requires the 'visNetwork' and 'stringdist' packages."
     ))
   }
   seg <- hla_segments()
   if (is.null(seg) || nrow(seg) == 0) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       sprintf(
         "No %s cells with a complete V / J / CDR3 to build a network.",
         hla_active_chain()
@@ -772,11 +736,11 @@ output$hla_motif_note <- renderUI({
   g <- hla_motif_graph()
   guard <- attr(g, "guard")
   if (!is.null(guard)) {
-    return(tags$p(class = "text-danger", guard))
+    return(tags$p(class = "text-danger", `data-view-state` = "error", guard))
   }
   if (hla_motif_graph_ok(g) && igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
     return(tags$p(
-      class = "text-danger",
+      class = "text-danger", `data-view-state` = "error",
       sprintf(
         "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
         format(igraph::vcount(g), big.mark = ","),
@@ -786,7 +750,7 @@ output$hla_motif_note <- renderUI({
   }
   if (!hla_motif_graph_ok(g)) {
     return(tags$p(
-      class = "text-muted",
+      class = "text-muted", `data-view-state` = "empty",
       paste(
         "No CDR3 motif clusters at Hamming distance 1 with the current",
         "settings. Try lowering the minimum motif size or enabling",
@@ -832,10 +796,11 @@ output$hla_motif_note <- renderUI({
   )
 })
 
-## ---- Legend, above the plot in one row -------------------------------- ##
+## ---- Legend, above the plot -------------------------------------------- ##
 ## Drawn as flowing HTML rather than visLegend: visLegend can only sit left or
-## right and reserves 15% of the canvas whether it needs it or not. The row
-## scrolls horizontally when the levels exceed the available width.
+## right and reserves 15% of the canvas whether it needs it or not. Long keys
+## wrap above the canvas and the shared fill-height sizing gives the plot the
+## remaining vertical space.
 output$hla_legend_ui <- renderUI({
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$legend) || nrow(vn$legend) == 0) {
@@ -845,7 +810,8 @@ output$hla_legend_ui <- renderUI({
     tags$span(
       style = paste0(
         "display:inline-flex;align-items:center;gap:5px;",
-        "margin:0 12px 0 0;font-size:11px;color:#33333a;white-space:nowrap;"
+        "max-width:100%;margin:0 12px 0 0;font-size:11px;color:#33333a;",
+        "overflow-wrap:anywhere;"
       ),
       tags$span(
         style = paste0(
@@ -859,13 +825,22 @@ output$hla_legend_ui <- renderUI({
     )
   })
   tags$div(
-    style = "display:flex;align-items:center;min-width:max-content;margin:0;",
+    style = paste0(
+      "display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;",
+      "min-width:0;max-width:100%;margin:0;"
+    ),
     tags$span(
-      style = "font-size:11px;font-weight:700;color:#1c1c1e;margin-right:10px;",
+      style = paste0(
+        "font-size:11px;font-weight:700;color:#1c1c1e;",
+        "margin-right:10px;overflow-wrap:anywhere;"
+      ),
       vn$legend_title
     ),
     tags$div(
-      style = "display:flex;flex-wrap:nowrap;align-items:center;margin:0;",
+      style = paste0(
+        "display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;",
+        "min-width:0;gap:4px 0;margin:0;"
+      ),
       items
     )
   )

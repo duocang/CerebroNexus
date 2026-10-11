@@ -139,12 +139,11 @@ cerebro_receptors_present <- function(ir) {
 cerebro_rows_in_receptor <- function(df, receptor, clone_col) {
   keep <- cerebro_receptor_chains(receptor)
   ref <- cerebro_receptor_reference(df, clone_col)
-  vapply(
-    ref,
-    function(s) {
-      any(vapply(keep, function(ch) grepl(ch, s, fixed = TRUE), logical(1)))
-    },
-    logical(1),
-    USE.NAMES = FALSE
+  if (!length(ref)) {
+    return(logical(0))
+  }
+  Reduce(
+    `|`,
+    lapply(keep, function(ch) grepl(ch, ref, fixed = TRUE))
   )
 }

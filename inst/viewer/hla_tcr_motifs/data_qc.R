@@ -79,7 +79,6 @@ hla_qc_table <- reactive({
 
 ## ---- The Data & QC tab body ------------------------------------------- ##
 output$hla_data_qc_ui <- renderUI({
-  ir_samples <- names(getImmuneRepertoire())
   tagList(
     fluidRow(
       column(
@@ -121,7 +120,7 @@ output$hla_data_qc_ui <- renderUI({
         tags$p(
           class = "text-muted",
           style = "font-size: 12px;",
-          sprintf("Immune-repertoire samples: %d", length(ir_samples))
+          textOutput("hla_ir_sample_count", inline = TRUE)
         ),
         DT::dataTableOutput("hla_coverage_table"),
         uiOutput("hla_mapping_note")
@@ -145,6 +144,10 @@ output$hla_data_qc_ui <- renderUI({
     tags$h4("Quality control"),
     uiOutput("hla_qc_ui")
   )
+})
+
+output$hla_ir_sample_count <- renderText({
+  sprintf("Immune-repertoire samples: %d", length(hla_ir_samples()))
 })
 
 output$hla_active_source_ui <- renderUI({
@@ -174,6 +177,7 @@ output$hla_coverage_table <- DT::renderDataTable({
   # anything this layout can size for. Left to wrap, "HLA-A" breaks across two
   # lines mid-token and an identifier stops reading as one value.
   DT::datatable(
+    style = "bootstrap",
     cov,
     rownames = FALSE,
     colnames = c("Sample", "# alleles", "Loci"),
@@ -188,6 +192,7 @@ output$hla_normalized_preview <- DT::renderDataTable({
     return(NULL)
   }
   DT::datatable(
+    style = "bootstrap",
     t,
     rownames = FALSE,
     class = "display nowrap",
@@ -199,9 +204,10 @@ output$hla_donor_mapping_preview <- DT::renderDataTable({
   if (!hla_has_typing()) {
     return(NULL)
   }
-  samples <- names(getImmuneRepertoire())
+  samples <- hla_ir_samples()
   map <- hla_analysis_unit_map(hla_active_typing(), samples)
   DT::datatable(
+    style = "bootstrap",
     map,
     rownames = FALSE,
     colnames = c("IR sample", "Analysis unit", "Unit type"),
@@ -216,7 +222,7 @@ output$hla_mapping_note <- renderUI({
     return(NULL)
   }
   t <- hla_active_typing()
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   typed <- unique(t$sample)
   unmatched_typing <- setdiff(typed, ir_samples)
   untyped_ir <- setdiff(ir_samples, typed)
@@ -262,6 +268,7 @@ output$hla_qc_table_dt <- DT::renderDataTable({
     return(NULL)
   }
   DT::datatable(
+    style = "bootstrap",
     qc,
     rownames = FALSE,
     options = list(pageLength = 10, dom = "t")
@@ -272,7 +279,7 @@ output$hla_qc_table_dt <- DT::renderDataTable({
 output$hla_download_template <- downloadHandler(
   filename = function() "hla_typing_template.csv",
   content = function(file) {
-    ir_samples <- names(getImmuneRepertoire())
+    ir_samples <- hla_ir_samples()
     if (length(ir_samples) == 0) {
       ir_samples <- c("sample_1", "sample_2")
     }

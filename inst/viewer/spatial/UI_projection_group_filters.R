@@ -8,7 +8,10 @@ registerGroupFiltersUI(
   output,
   "spatial_projection",
   getGroups = getGroups,
-  getGroupLevels = getGroupLevels
+  getGroupLevels = getGroupLevels,
+  render_request = function() {
+    input[["spatial_projection_more_render_request"]]
+  }
 )
 
 registerGroupFiltersInfo(

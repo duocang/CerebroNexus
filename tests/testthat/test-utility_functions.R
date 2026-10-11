@@ -28,12 +28,161 @@ if (is.na(utils_file)) {
 skip_if_not(file.exists(utils_file), "utility_functions.R not found")
 
 utils_env <- new.env()
+sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
+sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
 source(utils_file, local = utils_env)
+## These legacy-response fixtures exercise the older public API fallback.
+## Collection-wise queries are covered separately with explicit mock metadata.
+utils_env$.msigdbCollectionsFunction <- function() NULL
 prettifyTable <- utils_env$prettifyTable
-centerOfGroups <- utils_env$centerOfGroups
 cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
+
+test_that("dataset info resolves only the selected catalog entry", {
+  resolve <- utils_env$viewerDatasetInfo
+  expect_true(is.function(resolve))
+  if (!is.function(resolve)) {
+    return()
+  }
+
+  info <- list(
+    label = "Ren et al. COVID atlas",
+    path = "/data/ren.crb",
+    cells = 1462702L,
+    organism = "Homo sapiens",
+    date = "2026-09-17"
+  )
+  catalog <- list("/data/ren.crb" = info)
+
+  expect_identical(resolve(catalog, "/data/ren.crb"), info)
+  expect_null(resolve(catalog, "/data/missing.crb"))
+  expect_null(resolve(NULL, "/data/ren.crb"))
+  expect_null(resolve(
+    list("/data/ren.crb" = list(cells = -1L)),
+    "/data/ren.crb"
+  ))
+})
+
+test_that("catalog-backed Data Info defers the full dataset load", {
+  load_required <- utils_env$viewerDatasetLoadRequired
+  load_on_tab <- utils_env$viewerDatasetLoadOnTab
+  expect_true(is.function(load_required))
+  expect_true(is.function(load_on_tab))
+  if (!is.function(load_required) || !is.function(load_on_tab)) {
+    return()
+  }
+
+  info <- list(cells = 1462702L)
+  expect_false(load_required("loadData", info))
+  expect_true(load_required("overview", info))
+  expect_true(load_required("loadData", NULL))
+  expect_true(load_required(
+    "loadData",
+    info,
+    initial_tab = "immune_repertoire",
+    initial_page_applied = FALSE
+  ))
+  expect_false(load_required(
+    "loadData",
+    info,
+    initial_tab = "immune_repertoire",
+    initial_page_applied = TRUE
+  ))
+
+  expect_false(load_on_tab(FALSE, "loadData"))
+  expect_true(load_on_tab(FALSE, "overview"))
+  expect_true(load_on_tab(TRUE, "loadData"))
+})
+
+test_that("Data Info uses the catalog before the full dataset", {
+  viewer_root <- dirname(utils_file)
+  server <- readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE)
+  sample_info <- readLines(
+    file.path(viewer_root, "load_data", "sample_info.R"),
+    warn = FALSE
+  )
+
+  expect_true(any(grepl(
+    "dataset_load_requested <- reactiveVal(FALSE)",
+    server,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "req\\(isTRUE\\(dataset_load_requested\\(\\)\\)\\)",
+    server
+  )))
+  expect_true(any(grepl("current_dataset_info\\(\\)", sample_info)))
+  expect_false(any(grepl(
+    "getNumberOfCells\\(\\)|getExperiment\\(\\)",
+    sample_info
+  )))
+})
+
+test_that("Data Info starts a non-blocking CRB prefetch", {
+  viewer_root <- dirname(utils_file)
+  server <- paste(
+    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  prefetch <- paste(readLines(file.path(viewer_root, "crb_cache.R")), collapse = "\n")
+  expect_match(prefetch, "crb_prefetch_tasks <- new.env", fixed = TRUE)
+  expect_match(prefetch, "shiny::ExtendedTask$new", fixed = TRUE)
+  expect_match(prefetch, "mirai::mirai", fixed = TRUE)
+  expect_match(server, "session$onFlushed", fixed = TRUE)
+  expect_match(server, "prefetch_task$result()", fixed = TRUE)
+})
+
+test_that("dataset changes reset Data Info before full-load reactives run", {
+  viewer_root <- dirname(utils_file)
+  server <- paste(
+    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    paste0(
+      "(?s)observeEvent\\(\\n    available_crb_files\\$selected,.*?",
+      "priority = 100"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("a prefetched CRB prototype enters the process cache", {
+  cache_prototype <- utils_env$.cacheCrbPrototype
+  expect_true(is.function(cache_prototype))
+  if (!is.function(cache_prototype)) {
+    return()
+  }
+
+  path <- tempfile(fileext = ".crb")
+  prototype <- new.env(parent = emptyenv())
+  cache_prototype(path, prototype, NULL)
+  key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  cache <- get(
+    ".crb_process_cache",
+    envir = environment(cache_prototype),
+    inherits = TRUE
+  )
+
+  expect_identical(cache[[key]]$object, prototype)
+})
+
+test_that("the lightweight TCR gate scans every sample", {
+  repertoire <- list(
+    s1 = data.frame(CTgene = NA_character_),
+    s2 = data.frame(CTgene = NA_character_),
+    s3 = data.frame(CTgene = NA_character_),
+    s4 = data.frame(CTgene = "TRAV1_TRAJ1_TRBV2_TRBJ2")
+  )
+
+  expect_true(utils_env$viewerHasTcrRepertoire(repertoire))
+  expect_false(utils_env$viewerHasTcrRepertoire(NULL))
+  expect_false(utils_env$viewerHasTcrRepertoire(list(data.frame(x = 1))))
+})
 
 test_that("infinite values are replaced without changing other columns", {
   replaceInfiniteValues <- utils_env$replaceInfiniteValues
@@ -417,25 +566,6 @@ test_that("spatial offset ranges require finite coordinates", {
   expect_match(source_text, "length\\(x\\) > 0 && length\\(y\\) > 0")
 })
 
-## ---------------------------------------------------------------------------
-## centerOfGroups
-## ---------------------------------------------------------------------------
-
-test_that("centerOfGroups computes 2D medians per group", {
-  result <- centerOfGroups(
-    coordinates = list(c(0, 10, 2), c(0, 10, 12)),
-    df = data.frame(grp = c("A", "A", "B")),
-    n_dimensions = 2,
-    group = "grp"
-  )
-  result <- as.data.frame(result)
-  expect_setequal(result$group, c("A", "B"))
-  expect_equal(result$x_median[result$group == "A"], 5)
-  expect_equal(result$y_median[result$group == "A"], 5)
-  expect_equal(result$x_median[result$group == "B"], 2)
-  expect_equal(result$y_median[result$group == "B"], 12)
-})
-
 test_that("cell scatter payload rejects incoherent categorical snapshots", {
   payload <- utils_env$cerebroCellViewScatterPayload
   common <- list(
@@ -494,7 +624,7 @@ test_that("single-cell scatter payloads remain arrays on the wire", {
   expect_type(wire$data$x[[1L]], "list")
   expect_type(wire$data$y[[1L]], "list")
   expect_type(wire$data$selection_key[[1L]], "list")
-  expect_type(wire$data$color[[1L]], "list")
+  expect_identical(wire$data$color[[1L]], "#123456")
   expect_type(wire$hover$text[[1L]], "list")
 })
 
@@ -623,6 +753,132 @@ test_that("categorical scatter payloads retain cells with missing metadata", {
   )
 })
 
+test_that("large canonical categorical payloads keep coordinates contiguous", {
+  n <- 4096L
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(seq_len(n), rev(seq_len(n))),
+    color = rep(c("A", "B"), length.out = n),
+    color_variable = "cluster",
+    selection_keys = seq_len(n),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE
+  )
+
+  expect_identical(as.numeric(payload$data$x), as.numeric(seq_len(n)))
+  expect_identical(as.numeric(payload$data$y), as.numeric(rev(seq_len(n))))
+  expect_identical(as.integer(payload$data$selection_key), seq_len(n))
+  expect_identical(
+    as.integer(payload$data$canonical_group[1:4]),
+    c(0L, 1L, 0L, 1L)
+  )
+  expect_identical(unlist(payload$meta$traces), c("A", "B"))
+
+  packed <- utils_env$cv_wire_pack_message(
+    utils_env$cerebroCellViewMessage(
+      "overview_projection",
+      payload$meta,
+      payload$data,
+      payload$hover
+    )
+  )
+  header_length <- sum(as.integer(packed[seq_len(4L)]) * 256^(0:3))
+  header <- jsonlite::fromJSON(
+    rawToChar(packed[4L + seq_len(header_length)]),
+    simplifyVector = FALSE
+  )
+  expect_identical(header$data$x$`__cv_wire__`, "f32")
+  expect_identical(header$data$y$`__cv_wire__`, "f32")
+})
+
+test_that("large canonical factor payloads encode groups without expanding labels", {
+  n <- 4096L
+  color <- factor(
+    rep(c("B", "A", NA_character_), length.out = n),
+    levels = c("unused", "A", "B")
+  )
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(seq_len(n), rev(seq_len(n))),
+    color = color,
+    color_variable = "cluster",
+    selection_keys = seq_len(n),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(B = "#abcdef", A = "#123456"),
+    hover = FALSE
+  )
+
+  expect_identical(
+    unlist(payload$meta$traces),
+    c("B", "A", "(missing)")
+  )
+  expect_identical(
+    as.integer(payload$data$canonical_group[1:6]),
+    c(0L, 1L, 2L, 0L, 1L, 2L)
+  )
+  expect_false("unused" %in% unlist(payload$meta$traces))
+})
+
+test_that("canonical scatter resources avoid materializing million-cell vectors", {
+  projection <- list(
+    protocol = "canonical-projection-v1",
+    url = "projection.bin",
+    cells = 1000000L,
+    dimensions = 2L,
+    dtype = "float32"
+  )
+  categories <- list(
+    protocol = "canonical-metadata-codes-v1",
+    url = "cluster.codes.bin",
+    cells = 1000000L,
+    dtype = "uint8",
+    levels = c("A", "B"),
+    code_map = c(-1L, 0L, 1L)
+  )
+  payload <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(),
+    color = NULL,
+    color_variable = "cluster",
+    selection_keys = integer(),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE,
+    cell_count = 1000000L,
+    coordinate_resource = projection,
+    categorical_resource = categories
+  )
+
+  expect_null(payload$data[["x"]])
+  expect_null(payload$data[["y"]])
+  expect_null(payload$data$selection_key)
+  expect_identical(payload$data$projection_resource, projection)
+  expect_identical(payload$data$categorical_resource, categories)
+  expect_identical(payload$data$deferred_selection_lengths, 1000000L)
+  expect_identical(unlist(payload$meta$traces), c("A", "B"))
+
+  wire_categories <- utils_env$cerebroCellViewScatterPayload(
+    coordinates = list(),
+    color = rep(c("A", "B"), length.out = 4096L),
+    color_variable = "cluster",
+    selection_keys = seq_len(4096L),
+    point_size = 1,
+    point_opacity = 0.5,
+    color_assignments = c(A = "#123456", B = "#abcdef"),
+    hover = FALSE,
+    cell_count = 4096L,
+    coordinate_resource = within(projection, cells <- 4096L)
+  )
+  expect_null(wire_categories$data[["x"]])
+  expect_null(wire_categories$data[["y"]])
+  expect_identical(
+    wire_categories$data$projection_resource$cells,
+    4096L
+  )
+  expect_identical(length(wire_categories$data$canonical_group), 4096L)
+})
+
 test_that("selection counts use payload cell IDs", {
   expect_identical(
     utils_env$cerebroSelectionCount(list(
@@ -635,27 +891,74 @@ test_that("selection counts use payload cell IDs", {
   expect_identical(utils_env$cerebroSelectionCount(c("c1", "c2")), 2L)
 })
 
-test_that("centerOfGroups returns a typed empty tibble for a missing group column", {
-  result <- centerOfGroups(
-    coordinates = matrix(c(1, 2, 3, 4), ncol = 2),
-    df = data.frame(cluster = c("a", "b")),
-    n_dimensions = 2,
-    group = "does_not_exist"
+test_that("selected-cell tables preserve identity and skip eager cell work", {
+  helper_env <- new.env(parent = utils_env)
+  helper_env$prepareEmptyTable <- function(data) data
+  helper_env$prettifyTable <- function(data, ...) data
+  helper <- utils_env$cerebroSelectedCellsTable
+  environment(helper) <- helper_env
+
+  empty <- data.frame(cell_barcode = character())
+  expect_no_error(
+    helper(
+      stop("cell data evaluated before selection"),
+      empty,
+      NULL,
+      download_file_name = "test"
+    )
   )
-  expect_equal(nrow(result), 0)
-  expect_true(all(
-    c("group", "x_median", "y_median", "z_median") %in% colnames(result)
-  ))
+
+  cells <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    cell_barcode = c("cell-a", "cell-b"),
+    cluster = c("A", "B")
+  )
+  selected <- helper(
+    cells,
+    cells[, 3:4, drop = FALSE],
+    data.frame(selection_key = "cell-b"),
+    download_file_name = "test"
+  )
+  expect_identical(selected$cell_barcode, "cell-b")
+  expect_identical(selected$cluster, "B")
 })
 
-test_that("centerOfGroups returns a typed empty tibble for a NULL group", {
-  result <- centerOfGroups(
-    coordinates = matrix(c(1, 2, 3, 4), ncol = 2),
-    df = data.frame(cluster = c("a", "b")),
-    n_dimensions = 2,
-    group = NULL
+test_that("stable selected-cell keys skip coordinate identifiers", {
+  helper_env <- new.env(parent = utils_env)
+  helper_env$prepareEmptyTable <- function(data) data
+  helper_env$prettifyTable <- function(data, ...) data
+  helper_env$paste0 <- function(...) {
+    stop("coordinate identifier should not be built")
+  }
+  helper <- utils_env$cerebroSelectedCellsTable
+  environment(helper) <- helper_env
+
+  cells <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    cell_barcode = c("cell-a", "cell-b"),
+    cluster = c("A", "B")
   )
-  expect_equal(nrow(result), 0)
+  selected <- helper(
+    cells,
+    cells[, 3:4, drop = FALSE],
+    data.frame(selection_key = "cell-b"),
+    download_file_name = "test"
+  )
+  expect_identical(selected$cell_barcode, "cell-b")
+})
+
+test_that("shared result filtering keeps grouped and all-row semantics", {
+  results <- data.frame(group = c("A", "B"), value = c(1, 2))
+  filter_rows <- utils_env$cerebroFilterResultRows
+
+  expect_identical(filter_rows(results, TRUE, TRUE, "A"), results)
+  expect_identical(filter_rows(results, FALSE, FALSE, "A"), results)
+  expect_identical(
+    filter_rows(results, FALSE, TRUE, "B"),
+    results[2, , drop = FALSE]
+  )
 })
 
 ## ---------------------------------------------------------------------------

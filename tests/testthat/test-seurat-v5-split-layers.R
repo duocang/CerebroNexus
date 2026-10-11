@@ -129,49 +129,13 @@ export_args <- function(object, file, ...) {
       groups = c("sample", "cluster"),
       nUMI = "nCount_RNA",
       nGene = "nFeature_RNA",
+      codec = "rds",
       file = file,
       verbose = FALSE
     ),
     list(...)
   )
 }
-
-## ---------------------------------------------------------------------------
-## Semantic-root matching
-## ---------------------------------------------------------------------------
-
-test_that(".filter_same_semantic_layers strips non-numeric split suffixes", {
-  available <- c("counts.s1", "counts.s2", "data.s1", "data.s2")
-
-  expect_setequal(
-    .filter_same_semantic_layers("data", available),
-    c("data.s1", "data.s2")
-  )
-  expect_setequal(
-    .filter_same_semantic_layers("counts", available),
-    c("counts.s1", "counts.s2")
-  )
-})
-
-test_that(".filter_same_semantic_layers keeps `scale.data` off the `data` root", {
-  ## `scale.data` contains a dot itself, so a naive `sub("\\.[^.]+$", "", x)`
-  ## roots it as `scale` and matches nothing -- while `scale.data.s1` would root
-  ## as `scale.data` and appear to be a valid fallback for a `data` request.
-  ## Both directions have to stay separate.
-  available <- c("counts.s1", "data.s1", "scale.data.s1")
-
-  expect_setequal(
-    .filter_same_semantic_layers("scale.data", available),
-    "scale.data.s1"
-  )
-  expect_setequal(
-    .filter_same_semantic_layers("data", available),
-    "data.s1"
-  )
-  expect_false(
-    "scale.data.s1" %in% .filter_same_semantic_layers("data", available)
-  )
-})
 
 ## ---------------------------------------------------------------------------
 ## Layer resolution on split objects
@@ -783,7 +747,12 @@ test_that("a sample-split object exports every cell in bpcells mode", {
   expect_true(dir.exists(matrix_dir))
   on_disk <- BPCells::open_matrix_dir(dir = matrix_dir)
   expect_equal(ncol(on_disk), ncol(obj))
-  expect_equal(nrow(readRDS(crb)$getMetaData()), ncol(obj))
+  expect_identical(BPCells::storage_order(on_disk), "row")
+  payload <- readRDS(crb)
+  expect_identical(payload$crb_schema$version, 2L)
+  expect_identical(payload$crb_schema$cell_names, "expression")
+  expect_equal(nrow(payload$getMetaData()), ncol(obj))
+  expect_equal(dim(readCerebro(crb)$expression), dim(on_disk))
 })
 
 test_that("a layer asked for by name is not joined away underneath the caller", {

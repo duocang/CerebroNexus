@@ -198,12 +198,29 @@ test_that("cell identity validation is unique and order-independent", {
   root <- system.file("viewer", package = "CerebroNexus")
   helpers <- new.env(parent = globalenv())
   sys.source(file.path(root, "coordinated_views", "bundle.R"), envir = helpers)
+  sys.source(file.path(root, "coordinated_views", "config.R"), envir = helpers)
 
   expect_error(helpers$cv_cell_ids(c("cell-1", "cell-1")), "duplicate")
   expect_error(helpers$cv_cell_ids(c("cell-1", "")), "missing")
   expect_identical(
-    helpers$cv_cell_fingerprint(c("cell-2", "cell-1")),
-    helpers$cv_cell_fingerprint(c("cell-1", "cell-2"))
+    helpers$cv_config_cell_fingerprint(c("cell-2", "cell-1")),
+    helpers$cv_config_cell_fingerprint(c("cell-1", "cell-2"))
+  )
+})
+
+test_that("stored cell fingerprints bypass runtime hashing", {
+  root <- system.file("viewer", package = "CerebroNexus")
+  helpers <- new.env(parent = globalenv())
+  sys.source(file.path(root, "coordinated_views", "config.R"), envir = helpers)
+  stored <- paste0("md5-cell-set-v1:", paste(rep("a", 32L), collapse = ""))
+
+  expect_identical(
+    helpers$cv_config_dataset_fingerprint(c("cell-1", "cell-2"), stored),
+    stored
+  )
+  expect_identical(
+    helpers$cv_config_dataset_fingerprint(c("cell-2", "cell-1"), NULL),
+    helpers$cv_config_cell_fingerprint(c("cell-1", "cell-2"))
   )
 })
 
@@ -278,20 +295,29 @@ test_that("specialist configuration is validated and round-trips", {
     list(cx = 0.5, cy = 0.4, span = 0.75)
   )
 
-  network <- config
-  network$page <- list(
+  hla <- config
+  hla$page <- list(
     id = "hla_motif_network",
     label = "HLA & TCR Motifs",
     tab = "hla_tcr_motifs",
-    engine = "network"
+    engine = "canvas"
   )
-  network$controls[[1]]$id <- "hla_motifs_chain"
-  expect_identical(
+  hla$controls[[1]]$id <- "hla_motifs_chain"
+  prepared_hla <- helpers$cv_config_prepare(
+    hla,
+    cells = c("cell-1", "cell-2")
+  )$config
+  expect_identical(prepared_hla$page$engine, "canvas")
+  expect_null(prepared_hla$view$viewport)
+
+  legacy_hla <- hla
+  legacy_hla$page$engine <- "network"
+  expect_error(
     helpers$cv_config_prepare(
-      network,
+      legacy_hla,
       cells = c("cell-1", "cell-2")
-    )$config$view$viewport,
-    list(x0 = 0, x1 = 1, y0 = 0, y1 = 1)
+    ),
+    "page identity is invalid"
   )
 
   spatial <- config
@@ -316,4 +342,43 @@ test_that("specialist configuration is validated and round-trips", {
     ),
     "not allowed"
   )
+})
+test_that("empty Linked selections do not build the full cell index", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(c(
+    "const fs = require('fs'), assert = require('assert');",
+    sprintf("const source = fs.readFileSync(%s, 'utf8');",
+      encodeString(viewer_test_path("www", "cell_views.js"), quote = '"')),
+    "const start = source.indexOf('  function validateWorkspace(');",
+    "eval(source.slice(start, source.indexOf('\\n  function ', start + 1)));",
+    "const D = {projections:{umap:{}}, groups:{cell_type:{}}};",
+    "const GENE_MODE='gene', GENE_PANELS_MODE='genes', RGB_MODE='rgb';",
+    "function configFingerprint(){return 'same';}",
+    "function spatialSamples(){return [];}",
+    "function catOf(mode){return mode==='cell_type';}",
+    "function fieldForMode(){return false;}",
+    "function baseOrderedSpaces(){return ['projection::umap'];}",
+    "function configError(message){throw new Error(message);}",
+    "let indexCalls=0;",
+    "function singleIndex(){indexCalls++;return new Map([['a',0],['b',1]]);}",
+    "const config={dataset:{cell_fingerprint:'same'},selection:{cells:[]},view:{",
+    "projections:['umap'],spatial_sections:[],colour:{mode:'cell_type'},filters:{},lenses:[]}};",
+    "validateWorkspace(config); assert.strictEqual(indexCalls,0);",
+    "config.dataset.cell_fingerprint='other';",
+    "assert.throws(()=>validateWorkspace(config),/different cell population/);",
+    "assert.strictEqual(indexCalls,0); config.dataset.cell_fingerprint='same';",
+    "config.view.projections=['missing'];",
+    "assert.throws(()=>validateWorkspace(config),/projection/);",
+    "config.view.projections=['umap']; config.selection.cells=['b'];",
+    "assert.strictEqual(validateWorkspace(config).cells.get('b'),1);",
+    "assert.strictEqual(indexCalls,1); config.selection.cells=['missing'];",
+    "assert.throws(()=>validateWorkspace(config),/selects cells/);",
+    "assert.strictEqual(indexCalls,2);",
+    "console.log('selection index validation passed');"
+  ), runner)
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_identical(output, "selection index validation passed")
 })

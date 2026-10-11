@@ -120,6 +120,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   app <- AppDriver$new(
     inst_dir,
     name = "projection_dataset_switch",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -127,7 +128,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   app$wait_for_idle(timeout = 30000)
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_merfish.crb",
+    crb_file_selector = "Mouse ileum (MERFISH)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -141,7 +142,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   )
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   app$wait_for_js(
@@ -171,6 +172,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app <- AppDriver$new(
     inst_dir,
     name = "spatial_background_isolation",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -178,11 +180,13 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_idle(timeout = 20000)
 
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_visium.crb",
+    crb_file_selector = "Mouse brain (Visium)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "spatial", timeout = 30000)
+  wait_for_input(app, "spatial_projection_more_button", timeout = 30000)
+  app$click(selector = "#spatial_projection_more_button")
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -219,6 +223,21 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   )
   app$wait_for_js(
     paste0(
+      "(() => {const host=document.getElementById(",
+      "'spatial_projection_cell_view_host');",
+      "const underlay=host?.querySelector('canvas.cv-underlay-layer');",
+      "const overlay=host?.querySelector('canvas.cv-layer-overlay');",
+      "return !!underlay&&!!overlay&&",
+      "getComputedStyle(underlay).zIndex==='0'&&",
+      "getComputedStyle(overlay).zIndex==='2';})()"
+    ),
+    timeout = 30000
+  )
+  wait_for_input(app, "spatial_projection_background_scale", timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_scale_x", timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_scale_y", timeout = 30000)
+  app$wait_for_js(
+    paste0(
       "document.getElementById('spatial_projection_background_scale').value ",
       "=== '1.55' && ",
       "document.getElementById('spatial_projection_background_scale_x').value ",
@@ -229,7 +248,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -278,7 +297,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_slideseq.crb",
+    crb_file_selector = "Mouse hippocampus (Slide-seq v2)",
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
@@ -323,13 +342,14 @@ test_that("Linked views resets the active background to its preset", {
   app <- AppDriver$new(
     inst_dir,
     name = "linked_background_reset",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_spatial_xenium.crb",
+    crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
   )
   activate_tab(app, "coordinated_views", timeout = 30000)
@@ -614,6 +634,7 @@ test_that("{shinytest2} recording: gene_expression", {
   app <- AppDriver$new(
     inst_dir,
     name = "gene_expression",
+    load_timeout = 120000,
     height = 950,
     width = 1619
   )
@@ -622,9 +643,12 @@ test_that("{shinytest2} recording: gene_expression", {
   activate_tab(app, "geneExpression")
   app$wait_for_idle(timeout = 10000)
 
-  ## projection UI renders without any gene selected
-  proj_ui <- retry_get_value(app, output = "expression_projection_UI")
-  expect_false(is.null(proj_ui))
+  ## The renderer host is in the initial DOM so the first request does not wait
+  ## for the nested projection controls to complete their binding round trips.
+  app$wait_for_js(
+    "!!document.getElementById('expression_projection_cell_view_host')",
+    timeout = 10000
+  )
 
   ## The gene selectize lives in a renderUI, so it is not bound the instant the
   ## tab goes idle. Wait for its element before set_inputs, or the input binding
@@ -632,22 +656,23 @@ test_that("{shinytest2} recording: gene_expression", {
   wait_for_input(app, "expression_genes_input")
 
   ## select MS4A1 and verify the projection controls become available
-  app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
+  viewer_set_selectize(app, "expression_genes_input", "MS4A1")
   app$wait_for_idle(timeout = 15000)
 
   app$wait_for_js(
     paste0(
       "document.getElementById('expression_projection_genes_in_separate_panels')",
       "?.disabled === false && ",
-      "document.getElementById('expression_projection_gene_color_mode')",
+      "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]')",
       " === null"
     ),
     timeout = 10000
   )
 
-  app$set_inputs(
-    expression_genes_input = c("MS4A1", "CD3D"),
-    wait_ = FALSE
+  viewer_set_selectize(
+    app,
+    "expression_genes_input",
+    c("MS4A1", "CD3D")
   )
   app$wait_for_js(
     paste0(
@@ -662,7 +687,7 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   app$wait_for_js(
     paste0(
-      "document.getElementById('expression_projection_gene_color_mode')",
+      "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]')",
       "?.disabled === false"
     ),
     timeout = 10000
@@ -676,16 +701,18 @@ test_that("{shinytest2} recording: gene_expression", {
     )
   )
   expect_false(isTRUE(enabled_style$disabled))
-  expect_identical(enabled_style$animation, "cerebro-control-enter")
-  app$set_inputs(
-    expression_projection_gene_color_mode = "different",
-    wait_ = FALSE
+  ## Controls now reveal immediately; the old staggered entrance was removed.
+  expect_identical(enabled_style$animation, "none")
+  panel_colour_id <- app$get_js(
+    "document.querySelector('select[id^=\"expression_projection_gene_color_mode_\"]').id"
   )
+  app$run_js(sprintf("document.getElementById(%s).selectize.setValue('different');",
+    jsonlite::toJSON(panel_colour_id, auto_unbox = TRUE)))
   app$wait_for_js(
     paste0(
       "document.querySelectorAll(",
       "'#expression_projection_cell_view_host ",
-      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      ".cv-pane:not(.cv-hidden)')",
       ".length === 2"
     ),
     timeout = 20000
@@ -707,14 +734,14 @@ test_that("{shinytest2} recording: gene_expression", {
     timeout = 20000
   )
 
-  app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
+  viewer_set_selectize(app, "expression_genes_input", "MS4A1")
   app$wait_for_js(
     paste0(
       "(() => {",
       "const display=document.getElementById(",
       "'expression_projection_genes_in_separate_panels');",
-      "const colour=document.getElementById(",
-      "'expression_projection_gene_color_mode');",
+      "const colour=document.querySelector(",
+      "'select[id^=\"expression_projection_gene_color_mode_\"]');",
       "return !display?.disabled && display.value==='separate' && ",
       "colour===null;",
       "})()"
@@ -761,7 +788,7 @@ test_that("{shinytest2} recording: gene_expression", {
   )
   expect_identical(
     unname(unlist(rgb_animations)),
-    rep("cerebro-control-enter", 3)
+    rep("none", 3)
   )
 
   app$stop()

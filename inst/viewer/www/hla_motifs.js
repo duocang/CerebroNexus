@@ -13,8 +13,64 @@
   var selectedCells = [];
   var selectionFocused = false;
   var pendingState = null;
+  var networkContextKey = '';
   var syncingSelection = false;
   var shinyBound = false;
+  var associationObserver = null;
+  var associationRequested = false;
+
+  function contextApi() {
+    return window.CerebroDatasetContext || null;
+  }
+  function currentContext() {
+    var api = contextApi();
+    return api && api.phase && api.phase() === 'ready' ? api.current() : null;
+  }
+  function currentContextKey() {
+    var api = contextApi();
+    var context = currentContext();
+    return api && api.key && context ? api.key(context) : '';
+  }
+  function fresh(message) {
+    var api = contextApi();
+    return !!(api && api.accepts && api.accepts(message));
+  }
+
+  function requestAssociations() {
+    if (associationRequested || !window.Shiny || !Shiny.setInputValue) return;
+    associationRequested = true;
+    Shiny.setInputValue('hla_associations_render_request', Date.now(), {
+      priority: 'event'
+    });
+  }
+
+  function observeAssociations() {
+    var host = document.getElementById('hla_associations_mount');
+    if (!host || host._renderObserved) return;
+    host._renderObserved = true;
+    if (!window.IntersectionObserver) {
+      requestAssociations();
+      return;
+    }
+    associationObserver = new IntersectionObserver(function (entries) {
+      if (entries.some(function (entry) { return entry.isIntersecting; })) {
+        requestAssociations();
+        associationObserver.disconnect();
+      }
+    });
+    associationObserver.observe(host);
+  }
+
+  var reducedMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches: false };
+
+  function withMotion(options, duration) {
+    options.animation = duration && !reducedMotion.matches
+      ? { duration: duration }
+      : false;
+    return options;
+  }
 
   function net() {
     if (!window.HTMLWidgets || !window.HTMLWidgets.find) return null;
@@ -130,7 +186,10 @@
   }
   function sendSelectedKeys(keys) {
     if (window.Shiny && Shiny.setInputValue) {
-      Shiny.setInputValue('hla_motif_selected_keys', keys, { priority: 'event' });
+      Shiny.setInputValue('hla_motif_selected_keys', {
+        node_keys: keys,
+        dataset_context: currentContext()
+      }, { priority: 'event' });
     }
   }
   function chooseNodes(polygon) {
@@ -255,16 +314,15 @@
     var network = net();
     if (!network) return;
     var floor = typeof network.hlaMinScale === 'number' ? network.hlaMinScale : 0.02;
-    network.moveTo({
+    network.moveTo(withMotion({
       scale: Math.max(floor, Math.min(6, network.getScale() * factor)),
-      animation: { duration: 200 }
-    });
+    }, 200));
   }
   function resetView() {
     var network = net();
     selectionFocused = false;
     syncModeButtons();
-    if (network) network.fit({ animation: { duration: 300 } });
+    if (network) network.fit(withMotion({}, 300));
   }
   function zoomSelection() {
     var network = net();
@@ -287,11 +345,10 @@
     scale = Math.max(network.hlaMinScale || 0.02, scale);
     selectionFocused = true;
     syncModeButtons();
-    network.moveTo({
+    network.moveTo(withMotion({
       position: { x: (left + right) / 2, y: (top + bottom) / 2 },
       scale: Math.min(3, scale),
-      animation: { duration: 300 }
-    });
+    }, 300));
   }
   function clearSelection(notify) {
     var network = net();
@@ -334,7 +391,9 @@
   }
   function captureState() {
     var network = net();
-    if (!network) return null;
+    if (!network || !networkContextKey || networkContextKey !== currentContextKey()) {
+      return null;
+    }
     return {
       cells: selectedCells.slice(),
       geometry: committedCanvas && committedCanvas.length > 2 ? {
@@ -353,7 +412,12 @@
   function applyPendingState() {
     var network = net();
     if (!network || !pendingState) return;
-    var saved = pendingState;
+    if (!pendingState.contextKey || pendingState.contextKey !== currentContextKey()) {
+      pendingState = null;
+      return;
+    }
+    if (networkContextKey !== currentContextKey()) return;
+    var saved = pendingState.saved;
     pendingState = null;
     var view = saved.view || {};
     var viewport = view.viewport;
@@ -369,23 +433,26 @@
         frame.clientWidth / (viewport.x1 - viewport.x0),
         frame.clientHeight / (viewport.y1 - viewport.y0)
       );
-      network.moveTo({
+      network.moveTo(withMotion({
         position: {
           x: (viewport.x0 + viewport.x1) / 2,
           y: (viewport.y0 + viewport.y1) / 2
         },
         scale: Math.max(0.02, Math.min(6, scale)),
-        animation: false
-      });
+      }, 0));
     }
     drawOverlay();
   }
   function applyState(_id, saved) {
-    pendingState = saved;
+    var datasetContext = currentContext();
+    var contextKey = currentContextKey();
+    if (!datasetContext || !contextKey) return { selectedCells: 0 };
+    pendingState = { saved: saved, contextKey: contextKey };
     if (window.Shiny && Shiny.setInputValue) {
       Shiny.setInputValue('hla_motif_restore_cells', {
         nonce: Date.now().toString(36),
-        cells: saved && saved.selection ? saved.selection.cells || [] : []
+        cells: saved && saved.selection ? saved.selection.cells || [] : [],
+        dataset_context: datasetContext
       }, { priority: 'event' });
     }
     applyPendingState();
@@ -394,16 +461,21 @@
     };
   }
   function reportState() {
+    var fingerprint = (window.cerebroSavedViewDataset || {}).cell_fingerprint || '';
+    if (!fingerprint || !currentContextKey() || networkContextKey !== currentContextKey()) return;
     window.dispatchEvent(new CustomEvent('cerebro:specialist-state', {
       detail: {
         viewId: 'hla_motif_network',
+        dataset_context: contextApi().current(),
         selectedCells: selectedCells.length,
-        datasetFingerprint: (window.cerebroSavedViewDataset || {}).cell_fingerprint || ''
+        datasetFingerprint: fingerprint
       }
     }));
   }
   function receiveSelection(result) {
+    if (!fresh(result)) return;
     var network = net();
+    networkContextKey = currentContextKey();
     selectionFocused = false;
     selectedKeys = result && Array.isArray(result.node_keys)
       ? result.node_keys.map(String) : [];
@@ -419,14 +491,16 @@
       syncingSelection = false;
     }
     syncModeButtons();
+    applyPendingState();
     reportState();
   }
   function connectShiny() {
     if (shinyBound || !window.Shiny || !Shiny.addCustomMessageHandler) return;
     shinyBound = true;
+    observeAssociations();
     Shiny.addCustomMessageHandler('hla_motif_selection_state', receiveSelection);
     Shiny.addCustomMessageHandler('hla_motif_selection_command', function (request) {
-      if (!request) return;
+      if (!request || !fresh(request)) return;
       if (request.action === 'clear') clearSelection(false);
       else if (request.action === 'focus') zoomSelection();
     });
@@ -488,6 +562,43 @@
       if (changed && network) reportState();
     }
   };
+
+  window.addEventListener('cerebro:dataset-context', function (event) {
+    var detail = event && event.detail || {};
+    if (!detail.changed && detail.phase === 'ready') return;
+    pendingState = null;
+    networkContextKey = '';
+    // The old viewport is being retired; do not animate it during a switch.
+    selectionFocused = false;
+    clearSelection(false);
+    hideNodeTooltip();
+    if (detail.phase !== 'pending') return;
+    if (detail.changed || detail.selectionPending) {
+      // The upload host stays mounted across datasets. Retire its old file.
+      var upload = document.getElementById('hla_upload');
+      if (upload) {
+        var jq = window.jQuery;
+        var uploader = jq && jq(upload).data('currentUploader');
+        if (uploader && typeof uploader.abort === 'function') uploader.abort();
+        if (jq) jq(upload).removeData('currentUploader').removeAttr('data-restore');
+        upload.value = '';
+        var group = upload.closest('.form-group');
+        var filename = group && group.querySelector('input[type="text"]');
+        var progress = group && group.querySelector('.progress');
+        if (filename) filename.value = '';
+        if (progress) progress.style.visibility = 'hidden';
+        if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('hla_upload', null);
+      }
+      var provenance = document.getElementById('hla_upload_source_type');
+      if (provenance && provenance.selectize) provenance.selectize.setValue('unknown');
+    }
+    ['hla_motif_network_composition', 'hla_selected_count'].forEach(function (id) {
+      var root = document.getElementById(id);
+      if (!root) return;
+      if (window.Shiny && Shiny.unbindAll) Shiny.unbindAll(root);
+      root.replaceChildren();
+    });
+  });
 
   if (window.jQuery) {
     window.jQuery(document).on('shiny:connected', function () { tryBuild(30); });

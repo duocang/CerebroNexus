@@ -1,4 +1,4 @@
-# test-app-new-modules.R — shinytest2 integration tests for PR2 enhanced modules
+# shinytest2 integration tests for enhanced Viewer modules
 
 library(shinytest2)
 
@@ -55,7 +55,7 @@ test_that("most_expressed_genes tab navigates and renders table", {
   expect_true(grepl("seurat_clusters", select_html))
 
   # Table renders without error
-  table_html <- app$get_value(output = "most_expressed_genes_table_UI")$html
+  table_html <- app$get_value(output = "most_expressed_genes_table_or_text_UI")$html
   expect_false(grepl("no.*available|not.*found|error", tolower(table_html)))
 })
 
@@ -124,6 +124,8 @@ test_that("toggleConditionalTab is defined and wired to conditional tabs", {
     'toggleConditionalTab\\s*\\(\\s*"extra_material"',
     perl = TRUE
   )
+  expect_match(content, 'catalog_field = "immune_repertoire"', fixed = TRUE)
+  expect_match(content, 'catalog_field = "tcr_repertoire"', fixed = TRUE)
 })
 
 test_that("conditional sidebar items exist in the initial UI", {

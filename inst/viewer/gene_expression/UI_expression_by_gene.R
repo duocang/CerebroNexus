@@ -6,7 +6,7 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene_UI"]] <- renderUI({
-  req(length(expression_summary_data()$genes) > 1)
+  req(expression_summary_show_genes())
   fluidRow(
     cerebroBox(
       title = tagList(
@@ -22,7 +22,12 @@ output[["expression_by_gene_UI"]] <- renderUI({
 ## Bar plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_gene"]] <- plotly::renderPlotly({
-  req(expression_projection_parameters_color(), expression_summary_data())
+  req(
+    input[["expression_summary_viewport_request"]],
+    expression_projection_summary_ready(),
+    expression_projection_parameters_color(),
+    expression_summary_data()
+  )
   expression_levels <- data_set()$getMeanExpressionForGenes(
     expression_summary_data()$genes
   ) %>%
@@ -78,17 +83,7 @@ output[["expression_by_gene"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_by_gene_info"]], {
-  showModal(
-    modalDialog(
-      expression_by_gene_info[["text"]],
-      title = expression_by_gene_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "expression_by_gene_info", expression_by_gene_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

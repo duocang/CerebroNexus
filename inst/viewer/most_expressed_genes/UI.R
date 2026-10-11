@@ -10,6 +10,6 @@ tab_most_expressed_genes <- tabItem(
     }
     "
   ),
-  uiOutput("most_expressed_genes_select_group_UI"),
-  uiOutput("most_expressed_genes_table_UI")
+  cerebroResultPage("Most expressed genes", "most_expressed_genes_select_group_UI",
+    "most_expressed_genes_table_or_text_UI", "most_expressed_genes_info")
 )

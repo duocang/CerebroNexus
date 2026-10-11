@@ -2,25 +2,25 @@
 ## Collect color parameters for projection plot.
 ##----------------------------------------------------------------------------##
 expression_projection_parameters_color <- reactive({
-  ## require input UI elements
-  req(expression_projection_expression_levels())
+  expression_levels <- expression_projection_expression_levels()
+  genes <- expression_selected_genes()[["genes_to_display_present"]]
+  no_gene_selected <- length(genes) == 0L
+  rgb_mode <- identical(
+    input[["expression_projection_genes_in_separate_panels"]],
+    "rgb"
+  )
+  req(no_gene_selected || length(expression_levels) > 0L)
   ## collect parameters
   parameters <- list(
-    color_scale = "Cerebro orange",
-    color_range = expressionValueRange(
-      expression_projection_expression_levels()
-    ),
-    color_mode = if (
-      identical(
-        input[["expression_projection_gene_color_mode"]],
-        "different"
-      )
-    ) {
-      "different"
+    color_scale = current_expression_color_defaults()$palette,
+    panel_palette = current_expression_color_defaults()$panel_palette,
+    color_range = if (no_gene_selected || rgb_mode) {
+      c(0, 1)
     } else {
-      "shared"
+      expressionValueRange(expression_levels)
     },
-    genes = expression_selected_genes()[["genes_to_display_present"]],
+    color_mode = expression_panel_color_mode(),
+    genes = genes,
     rgb_genes = expression_selected_genes()[["rgb_genes"]]
   )
   return(parameters)

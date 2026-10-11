@@ -103,6 +103,58 @@ test_that("the Viewer sources configured colour support", {
   expect_match(setup, "apply_configured_colors", fixed = TRUE)
 })
 
+test_that("colour pickers stay mounted while shared colours update", {
+  files <- c(A = "/data/a.crb", B = "/data/b.crb")
+  server <- function(input, output, session) {
+    Cerebro.options <- list(crb_file_to_load = files)
+    available_crb_files <- reactiveValues(selected = files[["A"]])
+    data_set <- reactive(available_crb_files$selected)
+    getMetaData <- function() data.frame(group = c("a", "b"), cycle = c("G1", "S"))
+    getGroups <- function() "group"
+    getGroupLevels <- function(group) c("a", "b")
+    getCellCycle <- function() "cycle"
+    box <- function(...) {
+      renders <<- renders + 1L
+      shinydashboard::box(...)
+    }
+    boxTitle <- function(x) x
+    renders <- 0L
+    scope <- environment()
+    sys.source(viewer_test_path("color_config.R"), envir = scope)
+    sys.source(viewer_test_path("color_setup.R"), envir = scope)
+    sys.source(viewer_test_path("color_management", "server.R"), envir = scope)
+    output$shared_colour <- renderText(reactive_colors()$group[["a"]])
+    session$userData$renders <- function() renders
+    session$userData$colors <- reactive_colors
+    session$userData$id <- color_input_id
+    session$userData$select <- function(path) available_crb_files$selected <- path
+  }
+  shiny::testServer(server, {
+    first <- output$color_assignments_UI
+    initial <- session$userData$renders()
+    group_id <- session$userData$id("group", "a")
+    cycle_id <- session$userData$id("cycle", "G1")
+    do.call(session$setInputs, stats::setNames(list("#123456", "#654321"), c(group_id, cycle_id)))
+    expect_identical(output$shared_colour, "#123456")
+    expect_identical(session$userData$colors()$cycle[["G1"]], "#654321")
+    expect_identical(output$color_assignments_UI, first)
+    expect_identical(session$userData$renders(), initial)
+
+    session$userData$select(files[["B"]])
+    session$flushReact()
+    second <- output$color_assignments_UI
+    expect_false(identical(first, second))
+    expect_gt(session$userData$renders(), initial)
+    expect_false(identical(output$shared_colour, "#123456"))
+
+    session$userData$select(files[["A"]])
+    session$flushReact()
+    expect_match(output$color_assignments_UI$html, "#123456", fixed = TRUE)
+    expect_match(output$color_assignments_UI$html, "#654321", fixed = TRUE)
+    expect_identical(output$shared_colour, "#123456")
+  })
+})
+
 test_that("manual colours are isolated by loaded data set", {
   files <- c(A = "/data/a.crb", B = "/data/b.crb")
   configured <- list(
@@ -123,6 +175,7 @@ test_that("manual colours are isolated by loaded data set", {
     sys.source(viewer_test_path("color_setup.R"), envir = scope)
 
     session$userData$colors <- reactive_colors
+    session$userData$group_colors <- reactive_group_colors
     session$userData$input_id <- color_input_id
     session$userData$select <- function(path) {
       available_crb_files$selected <- path
@@ -141,6 +194,10 @@ test_that("manual colours are isolated by loaded data set", {
       unname(session$userData$colors()$group),
       unname(inputs_a)
     )
+    expect_identical(
+      unname(session$userData$group_colors("group")),
+      unname(inputs_a)
+    )
 
     session$userData$select(files[["B"]])
     session$flushReact()
@@ -153,6 +210,10 @@ test_that("manual colours are isolated by loaded data set", {
     expect_false(identical(ids_a, ids_b))
     expect_identical(
       session$userData$colors()$group,
+      configured$B$group
+    )
+    expect_identical(
+      session$userData$group_colors("group"),
       configured$B$group
     )
   })

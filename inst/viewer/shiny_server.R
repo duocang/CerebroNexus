@@ -21,16 +21,47 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_config.R"),
   local = TRUE
 )
+source(
+  paste0(Cerebro.options[["cerebro_root"]], "/viewer/source_cache.R"),
+  local = TRUE
+)
+source(
+  paste0(Cerebro.options[["cerebro_root"]], "/viewer/core/viewer_pack.R"),
+  local = TRUE
+)
 
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
 
-## Keep only the compact MSigDB catalogue and resolved gene vectors across
-## sessions. The complete msigdbr table is discarded after each public query.
-.msigdb_process_cache <- new.env(parent = emptyenv())
+## Process-owned query/cache functions do not capture a browser session.
+source(file.path(Cerebro.options[["cerebro_root"]], "viewer", "msigdb.R"), local = TRUE)
+source(file.path(Cerebro.options[["cerebro_root"]], "viewer", "crb_cache.R"), local = TRUE)
+.viewer_pack_process_cache <- new.env(parent = emptyenv())
+.crb_launch_state <- new.env(parent = emptyenv())
+.crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
+if (!is.list(.crb_launch_state$prototypes)) {
+  .crb_launch_state$prototypes <- list()
+}
+if (length(.crb_launch_state$prototypes)) {
+  for (prototype_path in names(.crb_launch_state$prototypes)) {
+    viewerPackOpenCached(
+      prototype_path,
+      .crb_launch_state$prototypes[[prototype_path]],
+      .viewer_pack_process_cache
+    )
+  }
+}
 
 server <- function(input, output, session) {
+  source <- function(file, local = FALSE, ...) {
+    dots <- list(...)
+    if (identical(local, TRUE) && !length(dots)) {
+      return(viewerSource(file, parent.frame()))
+    }
+    base::source(file, local = local, ...)
+  }
+
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.
   ##--------------------------------------------------------------------------##
@@ -44,6 +75,40 @@ server <- function(input, output, session) {
       "/viewer/utility_functions.R"
     ),
     local = TRUE
+  )
+  if (length(.crb_launch_state$prototypes)) {
+    backend_plan <- Cerebro.options[[".bundle_backend_plan"]]
+    configured_paths <- unname(
+      Cerebro.options[["crb_file_to_load"]] %||% character()
+    )
+    for (prototype_path in names(.crb_launch_state$prototypes)) {
+      effective_backend <- .configuredRuntimeBackendPlan(
+        prototype_path,
+        backend_plan,
+        configured_paths
+      )
+      .cacheCrbPrototype(
+        prototype_path,
+        .crb_launch_state$prototypes[[prototype_path]],
+        .runtimeBackendCacheIdentity(effective_backend)
+      )
+    }
+    .crb_launch_state$prototypes <- NULL
+  }
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/coordinated_views/config.R"
+    ),
+    local = TRUE
+  )
+  observeEvent(
+    input[["cell_view_aux_request"]],
+    {
+      request <- input[["cell_view_aux_request"]]
+      cerebroCellViewAuxRequest(request)
+    },
+    ignoreInit = TRUE
   )
   source(
     paste0(
@@ -80,6 +145,35 @@ server <- function(input, output, session) {
       TRUE
     )
   )
+
+  ## Outputs inside collapsed boxes may stay active while their owning sidebar
+  ## page is current. Re-suspend them on every page switch so inactive modules
+  ## cannot initialise expensive data or expression backends in the background.
+  viewer_hidden_output_options <- list()
+  outputOptions <- function(output, x, ...) {
+    options <- list(...)
+    owner <- viewerOutputTab(x)
+    if (identical(options$suspendWhenHidden, FALSE) && !is.na(owner)) {
+      viewer_hidden_output_options[[x]] <<- options
+      options$suspendWhenHidden <- !identical(
+        isolate(input[["sidebar"]]),
+        owner
+      )
+    }
+    do.call(shiny::outputOptions, c(list(x = output, name = x), options))
+  }
+  observeEvent(input[["sidebar"]], {
+    tab <- input[["sidebar"]]
+    ids <- names(viewer_hidden_output_options)
+    for (id in ids) {
+      options <- viewer_hidden_output_options[[id]]
+      options$suspendWhenHidden <- !identical(viewerOutputTab(id), tab)
+      do.call(
+        shiny::outputOptions,
+        c(list(x = output, name = id), options)
+      )
+    }
+  })
 
   viewer_initial_page_tabs <- c(
     data_info = "loadData",
@@ -137,34 +231,137 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
 
   ## reactive values holding available .crb files and the current selection.
-  ## In single-file mode only 'selected' is used; when >1 files are provided via
-  ## Cerebro.options$crb_file_to_load, 'files'/'names' drive the sidebar dataset
-  ## switcher rendered below.
+  ## In single-file mode only 'selected' is used. For configured datasets,
+  ## `files` is keyed by stable dataset id, `labels` is display-only, and
+  ## `selected` stores the id rather than a label or path.
   available_crb_files <- reactiveValues(
     files = NULL,
     selected = NULL,
-    names = NULL
+    names = NULL,
+    labels = NULL
   )
+  dataset_load_requested <- reactiveVal(FALSE)
+
+  ## One immutable context identifies every load attempt. `epoch` changes with
+  ## the Shiny session; `generation` advances before the public selection is
+  ## changed. Browser messages never receive the path/object stored in target.
+  viewer_dataset_epoch <- paste0(
+    sample(c(letters, LETTERS, 0:9), 24L, replace = TRUE),
+    collapse = ""
+  )
+  viewer_dataset_generation <- 0
+  viewer_upload_serial <- 0L
+  viewer_dataset_request <- reactiveVal(NULL)
+
+  viewer_send_dataset_phase <- function(
+    phase,
+    dataset_context,
+    request = isolate(viewer_dataset_request())
+  ) {
+    session$sendCustomMessage(
+      "cerebro_dataset_context",
+      list(
+        phase = as.character(phase),
+        dataset_context = dataset_context,
+        selection = as.character(request$selection %||% ""),
+        selection_nonce = request$selection_nonce %||% 0
+      )
+    )
+  }
+
+  viewer_clear_cell_view_aux <- function() {
+    pending <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+    if (length(pending)) {
+      rm(list = pending, envir = .cerebro_cell_view_aux_pending)
+    }
+  }
+
+  viewer_request_dataset <- function(
+    selection,
+    target,
+    dataset_key,
+    source,
+    force = FALSE,
+    selection_nonce = 0
+  ) {
+    current <- isolate(viewer_dataset_request())
+    same_request <- is.list(current) &&
+      identical(current$selection, selection) &&
+      identical(current$target, target) &&
+      identical(current$source, source) &&
+      identical(current$selection_nonce, selection_nonce) &&
+      identical(current$dataset_context$dataset_key, dataset_key)
+    if (same_request && !isTRUE(force)) {
+      if (!identical(isolate(available_crb_files$selected), selection)) {
+        available_crb_files$selected <- selection
+      }
+      return(invisible(current))
+    }
+
+    viewer_dataset_generation <<- viewer_dataset_generation + 1
+    dataset_context <- viewerDatasetContext(
+      viewer_dataset_epoch,
+      dataset_key,
+      viewer_dataset_generation
+    )
+    request <- list(
+      selection = selection,
+      target = target,
+      source = source,
+      selection_nonce = selection_nonce,
+      dataset_context = dataset_context
+    )
+
+    ## Publish the invalidation before changing the selector-backed state. This
+    ## makes the browser reject every previous generation while the new object
+    ## is loading, and prevents old progressive aux data crossing the boundary.
+    viewer_clear_cell_view_aux()
+    viewer_send_dataset_phase("pending", dataset_context, request)
+    viewer_dataset_request(request)
+    if (!identical(isolate(available_crb_files$selected), selection)) {
+      available_crb_files$selected <- selection
+    }
+    invisible(request)
+  }
+
+  viewer_requested_dataset_context <- reactive({
+    request <- viewer_dataset_request()
+    req(is.list(request), is.list(request$dataset_context))
+    request$dataset_context
+  })
 
   current_scatter_defaults <- reactive({
     viewerScatterDefaults(
       Cerebro.options,
-      viewerDatasetName(
-        available_crb_files$files,
-        available_crb_files$selected
-      )
+      viewer_requested_dataset_context()$dataset_key
+    )
+  })
+
+  current_expression_scatter_defaults <- reactive({
+    viewerScatterDefaults(
+      Cerebro.options,
+      viewer_requested_dataset_context()$dataset_key,
+      page = "expression"
     )
   })
 
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
-    path_to_load <- viewerUploadPath(input[["input_file"]], Cerebro.options)
-    if (nzchar(path_to_load)) {
+    selection <- viewerUploadPath(input[["input_file"]], Cerebro.options)
+    dataset_key <- NULL
+    dataset_source <- NULL
+    dataset_target <- NULL
+    if (nzchar(selection)) {
+      viewer_upload_serial <<- viewer_upload_serial + 1L
+      dataset_key <- paste0("__upload_", viewer_upload_serial, "__")
+      dataset_source <- "upload"
+      dataset_target <- selection
       ## an uploaded file replaces the pre-configured data sets, so clear the
       ## switcher state — otherwise the dropdown keeps offering the old data
       ## sets, which no longer match what is loaded.
       available_crb_files$files <- NULL
       available_crb_files$names <- NULL
+      available_crb_files$labels <- NULL
       ## take path or object from 'Cerebro.options' if it is set and points to an
       ## existing file or object
     } else if (
@@ -172,6 +369,19 @@ server <- function(input, output, session) {
         !is.null(Cerebro.options[["crb_file_to_load"]])
     ) {
       file_to_load <- Cerebro.options[["crb_file_to_load"]]
+      ## Older launch configurations could provide more than one unnamed path.
+      ## Give those entries deterministic opaque ids rather than falling back to
+      ## paths as browser-visible identity.
+      file_names <- names(file_to_load)
+      valid_file_names <- is.character(file_names) &&
+        length(file_names) == length(file_to_load) &&
+        !anyNA(file_names) &&
+        all(nzchar(file_names)) &&
+        !anyDuplicated(file_names)
+      if (length(file_to_load) > 1L && !valid_file_names) {
+        file_names <- paste0("legacy-", seq_along(file_to_load))
+        names(file_to_load) <- file_names
+      }
       ## multiple files (or a single named file) -> enable dataset switcher
       if (length(file_to_load) > 1 || !is.null(names(file_to_load))) {
         available_crb_files$files <- file_to_load
@@ -181,8 +391,20 @@ server <- function(input, output, session) {
             length(file_names) == length(file_to_load)
         ) {
           available_crb_files$names <- file_names
+          configured_labels <- Cerebro.options[["dataset_labels"]]
+          if (
+            !is.character(configured_labels) ||
+              is.null(names(configured_labels)) ||
+              !identical(names(configured_labels), file_names) ||
+              anyNA(configured_labels) ||
+              any(!nzchar(configured_labels))
+          ) {
+            configured_labels <- stats::setNames(file_names, file_names)
+          }
+          available_crb_files$labels <- unname(configured_labels[file_names])
         } else {
           available_crb_files$names <- NULL
+          available_crb_files$labels <- NULL
         }
 
         ##--------------------------------------------------------------------##
@@ -214,26 +436,34 @@ server <- function(input, output, session) {
           }
         }
 
-        ## try to match url_dataset against available files
+        ## URL/state identity is always the stable dataset id. Filename matching
+        ## remains as a compatibility fallback for old shared links.
         if (!is.null(url_dataset)) {
-          path_to_load <- match_dataset_by_url(
+          selection <- match_dataset_id_by_url(
             url_dataset,
-            available_crb_files$files,
-            available_crb_files$names
+            available_crb_files$files
           )
-          if (path_to_load != '') {
+          if (selection != '') {
             print(glue::glue(
-              "[{Sys.time()}] Dataset selected via URL: {url_dataset} -> {path_to_load}"
+              "[{Sys.time()}] Dataset selected via URL: {url_dataset} -> {selection}"
             ))
           }
         }
 
         ## if not chosen via URL: keep current selection, else pick default.
         ## crb_pick_smallest_file TRUE/NULL -> smallest file; FALSE -> first.
-        if (path_to_load != '') {
+        if (selection != '') {
           ## already set by URL logic
-        } else if (!is.null(available_crb_files$selected)) {
-          path_to_load <- available_crb_files$selected
+        } else if (
+          !is.null(available_crb_files$selected) &&
+            available_crb_files$selected %in% names(file_to_load)
+        ) {
+          selection <- available_crb_files$selected
+        } else if (
+          !is.null(Cerebro.options[["initial_dataset"]]) &&
+            Cerebro.options[["initial_dataset"]] %in% names(file_to_load)
+        ) {
+          selection <- Cerebro.options[["initial_dataset"]]
         } else {
           pick_smallest <- TRUE
           if (!is.null(Cerebro.options[["crb_pick_smallest_file"]])) {
@@ -249,39 +479,56 @@ server <- function(input, output, session) {
                 Inf ## variable/object -> infinite size, skipped
               }
             })
-            path_to_load <- file_to_load[which.min(file_sizes)]
+            selection <- names(file_to_load)[[which.min(file_sizes)]]
           } else {
-            path_to_load <- file_to_load[1]
+            selection <- names(file_to_load)[[1L]]
           }
         }
       } else {
         ## single unnamed file
         available_crb_files$files <- NULL
         available_crb_files$names <- NULL
+        available_crb_files$labels <- NULL
         if (file.exists(file_to_load) || exists(file_to_load)) {
-          path_to_load <- file_to_load
+          selection <- file_to_load
+          dataset_key <- "__single__"
+          dataset_source <- "single"
+          dataset_target <- selection
         }
       }
     }
     ## assign path to example file if none of the above apply
-    if (length(path_to_load) == 0 || all(path_to_load == '')) {
+    if (length(selection) == 0 || all(selection == '')) {
       ## Resolve relative to cerebro_root, never via the package: the exported
       ## bundle, inst/app.R and the installed launcher all point cerebro_root at
       ## a directory that carries extdata/, so this fallback stays self-contained
       ## even when the app runs without CerebroNexus installed (a package
       ## lookup would then resolve to "" and silently break the fallback).
-      path_to_load <- file.path(
+      selection <- file.path(
         Cerebro.options[["cerebro_root"]],
         "extdata/examples/example.crb"
       )
+      dataset_key <- "__example__"
+      dataset_source <- "example"
+      dataset_target <- selection
     }
-    ## set reactive value to selected file path
-    if (
-      is.null(available_crb_files$selected) ||
-        available_crb_files$selected != path_to_load
-    ) {
-      available_crb_files$selected <- path_to_load
+    if (is.null(dataset_key)) {
+      dataset_key <- viewerDatasetName(
+        available_crb_files$files,
+        selection
+      )
+      dataset_source <- "configured"
+      dataset_target <- viewerDatasetPath(
+        available_crb_files$files,
+        selection
+      )
     }
+    viewer_request_dataset(
+      selection = selection,
+      target = dataset_target,
+      dataset_key = dataset_key,
+      source = dataset_source
+    )
   })
 
   ## renderUI for the dataset switcher; shown only when >1 .crb files are
@@ -291,57 +538,166 @@ server <- function(input, output, session) {
       !is.null(available_crb_files$files) &&
         length(available_crb_files$files) > 1
     ) {
-      choices <- available_crb_files$files
-      names(choices) <- if (!is.null(available_crb_files$names)) {
-        available_crb_files$names
-      } else {
-        basename(available_crb_files$files)
+      labels <- available_crb_files$labels
+      if (is.null(labels) && !is.null(available_crb_files$names)) {
+        labels <- available_crb_files$names
       }
-      selected <- available_crb_files$selected
+      choices <- viewerDatasetChoices(available_crb_files$files, labels)
+      selected <- isolate(available_crb_files$selected)
       if (is.null(selected)) {
-        selected <- choices[1]
+        selected <- unname(choices[[1L]])
       }
-      tagList(
-        ## The "Select sample dataset" title already labels this control, so the
-        ## selectInput's own label would just repeat it — drop it.
-        titlePanel("Select sample dataset"),
-        selectInput(
-          inputId = "crb_file_selector",
-          label = NULL,
-          choices = choices,
-          selected = selected,
-          width = '350px'
-        )
+      selectInput(
+        inputId = "crb_file_selector",
+        label = "Sample data set",
+        choices = choices,
+        selected = selected,
+        width = "72ch"
       )
     }
   })
 
   ## listen to the dataset switcher and update the current selection
-  observeEvent(input[['crb_file_selector']], {
+  observeEvent(list(input[['crb_file_selector']], input[['viewer_dataset_selection']]), {
     if (
       !is.null(input[['crb_file_selector']]) &&
         !is.null(available_crb_files$files)
     ) {
-      if (
-        is.null(available_crb_files$selected) ||
-          available_crb_files$selected != input[['crb_file_selector']]
-      ) {
-        available_crb_files$selected <- input[['crb_file_selector']]
-      }
+      pending <- input[['viewer_dataset_selection']]
+      nonce <- if (is.list(pending) &&
+        identical(pending$value, input[['crb_file_selector']])) {
+        as.numeric(pending$nonce)
+      } else 0
+      viewer_request_dataset(
+        selection = input[['crb_file_selector']],
+        target = viewerDatasetPath(
+          available_crb_files$files,
+          input[['crb_file_selector']]
+        ),
+        dataset_key = as.character(input[['crb_file_selector']]),
+        source = "configured",
+        selection_nonce = nonce
+      )
     }
   })
 
-  ## create reactive value holding the current data set
-  data_set <- reactive({
+  ## Keep the lightweight Data Info page independent of the full CRB. Opening
+  ## another page, or selecting a dataset absent from the catalog, enables the
+  ## ordinary data_set() chain.
+  observeEvent(
+    available_crb_files$selected,
+    {
+      catalog <- if (exists("Cerebro.options")) {
+        Cerebro.options[[".dataset_catalog"]]
+      } else {
+        NULL
+      }
+      info <- viewerDatasetInfo(catalog, viewerDatasetPath(available_crb_files$files, available_crb_files$selected))
+      dataset_load_requested(viewerDatasetLoadRequired(
+        isolate(input[["sidebar"]]),
+        info,
+        initial_tab,
+        isolate(initial_page_applied())
+      ))
+      selected <- available_crb_files$selected
+      if (!is.null(info) && length(selected) == 1L) {
+        session$onFlushed(
+          function() {
+            if (session$isClosed()) {
+              return()
+            }
+            withReactiveDomain(session, {
+              current <- isolate(available_crb_files$selected)
+              if (
+                length(current) == 1L &&
+                  identical(as.character(current), as.character(selected))
+              ) {
+                path <- isolate(viewerDatasetPath(available_crb_files$files, selected))
+                start_crb_prefetch(path, .runtimeBackendCacheIdentity(
+                  .configuredRuntimeBackendPlan(path,
+                    Cerebro.options[[".bundle_backend_plan"]],
+                    unname(Cerebro.options[["crb_file_to_load"]] %||% character()))
+                ))
+              }
+            })
+          },
+          once = TRUE
+        )
+      }
+    },
+    ignoreNULL = FALSE,
+    priority = 100
+  )
+
+  observeEvent(
+    input[["sidebar"]],
+    {
+      dataset_load_requested(viewerDatasetLoadOnTab(
+        isolate(dataset_load_requested()),
+        input[["sidebar"]]
+      ))
+    },
+    ignoreNULL = FALSE
+  )
+
+  current_dataset_info <- reactive({
     req(!is.null(available_crb_files$selected))
-    dataset_to_load <- available_crb_files$selected
+    selected <- available_crb_files$selected
+    catalog <- if (exists("Cerebro.options")) {
+      Cerebro.options[[".dataset_catalog"]]
+    } else {
+      NULL
+    }
+    info <- viewerDatasetInfo(catalog, viewerDatasetPath(available_crb_files$files, selected))
+    if (!is.null(info)) {
+      return(info)
+    }
+
+    req(isTRUE(dataset_load_requested()))
+    data <- data_set()
+    experiment <- data$getExperiment()
+    scalar <- function(value) {
+      if (is.null(value) || length(value) != 1L || is.na(value)) {
+        return(NA_character_)
+      }
+      as.character(value)
+    }
+    list(
+      label = viewerDatasetName(available_crb_files$files, selected),
+      path = selected,
+      cells = .runtimeCerebroCellCount(data),
+      organism = scalar(experiment$organism),
+      date = scalar(experiment$date_of_export)
+    )
+  })
+
+  datasetLoadProgress <- function(label, percent, detail, done = FALSE) {
+    session$sendCustomMessage(
+      "cerebro_dataset_load",
+      list(
+        label = as.character(label %||% "Dataset"),
+        percent = max(0, min(100, as.numeric(percent))),
+        detail = as.character(detail %||% ""),
+        done = isTRUE(done)
+      )
+    )
+  }
+
+  viewer_dataset_snapshot <- reactive({
+    request <- viewer_dataset_request()
+    req(is.list(request), is.list(request$dataset_context), !is.null(request$target))
+    req(isTRUE(dataset_load_requested()))
+    dataset_to_load <- request$target
+    dataset_label <- request$dataset_context$dataset_key
+    datasetLoadProgress(dataset_label, 8, "Preparing dataset")
+    tryCatch({
     if (exists(dataset_to_load)) {
       print(glue::glue(
         "[{Sys.time()}] Load data set from variable: {dataset_to_load}"
       ))
       data <- get(dataset_to_load)
     } else {
-      ## Route through the session cache defined in utility_functions.R.
+      ## Clone the process-cached prototype and attach session-local backends.
       ## Configured bundle CRBs consume the exact backend plan validated during
       ## createShinyApp(). Uploads and older configurations fall back to the
       ## ordinary expression_backend field; serialized getters are not called.
@@ -358,23 +714,884 @@ server <- function(input, output, session) {
       } else {
         character()
       }
+      cache_key <- normalizePath(
+        dataset_to_load,
+        winslash = "/",
+        mustWork = FALSE
+      )
+      if (is.null(.crb_process_cache[[cache_key]])) {
+        prefetch_task <- crb_prefetch_tasks[[cache_key]]
+        if (!is.null(prefetch_task)) {
+          status <- prefetch_task$status()
+          if (status %in% c("initial", "running")) {
+            datasetLoadProgress(
+              dataset_label,
+              24,
+              "Reading dataset in the background"
+            )
+            prefetch_task$result()
+          } else if (identical(status, "success")) {
+            prefetched <- prefetch_task$result()
+            req(identical(prefetched$path, as.character(dataset_to_load)))
+            effective_backend <- .configuredRuntimeBackendPlan(
+              dataset_to_load,
+              backend_plan,
+              configured_paths
+            )
+            .cacheCrbPrototype(
+              dataset_to_load,
+              prefetched$prototype,
+              .runtimeBackendCacheIdentity(effective_backend)
+            )
+            print(glue::glue(
+              "[{Sys.time()}] CRB background prefetch ready: ",
+              "{.crbLogLabel(dataset_to_load)}"
+            ))
+          } else {
+            tryCatch(
+              prefetch_task$result(),
+              error = function(error) {
+                warning(
+                  "CRB background prefetch failed; loading synchronously: ",
+                  conditionMessage(error),
+                  call. = FALSE
+                )
+              }
+            )
+          }
+        }
+      }
+      datasetLoadProgress(dataset_label, 42, "Opening cells and metadata")
       data <- get_or_load_crb(
         dataset_to_load,
         backend_plan,
         configured_paths
       )
     }
-    ## log message
-    message(data$print())
-    ## check if 'expression' slot exists and print log message with its format
-    ## if it does
-    if (!is.null(data$expression)) {
+    datasetLoadProgress(dataset_label, 78, "Preparing viewer data")
+    expression_is_deferred <- is.environment(data) &&
+      exists("expression", envir = data, inherits = FALSE) &&
+      isTRUE(rlang::env_binding_are_lazy(data, "expression"))
+    if (expression_is_deferred) {
       print(glue::glue(
-        "[{Sys.time()}] Format of expression data: {class(data$expression)}"
+        "[{Sys.time()}] Data loaded; expression backend will attach on first use."
+      ))
+    } else {
+      message(data$print())
+      if (!is.null(data$expression)) {
+        print(glue::glue(
+          "[{Sys.time()}] Format of expression data: {class(data$expression)}"
+        ))
+      }
+    }
+    viewer_pack <- if (
+      is.character(dataset_to_load) &&
+        length(dataset_to_load) == 1L &&
+        file.exists(dataset_to_load)
+    ) {
+      viewerPackOpenCached(
+        dataset_to_load,
+        data,
+        .viewer_pack_process_cache
+      )
+    } else {
+      NULL
+    }
+    datasetLoadProgress(dataset_label, 94, "Finalizing the workspace")
+    attr(data, "cerebro_viewer_pack") <- viewer_pack
+    datasetLoadProgress(dataset_label, 100, "Ready", done = TRUE)
+      list(ok = TRUE, data = data, dataset_context = request$dataset_context)
+    }, error = function(error) {
+      if (inherits(error, "shiny.silent.error")) stop(error)
+      list(ok = FALSE, error = error, dataset_context = request$dataset_context)
+    })
+  })
+
+  data_set <- reactive({
+    snapshot <- viewer_dataset_snapshot()
+    if (!isTRUE(snapshot$ok)) {
+      stop(snapshot$error)
+    }
+    snapshot$data
+  })
+
+  viewer_loaded_dataset_context <- reactive({
+    snapshot <- viewer_dataset_snapshot()
+    req(isTRUE(snapshot$ok), is.list(snapshot$dataset_context))
+    snapshot$dataset_context
+  })
+
+  viewer_current_dataset_key <- reactive({
+    viewer_loaded_dataset_context()$dataset_key
+  })
+
+  observe(
+    {
+      snapshot <- viewer_dataset_snapshot()
+      if (isTRUE(snapshot$ok)) {
+        viewer_send_dataset_phase("ready", snapshot$dataset_context)
+      } else {
+        warning(
+          "Viewer data set failed to load: ",
+          conditionMessage(snapshot$error),
+          call. = FALSE
+        )
+        viewer_send_dataset_phase("error", snapshot$dataset_context)
+      }
+    },
+    priority = 1000
+  )
+
+  ## A websocket reconnect may resume the same Shiny session, in which case the
+  ## snapshot reactive does not invalidate by itself. The browser enters a
+  ## fail-closed pending phase on every connection and asks the session to replay
+  ## the exact loaded snapshot before any cached view becomes usable again.
+  observeEvent(
+    input[["viewer_dataset_context_sync"]],
+    {
+      request <- isolate(viewer_dataset_request())
+      if (!is.list(request) || !is.list(request$dataset_context)) {
+        return()
+      }
+      snapshot <- isolate(viewer_dataset_snapshot())
+      if (!is.list(snapshot) || !is.list(snapshot$dataset_context)) {
+        return()
+      }
+      viewer_send_dataset_phase(
+        if (isTRUE(snapshot$ok)) "ready" else "error",
+        snapshot$dataset_context
+      )
+    },
+    ignoreInit = TRUE,
+    priority = 1001
+  )
+
+  ## The page benchmark must separate full dataset materialization from page
+  ## readiness. Data Info intentionally uses the lightweight catalog and does
+  ## not force data_set(), so a benchmark-only input provides an explicit,
+  ## request-bound load boundary without opening (and warming) any analysis
+  ## page. There is no UI control that sends this input in the product.
+  observeEvent(
+    input[["cerebro_benchmark_dataset_load_request"]],
+    {
+      request <- as.character(
+        input[["cerebro_benchmark_dataset_load_request"]] %||% ""
+      )
+      dataset_load_requested(TRUE)
+      loaded <- data_set()
+      identity <- viewerDatasetIdentity()
+      session$sendCustomMessage(
+        "cerebro_benchmark_dataset_ready",
+        list(
+          request = request,
+          cell_count = as.integer(identity$cell_count),
+          dataset_fingerprint = as.character(identity$fingerprint),
+          order_fingerprint = as.character(identity$order_fingerprint %||% "")
+        )
+      )
+      invisible(loaded)
+    },
+    ignoreInit = TRUE,
+    priority = 10000
+  )
+
+  ## Large projection coordinates already exist as interleaved Float32 assets
+  ## in the validated Viewer Pack. Expose only that projection directory under
+  ## a session-specific resource prefix so specialist views can fetch the file
+  ## directly instead of copying the same 8 MB through R and Shiny's websocket.
+  viewer_resource_prefixes <- character()
+  viewer_resource_counts <- new.env(parent = emptyenv())
+  viewerStaticResourcePrefix <- function(kind, directory) {
+    count <- if (exists(kind, envir = viewer_resource_counts, inherits = FALSE)) {
+      get(kind, envir = viewer_resource_counts, inherits = FALSE) + 1L
+    } else {
+      1L
+    }
+    prefix <- paste0(
+      "cerebro-",
+      kind,
+      "-",
+      gsub("[^A-Za-z0-9_-]", "", session$token),
+      "-",
+      count
+    )
+    shiny::addResourcePath(prefix, directory)
+    assign(kind, count, envir = viewer_resource_counts)
+    viewer_resource_prefixes <<- c(viewer_resource_prefixes, prefix)
+    prefix
+  }
+  viewerCanonicalResourceIdentity <- function(pack) {
+    identity <- tryCatch(
+      viewerDatasetIdentity(),
+      error = function(error) NULL
+    )
+    list(
+      dataset_fingerprint = as.character(identity$fingerprint %||% ""),
+      cell_order_fingerprint = as.character(
+        pack$manifest$cell_order_fingerprint %||% ""
+      ),
+      pack_dataset_fingerprint = as.character(
+        pack$manifest$dataset_fingerprint %||% ""
+      )
+    )
+  }
+  viewer_projection_resources <- new.env(parent = emptyenv())
+  viewerProjectionAsset <- function(name, cell_indices = NULL) {
+    pack <- viewerPackCurrent()
+    if (
+      !is.list(pack) ||
+        !isTRUE(pack$canonical_order) ||
+        (
+          !is.null(cell_indices) &&
+            !identical(as.integer(cell_indices), seq_len(pack$cell_count))
+        )
+    ) {
+      return(NULL)
+    }
+    projection_names <- as.character(pack$manifest$projection_names)
+    projection_index <- match(as.character(name), projection_names)
+    if (is.na(projection_index)) {
+      return(NULL)
+    }
+    asset_path <- file.path(
+      "projections",
+      sprintf("%03d.bin", projection_index)
+    )
+    key <- paste(pack$path, asset_path, sep = "::")
+    if (exists(key, envir = viewer_projection_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_projection_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- which(as.character(assets$path) == asset_path)
+    dimensions <- if (length(asset_row) == 1L) {
+      suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[asset_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+    } else {
+      integer()
+    }
+    file <- file.path(pack$path, asset_path)
+    valid <- length(asset_row) == 1L &&
+      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
+      length(dimensions) == 2L &&
+      identical(dimensions[[1L]], as.integer(pack$cell_count)) &&
+      dimensions[[2L]] %in% c(2L, 3L) &&
+      file.exists(file) &&
+      !dir.exists(file) &&
+      identical(
+        as.numeric(file.info(file)$size),
+        as.numeric(assets$bytes[[asset_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(file)),
+        as.character(assets$checksum[[asset_row]])
+      )
+    if (!valid) {
+      return(NULL)
+    }
+    prefix <- viewerStaticResourcePrefix(
+      "projection",
+      dirname(file)
+    )
+    descriptor <- c(
+      list(
+        protocol = "canonical-projection-v1",
+        projection_name = as.character(name),
+        url = paste0(prefix, "/", basename(file)),
+        cells = dimensions[[1L]],
+        dimensions = dimensions[[2L]],
+        dtype = "float32",
+        bytes = as.numeric(assets$bytes[[asset_row]]),
+        checksum = as.character(assets$checksum[[asset_row]])
+      ),
+      viewerCanonicalResourceIdentity(pack)
+    )
+    assign(key, descriptor, envir = viewer_projection_resources)
+    descriptor
+  }
+  viewerProjectionCatalog <- function() {
+    pack <- viewerPackCurrent()
+    names <- if (is.list(pack)) {
+      as.character(pack$manifest$projection_names)
+    } else {
+      character()
+    }
+    Filter(
+      Negate(is.null),
+      lapply(names, viewerProjectionAsset)
+    )
+  }
+  ## Trajectory frames may bind an exact row subset to a canonical projection.
+  ## The binding is published only by the Viewer Pack builder after exact
+  ## coordinate comparison. Older packs and non-matching frames retain their
+  ## dedicated geometry asset.
+  viewer_trajectory_resources <- new.env(parent = emptyenv())
+  viewerTrajectoryFrameAsset <- function(method, name) {
+    pack <- viewerPackCurrent()
+    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+      return(NULL)
+    }
+    frame <- viewerPackTrajectoryFrame(pack, method, name)
+    if (is.null(frame)) {
+      return(NULL)
+    }
+    key <- paste(pack$path, method, name, sep = "::")
+    if (exists(key, envir = viewer_trajectory_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_trajectory_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- function(path) {
+      which(as.character(assets$path) == as.character(path))
+    }
+    codes_row <- asset_row(frame$state_codes_path)
+    dictionary_row <- asset_row(frame$state_dictionary_path)
+    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
+      return(NULL)
+    }
+    code_dimensions <- suppressWarnings(as.integer(
+      as.character(assets$dimensions[[codes_row]])
+    ))
+    dtype <- as.character(assets$dtype[[codes_row]])
+    bytes_per_code <- switch(
+      dtype,
+      uint8 = 1L,
+      uint16 = 2L,
+      uint32 = 4L,
+      NA_integer_
+    )
+    paths <- c(frame$state_codes_path, frame$state_dictionary_path)
+    rows <- c(codes_row, dictionary_row)
+    files <- file.path(pack$path, paths)
+    valid <- identical(code_dimensions, frame$cells) &&
+      !is.na(bytes_per_code) &&
+      identical(
+        as.numeric(assets$bytes[[codes_row]]),
+        as.numeric(frame$cells) * bytes_per_code
+      ) &&
+      all(file.exists(files)) &&
+      !any(dir.exists(files)) &&
+      all(
+        as.numeric(file.info(files)$size) ==
+          as.numeric(assets$bytes[rows])
+      ) &&
+      all(
+        unname(tools::md5sum(files)) ==
+          as.character(assets$checksum[rows])
+      )
+    if (!isTRUE(valid)) {
+      return(NULL)
+    }
+    levels <- tryCatch(
+      as.character(jsonlite::read_json(
+        files[[2L]],
+        simplifyVector = TRUE
+      )),
+      error = function(error) NULL
+    )
+    if (
+      is.null(levels) ||
+        length(levels) != suppressWarnings(as.integer(
+          assets$dimensions[[dictionary_row]]
+        ))
+    ) {
+      return(NULL)
+    }
+    geometry_kind <- as.character(frame$geometry_kind)
+    projection <- NULL
+    subset <- NULL
+    if (identical(geometry_kind, "canonical_projection")) {
+      projection <- viewerProjectionAsset(frame$projection_name)
+      canonical_cells <- as.integer(pack$cell_count)
+      if (is.null(projection) || frame$cells > canonical_cells) {
+        return(NULL)
+      }
+      subset_kind <- as.character(frame$subset_kind)
+      subset_count <- switch(
+        subset_kind,
+        identity = 0L,
+        include_uint32 = frame$cells,
+        exclude_uint32 = canonical_cells - frame$cells,
+        NA_integer_
+      )
+      if (is.na(subset_count)) {
+        return(NULL)
+      }
+      subset <- list(
+        protocol = "canonical-subset-v1",
+        kind = subset_kind,
+        canonical_cells = canonical_cells,
+        cells = frame$cells,
+        index_base = 0L,
+        dtype = "uint32",
+        bytes = 0,
+        checksum = ""
+      )
+      if (!identical(subset_kind, "identity")) {
+        subset_row <- asset_row(frame$subset_path)
+        if (length(subset_row) != 1L) {
+          return(NULL)
+        }
+        subset_dimensions <- suppressWarnings(as.integer(
+          as.character(assets$dimensions[[subset_row]])
+        ))
+        subset_file <- file.path(pack$path, frame$subset_path)
+        subset_valid <- identical(
+          as.character(assets$dtype[[subset_row]]),
+          "uint32"
+        ) &&
+          identical(subset_dimensions, subset_count) &&
+          identical(
+            as.numeric(assets$bytes[[subset_row]]),
+            as.numeric(subset_count) * 4
+          ) &&
+          file.exists(subset_file) &&
+          !dir.exists(subset_file) &&
+          identical(
+            as.numeric(file.info(subset_file)$size),
+            as.numeric(assets$bytes[[subset_row]])
+          ) &&
+          identical(
+            unname(tools::md5sum(subset_file)),
+            as.character(assets$checksum[[subset_row]])
+          )
+        if (!isTRUE(subset_valid)) {
+          return(NULL)
+        }
+        paths <- c(paths, frame$subset_path)
+        files <- c(files, subset_file)
+        rows <- c(rows, subset_row)
+        subset$bytes <- as.numeric(assets$bytes[[subset_row]])
+        subset$checksum <- as.character(assets$checksum[[subset_row]])
+      }
+    } else {
+      geometry_row <- asset_row(frame$geometry_path)
+      if (length(geometry_row) != 1L) {
+        return(NULL)
+      }
+      geometry_dimensions <- suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[geometry_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+      geometry_file <- file.path(pack$path, frame$geometry_path)
+      geometry_valid <- length(geometry_dimensions) == 2L &&
+        identical(geometry_dimensions, c(frame$cells, 2L)) &&
+        identical(as.character(assets$dtype[[geometry_row]]), "float32") &&
+        identical(
+          as.numeric(assets$bytes[[geometry_row]]),
+          as.numeric(frame$cells) * 2 * 4
+        ) &&
+        file.exists(geometry_file) &&
+        !dir.exists(geometry_file) &&
+        identical(
+          as.numeric(file.info(geometry_file)$size),
+          as.numeric(assets$bytes[[geometry_row]])
+        ) &&
+        identical(
+          unname(tools::md5sum(geometry_file)),
+          as.character(assets$checksum[[geometry_row]])
+        )
+      if (!isTRUE(geometry_valid)) {
+        return(NULL)
+      }
+      paths <- c(paths, frame$geometry_path)
+      files <- c(files, geometry_file)
+      rows <- c(rows, geometry_row)
+    }
+    prefix <- viewerStaticResourcePrefix(
+      "trajectory",
+      dirname(files[[1L]])
+    )
+    resource_url <- function(file) paste0(prefix, "/", basename(file))
+    if (!is.null(subset) && !identical(subset$kind, "identity")) {
+      subset$url <- resource_url(subset_file)
+    }
+    descriptor <- c(
+      list(
+        protocol = "trajectory-frame-v1",
+        cells = frame$cells,
+        canonical_cells = as.integer(pack$cell_count),
+        geometry_kind = geometry_kind,
+        projection = if (identical(geometry_kind, "canonical_projection")) {
+          projection
+        } else {
+          list(
+            url = resource_url(geometry_file),
+            cells = frame$cells,
+            dimensions = 2L,
+            dtype = "float32",
+            bytes = as.numeric(assets$bytes[[geometry_row]]),
+            checksum = as.character(assets$checksum[[geometry_row]])
+          )
+        },
+        subset = subset,
+        state = list(
+          url = resource_url(file.path(pack$path, frame$state_codes_path)),
+          cells = frame$cells,
+          dtype = dtype,
+          bytes = as.numeric(assets$bytes[[codes_row]]),
+          checksum = as.character(assets$checksum[[codes_row]]),
+          levels = I(levels)
+        )
+      ),
+      viewerCanonicalResourceIdentity(pack)
+    )
+    assign(key, descriptor, envir = viewer_trajectory_resources)
+    descriptor
+  }
+  ## Spatial coordinates have their own physical coordinate system and row
+  ## order. Publish only a Viewer Pack asset whose canonical cell mapping is an
+  ## exact match for the current unrotated frame; every other case retains the
+  ## established websocket path.
+  viewer_spatial_resources <- new.env(parent = emptyenv())
+  viewerSpatialGeometryAsset <- function(name, cell_indices, rotation = 0) {
+    pack <- viewerPackCurrent()
+    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+      return(NULL)
+    }
+    frame <- viewerPackSpatialFrame(pack, name)
+    stored_index <- viewerPackSpatialIndex(pack, name)
+    rotation <- suppressWarnings(as.numeric(rotation))
+    if (
+      is.null(frame) ||
+        length(rotation) != 1L ||
+        is.na(rotation) ||
+        !identical(rotation, 0) ||
+        !identical(as.integer(cell_indices), stored_index) ||
+        !identical(length(stored_index), frame$cells)
+    ) {
+      return(NULL)
+    }
+    key <- paste(pack$path, frame$geometry_path, sep = "::")
+    if (exists(key, envir = viewer_spatial_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_spatial_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    asset_row <- which(
+      as.character(assets$path) == as.character(frame$geometry_path)
+    )
+    dimensions <- if (length(asset_row) == 1L) {
+      suppressWarnings(as.integer(strsplit(
+        as.character(assets$dimensions[[asset_row]]),
+        "x",
+        fixed = TRUE
+      )[[1L]]))
+    } else {
+      integer()
+    }
+    file <- file.path(pack$path, frame$geometry_path)
+    valid <- length(asset_row) == 1L &&
+      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
+      identical(dimensions, c(frame$cells, 2L)) &&
+      identical(
+        as.numeric(assets$bytes[[asset_row]]),
+        as.numeric(frame$cells) * 2 * 4
+      ) &&
+      file.exists(file) &&
+      !dir.exists(file) &&
+      identical(
+        as.numeric(file.info(file)$size),
+        as.numeric(assets$bytes[[asset_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(file)),
+        as.character(assets$checksum[[asset_row]])
+      )
+    if (!isTRUE(valid)) {
+      return(NULL)
+    }
+    prefix <- viewerStaticResourcePrefix("spatial", dirname(file))
+    descriptor <- c(
+      list(
+        protocol = "spatial-geometry-v1",
+        spatial_name = as.character(name),
+        url = paste0(prefix, "/", basename(file)),
+        cells = frame$cells,
+        dimensions = 2L,
+        dtype = "float32",
+        bytes = as.numeric(assets$bytes[[asset_row]]),
+        checksum = as.character(assets$checksum[[asset_row]])
+      ),
+      viewerCanonicalResourceIdentity(pack)
+    )
+    assign(key, descriptor, envir = viewer_spatial_resources)
+    descriptor
+  }
+  viewerSpatialGeometryCatalog <- function() {
+    pack <- viewerPackCurrent()
+    frames <- if (is.list(pack)) pack$manifest$spatial_frames else NULL
+    if (!is.data.frame(frames) || !nrow(frames)) {
+      return(list())
+    }
+    dataset <- spatial_dataset_name(
+      available_crb_files$files,
+      available_crb_files$selected
+    )
+    resources <- lapply(unique(as.character(frames$name)), function(name) {
+      viewerSpatialGeometryAsset(
+        name,
+        viewerPackSpatialIndex(pack, name),
+        spatialPlotRotation(Cerebro.options, dataset, name)
+      )
+    })
+    Filter(Negate(is.null), resources)
+  }
+  ## Categorical metadata codes are also stored in canonical cell order. The
+  ## first Linked views frame needs one such column, which can otherwise be the
+  ## largest remaining websocket vector. Keep the small level/color contract in
+  ## the bundle and let the browser fetch the validated packed codes directly.
+  viewer_metadata_resources <- new.env(parent = emptyenv())
+  viewerMetadataCodesAsset <- function(name, levels = NULL) {
+    pack <- viewerPackCurrent()
+    if (
+      !is.list(pack) ||
+        !isTRUE(pack$canonical_order) ||
+        !is.character(name) ||
+        length(name) != 1L ||
+        is.na(name) ||
+        !nzchar(name)
+    ) {
+      return(NULL)
+    }
+    metadata_names <- as.character(pack$manifest$metadata_names)
+    metadata_index <- match(name, metadata_names)
+    if (is.na(metadata_index)) {
+      return(NULL)
+    }
+    prefix_path <- file.path("metadata", sprintf("%03d", metadata_index))
+    codes_path <- paste0(prefix_path, ".codes.bin")
+    dictionary_path <- paste0(prefix_path, ".dictionary.json")
+    requested_levels <- if (is.null(levels)) NULL else as.character(levels)
+    key <- paste(pack$path, codes_path, paste(requested_levels, collapse = "\r"),
+      sep = "::")
+    if (exists(key, envir = viewer_metadata_resources, inherits = FALSE)) {
+      return(get(key, envir = viewer_metadata_resources, inherits = FALSE))
+    }
+    assets <- pack$manifest$assets
+    codes_row <- which(as.character(assets$path) == codes_path)
+    dictionary_row <- which(as.character(assets$path) == dictionary_path)
+    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
+      return(NULL)
+    }
+    dtype <- as.character(assets$dtype[[codes_row]])
+    dimensions <- suppressWarnings(as.integer(
+      as.character(assets$dimensions[[codes_row]])
+    ))
+    codes_file <- file.path(pack$path, codes_path)
+    dictionary_file <- file.path(pack$path, dictionary_path)
+    bytes_per_code <- if (identical(dtype, "uint8")) {
+      1L
+    } else if (identical(dtype, "uint16")) {
+      2L
+    } else {
+      NA_integer_
+    }
+    valid_files <- !is.na(bytes_per_code) &&
+      length(dimensions) == 1L &&
+      identical(dimensions, as.integer(pack$cell_count)) &&
+      file.exists(codes_file) &&
+      !dir.exists(codes_file) &&
+      file.exists(dictionary_file) &&
+      !dir.exists(dictionary_file) &&
+      identical(
+        as.numeric(file.info(codes_file)$size),
+        as.numeric(assets$bytes[[codes_row]])
+      ) &&
+      identical(
+        as.numeric(file.info(codes_file)$size),
+        as.numeric(pack$cell_count) * bytes_per_code
+      ) &&
+      identical(
+        as.numeric(file.info(dictionary_file)$size),
+        as.numeric(assets$bytes[[dictionary_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(codes_file)),
+        as.character(assets$checksum[[codes_row]])
+      ) &&
+      identical(
+        unname(tools::md5sum(dictionary_file)),
+        as.character(assets$checksum[[dictionary_row]])
+      )
+    if (!valid_files) {
+      return(NULL)
+    }
+    dictionary <- tryCatch(
+      as.character(jsonlite::read_json(dictionary_file, simplifyVector = TRUE)),
+      error = function(error) NULL
+    )
+    target_levels <- if (is.null(requested_levels)) {
+      sort(unique(dictionary))
+    } else {
+      requested_levels
+    }
+    remap <- match(dictionary, target_levels) - 1L
+    if (
+      is.null(dictionary) ||
+        length(dictionary) != as.integer(assets$dimensions[[dictionary_row]]) ||
+        anyNA(remap)
+    ) {
+      return(NULL)
+    }
+    resource_prefix <- viewerStaticResourcePrefix(
+      "metadata",
+      dirname(codes_file)
+    )
+    descriptor <- c(
+      list(
+        protocol = "canonical-metadata-codes-v1",
+        url = paste0(resource_prefix, "/", basename(codes_file)),
+        cells = as.integer(pack$cell_count),
+        dtype = dtype,
+        bytes = as.numeric(assets$bytes[[codes_row]]),
+        checksum = as.character(assets$checksum[[codes_row]])
+      ),
+      viewerCanonicalResourceIdentity(pack),
+      list(
+        metadata_name = as.character(name),
+        levels = I(target_levels),
+        ## Viewer Pack uses 0 for missing and 1..K for dictionary entries.
+        ## Linked views uses -1 for missing and 0..K-1 for its displayed levels.
+        code_map = I(c(-1L, as.integer(remap)))
+      )
+    )
+    assign(key, descriptor, envir = viewer_metadata_resources)
+    descriptor
+  }
+  session$onSessionEnded(function() {
+    for (prefix in viewer_resource_prefixes) {
+      try(shiny::removeResourcePath(prefix), silent = TRUE)
+    }
+  })
+
+  cv_saved_view_cells <- reactive({
+    metadata <- getMetaData()
+    if ("cell_barcode" %in% colnames(metadata)) {
+      as.character(metadata$cell_barcode)
+    } else {
+      rownames(metadata)
+    }
+  })
+
+  viewerDatasetIdentity <- reactive({
+    dataset <- data_set()
+    pack <- attr(dataset, "cerebro_viewer_pack", exact = TRUE)
+    pack_fingerprint <- if (is.list(pack)) {
+      as.character(pack$manifest$dataset_fingerprint %||% "")
+    } else {
+      ""
+    }
+    order_fingerprint <- if (is.list(pack)) {
+      as.character(pack$manifest$cell_order_fingerprint %||% "")
+    } else {
+      ""
+    }
+    stored_fingerprint <- tryCatch(
+      dataset$cell_fingerprint,
+      error = function(error) NULL
+    )
+    if (
+      is.character(stored_fingerprint) &&
+        length(stored_fingerprint) == 1L &&
+        !is.na(stored_fingerprint) &&
+        grepl("^md5-cell-set-v1:[[:xdigit:]]{32}$", stored_fingerprint)
+    ) {
+      return(list(
+        cell_count = getNumberOfCells(),
+        fingerprint = stored_fingerprint,
+        order_fingerprint = order_fingerprint,
+        pack_fingerprint = pack_fingerprint
       ))
     }
-    ## return loaded data
-    return(data)
+    cells <- cv_saved_view_cells()
+    list(
+      cell_count = length(cells),
+      fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint),
+      order_fingerprint = order_fingerprint,
+      pack_fingerprint = pack_fingerprint
+    )
+  })
+
+  cv_saved_view_dataset <- reactive({
+    cells <- cv_saved_view_cells()
+    list(
+      cells = cells,
+      fingerprint = viewerDatasetIdentity()$fingerprint,
+      dataset_context = viewer_loaded_dataset_context()
+    )
+  })
+
+  observe({
+    input[["sidebar"]]
+    identity <- viewerDatasetIdentity()
+    dataset_identity <- list(
+      dataset_context = viewer_loaded_dataset_context(),
+      dataset_id = viewer_current_dataset_key(),
+      cell_count = as.integer(identity$cell_count),
+      cell_fingerprint = as.character(identity$fingerprint),
+      cell_order_fingerprint = as.character(identity$order_fingerprint %||% ""),
+      pack_dataset_fingerprint = as.character(identity$pack_fingerprint %||% "")
+    )
+    session$sendCustomMessage(
+      "cerebro_saved_view_dataset",
+      dataset_identity
+    )
+    resources <- viewerSpatialGeometryCatalog()
+    if (length(resources)) {
+      spatial_names <- availableSpatial()
+      spatial_defaults <- current_scatter_defaults()
+      default_resource_name <- if (
+        length(spatial_names) > 0L &&
+          isTRUE(all.equal(
+            as.numeric(spatial_defaults$percentage_cells_to_show),
+            100
+          )) &&
+          spatial_names[[1L]] %in% vapply(
+            resources,
+            `[[`,
+            character(1),
+            "spatial_name"
+          )
+      ) {
+        spatial_names[[1L]]
+      } else {
+        NULL
+      }
+      session$sendCustomMessage(
+        "cell_view_resource_catalog",
+        list(
+          id = "spatial_projection",
+          resources = unname(resources),
+          default_resource_name = default_resource_name,
+          dataset_context = viewer_loaded_dataset_context(),
+          dataset_identity = dataset_identity
+        )
+      )
+    }
+    ## Spatial can begin its immutable geometry download as soon as its catalog
+    ## reaches the browser. Build the Overview category assets afterwards so
+    ## they cannot delay that prefetch on a first Spatial visit.
+    projection_resources <- viewerProjectionCatalog()
+    if (length(projection_resources)) {
+      category_resources <- Filter(
+        Negate(is.null),
+        lapply(getGroups(), function(group) {
+          viewerMetadataCodesAsset(group, getGroupLevels(group))
+        })
+      )
+      session$sendCustomMessage(
+        "cell_view_resource_catalog",
+        list(
+          id = "overview_projection",
+          resources = unname(projection_resources),
+          category_resources = unname(category_resources),
+          dataset_context = viewer_loaded_dataset_context(),
+          dataset_identity = dataset_identity
+        )
+      )
+    }
   })
 
   # list of available trajectories
@@ -415,45 +1632,12 @@ server <- function(input, output, session) {
   # available genes
   list_of_genes <- reactive({
     req(data_set())
-    rownames(data_set()$expression)
+    getGeneNames()
   })
-
-  # hover info for projection.
-  # Cached by (dataset path, hover toggle): selecting a different gene does
-  # not re-build the per-cell hover strings because they only depend on the
-  # metadata of the current dataset, not on the active gene. Unlike the
-  # expression-level reactive, this chain has no gene dependency and no
-  # isolate(), so the cache key stays consistent across gene switches.
-  hover_info_projections <- reactive({
-    # message('--> trigger "hover_info_projections"')
-    if (
-      !is.null(preferences[["show_hover_info_in_projections"]]) &&
-        preferences[['show_hover_info_in_projections']] == TRUE
-    ) {
-      cells_df <- getMetaData()
-      hover_info <- buildHoverInfoForProjections(cells_df)
-      hover_info <- setNames(hover_info, cells_df$cell_barcode)
-    } else {
-      hover_info <- 'none'
-    }
-    # message(str(hover_info))
-    return(hover_info)
-  }) %>%
-    cachePlot(
-      preferences[["show_hover_info_in_projections"]],
-      available_crb_files$selected
-    )
 
   ## Dynamic sidebar: conditional tabs are shown or hidden based on dataset
   ## content (see toggleConditionalTab() below).
   ##--------------------------------------------------------------------------##
-
-  ##--------------------------------------------------------------------------##
-  ## Print log message when switching tab (for debugging).
-  ##--------------------------------------------------------------------------##
-  observe({
-    print(glue::glue("[{Sys.time()}] Active tab: {input[['sidebar']]}"))
-  })
 
   ##--------------------------------------------------------------------------##
   ## Print message when session is closed due to inactivity.
@@ -498,57 +1682,26 @@ server <- function(input, output, session) {
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
-      "/viewer/marker_genes/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
       "/viewer/gene_expression/server.R"
     ),
     local = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/gene_id_conversion/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/color_management/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/about/server.R"),
-    local = TRUE
-  )
-  ## Enhanced module servers.
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/most_expressed_genes/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/enriched_pathways/server.R"
-    ),
-    local = TRUE
-  )
-
   ##--------------------------------------------------------------------------##
   ## Dynamic sidebar: show/hide conditional tabs based on dataset content.
   ##--------------------------------------------------------------------------##
-  toggleConditionalTab <- function(tab_name, check_fn) {
+  toggleConditionalTab <- function(tab_name, check_fn, catalog_field = NULL) {
     item_id <- paste0("sidebar_item_", tab_name)
     show_reactive <- reactive({
+      if (!is.null(catalog_field)) {
+        info <- current_dataset_info()
+        catalog_value <- info[[catalog_field]]
+        if (is.null(catalog_value) && is.list(info$capabilities)) {
+          catalog_value <- info$capabilities[[catalog_field]]
+        }
+        if (is.logical(catalog_value) && length(catalog_value) == 1L) {
+          return(isTRUE(catalog_value))
+        }
+      }
       req(data_set())
       result <- tryCatch(check_fn(), error = function(e) FALSE)
       if (is.logical(result)) {
@@ -557,7 +1710,6 @@ server <- function(input, output, session) {
       length(result) > 0
     })
     observe({
-      req(!is.null(data_set()))
       should_show <- show_reactive()
       shinyjs::toggle(id = item_id, condition = should_show)
       decision <- viewerInitialPageDecision(
@@ -577,34 +1729,48 @@ server <- function(input, output, session) {
 
   toggleConditionalTab(
     "markerGenes",
-    function() getMethodsForMarkerGenes()
+    function() getMethodsForMarkerGenes(),
+    catalog_field = "marker_genes"
   )
   toggleConditionalTab(
     "mostExpressedGenes",
-    function() getGroupsWithMostExpressedGenes()
+    function() getGroupsWithMostExpressedGenes(),
+    catalog_field = "most_expressed_genes"
   )
   toggleConditionalTab(
     "enrichedPathways",
-    function() getMethodsForEnrichedPathways()
+    function() getMethodsForEnrichedPathways(),
+    catalog_field = "enriched_pathways"
   )
-  toggleConditionalTab("extra_material", function() {
-    length(getExtraMaterialCategories()) > 0L
-  })
+  toggleConditionalTab(
+    "extra_material",
+    function() {
+      length(getExtraMaterialCategories()) > 0L
+    },
+    catalog_field = "extra_material"
+  )
   toggleConditionalTab(
     "immune_repertoire",
     function() {
-      getImmuneRepertoire()
-    }
+      getImmuneRepertoireSummary()$available
+    },
+    catalog_field = "immune_repertoire"
   )
   toggleConditionalTab(
     "trajectory",
-    ## Only supported methods (monocle2) should surface the tab; an unsupported
+    ## Only supported methods should surface the tab; an unsupported
     ## method would otherwise render a blank tab instead of the empty state.
-    function() intersect(getMethodsForTrajectories(), c("monocle2"))
+    function() {
+      viewerSupportedTrajectoryMethods(
+        getMethodsForTrajectories()
+      )
+    },
+    catalog_field = "trajectory"
   )
   toggleConditionalTab(
     "spatial",
-    function() availableSpatial()
+    function() availableSpatial(),
+    catalog_field = "spatial"
   )
   ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
   ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
@@ -613,7 +1779,8 @@ server <- function(input, output, session) {
     function() {
       tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
       !is.null(tk)
-    }
+    },
+    catalog_field = "trekker"
   )
   toggleConditionalTab(
     "hla_tcr_motifs",
@@ -621,90 +1788,85 @@ server <- function(input, output, session) {
     ## is NOT required — the motif network works without it, and the Data & QC
     ## tab is where a user would add HLA, so the page must be reachable first.
     ##
-    ## hla_detect_chains(), not the IR module's detect_chains(): the latter only
-    ## scans the first three samples, so a cohort whose TCR data starts at sample
-    ## four would hide this page while the core underneath could analyse it
-    ## perfectly well — and the page is the only way to reach Data & QC, so there
-    ## would be no way in. The gate has to agree with what the page can do.
-    ## Bound into this scope by the module's core_shim, which is sourced before
-    ## this closure is ever evaluated.
+    ## The lightweight gate scans every sample; the older IR page helper stops
+    ## after three and could hide a valid cohort whose TCR starts at sample four.
     function() {
-      any(
-        tryCatch(
-          hla_detect_chains(getImmuneRepertoire()),
-          error = function(e) character(0)
-        ) %in%
-          c("TRA", "TRB")
+      summary <- getImmuneRepertoireSummary()
+      chains <- summary$chains
+      if (length(chains)) {
+        return(any(chains %in% c("TRA", "TRB")))
+      }
+      if (!summary$available) {
+        return(FALSE)
+      }
+      tryCatch(
+        viewerHasTcrRepertoire(getImmuneRepertoire()),
+        error = function(e) FALSE
       )
+    },
+    catalog_field = "tcr_repertoire"
+  )
+
+  source(
+    paste0(Cerebro.options[["cerebro_root"]], "/viewer/spatial/server.R"),
+    local = TRUE
+  )
+
+  deferred_viewer_server_files <- c(
+    markerGenes = "marker_genes/server.R",
+    geneIdConversion = "gene_id_conversion/server.R",
+    color_management = "color_management/server.R",
+    about = "about/server.R",
+    mostExpressedGenes = "most_expressed_genes/server.R",
+    enrichedPathways = "enriched_pathways/server.R",
+    extra_material = "extra_material/server.R",
+    immune_repertoire = "immune_repertoire/server.R",
+    trajectory = "trajectory/server.R",
+    trekker = "trekker/server.R",
+    coordinated_views = "coordinated_views/server.R",
+    hla_tcr_motifs = "hla_tcr_motifs/server.R"
+  )
+  server_scope <- environment()
+  deferred_viewer_server_loaded <- new.env(parent = emptyenv())
+  load_deferred_viewer_server <- function(server_file) {
+    if (
+      exists(
+        server_file,
+        envir = deferred_viewer_server_loaded,
+        inherits = FALSE
+      )
+    ) {
+      return(invisible(FALSE))
     }
-  )
-
-  ## Cleanup snapshot artifacts that may have been left by test runs.
-  snapshot_dir <- file.path(
-    Cerebro.options[["cerebro_root"]],
-    "..",
-    "..",
-    "tests",
-    "testthat",
-    "_snaps"
-  )
-  new_pngs <- list.files(
-    snapshot_dir,
-    pattern = "\\.new\\.png$",
-    full.names = TRUE
-  )
-  if (length(new_pngs) > 0) {
-    file.remove(new_pngs)
+    sys.source(
+      file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        server_file
+      ),
+      envir = server_scope
+    )
+    assign(server_file, TRUE, envir = deferred_viewer_server_loaded)
+    invisible(TRUE)
   }
-
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/extra_material/server.R"
-    ),
-    local = TRUE
+  observeEvent(
+    input[["coordviews_visible"]],
+    {
+      if (isTRUE(input[["coordviews_visible"]])) {
+        load_deferred_viewer_server("coordinated_views/server.R")
+      }
+    },
+    ignoreInit = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/immune_repertoire/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trajectory/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/spatial/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trekker/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/coordinated_views/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/hla_tcr_motifs/server.R"
-    ),
-    local = TRUE
+  observeEvent(
+    input[["sidebar"]],
+    {
+      server_file <- unname(deferred_viewer_server_files[input[["sidebar"]]])
+      if (length(server_file) && !is.na(server_file)) {
+        load_deferred_viewer_server(server_file)
+      }
+    },
+    ignoreInit = FALSE
   )
 
   ##--------------------------------------------------------------------------##

@@ -39,6 +39,9 @@ viewerDatasetName <- function(files, selected) {
   if (is.null(files) || is.null(selected) || is.null(names(files))) {
     return(NULL)
   }
+  if (selected %in% names(files)) {
+    return(as.character(selected))
+  }
   index <- which(files == selected)
   if (!length(index)) {
     return(NULL)
@@ -47,7 +50,224 @@ viewerDatasetName <- function(files, selected) {
   if (is.na(name) || !nzchar(name)) NULL else name
 }
 
-viewerScatterDefaults <- function(options, dataset = NULL) {
+## A data-set context is the only browser-visible identity for one loaded
+## object.  It deliberately contains no file path: `dataset_key` is the stable
+## configured id (or an opaque runtime id for single/upload mode), `generation`
+## advances before every real load/switch, and `epoch` separates reconnects.
+viewerDatasetContext <- function(epoch, dataset_key, generation) {
+  valid_text <- function(value) {
+    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+  }
+  generation <- suppressWarnings(as.numeric(generation))
+  if (
+    !valid_text(epoch) ||
+      !valid_text(dataset_key) ||
+      length(generation) != 1L ||
+      is.na(generation) ||
+      !is.finite(generation) ||
+      generation < 1 ||
+      generation != floor(generation)
+  ) {
+    stop("Invalid Viewer data-set context.", call. = FALSE)
+  }
+  list(
+    epoch = as.character(epoch),
+    dataset_key = as.character(dataset_key),
+    generation = unname(generation)
+  )
+}
+
+viewerDatasetContextEqual <- function(left, right) {
+  if (!is.list(left) || !is.list(right)) {
+    return(FALSE)
+  }
+  left <- tryCatch(
+    viewerDatasetContext(
+      left[["epoch"]],
+      left[["dataset_key"]],
+      left[["generation"]]
+    ),
+    error = function(error) NULL
+  )
+  right <- tryCatch(
+    viewerDatasetContext(
+      right[["epoch"]],
+      right[["dataset_key"]],
+      right[["generation"]]
+    ),
+    error = function(error) NULL
+  )
+  !is.null(left) &&
+    !is.null(right) &&
+    identical(left$epoch, right$epoch) &&
+    identical(left$dataset_key, right$dataset_key) &&
+    isTRUE(left$generation == right$generation)
+}
+
+viewerDatasetContextToken <- function(context) {
+  context <- viewerDatasetContext(
+    context[["epoch"]],
+    context[["dataset_key"]],
+    context[["generation"]]
+  )
+  paste0(
+    nchar(context$epoch, type = "bytes"),
+    ":",
+    context$epoch,
+    nchar(context$dataset_key, type = "bytes"),
+    ":",
+    context$dataset_key,
+    ":",
+    format(context$generation, scientific = FALSE, trim = TRUE)
+  )
+}
+
+viewerDatasetPath <- function(files, selected) {
+  if (
+    !is.null(files) &&
+      !is.null(names(files)) &&
+      !is.null(selected) &&
+      selected %in% names(files)
+  ) {
+    return(unname(files[[selected]]))
+  }
+  selected
+}
+
+viewerDatasetChoices <- function(files, display_labels = NULL) {
+  ids <- names(files)
+  if (is.null(ids)) {
+    ids <- unname(files)
+  }
+  labels <- display_labels
+  if (
+    !is.null(labels) &&
+      !is.null(names(labels)) &&
+      all(ids %in% names(labels))
+  ) {
+    labels <- labels[ids]
+  }
+  if (is.null(labels) || length(labels) != length(ids)) {
+    labels <- ids
+  }
+  stats::setNames(ids, unname(labels))
+}
+
+viewerSelectedDatasetName <- function() {
+  if (exists("viewer_current_dataset_key", mode = "function", inherits = TRUE)) {
+    current <- tryCatch(
+      viewer_current_dataset_key(),
+      error = function(error) NULL
+    )
+    if (is.character(current) && length(current) == 1L && nzchar(current)) {
+      return(current)
+    }
+  }
+  if (!exists("available_crb_files", inherits = TRUE)) {
+    return(NULL)
+  }
+  available <- get("available_crb_files", inherits = TRUE)
+  viewerDatasetName(available$files, available$selected)
+}
+
+viewerDatasetInfo <- function(catalog, selected) {
+  if (
+    !is.list(catalog) ||
+      !is.character(selected) ||
+      length(selected) != 1L ||
+      is.na(selected) ||
+      !nzchar(selected) ||
+      is.null(names(catalog)) ||
+      !selected %in% names(catalog)
+  ) {
+    return(NULL)
+  }
+  info <- catalog[[selected]]
+  if (
+    !is.list(info) ||
+      !identical(
+        unname(as.character(info$path)),
+        unname(as.character(selected))
+      ) ||
+      length(info$cells) != 1L ||
+      is.na(info$cells) ||
+      !is.numeric(info$cells) ||
+      !is.finite(info$cells) ||
+      info$cells < 0
+  ) {
+    return(NULL)
+  }
+  info
+}
+
+viewerDatasetLoadRequired <- function(
+  tab,
+  info,
+  initial_tab = NULL,
+  initial_page_applied = TRUE
+) {
+  if (!isTRUE(initial_page_applied) && !is.null(initial_tab)) {
+    tab <- initial_tab
+  }
+  is.null(info) ||
+    (is.character(tab) &&
+      length(tab) == 1L &&
+      !is.na(tab) &&
+      nzchar(tab) &&
+      !identical(tab, "loadData"))
+}
+
+viewerDatasetLoadOnTab <- function(current, tab) {
+  isTRUE(current) ||
+    (is.character(tab) &&
+      length(tab) == 1L &&
+      !is.na(tab) &&
+      nzchar(tab) &&
+      !identical(tab, "loadData"))
+}
+
+viewerColourGroupChoices <- function(
+  metadata,
+  groups,
+  main_group
+) {
+  if (missing(metadata)) {
+    metadata <- tryCatch(viewerProjectionFirstFrameMetadata(), error = function(e) NULL)
+  }
+  if (missing(groups)) {
+    groups <- tryCatch(getGroups(), error = function(e) character())
+  }
+  if (missing(main_group)) {
+    parameters <- tryCatch(getParameters(), error = function(e) NULL)
+    main_group <- if (is.list(parameters)) parameters[["main_group"]] else NULL
+  }
+
+  columns <- tryCatch(colnames(metadata), error = function(e) character())
+  groups <- tryCatch(as.character(groups), error = function(e) character())
+  groups <- unique(groups[
+    !is.na(groups) & nzchar(groups) & groups %in% columns
+  ])
+  main_group <- tryCatch(as.character(main_group), error = function(e) {
+    character()
+  })
+  selected <- intersect(
+    main_group[!is.na(main_group) & nzchar(main_group)],
+    groups
+  )
+
+  list(
+    choices = groups,
+    selected = if (length(selected)) {
+      selected[[1L]]
+    } else if (length(groups)) {
+      groups[[1L]]
+    } else {
+      NULL
+    }
+  )
+}
+
+viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
   resolve <- function(key, fallback, minimum, maximum) {
     value <- options[[key]]
     if (length(value) > 1L && !is.null(dataset) && !is.null(names(value))) {
@@ -66,12 +286,41 @@ viewerScatterDefaults <- function(options, dataset = NULL) {
       unname(value)
     }
   }
-  list(
+  defaults <- list(
     point_size = resolve("point_size", 5, 1, 20),
     point_opacity = resolve("point_opacity", 1, 0.1, 1),
     percentage_cells_to_show = resolve(
       "percentage_cells_to_show",
       100,
+      10,
+      100
+    )
+  )
+  if (
+    is.null(page) ||
+      length(page) != 1L ||
+      is.na(page) ||
+      !nzchar(page)
+  ) {
+    return(defaults)
+  }
+  page <- as.character(page)[[1L]]
+  list(
+    point_size = resolve(
+      paste0(page, "_point_size"),
+      defaults$point_size,
+      1,
+      20
+    ),
+    point_opacity = resolve(
+      paste0(page, "_point_opacity"),
+      defaults$point_opacity,
+      0.1,
+      1
+    ),
+    percentage_cells_to_show = resolve(
+      paste0(page, "_percentage_cells_to_show"),
+      defaults$percentage_cells_to_show,
       10,
       100
     )
@@ -191,14 +440,455 @@ rotateSpatialCoordinates <- function(coordinates, degrees) {
 ## dependency, so this adds no new package.
 ##----------------------------------------------------------------------------##
 cachePlot <- function(x, ...) {
-  if (utils::packageVersion("shiny") >= "1.6.0") {
-    keys <- rlang::enquos(...)
-    rlang::inject(
-      shiny::bindCache(x, !!!keys, cache = "session")
-    )
-  } else {
-    x
+  keys <- rlang::enquos(...)
+  rlang::inject(shiny::bindCache(x, !!!keys, cache = "session"))
+}
+
+## Return the first complete reactive value immediately; debounce only later
+## invalidations caused by interactive controls.
+debounceAfterFirst <- function(reactive, millis) {
+  initialized <- FALSE
+  current <- NULL
+  revision <- shiny::reactiveVal(0L)
+  shiny::reactive({
+    revision()
+    if (!initialized) {
+      current <<- reactive()
+      initialized <<- TRUE
+      delayed <- shiny::debounce(reactive, millis)
+      shiny::observeEvent(delayed(), {
+        next_value <- delayed()
+        if (!identical(current, next_value)) {
+          current <<- next_value
+          revision(shiny::isolate(revision()) + 1L)
+        }
+      }, ignoreInit = TRUE)
+    }
+    current
+  })
+}
+
+viewerOutputTab <- function(ids) {
+  prefixes <- c(
+    overview_ = "overview",
+    expression_ = "geneExpression",
+    spatial_ = "spatial",
+    coordviews_ = "coordinated_views",
+    groups_ = "groups",
+    ir_ = "immune_repertoire",
+    trajectory_ = "trajectory",
+    trekker_ = "trekker",
+    hla_ = "hla_tcr_motifs"
+  )
+  vapply(
+    ids,
+    function(id) {
+      match <- which(startsWith(id, names(prefixes)))
+      if (length(match)) unname(prefixes[[match[[1L]]]]) else NA_character_
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
+viewerProjectionFirstFrameCache <- function(object = NULL) {
+  if (is.null(object)) {
+    if (!exists("data_set", mode = "function", inherits = TRUE)) {
+      return(NULL)
+    }
+    object <- data_set()
   }
+  cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
+  if (is.list(cache)) cache else NULL
+}
+
+viewerPackCurrent <- function() {
+  pack <- attr(data_set(), "cerebro_viewer_pack", exact = TRUE)
+  if (is.list(pack)) pack else NULL
+}
+
+viewerProjectionFirstFrameMetadata <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$meta_data)) cache$meta_data else getMetaData()
+}
+
+viewerProjectionFirstFrameCoordinates <- function(name) {
+  cache <- viewerProjectionFirstFrameCache()
+  projection <- cache$projections[[name]]
+  # Only the validated thin-CRB reader creates this identity-free cache.
+  if (!is.null(projection) && name %in% cache$canonical_projections) return(projection)
+  projection <- getProjection(name)
+  cells <- getMetaData()[["cell_barcode"]]
+  viewerAlignProjection(projection, cells)
+}
+
+viewerAlignProjection <- function(projection, cells) {
+  ids <- rownames(projection)
+  if (is.null(cells) || is.null(ids) || anyNA(cells) || anyNA(ids) ||
+      any(!nzchar(cells)) || any(!nzchar(ids)) || anyDuplicated(cells) ||
+      anyDuplicated(ids) || length(ids) != length(cells) || !setequal(ids, cells)) {
+    stop("Projection requires unique, matching cell identities.", call. = FALSE)
+  }
+  if (identical(ids, cells)) projection else projection[match(cells, ids), , drop = FALSE]
+}
+
+viewerSharedProjectionName <- function(
+  projection,
+  n_cells,
+  shared = NULL,
+  identity = NULL,
+  dataset_context = NULL
+) {
+  if (is.null(shared)) {
+    if (!exists("input", inherits = TRUE)) {
+      return(NULL)
+    }
+    shared <- input[["coordviews_shared_base"]]
+  }
+  if (is.null(identity)) {
+    if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
+      return(NULL)
+    }
+    identity <- viewerDatasetIdentity()
+  }
+  if (
+    !is.list(shared) ||
+      !viewerDatasetContextEqual(shared$dataset_context, dataset_context) ||
+      !is.list(identity) ||
+      !is.character(projection) ||
+      length(projection) != 1L ||
+      is.na(projection) ||
+      !nzchar(projection) ||
+      !identical(as.character(shared$projection %||% ""), projection) ||
+      !identical(
+        as.character(shared$dataset_fingerprint %||% ""),
+        as.character(identity$fingerprint %||% "")
+      ) ||
+      !identical(as.integer(shared$cell_count), as.integer(n_cells)) ||
+      !nzchar(as.character(identity$order_fingerprint %||% "")) ||
+      !identical(
+        as.character(shared$canonical_order_id %||% ""),
+        as.character(identity$order_fingerprint %||% "")
+      )
+  ) {
+    return(NULL)
+  }
+  projection
+}
+
+viewerProjectionDefaults <- function(
+  metadata,
+  projections,
+  parameters = list()
+) {
+  color_choices <- setdiff(colnames(metadata), "cell_barcode")
+  main_group <- parameters[["main_group"]]
+  color_variable <- if (
+    is.character(main_group) &&
+      length(main_group) == 1L &&
+      !is.na(main_group) &&
+      main_group %in% color_choices
+  ) {
+    main_group
+  } else if ("cell_type" %in% color_choices) {
+    "cell_type"
+  } else if (length(color_choices)) {
+    color_choices[[1L]]
+  } else {
+    NULL
+  }
+  list(
+    projection = if (length(projections)) projections[[1L]] else NULL,
+    color_variable = color_variable
+  )
+}
+
+## Apply the shared projection filters and sample original metadata row ids.
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
+) {
+  groups <- getGroups()
+  filter_inputs <- stats::setNames(
+    lapply(groups, function(group) {
+      input[[paste0(prefix, "_group_filter_", group)]]
+    }),
+    groups
+  )
+  if (!length(groups) || all(vapply(filter_inputs, is.null, logical(1)))) {
+    cell_count <- nrow(metadata)
+    if (!cell_count) {
+      return(integer())
+    }
+    if (percentage < 100) {
+      size <- ceiling(cell_count * percentage / 100)
+      return(sample.int(cell_count, size))
+    }
+    return(seq_len(cell_count))
+  }
+  filters <- stats::setNames(
+    lapply(groups, function(group) {
+      value <- filter_inputs[[group]]
+      if (is.null(value)) getGroupLevels(group) else value
+    }),
+    groups
+  )
+  filters <- filters[
+    !vapply(
+      groups,
+      function(group) {
+        selected <- filters[[group]]
+        values <- metadata[[group]]
+        if (!is.factor(values) || !length(selected)) {
+          return(FALSE)
+        }
+        levels <- tryCatch(
+          as.character(getGroupLevels(group)),
+          error = function(error_condition) character()
+        )
+        length(selected) == length(levels) &&
+          setequal(base::levels(values), levels) &&
+          setequal(as.character(selected), levels) &&
+          !anyNA(values)
+      },
+      logical(1)
+    )
+  ]
+  if (!length(filters)) {
+    cell_count <- nrow(metadata)
+    if (!cell_count) {
+      return(integer())
+    }
+    if (percentage < 100) {
+      size <- ceiling(cell_count * percentage / 100)
+      return(sample.int(cell_count, size))
+    }
+    return(seq_len(cell_count))
+  }
+  indices <- which(cerebroGroupFilterMask(metadata, filters))
+  if (!length(indices)) {
+    return(indices)
+  }
+  size <- if (percentage < 100) {
+    ceiling(length(indices) * percentage / 100)
+  } else {
+    return(indices)
+  }
+  indices[sample.int(length(indices), size)]
+}
+
+viewerProjectionMetadataColumns <- function(
+  metadata,
+  color_variable,
+  hover_info,
+  groups
+) {
+  columns <- c("cell_barcode", color_variable)
+  if (isTRUE(hover_info)) {
+    columns <- c(columns, "nUMI", "nGene", groups)
+  }
+  unique(columns[columns %in% colnames(metadata)])
+}
+
+viewerProjectionFirstFrameColumns <- function(metadata, color_variable) {
+  unique(color_variable[color_variable %in% colnames(metadata)])
+}
+
+viewerProjectionSubsetRows <- function(
+  table,
+  indices,
+  columns = colnames(table)
+) {
+  if (is.null(columns)) {
+    columns <- colnames(table)
+  }
+  table <- table[, columns, drop = FALSE]
+  if (identical(indices, seq_len(nrow(table)))) {
+    return(table)
+  }
+  table[indices, , drop = FALSE]
+}
+
+## Prefer the R6 row accessor so a single-gene request never needs a temporary
+## 1 x cells matrix. Older serialized objects fall back to the matrix method.
+viewerExpressionCells <- function(data_set, cells) {
+  if (!is.numeric(cells)) {
+    return(cells)
+  }
+  accessor <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
+  if (!is.function(accessor)) {
+    accessor <- tryCatch(data_set$getExpressionMatrix, error = function(e) NULL)
+  }
+  method_env <- if (is.function(accessor)) environment(accessor) else NULL
+  if (
+    is.null(method_env) ||
+      !exists("private", envir = method_env, inherits = FALSE)
+  ) {
+    return(cells)
+  }
+  private <- get("private", envir = method_env, inherits = FALSE)
+  if (
+    is.function(tryCatch(
+      private$resolveExpressionCells,
+      error = function(e) NULL
+    ))
+  ) {
+    n_cells <- tryCatch(ncol(data_set$expression), error = function(e) NA_integer_)
+    if (
+      length(n_cells) == 1L &&
+        !is.na(n_cells) &&
+        length(cells) == n_cells &&
+        identical(as.integer(cells), seq_len(n_cells))
+    ) {
+      return(NULL)
+    }
+    return(cells)
+  }
+  cell_names <- colnames(data_set$expression)
+  if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
+}
+
+## The Viewer already owns canonical cell indices and does not need expression
+## column names. Read small BPCells slices in storage order, then restore the
+## requested order on dense vectors. Reordering the lazy matrix first rebuilds
+## million-cell dimension names that the Viewer immediately discards.
+viewerBpcellsValues <- function(data_set, cells, genes) {
+  expression <- tryCatch(data_set$expression, error = function(e) NULL)
+  if (
+    !inherits(expression, "IterableMatrix") ||
+      !is.numeric(cells) || !length(cells) || anyNA(cells) ||
+      any(!is.finite(cells)) || any(cells < 1L) ||
+      any(cells > ncol(expression)) || any(cells != as.integer(cells)) ||
+      !is.character(genes) || !length(genes) || length(genes) > 9L ||
+      anyNA(genes)
+  ) {
+    return(NULL)
+  }
+  gene_indices <- match(genes, rownames(expression))
+  if (anyNA(gene_indices)) {
+    return(NULL)
+  }
+  indices <- as.integer(cells)
+  restore <- NULL
+  if (is.unsorted(indices)) {
+    read_order <- order(indices)
+    indices <- indices[read_order]
+    restore <- order(read_order)
+  }
+  if (is.unsorted(indices, strictly = TRUE)) {
+    return(NULL)
+  }
+  slice <- expression[gene_indices, indices, drop = FALSE]
+  dimnames(slice) <- list(NULL, NULL)
+  values <- as.matrix(slice)
+  stats::setNames(lapply(seq_along(genes), function(index) {
+    value <- as.numeric(values[index, , drop = TRUE])
+    if (is.null(restore)) value else value[restore]
+  }), genes)
+}
+
+viewerExpressionRow <- function(data_set, cells, gene) {
+  cells <- viewerExpressionCells(data_set, cells)
+  all_cells <- is.null(cells)
+  cell_indices <- is.numeric(cells)
+  if (is.character(gene) && length(gene) == 1L && !is.na(gene)) {
+    values <- viewerBpcellsValues(data_set, cells, gene)
+    if (!is.null(values)) {
+      return(values[[1L]])
+    }
+  }
+  get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
+  if (is.function(get_row)) {
+    return(as.numeric(get_row(gene = gene, cells = cells)))
+  }
+  expression_matrix <- data_set$getExpressionMatrix(
+    cells = cells,
+    genes = gene
+  )
+  if (is.null(expression_matrix)) {
+    return(NULL)
+  }
+  if (is.null(dim(expression_matrix))) {
+    return(as.numeric(expression_matrix))
+  }
+  row_index <- if (is.null(rownames(expression_matrix))) {
+    1L
+  } else {
+    match(gene, rownames(expression_matrix))
+  }
+  if (is.na(row_index)) {
+    return(NULL)
+  }
+  cell_names <- colnames(expression_matrix)
+  cell_index <- if (
+    all_cells || cell_indices || is.null(cell_names) || identical(cells, cell_names)
+  ) {
+    seq_len(ncol(expression_matrix))
+  } else {
+    match(cells, cell_names)
+  }
+  as.numeric(expression_matrix[row_index, cell_index, drop = TRUE])
+}
+
+## Fetch several genes in one backend call and align every returned vector to
+## the requested cell order. Missing genes are omitted from the result.
+viewerExpressionValues <- function(data_set, cells, genes) {
+  cells <- viewerExpressionCells(data_set, cells)
+  all_cells <- is.null(cells)
+  cell_indices <- is.numeric(cells)
+  genes <- unique(as.character(unlist(genes, use.names = FALSE)))
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (!length(genes)) {
+    return(list())
+  }
+
+  if (length(genes) == 1L) {
+    value <- viewerExpressionRow(data_set, cells, genes[[1L]])
+    if (is.null(value)) {
+      return(list())
+    }
+    return(stats::setNames(list(value), genes))
+  }
+
+  values <- viewerBpcellsValues(data_set, cells, genes)
+  if (!is.null(values)) {
+    return(values)
+  }
+
+  expression_matrix <- data_set$getExpressionMatrix(
+    cells = cells,
+    genes = genes
+  )
+  if (is.null(expression_matrix)) {
+    return(list())
+  }
+  if (is.null(dim(expression_matrix))) {
+    return(list())
+  }
+
+  gene_names <- rownames(expression_matrix)
+  if (is.null(gene_names) && nrow(expression_matrix) == length(genes)) {
+    gene_names <- genes
+  }
+  cell_names <- colnames(expression_matrix)
+  cell_index <- if (all_cells || cell_indices || is.null(cell_names)) {
+    seq_len(ncol(expression_matrix))
+  } else if (identical(cells, cell_names)) {
+    seq_along(cells)
+  } else {
+    match(cells, cell_names)
+  }
+
+  values <- lapply(genes, function(gene) {
+    row_index <- match(gene, gene_names)
+    if (is.na(row_index)) {
+      return(NULL)
+    }
+    as.numeric(expression_matrix[row_index, cell_index, drop = TRUE])
+  })
+  names(values) <- genes
+  values[!vapply(values, is.null, logical(1))]
 }
 
 cerebroCellViewMessage <- function(
@@ -206,7 +896,8 @@ cerebroCellViewMessage <- function(
   meta,
   data,
   hover = list(),
-  extra = list()
+  extra = list(),
+  dataset_context = NULL
 ) {
   wire_array <- function(value) {
     if (is.null(value)) NULL else I(unname(value))
@@ -230,7 +921,7 @@ cerebroCellViewMessage <- function(
 
   nested <- identical(meta$color_type, "categorical") && is.null(data$panels)
   for (field in intersect(
-    c("x", "y", "z", "selection_key", "color", "group"),
+    c("x", "y", "z", "selection_key", "color", "group", "point_sizes"),
     names(data)
   )) {
     value <- data[[field]]
@@ -277,13 +968,327 @@ cerebroCellViewMessage <- function(
       wire_array(hover$text)
     }
   }
+  if (is.list(hover$columns)) {
+    hover$columns <- lapply(hover$columns, function(column) {
+      column$values <- wire_nested(column$values)
+      if (!is.null(column$levels)) {
+        column$levels <- wire_array(column$levels)
+      }
+      column
+    })
+  }
   if (is.list(extra$group_hulls)) {
     for (field in intersect(c("x", "y"), names(extra$group_hulls))) {
       extra$group_hulls[[field]] <- wire_nested(extra$group_hulls[[field]])
     }
   }
+  if (is.list(extra$edges)) {
+    for (field in intersect(c("x0", "y0", "x1", "y1"), names(extra$edges))) {
+      extra$edges[[field]] <- wire_array(extra$edges[[field]])
+    }
+  }
 
   list(id = id, meta = meta, data = data, hover = hover, extra = extra)
+}
+
+## Binary transport is shared by every cell-scatter page. Keep the codec in the
+## always-loaded utility scope rather than behind the deferred Linked Views
+## server, otherwise opening a specialist page first falls back to full JSON.
+cv_wire_integer_type <- function(values) {
+  if (anyNA(values)) {
+    return("i32")
+  }
+  bounds <- range(values)
+  if (bounds[[1L]] >= -128L && bounds[[2L]] <= 127L) {
+    "i8"
+  } else if (bounds[[1L]] >= -32768L && bounds[[2L]] <= 32767L) {
+    "i16"
+  } else {
+    "i32"
+  }
+}
+
+cv_wire_pack_bundle <- function(
+  bundle,
+  min_length = 4096L,
+  include_cells = TRUE
+) {
+  if (!isTRUE(include_cells)) {
+    bundle$cells <- NULL
+  }
+  cv_wire_pack_message(bundle, min_length = min_length)
+}
+
+cv_wire_json_strings <- function(values) {
+  values <- enc2utf8(as.character(values))
+  if (!length(values)) return(charToRaw("[]"))
+  if (
+    !anyNA(values) && all(validUTF8(values)) &&
+      !any(grepl('["\\\\[:cntrl:]]', values, perl = TRUE))
+  ) {
+    return(charToRaw(paste0('["', paste(values, collapse = '","'), '"]')))
+  }
+  charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    values,
+    auto_unbox = FALSE,
+    na = "null"
+  ))))
+}
+
+cv_wire_pack_message <- function(message, min_length = 4096L) {
+  chunks <- list()
+  data_size <- 0L
+  pack <- function(values, type) {
+    bytes <- if (identical(type, "json")) {
+      cv_wire_json_strings(values)
+    } else {
+      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
+      writeBin(
+        if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
+        raw(),
+        size = size,
+        endian = "little"
+      )
+    }
+    alignment <- switch(
+      type,
+      i8 = 1L,
+      i16 = 2L,
+      i32 = 4L,
+      f32 = 4L,
+      f64 = 8L,
+      1L
+    )
+    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
+    chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
+    data_size <<- offset + length(bytes)
+    list(
+      `__cv_wire__` = type,
+      length = length(values),
+      offset = offset,
+      bytes = length(bytes)
+    )
+  }
+  walk <- function(value, field = NULL) {
+    if (is.list(value)) {
+      value_names <- names(value)
+      packed <- lapply(seq_along(value), function(index) {
+        child_field <- if (
+          !is.null(value_names) && nzchar(value_names[[index]])
+        ) {
+          value_names[[index]]
+        } else {
+          field
+        }
+        walk(value[[index]], child_field)
+      })
+      names(packed) <- value_names
+      return(packed)
+    }
+    if (
+      !is.atomic(value) || length(value) <= 1L || length(value) < min_length
+    ) {
+      return(value)
+    }
+    if (is.factor(value) || is.character(value)) {
+      return(pack(as.character(value), "json"))
+    }
+    if (is.integer(value)) {
+      return(pack(value, cv_wire_integer_type(value)))
+    }
+    if (is.numeric(value)) {
+      return(pack(
+        value,
+        if (
+          field %in%
+            c(
+              "x",
+              "y",
+              "z",
+              "from_x",
+              "from_y",
+              "to_x",
+              "to_y",
+              "point_sizes"
+            )
+        ) {
+          "f32"
+        } else {
+          "f64"
+        }
+      ))
+    }
+    value
+  }
+
+  message <- walk(message)
+  message$wire_format <- "binary-v1"
+  header <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(
+    message,
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null",
+    digits = 17
+  ))))
+  header_padding <- (4L - length(header) %% 4L) %% 4L
+  ## Concatenate raw blocks once. Indexing the final buffer by every byte
+  ## creates large integer index vectors and copies for atlas-sized messages.
+  parts <- list(
+    writeBin(as.integer(length(header)), raw(), size = 4L, endian = "little"),
+    header,
+    raw(header_padding)
+  )
+  cursor <- 0L
+  for (chunk in chunks) {
+    parts[[length(parts) + 1L]] <- raw(chunk$offset - cursor)
+    parts[[length(parts) + 1L]] <- chunk$bytes
+    cursor <- chunk$offset + length(chunk$bytes)
+  }
+  unlist(parts, use.names = FALSE)
+}
+
+.cerebro_cell_view_wire_serial <- 0L
+.cerebro_cell_view_render_serial <- 0
+.cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
+
+cerebroCellViewDeferredAux <- function(
+  selection_rows,
+  cell_barcodes,
+  hover_columns = list(),
+  hover = FALSE
+) {
+  grouped <- is.list(selection_rows)
+  reorder <- function(values) {
+    if (grouped) {
+      return(lapply(selection_rows, function(rows) I(unname(values[rows]))))
+    }
+    I(unname(values[selection_rows]))
+  }
+  columns <- if (isTRUE(hover)) {
+    lapply(hover_columns, function(column) {
+      column$values <- reorder(column$values)
+      column
+    })
+  } else {
+    list()
+  }
+  list(
+    selection_key = reorder(as.character(cell_barcodes)),
+    hover = list(
+      hoverinfo = if (isTRUE(hover)) "text" else "skip",
+      columns = columns
+    )
+  )
+}
+
+cerebroCellViewResolveDeferredAux <- function(message) {
+  if (!is.function(message$build)) {
+    return(message)
+  }
+  build <- message$build
+  message$build <- NULL
+  resolved <- build()
+  if (!is.list(resolved)) {
+    stop("deferred cell-view auxiliary data must be a list")
+  }
+  for (name in names(resolved)) {
+    message[[name]] <- resolved[[name]]
+  }
+  message
+}
+
+.runtimeDiagnostic <- function(x) {
+  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) print(x)
+}
+
+cerebroCellViewRecolor <- function(id, meta, data, dataset_context, feedback = NULL) {
+  dataset_context <- viewerDatasetContext(dataset_context$epoch,
+    dataset_context$dataset_key, dataset_context$generation)
+  meta$dataset_id <- dataset_context$dataset_key
+  meta$dataset_generation <- dataset_context$generation
+  message <- cerebroCellViewMessage(id, meta, data)
+  .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
+  message$dataset_context <- dataset_context
+  message$render_token <- .cerebro_cell_view_render_serial
+  cerebroSendViewFeedback(id, message$render_token, dataset_context, feedback)
+  fields <- c("color", "rgb", "rgb_scaled", "rgb_genes", "colorscale",
+    "panel_colorscales", "color_range", "reversescale", "paint_order",
+    "render_key", "sparse_color", "color_cache_key", "packed_rgb",
+    "packed_rgb_cache_keys", "zero_color")
+  message$data <- message$data[intersect(fields, names(message$data))]
+  if (isTRUE(input[["coordviews_wire_supported"]])) {
+    session$sendBinaryMessage("cell_view_recolor_binary", cv_wire_pack_message(message))
+  } else {
+    session$sendCustomMessage("cell_view_recolor", message)
+  }
+}
+
+cerebroCellViewAuxRequest <- function(request) {
+  if (!is.list(request) || is.null(request$id) || is.null(request$wire_token)) {
+    return(invisible(FALSE))
+  }
+  if (!viewerDatasetContextEqual(request$dataset_context, viewer_loaded_dataset_context())) {
+    return(invisible(FALSE))
+  }
+  key <- paste(request$id, request$wire_token, sep = ":")
+  message <- .cerebro_cell_view_aux_pending[[key]]
+  if (is.null(message) || !viewerDatasetContextEqual(message$dataset_context, request$dataset_context)) return(invisible(FALSE))
+  if (is.function(message$core_builder)) {
+    core <- message$core_builder()
+    message$core_builder <- NULL
+    message$core <- c(list(id = message$id, wire_token = message$wire_token, dataset_context = message$dataset_context, render_token = message$render_token), core)
+  }
+  if (!is.null(message$core) && !isTRUE(message$core_sent)) {
+    core <- message$core
+    message$core <- NULL
+    message$core_sent <- TRUE
+    .cerebro_cell_view_aux_pending[[key]] <- message
+    if (!isTRUE(core$hover$pending)) {
+      rm(list = key, envir = .cerebro_cell_view_aux_pending)
+    }
+    session$sendBinaryMessage("cell_view_aux_binary", cv_wire_pack_message(core))
+    return(invisible(TRUE))
+  }
+  if (isTRUE(message$core_sent) && !identical(request$stage, "metadata")) {
+    return(invisible(FALSE))
+  }
+  rm(list = key, envir = .cerebro_cell_view_aux_pending)
+  core_sent <- isTRUE(message$core_sent)
+  message$core_sent <- NULL
+  message <- cerebroCellViewResolveDeferredAux(message)
+  if (core_sent) message$selection_key <- NULL
+  session$sendBinaryMessage("cell_view_aux_binary", cv_wire_pack_message(message))
+  invisible(TRUE)
+}
+
+## Small UI snapshots only. Never enumerate values of all Shiny inputs: those
+## include million-cell selections and transport caches. Reads are isolated so
+## feedback cannot add a dependency to an existing preparation path.
+cerebroFeedbackControls <- function(id, input, overrides = list()) {
+  pattern <- switch(id,
+    overview_projection = "^overview_projection_(to_display|point_color|point_size|point_opacity|point_border|group_labels|keep_square|percentage_cells_to_show|group_filter_.+)$",
+    expression_projection = "^expression_projection_(to_display|point_size|point_opacity|point_border|group_labels|keep_square|percentage_cells_to_show|group_filter_.+)$",
+    spatial_projection = "^spatial_projection_(to_display|plot_type|point_color|point_size|point_opacity|group_labels|point_border|keep_square|percentage_cells_to_show|feature_to_display|coexpr_[rgb]|show_region_outlines|background_image|group_filter_.+)$",
+    trajectory_projection = "^trajectory_(selected_method|selected_name|point_color|point_size|point_opacity|projection_group_labels|projection_point_border|projection_keep_square|percentage_cells_to_show|projection_group_filter_.+)$",
+    hla_motif_network = "^hla_(chain|scope|color_by|color_allele|pair_allele_i|pair_allele_ii|min_nodes|by_v|show_isolated|node_scale|legend_mode|group_filter_.+)$",
+    "a^"
+  )
+  shiny::isolate({
+    ids <- grep(pattern, names(input), value = TRUE)
+    values <- stats::setNames(lapply(ids, function(key) input[[key]]), ids)
+    values <- utils::modifyList(values, overrides, keep.null = TRUE)
+    lapply(values, function(value) {
+      if (is.logical(value)) tolower(as.character(value)) else as.character(value)
+    })
+  })
+}
+
+cerebroSendViewFeedback <- function(id, token, context, controls) {
+  if (!is.null(controls)) {
+    session$sendCustomMessage("cerebro_view_feedback", list(
+      id = id, renderToken = token, dataset_context = context, controls = controls
+    ))
+  }
 }
 
 cerebroCellViewRender <- function(
@@ -291,11 +1296,198 @@ cerebroCellViewRender <- function(
   meta,
   data,
   hover = list(),
-  extra = list()
+  extra = list(),
+  deferred_aux = NULL,
+  core_aux = NULL,
+  dataset_context = NULL,
+  feedback = NULL
 ) {
+  dataset_context <- viewerDatasetContext(dataset_context$epoch,
+    dataset_context$dataset_key, dataset_context$generation)
+  meta$dataset_id <- dataset_context$dataset_key
+  meta$dataset_generation <- dataset_context$generation
+  message <- cerebroCellViewMessage(id, meta, data, hover, extra)
+  .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1
+  message$dataset_context <- dataset_context
+  message$render_token <- .cerebro_cell_view_render_serial
+  cerebroSendViewFeedback(id, message$render_token, dataset_context, feedback)
+  deferred_selection_lengths <- suppressWarnings(as.integer(
+    message$data$deferred_selection_lengths
+  ))
+  message$data$deferred_selection_lengths <- NULL
+  stamp_transport_profile <- function(message) {
+    request_at_ms <- tryCatch(
+      suppressWarnings(as.numeric(input[[paste0(id, "_render_request")]]$nonce)),
+      error = function(error) NA_real_
+    )
+    if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
+      request_at_ms <- NA_real_
+    }
+    sent_at_ms <- as.numeric(Sys.time()) * 1000
+    message$transport_profile <- list(
+      request_at_ms = request_at_ms,
+      server_prepare_ms = if (
+        is.finite(request_at_ms)
+      ) {
+        max(0, sent_at_ms - request_at_ms)
+      } else {
+        NA_real_
+      },
+      sent_at_ms = sent_at_ms
+    )
+    message
+  }
+  if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
+    identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
+    if (
+      is.list(identity) &&
+        length(identity$fingerprint) == 1L &&
+        !is.na(identity$fingerprint) &&
+        nzchar(identity$fingerprint)
+    ) {
+      message$dataset_identity <- list(
+        cell_count = as.integer(identity$cell_count),
+        cell_fingerprint = as.character(identity$fingerprint),
+        cell_order_fingerprint = as.character(
+          identity$order_fingerprint %||% ""
+        ),
+        pack_dataset_fingerprint = as.character(
+          identity$pack_fingerprint %||% ""
+        )
+      )
+    }
+  }
+  if (
+    isTRUE(input[["coordviews_wire_supported"]]) &&
+      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
+  ) {
+    selection_keys <- message$data$selection_key
+    key_groups <- if (is.list(selection_keys)) {
+      selection_keys
+    } else {
+      list(selection_keys)
+    }
+    n_cells <- if (
+      length(deferred_selection_lengths) &&
+        all(!is.na(deferred_selection_lengths)) &&
+        all(deferred_selection_lengths >= 0L)
+    ) {
+      sum(deferred_selection_lengths)
+    } else {
+      sum(vapply(key_groups, length, integer(1)))
+    }
+    shared_projection <- viewerSharedProjectionName(
+      meta$space_label,
+      n_cells,
+      dataset_context = dataset_context
+    )
+    shared_zero_color <- isTRUE(message$data$shared_zero_color)
+    message$data$shared_zero_color <- NULL
+    if (isTRUE(shared_zero_color)) {
+      message$data$color <- NULL
+      message$data$zero_color <- TRUE
+      message$data$n <- n_cells
+    }
+    if (
+      is.character(shared_projection) &&
+        length(shared_projection) == 1L &&
+        !is.na(shared_projection) &&
+        nzchar(shared_projection)
+    ) {
+      message$shared_projection <- shared_projection
+      message$data$x <- NULL
+      message$data$y <- NULL
+      message$data$z <- NULL
+      message$data$n <- n_cells
+    }
+    progressive <- (
+      !is.null(selection_keys) ||
+        (
+          length(deferred_selection_lengths) &&
+            is.function(deferred_aux)
+        )
+    ) &&
+      is.null(message$data$panels) &&
+      n_cells >= 4096L
+    if (progressive) {
+      .cerebro_cell_view_wire_serial <<-
+        .cerebro_cell_view_wire_serial + 1L
+      token <- .cerebro_cell_view_wire_serial
+      message$data$n <- n_cells
+      message$data$wire_token <- token
+      message$data$selection_key <- NULL
+      full_hover <- message$hover
+      message$hover <- list(hoverinfo = "skip")
+      message <- stamp_transport_profile(message)
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+      stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+      stale <- stale[vapply(stale, function(key) {
+        pending <- .cerebro_cell_view_aux_pending[[key]]
+        is.list(pending) && identical(pending$id, id)
+      }, logical(1))]
+      if (length(stale)) {
+        rm(list = stale, envir = .cerebro_cell_view_aux_pending)
+      }
+      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
+        is.function(deferred_aux)
+      ) {
+        list(id = id, wire_token = token, dataset_context = dataset_context, render_token = message$render_token, build = deferred_aux, core_builder = core_aux)
+      } else {
+        list(
+          id = id,
+          wire_token = token,
+          dataset_context = dataset_context,
+          render_token = message$render_token,
+          selection_key = selection_keys,
+          hover = full_hover
+        )
+      }
+    } else {
+      if (is.function(deferred_aux)) {
+        auxiliary <- deferred_aux()
+        message$data$selection_key <- auxiliary$selection_key
+        message$hover <- auxiliary$hover
+      }
+      message <- stamp_transport_profile(message)
+      session$sendBinaryMessage(
+        "cell_view_binary",
+        cv_wire_pack_message(message)
+      )
+    }
+  } else {
+    if (is.function(deferred_aux)) {
+      auxiliary <- deferred_aux()
+      message$data$selection_key <- auxiliary$selection_key
+      message$hover <- auxiliary$hover
+    }
+    message <- stamp_transport_profile(message)
+    session$sendCustomMessage("cell_view_render", message)
+  }
+  invisible(message$render_token)
+}
+
+cerebroCellViewBackground <- function(
+  id,
+  values,
+  dataset_context,
+  background_identity = NULL
+) {
+  dataset_context <- viewerDatasetContext(
+    dataset_context[["epoch"]],
+    dataset_context[["dataset_key"]],
+    dataset_context[["generation"]]
+  )
   session$sendCustomMessage(
-    "cell_view_render",
-    cerebroCellViewMessage(id, meta, data, hover, extra)
+    "cell_view_background",
+    list(
+      id = id,
+      values = values,
+      dataset_context = dataset_context,
+      background_identity = background_identity
+    )
   )
 }
 
@@ -310,31 +1502,64 @@ cerebroCellViewScatterPayload <- function(
   keep_square = FALSE,
   color_assignments = NULL,
   hover_info = NULL,
+  hover_columns = NULL,
   hover = TRUE,
   point_line = list(),
   x_range = list(),
   y_range = list(),
   reset_axes = FALSE,
   n_dimensions = 2L,
-  space_label = NULL
+  space_label = NULL,
+  cell_count = NULL,
+  coordinate_resource = NULL,
+  categorical_resource = NULL
 ) {
   dimensions <- if (as.integer(n_dimensions) == 3L) 3L else 2L
-  if (length(coordinates) < dimensions) {
+  resource_coordinates <- is.list(coordinate_resource) &&
+    is.character(coordinate_resource$url) &&
+    length(coordinate_resource$url) == 1L &&
+    nzchar(coordinate_resource$url)
+  resource_categories <- is.list(categorical_resource) &&
+    is.character(categorical_resource$url) &&
+    length(categorical_resource$url) == 1L &&
+    nzchar(categorical_resource$url) &&
+    length(categorical_resource$levels)
+  if (!resource_coordinates && length(coordinates) < dimensions) {
     stop("coordinates do not contain the requested dimensions")
   }
-  cell_counts <- c(
-    vapply(coordinates[seq_len(dimensions)], length, integer(1)),
-    color = length(color),
-    selection_keys = length(selection_keys)
-  )
+  cell_counts <- c()
+  if (!is.null(cell_count)) {
+    cell_counts <- c(cell_counts, cell_count = as.integer(cell_count))
+  }
+  if (resource_coordinates) {
+    cell_counts <- c(cell_counts, coordinates = as.integer(coordinate_resource$cells))
+  } else {
+    cell_counts <- c(
+      cell_counts,
+      vapply(coordinates[seq_len(dimensions)], length, integer(1))
+    )
+  }
+  if (resource_categories) {
+    cell_counts <- c(cell_counts, color = as.integer(categorical_resource$cells))
+  } else {
+    cell_counts <- c(cell_counts, color = length(color))
+  }
+  if (length(selection_keys)) {
+    cell_counts <- c(cell_counts, selection_keys = length(selection_keys))
+  }
+  if (!length(cell_counts) || anyNA(cell_counts) || any(cell_counts < 0L)) {
+    stop("cell_count or valid cell resources are required")
+  }
   if (length(unique(cell_counts)) != 1L) {
     stop(
       "coordinates, color, and selection_keys must describe the same number of cells"
     )
   }
 
-  continuous <- is.numeric(color)
-  has_z <- as.integer(n_dimensions) == 3L && length(coordinates) >= 3L
+  n_cells <- unname(cell_counts[[1L]])
+  continuous <- if (resource_categories) FALSE else is.numeric(color)
+  has_z <- !resource_coordinates &&
+    as.integer(n_dimensions) == 3L && length(coordinates) >= 3L
   meta <- list(
     color_type = if (continuous) "continuous" else "categorical",
     color_variable = color_variable,
@@ -350,8 +1575,8 @@ cerebroCellViewScatterPayload <- function(
     meta[["space_label"]] <- space_label
   }
   data <- list(
-    x = if (continuous) I(coordinates[[1L]]) else list(),
-    y = if (continuous) I(coordinates[[2L]]) else list(),
+    x = if (continuous && !resource_coordinates) I(coordinates[[1L]]) else list(),
+    y = if (continuous && !resource_coordinates) I(coordinates[[2L]]) else list(),
     selection_key = if (continuous) I(selection_keys) else list(),
     color = if (continuous) I(color) else list(),
     point_size = point_size,
@@ -366,19 +1591,82 @@ cerebroCellViewScatterPayload <- function(
   }
 
   show_hover <- isTRUE(hover)
+  structured_hover <- if (show_hover && length(hover_columns)) {
+    lapply(hover_columns, function(column) {
+      if (!is.list(column) || is.null(column$label) || is.null(column$values)) {
+        stop("hover columns require label and values")
+      }
+      if (length(column$values) != n_cells) {
+        stop("hover columns must describe the same number of cells")
+      }
+      column
+    })
+  } else {
+    list()
+  }
   hover_data <- list(
     hoverinfo = if (show_hover) "text" else "skip",
-    text = if (continuous && show_hover) I(unname(hover_info)) else list()
+    text = if (continuous && show_hover && !length(structured_hover)) {
+      I(unname(hover_info))
+    } else {
+      list()
+    }
   )
+  if (length(structured_hover)) {
+    hover_data$columns <- lapply(structured_hover, function(column) {
+      column$values <- if (continuous) I(unname(column$values)) else list()
+      if (!is.null(column$levels)) {
+        column$levels <- I(unname(column$levels))
+      }
+      column
+    })
+  }
   if (continuous) {
+    if (resource_coordinates) {
+      data$x <- NULL
+      data$y <- NULL
+      data$projection_resource <- coordinate_resource
+    }
     return(list(meta = meta, data = data, hover = hover_data))
   }
   if (is.null(color_assignments)) {
     stop("color_assignments are required for categorical cell views")
   }
-  color <- as.character(color)
-  color[is.na(color)] <- "(missing)"
-  levels_in_view <- unique(color)
+  if (resource_categories) {
+    traces <- as.character(categorical_resource$levels)
+    missing_levels <- setdiff(traces, names(color_assignments))
+    if (length(missing_levels)) {
+      stop(
+        "color_assignments are missing categorical levels: ",
+        paste(missing_levels, collapse = ", ")
+      )
+    }
+    meta[["traces"]] <- as.list(traces)
+    data[["x"]] <- NULL
+    data[["y"]] <- NULL
+    data[["selection_key"]] <- NULL
+    data[["color"]] <- as.list(unname(color_assignments[traces]))
+    data[["projection_resource"]] <- coordinate_resource
+    data[["categorical_resource"]] <- categorical_resource
+    data[["deferred_selection_lengths"]] <- as.integer(n_cells)
+    return(list(meta = meta, data = data, hover = hover_data))
+  }
+  factor_color <- is.factor(color)
+  factor_codes <- if (factor_color) as.integer(color) else NULL
+  factor_levels <- if (factor_color) levels(color) else NULL
+  has_missing_color <- if (factor_color) anyNA(factor_codes) else anyNA(color)
+  levels_in_view <- if (factor_color) {
+    present <- tabulate(
+      factor_codes[!is.na(factor_codes)],
+      nbins = length(factor_levels)
+    ) > 0L
+    factor_levels[present]
+  } else {
+    unique(as.character(color[!is.na(color)]))
+  }
+  if (has_missing_color) {
+    levels_in_view <- c(levels_in_view, "(missing)")
+  }
   if (
     !("(missing)" %in% names(color_assignments)) &&
       "(missing)" %in% levels_in_view
@@ -393,6 +1681,46 @@ cerebroCellViewScatterPayload <- function(
     )
   }
 
+  canonical_layout <- length(color) >= 4096L &&
+    identical(as.integer(selection_keys), seq_along(selection_keys)) &&
+    !show_hover &&
+    !length(structured_hover)
+  if (canonical_layout) {
+    traces <- names(color_assignments)[
+      names(color_assignments) %in% levels_in_view
+    ]
+    meta[["traces"]] <- as.list(traces)
+    if (resource_coordinates) {
+      data[["x"]] <- NULL
+      data[["y"]] <- NULL
+      data[["projection_resource"]] <- coordinate_resource
+    } else {
+      data[["x"]] <- I(as.numeric(coordinates[[1L]]))
+      data[["y"]] <- I(as.numeric(coordinates[[2L]]))
+      if (has_z) {
+        data[["z"]] <- I(as.numeric(coordinates[[3L]]))
+      }
+    }
+    data[["selection_key"]] <- I(selection_keys)
+    data[["color"]] <- as.list(unname(color_assignments[traces]))
+    canonical_group <- if (factor_color) {
+      group <- match(factor_levels, traces) - 1L
+      group <- as.integer(group[factor_codes])
+      if (has_missing_color) {
+        group[is.na(factor_codes)] <- match("(missing)", traces) - 1L
+      }
+      group
+    } else {
+      normalized_color <- as.character(color)
+      normalized_color[is.na(normalized_color)] <- "(missing)"
+      as.integer(match(normalized_color, traces) - 1L)
+    }
+    data[["canonical_group"]] <- I(canonical_group)
+    return(list(meta = meta, data = data, hover = hover_data))
+  }
+
+  color <- as.character(color)
+  color[is.na(color)] <- "(missing)"
   meta[["traces"]] <- list()
   cells_by_group <- split(seq_along(color), color)
   hover_names <- names(hover_info)
@@ -419,14 +1747,25 @@ cerebroCellViewScatterPayload <- function(
       data[["z"]][[index]] <- I(coordinates[[3L]][cells])
     }
     data[["selection_key"]][[index]] <- I(selection_keys[cells])
-    data[["color"]][[index]] <- I(rep(
-      unname(color_assignments[[group]]),
-      length(cells)
-    ))
-    if (show_hover) {
+    data[["color"]][[index]] <- unname(color_assignments[[group]])
+    if (show_hover && !length(structured_hover)) {
       hover_data[["text"]][[index]] <- I(aligned_hover[cells])
     }
+    for (column_index in seq_along(structured_hover)) {
+      hover_data$columns[[column_index]]$values[[index]] <- I(
+        unname(structured_hover[[column_index]]$values[cells])
+      )
+    }
     index <- index + 1L
+  }
+
+  if (
+    length(color) >= 4096L &&
+      identical(as.integer(selection_keys), seq_along(selection_keys))
+  ) {
+    data[["canonical_group"]] <- I(as.integer(
+      match(color, unlist(meta[["traces"]], use.names = FALSE)) - 1L
+    ))
   }
 
   list(meta = meta, data = data, hover = hover_data)
@@ -465,6 +1804,13 @@ cerebroSelectionSummary <- function(
     character(0)
   }
   keys <- unique(as.character(keys[!is.na(keys) & nzchar(keys)]))
+  # Composition has nothing to render until stable selection keys arrive.
+  # Return before forcing the lazy metadata/groups defaults: on million-cell
+  # datasets those accessors can hydrate the complete per-cell metadata even
+  # though the result below would immediately be discarded.
+  if (isTRUE(composition) && !length(keys)) {
+    return(NULL)
+  }
   n_selected <- if (length(keys)) {
     length(keys)
   } else if (is.data.frame(selection)) {
@@ -834,12 +2180,13 @@ prettifyTable <- function(
 
   ## identify columns which contain integer despite not being stored as
   ## integer type
-  columns_integer <- findColumnsInteger(table, columns_numeric)
+  classify_values <- number_formatting || color_highlighting
+  columns_integer <- if (classify_values) findColumnsInteger(table, columns_numeric) else integer()
 
   ## identify which columns might contain percentages, p-values, and logFC
-  columns_percent <- findColumnsPercentage(table)
-  columns_p_value <- findColumnsPValues(table)
-  columns_logFC <- findColumnsLogFC(table)
+  columns_percent <- if (classify_values) findColumnsPercentage(table) else integer()
+  columns_p_value <- if (classify_values) findColumnsPValues(table) else integer()
+  columns_logFC <- if (classify_values) findColumnsLogFC(table) else integer()
 
   ## find columns with very long (character) content so that they can be
   ## hidden
@@ -938,7 +2285,6 @@ prettifyTable <- function(
   ## - align numerics to the right
   table <- DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = escape,
     extensions = table_extensions,
@@ -961,7 +2307,22 @@ prettifyTable <- function(
       dom = dom,
       lengthMenu = page_length_menu,
       pageLength = page_length_default,
-      scrollX = TRUE
+      scrollX = TRUE,
+      initComplete = DT::JS(
+        "function() {",
+        "  var api = this.api();",
+        "  var table = $(api.table().container());",
+        "  var headers = api.columns().header().toArray();",
+        "  setTimeout(function() {",
+        "    table.find('thead tr:last-child, tfoot tr:first-child').each(function() {",
+        "      $(this).children('td').each(function(index) {",
+        "        var label = 'Filter ' + $(headers[index]).text().trim();",
+        "        $(this).find('input, select').attr('aria-label', label);",
+        "      });",
+        "    });",
+        "  }, 0);",
+        "}"
+      )
     )
   ) %>%
     DT::formatStyle(
@@ -1236,7 +2597,6 @@ prettifyTable <- function(
 prepareEmptyTable <- function(table) {
   DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = TRUE,
     filter = "none",
@@ -1414,15 +2774,84 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ##----------------------------------------------------------------------------##
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
+cerebroProjectionHoverColumns <- function(table, groups = getGroups(), group_levels = getGroupLevels) {
+  if (!is.data.frame(table)) {
+    stop("projection hover data must be a data frame")
+  }
+  columns <- list()
+  for (spec in list(
+    c(source = "nUMI", label = "Transcripts"),
+    c(source = "nGene", label = "Expressed genes")
+  )) {
+    if (spec[["source"]] %in% colnames(table)) {
+      columns[[length(columns) + 1L]] <- list(
+        label = unname(spec[["label"]]),
+        format = "integer",
+        values = unname(table[[spec[["source"]]]])
+      )
+    }
+  }
+  for (group in unique(as.character(groups))) {
+    if (is.na(group) || !nzchar(group) || !group %in% colnames(table)) {
+      next
+    }
+    values <- as.character(table[[group]])
+    # Registered levels are a small dictionary. Avoid hashing every string
+    # again with unique() after the million-cell rows have been shuffled.
+    levels <- tryCatch(as.character(group_levels(group)),
+      error = function(e) character())
+    levels[is.na(levels)] <- "NA"
+    levels <- unique(c(levels, "NA"))
+    codes <- match(values, levels)
+    codes[is.na(values)] <- match("NA", levels)
+    if (anyNA(codes)) {
+      # Unregistered metadata and incomplete legacy dictionaries retain the
+      # original first-occurrence encoding, including literal/missing NA.
+      values[is.na(values)] <- "NA"
+      levels <- unique(values)
+      codes <- match(values, levels)
+    }
+    observed <- unique(codes)
+    ## Codes already index the registered dictionary; remap by integer lookup
+    ## rather than hashing the full cell vector again with match().
+    remap <- integer(length(levels))
+    remap[observed] <- seq_along(observed) - 1L
+    levels <- levels[observed]
+    columns[[length(columns) + 1L]] <- list(
+      label = group,
+      levels = levels,
+      values = remap[codes]
+    )
+  }
+  columns
+}
+
 buildHoverInfoForProjections <- function(table) {
-  ## put together cell ID, number of transcripts and number of expressed genes
-  hover_info <- glue::glue(
-    "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
-    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
-    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
-  )
+  ## Count fields have many repeated values. Format each distinct value once,
+  ## then restore cell order without changing the displayed precision.
+  format_counts <- function(values) {
+    distinct <- unique(values)
+    formatC(distinct, format = "f", big.mark = ",", digits = 0)[
+      match(values, distinct)
+    ]
+  }
+  cell_ids <- if ("cell_barcode" %in% names(table)) {
+    table[["cell_barcode"]]
+  } else {
+    rownames(table)
+  }
+  template <- c("<b>Cell</b>: {cell_ids}")
+  if ("nUMI" %in% names(table)) {
+    umi <- format_counts(table[["nUMI"]])
+    template <- c(template, "<br><b>Transcripts</b>: {umi}")
+  }
+  if ("nGene" %in% names(table)) {
+    genes <- format_counts(table[["nGene"]])
+    template <- c(template, "<br><b>Expressed genes</b>: {genes}")
+  }
+  hover_info <- glue::glue(paste0(template, collapse = ""))
   ## add info for known grouping variables
-  for (group in getGroups()) {
+  for (group in intersect(getGroups(), names(table))) {
     hover_info <- glue::glue(
       "{hover_info}<br>",
       "<b>{group}</b>: {table[[ group ]]}"
@@ -1472,26 +2901,6 @@ randomlySubsetCells <- function(table, percentage) {
 }
 
 ##----------------------------------------------------------------------------##
-## Merge a trajectory's per-cell meta data (DR_1/DR_2/pseudotime/state) with the
-## data set's full meta data, aligned BY CELL BARCODE.
-##
-## A trajectory may cover only a SUBSET of cells (e.g. a monocle2 trajectory
-## computed on B cells only). The trajectory meta data frame therefore has fewer
-## rows than getMetaData(), and its rownames are the covered cells' barcodes. A
-## positional `cbind()` would crash ("differing number of rows") or, worse,
-## silently mis-align cells. This joins on the barcode so every cell keeps its
-## own coordinates and cells outside the trajectory get NA pseudotime (which the
-## callers then drop via `filter(!is.na(pseudotime))`). The full meta data is the
-## left side, so the result has one row per cell in getMetaData() order.
-##----------------------------------------------------------------------------##
-mergeTrajectoryWithMetaData <- function(trajectory_data) {
-  trajectory_meta <- trajectory_data[["meta"]]
-  trajectory_meta[["cell_barcode"]] <- rownames(trajectory_meta)
-  getMetaData() %>%
-    dplyr::left_join(trajectory_meta, by = "cell_barcode")
-}
-
-##----------------------------------------------------------------------------##
 ## Calculate X-Y ranges for projections.
 ##----------------------------------------------------------------------------##
 getXYranges <- function(table) {
@@ -1523,143 +2932,6 @@ getXYranges <- function(table) {
 ##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
-if (!exists(".msigdb_process_cache", inherits = TRUE)) {
-  .msigdb_process_cache <- new.env(parent = emptyenv())
-}
-
-.emptyMsigdbCatalogue <- function() {
-  data.frame(
-    gs_name = character(),
-    collection = character(),
-    stringsAsFactors = FALSE
-  )
-}
-
-.msigdbCache <- function() {
-  get(".msigdb_process_cache", inherits = TRUE)
-}
-
-.msigdbGeneCacheKey <- function(species, gene_set) {
-  paste("genes", species, gene_set, sep = "\r")
-}
-
-.msigdbFunction <- function() {
-  msigdbr::msigdbr
-}
-
-getMsigdbCatalogue <- function() {
-  cache <- .msigdbCache()
-  if (exists("catalogue", envir = cache, inherits = FALSE)) {
-    return(cache[["catalogue"]])
-  }
-  if (!requireNamespace("msigdbr", quietly = TRUE)) {
-    warning("The 'msigdbr' package is required to resolve gene sets.")
-    return(.emptyMsigdbCatalogue())
-  }
-  table <- tryCatch(
-    do.call(.msigdbFunction(), list(species = "Homo sapiens")),
-    error = function(error_condition) {
-      warning("MSigDB query failed: ", conditionMessage(error_condition))
-      NULL
-    }
-  )
-  collection_column <- if (
-    !is.null(table) && "gs_collection" %in% colnames(table)
-  ) {
-    "gs_collection"
-  } else if (!is.null(table) && "gs_cat" %in% colnames(table)) {
-    "gs_cat"
-  } else {
-    NULL
-  }
-  if (
-    is.null(collection_column) ||
-      !is.data.frame(table) ||
-      !"gs_name" %in% colnames(table)
-  ) {
-    if (!is.null(table)) {
-      warning("MSigDB query returned unexpected columns.")
-    }
-    return(.emptyMsigdbCatalogue())
-  }
-  catalogue <- unique(data.frame(
-    gs_name = trimws(as.character(table[["gs_name"]])),
-    collection = trimws(as.character(table[[collection_column]])),
-    stringsAsFactors = FALSE
-  ))
-  catalogue <- catalogue[
-    !is.na(catalogue$gs_name) &
-      nzchar(catalogue$gs_name) &
-      !is.na(catalogue$collection) &
-      nzchar(catalogue$collection),
-    ,
-    drop = FALSE
-  ]
-  ambiguous <- duplicated(catalogue$gs_name) |
-    duplicated(catalogue$gs_name, fromLast = TRUE)
-  catalogue <- catalogue[!ambiguous, , drop = FALSE]
-  row.names(catalogue) <- NULL
-  if (nrow(catalogue) == 0L) {
-    warning("MSigDB query returned an empty catalogue.")
-    return(.emptyMsigdbCatalogue())
-  }
-  cache[["catalogue"]] <- catalogue
-  rm(table)
-  invisible(gc(FALSE))
-  catalogue
-}
-
-getGeneSetNames <- function() {
-  sort(unique(getMsigdbCatalogue()$gs_name))
-}
-
-getMsigdbGenes <- function(species, gene_set) {
-  cache <- .msigdbCache()
-  key <- .msigdbGeneCacheKey(species, gene_set)
-  if (exists(key, envir = cache, inherits = FALSE)) {
-    return(cache[[key]])
-  }
-  catalogue <- getMsigdbCatalogue()
-  collection <- catalogue$collection[match(gene_set, catalogue$gs_name)]
-  if (length(collection) != 1L || is.na(collection) || !nzchar(collection)) {
-    return(character())
-  }
-  arguments <- list(species = species)
-  query <- .msigdbFunction()
-  if ("collection" %in% names(formals(query))) {
-    arguments[["collection"]] <- collection
-  } else {
-    arguments[["category"]] <- collection
-  }
-  table <- tryCatch(
-    do.call(query, arguments),
-    error = function(error_condition) {
-      warning("MSigDB query failed: ", conditionMessage(error_condition))
-      NULL
-    }
-  )
-  if (is.null(table)) {
-    return(character())
-  }
-  if (
-    !is.data.frame(table) ||
-      !all(c("gs_name", "gene_symbol") %in% colnames(table))
-  ) {
-    warning("MSigDB gene query returned unexpected columns.")
-    return(character())
-  }
-  returned_names <- trimws(as.character(table[["gs_name"]]))
-  matches <- !is.na(returned_names) & returned_names == gene_set
-  genes <- trimws(as.character(table[["gene_symbol"]][matches]))
-  genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
-  if (length(genes) > 0L) {
-    cache[[key]] <- genes
-  }
-  rm(table)
-  invisible(gc(FALSE))
-  genes
-}
-
 getGenesForGeneSet <- function(gene_set) {
   if (
     !is.null(getExperiment()$organism) &&
@@ -1676,60 +2948,6 @@ getGenesForGeneSet <- function(gene_set) {
   }
 
   getMsigdbGenes(species, gene_set)
-}
-
-##----------------------------------------------------------------------------##
-## Function to calculate center of groups in projections/trajectories.
-##----------------------------------------------------------------------------##
-centerOfGroups <- function(coordinates, df, n_dimensions, group) {
-  ## Guard against a missing grouping column: callers occasionally pass a
-  ## group that isn't present in df (e.g. a metadata column dropped for a
-  ## selected-cells slice), which would otherwise make df[[group]] NULL and
-  ## crash the tibble construction. Return a typed empty result instead.
-  if (is.null(group) || !group %in% colnames(df)) {
-    return(tidyr::tibble(
-      group = character(),
-      x_median = numeric(),
-      y_median = numeric(),
-      z_median = numeric()
-    ))
-  }
-  ## check number of dimenions in projection
-  ## ... 2 dimensions
-  if (n_dimensions == 2) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-    ## ... 3 dimensions
-  } else if (n_dimensions == 3 && is.numeric(coordinates[, 3])) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      z = coordinates[[3]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        z_median = median(z),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-  }
 }
 
 ##----------------------------------------------------------------------------##
@@ -1754,6 +2972,28 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
   }
   ## No match
   return('')
+}
+
+match_dataset_id_by_url <- function(url_dataset, files) {
+  ids <- names(files)
+  if (
+    !is.character(url_dataset) ||
+      length(url_dataset) != 1L ||
+      is.na(url_dataset) ||
+      !nzchar(url_dataset) ||
+      is.null(ids)
+  ) {
+    return("")
+  }
+  if (url_dataset %in% ids) {
+    return(url_dataset)
+  }
+  basenames <- basename(files)
+  index <- which(basenames == url_dataset)
+  if (!length(index)) {
+    index <- which(tools::file_path_sans_ext(basenames) == url_dataset)
+  }
+  if (length(index)) ids[[index[[1L]]]] else ""
 }
 
 ##----------------------------------------------------------------------------##
@@ -1788,6 +3028,10 @@ getGeneLists <- function() {
   }
 }
 getGeneNames <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$gene_names)) {
+    return(cache$gene_names)
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGeneNames())
   }
@@ -1798,6 +3042,11 @@ getGroups <- function() {
   }
 }
 getGroupLevels <- function(group) {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$meta_data) && group %in% colnames(cache$meta_data)) {
+    values <- cache$meta_data[[group]]
+    return(if (is.factor(values)) levels(values) else unique(values))
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupLevels(group))
   }
@@ -1812,7 +3061,34 @@ getMetaData <- function() {
     return(data_set()$getMetaData())
   }
 }
+.runtimeCerebroCellCount <- function(object) {
+  schema <- if (
+    is.environment(object) &&
+      exists("crb_schema", envir = object, inherits = FALSE)
+  ) {
+    object$crb_schema
+  } else {
+    NULL
+  }
+  if (
+    is.list(schema) &&
+      identical(schema$version, 2L) &&
+      is.integer(schema$n_cells) &&
+      length(schema$n_cells) == 1L &&
+      !is.na(schema$n_cells)
+  ) {
+    return(schema$n_cells)
+  }
+  nrow(object$meta_data)
+}
+getNumberOfCells <- function() {
+  .runtimeCerebroCellCount(data_set())
+}
 availableProjections <- function() {
+  cache <- viewerProjectionFirstFrameCache()
+  if (!is.null(cache$projections)) {
+    return(names(cache$projections))
+  }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$availableProjections())
   }
@@ -1897,10 +3173,10 @@ getVariableToCompareChoices <- function() {
         !is.null(available_crb_files$files) &&
         !is.null(available_crb_files$selected)
     ) {
-      idx <- which(available_crb_files$files == available_crb_files$selected)
-      if (length(idx) > 0 && !is.null(available_crb_files$names)) {
-        current_name <- available_crb_files$names[idx[1]]
-      }
+      current_name <- viewerDatasetName(
+        available_crb_files$files,
+        available_crb_files$selected
+      )
     }
 
     ## check if current file name exists in the named list/vector
@@ -2018,21 +3294,47 @@ hasEryColumn <- function() {
   !is.null(getEryColumn())
 }
 ##----------------------------------------------------------------------------##
-## Cerebro file reader (.rds via readRDS).
+## Cerebro file reader (RDS or qs2 payload).
 ##----------------------------------------------------------------------------##
 read_cerebro_file <- function(file) {
-  readRDS(file)
+  connection <- file(file, open = "rb")
+  on.exit(close(connection), add = TRUE)
+  magic <- readBin(connection, "raw", n = 4L)
+  if (!identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))) {
+    return(readRDS(file))
+  }
+  if (!requireNamespace("qs2", quietly = TRUE)) {
+    stop("A qs2 CRB requires the qs2 package.", call. = FALSE)
+  }
+  qs2::qs_read(file)
 }
 
 ##----------------------------------------------------------------------------##
-## Session-scoped cache for loaded .crb files (B8).
+## Process-scoped cache for loaded .crb files (B8).
 ##
-## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
-## file path and backend configuration. Changing the backend configuration for
-## an already loaded path fails closed; overwriting a .crb in place is NOT
-## detected -- start a new app session to pick up either change.
+## crb_cache.R owns process-retained prototypes; this session adapter attaches
+## lazy backends only to shallow R6 clones, keeping session fields isolated.
 ##----------------------------------------------------------------------------##
-.crb_cache <- new.env(parent = emptyenv())
+.cloneCachedCrb <- function(object) {
+  can_clone <-
+    is.environment(object) &&
+    exists("clone", envir = object, inherits = FALSE) &&
+    is.function(object[["clone"]]) &&
+    is.environment(environment(object[["clone"]])) &&
+    exists(
+      "self",
+      envir = environment(object[["clone"]]),
+      inherits = FALSE
+    ) &&
+    identical(
+      get("self", envir = environment(object[["clone"]]), inherits = FALSE),
+      object
+    )
+  if (can_clone) {
+    return(object$clone(deep = FALSE))
+  }
+  object
+}
 
 .crbLogLabel <- function(path) {
   basename(path)
@@ -2216,29 +3518,138 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_cache[[path]]
+  cache_key <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  .checkCrbBackendIdentity(cache_key, cache_identity)
+  cached <- .touchCrbPrototype(cache_key)
   if (!is.null(cached)) {
-    if (!identical(cached$backend_identity, cache_identity)) {
-      stop(
-        "The cached CRB '",
-        path,
-        "' backend configuration changed after it was loaded. Start a new ",
-        "app session before using the new configuration.",
-        call. = FALSE
-      )
-    }
     print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
-    return(cached$object)
+    prototype <- cached$object
+  } else {
+    print(glue::glue(
+      "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
+    ))
+    prototype <- read_cerebro_file(path)
+    .cacheCrbPrototype(path, prototype, cache_identity)
   }
-  print(glue::glue(
-    "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
-  ))
-  obj <- read_cerebro_file(path)
+
+  ## Clone the inert serialized prototype before installing delayed bindings.
+  ## R6 clone() forces delayed fields, which previously attached BPCells while
+  ## the user was still on Data Info and also mutated the shared prototype.
+  obj <- .cloneCachedCrb(prototype)
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  .crb_cache[[path]] <- list(
-    object = obj,
-    backend_identity = cache_identity
+  obj <- .attachImmuneRepertoireBackend(obj, path, effective_backend)
+  obj <- .attachSpatialMoleculeBackend(obj, path)
+  obj
+}
+
+.attachImmuneRepertoireBackend <- function(
+  obj,
+  crb_path,
+  effective_backend = NULL
+) {
+  field <- "immune_repertoire_backend"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(obj)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend <- obj[[field]]
+  if (is.null(backend)) {
+    return(obj)
+  }
+  valid <- is.list(backend) &&
+    identical(backend$type, "bpcells-file") &&
+    is.character(backend$file) &&
+    length(backend$file) == 1L &&
+    !is.na(backend$file) &&
+    nzchar(backend$file) &&
+    !backend$file %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$file) &&
+    is.character(backend$md5) &&
+    length(backend$md5) == 1L &&
+    !is.na(backend$md5) &&
+    grepl("^[[:xdigit:]]{32}$", backend$md5)
+  expression_backend <- if (is.null(effective_backend)) {
+    .fallbackRuntimeBackendPlan(obj, crb_path)
+  } else {
+    .validateRuntimeBackendEntry(effective_backend, crb_path)
+  }
+  valid <- valid && identical(expression_backend$type, "bpcells")
+  if (!valid) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- unique(as.character(backend$samples %||% character()))
+  backend$chains <- unique(as.character(backend$chains %||% character()))
+  if (anyNA(backend$samples) || anyNA(backend$chains)) {
+    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+  }
+  backend$samples <- backend$samples[nzchar(backend$samples)]
+  backend$chains <- backend$chains[nzchar(backend$chains)]
+  root <- if (identical(expression_backend$mode, "host_override")) {
+    expression_backend$location
+  } else {
+    file.path(
+      dirname(normalizePath(crb_path, mustWork = FALSE)),
+      expression_backend$location
+    )
+  }
+  if (
+    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
+  ) {
+    stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
+  }
+  repertoire_file <- file.path(root, backend$file)
+  if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
+    stop(
+      "The immune repertoire sidecar is missing: ",
+      repertoire_file,
+      call. = FALSE
+    )
+  }
+  backend$root <- root
+  obj[[field]] <- backend
+  obj
+}
+
+.attachSpatialMoleculeBackend <- function(obj, crb_path) {
+  field <- "spatial_molecule_backend"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(obj)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
+  }
+  backend <- obj[[field]]
+  if (is.null(backend)) {
+    return(obj)
+  }
+  valid <- is.list(backend) &&
+    identical(backend$type, "directory") &&
+    is.character(backend$location) &&
+    length(backend$location) == 1L &&
+    !is.na(backend$location) &&
+    nzchar(backend$location) &&
+    !backend$location %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$location)
+  if (!valid) {
+    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
+  }
+  root <- file.path(
+    dirname(normalizePath(crb_path, mustWork = FALSE)),
+    backend$location
   )
+  if (!dir.exists(root)) {
+    stop("The spatial molecule sidecar is missing: ", root, call. = FALSE)
+  }
+  backend$root <- root
+  obj[[field]] <- backend
   obj
 }
 
@@ -2254,6 +3665,235 @@ get_or_load_crb <- function(
 ## Direct launches and uploads read only the ordinary expression_backend field;
 ## serialized getter code is never invoked by this internal loading path.
 ##----------------------------------------------------------------------------##
+.readRuntimeCrbSchema <- function(obj, crb_path) {
+  field <- "crb_schema"
+  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
+    return(NULL)
+  }
+  if (
+    bindingIsActive(field, obj) ||
+      isTRUE(rlang::env_binding_are_lazy(obj, field))
+  ) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported CRB schema descriptor.",
+      call. = FALSE
+    )
+  }
+  schema <- obj[[field]]
+  if (is.null(schema)) {
+    return(NULL)
+  }
+  schema_names <- names(schema)
+  expected_names <- if (identical(schema$version, 1L)) {
+    c("version", "cell_names", "cell_names_md5", "projection_rownames")
+  } else if (identical(schema$version, 2L)) {
+    c(
+      "version",
+      "cell_names",
+      "cell_names_md5",
+      "projection_rownames",
+      "n_cells"
+    )
+  } else {
+    character()
+  }
+  valid <- is.list(schema) &&
+    !is.data.frame(schema) &&
+    length(expected_names) > 0L &&
+    length(schema) == length(expected_names) &&
+    !is.null(schema_names) &&
+    !anyDuplicated(schema_names) &&
+    setequal(schema_names, expected_names) &&
+    identical(schema$cell_names, "expression") &&
+    is.character(schema$cell_names_md5) &&
+    length(schema$cell_names_md5) == 1L &&
+    !is.na(schema$cell_names_md5) &&
+    grepl("^[[:xdigit:]]{32}$", schema$cell_names_md5) &&
+    is.character(schema$projection_rownames) &&
+    !anyNA(schema$projection_rownames) &&
+    !any(!nzchar(schema$projection_rownames)) &&
+    !anyDuplicated(schema$projection_rownames) &&
+    (identical(schema$version, 1L) ||
+      (is.integer(schema$n_cells) &&
+        length(schema$n_cells) == 1L &&
+        !is.na(schema$n_cells) &&
+        schema$n_cells >= 0L))
+  if (!valid) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported CRB schema descriptor.",
+      call. = FALSE
+    )
+  }
+  schema
+}
+
+.bpcellsCellNamesChecksum <- function(sidecar) {
+  names_file <- file.path(sidecar, "col_names")
+  if (!file.exists(names_file) || dir.exists(names_file)) {
+    stop("The BPCells sidecar has no cell-name index.", call. = FALSE)
+  }
+  checksum <- unname(tools::md5sum(names_file))
+  if (length(checksum) != 1L || is.na(checksum) || !nzchar(checksum)) {
+    stop("Could not checksum the BPCells cell-name index.", call. = FALSE)
+  }
+  checksum
+}
+
+.validateThinCrbShape <- function(metadata, projections, schema) {
+  expected_cells <- if (identical(schema$version, 2L)) {
+    schema$n_cells
+  } else {
+    nrow(metadata)
+  }
+  if (
+    !is.data.frame(metadata) ||
+      nrow(metadata) != expected_cells ||
+      "cell_barcode" %in% names(metadata)
+  ) {
+    stop(
+      "The thin CRB cell count does not match its cell metadata.",
+      call. = FALSE
+    )
+  }
+
+  missing_projections <- setdiff(
+    schema$projection_rownames,
+    names(projections)
+  )
+  if (length(missing_projections)) {
+    stop(
+      "The thin CRB is missing projection '",
+      missing_projections[[1L]],
+      "'.",
+      call. = FALSE
+    )
+  }
+  for (name in schema$projection_rownames) {
+    projection <- projections[[name]]
+    if (!is.data.frame(projection) || nrow(projection) != expected_cells) {
+      stop(
+        "Projection '",
+        name,
+        "' does not match the thin CRB cell index.",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+.hydrateThinCrbFields <- function(metadata, projections, schema, cells) {
+  if (
+    !is.character(cells) ||
+      anyNA(cells) ||
+      any(!nzchar(cells)) ||
+      anyDuplicated(cells) ||
+      nrow(metadata) != length(cells)
+  ) {
+    stop(
+      "The thin CRB and BPCells sidecar have incompatible cell metadata.",
+      call. = FALSE
+    )
+  }
+  for (name in schema$projection_rownames) {
+    projection <- projections[[name]]
+    rownames(projection) <- cells
+    projections[[name]] <- projection
+  }
+  rownames(metadata) <- NULL
+  list(
+    meta_data = data.frame(
+      cell_barcode = cells,
+      metadata,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ),
+    projections = projections
+  )
+}
+
+.hydrateThinCrb <- function(obj, crb_path, sidecar, schema, cells = NULL) {
+  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+    stop(
+      "The BPCells cell-name index does not match CRB '",
+      basename(crb_path),
+      "'.",
+      call. = FALSE
+    )
+  }
+  if (is.null(cells)) {
+    cells <- colnames(obj$expression)
+  }
+  metadata <- obj$meta_data
+  projections <- obj$projections
+  .validateThinCrbShape(metadata, projections, schema)
+  hydrated <- .hydrateThinCrbFields(metadata, projections, schema, cells)
+  obj$meta_data <- hydrated$meta_data
+  obj$projections <- hydrated$projections
+  obj
+}
+
+.deferThinCrbHydration <- function(obj, crb_path, sidecar, schema) {
+  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+    stop(
+      "The BPCells cell-name index does not match CRB '",
+      basename(crb_path),
+      "'.",
+      call. = FALSE
+    )
+  }
+  metadata <- obj$meta_data
+  projections <- obj$projections
+  .validateThinCrbShape(metadata, projections, schema)
+  gene_names_file <- file.path(sidecar, "row_names")
+  gene_names <- if (
+    file.exists(gene_names_file) && !dir.exists(gene_names_file)
+  ) {
+    readLines(gene_names_file, warn = FALSE)
+  } else {
+    NULL
+  }
+  attr(obj, "cerebro_projection_first_frame") <- list(
+    meta_data = metadata,
+    projections = projections,
+    canonical_projections = schema$projection_rownames,
+    aligned_projections = new.env(parent = emptyenv()),
+    gene_names = gene_names
+  )
+  hydrate <- local({
+    hydrated <- NULL
+    function() {
+      if (is.null(hydrated)) {
+        cells <- readLines(file.path(sidecar, "col_names"), warn = FALSE)
+        hydrated <<- .hydrateThinCrbFields(
+          metadata,
+          projections,
+          schema,
+          cells
+        )
+      }
+      hydrated
+    }
+  })
+  delayedAssign(
+    "meta_data",
+    hydrate()$meta_data,
+    eval.env = environment(),
+    assign.env = obj
+  )
+  delayedAssign(
+    "projections",
+    hydrate()$projections,
+    eval.env = environment(),
+    assign.env = obj
+  )
+  obj
+}
+
 .readRuntimeBackendDescriptor <- function(obj, crb_path) {
   if (!is.environment(obj)) {
     stop(
@@ -2431,6 +4071,7 @@ get_or_load_crb <- function(
   if (!any(grepl("Cerebro", class(obj)))) {
     return(obj)
   }
+  crb_schema <- .readRuntimeCrbSchema(obj, crb_path)
   configured <- !is.null(effective_backend)
   if (!configured) {
     be <- .fallbackRuntimeBackendPlan(obj, crb_path)
@@ -2439,7 +4080,14 @@ get_or_load_crb <- function(
   }
 
   if (identical(be$mode, "embedded")) {
+    if (!is.null(crb_schema)) {
+      stop("A thin CRB requires a BPCells expression backend.", call. = FALSE)
+    }
     return(obj)
+  }
+
+  if (!is.null(crb_schema) && !identical(be$type, "bpcells")) {
+    stop("A thin CRB requires a BPCells expression backend.", call. = FALSE)
   }
 
   if (identical(be$mode, "host_override")) {
@@ -2450,12 +4098,6 @@ get_or_load_crb <- function(
   }
 
   if (be$type == "bpcells") {
-    if (!requireNamespace("BPCells", quietly = TRUE)) {
-      stop(
-        "bpcells-backed crb requires the BPCells package; please install it.",
-        call. = FALSE
-      )
-    }
     if (!dir.exists(loc_abs)) {
       stop(
         sprintf(
@@ -2471,8 +4113,43 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
-    obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
+    if (!is.null(crb_schema)) {
+      if (identical(crb_schema$version, 2L)) {
+        obj <- .deferThinCrbHydration(obj, crb_path, loc_abs, crb_schema)
+      } else {
+        cells <- readLines(file.path(loc_abs, "col_names"), warn = FALSE)
+        obj <- .hydrateThinCrb(obj, crb_path, loc_abs, crb_schema, cells)
+      }
+      delayedAssign(
+        "expression",
+        {
+          if (!requireNamespace("BPCells", quietly = TRUE)) {
+            stop(
+              paste(
+                "bpcells-backed crb requires the BPCells package;",
+                "please install it."
+              ),
+              call. = FALSE
+            )
+          }
+          print(glue::glue(
+            "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
+          ))
+          BPCells::open_matrix_dir(dir = loc_abs)
+        },
+        eval.env = environment(),
+        assign.env = obj
+      )
+    } else {
+      if (!requireNamespace("BPCells", quietly = TRUE)) {
+        stop(
+          "bpcells-backed crb requires the BPCells package; please install it.",
+          call. = FALSE
+        )
+      }
+      print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
+      obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
+    }
   } else if (be$type == "h5") {
     if (!requireNamespace("HDF5Array", quietly = TRUE)) {
       stop(
@@ -2581,7 +4258,7 @@ extra_material_table_filter <- function(row_count, column_count) {
   }
 }
 
-extra_material_table_groups <- function(external_manifest, embedded) {
+extra_material_table_groups <- function(external_manifest, embedded, table_index = NULL) {
   if (missing(external_manifest)) {
     external_manifest <- if (
       exists("Cerebro.options", inherits = TRUE) &&
@@ -2594,6 +4271,11 @@ extra_material_table_groups <- function(external_manifest, embedded) {
   }
   if (missing(embedded)) {
     data <- data_set()
+    dataset <- viewerSelectedDatasetName()
+    if (is.null(table_index) && !is.null(dataset) &&
+        exists("Cerebro.options", inherits = TRUE)) {
+      table_index <- Cerebro.options$viewer_content[[dataset]]$extra_material_table_index
+    }
     embedded <- if (is_cerebro_dataset(data)) {
       data$getExtraMaterial()$tables
     } else {
@@ -2603,26 +4285,30 @@ extra_material_table_groups <- function(external_manifest, embedded) {
 
   groups <- list()
   if (is.list(embedded) && length(embedded)) {
-    sheets <- Filter(
-      Negate(is.null),
-      lapply(seq_along(embedded), function(index) {
-        table <- embedded[[index]]
-        if (!is.data.frame(table)) {
-          return(NULL)
-        }
-        label <- names(embedded)[[index]]
-        if (is.null(label) || is.na(label) || !nzchar(label)) {
-          label <- paste("Table", index)
-        }
-        list(key = paste0("embedded:", index), label = label, table = table)
-      })
-    )
-    if (length(sheets)) {
-      groups[["Embedded tables"]] <- list(
-        key = "embedded",
-        label = "Embedded tables",
-        sheets = sheets
-      )
+    valid_label <- function(value) {
+      is.character(value) && length(value) == 1L && !is.na(value) && nzchar(trimws(value))
+    }
+    for (index in seq_along(embedded)) {
+      table <- embedded[[index]]
+      if (!is.data.frame(table)) next
+      name <- names(embedded)[index]
+      if (!valid_label(name)) name <- paste("Table", index)
+      record <- if (is.list(table_index)) table_index[[name]] else NULL
+      if (!is.list(record)) record <- list()
+      label <- if (valid_label(record$display_name)) record$display_name else name
+      workbook <- if (valid_label(record$workbook_name)) record$workbook_name else NULL
+      group_key <- if (is.null(workbook)) "embedded" else paste0("embedded-workbook:", workbook)
+      matches <- which(vapply(groups, function(group) identical(group$key, group_key), logical(1)))
+      if (!length(matches)) {
+        group_name <- if (is.null(workbook)) "Embedded tables" else workbook
+        unique_name <- make.unique(c(names(groups), group_name))[[length(groups) + 1L]]
+        groups[[unique_name]] <- list(key = group_key, label = group_name, sheets = list())
+        matches <- length(groups)
+      }
+      group <- matches[[1L]]
+      groups[[group]]$sheets <- append(groups[[group]]$sheets, list(list(
+        key = paste0("embedded:", index), label = label, table = table
+      )))
     }
   }
 
@@ -2797,6 +4483,43 @@ getImmuneRepertoire <- function() {
   tryCatch(ds$getImmuneRepertoire(), error = function(e) list())
 }
 
+getImmuneRepertoireSummary <- function() {
+  ds <- data_set()
+  if (is.null(ds)) {
+    return(list(available = FALSE, samples = character(), chains = character()))
+  }
+  backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
+  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+    return(list(
+      available = TRUE,
+      samples = as.character(backend$samples %||% character()),
+      chains = as.character(backend$chains %||% character())
+    ))
+  }
+  repertoire <- tryCatch(ds$getImmuneRepertoire(), error = function(e) list())
+  list(
+    available = is.list(repertoire) && length(repertoire) > 0L,
+    samples = names(repertoire) %||% character(),
+    chains = character()
+  )
+}
+
+viewerHasTcrRepertoire <- function(repertoire) {
+  if (!is.list(repertoire) || !length(repertoire)) {
+    return(FALSE)
+  }
+  any(vapply(
+    repertoire,
+    function(sample) {
+      if (is.null(sample) || !"CTgene" %in% names(sample)) {
+        return(FALSE)
+      }
+      any(grepl("TR[AB]", as.character(sample$CTgene)), na.rm = TRUE)
+    },
+    logical(1)
+  ))
+}
+
 ## ---- What one row of this data set is ---------------------------------- ##
 ## Almost every .crb is single-cell, so a row is a cell and the app says so.
 ## That is not universal: a bulk repertoire data set maps a (donor, clonotype)
@@ -2860,34 +4583,146 @@ getSpatialData <- function(name) {
   if (!any(grepl("Cerebro", class(ds)))) {
     return(NULL)
   }
-  tryCatch(ds$getSpatialData(name), error = function(e) NULL)
+  getter <- ds$getSpatialData
+  tryCatch(
+    {
+      if ("hydrate_molecules" %in% names(formals(getter))) {
+        return(getter(name, hydrate_molecules = FALSE))
+      }
+      stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
+      if (
+        is.list(stored) &&
+          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
+      ) {
+        return(stored)
+      }
+      getter(name)
+    },
+    error = function(e) NULL
+  )
 }
+
+## The first Spatial frame only needs coordinates and embedded-image metadata.
+## Read those fields directly from canonical storage so a tab click does not
+## normalize or copy molecule payloads and other unrelated Spatial content.
+## Legacy or malformed entries retain the validated public accessor fallback.
+viewerSpatialFirstFrameData <- function(name) {
+  ds <- data_set()
+  if (!any(grepl("Cerebro", class(ds)))) {
+    return(NULL)
+  }
+  stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
+  coordinates <- if (is.list(stored)) stored[["coordinates"]] else NULL
+  valid_coordinates <- is.data.frame(coordinates) &&
+    all(c("x", "y") %in% colnames(coordinates)) &&
+    is.numeric(coordinates[["x"]]) &&
+    is.numeric(coordinates[["y"]]) &&
+    nrow(coordinates) > 0L
+  if (!isTRUE(valid_coordinates)) {
+    return(getSpatialData(name))
+  }
+  list(
+    coordinates = coordinates,
+    histology_images = stored[["histology_images"]],
+    histology_image = stored[["histology_image"]],
+    histology_image_bounds = stored[["histology_image_bounds"]]
+  )
+}
+
+## Coordinate-only Spatial consumers run after spatial_projection_parameters_plot
+## has validated the exact current dataset + entry through getSpatialData().
+## Reuse the canonical stored coordinate reference there instead of invoking the
+## legacy getter's image/bounds normalization for every downstream reactive.
+## Malformed or legacy storage keeps the fully validated fallback path.
+viewerSpatialCoordinates <- function(name) {
+  ds <- data_set()
+  if (!any(grepl("Cerebro", class(ds)))) {
+    return(NULL)
+  }
+  coordinates <- tryCatch(
+    ds$spatial[[name]][["coordinates"]],
+    error = function(error) NULL
+  )
+  valid <- is.data.frame(coordinates) &&
+    all(c("x", "y") %in% colnames(coordinates)) &&
+    is.numeric(coordinates[["x"]]) &&
+    is.numeric(coordinates[["y"]]) &&
+    nrow(coordinates) > 0L
+  if (isTRUE(valid)) {
+    return(coordinates)
+  }
+  spatial_data <- getSpatialData(name)
+  if (is.null(spatial_data)) NULL else spatial_data[["coordinates"]]
+}
+canonicalGeneSelection <- function(selected, genes) {
+  if (!length(selected)) return(selected)
+  index <- match(tolower(selected), tolower(genes))
+  found <- !is.na(index)
+  selected[found] <- genes[index[found]]
+  selected
+}
+
 serverSideGeneSelector <- function(
   session,
   input_id,
   extra_triggers = function() NULL,
-  active = function() TRUE
+  active = function() TRUE,
+  choices = function() getGeneNames(),
+  retry = TRUE,
+  canonical_selection = FALSE,
+  refresh_on_activation = TRUE
 ) {
+  update_generation <- 0L
+  registered_dataset <- NULL
   observe({
+    update_generation <<- update_generation + 1L
+    generation <- update_generation
     extra_triggers()
+    if (!isTRUE(refresh_on_activation)) {
+      ## Drop the previous R6 reference even when this selector's tab is hidden.
+      if (!identical(data_set(), registered_dataset)) registered_dataset <<- NULL
+    }
     ## The caller can gate this observer so it does nothing until its own tab is
     ## relevant. The spatial module registers this at module-source time, which
     ## also runs for datasets that carry no spatial data (e.g. the PBMC set); an
     ## ungated observer would then schedule later::later() callbacks that keep
     ## the app from ever reaching idle and break unrelated tabs' tests.
     req(isTRUE(active()))
-    req(data_set())
-    genes <- sort(getGeneNames())
+    dataset <- data_set()
+    req(dataset)
+    ## Mounted Gene controls keep their registered search endpoint on return.
+    ## Re-sending choices starts an AJAX restore that can overwrite new typing.
+    if (!isTRUE(refresh_on_activation) &&
+        identical(dataset, registered_dataset)) return(invisible(NULL))
+    genes <- sort(choices())
     req(!is.null(genes), length(genes) > 0)
 
-    send_update <- function() {
+    initial_selection <- isolate(input[[input_id]])
+    send_update <- function(retry_update = FALSE) {
+      ## Timers from a previous dataset/activation can run after a slow load.
+      ## They must not re-register obsolete choices over the current selector.
+      if (generation != update_generation ||
+          !identical(isolate(data_set()), dataset)) return(invisible(NULL))
+      selected <- isolate(input[[input_id]])
+      ## A choices refresh briefly clears the browser control before its AJAX
+      ## response restores the selection. Do not register that transient empty
+      ## value as the selection for a retry (or overwrite a deliberate clear).
+      if (retry_update &&
+          !identical(selected, initial_selection) &&
+          (any(nzchar(selected)) || any(nzchar(initial_selection)))) {
+        return(invisible(NULL))
+      }
+      if (isTRUE(canonical_selection)) {
+        selected <- canonicalGeneSelection(selected, genes)
+      }
       updateSelectizeInput(
         session,
         input_id,
         choices = genes,
-        selected = character(0),
+        selected = selected,
         server = TRUE
       )
+      if (!isTRUE(refresh_on_activation)) registered_dataset <<- dataset
     }
 
     ## Dynamic renderUI() + updateSelectizeInput(server=TRUE) race on the
@@ -2896,11 +4731,15 @@ serverSideGeneSelector <- function(
     ## dropped. onFlushed fires right after R's flush but before the browser
     ## has processed the DOM update, so it's necessary but not sufficient.
     ## Sending the same update again after small timed delays ensures at least
-    ## one lands after the binding exists. The message is idempotent (same
-    ## choices, no selection), so duplicate sends are harmless.
-    session$onFlushed(send_update, once = TRUE)
-    later::later(send_update, delay = 0.3)
-    later::later(send_update, delay = 1.0)
+    ## one lands after the binding exists. Preserve any selection made between
+    ## retries so a delayed choices update cannot clear newer browser state.
+    if (isTRUE(retry)) {
+      session$onFlushed(send_update, once = TRUE)
+      later::later(function() send_update(TRUE), delay = 0.3)
+      later::later(function() send_update(TRUE), delay = 1.0)
+    } else {
+      later::later(function() send_update(TRUE), delay = 0.3)
+    }
   })
 }
 
@@ -2965,12 +4804,66 @@ filterSelectionByHiddenGroups <- function(
   selection[keep, , drop = FALSE]
 }
 
+viewerPersistentSelection <- function(selection, dataset_context) {
+  if (
+    !is.null(selection) &&
+      (!is.list(selection) || !viewerDatasetContextEqual(
+        selection[["dataset_context"]], dataset_context
+      ))
+  ) {
+    return(NULL)
+  }
+  if (is.null(selection) || !length(selection[["x"]])) {
+    return(NULL)
+  }
+  x <- as.numeric(selection[["x"]])
+  y <- as.numeric(selection[["y"]])
+  result <- data.frame(
+    x = x, y = y, identifier = paste0(x, "-", y),
+    stringsAsFactors = FALSE
+  )
+  if (length(selection[["ids"]]) == nrow(result)) {
+    result[["selection_key"]] <- as.character(selection[["ids"]])
+  }
+  result
+}
+
+## Prepare only the compared variable and cohort labels for distribution plots.
+prepareSelectedCellDistribution <- function(
+  coordinates, metadata, selection, color_variable, coordinate_keys = FALSE
+) {
+  cells_df <- cbind(coordinates, metadata)
+  if (is.null(selection)) {
+    cells_df[["group"]] <- rep("not selected", nrow(cells_df))
+  } else {
+    cells_df <- dplyr::rename(cells_df, X1 = 1, X2 = 2)
+    identifier <- function() paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
+    selection_key <- if ("cell_barcode" %in% names(cells_df)) {
+      as.character(cells_df[["cell_barcode"]])
+    } else if (coordinate_keys) {
+      identifier()
+    } else {
+      as.character(seq_len(nrow(cells_df)))
+    }
+    cells_df[["group"]] <- factor(
+      ifelse(selectedCellMask(selection_key, cells_df[c("X1", "X2")], selection),
+             "selected", "not selected"),
+      levels = c("selected", "not selected")
+    )
+    if (identical(color_variable, "identifier")) cells_df[[color_variable]] <- identifier()
+    if (identical(color_variable, "selection_key")) cells_df[[color_variable]] <- selection_key
+  }
+  cells_df[, unique(c("group", color_variable)), drop = FALSE]
+}
+
 selectedCellMask <- function(selection_key, identifier, selection) {
-  if (length(selection_key) != length(identifier)) {
-    stop("Selection identity vectors must have equal length.", call. = FALSE)
+  coordinate_frame <- is.data.frame(identifier)
+  if (coordinate_frame) {
+    if (ncol(identifier) != 2L) stop("Selection coordinates must have two columns.", call. = FALSE)
+    if (length(selection_key) != nrow(identifier)) stop("Selection identity vectors must have equal length.", call. = FALSE)
   }
   if (is.null(selection) || !is.data.frame(selection)) {
-    return(rep(FALSE, length(identifier)))
+    return(rep(FALSE, length(selection_key)))
   }
   stable <- if ("selection_key" %in% colnames(selection)) {
     as.character(selection[["selection_key"]])
@@ -2981,12 +4874,370 @@ selectedCellMask <- function(selection_key, identifier, selection) {
   if (length(stable)) {
     return(as.character(selection_key) %in% stable)
   }
+  if (is.null(identifier)) {
+    return(rep(FALSE, length(selection_key)))
+  }
+  if (coordinate_frame) identifier <- paste0(identifier[[1L]], "-", identifier[[2L]])
+  if (length(selection_key) != length(identifier)) {
+    stop("Selection identity vectors must have equal length.", call. = FALSE)
+  }
   coordinates <- if ("identifier" %in% colnames(selection)) {
     as.character(selection[["identifier"]])
   } else {
     character()
   }
   as.character(identifier) %in% coordinates
+}
+
+cerebroRegisterInfo <- function(input, input_id, info) {
+  shiny::observeEvent(input[[input_id]], {
+    shiny::showModal(shiny::modalDialog(
+      info$text,
+      title = info$title,
+      easyClose = TRUE,
+      footer = NULL,
+      size = "l"
+    ))
+  })
+}
+
+cerebroSelectedCellsTableInfo <- function() {
+  list(
+    title = "Details of selected cells",
+    text = shiny::HTML(
+      "
+      Table containing meta data (some columns may be hidden, check the 'Column visibility' button) for cells selected in the plot using the box or lasso selection tool. If you want the table to contain all cells in the data set, you must select all cells in the plot. The table can be saved to disk in CSV or Excel format for further analysis.
+      <h4>Options</h4>
+      <b>Automatically format numbers</b><br>
+      When activated, columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>
+      <em>This feature does not work on columns that contain 'NA' values.</em><br>
+      <b>Highlight values with colours</b><br>
+      Similar to the automatic formatting option, when activated, CerebroNexus will look for known columns in the table (those that contain grouping variables), try to interpret column content, and use colours and other stylistic elements to facilitate quick interpretation of the values. If you prefer the table without colours and/or the identification does not work properly, you can simply deactivate this feature.<br>
+      <em>This feature does not work on columns that contain 'NA' values.</em><br>
+      <br>
+      <em>Columns can be re-ordered by dragging their respective header.</em>"
+    )
+  )
+}
+
+cerebroSelectedCellsPlotInfo <- function() {
+  list(
+    title = "Plot of selected cells",
+    text = shiny::p(
+      "Depending on the variable selected to colour cells in the dimensional reduction, this plot will show different things. If you select a categorical variable, e.g. 'sample' or 'cluster', you will get a bar plot showing which groups the cells selected with the box or lasso tool come from. Instead, if you select a continuous variable, e.g. the number of transcripts (nUMI), you will see a violin/box plot showing the distribution of that variable in the selected vs. non-selected cells."
+    )
+  )
+}
+
+cerebroSelectedCellsTableUI <- function(prefix) {
+  shiny::fluidRow(cerebroBox(
+    title = shiny::tagList(
+      boxTitle("Table of selected cells"),
+      cerebroInfoButton(paste0(prefix, "_details_selected_cells_table_info"))
+    ),
+    shiny::tagList(
+      shinyWidgets::materialSwitch(
+        inputId = paste0(
+          prefix,
+          "_details_selected_cells_table_number_formatting"
+        ),
+        label = "Automatically format numbers:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(
+          prefix,
+          "_details_selected_cells_table_color_highlighting"
+        ),
+        label = "Highlight values with colours:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      DT::dataTableOutput(paste0(prefix, "_details_selected_cells_table"))
+    )
+  ))
+}
+
+cerebroSelectedCellsPlotUI <- function(prefix, choices) {
+  shiny::fluidRow(cerebroBox(
+    title = shiny::tagList(
+      boxTitle("Plot of selected cells"),
+      cerebroInfoButton(paste0(prefix, "_details_selected_cells_plot_info"))
+    ),
+    shiny::tagList(
+      shiny::selectInput(
+        paste0(prefix, "_selected_cells_plot_select_variable"),
+        label = "Variable to compare:",
+        choices = choices
+      ),
+      plotly::plotlyOutput(paste0(prefix, "_details_selected_cells_plot"))
+    )
+  ))
+}
+
+cerebroSelectedCellsTable <- function(
+  cells_df,
+  empty_data,
+  selection,
+  fallback_key = c("row", "identifier"),
+  number_formatting = TRUE,
+  color_highlighting = TRUE,
+  download_file_name
+) {
+  empty_table <- function() {
+    prepareEmptyTable(empty_data[0, , drop = FALSE])
+  }
+  if (is.null(selection)) {
+    return(empty_table())
+  }
+
+  fallback_key <- match.arg(fallback_key)
+  selection_key <- if ("cell_barcode" %in% colnames(cells_df)) {
+    as.character(cells_df[["cell_barcode"]])
+  } else {
+    as.character(seq_len(nrow(cells_df)))
+  }
+  stable_selection <- is.data.frame(selection) &&
+    "selection_key" %in% colnames(selection) &&
+    any(!is.na(selection[["selection_key"]]) &
+      nzchar(as.character(selection[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[[1L]], "-", cells_df[[2L]])
+  } else {
+    NULL
+  }
+  if (!stable_selection && identical(fallback_key, "identifier")) {
+    selection_key <- identifier
+  }
+  keep <- selectedCellMask(selection_key, identifier, selection)
+  metadata_columns <- setdiff(seq_len(ncol(cells_df)), 1:2)
+  cells_df <- cells_df[keep, metadata_columns, drop = FALSE]
+  if (!nrow(cells_df)) {
+    return(empty_table())
+  }
+  if ("cell_barcode" %in% colnames(cells_df)) {
+    cells_df <- cells_df[, c(
+      "cell_barcode",
+      setdiff(colnames(cells_df), "cell_barcode")
+    ), drop = FALSE]
+  }
+  prettifyTable(
+    cells_df,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Brtlip",
+    show_buttons = TRUE,
+    number_formatting = number_formatting,
+    color_highlighting = color_highlighting,
+    hide_long_columns = TRUE,
+    download_file_name = download_file_name
+  )
+}
+
+cerebroSelectedCellsPlot <- function(
+  cells_df,
+  selection,
+  color_variable,
+  fallback_key = c("row", "identifier")
+) {
+  fallback_key <- match.arg(fallback_key)
+  cells_df <- prepareSelectedCellDistribution(
+    cells_df[, 1:2, drop = FALSE],
+    cells_df[, -(1:2), drop = FALSE], selection, color_variable,
+    coordinate_keys = identical(fallback_key, "identifier")
+  )
+
+  if (is.factor(cells_df[[color_variable]]) ||
+      is.character(cells_df[[color_variable]])) {
+    cells_df <- cells_df[cells_df[["group"]] == "selected", , drop = FALSE]
+    if (nrow(cells_df)) {
+      cells_df <- cells_df %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(color_variable))) %>%
+        dplyr::tally() %>%
+        dplyr::ungroup()
+    } else {
+      group_levels <- if (color_variable %in% getGroups()) {
+        getGroupLevels(color_variable)
+      } else {
+        unique(getMetaData()[[color_variable]])
+      }
+      cells_df <- data.frame(group = group_levels, n = 0) %>%
+        dplyr::rename(!!color_variable := group)
+    }
+    colors_for_groups <- assignColorsToGroups(cells_df, color_variable)
+    cells_df[[1L]] <- as.character(cells_df[[1L]])
+    plot <- plotly::plot_ly(
+      cells_df,
+      x = ~cells_df[[1L]],
+      y = ~cells_df[[2L]],
+      type = "bar",
+      color = ~cells_df[[1L]],
+      colors = colors_for_groups,
+      source = "subset",
+      showlegend = FALSE,
+      hoverinfo = "y"
+    )
+    y_axis_title <- "Number of cells"
+  } else {
+    cells_df <- cells_df[, c("group", color_variable), drop = FALSE]
+    cells_df <- compactViolinData(cells_df, color_variable, "group")
+    plot <- plotly::plot_ly(
+      cells_df,
+      x = ~cells_df[["group"]],
+      y = ~cells_df[[color_variable]],
+      type = "violin",
+      box = list(visible = FALSE),
+      meanline = list(visible = FALSE),
+      color = ~cells_df[[1L]],
+      colors = stats::setNames(
+        c("#e74c3c", "#7f8c8d"),
+        c("selected", "not selected")
+      ),
+      source = "subset",
+      showlegend = FALSE,
+      hoverinfo = "y",
+      marker = list(size = 5)
+    )
+    plot <- addExactViolinSummary(plot, cells_df)
+    y_axis_title <- colnames(cells_df)[[2L]]
+  }
+
+  plot %>%
+    plotly::layout(
+      title = "",
+      xaxis = list(title = "", mirror = TRUE, showline = TRUE),
+      yaxis = list(
+        title = y_axis_title,
+        tickformat = ",.0f",
+        hoverformat = ",.0f",
+        mirror = TRUE,
+        showline = TRUE
+      ),
+      dragmode = "lasso",
+      hovermode = "compare"
+    ) %>%
+    cerebro_plotly_toolbar()
+}
+
+cerebroProjectionInfo <- function() {
+  list(
+    title = "Dimensional reduction",
+    text = shiny::HTML(
+      "
+      Interactive projection of cells into 2-dimensional space based on their expression profile.
+      <ul>
+        <li>Both tSNE and UMAP are frequently used algorithms for dimensional reduction in single cell transcriptomics. While they generally allow to make similar conclusions, some differences exist between the two (please refer to Google and/or literature, such as Becht E. et al., Dimensionality reduction for visualizing single-cell data using UMAP. Nature Biotechnology, 2018, 37, 38-44).</li>
+        <li>Cells can be coloured by the sample they came from, the cluster they were assigned, the number of transcripts or expressed genes, percentage of mitochondrial and ribosomal gene expression, an apoptotic score (calculated based on the expression of few marker genes; more info in the 'Sample info' tab on the left), or cell cycle status (determined using the Seurat and Cyclone method).</li>
+        <li>Confidence ellipses show the 95% confidence regions.</li>
+        <li>Samples and clusters can be removed from the plot individually to highlight a contrast of interest.</li>
+        <li>Point size, point opacity, and the percentage of displayed cells can be changed in Settings.</li>
+      </ul>
+      The plot is interactive (drag and zoom) but depending on the computer of the user and the number of cells displayed it can become very slow."
+    )
+  )
+}
+
+registerCellViewPointBorder <- function(output, prefix) {
+  output_id <- paste0(prefix, "_point_border_UI")
+  output[[output_id]] <- shiny::renderUI({
+    shiny::checkboxInput(
+      inputId = paste0(prefix, "_point_border"),
+      label = "Draw border around cells",
+      value = FALSE
+    )
+  })
+  shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
+}
+
+cerebroResultTableControls <- function(prefix, results_df, grouped) {
+  shiny::fluidRow(
+    shiny::column(
+      12,
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_filter_switch"),
+        label = "Show results for all subgroups (no pre-filtering):",
+        value = FALSE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_number_formatting"),
+        label = "Automatically format numbers:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      ),
+      shinyWidgets::materialSwitch(
+        inputId = paste0(prefix, "_table_color_highlighting"),
+        label = "Highlight values with colours:",
+        value = TRUE,
+        status = "primary",
+        inline = TRUE
+      )
+    ),
+    shiny::column(12, shiny::conditionalPanel(
+      paste0("!input.", prefix, "_table_filter_switch"),
+      cerebroResultSubgroupUI(results_df, FALSE, grouped,
+        paste0(prefix, "_table_select_group_level"))
+    )),
+    shiny::column(12, DT::dataTableOutput(paste0(prefix, "_table")))
+  )
+}
+
+cerebroResultSubgroupUI <- function(results_df, show_all, grouped, input_id) {
+  if (isTRUE(show_all) || !isTRUE(grouped)) {
+    return(shiny::fluidRow())
+  }
+  available_groups <- if (is.factor(results_df[[1L]])) {
+    levels(results_df[[1L]])
+  } else {
+    unique(as.character(results_df[[1L]]))
+  }
+  shiny::fluidRow(shiny::column(
+    12,
+    shiny::selectInput(
+      input_id,
+      label = "Filter results for subgroup:",
+      choices = available_groups
+    )
+  ))
+}
+
+cerebroFilterResultRows <- function(results_df, show_all, grouped, selected) {
+  if (isTRUE(show_all) || !isTRUE(grouped)) {
+    return(results_df)
+  }
+  results_df[results_df[[1L]] == selected, , drop = FALSE]
+}
+
+cerebroResultTable <- function(
+  results_df,
+  download_file_name,
+  number_formatting = TRUE,
+  color_highlighting = TRUE,
+  hide_long_columns = TRUE,
+  columns_hide = NULL,
+  columns_percentage = NULL
+) {
+  if (!nrow(results_df)) {
+    return(prepareEmptyTable(as.data.frame(results_df)[0, , drop = FALSE]))
+  }
+  prettifyTable(
+    results_df,
+    filter = list(position = "top", clear = TRUE),
+    dom = "Bfrtlip",
+    show_buttons = TRUE,
+    number_formatting = number_formatting,
+    color_highlighting = color_highlighting,
+    hide_long_columns = hide_long_columns,
+    columns_hide = columns_hide,
+    columns_percentage = columns_percentage,
+    download_file_name = download_file_name,
+    page_length_default = 20,
+    page_length_menu = c(20, 50, 100)
+  )
 }
 
 ##----------------------------------------------------------------------------##
@@ -3005,6 +5256,20 @@ selectedCellMask <- function(selection_key, identifier, selection) {
 ## names_for_method: trajectory names for `method` in the current dataset
 ##   (getNamesOfTrajectories(method)); pass character(0) when method is absent.
 ##----------------------------------------------------------------------------##
+viewerSupportedTrajectoryMethods <- function(available_methods) {
+  available_methods <- unique(as.character(available_methods))
+  available_methods[
+    !is.na(available_methods) &
+      nzchar(available_methods) &
+      available_methods %in%
+        c(
+          "monocle2",
+          "marker_guided",
+          "illustrative"
+        )
+  ]
+}
+
 trajectorySelectionValid <- function(
   method,
   name,

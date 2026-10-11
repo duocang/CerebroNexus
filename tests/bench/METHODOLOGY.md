@@ -95,3 +95,28 @@ Rscript tests/bench/src/41_draw_figures.R
 ```
 
 Set `BENCH_KEEP=1` to retain the unique scratch directory for diagnosis. Set `BENCH_SOURCES_EXTRA=human_pfc_mssm` to include the opt-in 4.1-million-cell source, or `BENCH_SOURCES_ONLY=mouse_brain_e18` to limit a diagnostic run to one configured source. `BENCH_SCRATCH_PARENT` selects a parent directory; the harness always creates and deletes its own marked child rather than deleting a caller-provided path.
+
+
+## Harness design and retained evidence
+
+Keep resource planning separate from measurement. Stage outputs and validate
+source/value fingerprints, required reports and figures before publishing an
+immutable run; update the current-run pointer only after successful publication.
+This protects the previous result when planning, measurement or publication
+fails. Small recorded tables used by installed documentation live in
+`inst/extdata/benchmarks/`; scripts and large/raw run collections remain here.
+
+For the historical one-million mouse preparation, the public 10x E18 matrix
+contains 1,306,127 barcodes and 27,998 genes. The workflow selects one million
+evenly spaced cells, stores integer counts with BPCells, uses a 50,000-cell
+sketch with seed 123, normalizes, finds variable features, computes 30 PCs,
+neighbors, clusters (resolution 1) and UMAP, then projects to all selected cells.
+The Seurat and Cerebro sidecars are distinct artifacts. Thin RDS/qs2 variants
+reuse the same Cerebro sidecar; checksum validation remains part of hydrated
+reads. `prepare_viewer_1m_data.R` is the executable preparation workflow.
+
+Server hot-path tests measure metadata filtering, canonical indexing, expression
+reads and serialization independently from browser work. Test requested-order
+and value equivalence first. Use `Rprof()`/allocation diagnostics only in separate
+instrumented runs; do not pool their elapsed times with uninstrumented browser
+results. Keep source SHAs, raw rounds and timer resolution with summaries.

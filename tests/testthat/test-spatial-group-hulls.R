@@ -80,5 +80,5 @@ test_that("the shared cell-view engine consumes and draws Spatial hulls", {
   )
   expect_match(engine, "function singleHulls", fixed = TRUE)
   expect_match(engine, "function drawHulls", fixed = TRUE)
-  expect_match(engine, "drawHulls(p);", fixed = TRUE)
+  expect_match(engine, "drawHulls(p, underlay);", fixed = TRUE)
 })

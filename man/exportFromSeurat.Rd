@@ -19,6 +19,9 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -85,6 +88,8 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   travels with it; the Shiny runtime re-resolves paths via
   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
   parent directory (step 7.3 runtime attach).
+  Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
+  a temporary block-written HDF5 file instead of a full dense realization.
   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
   \code{<stem>.h5}) and tags the backend with that relative location. The
@@ -111,6 +116,16 @@ concurrent writers remain outside this multi-path transaction guarantee.
 Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 attributes, and security labels remain the deployment system's
 responsibility on every platform.}
+
+\item{codec}{Serialization codec for the CRB payload. Defaults to
+\code{"qs2"}; use \code{"rds"} when direct compatibility with
+\code{readRDS()} is required.}
+
+\item{viewer_binary}{Build the derived Viewer Pack \code{"auto"}matically
+for large datasets, \code{"always"}, or \code{"never"}.}
+
+\item{viewer_binary_threshold}{Dataset-level cell threshold used by
+\code{viewer_binary = "auto"}.}
 
 \item{spatial_images}{Optional named list mapping Seurat image names to named
 image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.

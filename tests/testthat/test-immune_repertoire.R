@@ -55,6 +55,16 @@ test_that("Clonal UMAP forwards the shared point-size unit unchanged", {
   expect_match(viz, "point_size = point_size", fixed = TRUE)
 })
 
+test_that("default abundance bypasses scRepertoire cell expansion", {
+  viz <- paste(
+    readLines(file.path(shiny_root, "immune_repertoire", "visualizations.R")),
+    collapse = "\n"
+  )
+
+  expect_match(viz, "ir_clonal_abundance_counts", fixed = TRUE)
+  expect_match(viz, "ir_clonal_abundance_plotly", fixed = TRUE)
+})
+
 test_that("immune_repertoire UI defines correct tabName", {
   ui_file <- file.path(shiny_root, "immune_repertoire", "UI.R")
   skip_if_not(file.exists(ui_file))
@@ -64,7 +74,7 @@ test_that("immune_repertoire UI defines correct tabName", {
 
 test_that("example.crb contains real immune repertoire data", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   expect_true(is.list(ir))
   expect_true(length(ir) > 0)
@@ -81,7 +91,7 @@ test_that("example.crb contains real immune repertoire data", {
 
 test_that("example.crb IR barcodes align with cell metadata", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   ir_bc <- unlist(lapply(ir, function(df) df$barcode), use.names = FALSE)
@@ -98,7 +108,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
   # for the example data set, so the Group by dropdown is populated regardless
   # of which columns a producer embedded in the IR table.
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   groups <- crb$getGroups()
@@ -122,7 +132,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
 
 test_that("example.crb IR contains both TCR and BCR clonotypes", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   expect_true(grepl("TR[AB]", all_ct)) # TCR present
@@ -131,7 +141,7 @@ test_that("example.crb IR contains both TCR and BCR clonotypes", {
 
 test_that("example.crb IR has TCR chains detectable from CTgene", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   has_tcr <- grepl("TRA", all_ct) || grepl("TRB", all_ct)
@@ -378,7 +388,7 @@ test_that("ir_bindCache keeps only global cache keys centralized", {
 
 test_that("example.crb preserves core data fields", {
   skip_if_not(file.exists(example_crb))
-  crb <- readRDS(example_crb)
+  crb <- readCerebro(example_crb)
   expect_true(!is.null(crb$getMetaData()))
   expect_true(nrow(crb$getMetaData()) > 0)
   expect_true(!is.null(crb$experiment))
@@ -435,6 +445,56 @@ test_that("Clonal UMAP does not depend on the hidden Clone call control", {
   expect_match(block, 'clone_call <- "gene"')
   expect_no_match(block, "ir_params\\(\\)\\$cloneCall")
   expect_no_match(block, "input\\$ir_cloneCall")
+})
+
+test_that("Clonal UMAP waits for its raw grouping input", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  skip_if_not(file.exists(viz))
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "output\\$ir_ui_clonalUMAP <- renderUI\\(\\{[\\s\\S]*?output\\[\\[\"ir_selection_status_UI\"\\]\\]",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_length(block, 1)
+  expect_match(
+    block,
+    'group_by <- input\\[\\["ir_p_umap_group_by"\\]\\]'
+  )
+  expect_match(block, "req\\(!is.null\\(group_by\\)\\)")
+  expect_no_match(block, 'ir_param\\("ir_p_umap_group_by"')
+})
+
+test_that("Clonal projection reuses grouped renderer data without placeholder IDs", {
+  viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
+  content <- paste(readLines(viz), collapse = "\n")
+  block <- regmatches(
+    content,
+    regexpr(
+      "## Draw the non-faceted Clonal UMAP[\\s\\S]*?## ---- Clonal UMAP selection summaries",
+      content,
+      perl = TRUE
+    )
+  )
+  expect_match(block, "split_output = TRUE", fixed = TRUE)
+  expect_match(block, "trace_codes <- render_data$trace_codes", fixed = TRUE)
+  expect_match(block, "x = render_data$x", fixed = TRUE)
+  expect_match(block, "y = render_data$y", fixed = TRUE)
+  expect_no_match(block, "bg <- df[", fixed = TRUE)
+  expect_no_match(block, "fg <- df[", fixed = TRUE)
+  expect_match(block, "ir_projection_axis_names\\(projection\\)")
+  expect_match(block, "deferred_aux = deferred_aux", fixed = TRUE)
+  expect_match(block, "}, priority = 1000)", fixed = TRUE)
+  expect_match(
+    block,
+    "deferred_selection_lengths = trace_lengths",
+    fixed = TRUE
+  )
+  expect_no_match(block, "placeholder_keys", fixed = TRUE)
+  expect_no_match(block, "selection_key = placeholder_keys", fixed = TRUE)
 })
 
 test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {
@@ -592,6 +652,102 @@ test_that("tab-dependent label uses a NULL-safe %in% guard", {
     perl = TRUE,
     info = "group_label branch tests `tab %in% c(...)` without a !is.null guard"
   )
+})
+
+test_that("IR cold landing defers drawer controls and metadata hydration", {
+  settings_file <- file.path(shiny_root, "immune_repertoire", "settings.R")
+  visualizations_file <- file.path(
+    shiny_root,
+    "immune_repertoire",
+    "visualizations.R"
+  )
+  ui_file <- file.path(shiny_root, "immune_repertoire", "UI.R")
+  drawer_file <- file.path(shiny_root, "www", "settings_drawer.js")
+  description_file <- file.path(shiny_root, "..", "..", "DESCRIPTION")
+  skip_if_not(file.exists(settings_file))
+  skip_if_not(file.exists(visualizations_file))
+  skip_if_not(file.exists(ui_file))
+  skip_if_not(file.exists(drawer_file))
+  skip_if_not(file.exists(description_file))
+  settings <- paste(readLines(settings_file, warn = FALSE), collapse = "\n")
+  visualizations <- paste(
+    readLines(visualizations_file, warn = FALSE),
+    collapse = "\n"
+  )
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  drawer <- paste(readLines(drawer_file, warn = FALSE), collapse = "\n")
+  description <- read.dcf(description_file)
+
+  expect_match(settings, 'input[["ir_more_render_request"]]', fixed = TRUE)
+  expect_gte(
+    lengths(regmatches(
+      settings,
+      gregexpr("req(ir_settings_requested())", settings, fixed = TRUE)
+    )),
+    6L
+  )
+
+  filter_start <- regexpr(
+    "ir_umap_cells_to_show <- reactive({",
+    settings,
+    fixed = TRUE
+  )
+  filter_end <- regexpr(
+    "## ---- Info dialogs",
+    settings,
+    fixed = TRUE
+  )
+  expect_gt(filter_start, 0L)
+  expect_gt(filter_end, filter_start)
+  filter_source <- substr(settings, filter_start, filter_end - 1L)
+  early_return <- regexpr(
+    "if (!length(active_filters))",
+    filter_source,
+    fixed = TRUE
+  )
+  metadata_read <- regexpr("getMetaData()", filter_source, fixed = TRUE)
+  expect_gt(early_return, 0L)
+  expect_gt(metadata_read, early_return)
+
+  expect_no_match(
+    visualizations,
+    '!is.null(input[["ir_clonalUMAP_group_labels"]])',
+    fixed = TRUE
+  )
+  expect_no_match(
+    visualizations,
+    '!is.null(input[["ir_clonalUMAP_point_border"]])',
+    fixed = TRUE
+  )
+  expect_match(
+    visualizations,
+    'show_all <- ir_param("ir_p_umap_show_all", TRUE)',
+    fixed = TRUE
+  )
+  expect_no_match(
+    visualizations,
+    '!is.null(show_all)',
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    'cerebroCellViewOutput("ir_clonalUMAP_projection")',
+    fixed = TRUE
+  )
+  expect_match(
+    visualizations,
+    'receptor <- ir_param("ir_p_umap_receptor", {',
+    fixed = TRUE
+  )
+  expect_match(
+    visualizations,
+    'projection <- ir_param("ir_p_umap_projection", {',
+    fixed = TRUE
+  )
+  expect_match(ui, "data-cerebro-drawer-sticky-in-page", fixed = TRUE)
+  expect_match(drawer, "drawerHomePageIsActive", fixed = TRUE)
+  expect_match(description[[1L, "Imports"]], "scRepertoire", fixed = TRUE)
+  expect_false(grepl("scRepertoire", description[[1L, "Suggests"]], fixed = TRUE))
 })
 
 test_that("Length renderer only facets when a grouping is selected", {

@@ -103,6 +103,18 @@ While iterating on the package, use `devtools::test()` — it picks up edits to 
 
 ## Pitfalls and FAQ
 
+### Linux authentication deployment permissions
+
+`test-viewer-auth-runtime.R` covers secret source precedence, content and
+file-type errors, and the exact POSIX `0600` requirement. POSIX checks are
+explicitly skipped on Windows; fault-injected read failures are not presented
+as cross-UID integration coverage.
+
+See the [authentication guide](../vignettes/control_access_to_cerebro_with_a_login_page.Rmd)
+for deployment and Windows-to-Linux transfer limitations. Generated Apps retain
+a brief offline checklist.
+
+
 ### How `inst_dir` is resolved in `test-app-inst.R`
 
 ```r
@@ -135,7 +147,7 @@ If you edit `inst/` and want the change reflected:
 Error in <fn>: attempt to apply non-function
 ```
 
-The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms` (often with a misleading sidekick `the fixed layout requires the slimscroll plugin!` JS warning — that one is harmless AdminLTE noise).
+The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms`.
 
 Whenever you add or rename methods on `Cerebro`, regenerate the example fixture by re-exporting from `inst/extdata/examples/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
 

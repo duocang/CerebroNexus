@@ -135,10 +135,24 @@ cv_pane <- function(key) {
     ## width/height transition for free, instead of being re-measured per frame.
     div(
       class = "cv-canvas-wrap",
-      tags$canvas(id = paste0("cv-cv-", low)),
+      tags$canvas(
+        id = paste0("cv-cv-", low),
+        role = "img",
+        `aria-label` = "Interactive linked cell plot",
+        `aria-describedby` = paste0("cv-description-", low)
+      ),
+      tags$span(
+        id = paste0("cv-description-", low),
+        class = "sr-only",
+        "The linked cell plot is waiting for data."
+      ),
       ## Read-only overview: the whole space in miniature with a frame marking
       ## the visible part. Only shown while the panel is zoomed or panned.
-      tags$canvas(class = "cv-mini", id = paste0("cv-mini-", low)),
+      tags$canvas(
+        class = "cv-mini",
+        id = paste0("cv-mini-", low),
+        `aria-hidden` = "true"
+      ),
       ## Inside the wrapper, so the coordinates the hover code computes (which
       ## are relative to the CANVAS) are the coordinates this is positioned by.
       ## As a child of the pane it was offset by the header's height.
@@ -170,7 +184,7 @@ tab_coordinated_views <- tabItem(
       class = "cv-topbar",
       div(
         class = "cv-ctl",
-        tags$label("Colour by"),
+        tags$label("Colour by", `for` = "cv-pick-color"),
         tags$select(id = "cv-pick-color")
       ),
       ## Projections are a multi-select. Every selected embedding receives its
@@ -179,7 +193,7 @@ tab_coordinated_views <- tabItem(
       div(
         class = "cv-ctl cv-multiselect-ctl",
         id = "cv-proj-ctl",
-        tags$label("Projection"),
+        tags$label("Projection", `for` = "cv-pick-proj"),
         tags$select(id = "cv-pick-proj", multiple = "multiple")
       ),
       ## Spatial sections are a multi-select. Every selected section receives an
@@ -294,6 +308,18 @@ tab_coordinated_views <- tabItem(
             `data-mode` = "bands",
             tags$span("Expansion", tags$br(), "bands")
           )
+        )
+      ),
+      ## Linked hover stays beside the layout controls. Disabling it leaves
+      ## zoom, brushing and selection available.
+      div(
+        class = "cv-linked-hover",
+        shinyWidgets::materialSwitch(
+          inputId = "cv-hover",
+          label = "Show linked cell hover:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
         )
       ),
       ## Share and Settings stay together as the right-aligned action group.
@@ -583,7 +609,7 @@ tab_coordinated_views <- tabItem(
     ## selected Spatial sections, Trekker and Clonal. cell_views.js
     ## assigns spaces, hides unused slots, creates extras as needed, and wraps
     ## panels automatically while keeping each canvas at least 300px wide.
-    div(
+    div(class = "cerebro-page-loading-region", div(
       class = "cv-panes",
       cv_pane("A"),
       cv_pane("B"),
@@ -622,7 +648,7 @@ tab_coordinated_views <- tabItem(
           div(class = "cv-card-body", id = "cv-card-body")
         )
       )
-    ),
+    )),
 
     ## Selection results appear only after there is something to show, leaving
     ## the initial workspace entirely available to the visualisations.

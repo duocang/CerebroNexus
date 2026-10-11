@@ -84,6 +84,69 @@ cerebro_plotly_toolbar <- function(
 ##----------------------------------------------------------------------------##
 ## Violin plots with plotly, e.g. for expression metrics.
 ##----------------------------------------------------------------------------##
+compactViolinData <- function(
+  table,
+  metric,
+  coloring_variable,
+  max_points_per_group = 4096L
+) {
+  previous <- attr(table, "cerebro_violin_summary", exact = TRUE)
+  if (is.list(previous) && identical(previous$metric, metric) &&
+      identical(previous$group, coloring_variable)) return(table)
+  values <- table[[metric]]
+  groups <- table[[coloring_variable]]
+  valid <- is.finite(values) & !is.na(groups)
+  rows_by_group <- split(which(valid), groups[valid], drop = TRUE)
+  summaries <- lapply(rows_by_group, function(rows) {
+    x <- values[rows]
+    q <- unname(stats::quantile(x, c(.25, .5, .75), type = 7))
+    iqr <- q[3L] - q[1L]
+    data.frame(group = as.character(groups[rows[1L]]), n = length(x),
+      mean = mean(x), q1 = q[1L], median = q[2L], q3 = q[3L],
+      lowerfence = min(x[x >= q[1L] - 1.5 * iqr]),
+      upperfence = max(x[x <= q[3L] + 1.5 * iqr]),
+      minimum = min(x), maximum = max(x),
+      approximate = length(x) > max_points_per_group)
+  })
+  compact <- lapply(rows_by_group, function(rows) {
+    if (length(rows) <= max_points_per_group) {
+      return(table[rows, c(coloring_variable, metric), drop = FALSE])
+    }
+    # Mid-quantiles approximate density on the original measurement scale.
+    # Never shift/rescale observations to force a target mean.
+    sampled <- unname(stats::quantile(values[rows],
+      (seq_len(max_points_per_group) - .5) / max_points_per_group, type = 8))
+    result <- table[rep(rows[1L], max_points_per_group),
+      c(coloring_variable, metric), drop = FALSE]
+    result[[metric]] <- sampled
+    result
+  })
+  result <- if (length(compact)) do.call(rbind, compact) else
+    table[integer(), c(coloring_variable, metric), drop = FALSE]
+  rownames(result) <- NULL
+  attr(result, "cerebro_violin_summary") <- list(
+    version = 1L, metric = metric, group = coloring_variable,
+    stats = if (length(summaries)) do.call(rbind, summaries) else data.frame())
+  result
+}
+
+# The density is approximate for large groups; boxes and means always use full
+# finite observations. Suppress Plotly's statistics derived from the density.
+addExactViolinSummary <- function(plot, table) {
+  summary <- attr(table, "cerebro_violin_summary", exact = TRUE)$stats
+  if (is.null(summary) || !nrow(summary)) return(plot)
+  plotly::add_trace(plot, inherit = FALSE, type = "box",
+    x = summary$group, q1 = summary$q1, median = summary$median, q3 = summary$q3,
+    lowerfence = summary$lowerfence, upperfence = summary$upperfence,
+    mean = summary$mean, boxmean = TRUE, boxpoints = FALSE, width = .12,
+    fillcolor = "rgba(255,255,255,0.5)", line = list(color = "#555555"),
+    name = "Exact summary", showlegend = FALSE,
+    text = paste0("n=", summary$n, "; min=", signif(summary$minimum, 6),
+      "; max=", signif(summary$maximum, 6),
+      ifelse(summary$approximate, "; density: quantile approximation", "")),
+    hoverinfo = "all")
+}
+
 plotlyViolin <- function(
   table,
   metric,
@@ -101,27 +164,28 @@ plotlyViolin <- function(
     y_tickformat <- ",.0f"
     y_hoverformat <- ",.0f"
   }
+  table <- compactViolinData(table, metric, coloring_variable)
   ##
-  plot <- table %>%
-    plotly::plot_ly(
-      x = ~ .[[coloring_variable]],
-      y = ~ .[[metric]],
-      type = "violin",
-      box = list(
-        visible = TRUE
-      ),
-      meanline = list(
-        visible = TRUE
-      ),
-      color = ~ .[[coloring_variable]],
-      colors = colors,
-      source = "subset",
-      showlegend = FALSE,
-      hoverinfo = "y",
-      marker = list(
-        size = 5
-      )
-    ) %>%
+  plot <- plotly::plot_ly(
+    x = table[[coloring_variable]],
+    y = table[[metric]],
+    type = "violin",
+    box = list(
+      visible = FALSE
+    ),
+    meanline = list(
+      visible = FALSE
+    ),
+    color = table[[coloring_variable]],
+    colors = colors,
+    source = "subset",
+    showlegend = FALSE,
+    hoverinfo = "y",
+    marker = list(
+      size = 5
+    )
+  ) %>%
+    addExactViolinSummary(table) %>%
     plotly::layout(
       title = "",
       xaxis = cerebro_plotly_axis(title = "", mirror = FALSE),

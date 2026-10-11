@@ -43,6 +43,96 @@ HLA_BCR_CHAINS <- c("IGH", "IGK", "IGL")
 ## ---- Motif size guards (conservative; widen only with benchmarks) ------ ##
 HLA_MOTIF_MAX_BIN <- 2500L # unique CDR3 in one length bin
 HLA_MOTIF_MAX_TOTAL <- 20000L # unique CDR3 across all bins
+HLA_MOTIF_INITIAL_TARGET <- floor(HLA_MOTIF_MAX_TOTAL * 0.6)
+HLA_MOTIF_INITIAL_BIN_TARGET <- floor(HLA_MOTIF_MAX_BIN * 0.7)
+
+#' Choose a deterministic initial sample cohort for a large repertoire
+#'
+#' Keeps all samples when the complete repertoire fits the graph guard. For an
+#' atlas-scale repertoire, samples with the most unique CDR3s are added until a
+#' conservative target is reached. Per-sample counts deliberately overestimate
+#' the union, so shared clonotypes cannot push the result over the budget.
+#'
+#' @param segments Parsed receptor segments with `sample` and `cdr3` columns.
+#' @param samples Sample levels in display order.
+#' @param target Conservative sum-of-per-sample unique-CDR3 budget.
+#' @param max_total Hard all-cohort unique-CDR3 guard.
+#' @param bin_target Conservative per-length-bin budget.
+#' @param max_bin Hard per-length-bin guard.
+#' @return A character vector of selected sample levels.
+#' @keywords internal
+hla_choose_initial_samples <- function(
+  segments,
+  samples,
+  target = HLA_MOTIF_INITIAL_TARGET,
+  max_total = HLA_MOTIF_MAX_TOTAL,
+  bin_target = HLA_MOTIF_INITIAL_BIN_TARGET,
+  max_bin = HLA_MOTIF_MAX_BIN
+) {
+  samples <- as.character(samples)
+  if (
+    length(samples) == 0 ||
+      is.null(segments) ||
+      nrow(segments) == 0 ||
+      !all(c("sample", "cdr3") %in% colnames(segments))
+  ) {
+    return(samples)
+  }
+  unique_cdr3 <- unique(as.character(segments$cdr3))
+  if (
+    length(unique_cdr3) <= max_total &&
+      max(table(nchar(unique_cdr3))) <= max_bin
+  ) {
+    return(samples)
+  }
+  sample_values <- as.character(segments$sample)
+  if (anyNA(sample_values)) {
+    ## Preserve the existing NA-subsetting contract for incomplete metadata.
+    sample_cdr3 <- lapply(samples, function(sample) {
+      unique(as.character(segments$cdr3[sample_values == sample]))
+    })
+  } else {
+    ## Partition once instead of scanning every cell for every sample.
+    by_sample <- split(segments$cdr3, sample_values)
+    sample_cdr3 <- lapply(
+      by_sample[match(samples, names(by_sample))],
+      function(values) unique(as.character(values))
+    )
+  }
+  names(sample_cdr3) <- samples
+  counts <- vapply(sample_cdr3, length, integer(1))
+  ordered <- samples[order(-counts, samples)]
+  keep <- character(0)
+  total_used <- 0L
+  bins_used <- integer(0)
+  for (sample in ordered) {
+    sample_bins <- table(nchar(sample_cdr3[[sample]]))
+    bin_names <- union(names(bins_used), names(sample_bins))
+    next_bins <- stats::setNames(integer(length(bin_names)), bin_names)
+    next_bins[names(bins_used)] <- bins_used
+    next_bins[names(sample_bins)] <-
+      next_bins[names(sample_bins)] + as.integer(sample_bins)
+    if (
+      total_used + counts[[sample]] <= target &&
+        (length(next_bins) == 0 || max(next_bins) <= bin_target)
+    ) {
+      keep <- c(keep, sample)
+      total_used <- total_used + counts[[sample]]
+      bins_used <- next_bins
+    }
+  }
+  if (length(keep) == 0) {
+    ## Prefer the richest sample that fits the hard per-bin guard. If none do,
+    ## keep the sample with the smallest worst bin so the UI lands as close to
+    ## a drawable cohort as the source data permits.
+    worst_bin <- vapply(sample_cdr3, function(cdr3) {
+      if (length(cdr3) == 0) 0L else max(table(nchar(cdr3)))
+    }, integer(1))
+    eligible <- ordered[worst_bin[ordered] <= max_bin]
+    keep <- if (length(eligible)) eligible[1] else names(which.min(worst_bin))
+  }
+  samples[samples %in% keep]
+}
 HLA_MOTIF_MAX_RENDER <- 5000L # rendered nodes before physics is disabled
 
 ## Label for a CDR3 seen in more than one sample. Cross-sample recurrence is the
@@ -62,11 +152,78 @@ hla_detect_chains <- function(data) {
   if (is.null(data) || !is.list(data) || length(data) == 0) {
     return(character(0))
   }
-  all_ct <- unlist(lapply(data, function(df) {
+  all_ct <- unique(unlist(lapply(data, function(df) {
     if ("CTgene" %in% names(df)) as.character(df$CTgene) else character(0)
-  }))
+  }), use.names = FALSE))
   chains <- c(HLA_TCR_CHAINS, HLA_BCR_CHAINS)
   chains[vapply(chains, function(ch) any(grepl(ch, all_ct)), logical(1))]
+}
+
+#' Join cell metadata onto a named immune-repertoire list
+#'
+#' The metadata index is resolved once across every sample. Existing repertoire
+#' columns win, and the repertoire list name remains the structural sample id.
+#'
+#' @param data Named list of scRepertoire-style data.frames.
+#' @param metadata Cell metadata containing `cell_barcode`.
+#' @return `data` with missing metadata columns added by barcode.
+#' @keywords internal
+hla_annotate_ir_metadata <- function(data, metadata) {
+  if (is.null(data) || !is.list(data) || length(data) == 0) {
+    return(data)
+  }
+  has_metadata <- !is.null(metadata) &&
+    is.data.frame(metadata) &&
+    "cell_barcode" %in% colnames(metadata)
+  metadata_cols <- if (has_metadata) {
+    setdiff(colnames(metadata), "cell_barcode")
+  } else {
+    character(0)
+  }
+  eligible <- vapply(
+    data,
+    function(df) !is.null(df) && "barcode" %in% colnames(df),
+    logical(1)
+  )
+  sizes <- vapply(
+    seq_along(data),
+    function(i) if (eligible[[i]]) nrow(data[[i]]) else 0L,
+    integer(1)
+  )
+  indices <- if (has_metadata && any(eligible)) {
+    match(
+      unlist(lapply(data[eligible], `[[`, "barcode"), use.names = FALSE),
+      metadata$cell_barcode
+    )
+  } else {
+    integer(0)
+  }
+  ends <- cumsum(sizes)
+  starts <- ends - sizes + 1L
+  sample_names <- names(data)
+
+  out <- lapply(seq_along(data), function(i) {
+    df <- data[[i]]
+    if (is.null(df)) {
+      return(df)
+    }
+    if (has_metadata && eligible[[i]]) {
+      idx <- if (sizes[[i]] > 0L) {
+        indices[seq.int(starts[[i]], ends[[i]])]
+      } else {
+        integer(0)
+      }
+      for (col in setdiff(metadata_cols, colnames(df))) {
+        df[[col]] <- metadata[[col]][idx]
+      }
+    }
+    if (!is.null(sample_names) && nzchar(sample_names[[i]])) {
+      df$sample <- sample_names[[i]]
+    }
+    df
+  })
+  names(out) <- sample_names
+  out
 }
 
 #' Parse V / J / CDR3 for one chain out of scRepertoire CT* columns
@@ -85,61 +242,60 @@ hla_parse_ir_segments <- function(data, chain) {
   if (is.null(data) || length(data) == 0 || is.null(chain) || !nzchar(chain)) {
     return(NULL)
   }
-  # Positional (1-based) slot index of the chain matching `chain` in each cell's
-  # underscore-joined CT* string; NA when the chain is absent.
-  chain_slot_index <- function(ct_gene_vec) {
-    ct_gene_vec <- as.character(ct_gene_vec)
-    vapply(
-      strsplit(ct_gene_vec, "_", fixed = TRUE),
-      function(parts) {
-        first <- sub(";.*$", "", parts)
-        idx <- which(grepl(chain, first, fixed = TRUE) & first != "NA")
-        if (length(idx) == 0) NA_integer_ else idx[1]
-      },
-      integer(1)
-    )
+  # Keep this helper outside the sample callback: its closure must not retain
+  # each sample's temporary split vectors until a later garbage collection.
+  pull_token <- function(tokens, token_rows, size, prefix) {
+    hits <- which(grepl(paste0("^", chain, prefix), tokens))
+    hits <- hits[!duplicated(token_rows[hits])]
+    out <- rep(NA_character_, size)
+    out[token_rows[hits]] <- tokens[hits]
+    out
   }
-  # Pick each row's slot value from a CT* vector (split once, index per row).
-  pick_slot <- function(ct_vec, slot_idx) {
-    if (length(ct_vec) == 0) {
-      return(character(0))
-    }
-    split_all <- strsplit(as.character(ct_vec), "_", fixed = TRUE)
-    val <- mapply(
-      function(parts, i) {
-        if (is.na(i) || i > length(parts)) NA_character_ else parts[i]
-      },
-      split_all,
-      slot_idx,
-      SIMPLIFY = TRUE,
-      USE.NAMES = FALSE
-    )
-    val[is.na(val) | val == "NA" | !nzchar(val)] <- NA_character_
-    val
-  }
-  first_allele <- function(x) {
-    ifelse(is.na(x), NA_character_, sub(";.*$", "", x))
-  }
-
   rows <- lapply(data, function(df) {
     if (is.null(df) || !all(c("barcode", "CTgene", "CTaa") %in% colnames(df))) {
       return(NULL)
     }
-    slot_idx <- chain_slot_index(df$CTgene)
-    gene_seg <- first_allele(pick_slot(df$CTgene, slot_idx))
-    cdr3 <- first_allele(pick_slot(df$CTaa, slot_idx))
-    pull_token <- function(prefix) {
-      vapply(
-        strsplit(gene_seg, ".", fixed = TRUE),
-        function(toks) {
-          hit <- toks[grepl(paste0("^", chain, prefix), toks)]
-          if (length(hit) == 0) NA_character_ else hit[1]
-        },
-        character(1)
-      )
+    # Keep the existing zero-row input error; filtering nonempty inputs to
+    # zero matching receptors still returns NULL below.
+    if (nrow(df) == 0L) {
+      stop("non-character argument")
     }
-    v_gene <- pull_token("V")
-    j_gene <- pull_token("J")
+    # Flatten once and keep the first matching slot per input row.
+    # Row indices, rather than barcodes, preserve duplicate cells and order.
+    gene_parts <- strsplit(as.character(df$CTgene), "_", fixed = TRUE)
+    gene_lengths <- lengths(gene_parts)
+    gene_flat <- unlist(gene_parts, use.names = FALSE)
+    gene_rows <- rep.int(seq_along(gene_parts), gene_lengths)
+    gene_slots <- sequence(gene_lengths)
+    first_gene <- sub(";.*$", "", gene_flat)
+    hits <- which(grepl(chain, first_gene, fixed = TRUE) & first_gene != "NA")
+    hits <- hits[!duplicated(gene_rows[hits])]
+    if (length(hits) == 0L) {
+      return(NULL)
+    }
+    selected_rows <- gene_rows[hits]
+    selected_slots <- gene_slots[hits]
+    gene_seg <- first_gene[hits]
+
+    aa_parts <- strsplit(as.character(df$CTaa)[selected_rows], "_", fixed = TRUE)
+    aa_lengths <- lengths(aa_parts)
+    aa_flat <- unlist(aa_parts, use.names = FALSE)
+    aa_starts <- cumsum(c(1L, utils::head(aa_lengths, -1L)))
+    cdr3 <- rep(NA_character_, length(selected_rows))
+    has_aa <- selected_slots <= aa_lengths
+    aa_index <- aa_starts[has_aa] + selected_slots[has_aa] - 1L
+    cdr3[has_aa] <- aa_flat[aa_index]
+    cdr3[is.na(cdr3) | cdr3 == "NA" | !nzchar(cdr3)] <- NA_character_
+    # Normalize the raw slot before taking its first receptor, as before.
+    # A literal "NA;alternative" therefore remains the string "NA".
+    cdr3 <- sub(";.*$", "", cdr3)
+
+    token_parts <- strsplit(gene_seg, ".", fixed = TRUE)
+    token_lengths <- lengths(token_parts)
+    token_flat <- unlist(token_parts, use.names = FALSE)
+    token_rows <- rep.int(seq_along(token_parts), token_lengths)
+    v_gene <- pull_token(token_flat, token_rows, length(gene_seg), "V")
+    j_gene <- pull_token(token_flat, token_rows, length(gene_seg), "J")
     # V + CDR3 are required (they define the node key and the optional V split);
     # J is OPTIONAL. Requiring it is a paired-single-cell assumption: bulk
     # repertoire sources routinely report only a V family and the CDR3, and
@@ -149,7 +305,7 @@ hla_parse_ir_segments <- function(data, chain) {
     if (!any(keep)) {
       return(NULL)
     }
-    out <- df[keep, , drop = FALSE]
+    out <- df[selected_rows[keep], , drop = FALSE]
     out$v_gene <- v_gene[keep]
     out$j_gene <- j_gene[keep]
     out$cdr3 <- cdr3[keep]
@@ -170,7 +326,33 @@ hla_parse_ir_segments <- function(data, chain) {
     }
     df[, all_cols, drop = FALSE]
   })
-  out <- do.call(rbind, rows)
+  # Uniform atomic columns can be concatenated once. rbind.data.frame grows
+  # columns for each sample, repeatedly allocating and copying their contents.
+  columns <- lapply(seq_along(all_cols), function(j) lapply(rows, `[[`, j))
+  uniform <- all(vapply(rows, function(df) identical(class(df), "data.frame"), logical(1))) &&
+    all(vapply(columns, function(parts) {
+      first <- parts[[1]]
+      attrs <- attributes(first)
+      simple <- is.null(attrs) || ((identical(class(first), "factor") ||
+        identical(class(first), c("ordered", "factor"))) &&
+        setequal(names(attrs), c("levels", "class")))
+      typeof(first) %in% c("logical", "integer", "double", "complex", "character", "raw") &&
+        simple && all(vapply(parts, function(x)
+        identical(typeof(x), typeof(first)) && identical(attributes(x), attrs), logical(1)))
+    }, logical(1)))
+  if (uniform) {
+    out <- lapply(columns, function(parts) {
+      column <- unlist(lapply(parts, unclass), use.names = FALSE)
+      attributes(column) <- attributes(parts[[1]])
+      column
+    })
+    names(out) <- all_cols
+    out <- structure(out, class = "data.frame",
+      row.names = .set_row_names(sum(vapply(rows, nrow, integer(1)))))
+  } else {
+    # Preserve base coercion and attribute handling for heterogeneous metadata.
+    out <- do.call(rbind, c(rows, list(make.row.names = FALSE)))
+  }
   rownames(out) <- NULL
   out
 }
@@ -231,10 +413,30 @@ hla_process_length_group <- function(df) {
 
   # Single distance measure (Hamming); edge and adjacency use the SAME
   # threshold (== 1) so component membership and drawn edges never diverge.
-  dist_mat <- stringdist::stringdistmatrix(seqs, seqs, method = "hamming")
-  adj <- dist_mat == 1
-  diag(adj) <- FALSE
-  g <- igraph::graph_from_adjacency_matrix(adj, mode = "undirected")
+  # Small bins have too little work to amortize OpenMP worker startup. Keep
+  # larger bins on stringdist's configured thread count; distances are exact
+  # in either case and no process-wide option is changed.
+  dist_mat <- stringdist::stringdistmatrix(seqs, seqs, method = "hamming",
+    nthread = if (n <= 256L) 1L else getOption("sd_num_thread", 1L))
+  idx <- which(dist_mat == 1 & upper.tri(dist_mat), arr.ind = TRUE)
+  edges <- if (nrow(idx) == 0) {
+    NULL
+  } else {
+    data.frame(
+      from = node_ids[idx[, 1]],
+      to = node_ids[idx[, 2]],
+      stringsAsFactors = FALSE
+    )
+  }
+  g <- igraph::graph_from_data_frame(
+    if (is.null(edges)) {
+      data.frame(from = character(0), to = character(0))
+    } else {
+      edges
+    },
+    vertices = data.frame(name = node_ids),
+    directed = FALSE
+  )
   comps <- igraph::components(g)
 
   # Max pairwise Hamming distance within the component: how far apart its two
@@ -269,17 +471,6 @@ hla_process_length_group <- function(df) {
   df$motif_max_mismatch <- diam[comps$membership]
   df$motif_consensus <- consensus[comps$membership]
 
-  edges <- NULL
-  if (n > 1) {
-    idx <- which(dist_mat == 1 & upper.tri(dist_mat), arr.ind = TRUE)
-    if (nrow(idx) > 0) {
-      edges <- data.frame(
-        from = node_ids[idx[, 1]],
-        to = node_ids[idx[, 2]],
-        stringsAsFactors = FALSE
-      )
-    }
-  }
   list(df = df, edges = edges)
 }
 
@@ -417,6 +608,14 @@ hla_group_dist <- function(t, k) {
   out
 }
 
+.hla_cdr3_node_keys <- function(seg, by_v) {
+  if (isTRUE(by_v)) {
+    interaction(seg$v_gene, seg$cdr3, drop = TRUE, lex.order = TRUE)
+  } else {
+    factor(seg$cdr3)
+  }
+}
+
 #' Aggregate parsed segments into unique-CDR3 nodes carrying distributions
 #'
 #' Node key = unique CDR3 amino-acid string, or `(V gene, CDR3)` when `by_v` is
@@ -438,6 +637,7 @@ hla_group_dist <- function(t, k) {
 #'   call because these columns share one property that the plain mode destroys:
 #'   a node spanning BOTH values is the finding, not a tie to be broken.
 #' @param by_v When TRUE, aggregate with `(v_gene, cdr3)` as the node key.
+#' @param .keys Precomputed node keys for internal graph construction.
 #' @return A per-node data.frame, or NULL when `seg` is empty.
 #' @keywords internal
 hla_aggregate_cdr3_nodes <- function(
@@ -445,7 +645,8 @@ hla_aggregate_cdr3_nodes <- function(
   meta_cols = character(0),
   context_col = NULL,
   by_v = FALSE,
-  context_summary = hla_context_summary
+  context_summary = hla_context_summary,
+  .keys = NULL
 ) {
   if (is.null(seg) || nrow(seg) == 0) {
     return(NULL)
@@ -454,11 +655,7 @@ hla_aggregate_cdr3_nodes <- function(
   # One group id per row, and the row indices behind each group. Splitting the
   # INDICES, not `seg` itself, is deliberate: splitting the wide data.frame
   # copies every column of every group and cost more than the tallies do.
-  keys <- if (isTRUE(by_v)) {
-    interaction(seg$v_gene, seg$cdr3, drop = TRUE, lex.order = TRUE)
-  } else {
-    factor(seg$cdr3)
-  }
+  keys <- if (is.null(.keys)) .hla_cdr3_node_keys(seg, by_v) else .keys
   g <- as.integer(keys)
   k <- nlevels(keys)
   idx <- split(seq_len(nrow(seg)), keys, drop = FALSE)
@@ -708,12 +905,26 @@ hla_build_motif_graph_raw <- function(
   if (is.null(seg) || nrow(seg) == 0) {
     return(NULL)
   }
+  # Count the same node keys used below before wide aggregation allocates.
+  keys <- .hla_cdr3_node_keys(seg, by_v)
+  node_count <- nlevels(keys)
+  if (node_count > HLA_MOTIF_MAX_TOTAL) {
+    return(guard(sprintf(
+      paste(
+        "Too many unique CDR3s (%s > %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
+      format(node_count, big.mark = ","),
+      format(HLA_MOTIF_MAX_TOTAL, big.mark = ",")
+    )))
+  }
   agg <- hla_aggregate_cdr3_nodes(
     seg,
     meta_cols = meta_cols,
     context_col = context_col,
     by_v = by_v,
-    context_summary = context_summary
+    context_summary = context_summary,
+    .keys = keys
   )
   if (is.null(agg) || nrow(agg) == 0) {
     return(NULL)
@@ -722,7 +933,10 @@ hla_build_motif_graph_raw <- function(
   # Total-size guard across all unique CDR3.
   if (nrow(agg) > HLA_MOTIF_MAX_TOTAL) {
     return(guard(sprintf(
-      "Too many unique CDR3s (%s > %s). Filter by sample or group first.",
+      paste(
+        "Too many unique CDR3s (%s > %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
       format(nrow(agg), big.mark = ","),
       format(HLA_MOTIF_MAX_TOTAL, big.mark = ",")
     )))
@@ -737,7 +951,10 @@ hla_build_motif_graph_raw <- function(
   bin_sizes <- table(bin_key)
   if (max(bin_sizes) > HLA_MOTIF_MAX_BIN) {
     return(guard(sprintf(
-      "A CDR3-length bin has %s unique sequences (> %s). Filter first.",
+      paste(
+        "A CDR3-length bin has %s unique sequences (> %s).",
+        "Open Settings > Filters and narrow the active cohort."
+      ),
       format(max(bin_sizes), big.mark = ","),
       format(HLA_MOTIF_MAX_BIN, big.mark = ",")
     )))
@@ -833,28 +1050,44 @@ hla_finalize_motif_graph <- function(
     return(raw)
   }
   g <- raw
+  degree <- igraph::degree(g)
   if (!isTRUE(show_isolated)) {
-    g <- igraph::induced_subgraph(g, igraph::V(g)[igraph::degree(g) > 0])
-    if (igraph::vcount(g) == 0) {
+    connected <- degree > 0
+    if (!any(connected)) {
       return(NULL)
+    }
+    # Avoid cloning the complete igraph (including every vertex attribute) when
+    # the filter keeps every node. Large HLA first frames commonly take this
+    # path, and two no-op induced_subgraph calls otherwise dominate activation.
+    if (!all(connected)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[connected])
     }
     comp <- igraph::components(g)
-    keep <- which(comp$csize >= min_nodes)
-    if (length(keep) == 0) {
+    keep <- comp$csize[comp$membership] >= min_nodes
+    if (!any(keep)) {
       return(NULL)
     }
-    g <- igraph::induced_subgraph(g, igraph::V(g)[comp$membership %in% keep])
+    if (!all(keep)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+      comp <- igraph::components(g)
+    }
   } else {
     comp <- igraph::components(g)
-    is_isolated <- igraph::degree(g) == 0
+    is_isolated <- degree == 0
     keep_cluster <- comp$csize[comp$membership] >= min_nodes
     keep <- is_isolated | keep_cluster
-    g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+    if (!any(keep)) {
+      return(NULL)
+    }
+    if (!all(keep)) {
+      g <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+      comp <- igraph::components(g)
+    }
   }
   if (igraph::vcount(g) == 0) {
     return(NULL)
   }
-  igraph::V(g)$cluster <- igraph::components(g)$membership
+  igraph::V(g)$cluster <- comp$membership
   # Every survivor already carries a coordinate from the cached raw layout --
   # connected nodes from the force layout, isolated ones from the grid -- so
   # nothing is laid out here and the clusters that survive keep their exact

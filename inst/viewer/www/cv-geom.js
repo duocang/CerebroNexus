@@ -121,5 +121,53 @@
     return 'select';
   };
 
+  // Index normalized 2-D geometry once. Panning, resizing and recoloring keep
+  // this geometry, so pointer movement only visits nearby buckets. All cells
+  // remain in the index, including coordinates outside the unit square.
+  G.pointGrid = function (unit, n) {
+    var cached = unit._pointGrid;
+    if (cached && cached.n === n && cached.x === unit.nx &&
+        cached.y === unit.ny && cached.ok === unit.ok) return cached;
+    var size = 256, heads = new Int32Array(size * size), next = new Int32Array(n);
+    heads.fill(-1); next.fill(-1);
+    for (var i = n - 1; i >= 0; i--) {
+      if (!unit.ok[i] || !isFinite(unit.nx[i]) || !isFinite(unit.ny[i])) continue;
+      var x = Math.max(0, Math.min(size - 1, Math.floor(unit.nx[i] * size)));
+      var y = Math.max(0, Math.min(size - 1, Math.floor(unit.ny[i] * size)));
+      var bucket = y * size + x;
+      next[i] = heads[bucket]; heads[bucket] = i;
+    }
+    unit._pointGrid = {n:n, x:unit.nx, y:unit.ny, ok:unit.ok,
+      size:size, heads:heads, next:next};
+    return unit._pointGrid;
+  };
+
+  G.nearestInGrid = function (grid, view, frame, mx, my, accept) {
+    var radius = Math.sqrt(200), span = view ? view.span : 1;
+    var cx = view ? view.cx : 0.5, cy = view ? view.cy : 0.5;
+    // Include a pixel of margin for the Float32 screen-coordinate rounding
+    // used by project(). Distance and tie-breaking below retain that behavior.
+    var ux = (mx - frame.x) / frame.width;
+    var uy = (frame.y + frame.height - my) / frame.height;
+    ux = (ux - 0.5) * span + cx; uy = (uy - 0.5) * span + cy;
+    var rx = (radius + 1) / frame.width * span;
+    var ry = (radius + 1) / frame.height * span;
+    function bucket(value) { return Math.max(0, Math.min(grid.size - 1, Math.floor(value * grid.size))); }
+    var x0=bucket(ux-rx), x1=bucket(ux+rx), y0=bucket(uy-ry), y1=bucket(uy+ry);
+    var best=-1, bd=200;
+    for(var y=y0;y<=y1;y++) for(var x=x0;x<=x1;x++) {
+      for(var i=grid.heads[y*grid.size+x];i>=0;i=grid.next[i]) {
+        if(!accept(i)) continue;
+        var px=grid.x[i], py=grid.y[i];
+        if(view){px=(px-view.cx)/view.span+0.5;py=(py-view.cy)/view.span+0.5;}
+        px=Math.fround(frame.x+px*frame.width);
+        py=Math.fround(frame.y+frame.height-py*frame.height);
+        var dx=px-mx,dy=py-my,d=dx*dx+dy*dy;
+        if(d<bd || (d===bd && best>=0 && i<best)){bd=d;best=i;}
+      }
+    }
+    return best;
+  };
+
   window.CBGeom = G;
 })();

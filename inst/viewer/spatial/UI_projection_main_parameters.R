@@ -3,34 +3,12 @@
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   req(data_set())
-  ## This output is evaluated even while the Spatial tab is hidden
-  ## (suspendWhenHidden = FALSE below). For a data set without spatial data
-  ## there is nothing to configure, so bail out early instead of building the
-  ## full control set (and, when spatial_images is set, the background-image
-  ## picker) on every app start — that extra startup work otherwise competes
-  ## with other tabs' first render.
+  ## Hidden outputs are suspended below. Sidebar changes must not rebuild the
+  ## mounted plot-type selector and reset Feature/RGB to ImageDimPlot.
   req(length(availableSpatial()) > 0)
-  ## determine which metadata columns to include based on exclude_trivial_metadata
-  exclude_trivial <- FALSE
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[['exclude_trivial_metadata']])
-  ) {
-    exclude_trivial <- Cerebro.options[['exclude_trivial_metadata']]
-  }
+  colour_groups <- viewerColourGroupChoices()
 
-  ## build choices based on setting
-  if (exclude_trivial == TRUE) {
-    ## only include groups from getGroups()
-    metadata_cols <- getGroups()
-  } else {
-    ## include all metadata columns except cell_barcode
-    metadata_cols <- colnames(getMetaData())[
-      !colnames(getMetaData()) %in% c("cell_barcode")
-    ]
-  }
-
-  current_spatial <- input[["spatial_projection_to_display"]]
+  current_spatial <- isolate(input[["spatial_projection_to_display"]])
   if (
     is.null(current_spatial) ||
       !(current_spatial %in% availableSpatial())
@@ -55,7 +33,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
       selectInput(
         "spatial_projection_point_color",
         label = "Colour by",
-        choices = metadata_cols
+        choices = colour_groups$choices,
+        selected = colour_groups$selected
       )
     ),
     conditionalPanel(
@@ -117,6 +96,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   )
 })
 
+spatial_background_selection_scope <- reactiveVal(NULL)
+
 output[["spatial_projection_background_selector_UI"]] <- renderUI({
   req(data_set())
   req(length(availableSpatial()) > 0)
@@ -150,12 +131,17 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     )
   )
 
+  scope <- list(dataset = dataset, spatial = current_spatial)
+  previous_scope <- isolate(spatial_background_selection_scope())
+  scope_changed <- !identical(previous_scope, scope)
+  if (scope_changed) spatial_background_selection_scope(scope)
+
   selectInput(
     "spatial_projection_background_image",
     label = "Background image",
     choices = background_choices,
     selected = normalize_spatial_background_choice(
-      isolate(input[["spatial_projection_background_image"]]),
+      if (scope_changed) NULL else isolate(input[["spatial_projection_background_image"]]),
       background_choices
     )
   )
@@ -165,12 +151,20 @@ serverSideGeneSelector(
   session,
   "spatial_projection_feature_to_display",
   extra_triggers = function() input[["spatial_projection_plot_type"]],
-  active = function() length(availableSpatial()) > 0
+  active = function() {
+    identical(input[["sidebar"]], "spatial") &&
+      identical(
+        input[["spatial_projection_plot_type"]],
+        "ImageFeaturePlot"
+      ) &&
+      length(availableSpatial()) > 0
+  }
 )
 
-## Co-expression channel gene pickers. Same server-side population + active gate
-## as the feature selector, so their later:: callbacks don't leak into other
-## tabs' tests when no spatial data is present.
+## Co-expression channel gene pickers. Populate each hidden gene selector only
+## when its plot type is active. This keeps their dataobj requests out of the
+## default ImageDimPlot waterfall while preserving lazy initialization when the
+## user switches modes.
 ##
 ## Use lapply, NOT a for loop: serverSideGeneSelector references the input id
 ## lazily, and a for loop's index variable is a single shared binding — all
@@ -188,37 +182,37 @@ lapply(
       session,
       channel_id,
       extra_triggers = function() input[["spatial_projection_plot_type"]],
-      active = function() length(availableSpatial()) > 0
+      active = function() {
+        identical(input[["sidebar"]], "spatial") &&
+          identical(
+            input[["spatial_projection_plot_type"]],
+            "Co-expression (RGB)"
+          ) &&
+          length(availableSpatial()) > 0
+      }
     )
   }
 )
 
-## Render even when tab is hidden so that input values are available for
-## programmatic access (e.g. shinytest2) without waiting for tab activation.
+## The browser mounts these controls when the Spatial page is shown.
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 outputOptions(
   output,
   "spatial_projection_background_selector_UI",
-  suspendWhenHidden = FALSE
+  suspendWhenHidden = TRUE
 )
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["spatial_projection_main_parameters_info"]], {
-  showModal(
-    modalDialog(
-      spatial_projection_main_parameters_info[["text"]],
-      title = spatial_projection_main_parameters_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "spatial_projection_main_parameters_info",
+  spatial_projection_main_parameters_info
+)
 ##----------------------------------------------------------------------------##
 ## Text in info box.
 ##----------------------------------------------------------------------------##
@@ -229,7 +223,7 @@ spatial_projection_main_parameters_info <- list(
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
       <li><b>Projection:</b> Select here which projection you want to see in the scatter plot on the right.</li>
-      <li><b>Colour by:</b> Select which variable, categorical or continuous, from the meta data should be used to colour the cells.</li>
+      <li><b>Colour by:</b> Select one of the data set's registered grouping variables.</li>
     </ul>
     "
   )

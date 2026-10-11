@@ -7,46 +7,37 @@
 ## which are split because the content depends on which category is selected.
 ##----------------------------------------------------------------------------##
 output[["extra_material_select_category_and_content_UI"]] <- renderUI({
+  categories <- getExtraMaterialCategories()
+  if (!length(categories)) return(p("No extra material available."))
+  selector <- selectInput(
+    "extra_material_selected_category", label = "Material type:",
+    choices = categories, selected = categories[[1L]], width = "100%"
+  )
   div(
     class = "cerebro-viz-toolbar",
-    uiOutput("extra_material_selected_category_UI"),
+    if (length(categories) == 1L) div(style = "display:none", selector) else selector,
     uiOutput("extra_material_selected_content_UI")
   )
-})
-
-##----------------------------------------------------------------------------##
-## UI element to select from which category the content should be shown.
-##----------------------------------------------------------------------------##
-output[["extra_material_selected_category_UI"]] <- renderUI({
-  categories <- getExtraMaterialCategories()
-  req(length(categories))
-  selector <- selectInput(
-    "extra_material_selected_category",
-    label = "Material type:",
-    choices = categories,
-    selected = categories[[1L]],
-    width = "100%"
-  )
-  if (length(categories) == 1L) {
-    div(style = "display:none", selector)
-  } else {
-    selector
-  }
 })
 
 ##----------------------------------------------------------------------------##
 ## UI element to select which content should be shown.
 ##----------------------------------------------------------------------------##
 output[["extra_material_selected_content_UI"]] <- renderUI({
-  req(input[["extra_material_selected_category"]])
+  categories <- getExtraMaterialCategories()
+  req(length(categories))
+  category <- input[["extra_material_selected_category"]]
+  if (is.null(category)) category <- categories[[1L]]
+  req(category %in% categories)
   ## if selected category is `tables`
   if (
-    input[["extra_material_selected_category"]] == "tables" &&
+    category == "tables" &&
       checkForExtraTables()
   ) {
     groups <- extra_material_table_groups()
     file_choices <- extra_material_table_choices(groups)
-    selected_file <- isolate(input[["extra_material_selected_file"]])
+    req(length(file_choices))
+    selected_file <- input[["extra_material_selected_file"]]
     if (is.null(selected_file) || !selected_file %in% unname(file_choices)) {
       selected_file <- unname(file_choices)[[1L]]
     }
@@ -65,7 +56,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
       selected_sheet <- unname(sheet_choices)[[1L]]
     }
     tagList(
-      if (length(file_choices) > 1L) {
+      if (length(file_choices)) {
         selectInput(
           "extra_material_selected_file",
           label = "File:",
@@ -74,7 +65,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
           width = "100%"
         )
       },
-      if (length(sheet_choices) > 1L) {
+      if (length(sheet_choices)) {
         selectInput(
           "extra_material_selected_content",
           label = "Table:",
@@ -86,7 +77,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
     )
     ## if selected category is `plots`
   } else if (
-    input[["extra_material_selected_category"]] == 'plots' &&
+    category == 'plots' &&
       checkForExtraPlots() == TRUE
   ) {
     ##

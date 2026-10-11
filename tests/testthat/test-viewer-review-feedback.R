@@ -18,6 +18,18 @@ viewer_path <- function(...) {
   file.path(viewer_root, ...)
 }
 
+test_that("Viewer shell uses native sidebar scrolling", {
+  ui <- viewer_source("shiny_UI.R")
+  css <- viewer_source("www", "custom.css")
+
+  expect_no_match(ui, 'addClass("fixed")', fixed = TRUE)
+  expect_match(
+    css,
+    "body\\.skin-blue \\.main-sidebar \\{[^}]*position: fixed;[^}]*overflow-y: auto;",
+    perl = TRUE
+  )
+})
+
 test_that("gene conversion table escapes cell content", {
   source <- viewer_source("gene_id_conversion", "server.R")
 
@@ -26,13 +38,12 @@ test_that("gene conversion table escapes cell content", {
 })
 
 test_that("Viewer gene sets use the public msigdbr API", {
-  utility <- viewer_source("utility_functions.R")
-  server <- viewer_source("shiny_server.R")
+  utility <- viewer_source("msigdb.R")
   input <- viewer_source("gene_expression", "UI_projection_input_type.R")
 
   expect_no_match(paste(utility, input), "msigdbr:::", fixed = TRUE)
   expect_match(utility, "msigdbr::msigdbr", fixed = TRUE)
-  expect_match(server, ".msigdb_process_cache", fixed = TRUE)
+  expect_match(utility, ".msigdb_process_cache", fixed = TRUE)
   expect_no_match(utility, ".msigdb_table_cache", fixed = TRUE)
   expect_no_match(utility, "getMsigdbTable", fixed = TRUE)
   expect_match(input, "getGeneSetNames()", fixed = TRUE)
@@ -75,17 +86,29 @@ test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")
   tables <- list(
-    marker_genes = viewer_source("marker_genes", "table.R"),
+    marker_genes = paste(
+      viewer_source("marker_genes", "table.R"),
+      viewer_source("utility_functions.R")
+    ),
     linked = viewer_source("coordinated_views", "server.R"),
     trajectory = viewer_source("trajectory", "selected_cells_table.R"),
-    spatial = viewer_source("spatial", "UI_selected_cells_table.R"),
-    pathways = viewer_source("enriched_pathways", "table.R"),
+    spatial = paste(
+      viewer_source("spatial", "UI_selected_cells_table.R"),
+      viewer_source("utility_functions.R")
+    ),
+    pathways = paste(
+      viewer_source("enriched_pathways", "table.R"),
+      viewer_source("utility_functions.R")
+    ),
     extra = viewer_source("extra_material", "content.R"),
     expression = viewer_source(
       "gene_expression",
       "UI_table_of_selected_cells.R"
     ),
-    projection = viewer_source("overview", "UI_selected_cells_table.R")
+    projection = paste(
+      viewer_source("overview", "UI_selected_cells_table.R"),
+      viewer_source("utility_functions.R")
+    )
   )
   expression <- viewer_source(
     "gene_expression",
@@ -111,7 +134,10 @@ test_that("Cell-view colouring controls share one label", {
     linked = viewer_source("coordinated_views", "UI.R"),
     projection = viewer_source("overview", "UI_projection_main_parameters.R"),
     spatial = viewer_source("spatial", "UI_projection_main_parameters.R"),
-    trajectory = viewer_source("trajectory", "projection.R"),
+    trajectory = paste(
+      viewer_source("trajectory", "projection.R"),
+      viewer_source("trajectory", "select_method_and_name.R")
+    ),
     trekker = viewer_source("trekker", "server.R"),
     hla = viewer_source("hla_tcr_motifs", "settings.R")
   )
@@ -157,10 +183,29 @@ test_that("Informational Canvas text uses the readable secondary token", {
   }
 })
 
-test_that("Projection defaults to cell type when available", {
+test_that("Projection uses registered groups and their shared default", {
   ui <- viewer_source("overview", "UI_projection_main_parameters.R")
+  utility <- viewer_source("utility_functions.R")
 
-  expect_match(ui, '"cell_type" %in% color_choices', fixed = TRUE)
+  expect_match(ui, "colour_groups <- viewerColourGroupChoices()", fixed = TRUE)
+  expect_match(ui, "choices = colour_groups$choices", fixed = TRUE)
+  expect_match(ui, "selected = colour_groups$selected", fixed = TRUE)
+})
+
+test_that("Viewer metadata Colour by controls share registered group choices", {
+  metadata_pages <- c(
+    viewer_source("overview", "UI_projection_main_parameters.R"),
+    viewer_source("spatial", "UI_projection_main_parameters.R"),
+    viewer_source("trajectory", "select_method_and_name.R")
+  )
+  pages <- c(metadata_pages, viewer_source("coordinated_views", "bundle.R"))
+
+  for (page in pages) {
+    expect_match(page, "viewerColourGroupChoices(", fixed = TRUE)
+  }
+  for (page in metadata_pages) {
+    expect_no_match(page, "colnames(getMetaData())", fixed = TRUE)
+  }
 })
 
 test_that("Cell-view More settings expose only effective appearance controls", {
@@ -170,10 +215,14 @@ test_that("Cell-view More settings expose only effective appearance controls", {
     viewer_source("overview", "UI_projection_show_group_label.R")
   )
   spatial <- paste(
-    viewer_source("spatial", "UI_projection.R"),
+    viewer_source("spatial", "UI.R"),
     viewer_source("spatial", "UI_projection_show_group_label.R")
   )
-  expression <- viewer_source("gene_expression", "UI_projection.R")
+  expression <- paste(
+    viewer_source("gene_expression", "UI.R"),
+    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
+    viewer_source("gene_expression", "UI_projection_point_border.R")
+  )
   trajectory <- viewer_source("trajectory", "projection.R")
   repertoire <- viewer_source("immune_repertoire", "settings.R")
   repertoire_spec <- viewer_source("immune_repertoire", "param_spec.R")
@@ -218,12 +267,12 @@ test_that("Cell-view More settings expose only effective appearance controls", {
   }
   expect_no_match(repertoire_spec, 'id = "ir_d_base_size"', fixed = TRUE)
   expect_no_match(repertoire_spec, 'id = "ir_d_legend_size"', fixed = TRUE)
-  for (id in c(
-    "expression_projection_point_border",
-    "expression_projection_keep_square"
-  )) {
-    expect_match(expression, id, fixed = TRUE)
-  }
+  expect_match(expression, "expression_projection_keep_square", fixed = TRUE)
+  expect_match(
+    expression,
+    'registerCellViewPointBorder(output, "expression_projection")',
+    fixed = TRUE
+  )
   expect_no_match(
     expression,
     "expression_projection_group_labels",
@@ -241,8 +290,10 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
     utility,
     viewer_source("shiny_UI.R"),
     viewer_source("overview", "UI_projection.R"),
-    viewer_source("spatial", "UI_projection.R"),
-    viewer_source("gene_expression", "UI_projection.R"),
+    viewer_source("spatial", "UI.R"),
+    viewer_source("gene_expression", "UI.R"),
+    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
+    viewer_source("gene_expression", "UI_projection_point_border.R"),
     viewer_source("trajectory", "projection.R"),
     viewer_source("immune_repertoire", "settings.R")
   )
@@ -273,7 +324,7 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
   )
 })
 
-test_that("cell scatter pages share one dataset point appearance", {
+test_that("cell scatter pages share defaults with a Gene Expression override", {
   server <- viewer_source("shiny_server.R")
   pages <- list(
     viewer_source("overview", "UI_projection_additional_parameters.R"),
@@ -285,17 +336,28 @@ test_that("cell scatter pages share one dataset point appearance", {
   expect_match(server, "current_scatter_defaults", fixed = TRUE)
   expect_match(server, "cell_point_size", fixed = TRUE)
   expect_match(server, "cell_point_opacity", fixed = TRUE)
-  for (page in pages) {
+  for (page in pages[-3L]) {
     expect_match(page, "current_scatter_defaults()", fixed = TRUE)
     expect_match(page, 'preferences[["cell_point_size"]]', fixed = TRUE)
     expect_match(page, 'preferences[["cell_point_opacity"]]', fixed = TRUE)
   }
+  expect_match(
+    pages[[3L]],
+    "current_expression_scatter_defaults()",
+    fixed = TRUE
+  )
+  expect_match(pages[[3L]], 'preferences[["cell_point_size"]]', fixed = TRUE)
+  expect_match(pages[[3L]], 'preferences[["cell_point_opacity"]]', fixed = TRUE)
 })
 
 test_that("Projection pages use automatic ranges instead of axis sliders", {
   pages <- c("overview", "spatial", "gene_expression")
   for (page in pages) {
-    ui <- viewer_source(page, "UI_projection.R")
+    ui <- if (identical(page, "gene_expression")) {
+      viewer_source(page, "UI.R")
+    } else {
+      viewer_source(page, "UI_projection.R")
+    }
     params <- viewer_source(page, "obj_projection_parameters_plot.R")
     expect_no_match(ui, '"Axes"', fixed = TRUE)
     expect_no_match(ui, "projection_scales_UI", fixed = TRUE)
@@ -326,6 +388,31 @@ test_that("Standalone cell views cannot enter linked-view focus", {
   expect_match(js, "if (!canFocusPanel()) return;", fixed = TRUE)
 })
 
+test_that("Standalone view routing only considers visible canvas hosts", {
+  js <- viewer_source("www", "cell_views.js")
+  routing <- regmatches(
+    js,
+    regexpr(
+      "function visibleSingleId\\(\\) \\{[\\s\\S]*?function rememberSurfaceHome",
+      js,
+      perl = TRUE
+    )
+  )
+
+  expect_match(
+    routing,
+    "document.querySelectorAll('.cerebro-cell-view-host[data-cell-view-id]')",
+    fixed = TRUE
+  )
+  expect_match(routing, "hosts[i].getClientRects().length", fixed = TRUE)
+  expect_no_match(routing, "getBoundingClientRect()", fixed = TRUE)
+  expect_no_match(
+    routing,
+    "document.querySelectorAll('[data-cell-view-id]')",
+    fixed = TRUE
+  )
+})
+
 test_that("Standalone cell-view toolbars reach the panel top-right", {
   css <- viewer_source("www", "coordviews.css")
   expect_match(
@@ -336,10 +423,10 @@ test_that("Standalone cell-view toolbars reach the panel top-right", {
 
   shared_views <- c(
     "overview/UI_projection.R",
-    "spatial/UI_projection.R",
-    "gene_expression/UI_projection.R",
-    "trajectory/projection.R",
-    "immune_repertoire/visualizations.R",
+    "spatial/UI.R",
+    "gene_expression/UI.R",
+    "trajectory/UI.R",
+    "immune_repertoire/UI.R",
     "trekker/UI.R"
   )
   for (view in shared_views) {
@@ -357,13 +444,33 @@ test_that("2-D views fill fluid panels without changing spatial scale", {
 
   expect_match(js, "if (!zs) {", fixed = TRUE)
   expect_match(js, "var k = 1 / Math.max(dw, dh);", fixed = TRUE)
-  expect_match(js, "function panelDataAspect", fixed = TRUE)
-  expect_match(js, "Number(sp._unit.aspect)", fixed = TRUE)
-  expect_match(js, "function fitAspectRow", fixed = TRUE)
-  expect_match(js, "if (!aspects.every(Boolean)) return null;", fixed = TRUE)
-  expect_no_match(js, "if (!aspects.some(Boolean)) return null;", fixed = TRUE)
-  expect_match(js, "fitAspectRow(vis, usableW", fixed = TRUE)
-  expect_match(js, "var aspect = panelDataAspect(p);", fixed = TRUE)
+  expect_match(js, "if (isSpatialSpace(sp) && !u.nz)", fixed = TRUE)
+  expect_match(
+    js,
+    "var aspect = Number(u.aspect), panelAspect = SX / SY;",
+    fixed = TRUE
+  )
+  expect_match(js, "ox += (SX - fittedWidth) / 2;", fixed = TRUE)
+  expect_match(js, "oy += (SY - fittedHeight) / 2;", fixed = TRUE)
+  expect_no_match(js, "function panelDataAspect", fixed = TRUE)
+  expect_no_match(js, "function fitAspectRow", fixed = TRUE)
+})
+
+test_that("Runtime-linked view slots create exactly one WebGL layer", {
+  js <- viewer_source("www", "cell_views.js")
+
+  expect_match(
+    js,
+    "clone.querySelectorAll('.cv-gpu-layer').forEach",
+    fixed = TRUE
+  )
+  expect_match(js, "attachGpu(p);", fixed = TRUE)
+  expect_match(js, "candidate.side === maxSide", fixed = TRUE)
+  expect_match(
+    js,
+    "Math.min(overview ? overview.cols : 1, availableCols)",
+    fixed = TRUE
+  )
 })
 
 test_that("Trekker uses the shared top toolbar and settings drawer", {
@@ -388,19 +495,20 @@ test_that("Trekker uses the shared top toolbar and settings drawer", {
 
 test_that("HLA keeps zoom-to-selection in its panel toolbar", {
   ui <- viewer_source("hla_tcr_motifs", "UI.R")
-  javascript <- viewer_source("www", "hla_motifs.js")
+  linked_ui <- viewer_source("coordinated_views", "UI.R")
+  javascript <- viewer_source("www", "cell_views.js")
 
   expect_match(
     ui,
-    'button("zsel", "Zoom to selection", "crop-simple", disabled = TRUE)',
+    'cerebroCellViewOutput("hla_motif_network")',
     fixed = TRUE
   )
-  expect_match(javascript, "action === 'zsel'", fixed = TRUE)
   expect_match(
-    javascript,
-    "button.disabled = !selectedKeys.length",
+    linked_ui,
+    'class = "cv-tbtn cv-zsel-btn"',
     fixed = TRUE
   )
+  expect_match(javascript, "zoomToSelection(pp)", fixed = TRUE)
 })
 
 test_that("Linked actions stay compact and match their scope", {
@@ -682,15 +790,17 @@ test_that("Specialist group filters share inclusive empty-selection behavior", {
 
   for (path in list(
     c("overview", "obj_projection_cells_to_show.R"),
-    c("spatial", "obj_projection_cells_to_show.R"),
     c("gene_expression", "obj_projection_cells_to_show.R")
   )) {
     expect_match(
       do.call(viewer_source, as.list(path)),
-      "cerebroGroupFilterMask",
+      "viewerProjectionCellIndices",
       fixed = TRUE
     )
   }
+  spatial <- viewer_source("spatial", "obj_projection_cells_to_show.R")
+  expect_match(spatial, "viewerProjectionSubsetRows", fixed = TRUE)
+  expect_match(spatial, "cerebroGroupFilterMask", fixed = TRUE)
 })
 
 test_that("Cell scatter pages share one percentage default", {
@@ -730,8 +840,7 @@ test_that("Cell scatter pages share one percentage default", {
 test_that("Projection renders an empty filter result instead of retaining cells", {
   for (path in list(
     c("overview", "obj_projection_data.R"),
-    c("overview", "obj_projection_coordinates.R"),
-    c("overview", "obj_projection_hover_info.R")
+    c("overview", "obj_projection_coordinates.R")
   )) {
     source <- do.call(viewer_source, as.list(path))
     expect_no_match(
@@ -741,7 +850,12 @@ test_that("Projection renders an empty filter result instead of retaining cells"
     )
   }
   data_to_plot <- viewer_source("overview", "obj_projection_data_to_plot.R")
-  expect_match(data_to_plot, "nrow(cells_df) == 0L", fixed = TRUE)
+  expect_match(data_to_plot, "if (!length(cell_indices))", fixed = TRUE)
+  expect_match(
+    data_to_plot,
+    "cell_count = length(cell_indices)",
+    fixed = TRUE
+  )
 })
 
 test_that("Specialist group filters reuse the Linked views control", {
@@ -828,18 +942,13 @@ test_that("Gene expression display and colour modes are linked", {
     fixed = TRUE
   )
   expect_match(input_ui, 'class = "cerebro-gene-rgb-channel"', fixed = TRUE)
-  expect_match(
-    css,
-    ".cerebro-gene-control.cerebro-control-unlocked .selectize-input",
-    fixed = TRUE
-  )
   expect_no_match(css, ".cerebro-gene-control.is-disabled", fixed = TRUE)
-  expect_match(
+  expect_no_match(
     css,
-    ".cerebro-gene-rgb-channel:nth-child(3)",
+    "animation: cerebro-control-enter",
     fixed = TRUE
   )
-  expect_match(
+  expect_no_match(
     js,
     "shiny:outputinvalidated.cerebroGeneControls",
     fixed = TRUE
@@ -911,8 +1020,7 @@ test_that("cell scatter pages debounce only complete render snapshots", {
   )
   snapshot_files <- c(
     viewer_path("overview", "obj_projection_data_to_plot.R"),
-    viewer_path("spatial", "obj_projection_data_to_plot.R"),
-    viewer_path("gene_expression", "obj_projection_data_to_plot.R")
+    viewer_path("spatial", "obj_projection_data_to_plot.R")
   )
 
   for (path in parameter_files) {
@@ -921,8 +1029,12 @@ test_that("cell scatter pages debounce only complete render snapshots", {
   }
   for (path in snapshot_files) {
     source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-    expect_match(source, "<- debounce(", fixed = TRUE)
+    expect_match(source, "<- debounceAfterFirst(", fixed = TRUE)
   }
+  # Gene's prepared-value relay was removed in f4e4fe3b. It deliberately uses
+  # Shiny's direct debounce; the overview/spatial first-value path is unchanged.
+  expect_match(viewer_source("gene_expression", "obj_projection_data_to_plot.R"),
+    "<- shiny::debounce(", fixed = TRUE)
 
   spatial_update <- viewer_source(
     "spatial",

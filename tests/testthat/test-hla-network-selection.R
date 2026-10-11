@@ -14,10 +14,18 @@ run_specialist_state_node <- function(body) {
       "const fs = require('fs');",
       "const timers = []; const controls = {}; const applied = []; const handlers = {};",
       "const windowHandlers = {};",
+      "let datasetContext = {epoch:'session',dataset_key:'dataset-a',generation:1};",
+      "let datasetPhase = 'ready';",
       "global.window = {",
       "  setTimeout: (fn, delay) => { fn.delay = delay; timers.push(fn); return fn; },",
       "  clearTimeout: fn => { const at = timers.indexOf(fn); if (at >= 0) timers.splice(at, 1); },",
       "  addEventListener: (name, fn) => { windowHandlers[name] = fn; }",
+      "};",
+      "window.CerebroDatasetContext = {",
+      "  current: () => datasetContext, phase: () => datasetPhase,",
+      "  key: value => value ? JSON.stringify([value.epoch,value.dataset_key,value.generation]) : '',",
+      "  same: (left, right) => !!left && !!right && left.epoch === right.epoch &&",
+      "    left.dataset_key === right.dataset_key && left.generation === right.generation",
       "};",
       "global.document = {",
       "  getElementById: id => id === 'shiny-tab-overview' ?",
@@ -85,8 +93,11 @@ test_that("HLA exposes the shared cohort controls and a network saved-view adapt
   expect_match(ui, 'cerebroSelectionStatus(', fixed = TRUE)
   expect_match(ui, '"hla_motif_network"', fixed = TRUE)
   expect_match(visual, "node_key", fixed = TRUE)
-  expect_match(visual, "handleNativeSelection", fixed = TRUE)
+  expect_match(visual, "cerebroCellViewRender(", fixed = TRUE)
+  expect_match(visual, "}, priority = 100)", fixed = TRUE)
   expect_match(server, "hla_motif_selected_keys", fixed = TRUE)
+  expect_match(server, "if (!length(keys))", fixed = TRUE)
+  expect_match(server, "if (!length(selected))", fixed = TRUE)
   expect_match(server, "hla_motif_selection_command", fixed = TRUE)
   expect_match(server, "node_keys = I(keys)", fixed = TRUE)
   expect_match(server, "cells = I(cells)", fixed = TRUE)
@@ -97,6 +108,7 @@ test_that("HLA exposes the shared cohort controls and a network saved-view adapt
   expect_match(client, "applyState", fixed = TRUE)
   expect_match(client, "downloadPNG", fixed = TRUE)
   expect_match(client, "cerebro:png-result", fixed = TRUE)
+  expect_match(client, "networkContextKey !== currentContextKey()", fixed = TRUE)
   expect_match(adapter, "hla_motif_network", fixed = TRUE)
   expect_match(adapter, "downloadPNG", fixed = TRUE)
   expect_match(config, "hla_motif_network", fixed = TRUE)
@@ -110,7 +122,8 @@ test_that("HLA node details stay in the hover tooltip", {
   expect_no_match(ui, "hla-node-details", fixed = TRUE)
   expect_no_match(visual, "hlaShowNodeDetails", fixed = TRUE)
   expect_no_match(client, "hlaShowNodeDetails", fixed = TRUE)
-  expect_match(visual, "title = titles", fixed = TRUE)
+  expect_match(visual, "columns = vn$hover_columns", fixed = TRUE)
+  expect_no_match(visual, "title = titles", fixed = TRUE)
   expect_match(client, "function showNodeTooltip", fixed = TRUE)
   expect_match(client, "network.getNodeAt", fixed = TRUE)
   expect_match(client, "hla-node-tooltip", fixed = TRUE)
@@ -125,7 +138,7 @@ test_that("Projection adapter captures shared JSON and downloads its PNG", {
     "  downloadPNG: id => { calls.push(id); return true; }",
     "};",
     "windowHandlers['cerebro:specialist-state']({detail:{",
-    "  viewId:'overview_projection',datasetFingerprint:'cells'}});",
+    "  viewId:'overview_projection',dataset_context:datasetContext}});",
     "const adapter = window.cerebroSpecialistViews.get('overview_projection');",
     "const captured = adapter.capture();",
     "console.log(JSON.stringify({schema:captured.schema,page:captured.page.id,",
@@ -153,6 +166,7 @@ test_that("HLA PNG adapter reports browser export success and failure", {
     c(
       "const fs = require('fs');",
       "global.window = global;",
+      "window.addEventListener = () => {};",
       "let fail = false; let clicks = 0;",
       "const canvas = {toDataURL: () => { if (fail) throw Error('blocked'); return 'data:image/png'; }};",
       "window.HTMLWidgets = {find: () => ({network:{canvas:{frame:{canvas:canvas}}}})};",
@@ -177,6 +191,32 @@ test_that("HLA PNG adapter reports browser export success and failure", {
   )
 })
 
+test_that("HLA retires drawn selection geometry on a dataset request", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(c(
+    "const fs=require('fs'),assert=require('assert'),events={},docEvents={},handlers={};let cleared=0;",
+    "const context={epoch:'test',dataset_key:'A',generation:1};",
+    "const network={canvas:{frame:{clientWidth:800,clientHeight:600}},DOMtoCanvas:p=>p,getScale:()=>1,setOptions:()=>{},selectNodes:()=>{},unselectAll:()=>cleared++};",
+    "global.window={HTMLWidgets:{find:()=>({network})},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,key:()=> 'A:1',accepts:()=>true},addEventListener:(name,fn)=>{events[name]=fn}};",
+    "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
+    "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:()=>null,querySelectorAll:()=>[]};",
+    sprintf("eval(fs.readFileSync(%s,'utf8'));",
+      encodeString(viewer_test_path("www", "hla_motifs.js"), quote = '"')),
+    "docEvents['shiny:connected']();handlers['hla_motif_selection_state']({node_keys:[],cells:['old-cell']});",
+    "const api=window.cerebroHlaMotifs,polygon=[[0,0],[10,0],[10,10],[0,10]];",
+    "api.applyState(null,{view:{mode:'box'},selection:{cells:['old-cell'],geometry:{polygon}}});",
+    "assert.deepStrictEqual(api.captureState().geometry.polygon,polygon);",
+    "events['cerebro:dataset-context']({detail:{phase:'ready'}});assert(api.captureState().geometry);",
+    "events['cerebro:dataset-context']({detail:{phase:'pending'}});assert.strictEqual(api.captureState(),null);assert.strictEqual(cleared,1);",
+    "console.log('HLA dataset geometry checks passed')"
+  ), runner)
+  result <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
+  expect_true("HLA dataset geometry checks passed" %in% result)
+})
+
 test_that("successful specialist restoration does not replay stale state", {
   output <- run_specialist_state_node(c(
     "window.cerebroCellViews = {applyState: (_id, config) => {",
@@ -197,22 +237,42 @@ test_that("successful specialist restoration does not replay stale state", {
   )
 })
 
-test_that("specialist sharing waits for state from the current dataset", {
+test_that("specialist sharing requires the current dataset generation", {
   output <- run_specialist_state_node(c(
     "window.cerebroCellViews = {captureState: () => ({cells:['cell-1']})};",
     "const adapter = window.cerebroSpecialistViews.get('overview_projection');",
-    "window.cerebroSavedViewDataset = {cell_fingerprint:'dataset-a'};",
+    "const a1 = datasetContext;",
+    "const b2 = {epoch:'session',dataset_key:'dataset-b',generation:2};",
+    "const a3 = {epoch:'session',dataset_key:'dataset-a',generation:3};",
+    "window.cerebroSavedViewDataset = {cell_fingerprint:'same-cells'};",
     "windowHandlers['cerebro:specialist-state']({detail:{",
-    "  viewId:'overview_projection',datasetFingerprint:'dataset-a'}});",
+    "  viewId:'overview_projection',dataset_context:a1}});",
     "const before = adapter.ready();",
-    "window.cerebroSavedViewDataset = {cell_fingerprint:'dataset-b'};",
-    "console.log(JSON.stringify({before:before,after:adapter.ready()}));"
+    "datasetContext = b2;",
+    "windowHandlers['cerebro:dataset-context']({detail:{",
+    "  phase:'ready',changed:true,dataset_context:b2}});",
+    "const afterB = adapter.ready();",
+    "datasetContext = a3;",
+    "windowHandlers['cerebro:dataset-context']({detail:{",
+    "  phase:'ready',changed:true,dataset_context:a3}});",
+    "windowHandlers['cerebro:specialist-state']({detail:{",
+    "  viewId:'overview_projection',dataset_context:a1}});",
+    "const afterLateA1 = adapter.ready();",
+    "windowHandlers['cerebro:specialist-state']({detail:{",
+    "  viewId:'overview_projection',dataset_context:a3}});",
+    "console.log(JSON.stringify({before:before,afterB:afterB,",
+    "  afterLateA1:afterLateA1,currentA3:adapter.ready()}));"
   ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
-    list(before = TRUE, after = FALSE)
+    list(
+      before = TRUE,
+      afterB = FALSE,
+      afterLateA1 = FALSE,
+      currentA3 = TRUE
+    )
   )
 })
 

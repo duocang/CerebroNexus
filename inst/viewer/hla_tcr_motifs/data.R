@@ -20,62 +20,197 @@ hla_has_deps <- function() {
 ## cache = "session" keeps caches isolated per user; the selected dataset is
 ## appended to every key at the call site so switching datasets invalidates it.
 hla_bindCache <- function(x, ..., cache = "session") {
-  if (utils::packageVersion("shiny") >= "1.6.0") {
-    shiny::bindCache(x, ..., cache = cache)
-  } else {
-    x
-  }
+  cached <- shiny::bindCache(x, ..., cache = cache)
+  ## Data Info intentionally defers data_set(). Keep its req() outside the
+  ## cached body so an early hidden output cannot cache a silent stop forever.
+  reactive({
+    req(data_set())
+    cached()
+  })
 }
 
 ## ---- Metadata-annotated IR data (barcode-joined) ---------------------- ##
+hla_page_active <- reactive({
+  identical(input[["sidebar"]], "hla_tcr_motifs")
+})
+
+hla_require_active_page <- function() {
+  if (!isolate(hla_page_active())) {
+    req(hla_page_active(), cancelOutput = TRUE)
+  }
+}
+
 ## Reuse the same join contract as the IR module: the IR tables carry only
 ## scRepertoire columns; biological grouping lives in cell metadata, attached
 ## here by barcode so the page can colour by any metadata column.
 hla_ir_annotated <- reactive({
+  packed <- hla_packed_segments()
+  if (!is.null(packed)) {
+    return(list(packed))
+  }
   data <- getImmuneRepertoire()
   if (is.null(data) || !is.list(data) || length(data) == 0) {
     return(NULL)
   }
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  has_md <- !is.null(md) && "cell_barcode" %in% colnames(md)
-  meta_cols <- if (has_md) {
-    setdiff(colnames(md), "cell_barcode")
-  } else {
-    character(0)
+  hla_annotate_ir_metadata(
+    data,
+    tryCatch(getMetaData(), error = function(e) NULL)
+  )
+}) %>%
+  hla_bindCache(available_crb_files$selected)
+
+## ---- Analysis cohort filters ----------------------------------------- ##
+## Motif construction is quadratic within CDR3-length bins, so an atlas-scale
+## repertoire cannot sensibly open on every sample. Keep the full annotated
+## tables above for filter choices / metadata discovery, but feed the graph and
+## descriptive association layers from this explicitly filtered cohort.
+hla_filter_groups <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$filter_groups))
   }
-  nm <- names(data)
-  out <- lapply(seq_along(data), function(i) {
-    df <- data[[i]]
-    if (is.null(df)) {
-      return(df)
-    }
-    if (has_md && "barcode" %in% colnames(df)) {
-      add <- setdiff(meta_cols, colnames(df))
-      if (length(add) > 0) {
-        idx <- match(df$barcode, md$cell_barcode)
-        for (col in add) {
-          df[[col]] <- md[[col]][idx]
-        }
-      }
-    }
-    # `sample` is STRUCTURAL here, not a metadata column this page hopes to
-    # find: HLA typing is matched to the repertoire by the names of this very
-    # list (hla_analysis_unit_map is handed names(getImmuneRepertoire())), so
-    # the list name is what "sample" has to mean for every join on this page.
-    # Taking it from a metadata column of the same name would leave the page
-    # broken on any object that names it differently, and quietly inconsistent
-    # on one where the column and the list disagree.
-    if (!is.null(nm) && nzchar(nm[i])) {
-      df$sample <- nm[i]
-    }
-    df
+  available <- hla_available_cols()
+  declared <- tryCatch(getGroups(), error = function(e) character(0))
+  unique(intersect(c("sample", declared), available))
+})
+
+hla_filter_levels <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(first$filter_levels)
+  }
+  data <- hla_ir_annotated()
+  groups <- hla_filter_groups()
+  if (is.null(data) || length(groups) == 0) {
+    return(stats::setNames(list(), character(0)))
+  }
+  stats::setNames(
+    lapply(groups, function(group) {
+      values <- unlist(
+        lapply(data, function(df) {
+          if (group %in% colnames(df)) {
+            as.character(df[[group]])
+          } else {
+            character(0)
+          }
+        }),
+        use.names = FALSE
+      )
+      sort(unique(values[!is.na(values) & nzchar(values)]))
+    }),
+    groups
+  )
+})
+
+## Parse once without cohort filtering to size a safe initial sample set. This
+## is linear work; the expensive Hamming graph is built only after filtering.
+hla_unfiltered_segments <- reactive({
+  packed <- hla_packed_segments()
+  if (!is.null(packed)) {
+    return(packed)
+  }
+  data <- hla_ir_annotated()
+  minimal <- lapply(data, function(frame) {
+    frame[
+      intersect(c("barcode", "CTgene", "CTaa", "sample"), colnames(frame))
+    ]
   })
-  names(out) <- nm
-  out
+  hla_parse_ir_segments(minimal, hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
+
+hla_initial_samples <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$initial_samples))
+  }
+  levels <- hla_filter_levels()[["sample"]]
+  seg <- hla_unfiltered_segments()
+  if (
+    is.null(levels) || length(levels) == 0 || is.null(seg) || nrow(seg) == 0
+  ) {
+    return(levels %||% character(0))
+  }
+  hla_choose_initial_samples(seg, levels)
+})
+
+hla_default_filter_selections <- reactive({
+  levels <- hla_filter_levels()
+  if ("sample" %in% names(levels)) {
+    levels$sample <- hla_initial_samples()
+  }
+  levels
+})
+
+hla_filter_input_id <- function(group) {
+  paste0("hla_group_filter_", hla_active_chain(), "_", group)
+}
+
+hla_filter_selections <- reactive({
+  levels <- hla_filter_levels()
+  defaults <- hla_default_filter_selections()
+  stats::setNames(
+    lapply(names(levels), function(group) {
+      selected <- input[[hla_filter_input_id(group)]]
+      if (is.null(selected)) defaults[[group]] else as.character(selected)
+    }),
+    names(levels)
+  )
+})
+
+hla_filter_key <- reactive({
+  selections <- hla_filter_selections()
+  paste(
+    vapply(
+      names(selections),
+      function(group) {
+        paste0(group, "=", paste(sort(selections[[group]]), collapse = ","))
+      },
+      character(1)
+    ),
+    collapse = "|"
+  )
+})
+
+hla_first_frame_filters_match <- reactive({
+  first <- hla_first_frame()
+  if (is.null(first)) {
+    return(FALSE)
+  }
+  selected <- hla_filter_selections()
+  defaults <- hla_default_filter_selections()
+  identical(names(selected), names(defaults)) &&
+    all(vapply(
+      names(defaults),
+      function(group) {
+        setequal(
+          as.character(selected[[group]]),
+          as.character(defaults[[group]])
+        )
+      },
+      logical(1)
+    ))
+})
+
+hla_ir_filtered <- reactive({
+  data <- hla_ir_annotated()
+  filters <- hla_filter_selections()
+  if (is.null(data) || length(filters) == 0) {
+    return(data)
+  }
+  out <- lapply(data, function(df) {
+    df[cerebroGroupFilterMask(df, filters), , drop = FALSE]
+  })
+  out[vapply(out, nrow, integer(1)) > 0L]
 })
 
 ## ---- TCR chains available (TRA / TRB only for this page) --------------- ##
 hla_tcr_chains <- reactive({
+  packed <- viewerPackCurrent()
+  packed_chains <- if (is.list(packed)) packed$manifest$hla_chains else NULL
+  if (length(packed_chains)) {
+    return(intersect(as.character(packed_chains), c("TRA", "TRB")))
+  }
   intersect(
     tryCatch(hla_detect_chains(getImmuneRepertoire()), error = function(e) {
       character(0)
@@ -100,6 +235,44 @@ hla_active_chain <- reactive({
   "TRB"
 })
 
+## Optional deterministic first frame. It contains no canonical cell indices;
+## dataset identity and the asset checksum are sufficient for this graph-only
+## payload, while the complete chain retains the stricter cell-order guard.
+hla_first_frame <- reactive({
+  viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
+
+## Viewer Packs already contain metadata-annotated, parsed TRA/TRB rows. Read
+## the active chain once and share that frame across filters, controls and the
+## graph instead of hydrating the much larger repertoire sidecar.
+hla_packed_segments <- reactive({
+  viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())
+}) %>%
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
+
+hla_ir_samples <- reactive({
+  samples <- as.character(getImmuneRepertoireSummary()$samples)
+  if (length(samples)) {
+    return(unique(samples))
+  }
+  data <- hla_ir_annotated()
+  if (is.null(data)) {
+    return(character(0))
+  }
+  samples <- unlist(
+    lapply(data, function(frame) {
+      if ("sample" %in% colnames(frame)) {
+        as.character(frame$sample)
+      } else {
+        character()
+      }
+    }),
+    use.names = FALSE
+  )
+  if (length(samples)) unique(samples) else names(data)
+})
+
 ## ---- Read a build/display parameter with a default -------------------- ##
 hla_param <- function(id, default = NULL) {
   v <- input[[id]]
@@ -113,6 +286,10 @@ hla_param <- function(id, default = NULL) {
 ## the two together would make MHC context vanish for any data set whose lineage
 ## column exists but was never declared a grouping.
 hla_available_cols <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(as.character(first$available_cols))
+  }
   data <- hla_ir_annotated()
   if (is.null(data)) {
     return(character(0))
@@ -150,6 +327,11 @@ HLA_MAX_COLOR_LEVELS <- 24L
 ## ---- Level count of each declared grouping, as the receptors see it ----- ##
 hla_color_col_levels <- reactive({
   cols <- hla_color_meta_cols()
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    counts <- first$color_level_counts
+    return(counts[intersect(cols, names(counts))])
+  }
   data <- hla_ir_annotated()
   if (length(cols) == 0 || is.null(data)) {
     return(stats::setNames(integer(0), character(0)))
@@ -181,7 +363,7 @@ hla_usable_color_cols <- reactive({
   if (length(cols) == 0) {
     return(character(0))
   }
-  if (is.null(hla_ir_annotated())) {
+  if (is.null(hla_first_frame()) && is.null(hla_ir_annotated())) {
     return(cols)
   }
   n_levels <- hla_color_col_levels()
@@ -205,6 +387,10 @@ hla_source_keys_on_v <- reactive({
 })
 
 hla_by_v_default <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    return(isTRUE(first$by_v))
+  }
   isTRUE(hla_source_keys_on_v())
 })
 
@@ -215,11 +401,23 @@ hla_by_v_default <- reactive({
 ## Scale the default to the data instead, so the first view is a readable set of
 ## the larger motifs; the slider still exposes the full range down to 2.
 hla_default_min_nodes <- reactive({
-  seg <- hla_segments()
-  if (is.null(seg) || nrow(seg) == 0) {
-    return(2L)
+  first <- hla_first_frame()
+  if (
+    !is.null(first) &&
+      length(first$default_min_nodes) == 1L &&
+      !is.na(first$default_min_nodes)
+  ) {
+    return(as.integer(first$default_min_nodes))
   }
-  n_cdr3 <- length(unique(seg$cdr3))
+  if (!is.null(first) && hla_motif_graph_ok(first$graph_raw)) {
+    n_cdr3 <- igraph::vcount(first$graph_raw)
+  } else {
+    seg <- hla_segments()
+    if (is.null(seg) || nrow(seg) == 0) {
+      return(2L)
+    }
+    n_cdr3 <- length(unique(seg$cdr3))
+  }
   if (n_cdr3 > 2000) {
     6L
   } else if (n_cdr3 > 500) {
@@ -238,7 +436,7 @@ hla_allele_choices <- reactive({
     return(character(0))
   }
   typing <- hla_active_typing()
-  samples <- names(getImmuneRepertoire())
+  samples <- hla_ir_samples()
   summ <- hla_allele_carrier_summary(typing, samples = samples)
   if (is.null(summ) || nrow(summ) == 0) {
     return(character(0))
@@ -382,6 +580,11 @@ hla_unit_noun <- reactive({
 ## "T cells / B cells" and a fine "CD8 TEM / CD4 naive", both may resolve the
 ## same cells, and the finer one carries the lineage more precisely.
 hla_celltype_col <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first)) {
+    lineage <- first$lineage_col
+    return(if (is.null(lineage)) NA_character_ else as.character(lineage))
+  }
   data <- hla_ir_annotated()
   cols <- hla_available_cols()
   if (is.null(data) || length(cols) == 0) {
@@ -457,13 +660,23 @@ hla_celltype_col_declared <- reactive({
 })
 
 ## ---- Parsed segments for the active chain (+ per-cell MHC context) ----- ##
-hla_segments <- reactive({
-  data <- hla_ir_annotated()
+hla_segments_fallback <- reactive({
   chain <- hla_active_chain()
+  packed <- hla_packed_segments()
+  data <- if (is.null(packed)) hla_ir_filtered() else packed
   if (is.null(data)) {
     return(NULL)
   }
-  seg <- hla_parse_ir_segments(data, chain)
+  seg <- if (is.null(packed)) {
+    hla_parse_ir_segments(data, chain)
+  } else {
+    filters <- hla_filter_selections()
+    if (length(filters)) {
+      data[cerebroGroupFilterMask(data, filters), , drop = FALSE]
+    } else {
+      data
+    }
+  }
   if (is.null(seg) || nrow(seg) == 0) {
     return(seg)
   }
@@ -472,6 +685,41 @@ hla_segments <- reactive({
     seg$mhc_context <- hla_lineage_context(seg[[ct_col]])
   }
   seg
+}) %>%
+  hla_bindCache(
+    hla_active_chain(),
+    hla_filter_key(),
+    hla_celltype_col(),
+    available_crb_files$selected
+  )
+
+hla_segments <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first) && isTRUE(hla_first_frame_filters_match())) {
+    # This table is already cached inside the viewer-pack asset. Passing its
+    # 18 MB payload through bindCache makes Shiny size and copy it again before
+    # the first graph can render.
+    return(first$segments)
+  }
+  hla_segments_fallback()
+})
+
+hla_first_frame_graph_snapshot <- reactive({
+  first <- hla_first_frame()
+  snapshot <- if (is.list(first)) first$graph_snapshot else NULL
+  if (
+    !is.list(snapshot) ||
+      !identical(snapshot$version, 1L) ||
+      !isTRUE(hla_first_frame_graph_matches()) ||
+      !identical(
+        as.integer(hla_param("hla_min_nodes", hla_default_min_nodes())),
+        as.integer(first$default_min_nodes)
+      ) ||
+      isTRUE(hla_param("hla_show_isolated", FALSE))
+  ) {
+    return(NULL)
+  }
+  snapshot
 })
 
 ## ---- Metadata columns to carry onto nodes (for tooltip / colouring) ---- ##
@@ -484,8 +732,7 @@ hla_node_meta_cols <- reactive({
   # EVERY colourable column is carried, not just the one currently selected. The
   # graph is cached on this set, so making it independent of hla_color_by means a
   # colour switch never re-keys the cache: the column is already on the node, and
-  # the renderer recolours it in place instead of rebuilding (see the
-  # visNetworkProxy observer in visualizations.R).
+  # the Canvas renderer recolours it without rebuilding the graph.
   ct <- hla_celltype_col()
   cols <- c(
     "sample",
@@ -493,6 +740,28 @@ hla_node_meta_cols <- reactive({
     hla_color_meta_cols()
   )
   unique(intersect(cols, hla_available_cols()))
+})
+
+hla_first_frame_graph_matches <- reactive({
+  first <- hla_first_frame()
+  if (is.null(first) || !isTRUE(hla_first_frame_filters_match())) {
+    return(FALSE)
+  }
+  scope <- hla_param("hla_scope", "all")
+  identical(scope, "all") &&
+    identical(
+      isTRUE(hla_param("hla_by_v", hla_by_v_default())),
+      isTRUE(first$by_v)
+    ) &&
+    identical(hla_node_meta_cols(), as.character(first$node_meta_cols)) &&
+    identical(
+      hla_celltype_col(),
+      if (is.null(first$lineage_col)) {
+        NA_character_
+      } else {
+        as.character(first$lineage_col)
+      }
+    )
 })
 
 ## ---- Colour-by choices (scope-aware) ---------------------------------- ##
@@ -546,7 +815,7 @@ hla_color_by_choices <- reactive({
   # Distinct from colouring by the plain `sample` column, which shows the node's
   # MODAL sample and so hides the cross-sample recurrence an HLA screen looks
   # for. Offered only when the repertoire actually has more than one sample.
-  if (length(names(getImmuneRepertoire())) > 1) {
+  if (length(hla_ir_samples()) > 1) {
     choices <- c(
       choices,
       "Sample of origin|seen in more than one = black" = "sample_origin"
@@ -768,6 +1037,9 @@ hla_scope_key <- reactive({
 ## set with no analysable allele renders that uiOutput as a bare "no alleles"
 ## message and creates no input at all, so requiring one would wait forever.
 hla_params_ready <- reactive({
+  if (!hla_page_active()) {
+    return(FALSE)
+  }
   if (
     is.null(input$hla_color_by) ||
       is.null(input$hla_min_nodes) ||
@@ -848,6 +1120,7 @@ hla_build_graph_raw_from <- function(seg) {
 ## needs no debounce.
 hla_min_nodes_debounced <- shiny::debounce(
   reactive({
+    req(identical(input[["sidebar"]], "hla_tcr_motifs"))
     as.integer(hla_param("hla_min_nodes", hla_default_min_nodes()))
   }),
   millis = 250
@@ -860,6 +1133,10 @@ hla_min_nodes_debounced <- shiny::debounce(
 ## (hla_motif_graph below), never inside a bindCache body, because a req() stop
 ## there would be a value the cache stores under the current key and replays.
 hla_motif_graph_raw_cached <- reactive({
+  first <- hla_first_frame()
+  if (!is.null(first) && isTRUE(hla_first_frame_graph_matches())) {
+    return(first$graph_raw)
+  }
   hla_build_graph_raw_from(hla_scoped_segments())
 }) %>%
   hla_bindCache(
@@ -867,6 +1144,7 @@ hla_motif_graph_raw_cached <- reactive({
     hla_param("hla_by_v", hla_by_v_default()),
     paste(hla_node_meta_cols(), collapse = ","),
     hla_scope_key(),
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -887,10 +1165,21 @@ hla_motif_graph_cached <- reactive({
     hla_param("hla_show_isolated", FALSE),
     paste(hla_node_meta_cols(), collapse = ","),
     hla_scope_key(),
+    hla_filter_key(),
     available_crb_files$selected
   )
 
 hla_motif_graph <- reactive({
+  if (isTRUE(hla_first_frame_graph_matches())) {
+    first <- hla_first_frame()
+    return(hla_finalize_motif_graph(
+      first$graph_raw,
+      min_nodes = as.integer(
+        hla_param("hla_min_nodes", hla_default_min_nodes())
+      ),
+      show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE))
+    ))
+  }
   req(hla_params_ready())
   hla_motif_graph_cached()
 })
@@ -931,6 +1220,7 @@ hla_global_motif_graph_raw_cached <- reactive({
     hla_param("hla_by_v", hla_by_v_default()),
     paste(hla_node_meta_cols(), collapse = ","),
     "all",
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -949,6 +1239,7 @@ hla_global_motif_graph_cached <- reactive({
     hla_param("hla_show_isolated", FALSE),
     paste(hla_node_meta_cols(), collapse = ","),
     "all",
+    hla_filter_key(),
     available_crb_files$selected
   )
 
@@ -1121,7 +1412,7 @@ hla_no_allele_reason <- reactive({
     return(NULL)
   }
   typing <- hla_active_typing()
-  ir_samples <- names(getImmuneRepertoire())
+  ir_samples <- hla_ir_samples()
   matched <- intersect(unique(as.character(typing$sample)), ir_samples)
   if (length(matched) == 0) {
     return(sprintf(

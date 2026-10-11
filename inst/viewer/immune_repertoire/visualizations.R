@@ -38,19 +38,17 @@ ir_fill_plot <- function(
   if (fill) tags$div(class = "cerebro-fill", plot) else plot
 }
 
-## Wrap an already-built output (e.g. a uiOutput whose server side computes a
-## facet-aware pixel height) — passed through unchanged for now.
-ir_fill_wrap <- function(output) {
-  output
-}
-
 ## ---- Visualizations UI ------------------------------------------------ ##
 output$ir_visualizations_UI <- renderUI({
   if (!has_scRepertoire()) {
     return(ir_scRepertoire_missing_ui())
   }
-  data <- ir_data()
-  if (is.null(data)) {
+  # Building the tab strip only needs to know whether repertoire data exists.
+  # Do not depend on ir_data(): that reactive follows the active grouping
+  # controls so it can join only requested metadata. Rebuilding the whole
+  # tabset on every grouping change resets the selected tab before the
+  # corresponding controls/output can update.
+  if (!ir_repertoire_available()) {
     return(div(
       class = "alert alert-warning",
       "No immune repertoire data available."
@@ -64,15 +62,22 @@ output$ir_visualizations_UI <- renderUI({
     tabPanel(
       # Clonal expansion overlaid on the cell UMAP — the default landing tab,
       # so the first thing the user sees is where expanded clones sit.
-      "Clonal UMAP",
+      "Clonal projection",
+      value = "Clonal UMAP",
       # Reserve a viewport-proportional placeholder for the spinner so the
       # container does not collapse to the ~400px default and snap up when the
       # plot arrives. 60vh matches the non-faceted plotly's own placeholder (and
       # the projection pages'), so the placeholder and the settled height are
       # close — no visible jump on first open.
-      shinycssloaders::withSpinner(
-        uiOutput("ir_ui_clonalUMAP"),
-        proxy.height = "60vh"
+      conditionalPanel(
+        condition = paste0(
+          "input.ir_p_umap_group_by && ",
+          "input.ir_p_umap_group_by != ''"
+        ),
+        shinycssloaders::withSpinner(
+          uiOutput("ir_ui_clonalUMAP"),
+          proxy.height = "60vh"
+        )
       )
     ),
     tabPanel(
@@ -98,9 +103,9 @@ output$ir_visualizations_UI <- renderUI({
     # ),
     tabPanel(
       "Paired Scatter",
-      ir_fill_wrap(shinycssloaders::withSpinner(uiOutput(
+      shinycssloaders::withSpinner(uiOutput(
         "ir_ui_pairedScatter"
-      )))
+      ))
     ),
     # Hidden by default (kept available; renderer/help/param_spec retained).
     # The clone-definition waterfall is an exploratory tool for choosing a
@@ -132,21 +137,21 @@ output$ir_visualizations_UI <- renderUI({
     #   "Quant",
     #   ir_fill_plot("ir_plot_clonalQuant")
     # ),
-    # tabPanel("Rarefaction", ir_fill_wrap(uiOutput("ir_ui_clonalRarefaction"))),
-    # tabPanel("Gene usage", ir_fill_wrap(uiOutput("ir_ui_percentGeneUsage"))),
-    # tabPanel("vizGenes", ir_fill_wrap(uiOutput("ir_ui_vizGenes"))),
-    # tabPanel("percentGenes", ir_fill_wrap(uiOutput("ir_ui_percentGenes"))),
-    # tabPanel("percentVJ", ir_fill_wrap(uiOutput("ir_ui_percentVJ"))),
-    # tabPanel("AA %", ir_fill_wrap(uiOutput("ir_ui_percentAA"))),
+    # tabPanel("Rarefaction", uiOutput("ir_ui_clonalRarefaction")),
+    # tabPanel("Gene usage", uiOutput("ir_ui_percentGeneUsage")),
+    # tabPanel("vizGenes", uiOutput("ir_ui_vizGenes")),
+    # tabPanel("percentGenes", uiOutput("ir_ui_percentGenes")),
+    # tabPanel("percentVJ", uiOutput("ir_ui_percentVJ")),
+    # tabPanel("AA %", uiOutput("ir_ui_percentAA")),
     # tabPanel(
     #   "Entropy",
     #   ir_fill_plot("ir_plot_positionalEntropy")
     # ),
-    # tabPanel("Property", ir_fill_wrap(uiOutput("ir_ui_positionalProperty"))),
+    # tabPanel("Property", uiOutput("ir_ui_positionalProperty")),
     # tabPanel(
     #   # Top motifs now lives in the settings panel (IR_PARAM_SPEC "K-mer").
     #   "K-mer",
-    #   ir_fill_wrap(uiOutput("ir_ui_percentKmer"))
+    #   uiOutput("ir_ui_percentKmer")
     # )
   )
 
@@ -348,7 +353,16 @@ ir_umap_grouped_data <- function(df, group_by) {
   ) {
     return(NULL)
   }
-  idx <- match(df$barcode, md$cell_barcode)
+  idx <- if (
+    "cell_index" %in%
+      colnames(df) &&
+      all(df$cell_index >= 1L & df$cell_index <= nrow(md))
+  ) {
+    as.integer(df$cell_index)
+  } else {
+    match(df$barcode, md$cell_barcode)
+  }
+  df$barcode <- as.character(md$cell_barcode[idx])
   group_values <- as.character(md[[group_by]][idx])
   group_levels <- tryCatch(getGroupLevels(group_by), error = function(e) NULL)
   if (is.null(group_levels) || length(group_levels) == 0) {
@@ -428,7 +442,35 @@ ir_umap_split_output_height <- function(group_by) {
   ceiling(layout$height)
 }
 
-ir_clonal_umap_ggplot <- function(df, group_by, point_size, alpha, ncol) {
+ir_projection_display_name <- function(projection) {
+  key <- tolower(as.character(projection %||% "projection"))
+  switch(
+    key,
+    tsne = "t-SNE",
+    umap = "UMAP",
+    pca = "PCA",
+    as.character(projection %||% "projection")
+  )
+}
+
+ir_projection_axis_names <- function(projection) {
+  label <- toupper(gsub(
+    "[^[:alnum:]]+",
+    "",
+    ir_projection_display_name(projection)
+  ))
+  paste0(label, "_", 1:2)
+}
+
+ir_clonal_umap_ggplot <- function(
+  df,
+  group_by,
+  point_size,
+  alpha,
+  ncol,
+  projection
+) {
+  axes <- ir_projection_axis_names(projection)
   bg <- df[is.na(df$expansion), , drop = FALSE]
   fg <- df[!is.na(df$expansion), , drop = FALSE]
   ggplot2::ggplot() +
@@ -452,17 +494,19 @@ ir_clonal_umap_ggplot <- function(df, group_by, point_size, alpha, ncol) {
       name = "Clonotype"
     ) +
     ggplot2::coord_equal() +
-    ggplot2::labs(x = "UMAP_1", y = "UMAP_2") +
+    ggplot2::labs(x = axes[[1]], y = axes[[2]]) +
     ggplot2::theme_classic() +
     ggplot2::theme(aspect.ratio = 1)
 }
 
 output$ir_ui_clonalUMAP <- renderUI({
-  group_by <- ir_param("ir_p_umap_group_by", "")
-  if (is.null(group_by) || !nzchar(group_by)) {
-    ## Non-faceted: render through the shared cell-view engine (same host and
-    ## selection controls as Projection and Spatial).
-    return(ir_clonalUMAP_projection_ui())
+  group_by <- input[["ir_p_umap_group_by"]]
+  req(!is.null(group_by))
+  if (!nzchar(group_by)) {
+    ## The non-faceted host is present in UI.R, but the shared client renderer
+    ## requests data only after the hidden dashboard page gains a layout box.
+    ## This removes nested UI round trips without preloading IR on Data info.
+    return(NULL)
   }
   ## Faceted: a group_by column is chosen. Faceting needs a multi-panel ggplot,
   ## which the single-canvas shared renderer cannot express, so this variant
@@ -474,7 +518,7 @@ output$ir_ui_clonalUMAP <- renderUI({
 })
 
 output[["ir_selection_status_UI"]] <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data())) {
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   active_tab <- input[["ir_tabs"]]
@@ -495,7 +539,7 @@ output[["ir_selection_status_UI"]] <- renderUI({
           ),
           tags$span(
             class = "cerebro-selection-status-text",
-            "Selection is available in Clonal UMAP."
+            "Selection is available in Clonal projection."
           )
         )
       )
@@ -508,160 +552,239 @@ output[["ir_selection_status_UI"]] <- renderUI({
   )
 })
 
-## Shared cell-view host for the non-faceted Clonal UMAP.
-ir_clonalUMAP_projection_ui <- function() {
-  cerebroCellViewOutput("ir_clonalUMAP_projection")
-}
-
 ## Draw the non-faceted Clonal UMAP through the shared cell-view engine.
 ## We marshal the same grey "Other cells" background + one-trace-per-expansion-
 ## level data the old renderPlotly built, but as the meta/data/hover arrays the
 ## shared renderer consumes. Runs only when no
 ## grouping column is chosen (the faceted variant uses the static ggplot below).
+ir_clonal_umap_last_request <- reactiveVal(NULL)
+
 observe({
-  input[["ir_clonalUMAP_projection_render_request"]]
+  render_request <- input[["ir_clonalUMAP_projection_render_request"]]
+  dataset_context <- viewer_loaded_dataset_context()
+  req(is.list(render_request), viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
+  req(render_request)
+  req(identical(input[["sidebar"]], "immune_repertoire"),
+      identical(input[["ir_tabs"]], "Clonal UMAP"))
   group_by <- ir_param("ir_p_umap_group_by", "")
   ## Faceting is handled by the static ggplot path; nothing to push here.
   if (!is.null(group_by) && nzchar(group_by)) {
     return()
   }
 
-  ## These controls arrive from a dynamic UI. Wait for their real client values
-  ## rather than drawing once with R fallbacks and again as each control binds.
-  receptor <- input[["ir_p_umap_receptor"]]
-  projection <- input[["ir_p_umap_projection"]]
-  show_all <- input[["ir_p_umap_show_all"]]
-  req(
-    receptor,
-    projection,
-    !is.null(show_all),
-    !is.null(input[["ir_clonalUMAP_group_labels"]]),
-    !is.null(input[["ir_clonalUMAP_point_border"]]),
-    !is.null(input[["ir_clonalUMAP_keep_square"]])
-  )
+  ## Receptor and projection arrive from the visible toolbar. Show-all and the
+  ## appearance controls live in the unopened settings drawer, so use their
+  ## declared server defaults until the user opens and changes them.
+  receptor <- ir_param("ir_p_umap_receptor", {
+    choices <- ir_receptor_types()
+    if (length(choices)) unname(choices[[1L]]) else NULL
+  })
+  projection <- ir_param("ir_p_umap_projection", {
+    choices <- tryCatch(availableProjections(), error = function(e) character())
+    if (length(choices)) unname(choices[[1L]]) else NULL
+  })
+  show_all <- ir_param("ir_p_umap_show_all", TRUE)
+  req(receptor, projection)
+  group_labels <- input[["ir_clonalUMAP_group_labels"]]
+  if (is.null(group_labels)) {
+    group_labels <- TRUE
+  }
+  point_border <- isTRUE(input[["ir_clonalUMAP_point_border"]])
+  keep_square <- isTRUE(input[["ir_clonalUMAP_keep_square"]])
   clone_call <- "gene"
   show_all <- isTRUE(show_all)
   cells <- ir_umap_cells_to_show()
-  df <- ir_clonal_umap_data(
+  dp <- tryCatch(ir_display_params(), error = function(e) list())
+  appearance <- current_scatter_defaults()
+  point_size <- suppressWarnings(as.numeric(
+    dp[["ir_d_point_size"]] %||% appearance$point_size
+  ))
+  if (length(point_size) != 1 || is.na(point_size)) {
+    point_size <- appearance$point_size
+  }
+  alpha <- suppressWarnings(as.numeric(
+    dp[["ir_d_alpha"]] %||% appearance$point_opacity
+  ))
+  if (length(alpha) != 1 || is.na(alpha)) {
+    alpha <- appearance$point_opacity
+  }
+  percentage <- suppressWarnings(as.numeric(
+    dp[["ir_d_percentage_cells_to_show"]] %||%
+      appearance$percentage_cells_to_show
+  ))
+  if (length(percentage) != 1 || !is.finite(percentage)) {
+    percentage <- appearance$percentage_cells_to_show
+  }
+  identity <- tryCatch(viewerDatasetIdentity(), error = function(e) list())
+  request_signature <- list(
+    render_request = render_request,
+    dataset_fingerprint = as.character(identity$fingerprint %||% ""),
+    cell_order_fingerprint = as.character(identity$order_fingerprint %||% ""),
+    receptor = as.character(receptor),
+    projection = as.character(projection),
+    show_all = show_all,
+    cells = cells,
+    point_size = point_size,
+    alpha = alpha,
+    percentage = percentage,
+    group_labels = isTRUE(group_labels),
+    point_border = point_border,
+    keep_square = keep_square
+  )
+  previous_signature <- ir_clonal_umap_last_request()
+  if (identical(previous_signature, request_signature)) {
+    return()
+  }
+  render_data <- ir_clonal_umap_data(
     projection,
     receptor,
     clone_call,
     show_all = show_all,
-    cells = cells
+    cells = cells,
+    percentage = percentage,
+    split_output = TRUE
   )
-  req(!is.null(df) && nrow(df) > 0)
-
-  dp <- tryCatch(ir_display_params(), error = function(e) list())
-  df <- randomlySubsetCells(
-    df,
-    dp[["ir_d_percentage_cells_to_show"]] %||% 100
-  )
-  point_size <- suppressWarnings(as.numeric(dp[["ir_d_point_size"]]))
-  if (length(point_size) != 1 || is.na(point_size)) {
-    point_size <- 1
-  }
-  alpha <- suppressWarnings(as.numeric(dp[["ir_d_alpha"]]))
-  if (length(alpha) != 1 || is.na(alpha)) {
-    alpha <- 0.8
-  }
+  req(!is.null(render_data), length(render_data$x) > 0L)
   ## Grey background = cells without the selected receptor (expansion = NA);
   ## coloured foreground = receptor cells with an expansion level. One trace per
   ## expansion level, in canonical order, so each keeps its turbo colour.
-  bg <- df[is.na(df$expansion), , drop = FALSE]
-  fg <- df[!is.na(df$expansion), , drop = FALSE]
-
-  traces <- list()
-  data_x <- list()
-  data_y <- list()
-  data_key <- list()
-  data_color <- list()
-  hover_info <- list()
-  hover_text <- list()
-
-  if (nrow(bg) > 0) {
-    traces[[length(traces) + 1]] <- "Other cells"
-    data_x[[length(data_x) + 1]] <- bg$x
-    data_y[[length(data_y) + 1]] <- bg$y
-    data_key[[length(data_key) + 1]] <- bg$barcode
-    data_color[[length(data_color) + 1]] <- "#D9D9D9"
-    ## Background cells skip hover (per-trace hoverinfo, honoured by shared JS).
-    hover_info[[length(hover_info) + 1]] <- "skip"
-    hover_text[[length(hover_text) + 1]] <- ""
-  }
-  for (lvl in names(IR_EXPANSION_COLORS)) {
-    sub <- fg[
-      !is.na(fg$expansion) & as.character(fg$expansion) == lvl,
-      ,
-      drop = FALSE
-    ]
-    if (nrow(sub) == 0) {
-      next
+  trace_codes <- render_data$trace_codes
+  traces <- ifelse(
+    is.na(trace_codes),
+    "Other cells",
+    IR_CLONE_LABELS[trace_codes]
+  )
+  data_color <- ifelse(
+    is.na(trace_codes),
+    "#D9D9D9",
+    unname(IR_EXPANSION_COLORS[IR_CLONE_LABELS[trace_codes]])
+  )
+  trace_lengths <- lengths(render_data$x)
+  axes <- ir_projection_axis_names(projection)
+  req(length(traces) > 0)
+  deferred_aux <- function() {
+    data_keys <- c(
+      if (is.na(trace_codes[[1L]])) {
+        list(render_data$background_key)
+      } else {
+        list()
+      },
+      lapply(
+        render_data$coloured_rows,
+        function(rows) render_data$coloured_key[rows]
+      )
+    )
+    uses_cell_index <- identical(render_data$key_type, "cell_index")
+    key_lengths <- lengths(data_keys)
+    if (isTRUE(uses_cell_index)) {
+      flat_barcodes <- ir_clonal_umap_barcodes(data.frame(
+        cell_index = unlist(data_keys, use.names = FALSE)
+      ))
+      req(length(flat_barcodes) == sum(key_lengths))
+      barcodes_by_trace <- unname(split(
+        flat_barcodes,
+        rep(seq_along(key_lengths), key_lengths)
+      ))
+    } else {
+      barcodes_by_trace <- lapply(data_keys, as.character)
     }
-    traces[[length(traces) + 1]] <- lvl
-    data_x[[length(data_x) + 1]] <- sub$x
-    data_y[[length(data_y) + 1]] <- sub$y
-    data_key[[length(data_key) + 1]] <- sub$barcode
-    data_color[[length(data_color) + 1]] <- unname(IR_EXPANSION_COLORS[[lvl]])
-    hover_info[[length(hover_info) + 1]] <- "text"
-    hover_text[[length(hover_text) + 1]] <- paste0(
-      sub$barcode,
-      "<br>",
-      lvl,
-      "<br>UMAP_1: ",
-      formatC(sub$x, format = "f", digits = 2),
-      "<br>UMAP_2: ",
-      formatC(sub$y, format = "f", digits = 2)
+    req(identical(lengths(barcodes_by_trace), key_lengths))
+    hover_info <- ifelse(traces == "Other cells", "skip", "text")
+    hover_text <- Map(
+      function(barcodes, x, y, label) {
+        if (identical(label, "Other cells")) {
+          return("")
+        }
+        paste0(
+          barcodes,
+          "<br>",
+          label,
+          "<br>",
+          axes[[1]],
+          ": ",
+          formatC(x, format = "f", digits = 2),
+          "<br>",
+          axes[[2]],
+          ": ",
+          formatC(y, format = "f", digits = 2)
+        )
+      },
+      barcodes_by_trace,
+      render_data$x,
+      render_data$y,
+      traces
+    )
+    list(
+      selection_key = barcodes_by_trace,
+      hover = list(hoverinfo = as.list(hover_info), text = hover_text)
     )
   }
-  req(length(traces) > 0)
 
   output_meta <- list(
     color_type = "categorical",
-    space_label = "Clonal UMAP",
+    space_label = paste("Clonal", ir_projection_display_name(projection)),
     traces = traces,
     color_variable = "expansion",
     appearance = list(
-      group_labels = isTRUE(input[["ir_clonalUMAP_group_labels"]]),
-      draw_border = isTRUE(input[["ir_clonalUMAP_point_border"]]),
-      keep_square = isTRUE(input[["ir_clonalUMAP_keep_square"]])
+      group_labels = isTRUE(group_labels),
+      draw_border = point_border,
+      keep_square = keep_square
     )
   )
   output_data <- list(
-    x = data_x,
-    y = data_y,
-    selection_key = data_key,
-    color = data_color,
+    x = render_data$x,
+    y = render_data$y,
+    deferred_selection_lengths = trace_lengths,
+    color = as.list(data_color),
     point_size = point_size,
     point_opacity = alpha,
-    point_line = if (isTRUE(input[["ir_clonalUMAP_point_border"]])) {
+    point_line = if (point_border) {
       list(color = "rgb(196,196,196)", width = 1)
     } else {
       list()
     },
     reset_axes = TRUE
   )
-  output_hover <- list(
-    hoverinfo = hover_info,
-    text = hover_text
-  )
+  output_hover <- list(hoverinfo = "skip")
 
-  cerebroCellViewRender(
-    "ir_clonalUMAP_projection",
-    output_meta,
-    output_data,
-    output_hover
+  isolate(
+    cerebroCellViewRender(
+      "ir_clonalUMAP_projection",
+      output_meta,
+      output_data,
+      output_hover,
+      deferred_aux = deferred_aux, dataset_context = dataset_context)
   )
-})
+  ir_clonal_umap_last_request(request_signature)
+}, priority = 1000)
 
 ## ---- Clonal UMAP selection summaries ----------------------------------- ##
 output[["ir_clonalUMAP_number_of_selected_cells"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  cerebroSelectionSummary(sel, "Clonal UMAP")
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    sel <- NULL
+  }
+  cerebroSelectionSummary(sel, "Clonal projection")
 })
 
 output[["ir_clonalUMAP_projection_composition"]] <- renderUI({
   sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  cerebroSelectionSummary(sel, "Clonal UMAP", composition = TRUE)
+  if (
+    !is.null(sel) &&
+      (!is.list(sel) || !viewerDatasetContextEqual(
+        sel[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    sel <- NULL
+  }
+  cerebroSelectionSummary(sel, "Clonal projection", composition = TRUE)
 })
 
 output$ir_plot_clonalUMAP_static <- renderImage(
@@ -673,14 +796,15 @@ output$ir_plot_clonalUMAP_static <- renderImage(
     clone_call <- "gene"
     show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
     cells <- ir_umap_cells_to_show()
+    dp <- tryCatch(ir_display_params(), error = function(e) list())
     df <- ir_clonal_umap_data(
       projection,
       receptor,
       clone_call,
       show_all = show_all,
-      cells = cells
+      cells = cells,
+      percentage = dp[["ir_d_percentage_cells_to_show"]] %||% 100
     )
-    dp <- tryCatch(ir_display_params(), error = function(e) list())
 
     plot <- safeRenderPlot(
       {
@@ -692,7 +816,7 @@ output$ir_plot_clonalUMAP_static <- renderImage(
                 x = 0,
                 y = 0,
                 label = paste0(
-                  "No clonal UMAP to display.\n",
+                  "No clonal projection to display.\n",
                   "Needs a cell projection and ",
                   if (is.null(receptor)) "TCR/BCR" else receptor,
                   " clonotypes whose barcodes match the cells."
@@ -703,10 +827,6 @@ output$ir_plot_clonalUMAP_static <- renderImage(
               ggplot2::theme_void()
           )
         }
-        df <- randomlySubsetCells(
-          df,
-          dp[["ir_d_percentage_cells_to_show"]] %||% 100
-        )
         df <- ir_umap_grouped_data(df, group_by)
         validate(need(
           !is.null(df) && nrow(df) > 0,
@@ -731,7 +851,8 @@ output$ir_plot_clonalUMAP_static <- renderImage(
           group_by = group_by,
           point_size = point_size,
           alpha = alpha,
-          ncol = layout$ncol
+          ncol = layout$ncol,
+          projection = projection
         )
       },
       "clonalUMAP"
@@ -752,7 +873,7 @@ output$ir_plot_clonalUMAP_static <- renderImage(
       contentType = "image/png",
       width = layout$width,
       height = layout$height,
-      alt = "Clonal UMAP grouped by the selected cell metadata"
+      alt = "Clonal projection grouped by the selected cell metadata"
     )
   },
   deleteFile = TRUE
@@ -957,13 +1078,16 @@ ir_paired_scatter_panel <- function(
   title,
   show_title = TRUE
 ) {
+  dot_size <- ir_param("ir_p_dot_size", "total")
+  needed <- unique(c(x_axis, y_axis, if (!identical(dot_size, "total")) dot_size))
+  if (length(needed) && all(needed %in% names(data))) data <- data[needed]
   p <- scRepertoire::clonalScatter(
     data,
     cloneCall = pars$cloneCall,
     chain = pars$chain,
     x.axis = x_axis,
     y.axis = y_axis,
-    dot.size = ir_param("ir_p_dot_size", "total"),
+    dot.size = dot_size,
     graph = ir_param("ir_p_graph", "proportion"),
     exportTable = FALSE,
     palette = IR_PALETTE
@@ -1118,20 +1242,76 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
     input$ir_p_dot_size
   )
 
+ir_clonal_abundance_plotly <- function(counts) {
+  if (!nrow(counts)) {
+    return(ir_empty_plotly("No clonotypes are available for this selection."))
+  }
+  counts$hover <- paste0(
+    "<b>",
+    counts$sample,
+    "</b><br>",
+    "Abundance: ",
+    formatC(counts$abundance, format = "d"),
+    "<br>",
+    "Clones: ",
+    formatC(counts$n_clones, format = "d")
+  )
+  plot <- plotly::plot_ly(
+    counts,
+    x = ~abundance,
+    y = ~n_clones,
+    split = ~sample,
+    color = ~sample,
+    type = "scatter",
+    mode = "lines",
+    text = ~hover,
+    hoverinfo = "text"
+  ) %>%
+    plotly::layout(
+      xaxis = cerebro_plotly_axis("Abundance", mirror = FALSE, type = "log"),
+      yaxis = cerebro_plotly_axis(
+        "Number of clones",
+        mirror = FALSE,
+        rangemode = "tozero"
+      ),
+      hoverlabel = cerebro_plotly_hoverlabel(),
+      plot_bgcolor = cerebro_plotly_theme()$transparent,
+      paper_bgcolor = cerebro_plotly_theme()$transparent,
+      legend = list(title = list(text = "Samples"))
+    )
+  cerebro_plotly_toolbar(plot)
+}
+
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalAbundance")
+  pars <- ir_params()
+  ## Tab navigation can reach this output before renderUI has bound its
+  ## controls. Do not pass NULL chain/cloneCall into scRepertoire during that gap.
+  req(pars$chain, pars$cloneCall)
+  scale <- isTRUE(ir_param("ir_p_scale", FALSE))
+  order_by <- ir_order_by()
+  if (
+    identical(pars$chain, "both") &&
+      is.null(pars$groupBy) &&
+      !scale &&
+      is.null(order_by)
+  ) {
+    return(ir_clonal_abundance_plotly(ir_clonal_abundance_counts(
+      ir_data(),
+      ir_clonecall_col(pars$cloneCall)
+    )))
+  }
   data <- ir_data()
   req(!is.null(data))
-  pars <- ir_params()
+  req_scRepertoire()
   ir_render_ggplotly(
     scRepertoire::clonalAbundance(
       data,
       cloneCall = pars$cloneCall,
       chain = pars$chain,
       group.by = pars$groupBy,
-      order.by = ir_order_by(),
-      scale = isTRUE(ir_param("ir_p_scale", FALSE))
+      order.by = order_by,
+      scale = scale
     ),
     "clonalAbundance"
   )
@@ -1376,11 +1556,24 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalHomeostasis")
+  pars <- ir_params()
+  req(pars$chain, pars$cloneCall)
+  # Dataset switches can deliver the old grouping before its selector resets.
+  if (!is.null(pars$groupBy)) req(pars$groupBy %in% getGroups())
+  if (identical(pars$chain, "both") && is.null(ir_order_by())) {
+    return(ir_render_ggplotly({
+      counts <- if (is.null(pars$groupBy)) {
+        ir_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall))
+      } else {
+        ir_grouped_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall), pars$groupBy)
+      }
+      ir_homeostasis_plot(counts, ir_clone_size(), IR_PALETTE)
+    }, "clonalHomeostasis"))
+  }
+  req_scRepertoire()
   data <- ir_data()
   req(!is.null(data))
-  pars <- ir_params()
   ir_render_ggplotly(
     scRepertoire::clonalHomeostasis(
       data,
@@ -1665,8 +1858,8 @@ output$ir_plot_clonalScatter <- renderPlot({
   )
 
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalSizeDistribution")
+  req(input$ir_chain, !is.null(input$ir_groupBy))
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
@@ -1678,8 +1871,20 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   if (is.na(threshold) || threshold < 1) {
     threshold <- 1
   }
+  row_count <- sum(vapply(data, nrow, integer(1)))
   ir_render_ggplotly(
-    {
+    if (row_count >= 100000L) {
+      # The upstream implementation creates a dense clonotype-by-sample
+      # matrix. On the Ren atlas that blocked the only Shiny R process for
+      # close to a minute and made every subsequently selected tab appear
+      # broken. Cluster exact empirical clone-size profiles instead; this path
+      # is linear in repertoire rows and keeps the same group/linkage controls.
+      ir_size_profile_plot(
+        ir_size_distribution_profile(),
+        method = ir_param("ir_p_sd_method", "ward.D2")
+      )
+    } else {
+      req_scRepertoire()
       p <- scRepertoire::clonalSizeDistribution(
         data,
         cloneCall = "strict",
@@ -1698,7 +1903,6 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   )
 }) %>%
   ir_bindCache(
-    input$ir_cloneCall,
     input$ir_chain,
     input$ir_groupBy,
     input$ir_p_sd_method,
@@ -2111,6 +2315,7 @@ output$ir_plot_cloneSharing <- plotly::renderPlotly({
   ## the namespace here.
   req(has_scRepertoire())
   req_plot_space("ir_plot_cloneSharing")
+  req(input$ir_chain, input$ir_sharing_unit, !is.null(input$ir_groupBy))
   fig <- ir_render_ggplotly(
     ir_build_sharing_plot(
       ir_data_annotated(),

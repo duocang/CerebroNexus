@@ -3,143 +3,163 @@
 ## group-by (shown only on tabs they apply to) plus the current tab's
 ## function-specific analysis parameters (IR_PARAM_SPEC). Scatter / Compare
 ## sample selectors live here too, scoped to their tabs.
-output$ir_main_params_UI <- renderUI({
-  if (!has_scRepertoire()) {
-    return(ir_scRepertoire_missing_ui())
-  }
-  raw <- ir_data_raw()
-  if (is.null(raw)) {
-    return(div(
-      class = "alert alert-warning",
-      "No immune repertoire data available. Import data with TCR/BCR annotations first."
-    ))
-  }
-
-  chains_present <- detect_chains(raw)
-  tcr_present <- intersect(chains_present, c("TRA", "TRB", "TRG", "TRD"))
-  bcr_present <- intersect(chains_present, c("IGH", "IGK", "IGL"))
-  # Build a flat named vector of chain choices. A nested list mixing a
-  # top-level scalar ("both") with sub-lists (TCR/BCR optgroups) renders
-  # incorrectly under selectize (only the scalar survives), so keep it flat.
-  chain_choices <- c("All chains" = "both")
-  if (length(tcr_present) > 0) {
-    chain_choices <- c(chain_choices, setNames(tcr_present, tcr_present))
-  }
-  if (length(bcr_present) > 0) {
-    chain_choices <- c(chain_choices, setNames(bcr_present, bcr_present))
-  }
-
-  # Grouping options come from the data set's declared grouping variables
-  # joined onto the IR data by barcode (see ir_data_annotated), so users can
-  # group by ANY metadata column (sample, condition, treatment, cell type, ...)
-  # rather than only columns embedded in the IR table itself.
-  annotated <- ir_data_annotated()
-  data_cols <- if (!is.null(annotated)) {
-    names(annotated[[1]])
-  } else {
-    names(raw[[1]])
-  }
-  groups <- tryCatch(getGroups(), error = function(e) character(0))
-  available_groups <- intersect(groups, data_cols)
-
-  # Global control visibility comes from IR_GLOBAL_CONTROL_HIDDEN
-  # (param_spec.R), so the UI and help dialogs cannot drift.
-  tab <- input$ir_tabs
-
-  # Collect only the controls that apply to the current tab, then flow them into
-  # rows so a hidden control never leaves a blank gap.
-  controls <- list()
-  if (ir_global_control_visible("ir_cloneCall", tab)) {
-    controls <- c(
-      controls,
-      list(selectInput(
-        "ir_cloneCall",
-        "Clone call:",
-        choices = c("gene", "nt", "aa", "strict"),
-        selected = "gene",
-        selectize = FALSE
-      ))
-    )
-  }
-  if (ir_global_control_visible("ir_chain", tab)) {
-    controls <- c(
-      controls,
-      list(selectInput(
-        "ir_chain",
-        "Chain:",
-        choices = chain_choices,
-        selected = "both",
-        selectize = FALSE
-      ))
-    )
-  }
-  if (ir_global_control_visible("ir_groupBy", tab)) {
-    # group.by is the single grouping control: None compares the loaded samples
-    # (the repertoire list elements); a metadata column makes that column's
-    # levels the comparison units. scRepertoire rbinds + re-splits internally
-    # (.groupList), so this fully defines what a plot compares.
-    prev_gb <- isolate(input$ir_groupBy)
-    default_gb <- if (!is.null(prev_gb) && prev_gb %in% available_groups) {
-      prev_gb
-    } else {
-      ""
+output$ir_main_params_UI <- shiny::bindEvent(
+  renderUI({
+    if (!has_scRepertoire()) {
+      return(ir_scRepertoire_missing_ui())
     }
-    group_label <- if (
-      !is.null(tab) && tab %in% c("Paired Scatter", "Scatter", "Compare")
+    tab <- ir_param("ir_tabs", "Clonal UMAP")
+    packed_landing <- identical(tab, "Clonal UMAP")
+    summary <- getImmuneRepertoireSummary()
+    summary_chains <- as.character(summary$chains)
+    raw <- if (packed_landing || length(summary_chains)) NULL else ir_data_raw()
+    if (
+      !isTRUE(summary$available)
     ) {
-      "Compare by:"
-    } else {
-      "Group results by:"
-    }
-    controls <- c(
-      controls,
-      list(selectInput(
-        "ir_groupBy",
-        group_label,
-        choices = c("None" = "", available_groups),
-        selected = default_gb,
-        selectize = FALSE
+      return(div(
+        class = "alert alert-warning",
+        "No immune repertoire data available. Import data with TCR/BCR annotations first."
       ))
-    )
-  }
-  tagList(
-    tags$style(
-      "#ir_chain + .selectize-control .selectize-dropdown-content { max-height: none; }"
-    ),
-    # Global controls, flowed two-per-row so no hidden control leaves a gap.
-    ir_flow_controls(controls),
-    # High-frequency analysis parameters for the current tab.
-    uiOutput("ir_primary_param_panel"),
-    # Scatter / Compare sample selectors only on their own tabs.
-    conditionalPanel(
-      condition = "input.ir_tabs == 'Scatter'",
-      uiOutput("ir_scatter_settings")
-    ),
-    conditionalPanel(
-      condition = "input.ir_tabs == 'Compare'",
-      uiOutput("ir_compare_settings")
-    ),
-    conditionalPanel(
-      condition = "input.ir_tabs == 'Clone Sharing'",
-      selectInput(
-        "ir_sharing_unit",
-        "Sharing unit:",
-        choices = ir_sharing_unit_choices(),
-        selected = if ("sample" %in% ir_sharing_unit_choices()) {
-          "sample"
-        } else {
-          NULL
-        },
-        selectize = FALSE
+    }
+
+    # The validated sidecar descriptor supplies these without materialization.
+    chains_present <- if (length(summary_chains)) summary_chains else detect_chains(raw)
+    tcr_present <- intersect(chains_present, c("TRA", "TRB", "TRG", "TRD"))
+    bcr_present <- intersect(chains_present, c("IGH", "IGK", "IGL"))
+    # Build a flat named vector of chain choices. A nested list mixing a
+    # top-level scalar ("both") with sub-lists (TCR/BCR optgroups) renders
+    # incorrectly under selectize (only the scalar survives), so keep it flat.
+    chain_choices <- c("All chains" = "both")
+    if (length(tcr_present) > 0) {
+      chain_choices <- c(chain_choices, setNames(tcr_present, tcr_present))
+    }
+    if (length(bcr_present) > 0) {
+      chain_choices <- c(chain_choices, setNames(bcr_present, bcr_present))
+    }
+
+    # Grouping options come from the data set's declared grouping variables
+    # joined onto the IR data by barcode (see ir_data_annotated), so users can
+    # group by ANY metadata column (sample, condition, treatment, cell type, ...)
+    # rather than only columns embedded in the IR table itself.
+    available_groups <- character(0)
+    if (ir_global_control_visible("ir_groupBy", tab)) {
+      metadata_cols <- tryCatch(
+        colnames(getMetaData()),
+        error = function(e) character()
       )
+      data_cols <- union(if (length(raw)) names(raw[[1]]) else character(), metadata_cols)
+      groups <- tryCatch(getGroups(), error = function(e) character(0))
+      available_groups <- intersect(groups, data_cols)
+    }
+
+    # Global control visibility comes from IR_GLOBAL_CONTROL_HIDDEN
+    # (param_spec.R), so the UI and help dialogs cannot drift.
+    # Collect only the controls that apply to the current tab, then flow them into
+    # rows so a hidden control never leaves a blank gap.
+    controls <- list()
+    if (ir_global_control_visible("ir_cloneCall", tab)) {
+      controls <- c(
+        controls,
+        list(selectInput(
+          "ir_cloneCall",
+          "Clone call:",
+          choices = c("gene", "nt", "aa", "strict"),
+          selected = "gene",
+          selectize = FALSE
+        ))
+      )
+    }
+    if (ir_global_control_visible("ir_chain", tab)) {
+      controls <- c(
+        controls,
+        list(selectInput(
+          "ir_chain",
+          "Chain:",
+          choices = chain_choices,
+          selected = "both",
+          selectize = FALSE
+        ))
+      )
+    }
+    if (ir_global_control_visible("ir_groupBy", tab)) {
+      # group.by is the single grouping control: None compares the loaded samples
+      # (the repertoire list elements); a metadata column makes that column's
+      # levels the comparison units. scRepertoire rbinds + re-splits internally
+      # (.groupList), so this fully defines what a plot compares.
+      prev_gb <- isolate(input$ir_groupBy)
+      default_gb <- if (!is.null(prev_gb) && prev_gb %in% available_groups) {
+        prev_gb
+      } else {
+        ""
+      }
+      group_label <- if (
+        !is.null(tab) && tab %in% c("Paired Scatter", "Scatter", "Compare")
+      ) {
+        "Compare by:"
+      } else {
+        "Group results by:"
+      }
+      controls <- c(
+        controls,
+        list(selectInput(
+          "ir_groupBy",
+          group_label,
+          choices = c("None" = "", available_groups),
+          selected = default_gb,
+          selectize = FALSE
+        ))
+      )
+    }
+    tagList(
+      tags$style(
+        "#ir_chain + .selectize-control .selectize-dropdown-content { max-height: none; }"
+      ),
+      # Global controls, flowed two-per-row so no hidden control leaves a gap.
+      ir_flow_controls(controls),
+      # High-frequency analysis parameters for the current tab.
+      uiOutput("ir_primary_param_panel"),
+      # Scatter / Compare sample selectors only on their own tabs.
+      conditionalPanel(
+        condition = "input.ir_tabs == 'Scatter'",
+        uiOutput("ir_scatter_settings")
+      ),
+      conditionalPanel(
+        condition = "input.ir_tabs == 'Compare'",
+        uiOutput("ir_compare_settings")
+      ),
+      if (identical(tab, "Clone Sharing")) {
+        selectInput(
+          "ir_sharing_unit",
+          "Sharing unit:",
+          choices = ir_sharing_unit_choices(),
+          selected = if ("sample" %in% ir_sharing_unit_choices()) {
+            "sample"
+          } else {
+            NULL
+          },
+          selectize = FALSE
+        )
+      }
     )
-  )
+  }),
+  input$ir_tabs,
+  data_set()
+)
+
+## ---- Deferred settings drawer ----------------------------------------- ##
+## The drawer lives in the DOM while closed, so suspendWhenHidden alone does
+## not prevent its renderUI outputs from running. Wait for the drawer's client
+## open event before constructing any of its controls. In particular, this
+## keeps the hundreds of group-filter choices out of the default landing path.
+ir_settings_requested <- reactive({
+  !is.null(input[["ir_more_render_request"]])
 })
 
 ## ---- Appearance controls (settings drawer) ---------------------------- ##
 ## Only render the section when the active plot has effective controls.
 output$ir_appearance_section_UI <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data_raw())) {
+  req(ir_settings_requested())
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   tab <- input$ir_tabs
@@ -160,7 +180,8 @@ output$ir_appearance_section_UI <- renderUI({
 
 ## Scatter point controls and shared Canvas checkboxes.
 output$ir_additional_params_UI <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data_raw())) {
+  req(ir_settings_requested())
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   tagList(
@@ -347,33 +368,41 @@ ir_analysis_panel <- function(more = FALSE) {
     return(NULL)
   }
 
-  groups <- tryCatch(getGroups(), error = function(e) character(0))
-  genes <- ir_gene_families()
-
   controls <- lapply(spec, function(p) {
+    # Dynamic UI can be rebuilt when related repertoire outputs invalidate.
+    # Preserve a live selection when it is still valid instead of resetting
+    # the control to its specification default. isolate() deliberately avoids
+    # making the panel depend on the inputs it creates.
+    current <- isolate(input[[p$id]])
     if (identical(p$type, "numeric")) {
+      valid <- is.numeric(current) && length(current) == 1L &&
+        is.finite(current) && (is.null(p$min) || current >= p$min) &&
+        (is.null(p$max) || current <= p$max)
       return(numericInput(
         p$id,
         p$label,
-        value = p$value,
+        value = if (valid) current else p$value,
         min = p$min,
         max = p$max,
         step = p$step
       ))
     }
     if (identical(p$type, "checkbox")) {
-      return(checkboxInput(p$id, p$label, value = isTRUE(p$value)))
+      value <- if (is.logical(current) && length(current) == 1L && !is.na(current)) current else p$value
+      return(checkboxInput(p$id, p$label, value = isTRUE(value)))
     }
     if (identical(p$type, "text")) {
-      return(textInput(p$id, p$label, value = p$value))
+      value <- if (is.character(current) && length(current) == 1L && !is.na(current)) current else p$value
+      return(textInput(p$id, p$label, value = value))
     }
     # select
     choices <- p$choices
     selected <- p$value
     if (identical(choices, "<<groups>>")) {
+      groups <- tryCatch(getGroups(), error = function(e) character(0))
       choices <- c("None" = "", groups)
     } else if (identical(choices, "<<genes>>")) {
-      choices <- genes
+      choices <- ir_gene_families()
     } else if (identical(choices, "<<property_methods>>")) {
       # detected at runtime (immApex availability)
       choices <- names(available_property_methods())
@@ -395,6 +424,14 @@ ir_analysis_panel <- function(more = FALSE) {
         selected <- if (length(choices) > 0) choices[1] else NULL
       }
     }
+    choice_values <- unname(as.character(unlist(choices, use.names = FALSE)))
+    if (
+      !is.null(current) &&
+        length(current) > 0L &&
+        all(as.character(current) %in% choice_values)
+    ) {
+      selected <- current
+    }
     selectInput(
       p$id,
       p$label,
@@ -411,12 +448,17 @@ ir_analysis_panel <- function(more = FALSE) {
   }
 }
 
-output$ir_primary_param_panel <- renderUI({
-  ir_analysis_panel(more = FALSE)
-})
+output$ir_primary_param_panel <- shiny::bindEvent(
+  renderUI({
+    ir_analysis_panel(more = FALSE)
+  }),
+  input$ir_tabs,
+  data_set()
+)
 
 output$ir_more_analysis_UI <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data_raw())) {
+  req(ir_settings_requested())
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   ir_analysis_panel(more = TRUE)
@@ -424,7 +466,14 @@ output$ir_more_analysis_UI <- renderUI({
 
 ## ---- Reactive: number of samples -------------------------------------- ##
 n_samples <- reactive({
-  data <- ir_data()
+  # Sample count is structural and does not require metadata annotation.
+  # Keeping it on the raw sidecar prevents grouping inputs from invalidating
+  # and rebuilding the visualization tabset.
+  samples <- getImmuneRepertoireSummary()$samples
+  if (length(samples)) {
+    return(length(samples))
+  }
+  data <- ir_data_raw()
   if (is.null(data)) 0L else length(data)
 })
 
@@ -432,6 +481,7 @@ n_samples <- reactive({
 ## Renders the effective display controls applicable to the current tab. The
 ## settings drawer owns the section and scrolling, so this stays flat.
 output$ir_display_panel <- renderUI({
+  req(ir_settings_requested())
   tab <- input$ir_tabs
   if (!exists("ir_display_params_for")) {
     return(NULL)
@@ -497,6 +547,7 @@ output$ir_display_panel <- renderUI({
 })
 
 output$ir_cell_view_options_UI <- renderUI({
+  req(ir_settings_requested())
   if (!identical(input$ir_tabs, "Clonal UMAP")) {
     return(NULL)
   }
@@ -569,11 +620,12 @@ ir_display_params <- reactive({
 ## ---- Group filters (settings drawer) ---------------------------------- ##
 ## Shared group-filter chips for the Clonal UMAP. Other tabs show a short note.
 output$ir_group_filters_UI <- renderUI({
-  if (!has_scRepertoire() || is.null(ir_data_raw())) {
+  req(ir_settings_requested())
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   if (!identical(input$ir_tabs, "Clonal UMAP")) {
-    return(helpText("Group filters apply to the Clonal UMAP tab."))
+    return(helpText("Group filters apply to the Clonal projection tab."))
   }
   groups <- tryCatch(getGroups(), error = function(e) character(0))
   if (length(groups) == 0) {
@@ -608,30 +660,37 @@ output$ir_group_filters_UI <- renderUI({
 ## Overrides the NULL default defined in data.R.
 ir_umap_cells_to_show <- reactive({
   groups <- tryCatch(getGroups(), error = function(e) character(0))
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (
-    length(groups) == 0 ||
-      is.null(md) ||
-      !("cell_barcode" %in% colnames(md))
-  ) {
+  if (length(groups) == 0) {
     return(NULL)
   }
-  keep <- rep(TRUE, nrow(md))
-  any_filter <- FALSE
+
+  ## Missing inputs mean that the drawer has not mounted, hence no filter is
+  ## active. Compare selections with the lightweight catalogued levels before
+  ## hydrating the 1.46M-row metadata table.
+  active_filters <- list()
   for (g in groups) {
     sel <- input[[paste0("ir_group_filter_", g)]]
-    if (is.null(sel) || !(g %in% colnames(md))) {
+    if (is.null(sel)) {
       next
     }
     all_lvls <- tryCatch(getGroupLevels(g), error = function(e) character(0))
-    # Only treat it as an active filter when the user has deselected something.
     if (length(sel) < length(all_lvls)) {
-      any_filter <- TRUE
-      keep <- keep & (as.character(md[[g]]) %in% sel)
+      active_filters[[g]] <- sel
     }
   }
-  if (!any_filter) {
+  if (!length(active_filters)) {
     return(NULL)
+  }
+
+  md <- tryCatch(getMetaData(), error = function(e) NULL)
+  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
+    return(NULL)
+  }
+  keep <- rep(TRUE, nrow(md))
+  for (g in names(active_filters)) {
+    if (g %in% colnames(md)) {
+      keep <- keep & (as.character(md[[g]]) %in% active_filters[[g]])
+    }
   }
   as.character(md$cell_barcode[keep])
 })

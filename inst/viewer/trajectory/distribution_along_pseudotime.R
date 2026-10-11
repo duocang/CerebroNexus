@@ -9,6 +9,8 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
+  req(input[["trajectory_distribution_section_visible"]])
+  req(trajectory_projection_sent())
   req(
     input[["trajectory_selected_method"]],
     input[["trajectory_selected_name"]]
@@ -102,16 +104,16 @@ output[[
     ## collect trajectory data
     trajectory_data <- trajectory_data_reactive()
 
-    ## extract cells to plot
-    cells_df <- mergeTrajectoryWithMetaData(trajectory_data) %>%
-      dplyr::filter(!is.na(pseudotime))
-
     incProgress(0.2, detail = "Processing data...")
 
     ## grab column name for cell coloring
     color_variable <- input[[
       "trajectory_distribution_along_pseudotime_select_variable"
     ]]
+    cells_df <- trajectory_cells_reactive(
+      c(color_variable, "nUMI", "nGene"),
+      barcodes = TRUE
+    )
 
     ## ... cells are colored by a categorical variable; the Y axis will show the
     ## Pick scatter trace type once up-front; replaces the former
@@ -243,7 +245,20 @@ output[[
       incProgress(0.4, detail = "Preparing scatter plot...")
 
       ## prepare hover info
-      hover_info <- buildHoverInfoForProjections(cells_df)
+      hover_info <- paste0(
+        "<b>Cell</b>: ",
+        cells_df[["cell_barcode"]],
+        if ("nUMI" %in% colnames(cells_df)) {
+          paste0("<br><b>Transcripts</b>: ", cells_df[["nUMI"]])
+        } else {
+          ""
+        },
+        if ("nGene" %in% colnames(cells_df)) {
+          paste0("<br><b>Expressed genes</b>: ", cells_df[["nGene"]])
+        } else {
+          ""
+        }
+      )
 
       ## add expression levels to hover info
       hover_info <- paste0(
@@ -342,17 +357,11 @@ output[[
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
 
-observeEvent(input[["trajectory_distribution_along_pseudotime_info"]], {
-  showModal(
-    modalDialog(
-      trajectory_distribution_along_pseudotime_info[["text"]],
-      title = trajectory_distribution_along_pseudotime_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "trajectory_distribution_along_pseudotime_info",
+  trajectory_distribution_along_pseudotime_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

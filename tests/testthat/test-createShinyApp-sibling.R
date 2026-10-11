@@ -105,6 +105,26 @@ test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
   expect_named(preflight$spatial_catalogs, c("First", "Second"))
 })
 
+test_that("spatial preflight does not hydrate molecule sidecars", {
+  hydrate_values <- logical()
+  object <- new.env(parent = emptyenv())
+  object$availableSpatial <- function() "fov1"
+  object$getSpatialData <- function(name, hydrate_molecules = TRUE) {
+    hydrate_values <<- c(hydrate_values, hydrate_molecules)
+    list(
+      coordinates = data.frame(x = 1:2, y = 3:4),
+      expression = matrix(numeric(), nrow = 0L, ncol = 2L),
+      histology_images = list()
+    )
+  }
+
+  catalog <- .readBundleSpatialCatalog(object, "Dataset")
+
+  expect_named(catalog, "fov1")
+  expect_null(catalog$fov1)
+  expect_identical(hydrate_values, FALSE)
+})
+
 test_that("CRB preflight releases the current dataset after an inspection error", {
   events <- character()
 
@@ -225,6 +245,34 @@ build_test_app <- function(cerebro_data, result_dir, ...) {
   )
 }
 
+test_that("valid Viewer Packs are bundled beside their CRB", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  crb <- write_bundle_crb(source)
+  object <- readCerebro(crb)
+  object$setMetaData(data.frame(
+    cell_barcode = c("cell-1", "cell-2"),
+    group = c("A", "B"),
+    stringsAsFactors = FALSE
+  ))
+  object$addProjection(
+    "umap",
+    data.frame(x = 1:2, y = 2:1, row.names = c("cell-1", "cell-2"))
+  )
+  saveCerebro(object, crb, codec = "rds", viewer_binary = "always")
+
+  app <- file.path(root, "app")
+  build_test_app(c(Dataset = crb), app)
+
+  expect_true(dir.exists(file.path(app, "private-data", "dataset.viewer")))
+  expect_true(
+    validateViewerPack(
+      file.path(app, "private-data", "dataset.crb"),
+      file.path(app, "private-data", "dataset.viewer")
+    )$valid
+  )
+})
+
 test_that("scatter defaults accept one value or one value per dataset", {
   labels <- c("PBMC", "Xenium")
 
@@ -281,7 +329,9 @@ test_that("Viewer resolves scatter defaults for the selected dataset", {
   options <- list(
     point_size = c(PBMC = 2, Xenium = 5),
     point_opacity = c(PBMC = 0.4, Xenium = 1),
-    percentage_cells_to_show = c(PBMC = 40, Xenium = 100)
+    percentage_cells_to_show = c(PBMC = 40, Xenium = 100),
+    expression_point_size = c(PBMC = 3, Xenium = 2),
+    expression_point_opacity = c(PBMC = 0.8, Xenium = 1)
   )
 
   expect_identical(
@@ -294,6 +344,14 @@ test_that("Viewer resolves scatter defaults for the selected dataset", {
   )
   expect_identical(
     runtime$viewerScatterDefaults(options, "Missing"),
+    list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
+  )
+  expect_identical(
+    runtime$viewerScatterDefaults(options, "Xenium", "expression"),
+    list(point_size = 2, point_opacity = 1, percentage_cells_to_show = 100)
+  )
+  expect_identical(
+    runtime$viewerScatterDefaults(options, "Missing", "expression"),
     list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
   )
 })
@@ -319,6 +377,69 @@ test_that("createShinyApp stores dataset scatter defaults directly", {
   expect_identical(
     config$percentage_cells_to_show,
     c(PBMC = 60, Xenium = 100)
+  )
+})
+
+test_that("createShinyApp freezes compact dataset information", {
+  root <- withr::local_tempdir()
+  paths <- vapply(
+    list(
+      Human = list(cells = c("cell-1", "cell-2"), organism = "Homo sapiens"),
+      Mouse = list(cells = c("cell-a", "cell-b", "cell-c"), organism = "Mouse")
+    ),
+    function(info) {
+      object <- Cerebro$new()
+      object$setMetaData(data.frame(
+        cell_barcode = info$cells,
+        row.names = info$cells
+      ))
+      object$addExperiment("organism", info$organism)
+      object$addExperiment("date_of_export", as.Date("2026-09-17"))
+      if (identical(info$organism, "Mouse")) {
+        object$trajectories <- list(
+          marker_guided = list(E18_neurogenesis = list())
+        )
+      }
+      path <- file.path(root, paste0(tolower(info$organism), ".crb"))
+      saveRDS(object, path)
+      path
+    },
+    character(1)
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(paths, app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured <- unname(config$crb_file_to_load)
+
+  expect_named(config[[".dataset_catalog"]], configured)
+  expect_identical(
+    config[[".dataset_catalog"]][[configured[[1L]]]],
+    list(
+      label = "Human",
+      path = configured[[1L]],
+      cells = 2L,
+      organism = "Homo sapiens",
+      date = "2026-09-17",
+      immune_repertoire = FALSE,
+      tcr_repertoire = FALSE,
+      capabilities = list(
+        marker_genes = FALSE,
+        most_expressed_genes = FALSE,
+        enriched_pathways = FALSE,
+        extra_material = FALSE,
+        trajectory = FALSE,
+        spatial = FALSE,
+        trekker = FALSE
+      )
+    )
+  )
+  expect_identical(
+    config[[".dataset_catalog"]][[configured[[2L]]]]$cells,
+    3L
+  )
+  expect_true(
+    config[[".dataset_catalog"]][[configured[[2L]]]]$capabilities$trajectory
   )
 })
 
@@ -398,6 +519,7 @@ source_bundle_runtime <- function(app = NULL) {
   }
   stopifnot(file.exists(utility))
   runtime <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(utility), "crb_cache.R"), envir = runtime)
   sys.source(utility, envir = runtime)
   runtime
 }
@@ -1291,7 +1413,9 @@ test_that("cached CRBs reject a different effective backend plan", {
   local_cerebro_options(list())
 
   first <- runtime$get_or_load_crb(path, embedded, path)
-  expect_identical(runtime$get_or_load_crb(path, embedded, path), first)
+  second <- runtime$get_or_load_crb(path, embedded, path)
+  expect_false(identical(first, second))
+  expect_identical(first$meta_data, second$meta_data)
   expect_error(
     runtime$get_or_load_crb(path, changed, path),
     "cached CRB.*backend configuration changed"
@@ -3372,7 +3496,7 @@ test_that("Cerebro data labels cannot be missing", {
 
   expect_error(
     build_test_app(setNames(crb, NA_character_), app),
-    "labels must be non-empty and non-missing"
+    "identities must be non-empty and non-missing"
   )
   expect_false(dir.exists(app))
 })
@@ -3385,7 +3509,7 @@ test_that("Cerebro data labels must be unique", {
 
   expect_error(
     build_test_app(c("Dataset" = first, "Dataset" = second), app),
-    "labels must be unique"
+    "identities must be unique"
   )
   expect_false(dir.exists(app))
 })
@@ -3414,6 +3538,70 @@ test_that("a bundled real BPCells backend attaches with exact data", {
   skip_if_not_installed("Matrix")
 
   expect_real_backend_bundle_roundtrip("bpcells")
+})
+
+test_that("process cache clones keep thin BPCells expression lazy", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("Matrix")
+
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  dir.create(source)
+  sidecar <- file.path(source, "dataset.bpcells")
+  expected <- matrix(
+    c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(
+      c("GeneA", "GeneB", "GeneC"),
+      c("Cell1", "Cell2", "Cell3", "Cell4")
+    )
+  )
+  sparse <- methods::as(
+    Matrix::Matrix(expected, sparse = TRUE),
+    "CsparseMatrix"
+  )
+  BPCells::write_matrix_dir(
+    mat = methods::as(sparse, "IterableMatrix"),
+    dir = sidecar
+  )
+  object <- Cerebro$new()
+  object$setMetaData(data.frame(
+    cell_barcode = colnames(expected),
+    group = c("A", "A", "B", "B"),
+    row.names = colnames(expected)
+  ))
+  object$setExpression(
+    BPCells::open_matrix_dir(dir = sidecar),
+    backend = "external"
+  )
+  object$setExpressionBackend(type = "bpcells", location = basename(sidecar))
+  crb <- file.path(source, "dataset.crb")
+  saveCerebro(object, crb)
+
+  app <- file.path(root, "app")
+  build_test_app(c(Dataset = crb), app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+
+  first <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+  second <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+
+  expect_false(identical(first, second))
+  expect_true(rlang::env_binding_are_lazy(first, "expression"))
+  expect_true(rlang::env_binding_are_lazy(second, "expression"))
+  expect_attached_matrix(first, expected)
+  expect_true(rlang::env_binding_are_lazy(second, "expression"))
 })
 
 test_that("the runtime rejects an H5 backend that is a directory", {
@@ -3467,4 +3655,38 @@ test_that("the runtime rejects an H5 backend that is a directory", {
     ),
     "missing or not a file"
   )
+})
+
+
+test_that("colliding CRB basenames keep each pack beside its final bundled name", {
+  for (both in c(FALSE, TRUE)) {
+    root <- tempfile("bundle-pack-collision-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    sources <- file.path(root, c("study-a", "study-b"), "sample.crb")
+    for (i in seq_along(sources)) {
+      dir.create(dirname(sources[i]))
+      object <- Cerebro$new()
+      object$setMetaData(data.frame(cell_barcode = c("c1", "c2"), group = c("A", "B")))
+      object$addProjection("umap", data.frame(x = c(i, i+1), y = 2:1,
+        row.names = c("c1", "c2")))
+      saveCerebro(object, sources[i], codec = "rds",
+        viewer_binary = if (i == 1L || both) "always" else "never")
+    }
+    labels <- c("Study A", "Study B")
+    app <- file.path(root, "app")
+    build_test_app(stats::setNames(sources, labels), app)
+    scope <- new.env(parent = globalenv())
+    sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
+    for (i in seq_along(sources)) {
+      target <- file.path(app, CerebroNexus:::.datasetBundleTarget(labels[i]))
+      expect_true(file.exists(target))
+      pack <- scope$viewerPackOpen(target, readCerebro(target))
+      if (i == 1L || both) {
+        expect_true(validateViewerPack(target)$valid)
+        expect_false(is.null(pack))
+        expect_identical(scope$viewerPackCellBarcodes(pack), c("c1", "c2"))
+      } else expect_null(pack)
+    }
+  }
 })

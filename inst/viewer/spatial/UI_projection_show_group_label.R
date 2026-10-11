@@ -2,6 +2,7 @@
 ## UI elements with switch to show group labels in projection.
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_show_group_label_UI"]] <- renderUI({
+  req(input[["spatial_projection_more_render_request"]])
   if (!identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")) {
     return(NULL)
   }
@@ -10,12 +11,13 @@ output[["spatial_projection_show_group_label_UI"]] <- renderUI({
     checkboxInput(
       inputId = "spatial_projection_group_labels",
       label = "Group labels",
-      value = TRUE
+      value = isolate(spatial_projection_appearance$group_labels)
     )
   }
 })
 
 output[["spatial_projection_show_region_outline_UI"]] <- renderUI({
+  req(input[["spatial_projection_more_render_request"]])
   if (!identical(input[["spatial_projection_plot_type"]], "ImageDimPlot")) {
     return(NULL)
   }
@@ -26,7 +28,7 @@ output[["spatial_projection_show_region_outline_UI"]] <- renderUI({
     checkboxInput(
       inputId = "spatial_projection_show_region_outlines",
       label = "Outline group regions (convex hull)",
-      value = FALSE
+      value = isolate(spatial_projection_region_outlines())
     )
   }
 })

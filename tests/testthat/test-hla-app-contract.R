@@ -38,6 +38,41 @@ test_that("HLA Associations is wired to a frozen motif feature", {
   expect_match(src, "hla_allele_matrix")
 })
 
+test_that("the HLA motif network uses the shared Canvas renderer", {
+  ui <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  viz <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  table_src <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(ui, 'cerebroCellViewOutput\\("hla_motif_network"\\)')
+  expect_no_match(ui, "visNetworkOutput\\(")
+  expect_match(viz, "hla_motif_network_render_request", fixed = TRUE)
+  expect_match(
+    viz,
+    'cerebroCellViewRender\\(\\s*"hla_motif_network"',
+    perl = TRUE
+  )
+  expect_match(
+    table_src,
+    "hla_motif_network_persistent_selection",
+    fixed = TRUE
+  )
+})
+
 test_that("Associations takes its features from the allele-independent graph", {
   # Sourcing the drawn graph here would let the allele scope nominate the very
   # motif the allele is then compared on. Guarded statically because the wiring
@@ -119,12 +154,61 @@ test_that("motif network exposes a stable selected-node detail panel", {
   )
 
   expect_no_match(ui, "hla-node-details", fixed = TRUE)
-  expect_match(viz, "detail = titles", fixed = TRUE)
-  expect_match(viz, "title = titles", fixed = TRUE)
+  expect_no_match(viz, "detail = titles", fixed = TRUE)
+  expect_no_match(viz, "title = titles", fixed = TRUE)
   expect_no_match(viz, "window.hlaShowNodeDetails", fixed = TRUE)
   expect_no_match(viz, "hla_selected_node_id", fixed = TRUE)
-  expect_match(viz, "visEvents")
+  expect_match(viz, 'hoverinfo = "text"', fixed = TRUE)
+  expect_match(viz, "columns = vn$hover_columns", fixed = TRUE)
+  expect_no_match(viz, "text = vn$nodes$title", fixed = TRUE)
   expect_no_match(js, "hla-refresh-node-details", fixed = TRUE)
+})
+
+test_that("HLA cohort filters are visible and drive every graph cache", {
+  ui <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(ui, 'cerebroSettingsSection\\(\\s*"Filters"', perl = TRUE)
+  expect_match(ui, 'uiOutput\\("hla_group_filters_ui"\\)')
+  expect_match(
+    settings,
+    'input[["hla_more_render_request"]]',
+    fixed = TRUE
+  )
+  expect_gte(
+    lengths(regmatches(
+      settings,
+      gregexpr("req(hla_settings_requested())", settings, fixed = TRUE)
+    )),
+    2L
+  )
+  expect_match(settings, "groupFilterControl(", fixed = TRUE)
+  expect_match(settings, "hla_default_filter_selections", fixed = TRUE)
+  expect_match(data_src, "hla_ir_filtered <- reactive", fixed = TRUE)
+  expect_match(
+    data_src,
+    "hla_segments_fallback <- reactive\\(\\{[\\s\\S]{0,300}hla_ir_filtered\\(\\)",
+    perl = TRUE
+  )
+  expect_match(
+    data_src,
+    "hla_segments_fallback <- reactive\\(\\{[\\s\\S]{0,700}cerebroGroupFilterMask\\(",
+    perl = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(data_src, gregexpr("hla_filter_key\\(\\)", data_src))),
+    5L
+  )
 })
 
 test_that("core shim binds locally without polluting globalenv", {
@@ -215,7 +299,7 @@ test_that("bundled core shim resolves without an installed package", {
 hla_sc_demo <- function() {
   path <- hla_inst_file("extdata/examples/demo_hla_tcr_dextramer.crb")
   testthat::skip_if_not(file.exists(path), "single-cell demo not built")
-  readRDS(path)
+  readCerebro(path)
 }
 
 test_that("shipped demo declares antigen selection, cells and its receptor key", {
@@ -794,8 +878,7 @@ test_that("the page's nav gate scans every sample, like the core does", {
   # The IR module's detect_chains() stops after three samples. The HLA page is
   # gated on chains being present, and it is also the only route to its own
   # Data & QC tab -- so a cohort whose TCR happens to start at sample four would
-  # be locked out of a page that could analyse it. The core already scans all
-  # samples; the gate must use the core.
+  # be locked out of a page that could analyse it.
   late <- list(
     s1 = data.frame(CTgene = NA_character_, stringsAsFactors = FALSE),
     s2 = data.frame(CTgene = NA_character_, stringsAsFactors = FALSE),
@@ -813,7 +896,10 @@ test_that("the page's nav gate scans every sample, like the core does", {
   )
   expect_match(
     src,
-    "\"hla_tcr_motifs\",[\\s\\S]{0,1500}hla_detect_chains\\(getImmuneRepertoire\\(\\)\\)",
+    paste0(
+      "\"hla_tcr_motifs\",[\\s\\S]{0,1500}",
+      "viewerHasTcrRepertoire\\(getImmuneRepertoire\\(\\)\\)"
+    ),
     perl = TRUE
   )
 })
@@ -844,7 +930,7 @@ test_that("node colouring is offered from the declared groupings", {
   # "CD8_case" be taken for a lineage and silently reshape HLA scope filtering.
   expect_match(
     src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,60}hla_available_cols\\(\\)",
+    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,300}hla_available_cols\\(\\)",
     perl = TRUE
   )
   expect_match(
@@ -971,6 +1057,11 @@ test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
     readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
+  expect_match(
+    data_src,
+    "hla_bindCache <- function[\\s\\S]{0,500}reactive\\(\\{\\s*req\\(data_set\\(\\)\\)\\s*cached\\(\\)",
+    perl = TRUE
+  )
   # Each cached reactive is bindCache'd and must not gate. Both the expensive raw
   # builds and the cheap finalize layers are cached, so all four are pinned.
   for (nm in c(
@@ -992,15 +1083,22 @@ test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
       info = paste(nm, "must not req() inside the cached body")
     )
   }
-  # ...and each public reactive gates before reaching its cache.
-  for (nm in c("hla_motif_graph", "hla_global_motif_graph")) {
-    expect_match(
-      data_src,
-      paste0(nm, " <- reactive\\(\\{\\s*req\\(hla_params_ready\\(\\)\\)"),
-      perl = TRUE,
-      info = paste(nm, "must gate on hla_params_ready() first")
-    )
-  }
+  # The precomputed default graph may draw before controls report. Every other
+  # path still gates before reaching its cache.
+  expect_match(
+    data_src,
+    paste0(
+      "hla_motif_graph <- reactive\\(\\{[\\s\\S]{0,700}",
+      "hla_first_frame_graph_matches\\(\\)[\\s\\S]{0,700}",
+      "req\\(hla_params_ready\\(\\)\\)"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    data_src,
+    "hla_global_motif_graph <- reactive\\(\\{\\s*req\\(hla_params_ready\\(\\)\\)",
+    perl = TRUE
+  )
   # The gate must decide on hla_color_by with is.null(), and must never req() it:
   # that input's default value is "" (colour by motif cluster), which req()
   # treats as missing, so the network would never draw until the user happened to
@@ -1074,13 +1172,112 @@ test_that("the parameter panel renders once, then updates in place", {
   # place instead of rebuilding the panel.
   expect_match(
     settings_src,
-    "observeEvent\\([\\s\\S]{0,20}hla_color_by_choices\\(\\)",
+    "observeEvent\\([\\s\\S]{0,160}hla_color_by_choices\\(\\)",
     perl = TRUE
   )
   expect_match(
     settings_src,
     "updateSelectizeInput\\([\\s\\S]{0,40}\"hla_color_by\"",
     perl = TRUE
+  )
+})
+
+test_that("hidden HLA controls do not scan the repertoire", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings_src <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  active_page_gate <- 'req(identical(input[["sidebar"]], "hla_tcr_motifs"))'
+  expect_match(
+    data_src,
+    paste0(
+      "reactive({\n    ",
+      active_page_gate,
+      "\n    as.integer(hla_param(\"hla_min_nodes\""
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    settings_src,
+    paste0(
+      "observeEvent(\n  {\n    ",
+      active_page_gate,
+      "\n    hla_color_by_choices()"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("HLA heavy consumers require their visible subtab", {
+  visual <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  associations <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  ui <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(hla_inst_file("viewer/www/hla_motifs.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  network_observer <- regmatches(
+    visual,
+    regexpr(
+      "observe\\(\\{[\\s\\S]{0,2600}cerebroCellViewRender",
+      visual,
+      perl = TRUE
+    )
+  )
+  expect_match(network_observer, 'input[["sidebar"]]', fixed = TRUE)
+  expect_match(network_observer, 'input[["hla_tabs"]]', fixed = TRUE)
+  expect_match(
+    network_observer,
+    "hla_motif_network_render_request",
+    fixed = TRUE
+  )
+  expect_match(
+    network_observer,
+    "hla_active_chain() %in% hla_tcr_chains()",
+    fixed = TRUE
+  )
+
+  expect_match(ui, 'id = "hla_associations_mount"', fixed = TRUE)
+  expect_match(client, "hla_associations_render_request", fixed = TRUE)
+  expect_match(
+    associations,
+    "hla_association_consumer_ready <- reactive",
+    fixed = TRUE
+  )
+  expect_equal(
+    lengths(regmatches(
+      associations,
+      gregexpr(
+        "observeEvent\\(\\n  \\{\\n    req\\(hla_association_consumer_ready\\(\\)\\)",
+        associations,
+        perl = TRUE
+      )
+    )),
+    2L
   )
 })
 
@@ -1349,7 +1546,56 @@ test_that("the network table renders and downloads the current view", {
   )
 })
 
-test_that("the motif network cannot zoom out below its initial fit", {
+test_that("Viewer Pack first frames bypass cold HLA preparation", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    data_src,
+    "viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())",
+    fixed = TRUE
+  )
+  expect_match(data_src, "return(first$filter_levels)", fixed = TRUE)
+  expect_match(data_src, "return(first$segments)", fixed = TRUE)
+  expect_match(data_src, "return(first$graph_raw)", fixed = TRUE)
+  expect_match(data_src, "hla_first_frame_graph_matches()", fixed = TRUE)
+  expect_match(
+    data_src,
+    "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
+    fixed = TRUE
+  )
+})
+
+test_that("HLA cohort filter inputs are isolated by chain", {
+  data_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  settings_src <- paste(
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    data_src,
+    'paste0("hla_group_filter_", hla_active_chain(), "_", group)',
+    fixed = TRUE
+  )
+  expect_match(
+    data_src,
+    "selected <- input[[hla_filter_input_id(group)]]",
+    fixed = TRUE
+  )
+  expect_match(
+    settings_src,
+    "hla_filter_input_id(group)",
+    fixed = TRUE
+  )
+})
+
+test_that("the motif Canvas receives the complete layout and compact edges", {
   vis_src <- paste(
     readLines(
       hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
@@ -1357,24 +1603,31 @@ test_that("the motif network cannot zoom out below its initial fit", {
     ),
     collapse = "\n"
   )
-  js_src <- paste(
-    readLines(hla_inst_file("viewer/www/hla_motifs.js"), warn = FALSE),
-    collapse = "\n"
+  expect_match(vis_src, "point_sizes <- 2 * vn$nodes$size", fixed = TRUE)
+  expect_match(vis_src, "from <- as.integer(vn$edges$from)", fixed = TRUE)
+  expect_match(vis_src, "to <- as.integer(vn$edges$to)", fixed = TRUE)
+  expect_match(vis_src, "from = from", fixed = TRUE)
+  expect_match(vis_src, "to = to", fixed = TRUE)
+  expect_match(vis_src, "static_above = 200L", fixed = TRUE)
+  expect_no_match(vis_src, "x0 = vn$layout[from, 1]", fixed = TRUE)
+  expect_match(
+    vis_src,
+    "req\\(isTRUE\\(hla_first_frame_graph_matches\\(\\)\\) \\|\\| hla_ready_latch\\(\\)\\)",
+    perl = TRUE
   )
-  # zoom is button-only -- scroll/pinch zoom is off, so nothing shrinks the
-  # network past the opening fit
-  expect_match(vis_src, "zoomView = FALSE", perl = TRUE)
-  # the render captures the initial (fit) scale as the floor and greys the
-  # zoom-out button out once the network sits at it
-  expect_match(vis_src, "hlaMinScale", perl = TRUE)
-  expect_match(vis_src, "hla-mb-btn--off", perl = TRUE)
-  # the modebar zoom-out button respects the same floor
-  expect_match(js_src, "hlaMinScale", perl = TRUE)
-  # the layout fills the whole (wide) plot area, not a centred square
-  expect_match(vis_src, "type = \"full\"", perl = TRUE)
+  expect_match(
+    vis_src,
+    "hla_motif_last_render_signature <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    vis_src,
+    "identical(hla_motif_last_render_signature(), render_signature)",
+    fixed = TRUE
+  )
 })
 
-test_that("a colour change recolours in place, without re-rendering", {
+test_that("a colour change reuses the cached graph and Canvas viewport", {
   data_src <- paste(
     readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
@@ -1393,16 +1646,12 @@ test_that("a colour change recolours in place, without re-rendering", {
     "hla_node_meta_cols <- reactive\\(\\{[\\s\\S]{0,900}hla_color_meta_cols\\(\\)",
     perl = TRUE
   )
-  # (a) a one-way readiness latch, so the renderer does not depend on the
-  # colour-reading hla_params_ready() gate.
+  # A one-way readiness latch prevents a fallback-parameter render.
   expect_match(data_src, "hla_ready_latch <- reactiveVal\\(", perl = TRUE)
-  # (b) the renderer gates on the latch and reads the coloured visnet ISOLATED,
-  # so a colour change does not invalidate it.
+  # The Canvas gets a colour update without resetting its current viewport.
   expect_match(vis_src, "req\\(hla_ready_latch\\(\\)\\)", perl = TRUE)
-  expect_match(vis_src, "isolate\\(hla_visnet\\(\\)\\)", perl = TRUE)
-  # (c) colour is pushed onto the existing network in place via a proxy.
-  expect_match(vis_src, "visNetworkProxy\\(", perl = TRUE)
-  expect_match(vis_src, "visUpdateNodes\\(", perl = TRUE)
+  expect_match(vis_src, "vn <- hla_visnet\\(\\)", perl = TRUE)
+  expect_match(vis_src, "reset_axes = FALSE", fixed = TRUE)
 })
 
 test_that("the network table is nowrap-scrollable and truncates samples on hover", {

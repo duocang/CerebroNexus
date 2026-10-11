@@ -1,9 +1,7 @@
 ##----------------------------------------------------------------------------##
 ## Reactive data that holds genes provided by user or in selected gene set.
 ##----------------------------------------------------------------------------##
-## cannot use req() because it delays initialization and plot is updated only
-## with button press so plot doesn't initialize at all
-expression_selected_genes <- reactive({
+expression_selected_genes_input <- reactive({
   req(
     input[["expression_analysis_mode"]],
     list_of_genes()
@@ -27,6 +25,12 @@ expression_selected_genes <- reactive({
         input[[paste0("expression_rgb_gene_", channel)]]
       })
       names(rgb) <- c("r", "g", "b")
+      if (!any(vapply(rgb, function(gene) {
+        !is.null(gene) && length(gene) && nzchar(gene[[1L]])
+      }, logical(1)))) {
+        previous <- head(input[["expression_genes_input"]] %||% character(), 3)
+        rgb[seq_along(previous)] <- as.list(previous)
+      }
       gene_sets[["rgb_genes"]] <- rgb
       gene_sets[["genes_to_display"]] <- unique(unlist(Filter(
         function(gene) !is.null(gene) && nzchar(gene),
@@ -68,5 +72,19 @@ expression_selected_genes <- reactive({
   gene_sets[["genes_to_display_missing"]] <- gene_sets[[
     "genes_to_display"
   ]][which(is.na(genes_to_display_here))]
+  ## Channel names must use the same dataset spelling as expression rows.
+  ## Preserve channel positions (including repeated and absent genes).
+  gene_sets[["rgb_genes"]] <- lapply(gene_sets[["rgb_genes"]], function(gene) {
+    if (length(gene) != 1L || is.na(gene) || !nzchar(gene)) return(NULL)
+    index <- match(tolower(gene), tolower(list_of_genes()))
+    if (is.na(index)) NULL else unname(list_of_genes()[index])
+  })
   return(gene_sets)
 })
+
+## Let a multi-select gesture settle before any million-cell expression read.
+## The first value still initializes immediately.
+expression_selected_genes <- debounceAfterFirst(
+  expression_selected_genes_input,
+  200
+)

@@ -5,25 +5,74 @@
 ##----------------------------------------------------------------------------##
 ## UI element to select which group should be shown.
 ##----------------------------------------------------------------------------##
-output[["groups_select_group_UI"]] <- renderUI({
+output[["groups_controls_UI"]] <- renderUI({
+  groups <- getGroups()
+  if (!length(groups)) {
+    return(p("No grouping variables are available."))
+  }
+  selected_group <- groups[[1L]]
+  primary <- selectInput(
+    "groups_selected_group", label = "Grouping variable",
+    choices = groups, selected = selected_group, width = "100%"
+  )
+  if (length(groups) == 1L) {
+    return(tagList(primary,
+      p("At least two grouping variables are needed to compare composition.")))
+  }
   tagList(
-    div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a grouping variable:</strong></h2>'
-      )
+    primary,
+    selectInput(
+      "groups_by_other_group_second_group",
+      label = "Group to compare to:",
+      choices = groups[groups != selected_group]
     ),
     fluidRow(
-      column(2),
       column(
-        8,
-        selectInput(
-          "groups_selected_group",
-          label = NULL,
-          choices = getGroups(),
-          width = "100%"
+        width = 3,
+        shinyWidgets::radioGroupButtons(
+          inputId = "groups_by_other_group_plot_type",
+          label = "Plot type",
+          choices = c("Bar chart", "Sankey plot"),
+          status = "primary",
+          justified = TRUE,
+          width = "100%",
+          size = "sm"
         )
       ),
-      column(2)
+      column(
+        width = 9,
+        style = "padding: 5px;",
+        shinyWidgets::materialSwitch(
+          inputId = "groups_by_other_group_show_as_percent",
+          label = "Show composition as percent [%] (not in Sankey plot):",
+          status = "primary",
+          inline = TRUE
+        ),
+        shinyWidgets::materialSwitch(
+          inputId = "groups_by_other_group_show_table",
+          label = "Show table:",
+          status = "primary",
+          inline = TRUE
+        )
+      )
     )
   )
 })
+
+observeEvent(input[["groups_selected_group"]], {
+  groups <- getGroups()
+  req(length(groups) >= 2L, input[["groups_selected_group"]] %in% groups)
+  choices <- groups[groups != input[["groups_selected_group"]]]
+  current <- input[["groups_by_other_group_second_group"]]
+  selected <- if (!is.null(current) && current %in% choices) {
+    current
+  } else {
+    choices[[1L]]
+  }
+  updateSelectInput(
+    session,
+    "groups_by_other_group_second_group",
+    choices = choices,
+    selected = selected
+  )
+}, ignoreInit = TRUE)

@@ -8,29 +8,13 @@
 ## UI element to select which group should be shown.
 ##----------------------------------------------------------------------------##
 output[["most_expressed_genes_select_group_UI"]] <- renderUI({
-  if (
-    !is.null(getGroupsWithMostExpressedGenes()) &&
-      length(getGroupsWithMostExpressedGenes()) > 0
-  ) {
-    tagList(
-      div(
-        HTML(
-          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a grouping variable:</strong></h2>'
-        )
-      ),
-      fluidRow(
-        column(2),
-        column(
-          8,
-          selectInput(
-            "most_expressed_genes_selected_group",
-            label = NULL,
-            choices = getGroupsWithMostExpressedGenes(),
-            width = "100%"
-          )
-        ),
-        column(2)
-      )
+  groups <- unique(c(getGroupsWithMostExpressedGenes(), getGroupsWithMeanExpression()))
+  if (length(groups)) {
+    selectInput(
+      "most_expressed_genes_selected_group",
+      label = "Grouping variable",
+      choices = groups,
+      width = "100%"
     )
-  }
+  } else p("No stored expression summaries available.")
 })

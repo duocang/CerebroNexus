@@ -21,6 +21,15 @@ selection_status_function <- function() {
     ),
     parent = globalenv()
   )
+  icon_index <- which(vapply(
+    expressions,
+    function(expression) {
+      is.call(expression) &&
+        identical(expression[[1L]], as.name("<-")) &&
+        identical(expression[[2L]], as.name("cerebroIcon"))
+    },
+    logical(1)
+  ))
   share_index <- which(vapply(
     expressions,
     function(expression) {
@@ -30,6 +39,7 @@ selection_status_function <- function() {
     },
     logical(1)
   ))
+  eval(expressions[[icon_index]], envir = environment)
   eval(expressions[[share_index]], envir = environment)
   eval(expressions[[index]], envir = environment)
   environment$cerebroSelectionStatus
@@ -48,6 +58,7 @@ test_that("selection status keeps one compact action per scope", {
   expect_match(with_portable, ">Share<", fixed = TRUE)
   expect_match(with_portable, ">Focus<", fixed = TRUE)
   expect_match(with_portable, ">Clear<", fixed = TRUE)
+  expect_false(grepl("share-alt icon", with_portable, fixed = TRUE))
   expect_false(grepl("Zoom to selection", with_portable, fixed = TRUE))
   expect_match(with_portable, 'data-cell-view-action="focus"', fixed = TRUE)
   expect_length(

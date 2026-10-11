@@ -13,12 +13,10 @@ output[["expression_projection_gene_color_mode_UI"]] <- renderUI({
   if (n_genes <= 1 || display_mode != "separate") {
     return(NULL)
   }
-  selected <- isolate(input[["expression_projection_gene_color_mode"]])
-  if (is.null(selected)) {
-    selected <- "shared"
-  }
+  input_id <- expression_panel_mode_input_id()
+  selected <- isolate(expression_panel_color_mode())
   control <- selectInput(
-    inputId = "expression_projection_gene_color_mode",
+    inputId = input_id,
     label = "Panel colours",
     choices = c(
       "Shared scale" = "shared",

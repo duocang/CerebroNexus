@@ -38,6 +38,79 @@ trajectory_data_reactive <- reactive({
   )
 })
 
+trajectory_row_index_reactive <- reactive({
+  trajectory <- trajectory_data_reactive()
+  trajectory_cells <- rownames(trajectory[["meta"]])
+  pack <- viewerPackCurrent()
+  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
+  valid_pack_count <- length(pack_cell_count) == 1L &&
+    !is.na(pack_cell_count)
+  index <- viewerPackTrajectoryIndex(
+    pack,
+    input[["trajectory_selected_method"]],
+    input[["trajectory_selected_name"]]
+  )
+  valid_index <- length(index) == nrow(trajectory[["meta"]]) &&
+    !anyNA(index) &&
+    isTRUE(all(index >= 1L))
+  if (!isTRUE(valid_index)) {
+    index <- NULL
+  }
+  pack_order_matches <-
+    is.null(index) &&
+    !is.null(pack) &&
+    is.list(pack) &&
+    valid_pack_count &&
+    length(trajectory_cells) == pack_cell_count &&
+    identical(
+      viewerPackCellOrderFingerprint(trajectory_cells),
+      as.character(pack$manifest$cell_order_fingerprint)
+    )
+  if (isTRUE(pack_order_matches)) {
+    index <- seq_len(pack_cell_count)
+  }
+  if (is.null(index)) {
+    metadata <- getMetaData()
+    index <- match(trajectory_cells, metadata[["cell_barcode"]])
+  }
+  if (anyNA(index)) {
+    stop("Trajectory cells do not match the canonical dataset order.")
+  }
+  as.integer(index)
+})
+
+trajectory_cells_reactive <- function(columns = character(), barcodes = FALSE) {
+  trajectory <- trajectory_data_reactive()
+  cells <- trajectory[["meta"]]
+  cell_index <- trajectory_row_index_reactive()
+  metadata <- viewerProjectionFirstFrameMetadata()
+  columns <- unique(as.character(columns))
+  columns <- setdiff(
+    columns[columns %in% colnames(metadata)],
+    colnames(cells)
+  )
+  if (length(columns)) {
+    ## Integer indices already establish the exact row mapping. Assign vectors
+    ## directly to retain trajectory row names without rebuilding a joined
+    ## data frame and validating its million row names for every consumer.
+    for (column in columns) {
+      cells[[column]] <- metadata[[column]][cell_index]
+    }
+  }
+  cells[["cell_index"]] <- cell_index
+  if (isTRUE(barcodes)) {
+    cell_barcodes <- viewerPackCellBarcodes(viewerPackCurrent(), cell_index)
+    if (is.null(cell_barcodes)) {
+      cell_barcodes <- getMetaData()[["cell_barcode"]][cell_index]
+    }
+    cells[["cell_barcode"]] <- cell_barcodes
+  }
+  if (anyNA(cells$pseudotime)) {
+    cells <- cells[!is.na(cells$pseudotime), , drop = FALSE]
+  }
+  cells
+}
+
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],

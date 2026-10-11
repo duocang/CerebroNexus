@@ -24,6 +24,41 @@ ir_canvas_selector <- paste0(
   ".cv-canvas-wrap > canvas:not(.cv-mini)"
 )
 
+test_that("Clonal projection defers full repertoire controls", {
+  settings <- paste(
+    readLines(file.path(inst_dir, "viewer", "immune_repertoire", "settings.R")),
+    collapse = "\n"
+  )
+  visualizations <- paste(
+    readLines(file.path(
+      inst_dir,
+      "viewer",
+      "immune_repertoire",
+      "visualizations.R"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(
+    settings,
+    'tab <- ir_param("ir_tabs", "Clonal UMAP")',
+    fixed = TRUE
+  )
+  expect_match(settings, "ir_repertoire_available()", fixed = TRUE)
+  expect_match(settings, "if (identical(tab, \"Clone Sharing\"))", fixed = TRUE)
+  expect_no_match(
+    settings,
+    "groups <- tryCatch(getGroups(), error = function(e) character(0))\n  genes <- ir_gene_families()",
+    fixed = TRUE
+  )
+  expect_match(visualizations, "ir_repertoire_available()", fixed = TRUE)
+  expect_no_match(
+    visualizations,
+    'output[["ir_selection_status_UI"]] <- renderUI({\n  if (!has_scRepertoire() || is.null(ir_data()))',
+    fixed = TRUE
+  )
+})
+
 wait_for_ir_sidebar <- function(app, timeout = 60000) {
   app$wait_for_js(
     sprintf("document.querySelector('%s') !== null", ir_sidebar_selector),
@@ -352,7 +387,7 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
     "(function(){
       var as = document.querySelectorAll('#ir_tabs > li > a');
       for (var i=0;i<as.length;i++){
-        if (as[i].textContent.trim() === 'Clonal UMAP') return true;
+        if (as[i].textContent.trim() === 'Clonal projection') return true;
       }
       return false;
     })();"
@@ -404,6 +439,14 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
 test_that("Display options panel exposes scatter params on scatter-type tabs", {
   app <- shared_app()
   activate_ir_tab(app)
+
+  # Drawer controls are deliberately absent from the cold landing path. The
+  # first open requests and mounts them.
+  app$click(selector = "#ir_more_button")
+  app$wait_for_js(
+    "document.querySelector('#ir_d_point_size') !== null",
+    timeout = 45000
+  )
 
   control_exists <- function(id) {
     app$get_js(sprintf(
@@ -499,6 +542,16 @@ test_that("IR page uses the compact top toolbar and settings drawer", {
   }
   expect_true(isTRUE(exists_el("#ir_visualizations_info")))
   expect_true(isTRUE(exists_el("#ir_more_button")))
+  if (!isTRUE(exists_el("#ir_additional_parameters_info"))) {
+    app$click(selector = "#ir_more_button")
+  }
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#ir_additional_parameters_info') !== null && ",
+      "document.querySelector('#ir_group_filters_info') !== null"
+    ),
+    timeout = 45000
+  )
   expect_true(isTRUE(exists_el("#ir_additional_parameters_info")))
   expect_true(isTRUE(exists_el("#ir_group_filters_info")))
   expect_true(isTRUE(exists_el("#ir_tabs")))
@@ -521,27 +574,42 @@ test_that("IR page uses the compact top toolbar and settings drawer", {
 })
 
 test_that("Clonal UMAP has Show-all toggle and group filters", {
-  app <- shared_app()
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "ir_umap_show_all",
+    height = 950,
+    width = 1619,
+    load_timeout = 60000
+  )
+  withr::defer(app$stop())
   activate_ir_tab(app)
 
   exists_el <- function(sel) {
     app$get_js(sprintf("document.querySelector('%s') !== null;", sel))
   }
 
-  # Default tab is Clonal UMAP: the Show-all checkbox should exist, and at least
-  # one per-group filter picker (e.g. ir_group_filter_sample) should render.
-  expect_true(isTRUE(exists_el("#ir_p_umap_show_all")))
-  has_group_filter <- app$get_js(
-    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
+  # Show-all and group filters are deferred until the settings drawer opens.
+  app$click(selector = "#ir_more_button")
+  app$wait_for_js(
+    "document.querySelector('#ir_p_umap_show_all') !== null",
+    timeout = 60000
   )
-  expect_true(isTRUE(has_group_filter))
-
+  expect_true(isTRUE(exists_el("#ir_p_umap_show_all")))
   # The non-faceted host renders through the shared Canvas engine.
   wait_for_ir_canvas(app)
   has_canvas <- app$get_js(
     sprintf("document.querySelector('%s') !== null;", ir_canvas_selector)
   )
   expect_true(isTRUE(has_canvas))
+
+  app$wait_for_js(
+    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null",
+    timeout = 45000
+  )
+  expect_true(isTRUE(app$get_js(
+    "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
+  )))
 })
 
 test_that("Clonal UMAP switches to static facets only when grouped", {
@@ -718,6 +786,11 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   ## regression: previously every renderer forced loadNamespace().
   app$set_inputs(ir_tabs = "Clone Sharing", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_cloneSharing .plotly') !== null",
+    timeout = 45000
+  )
+  expect_false(is.null(app$get_value(output = "ir_plot_cloneSharing")))
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
@@ -756,4 +829,18 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), TRUE)
   expect_false(is.null(app$get_value(output = "ir_plot_clonalHomeostasis")))
+
+  ## SizeDist previously monopolised the Shiny process on large repertoires and
+  ## could leave this and every subsequently selected tab blank. The bundled
+  ## data uses the upstream path; large-data profile correctness is covered by
+  ## the pure-function tests.
+  app$set_inputs(ir_tabs = "SizeDist", wait_ = FALSE)
+  app$wait_for_idle(timeout = 45000)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_clonalSizeDistribution .plotly') !== null",
+    timeout = 45000
+  )
+  expect_false(is.null(app$get_value(
+    output = "ir_plot_clonalSizeDistribution"
+  )))
 })

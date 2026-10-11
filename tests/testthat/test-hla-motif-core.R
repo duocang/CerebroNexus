@@ -25,6 +25,39 @@ make_ir_list <- function(cdr3s, samples = NULL, cell_types = NULL) {
   split(df, df$sample)
 }
 
+test_that("HLA metadata is joined across samples without changing IR columns", {
+  repertoire <- list(
+    sample_a = data.frame(
+      barcode = c("cell_3", "cell_1"),
+      CTgene = "TRBV1.TRBJ2",
+      CTaa = c("CASSL", "CASSF"),
+      cluster = c("stored", "stored"),
+      stringsAsFactors = FALSE
+    ),
+    sample_b = data.frame(
+      barcode = "cell_2",
+      CTgene = "TRBV1.TRBJ2",
+      CTaa = "CASST",
+      stringsAsFactors = FALSE
+    )
+  )
+  metadata <- data.frame(
+    cell_barcode = c("cell_1", "cell_2", "cell_3"),
+    cluster = c("A", "B", "C"),
+    condition = c("control", "treated", "control"),
+    stringsAsFactors = FALSE
+  )
+
+  annotated <- hla_annotate_ir_metadata(repertoire, metadata)
+
+  expect_identical(names(annotated), names(repertoire))
+  expect_identical(annotated$sample_a$cluster, c("stored", "stored"))
+  expect_identical(annotated$sample_a$condition, c("control", "control"))
+  expect_identical(annotated$sample_b$condition, "treated")
+  expect_identical(annotated$sample_a$sample, rep("sample_a", 2L))
+  expect_identical(annotated$sample_b$sample, "sample_b")
+})
+
 ## ---- J gene is optional (bulk sources give V family + CDR3 only) ------- ##
 
 test_that("rows with a V gene but no J gene are kept, with J as NA", {
@@ -260,7 +293,68 @@ test_that("total size guard trips with a guard message (not a usable graph)", {
   expect_true(grepl("unique CDR3", attr(g, "guard")))
 })
 
+test_that("large repertoires get a deterministic initial sample cohort", {
+  small <- data.frame(
+    sample = rep(c("s1", "s2"), each = 2),
+    cdr3 = paste0("CASS", seq_len(4)),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      small,
+      c("s1", "s2"),
+      target = 2L,
+      max_total = 10L
+    ),
+    c("s1", "s2")
+  )
+
+  large <- data.frame(
+    sample = rep(c("s1", "s2", "s3"), c(8, 7, 6)),
+    cdr3 = paste0("CASS", seq_len(21)),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      large,
+      c("s3", "s2", "s1"),
+      target = 12L,
+      max_total = 10L,
+      bin_target = 100L,
+      max_bin = 100L
+    ),
+    "s1"
+  )
+  expect_equal(
+    hla_choose_initial_samples(
+      large,
+      c("s3", "s2", "s1"),
+      target = 20L,
+      max_total = 10L,
+      bin_target = 100L,
+      max_bin = 100L
+    ),
+    c("s2", "s1")
+  )
+})
+
 ## ---- draw layout ------------------------------------------------------- ##
+test_that("initial cohorts retain sample order and empty declared samples", {
+  segments <- data.frame(
+    sample = factor(c(rep("b", 3), rep("a", 2))),
+    cdr3 = factor(paste0("CASS", seq_len(5)))
+  )
+  expect_identical(hla_choose_initial_samples(
+    segments, c("empty", "a", "b"), target = 3L, max_total = 1L,
+    bin_target = 100L, max_bin = 100L
+  ), c("empty", "b"))
+  segments$sample <- as.character(segments$sample)
+  segments <- rbind(segments, data.frame(sample = NA_character_, cdr3 = "CASX"))
+  expect_identical(hla_choose_initial_samples(
+    segments, c("a", "b"), target = 4L, max_total = 1L,
+    bin_target = 100L, max_bin = 100L
+  ), "b")
+})
 
 test_that("the graph carries igraph-computed draw coordinates", {
   seg <- hla_parse_ir_segments(
@@ -619,7 +713,7 @@ test_that("no user-facing string calls the max mismatch a diameter", {
     collapse = "\n"
   )
   expect_no_match(viz, "consensus %s &middot; diameter", fixed = TRUE)
-  expect_match(viz, "max mismatch", fixed = TRUE)
+  expect_match(viz, 'hover_numeric("Max mismatch"', fixed = TRUE)
   expect_no_match(names(hla_motif_summary(NULL)), "^diameter$", perl = TRUE)
   expect_true("max_mismatch" %in% names(hla_motif_summary(NULL)))
 })

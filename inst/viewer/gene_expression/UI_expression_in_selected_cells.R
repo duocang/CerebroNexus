@@ -6,7 +6,10 @@
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
 output[["expression_in_selected_cells_UI"]] <- renderUI({
-  req(expression_projection_selected_cells())
+  req(
+    expression_projection_summary_ready(),
+    expression_projection_selected_cells()
+  )
   summary <- expression_summary_data()
   fluidRow(
     cerebroBox(
@@ -30,6 +33,7 @@ output[["expression_in_selected_cells_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
   req(
+    expression_projection_summary_ready(),
     expression_projection_data(),
     expression_projection_coordinates(),
     expression_summary_data(),
@@ -41,17 +45,24 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
     expression_projection_data()
   )
   cells_df <- cells_df %>%
-    dplyr::rename(X1 = 1, X2 = 2) %>%
-    dplyr::mutate(identifier = paste0(X1, '-', X2))
-  cells_df[["selection_key"]] <- if ("cell_barcode" %in% colnames(cells_df)) {
-    as.character(cells_df[["cell_barcode"]])
+    dplyr::rename(X1 = 1, X2 = 2)
+  ## Stable selection is published only after deferred identity is available.
+  ## First-frame metadata can contain compact row numbers, not real barcodes.
+  cells_df[["selection_key"]] <- as.character(
+    getMetaData()[["cell_barcode"]][expression_projection_cells_to_show()]
+  )
+  stable_selection <- "selection_key" %in% colnames(selected_cells) &&
+    any(!is.na(selected_cells[["selection_key"]]) &
+      nzchar(as.character(selected_cells[["selection_key"]])))
+  identifier <- if (!stable_selection) {
+    paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
   } else {
-    as.character(seq_len(nrow(cells_df)))
+    NULL
   }
   groups <- ifelse(
     selectedCellMask(
       cells_df[["selection_key"]],
-      cells_df[["identifier"]],
+      identifier,
       selected_cells
     ),
     "selected",
@@ -68,17 +79,11 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_in_selected_cells_info"]], {
-  showModal(
-    modalDialog(
-      expression_in_selected_cells_info$text,
-      title = expression_in_selected_cells_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "expression_in_selected_cells_info",
+  expression_in_selected_cells_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

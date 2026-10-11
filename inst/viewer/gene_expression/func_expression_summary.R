@@ -74,12 +74,14 @@ expressionSummarySpec <- function(
 }
 
 plotExpressionSummary <- function(series, groups, colors) {
+  if (!length(series)) return(plotly::plotly_empty())
   plots <- lapply(series, function(item) {
     plot_data <- data.frame(
       group = groups,
       level = item$values,
       stringsAsFactors = FALSE
     )
+    plot_data <- compactViolinData(plot_data, "level", "group")
     if (is.null(item$color)) {
       plot <- plotly::plot_ly(
         plot_data,
@@ -92,8 +94,8 @@ plotExpressionSummary <- function(series, groups, colors) {
         showlegend = FALSE,
         hoverinfo = "y",
         marker = list(size = 5),
-        box = list(visible = TRUE),
-        meanline = list(visible = TRUE)
+        box = list(visible = FALSE),
+        meanline = list(visible = FALSE)
       )
     } else {
       plot <- plotly::plot_ly(
@@ -107,10 +109,11 @@ plotExpressionSummary <- function(series, groups, colors) {
         showlegend = FALSE,
         hoverinfo = "y",
         marker = list(size = 5, color = item$color),
-        box = list(visible = TRUE),
-        meanline = list(visible = TRUE)
+        box = list(visible = FALSE),
+        meanline = list(visible = FALSE)
       )
     }
+    plot <- addExactViolinSummary(plot, plot_data)
     plotly::layout(
       plot,
       title = "",

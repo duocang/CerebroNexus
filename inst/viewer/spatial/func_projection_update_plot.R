@@ -62,21 +62,119 @@ authorized_spatial_image_path <- function(
   image_path
 }
 
+spatialBackgroundDataUri <- local({
+  cache <- new.env(parent = emptyenv())
+  function(path, encode = NULL) {
+    info <- file.info(path)
+    if (is.na(info$size) || is.na(info$mtime)) {
+      return(NULL)
+    }
+    version <- paste(info$size, sprintf("%.9f", as.numeric(info$mtime)))
+    cached <- get0(path, envir = cache, inherits = FALSE)
+    if (!is.null(cached) && identical(cached$version, version)) {
+      return(cached$value)
+    }
+    if (is.null(encode)) {
+      if (!requireNamespace("base64enc", quietly = TRUE)) {
+        warning(
+          "[spatial] base64enc package not available, cannot encode background image"
+        )
+        return(NULL)
+      }
+      encode <- base64enc::base64encode
+    }
+    mime_type <- switch(
+      tolower(tools::file_ext(path)),
+      "jpg" = "image/jpeg",
+      "jpeg" = "image/jpeg",
+      "png" = "image/png",
+      "svg" = "image/svg+xml",
+      "image/jpeg"
+    )
+    value <- tryCatch(
+      paste0("data:", mime_type, ";base64,", encode(path)),
+      error = function(error) {
+        warning("[spatial] Failed to encode background image: ", error$message)
+        NULL
+      }
+    )
+    if (!is.null(value)) {
+      assign(path, list(version = version, value = value), envir = cache)
+    }
+    value
+  }
+})
+
 spatial_projection_update_plot <- function(input) {
   ## assign input data to new variables
+  dataset_context <- input[["dataset_context"]]
   metadata <- input[['cells_df']]
   coordinates <- input[['coordinates']]
   reset_axes <- input[['reset_axes']]
   plot_parameters <- input[['plot_parameters']]
   color_assignments <- input[['color_assignments']]
-  hover_info <- input[['hover_info']]
+  geometry_resource <- input[["geometry_resource"]]
+  categorical_resource <- input[["categorical_resource"]]
+  resource_first <- isTRUE(input[["resource_first"]])
+
+  attach_geometry_resource <- function(data) {
+    if (
+      is.null(geometry_resource) ||
+        !is.atomic(data[["x"]]) ||
+        !is.atomic(data[["y"]]) ||
+        length(data[["x"]]) != geometry_resource$cells ||
+        length(data[["y"]]) != geometry_resource$cells
+    ) {
+      return(data)
+    }
+    data[["x"]] <- NULL
+    data[["y"]] <- NULL
+    data[["projection_resource"]] <- geometry_resource
+    data
+  }
 
   color_variable <- plot_parameters[['color_variable']]
-  color_input <- metadata[[color_variable]]
-  selection_keys <- if ("cell_barcode" %in% colnames(metadata)) {
-    as.character(metadata[["cell_barcode"]])
+  color_input <- if (resource_first) NULL else metadata[[color_variable]]
+  selection_keys <- if (resource_first) {
+    integer()
   } else {
-    rownames(metadata)
+    seq_len(nrow(metadata))
+  }
+  build_deferred_aux <- function(selection_rows) {
+    cell_index <- if (resource_first) {
+      input[["cell_indices"]]
+    } else if ("cell_index" %in% colnames(metadata)) {
+      metadata[["cell_index"]]
+    } else {
+      seq_len(nrow(metadata))
+    }
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    first_frame <- viewerProjectionFirstFrameMetadata()
+    columns <- viewerProjectionMetadataColumns(
+      first_frame,
+      color_variable = NULL,
+      hover_info = hover,
+      groups = getGroups()
+    )
+    hover_metadata <- viewerProjectionSubsetRows(
+      first_frame,
+      cell_index,
+      columns
+    )
+    cell_barcodes <- viewerPackCellBarcodes(viewerPackCurrent(), cell_index)
+    if (is.null(cell_barcodes)) {
+      cell_barcodes <- getMetaData()[["cell_barcode"]][cell_index]
+    }
+    cerebroCellViewDeferredAux(
+      selection_rows = selection_rows,
+      cell_barcodes = cell_barcodes,
+      hover_columns = if (hover) {
+        cerebroProjectionHoverColumns(hover_metadata)
+      } else {
+        list()
+      },
+      hover = hover
+    )
   }
 
   ## prepare background image data and bounds if selected
@@ -141,8 +239,6 @@ spatial_projection_update_plot <- function(input) {
       # Calculate bounds from coordinates
       x_rng <- range(coordinates[[1]], na.rm = TRUE)
       y_rng <- range(coordinates[[2]], na.rm = TRUE)
-      ext <- tolower(tools::file_ext(img_path))
-
       explicit_bounds <- selected_background$bounds
       if (is.null(explicit_bounds)) {
         explicit_bounds <- list(
@@ -159,36 +255,7 @@ spatial_projection_update_plot <- function(input) {
         ymax = explicit_bounds[["ymax"]]
       )
 
-      # Encode the image for the shared Canvas renderer.
-      mime_type <- switch(
-        ext,
-        "jpg" = "image/jpeg",
-        "jpeg" = "image/jpeg",
-        "png" = "image/png",
-        "svg" = "image/svg+xml",
-        "image/jpeg"
-      )
-
-      tryCatch(
-        {
-          if (requireNamespace("base64enc", quietly = TRUE)) {
-            encoded <- base64enc::base64encode(img_path)
-            background_image_data <- paste0(
-              "data:",
-              mime_type,
-              ";base64,",
-              encoded
-            )
-          } else {
-            warning(
-              "[spatial] base64enc package not available, cannot encode background image"
-            )
-          }
-        },
-        error = function(e) {
-          warning("[spatial] Failed to encode background image: ", e$message)
-        }
-      )
+      background_image_data <- spatialBackgroundDataUri(img_path)
     }
   }
 
@@ -296,25 +363,25 @@ spatial_projection_update_plot <- function(input) {
       reset_axes = reset_axes
     )
     output_hover <- list(
-      hoverinfo = if (plot_parameters[["hover_info"]]) "text" else "skip",
-      text = if (plot_parameters[["hover_info"]]) {
-        unname(hover_info)
-      } else {
-        "empty"
-      }
+      hoverinfo = "skip",
+      text = list(),
+      columns = list()
     )
+    output_data <- attach_geometry_resource(output_data)
     cerebroCellViewRender(
       "spatial_projection",
       output_meta,
       output_data,
-      output_hover
-    )
+      output_hover,
+      deferred_aux = function() {
+        build_deferred_aux(output_data[["selection_key"]])
+      }, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
     return(invisible(NULL))
   }
 
   n_dimensions <- plot_parameters[["n_dimensions"]]
   payload <- cerebroCellViewScatterPayload(
-    coordinates = coordinates,
+    coordinates = if (resource_first) list() else coordinates,
     color = color_input,
     color_variable = plot_parameters[["color_variable"]],
     selection_keys = selection_keys,
@@ -328,11 +395,29 @@ spatial_projection_update_plot <- function(input) {
     reset_axes = reset_axes,
     n_dimensions = n_dimensions,
     color_assignments = color_assignments,
-    hover_info = hover_info,
-    hover = plot_parameters[["hover_info"]],
-    space_label = plot_parameters[["projection"]]
+    hover_columns = list(),
+    hover = FALSE,
+    space_label = plot_parameters[["projection"]],
+    cell_count = input[["cell_count"]],
+    coordinate_resource = if (resource_first) geometry_resource else NULL,
+    categorical_resource = if (resource_first) {
+      categorical_resource
+    } else {
+      NULL
+    }
   )
+  if (identical(plot_parameters[["plot_type"]], "ImageFeaturePlot")) {
+    settings <- viewerExpressionColorSettings(
+      if (exists("Cerebro.options")) Cerebro.options else list(),
+      dataset_context$dataset_key
+    )
+    payload$data$colorscale <- expressionColorScale(settings$palette)
+    payload$data$reversescale <- FALSE
+  }
   payload[["meta"]] <- c(background_meta, payload[["meta"]])
+  if (!resource_first) {
+    payload[["data"]] <- attach_geometry_resource(payload[["data"]])
+  }
 
   output_hulls <- list()
   if (
@@ -340,11 +425,7 @@ spatial_projection_update_plot <- function(input) {
       n_dimensions == 2 &&
       isTRUE(plot_parameters[["show_region_outlines"]])
   ) {
-    hulls <- compute_group_hulls(
-      coordinates[[1]],
-      coordinates[[2]],
-      as.character(color_input)
-    )
+    hulls <- input[["group_hulls"]]
     present <- intersect(names(hulls), names(color_assignments))
     output_hulls <- list(
       x = unname(lapply(hulls[present], `[[`, "x")),
@@ -357,6 +438,12 @@ spatial_projection_update_plot <- function(input) {
     payload[["meta"]],
     payload[["data"]],
     payload[["hover"]],
-    extra = list(group_hulls = output_hulls)
-  )
+    extra = list(group_hulls = output_hulls),
+    deferred_aux = function() {
+      build_deferred_aux(if (resource_first) {
+        seq_len(input[["cell_count"]])
+      } else {
+        payload[["data"]][["selection_key"]]
+      })
+    }, dataset_context = input[["dataset_context"]], feedback = input[["feedback"]])
 }

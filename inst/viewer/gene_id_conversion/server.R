@@ -18,14 +18,14 @@ output[["gene_info"]] <- DT::renderDataTable({
     )
   }
   DT::datatable(
+    style = "bootstrap",
     conversion_table,
     filter = "none",
     selection = "multiple",
     escape = TRUE,
-    autoHideNavigation = TRUE,
     rownames = FALSE,
     options = list(
-      scrollX = FALSE,
+      scrollX = TRUE,
       dom = "Bfrtip",
       lengthMenu = c(15, 30, 50, 100),
       pageLength = 50
@@ -36,17 +36,7 @@ output[["gene_info"]] <- DT::renderDataTable({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["geneIdConversion_info"]], {
-  showModal(
-    modalDialog(
-      geneIdConversion_info[["text"]],
-      title = geneIdConversion_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "geneIdConversion_info", geneIdConversion_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

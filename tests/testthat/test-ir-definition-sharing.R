@@ -37,6 +37,7 @@ ir_env$reactive <- function(x) function() eval(substitute(x))
 ir_env$reactiveVal <- function(...) function(...) NULL
 ir_env$req <- function(...) invisible(NULL)
 ir_env$observeEvent <- function(...) invisible(NULL)
+ir_env$observe <- function(...) invisible(NULL)
 ir_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 # Stub out CerebroNexus package functions referenced at top-level in data.R
 ir_env$getImmuneRepertoire <- function(...) NULL
@@ -58,12 +59,169 @@ sys.source(
 )
 sys.source(data_r, envir = ir_env, keep.source = FALSE)
 
+test_that("immune metadata joins follow only active analysis controls", {
+  fields <- ir_env$ir_requested_metadata_fields
+  expect_length(fields("SizeDist", "", "cell_type", "patient"), 0L)
+  expect_identical(fields("Clone Sharing", "", "cell_type", "patient"), "patient")
+  expect_identical(fields("Clonal UMAP", "", "cell_type", "patient"), "cell_type")
+  expect_identical(fields("SizeDist", "sample"), "sample")
+  expect_identical(fields("Clone Sharing", "", NULL, "sample"), character())
+})
+
 ir_parse_segments <- ir_env$ir_parse_segments
 ir_definition_counts <- ir_env$ir_definition_counts
 ir_sharing_classify <- ir_env$ir_sharing_classify
 ir_build_definition_plot <- ir_env$ir_build_definition_plot
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
+ir_chain_clone_values <- ir_env$ir_chain_clone_values
+ir_clone_size_profiles <- ir_env$ir_clone_size_profiles
+ir_size_profile_plot <- ir_env$ir_size_profile_plot
+
+test_that("immune metadata joins only requested columns in one aligned pass", {
+  data <- list(
+    a = data.frame(barcode = c("c3", "c1"), CTgene = c("x", "y")),
+    b = data.frame(barcode = "c2", CTgene = "z")
+  )
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    group = c("g1", "g2", "g3"),
+    unused = c("u1", "u2", "u3"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- ir_env$ir_annotate_metadata(data, metadata, "group")
+
+  expect_identical(out$a$group, c("g3", "g1"))
+  expect_identical(out$b$group, "g2")
+  expect_false("unused" %in% names(out$a))
+})
+
+test_that("segment parsing keeps only requested columns and supplies sample", {
+  data <- list(
+    donor_a = data.frame(
+      barcode = c("c1", "c2"),
+      CTgene = rep("TRBV1..TRBJ1.TRBC1", 2),
+      CTaa = rep("CASSA", 2),
+      unused = c("large-a", "large-b"),
+      stringsAsFactors = FALSE
+    )
+  )
+  out <- ir_parse_segments(data, "TRB", columns = "sample")
+  expect_named(
+    out,
+    c("barcode", "sample", "v_gene", "j_gene", "cdr3", "clone_vjc")
+  )
+  expect_identical(out$sample, rep("donor_a", 2))
+  expect_false("unused" %in% names(out))
+})
+
+test_that("empirical clone-size profiles preserve exact observed counts", {
+  frame <- data.frame(
+    CTgene = rep("TRBV1..TRBJ1.TRBC1", 8),
+    CTstrict = c(rep("clone-a", 4), rep("clone-b", 2), "clone-c", "clone-d"),
+    cohort = c(rep("A", 6), "B", "B"),
+    stringsAsFactors = FALSE
+  )
+  profiles <- ir_clone_size_profiles(
+    list(sample_1 = frame),
+    chain = "TRB",
+    group_by = "cohort",
+    threshold = 1
+  )
+  expect_named(profiles$clone_counts, c("A", "B"))
+  expect_equal(sort(unname(profiles$clone_counts$A)), c(2L, 4L))
+  expect_equal(sort(unname(profiles$clone_counts$B)), c(1L, 1L))
+  expect_equal(rowSums(profiles$profile), c(A = 1, B = 1))
+
+  skip_if_not_installed("ggdendro")
+  plot <- ir_size_profile_plot(profiles)
+  expect_s3_class(plot, "ggplot")
+})
+
+test_that("clonal projection bounds the contextual background before rendering", {
+  cells <- paste0("c", seq_len(1000L))
+  coords <- matrix(
+    seq_len(2000L),
+    ncol = 2L,
+    dimnames = list(cells, c("x", "y"))
+  )
+  ir_env$availableProjections <- function() "tsne"
+  ir_env$getProjection <- function(...) coords
+  ir_env$ir_data_annotated <- function() {
+    list(
+      sample = data.frame(
+        barcode = cells[1:3],
+        CTgene = c("TRB-a", "TRB-a", "TRB-b"),
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  ir_env$ir_clonecall_col <- function(...) "CTgene"
+  ir_env$ir_umap_chains <- function(...) "TRB"
+
+  out <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    max_background = 10L
+  )
+
+  expect_lte(nrow(out), 13L)
+  expect_setequal(out$barcode[!is.na(out$expansion)], cells[1:3])
+
+  sampled <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    percentage = 34,
+    max_background = 10L
+  )
+  expect_false(any(
+    cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
+  ))
+
+  grouped <- ir_env$ir_clonal_umap_data(
+    "tsne",
+    "TCR",
+    show_all = TRUE,
+    max_background = 10L,
+    split_output = TRUE
+  )
+  expect_identical(grouped$trace_codes, c(NA_integer_, 1L, 2L))
+  expect_identical(lengths(grouped$x), c(10L, 1L, 2L))
+  expect_identical(lengths(grouped$y), c(10L, 1L, 2L))
+  expect_identical(grouped$key_type, "barcode")
+  grouped_coloured_keys <- unlist(lapply(
+    grouped$coloured_rows,
+    function(rows) grouped$coloured_key[rows]
+  ))
+  expect_setequal(grouped_coloured_keys, cells[1:3])
+  expect_false(any(grouped$background_key %in% cells[1:3]))
+})
+
+test_that("clonal expansion sizes avoid sorting clone labels", {
+  expansion <- ir_env$ir_clone_expansion(c("clone-b", "clone-a", "clone-b"))
+
+  expect_identical(as.integer(expansion), c(2L, 1L, 2L))
+  expect_identical(levels(expansion), ir_env$IR_CLONE_LABELS)
+})
+
+test_that("default abundance reduces cells to clone-count bins", {
+  data <- list(
+    sample_a = data.frame(CTgene = c("a", "a", "b", "c", NA)),
+    sample_b = data.frame(CTgene = c("x", "x", "x", "y"))
+  )
+
+  counts <- ir_env$ir_clonal_abundance_counts(data, "CTgene")
+
+  expect_identical(
+    counts$sample,
+    c("sample_a", "sample_a", "sample_b", "sample_b")
+  )
+  expect_identical(counts$abundance, c(1L, 2L, 1L, 3L))
+  expect_identical(counts$n_clones, c(2L, 1L, 1L, 1L))
+})
 
 # --- ir_parse_segments -----------------------------------------------------
 
@@ -468,4 +626,79 @@ test_that("ir_build_sharing_plot keeps 3-class x order Private -> within -> acro
     x_labels,
     c("Private (1 sample)", "Shared within group", "Shared across groups")
   )
+})
+
+
+test_that("clonal expansion is independent of display filtering and pack presence", {
+  scope <- new.env(parent = ir_env)
+  # Rebind the actual helper to an isolated fixture, without changing other tests.
+  f <- ir_env$ir_clonal_umap_data
+  environment(f) <- scope
+  cells <- paste0("c", 1:6)
+  coords <- data.frame(x = 1:6, y = 6:1, row.names = cells)
+  scope$availableProjections <- function() "umap"
+  scope$getProjection <- function(...) coords
+  scope$ir_data_annotated <- function() list(sample = data.frame(
+    barcode = cells, CTgene = rep("TRB-clone", 6)))
+  scope$ir_clonecall_col <- function(...) "CTgene"
+  scope$ir_umap_chains <- function(...) "TRB"
+  packed <- NULL
+  scope$viewerPackCurrent <- function() list(cells = cells)
+  scope$viewerPackImmuneIndex <- function(...) packed
+  plain <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(as.character(plain$expansion), "Medium (5 < X <= 20)")
+  packed <- list(cell_index = 1:6, clone = rep("TRB-clone", 6),
+    expansion = as.integer(ir_env$ir_clone_expansion(rep("TRB-clone", 6))))
+  cached <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(cached, plain)
+  scope$viewerPackCurrent <- function() list(cells = cells, canonical_order = TRUE)
+  scope$viewerProjectionFirstFrameCoordinates <- function(...) coords
+  scope$viewerPackCellBarcodes <- function(...) cells
+  indexed <- f("umap", "TCR", cells = "c1", show_all = FALSE)
+  expect_identical(indexed$expansion, plain$expansion)
+  expect_equal(indexed$x, plain$x)
+})
+
+
+test_that("sharing choices discover metadata fields before any field is selected", {
+  data <- list(a = data.frame(barcode = c("c3", "c1"), CTgene = "TRB-a"),
+    b = data.frame(barcode = "c2", CTgene = "TRB-a"))
+  metadata <- data.frame(cell_barcode = c("c1", "c2", "c3", "unmatched"),
+    patient = c("p1", "p2", "p1", "p3"),
+    condition = c("case", "control", "case", "other"),
+    constant = c("x", "x", "x", "different"), score = 1:4)
+  choices <- ir_env$ir_discover_sharing_units(data, metadata)
+  expect_identical(choices, c("sample", "patient", "condition"))
+  expect_named(data$a, c("barcode", "CTgene"))
+  joined <- ir_env$ir_annotate_metadata(data, metadata, "patient")
+  expect_identical(joined$a$patient, c("p1", "p1"))
+  expect_identical(joined$b$patient, "p2")
+  expect_false("condition" %in% names(joined$a))
+  expect_identical(ir_env$ir_discover_sharing_units(joined, metadata), choices)
+  data$a$native <- c("n1", "n2")
+  data$b$native <- "n3"
+  expect_true("native" %in% ir_env$ir_discover_sharing_units(data, metadata))
+})
+
+
+test_that("packed and fallback clone sizes use the same unique dataset cells", {
+  scope <- new.env(parent = ir_env)
+  f <- ir_env$ir_clonal_umap_data
+  environment(f) <- scope
+  cells <- paste0("c", 1:5)
+  data <- list(sample = data.frame(barcode = c(cells, "c1", "outside"),
+    CTgene = rep("TRB-clone", 7)))
+  scope$availableProjections <- function() "umap"
+  scope$getProjection <- function(...) data.frame(x=1:5, y=5:1, row.names=cells)
+  scope$ir_data_annotated <- function() data
+  scope$ir_clonecall_col <- function(...) "CTgene"
+  scope$ir_umap_chains <- function(...) "TRB"
+  packed <- NULL
+  scope$viewerPackCurrent <- function() list(cells=cells)
+  scope$viewerPackImmuneIndex <- function(...) packed
+  plain <- f("umap", "TCR", cells="c1", show_all=FALSE)
+  packed <- CerebroNexus:::.viewerPackImmuneIndex(data, cells, "TCR")
+  cached <- f("umap", "TCR", cells="c1", show_all=FALSE)
+  expect_identical(cached, plain)
+  expect_identical(as.character(plain$expansion), "Small (1 < X <= 5)")
 })

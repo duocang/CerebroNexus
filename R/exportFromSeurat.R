@@ -54,6 +54,14 @@
   paste0(stem, suffix)
 }
 
+.writeBpcellsGeneMajor <- function(matrix, dir) {
+  if (identical(BPCells::storage_order(matrix), "row")) {
+    BPCells::write_matrix_dir(matrix, dir = dir)
+    return(BPCells::open_matrix_dir(dir))
+  }
+  BPCells::transpose_storage_order(matrix, outdir = dir)
+}
+
 .validatePortableExportBasename <- function(final_file) {
   name <- basename(final_file)
   stem <- tools::file_path_sans_ext(name)
@@ -104,7 +112,9 @@
   if (!file.exists(final_file) || dir.exists(final_file)) {
     return(NULL)
   }
-  object <- tryCatch(readRDS(final_file), error = function(error) NULL)
+  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
+    NULL
+  })
   if (
     !is.environment(object) ||
       !any(grepl("^Cerebro", class(object))) ||
@@ -141,11 +151,39 @@
   list(type = backend$type, location = backend$location)
 }
 
+.readPublishedSpatialBackend <- function(final_file) {
+  if (!file.exists(final_file) || dir.exists(final_file)) {
+    return(NULL)
+  }
+  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
+    NULL
+  })
+  if (
+    !is.environment(object) ||
+      !exists("spatial_molecule_backend", envir = object, inherits = FALSE) ||
+      bindingIsActive("spatial_molecule_backend", object) ||
+      isTRUE(rlang::env_binding_are_lazy(object, "spatial_molecule_backend"))
+  ) {
+    return(NULL)
+  }
+  backend <- object[["spatial_molecule_backend"]]
+  valid <- is.list(backend) &&
+    identical(backend$type, "directory") &&
+    is.character(backend$location) &&
+    length(backend$location) == 1L &&
+    !is.na(backend$location) &&
+    nzchar(backend$location) &&
+    !backend$location %in% c(".", "..") &&
+    !grepl("[/\\\\]", backend$location)
+  if (!valid) NULL else backend[c("type", "location")]
+}
+
 .publishCerebroExport <- function(
   export,
   final_file,
   stage_dir,
-  expression_matrix_mode
+  expression_matrix_mode,
+  codec = "rds"
 ) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -170,8 +208,11 @@
     )
   }
   previous_backend <- .readPublishedExportBackend(final_file)
+  previous_spatial_backend <- .readPublishedSpatialBackend(final_file)
   stage_sidecar <- NULL
   final_sidecar <- NULL
+  stage_spatial <- NULL
+  final_spatial <- NULL
   if (!identical(backend$type, "embedded")) {
     .validateExportSidecarName(backend$location)
     expected_location <- .exportSidecarName(final_file, backend$type)
@@ -203,6 +244,7 @@
 
   old_crb_backup <- NULL
   old_sidecar_backup <- NULL
+  old_spatial_backup <- NULL
   retired_sidecar <- NULL
   if (
     !is.null(previous_backend) &&
@@ -223,6 +265,7 @@
   }
   installed_crb <- FALSE
   installed_sidecar <- FALSE
+  installed_spatial <- FALSE
   committed <- FALSE
   on.exit(
     {
@@ -255,6 +298,19 @@
               "Export rollback could not restore the previous expression ",
               "sidecar from: ",
               old_sidecar_backup,
+              call. = FALSE
+            )
+          }
+        }
+        if (installed_spatial && dir.exists(final_spatial)) {
+          unlink(final_spatial, recursive = TRUE, force = TRUE)
+        }
+        if (!is.null(old_spatial_backup) && dir.exists(old_spatial_backup)) {
+          if (!file.rename(old_spatial_backup, final_spatial)) {
+            warning(
+              "Export rollback could not restore the previous spatial ",
+              "molecule sidecar from: ",
+              old_spatial_backup,
               call. = FALSE
             )
           }
@@ -339,7 +395,52 @@
     }
   }
 
-  saveRDS(export, stage_crb)
+  payload <- if (.recognizedCerebroObject(export)) {
+    .thinCerebroPayload(
+      export,
+      final_file,
+      sidecar = if (identical(backend$type, "bpcells")) final_sidecar else NULL
+    )
+  } else {
+    export
+  }
+  spatial <- .stageSpatialMolecules(payload, stage_crb, codec)
+  payload <- spatial$payload
+  stage_spatial <- spatial$stage
+  if (!is.null(spatial$location)) {
+    final_spatial <- file.path(final_dir, spatial$location)
+    if (.pathIsSymbolicLink(final_spatial)) {
+      stop(
+        "Refusing to replace a symbolic-link spatial sidecar.",
+        call. = FALSE
+      )
+    }
+    if (dir.exists(final_spatial)) {
+      owns_target <- !is.null(previous_spatial_backend) &&
+        identical(previous_spatial_backend$location, spatial$location)
+      if (!owns_target) {
+        stop(
+          "Refusing to replace an existing spatial sidecar that is not owned ",
+          "by the published CRB: ",
+          final_spatial,
+          call. = FALSE
+        )
+      }
+      old_spatial_backup <- tempfile(
+        pattern = paste0(".", basename(final_spatial), "-backup-"),
+        tmpdir = final_dir
+      )
+      if (!file.rename(final_spatial, old_spatial_backup)) {
+        stop("Failed to preserve the previous spatial sidecar.", call. = FALSE)
+      }
+    }
+    .setExportArtifactMode(stage_spatial, "0700", "the spatial sidecar")
+    if (!file.rename(stage_spatial, final_spatial)) {
+      stop("Failed to install the staged spatial sidecar.", call. = FALSE)
+    }
+    installed_spatial <- TRUE
+  }
+  .writeCerebroPayload(payload, stage_crb, codec)
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
   }
@@ -365,7 +466,7 @@
   )
   committed <- TRUE
 
-  for (backup in c(old_crb_backup, old_sidecar_backup)) {
+  for (backup in c(old_crb_backup, old_sidecar_backup, old_spatial_backup)) {
     if (
       !is.null(backup) &&
         (file.exists(backup) || dir.exists(backup))
@@ -457,6 +558,8 @@
 #'   travels with it; the Shiny runtime re-resolves paths via
 #'   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
 #'   parent directory (step 7.3 runtime attach).
+#'   Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
+#'   a temporary block-written HDF5 file instead of a full dense realization.
 #'   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
 #'   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
 #'   \code{<stem>.h5}) and tags the backend with that relative location. The
@@ -483,8 +586,15 @@
 #' Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 #' attributes, and security labels remain the deployment system's
 #' responsibility on every platform.
+#' @param codec Serialization codec for the CRB payload. Defaults to
+#' \code{"qs2"}; use \code{"rds"} when direct compatibility with
+#' \code{readRDS()} is required.
+#' @param viewer_binary Build the derived Viewer Pack \code{"auto"}matically
+#' for large datasets, \code{"always"}, or \code{"never"}.
+#' @param viewer_binary_threshold Dataset-level cell threshold used by
+#' \code{viewer_binary = "auto"}.
 #' @param spatial_images Optional named list mapping Seurat image names to named
-#'   image paths or descriptors of the form code{list(path = ..., bounds = ...)}.
+#'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
 #'   derived from the exported x/y coordinate range.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
@@ -550,6 +660,9 @@ exportFromSeurat <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -559,6 +672,8 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
 
   expression_matrix_mode <- match.arg(expression_matrix_mode)
+  codec <- match.arg(codec)
+  viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
   if (
     !is.character(file) ||
       length(file) != 1L ||
@@ -811,6 +926,7 @@ exportFromSeurat <- function(
       slot = slot,
       join_samples = TRUE,
       allow_cross_semantic_fallback = TRUE,
+      allow_iterable_matrix = identical(expression_matrix_mode, "bpcells"),
       verbose = verbose,
       return_resolution = TRUE
     )
@@ -898,17 +1014,28 @@ exportFromSeurat <- function(
       unlink(bpc_abs, recursive = TRUE)
     }
 
-    ## Sparse dgCMatrix is BPCells' native input; dense matrices have to be
-    ## coerced once. Everything else (RleMatrix, DelayedMatrix) is rare enough
-    ## here that we cover it defensively.
+    ## Delayed inputs go through a block-written disk bridge. Never realize
+    ## the complete delayed matrix just to convert it back to sparse storage.
+    delayed_bridge <- NULL
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
       } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-        expression_data <- methods::as(
-          as.matrix(expression_data),
-          "CsparseMatrix"
+        if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+          stop("Exporting delayed expression to BPCells requires HDF5Array.", call. = FALSE)
+        }
+        integer_counts <- all(unlist(DelayedArray::blockApply(expression_data, function(block) {
+          all(is.finite(block)) && all(block >= 0) &&
+            all(block <= .Machine$integer.max) && all(block == floor(block))
+        }), use.names = FALSE))
+        delayed_bridge <- tempfile("delayed-expression-", tmpdir = crb_dir, fileext = ".h5")
+        HDF5Array::writeTENxMatrix(
+          DelayedArray::t(expression_data), delayed_bridge, group = "matrix"
         )
+        expression_data <- t(BPCells::open_matrix_10x_hdf5(delayed_bridge))
+        if (integer_counts) {
+          expression_data <- BPCells::convert_matrix_type(expression_data, type = "uint32_t")
+        }
       }
     }
 
@@ -920,16 +1047,21 @@ exportFromSeurat <- function(
     ## sibling ~5x on integer counts (e.g. 50k cells x 20k genes: 440 MB
     ## raw double -> 78 MB bit-packed). Normalised data (slot = "data" or
     ## "scale.data") stays as double — bit-packing would silently truncate.
-    nnz_int_ok <- length(expression_data@x) > 0L &&
-      all(expression_data@x >= 0) &&
-      all(expression_data@x == as.integer(expression_data@x)) &&
-      all(expression_data@x <= .Machine$integer.max)
-    bpc_iter <- methods::as(expression_data, "IterableMatrix")
-    if (nnz_int_ok) {
-      bpc_iter <- BPCells::convert_matrix_type(bpc_iter, type = "uint32_t")
-      bpc_storage_msg <- "uint32_t (bit-packed)"
+    if (inherits(expression_data, "IterableMatrix")) {
+      bpc_iter <- expression_data
+      bpc_storage_msg <- paste0(BPCells::matrix_type(bpc_iter), " (source)")
     } else {
-      bpc_storage_msg <- "double (raw, non-integer values detected)"
+      nnz_int_ok <- length(expression_data@x) > 0L &&
+        all(expression_data@x >= 0) &&
+        all(expression_data@x == as.integer(expression_data@x)) &&
+        all(expression_data@x <= .Machine$integer.max)
+      bpc_iter <- methods::as(expression_data, "IterableMatrix")
+      if (nnz_int_ok) {
+        bpc_iter <- BPCells::convert_matrix_type(bpc_iter, type = "uint32_t")
+        bpc_storage_msg <- "uint32_t (bit-packed)"
+      } else {
+        bpc_storage_msg <- "double (raw, non-integer values detected)"
+      }
     }
 
     if (verbose) {
@@ -940,8 +1072,10 @@ exportFromSeurat <- function(
         bpc_storage_msg
       ))
     }
-    BPCells::write_matrix_dir(mat = bpc_iter, dir = bpc_abs)
-    mat_handle <- BPCells::open_matrix_dir(dir = bpc_abs)
+    ## Keep Cerebro's genes x cells dimensions, but physically store rows
+    ## contiguously so per-gene and small gene-set queries avoid a full scan.
+    mat_handle <- .writeBpcellsGeneMajor(bpc_iter, bpc_abs)
+    if (!is.null(delayed_bridge)) unlink(delayed_bridge)
 
     ## Carry the live handle (absolute path inside @dir -- BPCells normalises
     ## it on open_matrix_dir()) AND the portable relative location tag. Step
@@ -962,16 +1096,15 @@ exportFromSeurat <- function(
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
-      } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-        expression_data <- methods::as(
-          as.matrix(expression_data),
-          "CsparseMatrix"
-        )
       }
     }
 
     ## transpose genes x cells -> cells x genes for storage
-    m_disk <- methods::as(Matrix::t(expression_data), "CsparseMatrix")
+    m_disk <- if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
+      DelayedArray::t(expression_data)
+    } else {
+      methods::as(Matrix::t(expression_data), "CsparseMatrix")
+    }
 
     if (verbose) {
       message(sprintf(
@@ -1840,8 +1973,23 @@ exportFromSeurat <- function(
     export = export,
     final_file = final_file,
     stage_dir = export_stage_dir,
-    expression_matrix_mode = expression_matrix_mode
+    expression_matrix_mode = expression_matrix_mode,
+    codec = codec
   )
+  if (
+    .viewerPackEnabled(
+      viewer_options$mode,
+      viewer_options$threshold,
+      length(.viewerPackCells(export))
+    )
+  ) {
+    buildViewerPack(
+      final_file,
+      viewer_binary = "always",
+      viewer_binary_threshold = viewer_options$threshold,
+      overwrite = TRUE
+    )
+  }
 
   ## log message
   ## ... writing to file was successful

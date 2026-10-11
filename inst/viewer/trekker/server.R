@@ -128,14 +128,14 @@ output[["trekker_main_parameters_ui"]] <- renderUI({
   )
 })
 
-## Render the controls eagerly (not only when the tab is shown) so they exist and
-## stay in sync with the canvas as soon as a Trekker data set is loaded.
-outputOptions(output, "trekker_main_parameters_ui", suspendWhenHidden = FALSE)
-
 ## Build the dedicated page as a two-panel specialist payload. Rendering,
 ## viewport state, selection and toolbars all stay in cell_views.js.
 observe({
-  input[["trekker_projection_render_request"]]
+  req(identical(input[["sidebar"]], "trekker"))
+  render_request <- input[["trekker_projection_render_request"]]
+  req(is.list(render_request), is.list(render_request$dataset_context))
+  dataset_context <- viewer_loaded_dataset_context()
+  req(viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
   tk <- req(trekker_slot())
   mode <- input[["trekker_mode"]] %||% "celltype"
   view <- input[["trekker_view"]] %||% "pair"
@@ -160,7 +160,7 @@ observe({
     gene <- input[["trekker_gene_pick"]]
     if (!is.null(gene) && gene %in% trekker_gene_names()) {
       color <- as.numeric(tryCatch(
-        data_set()$getExpressionMatrix(cells = keys, genes = gene),
+        viewerExpressionRow(data_set(), keys, gene),
         error = function(e) rep(NA_real_, length(keys))
       ))
       color_label <- gene
@@ -251,13 +251,23 @@ observe({
       point_size = appearance$point_size,
       point_opacity = appearance$point_opacity,
       percentage_cells_to_show = appearance$percentage_cells_to_show
-    )
+    ),
+    dataset_context = dataset_context
   )
 })
 
 output[["trekker_number_of_selected_cells"]] <- renderUI({
   selected <- input[["trekker_projection_persistent_selection"]] %||%
     character()
+  if (
+    length(selected) &&
+      (!is.list(selected) || !viewerDatasetContextEqual(
+        selected[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ))
+  ) {
+    selected <- character()
+  }
   tags$span(
     format(cerebroSelectionCount(selected), big.mark = ","),
     " cells selected"

@@ -2,7 +2,14 @@
 ## Shared Linked views-style group filters for projection-style tabs.
 ##----------------------------------------------------------------------------##
 
-groupFilterControl <- function(input_id, label, levels, colors) {
+groupFilterControl <- function(
+  input_id,
+  label,
+  levels,
+  colors,
+  selected = levels
+) {
+  selected <- intersect(as.character(selected), as.character(levels))
   shiny::div(
     id = input_id,
     class = "cv-filt shiny-input-checkboxgroup",
@@ -16,7 +23,7 @@ groupFilterControl <- function(input_id, label, levels, colors) {
       " ",
       shiny::tags$span(
         class = "cv-filt-ct",
-        paste0(length(levels), "/", length(levels))
+        paste0(length(selected), "/", length(levels))
       )
     ),
     shiny::div(
@@ -35,7 +42,7 @@ groupFilterControl <- function(input_id, label, levels, colors) {
             type = "checkbox",
             name = input_id,
             value = level,
-            checked = "checked"
+            checked = if (level %in% selected) "checked" else NULL
           ),
           shiny::tags$span(
             class = "cv-dot",
@@ -61,10 +68,21 @@ groupFilterControl <- function(input_id, label, levels, colors) {
 #'        names. Pass the caller's own getGroups() defined in
 #'        utility_functions.R.
 #' @param getGroupLevels Closure mapping a group name to its levels.
-registerGroupFiltersUI <- function(output, prefix, getGroups, getGroupLevels) {
+#' @param render_request Optional closure that gates construction until the
+#'        settings drawer requests the controls.
+registerGroupFiltersUI <- function(
+  output,
+  prefix,
+  getGroups,
+  getGroupLevels,
+  render_request = NULL
+) {
   output_id <- paste0(prefix, "_group_filters_UI")
 
   output[[output_id]] <- shiny::renderUI({
+    if (is.function(render_request)) {
+      shiny::req(render_request())
+    }
     filters <- lapply(getGroups(), function(group) {
       levels <- getGroupLevels(group)
       colors <- tryCatch(
@@ -87,8 +105,28 @@ registerGroupFiltersUI <- function(output, prefix, getGroups, getGroupLevels) {
     )
   })
 
-  ## ensure rendered even when the surrounding cerebroBox is collapsed
-  shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
+  domain <- shiny::getDefaultReactiveDomain()
+  if (!is.null(domain)) {
+    domain$onFlushed(
+      function() {
+        later::later(
+          function() {
+            if (!domain$isClosed()) {
+              shiny::withReactiveDomain(domain, {
+                outputOptions(
+                  output,
+                  output_id,
+                  suspendWhenHidden = FALSE
+                )
+              })
+            }
+          },
+          delay = 0.5
+        )
+      },
+      once = TRUE
+    )
+  }
 }
 
 #' Register the info-button modal for the group-filters panel.

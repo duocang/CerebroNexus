@@ -2,42 +2,52 @@
 ## Object that combines all data required for updating projection plot.
 ##----------------------------------------------------------------------------##
 expression_projection_data_to_plot_raw <- reactive({
+  dataset_context <- viewer_loaded_dataset_context()
+  coordinates <- expression_projection_coordinates()
+  parameters <- expression_projection_parameters_plot()
+  expression_levels <- expression_projection_expression_levels()
+  no_gene_selected <- length(
+    expression_selected_genes()[["genes_to_display_present"]]
+  ) == 0L
+  ## The primary frame needs only canonical row indices. Full metadata belongs
+  ## exclusively to deferred hover/selection auxiliary data, including after a
+  ## gene is selected, so never materialize it on the colour-update path.
+  metadata <- NULL
   req(
-    expression_projection_coordinates(),
-    expression_projection_parameters_plot(),
+    coordinates,
+    parameters,
     expression_projection_parameters_color(),
-    expression_projection_hover_info(),
     expression_projection_trajectory(),
-    nrow(expression_projection_coordinates()) ==
-      length(isolate(expression_projection_expression_levels())) ||
-      nrow(expression_projection_coordinates()) ==
-        length(isolate(expression_projection_expression_levels())[[1]]),
-    nrow(expression_projection_coordinates()) ==
-      length(expression_projection_hover_info()) ||
-      expression_projection_hover_info() == "none",
+    no_gene_selected ||
+      nrow(coordinates) == length(expression_levels) ||
+      nrow(coordinates) == length(expression_levels[[1]]),
     !is.null(input[["expression_projection_genes_in_separate_panels"]])
   )
-  parameters <- expression_projection_parameters_plot()
   if (parameters[['is_trajectory']]) {
     req(
-      nrow(expression_projection_coordinates()) ==
-        nrow(expression_projection_trajectory()[['meta']])
+      nrow(coordinates) == nrow(expression_projection_trajectory()[['meta']])
     )
   }
   to_return <- list(
-    coordinates = expression_projection_coordinates(),
+    dataset_context = dataset_context,
+    feedback = cerebroFeedbackControls("expression_projection", input),
+    dataset = data_set(),
+    render_request = input[["expression_projection_render_request"]],
+    coordinates = coordinates,
     reset_axes = isolate(expression_projection_parameters_other[[
       'reset_axes'
     ]]),
-    expression_levels = expression_projection_expression_levels(),
-    plot_parameters = expression_projection_parameters_plot(),
+    expression_levels = expression_levels,
+    plot_parameters = parameters,
     color_settings = expression_projection_parameters_color(),
-    selection_keys = as.character(
-      expression_projection_data()[["cell_barcode"]]
-    ),
-    hover_info = expression_projection_hover_info(),
+    metadata = metadata,
     trajectory = expression_projection_trajectory(),
     display_mode = input[["expression_projection_genes_in_separate_panels"]],
+    render_key = expression_projection_render_key(),
+    cell_indices = expression_projection_cells_to_show(),
+    projection_resource_failed = input[[
+      "expression_projection_projection_resource_failed"
+    ]],
     separate_panels = identical(
       input[["expression_projection_genes_in_separate_panels"]],
       "separate"
@@ -46,7 +56,9 @@ expression_projection_data_to_plot_raw <- reactive({
   return(to_return)
 })
 
-expression_projection_data_to_plot <- debounce(
+## This prepared value already contains the million-cell expression vector.
+## Use Shiny's debounce directly instead of relaying it through another observer.
+expression_projection_data_to_plot <- shiny::debounce(
   expression_projection_data_to_plot_raw,
-  250
+  50
 )

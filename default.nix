@@ -28,10 +28,12 @@
 #  > "igraph",
 #  > "later",
 #  > "Matrix",
+#  > "mirai",
 #  > "msigdbr",
 #  > "pbapply",
 #  > "plotly",
 #  > "qvalue",
+#  > "qs2",
 #  > "R6",
 #  > "readxl",
 #  > "rlang",
@@ -84,11 +86,13 @@ let
       igraph
       later
       Matrix
+      mirai
       msigdbr
       pbapply
       pkgdown
       plotly
       png
+      qs2
       qvalue
       R6
       readxl

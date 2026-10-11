@@ -31,7 +31,7 @@ matrices are copied with the `.crb`. A runtime matrix override is an explicit
 host-managed exception. It is not copied, so an app using one still requires
 that absolute host path after deployment.
 
-This is the recommended path when you want to hand a colleague a runnable copy of Cerebro pre-loaded with a specific data set without making them install the package themselves, pin the Shiny sources at a known revision alongside the data, or deploy to a host that doesn't run R interactively (`shinyapps.io`, Docker images, etc.).
+This is the recommended path when you want to hand a colleague a runnable copy of Cerebro pre-loaded with a specific data set without making them install the package themselves, pin the Shiny sources at a known revision alongside the data, or deploy to a host that doesn't run R interactively (Shiny Server or `shinyapps.io`, for example).
 
 # Setup
 

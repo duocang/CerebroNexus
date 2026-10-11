@@ -868,7 +868,10 @@ dedent <- function(string) {
 
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight.
-.readBundleBackend <- function(crb_path, object = readRDS(crb_path)) {
+.readBundleBackend <- function(
+  crb_path,
+  object = .readCerebroPayload(crb_path)
+) {
   recognized <- .isRecognizedCerebroObject(object)
   if (recognized) {
     for (method in .bundleRequiredCerebroMethods) {
@@ -1030,8 +1033,22 @@ dedent <- function(string) {
     )
   }
   catalog <- lapply(available, function(spatial_name) {
+    getter <- object$getSpatialData
+    getter_arguments <- names(formals(getter))
+    stored <- tryCatch(object$spatial[[spatial_name]], error = function(error) {
+      NULL
+    })
     data <- tryCatch(
-      object$getSpatialData(spatial_name),
+      if ("hydrate_molecules" %in% getter_arguments) {
+        getter(spatial_name, hydrate_molecules = FALSE)
+      } else if (
+        is.list(stored) &&
+          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
+      ) {
+        .normalizeSpatialDataImages(stored, spatial_name)
+      } else {
+        getter(spatial_name)
+      },
       error = function(error) {
         stop(
           "Could not read dataset `",
@@ -1052,17 +1069,103 @@ dedent <- function(string) {
   catalog
 }
 
+.datasetInfoScalar <- function(value) {
+  if (is.null(value) || length(value) != 1L || is.na(value)) {
+    return(NA_character_)
+  }
+  as.character(value)
+}
+
+.readBundleDatasetInfo <- function(object, label, path) {
+  if (!.isRecognizedCerebroObject(object)) {
+    stop(
+      "Dataset information requires a recognized Cerebro object.",
+      call. = FALSE
+    )
+  }
+  experiment <- object$getExperiment()
+  metadata <- object$getMetaData()
+  backend <- tryCatch(object$immune_repertoire_backend, error = function(e) {
+    NULL
+  })
+  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+    immune_repertoire <- TRUE
+    tcr_repertoire <- any(as.character(backend$chains) %in% c("TRA", "TRB"))
+  } else {
+    repertoire <- tryCatch(object$getImmuneRepertoire(), error = function(e) {
+      list()
+    })
+    immune_repertoire <- is.list(repertoire) && length(repertoire) > 0L
+    tcr_repertoire <- immune_repertoire &&
+      any(vapply(
+        repertoire,
+        function(sample) {
+          !is.null(sample) &&
+            "CTgene" %in% names(sample) &&
+            any(grepl("TR[AB]", as.character(sample$CTgene)), na.rm = TRUE)
+        },
+        logical(1)
+      ))
+  }
+  list(
+    label = as.character(label),
+    path = as.character(path),
+    cells = as.integer(nrow(metadata)),
+    organism = .datasetInfoScalar(experiment$organism),
+    date = .datasetInfoScalar(experiment$date_of_export),
+    immune_repertoire = immune_repertoire,
+    tcr_repertoire = tcr_repertoire,
+    capabilities = .viewerDatasetCapabilities(object)
+  )
+}
+
+.datasetCatalogFromFiles <- function(files, retain_prototypes = FALSE, prototype_limit = 2L) {
+  if (is.null(files) || !is.character(files) || !length(files)) {
+    return(list())
+  }
+  labels <- names(files)
+  if (is.null(labels) || length(labels) != length(files)) {
+    labels <- basename(files)
+  }
+  catalog <- list()
+  prototypes <- list()
+  for (index in seq_along(files)) {
+    path <- files[[index]]
+    if (!file.exists(path) || dir.exists(path)) {
+      next
+    }
+    object <- .readCerebroPayload(path)
+    catalog[[path]] <- .readBundleDatasetInfo(
+      object,
+      labels[[index]],
+      path
+    )
+    if (isTRUE(retain_prototypes) && length(prototypes) < prototype_limit) {
+      prototypes[[path]] <- object
+    }
+    object <- NULL
+  }
+  if (isTRUE(retain_prototypes)) {
+    attr(catalog, "prototypes") <- prototypes
+  }
+  catalog
+}
+
 .preflightBundleData <- function(
   cerebro_data,
-  read_object = readRDS,
+  read_object = .readCerebroPayload,
   inspect_backend = .readBundleBackend,
   inspect_spatial = .readBundleSpatialCatalog,
   release_object = function(object) invisible(NULL)
 ) {
   backends <- vector("list", length(cerebro_data))
+  spatial_backends <- vector("list", length(cerebro_data))
   spatial_catalogs <- vector("list", length(cerebro_data))
+  dataset_catalog <- vector("list", length(cerebro_data))
   names(backends) <- names(cerebro_data)
+  names(spatial_backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
+  names(dataset_catalog) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
     object <- read_object(cerebro_data[[index]])
     inspection_error <- NULL
@@ -1070,6 +1173,17 @@ dedent <- function(string) {
     tryCatch(
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
+        if (.isRecognizedCerebroObject(object)) {
+          dataset_catalog[index] <- list(.readBundleDatasetInfo(
+            object,
+            names(cerebro_data)[[index]],
+            cerebro_data[[index]]
+          ))
+          spatial_backends[[index]] <- .spatialMoleculeBackend(
+            object,
+            cerebro_data[[index]]
+          )
+        }
         spatial_catalogs[[index]] <- inspect_spatial(
           object,
           names(cerebro_data)[[index]]
@@ -1093,11 +1207,16 @@ dedent <- function(string) {
       stop(release_error)
     }
   }
-  list(backends = backends, spatial_catalogs = spatial_catalogs)
+  list(
+    backends = backends,
+    spatial_backends = spatial_backends,
+    spatial_catalogs = spatial_catalogs,
+    dataset_catalog = dataset_catalog
+  )
 }
 
-.spatialImageBundlePathDigest <- function(bytes) {
-  path <- tempfile("cerebro-spatial-path-")
+.bundlePathDigest <- function(bytes) {
+  path <- tempfile("cerebro-bundle-path-")
   on.exit(unlink(path), add = TRUE)
   writeBin(bytes, path)
   unname(tools::md5sum(path))
@@ -1123,7 +1242,7 @@ dedent <- function(string) {
   if (nchar(encoded, type = "bytes") <= maximum_bytes) {
     return(encoded)
   }
-  digest <- .spatialImageBundlePathDigest(bytes)
+  digest <- .bundlePathDigest(bytes)
   prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
   paste0(substr(encoded, 1L, prefix_length), "-", digest)
 }
@@ -1155,6 +1274,19 @@ dedent <- function(string) {
     target,
     paste0("The spatial image bundle target '", target, "'")
   )
+}
+
+.datasetBundleTarget <- function(dataset_id) {
+  if (
+    !is.character(dataset_id) ||
+      length(dataset_id) != 1L ||
+      is.na(dataset_id) ||
+      !nzchar(dataset_id)
+  ) {
+    stop("A non-empty dataset identity is required.", call. = FALSE)
+  }
+  digest <- .bundlePathDigest(charToRaw(enc2utf8(dataset_id)))
+  paste0("private-data/dataset-", digest, ".crb")
 }
 
 .bundleBackendOverrideKey <- function(backend, cerebro_options) {
@@ -2045,8 +2177,11 @@ dedent <- function(string) {
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
 #'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
-#'   used as dataset labels. Every path must resolve to a distinct canonical
-#'   source file.
+#'   used as stable dataset identities. Paths must resolve to distinct files.
+#' @param dataset_labels Optional named character vector mapping every dataset
+#'   identity in \code{cerebro_data} to its display label. Values must be
+#'   non-empty but may repeat. When omitted, the dataset identities are also
+#'   used as display labels for backward compatibility.
 #' @param result_dir Output directory. Its basename must be portable, its path
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
@@ -2079,6 +2214,9 @@ dedent <- function(string) {
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui One non-missing logical controlling whether users may
 #'   upload their own data; defaults to \code{FALSE}.
+#' @param initial_dataset Optional exact dataset identity to load initially. This
+#'   does not change the order of \code{cerebro_data}. URL selection and a
+#'   session's current selection take precedence.
 #' @param initial_page Optional initial Viewer page. Supported stable IDs are
 #'   \code{"data_info"}, \code{"projection"}, \code{"linked_views"},
 #'   \code{"groups"}, \code{"marker_genes"},
@@ -2168,6 +2306,7 @@ dedent <- function(string) {
 #' }
 #'
 #' @importFrom later later
+#' @importFrom mirai mirai
 #' @importFrom stats setNames
 #' @export
 createShinyApp <- function(
@@ -2202,6 +2341,8 @@ createShinyApp <- function(
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
+  dataset_labels = NULL,
+  initial_dataset = NULL,
   initial_page = NULL
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -2257,12 +2398,34 @@ createShinyApp <- function(
       any(data_labels == "")
   ) {
     stop(
-      "cerebro_data labels must be non-empty and non-missing.",
+      "cerebro_data identities must be non-empty and non-missing.",
       call. = FALSE
     )
   }
   if (anyDuplicated(data_labels)) {
-    stop("cerebro_data labels must be unique.", call. = FALSE)
+    stop("cerebro_data identities must be unique.", call. = FALSE)
+  }
+  if (is.null(dataset_labels)) {
+    dataset_labels <- stats::setNames(data_labels, data_labels)
+  } else {
+    if (
+      !is.character(dataset_labels) ||
+        is.object(dataset_labels) ||
+        length(dataset_labels) != length(data_labels) ||
+        is.null(names(dataset_labels)) ||
+        anyNA(names(dataset_labels)) ||
+        any(!nzchar(names(dataset_labels))) ||
+        anyDuplicated(names(dataset_labels)) ||
+        !setequal(names(dataset_labels), data_labels) ||
+        anyNA(dataset_labels) ||
+        any(!nzchar(trimws(dataset_labels)))
+    ) {
+      stop(
+        "dataset_labels must map every cerebro_data identity to one non-empty display label.",
+        call. = FALSE
+      )
+    }
+    dataset_labels <- dataset_labels[data_labels]
   }
   point_size <- .normalizeDatasetNumericOption(
     point_size,
@@ -2335,6 +2498,18 @@ createShinyApp <- function(
   ) {
     stop("'show_upload_ui' must be TRUE or FALSE.", call. = FALSE)
   }
+  if (
+    !is.null(initial_dataset) &&
+      (!is.character(initial_dataset) ||
+        length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !initial_dataset %in% data_labels)
+  ) {
+    stop(
+      "'initial_dataset' must be NULL or exactly one cerebro_data identity.",
+      call. = FALSE
+    )
+  }
   initial_pages <- .viewerInitialPageTabs()
   if (
     !is.null(initial_page) &&
@@ -2375,23 +2550,9 @@ createShinyApp <- function(
     winslash = "/",
     mustWork = TRUE
   )
-  crb_source_keys <- vapply(
-    resolved_crb_sources,
-    .nativePathKey,
-    character(1)
-  )
-  duplicate_source <- anyDuplicated(crb_source_keys)
-  if (duplicate_source != 0L) {
-    original_source <- match(
-      crb_source_keys[[duplicate_source]],
-      crb_source_keys
-    )
+  if (anyDuplicated(resolved_crb_sources)) {
     stop(
-      "cerebro_data labels '",
-      data_labels[[original_source]],
-      "' and '",
-      data_labels[[duplicate_source]],
-      "' resolve to the same Cerebro data file.",
+      "Two cerebro_data entries resolve to the same Cerebro data file.",
       call. = FALSE
     )
   }
@@ -2517,50 +2678,6 @@ createShinyApp <- function(
     }
   }
 
-  ## Spatial background images (and their per-dataset transforms) must be named
-  ## to match cerebro_data. Duplicate image data-set names are ambiguous at
-  ## runtime and therefore rejected; other malformed entries are dropped with
-  ## a warning.
-  validate_named_against_data <- function(
-    x,
-    arg_name,
-    reject_duplicates = FALSE
-  ) {
-    if (is.null(x)) {
-      return(NULL)
-    }
-    if (is.null(names(x)) || anyNA(names(x)) || any(names(x) == "")) {
-      warning(
-        arg_name,
-        " must be a named list or vector. Ignoring.",
-        call. = FALSE
-      )
-      return(NULL)
-    }
-    if (reject_duplicates && anyDuplicated(names(x))) {
-      stop(arg_name, " names must be unique.", call. = FALSE)
-    }
-    matching <- names(x) %in% names(cerebro_data)
-    if (!any(matching)) {
-      warning(
-        "No matching names found between ",
-        arg_name,
-        " and cerebro_data. Ignoring.",
-        call. = FALSE
-      )
-      return(NULL)
-    }
-    if (!all(matching)) {
-      warning(
-        "Some ",
-        arg_name,
-        " entries do not match cerebro_data and will be ignored: ",
-        paste(unique(names(x)[!matching]), collapse = ", "),
-        call. = FALSE
-      )
-    }
-    x[matching]
-  }
   if (!requireNamespace("CerebroNexus", quietly = TRUE)) {
     stop(
       "Package 'CerebroNexus' is required but not installed.",
@@ -2586,6 +2703,15 @@ createShinyApp <- function(
   private_data_root <- "private-data"
   preflight_data <- .preflightBundleData(cerebro_data)
   backends <- preflight_data$backends
+  dataset_catalog <- preflight_data$dataset_catalog
+  spatial_backends <- preflight_data$spatial_backends
+  if (
+    !is.list(spatial_backends) ||
+      length(spatial_backends) != length(cerebro_data)
+  ) {
+    spatial_backends <- vector("list", length(cerebro_data))
+    names(spatial_backends) <- names(cerebro_data)
+  }
   spatial_catalogs <- preflight_data$spatial_catalogs
   spatial_plot_rotation <- .normalizeAppSpatialPlotRotation(
     spatial_plot_rotation,
@@ -2621,6 +2747,22 @@ createShinyApp <- function(
     )
   }
   crb_targets <- paste0(private_data_root, "/", basename(cerebro_data))
+  colliding_targets <- duplicated(tolower(crb_targets)) |
+    duplicated(tolower(crb_targets), fromLast = TRUE)
+  crb_targets[colliding_targets] <- vapply(
+    data_labels[colliding_targets],
+    .datasetBundleTarget,
+    character(1)
+  )
+  if (anyDuplicated(tolower(crb_targets))) {
+    stop("Dataset identities generated colliding bundle filenames.", call. = FALSE)
+  }
+  for (index in seq_along(dataset_catalog)) {
+    if (!is.null(dataset_catalog[[index]])) {
+      dataset_catalog[[index]]$path <- crb_targets[[index]]
+    }
+  }
+  names(dataset_catalog) <- crb_targets
   copy_plan <- list()
   claimed_targets <- character()
   claimed_keys <- character()
@@ -2691,6 +2833,34 @@ createShinyApp <- function(
       crb_targets[[index]],
       resolved_crb_sources[[index]],
       "Cerebro data file"
+    )
+    viewer_pack <- .viewerPackPath(resolved_crb_sources[[index]])
+    if (
+      isTRUE(
+        validateViewerPack(resolved_crb_sources[[index]], viewer_pack)$valid
+      )
+    ) {
+      claim_target(
+        file.path(dirname(crb_targets[[index]]), paste0(
+          tools::file_path_sans_ext(basename(crb_targets[[index]])), ".viewer")),
+        viewer_pack,
+        "Viewer Pack",
+        directory = TRUE
+      )
+    }
+  }
+
+  for (index in seq_along(cerebro_data)) {
+    backend <- spatial_backends[[index]]
+    if (is.null(backend)) {
+      next
+    }
+    source <- normalizePath(backend$root, winslash = "/", mustWork = TRUE)
+    claim_target(
+      paste0(private_data_root, "/", backend$location),
+      source,
+      "spatial molecule sidecar",
+      directory = TRUE
     )
   }
 
@@ -2919,7 +3089,14 @@ createShinyApp <- function(
     target <- file.path(stage_result_dir, entry$target)
     dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
     copied <- if (isTRUE(entry$directory)) {
-      build_ops$copy(entry$source, dirname(target), recursive = TRUE)
+      if (identical(basename(entry$source), basename(target))) {
+        build_ops$copy(entry$source, dirname(target), recursive = TRUE)
+      } else {
+        dir.create(target, showWarnings = FALSE)
+        children <- list.files(entry$source, all.files = TRUE, no.. = TRUE,
+          full.names = TRUE)
+        all(build_ops$copy(children, target, recursive = TRUE))
+      }
     } else {
       build_ops$copy(entry$source, target, overwrite = FALSE)
     }
@@ -2996,7 +3173,10 @@ createShinyApp <- function(
   internal_option_names <- c(
     ".bundle_backend_plan",
     ".bundle_run_options",
+    ".dataset_catalog",
     ".viewer_auth",
+    "dataset_labels",
+    "initial_dataset",
     "initial_page",
     "extra_tables"
   )
@@ -3006,10 +3186,13 @@ createShinyApp <- function(
       option_names %in% internal_option_names
     cerebro_options <- cerebro_options[!remove_internal]
   }
+  cerebro_options[["initial_dataset"]] <- initial_dataset
+  cerebro_options[["dataset_labels"]] <- dataset_labels
   cerebro_options[[".bundle_backend_plan"]] <- list(
     schema_version = 1L,
     entries = effective_backend_entries
   )
+  cerebro_options[[".dataset_catalog"]] <- dataset_catalog
   cerebro_options[[".bundle_run_options"]] <- bundle_run_options
   if (!is.null(viewer_auth)) {
     cerebro_options[[".viewer_auth"]] <- viewer_auth[c(

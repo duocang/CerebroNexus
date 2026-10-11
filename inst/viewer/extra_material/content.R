@@ -6,67 +6,50 @@
 ## UI element for output.
 ##----------------------------------------------------------------------------#
 output[["extra_material_content_UI"]] <- renderUI({
-  req(input[["extra_material_selected_category"]])
+  categories <- getExtraMaterialCategories()
+  if (!length(categories)) return(p("No extra material is included in this data set."))
+  req(input[["extra_material_selected_category"]] %in% categories)
   ## if selected category is `tables`
   if (input[["extra_material_selected_category"]] == 'tables') {
     if (!checkForExtraTables()) {
-      return(fluidRow(cerebroBox(
-        title = boxTitle("Extra material"),
-        "No non-empty tables available."
-      )))
+      return(p("No non-empty tables available."))
     }
     ##
     fluidRow(
-      cerebroBox(
-        title = tagList(
-          boxTitle("Extra material"),
-          cerebroInfoButton("extra_material_info")
+      column(
+        12,
+        shinyWidgets::materialSwitch(
+          inputId = "extra_material_table_number_formatting",
+          label = "Automatically format numbers:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
         ),
-        fluidRow(
-          column(
-            12,
-            shinyWidgets::materialSwitch(
-              inputId = "extra_material_table_number_formatting",
-              label = "Automatically format numbers:",
-              value = TRUE,
-              status = "primary",
-              inline = TRUE
-            ),
-            shinyWidgets::materialSwitch(
-              inputId = "extra_material_table_color_highlighting",
-              label = "Highlight values with colours:",
-              value = TRUE,
-              status = "primary",
-              inline = TRUE
-            )
-          ),
-          column(12, DT::dataTableOutput("extra_material_table"))
+        shinyWidgets::materialSwitch(
+          inputId = "extra_material_table_color_highlighting",
+          label = "Highlight values with colours:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
         )
-      )
+      ),
+      column(12, DT::dataTableOutput("extra_material_table"))
     )
     ## if selected category is `plots`
   } else if (input[["extra_material_selected_category"]] == 'plots') {
     ##
     fluidRow(
-      cerebroBox(
-        title = tagList(
-          boxTitle("Extra material"),
-          cerebroInfoButton("extra_material_info")
-        ),
-        fluidRow(
-          column(
-            12,
-            shinyWidgets::materialSwitch(
-              inputId = "extra_material_plot_interactive_switch",
-              label = "Make plot interactive:",
-              value = TRUE,
-              status = "primary",
-              inline = TRUE
-            )
-          ),
-          column(12, uiOutput("extra_material_plot_UI"))
+      column(
+        12,
+        shinyWidgets::materialSwitch(
+          inputId = "extra_material_plot_interactive_switch",
+          label = "Make plot interactive:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
         )
-      )
+      ),
+      column(12, uiOutput("extra_material_plot_UI"))
     )
   }
 })
@@ -180,17 +163,7 @@ output[["extra_material_plot_plain"]] <- renderPlot({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["extra_material_info"]], {
-  showModal(
-    modalDialog(
-      extra_material_info[["text"]],
-      title = extra_material_info[["title"]],
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(input, "extra_material_info", extra_material_info)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

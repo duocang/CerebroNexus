@@ -16,6 +16,9 @@ exportFromSCE(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
+  codec = c("qs2", "rds"),
+  viewer_binary = c("auto", "always", "never"),
+  viewer_binary_threshold = 500000L,
   verbose = FALSE
 )
 }
@@ -58,6 +61,16 @@ performance. Note that it is necessary to install the \code{DelayedArray}
 package. If set to \code{FALSE} (default), the expression matrix will be
 copied from the input object as is. It is recommended to use a sparse format,
 such as \code{dgCMatrix} from the \code{Matrix} package.}
+
+\item{codec}{Serialization codec for the CRB payload. Defaults to
+\code{"qs2"}; use \code{"rds"} when direct compatibility with
+\code{readRDS()} is required.}
+
+\item{viewer_binary}{Build the derived Viewer Pack \code{"auto"}matically
+for large datasets, \code{"always"}, or \code{"never"}.}
+
+\item{viewer_binary_threshold}{Dataset-level cell threshold used by
+\code{viewer_binary = "auto"}.}
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}

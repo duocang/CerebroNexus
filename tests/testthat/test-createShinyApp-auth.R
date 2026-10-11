@@ -646,22 +646,12 @@ test_that("authentication deployment documentation is runnable and credited", {
     "shinymanager::create_db",
     "createShinyApp(",
     "readRenviron(",
-    "openssl rand -base64 32",
+    "head -c 32 /dev/urandom | base64",
     "sudo install -d -m 0700",
     "sudo install -d -m 0755",
     "rate limiting",
     "Shiny Server",
     "systemd",
-    "Docker Compose",
-    "Docker Engine with Docker Compose",
-    "compose.yaml",
-    "remotes::install_github",
-    "docker compose up --build",
-    "http://localhost:3838",
-    "docker compose logs -f cerebro",
-    "docker compose down",
-    "port = 3838",
-    "127.0.0.1:3838:3838",
     "TLS-terminating reverse proxy",
     "/etc/cerebronexus/my_app.env",
     "sudo install -m 0600 /srv/cerebro/private/viewer-auth.env /etc/cerebronexus/my_app.env",
@@ -721,7 +711,7 @@ test_that("authentication deployment documentation is runnable and credited", {
   expect_false(any(grepl(".png", vignette, fixed = TRUE)))
 
   script_starts <- grep(
-    "^```(\\{r eval=FALSE\\}|bash|ini|dockerfile|yaml)$",
+    "^```(\\{r eval=FALSE\\}|bash|ini)$",
     vignette
   )
   expect_gt(length(script_starts), 8L)
@@ -731,10 +721,6 @@ test_that("authentication deployment documentation is runnable and credited", {
       c("# R console —", "# R startup file —", "# Builder worker R code —")
     } else if (identical(block_type, "```bash")) {
       "# Terminal —"
-    } else if (identical(block_type, "```dockerfile")) {
-      "# Dockerfile —"
-    } else if (identical(block_type, "```yaml")) {
-      "# compose.yaml —"
     } else {
       "# systemd override —"
     }

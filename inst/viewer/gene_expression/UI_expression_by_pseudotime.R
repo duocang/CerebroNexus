@@ -7,6 +7,7 @@
 ##----------------------------------------------------------------------------##
 output[["expression_by_pseudotime_UI"]] <- renderUI({
   req(
+    expression_projection_summary_ready(),
     input[["expression_projection_to_display"]] %in% availableProjections() ==
       FALSE
   )
@@ -71,6 +72,7 @@ output[["expression_by_pseudotime_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["expression_by_pseudotime"]] <- plotly::renderPlotly({
   req(
+    expression_projection_summary_ready(),
     input[["expression_projection_to_display"]],
     input[["expression_projection_point_size"]],
     input[["expression_projection_point_opacity"]],
@@ -190,17 +192,11 @@ output[["expression_by_pseudotime"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##
-observeEvent(input[["expression_by_pseudotime_info"]], {
-  showModal(
-    modalDialog(
-      expression_by_pseudotime_info$text,
-      title = expression_by_pseudotime_info$title,
-      easyClose = TRUE,
-      footer = NULL,
-      size = "l"
-    )
-  )
-})
+cerebroRegisterInfo(
+  input,
+  "expression_by_pseudotime_info",
+  expression_by_pseudotime_info
+)
 
 ##----------------------------------------------------------------------------##
 ## Text in info box.

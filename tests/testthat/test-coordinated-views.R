@@ -75,6 +75,11 @@ test_that("bundle.R parses and defines the builder API", {
     "cv_build_spatial",
     "cv_build_trekker",
     "cv_build_clone",
+    "cv_build_attribute",
+    "cv_build_compact_supplement",
+    "cv_defer_clone_details",
+    "cv_defer_assets",
+    "cv_asset_data_uri",
     "cv_canonical_metadata",
     "cv_selected_metadata",
     "cv_cell_metadata",
@@ -89,6 +94,76 @@ test_that("bundle.R parses and defines the builder API", {
     "rotateSpatialCoordinates(co, rotation)",
     fixed = TRUE
   )
+})
+
+test_that("Viewer Colour by honours registered groups and main group", {
+  skip_if_not(have_bundle)
+  helper <- get0("viewerColourGroupChoices", envir = cv_env)
+  expect_true(is.function(helper))
+  if (!is.function(helper)) {
+    return()
+  }
+
+  metadata <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    sample = c("s1", "s1", "s2"),
+    seurat_clusters = c("0", "1", "0"),
+    nUMI = c(100, 200, 300),
+    nGene = c(50, 75, 100),
+    orig.ident = c("old-a", "old-a", "old-b"),
+    stringsAsFactors = FALSE
+  )
+  result <- helper(
+    metadata,
+    c("sample", "seurat_clusters"),
+    "seurat_clusters"
+  )
+
+  expect_identical(result$choices, c("sample", "seurat_clusters"))
+  expect_identical(result$selected, "seurat_clusters")
+  expect_false(any(c("nUMI", "nGene", "orig.ident") %in% result$choices))
+  expect_identical(
+    helper(metadata, c("missing", "sample"), "missing")$selected,
+    "sample"
+  )
+  expect_identical(helper(metadata, character(), "sample")$choices, character())
+  expect_null(helper(metadata, character(), "sample")$selected)
+})
+
+test_that("Linked views excludes unregistered metadata colourings", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3")
+  metadata <- data.frame(
+    cell_barcode = cells,
+    sample = c("s1", "s1", "s2"),
+    seurat_clusters = c("0", "1", "0"),
+    nUMI = c(100, 200, 300),
+    nGene = c(50, 75, 100),
+    orig.ident = c("old-a", "old-a", "old-b"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() c("sample", "seurat_clusters"),
+    getParameters = function() list(main_group = "seurat_clusters"),
+    availableProjections = function() "umap",
+    getProjection = function(name) {
+      matrix(1:6, nrow = 3, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() c("ACTB", "GAPDH")
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+
+  expect_named(bundle$groups, c("sample", "seurat_clusters"))
+  expect_length(bundle$cat_extra, 0L)
+  expect_length(grep("^meta:", names(bundle$fields)), 0L)
+  expect_identical(bundle$default_group, "seurat_clusters")
+  expect_null(bundle$genes) # PR5 populates the gene selector on demand.
 })
 
 test_that("trajectory coordinates and graph enter Linked views", {
@@ -149,7 +224,11 @@ test_that("Linked views treats projections as a multi-panel selection", {
     'tags\\$select\\(id = "cv-pick-proj", multiple = "multiple"\\)'
   )
   expect_match(js, "var selectedProjections = []", fixed = TRUE)
-  expect_match(js, "function rebuildProjectionInstances()", fixed = TRUE)
+  expect_match(
+    js,
+    "function rebuildProjectionInstances(previousSpaces)",
+    fixed = TRUE
+  )
   expect_match(js, "function setSelectedProjections(names)", fixed = TRUE)
   expect_match(js, "selectedProjections.forEach", fixed = TRUE)
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
@@ -185,6 +264,16 @@ test_that("Linked views delegates menu height to the shared viewport sizing", {
     "window.innerHeight - top - 16",
     fixed = TRUE
   )
+  expect_match(
+    js,
+    "select._cerebroDropdownInstance !== instance",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "dataset.cerebroDropdownReady",
+    js,
+    fixed = TRUE
+  ))
 })
 
 test_that("Linked views places the shared legend above the panel grid", {
@@ -237,6 +326,13 @@ run_config_transport_node <- function(body) {
       "window.setTimeout=(fn,delay)=>{const timer={fn:fn,delay:delay};timers.push(timer);return timer;};",
       "window.clearTimeout=timer=>{const at=timers.indexOf(timer);if(at>=0)timers.splice(at,1);};",
       "window.FileReader=function(){this.readAsText=file=>{this.result=file.text;this.onload();};};",
+      "const datasetContext={epoch:'session-1',dataset_key:'dataset-1',generation:1};",
+      "window.CerebroDatasetContext={phase:()=> 'ready',current:()=>datasetContext,",
+      "  key:value=>value?JSON.stringify([value.epoch,value.dataset_key,value.generation]):'',",
+      "  accepts:message=>!!(message&&message.dataset_context&&",
+      "    message.dataset_context.epoch===datasetContext.epoch&&",
+      "    message.dataset_context.dataset_key===datasetContext.dataset_key&&",
+      "    message.dataset_context.generation===datasetContext.generation)};",
       "window.cerebroLinkedViewsState={ready:()=>true,summary:()=>({selectedCells:1}),",
       "  capture:()=>({}),apply:()=>{applied+=1;return {selectedCells:1};},downloadPNG:()=>true};",
       "global.Shiny={setInputValue:(id,value)=>sent.push({id:id,value:value}),",
@@ -264,8 +360,10 @@ test_that("JSON upload transport is atomic and ignores timed-out responses", {
     "upload.files=[{name:'second.json',size:2,text:'{}'}];",
     "upload.listeners.change({currentTarget:upload}); const second=sent[1].value;",
     "handlers.coordviews_config_result({nonce:first.nonce,action:'apply',ok:true,",
+    "  dataset_context:first.dataset_context,",
     "  config:{schema:'cerebronexus-linked-view'},selected_cells:1});",
     "handlers.coordviews_config_result({nonce:second.nonce,action:'apply',ok:true,",
+    "  dataset_context:second.dataset_context,",
     "  config:{schema:'cerebronexus-linked-view'},selected_cells:1});",
     "ids['cv-config-png'].listeners.click.call(ids['cv-config-png']);",
     "ids['cv-config-png'].listeners.click.call(ids['cv-config-png']);",
@@ -364,7 +462,7 @@ test_that("Linked views highlights only the visualization under the pointer", {
   expect_match(ui, 'class = "coordviews-page linked-views-page"', fixed = TRUE)
   expect_match(
     css,
-    ".linked-views-page > .cv-panes > .cv-pane:hover",
+    ".linked-views-page > .cerebro-page-loading-region > .cv-panes > .cv-pane:hover",
     fixed = TRUE
   )
   expect_false(grepl(
@@ -406,11 +504,23 @@ test_that("Linked views panel sizing remains automatic", {
 test_that("Linked views chooses its grid from both viewport dimensions", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
+  skip_if_not(
+    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
+  )
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
   expect_match(js, "function bestOverviewGrid", fixed = TRUE)
+  expect_match(js, "BALANCED_SIZE_TOLERANCE = 0.85", fixed = TRUE)
+  expect_match(js, "lastRow === 1", fixed = TRUE)
+  expect_match(
+    js,
+    "candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE",
+    fixed = TRUE
+  )
+  expect_match(css, "gap: 8px; justify-content: center;", fixed = TRUE)
   expect_match(js, "getComputedStyle(panes).columnGap", fixed = TRUE)
   expect_no_match(js, "var gap = 14", fixed = TRUE)
   expect_match(js, "Math.ceil(panelCount / cols)", fixed = TRUE)
@@ -548,6 +658,265 @@ test_that("one-cell dynamic expression messages retain JSON arrays", {
   expect_type(rgb$genes, "list")
 })
 
+test_that("large linked-view vectors use a lossless compact wire format", {
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("jsonlite")
+  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
+
+  bundle <- list(
+    cells = I(c("cell-1", "cell-2")),
+    groups = list(cluster = cv_env$cv_group(c(0L, NA_integer_), "A", "#fff")),
+    cat_extra = list(),
+    fields = list(score = cv_env$cv_field("Score", c(0L, 1000L), 0, 1)),
+    projections = list(
+      umap = list(x = I(c(1.25, NA_real_)), y = I(c(-2.5, 3.75)), ndim = 2L)
+    ),
+    spaces = list(cv_env$cv_space("spatial", "Spatial", c(4, 5), c(6, 7))),
+    clone = cv_env$cv_clone(
+      c(0L, 1L),
+      c("clone-a", "clone-b"),
+      c(3L, 2L),
+      2L,
+      2L
+    )
+  )
+  packed <- cv_env$cv_wire_pack_bundle(bundle, min_length = 1L)
+
+  header_length <- readBin(
+    packed[seq_len(4L)],
+    integer(),
+    size = 4L,
+    endian = "little"
+  )
+  header <- jsonlite::fromJSON(
+    rawToChar(packed[4L + seq_len(header_length)]),
+    simplifyVector = FALSE
+  )
+  data_start <- 4L + header_length + ((4L - header_length %% 4L) %% 4L)
+  decode <- function(value) {
+    type <- value[["__cv_wire__"]]
+    first <- data_start + value$offset + 1L
+    bytes <- packed[seq.int(first, length.out = value$bytes)]
+    if (identical(type, "json")) {
+      return(jsonlite::fromJSON(rawToChar(bytes)))
+    }
+    if (identical(type, "f32")) {
+      readBin(bytes, numeric(), n = value$length, size = 4L, endian = "little")
+    } else {
+      readBin(
+        bytes,
+        integer(),
+        n = value$length,
+        size = switch(type, i8 = 1L, i16 = 2L, 4L),
+        signed = TRUE,
+        endian = "little"
+      )
+    }
+  }
+
+  expect_identical(header$wire_format, "binary-v1")
+  expect_identical(decode(header$cells), c("cell-1", "cell-2"))
+  expect_identical(decode(header$groups$cluster$values), c(0L, NA_integer_))
+  expect_identical(decode(header$fields$score$v), c(0L, 1000L))
+  expect_equal(decode(header$projections$umap$x), c(1.25, NA_real_))
+  expect_equal(decode(header$projections$umap$y), c(-2.5, 3.75))
+  expect_equal(decode(header$spaces[[1L]]$x), c(4, 5))
+  expect_equal(decode(header$spaces[[1L]]$y), c(6, 7))
+  expect_identical(decode(header$clone$id), c(0L, 1L))
+  expect_identical(decode(header$clone$label), c("clone-a", "clone-b"))
+  expect_identical(decode(header$clone$size), c(3L, 2L))
+})
+
+test_that("Linked views negotiates compact transport with a legacy fallback", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, 'input[["coordviews_wire_supported"]]', fixed = TRUE)
+  expect_match(server, "sendBinaryMessage(", fixed = TRUE)
+  expect_match(server, '"coordviews_binary"', fixed = TRUE)
+  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
+  expect_match(server, "include_cells = FALSE", fixed = TRUE)
+  expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
+  expect_match(
+    server,
+    "viewerProjectionAsset(projection, primary$cells)",
+    fixed = TRUE
+  )
+  expect_match(server, "$projection_resource <- resource", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(server, '"coordviews_supplement"', fixed = TRUE)
+  expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
+  expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
+  expect_no_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
+  expect_match(client, "coordviews_wire_supported", fixed = TRUE)
+  expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
+  expect_match(client, "coordviews_primary_ready", fixed = TRUE)
+  expect_match(
+    client,
+    "a[href=\"#shiny-tab-coordinated_views\"]",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "Shiny.setInputValue('coordviews_visible', true, { priority: 'event' })",
+    fixed = TRUE
+  )
+  expect_match(client, "onBinarySupplement", fixed = TRUE)
+  expect_match(client, "hydrateLinkedPrimaryResources", fixed = TRUE)
+  expect_match(
+    client,
+    "projectionFetchMs: hydrated.projectionFetchMs",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "projectionBytes: hydrated.projectionBytes",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "metadataBytes: hydrated.metadataBytes",
+    fixed = TRUE
+  )
+  expect_match(client, "projectionDownloadMs", fixed = TRUE)
+  expect_match(client, "projectionDecodeMs", fixed = TRUE)
+  expect_match(client, "rendererInitializationMs", fixed = TRUE)
+  expect_match(client, "D.n >= 200000", fixed = TRUE)
+  expect_match(client, "LABEL_BINS = 256", fixed = TRUE)
+  expect_match(client, "categoricalRgba", fixed = TRUE)
+  expect_match(
+    client,
+    "ensurePanelSlots(1);\n    buildPanels();",
+    fixed = TRUE
+  )
+  expect_equal(
+    sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
+    1L
+  )
+})
+
+test_that("progressive Linked views separates primary paint from completion", {
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(client, "primaryReady: rendered", fixed = TRUE)
+  expect_match(
+    client,
+    "ready: complete",
+    fixed = TRUE
+  )
+  expect_match(client, "complete: complete", fixed = TRUE)
+  expect_match(client, "primaryReady: summary.primaryReady", fixed = TRUE)
+  expect_match(client, "ready: summary.ready", fixed = TRUE)
+  expect_match(
+    client,
+    "if (summary.primaryReady && D.progressive && Shiny.setInputValue)",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "primaryReady: function () { return workspaceSummary().primaryReady; }",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "resizeAll();\n          reportWorkspaceReady();",
+    fixed = TRUE
+  )
+  expect_match(client, "function linkedVisualReady()", fixed = TRUE)
+  expect_match(client, "requestAnimationFrame", fixed = TRUE)
+  expect_match(client, "panel.gpu.idle()", fixed = TRUE)
+  expect_match(client, "visualReady: linkedVisualReady", fixed = TRUE)
+})
+
+test_that("progressive supplement reuses the painted primary projection", {
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    client,
+    "rebuildProjectionInstances(previousSpaces)",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "previous.x === pj.x && previous.y === pj.y",
+    fixed = TRUE
+  )
+  expect_match(client, "_unit: reusable ? previous._unit : null", fixed = TRUE)
+  expect_match(
+    client,
+    "dataset: D.dataset_fingerprint || D.cell_fingerprint || D.dataset_id || D",
+    fixed = TRUE
+  )
+  expect_no_match(client, "data: D,\n      unit:", fixed = TRUE)
+})
+
+test_that("image controls reuse progressive spaces without building the full bundle", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    "coordviews_image_spaces <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "coordviews_image_spaces(supplement$spaces %||% list())",
+    fixed = TRUE
+  )
+  image_ui <- strsplit(
+    server,
+    'output[["coordviews_image_ui"]] <- renderUI({',
+    fixed = TRUE
+  )[[1]][[2]]
+  image_ui <- strsplit(image_ui, "outputOptions(", fixed = TRUE)[[1]][[1]]
+  expect_match(image_ui, "spaces <- coordviews_image_spaces()", fixed = TRUE)
+  expect_no_match(image_ui, "coordviews_bundle()", fixed = TRUE)
+})
+
+test_that("empty gene controls do not build the full linked bundle", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  gene_section <- strsplit(
+    server,
+    "## Gene-expression colouring",
+    fixed = TRUE
+  )[[1]][[2]]
+  gene_section <- strsplit(
+    gene_section,
+    "## Spatial histology-image controls",
+    fixed = TRUE
+  )[[1]][[1]]
+
+  expect_match(gene_section, "if (length(genes) == 0)", fixed = TRUE)
+  expect_no_match(gene_section, "coordviews_bundle()", fixed = TRUE)
+})
+
 test_that("saved per-gene panels use the dynamic payload contract", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
@@ -598,6 +967,728 @@ test_that("single-cell projections and bundle cell IDs stay JSON arrays", {
   expect_match(as_json(projection$y), "^\\[")
 })
 
+test_that("Linked views does not duplicate immutable bundle data", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  metadata <- data.frame(
+    cell_barcode = cells,
+    cluster = c("A", "B"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() "cluster",
+    getParameters = function() list(main_group = "cluster"),
+    availableProjections = function() "umap",
+    getProjection = function(name) {
+      matrix(1:4, nrow = 2, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+  expression_space <- bundle$spaces[[which(
+    vapply(bundle$spaces, `[[`, character(1), "id") == "expression"
+  )]]
+
+  expect_true(all(c("x", "y") %in% names(bundle$projections$umap)))
+  expect_false(any(c("x", "y", "z") %in% names(expression_space)))
+  javascript <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
+    collapse = "\n"
+  )
+  expect_match(
+    javascript,
+    "s.id !== 'expression' && s.id !== 'spatial'",
+    fixed = TRUE
+  )
+  expect_null(bundle$cell_fingerprint)
+})
+
+test_that("primary bundle materializes only the first visible projection and colour", {
+  skip_if_not(have_bundle)
+  cells <- paste0("c", 1:4)
+  metadata <- data.frame(
+    cell_barcode = cells,
+    cell_type = c("B", "T", "B", "T"),
+    sample = c("s1", "s1", "s2", "s2"),
+    donor = c("d1", "d2", "d1", "d2"),
+    score = c(1, 2, 3, 4),
+    identifier = cells,
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  calls <- new.env(parent = emptyenv())
+  calls$projections <- character()
+  calls$genes <- 0L
+  calls$immune <- 0L
+  crb <- list(
+    getMetaData = function() metadata,
+    getGroups = function() c("cell_type", "sample"),
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() c("umap", "tsne"),
+    getProjection = function(name) {
+      calls$projections <- c(calls$projections, name)
+      matrix(seq_len(8), nrow = 4, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() {
+      calls$immune <- calls$immune + 1L
+      NULL
+    },
+    getGeneNames = function() {
+      calls$genes <- calls$genes + 1L
+      c("CD3D", "MS4A1")
+    }
+  )
+
+  primary <- cv_env$cv_build_bundle(crb, primary_only = TRUE)
+
+  expect_named(primary$groups, "cell_type")
+  expect_length(primary$cat_extra, 0L)
+  expect_length(primary$fields, 0L)
+  expect_length(primary$genes, 0L)
+  expect_named(primary$projections, "umap")
+  expect_identical(calls$projections, "umap")
+  expect_identical(calls$genes, 0L)
+  expect_identical(calls$immune, 0L)
+
+  primary$dataset_fingerprint <- "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  primary$progressive_token <- 4L
+  supplement <- cv_env$cv_build_progressive_supplement(crb, primary)
+
+  expect_identical(calls$immune, 1L)
+  expect_identical(calls$genes, 0L)
+  expect_identical(supplement$dataset_id, primary$dataset_id)
+  expect_identical(
+    supplement$dataset_fingerprint,
+    primary$dataset_fingerprint
+  )
+  expect_identical(supplement$progressive_token, primary$progressive_token)
+  expect_named(supplement$groups, "sample")
+  expect_length(supplement$cat_extra, 0L)
+  expect_length(supplement$fields, 0L)
+  expect_named(supplement$projections, "tsne")
+  expect_true(isTRUE(supplement$groups$sample$deferred))
+  expect_null(supplement$groups$sample$values)
+  expect_null(supplement$cat_extra$donor)
+  expect_null(supplement$fields[["meta:score"]])
+})
+
+test_that("primary bundle reuses thin CRB first-frame fields", {
+  skip_if_not(have_bundle)
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T")),
+    sample = factor(c("s1", "s1", "s2", "s2"))
+  )
+  projection <- data.frame(
+    x = c(1, 2, 3, 4),
+    y = c(4, 3, 2, 1)
+  )
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGroups = function() c("cell_type", "sample"),
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() "umap",
+    getProjection = function(name) stop("projection hydration was forced"),
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+
+  primary <- cv_env$cv_build_bundle(
+    crb,
+    primary_only = TRUE,
+    first_frame = list(
+      meta_data = metadata,
+      projections = list(umap = projection),
+      canonical_projections = "umap"
+    )
+  )
+
+  expect_named(primary$groups, "cell_type")
+  expect_named(primary$projections, "umap")
+  expect_identical(unclass(primary$projections$umap$x), c(1, 2, 3, 4))
+  expect_identical(unclass(primary$cells), seq_len(4L))
+})
+
+test_that("thin preloaded primary and supplement align unverified projections once", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("BPCells")
+  root <- withr::local_tempdir()
+  cells <- c("3", "1", "2") # Numeric-looking barcodes are not row indices.
+  counts <- Matrix::Matrix(matrix(1:6, 2,
+    dimnames = list(c("g1", "g2"), cells)), sparse = TRUE)
+  object <- Cerebro$new()
+  object$setExpression(BPCells::write_matrix_dir(counts, file.path(root, "matrix.bpcells")))
+  object$setExpressionBackend("bpcells", "matrix.bpcells")
+  object$setMetaData(data.frame(cell_barcode = cells, sample = "s"))
+  object$addGroup("sample", "s")
+  for (name in c("umap", "tsne")) object$addProjection(name,
+    data.frame(x = c(30, 20, 10), y = 3:1, row.names = rev(cells)))
+  path <- file.path(root, "test.crb")
+  saveCerebro(object, path, viewer_binary = "never")
+  scope <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(utility_file), "crb_cache.R"), scope)
+  sys.source(utility_file, scope)
+  sys.source(contract_file, scope)
+  sys.source(bundle_file, scope)
+  loaded <- scope$get_or_load_crb(path)
+  frame <- scope$viewerProjectionFirstFrameCache(loaded)
+  expect_length(frame$canonical_projections, 0L)
+  primary <- scope$cv_build_bundle(loaded, primary_only = TRUE, first_frame = frame)
+  expect_equal(as.numeric(primary$projections$umap$x), c(10, 20, 30))
+  expect_identical(rownames(frame$aligned_projections$umap), cells)
+  attr(loaded, "cerebro_viewer_pack") <- list(manifest = list(
+    n_cells = 3L, cell_order_fingerprint = "test-order"))
+  primary$canonical_order_id <- "test-order"
+  supplement <- scope$cv_build_compact_supplement(loaded, primary, frame, include_clone = FALSE)
+  expect_equal(as.numeric(supplement$projections$tsne$x), c(10, 20, 30))
+  expect_named(as.list(frame$aligned_projections), c("umap", "tsne"), ignore.order = TRUE)
+  # A repeat must use the dataset-owned aligned copy, without another hydration.
+  repeat_projection <- scope$cv_build_projections(
+    list(getMetaData = function() stop("repeated metadata read")), seq_len(3),
+    preloaded = frame$projections, aligned_cache = frame$aligned_projections)
+  expect_equal(as.numeric(repeat_projection$umap$x), c(10, 20, 30))
+  invalid <- frame$projections
+  rownames(invalid$umap) <- c("missing", "1", "3")
+  expect_error(scope$cv_build_projections(loaded, seq_len(3), only = "umap",
+    preloaded = invalid), "unique, matching cell identities")
+})
+
+test_that("primary bundle can keep canonical projection coordinates external", {
+  skip_if_not(have_bundle)
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T"))
+  )
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGroups = function() "cell_type",
+    getParameters = function() list(main_group = "cell_type"),
+    availableProjections = function() "umap",
+    getProjection = function(name) stop("projection coordinates were copied"),
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL,
+    getGeneNames = function() character()
+  )
+  descriptor <- list(
+    url = "projection/001.bin",
+    cells = 4L,
+    dimensions = 2L,
+    bytes = 32,
+    checksum = "0123456789abcdef0123456789abcdef"
+  )
+
+  primary <- cv_env$cv_build_bundle(
+    crb,
+    primary_only = TRUE,
+    first_frame = list(
+      meta_data = metadata,
+      projections = list(umap = stop)
+    ),
+    primary_projection_resource = list(
+      name = "umap",
+      descriptor = descriptor
+    )
+  )
+
+  expect_named(primary$projections, "umap")
+  expect_identical(primary$projections$umap$projection_resource, descriptor)
+  expect_identical(primary$projections$umap$ndim, 2L)
+  expect_null(primary$projections$umap$x)
+  expect_null(primary$projections$umap$y)
+})
+
+test_that("primary bundle can build canonical group codes externally", {
+  crb <- list(
+    getGroups = function() "cell_type",
+    getParameters = function() list(main_group = "cell_type")
+  )
+  metadata <- data.frame(
+    cell_barcode = c("one", "two", "three"),
+    cell_type = c("B", "A", "B"),
+    stringsAsFactors = FALSE
+  )
+  descriptor <- list(
+    url = "metadata/004.codes.bin",
+    cells = 3L,
+    dtype = "uint8",
+    bytes = 3,
+    checksum = "abc",
+    levels = I(c("A", "B")),
+    code_map = I(c(-1L, 1L, 0L))
+  )
+  resource <- cv_env$cv_primary_group_resource(
+    crb,
+    metadata,
+    function(name, factor_levels) {
+      expect_identical(name, "cell_type")
+      expect_null(factor_levels)
+      descriptor
+    }
+  )
+  colours <- cv_env$cv_build_primary_colours(
+    crb,
+    metadata,
+    "cell_type",
+    function(name, levels) c("red", "blue"),
+    resource
+  )
+
+  expect_null(colours$groups$cell_type[["values"]])
+  expect_identical(
+    colours$groups$cell_type$values_resource$url,
+    descriptor$url
+  )
+  expect_identical(colours$groups$cell_type$levels, I(c("A", "B")))
+  expect_identical(colours$groups$cell_type$colors, I(c("red", "blue")))
+  expect_identical(colours$default_group, "cell_type")
+
+  fallback <- cv_env$cv_build_primary_colours(
+    crb,
+    metadata,
+    "cell_type",
+    function(name, levels) c("red", "blue")
+  )
+  expect_identical(as.integer(fallback$groups$cell_type$values), c(1L, 0L, 1L))
+})
+
+test_that("Linked views reuses the saved-view fingerprint", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  server <- paste(
+    readLines(server_file, warn = FALSE),
+    collapse = "\n"
+  )
+  viewer_server <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "shiny_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    "b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint",
+    fixed = TRUE
+  )
+  expect_no_match(
+    server,
+    "b$dataset_fingerprint <- cv_saved_view_dataset()$fingerprint",
+    fixed = TRUE
+  )
+  expect_match(viewer_server, "dataset$cell_fingerprint", fixed = TRUE)
+  expect_false(grepl(
+    "dataset$crb_schema$cell_fingerprint",
+    viewer_server,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "b$dataset_fingerprint <- cv_config_cell_fingerprint(b$cells)",
+    server,
+    fixed = TRUE
+  ))
+})
+
+test_that("saved-view startup identity does not materialize cell names", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  coord_server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  server <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "shiny_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, "viewerDatasetIdentity <- reactive({", fixed = TRUE)
+  expect_match(server, "cell_count = getNumberOfCells()", fixed = TRUE)
+  expect_match(
+    server,
+    "identity <- viewerDatasetIdentity()",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "input[[\"sidebar\"]]\n    identity <- viewerDatasetIdentity()",
+    fixed = TRUE
+  )
+  expect_no_match(
+    coord_server,
+    "viewerDatasetIdentity <- reactive({",
+    fixed = TRUE
+  )
+  expect_match(
+    coord_server,
+    "progressive <- isTRUE(input[[\"coordviews_wire_supported\"]])",
+    fixed = TRUE
+  )
+  expect_no_match(coord_server, ">= 200000L", fixed = TRUE)
+})
+
+test_that("supplement work starts only after the painted primary reports ready", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  initial_push <- strsplit(
+    server,
+    'observeEvent(\n  input[["coordviews_primary_ready"]]',
+    fixed = TRUE
+  )[[1L]][[1L]]
+
+  send_at <- regexpr(
+    "session$sendBinaryMessage(",
+    initial_push,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(send_at, 0L)
+  expect_no_match(initial_push, "cv_start_clone_task(", fixed = TRUE)
+  expect_match(
+    server,
+    'observeEvent(\n  input[["coordviews_primary_ready"]]',
+    fixed = TRUE
+  )
+  expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
+  expect_match(
+    server,
+    "modalities <- unique(as.character(request$modalities",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "cv_prepare_progressive_supplement(\n      primary,\n      primary_n,\n      modalities\n    )",
+    fixed = TRUE
+  )
+  primary_ready <- strsplit(
+    server,
+    'observeEvent(\n  input[["coordviews_primary_ready"]]',
+    fixed = TRUE
+  )[[1L]][[2L]]
+  expect_match(primary_ready, "cv_start_clone_task(prepared$clone_spec)", fixed = TRUE)
+  expect_match(client, "modalities: requestedModalities()", fixed = TRUE)
+})
+
+test_that("primary colour selection does not scan unused categorical columns", {
+  skip_if_not(have_bundle)
+  old <- get0("as.character.unscannable", envir = .GlobalEnv, inherits = FALSE)
+  assign(
+    "as.character.unscannable",
+    function(x, ...) stop("unused categorical column was scanned"),
+    envir = .GlobalEnv
+  )
+  on.exit(
+    {
+      if (is.null(old)) {
+        rm("as.character.unscannable", envir = .GlobalEnv)
+      } else {
+        assign("as.character.unscannable", old, envir = .GlobalEnv)
+      }
+    },
+    add = TRUE
+  )
+
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B")),
+    unused = structure(c("x", "y", "z"), class = "unscannable")
+  )
+  colours <- cv_env$cv_build_primary_colours(
+    list(
+      getGroups = function() c("cell_type", "unused"),
+      getParameters = function() list(main_group = "cell_type")
+    ),
+    metadata,
+    c("cell_type", "unused"),
+    function(name, levels) rep("#000000", length(levels))
+  )
+
+  expect_identical(colours$default_group, "cell_type")
+  expect_named(colours$groups, "cell_type")
+})
+
+test_that("deferred metadata builds only the requested attribute", {
+  skip_if_not(have_bundle)
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B")),
+    donor = c("d1", "d1", "d2"),
+    score = c(1, 2, 4),
+    ignored = c(9, 8, 7),
+    stringsAsFactors = FALSE
+  )
+  crb <- list(getGroups = function() "cell_type")
+  colors <- function(name, levels) rep("#000000", length(levels))
+
+  group <- cv_env$cv_build_attribute(
+    crb,
+    metadata,
+    "groups",
+    "cell_type",
+    colors
+  )
+  extra <- cv_env$cv_build_attribute(
+    crb,
+    metadata,
+    "cat_extra",
+    "donor",
+    colors
+  )
+  field <- cv_env$cv_build_attribute(
+    crb,
+    metadata,
+    "fields",
+    "meta:score",
+    colors
+  )
+
+  expect_identical(as.integer(group$values), c(0L, 1L, 0L))
+  expect_identical(as.integer(extra$values), c(0L, 0L, 1L))
+  expect_identical(as.integer(field$v), c(0L, 333L, 1000L))
+  expect_null(cv_env$cv_build_attribute(
+    crb,
+    metadata,
+    "fields",
+    "meta:ignored_missing",
+    colors
+  ))
+})
+
+test_that("progressive colour source retains deferred numeric fields", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    paste0(
+      "current_colors$fields <- c(\n    current_colors$fields %||% list(),\n    ",
+      "supplement$fields %||% list()\n  )"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("deferred assets leave only descriptors in the supplement", {
+  skip_if_not(have_bundle)
+  value <- list(
+    dataset_id = "xenium",
+    dataset_fingerprint = "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    spaces = list(list(
+      id = "spatial",
+      samples = list(
+        list(
+          name = "fov",
+          images = list(list(
+            id = "dapi",
+            label = "DAPI",
+            uri = "data:image/png;base64,AAAA"
+          ))
+        ),
+        list(
+          name = "fov_colour",
+          images = list(list(
+            id = "pink",
+            label = "Pink",
+            uri = "data:image/png;base64,BBBB"
+          ))
+        )
+      )
+    )),
+    trekker = list(
+      evidence = I(c(1L, 0L, 1L)),
+      evidence_img = I(list(
+        "data:image/png;base64,CCCC",
+        NULL,
+        "data:image/png;base64,DDDD"
+      ))
+    )
+  )
+
+  deferred <- cv_env$cv_defer_assets(value)
+  samples <- deferred$value$spaces[[1L]]$samples
+
+  expect_length(deferred$assets, 4L)
+  expect_null(samples[[1L]]$images[[1L]]$uri)
+  expect_true(isTRUE(samples[[1L]]$images[[1L]]$deferred))
+  expect_true(nzchar(samples[[1L]]$images[[1L]]$asset_key))
+  expect_null(samples[[2L]]$images[[1L]]$uri)
+  expect_null(deferred$value$trekker$evidence_img)
+  expect_true(isTRUE(deferred$value$trekker$evidence_deferred))
+  expect_identical(
+    sort(names(deferred$assets)),
+    sort(c(
+      samples[[1L]]$images[[1L]]$asset_key,
+      samples[[2L]]$images[[1L]]$asset_key,
+      "trekker-evidence:0",
+      "trekker-evidence:2"
+    ))
+  )
+})
+
+test_that("external image files stay server-side until requested", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("base64enc")
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image_path
+  )
+  value <- list(
+    spaces = list(list(
+      id = "spatial",
+      images = list(list(
+        id = "external",
+        label = "External",
+        asset_path = image_path,
+        asset_mime = "image/png"
+      ))
+    ))
+  )
+
+  deferred <- cv_env$cv_defer_assets(value)
+  image <- deferred$value$spaces[[1L]]$images[[1L]]
+  asset <- deferred$assets[[image$asset_key]]
+
+  expect_null(image$uri)
+  expect_null(image$asset_path)
+  expect_null(image$asset_mime)
+  expect_true(isTRUE(image$deferred))
+  expect_identical(asset, list(path = image_path, mime = "image/png"))
+  expect_match(cv_env$cv_asset_data_uri(asset), "^data:image/png;base64,")
+})
+
+test_that("hidden gene controls stay dormant until their colour mode is chosen", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    'coordviews_gene_controls_active"]], "gene"',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'coordviews_gene_controls_active"]], "rgb"',
+    fixed = TRUE
+  )
+  expect_match(client, "coordviews_gene_controls_active", fixed = TRUE)
+  expect_match(client, "mode === RGB_MODE ? 'rgb'", fixed = TRUE)
+})
+
+test_that("deferred browser assets are requested only when displayed", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, 'input[["coordviews_asset_request"]]', fixed = TRUE)
+  expect_match(server, '"coordviews_asset"', fixed = TRUE)
+  expect_match(client, "function requestDeferredAsset", fixed = TRUE)
+  expect_match(client, "img.asset_key", fixed = TRUE)
+  expect_match(
+    client,
+    "Shiny.addCustomMessageHandler('coordviews_asset'",
+    fixed = TRUE
+  )
+  expect_match(client, "trekker-evidence:", fixed = TRUE)
+})
+
+test_that("colour observation starts only after a bundle is sent", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  server <- paste(
+    readLines(server_file, warn = FALSE),
+    collapse = "\n"
+  )
+
+  sent <- regexpr(
+    "coordviews_build_log$sent_n <- bundle_n",
+    server,
+    fixed = TRUE
+  )[[1]]
+  observer <- regexpr(
+    "if (!isTRUE(coordviews_build_log$color_observer_started))",
+    server,
+    fixed = TRUE
+  )[[1]]
+
+  expect_gt(sent, 0)
+  expect_gt(observer, sent)
+})
+
+test_that("large-dataset work stays off the initial response", {
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_no_match(server, "later::later(", fixed = TRUE)
+  expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
+  expect_match(server, "cv_start_clone_task(prepared$clone_spec)", fixed = TRUE)
+  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
+  expect_match(
+    server,
+    "cv_build_progressive_supplement(",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'input[["coordviews_wire_fallback"]]',
+    fixed = TRUE
+  )
+  supplement_at <- regexpr(
+    '"coordviews_supplement"',
+    server,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(supplement_at, 0L)
+  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
+  expect_match(server, 'input[["coordviews_selection_indices"]]', fixed = TRUE)
+  expect_match(
+    server,
+    "coordviews_background_ready <- reactiveVal(FALSE)",
+    fixed = TRUE
+  )
+  expect_no_match(
+    server,
+    "coordviews_background_ready\\(\\) &&"
+  )
+  expect_match(
+    server,
+    paste0(
+      "coordviews_visible\\(\\) &&\\s+",
+      "identical\\(input\\[\\[\"coordviews_gene_controls_active\"\\]\\], ",
+      "\"gene\"\\) &&\\s+cv_has_expression\\(\\)"
+    )
+  )
+})
+
 test_that("bundle cell identity falls back to metadata row names", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")
@@ -623,6 +1714,17 @@ test_that("bundle cell identity falls back to metadata row names", {
   bundle <- cv_env$cv_build_bundle(crb)
 
   expect_identical(as.character(bundle$cells), cells)
+})
+
+test_that("canonical zero-based indices resolve only requested cell IDs", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3", "c4")
+
+  expect_identical(
+    cv_env$cv_cells_at_indices(cells, c(3L, 0L, 3L, 99L, -1L, NA)),
+    c("c4", "c1", "c4")
+  )
+  expect_null(cv_env$cv_cells_at_indices(cells, NULL))
 })
 
 test_that("rownames-only metadata supports selection and cell details", {
@@ -709,12 +1811,8 @@ test_that("hidden palette changes are replayed without rebuilding data", {
   server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_match(server, "cv_apply_color_patch(", fixed = TRUE)
-  expect_match(server, "coordviews_build_log$sent_n == 0", fixed = TRUE)
-  expect_match(
-    server,
-    'session$sendCustomMessage("coordviews_colors"',
-    fixed = TRUE
-  )
+  expect_match(server, "color_observer_started", fixed = TRUE)
+  expect_match(server, '"coordviews_colors"', fixed = TRUE)
 })
 
 ## A minimal but realistically-shaped IR table: the CT* columns spell out chain
@@ -921,7 +2019,7 @@ test_that("cv_build_projections records dimensionality instead of dropping it", 
   expect_s3_class(pj$umap_3D$z, "AsIs")
 })
 
-test_that("cv_build_bundle still works when no grouping variable is registered", {
+test_that("cv_build_bundle safely handles no registered grouping variable", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3")
   md <- data.frame(
@@ -941,14 +2039,12 @@ test_that("cv_build_bundle still works when no grouping variable is registered",
     getImmuneRepertoire = function() NULL
   )
   b <- cv_env$cv_build_bundle(crb)
-  ## Projection colours cells by ANY meta column, so an object with no
-  ## registered group is perfectly usable there — Linked views must not go blank.
   expect_type(b, "list")
   expect_equal(b$n, 3L)
-  expect_true("meta:nUMI" %in% names(b$fields))
-  ## with nothing categorical to fall back on, the default colouring is the
-  ## first continuous field, expressed as the client's field mode string.
-  expect_equal(b$default_group, paste0(cv_env$cv_field_mode, "meta:nUMI"))
+  expect_length(b$groups, 0L)
+  expect_length(b$cat_extra, 0L)
+  expect_length(b$fields, 0L)
+  expect_null(b$default_group)
 })
 
 test_that("Linked views consumes the selected dataset point appearance", {
@@ -1003,7 +2099,11 @@ test_that("Linked views consumes the selected dataset point appearance", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expect_identical(bundle$default_projection, "tsne")
-  expect_identical(bundle$default_group, "cell_type")
+  expression_space <- bundle$spaces[[which(
+    vapply(bundle$spaces, `[[`, character(1), "id") == "expression"
+  )]]
+  expect_identical(expression_space$label, "tsne (expression)")
+  expect_identical(bundle$default_group, "region")
   expect_identical(bundle$default_point_size, 5)
   expect_identical(bundle$default_point_opacity, 0.7)
   expect_identical(bundle$default_percentage_cells_to_show, 60)
@@ -1196,6 +2296,8 @@ test_that("a clone's label names its dominant CDR3 and says how many it hides", 
   out <- cv_env$cv_build_clone(crb, cells, length(cells))
 
   expect_false(is.null(out))
+  expect_null(out$space$x)
+  expect_null(out$space$y)
   expect_equal(out$bundle$n_clones, 1)
   expect_equal(as.character(out$bundle$label[1]), "CASSB")
   expect_equal(as.integer(out$bundle$n_cdr3[1]), 2L)
@@ -1216,6 +2318,268 @@ test_that("a single-CDR3 clone is not annotated", {
   expect_equal(as.integer(out$bundle$n_cdr3[1]), 1L)
 })
 
+test_that("sparse clone transport expands to the legacy cell-aligned values", {
+  skip_if_not(have_bundle)
+  ir <- list(data.frame(
+    barcode = c("c2", "c4", "c5"),
+    CTgene = c(
+      "TRAV1_TRAJ1_TRBV1_TRBJ1",
+      "TRAV1_TRAJ1_TRBV1_TRBJ1",
+      "TRAV2_TRAJ2_TRBV2_TRBJ2"
+    ),
+    CTaa = c("CASSA", "CASSA", "CASSB"),
+    stringsAsFactors = FALSE
+  ))
+  crb <- list(getImmuneRepertoire = function() ir)
+  cells <- paste0("c", 1:6)
+
+  dense <- cv_env$cv_build_clone(crb, cells, length(cells))
+  sparse <- cv_env$cv_build_clone(crb, cells, length(cells), sparse = TRUE)
+  clone_ids <- rep(-1L, length(cells))
+  clone_ids[as.integer(sparse$bundle$index) + 1L] <-
+    as.integer(sparse$bundle$code)
+  expansion <- rep(0L, length(cells))
+  expansion[as.integer(sparse$bundle$index) + 1L] <-
+    as.integer(sparse$group$values)
+
+  expect_null(sparse$bundle$id)
+  expect_null(sparse$group$index)
+  expect_true(isTRUE(sparse$group$clone_index))
+  expect_identical(clone_ids, as.integer(dense$bundle$id))
+  expect_identical(expansion, as.integer(dense$group$values))
+  expect_identical(sparse$bundle$label, dense$bundle$label)
+  expect_identical(sparse$bundle$size, dense$bundle$size)
+  expect_identical(sparse$bundle$n_cdr3, dense$bundle$n_cdr3)
+})
+
+test_that("Viewer Pack builds sparse clones from canonical indices", {
+  skip_if_not(have_bundle)
+  old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
+  on.exit(
+    {
+      if (is.null(old_reader)) {
+        rm("viewerPackImmuneIndex", envir = cv_env)
+      } else {
+        assign("viewerPackImmuneIndex", old_reader, envir = cv_env)
+      }
+    },
+    add = TRUE
+  )
+  assign(
+    "viewerPackImmuneIndex",
+    function(pack, receptor) {
+      list(
+        cell_index = c(2L, 4L, 5L),
+        clone = c("clone-a", "clone-a", "clone-b"),
+        ctaa = c("CASSA", "CASSA", "CASSB"),
+        receptor = "TCR"
+      )
+    },
+    envir = cv_env
+  )
+  crb <- list(getImmuneRepertoire = function() stop("CRB fallback used"))
+  attr(crb, "cerebro_viewer_pack") <- list(
+    cells = paste0("c", 1:6),
+    manifest = list(immune_receptors = "TCR")
+  )
+
+  sparse <- cv_env$cv_build_clone(crb, seq_len(6L), 6L, sparse = TRUE)
+
+  expect_identical(as.integer(sparse$bundle$index), c(1L, 3L, 4L))
+  expect_identical(as.integer(sparse$bundle$code), c(0L, 0L, 1L))
+  expect_identical(as.integer(sparse$group$values), c(2L, 2L, 1L))
+})
+
+test_that("compact supplement avoids full CRB hydration", {
+  skip_if_not(have_bundle)
+  immune_index_calls <- 0L
+  old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
+  on.exit(
+    {
+      if (is.null(old_reader)) {
+        rm("viewerPackImmuneIndex", envir = cv_env)
+      } else {
+        assign("viewerPackImmuneIndex", old_reader, envir = cv_env)
+      }
+    },
+    add = TRUE
+  )
+  assign(
+    "viewerPackImmuneIndex",
+    function(pack, receptor) {
+      immune_index_calls <<- immune_index_calls + 1L
+      list(
+        cell_index = c(2L, 4L),
+        clone = c("clone-a", "clone-a"),
+        ctaa = c("CASSA", "CASSA"),
+        receptor = "TCR"
+      )
+    },
+    envir = cv_env
+  )
+  metadata <- data.frame(
+    cell_type = factor(c("B", "T", "B", "T")),
+    sample = factor(c("s1", "s1", "s2", "s2")),
+    score = c(1, 2, 3, 4)
+  )
+  projection <- data.frame(x = 1:4, y = 4:1)
+  projection_catalog_calls <- 0L
+  crb <- list(
+    getMetaData = function() stop("metadata hydration was forced"),
+    getGeneNames = function() stop("gene hydration was forced"),
+    getGroups = function() c("cell_type", "sample"),
+    availableProjections = function() {
+      projection_catalog_calls <<- projection_catalog_calls + 1L
+      stop("projection hydration was forced")
+    },
+    getMethodsForTrajectories = function() character(),
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() stop("immune fallback was forced")
+  )
+  attr(crb, "cerebro_viewer_pack") <- list(
+    cells = paste0("c", 1:4),
+    manifest = list(
+      n_cells = 4L,
+      cell_order_fingerprint = "md5-cell-order-v1:order",
+      immune_receptors = "TCR"
+    )
+  )
+  primary <- list(
+    dataset_id = "ren.crb",
+    dataset_fingerprint = "md5-cell-set-v1:cells",
+    canonical_order_id = "md5-cell-order-v1:order",
+    progressive_token = 7L,
+    n = 4L,
+    groups = list(cell_type = list()),
+    cat_extra = list(),
+    fields = list(),
+    projections = list(tsne = list()),
+    spaces = list(list(id = "umap"))
+  )
+
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    list(meta_data = metadata, projections = list(tsne = projection))
+  )
+
+  expect_true(isTRUE(supplement$groups$sample$deferred))
+  expect_null(supplement$groups$sample$values)
+  expect_null(supplement$fields[["meta:score"]])
+  expect_identical(as.integer(supplement$clone$index), c(1L, 3L))
+  expect_named(supplement$groups, c("sample", "clone_expansion"))
+  expect_identical(projection_catalog_calls, 0L)
+
+  metadata_only <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    list(meta_data = metadata, projections = list(tsne = projection)),
+    include_clone = FALSE
+  )
+  expect_identical(immune_index_calls, 1L)
+  expect_null(metadata_only$clone)
+  expect_false("clone_expansion" %in% names(metadata_only$groups))
+  expect_length(metadata_only$spaces, 0L)
+})
+
+test_that("canonical clone supplement runs outside the Shiny session", {
+  server <- paste(
+    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, "shiny::ExtendedTask$new", fixed = TRUE)
+  expect_match(server, "mirai::mirai", fixed = TRUE)
+  expect_match(server, "cv_async_clone_spec", fixed = TRUE)
+  expect_match(server, "coordviews_clone_task$invoke", fixed = TRUE)
+  expect_match(server, "coordviews_clone_task$result()", fixed = TRUE)
+  expect_lt(
+    regexpr("coordviews_clone_task$invoke", server, fixed = TRUE)[[1L]],
+    regexpr('input[["coordviews_primary_ready"]]', server, fixed = TRUE)[[1L]]
+  )
+  expect_match(
+    server,
+    'input[["coordviews_clone_details_request"]]',
+    fixed = TRUE
+  )
+  expect_match(client, "coordviews_clone_details_request", fixed = TRUE)
+  expect_match(client, "coordviews_clone_details", fixed = TRUE)
+  expect_match(client, "group.clone_index", fixed = TRUE)
+  expect_match(server, "progressive_complete = FALSE", fixed = TRUE)
+  send_supplement <- strsplit(
+    strsplit(
+      server,
+      "cv_send_progressive_supplement <- function(prepared)",
+      fixed = TRUE
+    )[[1L]][[2L]],
+    "observe({",
+    fixed = TRUE
+  )[[1L]][[1L]]
+  expect_match(
+    send_supplement,
+    "coordviews_color_source(current_colors)",
+    fixed = TRUE
+  )
+  expect_no_match(
+    send_supplement,
+    "coordviews_color_source(list(",
+    fixed = TRUE
+  )
+  expect_match(client, "function applyCloneSupplement(extra)", fixed = TRUE)
+  expect_match(
+    client,
+    "if (cloneOnly && applyCloneSupplement(extra))",
+    fixed = TRUE
+  )
+  clone_path <- strsplit(
+    strsplit(client, "function applyCloneSupplement(extra)", fixed = TRUE)[[
+      1L
+    ]][[2L]],
+    "function applyHydratedSupplement(extra, metric)",
+    fixed = TRUE
+  )[[1L]][[1L]]
+  expect_no_match(clone_path, "applyData(", fixed = TRUE)
+  expect_match(
+    client,
+    "extra.progressive_complete === false",
+    fixed = TRUE
+  )
+  expect_no_match(
+    client,
+    "extra.progressive_token !== D.progressive_token ||\n          !D.progressive",
+    fixed = TRUE
+  )
+})
+
+test_that("clone core omits duplicate indices and deferred labels", {
+  clone <- cv_env$cv_build_clone_rows(
+    clone = c("a", "a", "b"),
+    ctaa = c("AA", "AA", "BB"),
+    receptor = "TCR",
+    receptor_index = c(1L, 3L, 5L),
+    n = 6L,
+    sparse = TRUE
+  )
+
+  expect_null(clone$group$index)
+  expect_true(isTRUE(clone$group$clone_index))
+
+  deferred <- cv_env$cv_defer_clone_details(clone)
+  expect_length(deferred$value$bundle$label, 0L)
+  expect_length(deferred$value$bundle$n_cdr3, 0L)
+  expect_true(isTRUE(deferred$value$bundle$details_deferred))
+  expect_identical(deferred$details$label, c("AA", "BB"))
+  expect_identical(as.integer(deferred$details$n_cdr3), c(1L, 1L))
+})
+
 ## The divergences that clone_contract.R exists to prevent were never visible to
 ## a test of either page on its own: each was self-consistent. This one computes
 ## a clone's size the way each page does, on the same object, and compares -- the
@@ -1224,7 +2588,7 @@ test_that("both pages give a clone the same size", {
   skip_if_not(have_bundle)
   skip_if_not(nzchar(tcr_crb) && file.exists(tcr_crb))
 
-  crb <- readRDS(tcr_crb)
+  crb <- readCerebro(tcr_crb)
   md <- crb$getMetaData()
   cells <- as.character(md$cell_barcode)
   ir <- crb$getImmuneRepertoire()
@@ -1342,7 +2706,7 @@ test_that("the trekker bundle carries what a placement is judged on", {
   skip_if_not(have_bundle)
   skip_if_not(file.exists(trekker_crb))
 
-  b <- cv_env$cv_build_bundle(readRDS(trekker_crb))
+  b <- cv_env$cv_build_bundle(readCerebro(trekker_crb))
   expect_false(is.null(b$trekker))
 
   ## position_confidence is a FIELD -- a colouring -- so the card reads it from
@@ -1541,11 +2905,18 @@ test_that("each section offers only its own configured backgrounds", {
 
   first <- cv_env$cv_external_images("section-a")
   second <- cv_env$cv_external_images("section-b")
+  deferred <- cv_env$cv_external_images("section-a", defer = TRUE)
   expect_length(first, 1L)
   expect_length(second, 1L)
   expect_identical(first[[1L]]$label, "H&E")
   expect_identical(second[[1L]]$label, "H&E")
   expect_false(identical(first[[1L]]$id, second[[1L]]$id))
+  expect_null(deferred[[1L]]$uri)
+  expect_identical(
+    deferred[[1L]]$asset_path,
+    normalizePath(png, winslash = "/", mustWork = TRUE)
+  )
+  expect_identical(deferred[[1L]]$asset_mime, "image/png")
   expect_equal(
     unlist(first[[1L]]$bounds, use.names = TRUE),
     c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
@@ -1843,7 +3214,7 @@ test_that("bundling two images of the same basename keeps both", {
   crb_two <- file.path(tmp, "demo-two.crb")
   file.copy(example, crb_one, overwrite = TRUE)
   file.copy(example, crb_two, overwrite = TRUE)
-  spatial_name <- readRDS(crb_one)$availableSpatial()[[1L]]
+  spatial_name <- readCerebro(crb_one)$availableSpatial()[[1L]]
   app_dir <- file.path(tmp, "app")
   createShinyApp(
     cerebro_data = c("ds one" = crb_one, "ds two" = crb_two),
@@ -1873,7 +3244,7 @@ test_that("bundling two images of the same basename keeps both", {
 test_that("external images retain their spatial-entry ownership", {
   path <- bundle_file
   txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "cv_external_images(nm)", fixed = TRUE)
+  expect_match(txt, "cv_external_images(nm, defer = TRUE)", fixed = TRUE)
   expect_no_match(txt, "for (ex in cv_external_images())", fixed = TRUE)
 })
 
