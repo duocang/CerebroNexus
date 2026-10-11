@@ -310,6 +310,18 @@ tab_coordinated_views <- tabItem(
           )
         )
       ),
+      ## Linked hover stays beside the layout controls. Disabling it leaves
+      ## zoom, brushing and selection available.
+      div(
+        class = "cv-linked-hover",
+        shinyWidgets::materialSwitch(
+          inputId = "cv-hover",
+          label = "Show linked cell hover:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
+        )
+      ),
       ## Share and Settings stay together as the right-aligned action group.
       cerebroToolbarActions(
         cerebroSettingsButton(
@@ -578,13 +590,6 @@ tab_coordinated_views <- tabItem(
           )
         )
       )
-    ),
-
-    ## Linked hover is independent of the Data info hover-detail preference.
-    ## Disabling it leaves zoom, brushing and selection available.
-    div(
-      class = "cv-linked-hover",
-      checkboxInput("cv-hover", "Show linked cell hover", value = TRUE)
     ),
 
     ## ---- legend (categorical) or colourbar (continuous gene) ------------ ##
