@@ -574,22 +574,28 @@
 ) {
   backup <- NULL
   spatial_backup <- NULL
+  backed_up <- FALSE
+  backed_up_spatial <- FALSE
+  installed <- FALSE
   installed_spatial <- FALSE
   committed <- FALSE
   on.exit(
     {
       if (!committed) {
-        if (file.exists(file)) {
+        if (installed && file.exists(file)) {
           unlink(file, force = TRUE)
         }
-        if (!is.null(backup) && file.exists(backup)) {
-          file.rename(backup, file)
+        if (backed_up && file.exists(backup) && !file.rename(backup, file)) {
+          warning("Could not restore the original CRB; preserved at: ", backup,
+            call. = FALSE)
         }
         if (installed_spatial && dir.exists(spatial)) {
           unlink(spatial, recursive = TRUE, force = TRUE)
         }
-        if (!is.null(spatial_backup) && dir.exists(spatial_backup)) {
-          file.rename(spatial_backup, spatial)
+        if (backed_up_spatial && dir.exists(spatial_backup) &&
+            !file.rename(spatial_backup, spatial)) {
+          warning("Could not restore the original spatial sidecar; preserved at: ",
+            spatial_backup, call. = FALSE)
         }
       }
     },
@@ -601,6 +607,7 @@
     if (!file.rename(file, backup)) {
       stop("Could not preserve the existing CRB.", call. = FALSE)
     }
+    backed_up <- TRUE
   }
   if (!is.null(spatial_stage)) {
     if (dir.exists(spatial)) {
@@ -611,6 +618,7 @@
       if (!file.rename(spatial, spatial_backup)) {
         stop("Could not preserve the existing spatial sidecar.", call. = FALSE)
       }
+      backed_up_spatial <- TRUE
     }
     if (!file.rename(spatial_stage, spatial)) {
       stop("Could not install the spatial molecule sidecar.", call. = FALSE)
@@ -620,6 +628,7 @@
   if (!file.rename(stage, file)) {
     stop("Could not install the new CRB.", call. = FALSE)
   }
+  installed <- TRUE
   committed <- TRUE
   if (!is.null(backup) && file.exists(backup)) {
     unlink(backup)
