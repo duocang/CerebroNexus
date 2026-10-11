@@ -92,8 +92,8 @@
       .viewer_auth_error(paste0(
         "viewer-auth.env has insecure permissions: ", sprintf("%04o", mode), ". ",
         "Required permissions: 0600. Set ownership for the actual Shiny/R runtime ",
-        "UID/GID and run chmod 600 on this file. For a read-only Docker bind mount, ",
-        "change the host file, not the container mount."
+        "UID/GID and run chmod 600 on this file. For a read-only filesystem, ",
+        "correct the source file's permissions before deployment."
       ))
     }
   }
@@ -103,7 +103,7 @@
       if (.Platform$OS.type != "windows") "has secure permissions but " else "",
       "is not readable by the current application user. ",
       "Check file ownership, parent directory access and the actual Shiny/R runtime UID/GID. ",
-      "For a read-only Docker bind mount, correct ownership on the host."
+      "For a read-only filesystem, correct source file ownership before deployment."
     ))
   }
   if (!isTRUE(file.access(path, mode = 4L) == 0L)) {
@@ -187,8 +187,8 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
         "Authentication credentials database is not accessible. Check ",
         "private-data/auth/credentials.sqlite and parent directory access for ",
         "the actual Shiny/R runtime UID/GID. Recommended permissions: database ",
-        "0600, auth directory 0700. For a read-only Docker bind mount, correct ",
-        "ownership and permissions on the host."
+        "0600, auth directory 0700. For a read-only filesystem, correct ",
+        "source ownership and permissions before deployment."
       )
     )
   }

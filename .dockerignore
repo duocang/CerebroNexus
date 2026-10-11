@@ -1,9 +1,0 @@
-.git
-.Rproj.user
-.Rhistory
-.RData
-*.Rcheck
-*.tar.gz
-tests/bench/result
-my_app
-**/viewer-auth.env

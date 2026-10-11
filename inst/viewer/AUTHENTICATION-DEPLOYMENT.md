@@ -1,4 +1,4 @@
-# Linux / Shiny Server / Docker authentication deployment
+# Linux / Shiny Server authentication deployment
 
 This note ships with generated Apps at `viewer/AUTHENTICATION-DEPLOYMENT.md`.
 Apply the checks to the **final deployed App**, after copying or extracting it.
@@ -13,9 +13,9 @@ generate a replacement key for an existing database.
 The application uses a nonempty process environment variable first. When it
 is set, the local `viewer-auth.env` is not read. Otherwise, Builder Apps load
 that file from their own App directory. A shell export is not automatically
-inherited by an already running Shiny Server, systemd service or container;
+inherited by an already running Shiny Server or systemd service;
 the key must reach the actual R application process through the deployment's
-secret/environment configuration. Do not put the key in logs, a Dockerfile,
+secret/environment configuration. Do not put the key in logs, build scripts,
 version control or a command that prints it.
 
 The local file must contain exactly one line, without quotes or `export`:
@@ -65,31 +65,6 @@ Then restart the App using the deployment's normal procedure and verify
 startup and login as the application user. If using only an externally
 configured key, omit the local-file commands. Read-only database access is
 supported; do not make the database or mount writable merely to start the App.
-
-## Docker bind mounts, including read-only mounts
-
-For a layout such as `./apps:/srv/shiny-server/shiny:ro`, the final files come
-from the host. A Dockerfile's `RUN chmod` or `RUN chown` on the image directory
-does not fix files that a later bind mount places over that directory.
-
-1. Identify the R worker UID/GID **inside the running container**. Replace the
-   service placeholder with your actual Compose service name:
-
-   ```bash
-   docker compose exec <service> ps -eo user,uid,gid,comm
-   ```
-
-2. Apply the ownership/mode commands above **on the host's exported App
-   directory**, such as `./apps/<app>`. For rootless Docker or user-namespace
-   remapping, account for the host-to-container UID/GID mapping; do not assume
-   the same numeric IDs on both sides. Verify the resulting mode and owner as
-   seen from the container.
-3. Restart the App/container with your deployment's normal procedure, then
-   confirm startup and login.
-
-Do not attempt `chmod` or `chown` from inside a read-only bind mount. Keep the
-mount read-only. The App reports problems but never changes deployment file
-permissions or ownership automatically.
 
 ## Windows builds and transfers
 

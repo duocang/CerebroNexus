@@ -1,3 +1,21 @@
+test_that("dataset bundle paths preserve UTF-8 MD5 identity", {
+  ids <- c("dataset-a", "123", "\u65e5\u672c\u8a9e", "a\nb", "caf\u00e9")
+  hashes <- c(
+    "e8fd00f1966896a78b48992444d4e937",
+    "202cb962ac59075b964b07152d234b70",
+    "00110af8b4393ef3f72c50be5b332bec",
+    "8cdeb44417f3c26826595d5820cf5700",
+    "07117fe4a1ebd544965dc19573183da2"
+  )
+  targets <- vapply(ids, CerebroNexus:::.datasetBundleTarget, character(1))
+  expect_identical(unname(targets), paste0("private-data/dataset-", hashes, ".crb"))
+  latin1 <- iconv(ids[[5L]], from = "UTF-8", to = "latin1")
+  expect_identical(CerebroNexus:::.datasetBundleTarget(latin1), unname(targets[[5L]]))
+  for (id in list(NULL, character(), "", NA_character_, c("a", "b"))) {
+    expect_error(CerebroNexus:::.datasetBundleTarget(id), "non-empty dataset identity")
+  }
+})
+
 privacy_test_sources <- function(root) {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)

@@ -57,8 +57,6 @@ sha256_file() {
     sha256sum "$path" | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$path" | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$path" | awk '{print $NF}'
   else
     echo "no SHA-256 implementation found" >&2
     return 1

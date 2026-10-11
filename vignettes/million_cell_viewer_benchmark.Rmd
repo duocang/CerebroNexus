@@ -164,7 +164,7 @@ Commit `c455d0cd` is the exact 4.5.1 baseline before the WebGPU work. It has no 
 | Candidate | Revision | Version | Role in this comparison |
 |---|---|---|---|
 | Canvas baseline | `c455d0cd` | 4.5.1 | Optimized CRB/backend, Canvas 2D Viewer, no bundled 1M demo |
-| WebGPU release | This source tree | 4.6.0 | Binary transport, WebGPU rendering, deferred hover payload, bundled opt-in 1M demo |
+| WebGPU development candidate | Historical benchmark source | 4.6.0-dev | Binary transport, WebGPU rendering, deferred hover payload, bundled opt-in 1M demo |
 
 Create a detached worktree so both implementations can be measured against the same CRB and browser installation:
 
@@ -469,7 +469,7 @@ cell-name store.
 
 # Launch the interactive one-million-cell demo
 
-Point `CEREBRO_1M_DEMO_CRB` at a CRB freshly written by 4.6.0 `saveCerebro()` or an exporter, then run the bundled app. Older CRBs remain compatible but calculate the cell fingerprint once per Viewer session; `convertCerebro()` upgrades one in place, while the copy-preserving example above keeps a baseline artifact for comparison.
+Point `CEREBRO_1M_DEMO_CRB` at a CRB freshly written by `saveCerebro()` or an exporter, then run the bundled app. Older CRBs remain compatible but calculate the cell fingerprint once per Viewer session; `convertCerebro()` upgrades one in place, while the copy-preserving example above keeps a baseline artifact for comparison.
 
 ```{bash launch-demo, eval=FALSE}
 CEREBRO_1M_DEMO_CRB=/path/to/cerebro_mouse_brain_1m.crb \

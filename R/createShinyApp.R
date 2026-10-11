@@ -1215,8 +1215,8 @@ dedent <- function(string) {
   )
 }
 
-.spatialImageBundlePathDigest <- function(bytes) {
-  path <- tempfile("cerebro-spatial-path-")
+.bundlePathDigest <- function(bytes) {
+  path <- tempfile("cerebro-bundle-path-")
   on.exit(unlink(path), add = TRUE)
   writeBin(bytes, path)
   unname(tools::md5sum(path))
@@ -1242,7 +1242,7 @@ dedent <- function(string) {
   if (nchar(encoded, type = "bytes") <= maximum_bytes) {
     return(encoded)
   }
-  digest <- .spatialImageBundlePathDigest(bytes)
+  digest <- .bundlePathDigest(bytes)
   prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
   paste0(substr(encoded, 1L, prefix_length), "-", digest)
 }
@@ -1285,7 +1285,7 @@ dedent <- function(string) {
   ) {
     stop("A non-empty dataset identity is required.", call. = FALSE)
   }
-  digest <- unclass(as.character(openssl::md5(charToRaw(enc2utf8(dataset_id)))))
+  digest <- .bundlePathDigest(charToRaw(enc2utf8(dataset_id)))
   paste0("private-data/dataset-", digest, ".crb")
 }
 

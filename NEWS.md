@@ -1,69 +1,46 @@
-# CerebroNexus 4.6.4
+# CerebroNexus 5.0.0
 
 ## Viewer
 
-- Refines typography, spacing, navigation, controls, responsive layouts, loading and empty states across the Viewer.
-- Improves keyboard navigation, focus handling, status announcements, labels, and reduced-motion behavior.
-- Viewer legends wrap across rows when categories do not fit, giving plots the remaining viewport height without a horizontal scrollbar.
-- The million-cell demo now opens at 100%, gives Gene Expression full-opacity two-pixel points, and falls back from WebGPU to WebGL2 so full Projection and Gene Expression canvases remain interactive on browsers without WebGPU.
-
-# CerebroNexus 4.6.3
-
-## Viewer
-
-- The million-cell demo now opens at 100%, gives Gene Expression full-opacity two-pixel points, and falls back from WebGPU to WebGL2 so full Projection and Gene Expression canvases remain interactive on browsers without WebGPU.
-- Repeated visits to million-cell Canvas pages reuse the prepared CPU view while preserving current selection, remount, and stale-payload behavior.
-- Overview keeps full-data cells in canonical order, and Immune Repertoire joins metadata once and vectorizes receptor-chain matching.
-- Linked Views uses the existing recursive binary packer for trajectory, clone, and Trekker vectors instead of leaving long arrays in its JSON header.
-- Large Linked Views opens progressively with its published projection before loading optional spaces, clone data, and cell identifiers; clone-stack coordinates are vectorized.
-- The Ren atlas preserves its published t-SNE name, stores repeated metadata as factors, and keeps the paired TCR/BCR repertoire in a lazy sidecar.
-
-# CerebroNexus 4.6.2
-
-## Viewer
-
-- Gene-major BPCells sidecars accelerate single-gene, RGB, multi-gene, and mean-expression reads for million-cell data while preserving the existing CRB fallback.
-- Inactive page work is deferred, HLA motif processing avoids dense adjacency matrices, and the HLA and Trajectory first frames meet the three-second million-cell target.
-- Specialist Canvas views resend their payload whenever remounted, so returning from Linked Views no longer leaves Projection, Gene Expression, Spatial, Trajectory, or HLA blank.
-- Specialist readiness reports the loaded data set's persisted cell fingerprint, and the initial Clonal UMAP host waits for its dynamic grouping input before mounting.
-- Immune repertoire views join only the active metadata columns, vectorize receptor matching, and cap contextual background points before allocating plot payloads; projection labels now follow UMAP, t-SNE, or PCA correctly.
-
-# CerebroNexus 4.6.1
-
-## Viewer
-
-- Thin BPCells CRB schema v2 records the cell count and lets the Viewer defer million-cell index hydration until metadata or projections are first used; package-level `readCerebro()` and schema v1 files remain eager and compatible.
-- Data Info is delivered before optional page servers and collapsed group filters are registered, reducing installed-package process-to-1M-cell readiness to a 2.557-second median while preserving those pages after the first response.
-
-# CerebroNexus 4.6.0
-
-## Viewer
-
-- Large projections use WebGPU with a Canvas 2D fallback, preserving complete million-cell views while making pan and zoom interactive.
-- Binary typed-array transport, compact categorical colours, grouped hover columns, and deferred non-render-critical metadata reduce transfer and first-frame work.
-- BPCells-backed CRBs record the portable-view cell fingerprint during export, avoiding a million-cell sort and hash on every Viewer startup while retaining a fallback for older CRBs.
-- Overview, Linked Views, gene-expression, Spatial, Trajectory, Trekker, and specialist plots share the accelerated renderer and selection state.
-- An opt-in one-million-cell demo and reproducible before/after benchmark document the official 10x E18 mouse-brain workload.
-
-# CerebroNexus 4.5.1
-
-## Performance
-
-- Viewer filtering, sampling, expression access, and mean calculations avoid unnecessary dense copies while preserving sparse and on-disk backends.
-- Projection, gene-expression, and Spatial paths retain canonical cell indices through backend reads instead of matching up to one million barcodes back to the same matrix columns.
-- A reproducible 1M-cell benchmark separates PR #165 CRB lifecycle gains from Thin CRB and backend hot-path gains, records canonical-index lookup separately, and reports wall time and R allocation for all three stages.
-- Shuffled external-backend reads use storage order internally and restore the requested Viewer order afterward.
-- Linked Views bundles reuse the session cell fingerprint and avoid serializing duplicate projection coordinates.
-- Viewer expression reads retain canonical indices for current CRBs and fall back to barcodes for serialized legacy accessors.
-
-# CerebroNexus 4.5.0
+- Adds a shared accelerated renderer with WebGPU and WebGL2 fallback for large
+  projections, Linked Views, Gene Expression, Spatial, Trajectory and repertoire
+  views, preserving zoom, hover and coordinated selection.
+- Uses compact binary transport, canonical cell indices, reusable geometry and
+  deferred metadata to reduce large-dataset transfer and preparation costs.
+- Fixes remounted views, Gene selection summaries and tables, progress lifecycle,
+  pinned tooltips and stale-result rejection when switching datasets.
+- Refines navigation, typography, responsive layouts, loading and empty states;
+  improves keyboard access, focus, status announcements and reduced motion.
+- Restores colored sidebar icons and provides a default-on Linked cell hover
+  switch in the toolbar, independent of zoom, selection and Data Info settings.
+- Avoids repeated IR preparation and metadata joins, reuses Groups counts, and
+  computes exact native Abundance, SizeDist and Homeostasis summaries where
+  supported while preserving analytical fallbacks.
+- Defers inactive-page work and optional trajectory/IR content; bounds process
+  caches and shared prefetch tasks without changing expression precision.
+- Includes an opt-in million-cell mouse-brain demo and reproducible benchmarks.
+  Historical timing series retain their original source and readiness boundaries;
+  they are not a universal page-loading guarantee.
 
 ## Data format and I/O
 
-- New `saveCerebro()`, `readCerebro()`, and `convertCerebro()` APIs support codec-independent `.crb` files, automatically read legacy RDS and thin RDS/qs2 CRBs, and use qs2 by default for new files.
-- BPCells-backed thin CRBs omit duplicated cell indexes, projection row names, and live expression handles while validating the shared sidecar checksum during hydration.
-- Large immune repertoires can live inside the BPCells sidecar and are decoded only when an immune or linked-clone view requests them, keeping dataset selection independent of repertoire size.
-- The reproducible one-million-cell benchmark records source-to-artifact processing, physical file layouts, host and package versions, and comparisons against PR #165.
+- Adds `saveCerebro()`, `readCerebro()` and `convertCerebro()` with automatic legacy
+  RDS compatibility and qs2 support. Thin CRB v2 and Viewer Packs preserve lazy
+  backend access, stable cell fingerprints and portable first-frame assets.
+- Supports gene-major BPCells storage and batch expression reads, restoring
+  canonical cell order after storage-order access; existing backends remain
+  compatible.
+- Supports lazy large-repertoire sidecars and compact repeated metadata, including
+  the Ren atlas's paired TCR/BCR repertoire and published t-SNE projection.
+- Streams delayed-matrix exports without whole-matrix dense realization, and
+  bounds external enrichment request time and error handling.
+
+## Packaging
+
+- Removes application-specific container recipes and the direct OpenSSL package
+  dependency. Dataset bundle filenames remain unchanged.
+- Consolidates this PR's development NEWS entries into one 5.0.0 release; earlier
+  released versions below are unchanged. Nix remains the CI environment.
 
 # CerebroNexus 4.4.3
 

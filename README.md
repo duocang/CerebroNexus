@@ -91,11 +91,11 @@ createShinyApp(
 )
 ```
 
-For login-protected Apps, follow the [Linux / Shiny Server / Docker
+For login-protected Apps, follow the [Linux / Shiny Server
 authentication deployment note](inst/viewer/AUTHENTICATION-DEPLOYMENT.md).
 It is also included in every generated App under `viewer/`. Check permissions
 and the actual R worker's ownership after copying the App, especially when
-using a read-only Docker bind mount or transferring a Windows build to Linux.
+transferring a Windows build to Linux.
 
 ## License
 
