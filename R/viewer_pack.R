@@ -671,7 +671,7 @@
         package = "CerebroNexus", mustWork = TRUE), envir = scope)
       compact <<- scope$compactViolinData
     }
-    compact(metadata, metric, group, max_points_per_group)
+    do.call(compact, list(metadata, metric, group, max_points_per_group))
   }
 })
 
