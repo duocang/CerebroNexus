@@ -477,6 +477,57 @@ ir_clonal_abundance_counts <- function(data, clone_col) {
 }
 
 ## ---- Scalable clone-size distribution -------------------------------- ##
+## Exact all-chain, ungrouped Homeostasis. The histogram preserves cell-weighted
+## clone proportions without sorting long clone strings or loading scRepertoire.
+ir_homeostasis_counts <- function(data, clone_col) {
+  pack <- viewerPackCurrent()
+  packed <- viewerPackReadAsset(pack, "immune/homeostasis.qs2")
+  if (!is.null(packed[[clone_col]])) return(packed[[clone_col]])
+  rows <- Map(function(frame, sample) {
+    clones <- as.character(frame[[clone_col]])
+    clones <- clones[!is.na(clones)]
+    if (!length(clones)) return(NULL)
+    sizes <- tabulate(match(clones, unique(clones)))
+    bins <- table(sizes)
+    data.frame(sample = sample, abundance = as.integer(names(bins)),
+      n_clones = as.integer(bins), stringsAsFactors = FALSE)
+  }, data, names(data) %||% as.character(seq_along(data)))
+  rows <- Filter(Negate(is.null), rows)
+  if (!length(rows)) return(data.frame(sample = character(), abundance = integer(), n_clones = integer()))
+  do.call(rbind, rows)
+}
+
+ir_homeostasis_matrix <- function(counts, clone_size) {
+  samples <- unique(counts$sample)
+  bounds <- c(0, unname(clone_size))
+  labels <- paste0(names(clone_size), " (", head(bounds, -1), " < X <= ", tail(bounds, -1), ")")
+  result <- matrix(0, length(samples), length(clone_size), dimnames = list(samples, labels))
+  for (sample in samples) {
+    rows <- counts[counts$sample == sample, , drop = FALSE]
+    total <- sum(as.double(rows$abundance) * rows$n_clones)
+    fraction <- rows$abundance / total
+    for (i in seq_along(clone_size)) {
+      keep <- fraction > bounds[[i]] & fraction <= bounds[[i + 1L]]
+      result[sample, i] <- sum(fraction[keep] * rows$n_clones[keep])
+    }
+  }
+  result
+}
+
+ir_homeostasis_plot <- function(counts, clone_size, palette) {
+  mat <- ir_homeostasis_matrix(counts, clone_size)
+  if (!nrow(mat)) return(ggplot2::ggplot() + ggplot2::theme_void())
+  frame <- data.frame(sample = rep(rownames(mat), ncol(mat)),
+    category = factor(rep(colnames(mat), each = nrow(mat)), levels = rev(colnames(mat))),
+    value = as.vector(mat))
+  ggplot2::ggplot(frame, ggplot2::aes(x = as.factor(sample), y = value, fill = category)) +
+    ggplot2::geom_bar(stat = "identity", position = "fill", colour = "black", linewidth = .25) +
+    ggplot2::scale_fill_manual(values = rev(grDevices::hcl.colors(ncol(mat), palette))) +
+    ggplot2::labs(x = "Samples", y = "Relative Abundance", fill = "Clonal Group") +
+    ggplot2::theme_classic() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
+}
+
 ## scRepertoire::clonalSizeDistribution() expands a dense
 ## clonotype-by-sample matrix before fitting its model. With hundreds of Ren
 ## samples this matrix contains mostly zeroes and can keep the single Shiny R

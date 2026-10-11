@@ -1,0 +1,170 @@
+$valid
+[1] TRUE
+
+$reason
+NULL
+
+$manifest
+$manifest$schema_version
+[1] 1
+
+$manifest$dataset_fingerprint
+[1] "md5-crb-v1:a1b062ac23bb7f01244a869c87df0a00"
+
+$manifest$cell_order_fingerprint
+[1] "md5-cell-order-v1:a940293f77dd03efb681594d269b3514"
+
+$manifest$n_cells
+[1] 1462702
+
+$manifest$modules
+[1] "common"      "projections" "metadata"    "immune"      "hla_tcr"    
+
+$manifest$capabilities
+$manifest$capabilities$marker_genes
+[1] FALSE
+
+$manifest$capabilities$most_expressed_genes
+[1] FALSE
+
+$manifest$capabilities$enriched_pathways
+[1] FALSE
+
+$manifest$capabilities$extra_material
+[1] TRUE
+
+$manifest$capabilities$trajectory
+[1] FALSE
+
+$manifest$capabilities$spatial
+[1] FALSE
+
+$manifest$capabilities$trekker
+[1] FALSE
+
+
+$manifest$projection_names
+[1] "tsne"
+
+$manifest$metadata_names
+ [1] "sample"                   "geo_accession"           
+ [3] "patient"                  "cell_type"               
+ [5] "major_type"               "dataset"                 
+ [7] "tissue"                   "severity"                
+ [9] "stage"                    "age"                     
+[11] "sex"                      "days_after_symptom_onset"
+[13] "sars_cov_2"               "outcome"                 
+[15] "comorbidities"            "bcr_sequenced"           
+[17] "tcr_sequenced"           
+
+$manifest$group_metric_frames
+list()
+
+$manifest$trajectory_frames
+list()
+
+$manifest$spatial_frames
+list()
+
+$manifest$immune_receptors
+[1] "TCR" "BCR"
+
+$manifest$hla_chains
+[1] "TRA" "TRB"
+
+$manifest$assets
+                           path             dtype dimensions    bytes
+1         common/cell_order.qs2              utf8    1462702  6342281
+2           projections/001.bin           float32  1462702x2 11701616
+3        metadata/001.codes.bin            uint16    1462702  2925404
+4  metadata/001.dictionary.json              utf8        284     2870
+5        metadata/002.codes.bin            uint16    1462702  2925404
+6  metadata/002.dictionary.json              utf8        284     3694
+7        metadata/003.codes.bin             uint8    1462702  1462702
+8  metadata/003.dictionary.json              utf8        196     1791
+9        metadata/004.codes.bin             uint8    1462702  1462702
+10 metadata/004.dictionary.json              utf8         64     1128
+11       metadata/005.codes.bin             uint8    1462702  1462702
+12 metadata/005.dictionary.json              utf8         12       78
+13       metadata/006.codes.bin             uint8    1462702  1462702
+14 metadata/006.dictionary.json              utf8         16      162
+15       metadata/007.codes.bin             uint8    1462702  1462702
+16 metadata/007.dictionary.json              utf8         10      322
+17       metadata/008.codes.bin             uint8    1462702  1462702
+18 metadata/008.dictionary.json              utf8          3       46
+19       metadata/009.codes.bin             uint8    1462702  1462702
+20 metadata/009.dictionary.json              utf8          3       42
+21       metadata/010.codes.bin             uint8    1462702  1462702
+22 metadata/010.dictionary.json              utf8         65      330
+23       metadata/011.codes.bin             uint8    1462702  1462702
+24 metadata/011.dictionary.json              utf8          3       20
+25       metadata/012.codes.bin             uint8    1462702  1462702
+26 metadata/012.dictionary.json              utf8         75      389
+27       metadata/013.codes.bin             uint8    1462702  1462702
+28 metadata/013.dictionary.json              utf8          2       24
+29       metadata/014.codes.bin             uint8    1462702  1462702
+30 metadata/014.dictionary.json              utf8          3       36
+31       metadata/015.codes.bin             uint8    1462702  1462702
+32 metadata/015.dictionary.json              utf8         46     1864
+33       metadata/016.codes.bin             uint8    1462702  1462702
+34 metadata/016.dictionary.json              utf8          2       13
+35       metadata/017.codes.bin             uint8    1462702  1462702
+36 metadata/017.dictionary.json              utf8          2       13
+37               immune/TCR.qs2 sparse-cell-index     220968  4143457
+38               immune/BCR.qs2 sparse-cell-index     282464  6303711
+39         immune/abundance.qs2        table-list       9412    14406
+40       immune/homeostasis.qs2        table-list       9412    14406
+41              hla_tcr/TRA.qs2             table  220968x26 17515682
+42        hla_tcr/TRA.first.qs2   hla-first-frame             1599514
+43              hla_tcr/TRB.qs2             table  220968x26 17694186
+44        hla_tcr/TRB.first.qs2   hla-first-frame             1658163
+                           checksum
+1  afc5d83cb2e457e72960588a48073357
+2  f984deafffa483416f74da95831c9268
+3  e3c57d03bf6a4bb7567bb756fdbe4ab2
+4  78e682d33ab3e50c162cc245d8d91016
+5  a2f957f1d3b14f43918bba801f08e5da
+6  8ebc0d15bca18007ffdc6d89c4938282
+7  8c1019e794006b9de0619e5c334b188d
+8  714d1daca617bf440da101c73ec55312
+9  f6399977a2a0a922c0bdc2ef83e67615
+10 978614ba56b5bf6c54878aea739904d4
+11 e44b2f12b54c230f481fde752475f15e
+12 181bc5127d75335cd0ffce9b9d44bf8f
+13 b90b54a994d1a942674fd75da03f519c
+14 07ec06d31ed4ec9878400bb2a8384738
+15 286ff25cb7c1f59e64e6af074fdb0776
+16 fc8f075534ca89e233d6e40f3e929abd
+17 fe03a81475e1c78944d68b7fea4f701e
+18 10c12f0845fe9e8a6d93f000e04c79e0
+19 4e58fe118defcecb336f22fbc4c8eba9
+20 3ff5b87aa7a6fe88c967da2847ec1106
+21 02dfdf4692a01c155d72783b23e65cf3
+22 fa5d552fa7a38c72d253b708698643ed
+23 0669a5024a6e3e2483798ff11debdcf3
+24 fe6a8a0db61a72684cd4c502167f1a53
+25 4e7969ce3a25a8ac10056c1b12a153f9
+26 0c8510c82fe1285418d3c92e1a8a932f
+27 6c38dd005fe90ecbaf4df04832a5f307
+28 6419948c96cf35558c1aafa033c32028
+29 0da29a78ef72e0169415bd4793b66a6c
+30 671679b8833dc9f102d94eb511693221
+31 b9ebd68d0578c504fcfbe2f6a44c3d66
+32 9d51692d89dda559224aa48ad04c5760
+33 5cdaf5e67c9ca0c6e3571620f50fe28c
+34 89d105352cb41bcc72bef3559af8956f
+35 de7a2dd372350949fbec7d5f9b73639c
+36 89d105352cb41bcc72bef3559af8956f
+37 396ccf4a951a69c412bc287645d43a52
+38 0e505a3b31969affa2be4f7e25cf0d1b
+39 b3ea18dbb75a790c13ae21f106cf35b0
+40 b3ea18dbb75a790c13ae21f106cf35b0
+41 a6f968c986c49d120156ff39fbc06aef
+42 fe46af108301bf8935101047c28b807f
+43 e44d515cf103357ff44a1603715855eb
+44 310049838eedfe8413a091ee75d744ab
+
+
+$path
+[1] "/mnt/c/Users/wangx/Projects/shinyapps_docker/apps/cerebronexus/private-data/cerebro_ren_covid_1.46m.viewer"
+

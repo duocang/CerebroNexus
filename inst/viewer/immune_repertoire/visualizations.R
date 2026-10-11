@@ -1287,8 +1287,6 @@ ir_clonal_abundance_plotly <- function(counts) {
 
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
   req_plot_space("ir_plot_clonalAbundance")
-  data <- ir_data()
-  req(!is.null(data))
   pars <- ir_params()
   ## Tab navigation can reach this output before renderUI has bound its
   ## controls. Do not pass NULL chain/cloneCall into scRepertoire during that gap.
@@ -1302,10 +1300,12 @@ output$ir_plot_clonalAbundance <- plotly::renderPlotly({
       is.null(order_by)
   ) {
     return(ir_clonal_abundance_plotly(ir_clonal_abundance_counts(
-      data,
+      ir_data(),
       ir_clonecall_col(pars$cloneCall)
     )))
   }
+  data <- ir_data()
+  req(!is.null(data))
   req_scRepertoire()
   ir_render_ggplotly(
     scRepertoire::clonalAbundance(
@@ -1559,11 +1559,18 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalHomeostasis")
+  pars <- ir_params()
+  req(pars$chain, pars$cloneCall)
+  if (identical(pars$chain, "both") && is.null(pars$groupBy) && is.null(ir_order_by())) {
+    return(ir_render_ggplotly(
+      ir_homeostasis_plot(ir_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall)),
+        ir_clone_size(), IR_PALETTE), "clonalHomeostasis"
+    ))
+  }
+  req_scRepertoire()
   data <- ir_data()
   req(!is.null(data))
-  pars <- ir_params()
   ir_render_ggplotly(
     scRepertoire::clonalHomeostasis(
       data,

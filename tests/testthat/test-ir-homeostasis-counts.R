@@ -1,0 +1,62 @@
+ir_home_env <- new.env(parent = globalenv())
+ir_home_env$`%||%` <- function(a, b) if (is.null(a)) b else a
+ir_home_env$viewerPackCurrent <- function() NULL
+ir_home_env$viewerPackReadAsset <- function(...) NULL
+ir_home_file <- testthat::test_path("../../inst/viewer/immune_repertoire/data.R")
+if (!file.exists(ir_home_file)) ir_home_file <- system.file("viewer/immune_repertoire/data.R", package = "CerebroNexus")
+for (expr in parse(ir_home_file)) {
+  if (is.call(expr) && identical(expr[[1]], as.name("<-")) && is.call(expr[[3]]) &&
+      identical(expr[[3]][[1]], as.name("function"))) eval(expr, ir_home_env)
+}
+
+test_that("Homeostasis exact bins match scRepertoire, including blanks and thresholds", {
+  skip_if_not_installed("scRepertoire")
+  frames <- list(z10 = c(rep("a", 4), rep("b", 2), "", NA, "NA"),
+    z2 = c("", "", "c", "d"), empty = character(), missing = c(NA, NA),
+    unicode = c("克隆", "克隆", "other"))
+  repertoire <- lapply(frames, function(x) data.frame(CTgene = x, CTnt = x, CTaa = x, CTstrict = x))
+  for (call in c("gene", "nt", "aa", "strict")) for (breaks in list(
+    c(Rare = .0001, Small = .001, Medium = .01, Large = .1, Hyperexpanded = 1),
+    c(A = .25, B = .5, C = 1), c(A = .25, B = .5))) {
+    column <- paste0("CT", call)
+    counts <- ir_home_env$ir_homeostasis_counts(repertoire, column)
+    actual <- ir_home_env$ir_homeostasis_matrix(counts, breaks)
+    expected <- scRepertoire::clonalHomeostasis(repertoire, cloneCall = call,
+      chain = "both", cloneSize = breaks, exportTable = TRUE)
+    expect_equal(actual, expected, tolerance = 1e-12)
+    # The optional pack retains exactly these bins; no approximation to values.
+    packed <- CerebroNexus:::.viewerPackImmuneAbundance(repertoire, drop_empty = FALSE)
+    expect_equal(ir_home_env$ir_homeostasis_matrix(packed[[column]], breaks), expected, tolerance = 1e-12)
+  }
+  abundance <- CerebroNexus:::.viewerPackImmuneAbundance(repertoire)
+  homeostasis <- CerebroNexus:::.viewerPackImmuneAbundance(repertoire, drop_empty = FALSE)
+  expect_false(identical(abundance$CTgene, homeostasis$CTgene))
+  expect_equal(sum(homeostasis$CTgene$abundance * homeostasis$CTgene$n_clones), 15)
+})
+
+test_that("Homeostasis reads only the current dataset's optional asset", {
+  env <- new.env(parent = ir_home_env)
+  counter <- 0L
+  packed <- list(CTgene = data.frame(sample = "A", abundance = 2L, n_clones = 3L))
+  env$viewerPackCurrent <- function() packed
+  env$viewerPackReadAsset <- function(pack, path) { expect_identical(path, "immune/homeostasis.qs2"); pack }
+  fn <- ir_home_env$ir_homeostasis_counts
+  environment(fn) <- env
+  expect_identical(fn(stop("must not hydrate"), "CTgene"), packed$CTgene)
+  packed$CTgene$sample <- "B"
+  expect_identical(fn(stop("must not hydrate"), "CTgene")$sample, "B")
+  packed <- NULL
+  raw <- list(legacy = data.frame(CTgene = c("x", "x", "")))
+  expect_identical(fn(raw, "CTgene")$abundance, c(1L, 2L))
+})
+
+test_that("Homeostasis plot preserves stacked cell proportions", {
+  skip_if_not_installed("scRepertoire")
+  data <- list(B = data.frame(CTgene = c("a", "a", "b", "c")), A = data.frame(CTgene = c("x", "y")))
+  breaks <- c(Small = .25, Large = 1)
+  p <- ir_home_env$ir_homeostasis_plot(ir_home_env$ir_homeostasis_counts(data, "CTgene"), breaks, "Harmonic")
+  reference <- scRepertoire::clonalHomeostasis(data, cloneCall = "gene", cloneSize = breaks, palette = "Harmonic")
+  actual <- ggplot2::ggplot_build(p)$data[[1]]
+  expected <- ggplot2::ggplot_build(reference)$data[[1]]
+  expect_equal(actual[c("x", "y", "ymin", "ymax", "fill")], expected[c("x", "y", "ymin", "ymax", "fill")], ignore_attr = TRUE)
+})

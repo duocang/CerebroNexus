@@ -5,7 +5,7 @@ out <- args[[4]]
 dir.create(out, recursive = TRUE, showWarnings = FALSE)
 pkgload::load_all(root, quiet = TRUE)
 writeLines(as.character(Sys.getpid()), file.path(out, "pid"))
-files <- file.path(root, "inst/viewer/immune_repertoire", c("data.R", "settings.R", "visualizations.R"))
+files <- c(file.path(root, "inst/viewer/immune_repertoire", c("data.R", "settings.R", "visualizations.R")), file.path(root, "R/viewer_pack.R"))
 write.csv(data.frame(file = files, md5 = unname(tools::md5sum(files))), file.path(out, "source.csv"), row.names = FALSE)
 app <- launchCerebro(mode = "closed", crb_file_to_load = c(Ren = args[[2]], Demo = file.path(root, "inst/extdata/examples/example.crb")), percentage_cells_to_show = 100)
 server <- app$serverFuncSource()

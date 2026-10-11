@@ -10,10 +10,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
     }
     tab <- ir_param("ir_tabs", "Clonal UMAP")
     packed_landing <- identical(tab, "Clonal UMAP")
-    raw <- if (packed_landing) NULL else ir_data_raw()
+    summary <- getImmuneRepertoireSummary()
+    summary_chains <- as.character(summary$chains)
+    raw <- if (packed_landing || length(summary_chains)) NULL else ir_data_raw()
     if (
-      (packed_landing && !ir_repertoire_available()) ||
-        (!packed_landing && is.null(raw))
+      !isTRUE(summary$available)
     ) {
       return(div(
         class = "alert alert-warning",
@@ -21,7 +22,8 @@ output$ir_main_params_UI <- shiny::bindEvent(
       ))
     }
 
-    chains_present <- if (is.null(raw)) character(0) else detect_chains(raw)
+    # The validated sidecar descriptor supplies these without materialization.
+    chains_present <- if (length(summary_chains)) summary_chains else detect_chains(raw)
     tcr_present <- intersect(chains_present, c("TRA", "TRB", "TRG", "TRD"))
     bcr_present <- intersect(chains_present, c("IGH", "IGK", "IGL"))
     # Build a flat named vector of chain choices. A nested list mixing a
@@ -45,7 +47,7 @@ output$ir_main_params_UI <- shiny::bindEvent(
         colnames(getMetaData()),
         error = function(e) character()
       )
-      data_cols <- union(names(raw[[1]]), metadata_cols)
+      data_cols <- union(if (length(raw)) names(raw[[1]]) else character(), metadata_cols)
       groups <- tryCatch(getGroups(), error = function(e) character(0))
       available_groups <- intersect(groups, data_cols)
     }

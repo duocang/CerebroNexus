@@ -200,7 +200,7 @@
   )
 }
 
-.viewerPackImmuneAbundance <- function(repertoire) {
+.viewerPackImmuneAbundance <- function(repertoire, drop_empty = TRUE) {
   columns <- intersect(
     c("CTgene", "CTnt", "CTaa", "CTstrict"),
     unique(unlist(lapply(repertoire, colnames)))
@@ -217,7 +217,7 @@
             return(NULL)
           }
           clones <- as.character(frame[[column]])
-          clones <- clones[!is.na(clones) & nzchar(clones)]
+          clones <- clones[!is.na(clones) & (!drop_empty | nzchar(clones))]
           if (!length(clones)) {
             return(NULL)
           }
@@ -922,6 +922,9 @@
       }
     }
     abundance <- .viewerPackImmuneAbundance(repertoire)
+    # Homeostasis counts empty strings as clone identities, unlike Abundance.
+    # Store separate exact bins; older packs simply use the raw-data fallback.
+    homeostasis <- .viewerPackImmuneAbundance(repertoire, drop_empty = FALSE)
     assets <- rbind(
       assets,
       .viewerPackWriteAsset(
@@ -932,6 +935,10 @@
         sum(vapply(abundance, nrow, integer(1)))
       )
     )
+    assets <- rbind(assets, .viewerPackWriteAsset(
+      stage, file.path("immune", "homeostasis.qs2"), homeostasis,
+      "table-list", sum(vapply(homeostasis, nrow, integer(1)))
+    ))
   }
   chains <- intersect(hla_detect_chains(repertoire), c("TRA", "TRB"))
   if (length(chains)) {

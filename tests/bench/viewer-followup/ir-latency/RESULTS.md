@@ -1,5 +1,10 @@
 # IR latency investigation: no production change retained
 
+Follow-up: this is the historical diagnosis. The subsequent retained fix and
+three-pair Windows Brave validation are in [fix/RESULTS.md](fix/RESULTS.md).
+That follow-up builds the previously missing Ren pack; the no-pack findings
+below describe the earlier fixture state and are not its A/B baseline.
+
 Date: 2026-10-11. Baseline/source HEAD:
 `52043c992f72caf2b84cb15f8ab986097b41d6c5`.
 Actual branch: `perf/pr6-ui-accessibility-polish`; existing worktree reused.
