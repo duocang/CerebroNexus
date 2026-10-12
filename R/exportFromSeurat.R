@@ -2179,6 +2179,7 @@ exportFromSeurat <- function(
             }
             coordinate_transform$transformed_coordinate_fingerprint <-
               .spx_coordinate_transform_fingerprint(coords_df)
+            coordinate_transform$coordinate_fingerprint_version <- 2L
             coordinate_transform$source_coordinate_fingerprint <-
               source_coordinate_fingerprint
             spatial_data$coordinate_transform <- coordinate_transform

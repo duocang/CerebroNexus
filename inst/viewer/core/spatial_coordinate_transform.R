@@ -278,7 +278,10 @@
   coordinates
 }
 
-.spx_coordinate_transform_fingerprint <- function(coordinates) {
+.spx_coordinate_transform_fingerprint <- function(
+  coordinates,
+  .legacy = FALSE
+) {
   details <- .spx_coordinate_transform_coordinates(
     coordinates,
     "Spatial coordinate fingerprint"
@@ -303,15 +306,32 @@
     value[abs(value) < 1e-12] <- 0
     sprintf("%.12g", value)
   }
-  payload <- serialize(
-    list(
-      row_ids = row_ids,
-      x = canonical_number(details$x),
-      y = canonical_number(details$y)
-    ),
-    connection = NULL,
-    version = 3L
-  )
+  x <- canonical_number(details$x)
+  y <- canonical_number(details$y)
+  payload <- if (isTRUE(.legacy)) {
+    # Only for reading unversioned exports made by the current R writer.
+    serialize(list(row_ids = row_ids, x = x, y = y), NULL, version = 3L)
+  } else {
+    # R serialization contains its writer version. Durable identities instead
+    # use a length-prefixed UTF-8 stream, with explicit row order and axes.
+    ids <- enc2utf8(row_ids)
+    charToRaw(paste0(
+      "CEREBRO_SPATIAL_COORDINATES_V2:",
+      length(ids),
+      ":",
+      paste0(
+        nchar(ids, type = "bytes"),
+        ":",
+        ids,
+        ":",
+        gsub(",", ".", x, fixed = TRUE),
+        ":",
+        gsub(",", ".", y, fixed = TRUE),
+        "\n",
+        collapse = ""
+      )
+    ))
+  }
   path <- tempfile("spatial-coordinate-fingerprint-")
   on.exit(unlink(path, force = TRUE), add = TRUE)
   writeBin(payload, path, useBytes = TRUE)

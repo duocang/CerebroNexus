@@ -71,11 +71,22 @@ builder_core_stage_ui <- function(id, model) {
         )
       )
     ),
-    div(
-      class = "builder-configure-metadata-chips",
-      lapply(group_catalog$items, function(item) {
-        span(item$label)
-      })
+    tags$details(
+      class = "builder-configure-metadata",
+      `data-disclosure-key` = "available-metadata",
+      tags$summary(
+        "Available metadata",
+        span(
+          class = "builder-detected-content-count",
+          paste(length(group_catalog$items), "columns")
+        )
+      ),
+      div(
+        class = "builder-configure-metadata-chips",
+        lapply(group_catalog$items, function(item) {
+          span(item$label)
+        })
+      )
     ),
     tags$section(
       id = ns("content"),

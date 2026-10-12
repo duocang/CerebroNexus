@@ -57,6 +57,18 @@ test_that("the live app exposes imports before their worker result", {
       c("2 of 7 selected datasets ready", "15 GB")
     )
     expect_match(restore_message$busy_detail_items[[3L]], "2m 0[5-6]s elapsed")
+    expect_false(restore_message$busy_modal)
+    opening_message <- builder_activity_message(
+      app_env$builder_activity_state(project_phase = "opening"),
+      list(mode = "opening")
+    )
+    expect_true(opening_message$page_inert)
+    expect_true(opening_message$busy_modal)
+    attaching_message <- builder_activity_message(
+      app_env$builder_activity_state(project_phase = "opening"),
+      list(mode = "restoring")
+    )
+    expect_false(attaching_message$busy_modal)
 
     request <- Filter(
       Negate(is.null),

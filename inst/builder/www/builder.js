@@ -91,6 +91,7 @@
     busy_detail: null,
     busy_detail_items: null,
     busy_phase: null,
+    busy_modal: false,
     has_project: false,
     build_cancelable: false,
     open_cancelable: false,
@@ -1043,9 +1044,11 @@
 
     var pageInert = builderConnectionReady &&
       builderActivityState.page_inert === true;
+    var operationOverlayOpen = pageInert &&
+      builderActivityState.busy_modal !== true;
     var nextBuildOperationActive = pageInert &&
       builderActivityState.busy_title === "Building output";
-    var nextProjectOpenOperationActive = pageInert &&
+    var nextProjectOpenOperationActive = operationOverlayOpen &&
       (builderActivityState.phase === "opening" || builderActivityState.phase === "restoring") &&
       !builderProjectSaveResultOpen;
     var projectOpenPriorFocus = !projectOpenOperationActive &&
@@ -1055,7 +1058,7 @@
     var overlay = document.getElementById("builder-operation-overlay");
     document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
-      var overlayOpen = pageInert || builderProjectSaveResultOpen;
+      var overlayOpen = operationOverlayOpen || builderProjectSaveResultOpen;
       overlay.setAttribute(
         "aria-hidden",
         overlayOpen ? "false" : "true"
@@ -5038,6 +5041,7 @@
             ? message.busy_detail_items
             : null,
           busy_phase: message.busy_phase || null,
+          busy_modal: message.busy_modal === true,
           has_project: message.has_project === true,
           build_cancelable: message.build_cancelable === true,
           open_cancelable: message.open_cancelable === true,

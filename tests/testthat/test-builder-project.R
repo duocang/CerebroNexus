@@ -4650,6 +4650,62 @@ test_that("reusable CRB preparation skips current artifacts", {
   )
 })
 
+test_that("checkpoint status reuses verification but rejects changed members", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  paths <- file.path(root, c("dataset.crb", "matrix.bin"))
+  lapply(paths, function(path) writeLines("original", path))
+  fingerprints <- lapply(
+    paths,
+    runtime$builder_project_file_fingerprint,
+    content = TRUE
+  )
+  # A copied checkpoint has a different file identity from its saved manifest.
+  fingerprints <- lapply(fingerprints, function(value) {
+    value$file_id <- "previous-host"
+    value
+  })
+  artifact <- list(
+    status = "ready",
+    path = basename(paths[1]),
+    fingerprint = fingerprints[[1]],
+    members = list(list(
+      path = basename(paths[2]),
+      fingerprint = fingerprints[[2]]
+    )),
+    plan_item = list(artifact_identity = list(spatial_sections = character()))
+  )
+  cache <- new.env(parent = emptyenv())
+  original <- runtime$builder_project_file_fingerprint
+  reads <- 0L
+  runtime$builder_project_file_fingerprint <- function(
+    path,
+    content = FALSE,
+    ...
+  ) {
+    if (isTRUE(content)) {
+      reads <<- reads + 1L
+    }
+    original(path, content = content, ...)
+  }
+  available <- function() {
+    runtime$builder_project_artifact_available(
+      artifact,
+      root,
+      verification_cache = cache
+    )
+  }
+  expect_true(available())
+  expect_identical(reads, 2L)
+  expect_true(available())
+  expect_identical(reads, 2L)
+  writeLines("changed member contents", paths[2])
+  expect_false(available())
+  expect_identical(reads, 3L)
+  unlink(paths[2])
+  expect_false(available())
+})
+
 test_that("checked settings and CRB availability are independent", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()

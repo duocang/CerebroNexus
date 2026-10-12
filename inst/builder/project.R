@@ -4878,7 +4878,8 @@ builder_project_artifact_spatial_closure_available <- function(
 builder_project_artifact_available <- function(
   artifact,
   root,
-  observed = NULL
+  observed = NULL,
+  verification_cache = NULL
 ) {
   if (
     !is.list(artifact) ||
@@ -4907,7 +4908,8 @@ builder_project_artifact_available <- function(
     !builder_project_managed_file_matches(
       artifact$fingerprint,
       path,
-      metadata = metadata
+      metadata = metadata,
+      verification_cache = verification_cache
     )
   ) {
     return(FALSE)
@@ -4938,7 +4940,8 @@ builder_project_artifact_available <- function(
       builder_project_managed_file_matches(
         member$fingerprint,
         member_path,
-        metadata = metadata
+        metadata = metadata,
+        verification_cache = verification_cache
       )
     },
     logical(1)
@@ -5101,7 +5104,8 @@ builder_project_checkpoint_state <- function(
   artifact = NULL,
   root = NULL,
   job = NULL,
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   if (!is.list(entry) || !.builder_project_text(entry$id %||% NULL)) {
     stop(
@@ -5120,7 +5124,11 @@ builder_project_checkpoint_state <- function(
   artifact_ready <-
     .builder_project_text(root %||% NULL) &&
     is.list(artifact) &&
-    builder_project_artifact_available(artifact, root) &&
+    builder_project_artifact_available(
+      artifact,
+      root,
+      verification_cache = verification_cache
+    ) &&
     builder_project_artifact_matches_entry(
       artifact,
       entry,
@@ -5154,7 +5162,8 @@ builder_project_checkpoint_states <- function(
   artifacts = list(),
   root = NULL,
   jobs = list(),
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   states <- lapply(entries %||% list(), function(entry) {
     builder_project_checkpoint_state(
@@ -5163,7 +5172,8 @@ builder_project_checkpoint_states <- function(
       artifact = artifacts[[entry$id]] %||% entry$project_artifact %||% NULL,
       root = root,
       job = jobs[[entry$id]] %||% NULL,
-      identity_cache = identity_cache
+      identity_cache = identity_cache,
+      verification_cache = verification_cache
     )
   })
   names(states) <- vapply(entries %||% list(), `[[`, character(1), "id")

@@ -322,6 +322,31 @@ test_that("coordinate fingerprints bind row identity and transformed values", {
   )
 })
 
+test_that("coordinate fingerprints have a portable versioned encoding", {
+  coordinates <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    row.names = c("c1", "c2")
+  )
+  # Independently checked in R 4.5.1 and R 4.6.1. Their legacy hashes differ.
+  expect_identical(
+    .spx_coordinate_transform_fingerprint(coordinates),
+    "184c39d8655cd00c966509619d07404e"
+  )
+  utf8 <- coordinates
+  rownames(utf8) <- c("caf\u00e9", "cell:2\n")
+  latin1 <- utf8
+  rownames(latin1) <- iconv(rownames(utf8), to = "latin1")
+  expect_identical(
+    .spx_coordinate_transform_fingerprint(utf8),
+    .spx_coordinate_transform_fingerprint(latin1)
+  )
+  expect_false(identical(
+    .spx_coordinate_transform_fingerprint(utf8),
+    .spx_coordinate_transform_fingerprint(coordinates)
+  ))
+})
+
 test_that("coordinate transforms invert around their persisted pivot", {
   coordinates <- data.frame(
     x = c(0, 2, 3),
