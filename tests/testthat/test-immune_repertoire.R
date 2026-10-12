@@ -487,7 +487,12 @@ test_that("Clonal projection reuses grouped renderer data without placeholder ID
   expect_no_match(block, "fg <- df[", fixed = TRUE)
   expect_match(block, "ir_projection_axis_names\\(projection\\)")
   expect_match(block, "deferred_aux = deferred_aux", fixed = TRUE)
-  expect_match(block, "}, priority = 1000)", fixed = TRUE)
+  observer <- r_test_observer(
+    content,
+    "observe",
+    quote(ir_clonal_umap_last_request(request_signature))
+  )
+  expect_identical(observer$priority, 1000)
   expect_match(
     block,
     "deferred_selection_lengths = trace_lengths",
@@ -747,7 +752,11 @@ test_that("IR cold landing defers drawer controls and metadata hydration", {
   expect_match(ui, "data-cerebro-drawer-sticky-in-page", fixed = TRUE)
   expect_match(drawer, "drawerHomePageIsActive", fixed = TRUE)
   expect_match(description[[1L, "Imports"]], "scRepertoire", fixed = TRUE)
-  expect_false(grepl("scRepertoire", description[[1L, "Suggests"]], fixed = TRUE))
+  expect_false(grepl(
+    "scRepertoire",
+    description[[1L, "Suggests"]],
+    fixed = TRUE
+  ))
 })
 
 test_that("Length renderer only facets when a grouping is selected", {
