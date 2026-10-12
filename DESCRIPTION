@@ -27,6 +27,12 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
+  callr,
+  digest,
+  htmltools,
+  processx,
+  ps,
+  readxl,
   base64enc,
   biomaRt (>= 2.38.0),
   colourpicker (>= 1.0),
@@ -68,8 +74,11 @@ Imports:
   utils,
   visNetwork
 Suggests:
+  codetools,
+  jpeg,
+  qs,
+  writexl,
   BPCells,
-  callr,
   DelayedArray,
   formattable (>= 0.2.0.1),
   ggtree,
@@ -78,7 +87,6 @@ Suggests:
   knitr,
   monocle,
   png,
-  readxl,
   reshape2,
   rhdf5,
   rmarkdown,
