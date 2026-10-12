@@ -401,8 +401,8 @@ test_that("metadata directories are never deleted as owned lock files", {
   expect_true(dir.exists(lock$path))
   expect_identical(readLines(foreign), "FOREIGN")
 
-  unlink(foreign)
-  expect_true(file.remove(owner_path))
+  unlink(owner_path, recursive = TRUE, force = TRUE)
+  expect_false(dir.exists(owner_path))
   writeLines(owner, owner_path)
   expect_true(.releaseBundleLock(lock))
 })
@@ -577,7 +577,7 @@ test_that("stage cleanup completes before the lock is released", {
   crb <- lock_test_crb(root)
   result <- file.path(root, "app")
   build_ops <- .bundleBuildOps()
-  build_ops$write_lines <- function(text, connection) {
+  build_ops$copy <- function(...) {
     stop("injected stage failure")
   }
   release_lock <- .releaseBundleLock
@@ -605,7 +605,7 @@ test_that("stage cleanup errors cannot strand the build lock", {
   crb <- lock_test_crb(root)
   result <- file.path(root, "app")
   build_ops <- .bundleBuildOps()
-  build_ops$write_lines <- function(text, connection) {
+  build_ops$copy <- function(...) {
     stop("injected build failure")
   }
   testthat::local_mocked_bindings(

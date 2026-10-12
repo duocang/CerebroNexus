@@ -120,33 +120,29 @@ observeEvent(input[["spatial_projection_background_scale"]], {
 ##----------------------------------------------------------------------------##
 observeEvent(input[["spatial_projection_background_reset"]], {
   spatial_name <- input[["spatial_projection_to_display"]]
-  dataset <- spatial_dataset_name(
-    if (exists("available_crb_files")) available_crb_files$files else NULL,
-    if (exists("available_crb_files")) available_crb_files$selected else NULL
-  )
+  dataset <- viewer_current_dataset_key()
   spatial_data <- tryCatch(
     getSpatialData(spatial_name),
     error = function(e) list()
   )
   selected_descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
-    embedded_spatial_images(spatial_data),
+    embedded_spatial_images(
+      spatial_data,
+      input[["spatial_projection_roi"]] %||% ""
+    ),
     configured_spatial_images(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
       dataset,
-      spatial_name
+      spatial_name,
+      input[["spatial_projection_roi"]] %||% ""
     )
   )
-  image_label <- if (is.null(selected_descriptor)) {
-    NULL
-  } else {
-    selected_descriptor$label
-  }
-  preset <- spatialImagePreset(
+  preset <- spatial_background_preset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_label
+    selected_descriptor
   )
   updateSliderInput(
     session,
@@ -271,8 +267,8 @@ local({
 ## Copy alignment as preset.
 ##
 ## Reads the exact current dataset / spatial / image identity and renders one
-## canonical spatial_image_settings leaf. No Background has no image identity,
-## so it deliberately produces no snippet.
+## canonical spatial_image_settings leaf. An empty selection has no image
+## identity, so it deliberately produces no snippet.
 ##----------------------------------------------------------------------------##
 spatial_preset_code <- reactiveVal(NULL)
 
@@ -288,21 +284,23 @@ observeEvent(
 observeEvent(input[["spatial_projection_background_copy_preset"]], {
   dataset_context <- viewer_loaded_dataset_context()
   spatial_name <- input[["spatial_projection_to_display"]]
-  dataset <- spatial_dataset_name(
-    if (exists("available_crb_files")) available_crb_files$files else NULL,
-    if (exists("available_crb_files")) available_crb_files$selected else NULL
-  )
+  dataset_context <- viewer_loaded_dataset_context()
+  dataset <- dataset_context$dataset_key
   spatial_data <- tryCatch(
     getSpatialData(spatial_name),
     error = function(e) list()
   )
   descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
-    embedded_spatial_images(spatial_data),
+    embedded_spatial_images(
+      spatial_data,
+      input[["spatial_projection_roi"]] %||% ""
+    ),
     configured_spatial_images(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
       dataset,
-      spatial_name
+      spatial_name,
+      input[["spatial_projection_roi"]] %||% ""
     )
   )
   if (is.null(descriptor)) {
@@ -335,7 +333,7 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
   code <- format_spatial_preset_code(
     dataset = dataset,
     spatial_name = spatial_name,
-    image_label = descriptor$label,
+    image_label = descriptor$key %||% descriptor$label,
     offset_x = null_to(input[["spatial_projection_background_offset_x"]], 0),
     offset_y = null_to(input[["spatial_projection_background_offset_y"]], 0),
     scale_x = null_to(scale_x, 1),

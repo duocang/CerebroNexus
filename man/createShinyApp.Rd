@@ -38,7 +38,8 @@ createShinyApp(
   extra_tables_sheets = NULL,
   dataset_labels = NULL,
   initial_dataset = NULL,
-  initial_page = NULL
+  initial_page = NULL,
+  initial_projections = NULL
 )
 }
 \arguments{
@@ -181,6 +182,11 @@ are listed separately and loaded only when selected in the Viewer.}
 \item{extra_tables_sheets}{Optional named list of Excel sheet renames keyed
 by \code{extra_tables} labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.}
+
+\item{initial_projections}{Optional projection names to show when Linked
+views first opens. A character vector applies to every data set. A named
+list configures individual \code{cerebro_data} labels; omitted labels keep
+the Viewer's default single-projection behavior.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution

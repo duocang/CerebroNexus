@@ -18,11 +18,162 @@ publication_build_ops <- function(...) {
   overrides <- list(...)
   defaults <- list(
     copy = function(from, to, ...) file.copy(from, to, ...),
-    save_rds = function(object, file) saveRDS(object, file),
-    write_lines = function(text, connection) writeLines(text, connection)
+    save_rds = function(object, file) saveRDS(object, file)
   )
   utils::modifyList(defaults, overrides)
 }
+
+test_that("bundle copies use platform clones with a portable fallback", {
+  commands <- list()
+  fallbacks <- 0L
+  command <- function(command, args, stdout, stderr) {
+    commands[[length(commands) + 1L]] <<- c(command, args)
+    0L
+  }
+  fallback <- function(from, to, ...) {
+    fallbacks <<- fallbacks + 1L
+    TRUE
+  }
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    recursive = TRUE,
+    .sysname = "Darwin",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("-c" %in% commands[[1L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_true("--reflink=auto" %in% commands[[2L]])
+  expect_identical(fallbacks, 0L)
+
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Windows",
+    .command = command,
+    .fallback = fallback
+  ))
+  expect_identical(length(commands), 2L)
+  expect_identical(fallbacks, 1L)
+})
+
+test_that("Windows bundle copies use extended-length filesystem paths", {
+  expect_identical(
+    .bundleWindowsExtendedPath("C:/source/image.jpg", os_type = "windows"),
+    "\\\\?\\C:\\source\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath(
+      "\\\\server\\share\\image.jpg",
+      os_type = "windows"
+    ),
+    "\\\\?\\UNC\\server\\share\\image.jpg"
+  )
+  expect_identical(
+    .bundleWindowsExtendedPath("/source/image.jpg", os_type = "unix"),
+    "/source/image.jpg"
+  )
+
+  copied <- NULL
+  expect_true(.bundleCopyPath(
+    "C:/source/image.jpg",
+    "C:/stage/spatial-assets/image.jpg",
+    .sysname = "Windows",
+    .fallback = function(from, to, ...) {
+      copied <<- c(from, to)
+      TRUE
+    }
+  ))
+  expect_identical(
+    copied,
+    c(
+      "\\\\?\\C:\\source\\image.jpg",
+      "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+    )
+  )
+  observed <- NULL
+  expect_true(.bundleCopiedTargetExists(
+    "C:/stage/spatial-assets/image.jpg",
+    os_type = "windows",
+    .file_exists = function(path) {
+      observed <<- path
+      TRUE
+    },
+    .dir_exists = function(path) FALSE
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\image.jpg"
+  )
+
+  observed <- NULL
+  expect_true(.bundleCreateDirectory(
+    "C:/stage/spatial-assets/long-directory",
+    recursive = TRUE,
+    os_type = "windows",
+    .dir_create = function(path, ...) {
+      observed <<- path
+      TRUE
+    }
+  ))
+  expect_identical(
+    observed,
+    "\\\\?\\C:\\stage\\spatial-assets\\long-directory"
+  )
+})
+
+test_that("Windows recursive bundle copies materialize every directory entry", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  root <- withr::local_tempdir()
+  source <- file.path(root, "viewer")
+  destination <- file.path(root, "stage")
+  dir.create(file.path(source, "nested", "empty"), recursive = TRUE)
+  dir.create(destination)
+  writeBin(as.raw(1:32), file.path(source, "root.R"))
+  writeBin(as.raw(33:64), file.path(source, "nested", "module.R"))
+
+  expect_true(.bundleCopyPath(
+    source,
+    destination,
+    recursive = TRUE,
+    .sysname = "Windows"
+  ))
+  copied <- file.path(destination, "viewer")
+  expect_true(dir.exists(file.path(copied, "nested", "empty")))
+  expect_identical(
+    readBin(file.path(copied, "root.R"), "raw", n = 32L),
+    as.raw(1:32)
+  )
+  expect_identical(
+    readBin(file.path(copied, "nested", "module.R"), "raw", n = 32L),
+    as.raw(33:64)
+  )
+})
+
+test_that("bundle clone failures fall back to ordinary copies", {
+  fallback_calls <- 0L
+  expect_true(.bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = function(...) 1L,
+    .fallback = function(from, to, ...) {
+      fallback_calls <<- fallback_calls + 1L
+      TRUE
+    }
+  ))
+  expect_identical(fallback_calls, 1L)
+})
 
 publication_test_tree <- function(root) {
   result <- file.path(root, "app")
@@ -79,14 +230,23 @@ publication_expect_stage_failure <- function(failure) {
       "injected config write error"
     },
     write = {
-      ops$write_lines <- function(text, connection) {
-        stop("injected app write error")
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          return(FALSE)
+        }
+        original_copy(from, to, ...)
       }
-      "injected app write error"
+      "Failed to copy the App entrypoint template"
     },
     parse = {
-      ops$write_lines <- function(text, connection) {
-        writeLines("shiny::shinyApp(", connection)
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          writeLines("shiny::shinyApp(", to)
+          return(TRUE)
+        }
+        original_copy(from, to, ...)
       }
       "Generated app.R is invalid"
     }
@@ -136,6 +296,40 @@ test_that("stage app write failure never moves the old deployment", {
 
 test_that("invalid generated app source never moves the old deployment", {
   publication_expect_stage_failure("parse")
+})
+
+test_that("generated app preserves the trusted template bytes", {
+  root <- withr::local_tempdir()
+  template <- file.path(root, "template.R")
+  writeBin(charToRaw("shiny::shinyApp(ui = NULL, server = NULL)\r\n"), template)
+  resource <- CerebroNexus:::.cerebroPackageResource
+  testthat::local_mocked_bindings(
+    .cerebroPackageResource = function(...) {
+      relative <- file.path(...)
+      if (identical(relative, file.path("viewer", "_bundle_app.R"))) {
+        template
+      } else {
+        resource(...)
+      }
+    },
+    .package = "CerebroNexus",
+    .env = parent.frame()
+  )
+  crb <- file.path(root, "dataset.crb")
+  saveRDS(Cerebro$new(), crb)
+  result <- file.path(root, "app")
+
+  createShinyApp(
+    cerebro_data = c("Dataset" = crb),
+    result_dir = result,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  expect_identical(
+    readBin(file.path(result, "app.R"), "raw", n = file.info(template)$size),
+    readBin(template, "raw", n = file.info(template)$size)
+  )
 })
 
 test_that("destination inspection rejects inaccessible directories", {

@@ -55,6 +55,7 @@ test_that("the export stage and new artifacts are owner-only", {
   output <- file.path(root, "dataset.crb")
   stage <- .createPrivateExportStage(output)
   withr::defer(unlink(stage, recursive = TRUE, force = TRUE))
+  expect_match(basename(stage), "^\\.crb-stage-")
   expect_identical(artifact_mode(stage), "700")
 
   .publishCerebroExport(
@@ -80,6 +81,67 @@ test_that("the export stage and new artifacts are owner-only", {
     artifact_mode(file.path(root, sidecar_name)),
     "600"
   )
+})
+
+test_that("CRB publication uses the fast gzip profile", {
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  stage <- file.path(root, "stage")
+  dir.create(stage)
+  opened <- NULL
+  open_gz <- function(
+    description,
+    open = "",
+    encoding = getOption("encoding"),
+    compression = 6
+  ) {
+    opened <<- list(open = open, compression = compression)
+    base::gzfile(description, open, encoding, compression)
+  }
+
+  .publishCerebroExport(
+    export = minimal_export(),
+    final_file = output,
+    stage_dir = stage,
+    expression_matrix_mode = "embedded",
+    .open_gz = open_gz
+  )
+
+  expect_identical(opened, list(open = "wb", compression = 1L))
+  expect_s3_class(readRDS(output), "Cerebro")
+})
+
+test_that("export stage failures are actionable without exposing local paths", {
+  root <- file.path("private", "lab", "project")
+  stage <- file.path(root, ".crb-stage-example")
+
+  unwritable <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = FALSE,
+    os_type = "unix"
+  )
+  expect_match(unwritable, "not writable", fixed = TRUE)
+  expect_match(unwritable, "writable local folder", fixed = TRUE)
+
+  long_windows_path <- paste0("C:/", strrep("deep/", 55L), ".crb-stage-example")
+  too_long <- .exportStageFailureMessage(
+    dirname(long_windows_path),
+    long_windows_path,
+    writable = TRUE,
+    os_type = "windows"
+  )
+  expect_match(too_long, "path is too long", fixed = TRUE)
+  expect_match(too_long, "shorter folder", fixed = TRUE)
+
+  rejected <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = TRUE,
+    os_type = "unix"
+  )
+  expect_match(rejected, "synced or network folder", fixed = TRUE)
+  expect_false(grepl(root, rejected, fixed = TRUE))
 })
 
 test_that("replacing a CRB preserves its existing mode", {
@@ -265,6 +327,61 @@ test_that("publisher rejects a sidecar with the wrong artifact type", {
   )
 })
 
+test_that("BPCells handles are released before the Windows sidecar move", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  skip_if_not_installed("BPCells")
+
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  stage <- file.path(root, "stage")
+  dir.create(stage)
+  sidecar_name <- "dataset.bpcells"
+  staged_sidecar <- file.path(stage, sidecar_name)
+  values <- matrix(
+    c(1, 0, 2, 4, 0, 3),
+    nrow = 2,
+    dimnames = list(c("g1", "g2"), c("c1", "c2", "c3"))
+  )
+  input <- methods::as(
+    methods::as(values, "CsparseMatrix"),
+    "IterableMatrix"
+  )
+
+  export <- new.env(parent = baseenv())
+  export$expression_backend <- list(
+    type = "bpcells",
+    location = sidecar_name
+  )
+  export$expression <- BPCells::transpose_storage_order(
+    input,
+    outdir = staged_sidecar
+  )
+  export$getExpressionBackend <- function() expression_backend
+  environment(export$getExpressionBackend) <- export
+  export$setExpression <- function(counts, backend = NULL) {
+    expression <<- counts
+    invisible(NULL)
+  }
+  environment(export$setExpression) <- export
+  withr::defer({
+    export$expression <- NULL
+    invisible(gc(full = TRUE))
+  })
+
+  expect_no_error(.publishCerebroExport(
+    export = export,
+    final_file = output,
+    stage_dir = stage,
+    expression_matrix_mode = "bpcells"
+  ))
+
+  final_sidecar <- file.path(root, sidecar_name)
+  expect_false(dir.exists(staged_sidecar))
+  expect_true(dir.exists(final_sidecar))
+  expect_identical(BPCells::storage_order(export$expression), "row")
+  expect_equal(as.matrix(export$expression), values)
+})
+
 test_that("H5 replacement updates only its owned portable sibling", {
   skip_if_not_installed("HDF5Array")
 
@@ -332,6 +449,7 @@ test_that("switching to embedded removes the old owned sidecar", {
 })
 
 test_that("a publication error restores the previous BPCells export", {
+  skip_if_not(identical(.Platform$OS.type, "windows"))
   skip_if_not_installed("BPCells")
 
   root <- withr::local_tempdir()
@@ -369,7 +487,12 @@ test_that("a publication error restores the previous BPCells export", {
   export$getExpressionBackend <- function() {
     list(type = "bpcells", location = new_sidecar_name)
   }
-  export$setExpression <- function(...) {
+  export$expression <- NULL
+  export$setExpression <- function(counts, backend = NULL) {
+    export$expression <- counts
+    invisible(NULL)
+  }
+  fail_serialisation <- function(...) {
     stop("injected publication failure", call. = FALSE)
   }
 
@@ -378,15 +501,21 @@ test_that("a publication error restores the previous BPCells export", {
       export = export,
       final_file = output,
       stage_dir = stage,
-      expression_matrix_mode = "bpcells"
+      expression_matrix_mode = "bpcells",
+      .open_gz = fail_serialisation
     ),
     "injected publication failure"
   )
   expect_identical(unname(tools::md5sum(output)), before_crb)
+  expect_null(export$expression)
   restored <- as.matrix(BPCells::open_matrix_dir(dir = old_sidecar))
   expect_equal(restored, old_matrix)
   expect_length(
-    list.files(root, all.files = TRUE, pattern = "-backup-"),
+    list.files(
+      root,
+      all.files = TRUE,
+      pattern = "^\\.(crb|side|spatial)-b-"
+    ),
     0L
   )
 })

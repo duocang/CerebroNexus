@@ -13,7 +13,13 @@ spatial_projection_metadata <- reactive({
   metadata <- viewerProjectionSubsetRows(
     viewerProjectionFirstFrameMetadata(),
     spatial_projection_cells_to_show(),
-    color_variable
+    unique(Filter(
+      nzchar,
+      c(
+        color_variable,
+        spatial_projection_parameters_plot()$split_by
+      )
+    ))
   )
   metadata[["cell_index"]] <- spatial_projection_cells_to_show()
 

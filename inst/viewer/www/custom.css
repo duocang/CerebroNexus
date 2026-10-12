@@ -3011,3 +3011,21 @@ body .shiny-bound-output.cerebro-output-waiting {
   .cerebro-groups-controls { min-height: 320px; }
   .cerebro-result-controls { min-height: 170px; }
 }
+
+.cerebro-viz-toolbar .shiny-panel-conditional:has(> .spatial-image-dim-controls) {
+  flex: 0 1 calc(2 * var(--c-control-width) + 10px);
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.cerebro-viz-toolbar .spatial-image-dim-controls .form-group {
+  flex: 0 1 var(--c-control-width);
+}
+.cerebro-viz-toolbar .spatial-roi-background-picker {
+  flex: 0 1 var(--c-control-width);
+  width: var(--c-control-width);
+  min-width: min(var(--c-select-min-width), 100%);
+}

@@ -2,7 +2,12 @@
 #'
 #' @keywords internal
 #' @noRd
-.spatialImageBounds <- function(bounds, coordinates, context) {
+.spatialImageBounds <- function(
+  bounds,
+  coordinates,
+  context,
+  allow_outside = FALSE
+) {
   valid_coordinates <- is.data.frame(coordinates) &&
     all(c("x", "y") %in% colnames(coordinates)) &&
     is.numeric(coordinates[["x"]]) &&
@@ -59,7 +64,7 @@
     coordinates[["x"]] > bounds[["xmax"]] |
     coordinates[["y"]] < bounds[["ymin"]] |
     coordinates[["y"]] > bounds[["ymax"]]
-  if (any(outside)) {
+  if (!isTRUE(allow_outside) && any(outside)) {
     stop(
       context,
       " has coordinates outside its declared bounds.",
@@ -152,7 +157,14 @@
     label <- image_names[[i]]
     payload <- images[[i]]
     payload_context <- paste0(context, " image `", label, "`")
-    valid_fields <- c("histology_image", "histology_image_bounds")
+    valid_fields <- c(
+      "histology_image",
+      "histology_image_bounds",
+      "histology_alignment",
+      "image_label",
+      "roi_field",
+      "roi_value"
+    )
     if (
       !is.list(payload) ||
         is.null(names(payload)) ||
@@ -184,17 +196,75 @@
       )
     }
 
-    list(
-      histology_image = image,
-      histology_image_bounds = .spatialImageBounds(
-        payload[["histology_image_bounds"]],
-        coordinates,
-        payload_context
-      )
+    alignment <- payload[["histology_alignment"]]
+    if (
+      !is.null(alignment) &&
+        (!is.list(alignment) ||
+          is.null(names(alignment)) ||
+          anyDuplicated(names(alignment)))
+    ) {
+      stop(payload_context, " alignment must be a named list.", call. = FALSE)
+    }
+
+    scope <- .spatialImageRoiScope(payload, payload_context)
+    display_label <- payload[["image_label"]]
+    if (
+      !is.null(display_label) &&
+        (!is.character(display_label) ||
+          length(display_label) != 1L ||
+          is.na(display_label) ||
+          !nzchar(display_label))
+    ) {
+      stop(payload_context, " display label must be non-empty.", call. = FALSE)
+    }
+    result <- c(
+      list(
+        histology_image = image,
+        histology_image_bounds = .spatialImageBounds(
+          payload[["histology_image_bounds"]],
+          coordinates,
+          payload_context,
+          allow_outside = length(scope) > 0L
+        )
+      ),
+      scope
     )
+    if (!is.null(display_label)) {
+      result$image_label <- display_label
+    }
+    if (!is.null(alignment)) {
+      result$histology_alignment <- alignment
+    }
+    result
   })
   names(normalized) <- image_names
   normalized
+}
+
+.spatialImageRoiScope <- function(value, context) {
+  fields <- c("roi_field", "roi_value")
+  present <- fields %in% names(value)
+  if (!any(present)) {
+    return(list())
+  }
+  if (!all(present)) {
+    stop(
+      context,
+      " must declare both `roi_field` and `roi_value`.",
+      call. = FALSE
+    )
+  }
+  valid <- vapply(
+    value[fields],
+    function(item) {
+      is.character(item) && length(item) == 1L && !is.na(item) && nzchar(item)
+    },
+    logical(1)
+  )
+  if (!all(valid)) {
+    stop(context, " ROI scope must contain non-empty strings.", call. = FALSE)
+  }
+  value[fields]
 }
 
 #' Normalize embedded images in one spatial-data entry
@@ -324,7 +394,17 @@
         !is.null(names(descriptor)) &&
         "path" %in% names(descriptor) &&
         !anyDuplicated(names(descriptor)) &&
-        all(names(descriptor) %in% c("path", "bounds"))
+        all(
+          names(descriptor) %in%
+            c(
+              "path",
+              "bounds",
+              "viewport_bounds",
+              "label",
+              "roi_field",
+              "roi_value"
+            )
+        )
       if (!valid_descriptor) {
         stop(
           descriptor_context,
@@ -386,10 +466,61 @@
         )
         .spatialImageBounds(bounds, midpoint, descriptor_context)
       }
+      viewport_bounds <- descriptor[["viewport_bounds"]]
+      if (!is.null(viewport_bounds)) {
+        required <- c("xmin", "xmax", "ymin", "ymax")
+        valid_viewport <- is.numeric(viewport_bounds) &&
+          length(viewport_bounds) == 4L &&
+          !is.null(names(viewport_bounds)) &&
+          setequal(names(viewport_bounds), required) &&
+          !anyDuplicated(names(viewport_bounds))
+        if (!valid_viewport) {
+          stop(
+            descriptor_context,
+            " viewport_bounds must contain exactly xmin, xmax, ymin, and ymax.",
+            call. = FALSE
+          )
+        }
+        viewport_bounds <- viewport_bounds[required]
+        if (
+          any(!is.finite(viewport_bounds)) ||
+            viewport_bounds[["xmin"]] >= viewport_bounds[["xmax"]] ||
+            viewport_bounds[["ymin"]] >= viewport_bounds[["ymax"]]
+        ) {
+          stop(
+            descriptor_context,
+            " viewport_bounds are invalid.",
+            call. = FALSE
+          )
+        }
+      }
       compact <- list(path = path)
       if (!is.null(bounds)) {
         compact$bounds <- bounds
       }
+      if (!is.null(viewport_bounds)) {
+        compact$viewport_bounds <- viewport_bounds
+      }
+      if (!is.null(descriptor[["label"]])) {
+        display_label <- descriptor[["label"]]
+        if (
+          !is.character(display_label) ||
+            length(display_label) != 1L ||
+            is.na(display_label) ||
+            !nzchar(display_label)
+        ) {
+          stop(
+            descriptor_context,
+            " display label must be non-empty.",
+            call. = FALSE
+          )
+        }
+        compact$label <- display_label
+      }
+      compact <- c(
+        compact,
+        .spatialImageRoiScope(descriptor, descriptor_context)
+      )
       compact
     })
     names(descriptors) <- labels
@@ -404,6 +535,7 @@
 #' @keywords internal
 #' @noRd
 .encodeSpatialImageDescriptor <- function(descriptor, coordinates, context) {
+  scope <- .spatialImageRoiScope(descriptor, context)
   extension <- tolower(tools::file_ext(descriptor$path))
   mime <- switch(
     extension,
@@ -413,17 +545,33 @@
     svg = "image/svg+xml",
     stop(context, " has an unsupported image format.", call. = FALSE)
   )
-  list(
-    histology_image = paste0(
-      "data:",
-      mime,
-      ";base64,",
-      base64enc::base64encode(descriptor$path)
+  c(
+    list(
+      histology_image = paste0(
+        "data:",
+        mime,
+        ";base64,",
+        base64enc::base64encode(descriptor$path)
+      ),
+      histology_image_bounds = .spatialImageBounds(
+        descriptor$bounds,
+        coordinates,
+        context,
+        allow_outside = length(scope) > 0L
+      )
     ),
-    histology_image_bounds = .spatialImageBounds(
-      descriptor$bounds,
-      coordinates,
-      context
+    c(
+      if (!is.null(descriptor[["viewport_bounds"]])) {
+        list(
+          histology_alignment = list(
+            viewport_bounds = as.list(descriptor[["viewport_bounds"]])
+          )
+        )
+      },
+      if (!is.null(descriptor[["label"]])) {
+        list(image_label = descriptor[["label"]])
+      },
+      scope
     )
   )
 }
