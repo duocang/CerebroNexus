@@ -28,7 +28,8 @@ stops.}
 Does not return; runs until the app is stopped.
 }
 \description{
-Opens a local page that reads a Seurat `.rds`, works out what it contains,
+Opens a local page that reads a trusted Seurat `.rds`, `.qs2` or `.qs` file,
+works out what it contains,
 and lets you choose what the resulting data set should show: which metadata
 columns are the grouping variables, which dimensional reductions to carry,
 which assay and layer the expression comes from. It then writes the `.crb`
@@ -42,7 +43,7 @@ wrong in a hand-written call are visible before anything is written.
 }
 \section{What this is not}{
 
-The object is read into this R process, so run it on your own machine or in
+The object is read by a local background R worker, so run it on your own machine or in
 your own RStudio Server session. It is not meant to be deployed for other
 people to upload data to: it reads whatever path it is given, and reading an
 `.rds` runs whatever code is inside it.
