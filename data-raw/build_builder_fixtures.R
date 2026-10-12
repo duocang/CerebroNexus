@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-## Build the single synthetic Seurat input used by the Builder gallery.
+## Build the Complete Viewer input; build_builder_spatial_fixtures.R builds the other two.
 
 arguments <- commandArgs(trailingOnly = FALSE)
 script_argument <- grep("^--file=", arguments, value = TRUE)

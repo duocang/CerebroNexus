@@ -613,7 +613,7 @@ test_that("all valid examples build and reopen", {
       )
     }
     release <- file.path(root, paste0(record$id, "-release"))
-    make_app <- identical(record$id, "complete_viewer_data")
+    make_app <- TRUE
     plan <- builder_freeze_plan(
       list(entry),
       release,
