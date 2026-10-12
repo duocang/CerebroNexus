@@ -71,6 +71,13 @@ let
       base64enc
       biomaRt
       callr
+      digest
+      htmltools
+      processx
+      ps
+      jpeg
+      qs
+      writexl
       colourpicker
       devtools
       dplyr

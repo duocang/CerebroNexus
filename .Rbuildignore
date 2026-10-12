@@ -26,3 +26,6 @@ TODO.md
 Rplots\.pdf$
 ^inst/private-data/linked-view-shares\.sqlite$
 ^tests/bench$
+
+^scripts$
+^tests/testthat/_artifacts$
