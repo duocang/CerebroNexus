@@ -146,26 +146,20 @@ Slide-seq demo in [`spatial.md`](spatial.md).
 
 ---
 
-## 5. Sub-sampling (whole genes, fewer nuclei)
+## 5. Cell sampling and the 1,500-gene demo panel
 
-The ConfPositioned object is **21,374 genes × 7,420 nuclei**. Embedding
-whole-transcriptome expression for all of them blows the size budget:
+The source has **21,374 genes × 7,420 nuclei**. The shipped demo preserves all
+**2,536 nuclei** from the previous artifact, including the evidence-image cells.
+The existing seeded, stratified cell-sampling code below is unchanged.
 
-| nuclei (all genes) | embedded expression, xz |
-| ---: | ---: |
-| 1,500 | 2.34 MB |
-| **2,500** | **3.79 MB** |
-| 3,500 | 5.25 MB |
-
-"Real single cell × **whole transcriptome**" is the platform's whole point, so
-we keep **all 21,374 genes** and down-sample **nuclei** instead:
-
-- `set.seed(42)`; **2,532 nuclei** stratified by cluster (`SCT_snn_res.0.2`);
-- **the 50 nuclei that carry official positioning-evidence images are
-  force-included**, so the evidence drill-down still works after sampling;
-- expression is the `SCT` `data` (normalised) layer; the dense `scale.data` and
-  the `pca`/`SPATIAL` reductions are dropped (`DietSeurat`) so only UMAP + `data`
-  are exported.
+After computing the full-input scores and attaching the Trekker slot, the builder
+exports at most **1,500 genes** through `demo_gene_panel.R`. It protects the
+Trekker picker markers, myelination signature and upstream Moran genes present in
+the matrix, then fills the budget by normalized-expression variance. The matrix
+stays sparse; retained values and cell/gene order do not change. This is a selected
+demo panel, not a whole-transcriptome download. Gene searches outside the panel
+are unavailable. Full-input QC, UMAP, confidence, Moran values and images remain
+unchanged; no analysis is recomputed on the smaller panel.
 
 ```r
 strat <- integer(0)
@@ -175,7 +169,7 @@ for (lv in sort(unique(clab))) {                 # proportional within each clus
   strat <- c(strat, sample(w, min(k, length(w))))
 }
 force_idx <- match(ev_bc, bc_all)                # the evidence nuclei, unconditionally
-idx <- sort(unique(c(strat, force_idx)))         # union -> 2,532, slightly over N_CELLS
+idx <- sort(unique(c(strat, force_idx)))         # union may slightly exceed N_CELLS
 
 sub <- subset(so, cells = bc_all[idx])
 sub$celltype <- CELLTYPE_BY_CLUSTER[as.integer(as.character(sub$seurat_clusters)) + 1L]
@@ -183,7 +177,7 @@ sub$nUMI <- sub$nCount_SCT;  sub$nGene <- sub$nFeature_SCT
 sub <- DietSeurat(sub, assays = "SCT", dimreducs = "umap")
 ```
 
-The union with `force_idx` is why the shipped count is 2,532 rather than a round
+The union with `force_idx` is why the shipped count exceeds a round
 `N_CELLS` — a stratified draw would not reliably include all 50 evidence nuclei,
 and without them the page's drill-down would break on a rebuild.
 
@@ -209,8 +203,8 @@ Two stages in `build_trekker_demo.R`:
 
 **(a) a proper Cerebro object** — the down-sampled Seurat (SCT `data` + UMAP +
 `cluster`/`celltype` groups) goes through `exportFromSeurat()`, giving a normal
-`Cerebro` object with whole-transcriptome expression and gene names. This is
-what powers gene colouring on the page: the gene picker lists all measured
+`Cerebro` object. The final writer retains the selected 1,500-gene panel. This
+powers gene colouring on the page: the gene picker lists the stored
 genes, and on selection the server slices one gene, quantises it 0–255, and
 sends it to the client aligned to the page's nuclei.
 

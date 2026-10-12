@@ -53,6 +53,7 @@ suppressPackageStartupMessages({
 ## Load the in-tree package so the local .getSpatialData / exportFromSeurat edits
 ## are exercised, not an installed copy.
 pkgload::load_all(".", quiet = TRUE)
+source("data-raw/demo_gene_panel.R")
 
 set.seed(42)
 out_dir <- "inst/extdata/examples"
@@ -378,25 +379,31 @@ export_and_verify <- function(
     nGene = "nGene",
     verbose = TRUE
   )
-  crb <- readRDS(file)
+  crb <- readCerebro(file)
   spatial_names <- crb$availableSpatial()
   stopifnot(
     "no spatial data written to .crb" = length(spatial_names) > 0
   )
 
-  ## Inject the real histology image into the spatial slot, if supplied. Use a
-  ## dedicated `histology_image` key: `.getSpatialData` already stores the image
-  ## *name* under `image`, so overloading that would clobber it.
+  ## Use the current named image collection. getSpatialData() already provides
+  ## histology_images (possibly empty), which takes precedence over legacy
+  ## singular image fields during normalization.
   if (!is.null(image)) {
     for (nm in spatial_names) {
       sd <- crb$getSpatialData(nm)
-      sd$histology_image <- image
-      sd$histology_image_bounds <- image_bounds
+      sd$histology_images <- list(
+        `Tissue background` = list(
+          histology_image = image,
+          histology_image_bounds = unlist(image_bounds, use.names = TRUE)
+        )
+      )
       crb$addSpatialData(nm, sd)
     }
-    saveRDS(crb, file)
-    crb <- readRDS(file)
   }
+
+  # Export at most 1,500 genes after UMAP/QC; keep spatial expression in sync.
+  save_demo_crb(crb, file)
+  crb <- readCerebro(file)
 
   sd <- crb$getSpatialData(spatial_names[1])
   coords <- sd$coordinates

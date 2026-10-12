@@ -24,7 +24,7 @@
 ##
 ## WHAT THIS SCRIPT PRODUCES
 ##   inst/extdata/examples/demo_trekker.crb  (target: <= 5 MB, self-contained)
-##   A proper Cerebro object (whole-transcriptome expression + UMAP +
+##   A proper Cerebro object (selected demo expression panel + UMAP +
 ##   cell-type / cluster groups) PLUS a `trekker` slot carrying the Trekker
 ##   page's content: three measured coordinate orientations, positioning QC in
 ##   the vendor's own field names, the upstream (vendor) Moran's I table, and
@@ -77,7 +77,8 @@ BASE <- Sys.getenv(
 OUT_DIR <- "inst/extdata/examples"
 CRB <- file.path(OUT_DIR, "demo_trekker.crb")
 
-N_CELLS <- 2500L # down-sampled nucleus count (whole transcriptome kept)
+N_CELLS <- 2500L # existing cell sampling; final export has <= 1,500 genes
+source("data-raw/demo_gene_panel.R")
 EV_MAX_PX <- 620L # evidence JPEG long-edge after down-scaling
 EV_QUALITY <- 68L # evidence JPEG quality
 
@@ -538,11 +539,11 @@ trekker <- list(
 )
 
 ##----------------------------------------------------------------------------##
-## inject + re-save (xz for the smallest .crb)
+## inject + re-save through the current CRB codec
 ##----------------------------------------------------------------------------##
-crb <- readRDS(CRB)
+crb <- readCerebro(CRB)
 crb$addTrekker(trekker)
-saveRDS(crb, CRB, compress = "xz")
+save_demo_crb(crb, CRB)
 
 sz <- file.size(CRB) / 1e6
 message(sprintf(

@@ -11,8 +11,8 @@
 #' Genes offered first in the Trekker gene picker.
 #'
 #' The upstream Moran's I top genes plus canonical mouse-brain markers, restricted
-#' to genes actually measured in the object (the full ~21k measured genes stay
-#' selectable because the picker searches the whole list).
+#' to genes stored in the object (the picker searches the full stored list,
+#' which may be a selected panel in a demo).
 #'
 #' @param tk The Trekker slot (a list); `tk$moran` is a list of `list(gene = ...)`.
 #' @param gene_names Character vector of measured gene names (matrix row names).

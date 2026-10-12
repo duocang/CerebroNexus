@@ -29,6 +29,7 @@ crb_path <- Sys.getenv(
   "FULL_CRB",
   "inst/extdata/examples/demo_full_tcr_bcr.crb"
 )
+source("data-raw/demo_gene_panel.R")
 
 message("Reading ", crb_path)
 crb <- readCerebro(crb_path)
@@ -190,5 +191,5 @@ message(
   paste(crb$getNamesOfTrajectories("monocle2"), collapse = ", ")
 )
 
-saveRDS(crb, crb_path)
+save_demo_crb(crb, crb_path)
 message("Wrote ", crb_path)

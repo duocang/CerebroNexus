@@ -135,7 +135,10 @@ observe({
   render_request <- input[["trekker_projection_render_request"]]
   req(is.list(render_request), is.list(render_request$dataset_context))
   dataset_context <- viewer_loaded_dataset_context()
-  req(viewerDatasetContextEqual(render_request$dataset_context, dataset_context))
+  req(viewerDatasetContextEqual(
+    render_request$dataset_context,
+    dataset_context
+  ))
   tk <- req(trekker_slot())
   mode <- input[["trekker_mode"]] %||% "celltype"
   view <- input[["trekker_view"]] %||% "pair"
@@ -261,10 +264,11 @@ output[["trekker_number_of_selected_cells"]] <- renderUI({
     character()
   if (
     length(selected) &&
-      (!is.list(selected) || !viewerDatasetContextEqual(
-        selected[["dataset_context"]],
-        viewer_loaded_dataset_context()
-      ))
+      (!is.list(selected) ||
+        !viewerDatasetContextEqual(
+          selected[["dataset_context"]],
+          viewer_loaded_dataset_context()
+        ))
   ) {
     selected <- character()
   }
@@ -300,7 +304,7 @@ observeEvent(input[["trekker_parameters_info"]], {
           UMAP position to its physical position (it is a visual blend between the
           two spaces, not a morphology view).</li>
         <li><b>Colour by:</b> cell type, cluster, or a single gene's expression
-          (any of the whole-transcriptome genes).</li>
+          (any gene stored in the dataset; demos may use a selected panel).</li>
         <li><b>Point size / Niche radius:</b> display size, and the radius (in um)
           used for the physical-neighbour counts in the Cell inspector.</li>
         <li><b>Mark nuclei with positioning evidence:</b> ring the 50 nuclei that

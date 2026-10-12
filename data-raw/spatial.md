@@ -211,27 +211,30 @@ Every embedded image is stored in its **native** orientation (row 0 = image top)
 **(d) Export, attach the builder's already-decoded image, and verify.** Public
 callers should pass image files through `exportFromSeurat(spatial_images = ...)`
 or `convertSeuratToCerebro(spatial_images = ...)`. This older demo builder
-already holds decoded data URIs, so it uses the supported legacy singular
-payload when assembling each fixture; `addSpatialData()` normalizes that payload
-to the canonical named `histology_images` list:
+already holds decoded data URIs, so it writes the canonical named
+`histology_images` list directly. The final writer caps expression at 1,500 genes
+after analysis, including every spatial expression copy, without changing cells,
+coordinates or images:
 
 ```r
 exportFromSeurat(object = obj, assay = assay, slot = "data", file = file,
                  experiment_name = experiment_name, organism = organism,
                  groups = groups, nUMI = "nUMI", nGene = "nGene", verbose = TRUE)
 
-crb <- readRDS(file)
+crb <- readCerebro(file)
 stopifnot("no spatial data written to .crb" = length(crb$availableSpatial()) > 0)
 
 if (!is.null(image)) {
   for (nm in crb$availableSpatial()) {
     sd <- crb$getSpatialData(nm)
-    sd$histology_image        <- image           # dedicated key, NOT `image`
-    sd$histology_image_bounds <- image_bounds    # extent in COORDINATE space
+    sd$histology_images <- list(`Tissue background` = list(
+      histology_image = image, histology_image_bounds = unlist(image_bounds)))
     crb$addSpatialData(nm, sd)
   }
-  saveRDS(crb, file)
 }
+source("data-raw/demo_gene_panel.R")
+save_demo_crb(crb, file)
+crb <- readCerebro(file)
 
 sd <- crb$getSpatialData(crb$availableSpatial()[1]); coords <- sd$coordinates
 stopifnot(

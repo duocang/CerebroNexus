@@ -108,6 +108,7 @@ suppressPackageStartupMessages({
   library(scRepertoire)
 })
 devtools::load_all(".", quiet = TRUE)
+source("data-raw/demo_gene_panel.R")
 
 set.seed(20260721)
 
@@ -160,7 +161,7 @@ donor4,2,HLA-B*57:01",
 ## Shipped size. The demo must stay a few MB, so the antigen-selected cells are
 ## subsampled per donor and the matrix is cut to informative genes.
 CELLS_PER_DONOR <- 3000L
-N_GENES <- 2000L
+N_GENES <- 2000L # analysis features; final export is capped at 1,500
 
 ## ---- 1. Download (on demand) -------------------------------------------- ##
 dir.create(CACHE, showWarnings = FALSE, recursive = TRUE)
@@ -676,7 +677,7 @@ crb$addHLATyping(
 dir.create(dirname(OUT), showWarnings = FALSE, recursive = TRUE)
 staged <- paste0(OUT, ".staged")
 on.exit(unlink(staged), add = TRUE)
-saveRDS(crb, staged, compress = "xz")
+save_demo_crb(crb, staged)
 cat(sprintf("   staged %.1f MB\n", file.info(staged)$size / 1024^2))
 
 ## ---- 7. Verification gate (measured on the object about to ship) --------- ##
@@ -686,7 +687,7 @@ cat(sprintf("   staged %.1f MB\n", file.info(staged)$size / 1024^2))
 ## meaningfully below the measured values: they are drift detectors, not a
 ## transcript of today's run.
 cat("== 7. verification gate (measured on the staged object) ==\n")
-check <- readRDS(staged)
+check <- readCerebro(staged)
 
 ## Canonical rows of a typing table, ordered, for comparison by VALUE. Includes
 ## `copy` and keeps duplicates, which is the whole point: donor4 is homozygous
@@ -872,7 +873,7 @@ if (!file.rename(staged, OUT)) {
 }
 ## Re-read what actually landed: the gate measured the staged bytes, so this is
 ## the last step that can catch a truncated or partially written destination.
-published <- readRDS(OUT)
+published <- readCerebro(OUT)
 stopifnot(
   "the published file does not match what was verified" = identical(
     dim(published$expression),
