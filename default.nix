@@ -72,6 +72,11 @@ let
       biomaRt
       callr
       digest
+      data_table
+      ggdendro
+      patchwork
+      fs
+      jsonlite
       htmltools
       processx
       ps

@@ -29,6 +29,9 @@ biocViews:
 Imports:
   callr,
   digest,
+  data.table,
+  ggdendro,
+  patchwork,
   htmltools,
   processx,
   ps,
