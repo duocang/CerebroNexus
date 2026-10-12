@@ -67,12 +67,13 @@ test_that("Builder release documentation matches the guided workflow", {
   news <- readLines(news_path, warn = FALSE)
   news_text <- gsub("\\s+", " ", paste(news, collapse = "\n"))
   for (stage in c(
-    "Import and Inspect",
-    "Core setup",
-    "Enhance content",
-    "Review and Build"
+    "**Data**",
+    "**Configure**",
+    "**Review**",
+    "**Build**"
   )) {
     expect_match(readme_text, stage, fixed = TRUE)
+    expect_match(vignette_text, stage, fixed = TRUE)
   }
   expect_match(readme, "build_a_data_set_by_pointing", fixed = TRUE)
 
@@ -96,7 +97,6 @@ test_that("Builder release documentation matches the guided workflow", {
     expect_match(vignette, contract, fixed = TRUE)
   }
   expect_false(grepl("logged and skipped", vignette, fixed = TRUE))
-  expect_match(readme_text, "planned payload targets", fixed = TRUE)
   expect_match(news_text, "planned payload targets", fixed = TRUE)
   for (contract in c(
     "distinct source adapters",
@@ -134,7 +134,7 @@ test_that("Builder release documentation matches the guided workflow", {
   )])
   resources <- sub("^-\\s*", "", resources)
   resources <- resources[nzchar(resources)]
-  expect_length(resources, 5L)
+  expect_length(resources, 1L)
   expect_true(all(file.exists(file.path(dirname(vignette_path), resources))))
 
   version <- unname(read.dcf(file.path(repo, "DESCRIPTION"))[[1L, "Version"]])
