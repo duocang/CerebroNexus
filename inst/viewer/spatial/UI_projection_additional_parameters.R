@@ -6,6 +6,25 @@
 ## sampling choices while moving among backgrounds.
 output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   appearance <- current_scatter_defaults()
+  section_appearance <- spatialPointAppearance(
+    Cerebro.options,
+    viewer_current_dataset_key(),
+    input[["spatial_projection_to_display"]]
+  )
+  if (!is.null(section_appearance)) {
+    appearance$point_size <- section_appearance$point_size
+    appearance$point_opacity <- section_appearance$point_opacity
+  }
+  roi_appearance <- spatialRoiSetting(
+    Cerebro.options,
+    viewer_current_dataset_key(),
+    input[["spatial_projection_to_display"]],
+    spatial_roi_value(input[["spatial_projection_roi"]] %||% "")
+  )
+  if (!is.null(roi_appearance)) {
+    appearance$point_size <- roi_appearance$point_size
+    appearance$point_opacity <- roi_appearance$point_opacity
+  }
 
   tagList(
     sliderInput(
@@ -33,7 +52,7 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
   tagList(
     sliderInput(
       "spatial_projection_percentage_cells_to_show",
-      label = "Show % of cells",
+      label = "Show % of observations",
       min = preferences[["cell_percentage_cells_to_show"]][[
         "min"
       ]],
@@ -51,6 +70,12 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
 ## The image-specific controls may safely be regenerated when the selected
 ## image changes: their initial values come from that image's preset.
 output[["spatial_projection_background_parameters_UI"]] <- renderUI({
+  if (identical(spatial_projection_parameters_plot()$roi_mode, "separate")) {
+    return(tags$p(
+      class = "help-block",
+      "Each ROI uses its saved image alignment in Separate ROIs mode."
+    ))
+  }
   dataset_context <- viewer_loaded_dataset_context()
   req(input[["spatial_projection_more_render_request"]])
   ## Offset sliders move the background image in DATA units, so their range is
@@ -86,19 +111,18 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
   ## renderUI reads the selected source-tagged image key, changing either spatial
   ## entry or image recreates every control with that image's own defaults.
   spatial_name <- input[["spatial_projection_to_display"]]
-  dataset <- spatial_dataset_name(
-    if (exists("available_crb_files")) available_crb_files$files else NULL,
-    if (exists("available_crb_files")) available_crb_files$selected else NULL
-  )
+  dataset <- dataset_context$dataset_key
   spatial_data <- tryCatch(
     getSpatialData(spatial_name),
     error = function(e) list()
   )
-  embedded_images <- embedded_spatial_images(spatial_data)
+  selected_roi <- input[["spatial_projection_roi"]] %||% ""
+  embedded_images <- embedded_spatial_images(spatial_data, selected_roi)
   external_images <- configured_spatial_images(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
-    spatial_name
+    spatial_name,
+    selected_roi
   )
   selected_descriptor <- resolve_spatial_background(
     input[["spatial_projection_background_image"]],
@@ -110,16 +134,11 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     spatial_name,
     selected_descriptor
   )
-  image_label <- if (is.null(selected_descriptor)) {
-    NULL
-  } else {
-    selected_descriptor$label
-  }
-  preset <- spatialImagePreset(
+  preset <- spatial_background_preset(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
     dataset,
     spatial_name,
-    image_label
+    selected_descriptor
   )
   ## Seed MOVE and FLIP from the preset so the controls honestly reflect the
   ## shipped alignment (checkbox ticked, sliders positioned). Both are read by
@@ -203,7 +222,7 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
     conditionalPanel(
       condition = paste0(
         "input.spatial_projection_background_image && ",
-        "input.spatial_projection_background_image !== 'none'"
+        "input.spatial_projection_background_image.length > 0"
       ),
       slider_number_input(
         "spatial_projection_background_opacity",
@@ -377,9 +396,9 @@ spatial_projection_additional_parameters_info <- list(
     "
     The elements in this panel allow you to control what and how results are displayed across the whole tab.
     <ul>
-      <li><b>Point size:</b> Controls how large the cells should be.</li>
-      <li><b>Point opacity:</b> Controls the transparency of the cells.</li>
-      <li><b>Show % of cells:</b> Using the slider, you can randomly remove a fraction of cells from the plot. This can be useful for large data sets and/or computers with limited resources.</li>
+      <li><b>Point size:</b> Controls how large the observations should be.</li>
+      <li><b>Point opacity:</b> Controls the transparency of the observations.</li>
+      <li><b>Show % of observations:</b> Randomly subsamples cells or spots after the active Sample, FOV / section, ROI, and group filters.</li>
     </ul>
     "
   )

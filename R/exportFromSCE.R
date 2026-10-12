@@ -210,7 +210,7 @@ exportFromSCE <- function(
   export$addExperiment('organism', organism)
 
   ## record the CerebroNexus exporter version
-  export$setVersion(utils::packageVersion('CerebroNexus'))
+  export$setVersion(package_version(.cerebroRuntimeVersion()))
 
   ##--------------------------------------------------------------------------##
   ## add transcript counts
@@ -343,7 +343,7 @@ exportFromSCE <- function(
       ## 'N/A' to levels
       if (any(is.na(values))) {
         values[is.na(values)] <- 'N/A'
-        levels <- c(levels, 'N/A')
+        levels <- unique(c(levels, 'N/A'))
       }
 
       ## factorize values
@@ -353,8 +353,7 @@ exportFromSCE <- function(
       ##     factor levels
     } else if (
       is.factor(SingleCellExperiment::colData(object)[[i]]) &&
-        any(is.na(SingleCellExperiment::colData(object)[[i]])) &&
-        'NA' %in% levels(SingleCellExperiment::colData(object)[[i]]) == FALSE
+        any(is.na(SingleCellExperiment::colData(object)[[i]]))
     ) {
       ## print log message
       if (verbose) {
@@ -370,7 +369,7 @@ exportFromSCE <- function(
       levels <- levels(SingleCellExperiment::colData(object)[[i]])
       values <- as.character(SingleCellExperiment::colData(object)[[i]])
       values[is.na(values)] <- 'N/A'
-      values <- factor(values, levels = c(levels, 'N/A'))
+      values <- factor(values, levels = unique(c(levels, 'N/A')))
       temp_meta_data[[i]] <- values
 
       ## ... none of the above

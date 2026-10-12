@@ -86,6 +86,24 @@ wait_for_input <- function(app, id, timeout = 20000) {
   )
 }
 
+wait_for_dataset <- function(app, label, timeout = 30000) {
+  app$wait_for_js(
+    sprintf(
+      "document.getElementById('crb_file_selector')?.value === %s",
+      jsonlite::toJSON(label, auto_unbox = TRUE)
+    ),
+    timeout = timeout
+  )
+}
+
+select_dataset <- function(app, label, timeout = 30000) {
+  app$run_js(sprintf(
+    "document.getElementById('crb_file_selector').selectize.setValue(%s);",
+    jsonlite::toJSON(label, auto_unbox = TRUE)
+  ))
+  wait_for_dataset(app, label, timeout = timeout)
+}
+
 ## Activate a conditionally shown sidebar tab. Wait for the menu link to be
 ## available, then click it so the tab's outputs render reliably on slow CI.
 activate_tab <- function(app, tab_name, timeout = 20000) {
@@ -127,10 +145,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 30000)
 
-  app$set_inputs(
-    crb_file_selector = "Mouse ileum (MERFISH)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse ileum (MERFISH)")
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "overview", timeout = 30000)
   app$wait_for_js(
@@ -141,10 +156,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
     timeout = 30000
   )
 
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   app$wait_for_js(
     paste0(
       "document.getElementById('overview_projection_point_color')?.value ",
@@ -156,6 +168,53 @@ test_that("Projection switches categorical spatial datasets coherently", {
     paste0(
       "document.querySelector(",
       "'#overview_projection_cell_view_host canvas:not(.cv-mini)') !== null"
+    ),
+    timeout = 30000
+  )
+
+  expect_false(any(grepl(
+    "color_assignments are required for categorical cell views",
+    app$get_logs()$message,
+    fixed = TRUE
+  )))
+})
+
+test_that("Spatial canvas is replaced after switching datasets from Data info", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "spatial_dataset_switch_canvas",
+    height = 950,
+    width = 1619
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 30000)
+
+  select_dataset(app, "Mouse ileum (MERFISH)")
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cell_type' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
+    ),
+    timeout = 30000
+  )
+
+  ## Reproduce the user path: leave Spatial, switch the object on Data info,
+  ## then return. The control UI and Canvas must belong to the same dataset.
+  activate_tab(app, "loadData", timeout = 30000)
+  select_dataset(app, "Mouse brain (Xenium)")
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cluster' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('C14') && ",
+      "!document.getElementById('spatial_projection_cell_view_host').",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
     ),
     timeout = 30000
   )
@@ -179,10 +238,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
 
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Visium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Visium)")
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "spatial", timeout = 30000)
   wait_for_input(app, "spatial_projection_more_button", timeout = 30000)
@@ -191,7 +247,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "''"
     ),
     timeout = 30000
   )
@@ -204,6 +260,13 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     "anterior1"
   )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background_image')?.",
+      "selectize?.options['external::Tissue background'] !== undefined"
+    ),
+    timeout = 30000
+  )
   expect_identical(
     unlist(
       app$get_js(paste0(
@@ -212,12 +275,23 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       )),
       use.names = FALSE
     ),
-    c("none", "external::Tissue background")
+    "external::Tissue background"
   )
   app$wait_for_js(
     paste0(
       "document.querySelector(",
       "'#spatial_projection_cell_view_host canvas:not(.cv-mini)')"
+    ),
+    timeout = 30000
+  )
+  app$run_js(paste0(
+    "document.getElementById('spatial_projection_background_image').",
+    "selectize.setValue('external::Tissue background');"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background_image').value === ",
+      "'external::Tissue background'"
     ),
     timeout = 30000
   )
@@ -247,10 +321,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   app$wait_for_idle(timeout = 30000)
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
@@ -263,15 +334,18 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "''"
     ),
     timeout = 30000
   )
   app$set_inputs(spatial_projection_to_display = "fov_colour", wait_ = FALSE)
   app$wait_for_js(
     paste0(
-      "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Pink stain'"
+      "var input = document.getElementById(",
+      "'spatial_projection_background_image');",
+      "input?.value === '' && ",
+      "input?.selectize?.options['external::Pink stain'] !== undefined && ",
+      "input?.selectize?.options['external::Fluorescent yellow'] !== undefined"
     ),
     timeout = 30000
   )
@@ -283,7 +357,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       )),
       use.names = FALSE
     ),
-    c("none", "external::Pink stain", "external::Fluorescent yellow")
+    c("external::Pink stain", "external::Fluorescent yellow")
   )
   app$set_inputs(
     spatial_projection_background_image = "external::Fluorescent yellow",
@@ -296,17 +370,10 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "Mouse hippocampus (Slide-seq v2)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse hippocampus (Slide-seq v2)")
   app$wait_for_idle(timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background_image').value ",
-      "=== 'none'"
-    ),
+    "document.getElementById('spatial_projection_background_image') === null",
     timeout = 30000
   )
   expect_identical(
@@ -317,16 +384,6 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
       validate = function(value) identical(value, "image")
     ),
     "image"
-  )
-  expect_identical(
-    unlist(
-      app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
-      )),
-      use.names = FALSE
-    ),
-    "none"
   )
   app$wait_for_js(
     paste0(
@@ -348,10 +405,7 @@ test_that("Linked views resets the active background to its preset", {
   )
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   activate_tab(app, "coordinated_views", timeout = 30000)
   app$wait_for_js(
     paste0(
