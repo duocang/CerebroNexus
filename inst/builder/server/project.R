@@ -417,6 +417,10 @@ builder_activity_message <- function(
     busy_detail_items = if (length(restore_detail)) restore_detail else NULL,
     busy_phase = if (build_active) build_overlay$phase %||% NULL else NULL,
     has_project = isTRUE(activity$has_project),
+    # Opening owns a Shiny dialog (checking, compatibility or recovery).
+    # Keep the workspace inert without stacking a second operation dialog.
+    busy_modal = identical(phase, "opening") &&
+      identical(restore_progress$mode %||% NULL, "opening"),
     build_cancelable = build_active && isTRUE(build_overlay$cancelable),
     open_cancelable = identical(phase, "opening") &&
       identical(restore_progress$mode %||% NULL, "opening"),
@@ -3067,34 +3071,20 @@ finish_builder_project_restore <- function() {
   }
   project <- isolate(builder_project())
   last_ui <- project$manifest$last_ui %||% list()
-  ## All completion paths converge here. This includes successful hydration,
-  ## worker start failures, and a failed import that the user removes later.
-  ## The original manifest remains the durable recovery point until the final
-  ## selected source has settled, so there is at most one restore write.
-  save_needed <- !is.null(project) && isTRUE(isolate(builder_project_dirty()))
-  saved <- if (save_needed) {
-    save_builder_project_state(
-      show_actions = FALSE,
-      materialize = FALSE,
-      notify = FALSE,
-      manage_lifecycle = FALSE,
-      last_ui = last_ui
-    )
-  } else {
-    TRUE
-  }
+  ## Opening a Project is read-only. An automatic save here synchronously
+  ## rechecks every source and sidecar (including skipped datasets), blocking
+  ## the UI after the selected imports are already finished. Keep any migrated
+  ## settings dirty until an explicit Save; that path retains full validation.
   builder_project_restore_progress(list(
     mode = "idle",
     total = 0L,
     remaining = 0L
   ))
-  builder_project_operation_phase(
-    if (isTRUE(saved)) "idle" else "save_failed"
-  )
-  if (isTRUE(saved) && !is.null(project)) {
+  builder_project_operation_phase("idle")
+  if (!is.null(project)) {
     restore_builder_project_last_ui_after_flush(last_ui)
   }
-  invisible(isTRUE(saved))
+  invisible(TRUE)
 }
 
 complete_builder_project_open <- function(actions = NULL) {

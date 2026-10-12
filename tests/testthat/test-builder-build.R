@@ -853,6 +853,33 @@ test_that("CRB read-back accepts sub-picounit transform serialization drift", {
   item$viewer_page_expectations$visible_conditional <- "spatial"
 
   expect_true(builder_verify_crb(crb, item)$valid)
+
+  # Legacy hashes from a different R writer cannot be reproduced locally.
+  # Only an exact immutable artifact recorded in the reuse plan can qualify.
+  object$spatial$`fov.2`$coordinate_transform$transformed_coordinate_fingerprint <-
+    paste(rep("a", 32), collapse = "")
+  saveRDS(object, crb)
+  expect_error(builder_verify_crb(crb, item), "coordinate transform differs")
+  item$reused_artifact <- list(
+    path = crb,
+    fingerprint = list(md5 = unname(as.character(tools::md5sum(crb))))
+  )
+  expect_true(builder_verify_crb(crb, item)$valid)
+
+  object$spatial$`fov.2`$coordinates$x[1] <- coordinates$x[1] + 1
+  saveRDS(object, crb)
+  expect_error(builder_verify_crb(crb, item), "coordinate transform differs")
+  object$spatial$`fov.2`$coordinates <- coordinates
+  object$spatial$`fov.2`$coordinate_transform$coordinate_fingerprint_version <- 2L
+  saveRDS(object, crb)
+  item$reused_artifact$fingerprint$md5 <- unname(as.character(tools::md5sum(
+    crb
+  )))
+  expect_error(builder_verify_crb(crb, item), "coordinate transform differs")
+  object$spatial$`fov.2`$coordinate_transform$transformed_coordinate_fingerprint <-
+    .spx_coordinate_transform_fingerprint(coordinates)
+  saveRDS(object, crb)
+  expect_true(builder_verify_crb(crb, item)$valid)
 })
 
 test_that("CRB stores alignment only while image bytes remain external", {

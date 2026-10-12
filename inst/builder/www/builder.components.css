@@ -173,8 +173,7 @@
   backdrop-filter: blur(2px);
   animation: builder-operation-backdrop-in .18s ease-out both;
 }
-.builder-page-inert .builder-operation-overlay,
-.builder-project-result-open .builder-operation-overlay { display: flex; }
+.builder-operation-overlay[aria-hidden="false"] { display: flex; }
 body.modal-open .modal-backdrop { z-index: 2010; }
 body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-operation-overlay-card {

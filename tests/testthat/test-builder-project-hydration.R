@@ -1055,7 +1055,7 @@ test_that("the assembled Builder server finalizes a restored entry exactly once"
 
     assign(
       "save_builder_project_state",
-      function(...) TRUE,
+      function(...) stop("Restoring must not rewrite the Project"),
       envir = environment(builder_project_commit_restored_entry)
     )
     assign(

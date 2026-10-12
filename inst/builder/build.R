@@ -775,6 +775,7 @@ builder_verify_crb <- function(
   }
   expected_coordinate_transforms <- item$spatial_coordinate_transforms %||%
     list()
+  legacy_artifact_matches <- NULL
   for (section in names(expected_coordinate_transforms)) {
     observed_spatial <- spatial[[section]]
     coordinates <- if (is.list(observed_spatial)) {
@@ -808,6 +809,44 @@ builder_verify_crb <- function(
       .spx_coordinate_transform_fingerprint(coordinates),
       error = function(error) NULL
     )
+    fingerprint_version <- observed_transform$coordinate_fingerprint_version
+    fingerprint_matches <-
+      !is.null(observed_fingerprint) &&
+      (is.null(fingerprint_version) || identical(fingerprint_version, 2L)) &&
+      identical(
+        observed_transform$transformed_coordinate_fingerprint,
+        observed_fingerprint
+      )
+    if (
+      !fingerprint_matches &&
+        !is.null(observed_fingerprint) &&
+        is.null(fingerprint_version)
+    ) {
+      legacy_fingerprint <- tryCatch(
+        .spx_coordinate_transform_fingerprint(coordinates, .legacy = TRUE),
+        error = function(error) NULL
+      )
+      fingerprint_matches <- !is.null(legacy_fingerprint) &&
+        identical(
+          observed_transform$transformed_coordinate_fingerprint,
+          legacy_fingerprint
+        )
+      # Legacy coordinate hashes included the exporting R version. Across R
+      # versions, accept only the exact immutable CRB frozen in the reuse plan,
+      # just as legacy Project configuration identities require a content hash.
+      # A newly built, untrusted, or modified CRB cannot take this path.
+      if (!fingerprint_matches) {
+        if (is.null(legacy_artifact_matches)) {
+          expected_md5 <- item$reused_artifact$fingerprint$md5 %||% NULL
+          legacy_artifact_matches <- .builder_build_text(expected_md5) &&
+            identical(unname(as.character(tools::md5sum(path))), expected_md5)
+        }
+        old_hash <- observed_transform$transformed_coordinate_fingerprint
+        fingerprint_matches <- isTRUE(legacy_artifact_matches) &&
+          .builder_build_text(old_hash) &&
+          grepl("^[0-9a-f]{32}$", old_hash)
+      }
+    }
     # A floating-point rotation is not losslessly invertible, so hashing the
     # inverse can reject an otherwise exact staged export. The source hash is
     # provenance; staged integrity is bound to the actual transformed values
@@ -838,10 +877,7 @@ builder_verify_crb <- function(
           observed_transform$convention,
           "counterclockwise_degrees"
         ) ||
-        !identical(
-          observed_transform$transformed_coordinate_fingerprint,
-          observed_fingerprint
-        ) ||
+        !isTRUE(fingerprint_matches) ||
         !isTRUE(valid_source_fingerprint)
     ) {
       stop(
