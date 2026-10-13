@@ -651,7 +651,7 @@ test_that("same-context renders are monotonically ordered", {
   expect_match(client, "renderToken <= previous.render_token", fixed = TRUE)
   expect_match(
     client,
-    "extra.progressive_token !== D.progressive_token",
+    "extra.progressive_token === linkedBundle.progressive_token",
     fixed = TRUE
   )
   expect_match(

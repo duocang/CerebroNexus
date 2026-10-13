@@ -157,6 +157,18 @@ viewerDatasetChoices <- function(files, display_labels = NULL) {
   stats::setNames(ids, unname(labels))
 }
 
+## Presentation only: stable dataset ids continue to own switching and caches.
+viewerDatasetLabel <- function(files, selected, display_labels = NULL) {
+  if (is.null(names(files)) || length(selected) != 1L || is.na(selected)) {
+    return("Dataset")
+  }
+  choices <- viewerDatasetChoices(files, display_labels)
+  index <- match(selected, unname(choices))
+  if (is.na(index)) return("Dataset")
+  label <- names(choices)[[index]]
+  if (is.na(label) || !nzchar(trimws(label))) "Dataset" else label
+}
+
 viewerSelectedDatasetName <- function() {
   if (
     exists("viewer_current_dataset_key", mode = "function", inherits = TRUE)
