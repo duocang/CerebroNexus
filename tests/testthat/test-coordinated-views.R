@@ -3707,9 +3707,22 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   scenes <- cv_env$cv_build_spatial(crb,cells)$samples
   expect_identical(vapply(scenes,`[[`,character(1),"name"),
     c("fov","fov::roi::A","fov::roi::B","fov.2"))
+  expect_identical(vapply(scenes,`[[`,character(1),"label"),
+    c("fov · All ROIs (spatial)", "fov · ROI: A (spatial)",
+      "fov · ROI: B (spatial)", "fov.2 · ROI: A (spatial)"))
   expect_length(scenes[[1]]$images,0)
   expect_equal(scenes[[2]]$x,structure(roi$x,class="AsIs"))
   expect_length(scenes[[3]]$images,0)
+  one <- crb
+  one$availableSpatial <- function() "fov.2"
+  single_space <- cv_env$cv_build_spatial(one,cells)
+  expect_identical(single_space$name,"fov.2")
+  expect_identical(single_space$label,"fov.2 · ROI: A (spatial)")
+  # Multiple matching images keep declaration order, independent of labels.
+  cv_env$Cerebro.options$spatial_images$ds$fov.2 <- list(Zebra=image,Alpha=image)
+  multi_image <- cv_env$cv_spatial_one(crb,cells,"fov.2",TRUE)
+  expect_match(multi_image$image$id,":Zebra$",perl=TRUE)
+  expect_match(multi_image$images[[2]]$id,":Alpha$",perl=TRUE)
 
   # Embedded ROI declarations follow the same scope precedence as externals.
   embedded <- list(coordinates=coordinates,histology_images=list(

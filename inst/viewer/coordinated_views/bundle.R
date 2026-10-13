@@ -1207,6 +1207,13 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
   viewport <- if (length(images)) images[[1L]]$viewport else NULL
   list(
     name = nm,
+    label = paste0(nm, if (nzchar(roi_value)) {
+      paste0(" · ROI: ", roi_value)
+    } else if (length(rois) > 1L) {
+      " · All ROIs"
+    } else {
+      ""
+    }, " (spatial)"),
     roi = if (nzchar(roi_value)) roi_value else NULL,
     x = as.numeric(co[sidx, 1]),
     y = as.numeric(co[sidx, 2]),
@@ -1262,7 +1269,6 @@ cv_build_spatial <- function(crb, cells) {
         scene <- cv_spatial_one(crb, cells, nm, TRUE, roi, metadata, sd)
         if (is.null(scene)) next
         scene$name <- paste0(nm, "::roi::", roi)
-        scene$label <- paste0(nm, " · ", roi, " (spatial)")
         built[[length(built) + 1L]] <- scene
       }
     }
@@ -1274,10 +1280,12 @@ cv_build_spatial <- function(crb, cells) {
   first <- built[[1]]
   space <- cv_space(
     "spatial",
-    paste0(first$name, " (spatial)"),
+    first$label,
     first$x,
     first$y
   )
+  ## Labels describe FOV/ROI scope; the persisted selection key stays stable.
+  space$name <- first$name
   if (!is.null(first$image)) {
     space$image <- first$image
   }

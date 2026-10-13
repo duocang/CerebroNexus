@@ -113,6 +113,34 @@ for (const override of [{dataset_context: 'generation-0'}, {dataset_id: 'ds0'},
 }
 console.log(`${routes} page routes and delayed supplement regressions passed`);
 
+// Background visibility is independent from coordinates/selection and applies
+// only to Linked views; specialist pages still draw their own selected image.
+{
+  const checkbox = {}, panel = {spaceId: 'spatial', miniBg: {}, view: {cx: 5}};
+  const c = {linkedBackgroundsOn: true, singleActive: null, panels: [panel],
+    $: () => checkbox, spaceById: {spatial: {}}, calls: 0, drawn: 0,
+    currentImage: () => {c.calls++; return null;}, viewOperation: () => {}};
+  vm.createContext(c);
+  vm.runInContext(['drawImage','syncLinkedBackgroundsDefault','setLinkedBackgrounds','spatialSamples'].map(fn).join('\n'),c);
+  c.drawAll = () => {c.drawn++; c.drawImage(panel);};
+  c.setLinkedBackgrounds(false);
+  assert.strictEqual(c.calls, 0);
+  assert.strictEqual(checkbox.checked, false);
+  assert.strictEqual(panel.miniBg, null);
+  assert.strictEqual(panel.view.cx, 5);
+  c.syncLinkedBackgroundsDefault(false);
+  assert.strictEqual(c.linkedBackgroundsOn, false);
+  c.singleActive = 'spatial_projection'; c.drawImage(panel);
+  assert.strictEqual(c.calls, 1);
+  c.singleActive = null; c.setLinkedBackgrounds(true);
+  assert.strictEqual(c.calls, 2);
+  c.setLinkedBackgrounds(false); c.syncLinkedBackgroundsDefault(true);
+  assert.strictEqual(c.linkedBackgroundsOn, true);
+  c.spatialTemplate = {name:'section-x',label:'section-x · ROI: zone-y (spatial)',x:[1],y:[2]};
+  assert.strictEqual(c.spatialSamples()[0].name,'section-x');
+  assert.strictEqual(c.spatialSamples()[0].label,c.spatialTemplate.label);
+}
+
 // Internal restores keep ROI point defaults active; importing portable JSON
 // applies its display settings without leaking runtime-only fields to disk.
 {

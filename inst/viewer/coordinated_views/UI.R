@@ -314,9 +314,24 @@ tab_coordinated_views <- tabItem(
       ## zoom, brushing and selection available.
       div(
         class = "cv-linked-hover",
+        title = "Hover over a cell to highlight the same cell across linked views.",
         shinyWidgets::materialSwitch(
           inputId = "cv-hover",
           label = "Show linked cell hover:",
+          value = TRUE,
+          status = "primary",
+          inline = TRUE
+        )
+      ),
+      div(
+        class = "cv-linked-hover",
+        title = paste(
+          "Show or hide backgrounds in linked views.",
+          "Each view uses the first image matched to its FOV or ROI."
+        ),
+        shinyWidgets::materialSwitch(
+          inputId = "cv-backgrounds",
+          label = "Show background images:",
           value = TRUE,
           status = "primary",
           inline = TRUE
