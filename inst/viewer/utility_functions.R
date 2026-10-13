@@ -1813,7 +1813,7 @@ cerebroCellViewScatterPayload <- function(
   selection_keys,
   point_size,
   point_opacity,
-  group_labels = TRUE,
+  group_labels = FALSE,
   keep_square = FALSE,
   color_assignments = NULL,
   hover_info = NULL,

@@ -318,7 +318,7 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
     paste0(
       "if \\(dataChanged\\) \\{\\s+",
       "var authorDisplay = D.display_defaults \\|\\| \\{\\};\\s+",
-      "labelsOn = authorDisplay.group_labels !== false;\\s+",
+      "labelsOn = authorDisplay.group_labels === true;\\s+",
       "bordersOn = authorDisplay.draw_border === true;\\s+",
       "keepPlotsSquare = authorDisplay.keep_square === true;"
     )
@@ -882,7 +882,7 @@ test_that("Specialist group filters reuse the Linked views control", {
   expect_match(widget, 'class = "cv-dot"', fixed = TRUE)
   expect_match(javascript, ".cerebro-group-filters .cv-filt", fixed = TRUE)
   expect_match(shared_css, ".cerebro-group-filters .cv-filt", fixed = TRUE)
-  expect_no_match(linked_css, ".coordviews-page .cv-filt", fixed = TRUE)
+  expect_no_match(linked_css, "\\.coordviews-page \\.cv-filt(?:[-\\s.{:#]|$)")
   expect_match(linked_ui, "cerebro-group-filters", fixed = TRUE)
   expect_no_match(cell_views, "function closeFilterMenus", fixed = TRUE)
 

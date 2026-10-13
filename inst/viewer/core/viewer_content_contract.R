@@ -6,7 +6,7 @@
 ## schema small and typed; arbitrary CSS and executable font URLs are excluded.
 builderViewerDisplayDefaults <- function(value = NULL) {
   defaults <- list(
-    group_labels = TRUE,
+    group_labels = FALSE,
     draw_border = FALSE,
     keep_square = FALSE,
     label_size = 11,
@@ -15,25 +15,25 @@ builderViewerDisplayDefaults <- function(value = NULL) {
     gene_palette = "cerebro_orange",
     gene_panel_mode = "shared",
     gene_panel_palette = "default",
-    projection_group_labels = TRUE,
+    projection_group_labels = FALSE,
     projection_draw_border = FALSE,
     projection_keep_square = FALSE,
     gene_draw_border = FALSE,
     gene_keep_square = FALSE,
-    gene_plotting_order = "Highest expression on top",
+    gene_plotting_order = "Input order",
     gene_show_trend_line = TRUE,
     gene_trend_line_width = 2,
     spatial_group_labels = FALSE,
     spatial_draw_border = FALSE,
     spatial_keep_square = FALSE,
     spatial_region_outlines = FALSE,
-    trajectory_group_labels = TRUE,
+    trajectory_group_labels = FALSE,
     trajectory_draw_border = TRUE,
     trajectory_keep_square = FALSE,
     trajectory_density_opacity = .6,
     trajectory_show_trend_line = TRUE,
     trajectory_trend_line_width = 2,
-    ir_group_labels = TRUE,
+    ir_group_labels = FALSE,
     ir_draw_border = FALSE,
     ir_keep_square = FALSE,
     ir_scatter_point_size = 1,
@@ -78,7 +78,7 @@ builderViewerDisplayDefaults <- function(value = NULL) {
     gene_palette = c("cerebro_orange", "blues", "greens", "viridis"),
     gene_panel_mode = c("shared", "distinct"),
     gene_panel_palette = c("default", "soft"),
-    gene_plotting_order = c("Random", "Highest expression on top"),
+    gene_plotting_order = c("Input order", "Random", "Highest expression on top"),
     hla_legend_mode = c("auto", "always", "never")
   )
   ranges <- list(
@@ -112,6 +112,10 @@ builderViewerDisplayDefaults <- function(value = NULL) {
     ))
   if (!valid) {
     stop("Viewer display settings are invalid.", call. = FALSE)
+  }
+  # Older bundles called input order "Random" without actually shuffling cells.
+  if (identical(defaults$gene_plotting_order, "Random")) {
+    defaults$gene_plotting_order <- "Input order"
   }
   defaults$label_size <- as.double(defaults$label_size)
   defaults$color_clip <- as.double(defaults$color_clip)
