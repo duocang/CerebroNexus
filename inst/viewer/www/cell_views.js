@@ -6680,6 +6680,7 @@
     });
   }
   function invalidateDatasetViewState(detail) {
+    setLinkedPresentationReady(false);
     resetSingleViews();
     clearStaticResourceCaches();
     // Deferred image keys include the exact generation; retired entries cannot
@@ -9803,7 +9804,8 @@
   }
 
   function workspaceSummary() {
-    var primaryPanel = D && panels.filter(function (panel) {
+    var ownsWorkspace = !singleActive && D && D === linkedBundle && datasetMessageFresh(D);
+    var primaryPanel = ownsWorkspace && panels.filter(function (panel) {
       return panel.spaceId && Number(panel.canvas.dataset.pointCount) === D.n;
     })[0];
     var rendered = !!(D && configFingerprint() && primaryPanel);
@@ -9872,6 +9874,11 @@
   }
 
   var linkedReadyPaintToken = 0;
+
+  function setLinkedPresentationReady(ready) {
+    var root = document.querySelector('.linked-views-page');
+    if (root) root.classList.toggle('cv-workspace-pending', !ready);
+  }
 
   function linkedWorkspacePainted() {
     var meta = $('cv-meta');
@@ -9988,6 +9995,9 @@
 
   function reportWorkspaceReady(eventKind) {
     var summary = workspaceSummary();
+    // Primary UMAP delivery starts the supplement request, but is not yet the
+    // linked layout. Keep its pixels concealed without interrupting rendering.
+    if (!summary.complete) setLinkedPresentationReady(false);
     var token = ++linkedReadyPaintToken;
     if (!summary.primaryReady) {
       dispatchWorkspaceReady(summary, false, eventKind);
@@ -10002,6 +10012,7 @@
         if (token !== linkedReadyPaintToken || D !== paintedData) return;
         var settled = workspaceSummary();
         if (settled.datasetFingerprint !== paintedFingerprint) return;
+        setLinkedPresentationReady(settled.complete);
         dispatchWorkspaceReady(settled, linkedWorkspacePainted(), eventKind);
       });
     });
@@ -10322,7 +10333,6 @@
       var mounted = !singleId || !!(surfaceHome && surface &&
         surface.contains(surfaceHome.panes));
       if (key === lastVis && mounted) return;
-      var enteringCachedLinked = linkedVis && !!(D && workspaceSummary().primaryReady);
       lastVis = key;
       requestSingleView(singleId);
       if (singleId && singleView(singleId)) {
@@ -10339,13 +10349,19 @@
         // mounted in D. Restore the Linked bundle on return through those tabs
         // too, before its projection controls operate on the shared renderer.
         activateLinked();
+      } else if (linkedVis && !linkedBundle) {
+        stashSingleState();
+        showUnavailable('Loading linked views…');
+        restoreLinkedSurface();
+        singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+        setLinkedPresentationReady(false);
       } else if (singleActive) {
         stashSingleState();
         restoreLinkedSurface();
         singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
         if (linkedVis) showUnavailable('Loading linked views…');
       }
-      if (enteringCachedLinked && !singleActive) {
+      if (linkedVis && !singleActive && workspaceSummary().primaryReady) {
         reportWorkspaceReady('cached');
       }
       if (Shiny.setInputValue) {
