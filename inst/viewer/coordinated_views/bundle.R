@@ -1131,24 +1131,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
       NULL
     }
     preset <- spatialEmbeddedImagePreset(preset, entry_alignment)
-    entry_appearance <- cv_alignment_appearance(entry_alignment)
-    if (length(entry_appearance$image_opacity) == 1L) {
-      preset$opacity <- entry_appearance$image_opacity
-    }
-    alignment_source <- if (is.list(alignment)) {
-      as.character(alignment$source %||% character())
-    } else {
-      character()
-    }
-    image_opacity <- appearance$image_opacity
-    if (
-      length(alignment_source) == 1L &&
-        !is.na(alignment_source) &&
-        identical(label, basename(alignment_source)) &&
-        length(image_opacity) == 1L
-    ) {
-      preset$opacity <- unname(image_opacity)
-    }
+    # Use the shared Viewer opacity default, independently of saved alignment.
     ## Settings may target embedded labels too. This is the same public
     ## per-image contract createShinyApp() validates for external backgrounds.
     images[[length(images) + 1]] <- list(
@@ -1409,9 +1392,6 @@ cv_build_trekker <- function(crb, cells, md) {
     }
     preset <- external_histology$preset %||%
       cv_image_preset("trekker", label)
-    if (is.null(external_histology) && length(appearance$image_opacity) == 1L) {
-      preset$opacity <- appearance$image_opacity
-    }
     image_entry <- list(
       id = if (is.null(external_histology)) {
         "trekker-embedded"
