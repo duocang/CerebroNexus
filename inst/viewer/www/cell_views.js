@@ -1116,7 +1116,10 @@
     var dpr = window.devicePixelRatio || 1;
     p.W = width; p.H = height;
     resizePanelLayers(p, width, height, dpr);
-    if (p.pane) p.pane.classList.toggle('cv-narrow', width < 420);
+    if (p.pane) {
+      p.pane.classList.toggle('cv-narrow', width < 420);
+      p.pane.classList.toggle('cv-square-plot', keepPlotsSquare);
+    }
     project(p);
   }
 
