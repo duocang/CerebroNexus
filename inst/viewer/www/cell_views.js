@@ -48,6 +48,7 @@
   var pendingAssets = new Set();
   var pendingCloneDetails = new Set();
   var pendingCloneSupplement = null;
+  var deferredLinkedSupplements = [];
   var transportMetrics = {};
   var linkedRequestTiming = {};
   var singleTiming = Object.create(null);
@@ -6641,6 +6642,7 @@
     geneWanted = null;
     pendingColorPatch = null;
     progressiveRequestedKey = null;
+    deferredLinkedSupplements = [];
     linkedBundle = null;
     sel = null;
     selectionSource = null;
@@ -8276,6 +8278,12 @@
     }
     if (state) restoreWorkspace(state);
     linkedState = null;
+    var pending = deferredLinkedSupplements;
+    deferredLinkedSupplements = [];
+    pending.forEach(function (item) {
+      if (item.buffer) onBinarySupplement(item.buffer);
+      else applyHydratedSupplement(item.extra, item.metric);
+    });
   }
 
   function registerSingle(id, context) {
@@ -8785,10 +8793,22 @@
     return true;
   }
 
+  function linkedSupplementFresh(extra) {
+    return !!(extra && linkedBundle && datasetMessageFresh(extra) &&
+      sameDatasetContext(extra.dataset_context, linkedBundle.dataset_context) &&
+      extra.dataset_id === linkedBundle.dataset_id &&
+      extra.dataset_fingerprint === configFingerprint() &&
+      extra.progressive_token === linkedBundle.progressive_token);
+  }
+
   function applyHydratedSupplement(extra, metric) {
-    if (!datasetMessageFresh(extra) || !D || !sameDatasetContext(extra.dataset_context, D.dataset_context) || extra.dataset_id !== D.dataset_id ||
-        extra.dataset_fingerprint !== configFingerprint() ||
-        extra.progressive_token !== D.progressive_token) return;
+    if (!linkedSupplementFresh(extra)) return;
+    // A clone supplement can arrive here in a later animation frame, after
+    // navigation has mounted another page's data in the shared renderer.
+    if (D !== linkedBundle) {
+      deferredLinkedSupplements.push({ extra: extra, metric: metric });
+      return;
+    }
     var drawStarted = performance.now();
     try {
       var structural = !!(extra.clone || extra.trekker ||
@@ -8870,11 +8890,14 @@
     try {
       var extra = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!D || !datasetMessageFresh(extra)) return;
       if (!extra) throw new Error('Linked views supplement is empty');
-      if (extra.dataset_id !== D.dataset_id ||
-          extra.dataset_fingerprint !== configFingerprint() ||
-          extra.progressive_token !== D.progressive_token) return;
+      if (!linkedSupplementFresh(extra)) return;
+      // Hydration and drawing use D. Keep the wire payload until the Linked
+      // bundle is mounted again, instead of dropping it on a specialist tab.
+      if (D !== linkedBundle) {
+        deferredLinkedSupplements.push({ buffer: buffer });
+        return;
+      }
       extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
       var metric = CBViewState.telemetry.transport(
         extra.transport_profile,
@@ -9112,6 +9135,7 @@
       imgChoice = {};
       pendingCloneDetails.clear();
       pendingCloneSupplement = null;
+      deferredLinkedSupplements = [];
     }
     dataShown = datasetIdentity;
     imgToken++;
@@ -10232,14 +10256,16 @@
         cachedTiming.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? cachedAt - window.__cerebroPageBenchClickStart : null;
         activateSingle(singleId, false, false, 'cached');
+      } else if (linkedVis && linkedBundle && (singleActive || D !== linkedBundle)) {
+        // A non-canvas tab clears singleActive but leaves the specialist data
+        // mounted in D. Restore the Linked bundle on return through those tabs
+        // too, before its projection controls operate on the shared renderer.
+        activateLinked();
       } else if (singleActive) {
-        if (linkedVis && linkedBundle) {
-          activateLinked();
-        } else {
-          restoreLinkedSurface();
-          singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
-          if (linkedVis) showUnavailable('Loading linked views…');
-        }
+        stashSingleState();
+        restoreLinkedSurface();
+        singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+        if (linkedVis) showUnavailable('Loading linked views…');
       }
       if (enteringCachedLinked && !singleActive) {
         reportWorkspaceReady('cached');
