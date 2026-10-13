@@ -5902,7 +5902,8 @@
     }
     ctl.style.display = samples.length > 1 ? '' : 'none';
     selEl.innerHTML = samples.map(function (s) {
-      return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
+      var label = (s.label || s.name).replace(/ \(spatial\)$/, '');
+      return '<option value="' + esc(s.name) + '">' + esc(label) + '</option>';
     }).join('');
     Array.prototype.forEach.call(selEl.options, function (option) {
       option.selected = selectedSpatial.indexOf(option.value) >= 0;
@@ -8114,7 +8115,7 @@
     if (!payload || rebuildingBase ||
         !sameDatasetContext(payload.dataset_context, currentDatasetContext())) return false;
     if (!singleActive && linkedBundle && D && !linkedState) {
-      linkedState = exportWorkspace();
+      linkedState = exportRuntimeWorkspace();
     }
     if (CBViewState.shouldStashSingleState(
       singleActive,
@@ -8822,7 +8823,7 @@
         if (extra.progressive_complete !== false) D.progressive = false;
         reportWorkspaceReady();
       } else if (structural) {
-        var saved = exportWorkspace();
+        var saved = exportRuntimeWorkspace();
         var hadSpatial = !!spatialTemplate;
         var merged = Object.assign({}, D, {
           groups: Object.assign({}, D.groups, extra.groups),
@@ -9433,6 +9434,19 @@
     });
   }
 
+  function exportRuntimeWorkspace() {
+    var config = exportWorkspace();
+    // Internal navigation/progressive redraws must retain author defaults.
+    // Keep this out of the portable JSON schema; imported views still apply
+    // their explicitly saved display settings.
+    Object.defineProperty(config, '_pointOverrides', {
+      value: { size: pointSizeEdited, opacity: pointOpacityEdited }
+    });
+    return config;
+  }
+  function workspacePointOverrides(config) {
+    return config._pointOverrides || { size: true, opacity: true };
+  }
   function exportWorkspace() {
     if (!D) throw new Error('Load a data set before saving a linked view.');
     var active = activeSpatial();
@@ -9659,7 +9673,10 @@
     ps = finiteNumber(display.point_size, ps, 0, 20);
     pointOpacity = finiteNumber(display.point_opacity, pointOpacity, 0, 1);
     pctShow = finiteNumber(display.percentage_cells, pctShow, 5, 100);
-    psSeeded = pointSizeEdited = pointOpacityEdited = true;
+    psSeeded = true;
+    var overrides = workspacePointOverrides(config);
+    pointSizeEdited = overrides.size;
+    pointOpacityEdited = overrides.opacity;
     labelsOn = display.group_labels !== false;
     bordersOn = !!display.cell_borders;
     keepPlotsSquare = !!display.keep_square;

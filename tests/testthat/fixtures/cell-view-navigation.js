@@ -112,3 +112,20 @@ for (const override of [{dataset_context: 'generation-0'}, {dataset_id: 'ds0'},
   assert.strictEqual(s.fallbacks, 0);
 }
 console.log(`${routes} page routes and delayed supplement regressions passed`);
+
+// Internal restores keep ROI point defaults active; importing portable JSON
+// applies its display settings without leaking runtime-only fields to disk.
+{
+  const c = {exportWorkspace: () => ({view: {}}), pointSizeEdited: false, pointOpacityEdited: false};
+  vm.createContext(c);
+  vm.runInContext(fn('exportRuntimeWorkspace') + fn('workspacePointOverrides'), c);
+  let saved = c.exportRuntimeWorkspace();
+  assert.strictEqual(c.workspacePointOverrides(saved).size, false);
+  assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
+  assert.strictEqual(JSON.stringify(saved), '{"view":{}}');
+  assert.strictEqual(c.workspacePointOverrides(JSON.parse(JSON.stringify(saved))).size, true);
+  c.pointSizeEdited = true;
+  saved = c.exportRuntimeWorkspace();
+  assert.strictEqual(c.workspacePointOverrides(saved).size, true);
+  assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
+}
