@@ -3044,3 +3044,17 @@ body .shiny-bound-output.cerebro-output-waiting {
   width: var(--c-control-width);
   min-width: min(var(--c-select-min-width), 100%);
 }
+
+/* Background chips use the space beside actions before adding vertical rows.
+   Flex wrapping follows the actual container, including sidebar changes. */
+.cerebro-spatial-background-row {
+  display: flex; flex: 1 0 100%; flex-wrap: wrap;
+  align-items: flex-end; gap: 10px; min-width: 0; max-width: 100%;
+}
+.cerebro-spatial-background-row > #spatial_projection_background_selector_UI {
+  display: block; flex: 1 1 280px; min-width: min(280px, 100%);
+}
+.cerebro-viz-toolbar .cerebro-spatial-background-row .spatial-roi-background-picker,
+.cerebro-viz-toolbar .cerebro-spatial-background-row .form-group {
+  flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%;
+}

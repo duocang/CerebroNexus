@@ -1513,7 +1513,7 @@
   }
 
   function drawGroupLabels(p) {
-    // Below ~260px a label chip covers a meaningful share of the panel.
+    // Below ~260px cluster names crowd the data.
     if (!labelsOn || p.W < 260) return;
     var L = groupLabelsFor(p); if (!L || !L.length) return;
     var c = p.ctx, v = p.view, SX = p._SX, SY = p._SY,
@@ -1549,8 +1549,6 @@
       x = Math.max(w / 2 + 6, Math.min(p.W - w / 2 - 6, x));
       y = Math.max((labelSize + 5) / 2 + 2,
         Math.min(p.H - (labelSize + 5) / 2 - 2, y));
-      c.fillStyle = 'rgba(255,255,255,.80)';
-      c.fillRect(x - w / 2 - 4, y - (labelSize + 5) / 2, w + 8, labelSize + 5);
       c.fillStyle = '#1c1c1e';
       c.fillText(t, x, y);
     });
