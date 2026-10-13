@@ -125,7 +125,7 @@ test_that("source App contract takes precedence over the installed package", {
 
 test_that("an installed package directory is not mistaken for source", {
   installed_like <- withr::local_tempdir()
-  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), installed_like)
+  file.copy(builder_test_description_path(), installed_like)
   dir.create(file.path(installed_like, "R"))
 
   expect_null(builder_source_package_root(installed_like))
@@ -133,7 +133,7 @@ test_that("an installed package directory is not mistaken for source", {
 
 test_that("Builder startup exports its active source to parent verification", {
   source_root <- withr::local_tempdir()
-  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  file.copy(builder_test_description_path(), source_root)
   dir.create(file.path(source_root, "R"))
   file.create(file.path(source_root, "R", "source.R"))
   withr::local_envvar(CEREBRO_PACKAGE_SOURCE = NA_character_)
@@ -261,7 +261,7 @@ test_that("Builder runtime capability blocks startup with exact guidance", {
 
 test_that("full dependency inventory includes every declared hard dependency", {
   imports <- read.dcf(
-    testthat::test_path("..", "..", "DESCRIPTION"),
+    builder_test_description_path(),
     fields = "Imports"
   )[[1L]]
   declared <- strsplit(
@@ -494,10 +494,7 @@ test_that("builder UI activates source only for the running App", {
 })
 
 test_that("worker setup loads the app prerequisite before planning", {
-  session_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  session_path <- builder_test_inst_path(
     "builder",
     "worker.R"
   )
@@ -649,6 +646,7 @@ test_that("Build dependency preflight executes in the worker process", {
 
 test_that("session binds successful App results to the dispatched build id", {
   local({
+    builder_repo_source("build.R")
     builder_repo_source("session.R")
     builder_app_capability <- function(...) list(version = 1L)
     builder_worker_require_capability <- function(name) invisible(TRUE)
@@ -666,7 +664,12 @@ test_that("session binds successful App results to the dispatched build id", {
       expect_true(is.function(on_progress))
       list(state = "success", publishable = TRUE, stage = stage)
     }
-    builder_worker_response <- function(request, value = NULL, error = NULL) {
+    builder_worker_response <- function(
+      request,
+      value = NULL,
+      error = NULL,
+      diagnostics = NULL
+    ) {
       if (!is.null(error)) list(error = error) else value
     }
     rs <- list(call = function(fun, args) do.call(fun, args))
@@ -690,6 +693,7 @@ test_that("session binds successful App results to the dispatched build id", {
 
 test_that("worker preloads only fresh objects that are already resident", {
   local({
+    builder_repo_source("build.R")
     builder_repo_source("session.R")
     builder_worker_require_capability <- function(name) invisible(TRUE)
     builder_build_dependency_capability <- function(plan) {
@@ -699,7 +703,12 @@ test_that("worker preloads only fresh objects that are already resident", {
     .builder_build_progress_callback <- function(path) {
       function(...) invisible(NULL)
     }
-    builder_worker_response <- function(request, value = NULL, error = NULL) {
+    builder_worker_response <- function(
+      request,
+      value = NULL,
+      error = NULL,
+      diagnostics = NULL
+    ) {
       if (!is.null(error)) list(error = error) else value
     }
     .builder_worker_object <- function(...) {

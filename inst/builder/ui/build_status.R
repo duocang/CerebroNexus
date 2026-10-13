@@ -622,6 +622,12 @@ builder_build_status_model <- function(result) {
       mode = "function",
       inherits = TRUE
     )
+    if (is.null(validate_database)) {
+      validate_database <- tryCatch(
+        utils::getFromNamespace(".viewerAuthValidateDatabase", "CerebroNexus"),
+        error = function(error) NULL
+      )
+    }
   }
   if (!is.function(validate_database)) {
     stop("The authentication validator is invalid.", call. = FALSE)
@@ -743,6 +749,12 @@ builder_open_final_app <- function(
       mode = "function",
       inherits = TRUE
     )
+    if (is.null(.validate_database)) {
+      .validate_database <- tryCatch(
+        utils::getFromNamespace(".viewerAuthValidateDatabase", "CerebroNexus"),
+        error = function(error) NULL
+      )
+    }
   }
   if (!is.function(.validate_database)) {
     stop("The authentication validator is invalid.", call. = FALSE)
@@ -944,6 +956,7 @@ builder_build_operation_overlay_model <- function(
   )
   active <- model$state %in%
     c(
+      "choosing_folder",
       "checking_folder",
       "preparing",
       "queued",
@@ -968,7 +981,8 @@ builder_build_operation_overlay_model <- function(
   } else {
     NULL
   }
-  phase <- if (!active) {
+  picker_waiting <- identical(model$state, "choosing_folder")
+  phase <- if (!active || picker_waiting) {
     NULL
   } else if (!is.null(reported_phase)) {
     reported_phase
@@ -987,16 +1001,24 @@ builder_build_operation_overlay_model <- function(
   }
   list(
     active = active,
+    picker_waiting = picker_waiting,
     phase = phase,
     cancelable = active &&
+      !picker_waiting &&
       isTRUE(can_stop) &&
-      phase %in% c("verify", "publish"),
-    title = if (active) "Building output" else NULL,
-    message = if (active) {
-      paste(
-        "Keep this page open.",
-        "This dialog closes automatically when the build finishes."
-      )
+      phase %in%
+        c("stage", "dispatch", "datasets", "viewer", "verify", "publish"),
+    title = if (picker_waiting) {
+      "Choose output folder"
+    } else if (active) {
+      "Building output"
+    } else {
+      NULL
+    },
+    message = if (picker_waiting) {
+      "Choose a folder, or enter its path."
+    } else if (active) {
+      "Keep this page open."
     } else {
       NULL
     },
@@ -1026,6 +1048,14 @@ builder_build_stage_status_validate <- function(model) {
   invisible(model)
 }
 
+builder_build_was_stopped <- function(model) {
+  identical(model$type, "failure") &&
+    is.character(model$message) &&
+    length(model$message) == 1L &&
+    !is.na(model$message) &&
+    startsWith(model$message, "Build stopped by the user")
+}
+
 builder_build_stage_status_label <- function(model) {
   builder_build_stage_status_validate(model)
   switch(
@@ -1044,7 +1074,11 @@ builder_build_stage_status_label <- function(model) {
       model$result_model$type %||% "",
       success = "Build complete",
       needs_decision = "Build needs a decision",
-      failure = "Build failed",
+      failure = if (builder_build_was_stopped(model$result_model)) {
+        "Build stopped"
+      } else {
+        "Build failed"
+      },
       recovery_required = "Build failed",
       "Build finished"
     ),
@@ -1057,14 +1091,25 @@ builder_build_stage_primary_action_ui <- function(
   controls_disabled = FALSE
 ) {
   builder_build_stage_status_validate(model)
-  if (!identical(model$state, "ready")) {
+  repeatable <- identical(model$state, "result") &&
+    model$result_model$type %in% c("failure", "success")
+  if (!identical(model$state, "ready") && !isTRUE(repeatable)) {
     return(NULL)
   }
   actionButton(
     "build",
-    "Build",
+    if (isTRUE(repeatable)) {
+      if (identical(model$result_model$type, "failure")) {
+        "Retry Build"
+      } else {
+        "Build again"
+      }
+    } else {
+      "Build"
+    },
     class = "btn btn-action",
-    disabled = isTRUE(controls_disabled) || !isTRUE(model$can_build)
+    disabled = isTRUE(controls_disabled) ||
+      (!isTRUE(repeatable) && !isTRUE(model$can_build))
   )
 }
 
@@ -1125,11 +1170,12 @@ builder_build_status_ui <- function(model) {
     model <- builder_build_status_model(model)
   }
   stopifnot(inherits(model, "builder_build_status"))
+  stopped <- builder_build_was_stopped(model)
   title <- switch(
     model$type,
     success = "Build complete",
     needs_decision = "Build needs a decision",
-    failure = "Build failed",
+    failure = if (stopped) "Build stopped" else "Build failed",
     recovery_required = "Build failed"
   )
   icon <- switch(
@@ -1161,8 +1207,14 @@ builder_build_status_ui <- function(model) {
       )
     ),
     h3(`data-icon` = icon, title),
-    if (!is.null(pipeline_state)) builder_build_pipeline_ui(pipeline_state),
-    if (!is.null(model$message)) p(model$message),
+    if (!is.null(pipeline_state) && !stopped) {
+      builder_build_pipeline_ui(pipeline_state)
+    },
+    if (stopped) {
+      p("Nothing was published. Retry when ready.")
+    } else if (!is.null(model$message)) {
+      p(model$message)
+    },
     if (
       model$type %in%
         c("failure", "recovery_required") &&
@@ -1179,11 +1231,8 @@ builder_build_status_ui <- function(model) {
       )
       p(
         class = "hint builder-failure-context",
-        "Failed during ",
-        strong(phase_labels[[model$failure_phase]] %||% model$failure_phase),
-        if (builder_stage_has_text(model$failure_build_id %||% "")) {
-          paste0(" · Build ID ", model$failure_build_id)
-        }
+        if (stopped) "Stopped during " else "Failed during ",
+        strong(phase_labels[[model$failure_phase]] %||% model$failure_phase)
       )
     },
     if (
@@ -1191,10 +1240,15 @@ builder_build_status_ui <- function(model) {
         c("failure", "recovery_required") &&
         builder_stage_has_text(model$failure_stage %||% "")
     ) {
-      p(
-        class = "hint builder-failure-stage",
-        "Assigned stage: ",
-        code(model$failure_stage)
+      tags$details(
+        tags$summary("Details"),
+        if (stopped && !is.null(model$message)) p(model$message),
+        p("Build ID: ", code(model$failure_build_id %||% "")),
+        p(
+          class = "hint builder-failure-stage",
+          "Temporary output: ",
+          code(model$failure_stage)
+        )
       )
     },
     if (
@@ -1202,12 +1256,9 @@ builder_build_status_ui <- function(model) {
         c("failure", "recovery_required") &&
         builder_stage_has_text(model$diagnostics_path %||% "")
     ) {
-      p(
-        class = "hint builder-diagnostics-path",
-        "Diagnostic ID ",
-        strong(basename(model$diagnostics_path)),
-        " · Saved to ",
-        code(model$diagnostics_path)
+      tags$details(
+        tags$summary("Diagnostic log"),
+        p(class = "hint builder-diagnostics-path", code(model$diagnostics_path))
       )
     },
     if (
@@ -1274,7 +1325,7 @@ builder_build_status_ui <- function(model) {
       div(
         class = "builder-recovery-action",
         p(
-          "Your settings are safe. Restart the worker from its saved snapshots, then retry."
+          "Settings saved. Restart the worker, then retry."
         ),
         actionButton(
           "restart_worker",

@@ -32,11 +32,16 @@ builder_release_runtime_files <- function() {
 
 builder_runtime_file_identity <- function(paths, .md5 = tools::md5sum) {
   paths <- if (is.null(paths)) character() else paths
-  paths <- sort(unique(as.character(paths)), method = "radix")
+  paths <- as.character(paths)
   if (!length(paths) || anyNA(paths) || any(!nzchar(paths))) {
     stop("The Builder runtime file set is empty or invalid.", call. = FALSE)
   }
-  paths <- normalizePath(paths, winslash = "/", mustWork = FALSE)
+  # Resolve aliases before ordering/deduplicating. Parent and worker may reach
+  # the same installed runtime through different symlink roots.
+  paths <- sort(
+    unique(normalizePath(paths, winslash = "/", mustWork = FALSE)),
+    method = "radix"
+  )
   if (
     any(!file.exists(paths)) ||
       any(dir.exists(paths)) ||
@@ -337,6 +342,7 @@ environment(builder_runtime_assert_identity) <- baseenv()
       "default_projection",
       "initial_projections",
       "default_trajectory",
+      "viewer_display",
       "overview_point_size",
       "overview_point_opacity",
       "overview_percentage_cells_to_show",
@@ -1962,9 +1968,9 @@ builder_coordinator_abort <- function(handle) {
   builder_abort_release(handle)
 }
 
-builder_coordinator_claim <- function(handle) {
+builder_coordinator_claim <- function(handle, pid = Sys.getpid()) {
   handle <- .builder_coordinator_handle(handle)
-  pid <- as.integer(Sys.getpid())
+  pid <- as.integer(pid)
   .builder_release_transfer_lock(
     handle$lock,
     handle$token,

@@ -51,7 +51,12 @@ output$build_output_options <- renderUI({
   req(identical(workflow()$stage, "build"))
   snapshot <- workflow()$review_snapshot
   auth <- auth_capability()
-  controls_disabled <- builder_mutations_locked(build_flow(), protocol())
+  # Activity messages update the existing controls in place. Re-rendering this
+  # form for each background checkpoint update loses in-flight edits and focus.
+  controls_disabled <- isolate(builder_mutations_locked(
+    build_flow(),
+    protocol()
+  ))
   items <- snapshot$items %||% list()
   dataset_choices <- stats::setNames(
     vapply(items, `[[`, character(1), "id"),
@@ -301,6 +306,7 @@ builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
 builder_build_attempt_failed <- function(message) {
   build_flow(list(stage = "idle", plan = NULL))
   build_operation_phase(NULL)
+  result(builder_result_failure(message))
   session$sendCustomMessage(
     "builder_build_dialog",
     list(action = "close")
@@ -400,13 +406,9 @@ prepare_selected_output <- function(path) {
       !inherits(plan, "builder_build_plan") ||
         !identical(plan$readiness, "ready")
     ) {
-      build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
-        plan$error %||% "The selected folder cannot be used.",
-        type = "error",
-        duration = 6
-      )
-      return(invisible(FALSE))
+      return(builder_build_attempt_failed(
+        plan$error %||% "The selected folder cannot be used."
+      ))
     }
     target_exists <- tryCatch(
       .builder_release_exists(plan$out_dir) ||
@@ -526,13 +528,14 @@ builder_build_output_preflight <- function(path) {
   )
 }
 
-show_builder_build_server_path <- function() {
+show_builder_build_server_path <- function(detail = NULL) {
   shiny::showModal(builder_server_path_dialog(
-    title = "Choose a parent folder for the new release",
+    title = "Choose output folder",
     input_id = "builder_build_server_folder",
     action_id = "use_builder_build_server_folder",
     label = "Parent folder",
-    action_label = "Create new release here"
+    action_label = "Build here",
+    detail = detail
   ))
   invisible(TRUE)
 }
@@ -543,6 +546,13 @@ choose_build_folder <- function() {
     "output_directory",
     key = "build-output",
     on_result = function(choice) {
+      on.exit(
+        session$sendCustomMessage(
+          "builder_build_dialog",
+          list(action = "close")
+        ),
+        add = TRUE
+      )
       tryCatch(
         {
           if (identical(choice$status, "cancelled")) {
@@ -551,12 +561,7 @@ choose_build_folder <- function() {
           }
           if (!identical(choice$status, "selected")) {
             build_flow(list(stage = "idle", plan = NULL))
-            showNotification(
-              choice$error %||% "The folder picker could not be opened.",
-              type = "error",
-              duration = 6
-            )
-            show_builder_build_server_path()
+            show_builder_build_server_path(choice$error)
             return()
           }
           start_builder_new_release(choice$path)
@@ -575,9 +580,9 @@ choose_build_folder <- function() {
       )
     },
     on_error = function(error) {
+      session$sendCustomMessage("builder_build_dialog", list(action = "close"))
       build_flow(list(stage = "idle", plan = NULL))
-      showNotification(conditionMessage(error), type = "error", duration = 6)
-      show_builder_build_server_path()
+      show_builder_build_server_path(conditionMessage(error))
     }
   )
 }
@@ -618,6 +623,7 @@ observeEvent(input$use_builder_build_server_folder, {
 })
 
 schedule_selected_output_build <- function(path) {
+  builder_build_stop_requested(FALSE)
   result(NULL)
   build_flow(list(stage = "preparing", plan = NULL))
   session$sendCustomMessage("builder_focus_build_status", list())
@@ -662,7 +668,12 @@ retry_confirmed_build <- function() {
 }
 
 observeEvent(input$build, {
-  start_confirmed_build(select_output = TRUE)
+  current <- isolate(result())
+  if (is.list(current) && identical(current$state, "failure")) {
+    retry_confirmed_build()
+  } else {
+    start_confirmed_build(select_output = TRUE)
+  }
 })
 
 observeEvent(input$recover_builder_release, {

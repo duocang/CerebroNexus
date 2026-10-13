@@ -60,25 +60,26 @@ test_that("Data page makes the whole dropzone the upload action", {
 
 test_that("Data page names readers disabled by missing packages", {
   runtime <- builder_data_page_runtime()
-  html <- htmltools::renderTags(runtime$builder_empty_workbench_ui(
-    formats = list(
-      list(id = "rds", label = "RDS", available = TRUE),
-      list(
-        id = "qs",
-        label = "qs",
-        available = FALSE,
-        unavailable_reason = paste(
-          "QS files are disabled because the R package 'qs' is not installed.",
-          'Install it with install.packages("qs"), then restart Builder.'
-        )
-      )
-    ),
-    examples = list()
+  formats <- list(
+    list(id = "rds", label = "RDS", available = TRUE),
+    list(
+      id = "qs",
+      label = "qs",
+      available = FALSE,
+      unavailable_reason = paste(
+        "QS unavailable. Use RDS or QS2."
+      ),
+      unavailable_detail = "The R package 'qs' could not be loaded."
+    )
+  )
+  html <- htmltools::renderTags(shiny::tagList(
+    runtime$builder_empty_workbench_ui(formats = formats, examples = list()),
+    runtime$builder_format_unavailable_ui(formats)
   ))$html
 
   expect_match(html, "builder-format-unavailable", fixed = TRUE)
-  expect_match(html, "QS files are disabled", fixed = TRUE)
-  expect_match(html, 'install.packages("qs")', fixed = TRUE)
+  expect_match(html, "QS unavailable", fixed = TRUE)
+  expect_match(html, "<details>", fixed = TRUE)
   expect_match(html, ">RDS<", fixed = TRUE)
   expect_false(grepl(">RDS, QS<", html, fixed = TRUE))
 })

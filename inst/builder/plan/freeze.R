@@ -669,6 +669,9 @@ builder_freeze_plan <- function(
           points_only = setdiff(spatial_sections, image_sections)
         )
         saved$initial_projections <- initial_projections[[index]]
+        saved$viewer_display <- builderViewerDisplayDefaults(
+          settings$viewer_display
+        )
         saved$overview_point_size <- settings$overview_point_size %||% 5
         saved$overview_point_opacity <- settings$overview_point_opacity %||% 1
         saved$overview_percentage_cells_to_show <- settings[[
@@ -851,6 +854,7 @@ builder_freeze_plan <- function(
         default_projection = settings$default_projection %||%
           settings$reductions[[1L]],
         default_trajectory = settings$default_trajectory %||% NULL,
+        viewer_display = builderViewerDisplayDefaults(settings$viewer_display),
         overview_point_size = settings$overview_point_size %||% 5,
         overview_point_opacity = settings$overview_point_opacity %||% 1,
         overview_percentage_cells_to_show = settings[[
@@ -1010,12 +1014,7 @@ builder_freeze_plan <- function(
       frozen_app_options$initial_dataset
     ]]$viewer_page_expectations %||%
       list()
-    always <- initial_expectations$always
-    always_ids <- if (is.data.frame(always) && "id" %in% names(always)) {
-      always$id
-    } else {
-      builder_viewer_page_catalog()$always$id
-    }
+    always_ids <- builder_viewer_page_catalog()$always$id
     available_pages <- unique(c(
       always_ids,
       initial_expectations$visible_conditional %||% character()

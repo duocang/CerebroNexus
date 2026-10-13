@@ -102,7 +102,37 @@ builder_build_progress_remove <- function(path) {
   if (file.exists(path)) {
     unlink(path, force = TRUE)
   }
+  unlink(paste0(path, ".cancel"), force = TRUE)
   !file.exists(path)
+}
+
+builder_build_cancel_requested <- function(path) {
+  .builder_build_text(path) && file.exists(paste0(path, ".cancel"))
+}
+
+builder_build_request_cancel <- function(path) {
+  if (!.builder_build_text(path) || !dir.exists(dirname(path))) {
+    return(FALSE)
+  }
+  marker <- paste0(path, ".cancel")
+  created <- isTRUE(file.create(marker))
+  if (created) {
+    Sys.chmod(marker, mode = "0600")
+  }
+  created
+}
+
+builder_build_check_cancel <- function(path) {
+  if (builder_build_cancel_requested(path)) {
+    stop(structure(
+      list(
+        message = "Build stopped by the user. The staged output was not published.",
+        call = NULL
+      ),
+      class = c("builder_build_cancelled", "error", "condition")
+    ))
+  }
+  invisible(NULL)
 }
 
 builder_build_progress_finish <- function(plan, path, current_note = NULL) {
@@ -126,6 +156,7 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
     if (is.null(path)) {
       return(invisible(FALSE))
     }
+    builder_build_check_cancel(path)
     invisible(builder_build_progress_write(path, phase))
   }
 }
@@ -1613,7 +1644,12 @@ builder_execute_plan <- function(
   }
   report_progress <- function(phase) {
     if (is.function(on_progress)) {
-      try(on_progress(phase), silent = TRUE)
+      progress_result <- try(on_progress(phase), silent = TRUE)
+      if (
+        inherits(attr(progress_result, "condition"), "builder_build_cancelled")
+      ) {
+        stop(attr(progress_result, "condition"))
+      }
     }
     invisible(NULL)
   }

@@ -52,6 +52,19 @@ builder_session_poll_startup <- function(worker, timeout = 0) {
 .builder_session_collect_failed_import <- function(.gc = gc) {
   invisible(.gc(full = TRUE))
 }
+.builder_session_collect_failed_import <- utils::removeSource(
+  .builder_session_collect_failed_import
+)
+environment(.builder_session_collect_failed_import) <- baseenv()
+
+# Known worker callbacks resolve their dependencies in the worker. Carrying the
+# Builder environment as an argument serializes the entire live app on dispatch.
+builder_session_worker_callback <- function(callback) {
+  stopifnot(is.function(callback))
+  callback <- utils::removeSource(callback)
+  environment(callback) <- globalenv()
+  callback
+}
 
 #' Load one of the built-in examples, without a file.
 builder_session_example <- function(
@@ -109,6 +122,14 @@ builder_session_example <- function(
               progress = progress
             )
           }
+          backends <- list(
+            bpcells = requireNamespace("BPCells", quietly = TRUE),
+            h5 = requireNamespace("HDF5Array", quietly = TRUE)
+          )
+          value$backend_capabilities <- list(
+            build = backends,
+            viewer = backends
+          )
           response <- builder_worker_response(request, value)
           completed <- TRUE
           response
@@ -198,6 +219,14 @@ builder_session_load <- function(
               progress = progress
             )
           }
+          backends <- list(
+            bpcells = requireNamespace("BPCells", quietly = TRUE),
+            h5 = requireNamespace("HDF5Array", quietly = TRUE)
+          )
+          value$backend_capabilities <- list(
+            build = backends,
+            viewer = backends
+          )
           response <- builder_worker_response(request, value)
           completed <- TRUE
           response
@@ -836,6 +865,7 @@ builder_session_build <- function(
               objects = objects,
               on_progress = .builder_build_progress_callback(progress_path)
             )
+            builder_build_check_cancel(progress_path)
             if (
               isTRUE(plan$make_app) &&
                 is.list(value) &&

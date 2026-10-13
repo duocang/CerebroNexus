@@ -619,7 +619,7 @@ output[["enhance-table_list"]] <- renderUI({
     div(
       class = "enhance-table-editing-note",
       span(class = "builder-status builder-status--ready", "Editing is local."),
-      " Typing changes only this browser input. The Builder receives one update when you choose Save or press Enter."
+      " Select Save or press Enter to apply."
     )
   )
 })
@@ -1084,7 +1084,7 @@ render_configure_workbench <- function() {
     builder_stage_header_ui(
       "Configure",
       paste("Configure", entry$settings$name %||% entry$id),
-      "Only relevant settings are shown."
+      "Set essentials, then check this dataset."
     ),
     div(
       class = "builder-configure-inspect",

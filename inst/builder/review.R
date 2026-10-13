@@ -376,6 +376,7 @@ builder_review_snapshot <- function(
     default_trajectory = settings$default_trajectory %||%
       saved$default_trajectory %||%
       NULL,
+    viewer_display = builderViewerDisplayDefaults(settings$viewer_display),
     overview_point_size = settings$overview_point_size %||%
       saved$overview_point_size %||%
       5,

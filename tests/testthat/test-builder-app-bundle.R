@@ -1,7 +1,7 @@
 builder_app_bundle_path <- builder_profile_inst_path("builder", "app_bundle.R")
-builder_app_bundle_test_env <- new.env(parent = globalenv())
+builder_app_bundle_test_env <- new.env(parent = asNamespace("CerebroNexus"))
 builder_app_bundle_test_runtime <- function() {
-  runtime <- new.env(parent = globalenv())
+  runtime <- new.env(parent = asNamespace("CerebroNexus"))
   withr::with_dir(
     dirname(builder_app_bundle_path),
     sys.source(builder_app_bundle_path, envir = runtime)
@@ -21,7 +21,7 @@ if (file.exists(builder_app_bundle_path)) {
 
 test_that("trusted App templates prefer the active source tree", {
   source_root <- withr::local_tempdir()
-  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  file.copy(builder_test_description_path(), source_root)
   dir.create(file.path(source_root, "R"))
   file.create(file.path(source_root, "R", "source.R"))
   template <- file.path(
@@ -500,7 +500,13 @@ test_that("App arguments come only from the frozen plan", {
       spatial_point_appearance = fixture$plan$items[[
         2L
       ]]$spatial_point_appearance,
-      spatial_roi_settings = fixture$plan$items[[2L]]$spatial_roi_settings
+      spatial_roi_settings = fixture$plan$items[[2L]]$spatial_roi_settings,
+      display = builderViewerDisplayDefaults(),
+      gene_expression = list(
+        palette = "cerebro_orange",
+        panel_mode = "shared",
+        panel_palette = "default"
+      )
     )
   )
   expect_false(request$crb_pick_smallest_file)

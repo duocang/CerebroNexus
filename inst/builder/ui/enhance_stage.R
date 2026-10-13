@@ -1036,7 +1036,7 @@ builder_enhance_stage_ui <- function(
             class = "builder-viewer-card-body",
             p(
               class = "enhance-attachment-description",
-              "Add optional CSV, TSV, XLS, XLSX, or XLSM tables. Sheet names are listed now; selected tables are read when building."
+              "Add CSV, TSV or Excel tables. Selected sheets are included at build time."
             ),
             div(
               class = "enhance-table-file-actions builder-action-row",

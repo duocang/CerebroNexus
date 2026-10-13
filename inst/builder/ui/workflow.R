@@ -225,13 +225,17 @@ builder_server_path_dialog <- function(
   input_id,
   action_id,
   label,
-  action_label
+  action_label,
+  detail = NULL
 ) {
   modalDialog(
     title = title,
     tags$p(
-      "The native picker is unavailable. Enter an absolute path on this server."
+      "Enter an absolute path on this server."
     ),
+    if (is.character(detail) && length(detail) == 1L && nzchar(detail)) {
+      tags$details(tags$summary("Details"), tags$p(detail))
+    },
     tags$label(label, `for` = input_id),
     tags$input(
       id = input_id,
@@ -244,7 +248,7 @@ builder_server_path_dialog <- function(
       modalButton("Cancel"),
       actionButton(action_id, action_label, class = "btn btn-primary")
     ),
-    easyClose = FALSE,
+    easyClose = TRUE,
     size = "m"
   )
 }
@@ -267,8 +271,8 @@ builder_build_stage_footer_ui <- function(model, controls_disabled = FALSE) {
 
 builder_build_workbench_ui <- function(model) {
   stopifnot(is.list(model))
-  output_label <- if (isTRUE(model$output$private_app)) {
-    "Viewer App"
+  output_label <- if (isTRUE(model$output$make_app)) {
+    "CRB files + Viewer app"
   } else {
     "CRB files"
   }

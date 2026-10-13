@@ -1,10 +1,7 @@
 builder_project_open_runtime <- function() {
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "builder",
       "core",
       "bundle_path_contract.R"
@@ -13,7 +10,7 @@ builder_project_open_runtime <- function() {
   )
   for (file in c("io.R", "project.R", "build.R")) {
     sys.source(
-      testthat::test_path("..", "..", "inst", "builder", file),
+      builder_test_inst_path("builder", file),
       envir = runtime
     )
   }
@@ -249,10 +246,7 @@ test_that("managed source restore requires the worker's verified source state", 
 
   server_source <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "project.R"
@@ -271,7 +265,7 @@ test_that("managed source restore requires the worker's verified source state", 
 test_that("file adapter source state crosses the Project restore boundary", {
   runtime <- builder_project_open_runtime()
   sys.source(
-    testthat::test_path("..", "..", "inst", "builder", "adapters.R"),
+    builder_test_inst_path("builder", "adapters.R"),
     envir = runtime
   )
   root <- withr::local_tempdir()
@@ -784,7 +778,7 @@ test_that("last UI restoration uses safe dataset and workflow fallbacks", {
 test_that("Spatial project UI restoration selects the saved FOV and image", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
-  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  withr::local_dir(builder_test_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   record <- function(section, label) {
     app_env$builder_alignment_record(
@@ -866,7 +860,7 @@ test_that("Spatial project UI restoration selects the saved FOV and image", {
 test_that("the assembled Builder server finalizes a restored entry exactly once", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
-  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  withr::local_dir(builder_test_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this restore test.")
@@ -1083,7 +1077,7 @@ test_that("the assembled Builder server finalizes a restored entry exactly once"
 test_that("restored duplicate sources keep independent dataset identities", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
-  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  withr::local_dir(builder_test_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this restore test.")
@@ -1126,7 +1120,7 @@ test_that("restored duplicate sources keep independent dataset identities", {
 test_that("skipped Project records reserve ids but not display names", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
-  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  withr::local_dir(builder_test_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this reservation test.")
@@ -1151,7 +1145,7 @@ test_that("skipped Project records reserve ids but not display names", {
 test_that("failed source resume preserves the checked artifact entry", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
-  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  withr::local_dir(builder_test_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this resume test.")
@@ -1206,7 +1200,7 @@ test_that("failed source resume preserves the checked artifact entry", {
 test_that("source resume catches start failures and restores pending state", {
   source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1245,7 +1239,7 @@ test_that("source resume catches start failures and restores pending state", {
 test_that("source edit completion reports ready and error UI states", {
   source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1266,7 +1260,7 @@ test_that("source edit completion reports ready and error UI states", {
 test_that("background CRB runtime includes the snapshot adapter", {
   source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1308,29 +1302,33 @@ test_that("background CRB runtime includes package exports", {
     envir = runtime
   )
   source_root <- runtime$.builder_worker_package_source(builder_dir)
-  expect_true(dir.exists(file.path(source_root, "R")))
-  description <- read.dcf(file.path(source_root, "DESCRIPTION"))
-  collate <- if ("Collate" %in% colnames(description)) {
-    description[1L, "Collate"]
+  if (is.null(source_root)) {
+    package_runtime <- asNamespace("CerebroNexus")
   } else {
-    NA_character_
-  }
-  files <- if (is.na(collate) || !nzchar(collate)) {
-    sort(list.files(
-      file.path(source_root, "R"),
-      pattern = "[.][Rr]$",
-      full.names = TRUE
-    ))
-  } else {
-    file.path(
-      source_root,
-      "R",
-      scan(text = collate, what = character(), quiet = TRUE)
-    )
-  }
-  package_runtime <- new.env(parent = globalenv())
-  for (file in files) {
-    sys.source(file, envir = package_runtime)
+    expect_true(dir.exists(file.path(source_root, "R")))
+    description <- read.dcf(file.path(source_root, "DESCRIPTION"))
+    collate <- if ("Collate" %in% colnames(description)) {
+      description[1L, "Collate"]
+    } else {
+      NA_character_
+    }
+    files <- if (is.na(collate) || !nzchar(collate)) {
+      sort(list.files(
+        file.path(source_root, "R"),
+        pattern = "[.][Rr]$",
+        full.names = TRUE
+      ))
+    } else {
+      file.path(
+        source_root,
+        "R",
+        scan(text = collate, what = character(), quiet = TRUE)
+      )
+    }
+    package_runtime <- new.env(parent = globalenv())
+    for (file in files) {
+      sys.source(file, envir = package_runtime)
+    }
   }
   expect_true(is.function(package_runtime$exportFromSeurat))
 })
@@ -1338,7 +1336,7 @@ test_that("background CRB runtime includes package exports", {
 test_that("a Source opened for editing stays in Configure", {
   source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1346,7 +1344,7 @@ test_that("a Source opened for editing stays in Configure", {
 
   expect_match(
     source,
-    'focus_source <- restore_action %in% c("resume", "edit")',
+    'focus_source <- editing_source',
     fixed = TRUE
   )
   expect_match(
@@ -1360,10 +1358,7 @@ test_that("project pending settles only after a restored load is terminal", {
   read_server <- function(name) {
     paste(
       readLines(
-        testthat::test_path(
-          "..",
-          "..",
-          "inst",
+        builder_test_inst_path(
           "builder",
           "server",
           name
@@ -1472,7 +1467,7 @@ test_that("project pending settles only after a restored load is terminal", {
 test_that("failed pre-store finalization releases its unattached snapshot", {
   source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "imports.R"),
+      builder_test_inst_path("builder", "server", "imports.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1500,7 +1495,7 @@ test_that("failed pre-store finalization releases its unattached snapshot", {
 test_that("failed pre-store load acknowledgement releases the persistent queue", {
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "builder", "worker.R"),
+    builder_test_inst_path("builder", "worker.R"),
     envir = runtime
   )
   protocol <- runtime$builder_request_protocol("worker-1")
@@ -1538,7 +1533,7 @@ test_that("restore progress reports selected datasets rather than source queue s
   runtime <- builder_project_open_runtime()
   server_source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1607,7 +1602,7 @@ test_that("restore progress reports selected datasets rather than source queue s
   )
   app_source <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "app.R"),
+      builder_test_inst_path("builder", "app.R"),
       warn = FALSE
     ),
     collapse = "\n"

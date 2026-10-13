@@ -28,7 +28,7 @@ builder_review_options <- function(
     !builder_stage_has_text(welcome_message) ||
       !builder_stage_has_text(initial_page) ||
       !initial_page %in% builder_viewer_known_page_ids() ||
-      !valid_number(point_size, 0, 20) ||
+      !valid_number(point_size, 1, 20) ||
       !valid_flag(variable_to_compare) ||
       !builder_stage_has_text(host) ||
       !valid_number(port, 1, 65535, whole = TRUE) ||
@@ -87,12 +87,9 @@ builder_review_options_for_plan <- function(options, initial_dataset = NULL) {
 builder_review_initial_page_choices <- function(page_expectations = list()) {
   catalog <- builder_viewer_page_catalog()
   pages <- rbind(catalog$always, catalog$conditional)
-  always <- page_expectations$always
-  always_ids <- if (is.data.frame(always) && "id" %in% names(always)) {
-    always$id
-  } else {
-    catalog$always$id
-  }
+  # Saved checkpoints describe data-dependent pages, not the current app's
+  # unconditional routes. Older projects may predate a newly exposed page.
+  always_ids <- catalog$always$id
   allowed <- unique(c(
     always_ids,
     page_expectations$visible_conditional %||% character()
@@ -562,11 +559,16 @@ builder_review_model <- function(plan, verification = NULL) {
   model <- list(
     revision = revision,
     dataset_count = as.integer(length(items)),
-    output_label = "CRB files",
+    output_label = if (isTRUE(plan$make_app)) {
+      "CRB files + Viewer app"
+    } else {
+      "CRB files"
+    },
     datasets = lapply(items, review_dataset),
     pages = builder_review_pages(items, plan$viewer_page_expectations),
     output = list(
       crb_count = as.integer(length(items)),
+      make_app = isTRUE(plan$make_app),
       estimated_size = builder_review_human_size(
         plan$output_release$estimated_disk_bytes %||% 0
       ),
@@ -900,18 +902,18 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
       p(
         class = "review-output-download-note",
         paste(
-          "Builder will create a new uniquely named release folder inside",
-          "the parent folder you choose. Existing releases are preserved."
+          "Creates a new release folder. Existing releases are kept."
         )
       ),
       tags$dl(
         class = "review-fields review-output-fields",
         field(
           "Creates",
-          plural(model$output$crb_count, "CRB file")
-        ),
-        field("Estimated size", model$output$estimated_size),
-        field("Estimated build time", model$output$estimated_time)
+          paste0(
+            plural(model$output$crb_count, "CRB file"),
+            if (isTRUE(model$output$make_app)) " + Viewer app" else ""
+          )
+        )
       )
     ),
     footer

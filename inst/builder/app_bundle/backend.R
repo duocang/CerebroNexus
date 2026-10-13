@@ -664,7 +664,7 @@
       length(plain$point_size$overview_projection_point_size) != 1L ||
       is.na(plain$point_size$overview_projection_point_size) ||
       !is.finite(plain$point_size$overview_projection_point_size) ||
-      plain$point_size$overview_projection_point_size < 0 ||
+      plain$point_size$overview_projection_point_size < 1 ||
       plain$point_size$overview_projection_point_size > 20 ||
       (!is.null(plain$point_size$projection_point_opacity) &&
         (!is.numeric(plain$point_size$projection_point_opacity) ||
