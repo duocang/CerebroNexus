@@ -2321,7 +2321,7 @@ test_that("Builder Trekker backgrounds and appearance reach Linked views", {
     trekker$images[[1L]]$uri,
     "data:image/png;base64,AA=="
   )
-  expect_identical(trekker$images[[1L]]$preset$opacity, 0.7)
+  expect_identical(trekker$images[[1L]]$preset$opacity, 0.6)
   expect_identical(trekker$background_scope, "Trekker")
   ## Cell appearance belongs to the dataset, not its background image.
   expect_identical(bundle$default_point_size, 5)
@@ -3133,7 +3133,7 @@ test_that("per-image settings also apply to embedded backgrounds", {
       flipX = TRUE,
       flipY = FALSE,
       rotation = -32,
-      opacity = 0.7,
+      opacity = 0.6,
       geometryBaked = TRUE
     )
   )

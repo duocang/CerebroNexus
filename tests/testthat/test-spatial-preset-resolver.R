@@ -177,7 +177,7 @@ test_that("embedded images expose canonical labels and normalize singular legacy
       flipX = TRUE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.7,
+      opacity = 0.6,
       geometryBaked = TRUE
     )
   )
@@ -205,7 +205,7 @@ test_that("one preset resolver owns every image setting and default", {
       flipX = FALSE,
       flipY = TRUE,
       rotation = 0,
-      opacity = 0.8
+      opacity = 0.6
     )
   )
   expect_identical(
@@ -449,4 +449,25 @@ test_that("embedded image presets retain already-applied calibration", {
   expect_false(aligned$flipY)
   expect_equal(aligned$opacity, 0.6)
   expect_identical(spatialEmbeddedImagePreset(preset, NULL), preset)
+})
+
+
+test_that("saved image opacities cannot override the Viewer display default", {
+  for (saved_opacity in c(0, 0.2, 0.8, 1)) {
+    options <- spatial_options
+    options$spatial_image_settings$Atlas$sliceA$`H&E`$image_opacity <- saved_opacity
+    external <- spatial_background_preset(
+      options, "Atlas", "sliceA",
+      list(source = "external", key = "H&E", label = "H&E")
+    )
+    embedded <- spatial_background_preset(
+      options, "Atlas", "sliceA",
+      list(source = "embedded", key = "H&E", label = "H&E",
+           alignment = list(image_opacity = saved_opacity, rotation = 35))
+    )
+    expect_equal(external$opacity, 0.6)
+    expect_equal(embedded$opacity, 0.6)
+    expect_equal(external$offsetX, 11)
+    expect_equal(embedded$rotation, 35)
+  }
 })
