@@ -136,7 +136,7 @@ console.log(`${routes} page routes and delayed supplement regressions passed`);
   assert.strictEqual(c.calls, 2);
   c.setLinkedBackgrounds(false); c.syncLinkedBackgroundsDefault(true);
   assert.strictEqual(c.linkedBackgroundsOn, true);
-  c.spatialTemplate = {name:'section-x',label:'section-x · ROI: zone-y (spatial)',x:[1],y:[2]};
+  c.spatialTemplate = {name:'section-x',label:'section-x · zone-y (spatial)',x:[1],y:[2]};
   assert.strictEqual(c.spatialSamples()[0].name,'section-x');
   assert.strictEqual(c.spatialSamples()[0].label,c.spatialTemplate.label);
 }

@@ -1208,7 +1208,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
   list(
     name = nm,
     label = paste0(nm, if (nzchar(roi_value)) {
-      paste0(" · ROI: ", roi_value)
+      paste0(" · ", roi_value)
     } else if (length(rois) > 1L) {
       " · All ROIs"
     } else {

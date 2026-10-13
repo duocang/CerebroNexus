@@ -896,7 +896,9 @@
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input input,
 .coordviews-page .cv-topbar .selectize-dropdown { font-size: 14px !important; }
-.coordviews-page .cv-topbar .selectize-control { height: var(--c-toolbar-control-height); }
+.coordviews-page .cv-topbar .selectize-control {
+  height: auto; min-height: var(--c-toolbar-control-height);
+}
 .coordviews-page .cv-topbar .selectize-control .selectize-input > .item {
   flex: 0 0 auto; margin: 0 3px 0 0 !important; line-height: 18px !important;
 }

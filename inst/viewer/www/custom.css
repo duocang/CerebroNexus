@@ -1623,6 +1623,14 @@ body .bootstrap-select {
   overflow: visible !important;
   white-space: normal !important;
 }
+/* Selected labels remain in flow, including names wider than the control. */
+.cerebro-viz-toolbar .selectize-control.multi .selectize-input > .item,
+.coordviews-page .cv-topbar .selectize-control.multi .selectize-input > .item {
+  flex: 0 1 auto !important;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 /* The dropdown is an overlay: give BOTH the outer panel and its inner content
    a solid white fill and a high z-index, or the options render over a
    see-through panel (page content shows through) and clicks miss. */
