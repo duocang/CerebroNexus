@@ -227,16 +227,31 @@
     document.addEventListener('change', function (event) {
       Object.keys(layoutControls).forEach(function (id) {
         if (event.target.id !== layoutControls[id][1]) return;
-        state(id).wideLayout = false;
-        // Respect an explicit choice to return to fluid width.
-        if (!event.target.checked && event.isTrusted) dismissLayout(id);
+        var s = state(id);
+        clearTimeout(layoutTimers[id]);
+        s.wideLayout = false;
+        s.immediateLayout = !event.target.checked;
+        // A new fluid-layout choice reopens advice, even if previously dismissed.
+        if (!event.target.checked) {
+          delete dismissedLayout[id];
+          try { sessionStorage.removeItem('cerebro-square-hint:' + id); } catch (_) {}
+        }
         draw(id);
       });
-    });
+    }, true); // Arm the check before the renderer's bubbling change handlers.
     window.addEventListener('cerebro:plot-layout', function (event) {
       var d = event.detail;
       if (!d || !layoutControls[d.id] || !fresh(d)) return;
       clearTimeout(layoutTimers[d.id]);
+      var s = state(d.id);
+      // The renderer measures the new canvas when it applies the setting.
+      // Skip resize debounce for this explicit action; never measure old geometry.
+      if (!d.square && s.immediateLayout) {
+        s.immediateLayout = false;
+        s.wideLayout = !!d.wide;
+        draw(d.id);
+        return;
+      }
       if (d.square || !d.wide) { state(d.id).wideLayout = false; draw(d.id); return; }
       layoutTimers[d.id] = setTimeout(function () {
         if (!fresh(d) || !window.CerebroDatasetContext || window.CerebroDatasetContext.phase() !== 'ready') return;

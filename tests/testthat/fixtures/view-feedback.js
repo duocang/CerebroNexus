@@ -19,13 +19,13 @@ Object.entries(ids).forEach(([id,pane]) => {
 });
 const document = {addEventListener:(name,fn)=>domEvents[name]=fn,readyState:'complete',activeElement:null,getElementById:id=>elements[id],createElement:()=>element('')};
 const jq = {on(names,fn) {names.split(' ').forEach(name=>handlers[name.split('.')[0]]=fn);return jq;}};
-let generation = 1;
+let generation = 1, timeoutCalls = 0;
 const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
   addEventListener:(name,fn)=>events[name]=fn, dispatchEvent:event=>{if(events[event.type])events[event.type](event);},
   Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn},
   CerebroDatasetContext:{phase:()=> 'ready', accepts:m=>m.dataset_context?.generation===generation}};
 vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
-  {window,document,setTimeout:fn=>{fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
+  {window,document,setTimeout:fn=>{timeoutCalls++;fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
 let count=0;
 function check(v){assert.ok(v);count++;}
 function row(id){return elements['shiny-tab-'+ids[id]].children[0];}
@@ -116,5 +116,13 @@ emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});ch
 emit('cerebro:linkedviews-ready',{primaryReady:true,painted:true,complete:true});
 emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(hasHint('linked'));
 domEvents.change({target:{id:'cv-square-plots',checked:false},isTrusted:true});check(!hasHint('linked'));
-emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(!hasHint('linked'));
+emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(hasHint('linked'));
+// An explicit uncheck resets dismissal, but only measured wide canvases qualify.
+domEvents.change({target:{id:'overview_projection_keep_square',checked:false},isTrusted:true});
+const beforeImmediateLayout = timeoutCalls;
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
+check(timeoutCalls === beforeImmediateLayout);
+domEvents.change({target:{id:'overview_projection_keep_square',checked:true},isTrusted:true});check(!hasHint('overview_projection'));
+domEvents.change({target:{id:'overview_projection_keep_square',checked:false},isTrusted:true});
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false});check(!hasHint('overview_projection'));
 console.log(count+' view feedback assertions passed');
