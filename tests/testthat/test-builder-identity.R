@@ -1,6 +1,6 @@
 builder_task5_source <- function(file, local = parent.frame()) {
   relative <- file
-  path <- testthat::test_path("..", "..", "inst", relative)
+  path <- builder_test_inst_path(relative)
   if (!file.exists(path)) {
     path <- system.file(relative, package = "CerebroNexus")
   }

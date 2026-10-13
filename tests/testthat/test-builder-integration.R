@@ -115,20 +115,14 @@ test_that("export spatial projections use shared x and y axis semantics", {
   )
   builder_path <- system.file("builder/spatial.R", package = "CerebroNexus")
   if (!nzchar(core_path)) {
-    core_path <- testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    core_path <- builder_test_inst_path(
       "viewer",
       "core",
       "spatial_coordinate_contract.R"
     )
   }
   if (!nzchar(builder_path)) {
-    builder_path <- testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_path <- builder_test_inst_path(
       "builder",
       "spatial.R"
     )

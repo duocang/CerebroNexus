@@ -100,7 +100,7 @@ test_that("build preparation keeps Trekker image bytes external", {
 })
 
 test_that("session execution stages artifacts without publishing them", {
-  path <- testthat::test_path("..", "..", "inst", "builder", "session.R")
+  path <- builder_test_inst_path("builder", "session.R")
   if (!file.exists(path)) {
     path <- system.file("builder", "session.R", package = "CerebroNexus")
   }

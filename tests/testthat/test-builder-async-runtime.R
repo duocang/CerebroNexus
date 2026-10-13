@@ -324,10 +324,7 @@ test_that("async tasks share one bounded adaptive poll loop", {
 })
 
 test_that("Builder declares only its callr async runtime", {
-  description_path <- file.path(
-    dirname(dirname(builder_profile_inst_path("builder"))),
-    "DESCRIPTION"
-  )
+  description_path <- builder_test_description_path()
   description <- read.dcf(description_path)[1L, ]
   imports <- strsplit(description[["Imports"]], ",", fixed = TRUE)[[1L]]
   imports <- trimws(sub("[[:space:]]*\\(.*$", "", imports))

@@ -28,6 +28,8 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
   root <- withr::local_tempdir()
   source <- file.path(root, "large-source.qs2")
   object <- SeuratObject::pbmc_small
+  warmup_path <- file.path(root, "warmup.qs2")
+  qs2::qs_save(object, warmup_path)
   set.seed(20260921L)
   object@misc$builder_large_import_stress <- sample(
     as.raw(0:255),
@@ -50,9 +52,13 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
     snapshot_registry = list()
   )
   withr::defer(try(builder_worker_stop(worker), silent = TRUE))
-  baseline_rss <- unname(
-    ps::ps_memory_info(worker$process$as_ps_handle())[["rss"]]
-  )
+  expect_null(worker$error)
+  # processx and ps can disagree on cached boot time after WSL clock changes.
+  # Capture PID + creation time through ps itself, keeping PID-reuse protection.
+  worker_handle <- ps::ps_handle(worker$process$get_pid())
+  worker_rss <- function() unname(ps::ps_memory_info(worker_handle)[["rss"]])
+  cold_rss <- worker_rss()
+  peak_rss <- cold_rss
 
   wait_for_result <- function(worker, timeout = 120) {
     deadline <- Sys.time() + timeout
@@ -61,6 +67,9 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
       heartbeat <- heartbeat + 1L
       polled <- builder_session_poll(worker, timeout = 10)
       worker <- polled$worker
+      if (heartbeat %% 10L == 0L) {
+        peak_rss <<- max(peak_rss, worker_rss())
+      }
       if (!is.null(polled$result)) {
         return(list(
           worker = worker,
@@ -74,7 +83,25 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
     }
   }
 
-  peak_rss <- 0
+  # Calibrate the fixed lazy-reader/backend cost with a tiny real import, then
+  # drop it. The unchanged bound below measures growth from large payloads.
+  builder_session_load(worker, "warmup", warmup_path)
+  warmup <- wait_for_result(worker)
+  worker <- warmup$worker
+  expect_null(warmup$result$error)
+  snapshot <- warmup$result$snapshot
+  worker <- builder_worker_register_snapshot(worker, "warmup", snapshot)
+  builder_session_drop(worker, "warmup")
+  dropped <- wait_for_result(worker)
+  worker <- dropped$worker
+  expect_true(dropped$result)
+  worker <- builder_worker_release_snapshot(
+    worker,
+    "warmup",
+    .builder_worker_identity(snapshot)
+  )
+  baseline_rss <- worker_rss()
+  peak_rss <- baseline_rss
   imported <- character()
   marker_root <- file.path(root, "transport-markers")
   dir.create(marker_root)
@@ -127,10 +154,7 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
     })
     expect_identical(residency$objects, id)
     expect_setequal(residency$snapshots, imported)
-    peak_rss <- max(
-      peak_rss,
-      unname(ps::ps_memory_info(worker$process$as_ps_handle())[["rss"]])
-    )
+    peak_rss <- max(peak_rss, worker_rss())
 
     if (index == 3L) {
       builder_session_load(worker, "invalid", invalid)
@@ -144,6 +168,12 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
     }
   }
 
+  cat(sprintf(
+    "\nWorker RSS: cold %.1f MiB; readers loaded %.1f MiB; sampled peak %.1f MiB\n",
+    cold_rss / 1024^2,
+    baseline_rss / 1024^2,
+    peak_rss / 1024^2
+  ))
   expect_lte(
     peak_rss - baseline_rss,
     payload_mib * 1024^2 * 4 + 128 * 1024^2

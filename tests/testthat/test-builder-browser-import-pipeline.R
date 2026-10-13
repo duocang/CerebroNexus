@@ -8,10 +8,7 @@ builder_browser_pipeline_text <- function(...) {
 builder_browser_pipeline_runtime <- function() {
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "viewer",
       "core",
       "spatial_coordinate_transform.R"
@@ -20,7 +17,7 @@ builder_browser_pipeline_runtime <- function() {
   )
   for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
     sys.source(
-      testthat::test_path("..", "..", "inst", "builder", file),
+      builder_test_inst_path("builder", file),
       envir = runtime
     )
   }

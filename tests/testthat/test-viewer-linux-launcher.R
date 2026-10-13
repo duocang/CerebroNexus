@@ -8,7 +8,7 @@ linux_launcher_fixture <- function(local_env = parent.frame()) {
   dir.create(file.path(root, "viewer"))
   dir.create(file.path(root, "private-data", "auth"), recursive = TRUE)
   launcher <- file.path(root, "viewer", "start-linux.sh")
-  file.copy(test_path("../../inst/viewer/start-linux.sh"), launcher)
+  expect_true(file.copy(viewer_test_path("start-linux.sh"), launcher))
   writeLines("# fixture", file.path(root, "app.R"))
   database <- file.path(root, "private-data", "auth", "credentials.sqlite")
   secret <- file.path(root, "viewer-auth.env")
@@ -55,7 +55,7 @@ test_that("Linux entry point repairs copied modes without changing authenticatio
   result <- linux_launcher_run(fixture)
   expect_identical(result$status, 0L, info = result$output)
   auth <- new.env(parent = globalenv())
-  sys.source(test_path("../../inst/viewer/auth.R"), auth)
+  sys.source(viewer_test_path("auth.R"), auth)
   withr::local_envvar(CEREBRO_AUTH_PASSPHRASE = NA)
   expect_true(auth$.viewer_auth_load_local_passphrase(
     fixture$root,

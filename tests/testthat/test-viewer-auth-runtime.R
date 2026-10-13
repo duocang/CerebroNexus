@@ -1,6 +1,6 @@
 viewer_auth_runtime_environment <- function() {
   runtime <- new.env(parent = globalenv())
-  source_file <- test_path("..", "..", "inst", "viewer", "auth.R")
+  source_file <- builder_test_inst_path("viewer", "auth.R")
   if (!file.exists(source_file)) {
     source_file <- system.file(
       "viewer/auth.R",

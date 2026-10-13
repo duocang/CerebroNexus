@@ -184,7 +184,7 @@ global.Shiny = {
 };
 window.Shiny = global.Shiny;
 
-const canvasSource = path.resolve(
+const canvasSource = process.argv[2] || path.resolve(
   __dirname,
   "..",
   "..",

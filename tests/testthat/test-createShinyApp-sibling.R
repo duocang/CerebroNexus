@@ -3748,10 +3748,7 @@ test_that("process cache clones keep thin BPCells expression lazy", {
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
   runtime <- new.env(parent = globalenv())
-  source_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  source_path <- builder_test_inst_path(
     "viewer",
     "utility_functions.R"
   )

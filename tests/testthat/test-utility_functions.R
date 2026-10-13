@@ -15,7 +15,7 @@
 source_candidates <- c(
   file.path(getwd(), "inst", "viewer", "utility_functions.R"),
   file.path(getwd(), "..", "..", "inst", "viewer", "utility_functions.R"),
-  testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R")
+  builder_test_inst_path("viewer", "utility_functions.R")
 )
 utils_file <- source_candidates[file.exists(source_candidates)][1L]
 if (is.na(utils_file)) {

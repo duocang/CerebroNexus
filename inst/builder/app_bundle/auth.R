@@ -638,6 +638,12 @@ builder_auth_verify_database_pair <- function(
       mode = "function",
       inherits = TRUE
     )
+    if (is.null(.validate)) {
+      .validate <- tryCatch(
+        utils::getFromNamespace(".viewerAuthValidateDatabase", "CerebroNexus"),
+        error = function(error) NULL
+      )
+    }
   }
   if (!is.function(.validate) || !database_is_regular(database)) {
     invalid()

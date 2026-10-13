@@ -1,6 +1,6 @@
 builder_inst_asset_path <- function(...) {
   relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
+  path <- builder_test_inst_path(relative)
   if (!file.exists(path)) {
     path <- system.file(relative, package = "CerebroNexus")
   }

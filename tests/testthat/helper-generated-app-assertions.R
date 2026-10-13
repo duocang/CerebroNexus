@@ -453,23 +453,40 @@ generated_app_e2e_table_text <- function(
     "Array.from(host.querySelectorAll('table'));var table=tables.find(",
     "function(candidate){return candidate.querySelector('tbody tr');});"
   )
-  generated_app_e2e_driver()$wait_for_js(
-    paste0(
+  # DT may replace its table between the condition and the subsequent read.
+  # Recheck the captured contents; never accept an empty transient redraw.
+  for (attempt in seq_len(3L)) {
+    generated_app_e2e_driver()$wait_for_js(
+      paste0(
+        "(function(){",
+        table_expression,
+        "if(!table || !table.querySelector('tbody tr'))return false;",
+        "var text=table.textContent||'';var expected=",
+        contains_js,
+        ";return expected.every(function(value){return text.indexOf(value)!==-1;});",
+        "})()"
+      ),
+      timeout = timeout
+    )
+    text <- as.character(generated_app_e2e_driver()$get_js(paste0(
       "(function(){",
       table_expression,
-      "if(!table || !table.querySelector('tbody tr'))return false;",
-      "var text=table.textContent||'';var expected=",
-      contains_js,
-      ";return expected.every(function(value){return text.indexOf(value)!==-1;});",
-      "})()"
-    ),
-    timeout = timeout
-  )
-  as.character(generated_app_e2e_driver()$get_js(paste0(
-    "(function(){",
-    table_expression,
-    "return table?table.textContent:'';})()"
-  )))
+      "return table?table.textContent:'';})()"
+    )))
+    if (
+      length(text) == 1L &&
+        all(vapply(
+          contains,
+          function(value) {
+            grepl(value, text, fixed = TRUE)
+          },
+          logical(1)
+        ))
+    ) {
+      return(text)
+    }
+  }
+  stop("The rendered table changed before its contents could be read: ", id)
 }
 
 generated_app_e2e_browser_failures <- function(

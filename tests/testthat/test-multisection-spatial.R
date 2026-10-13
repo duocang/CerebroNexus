@@ -6,7 +6,7 @@ builder_multisection_source_extras <- function(local = parent.frame()) {
     "core",
     "spatial_coordinate_contract.R"
   )
-  core <- testthat::test_path("..", "..", "inst", relative)
+  core <- builder_test_inst_path(relative)
   if (!file.exists(core)) {
     core <- system.file(relative, package = "CerebroNexus")
   }

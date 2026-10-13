@@ -317,10 +317,7 @@ test_that("alignment server does not subscribe to Plotly selection events", {
 test_that("finishing a check waits for uploads and active interactions", {
   server <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "spatial_alignment_server.R"
       ),
@@ -363,7 +360,7 @@ test_that("finishing a check waits for uploads and active interactions", {
 
   review <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "review.R"),
+      builder_test_inst_path("builder", "server", "review.R"),
       warn = FALSE
     ),
     collapse = "\n"
