@@ -332,7 +332,7 @@ cv_image_preset <- function(spatial_name, image_label) {
 ## either a relative path or a descriptor containing path + coordinate bounds.
 ## The output is base64-encoded so the browser never receives a filesystem path.
 ## Linked Views defers that encoding until the selected image is requested.
-cv_external_images <- function(spatial_name = NULL, defer = FALSE) {
+cv_external_images <- function(spatial_name = NULL, defer = FALSE, roi_value = NULL) {
   if (
     !exists("Cerebro.options") ||
       is.null(Cerebro.options[["spatial_images"]])
@@ -363,7 +363,9 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE) {
   ) {
     return(list())
   }
-  configured <- images_by_spatial[[spatial_name]]
+  configured <- configured_spatial_images(
+    Cerebro.options, dataset, spatial_name, roi_value
+  )
   if (is.null(configured) || !length(configured)) {
     return(list())
   }
@@ -438,15 +440,16 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE) {
       next
     }
     base <- basename(path)
-    label <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
+    key <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
       labels[[i]]
     } else {
       base
     }
+    label <- if (is.list(descriptor)) descriptor$label %||% key else key
     image <- list(
       ## Section + position + label keep equal basenames and equal labels on
       ## different FOVs distinct, while remaining stable across bundle pushes.
-      id = paste0("external:", spatial_name, ":", i, ":", label),
+      id = paste0("external:", spatial_name, ":", i, ":", key),
       label = label,
       bounds = bounds,
       viewport = if (is.list(descriptor)) {
@@ -454,7 +457,7 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE) {
       } else {
         NULL
       },
-      preset = cv_image_preset(spatial_name, label)
+      preset = cv_image_preset(spatial_name, key)
     )
     if (isTRUE(defer)) {
       image$asset_path <- img_path
@@ -999,9 +1002,10 @@ cv_spatial_data <- function(crb, nm) {
   getter(nm)
 }
 
-cv_spatial_one <- function(crb, cells, nm, allow_external) {
+cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
+                           metadata = NULL, spatial_data = NULL) {
   sd <- tryCatch(
-    cv_spatial_data(crb, nm),
+    spatial_data %||% cv_spatial_data(crb, nm),
     error = function(e) NULL
   )
   co <- if (!is.null(sd)) sd$coordinates else NULL
@@ -1013,13 +1017,35 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     cv_selected_dataset_name(),
     nm
   )
+  if (is.null(metadata)) {
+    metadata <- tryCatch(crb$getMetaData(), error = function(error) NULL)
+  }
+  context <- spatial_roi_transform_context(co, metadata, degrees = rotation)
+  rois <- unique(as.character(context$roi_by_cell))
+  rois <- rois[!is.na(rois) & nzchar(rois)]
+  ## A single-ROI FOV has the same default scene as Spatial's single-ROI view.
+  ## Multi-ROI overview coordinates stay intact; separately selectable ROI
+  ## scenes below use the saved rotations and their own image declarations.
+  if (is.null(roi_value)) roi_value <- if (length(rois) == 1L) rois else ""
+  roi_value <- spatial_roi_value(roi_value)
+  if (nzchar(roi_value)) {
+    keep <- !is.na(context$roi_by_cell) & context$roi_by_cell == roi_value
+    co <- co[keep, , drop = FALSE]
+    if (!nrow(co)) return(NULL)
+    co <- rotateSpatialCoordinatesByRoi(
+      co, as.character(context$roi_by_cell[rownames(co)]),
+      spatialRoiSettings(
+        if (exists("Cerebro.options")) Cerebro.options else NULL,
+        cv_selected_dataset_name(), nm
+      ), rotation, pivots = context$pivots
+    )
+  } else {
+    co <- rotateSpatialCoordinates(co, rotation)
+  }
   spatial_cells <- cv_cell_ids(
     rownames(co),
     paste0("Spatial section `", nm, "`")
   )
-  ## Linked views is the all-ROI scene. Per-ROI rotations are local inspection
-  ## settings and must not change this shared coordinate layout.
-  co <- rotateSpatialCoordinates(co, rotation)
   sidx <- match(cells, spatial_cells)
   xr <- range(co[, 1], na.rm = TRUE)
   yr <- range(co[, 2], na.rm = TRUE)
@@ -1036,15 +1062,9 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
   )
   span <- c(diff(xr), diff(yr))
   images <- list()
-  embedded <- sd[["histology_images", exact = TRUE]]
-  if (is.null(embedded) || !length(embedded)) {
-    legacy_image <- sd[["histology_image", exact = TRUE]]
-    embedded <- if (!is.null(legacy_image)) {
-      list("Tissue background" = legacy_image)
-    } else {
-      list()
-    }
-  }
+  ## Use Spatial's canonical histology_images/legacy-image normalization and
+  ## ROI precedence, so both pages offer the same set of eligible images.
+  embedded <- embedded_spatial_images(sd, roi_value)
   alignment <- sd[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
   section_appearance <- spatialPointAppearance(
@@ -1052,6 +1072,13 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     cv_selected_dataset_name(),
     nm
   )
+  roi_appearance <- spatialRoiSetting(
+    if (exists("Cerebro.options")) Cerebro.options else NULL,
+    cv_selected_dataset_name(), nm, roi_value
+  )
+  if (!is.null(roi_appearance)) {
+    section_appearance <- roi_appearance[c("point_opacity", "point_size")]
+  }
   if (is.null(section_appearance) && isTRUE(alignment$builder_managed)) {
     if (
       length(appearance$point_opacity) == 1L &&
@@ -1069,14 +1096,6 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       embedded_names[[embedded_index]]
     } else {
       ""
-    }
-    roi_value <- if (is.list(entry)) {
-      as.character(entry$roi_value %||% character())
-    } else {
-      character()
-    }
-    if (length(roi_value) == 1L && !is.na(roi_value) && nzchar(roi_value)) {
-      next
     }
     if (is.list(entry)) {
       emb <- entry$histology_image %||%
@@ -1152,7 +1171,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     )
   }
   if (allow_external) {
-    for (ex in cv_external_images(nm, defer = TRUE)) {
+    for (ex in cv_external_images(nm, defer = TRUE, roi_value = roi_value)) {
       images[[length(images) + 1]] <- list(
         id = ex$id,
         label = ex$label,
@@ -1188,6 +1207,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
   viewport <- if (length(images)) images[[1L]]$viewport else NULL
   list(
     name = nm,
+    roi = if (nzchar(roi_value)) roi_value else NULL,
     x = as.numeric(co[sidx, 1]),
     y = as.numeric(co[sidx, 2]),
     x_range = if (is.null(viewport)) {
@@ -1225,19 +1245,28 @@ cv_build_spatial <- function(crb, cells) {
   if (!length(sp_names)) {
     return(NULL)
   }
-  built <- lapply(
-    seq_along(sp_names),
-    ## Every section resolves only its own dataset -> FOV -> image declarations.
-    ## The client remembers the selected background and calibration per section.
-    function(i) {
-      cv_spatial_one(
-        crb,
-        cells,
-        sp_names[i],
-        allow_external = TRUE
-      )
+  metadata <- tryCatch(crb$getMetaData(), error = function(error) NULL)
+  built <- list()
+  for (nm in sp_names) {
+    sd <- tryCatch(cv_spatial_data(crb, nm), error = function(error) NULL)
+    if (is.null(sd)) next
+    scene <- cv_spatial_one(crb, cells, nm, TRUE, metadata = metadata, spatial_data = sd)
+    if (is.null(scene)) next
+    built[[length(built) + 1L]] <- scene
+    rois <- spatial_metadata_facet(
+      metadata, rownames(sd$coordinates),
+      c("sample_roi", "roi", "roi_id", "region_of_interest")
+    )$values
+    if (length(rois) > 1L) {
+      for (roi in rois) {
+        scene <- cv_spatial_one(crb, cells, nm, TRUE, roi, metadata, sd)
+        if (is.null(scene)) next
+        scene$name <- paste0(nm, "::roi::", roi)
+        scene$label <- paste0(nm, " · ", roi, " (spatial)")
+        built[[length(built) + 1L]] <- scene
+      }
     }
-  )
+  }
   built <- Filter(Negate(is.null), built)
   if (!length(built)) {
     return(NULL)
@@ -1268,7 +1297,7 @@ cv_build_spatial <- function(crb, cells) {
     space$samples <- lapply(built, function(s) {
       list(
         name = s$name,
-        label = paste0(s$name, " (spatial)"),
+        label = s$label %||% paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
         x_range = if (is.null(s$x_range)) NULL else I(s$x_range),

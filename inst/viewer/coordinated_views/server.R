@@ -16,6 +16,12 @@
 ## cv_build_bundle() and every cv_build_* / cv_* helper is in scope for the
 ## reactive below. Kept in a separate file so the builders can be unit-tested
 ## without a running session (tests/testthat/test-coordinated-views.R).
+## Both pages resolve ROI membership, image scope and coordinate pivots through
+## the same pure Spatial helpers, even when Spatial has not been opened yet.
+source(
+  file.path(Cerebro.options[["cerebro_root"]], "viewer/spatial/func_spatial_helpers.R"),
+  local = TRUE
+)
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],
