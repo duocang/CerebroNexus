@@ -24,6 +24,8 @@
     if (!host || !control) return;
     host.classList.remove("cerebro-multiselect-expanded");
     host.style.removeProperty("--cerebro-multiselect-width");
+    // Linked filters use flexible columns; measuring chip widths would fight their layout.
+    if (host.closest(".cv-filters")) return;
     window.requestAnimationFrame(function () {
       var items = instance.$control.children(".item");
       if (!items.length) return;

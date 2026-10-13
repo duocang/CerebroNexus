@@ -543,21 +543,18 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-gene-rgb-channel,
 .cerebro-gene-rgb-row .form-group { min-width: 0; margin-bottom: 0; }
-.cerebro-viz-toolbar .form-group,
-.coordviews-page .cv-topbar > .cv-ctl {
+.cerebro-viz-toolbar .form-group {
   flex: 0 1 var(--c-control-width);
   width: var(--c-control-width);
   min-width: min(var(--c-select-min-width), 100%);
   max-width: 100%;
   margin-bottom: 0;
 }
-.cerebro-viz-toolbar .form-group.cerebro-multiselect-host,
-.coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host {
+.cerebro-viz-toolbar .form-group.cerebro-multiselect-host {
   flex: 0 1 var(--c-control-width);
   width: var(--c-control-width);
 }
-.cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded,
-.coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host.cerebro-multiselect-expanded {
+.cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
   flex-basis: var(--cerebro-multiselect-width, var(--c-control-width));
   width: var(--cerebro-multiselect-width, var(--c-control-width));
 }
@@ -1701,10 +1698,7 @@ body .selectize-control.plugin-remove_button .item .remove:hover {
 @media (max-width: 767px) {
   .cerebro-viz-toolbar .form-group,
   .cerebro-viz-toolbar .form-group.cerebro-multiselect-host,
-  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded,
-  .coordviews-page .cv-topbar > .cv-ctl,
-  .coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host,
-  .coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host.cerebro-multiselect-expanded {
+  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
     flex: 1 1 100%;
     width: 100%;
     max-width: none;
