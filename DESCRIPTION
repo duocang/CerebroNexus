@@ -79,7 +79,6 @@ Imports:
 Suggests:
   codetools,
   jpeg,
-  qs,
   writexl,
   BPCells,
   DelayedArray,
@@ -101,6 +100,8 @@ Suggests:
   testthat (>= 3.0.0),
   shinytest2 (>= 0.2.0),
   withr
+Enhances:
+  qs
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr
