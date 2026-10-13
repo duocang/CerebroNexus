@@ -48,12 +48,15 @@ for(const [id,key] of [['overview_projection','overview_projection_point_color']
 emit('cerebro:specialist-state',{viewId:'overview_projection',selectedCells:123,selectionPending:true});
 check(row('overview_projection').textContent.includes('Loading identities'));
 emit('cerebro:specialist-state',{viewId:'overview_projection',selectedCells:0,selectionPending:false});
-check(row('overview_projection').textContent.includes('No selection'));
+check(row('overview_projection').hidden);
+check(row('overview_projection').textContent === '');
+emit('cerebro:specialist-state',{viewId:'overview_projection',selectedCells:4775,selectionPending:false});
+check(row('overview_projection').hidden);
 emit('cerebro:linkedviews-ready',{primaryReady:true,painted:true,complete:false});
 check(row('linked').textContent.includes('Loading annotations'));
 emit('cerebro:linkedviews-ready',{primaryReady:true,painted:true,complete:true});
 check(!row('linked').textContent.includes('Loading annotations'));
-emit('cerebro:linkedviews-selection',{selectedCells:37});check(row('linked').textContent.includes('37 selected'));
+emit('cerebro:linkedviews-selection',{selectedCells:37});check(row('linked').hidden);
 emit('cerebro:view-operation',{id:'spatial_projection',text:'Background unavailable'});
 check(row('spatial_projection').textContent.includes('Background unavailable'));
 generation=2;emit('cerebro:dataset-context',{changed:true,phase:'ready'});
@@ -102,7 +105,9 @@ check(row('linked').textContent.includes('No expression selected'));
 function hasHint(id) {return row(id).children.some(c=>c.className==='cerebro-layout-hint');}
 paint('overview_projection', 12);
 emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
+check(!row('overview_projection').hidden);
 emit('cerebro:plot-layout',{id:'overview_projection',square:true,wide:true});check(!hasHint('overview_projection'));
+check(row('overview_projection').hidden);
 emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false});check(!hasHint('overview_projection'));
 emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true,dataset_context:{generation:0}});check(!hasHint('overview_projection'));
 emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));

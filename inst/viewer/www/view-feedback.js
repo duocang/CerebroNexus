@@ -79,18 +79,17 @@
     var pending = Object.keys(s.pending);
     var text = pending.length ? 'Updating: ' + pending.map(function (key) {
       return s.pending[key].label;
-    }).join(' · ') : s.terminal || (s.ready ? s.empty ? 'No cells match these filters' : 'View ready' : 'Loading ' + specs[id][1] + '…');
-    if (s.operation) text += ' · ' + s.operation;
-    if (s.expression) text += ' · ' + s.expression;
-    if (s.selection != null) text += ' · ' + s.selection;
-    if (s.auxiliary) text += ' · ' + s.auxiliary;
+    }).join(' · ') : s.terminal || (s.ready ? s.empty ? 'No cells match these filters' : '' : 'Loading ' + specs[id][1] + '…');
+    // Settled selection counts already belong to the Active cohort toolbar.
+    text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
     el.textContent = '';
     var status = document.createElement('span');
     status.className = 'cerebro-feedback-text'; status.textContent = text;
     el.appendChild(status);
     var pane = el.closest('.tab-pane');
-    if (layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
-        !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active')) {
+    var showHint = layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
+        !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active');
+    if (showHint) {
       var hint = document.createElement('span');
       hint.className = 'cerebro-layout-hint';
       hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> Wide UMAP</span>' +
@@ -100,6 +99,7 @@
         '" aria-label="Dismiss square plot suggestion for this session">×</button>';
       el.appendChild(hint);
     }
+    el.hidden = !text && !showHint;
     el.classList.toggle('is-pending', !s.terminal && (pending.length > 0 || !s.ready));
     el.classList.toggle('is-terminal', !!s.terminal);
     el.classList.toggle('is-error', !!s.terminal && s.terminalKind !== 'empty');
@@ -274,8 +274,7 @@
     window.addEventListener('cerebro:specialist-state', function (event) {
       var d = event.detail;
       if (!d || !specs[d.viewId] || !fresh(d)) return;
-      state(d.viewId).selection = d.selectedCells ? d.selectedCells.toLocaleString() +
-        ' selected' + (d.selectionPending ? ' · Loading identities for summaries and table…' : '') : 'No selection';
+      state(d.viewId).selection = d.selectionPending ? 'Loading identities for summaries and table…' : '';
       draw(d.viewId);
     });
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
@@ -289,7 +288,7 @@
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var d = event.detail;
       if (!d || !fresh(d)) return;
-      state('linked').selection = d.selectedCells ? d.selectedCells.toLocaleString() + ' selected' : 'No selection';
+      state('linked').selection = '';
       draw('linked');
     });
     window.addEventListener('cerebro:view-operation', function (event) {

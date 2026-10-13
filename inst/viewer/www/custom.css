@@ -3061,6 +3061,7 @@ body .shiny-bound-output.cerebro-output-waiting {
 
 /* Optional layout advice shares the existing status row, without another bar. */
 .cerebro-page-feedback { display: flex; align-items: center; gap: 12px; }
+.cerebro-page-feedback[hidden] { display: none; }
 .cerebro-feedback-text { flex: 1; min-width: 0; }
 .cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
