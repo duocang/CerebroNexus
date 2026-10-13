@@ -184,4 +184,24 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   vm.runInNewContext('bind(plot);',context);
   check(listeners.length===2,'Groups callback rebinds after Plotly replaces emitter');
 }
+// Data info uses dataset progress only, including resets and returns from a
+// still-loading result page. Other page loaders retain their own lifecycle.
+{
+  const s=scenario('loadData');s.start();
+  check(s.loader.hidden,'Data info entry does not show a second loading card');
+  check(s.announcement.textContent==='','Data info does not announce a duplicate page loader');
+  check(s.pane.getAttribute('aria-busy')==='true','metadata still reports busy state');
+  s.emit('shiny:inputchanged',s.controls,{name:'crb_file_selector'});
+  s.events['cerebro:dataset-context']({detail:{changed:true,phase:'pending'}});
+  check(s.loader.hidden,'dataset changes do not reveal a Data info card');
+  s.values();s.emit('shiny:idle');s.flush();s.frame();s.frame();s.flush();
+  check(s.pane.getAttribute('aria-busy')===null,'metadata completion clears busy state');
+  const next = new s.Node('shiny-tab-spatial','tab-pane active',s.pane.parent);
+  new s.Node('spatial-region','cerebro-page-loading-region',next);
+  s.active(next);s.emit('shown',next);
+  check(!s.loader.hidden,'Spatial retains its standalone loading card');
+  delete s.pane.dataset.cerebroPageReady;
+  s.active(s.pane);s.emit('shown',s.pane);
+  check(s.loader.hidden,'returning from a loading plot hides the old card');
+}
 console.log(count+' result page loader assertions passed');
