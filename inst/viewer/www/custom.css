@@ -3065,13 +3065,32 @@ body .shiny-bound-output.cerebro-output-waiting {
 .cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cerebro-layout-hint { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 13px; white-space: nowrap; }
-.cerebro-layout-hint button { border: 0; background: transparent; padding: 4px; cursor: pointer; font: inherit; }
-.cerebro-layout-settings { color: var(--c-amber-700); }
-.cerebro-layout-settings:hover { text-decoration: underline; }
-.cerebro-layout-dismiss { color: var(--c-text-2); }
+/* A compact accent surface makes the suggestion discoverable at a glance. */
+.cerebro-page-feedback:has(.cerebro-layout-hint) { padding-block: 5px; }
+.cerebro-layout-hint {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  box-sizing: border-box; height: 32px; padding: 2px 3px 2px 10px;
+  border: 1px solid var(--c-amber-200); border-radius: 7px;
+  background: var(--c-amber-50); color: var(--c-amber-700);
+  font-size: 13px; line-height: 1; white-space: nowrap;
+}
+.cerebro-layout-copy { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; }
+.cerebro-layout-copy i { font-size: 12px; }
+.cerebro-layout-hint button {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; min-height: 26px; border: 0; border-radius: 4px;
+  cursor: pointer; font: inherit; touch-action: manipulation;
+}
+.cerebro-layout-settings {
+  padding: 0 10px; background: var(--c-amber-700); color: #fff; font-weight: 600 !important;
+}
+.cerebro-layout-settings:hover { background: #873505; }
+.cerebro-layout-settings:active { background: #6e2b04; }
+.cerebro-layout-dismiss { width: 26px; padding: 0; background: transparent; color: var(--c-amber-700); font-size: 18px !important; }
+.cerebro-layout-dismiss:hover { background: var(--c-amber-100); }
 .cerebro-layout-hint button:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: 2px; }
 .cerebro-setting-highlight { outline: 2px solid var(--c-amber-200); outline-offset: 4px; border-radius: 4px; }
 @media (max-width: 700px) {
-  .cerebro-layout-hint > span { display: none; }
+  .cerebro-layout-copy { display: none; }
+  .cerebro-layout-hint { padding-left: 3px; gap: 3px; }
 }

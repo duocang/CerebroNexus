@@ -93,9 +93,9 @@
         !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active')) {
       var hint = document.createElement('span');
       hint.className = 'cerebro-layout-hint';
-      hint.innerHTML = '<span>Prefer a square plot?</span> ' +
+      hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> Wide UMAP</span>' +
         '<button type="button" class="cerebro-layout-settings" data-layout-settings="' + id +
-        '" title="Open Settings and find Keep plots square">Open settings</button>' +
+        '" title="Open Settings and find Keep plots square">Square plot settings</button>' +
         '<button type="button" class="cerebro-layout-dismiss" data-layout-dismiss="' + id +
         '" aria-label="Dismiss square plot suggestion for this session">×</button>';
       el.appendChild(hint);
