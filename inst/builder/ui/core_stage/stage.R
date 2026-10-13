@@ -454,7 +454,7 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
           "Plotting order",
           c(
             "Highest expression on top" = "Highest expression on top",
-            "Random" = "Random"
+            "Input order" = "Input order"
           )
         ),
         flag("gene_show_trend_line", "Show pseudotime trend line"),

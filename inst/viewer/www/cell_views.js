@@ -720,9 +720,21 @@
       var f = fieldForMode(mode);
       if (f && f.paintOrder !== false) { vals = f.v; span = f.scale || 255; }
     }
-    // Values are already quantised. A stable counting sort preserves the old
-    // missing-first, low-to-high paint order without sorting 1M JS numbers.
-    var ord = vals ? quantisedOrder(vals, span) : null;
+    // Expression fields keep full-precision values: match Seurat's ascending
+    // order, with missing values first and stable ties. Quantised-only sources
+    // retain their counting-sort path.
+    var ord;
+    if (vals && f && f.raw) {
+      var raw = f.raw;
+      ord = Array.from({ length: raw.length }, function (_, i) { return i; });
+      ord.sort(function (a, b) {
+        var av = raw[a], bv = raw[b];
+        var am = av == null || isNaN(av), bm = bv == null || isNaN(bv);
+        return am !== bm ? (am ? -1 : 1) : am ? a - b : (av - bv || a - b);
+      });
+    } else {
+      ord = vals ? quantisedOrder(vals, span) : null;
+    }
     _ordD = D; _ordKey = key; _ordVal = ord;
     return ord;
   }
@@ -1335,7 +1347,7 @@
   // it — a median over n cells must never run on the drag-redraw path. The
   // positions deliberately ignore the group filters: a label that jumps every
   // time a filter changes is worse than one that stays where the group is.
-  var labelsOn = true;
+  var labelsOn = false;
   var _lblCache = { d: null };
   function middleValue(values) {
     if (!values.length) return null;
@@ -2184,10 +2196,14 @@
     if (!pointsDrawn && p.gpuTransformOnly) return;
     if (!pointsDrawn) ensureScreenProjection(p);
     var ord = pointsDrawn ? null : paintOrder(p);
+    // Colour buckets reorder interleaved cells. Preserve input order for
+    // unsorted expression fields, including the Canvas fallback on large data.
+    var orderedField = fieldForMode(panelColorMode(p));
+    var preserveInputOrder = orderedField && orderedField.paintOrder === false;
     for (var layer = 0; !pointsDrawn && layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
         : rgb ? (layer === 1 ? 1 : 0.5 * panelPointOpacity) : panelPointOpacity;
-      if (n >= BATCH_MIN) {
+      if (n >= BATCH_MIN && !preserveInputOrder) {
         var buckets = null;
         for (var oi = 0; oi < n; oi++) {
           i = ord ? ord[oi] : oi;
@@ -7721,7 +7737,7 @@
       );
     }
     return { label: label, v: q, raw: values, min: min, max: max, scale: 1000,
-      paintOrder: !data || data.paint_order !== 'natural',
+      paintOrder: !!data && data.paint_order === 'highest',
       unclipped: true,
       palette: singlePalette(panelScale || (data && data.colorscale),
         panelScale ? false : data && data.reversescale) };
@@ -8191,7 +8207,7 @@
     pick = null; hoverCell = null; focusPanel = null;
     var appearance = payload.meta.appearance;
     if (appearance) {
-      labelsOn = appearance.group_labels !== false;
+      labelsOn = appearance.group_labels === true;
       bordersOn = !!appearance.draw_border;
       keepPlotsSquare = !!appearance.keep_square;
     } else {
@@ -9235,7 +9251,7 @@
     // the user's shared override.
     if (dataChanged) {
       var authorDisplay = D.display_defaults || {};
-      labelsOn = authorDisplay.group_labels !== false;
+      labelsOn = authorDisplay.group_labels === true;
       bordersOn = authorDisplay.draw_border === true;
       keepPlotsSquare = authorDisplay.keep_square === true;
       colorClip = [0, 0.01, 0.02, 0.05].indexOf(authorDisplay.color_clip) >= 0
@@ -9707,7 +9723,7 @@
     var overrides = workspacePointOverrides(config);
     pointSizeEdited = overrides.size;
     pointOpacityEdited = overrides.opacity;
-    labelsOn = display.group_labels !== false;
+    labelsOn = display.group_labels === true;
     bordersOn = !!display.cell_borders;
     linkedBackgroundsOn = display.background_images !== false;
     syncLinkedBackgroundsDefault(false);
@@ -10103,7 +10119,7 @@
       );
       if (singleActive !== message.id) return;
       if (Object.prototype.hasOwnProperty.call(message.values, 'group_labels')) {
-        labelsOn = message.values.group_labels !== false;
+        labelsOn = message.values.group_labels === true;
       }
       if (Object.prototype.hasOwnProperty.call(message.values, 'draw_border')) {
         bordersOn = !!message.values.draw_border;
