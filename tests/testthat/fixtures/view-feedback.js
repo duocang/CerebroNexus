@@ -1,12 +1,14 @@
 'use strict';
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict'), path = require('path');
-const events = {}, messages = {}, handlers = {}, elements = {};
+const events = {}, messages = {}, handlers = {}, elements = {}, domEvents = {};
+const storage = new Map();
 function element(id) {
-  const classes = new Set();
-  return { id, textContent: '', value: '', children: [], tagName: 'INPUT',
+  const classes = new Set(['active']); let text = '';
+  return { id, get textContent() { return text + this.children.map(c=>c.textContent).join(''); },
+    set textContent(v) { text=v; this.children=[]; }, value: '', children: [], tagName: 'INPUT',
     classList: {toggle(k,on) { if(on) classes.add(k); else classes.delete(k); }, contains(k) {return classes.has(k);}},
     setAttribute() {}, querySelector(selector) {return selector === 'label' ? {textContent:'Colour'} : this.children[0] || null;},
-    insertBefore(el) {this.children.push(el);}, closest() {return this;},
+    insertBefore(el) {this.children.push(el);}, appendChild(el) {this.children.push(el);}, closest() {return this;},
     contains(el) {return el === this;} };
 }
 const ids = {overview_projection:'overview', expression_projection:'geneExpression', trajectory_projection:'trajectory',
@@ -15,7 +17,7 @@ Object.entries(ids).forEach(([id,pane]) => {
   elements['shiny-tab-'+pane] = element(pane);
   elements[id+'_cell_view_host'] = element(id);
 });
-const document = {readyState:'complete',activeElement:null,getElementById:id=>elements[id],createElement:()=>element('')};
+const document = {addEventListener:(name,fn)=>domEvents[name]=fn,readyState:'complete',activeElement:null,getElementById:id=>elements[id],createElement:()=>element('')};
 const jq = {on(names,fn) {names.split(' ').forEach(name=>handlers[name.split('.')[0]]=fn);return jq;}};
 let generation = 1;
 const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
@@ -23,7 +25,7 @@ const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
   Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn},
   CerebroDatasetContext:{phase:()=> 'ready', accepts:m=>m.dataset_context?.generation===generation}};
 vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
-  {window,document,CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
+  {window,document,setTimeout:fn=>{fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
 let count=0;
 function check(v){assert.ok(v);count++;}
 function row(id){return elements['shiny-tab-'+ids[id]].children[0];}
@@ -96,4 +98,18 @@ change('linked','cv-pick-color','__gene__');
 check(!row('linked').textContent.includes('Updating expression'));
 change('linked','coordviews_gene','');
 check(row('linked').textContent.includes('No expression selected'));
+// Layout suggestions share the row, ignore stale contexts, and respect dismissal.
+function hasHint(id) {return row(id).children.some(c=>c.className==='cerebro-layout-hint');}
+paint('overview_projection', 12);
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:true,wide:true});check(!hasHint('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false});check(!hasHint('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true,dataset_context:{generation:0}});check(!hasHint('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
+domEvents.click({target:{closest:s=>s==='[data-layout-dismiss]'?{getAttribute:()=> 'overview_projection'}:null}});check(!hasHint('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(!hasHint('overview_projection'));
+emit('cerebro:linkedviews-ready',{primaryReady:true,painted:true,complete:true});
+emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(hasHint('linked'));
+domEvents.change({target:{id:'cv-square-plots',checked:false},isTrusted:true});check(!hasHint('linked'));
+emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(!hasHint('linked'));
 console.log(count+' view feedback assertions passed');

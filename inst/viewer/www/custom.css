@@ -3058,3 +3058,20 @@ body .shiny-bound-output.cerebro-output-waiting {
 .cerebro-viz-toolbar .cerebro-spatial-background-row .form-group {
   flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%;
 }
+
+/* Optional layout advice shares the existing status row, without another bar. */
+.cerebro-page-feedback { display: flex; align-items: center; gap: 12px; }
+.cerebro-feedback-text { flex: 1; min-width: 0; }
+.cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cerebro-layout-hint { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 13px; white-space: nowrap; }
+.cerebro-layout-hint button { border: 0; background: transparent; padding: 4px; cursor: pointer; font: inherit; }
+.cerebro-layout-settings { color: var(--c-amber-700); }
+.cerebro-layout-settings:hover { text-decoration: underline; }
+.cerebro-layout-dismiss { color: var(--c-text-2); }
+.cerebro-layout-hint button:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: 2px; }
+.cerebro-setting-highlight { outline: 2px solid var(--c-amber-200); outline-offset: 4px; border-radius: 4px; }
+@media (max-width: 700px) {
+  .cerebro-layout-hint > span { display: none; }
+}
