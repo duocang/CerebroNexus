@@ -943,6 +943,9 @@
     var startedAt = 0;
     var elapsedTimer = null;
     var hideTimer = null;
+    var revealTimer = null;
+    var visibleAt = 0;
+    var fadingOut = false;
     var installed = false;
 
     function ensureOverlay() {
@@ -975,8 +978,21 @@
     function begin(label, detail) {
       var element = ensureOverlay();
       window.clearTimeout(hideTimer);
-      if (element.hidden) startedAt = window.performance.now();
-      element.hidden = false;
+      if (element.hidden) {
+        startedAt = window.performance.now();
+        element.hidden = false;
+        // Avoid a flash for cached or near-instant loads. The transparent layer
+        // still blocks interaction with the outgoing dataset while waiting.
+        revealTimer = window.setTimeout(function () {
+          revealTimer = null;
+          visibleAt = window.performance.now();
+          element.classList.add("is-visible");
+        }, 150);
+      } else if (fadingOut) {
+        // A second switch during the exit continues the same visual layer.
+        element.classList.add("is-visible");
+      }
+      fadingOut = false;
       document.body.classList.add("cerebro-dataset-is-loading");
       var labelNode = element.querySelector(".cerebro-dataset-loading-label");
       var detailNode = element.querySelector(".cerebro-dataset-loading-detail");
@@ -1003,10 +1019,26 @@
         elapsedText();
       if (message.done) {
         window.clearInterval(elapsedTimer);
-        hideTimer = window.setTimeout(function () {
+        var hide = function () {
           overlay.hidden = true;
+          overlay.classList.remove("is-visible");
+          fadingOut = false;
           document.body.classList.remove("cerebro-dataset-is-loading");
-        }, 350);
+        };
+        if (revealTimer !== null) {
+          window.clearTimeout(revealTimer);
+          revealTimer = null;
+          hide();
+          return;
+        }
+        // Once shown, give the progress card time to read before fading out.
+        hideTimer = window.setTimeout(function () {
+          fadingOut = true;
+          overlay.classList.remove("is-visible");
+          var reducedMotion = window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          hideTimer = window.setTimeout(hide, reducedMotion ? 0 : 120);
+        }, Math.max(0, 240 - (window.performance.now() - visibleAt)));
       }
     }
 

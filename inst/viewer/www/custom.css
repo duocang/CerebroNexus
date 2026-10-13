@@ -2030,8 +2030,13 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 .cerebro-dataset-loading {
   position: fixed; inset: 0; z-index: 20000;
   display: grid; place-items: center; padding: 24px;
-  background: var(--c-bg);
+  /* Keep the workspace recognisable instead of replacing it with a blank page. */
+  background: rgba(20, 24, 32, .10);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0; transition: opacity .12s ease-out;
 }
+.cerebro-dataset-loading.is-visible { opacity: 1; }
 .cerebro-dataset-loading[hidden] { display: none; }
 .cerebro-dataset-loading-card {
   box-sizing: border-box; width: min(430px, calc(100vw - 48px));
@@ -2237,7 +2242,16 @@ body .shiny-progress-container .progress-detail {
   visibility: hidden;
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .cerebro-dataset-loading {
+    background: transparent;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .cerebro-dataset-loading,
+  .cerebro-dataset-loading-track span { transition: none; }
+  .cerebro-dataset-loading-kicker::before { animation: none; }
   .cerebro-page-loader { transition: none; }
   .cerebro-page-loader-spinner { animation: none; }
   .cerebro-view-feedback { transition: none; }

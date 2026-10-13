@@ -83,3 +83,12 @@ test_that("loading labels match selector labels without changing dataset identit
   expect_identical(runtime$viewerDatasetLabel(unname(files), files[[1]]), "Dataset")
   expect_identical(runtime$viewerDatasetLabel(files, "ds1", c(" ", "Second")), "Dataset")
 })
+
+
+test_that("loading transitions avoid flashes and survive consecutive switches", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  expect_identical(system2("node", c(
+    shQuote(testthat::test_path("fixtures", "dataset-loading-transition.js")),
+    shQuote(viewer_test_path("www", "viewer-shell.js"))
+  )), 0L)
+})
