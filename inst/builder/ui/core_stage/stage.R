@@ -293,6 +293,242 @@ builder_views_stage_ui <- function(id, model, spatial = NULL) {
         )
       )
     },
-    spatial
+    spatial,
+    tags$details(
+      class = "builder-viewer-card",
+      `data-disclosure-key` = "viewer-display",
+      tags$summary(span(
+        class = "builder-viewer-card-title",
+        "Viewer appearance"
+      )),
+      div(class = "builder-viewer-card-body", uiOutput(ns("viewer_display")))
+    )
+  )
+}
+
+builder_viewer_display_ui <- function(id, entry, epoch) {
+  ns <- NS(id)
+  value <- builderViewerDisplayDefaults(entry$settings$viewer_display)
+  select <- function(key, label, choices) {
+    tags$div(
+      class = "form-group",
+      tags$label(`for` = ns(key), label),
+      tags$select(
+        id = ns(key),
+        class = "form-control",
+        `data-display-field` = key,
+        lapply(names(choices), function(label) {
+          tags$option(
+            value = choices[[label]],
+            selected = if (identical(value[[key]], choices[[label]])) {
+              "selected"
+            } else {
+              NULL
+            },
+            label
+          )
+        })
+      )
+    )
+  }
+  flag <- function(key, label) {
+    tags$label(
+      class = "checkbox-inline",
+      tags$input(
+        type = "checkbox",
+        `data-display-field` = key,
+        checked = if (isTRUE(value[[key]])) "checked" else NULL
+      ),
+      label
+    )
+  }
+  number <- function(key, label, min, max, step) {
+    div(
+      class = "form-group",
+      tags$label(`for` = ns(key), label),
+      tags$input(
+        id = ns(key),
+        type = "number",
+        class = "form-control",
+        min = min,
+        max = max,
+        step = step,
+        value = value[[key]],
+        `data-display-field` = key
+      )
+    )
+  }
+  page <- function(prefix, label, labels = TRUE, extras = NULL) {
+    tags$details(
+      class = "builder-viewer-card",
+      tags$summary(label),
+      div(
+        class = "builder-viewer-card-body builder-advanced-grid",
+        if (labels) flag(paste0(prefix, "_group_labels"), "Show group labels"),
+        flag(paste0(prefix, "_draw_border"), "Draw cell borders"),
+        flag(paste0(prefix, "_keep_square"), "Keep plots square"),
+        extras
+      )
+    )
+  }
+  div(
+    class = "builder-viewer-display",
+    `data-dataset-id` = entry$id,
+    `data-project-epoch` = epoch,
+    `data-input-id` = ns("viewer_display_action"),
+    `data-display-values` = as.character(jsonlite::toJSON(
+      value,
+      auto_unbox = TRUE,
+      digits = NA
+    )),
+    p(
+      "Author defaults for Linked views. Readers can change these while browsing."
+    ),
+    div(
+      class = "builder-advanced-grid",
+      flag("group_labels", "Show group labels"),
+      flag("draw_border", "Draw cell borders"),
+      flag("keep_square", "Keep plots square"),
+      div(
+        class = "form-group",
+        tags$label(`for` = ns("label_size"), "Group label size (CSS pixels)"),
+        tags$input(
+          id = ns("label_size"),
+          type = "number",
+          class = "form-control",
+          min = 8,
+          max = 24,
+          step = 1,
+          value = value$label_size,
+          `data-display-field` = "label_size"
+        )
+      ),
+      select(
+        "font_family",
+        "Group label font",
+        c("System" = "system-ui", "Arial" = "Arial", "Georgia" = "Georgia")
+      ),
+      select(
+        "color_clip",
+        "Continuous colour range",
+        c("Full range" = 0, "1–99%" = .01, "2–98%" = .02, "5–95%" = .05)
+      )
+    ),
+    h5("Gene expression and Spatial feature plots"),
+    div(
+      class = "builder-advanced-grid",
+      select(
+        "gene_palette",
+        "Expression colour scale",
+        c(
+          "Cerebro orange" = "cerebro_orange",
+          "Blues" = "blues",
+          "Greens" = "greens",
+          "Viridis" = "viridis"
+        )
+      ),
+      select(
+        "gene_panel_mode",
+        "Gene panel colours",
+        c("Shared scale" = "shared", "Distinct colours" = "distinct")
+      ),
+      select(
+        "gene_panel_palette",
+        "Distinct panel palette",
+        c("Default" = "default", "Soft" = "soft")
+      )
+    ),
+    h5("Page-specific appearance"),
+    p(
+      class = "help-block",
+      "These settings preserve each page's defaults. Reader selections and analysis filters remain interactive."
+    ),
+    page("projection", "Projection"),
+    page(
+      "gene",
+      "Gene expression",
+      labels = FALSE,
+      extras = tagList(
+        select(
+          "gene_plotting_order",
+          "Plotting order",
+          c(
+            "Highest expression on top" = "Highest expression on top",
+            "Random" = "Random"
+          )
+        ),
+        flag("gene_show_trend_line", "Show pseudotime trend line"),
+        number(
+          "gene_trend_line_width",
+          "Pseudotime line width (plot units)",
+          1,
+          10,
+          1
+        )
+      )
+    ),
+    page(
+      "spatial",
+      "Spatial",
+      extras = flag(
+        "spatial_region_outlines",
+        "Outline group regions (convex hull)"
+      )
+    ),
+    page(
+      "trajectory",
+      "Trajectory",
+      extras = tagList(
+        number(
+          "trajectory_density_opacity",
+          "Pseudotime density opacity",
+          0,
+          1,
+          .1
+        ),
+        flag("trajectory_show_trend_line", "Show pseudotime trend line"),
+        number(
+          "trajectory_trend_line_width",
+          "Pseudotime line width (plot units)",
+          1,
+          10,
+          1
+        )
+      )
+    ),
+    page(
+      "ir",
+      "Immune repertoire",
+      extras = tagList(
+        p(
+          class = "help-block",
+          "Clonal UMAP uses projection point defaults. Scatter and Paired Scatter use the controls below (plot units, not CSS pixels)."
+        ),
+        number("ir_scatter_point_size", "Scatter point size", .1, 6, .1),
+        number("ir_scatter_opacity", "Scatter point opacity", .1, 1, .05)
+      )
+    ),
+    tags$details(
+      class = "builder-viewer-card",
+      tags$summary("HLA & TCR Motifs"),
+      div(
+        class = "builder-viewer-card-body builder-advanced-grid",
+        select(
+          "hla_legend_mode",
+          "Legend",
+          c("Auto" = "auto", "Always show" = "always", "Hide" = "never")
+        ),
+        number("hla_node_scale", "Node size multiplier", .3, 2.5, .1)
+      )
+    ),
+    p(
+      class = "help-block",
+      "Projection thumbnails show sampled geometry and point appearance. Label typography is shown in the generated Viewer."
+    ),
+    div(
+      class = "visually-hidden builder-display-status",
+      role = "status",
+      `aria-live` = "polite"
+    )
   )
 }

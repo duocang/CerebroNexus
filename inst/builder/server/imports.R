@@ -916,6 +916,7 @@ finish_builder_build_dispatch_failure <- function(
 }
 
 ## -- dispatcher: send the next request when the worker is free ----------
+release_preparation_request <- reactiveVal(NULL)
 observe({
   current_protocol <- protocol()
   if (is.null(current_protocol)) {
@@ -925,6 +926,64 @@ observe({
   if (is.null(dispatched$request)) {
     return()
   }
+  protocol(builder_protocol_redact_auth(dispatched$protocol))
+  if (!identical(dispatched$request$payload$kind, "build")) {
+    dispatch_builder_worker_request(dispatched)
+    return()
+  }
+  build_operation_phase("stage")
+  busy_note("Preparing build…")
+  release_preparation_request(dispatched$request$request_id)
+  preparation <- tryCatch(
+    builder_start_release_preparation_process(
+      dispatched$request$payload$plan,
+      dispatched$request$build_id
+    ),
+    error = identity
+  )
+  poll <- function() {
+    if (!inherits(preparation, "condition") && preparation$is_alive()) {
+      later::later(poll, delay = 0.05)
+      return(invisible(TRUE))
+    }
+    prepared <- if (inherits(preparation, "condition")) {
+      preparation
+    } else {
+      tryCatch(preparation$get_result(), error = identity)
+    }
+    current <- isolate(protocol())
+    if (
+      identical(
+        isolate(release_preparation_request()),
+        dispatched$request$request_id
+      )
+    ) {
+      release_preparation_request(NULL)
+    }
+    if (
+      builder_session_closed() ||
+        !identical(current$pending$request_id, dispatched$request$request_id)
+    ) {
+      if (is.list(prepared$coordinator)) {
+        try(builder_coordinator_abort(prepared$coordinator), silent = TRUE)
+      }
+      dispatched$request$payload$auth_accounts <- NULL
+      return(invisible(FALSE))
+    }
+    shiny::withReactiveDomain(
+      session,
+      shiny::isolate(
+        dispatch_builder_worker_request(dispatched, prepared)
+      )
+    )
+    dispatched$request$payload$auth_accounts <- NULL
+    invisible(TRUE)
+  }
+  later::later(poll, delay = 0.05)
+})
+
+dispatch_builder_worker_request <- function(dispatched, preparation = NULL) {
+  dispatched$protocol <- isolate(protocol())
   request <- dispatched$request
   nxt <- request$payload
   coordinator <- NULL
@@ -938,7 +997,7 @@ observe({
     request$payload$auth_accounts <- NULL
     dispatched$request <- builder_request_redact_auth(dispatched$request)
     dispatched$protocol <- builder_protocol_redact_auth(dispatched$protocol)
-    current_protocol <- builder_protocol_redact_auth(current_protocol)
+    current_protocol <- builder_protocol_redact_auth(isolate(protocol()))
     on.exit(
       {
         build_auth_accounts <- NULL
@@ -981,44 +1040,21 @@ observe({
       )
       return()
     }
-    execution_runtime <- try(
-      builder_release_execution_runtime(),
-      silent = TRUE
-    )
-    if (inherits(execution_runtime, "try-error")) {
-      plan_error <- paste0(
-        "The Builder runtime could not be frozen: ",
-        conditionMessage(attr(execution_runtime, "condition"))
-      )
+    if (inherits(preparation, "condition")) {
       finish_builder_build_dispatch_failure(
-        dispatched$protocol,
+        isolate(protocol()),
         request,
-        builder_result_failure(plan_error)
+        builder_result_failure(conditionMessage(preparation))
       )
       return()
     }
-    build_operation_phase("stage")
-    busy_note("Checking release state and creating a safe stage…")
-    coordinator <- try(
-      builder_coordinator_prepare(
-        plan,
-        request$build_id
-      ),
-      silent = TRUE
-    )
-    if (inherits(coordinator, "try-error")) {
-      plan_error <- conditionMessage(attr(coordinator, "condition"))
-      release_error <- builder_release_error_result(
-        plan_error,
-        plan$output_release$directory
-      )
-      release_error$failure_phase <- "stage"
-      release_error$failure_build_id <- request$build_id
-      coordinator <- NULL
+    execution_runtime <- preparation$runtime
+    coordinator <- preparation$coordinator
+    if (builder_build_cancel_requested(nxt$progress_path %||% "")) {
       finish_builder_build_dispatch_failure(
-        dispatched$protocol,
+        isolate(protocol()),
         request,
-        release_error
+        builder_result_failure("Build cancelled. No output was published.")
       )
       return()
     }
@@ -1048,7 +1084,7 @@ observe({
     build_auth_accounts <- NULL
     nxt$plan <- plan
     build_operation_phase("dispatch")
-    busy_note("Starting the isolated build worker…")
+    busy_note("Starting build…")
   }
   started_call <- try(
     switch(
@@ -1071,17 +1107,21 @@ observe({
           import_generation = nxt$import_generation %||% 1L,
           expected_md5 = nxt$expected_md5 %||% NULL,
           .importer = if (isTRUE(nxt$retain_source)) {
-            builder_project_load_retained_source
+            builder_session_worker_callback(
+              builder_project_load_retained_source
+            )
           } else {
             NULL
           },
           .copy = if (isTRUE(nxt$retain_source)) {
-            builder_project_copy_file
+            builder_session_worker_callback(builder_project_copy_file)
           } else {
             NULL
           },
           .transport_writer = if (isTRUE(nxt$retain_source)) {
-            builder_project_transport_retained_write
+            builder_session_worker_callback(
+              builder_project_transport_retained_write
+            )
           } else {
             NULL
           }
@@ -1203,12 +1243,12 @@ observe({
   }
   busy_note(
     if (identical(nxt$kind, "build")) {
-      "Starting build worker…"
+      "Starting build…"
     } else {
       nxt$note
     }
   )
-})
+}
 
 fail_spatial_preview <- function(payload) {
   if (!identical(payload$kind, "spatial_preview")) {
@@ -1278,7 +1318,7 @@ builder_release_package_runtime <- function(builder_root) {
   list(source_root = source_root, files = files)
 }
 
-builder_release_execution_runtime <- function() {
+builder_release_execution_runtime <- function(hash = TRUE) {
   release <- builder_release_runtime_files()
   package <- builder_release_package_runtime(release$root)
   installed_package_files <- character()
@@ -1333,7 +1373,69 @@ builder_release_execution_runtime <- function() {
   ))
   list(
     files = normalizePath(files, winslash = "/", mustWork = TRUE),
-    identity = builder_runtime_file_identity(files)
+    identity = if (hash) builder_runtime_file_identity(files) else NULL
+  )
+}
+
+# Hashes and release preflight run in a trusted coordinator process, separate
+# from both Shiny and the data worker. Ownership transfers before it exits.
+builder_start_release_preparation_process <- function(plan, build_id) {
+  runtime_files <- builder_release_runtime_files()
+  package_runtime <- builder_release_package_runtime(runtime_files$root)
+  execution <- builder_release_execution_runtime(hash = FALSE)
+  callr::r_bg(
+    function(
+      plan,
+      build_id,
+      files,
+      runtime_files,
+      package_files,
+      package_source,
+      parent_pid,
+      source_utf8
+    ) {
+      runtime <- new.env(parent = globalenv())
+      runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+      if (!length(package_files)) {
+        suppressPackageStartupMessages(library(CerebroNexus))
+      } else {
+        Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
+      }
+      for (path in package_files) {
+        source_utf8(path, runtime)
+      }
+      for (name in setdiff(names(runtime_files), "root")) {
+        source_utf8(runtime_files[[name]], runtime)
+      }
+      identity <- runtime$builder_runtime_file_identity(files)
+      handle <- runtime$builder_coordinator_prepare(plan, build_id)
+      transferred <- FALSE
+      on.exit(
+        if (!transferred) {
+          try(runtime$builder_coordinator_abort(handle), silent = TRUE)
+        }
+      )
+      handle <- runtime$builder_coordinator_claim(handle, parent_pid)
+      transferred <- TRUE
+      list(
+        runtime = list(files = files, identity = identity),
+        coordinator = handle
+      )
+    },
+    args = list(
+      plan = plan,
+      build_id = build_id,
+      files = execution$files,
+      runtime_files = runtime_files,
+      package_files = package_runtime$files,
+      package_source = package_runtime$source_root,
+      parent_pid = Sys.getpid(),
+      source_utf8 = builder_source_utf8
+    ),
+    supervise = FALSE,
+    cleanup = FALSE,
+    stdout = "|",
+    stderr = "|"
   )
 }
 
@@ -2307,7 +2409,6 @@ stop_builder_release_settlement <- function(reason = NULL) {
   if (isTRUE(alive)) {
     try(process$kill_tree(), silent = TRUE)
     try(process$kill(), silent = TRUE)
-    try(process$wait(timeout = 5000L), silent = TRUE)
     alive <- tryCatch(process$is_alive(), error = identity)
   }
   if (identical(alive, FALSE)) {
@@ -2333,6 +2434,18 @@ observeEvent(
         "Build stopped by the user during release finalization.",
         "The staged output was not published."
       ))
+    } else {
+      pending <- isolate(protocol())$pending
+      if (
+        is.list(pending) &&
+          identical(pending$kind, "build") &&
+          builder_build_request_cancel(pending$payload$progress_path %||% "")
+      ) {
+        builder_build_stop_requested(TRUE)
+        busy_note(
+          "Stopping after the current step. No output will be published…"
+        )
+      }
     }
   },
   ignoreInit = TRUE
@@ -2371,6 +2484,14 @@ consume_transport_retained <- function(payload) {
 observe({
   current_protocol <- protocol()
   if (is.null(current_protocol) || is.null(current_protocol$pending)) {
+    return()
+  }
+  if (
+    identical(
+      release_preparation_request(),
+      current_protocol$pending$request_id
+    )
+  ) {
     return()
   }
   current_worker <- worker()
@@ -2433,13 +2554,20 @@ observe({
       phase <- builder_build_progress_read(p$progress_path)
       if (!is.null(phase)) {
         build_operation_phase(phase)
-        busy_note(builder_build_progress_note(p$plan, phase))
+        if (!builder_build_cancel_requested(p$progress_path)) {
+          busy_note(builder_build_progress_note(p$plan, phase))
+        }
       }
     }
     return()
   }
   terminal_progress <- NULL
   if (identical(p$kind, "build")) {
+    # A stop can arrive after the worker has completed but before settlement.
+    # Handle it through the same verified abort path as any failed build.
+    if (builder_build_cancel_requested(p$progress_path %||% "")) {
+      got$result$error <- "Build stopped by the user. The staged output was not published."
+    }
     terminal_progress <- builder_build_progress_finish(
       p$plan,
       p$progress_path %||% "",
@@ -2765,14 +2893,13 @@ observe({
       "preparing",
       p$import_generation %||% 1L
     )
-    installed_backends <- list(
-      bpcells = requireNamespace("BPCells", quietly = TRUE),
-      h5 = requireNamespace("HDF5Array", quietly = TRUE)
-    )
-    backend_capabilities <- list(
-      build = installed_backends,
-      viewer = installed_backends
-    )
+    ## Package loading can be slow on first use. The import worker tests the
+    ## same library paths and returns only capability flags to the UI process.
+    backend_capabilities <- value$backend_capabilities %||%
+      list(
+        build = list(bpcells = FALSE, h5 = FALSE),
+        viewer = list(bpcells = FALSE, h5 = FALSE)
+      )
     recommendations <- list(
       metadata = builder_recommend_metadata(value$dataset_profile),
       backend = builder_recommend_backend(

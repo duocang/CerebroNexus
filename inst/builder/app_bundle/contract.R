@@ -645,7 +645,9 @@
               "overview_point_opacity",
               "overview_percentage_cells_to_show",
               "spatial_point_appearance",
-              "spatial_roi_settings"
+              "spatial_roi_settings",
+              "display",
+              "gene_expression"
             )
           )
       ) {
@@ -690,14 +692,26 @@
             },
             logical(1)
           )))
-      projection_valid &&
+      isTRUE(tryCatch(
+        identical(item$display, builderViewerDisplayDefaults(item$display)),
+        error = function(e) FALSE
+      )) &&
+        identical(
+          item$gene_expression,
+          list(
+            palette = item$display$gene_palette,
+            panel_mode = item$display$gene_panel_mode,
+            panel_palette = item$display$gene_panel_palette
+          )
+        ) &&
+        projection_valid &&
         initial_projections_valid &&
         trajectory_valid &&
         is.numeric(point_size) &&
         length(point_size) == 1L &&
         !is.na(point_size) &&
         is.finite(point_size) &&
-        point_size >= 0 &&
+        point_size >= 1 &&
         point_size <= 20 &&
         is.numeric(point_opacity) &&
         length(point_opacity) == 1L &&
@@ -793,7 +807,7 @@
         length(point_size) != 1L ||
         is.na(point_size) ||
         !is.finite(point_size) ||
-        point_size < 0 ||
+        point_size < 1 ||
         point_size > 20
     ) {
       point_size <- fallback
@@ -876,7 +890,16 @@
         percentage_cells_to_show
       ),
       spatial_point_appearance = item$spatial_point_appearance %||% list(),
-      spatial_roi_settings = item$spatial_roi_settings %||% list()
+      spatial_roi_settings = item$spatial_roi_settings %||% list(),
+      display = builderViewerDisplayDefaults(item$viewer_display),
+      gene_expression = local({
+        d <- builderViewerDisplayDefaults(item$viewer_display)
+        list(
+          palette = d$gene_palette,
+          panel_mode = d$gene_panel_mode,
+          panel_palette = d$gene_panel_palette
+        )
+      })
     )
   })
   names(values) <- labels

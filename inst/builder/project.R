@@ -136,8 +136,7 @@ builder_activity_capabilities <- function(activity) {
       c("choosing", "saving", "opening", "restoring", "registering")
   list(
     select_dataset = connected &&
-      !activity$project_phase %in%
-        c("choosing", "saving", "registering"),
+      !identical(activity$project_phase, "choosing"),
     add_dataset = mutable,
     edit_dataset = mutable,
     mutate_datasets = mutable,
@@ -152,11 +151,14 @@ builder_activity_capabilities <- function(activity) {
       activity$project_phase %in%
         c("clean", "dirty", "save_failed"),
     open_project = open_safe,
-    navigate_workflow = mutable,
+    navigate_workflow = mutable ||
+      (connected &&
+        !isTRUE(activity$build_locked) &&
+        activity$project_phase %in% c("saving", "registering")),
     build = stable,
     page_inert = connected &&
       activity$project_phase %in%
-        c("choosing", "saving", "opening", "restoring", "registering"),
+        c("choosing", "opening"),
     warn_before_unload = importing ||
       isTRUE(activity$build_locked) ||
       isTRUE(activity$source_syncing) ||
@@ -2048,6 +2050,163 @@ builder_project_configuration_entry <- function(entry) {
   )
 }
 
+## Collect only file descriptors on the Shiny process. Decoding, hashing and
+## copying new tissue images belongs to the same worker as table attachments.
+builder_project_attachment_jobs <- function(entries, root) {
+  jobs <- builder_project_table_asset_jobs(entries, root)
+  for (entry in entries) {
+    .builder_project_map_spatial_images(
+      entry,
+      function(record, section, label) {
+        source <- record$source_path %||% ""
+        asset <- record$project_asset
+        managed <- if (is.list(asset)) {
+          builder_project_resolve_path(asset$path, root, "managed")
+        } else {
+          NULL
+        }
+        if (
+          .builder_project_text(managed) &&
+            file.exists(managed) &&
+            builder_project_fingerprint_metadata_matches(
+              asset$fingerprint,
+              builder_project_file_fingerprint(managed, content = FALSE)
+            ) &&
+            (!.builder_project_text(source) ||
+              identical(
+                normalizePath(source, winslash = "/", mustWork = FALSE),
+                managed
+              ))
+        ) {
+          return(record)
+        }
+        if (
+          !.builder_project_text(source) ||
+            !file.exists(source) ||
+            dir.exists(source)
+        ) {
+          stop(
+            "A Spatial image source is no longer available. Add it again before saving.",
+            call. = FALSE
+          )
+        }
+        source <- normalizePath(source, winslash = "/", mustWork = TRUE)
+        jobs[[length(jobs) + 1L]] <<- list(
+          kind = "spatial",
+          entry_id = entry$id,
+          section = section,
+          label = label,
+          source = source,
+          field_order = names(record),
+          source_fingerprint = builder_project_file_fingerprint(
+            source,
+            content = FALSE
+          )
+        )
+        record
+      }
+    )
+  }
+  jobs
+}
+
+builder_project_stage_attachment_jobs <- function(jobs, root) {
+  lapply(jobs, function(job) {
+    if (!identical(job$kind, "spatial")) {
+      return(builder_project_stage_table_asset_jobs(list(job), root)[[1L]])
+    }
+    unchanged <- function() {
+      builder_project_fingerprint_metadata_matches(
+        job$source_fingerprint,
+        builder_project_file_fingerprint(job$source, content = FALSE)
+      )
+    }
+    if (!unchanged()) {
+      stop("A Spatial image changed before saving.", call. = FALSE)
+    }
+    images <- stats::setNames(
+      list(stats::setNames(
+        list(list(source_path = job$source)),
+        job$label
+      )),
+      job$section
+    )
+    staged <- builder_project_stage_spatial_assets(
+      list(id = job$entry_id, settings = list(images = images)),
+      root
+    )
+    if (!unchanged()) {
+      stop("A Spatial image changed while saving.", call. = FALSE)
+    }
+    staged$settings$images[[job$section]][[
+      job$label
+    ]]$project_asset$field_order <- job$field_order
+    list(
+      kind = "spatial",
+      entry_id = job$entry_id,
+      source = job$source,
+      section = job$section,
+      label = job$label,
+      asset = staged$settings$images[[job$section]][[job$label]]$project_asset
+    )
+  })
+}
+
+builder_project_attachment_results_match <- function(jobs, results) {
+  key <- function(x) {
+    paste(
+      x$kind %||% "table",
+      x$entry_id,
+      x$source,
+      x$section %||% "",
+      x$label %||% "",
+      sep = "\r"
+    )
+  }
+  expected <- vapply(jobs, key, character(1))
+  actual <- vapply(results, key, character(1))
+  length(expected) == length(actual) &&
+    !anyDuplicated(actual) &&
+    setequal(expected, actual) &&
+    all(vapply(results, function(x) is.list(x$asset), logical(1)))
+}
+
+builder_project_apply_attachment_results <- function(entries, results, root) {
+  spatial <- Filter(function(x) identical(x$kind, "spatial"), results)
+  entries <- builder_project_apply_table_asset_results(
+    entries,
+    Filter(function(x) !identical(x$kind, "spatial"), results),
+    root
+  )
+  lapply(entries, function(entry) {
+    .builder_project_map_spatial_images(
+      entry,
+      function(record, section, label) {
+        matches <- Filter(
+          function(x) {
+            identical(x$entry_id, entry$id) &&
+              identical(x$section, section) &&
+              identical(x$label, label)
+          },
+          spatial
+        )
+        if (length(matches) == 1L) {
+          record$project_asset <- matches[[1L]]$asset
+          record$source_path <- builder_project_resolve_path(
+            record$project_asset$path,
+            root,
+            "managed"
+          )
+          record$source_content_md5 <- record$project_asset$fingerprint$md5
+          record$source_uri <- NULL
+          record$uri <- NULL
+        }
+        record
+      }
+    )
+  })
+}
+
 builder_project_table_asset_jobs <- function(entries, root) {
   root <- builder_project_normalize_root(root)
   jobs <- list()
@@ -2337,6 +2496,9 @@ builder_project_stage_table_assets <- function(entry, root) {
 
 builder_project_adopt_table_assets <- function(entry, staged, root = NULL) {
   if (!is.list(entry) || !is.list(staged)) {
+    return(entry)
+  }
+  if (is.null(entry$settings$tables)) {
     return(entry)
   }
   tables <- entry$settings$tables %||% list()
@@ -4023,6 +4185,7 @@ builder_project_artifact_configuration_digest <- function(
   artifact_entry <- entry
   viewer_only <- c(
     "initial_projections",
+    "viewer_display",
     "overview_point_size",
     "overview_point_opacity",
     "overview_percentage_cells_to_show",
@@ -4086,7 +4249,10 @@ builder_project_cached_configuration_digest <- function(
   overflow <- setdiff(revision_keys, key)
   if (length(revision_keys) > 8L && length(overflow)) {
     rm(
-      list = head(sort(overflow, method = "radix"), length(revision_keys) - 8L),
+      list = utils::head(
+        sort(overflow, method = "radix"),
+        length(revision_keys) - 8L
+      ),
       envir = cache
     )
   }
@@ -6462,6 +6628,296 @@ builder_project_recover_backup <- function(
     path = path,
     backup_path = offer$backup_path,
     displaced_path = normalizePath(displaced, winslash = "/", mustWork = TRUE)
+  )
+}
+
+builder_project_build_manifest <- function(
+  entries,
+  project,
+  context,
+  cache = NULL
+) {
+  manifest <- project$manifest
+  if (
+    is.list(manifest$pending_build) &&
+      !identical(manifest$pending_build$status %||% NULL, "running")
+  ) {
+    manifest$pending_build <- NULL
+  }
+  previous <- manifest$datasets %||% list()
+  names(previous) <- vapply(previous, `[[`, character(1), "id")
+  checked <- context$checked
+  artifacts <- context$artifacts
+  staged_entries <- vector("list", length(entries))
+  records <- vector("list", length(entries))
+  jobs <- vector("list", length(entries))
+  for (index in seq_along(entries)) {
+    entry <- entries[[index]]
+    prior <- previous[[entry$id]] %||% NULL
+    if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+      staged <- list(
+        entry = entry,
+        source = prior$source %||% list(kind = "missing", path = NULL),
+        job = NULL
+      )
+    } else {
+      staged <- builder_project_prepare_source(entry, project$root, prior)
+    }
+    configuration_entry <- builder_project_configuration_entry(staged$entry)
+    configuration_entry <- builder_project_stage_spatial_assets(
+      configuration_entry,
+      project$root
+    )
+    configuration_entry <- builder_project_stage_table_assets(
+      configuration_entry,
+      project$root
+    )
+    current_digest <- builder_project_cached_configuration_digest(
+      configuration_entry,
+      cache,
+      variant = "project-manifest"
+    )
+    artifact_digest <- builder_project_cached_configuration_digest(
+      configuration_entry,
+      cache,
+      digest = builder_project_artifact_configuration_digest,
+      variant = "project-artifact"
+    )
+    staged$entry <- builder_project_adopt_spatial_assets(
+      staged$entry,
+      configuration_entry,
+      project$root
+    )
+    staged$entry <- builder_project_adopt_table_assets(
+      staged$entry,
+      configuration_entry,
+      project$root
+    )
+    artifact <- artifacts[[entry$id]] %||%
+      entry$project_artifact %||%
+      prior$artifact %||%
+      NULL
+    if (is.list(artifact)) {
+      if (
+        !identical(
+          artifact$built_from_configuration %||% "",
+          artifact_digest
+        )
+      ) {
+        artifact <- NULL
+      } else {
+        if (
+          is.list(artifact$plan_item) &&
+            !.builder_project_text(artifact$plan_payload %||% "")
+        ) {
+          artifact$plan_payload <- jsonlite::serializeJSON(
+            artifact$plan_item,
+            digits = NA,
+            pretty = FALSE
+          )
+        }
+        artifact$plan_item <- NULL
+        artifact$resolved_path <- NULL
+        if (length(artifact$members %||% list())) {
+          artifact$members <- lapply(artifact$members, function(member) {
+            member$resolved_path <- NULL
+            member
+          })
+        }
+      }
+    }
+    staged_entries[[index]] <- staged$entry
+    jobs[[index]] <- staged$job
+    records[[index]] <- builder_project_dataset_record(
+      staged$entry,
+      staged$source,
+      checked = entry$id %in% checked,
+      artifact = artifact,
+      order = index,
+      payload_entry = configuration_entry,
+      root = project$root,
+      configuration_digest = current_digest
+    )
+  }
+  retained_ids <- vapply(records, `[[`, character(1), "id")
+  inactive <- previous[setdiff(names(previous), retained_ids)]
+  if (length(inactive)) {
+    skipped_ids <- context$skipped_ids
+    inactive <- lapply(inactive, function(record) {
+      if (!record$id %in% skipped_ids) {
+        record$release <- list(included = FALSE)
+      }
+      record
+    })
+    records <- c(records, unname(inactive))
+  }
+  manifest$datasets <- records
+  manifest$configuration <- context$configuration
+  manifest$last_ui <- context$last_ui
+  list(
+    manifest = manifest,
+    entries = staged_entries,
+    jobs = Filter(Negate(is.null), jobs)
+  )
+}
+
+builder_project_manifest_with_artifact <- function(
+  manifest,
+  root,
+  id,
+  artifact
+) {
+  project <- list(root = root, manifest = manifest)
+  records <- project$manifest$datasets %||% list()
+  ids <- vapply(
+    records,
+    function(record) {
+      as.character(record$id %||% "")
+    },
+    character(1)
+  )
+  index <- match(id, ids)
+  if (is.na(index)) {
+    return(FALSE)
+  }
+  record <- records[[index]]
+  if (!builder_project_record_configuration_confirmed(record)) {
+    return(FALSE)
+  }
+  saved_entry <- tryCatch(
+    builder_project_read_dataset_config(record, project$root),
+    error = identity
+  )
+  if (
+    inherits(saved_entry, "condition") ||
+      !builder_project_artifact_available(artifact, project$root) ||
+      !builder_project_artifact_matches_entry(
+        artifact,
+        saved_entry,
+        source = record$source %||% NULL
+      )
+  ) {
+    return(FALSE)
+  }
+  stored <- artifact
+  if (
+    is.list(stored$plan_item) &&
+      !.builder_project_text(stored$plan_payload %||% "")
+  ) {
+    stored$plan_payload <- jsonlite::serializeJSON(
+      stored$plan_item,
+      digits = NA,
+      pretty = FALSE
+    )
+  }
+  stored$plan_item <- NULL
+  stored$resolved_path <- NULL
+  if (length(stored$members %||% list())) {
+    stored$members <- lapply(stored$members, function(member) {
+      member$resolved_path <- NULL
+      member
+    })
+  }
+  manifest <- project$manifest
+  manifest$datasets[[index]]$artifact <- stored
+  manifest
+}
+
+builder_project_write_process <- function(
+  manifest,
+  root,
+  expected_revision,
+  runtime_files,
+  source_utf8,
+  .spawn = callr::r_bg,
+  entries = NULL,
+  context = NULL,
+  configuration_cache = list(),
+  artifact_record = NULL
+) {
+  .spawn(
+    function(
+      manifest,
+      root,
+      expected_revision,
+      runtime_files,
+      source_utf8,
+      entries,
+      context,
+      configuration_cache,
+      artifact_record
+    ) {
+      runtime <- new.env(parent = globalenv())
+      runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+      for (path in runtime_files) {
+        source_utf8(path, runtime)
+      }
+      has_artifacts <- !is.null(artifact_record) ||
+        any(vapply(
+          manifest$datasets %||% list(),
+          function(record) is.list(record$artifact),
+          logical(1)
+        ))
+      if (
+        has_artifacts &&
+          !is.function(runtime$.builder_app_capture_spatial_molecule_identity)
+      ) {
+        stop("The project artifact verification runtime is unavailable.")
+      }
+      cache <- list2env(configuration_cache, parent = emptyenv())
+      built <- if (!is.null(entries)) {
+        runtime$builder_project_build_manifest(
+          entries,
+          list(root = root, manifest = manifest),
+          context,
+          cache
+        )
+      } else {
+        NULL
+      }
+      if (!is.null(artifact_record)) {
+        manifest <- runtime$builder_project_manifest_with_artifact(
+          manifest,
+          root,
+          artifact_record$id,
+          artifact_record$artifact
+        )
+        if (!is.list(manifest)) {
+          stop("The dataset cache no longer matches this project.")
+        }
+      }
+      written <- runtime$builder_project_write(
+        if (is.null(built)) manifest else built$manifest,
+        root,
+        expected_revision
+      )
+      written$built <- built
+      written$configuration_cache <- as.list(cache)
+      # The transaction already inspected these CRBs in this worker. Carry the
+      # content-keyed closure results back so status rendering need not read them
+      # again. Artifact availability still checks every file before using them.
+      written$artifact_closure_cache <- as.list(
+        runtime$.builder_project_artifact_closure_cache
+      )
+      written
+    },
+    args = list(
+      manifest = manifest,
+      root = root,
+      expected_revision = expected_revision,
+      runtime_files = runtime_files,
+      source_utf8 = source_utf8,
+      entries = entries,
+      context = context,
+      configuration_cache = configuration_cache,
+      artifact_record = artifact_record
+    ),
+    # Once a transaction starts, closing the browser must not kill it between
+    # backup and commit. The existing manifest lock/revision checks still apply.
+    supervise = FALSE,
+    cleanup = FALSE,
+    stdout = "|",
+    stderr = "|"
   )
 }
 

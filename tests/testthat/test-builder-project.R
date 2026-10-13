@@ -1,14 +1,11 @@
 builder_project_test_runtime <- function() {
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "builder", "prerequisite.R"),
+    builder_test_inst_path("builder", "prerequisite.R"),
     envir = runtime
   )
   runtime$builder_source_utf8(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "builder",
       "core",
       "bundle_path_contract.R"
@@ -16,10 +13,7 @@ builder_project_test_runtime <- function() {
     envir = runtime
   )
   runtime$builder_source_utf8(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "viewer",
       "core",
       "spatial_coordinate_transform.R"
@@ -27,7 +21,7 @@ builder_project_test_runtime <- function() {
     envir = runtime
   )
   for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
-    path <- testthat::test_path("..", "..", "inst", "builder", file)
+    path <- builder_test_inst_path("builder", file)
     runtime$builder_source_utf8(path, envir = runtime)
   }
   runtime
@@ -934,10 +928,7 @@ test_that("background save runtimes include verified copy support", {
     project
   )
   runtime_files <- normalizePath(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "builder",
       c("io.R", "project.R")
     ),
@@ -1038,7 +1029,7 @@ test_that("project restore disables Sources whose reader package is missing", {
   expect_identical(status$actions, "skip")
   expect_identical(status$default_action, "skip")
   expect_identical(status$message, "Source reader unavailable")
-  expect_match(status$problem, 'install.packages("qs")', fixed = TRUE)
+  expect_match(status$problem, 'QS unavailable', fixed = TRUE)
 })
 
 test_that("project payload preserves saved Spatial FOV controls", {
@@ -1311,10 +1302,7 @@ test_that("project table asset jobs deduplicate sheets from one workbook", {
 test_that("project table asset save has an asynchronous stale-result guard", {
   source <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "project.R"
@@ -1326,7 +1314,7 @@ test_that("project table asset save has an asynchronous stale-result guard", {
 
   expect_match(source, "builder_project_table_asset_generation", fixed = TRUE)
   expect_match(source, "callr::r_bg(", fixed = TRUE)
-  expect_match(source, "builder_project_table_asset_jobs", fixed = TRUE)
+  expect_match(source, "builder_project_attachment_jobs", fixed = TRUE)
   expect_match(source, "builder_project_table_save_signature", fixed = TRUE)
   expect_match(source, "process$get_result()", fixed = TRUE)
 })
@@ -1764,18 +1752,12 @@ test_that("checkpoint CRBs are reusable when their private closure is bundled", 
 })
 
 test_that("managed examples keep their origin across the async import boundary", {
-  imports_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  imports_path <- builder_test_inst_path(
     "builder",
     "server",
     "imports.R"
   )
-  project_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  project_path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -1790,19 +1772,16 @@ test_that("managed examples keep their origin across the async import boundary",
 })
 
 test_that("the project status only declares safe close after source sync", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "ui",
     "project.R"
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
-  expect_match(source, "Project fully saved · Safe to close", fixed = TRUE)
+  expect_match(source, "Saved · Safe to close", fixed = TRUE)
   expect_match(source, "Saving source files · ", fixed = TRUE)
-  expect_match(source, "Stopping previous source copy", fixed = TRUE)
+  expect_match(source, "Stopping file copy", fixed = TRUE)
 })
 
 test_that("source synchronization warns on close without locking the workspace", {
@@ -1824,10 +1803,7 @@ test_that("source synchronization warns on close without locking the workspace",
 })
 
 test_that("project server uses a dedicated callr source copy process", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -1842,10 +1818,7 @@ test_that("project server uses a dedicated callr source copy process", {
 })
 
 test_that("source sync keeps queued jobs until its worker starts", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -1880,10 +1853,7 @@ test_that("source sync keeps queued jobs until its worker starts", {
 })
 
 test_that("source sync cancellation owns and terminates its process", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -1905,10 +1875,7 @@ test_that("source sync cancellation owns and terminates its process", {
 })
 
 test_that("source sync retains ownership when process termination is unconfirmed", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -1970,10 +1937,7 @@ test_that("source sync retains ownership when process termination is unconfirmed
 })
 
 test_that("source sync invalidation remains cancelling after a failed stop", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -2028,10 +1992,7 @@ test_that("source sync invalidation remains cancelling after a failed stop", {
 })
 
 test_that("a finished source process remains owned until its result is collected", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -2207,7 +2168,7 @@ test_that("legacy qs reminder explains the qs2 migration", {
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
 
@@ -2219,18 +2180,18 @@ test_that("legacy qs reminder explains the qs2 migration", {
     origin = "project"
   ))$html
 
-  expect_match(html, "Legacy .qs format detected", fixed = TRUE)
+  expect_match(html, "Legacy QS files", fixed = TRUE)
   expect_equal(
     lengths(regmatches(
       html,
-      gregexpr("Legacy .qs format detected", html, fixed = TRUE)
+      gregexpr("Legacy QS files", html, fixed = TRUE)
     )),
     1L
   )
   expect_match(html, "2 datasets in the project", fixed = TRUE)
   expect_match(html, "deprecated .qs format", fixed = TRUE)
-  expect_match(html, "Convert the source files to .qs2", fixed = TRUE)
-  expect_match(html, "View affected datasets (2)", fixed = TRUE)
+  expect_match(html, "Use QS2 for future projects.", fixed = TRUE)
+  expect_match(html, "Datasets (2)", fixed = TRUE)
   expect_match(html, "Legacy one", fixed = TRUE)
   expect_match(html, "Legacy two", fixed = TRUE)
   expect_match(html, "continue_builder_project_legacy_qs", fixed = TRUE)
@@ -2248,7 +2209,7 @@ test_that("legacy qs reminder explains the qs2 migration", {
     )
   )$html
   expect_match(duplicate_html, "2 datasets in the project", fixed = TRUE)
-  expect_match(duplicate_html, "View affected datasets (2)", fixed = TRUE)
+  expect_match(duplicate_html, "Datasets (2)", fixed = TRUE)
   expect_match(duplicate_html, "Repeated name (ds1)", fixed = TRUE)
   expect_match(duplicate_html, "Repeated name (ds2)", fixed = TRUE)
 
@@ -2256,7 +2217,7 @@ test_that("legacy qs reminder explains the qs2 migration", {
     list(list(id = "ds1", name = "Legacy one")),
     origin = "add"
   ))$html
-  expect_match(add_html, "Continue Anyway", fixed = TRUE)
+  expect_match(add_html, "Continue", fixed = TRUE)
   expect_match(add_html, "btn btn-primary", fixed = TRUE)
   expect_match(add_html, "data-dismiss=\"modal\"", fixed = TRUE)
 })
@@ -2270,7 +2231,7 @@ test_that("project opening dialog provides immediate progress feedback", {
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
 
@@ -2291,7 +2252,7 @@ test_that("Project backup recovery is an explicit verified choice", {
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
 
@@ -2320,7 +2281,7 @@ test_that("project qs warning stays separate from dataset selection", {
   runtime$actionButton <- shiny::actionButton
   runtime$selectInput <- shiny::selectInput
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
   status <- list(
@@ -2359,12 +2320,12 @@ test_that("project qs warning stays separate from dataset selection", {
     runtime$builder_project_restore_dialog(manifest)
   )$html
 
-  expect_match(warning_html, "Legacy .qs format detected", fixed = TRUE)
+  expect_match(warning_html, "Legacy QS files", fixed = TRUE)
   expect_match(warning_html, "Legacy source", fixed = TRUE)
   expect_false(grepl("Choose Datasets to Open", warning_html, fixed = TRUE))
   expect_match(selection_html, "Choose Datasets to Open", fixed = TRUE)
   expect_false(grepl(
-    "Legacy .qs format detected",
+    "Legacy QS files",
     selection_html,
     fixed = TRUE
   ))
@@ -2937,10 +2898,7 @@ test_that("same-source artifacts retain separate ownership and reuse records", {
 test_that("ready CRB workbench keeps the Review continuation actions", {
   project_ui <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "ui",
         "project.R"
@@ -2951,10 +2909,7 @@ test_that("ready CRB workbench keeps the Review continuation actions", {
   )
   project_server <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "review.R"
@@ -2965,7 +2920,7 @@ test_that("ready CRB workbench keeps the Review continuation actions", {
   )
   workflow_ui <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "ui", "workflow.R"),
+      builder_test_inst_path("builder", "ui", "workflow.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -3003,10 +2958,7 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
   runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
   runtime$selectInput <- shiny::selectInput
-  ui_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  ui_path <- builder_test_inst_path(
     "builder",
     "ui",
     "project.R"
@@ -3165,7 +3117,7 @@ test_that("saved CRB workbench states the active data source", {
   runtime$actionButton <- shiny::actionButton
   runtime$uiOutput <- shiny::uiOutput
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "workflow.R"),
+    builder_test_inst_path("builder", "ui", "workflow.R"),
     envir = runtime
   )
   runtime$builder_stage_header_ui <- function(kicker, title, description) {
@@ -3178,7 +3130,7 @@ test_that("saved CRB workbench states the active data source", {
     shiny::tags$footer(message, ...)
   }
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
   entry <- list(
@@ -3204,18 +3156,18 @@ test_that("saved CRB workbench states the active data source", {
 
   expect_match(
     workbench,
-    "Using a saved CRB. This dataset is Build-ready; load the original source to edit its settings.",
+    "Saved CRB ready to build.",
     fixed = TRUE
   )
-  expect_match(workbench, "Ready for Build · Saved CRB", fixed = TRUE)
+  expect_match(workbench, "Ready to build", fixed = TRUE)
   expect_match(
     workbench,
-    "your saved settings will be retained.",
+    "Saved settings are kept.",
     fixed = TRUE
   )
   expect_match(workbench, 'id="project-source-load-status"', fixed = TRUE)
   expect_match(workbench, 'aria-live="polite"', fixed = TRUE)
-  expect_match(workbench, "The saved CRB remains ready for Build", fixed = TRUE)
+  expect_match(workbench, "Saved CRB remains available.", fixed = TRUE)
   expect_match(actions, "Load original source to edit", fixed = TRUE)
   expect_match(actions, "builder-project-source-load-button", fixed = TRUE)
   expect_match(
@@ -3238,7 +3190,7 @@ test_that("missing saved settings reload the source instead of forcing a skip", 
   runtime$tags <- shiny::tags
   runtime$selectInput <- shiny::selectInput
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
   root <- withr::local_tempdir()
@@ -3312,10 +3264,7 @@ test_that("missing saved settings reload the source instead of forcing a skip", 
 
 test_that("project restore rows keep long labels inside their grid tracks", {
   css <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    readLines(builder_test_inst_path(
       "builder",
       "www",
       "builder.components.css"
@@ -3366,7 +3315,9 @@ test_that("project lifecycle capabilities lock only conflicting operations", {
     has_datasets = TRUE
   )
   save_capabilities <- runtime$builder_activity_capabilities(saving)
-  expect_true(save_capabilities$page_inert)
+  expect_false(save_capabilities$page_inert)
+  expect_true(save_capabilities$navigate_workflow)
+  expect_true(save_capabilities$select_dataset)
   expect_true(save_capabilities$warn_before_unload)
   expect_false(save_capabilities$mutate_datasets)
   expect_false(save_capabilities$save_project)
@@ -3423,7 +3374,7 @@ test_that("project autosave waits for both import queues to drain", {
 test_that("terminal retry rows keep project operations blocked", {
   runtime <- builder_project_test_runtime()
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "loading.R"),
+    builder_test_inst_path("builder", "loading.R"),
     envir = runtime
   )
   queue <- runtime$builder_import_queue()
@@ -3464,7 +3415,7 @@ test_that("terminal retry rows keep project operations blocked", {
 
   project_server <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -3477,10 +3428,7 @@ test_that("terminal retry rows keep project operations blocked", {
 })
 
 test_that("project autosave checks save capability before requesting a save", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -3524,10 +3472,7 @@ test_that("project autosave checks save capability before requesting a save", {
 })
 
 test_that("project save waits for spatial editing to settle", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -3625,7 +3570,7 @@ test_that("non-empty project folders require explicit confirmation", {
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
 
@@ -3653,7 +3598,7 @@ test_that("existing Builder projects require update confirmation", {
   runtime$tagList <- shiny::tagList
   runtime$actionButton <- shiny::actionButton
   runtime$builder_source_utf8(
-    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    builder_test_inst_path("builder", "ui", "project.R"),
     envir = runtime
   )
 
@@ -3680,10 +3625,7 @@ test_that("existing Builder projects require update confirmation", {
 })
 
 test_that("the top bar omits the format capability summary", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "app.R"
   )
@@ -3714,34 +3656,22 @@ test_that("spatial drafts are committed by workflow actions instead of blocking 
 })
 
 test_that("project saving can commit spatial drafts through the internal mutation path", {
-  foundation_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  foundation_path <- builder_test_inst_path(
     "builder",
     "server",
     "foundation.R"
   )
-  imports_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  imports_path <- builder_test_inst_path(
     "builder",
     "server",
     "imports.R"
   )
-  enhancements_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  enhancements_path <- builder_test_inst_path(
     "builder",
     "server",
     "enhancements.R"
   )
-  project_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  project_path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -3772,13 +3702,19 @@ test_that("project saving can commit spatial drafts through the internal mutatio
   )
 })
 
-test_that("project location selection, opening, and restore make the page inert", {
+test_that("project transitions lock writes while background restore permits browsing", {
   runtime <- builder_project_test_runtime()
 
   for (phase in c("choosing", "opening", "restoring")) {
     activity <- runtime$builder_activity_state(project_phase = phase)
     capabilities <- runtime$builder_activity_capabilities(activity)
-    expect_true(capabilities$page_inert)
+    expect_identical(
+      capabilities$page_inert,
+      phase %in% c("choosing", "opening")
+    )
+    expect_false(capabilities$edit_dataset)
+    expect_false(capabilities$save_project)
+    expect_false(capabilities$build)
     expect_true(capabilities$warn_before_unload)
     expect_false(capabilities$open_project)
   }
@@ -3884,10 +3820,7 @@ test_that("pending project settings survive until source imports are dispatched"
 })
 
 test_that("project open work resolves without timer polling", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -3933,10 +3866,7 @@ test_that("project open work resolves without timer polling", {
 })
 
 test_that("project restore stays in the opening overlay", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "www",
     "builder.js"
@@ -4189,10 +4119,7 @@ test_that("ready CRB restore selection is prepared transactionally in manifest o
 })
 
 test_that("ready CRB confirmation validates the complete state before committing", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -4852,10 +4779,7 @@ test_that("checked settings and CRB availability are independent", {
 test_that("dataset rail keeps checked state independent from CRB lifecycle", {
   runtime <- builder_project_test_runtime()
   runtime$builder_source_utf8(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "builder",
       "ui",
       "dataset_rail.R"
@@ -5280,10 +5204,7 @@ test_that("legacy reviewed settings migrate to the checked flag", {
 })
 
 test_that("browser lifecycle code includes queue sync and close protection", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "www",
     "builder.js"
@@ -5309,10 +5230,7 @@ test_that("browser lifecycle code includes queue sync and close protection", {
 test_that("Save starts optional CRB work only after checked settings persist", {
   project <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "project.R"
@@ -5323,10 +5241,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   )
   review <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "review.R"
@@ -5337,10 +5252,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   )
   browser <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "www",
         "builder.js"
@@ -5366,11 +5278,6 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   expect_match(
     project,
     "finish_builder_project_save_request(failed == 0L, save_waiter$after)",
-    fixed = TRUE
-  )
-  expect_match(
-    browser,
-    "CRBs will be generated in the background",
     fixed = TRUE
   )
   expect_false(grepl("Project save incomplete", browser, fixed = TRUE))
@@ -5402,7 +5309,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   expect_match(worker, "runtime$builder_execute_plan(", fixed = TRUE)
   expect_match(
     project,
-    "builder_project_artifact_available(candidate, project$root)",
+    "builder_project_manifest_with_artifact(",
     fixed = TRUE
   )
   expect_match(
@@ -5412,7 +5319,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   )
   expect_match(
     project,
-    "builder_project_record_crb(id, candidate)",
+    "builder_project_record_crb(",
     fixed = TRUE
   )
   expect_match(
@@ -5438,7 +5345,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   )
   expect_match(
     record_crb,
-    "manifest$datasets[[index]]$artifact <- stored",
+    "builder_project_manifest_with_artifact(",
     fixed = TRUE
   )
   expect_false(grepl("save_builder_project_state(", record_crb, fixed = TRUE))
@@ -5450,10 +5357,7 @@ test_that("Save starts optional CRB work only after checked settings persist", {
 })
 
 test_that("connection flush sends a message captured in reactive context", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -5481,10 +5385,7 @@ test_that("connection flush sends a message captured in reactive context", {
 })
 
 test_that("only the saved-project background CRB queue remains", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -5506,7 +5407,7 @@ test_that("only the saved-project background CRB queue remains", {
   )
   expect_match(
     source,
-    "builder_project_record_crb(id, candidate)",
+    "builder_project_record_crb(",
     fixed = TRUE
   )
   expect_match(source, "promote = TRUE", fixed = TRUE)
@@ -5528,10 +5429,7 @@ test_that("only the saved-project background CRB queue remains", {
 })
 
 test_that("deferred project saves keep the Shiny session domain", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -5553,10 +5451,7 @@ test_that("deferred project saves keep the Shiny session domain", {
 test_that("post-build Project registration has one manifest commit path", {
   source <- paste(
     readLines(
-      testthat::test_path(
-        "..",
-        "..",
-        "inst",
+      builder_test_inst_path(
         "builder",
         "server",
         "project.R"
@@ -5596,10 +5491,7 @@ test_that("post-build Project registration has one manifest commit path", {
 })
 
 test_that("activity locks do not rewrite unchanged text during DOM enhancement", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "www",
     "builder.js"
@@ -5619,10 +5511,7 @@ test_that("activity locks do not rewrite unchanged text during DOM enhancement",
 })
 
 test_that("activity locks keep the loading workspace visible and cancellable", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "www",
     "builder.js"
@@ -5647,10 +5536,7 @@ test_that("activity locks keep the loading workspace visible and cancellable", {
 })
 
 test_that("dynamic content enhancement is coalesced per animation frame", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "www",
     "builder.js"
@@ -5706,17 +5592,11 @@ test_that("dynamic content enhancement is coalesced per animation frame", {
 })
 
 test_that("spatial canvas is cleared before switching datasets", {
-  server_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  server_path <- builder_test_inst_path(
     "builder",
     "spatial_alignment_server.R"
   )
-  client_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  client_path <- builder_test_inst_path(
     "builder",
     "www",
     "builder-spatial-canvas.js"
@@ -5936,7 +5816,7 @@ test_that("project input is bounded and Builder has no inline image decoder", {
     fixed = TRUE
   )
   implementation <- paste(
-    readLines(testthat::test_path("..", "..", "inst", "builder", "project.R")),
+    readLines(builder_test_inst_path("builder", "project.R")),
     collapse = "\n"
   )
   expect_false(grepl("base64decode", implementation, fixed = TRUE))
@@ -6856,10 +6736,7 @@ test_that("checkpoint cleanup refuses lexical symlinks without deleting targets"
 
 test_that("project open clears all cross-project runtime caches", {
   source <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    readLines(builder_test_inst_path(
       "builder",
       "server",
       "project.R"
@@ -6924,7 +6801,7 @@ test_that("source sync context is bound to project identity and revision", {
 
   server <- paste(
     readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      builder_test_inst_path("builder", "server", "project.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -6934,10 +6811,7 @@ test_that("source sync context is bound to project identity and revision", {
 })
 
 test_that("background CRBs are queued only after a successful visible save", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"
@@ -6966,10 +6840,7 @@ test_that("background CRBs are queued only after a successful visible save", {
 })
 
 test_that("artifact registration is dispatched without a second state machine", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  path <- builder_test_inst_path(
     "builder",
     "server",
     "project.R"

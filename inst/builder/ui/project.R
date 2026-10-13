@@ -34,7 +34,7 @@ builder_project_status_ui <- function(
   sync_failed <- is.list(source_sync) && identical(source_sync$status, "failed")
   sync_ready <- is.list(source_sync) && identical(source_sync$status, "ready")
   label <- if (cancelling) {
-    "Stopping previous source copy…"
+    "Stopping file copy…"
   } else if (syncing) {
     paste0(
       "Saving source files · ",
@@ -45,21 +45,21 @@ builder_project_status_ui <- function(
   } else if (sync_failed) {
     "Some source files could not be saved"
   } else if (sync_ready && identical(phase, "clean")) {
-    "Project fully saved · Safe to close"
+    "Saved · Safe to close"
   } else if (is.null(project)) {
     "No project saved"
   } else {
     switch(
       phase,
-      dirty = paste0(project$name %||% "Builder project", " · Unsaved changes"),
+      dirty = "Unsaved changes",
       choosing = "Choosing project location…",
       saving = "Saving project…",
       opening = "Opening project…",
       restoring = "Restoring project…",
-      registering = "Adding reusable CRBs…",
+      registering = "Saving dataset cache…",
       save_failed = "Project save failed",
-      conflict = "Project must be reopened",
-      project$name %||% "Saved project"
+      conflict = "Project changed · Reopen to continue",
+      "Saved"
     )
   }
   status_class <- if (syncing || cancelling) {
@@ -164,13 +164,12 @@ builder_legacy_qs_notice_content <- function(datasets, origin = "add") {
       ),
       tags$p(
         paste(
-          "You can still open them, but .qs is deprecated.",
-          "Convert the source files to .qs2 for future Builder sessions."
+          "These files can still open. Use QS2 for future projects."
         )
       ),
       if (length(labels)) {
         tags$details(
-          tags$summary(paste0("View affected datasets (", length(labels), ")")),
+          tags$summary(paste0("Datasets (", length(labels), ")")),
           do.call(tags$ul, unname(lapply(labels, tags$li)))
         )
       }
@@ -186,7 +185,7 @@ builder_legacy_qs_notice_dialog <- function(datasets, origin = "add") {
         class = "builder-project-modal-kicker",
         "Compatibility warning"
       ),
-      tags$span("Legacy .qs format detected")
+      tags$span("Legacy QS files")
     ),
     tags$div(
       class = "builder-project-dialog builder-legacy-qs-dialog",
@@ -211,7 +210,7 @@ builder_legacy_qs_notice_dialog <- function(datasets, origin = "add") {
         class = "btn btn-primary",
         `data-dismiss` = "modal",
         `data-bs-dismiss` = "modal",
-        "Continue Anyway"
+        "Continue"
       )
     },
     easyClose = !project_notice,
@@ -238,8 +237,7 @@ builder_project_opening_dialog <- function() {
           tags$strong("Preparing saved datasets"),
           tags$p(
             paste(
-              "Builder is reading the project manifest and checking which",
-              "saved CRBs can be reused safely."
+              "Checking the project and saved dataset cache…"
             )
           )
         )
@@ -266,7 +264,7 @@ builder_project_backup_recovery_dialog <- function(offer) {
   modalDialog(
     title = "Recover Builder project?",
     tags$p(
-      "The selected Project manifest is damaged, but its verified backup is complete."
+      "The project file is damaged. A verified backup is available."
     ),
     tags$dl(
       tags$dt("Project"),
@@ -277,7 +275,7 @@ builder_project_backup_recovery_dialog <- function(offer) {
       tags$dd(as.character(offer$dataset_count %||% 0L))
     ),
     tags$p(
-      "Restoring keeps the damaged manifest as a separate recovery file and does not skip Project integrity checks."
+      "The damaged file will be kept. The backup is checked before restoring."
     ),
     footer = tagList(
       actionButton(
@@ -316,9 +314,8 @@ builder_project_first_save_dialog <- function() {
         ),
         tags$p(
           paste(
-            "Source files are copied into the project first.",
-            "After Save completes, Builder generates missing CRBs in the",
-            "background while this page remains open."
+            "Includes source files and settings.",
+            "Keep this page open to prepare the dataset cache after saving."
           )
         )
       )
@@ -769,10 +766,7 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
     builder_stage_header_ui(
       "Configure",
       entry$settings$name %||% entry$id,
-      paste(
-        "Using a saved CRB. This dataset is Build-ready;",
-        "load the original source to edit its settings."
-      )
+      "Saved CRB ready to build."
     ),
     builder_stage_section_ui(
       "Current data source",
@@ -780,8 +774,8 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
         class = "builder-project-artifact-card",
         tags$span(class = "builder-project-artifact-mark", "CRB"),
         tags$div(
-          tags$strong("Ready for Build · Saved CRB"),
-          tags$p(path)
+          tags$strong("Ready to build"),
+          tags$details(tags$summary("File location"), tags$p(path))
         )
       ),
       tags$div(
@@ -802,18 +796,11 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
           ),
           tags$p(
             class = "builder-project-source-load-detail",
-            paste(
-              "The saved CRB remains ready for Build while the source",
-              "loads in the background."
-            )
+            "Loading source. Saved CRB remains available."
           )
         )
       ),
-      description = paste(
-        "Builder will use this saved CRB for the next Build.",
-        "Load the original source only when you need to edit dataset settings;",
-        "your saved settings will be retained."
-      )
+      description = "Load the source to edit. Saved settings are kept."
     ),
     uiOutput("configure_actions")
   )

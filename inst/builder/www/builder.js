@@ -652,6 +652,13 @@
   function setBuilderOperationActions(buttons) {
     var elements = builderOperationElements();
     if (!elements.actions || !elements.card) return;
+    // Progress/heartbeat updates must not replace a focused or pressed button.
+    var previous = elements.actions._builderActionSpecs;
+    if (previous && previous.length === buttons.length && buttons.every(function (spec, index) {
+      return spec.label === previous[index].label &&
+        spec.primary === previous[index].primary && spec.action === previous[index].action;
+    })) return;
+    elements.actions._builderActionSpecs = buttons.slice();
     elements.actions.replaceChildren();
     buttons.forEach(function (specification) {
       var button = document.createElement("button");
@@ -687,6 +694,14 @@
     }
   }
 
+  function useBuilderPickerPath() {
+    send("builder_picker_alternative", { action: "path", nonce: Date.now() });
+  }
+
+  function cancelBuilderPicker() {
+    send("builder_picker_alternative", { action: "cancel", nonce: Date.now() });
+  }
+
   function stopBuilderRelease() {
     if (builderActivityState.build_cancelable !== true) return;
     buildStopPending = true;
@@ -709,6 +724,7 @@
   }
 
   function closeBuilderProjectSaveResult() {
+    builderProjectSaveBackground = false;
     builderProjectSaveResultOpen = false;
     builderProjectSaveResult = null;
     document.body.classList.remove("builder-project-result-open");
@@ -734,34 +750,38 @@
     var checked = Number(builderProjectSaveResult.checked || 0);
     var reusable = Number(builderProjectSaveResult.reusable || 0);
     var remaining = Math.max(0, checked - reusable);
-    elements.card.classList.add("is-result");
-    elements.card.classList.toggle("is-success", status !== "failed");
-    elements.card.classList.toggle("is-error", status === "failed");
-    if (status === "failed") {
-      setBuilderOperationCopy(
-        "Project save failed",
-        "One or more dataset sources could not be copied into the Project.",
-        "The previous complete Project remains available. Use Save project to retry."
-      );
-    } else if (remaining > 0) {
-      setBuilderOperationCopy(
-        "Project saved",
-        remaining + " checked dataset" + (remaining === 1 ? " has" : "s have") +
-          " no current CRB.",
-        "CRBs will be generated in the background while this page remains open. " +
-          "Closing now keeps the Project saved but stops unfinished generation."
-      );
-    } else {
-      setBuilderOperationCopy(
-        "Project saved",
-        "The project manifest and all dataset sources are safe.",
-        "All checked datasets have verified reusable CRBs."
-      );
+    if (status !== "failed") {
+      var message = "Project saved." + (remaining > 0 ?
+        " " + remaining + " CRB" + (remaining === 1 ? " is" : "s are") +
+        " preparing. Keep this page open." :
+        "");
+      closeBuilderProjectSaveResult();
+      document.querySelectorAll(".builder-display-status").forEach(function (status) {
+        status.textContent = "Viewer appearance saved.";
+      });
+      var prior = document.getElementById("builder-save-confirmation");
+      if (prior) prior.remove();
+      var confirmation = document.createElement("div");
+      confirmation.id = "builder-save-confirmation";
+      confirmation.className = "builder-save-confirmation";
+      confirmation.setAttribute("role", "status");
+      confirmation.textContent = message;
+      document.body.appendChild(confirmation);
+      window.setTimeout(function () { confirmation.remove(); }, 6000);
+      return;
     }
+    elements.card.classList.add("is-result");
+    elements.card.classList.remove("is-success");
+    elements.card.classList.add("is-error");
+    setBuilderOperationCopy(
+      "Project save failed",
+      "Some source files could not be saved.",
+      "Your previous save is kept. Retry to finish saving."
+    );
     var buttons = [{ label: "Done", action: closeBuilderProjectSaveResult }];
     if (status === "failed") {
       buttons.push({
-        label: "Retry Save project",
+        label: "Retry save",
         primary: true,
         action: function () {
           closeBuilderProjectSaveResult();
@@ -775,6 +795,18 @@
   }
 
   function updateBuilderProjectSourceProgress(message) {
+    if (builderProjectSaveBackground) {
+      if (message && (message.status === "ready" || message.status === "failed")) {
+        builderProjectSaveBackground = false;
+        if (message.status === "failed") {
+          openBuilderProjectSaveResult();
+        } else {
+          builderProjectSaveResultOpen = true;
+        }
+        showBuilderProjectSaveCompletion(message.status);
+      }
+      return;
+    }
     if (!builderProjectSaveResultOpen || !builderProjectSaveResult) return;
     var status = message && message.status;
     if (status === "ready" || status === "failed") {
@@ -790,7 +822,7 @@
       setBuilderOperationActions([]);
       setBuilderOperationCopy(
         "Stopping source copy",
-        "The previous Project source copy is still stopping.",
+        "Waiting for the current copy to stop…",
         (message && message.error) || "Keep this page open."
       );
       return;
@@ -806,13 +838,21 @@
     setBuilderOperationActions([]);
     setBuilderOperationCopy(
       "Saving dataset sources",
-      "Dataset files are being copied before the Project save is completed.",
-      total > 0 ? completed + " of " + total + " source files saved · Keep this page open." : "Keep this page open."
+      "Keep this page open until saving finishes.",
+      total > 0 ? completed + " of " + total + " files saved" : "Keep this page open."
     );
   }
 
+  var builderProjectSaveBackground = false;
   function showBuilderProjectSaveResult(message) {
     builderProjectSaveResult = message || {};
+    builderProjectSaveBackground = message && message.source_syncing === true;
+    if (builderProjectSaveBackground) return;
+    openBuilderProjectSaveResult();
+    showBuilderProjectSaveCompletion("ready");
+  }
+
+  function openBuilderProjectSaveResult() {
     builderProjectSaveResultOpen = true;
     document.body.classList.add("builder-project-result-open");
     var elements = builderOperationElements();
@@ -835,15 +875,6 @@
     if (elements.card) elements.card.classList.add("is-result");
     var shell = document.querySelector(".builder-shell");
     if (shell) shell.inert = true;
-    if (message && message.source_syncing === true) {
-      updateBuilderProjectSourceProgress({
-        status: "syncing",
-        completed: message.completed || 0,
-        total: message.total || 0,
-      });
-    } else {
-      showBuilderProjectSaveCompletion("ready");
-    }
   }
 
   function applyDatasetMutationLock(roots) {
@@ -948,6 +979,10 @@
 
   function setActivityDisabled(control, disabled) {
     if (!control || !("disabled" in control)) return;
+    // Selectize owns its generated text input. Locking that input separately
+    // records the parent's temporary disabled state as a permanent one, then
+    // disables it again immediately after selectize.enable() on Save/Open.
+    if (control.closest(".selectize-control")) return;
     if (disabled) {
       if (!control.hasAttribute("data-builder-activity-lock")) {
         control.setAttribute(
@@ -1044,6 +1079,35 @@
 
     var pageInert = builderConnectionReady &&
       builderActivityState.page_inert === true;
+    var restoring = builderConnectionReady && builderActivityState.phase === "restoring";
+    var restoreStatus = document.getElementById("builder-restore-status");
+    if (restoring && !restoreStatus) {
+      restoreStatus = document.createElement("div");
+      restoreStatus.id = "builder-restore-status";
+      restoreStatus.className = "builder-restore-status";
+      var restoreCopy = document.createElement("span");
+      restoreCopy.setAttribute("role", "status");
+      var cancelRestore = document.createElement("button");
+      cancelRestore.type = "button";
+      cancelRestore.className = "btn";
+      cancelRestore.textContent = "Cancel restoration";
+      cancelRestore.addEventListener("click", function () {
+        cancelRestore.disabled = true;
+        cancelRestore.textContent = "Cancelling…";
+        send("cancel_builder_project_restore_loads", { nonce: Date.now() });
+      });
+      restoreStatus.append(restoreCopy, cancelRestore);
+      var restoreShell = document.querySelector(".builder-shell");
+      if (restoreShell) restoreShell.before(restoreStatus);
+    }
+    if (restoreStatus) {
+      if (!restoring) restoreStatus.remove();
+      else restoreStatus.firstChild.textContent = [
+        builderActivityState.busy_title,
+        builderActivityState.busy_message,
+        builderActivityState.busy_detail
+      ].filter(Boolean).join(" · ");
+    }
     var operationOverlayOpen = pageInert &&
       builderActivityState.busy_modal !== true;
     var nextBuildOperationActive = pageInert &&
@@ -1114,7 +1178,10 @@
         projectOpenCancelPending = false;
       }
       var operationActions = [];
-      if (builderActivityState.build_cancelable === true) {
+      if (builderActivityState.picker_waiting === true) {
+        operationActions.push({ label: "Enter path", action: useBuilderPickerPath });
+        operationActions.push({ label: "Cancel", action: cancelBuilderPicker });
+      } else if (builderActivityState.build_cancelable === true) {
         operationActions.push({ label: "Stop", action: stopBuilderRelease });
       } else if (builderActivityState.open_cancelable === true) {
         operationActions.push({ label: "Cancel", action: cancelBuilderProjectOpen });
@@ -1273,7 +1340,7 @@
     spinner.className = "spinner";
     spinner.setAttribute("aria-hidden", "true");
     var label = document.createElement("span");
-    var statusText = "Starting build…";
+    var statusText = "Preparing build…";
     label.textContent = statusText;
     waiting.append(spinner, label);
     section.append(heading, waiting);
@@ -2943,6 +3010,8 @@
     var existing = document.querySelector(".builder-build-dialog-backdrop");
     if (message && message.action === "close") {
       if (existing) existing.remove();
+      var pending = document.querySelector(".is-client-build-status");
+      if (pending) pending.remove();
       updateDialogLock();
       return;
     }
@@ -3110,6 +3179,11 @@
     var status = ["#busy", ".result-card", "#review_action_summary"]
       .map(function (selector) {
         var node = document.querySelector(selector);
+        if (node && selector === ".result-card") {
+          // Announce the outcome, not collapsed diagnostics and filesystem paths.
+          return Array.from(node.querySelectorAll(":scope > h3, :scope > p"))
+            .map(function (item) { return item.textContent; }).join(". ");
+        }
         return node ? node.textContent : "";
       })
       .filter(Boolean)
@@ -4016,7 +4090,7 @@
     var serverStatus = document.querySelector(
       "#build_stage_status_content .builder-build-status-section"
     );
-    if (clientStatus && serverStatus) clientStatus.remove();
+    if (clientStatus && (serverStatus || document.getElementById("shiny-modal"))) clientStatus.remove();
     if (
       buildStatusScrollPhase === 2 &&
       document.querySelector(
@@ -5030,6 +5104,8 @@
       "builder_activity_state",
       function (message) {
         if (!message || typeof message !== "object") return;
+        var pendingFeedback = document.getElementById("builder-project-pending-feedback");
+        if (pendingFeedback) pendingFeedback.remove();
         resetDatasetMessageGenerationsForActivity(message);
         builderActivityState = {
           phase: message.phase || "none",
@@ -5043,6 +5119,7 @@
           busy_phase: message.busy_phase || null,
           busy_modal: message.busy_modal === true,
           has_project: message.has_project === true,
+          picker_waiting: message.picker_waiting === true,
           build_cancelable: message.build_cancelable === true,
           open_cancelable: message.open_cancelable === true,
           warn_before_unload: message.warn_before_unload === true,
@@ -5336,6 +5413,8 @@
     applyBuilderActivityState();
   });
   document.addEventListener("shiny:disconnected", function () {
+    var feedback = document.getElementById("builder-project-pending-feedback");
+    if (feedback) feedback.remove();
     builderConnectionReady = false;
     uploadConnectionReady = false;
     importSyncPending = true;
@@ -5400,4 +5479,86 @@
   } else {
     initializeBuilder();
   }
+
+  function flushViewerDisplay(root) {
+    if (!root) return true;
+    var values = {};
+    var invalid = null;
+    root.querySelectorAll("[data-display-field]").forEach(function (field) {
+      if (!field.checkValidity() && !invalid) invalid = field;
+      var key = field.dataset.displayField;
+      values[key] = field.type === "checkbox" ? field.checked :
+        (field.type === "number" || key === "color_clip" ? Number(field.value) : field.value);
+    });
+    if (invalid) { invalid.reportValidity(); return false; }
+    var previous = null;
+    try { previous = JSON.parse(root.dataset.displayValues || "null"); } catch (error) {}
+    var keys = Object.keys(values);
+    if (previous && Object.keys(previous).length === keys.length &&
+        keys.every(function (key) { return values[key] === previous[key]; })) return true;
+    if (send(root.dataset.inputId, {id: root.dataset.datasetId,
+      epoch: Number(root.dataset.projectEpoch), values: values, nonce: Date.now()})) {
+      root.dataset.displayValues = JSON.stringify(values);
+      root.querySelector(".builder-display-status").textContent =
+        "Viewer appearance updated. Save to keep these settings.";
+    }
+    return true;
+  }
+
+  document.addEventListener("change", function (event) {
+    var control = event.target.closest("[data-display-field]");
+    flushViewerDisplay(control && control.closest(".builder-viewer-display"));
+  });
+
+  // Native number inputs may not emit change before the action button's
+  // delegated handler. Send the visible snapshot before Save/Review/Check.
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("#save_builder_project, #continue_to_review, #complete_dataset_check");
+    if (!button || button.disabled) return;
+    if (!flushViewerDisplay(document.querySelector(".builder-viewer-display"))) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
+
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("#open_builder_project, #save_builder_project, #choose_builder_project_folder, #confirm_builder_project_open, #continue_to_review, #complete_dataset_check");
+    if (!button || button.disabled) return;
+    var initialModal = document.querySelector("#shiny-modal");
+    var prior = document.getElementById("builder-project-pending-feedback");
+    if (prior) prior.remove();
+    var feedback = document.createElement("span");
+    feedback.id = "builder-project-pending-feedback";
+    feedback.className = "builder-project-pending-feedback";
+    feedback.setAttribute("role", "status");
+    var messages = {open_builder_project: "Opening…", save_builder_project: "Preparing save…",
+      choose_builder_project_folder: "Opening file browser…",
+      confirm_builder_project_open: "Opening selected datasets…",
+      continue_to_review: "Preparing review…", complete_dataset_check: "Checking settings…"};
+    feedback.textContent = messages[button.id];
+    button.insertAdjacentElement("beforebegin", feedback);
+    // First Save opens a location dialog without changing the project phase.
+    var observer = new MutationObserver(function () {
+      if (!feedback.isConnected || document.querySelector("#shiny-modal") !== initialModal) {
+        feedback.remove(); observer.disconnect();
+      }
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+  });
+
+  // Text bindings may still be debouncing when a pasted path is confirmed.
+  // Flush the visible value before Shiny's delegated action-button handler.
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("button");
+    var paths = {
+      use_builder_project_server_manifest: "builder_project_server_manifest",
+      use_builder_project_server_folder: "builder_project_server_folder",
+      use_builder_build_server_folder: "builder_build_server_folder"
+    };
+    var id = button && paths[button.id];
+    var field = id && document.getElementById(id);
+    if (field && window.Shiny && window.Shiny.setInputValue) {
+      window.Shiny.setInputValue(id, field.value, {priority: "event"});
+    }
+  }, true);
 })();

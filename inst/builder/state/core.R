@@ -348,6 +348,15 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     settings$overview_point_opacity <- 1
     entry$settings <- settings
   }
+  # Legacy Builder allowed zero; Viewer requires a visible point diameter.
+  if (
+    is.numeric(settings$overview_point_size) &&
+      length(settings$overview_point_size) == 1L &&
+      identical(as.numeric(settings$overview_point_size), 0)
+  ) {
+    settings$overview_point_size <- 1
+    entry$settings <- settings
+  }
   if (identical(settings$viewer_content_schema_version, 1L)) {
     if (!"overview_percentage_cells_to_show" %in% names(settings)) {
       settings$overview_percentage_cells_to_show <-
@@ -526,7 +535,7 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       length(point_size) != 1L ||
       is.na(point_size) ||
       !is.finite(point_size) ||
-      point_size < 0 ||
+      point_size < 1 ||
       point_size > 20
   ) {
     point_size <- 5
@@ -728,6 +737,9 @@ builder_upgrade_viewer_content_entry <- function(entry) {
 
 .builder_state_validate_viewer_content_settings <- function(entry) {
   settings <- entry$settings
+  if (!is.null(settings$viewer_display)) {
+    builderViewerDisplayDefaults(settings$viewer_display)
+  }
   if (!identical(settings$viewer_content_schema_version, 1L)) {
     .builder_state_abort(
       "invalid_viewer_content_settings",
@@ -848,7 +860,7 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       length(point_size) != 1L ||
       is.na(point_size) ||
       !is.finite(point_size) ||
-      point_size < 0 ||
+      point_size < 1 ||
       point_size > 20
   ) {
     .builder_state_abort(

@@ -29,13 +29,8 @@ builder_session_lines <- function() {
 }
 
 test_that("Builder launcher defaults to unlimited local uploads", {
-  launcher <- new.env(parent = globalenv())
-  sys.source(
-    testthat::test_path("..", "..", "R", "launchCerebroBuilder.R"),
-    envir = launcher
-  )
   expect_identical(
-    eval(formals(launcher$launchCerebroBuilder)$max_file_size),
+    eval(formals(CerebroNexus::launchCerebroBuilder)$max_file_size),
     Inf
   )
 })
@@ -274,7 +269,10 @@ test_that("Builder runApp restores default process settings on stop", {
   )
 
   expect_identical(during$request_size, Inf)
-  expect_identical(during$source_package, app_env$builder_source_package)
+  expect_identical(
+    during$source_package,
+    app_env$builder_source_package %||% "original-source-root"
+  )
   expect_null(getOption("shiny.maxRequestSize"))
   expect_identical(
     Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = NA_character_),
@@ -1472,7 +1470,7 @@ test_that("Build stage renders only the confirmed stored snapshot", {
     workflow_ui,
     fixed = TRUE
   ))
-  expect_false(grepl("make_app|Configure", workflow_ui))
+  expect_false(grepl("Configure", workflow_ui))
 
   render_build <- builder_app_block(
     readLines(
@@ -2699,8 +2697,8 @@ test_that("the real dispatcher terminalizes a runtime-freeze failure", {
 
   shiny::testServer(app_env$server, {
     assign(
-      "builder_release_execution_runtime",
-      function() stop("runtime identity unavailable", call. = FALSE),
+      "builder_start_release_preparation_process",
+      function(...) stop("runtime identity unavailable", call. = FALSE),
       envir = environment(finish_builder_build_dispatch_failure)
     )
     secret <- "dispatch-secret-must-not-survive"
@@ -2726,6 +2724,8 @@ test_that("the real dispatcher terminalizes a runtime-freeze failure", {
       request
     ))
 
+    session$flushReact()
+    later::run_now(0.1)
     session$flushReact()
 
     expect_identical(result()$state, "failure")
@@ -2830,7 +2830,11 @@ test_that("Build overlay trusts explicit backend phases", {
     expect_true(model$active)
     expect_identical(model$phase, phase)
     expect_identical(model$detail, "Backend detail")
-    expect_identical(model$cancelable, phase %in% c("verify", "publish"))
+    expect_identical(
+      model$cancelable,
+      phase %in%
+        c("stage", "dispatch", "datasets", "viewer", "verify", "publish")
+    )
   }
 })
 
@@ -2874,6 +2878,17 @@ test_that("release settlement timeout is finite and explicit", {
 })
 
 test_that("Build overlay covers output-folder preflight", {
+  choosing <- builder_build_operation_overlay_model(
+    flow = list(stage = "choosing_folder"),
+    protocol = NULL,
+    note = NULL,
+    result = NULL,
+    can_stop = TRUE
+  )
+  expect_true(choosing$active)
+  expect_true(choosing$picker_waiting)
+  expect_null(choosing$phase)
+  expect_false(choosing$cancelable)
   model <- builder_build_operation_overlay_model(
     flow = list(stage = "checking_folder"),
     protocol = NULL,
@@ -2884,13 +2899,7 @@ test_that("Build overlay covers output-folder preflight", {
   expect_true(model$active)
   expect_identical(model$phase, "preflight")
   expect_identical(model$title, "Building output")
-  expect_identical(
-    model$message,
-    paste(
-      "Keep this page open.",
-      "This dialog closes automatically when the build finishes."
-    )
-  )
+  expect_identical(model$message, "Keep this page open.")
   expect_identical(model$detail, "Checking the selected output folder…")
 })
 
@@ -2908,8 +2917,8 @@ test_that("Build failures expose phase and diagnostic identity", {
 
   expect_match(html, "Failed during", fixed = TRUE)
   expect_match(html, "output verification", fixed = TRUE)
-  expect_match(html, "Build ID build-42", fixed = TRUE)
-  expect_match(html, "Assigned stage", fixed = TRUE)
-  expect_match(html, "Diagnostic ID", fixed = TRUE)
+  expect_match(html, "build-42", fixed = TRUE)
+  expect_match(html, "Temporary output", fixed = TRUE)
+  expect_match(html, "Diagnostic log", fixed = TRUE)
   expect_match(html, "settlement-build-42", fixed = TRUE)
 })

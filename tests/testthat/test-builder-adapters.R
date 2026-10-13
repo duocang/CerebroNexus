@@ -795,6 +795,14 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   worker <- loaded$worker
   expect_true(loaded$result$done)
   expect_null(loaded$result$value$error)
+  expected_backends <- list(
+    bpcells = requireNamespace("BPCells", quietly = TRUE),
+    h5 = requireNamespace("HDF5Array", quietly = TRUE)
+  )
+  expect_identical(
+    loaded$result$value$backend_capabilities,
+    list(build = expected_backends, viewer = expected_backends)
+  )
   snapshot <- loaded$result$value$snapshot
   worker <- builder_worker_register_snapshot(worker, "ds1", snapshot)
   unlink(source)

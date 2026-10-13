@@ -489,16 +489,7 @@ builder_empty_workbench_ui <- function(
           id = "builder-empty-formats",
           class = "builder-dataset-dropzone-formats",
           paste(format_labels, collapse = ", ")
-        ),
-        if (length(unavailable_formats)) {
-          shiny::tags$div(
-            class = "builder-format-unavailable",
-            role = "status",
-            lapply(unavailable_formats, function(format) {
-              shiny::tags$span(format$unavailable_reason)
-            })
-          )
-        }
+        )
       )
     ),
     shiny::tags$div(
@@ -552,7 +543,15 @@ builder_format_unavailable_ui <- function(formats) {
     class = "builder-format-unavailable builder-format-unavailable--rail",
     role = "status",
     lapply(unavailable, function(format) {
-      shiny::tags$span(format$unavailable_reason)
+      shiny::tagList(
+        shiny::tags$span(format$unavailable_reason),
+        if (!is.null(format$unavailable_detail)) {
+          shiny::tags$details(
+            shiny::tags$summary("Details"),
+            shiny::tags$p(format$unavailable_detail)
+          )
+        }
+      )
     })
   )
 }

@@ -1,5 +1,5 @@
 builder_task9_source <- function(local = parent.frame()) {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   if (!dir.exists(root)) {
     root <- system.file("builder", package = "CerebroNexus")
   }
@@ -1336,7 +1336,7 @@ test_that("coordinator publishes only its verified assigned stage", {
 })
 
 test_that("publication stays in the parent and uses the registered stage", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   if (!dir.exists(root)) {
     root <- system.file("builder", package = "CerebroNexus")
   }
@@ -3419,5 +3419,34 @@ test_that("login publisher guard rejects env changes in both rename windows", {
     }
     run_case("old_moved", replace_env)
     run_case("new_to_target", replace_env)
+  })
+})
+
+test_that("background release preparation transfers ownership and retains runtime checks", {
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_test_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Test has no data worker.")
+  }
+  target <- withr::local_tempdir()
+  shiny::testServer(app_env$server, {
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
+    process <- builder_start_release_preparation_process(
+      plan,
+      "background-preparation"
+    )
+    expect_false(identical(process$get_pid(), Sys.getpid()))
+    process$wait(60000)
+    expect_false(process$is_alive())
+    prepared <- process$get_result()
+    on.exit(app_env$builder_coordinator_abort(prepared$coordinator), add = TRUE)
+    expect_identical(prepared$coordinator$pid, as.integer(Sys.getpid()))
+    expect_true(dir.exists(prepared$coordinator$stage))
+    expect_identical(
+      prepared$runtime$identity,
+      app_env$builder_runtime_file_identity(prepared$runtime$files)
+    )
+    expect_true(any(grepl("viewer", prepared$runtime$files, fixed = TRUE)))
   })
 })

@@ -32,7 +32,7 @@ builder_inspect_content_tag <- function(entry) {
   id <- entry$id %||% ""
   if (
     !identical(entry$status %||% "", "valid") ||
-      id %in% c("dataset_identity", "projection")
+      id %in% c("dataset_identity", "projection", "metadata_policy")
   ) {
     return(NULL)
   }

@@ -1073,6 +1073,8 @@ builder_schedule_native_picker <- function(
     }
     return(invisible(FALSE))
   }
+  picker$on_result <- on_result
+  picker$on_finally <- on_finally
   builder_native_pickers[[key]] <- picker
   poll <- function() {
     if (builder_session_closed()) {
@@ -1110,6 +1112,35 @@ builder_schedule_native_picker <- function(
   )
   invisible(TRUE)
 }
+
+observeEvent(
+  input$builder_picker_alternative,
+  {
+    keys <- ls(builder_native_pickers, all.names = TRUE)
+    if (length(keys) != 1L) {
+      return()
+    }
+    key <- keys[[1L]]
+    picker <- builder_native_pickers[[key]]
+    builder_cancel_native_picker(key)
+    if (is.function(picker$on_finally)) {
+      on.exit(picker$on_finally(), add = TRUE)
+    }
+    picker$on_result(list(
+      status = if (
+        identical(input$builder_picker_alternative$action, "cancel")
+      ) {
+        "cancelled"
+      } else {
+        "unavailable"
+      },
+      manual = TRUE,
+      path = NULL,
+      paths = character()
+    ))
+  },
+  ignoreInit = TRUE
+)
 
 poll_builder_worker_startup <- function() {
   if (builder_session_closed()) {
@@ -1192,8 +1223,8 @@ observeEvent(
       ),
       list(
         state = "starting",
-        title = "Starting background workspace…",
-        detail = "Preparing the isolated data worker…"
+        title = "Starting Builder…",
+        detail = "Preparing your workspace…"
       )
     )
     session$sendCustomMessage("builder_worker_status", status)
@@ -1207,8 +1238,8 @@ session$onFlushed(
       "builder_worker_status",
       list(
         state = "starting",
-        title = "Starting background workspace…",
-        detail = "Preparing the isolated data worker…"
+        title = "Starting Builder…",
+        detail = "Preparing your workspace…"
       )
     )
     start_builder_worker()

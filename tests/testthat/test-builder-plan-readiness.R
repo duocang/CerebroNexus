@@ -431,6 +431,20 @@ test_that("reusable artifact filenames stay stable when dataset order changes", 
     first <- artifact_entry(first, original$items[[1L]])
     second <- artifact_entry(second, original$items[[2L]])
 
+    # A saved CRB may predate an unconditional Viewer route. Reuse its data,
+    # while validating the initial page against the app that will be built.
+    old_pages <- first$project_artifact$plan_item$viewer_page_expectations$always
+    first$project_artifact$plan_item$viewer_page_expectations$always <-
+      old_pages[old_pages$id != "linked_views", , drop = FALSE]
+    linked <- builder_freeze_plan(
+      list(first),
+      tempdir(),
+      make_app = TRUE,
+      app_options = list(initial_page = "linked_views")
+    )
+    expect_null(linked$error)
+    expect_identical(linked$app_options$initial_page, "linked_views")
+
     reordered <- builder_freeze_plan(
       list(second, first),
       tempdir(),

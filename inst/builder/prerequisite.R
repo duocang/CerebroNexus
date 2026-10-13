@@ -32,6 +32,7 @@ builder_source_utf8 <- function(file, envir = parent.frame(), chdir = FALSE) {
   }
   invisible(value)
 }
+builder_source_utf8 <- utils::removeSource(builder_source_utf8)
 environment(builder_source_utf8) <- baseenv()
 
 builder_installed_app_contract_version <- function(namespace = NULL) {

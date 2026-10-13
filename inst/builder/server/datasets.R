@@ -583,7 +583,7 @@ observeEvent(
         length(value) != 1L ||
         is.na(value) ||
         !is.finite(value) ||
-        value < 0 ||
+        value < 1 ||
         value > 20
     ) {
       return()
@@ -1039,6 +1039,51 @@ output[["core-projection_gallery"]] <- renderUI({
   ))
   builder_projection_catalog_ui("core", model)
 })
+
+output[["core-viewer_display"]] <- renderUI({
+  id <- current()
+  req(id, identical(input[["core-rendered_for"]], id))
+  entry <- isolate(entry_of(id))
+  req(entry)
+  builder_viewer_display_ui("core", entry, builder_project_open_generation())
+})
+
+observeEvent(
+  input[["core-viewer_display_action"]],
+  {
+    action <- input[["core-viewer_display_action"]]
+    if (
+      !is.list(action) ||
+        !identical(action$id, current()) ||
+        !is.numeric(action$epoch) ||
+        length(action$epoch) != 1L ||
+        !is.finite(action$epoch) ||
+        !identical(
+          as.double(action$epoch),
+          as.double(builder_project_open_generation())
+        ) ||
+        !builder_operation_allowed("edit_dataset", notify = FALSE)
+    ) {
+      return()
+    }
+    display <- tryCatch(
+      builderViewerDisplayDefaults(action$values),
+      error = identity
+    )
+    if (inherits(display, "condition")) {
+      showNotification(conditionMessage(display), type = "error")
+      return()
+    }
+    entry <- isolate(entry_of(action$id))
+    req(entry)
+    entry$settings$viewer_display <- display
+    replace_entry(entry)
+  },
+  ignoreInit = TRUE,
+  # A field blur and Save/Review click can arrive in the same Shiny flush.
+  # Commit the author's edit before those actions lock or freeze the settings.
+  priority = 1000
+)
 
 output[["core-trajectory_gallery"]] <- renderUI({
   id <- current()

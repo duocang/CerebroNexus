@@ -569,11 +569,11 @@ ui <- shiny::bootstrapPage(
       class = "builder-worker-status-copy",
       strong(
         id = "builder-worker-status-title",
-        "Starting background workspace\u2026"
+        "Starting Builder\u2026"
       ),
       span(
         id = "builder-worker-status-detail",
-        "Preparing the isolated data worker\u2026"
+        "Preparing your workspace\u2026"
       )
     )
   ),
@@ -773,14 +773,56 @@ ui <- shiny::bootstrapPage(
 })
 names(.builder_server_programs) <- .builder_server_sources
 
+## Compile hot state/UI closures before accepting sessions. Otherwise R's JIT
+## compiles them together during the first import/restore, blocking UI updates.
+## Do not alter process-wide JIT settings or functions owned by other packages.
+.builder_compile_environment <- environment()
+for (.builder_compile_name in ls(
+  .builder_compile_environment,
+  all.names = TRUE,
+  pattern = paste0(
+    "^([.]builder_(state_|store_|manifest_|page_)|builder_(dataset_state|reduce_state|",
+    "group_catalog|projection_catalog|upgrade_viewer_content|",
+    "core_stage_ui|enhance_model|specialized_content_model|viewer_|content_|",
+    "analysis_results_model|immune_source_choices_model|build_stage_status|activity_|project_(cached_configuration|",
+    "file_fingerprint|fingerprint|checked|live_dirty)))"
+  )
+)) {
+  if (bindingIsActive(.builder_compile_name, .builder_compile_environment)) {
+    next
+  }
+  .builder_compile_value <- get(
+    .builder_compile_name,
+    .builder_compile_environment
+  )
+  if (
+    is.function(.builder_compile_value) &&
+      identical(
+        environment(.builder_compile_value),
+        .builder_compile_environment
+      )
+  ) {
+    assign(
+      .builder_compile_name,
+      compiler::cmpfun(.builder_compile_value),
+      envir = .builder_compile_environment
+    )
+  }
+}
+.builder_server_programs <- lapply(.builder_server_programs, function(program) {
+  compiler::compile(
+    as.call(c(list(as.name("{")), as.list(program))),
+    env = .builder_compile_environment
+  )
+})
+rm(.builder_compile_name, .builder_compile_value, .builder_compile_environment)
+
 server <- function(input, output, session) {
   server_environment <- environment()
   for (program in .builder_server_programs) {
-    for (expression in program) {
-      eval(expression, envir = server_environment)
-    }
+    eval(program, envir = server_environment)
   }
-  rm(server_environment, program, expression)
+  rm(server_environment, program)
 }
 
 shinyApp(ui, server, onStart = builder_app_start)

@@ -1876,7 +1876,9 @@ builder_read_image <- function(
     normalizePath(path, winslash = "/", mustWork = TRUE),
     error = function(error) NULL
   )
-  if (is.null(canonical_path) || !isTRUE(file_test("-f", canonical_path))) {
+  if (
+    is.null(canonical_path) || !isTRUE(utils::file_test("-f", canonical_path))
+  ) {
     return(list(error = "Could not read this image."))
   }
   list(

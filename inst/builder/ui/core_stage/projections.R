@@ -265,7 +265,7 @@ builder_projection_catalog_ui <- function(id, model) {
           id = ns("overview_point_size"),
           class = "viewer-range-input viewer-point-size-input",
           type = "range",
-          min = "0",
+          min = "1",
           max = "20",
           step = "1",
           value = format(model$point_size, trim = TRUE),

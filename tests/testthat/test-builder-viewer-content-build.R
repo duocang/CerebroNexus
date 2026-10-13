@@ -366,7 +366,13 @@ test_that("generated-App content freezes defaults for every dataset", {
         spatial_point_appearance = list(
           fov = list(point_opacity = 0.42, point_size = 8)
         ),
-        spatial_roi_settings = list()
+        spatial_roi_settings = list(),
+        display = builderViewerDisplayDefaults(),
+        gene_expression = list(
+          palette = "cerebro_orange",
+          panel_mode = "shared",
+          panel_palette = "default"
+        )
       )
     )
   )
