@@ -56,11 +56,13 @@ check(label.textContent.includes('Choose a gene'));
 map(key('')); paint(key(''));
 select('Gad1'); const oldControls = values();
 check(label.textContent.includes('Updating: Gad1'));
+check(!label.hidden);
 check(label.getAttribute('aria-busy') === 'true');
 map(key('Gad1')); paint(key('Gad1'), context, false);
 check(label.getAttribute('aria-busy') === 'true');
 paint(key('Gad1'));
 check(label.textContent === 'Showing: Gad1');
+check(label.hidden);
 check(!label.getAttribute('aria-busy'));
 events['cerebro:specialist-state']({detail:{viewId:'expression_projection',
   dataset_context:context,selectionPending:true,selectedCells:745}});
@@ -77,6 +79,7 @@ check(label.textContent === 'Showing: Slc17a7');
 // Missing and case-insensitive input use the server's canonical mapping.
 select('not-a-gene'); map(key('')); paint(key(''));
 check(label.textContent === 'Showing: No gene selected');
+check(!label.hidden);
 select('gad1'); paint(key('Gad1')); map(key('Gad1'));
 check(label.textContent === 'Showing: Gad1');
 // Revisit never invents a new loading cycle.
