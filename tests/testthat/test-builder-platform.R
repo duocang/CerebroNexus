@@ -125,7 +125,7 @@ test_that("browser upload accept lists share backend format contracts", {
   )
 })
 
-test_that("unavailable optional readers are excluded with an install hint", {
+test_that("unavailable optional readers suggest usable formats", {
   capabilities <- builder_format_capabilities(
     .require_namespace = function(package) !identical(package, "qs")
   )
@@ -145,7 +145,7 @@ test_that("unavailable optional readers are excluded with an install hint", {
   )
   expect_match(
     unavailable[[1L]]$unavailable_reason,
-    'install.packages("qs")',
+    'QS unavailable',
     fixed = TRUE
   )
   expect_false(
@@ -153,6 +153,32 @@ test_that("unavailable optional readers are excluded with an install hint", {
       "dataset.qs",
       capabilities
     )$available
+  )
+  rds_only <- builder_format_capabilities(
+    .require_namespace = function(package) FALSE
+  )
+  expect_identical(
+    vapply(builder_available_formats(rds_only), `[[`, character(1), "id"),
+    "rds"
+  )
+  expect_identical(
+    builder_path_format_capability("dataset.qs2", rds_only)$unavailable_reason,
+    "QS2 unavailable. Use RDS."
+  )
+  expect_identical(
+    builder_path_format_capability("dataset.qs", rds_only)$unavailable_reason,
+    "QS unavailable. Use RDS."
+  )
+  unlabelled <- builder_format_capabilities(
+    formats = list(
+      list(id = "rds", extensions = "rds", package = NULL),
+      list(id = "qs", extensions = "qs", package = "qs")
+    ),
+    .require_namespace = function(package) FALSE
+  )
+  expect_identical(
+    builder_path_format_capability("dataset.qs", unlabelled)$unavailable_reason,
+    "QS unavailable. Use RDS."
   )
 })
 

@@ -368,6 +368,8 @@ builder_browser_mock_folder_picker <- function(
   Sys.chmod(pickers, mode = "0755")
   withr::local_envvar(
     PATH = paste(fake_bin, Sys.getenv("PATH"), sep = .Platform$path.sep),
+    WSL_DISTRO_NAME = NA_character_,
+    WSL_INTEROP = NA_character_,
     .local_envir = .local_envir
   )
   invisible(output_dir)
@@ -375,6 +377,7 @@ builder_browser_mock_folder_picker <- function(
 
 test_that("browser folder picker mock covers macOS and Linux commands", {
   skip_on_os("windows")
+  withr::local_envvar(WSL_DISTRO_NAME = "test", WSL_INTEROP = "/test/interop")
   output_dir <- file.path(withr::local_tempdir(), "build-output")
   builder_browser_mock_folder_picker(output_dir)
 
@@ -384,6 +387,13 @@ test_that("browser folder picker mock covers macOS and Linux commands", {
     trimws(system2("zenity", stdout = TRUE)),
     normalizePath(output_dir, winslash = "/", mustWork = TRUE)
   )
+  runtime <- new.env(parent = globalenv())
+  sys.source(file.path(builder_browser_dir, "io.R"), envir = runtime)
+  picker <- runtime$builder_native_picker_spec(
+    "output_directory",
+    .system = "Linux"
+  )
+  expect_identical(basename(picker$command), "zenity")
 })
 
 builder_browser_escape <- function(app) {
