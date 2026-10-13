@@ -787,7 +787,7 @@
       if (pane && pane === currentPane()) finish(pane);
     });
     window.addEventListener("cerebro:linkedviews-ready", function (event) {
-      if (!event.detail || !event.detail.primaryReady || !event.detail.painted) return;
+      if (!event.detail || !event.detail.complete || !event.detail.painted) return;
       if (window.CerebroDatasetContext && !window.CerebroDatasetContext.accepts(event.detail)) return;
       var pane = document.getElementById("shiny-tab-coordinated_views");
       if (pane && pane === currentPane()) finish(pane);

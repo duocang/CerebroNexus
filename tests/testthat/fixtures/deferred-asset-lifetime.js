@@ -16,6 +16,7 @@ const handlers = {}, requests = [], applied = [];
 const sandbox = {
   assetCache: Object.create(null), pendingAssets: new Set(), spaceById: {}, imgToken: 0,
   resetSingleViews() {}, clearStaticResourceCaches() {}, markSingleHosts() {}, showUnavailable() {},
+  setLinkedPresentationReady() {},
   applyDeferredAsset(key, uri) { applied.push({key, uri}); },
   document: {addEventListener() {}},
   CustomEvent: function(type, options) { this.type = type; this.detail = options.detail; },

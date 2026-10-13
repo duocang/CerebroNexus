@@ -313,6 +313,12 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
 }
 .cerebro-nav-close,
 #cerebro-nav-scrim { display: none; }
+/* Preserve canvas dimensions for progressive loading, then reveal the complete
+   Linked workspace. A lone primary projection is not the finished layout. */
+.linked-views-page.cv-workspace-pending .cv-panes,
+.linked-views-page.cv-workspace-pending #cv-legend,
+.linked-views-page.cv-workspace-pending #cv-cbar { visibility: hidden; }
+
 /* Global dataset control uses the same selectize surface as page controls. */
 .cerebro-dataset-switcher:not(:empty) {
   margin: 0 14px 10px;
