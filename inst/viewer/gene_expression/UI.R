@@ -63,11 +63,7 @@ tab_gene_expression <- tabItem(
               tagList(
                 uiOutput("expression_projection_additional_parameters_UI"),
                 uiOutput("expression_projection_point_border_UI"),
-                checkboxInput(
-                  "expression_projection_keep_square",
-                  "Keep plots square",
-                  value = FALSE
-                )
+                uiOutput("expression_projection_keep_square_UI")
               ),
               cerebroInfoButton(
                 "expression_projection_additional_parameters_info"

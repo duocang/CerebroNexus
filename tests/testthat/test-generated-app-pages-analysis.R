@@ -32,9 +32,18 @@ test_that("offline analysis pages render the retained source tables", {
   )
   expressed <- generated_app_e2e_table_text(
     "most_expressed_genes_table",
-    contains = c("GENE004", "GENE005", "GENE006", "95", "90", "82")
+    contains = c(
+      "GENE004",
+      "GENE005",
+      "GENE006",
+      "95",
+      "90",
+      "82",
+      "Stored score"
+    )
   )
-  expect_match(expressed, "% of cells expressing", fixed = TRUE)
+  # The legacy pct field has no unit provenance; retain master's neutral label.
+  expect_match(expressed, "Stored score", fixed = TRUE)
 
   generated_app_e2e_set_input("most_expressed_genes_metric_type", "mean_expr")
   means <- generated_app_e2e_table_text(

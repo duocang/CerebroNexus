@@ -506,6 +506,16 @@ output$ir_display_panel <- renderUI({
     return(NULL)
   }
   spec <- ir_display_params_for(tab)
+  display <- current_page_display_defaults("ir")
+  spec <- lapply(spec, function(p) {
+    if (identical(p$id, "ir_d_point_size")) {
+      p$value <- display$scatter_point_size
+    }
+    if (identical(p$id, "ir_d_alpha")) {
+      p$value <- display$scatter_opacity
+    }
+    p
+  })
   if (length(spec) == 0) {
     return(NULL)
   }
@@ -578,17 +588,17 @@ output$ir_cell_view_options_UI <- renderUI({
     checkboxInput(
       "ir_clonalUMAP_group_labels",
       "Group labels",
-      value = TRUE
+      value = current_page_display_defaults("ir")$group_labels
     ),
     checkboxInput(
       "ir_clonalUMAP_point_border",
       "Draw border around cells",
-      value = FALSE
+      value = current_page_display_defaults("ir")$draw_border
     ),
     checkboxInput(
       "ir_clonalUMAP_keep_square",
       "Keep plots square",
-      value = FALSE
+      value = current_page_display_defaults("ir")$keep_square
     )
   )
 })
@@ -604,6 +614,16 @@ ir_display_params <- reactive({
   } else {
     list()
   }
+  display <- current_page_display_defaults("ir")
+  spec <- lapply(spec, function(p) {
+    if (identical(p$id, "ir_d_point_size")) {
+      p$value <- display$scatter_point_size
+    }
+    if (identical(p$id, "ir_d_alpha")) {
+      p$value <- display$scatter_opacity
+    }
+    p
+  })
   if (identical(tab, "Clonal UMAP")) {
     appearance <- current_scatter_defaults()
     spec <- lapply(spec, function(p) {

@@ -6,6 +6,44 @@ projection_first_frame_indices <- function(metadata, percentage = 100) {
   scope$viewerProjectionCellIndices("test", metadata)
 }
 
+test_that("Spatial metadata uses the new dataset's validated colour before controls rebind", {
+  shiny::testServer(
+    function(input, output, session) {
+      metadata <- shiny::reactiveVal(data.frame(cell_type = c("T", "B")))
+      parameters <- shiny::reactiveVal(list(
+        plot_type = "ImageDimPlot",
+        color_variable = "cell_type",
+        split_by = ""
+      ))
+      spatial_projection_parameters_plot <- parameters
+      spatial_projection_cells_to_show <- function() 1:2
+      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewerProjectionFirstFrameMetadata <- metadata
+      sys.source(
+        viewer_test_path("spatial", "obj_projection_metadata.R"),
+        environment()
+      )
+    },
+    {
+      session$setInputs(
+        spatial_projection_plot_type = "ImageDimPlot",
+        spatial_projection_point_color = "cell_type"
+      )
+      expect_identical(spatial_projection_metadata()$cell_type, c("T", "B"))
+      metadata(data.frame(cluster = c("C1", "C14")))
+      parameters(list(
+        plot_type = "ImageDimPlot",
+        color_variable = "cluster",
+        split_by = ""
+      ))
+      session$flushReact()
+      expect_identical(input$spatial_projection_point_color, "cell_type")
+      expect_identical(spatial_projection_metadata()$cluster, c("C1", "C14"))
+      expect_identical(spatial_projection_metadata()$cell_index, 1:2)
+    }
+  )
+})
+
 test_that("a full projection preserves canonical row order", {
   metadata <- data.frame(
     cell_barcode = paste0("cell-", seq_len(8L)),

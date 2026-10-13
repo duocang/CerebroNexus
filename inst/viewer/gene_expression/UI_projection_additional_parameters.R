@@ -32,7 +32,7 @@ output[["expression_projection_data_parameters_UI"]] <- renderUI({
       "expression_projection_plotting_order",
       label = "Plotting order",
       choices = c("Random", "Highest expression on top"),
-      selected = "Highest expression on top"
+      selected = current_page_display_defaults("gene")$plotting_order
     ),
     sliderInput(
       "expression_projection_percentage_cells_to_show",

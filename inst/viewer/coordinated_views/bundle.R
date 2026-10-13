@@ -2107,6 +2107,7 @@ cv_build_bundle <- function(
     default_group = default_group,
     available_modalities = I(cv_progressive_modalities(crb, projection_names)),
     default_point_size = default_point_size,
+    display_defaults = builderViewerDisplayDefaults(viewer_content$display),
     default_percentage_cells_to_show = default_percentage_cells_to_show,
     default_point_opacity = default_point_opacity,
     projections = projections,

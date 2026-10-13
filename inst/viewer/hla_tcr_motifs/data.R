@@ -276,6 +276,10 @@ hla_ir_samples <- reactive({
 ## ---- Read a build/display parameter with a default -------------------- ##
 hla_param <- function(id, default = NULL) {
   v <- input[[id]]
+  if (id %in% c("hla_legend_mode", "hla_node_scale")) {
+    display <- current_page_display_defaults("hla")
+    default <- display[[sub("^hla_", "", id)]]
+  }
   if (is.null(v)) default else v
 }
 

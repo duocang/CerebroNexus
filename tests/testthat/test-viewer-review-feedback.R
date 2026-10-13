@@ -270,7 +270,7 @@ test_that("Cell-view More settings expose only effective appearance controls", {
   expect_match(expression, "expression_projection_keep_square", fixed = TRUE)
   expect_match(
     expression,
-    'registerCellViewPointBorder(output, "expression_projection")',
+    'registerCellViewPointBorder(output, "expression_projection",',
     fixed = TRUE
   )
   expect_no_match(
@@ -317,9 +317,10 @@ test_that("Cell-view appearance uses the existing payload lifecycle", {
     javascript,
     paste0(
       "if \\(dataChanged\\) \\{\\s+",
-      "labelsOn = true;\\s+",
-      "bordersOn = false;\\s+",
-      "keepPlotsSquare = false;"
+      "var authorDisplay = D.display_defaults \\|\\| \\{\\};\\s+",
+      "labelsOn = authorDisplay.group_labels !== false;\\s+",
+      "bordersOn = authorDisplay.draw_border === true;\\s+",
+      "keepPlotsSquare = authorDisplay.keep_square === true;"
     )
   )
 })
@@ -649,7 +650,7 @@ test_that("All settings drawers use the shared shell and responsive grid", {
   expect_match(css, "width: clamp(400px, 30vw, 480px);", fixed = TRUE)
   expect_match(
     css,
-    "background: color-mix(in srgb, var(--c-surface) 90%, transparent);",
+    "background: var(--c-surface);",
     fixed = TRUE
   )
   expect_match(

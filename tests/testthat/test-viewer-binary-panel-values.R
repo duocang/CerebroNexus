@@ -15,6 +15,7 @@ test_that("specialist panels retain binary and JSON expression values", {
       "const emptyVector = value => Array(D.n).fill(value);",
       "const singlePalette = scale => scale;",
       "eval(take('quantisedField', 'directColorField'));",
+      "eval(take('singleCellBoundaries', 'buildSpecialistPanels'));",
       "eval(take('alignFlatValues', 'buildSingleSpaces'));",
       "for (const values of [[4, 0, 2], new Float32Array([4, 0, 2])]) {",
       " const result = buildSpecialistPanels('spatial', {meta: {color_type:'continuous', color_variable:'GENE'}, data: {",

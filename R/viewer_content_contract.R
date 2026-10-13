@@ -2,6 +2,141 @@
 ## and generated app bundles. Keep this file pure base R: the runtime copy is
 ## sourced from a self-contained bundle with no package namespace available.
 
+## Author defaults, independent of transient browsing selections. Keep the
+## schema small and typed; arbitrary CSS and executable font URLs are excluded.
+builderViewerDisplayDefaults <- function(value = NULL) {
+  defaults <- list(
+    group_labels = TRUE,
+    draw_border = FALSE,
+    keep_square = FALSE,
+    label_size = 11,
+    font_family = "system-ui",
+    color_clip = 0.01,
+    gene_palette = "cerebro_orange",
+    gene_panel_mode = "shared",
+    gene_panel_palette = "default",
+    projection_group_labels = TRUE,
+    projection_draw_border = FALSE,
+    projection_keep_square = FALSE,
+    gene_draw_border = FALSE,
+    gene_keep_square = FALSE,
+    gene_plotting_order = "Highest expression on top",
+    gene_show_trend_line = TRUE,
+    gene_trend_line_width = 2,
+    spatial_group_labels = FALSE,
+    spatial_draw_border = FALSE,
+    spatial_keep_square = FALSE,
+    spatial_region_outlines = FALSE,
+    trajectory_group_labels = TRUE,
+    trajectory_draw_border = TRUE,
+    trajectory_keep_square = FALSE,
+    trajectory_density_opacity = .6,
+    trajectory_show_trend_line = TRUE,
+    trajectory_trend_line_width = 2,
+    ir_group_labels = TRUE,
+    ir_draw_border = FALSE,
+    ir_keep_square = FALSE,
+    ir_scatter_point_size = 1,
+    ir_scatter_opacity = .8,
+    hla_legend_mode = "auto",
+    hla_node_scale = 1
+  )
+  if (is.null(value)) {
+    return(defaults)
+  }
+  if (
+    !is.list(value) ||
+      is.object(value) ||
+      any(!names(value) %in% names(defaults)) ||
+      (length(value) && (is.null(names(value)) || anyDuplicated(names(value))))
+  ) {
+    stop(
+      "Viewer display settings must be a named settings list.",
+      call. = FALSE
+    )
+  }
+  for (key in names(value)) {
+    defaults[[key]] <- value[[key]]
+  }
+  scalar <- function(x, type) {
+    typeof(x) %in% type && !is.object(x) && length(x) == 1L && !is.na(x)
+  }
+  flags <- grep(
+    "(^|_)(group_labels|draw_border|keep_square|region_outlines|show_trend_line)$",
+    names(defaults),
+    value = TRUE
+  )
+  valid <- all(vapply(defaults[flags], scalar, logical(1), type = "logical")) &&
+    scalar(defaults$label_size, c("double", "integer")) &&
+    is.finite(defaults$label_size) &&
+    defaults$label_size >= 8 &&
+    defaults$label_size <= 24 &&
+    scalar(defaults$color_clip, c("double", "integer")) &&
+    defaults$color_clip %in% c(0, .01, .02, .05)
+  choices <- list(
+    font_family = c("system-ui", "Arial", "Georgia"),
+    gene_palette = c("cerebro_orange", "blues", "greens", "viridis"),
+    gene_panel_mode = c("shared", "distinct"),
+    gene_panel_palette = c("default", "soft"),
+    gene_plotting_order = c("Random", "Highest expression on top"),
+    hla_legend_mode = c("auto", "always", "never")
+  )
+  ranges <- list(
+    gene_trend_line_width = c(1, 10),
+    trajectory_density_opacity = c(0, 1),
+    trajectory_trend_line_width = c(1, 10),
+    ir_scatter_point_size = c(.1, 6),
+    ir_scatter_opacity = c(.1, 1),
+    hla_node_scale = c(.3, 2.5)
+  )
+  valid <- valid &&
+    all(vapply(
+      names(ranges),
+      function(key) {
+        x <- defaults[[key]]
+        scalar(x, c("double", "integer")) &&
+          is.finite(x) &&
+          x >= ranges[[key]][[1L]] &&
+          x <= ranges[[key]][[2L]]
+      },
+      logical(1)
+    ))
+  valid <- valid &&
+    all(vapply(
+      names(choices),
+      function(key) {
+        scalar(defaults[[key]], "character") &&
+          defaults[[key]] %in% choices[[key]]
+      },
+      logical(1)
+    ))
+  if (!valid) {
+    stop("Viewer display settings are invalid.", call. = FALSE)
+  }
+  defaults$label_size <- as.double(defaults$label_size)
+  defaults$color_clip <- as.double(defaults$color_clip)
+  for (key in names(ranges)) {
+    defaults[[key]] <- as.double(defaults[[key]])
+  }
+  defaults
+}
+
+viewerDisplayDefaults <- function(options, dataset) {
+  value <- options[["viewer_content"]][[dataset]][["display"]]
+  tryCatch(builderViewerDisplayDefaults(value), error = function(e) {
+    builderViewerDisplayDefaults()
+  })
+}
+
+viewerPageDisplayDefaults <- function(options, dataset, page) {
+  value <- viewerDisplayDefaults(options, dataset)
+  prefix <- paste0(page, "_")
+  keys <- names(value)[startsWith(names(value), prefix)]
+  out <- value[keys]
+  names(out) <- substring(keys, nchar(prefix) + 1L)
+  out
+}
+
 .builder_manifest_abort <- function(code, message) {
   condition <- structure(
     list(message = message, call = NULL, code = code),
@@ -140,6 +275,7 @@ builder_viewer_page_catalog <- function() {
       id = c(
         "data_info",
         "projection",
+        "linked_views",
         "groups",
         "gene_expression",
         "gene_id_conversion",
@@ -148,6 +284,7 @@ builder_viewer_page_catalog <- function() {
       ),
       tab_name = c(
         "loadData",
+        "overview",
         "coordinated_views",
         "groups",
         "geneExpression",
@@ -157,6 +294,7 @@ builder_viewer_page_catalog <- function() {
       ),
       label = c(
         "Data info",
+        "Projection",
         "Linked views",
         "Groups",
         "Gene expression",
@@ -167,6 +305,7 @@ builder_viewer_page_catalog <- function() {
       icon = c(
         "info",
         "home",
+        "link",
         "layer-group",
         "signal",
         "barcode",
@@ -193,8 +332,8 @@ builder_viewer_page_catalog <- function() {
         "extra_material",
         "immune_repertoire",
         "trajectory",
-        "coordinated_views",
-        "coordinated_views",
+        "spatial",
+        "trekker",
         "hla_tcr_motifs"
       ),
       label = c(
