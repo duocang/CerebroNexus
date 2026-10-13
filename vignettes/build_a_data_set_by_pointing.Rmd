@@ -56,6 +56,12 @@ Install CerebroNexus with its declared Imports, then install the optional packag
 | HDF5 expression backend | Bioconductor `rhdf5` and, for HDF5Array input, `HDF5Array` |
 | Spatial PNG/JPEG images | `png` and `jpeg` |
 
+Legacy `.qs` input requires a working `qs` installation. The default Nix
+environment omits it because `qs 0.27.3` is
+incompatible with its R 4.6 runtime. For that environment, first convert legacy
+files to `.rds` or `.qs2` in an R environment where `qs` can read them. RDS and
+qs2 input remain available without `qs`.
+
 Builder checks the dependencies of selected analyses before Build. The exact supported environment is recorded in `DESCRIPTION` and the repository's `default.nix`; installing the package alone does not install every Suggests entry. A standalone App still needs R and its runtime packages on the destination host.
 
 # 1. Data
