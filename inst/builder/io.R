@@ -147,9 +147,20 @@ builder_server_path_roots <- function(
 builder_server_path_resolve <- function(
   value,
   type = c("directory", "file"),
-  roots = builder_server_path_roots()
+  roots = builder_server_path_roots(),
+  .wsl = builder_is_wsl(),
+  .translate = builder_wsl_picker_paths
 ) {
   type <- match.arg(type)
+  if (
+    isTRUE(.wsl) &&
+      is.character(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      grepl("^[A-Za-z]:[/\\\\]", trimws(value))
+  ) {
+    value <- .translate(trimws(value))
+  }
   if (
     !is.character(value) ||
       length(value) != 1L ||
@@ -549,6 +560,32 @@ builder_file_accept <- function(extensions) {
   paste0(".", extensions, collapse = ",")
 }
 
+builder_is_wsl <- function() {
+  if (!identical(Sys.info()[["sysname"]], "Linux")) {
+    return(FALSE)
+  }
+  nzchar(Sys.getenv("WSL_DISTRO_NAME")) || nzchar(Sys.getenv("WSL_INTEROP"))
+}
+
+builder_wsl_picker_paths <- function(paths, .run = processx::run) {
+  vapply(
+    paths,
+    function(path) {
+      result <- .run("wslpath", c("-u", path), error_on_status = FALSE)
+      converted <- trimws(result$stdout %||% "")
+      if (!identical(result$status, 0L) || !nzchar(converted)) {
+        stop(
+          "Cannot access the selected Windows path. Choose another location.",
+          call. = FALSE
+        )
+      }
+      converted
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
 builder_native_picker_spec <- function(
   kind = c(
     "output_directory",
@@ -558,12 +595,40 @@ builder_native_picker_spec <- function(
   ),
   .system = Sys.info()[["sysname"]] %||% "",
   .powershell = NULL,
-  .which = Sys.which
+  .which = Sys.which,
+  .wsl = builder_is_wsl()
 ) {
   kind <- match.arg(kind)
   contract <- builder_native_picker_contract(kind)
   directory <- identical(contract$type, "directory")
   prompt <- contract$prompt
+  if (identical(.system, "Linux") && isTRUE(.wsl)) {
+    powershell <- .which("powershell.exe")
+    if (nzchar(powershell) && nzchar(.which("wslpath"))) {
+      script <- builder_windows_picker_script(kind)
+      # EncodedCommand avoids WSL's extra Windows command-line quoting layer.
+      encoded <- base64enc::base64encode(iconv(
+        script,
+        from = "UTF-8",
+        to = "UTF-16LE",
+        toRaw = TRUE
+      )[[1L]])
+      return(list(
+        command = unname(powershell),
+        args = c(
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-STA",
+          "-EncodedCommand",
+          encoded
+        ),
+        cancel_status = integer(),
+        encoding = "UTF-8",
+        path_style = "windows"
+      ))
+    }
+  }
   if (identical(.system, "Windows")) {
     powershell <- .powershell %||% .which("powershell.exe")
     if (!nzchar(powershell)) {
@@ -841,7 +906,8 @@ builder_start_native_picker <- function(
     kind = kind,
     process = process,
     result = NULL,
-    cancel_status = spec$cancel_status %||% integer()
+    cancel_status = spec$cancel_status %||% integer(),
+    path_style = spec$path_style %||% "native"
   )
 }
 
@@ -860,12 +926,16 @@ builder_collect_native_picker <- function(picker) {
   errors <- picker$process$read_all_error_lines()
   status <- picker$process$get_exit_status()
   builder_native_picker_result(picker$kind, function() {
-    builder_native_picker_output(
+    paths <- builder_native_picker_output(
       status,
       output,
       errors,
       picker$cancel_status %||% integer()
     )
+    if (length(paths) && identical(picker$path_style, "windows")) {
+      paths <- builder_wsl_picker_paths(paths)
+    }
+    paths
   })
 }
 
@@ -987,19 +1057,32 @@ builder_format_capability <- function(
       error = function(error) FALSE
     ))
   label <- as.character(format$label %||% format$id %||% "dataset")[[1L]]
+  format$label <- label
   reason <- if (available) {
     NULL
   } else {
     paste0(
       toupper(label),
-      " files are disabled because the R package '",
-      package,
-      "' is not installed. Install it with install.packages(\"",
-      package,
-      "\"), then restart Builder."
+      " unavailable. Use RDS."
     )
   }
-  c(format, list(available = available, unavailable_reason = reason))
+  c(
+    format,
+    list(
+      available = available,
+      unavailable_reason = reason,
+      unavailable_detail = if (available) {
+        NULL
+      } else {
+        paste0(
+          "The ",
+          package,
+          " reader cannot load in this R environment. ",
+          "Install a compatible reader, or convert the files in an R environment that can open them."
+        )
+      }
+    )
+  )
 }
 
 builder_format_capabilities <- function(
@@ -1008,7 +1091,23 @@ builder_format_capabilities <- function(
     requireNamespace(package, quietly = TRUE)
   }
 ) {
-  lapply(formats, builder_format_capability, .require_namespace)
+  capabilities <- lapply(formats, builder_format_capability, .require_namespace)
+  alternatives <- vapply(
+    Filter(function(format) isTRUE(format$available), capabilities),
+    function(format) toupper(format$label),
+    character(1)
+  )
+  for (i in seq_along(capabilities)) {
+    if (!isTRUE(capabilities[[i]]$available) && length(alternatives)) {
+      capabilities[[i]]$unavailable_reason <- paste0(
+        toupper(capabilities[[i]]$label),
+        " unavailable. Use ",
+        paste(alternatives, collapse = " or "),
+        "."
+      )
+    }
+  }
+  capabilities
 }
 
 builder_available_formats <- function(
@@ -1762,8 +1861,7 @@ builder_example_directory <- local({
       id = "complete_viewer_data",
       label = "Load example datasets",
       detail = paste(
-        "Three synthetic Seurat demos: complete Viewer content,",
-        "four-tissue Trekker, and arrow Spatial alignment"
+        "Try three datasets with expression, trajectories and spatial images."
       ),
       source = "builder/fixtures/complete_viewer/complete_viewer_data.rds",
       examples = list(

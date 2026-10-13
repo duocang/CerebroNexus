@@ -202,10 +202,14 @@ test_that("a missing format reader rejects before an import is queued", {
       client_id = "missing-qs-client"
     ))
     expect_length(imports()$entries, 0L)
-    expect_match(isolate(add_error()), "QS files are disabled", fixed = TRUE)
+    expect_match(isolate(add_error()), "QS unavailable", fixed = TRUE)
     record <- isolate(released_client_import_records())[["missing-qs-client"]]
     expect_identical(record$state, "rejected")
-    expect_match(record$message, "install.packages", fixed = TRUE)
+    expect_match(
+      record$message,
+      "Use RDS or QS2",
+      fixed = TRUE
+    )
   })
 })
 
