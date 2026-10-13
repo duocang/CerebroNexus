@@ -1,14 +1,11 @@
 builder_project_integrity_runtime <- function() {
   runtime <- new.env(parent = globalenv())
   sys.source(
-    testthat::test_path("..", "..", "inst", "builder", "prerequisite.R"),
+    builder_test_inst_path("builder", "prerequisite.R"),
     envir = runtime
   )
   runtime$builder_source_utf8(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "builder",
       "core",
       "bundle_path_contract.R"
@@ -16,10 +13,7 @@ builder_project_integrity_runtime <- function() {
     envir = runtime
   )
   runtime$builder_source_utf8(
-    testthat::test_path(
-      "..",
-      "..",
-      "inst",
+    builder_test_inst_path(
       "viewer",
       "core",
       "spatial_coordinate_transform.R"
@@ -28,7 +22,7 @@ builder_project_integrity_runtime <- function() {
   )
   for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
     runtime$builder_source_utf8(
-      testthat::test_path("..", "..", "inst", "builder", file),
+      builder_test_inst_path("builder", file),
       envir = runtime
     )
   }

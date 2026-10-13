@@ -461,17 +461,29 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
   app_bundle <- builder_profile_inst_path("builder", "app_bundle.R")
   build_status <- builder_profile_inst_path("builder", "ui", "build_status.R")
   viewer_auth <- test_path("..", "..", "R", "viewer-auth.R")
+  if (!file.exists(viewer_auth)) {
+    viewer_auth <- NULL
+  }
   callr::r(
     function(app_bundle, build_status, viewer_auth, path, env_file, previous) {
       app_bundle <- normalizePath(app_bundle)
       build_status <- normalizePath(build_status)
-      viewer_auth <- normalizePath(viewer_auth)
+      if (!is.null(viewer_auth)) {
+        viewer_auth <- normalizePath(viewer_auth)
+      }
       # `callr` starts outside the package checkout; make the assembly loader's
       # documented checkout-relative fallback available in this isolated child.
       setwd(dirname(dirname(dirname(app_bundle))))
       runtime <- new.env(parent = globalenv())
       sys.source(app_bundle, envir = runtime)
-      sys.source(viewer_auth, envir = runtime)
+      if (is.null(viewer_auth)) {
+        runtime$.viewerAuthValidateDatabase <- getFromNamespace(
+          ".viewerAuthValidateDatabase",
+          "CerebroNexus"
+        )
+      } else {
+        sys.source(viewer_auth, envir = runtime)
+      }
       sys.source(build_status, envir = runtime)
       launched <- FALSE
       if (!is.null(previous)) {

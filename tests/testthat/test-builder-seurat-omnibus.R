@@ -391,6 +391,13 @@ test_that("gallery examples leave tissue images for manual upload", {
 })
 
 test_that("complete fixture regenerates with stable semantic content", {
+  script <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "build_builder_fixtures.R"
+  )
+  skip_if_not(file.exists(script), "Regeneration scripts are repository-only")
   skip_if_not_installed("readxl")
   skip_if_not_installed("jpeg")
   skip_if_not_installed("png")
@@ -483,9 +490,19 @@ test_that("complete fixture regenerates with stable semantic content", {
 })
 
 test_that("complete fixture generator defaults to its named directory", {
+  script_path <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "build_builder_fixtures.R"
+  )
+  skip_if_not(
+    file.exists(script_path),
+    "Regeneration scripts are repository-only"
+  )
   script <- paste(
     readLines(
-      testthat::test_path("..", "..", "data-raw", "build_builder_fixtures.R"),
+      script_path,
       warn = FALSE
     ),
     collapse = "\n"

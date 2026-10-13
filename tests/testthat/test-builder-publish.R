@@ -1,5 +1,5 @@
 builder_publish_source <- function(local = parent.frame()) {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   if (!dir.exists(root)) {
     root <- system.file("builder", package = "CerebroNexus")
   }
@@ -932,7 +932,7 @@ test_that("release identity rejects special filesystem nodes without blocking", 
   skip_if_not_installed("callr")
   skip_if(Sys.which("mkfifo") == "")
   local({
-    builder_root <- testthat::test_path("..", "..", "inst", "builder")
+    builder_root <- builder_test_inst_path("builder")
     if (!dir.exists(builder_root)) {
       builder_root <- system.file("builder", package = "CerebroNexus")
     }
@@ -1416,7 +1416,7 @@ test_that("failed post-install verification restores an in-place release", {
 test_that("process death between renames leaves exact recoverable evidence", {
   skip_if_not_installed("callr")
   local({
-    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    root_path <- builder_test_inst_path("builder")
     if (!dir.exists(root_path)) {
       root_path <- system.file("builder", package = "CerebroNexus")
     }
@@ -1587,7 +1587,7 @@ test_that("clearing treats an absent and empty target as content-equivalent", {
 test_that("process death after protecting the prior release keeps recovery intent", {
   skip_if_not_installed("callr")
   local({
-    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    root_path <- builder_test_inst_path("builder")
     if (!dir.exists(root_path)) {
       root_path <- system.file("builder", package = "CerebroNexus")
     }
@@ -1632,7 +1632,7 @@ test_that("process death after protecting the prior release keeps recovery inten
 test_that("process death after the new release can still restore the prior one", {
   skip_if_not_installed("callr")
   local({
-    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    root_path <- builder_test_inst_path("builder")
     if (!dir.exists(root_path)) {
       root_path <- system.file("builder", package = "CerebroNexus")
     }
@@ -1744,7 +1744,7 @@ test_that("restoration failure preserves the exact backup for recovery", {
 test_that("a dead completed owner cannot strand the release lock", {
   skip_if_not_installed("callr")
   local({
-    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    root_path <- builder_test_inst_path("builder")
     if (!dir.exists(root_path)) {
       root_path <- system.file("builder", package = "CerebroNexus")
     }
@@ -1864,7 +1864,7 @@ test_that("unsafe terminal controls are retained without failing publication", {
 test_that("a crash after the stage rename but before journaling is recoverable", {
   skip_if_not_installed("callr")
   local({
-    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    root_path <- builder_test_inst_path("builder")
     if (!dir.exists(root_path)) {
       root_path <- system.file("builder", package = "CerebroNexus")
     }

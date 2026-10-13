@@ -43,7 +43,7 @@ test_that("Viewer defaults to the exact single ROI or separate multi-ROI layout"
 })
 
 test_that("Viewer keeps split-by on the shared interactive Canvas", {
-  root <- testthat::test_path("..", "..", "inst", "viewer", "spatial")
+  root <- builder_test_inst_path("viewer", "spatial")
   controls <- paste(
     readLines(file.path(root, "UI_projection_main_parameters.R"), warn = FALSE),
     collapse = "\n"

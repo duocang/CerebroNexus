@@ -10,12 +10,14 @@ builder_browser_contract_app <- function(
     winslash = "/",
     mustWork = TRUE
   )
-  stopifnot(
-    file.exists(file.path(source_root, "DESCRIPTION")),
+  source_available <- file.exists(file.path(source_root, "DESCRIPTION")) &&
     dir.exists(file.path(source_root, "R"))
-  )
   withr::local_envvar(
-    CEREBRO_PACKAGE_SOURCE = source_root,
+    CEREBRO_PACKAGE_SOURCE = if (source_available) {
+      source_root
+    } else {
+      NA_character_
+    },
     .local_envir = .local_envir
   )
   fixture_root <- tempfile("builder-contract-")
@@ -87,6 +89,10 @@ builder_browser_project_folder_picker <- function(
   Sys.chmod(pickers, mode = "0755")
   withr::local_envvar(
     PATH = paste(fake_bin, Sys.getenv("PATH"), sep = .Platform$path.sep),
+    # These tests return fixture paths through the POSIX picker. Native WSL
+    # dialogs are exercised separately and must never interrupt unattended CI.
+    WSL_DISTRO_NAME = NA_character_,
+    WSL_INTEROP = NA_character_,
     .local_envir = .local_envir
   )
   invisible(project_dir)

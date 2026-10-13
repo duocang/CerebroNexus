@@ -5,10 +5,7 @@ builder_path_contract_files <- function() {
     "R",
     "createShinyApp.R"
   )
-  runtime_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  runtime_path <- builder_test_inst_path(
     "builder",
     "core",
     "bundle_path_contract.R"

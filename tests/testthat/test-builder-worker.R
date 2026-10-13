@@ -1158,8 +1158,12 @@ if (builder_lifecycle_api_available) {
     copied_builder <- file.path(copied_runtime, "builder")
     fs::dir_copy(builder_profile_inst_path("builder"), copied_builder)
     source_root <- withr::local_tempdir()
-    file.copy(test_path("..", "..", "DESCRIPTION"), source_root)
-    fs::dir_copy(test_path("..", "..", "R"), file.path(source_root, "R"))
+    file.copy(builder_test_description_path(), source_root)
+    dir.create(file.path(source_root, "R"))
+    writeLines(
+      "# Source-tree identity fixture",
+      file.path(source_root, "R", "fixture.R")
+    )
     source_root <- normalizePath(source_root, winslash = "/", mustWork = TRUE)
     withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
 

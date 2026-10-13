@@ -31,7 +31,7 @@ test_that("every failed CRB publication stage preserves original bytes", {
   }
 })
 
-test_that("public save preserves an existing CRB when its backup name is too long", {
+test_that("public save can replace a long CRB name using a bounded backup name", {
   skip_on_os("windows")
   root <- tempfile("crb-long-name-")
   dir.create(root)
@@ -40,9 +40,10 @@ test_that("public save preserves an existing CRB when its backup name is too lon
   object <- Cerebro$new()
   saveCerebro(object, file, codec = "rds")
   original <- readBin(file, "raw", file.info(file)$size)
-  expect_error(
-    suppressWarnings(saveCerebro(object, file, codec = "rds")),
-    "Could not preserve the existing CRB"
-  )
+  expect_silent(saveCerebro(object, file, codec = "rds"))
   expect_identical(readBin(file, "raw", length(original)), original)
+  expect_identical(
+    list.files(root, all.files = TRUE, no.. = TRUE),
+    basename(file)
+  )
 })

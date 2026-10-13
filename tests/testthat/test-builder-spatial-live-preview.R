@@ -3,7 +3,19 @@ builder_spatial_canvas_node <- function() {
   skip_if_not_installed("jsonlite")
   runner <- testthat::test_path("builder-spatial-canvas-runtime-node.js")
   output <- tryCatch(
-    system2("node", runner, stdout = TRUE, stderr = TRUE),
+    system2(
+      "node",
+      c(
+        shQuote(runner),
+        shQuote(builder_test_inst_path(
+          "builder",
+          "www",
+          "builder-spatial-canvas.js"
+        ))
+      ),
+      stdout = TRUE,
+      stderr = TRUE
+    ),
     error = function(error) NULL
   )
   if (is.null(output)) {
@@ -14,7 +26,7 @@ builder_spatial_canvas_node <- function() {
 }
 
 test_that("Spatial Builder uses a persistent Canvas live preview", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   ui <- paste(
     readLines(file.path(root, "ui", "enhance_stage.R"), warn = FALSE),
     collapse = "\n"
@@ -43,7 +55,7 @@ test_that("Spatial Builder uses a persistent Canvas live preview", {
 })
 
 test_that("Canvas renderer owns bounded raw points and latest-only controls", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -283,7 +295,7 @@ test_that("Canvas runtime persists point-safe View areas and deduplicates Ion ev
 })
 
 test_that("paired number controls do not echo slider updates through Shiny", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -317,7 +329,7 @@ test_that("paired number controls do not echo slider updates through Shiny", {
 })
 
 test_that("point rotation refits one shared image and coordinate viewport", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -353,7 +365,7 @@ test_that("point rotation refits one shared image and coordinate viewport", {
 })
 
 test_that("Canvas hover coalesces pointer work and reuses rendered screen points", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -387,7 +399,7 @@ test_that("Canvas hover coalesces pointer work and reuses rendered screen points
 })
 
 test_that("same-token scene refreshes preserve browser-local controls", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -400,7 +412,7 @@ test_that("same-token scene refreshes preserve browser-local controls", {
 })
 
 test_that("Canvas scene refreshes reuse image bytes already sent", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
@@ -418,7 +430,7 @@ test_that("Canvas scene refreshes reuse image bytes already sent", {
 })
 
 test_that("Reset image waits for server-authoritative controls", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -439,7 +451,7 @@ test_that("Reset image waits for server-authoritative controls", {
 })
 
 test_that("programmatic Image settings restore cannot commit partial values", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
@@ -481,7 +493,7 @@ test_that("programmatic Image settings restore cannot commit partial values", {
 })
 
 test_that("control commits carry a complete spatial owner and flush on switch", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -514,7 +526,7 @@ test_that("control commits carry a complete spatial owner and flush on switch", 
 })
 
 test_that("large Spatial images use a display raster without changing sources", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -531,7 +543,7 @@ test_that("large Spatial images use a display raster without changing sources", 
 })
 
 test_that("preview settlement cannot overwrite live control values", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
@@ -552,7 +564,7 @@ test_that("preview settlement cannot overwrite live control values", {
 })
 
 test_that("image replacement clears stale decoded pixels", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   js <- paste(
     readLines(
       file.path(root, "www", "builder-spatial-canvas.js"),
@@ -570,7 +582,7 @@ test_that("image replacement clears stale decoded pixels", {
 })
 
 test_that("Spatial preview worker receives only the ROI base transform", {
-  root <- testthat::test_path("..", "..", "inst", "builder")
+  root <- builder_test_inst_path("builder")
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
