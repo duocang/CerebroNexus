@@ -583,6 +583,7 @@ test_that("background-image selection only recreates image calibration controls"
     paste0(
       'class = "cerebro-viz-primary",[[:space:]]*',
       'uiOutput\\("spatial_projection_main_parameters_UI"\\),[[:space:]]*',
+      'div\\([[:space:]]*class = "cerebro-spatial-background-row",[[:space:]]*',
       'uiOutput\\("spatial_projection_background_selector_UI"\\)'
     ),
     perl = TRUE
