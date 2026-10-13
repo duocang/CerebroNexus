@@ -6444,6 +6444,18 @@
     updateFocusButtons();
     drawAll();
     if ((sel && sel.size) || (pick != null && nicheSet)) renderSelbar();
+    // Layout advice uses canvas CSS dimensions, never the spread of the cells.
+    var hintView = singleActive && singleView(singleActive);
+    var hintId = singleActive || 'linked';
+    var hintPanels = vis.filter(function (p) {
+      var space = spaceById[p.spaceId];
+      var name = hintView ? hintView.meta && hintView.meta.space_label : space && space._projectionName;
+      return space && !space.z && /umap/i.test(String(name || ''));
+    });
+    window.dispatchEvent(new CustomEvent('cerebro:plot-layout', { detail: {
+      id: hintId, dataset_context: currentDatasetContext(), square: keepPlotsSquare,
+      wide: hintPanels.some(function (p) { return p.W > 0 && p.H > 0 && p.W / p.H > 1.6; })
+    } }));
     return true;
   }
 
