@@ -607,6 +607,15 @@
         return;
       }
       setBusy(pane, true);
+      // Data info only refreshes lightweight metadata. Dataset loading already
+      // owns its progress UI; a second page card before/after it adds no signal.
+      // Keep busy/settled tracking so returning to the page still works normally.
+      if (paneName(pane) === "loadData") {
+        if (announcement) announcement.textContent = "";
+        loader.classList.remove("is-visible");
+        loader.hidden = true;
+        return;
+      }
       mountLoader(pane);
       showDetail("Loading " + pageLabel(pane) + "…");
       loader.hidden = false;
