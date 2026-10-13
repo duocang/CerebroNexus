@@ -11,6 +11,32 @@ spatial_projection_appearance <- reactiveValues(
   keep_square = FALSE
 )
 spatial_projection_region_outlines <- reactiveVal(FALSE)
+spatial_author_overridden <- new.env(parent = emptyenv())
+observeEvent(
+  viewer_requested_dataset_context()$dataset_key,
+  {
+    display <- current_page_display_defaults("spatial")
+    controls <- c(
+      group_labels = "spatial_projection_group_labels",
+      draw_border = "spatial_projection_point_border",
+      keep_square = "spatial_projection_keep_square",
+      region_outlines = "spatial_projection_show_region_outlines"
+    )
+    for (key in names(controls)) {
+      if (isTRUE(spatial_author_overridden[[key]])) {
+        next
+      }
+      if (identical(key, "region_outlines")) {
+        spatial_projection_region_outlines(display[[key]])
+      } else {
+        spatial_projection_appearance[[key]] <- display[[key]]
+      }
+      updateCheckboxInput(session, controls[[key]], value = display[[key]])
+    }
+  },
+  ignoreInit = FALSE,
+  priority = 1100
+)
 
 ## The Spatial shell can request its first frame before its renderUI controls
 ## have made a browser round trip. Resolve the exact same defaults on the
@@ -110,6 +136,7 @@ observeEvent(
   {
     value <- isTRUE(input[["spatial_projection_group_labels"]])
     if (spatial_update_appearance("group_labels", value)) {
+      spatial_author_overridden$group_labels <- TRUE
       spatial_send_appearance(list(group_labels = value))
     }
   },
@@ -121,6 +148,7 @@ observeEvent(
   {
     value <- isTRUE(input[["spatial_projection_point_border"]])
     if (spatial_update_appearance("draw_border", value)) {
+      spatial_author_overridden$draw_border <- TRUE
       spatial_send_appearance(list(draw_border = value))
     }
   },
@@ -132,6 +160,7 @@ observeEvent(
   {
     value <- isTRUE(input[["spatial_projection_keep_square"]])
     if (spatial_update_appearance("keep_square", value)) {
+      spatial_author_overridden$keep_square <- TRUE
       spatial_send_appearance(list(keep_square = value))
     }
   },
@@ -143,6 +172,7 @@ observeEvent(
   {
     value <- isTRUE(input[["spatial_projection_show_region_outlines"]])
     if (!identical(spatial_projection_region_outlines(), value)) {
+      spatial_author_overridden$region_outlines <- TRUE
       spatial_projection_region_outlines(value)
     }
   },

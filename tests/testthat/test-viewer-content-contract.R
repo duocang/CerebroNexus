@@ -13,7 +13,7 @@ viewer_contract_path <- function(root = c("R", "core")) {
     "core",
     "viewer_content_contract.R"
   )
-  path <- testthat::test_path("..", "..", "inst", relative)
+  path <- builder_test_inst_path(relative)
   if (!file.exists(path)) {
     path <- system.file(relative, package = "CerebroNexus")
   }
@@ -28,7 +28,7 @@ viewer_contract_source_if_present <- function(local = parent.frame()) {
 }
 
 viewer_manifest_source_if_present <- function(local = parent.frame()) {
-  path <- testthat::test_path("..", "..", "inst", "builder", "manifest.R")
+  path <- builder_test_inst_path("builder", "manifest.R")
   if (!file.exists(path)) {
     path <- system.file(
       file.path("builder", "manifest.R"),
@@ -71,6 +71,7 @@ test_that("Viewer page catalog declares the current sidebar identities", {
     c(
       "data_info",
       "projection",
+      "linked_views",
       "groups",
       "gene_expression",
       "gene_id_conversion",
@@ -82,6 +83,7 @@ test_that("Viewer page catalog declares the current sidebar identities", {
     catalog$always$tab_name,
     c(
       "loadData",
+      "overview",
       "coordinated_views",
       "groups",
       "geneExpression",
@@ -94,6 +96,7 @@ test_that("Viewer page catalog declares the current sidebar identities", {
     catalog$always$label,
     c(
       "Data info",
+      "Projection",
       "Linked views",
       "Groups",
       "Gene expression",
@@ -104,7 +107,16 @@ test_that("Viewer page catalog declares the current sidebar identities", {
   )
   expect_identical(
     catalog$always$icon,
-    c("info", "home", "layer-group", "signal", "barcode", "palette", "at")
+    c(
+      "info",
+      "home",
+      "link",
+      "layer-group",
+      "signal",
+      "barcode",
+      "palette",
+      "at"
+    )
   )
 
   expect_identical(
@@ -130,8 +142,8 @@ test_that("Viewer page catalog declares the current sidebar identities", {
       "extra_material",
       "immune_repertoire",
       "trajectory",
-      "coordinated_views",
-      "coordinated_views",
+      "spatial",
+      "trekker",
       "hla_tcr_motifs"
     )
   )

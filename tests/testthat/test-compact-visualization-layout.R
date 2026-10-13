@@ -160,7 +160,7 @@ test_that("specialized controls live in More settings", {
   expect_true(
     contains_call(
       spatial_background,
-      "selectInput",
+      "selectizeInput",
       "spatial_projection_background_image"
     )
   )
