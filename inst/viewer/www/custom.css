@@ -313,6 +313,31 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
 }
 .cerebro-nav-close,
 #cerebro-nav-scrim { display: none; }
+/* Global dataset control uses the same selectize surface as page controls. */
+.cerebro-dataset-switcher:not(:empty) {
+  margin: 0 14px 10px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--c-border);
+}
+body .sidebar .cerebro-dataset-switcher .shiny-input-container {
+  margin: 0; padding: 0; width: 100%;
+}
+.cerebro-dataset-switcher .selectize-control { margin-bottom: 0; }
+body .sidebar .cerebro-dataset-switcher label {
+  color: var(--c-text-2); font-size: 12px; font-weight: 600;
+  margin-bottom: 6px;
+}
+body .cerebro-dataset-switcher .selectize-input {
+  display: flex; align-items: center; flex-wrap: nowrap;
+  min-height: 40px; padding-right: 28px !important;
+}
+body .cerebro-dataset-switcher .selectize-input > .item {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body .cerebro-dataset-switcher .selectize-dropdown .option {
+  white-space: normal; overflow-wrap: anywhere;
+}
+.cerebro-dataset-switcher { --cerebro-select-menu-max-height: 240px; }
 body.skin-blue .sidebar-menu > li { position: relative; }
 body.skin-blue .sidebar-menu > li > a {
   color: var(--c-text) !important;
@@ -2038,6 +2063,13 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 }
 .cerebro-dataset-loading.is-visible { opacity: 1; }
 .cerebro-dataset-loading[hidden] { display: none; }
+/* Keep the global picker and navigation available during a dataset change. */
+@media (min-width: 768px) {
+  body:not(.sidebar-collapse) .cerebro-dataset-loading { left: 230px; }
+}
+html body.skin-blue.cerebro-dataset-is-loading .main-header { z-index: 20003 !important; }
+html body.skin-blue.cerebro-dataset-is-loading .main-sidebar { z-index: 20004 !important; }
+html body.skin-blue.cerebro-dataset-is-loading #cerebro-nav-scrim { z-index: 20002 !important; }
 .cerebro-dataset-loading-card {
   box-sizing: border-box; width: min(430px, calc(100vw - 48px));
   padding: 24px 26px 20px;
