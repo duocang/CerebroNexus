@@ -90,6 +90,7 @@
   // to a position in tissue. Null when the cursor is not on a cell.
   var hoverCell = null;
   var linkedHoverOn = true;
+  var linkedBackgroundsOn = true;
   // The gene a reply is still wanted for. Set when one is asked for and cleared by
   // the reply, so a late answer for a gene the user has moved on from is dropped
   // rather than drawn under the current gene's name.
@@ -1177,6 +1178,7 @@
       x * Math.sin(theta) + y * Math.cos(theta)];
   }
   function drawImage(p, context) {
+    if (!singleActive && !linkedBackgroundsOn) return;
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
     var state = sp && sp._imgState;
@@ -4272,6 +4274,23 @@
     }
   }
 
+  function syncLinkedBackgroundsDefault(dataChanged) {
+    if (dataChanged) linkedBackgroundsOn = true;
+    var control = $('cv-backgrounds');
+    if (control) control.checked = linkedBackgroundsOn;
+  }
+
+  function setLinkedBackgrounds(enabled) {
+    linkedBackgroundsOn = !!enabled;
+    syncLinkedBackgroundsDefault(false);
+    if (!singleActive) {
+      panels.forEach(function (panel) { panel.miniBg = null; });
+      drawAll();
+      viewOperation('linked', linkedBackgroundsOn
+        ? 'Background images shown' : 'Background images hidden');
+    }
+  }
+
   function refreshPanelHover(p) {
     var tip = $(p.tipId);
     if (!p.hoverPointer) {
@@ -5548,7 +5567,8 @@
       return;
     }
     var feedbackId = singleActive || 'linked';
-    viewOperation(feedbackId, 'Loading background: ' + (space.label || space.id) + '…');
+    viewOperation(feedbackId, feedbackId === 'linked' && !linkedBackgroundsOn
+      ? 'Background images hidden' : 'Loading background: ' + (space.label || space.id) + '…');
     if (!img.uri && img.asset_key) {
       requestDeferredAsset(img.asset_key);
       return;
@@ -5575,7 +5595,8 @@
     im.onload = function () {
       if (!stillCurrent()) return;
       space._imgReady = true; drawAll();
-      viewOperation(feedbackId, 'Background loaded: ' + (space.label || space.id));
+      viewOperation(feedbackId, feedbackId === 'linked' && !linkedBackgroundsOn
+        ? 'Background images hidden' : 'Background loaded: ' + (space.label || space.id));
     };
     im.onerror = function () {
       if (!stillCurrent()) return;
@@ -5679,6 +5700,13 @@
     var active = activeSpatial();
     if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
     var section = ctl.closest('.cerebro-settings-section');
+    // Linked views has one background visibility switch. Image selection and
+    // calibration remain in Spatial; the first matching image is the default.
+    if (!singleActive) {
+      if (section) section.style.display = 'none';
+      ctl.style.display = 'none';
+      return;
+    }
     if (section) section.style.display = active ? '' : 'none';
     ctl.style.display = active ? '' : 'none';
     if (tabs) {
@@ -5839,7 +5867,7 @@
       return spatialTemplate.samples;
     }
     return [{
-      name: spatialTemplate.label.replace(/ \(spatial\)$/, ''),
+      name: spatialTemplate.name || spatialTemplate.label.replace(/ \(spatial\)$/, ''),
       label: spatialTemplate.label,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
@@ -9127,6 +9155,7 @@
     var datasetIdentity = datasetContextApi().key(D.dataset_context);
     var dataChanged = datasetIdentity !== dataShown;
     syncLinkedHoverDefault(dataChanged);
+    syncLinkedBackgroundsDefault(dataChanged);
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
@@ -9492,6 +9521,7 @@
           percentage_cells: pctShow,
           group_labels: labelsOn,
           cell_borders: bordersOn,
+          background_images: linkedBackgroundsOn,
           selection_mode: selectMode === 'box' ? 'box' : 'lasso',
           clone_layout: CLONE_MODE,
           keep_square: keepPlotsSquare
@@ -9679,6 +9709,8 @@
     pointOpacityEdited = overrides.opacity;
     labelsOn = display.group_labels !== false;
     bordersOn = !!display.cell_borders;
+    linkedBackgroundsOn = display.background_images !== false;
+    syncLinkedBackgroundsDefault(false);
     keepPlotsSquare = !!display.keep_square;
     selectMode = display.selection_mode;
     applyCloneLayout(display.clone_layout);
@@ -10531,6 +10563,10 @@
       var id = target && target.id;
       if (id === 'cv-hover') {
         setLinkedHover(target.checked);
+        return true;
+      }
+      if (id === 'cv-backgrounds') {
+        setLinkedBackgrounds(target.checked);
         return true;
       }
       if (id === 'cv-labels') {
