@@ -328,7 +328,10 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   } else if (length(roi_background_groups)) {
     input_id <- "spatial_projection_roi_background_images"
     selected_input <- if (scope_changed) {
-      character()
+      # Each separate ROI starts with its first matching image, in source order.
+      unname(vapply(roi_background_groups, function(group) {
+        unname(group$tokens[[1L]])
+      }, character(1)))
     } else {
       isolate(input[[input_id]]) %||% character()
     }
@@ -367,7 +370,9 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   } else {
     selected_background <- normalize_spatial_background_choice(
       if (scope_changed) {
-        NULL
+        # Default only on entering a new dataset/FOV/sample/ROI scope.
+        # Within that scope an explicit clear remains a request to hide images.
+        unname(background_choices[[1L]])
       } else {
         isolate(input[["spatial_projection_background_image"]])
       },
