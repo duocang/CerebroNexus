@@ -744,66 +744,17 @@
 }
 
 .builder_app_spatial_point_appearance_valid <- function(value) {
-  named_list <- is.list(value) &&
-    !is.object(value) &&
-    (length(value) == 0L ||
-      (!is.null(names(value)) &&
-        !anyNA(names(value)) &&
-        all(nzchar(names(value))) &&
-        !anyDuplicated(names(value))))
-  if (!named_list) {
-    return(FALSE)
-  }
-  all(vapply(
-    value,
-    function(leaf) {
-      fields <- c("point_opacity", "point_size")
-      values <- suppressWarnings(as.numeric(unlist(leaf[fields])))
-      is.list(leaf) &&
-        !is.object(leaf) &&
-        identical(sort(names(leaf)), sort(fields)) &&
-        length(values) == 2L &&
-        !anyNA(values) &&
-        all(is.finite(values)) &&
-        values[[1L]] >= 0 &&
-        values[[1L]] <= 1 &&
-        values[[2L]] > 0 &&
-        values[[2L]] <= 20
-    },
-    logical(1)
-  ))
+  viewerNamedSettings(value) && all(vapply(value, function(leaf) {
+    !is.null(viewerSpatialPointSetting(leaf))
+  }, logical(1)))
 }
 
 .builder_app_spatial_roi_settings_valid <- function(value) {
-  named_list <- function(item) {
-    is.list(item) &&
-      !is.object(item) &&
-      (length(item) == 0L ||
-        (!is.null(names(item)) &&
-          !anyNA(names(item)) &&
-          all(nzchar(names(item))) &&
-          !anyDuplicated(names(item))))
-  }
-  leaf_valid <- function(leaf) {
-    fields <- c("rotation_degrees", "point_opacity", "point_size")
-    values <- suppressWarnings(as.numeric(unlist(leaf[fields])))
-    named_list(leaf) &&
-      identical(sort(names(leaf)), sort(fields)) &&
-      length(values) == 3L &&
-      !anyNA(values) &&
-      all(is.finite(values)) &&
-      values[[2L]] >= 0 &&
-      values[[2L]] <= 1 &&
-      values[[3L]] > 0
-  }
-  named_list(value) &&
-    all(vapply(
-      value,
-      function(rois) {
-        named_list(rois) && all(vapply(rois, leaf_valid, logical(1)))
-      },
-      logical(1)
-    ))
+  viewerNamedSettings(value) && all(vapply(value, function(rois) {
+    viewerNamedSettings(rois) && all(vapply(rois, function(leaf) {
+      !is.null(viewerSpatialPointSetting(leaf, roi = TRUE))
+    }, logical(1)))
+  }, logical(1)))
 }
 
 .builder_app_table_index <- function(tables) {
