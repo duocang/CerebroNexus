@@ -105,7 +105,7 @@
     {
       "file": "demo_hla_tcr_publication.screenshots.json",
       "bytes": 1945,
-      "sha256": "40b33be53fe7060550365883bca66c9f819c806a8e5beb69746a1b2c89af1427"
+      "sha256": "c75bf742c82d5c1a01aefd7682637d661e1d6bda9732956feb23fffd0d597585"
     }
   ],
   "figures": {
@@ -128,7 +128,7 @@
       "sha256": "810951cae9567ca536723c08753ea2c3fc348d6e351de9ef650d6ae7ecd2d7d4"
     }
   },
-  "screenshot_source_commit": "eb6fa10eef5d54ea681cf11e883566ad8f137341",
+  "screenshot_source_commit": "c37bf891d41cac14b720a319badbfbb29116d6cf",
   "screenshots": [
     {
       "file": "vignettes/img/hla_tcr_real_data_info.png",
@@ -136,7 +136,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "2df966eca26ccc1602ab8d6bec751ace749256a5c4d41d602d804c4da1f2d61c"
+      "sha256": "999682d6315c1d55d20d16e14b2f98a848a41cf4a851c630587d38a3bce3ceba"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_linked_views_all.png",
@@ -144,7 +144,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "8fc57d80442755f1c5dde3a37b3dceb6f327d957d08fa48508aa8b095b79a1fd"
+      "sha256": "e842b0e15f4584c42f992c18689d74b6c6ec3e869a2fb7bfa312badf879832e5"
     },
     {
       "file": "vignettes/img/hla_tcr_strict_linked_views_selected.png",
@@ -152,7 +152,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": "md5-cell-set-v1:610343eab7f6b1e68abe64b327192a6e",
-      "sha256": "bf9119964a5d0b0b93c0ba8c46f1358788f0ca8abd43af2dd41921666c4c91c2"
+      "sha256": "a2f0515a76870d0b6e4280458fabe2a1d6a083254daf8d15a7474aaafb3f4d7b"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_linked_views_selected.png",
@@ -160,7 +160,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e",
-      "sha256": "4b335c7cccd58c925a731d8bbad7d92acba9df8ee119d33859ddc1c55a718c72"
+      "sha256": "53f7777983b30f935c56878d8ef3fd72b1d59d4f0eee082b2200c5eba3825da4"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_share_dialog.png",
@@ -168,7 +168,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e",
-      "sha256": "645465fdfa3b9b1630d476d5200edb0d08543ab25acf153fd5e237503f6578cf"
+      "sha256": "bcf7716f33acb430d32a2ede8247f310ea327807f659d21c248495e05ffe6a66"
     },
     {
       "file": "vignettes/img/hla_tcr_real_motif_network.png",
@@ -176,7 +176,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "fe557b0a7c1cf6e8a9fa4c2db2989083940beb8f8946d88c78f62a8c73b13aff"
+      "sha256": "8a5929f2b2e846f68fde610f4855aececf69af1e49f56497d5ad5a2f259bfaaa"
     },
     {
       "file": "vignettes/img/hla_tcr_real_hla_associations.png",
@@ -184,7 +184,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "3ce2d8210f07cc8ef3c7f18aff0ce4f2cfa80273787dbe579dcf73841d46e02f"
+      "sha256": "31d8b2547695661d231d56a2a2d011b6ddd18c1ec2a838f72ffe82d8522082d6"
     },
     {
       "file": "vignettes/img/hla_tcr_real_data_qc.png",
@@ -192,7 +192,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "af6e0ae3eef515c38379c327b99aa309451226aaf6f1889383450ca8e9c39a19"
+      "sha256": "5d5a39a7e72d97456e701d4094b1b59a19c435b61101ad1f9f25ca74a6e0827b"
     }
   ]
 }
