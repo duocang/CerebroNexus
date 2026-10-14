@@ -737,7 +737,9 @@ test_that("authentication deployment documentation is runnable and credited", {
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
-  expect_false(any(grepl("askpass|chromote", suggests)))
+  # Authentication and browser-test tools must remain optional dependencies.
+  required <- description[1L, c("Depends", "Imports")]
+  expect_false(any(grepl("\\b(askpass|chromote|shinymanager)\\b", required)))
 
   news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
   expect_identical(

@@ -228,7 +228,11 @@ test_that("all visualization pages keep usable controls, legends and canvases", 
     )
     for (width in c(1440, 760)) {
       app$get_chromote_session()$set_viewport_size(width = width, height = 1000)
-      app$wait_for_js(sprintf("innerWidth===%d", width))
+      # CDP updates innerWidth before Chrome dispatches resize. Let the browser
+      # process resize and paint before inspecting the drawer's modal state.
+      app$get_js(
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))"
+      )
       drawer_layout <- app$get_js(paste0("(", drawer_probe, ")()"))
       expect_true(drawer_layout$fitsViewport, info = paste(page, width))
       expect_true(drawer_layout$fitsContents, info = paste(page, width))

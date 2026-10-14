@@ -10,6 +10,17 @@ Sys.setenv(NOT_CRAN = "true")
 ## load_timeout on a call still wins over this option.
 options(shinytest2.load_timeout = 60 * 1000)
 
+## Chrome itself starts before AppDriver's load timeout applies. Give cold CI
+## starts the same headroom, and fail CI setup if Chrome cannot start instead
+## of letting shinytest2 silently skip browser coverage.
+options(chromote.timeout = 60)
+if (identical(Sys.getenv("CI"), "true")) {
+  local({
+    browser <- chromote::default_chromote_object()$new_session()
+    browser$close()
+  })
+}
+
 ## The bundled app lives at the installed package root, so shiny::loadSupport()
 ## warns about the package layout even though sourcing these files is intended.
 local_app_support <- function(app_dir, envir = rlang::caller_env()) {

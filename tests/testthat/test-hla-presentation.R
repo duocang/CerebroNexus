@@ -1,5 +1,5 @@
 test_that("HLA node colours, sizes and hover data survive vertex reordering", {
-  scope <- new.env(parent = globalenv())
+  scope <- new.env(parent = asNamespace("CerebroNexus"))
   viewer_server_load(
     viewer_server_statements("hla_tcr_motifs", "visualizations.R"),
     scope,

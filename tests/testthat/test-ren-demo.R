@@ -106,8 +106,10 @@ test_that("the Ren h5ad selectors accept standard AnnData paths", {
 test_that("the Ren preparation keeps large categorical and repertoire data lazy", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("qs2")
+  script <- ren_demo_script()
+  skip_if_not(file.exists(script), "benchmark tree not present")
   env <- new.env(parent = globalenv())
-  sys.source(ren_demo_script(), env)
+  sys.source(script, env)
   cells <- paste0("cell-", seq_len(1462702L))
   annotations <- data.frame(
     cellName = cells,

@@ -3,6 +3,7 @@
 viewer_ui_test_env <- function() {
   scope <- new.env(parent = asNamespace("shiny"))
   scope$tabItem <- shinydashboard::tabItem
+  scope$box <- shinydashboard::box
   scope$Cerebro.options <- list(cerebro_root = viewer_app_test_path())
   for (expression in parse(viewer_test_path("shiny_UI.R"))) {
     if (
