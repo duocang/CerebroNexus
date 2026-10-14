@@ -1395,7 +1395,7 @@ test_that("decorated 2-D cell views remain eligible for WebGPU", {
         encodeString(source, quote = '"')
       ),
       "const fn = source.match(/function gpuCandidate\\(p\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
-      "const GPU_MIN_CELLS = 4096, D = {n: 1000000};",
+      "let gpuAcceleration = true; const GPU_MIN_CELLS = 4096, D = {n: 1000000};",
       "const spaceById = {",
       "trajectory: {_unit: {nz: false}, trajectory: true},",
       "spatial: {_unit: {nz: false}, background_scope: 'spatial',",
@@ -1406,7 +1406,8 @@ test_that("decorated 2-D cell views remain eligible for WebGPU", {
       "if (!gpuCandidate({gpu: {}, spaceId: 'trajectory'})) process.exit(1);",
       "if (!gpuCandidate({gpu: {}, spaceId: 'spatial'})) process.exit(2);",
       "if (gpuCandidate({gpu: {}, spaceId: 'sized'})) process.exit(3);",
-      "if (gpuCandidate({gpu: {}, spaceId: 'threeD'})) process.exit(4);"
+      "if (gpuCandidate({gpu: {}, spaceId: 'threeD'})) process.exit(4);",
+      "gpuAcceleration = false; if (gpuCandidate({gpu: {}, spaceId: 'spatial'})) process.exit(5);"
     ),
     runner
   )
@@ -2383,6 +2384,7 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     captured$dataset_context <- dataset_context
     captured$core_aux <- core_aux
     captured$data <- data
+    captured$meta <- meta
     captured$deferred_aux <- deferred_aux
   }
   sys.source(
@@ -2423,6 +2425,8 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
 
   expect_identical(captured$data$selection_key, 1:3)
   expect_true(captured$data$shared_zero_color)
+  expect_identical(captured$meta$color_variable, "UMAP")
+  expect_false(captured$meta$show_color_scale)
   expect_identical(
     as.character(captured$deferred_aux()$selection_key),
     c("c3", "c1", "c2")

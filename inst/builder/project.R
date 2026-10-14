@@ -4189,6 +4189,7 @@ builder_project_artifact_configuration_digest <- function(
     "overview_point_size",
     "overview_point_opacity",
     "overview_percentage_cells_to_show",
+      "spatial_percentage_cells_to_show",
     "spatial_point_appearance",
     "spatial_roi_settings"
   )

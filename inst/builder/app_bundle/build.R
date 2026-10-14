@@ -2,6 +2,8 @@
   labels <- request$selector_order
   viewer_content <- request$viewer_content[labels]
   list(
+    spatial_percentage_cells_to_show = vapply(viewer_content, `[[`, numeric(1),
+      "spatial_percentage_cells_to_show"),
     point_size = vapply(
       viewer_content,
       `[[`,
@@ -80,6 +82,7 @@ builder_build_app <- function(
     initial_dataset = request$initial_dataset,
     initial_page = request$initial_page,
     welcome_message = request$welcome_message,
+    spatial_percentage_cells_to_show = scatter$spatial_percentage_cells_to_show,
     point_size = scatter$point_size,
     point_opacity = scatter$point_opacity,
     percentage_cells_to_show = scatter$percentage_cells_to_show,

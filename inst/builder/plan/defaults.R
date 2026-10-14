@@ -256,6 +256,7 @@ builder_default_settings <- function(
     tables = list(),
     images = list(),
     spatial_coordinate_transforms = list(),
+    spatial_percentage_cells_to_show = 100,
     spatial_point_appearance = list(),
     spatial_roi_settings = list(),
     spatial_image_storage = "external",

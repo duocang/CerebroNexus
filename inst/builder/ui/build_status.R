@@ -274,7 +274,7 @@ builder_build_options_ui <- function(
             ),
             if (length(dataset_choices)) {
               div(
-                class = "builder-app-field",
+                class = "builder-app-field builder-app-field--dataset",
                 shiny::selectInput(
                   "build_initial_dataset",
                   "Starting dataset",

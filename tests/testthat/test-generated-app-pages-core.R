@@ -21,7 +21,7 @@ test_that("basic generated dataset exposes the exact core navigation and summary
 
   summary <- generated_app_e2e_dataset_summary()
   expect_match(summary$cells, "36", fixed = TRUE)
-  expect_match(summary$organism, "hg", fixed = TRUE)
+  expect_match(summary$organism, "Human", fixed = TRUE)
 })
 
 test_that("Linked views uses Builder defaults, palette, and complete cell set", {

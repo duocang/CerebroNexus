@@ -321,6 +321,8 @@ builder_projection_catalog_ui <- function(id, model) {
         )
       )
     ),
+    tags$p(class = "help-block",
+      "Point size, opacity and cells shown apply across projection views, including Gene expression and Linked views. Spatial uses Coordinate settings."),
     div(
       class = "viewer-projection-gallery",
       lapply(model$items, function(item) {

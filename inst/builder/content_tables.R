@@ -1274,7 +1274,9 @@ builder_trajectory_catalog <- function(trajectory) {
   if (!is.null(preflight$record)) {
     return(preflight$record)
   }
-  category_names <- preflight$names
+  # table_index is optional display metadata written by builder_attach_tables,
+  # not a material category. Export normalizes it separately from table data.
+  category_names <- setdiff(preflight$names, "table_index")
   diagnostics <- character()
   supported <- c("tables", "plots")
   if (length(setdiff(category_names, supported))) {
@@ -1284,7 +1286,7 @@ builder_trajectory_catalog <- function(trajectory) {
   usable <- FALSE
   for (category in intersect(supported, unique(category_names))) {
     summary <- .builder_table_extra_category(
-      value[[match(category, category_names)]],
+      value[[category]],
       category
     )
     normalized[[category]] <- summary$normalized

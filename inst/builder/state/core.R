@@ -574,6 +574,7 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     point_opacity <- 1
   }
   settings$overview_point_opacity <- point_opacity
+  settings$spatial_percentage_cells_to_show <- settings$spatial_percentage_cells_to_show %||% 100
   settings$overview_percentage_cells_to_show <- as.numeric(
     percentage_cells_to_show
   )
@@ -897,6 +898,12 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     )
   }
 
+  spatial_percentage <- settings$spatial_percentage_cells_to_show %||% 100
+  if (!is.numeric(spatial_percentage) || length(spatial_percentage) != 1L ||
+      !is.finite(spatial_percentage) || spatial_percentage < 10 || spatial_percentage > 100) {
+    .builder_state_abort("invalid_viewer_content_settings",
+      "Spatial cells shown must be between 10 and 100 percent.")
+  }
   trajectories <- settings$included_trajectories
   if (!.builder_state_plain_list(trajectories)) {
     .builder_state_abort(

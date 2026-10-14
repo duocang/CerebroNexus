@@ -5,7 +5,7 @@
 ## selected background image. This preserves users' point-size, opacity and
 ## sampling choices while moving among backgrounds.
 output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+  appearance <- current_spatial_scatter_defaults()
   section_appearance <- spatialPointAppearance(
     Cerebro.options,
     viewer_current_dataset_key(),
@@ -38,7 +38,7 @@ output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
     sliderInput(
       "spatial_projection_point_opacity",
       label = "Point opacity",
-      min = preferences[["cell_point_opacity"]][["min"]],
+      min = 0,
       max = preferences[["cell_point_opacity"]][["max"]],
       step = preferences[["cell_point_opacity"]][["step"]],
       value = appearance$point_opacity
@@ -47,7 +47,7 @@ output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
 })
 
 output[["spatial_projection_data_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+  appearance <- current_spatial_scatter_defaults()
 
   tagList(
     sliderInput(
@@ -70,12 +70,6 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
 ## The image-specific controls may safely be regenerated when the selected
 ## image changes: their initial values come from that image's preset.
 output[["spatial_projection_background_parameters_UI"]] <- renderUI({
-  if (identical(spatial_projection_parameters_plot()$roi_mode, "separate")) {
-    return(tags$p(
-      class = "help-block",
-      "Each ROI uses its saved image alignment in Separate ROIs mode."
-    ))
-  }
   dataset_context <- viewer_loaded_dataset_context()
   req(input[["spatial_projection_more_render_request"]])
   ## Offset sliders move the background image in DATA units, so their range is
@@ -110,36 +104,22 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
   ## Seed appearance from the exact dataset / spatial / image leaf. Because this
   ## renderUI reads the selected source-tagged image key, changing either spatial
   ## entry or image recreates every control with that image's own defaults.
-  spatial_name <- input[["spatial_projection_to_display"]]
-  dataset <- dataset_context$dataset_key
-  spatial_data <- tryCatch(
-    getSpatialData(spatial_name),
-    error = function(e) list()
-  )
-  selected_roi <- input[["spatial_projection_roi"]] %||% ""
-  embedded_images <- embedded_spatial_images(spatial_data, selected_roi)
-  external_images <- configured_spatial_images(
-    if (exists("Cerebro.options")) Cerebro.options else NULL,
-    dataset,
-    spatial_name,
-    selected_roi
-  )
-  selected_descriptor <- resolve_spatial_background(
-    input[["spatial_projection_background_image"]],
-    embedded_images,
-    external_images
-  )
-  background_identity <- spatial_background_identity(
-    dataset,
-    spatial_name,
-    selected_descriptor
-  )
-  preset <- spatial_background_preset(
-    if (exists("Cerebro.options")) Cerebro.options else NULL,
-    dataset,
-    spatial_name,
-    selected_descriptor
-  )
+  target <- spatial_background_edit_target()
+  if (is.null(target)) return(tags$p(class = "help-block", "No background image selected."))
+  background_identity <- target$identity
+  preset <- spatial_background_edit_preset(target)
+  targets <- Filter(function(x) !is.null(x$descriptor),
+    spatial_background_edit_model()$roi_backgrounds)
+  target_picker <- if (length(targets)) {
+    labels <- vapply(names(targets), function(roi) {
+      paste(roi, targets[[roi]]$descriptor$label, sep = " · ")
+    }, character(1))
+    tags$div(class = "cerebro-settings-full",
+      selectInput("spatial_projection_background_target", "Adjust background",
+        choices = stats::setNames(names(targets), labels), selected = target$roi,
+        width = "100%"),
+      tags$p(class = "help-block", "Changes apply only to this session."))
+  }
   ## Seed MOVE and FLIP from the preset so the controls honestly reflect the
   ## shipped alignment (checkbox ticked, sliders positioned). Both are read by
   ## the JS as single-source interaction state (dataset.offsetX / dataset.flipY),
@@ -216,14 +196,12 @@ output[["spatial_projection_background_parameters_UI"]] <- renderUI({
       auto_unbox = TRUE,
       null = "null"
     ),
+    target_picker,
     ## Background-image adjustments. Shown only when an image is selected. Every
     ## control here is DECOUPLED from the scatter plot: it re-styles the image
     ## <div> via the independent JS channel and never re-renders the points.
     conditionalPanel(
-      condition = paste0(
-        "input.spatial_projection_background_image && ",
-        "input.spatial_projection_background_image.length > 0"
-      ),
+      condition = "true",
       slider_number_input(
         "spatial_projection_background_opacity",
         "Opacity",

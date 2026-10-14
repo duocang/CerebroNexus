@@ -620,12 +620,12 @@ test_that("authentication stylesheet implements the balanced responsive UI", {
   css <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
   required <- c(
     ".panel-auth",
-    "max-width: 448px",
-    "#ea6a0f",
+    "max-width: 432px",
+    "#ff7800",
     ":focus-visible",
-    "min-height: 44px",
+    "min-height: 46px",
     "overflow-wrap: anywhere",
-    "@media (max-width: 576px)"
+    "@media (max-width: 480px)"
   )
   for (term in required) {
     expect_match(css, term, fixed = TRUE)

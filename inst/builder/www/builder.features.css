@@ -2208,6 +2208,21 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 }
 .builder-app-field--wide { grid-column: 1 / -1; }
 .builder-app-field--wide .form-group { max-width: 41rem; }
+/* Keep the chosen dataset compact, but expose every complete name in the menu. */
+.builder-app-field--dataset { min-width: 0; }
+.builder-app-field--dataset .selectize-control { min-width: 0; max-width: 100%; }
+.builder-app-field--dataset .selectize-control.single .selectize-input {
+  display: flex; align-items: center; flex-wrap: nowrap; padding-right: 2rem;
+}
+.builder-app-field--dataset .selectize-input > .item {
+  display: block; flex: 0 1 auto; min-width: 0; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.builder-app-field--dataset .selectize-dropdown .option {
+  height: auto; max-height: none; line-height: 1.45;
+  white-space: normal; overflow-wrap: anywhere; word-break: normal;
+  overflow: visible; text-overflow: clip;
+}
 .builder-app-opening-fields .selectize-dropdown-content {
   max-height: min(30rem, calc(100dvh - 8rem));
 }

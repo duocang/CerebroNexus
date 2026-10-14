@@ -41,12 +41,18 @@
       initial_projections = .subset2(item, "initial_projections"),
       default_trajectory = .subset2(item, "default_trajectory"),
       viewer_display = .subset2(item, "viewer_display"),
+      extra_material_table_index = if (!is.null(.subset2(item, "tables"))) {
+        .builder_app_table_index(.subset2(item, "tables"))
+      } else {
+        viewerExtraMaterialTableIndex(.subset2(item, "extra_material_table_index"))
+      },
       overview_point_size = .subset2(item, "overview_point_size"),
       overview_point_opacity = .subset2(item, "overview_point_opacity"),
       overview_percentage_cells_to_show = .subset2(
         item,
         "overview_percentage_cells_to_show"
       ),
+      spatial_percentage_cells_to_show = .subset2(item, "spatial_percentage_cells_to_show") %||% 100,
       spatial_point_appearance = .subset2(
         item,
         "spatial_point_appearance"

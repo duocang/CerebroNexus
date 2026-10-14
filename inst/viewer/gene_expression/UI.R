@@ -96,7 +96,7 @@ tab_gene_expression <- tabItem(
           role = "status",
           `aria-live` = "polite",
           `aria-atomic` = "true",
-          "Choose a gene to explore expression."
+          hidden = NA
         ),
         cerebroCellViewOutput("expression_projection")
       )

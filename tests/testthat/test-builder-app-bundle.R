@@ -497,6 +497,7 @@ test_that("App arguments come only from the frozen plan", {
       overview_point_size = 7,
       overview_point_opacity = 0.8,
       overview_percentage_cells_to_show = 100,
+      spatial_percentage_cells_to_show = 100,
       spatial_point_appearance = fixture$plan$items[[
         2L
       ]]$spatial_point_appearance,
@@ -506,7 +507,8 @@ test_that("App arguments come only from the frozen plan", {
         palette = "cerebro_orange",
         panel_mode = "shared",
         panel_palette = "default"
-      )
+      ),
+      extra_material_table_index = list()
     )
   )
   expect_false(request$crb_pick_smallest_file)

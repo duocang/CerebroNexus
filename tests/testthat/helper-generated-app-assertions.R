@@ -302,7 +302,7 @@ generated_app_e2e_select_dataset <- function(name, timeout = 60000) {
   generated_app_e2e_activate_tab("data_info", timeout = timeout)
   generated_app_e2e_value(
     "output",
-    "load_data_number_of_cells",
+    "load_data_overview",
     timeout = timeout,
     validate = function(current) {
       html <- if (is.list(current)) current$html else as.character(current)
@@ -311,11 +311,11 @@ generated_app_e2e_select_dataset <- function(name, timeout = 60000) {
   )
   generated_app_e2e_value(
     "output",
-    "load_data_organism",
+    "load_data_overview",
     timeout = timeout,
     validate = function(current) {
       html <- if (is.list(current)) current$html else as.character(current)
-      any(grepl(fixture$expected$organism, html, fixed = TRUE))
+      any(grepl(generated_app_e2e_organism_label(fixture$expected$organism), html, fixed = TRUE))
     }
   )
   .generated_app_e2e_wait_pages(
@@ -523,4 +523,8 @@ generated_app_e2e_expect_clean_browser <- function() {
     character()
   )
   invisible(failures)
+}
+
+generated_app_e2e_organism_label <- function(value) {
+  switch(value, hg = "Human", mm = "Mouse", value)
 }

@@ -684,9 +684,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       session$flushReact()
       expect_identical(alignment$draft()$image_opacity, 0.7)
       expect_identical(
-        current_entry()$settings$overview_percentage_cells_to_show,
+        current_entry()$settings$spatial_percentage_cells_to_show,
         35
       )
+      expect_null(current_entry()$settings$overview_percentage_cells_to_show)
       expect_length(alignment$coordinate_drafts(), 0L)
       expect_false("roi_coordinates" %in% names(alignment$pending_drafts()))
 

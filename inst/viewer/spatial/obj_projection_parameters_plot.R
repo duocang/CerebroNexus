@@ -50,7 +50,7 @@ observe(
     spatial_names <- availableSpatial()
     req(length(spatial_names) > 0L)
 
-    defaults <- current_scatter_defaults()
+    defaults <- current_spatial_scatter_defaults()
     projection <- input[["spatial_projection_to_display"]]
     if (is.null(projection) || !(projection %in% spatial_names)) {
       projection <- spatial_names[[1L]]
@@ -90,11 +90,11 @@ observe(
       coexpr_g = input[["spatial_projection_coexpr_g"]],
       coexpr_b = input[["spatial_projection_coexpr_b"]],
       point_size = as.numeric(value_or_default(
-        input[["spatial_projection_point_size"]],
+        isolate(input[["spatial_projection_point_size"]]),
         defaults$point_size
       )),
       point_opacity = as.numeric(value_or_default(
-        input[["spatial_projection_point_opacity"]],
+        isolate(input[["spatial_projection_point_opacity"]]),
         defaults$point_opacity
       )),
       percentage_cells_to_show = as.numeric(value_or_default(
@@ -130,6 +130,24 @@ spatial_send_appearance <- function(values) {
     )
   )
 }
+
+## Point styling is a renderer patch, not a new coordinate/sample request.
+spatial_point_patch_values <- new.env(parent = emptyenv())
+observeEvent(list(input[["spatial_projection_point_size"]],
+                  input[["spatial_projection_point_opacity"]]), {
+  values <- list(point_size = input[["spatial_projection_point_size"]],
+                 point_opacity = input[["spatial_projection_point_opacity"]])
+  values <- Filter(function(x) is.numeric(x) && length(x) == 1L && is.finite(x), values)
+  key <- as.character(jsonlite::toJSON(list(viewer_loaded_dataset_context(),
+    input[["spatial_projection_to_display"]], input[["spatial_projection_roi"]]), auto_unbox = TRUE))
+  previous <- spatial_point_patch_values[[key]] %||%
+    spatial_projection_controls()[c("point_size", "point_opacity")]
+  spatial_point_patch_values[[key]] <- utils::modifyList(previous, values)
+  changed <- values[!vapply(names(values), function(name) {
+    isTRUE(all.equal(values[[name]], previous[[name]]))
+  }, logical(1))]
+  if (length(changed)) spatial_send_appearance(changed)
+}, ignoreInit = TRUE)
 
 observeEvent(
   input[["spatial_projection_group_labels"]],
@@ -187,7 +205,6 @@ spatial_projection_parameters_plot <- reactive({
     controls$plot_type,
     controls$point_size,
     controls$point_opacity,
-    !is.null(preferences[["use_webgl"]]),
     !is.null(preferences[["show_hover_info_in_projections"]])
   )
   plot_type <- controls$plot_type
@@ -266,7 +283,7 @@ spatial_projection_parameters_plot <- reactive({
   }
   roi_point_appearance <- list()
   if (identical(selected_roi, "__separate__")) {
-    default_appearance <- current_scatter_defaults()
+    default_appearance <- current_spatial_scatter_defaults()
     section_appearance <- spatialPointAppearance(
       Cerebro.options,
       dataset,
@@ -276,11 +293,11 @@ spatial_projection_parameters_plot <- reactive({
       default_appearance[names(section_appearance)] <- section_appearance
     }
     keep_size <- isTRUE(all.equal(
-      as.numeric(input[["spatial_projection_point_size"]]),
+      as.numeric(isolate(input[["spatial_projection_point_size"]])),
       as.numeric(default_appearance$point_size)
     ))
     keep_opacity <- isTRUE(all.equal(
-      as.numeric(input[["spatial_projection_point_opacity"]]),
+      as.numeric(isolate(input[["spatial_projection_point_opacity"]])),
       as.numeric(default_appearance$point_opacity)
     ))
     roi_point_appearance <- stats::setNames(
@@ -439,7 +456,6 @@ spatial_projection_parameters_plot <- reactive({
     background_offset_y = background_preset$offsetY,
     background_rotation = background_preset$rotation,
     background_opacity = background_opacity,
-    webgl = preferences[["use_webgl"]],
     hover_info = preferences[["show_hover_info_in_projections"]]
   )
   return(parameters)

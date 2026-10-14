@@ -1011,6 +1011,13 @@ exportFromSeurat <- function(
 
   ## add experiment name
   export$addExperiment('experiment_name', experiment_name)
+  # Preserve optional overview prose exactly when supplied, never manufacture it.
+  for (field in c("description", "source", "sample_column")) {
+    value <- object@misc$experiment[[field]]
+    if (is.character(value) && length(value) == 1L && !is.na(value) && nzchar(trimws(value))) {
+      export$addExperiment(field, value)
+    }
+  }
 
   ## add organism
   export$addExperiment('organism', organism)
@@ -1951,6 +1958,15 @@ exportFromSeurat <- function(
         }
       }
     }
+  }
+
+  # Preserve workbook/sheet display names without adding a fake content category.
+  table_index <- viewerExtraMaterialTableIndex(
+    object@misc$extra_material$table_index,
+    as.character(names(export$getExtraMaterial()$tables))
+  )
+  if (length(table_index)) {
+    export$addTechnicalInfo("extra_material_table_index", table_index)
   }
 
   ##--------------------------------------------------------------------------##

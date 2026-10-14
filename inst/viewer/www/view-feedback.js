@@ -73,6 +73,21 @@
     var group = el && el.closest('.form-group, .cv-filt');
     if (group) group.classList.toggle('cerebro-control-pending', pending);
   }
+  function localStatus(id) {
+    var pane = document.getElementById('shiny-tab-' + specs[id][0]);
+    if (!pane) return null;
+    var region = pane.querySelector('.cerebro-page-loading-region') || pane;
+    var el = region.querySelector('.cerebro-local-feedback');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'cerebro-view-feedback cerebro-local-feedback';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      region.classList.add('cerebro-feedback-region');
+      region.appendChild(el);
+    }
+    return el;
+  }
   function draw(id) {
     var s = state(id), el = row(id);
     if (!el) return;
@@ -83,9 +98,20 @@
     // Settled selection counts already belong to the Active cohort toolbar.
     text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
     el.textContent = '';
-    var status = document.createElement('span');
-    status.className = 'cerebro-feedback-text'; status.textContent = text;
-    el.appendChild(status);
+    // Startup and dataset loading use this marker even while the row is hidden.
+    // Keep terminal completion distinct from a successfully painted view.
+    el.classList.toggle('is-terminal', !!s.terminal);
+    // Routine feedback lives over the plot; it never adds a page-header row.
+    var status = localStatus(id);
+    var failed = !!s.terminal && s.terminalKind !== 'empty' ||
+      /unavailable|unable|failed/i.test([s.operation, s.expression].join(' '));
+    if (status) {
+      status.textContent = text;
+      status.hidden = !text;
+      status.classList.toggle('is-pending', !!text && !failed && !s.empty &&
+        (!s.ready || pending.length > 0 || /loading|updating/i.test(text)));
+      status.classList.toggle('is-error', failed);
+    }
     var pane = el.closest('.tab-pane');
     var showHint = layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
         !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active');
@@ -99,10 +125,7 @@
         '" aria-label="Dismiss square plot suggestion for this session">×</button>';
       el.appendChild(hint);
     }
-    el.hidden = !text && !showHint;
-    el.classList.toggle('is-pending', !s.terminal && (pending.length > 0 || !s.ready));
-    el.classList.toggle('is-terminal', !!s.terminal);
-    el.classList.toggle('is-error', !!s.terminal && s.terminalKind !== 'empty');
+    el.hidden = !showHint;
     // A terminal result is explicitly not a painted/ready acknowledgement.
     var host = document.getElementById(id + '_cell_view_host');
     if (host) host.classList.toggle('cerebro-view-terminal', !!s.terminal);
@@ -175,7 +198,7 @@
     s.expressionRequest = { rgb: rgb, controls: controls };
     var genes = Object.keys(controls).filter(function (id) { return id !== 'coordviews_expression_mode'; })
       .map(function (id) { return controls[id]; }).flat().filter(Boolean);
-    s.expression = genes.length ? 'Updating expression: ' + genes.join(', ') + '…' : 'No expression selected';
+    s.expression = genes.length ? 'Updating expression: ' + genes.join(', ') + '…' : '';
     draw('linked');
   }
   function install() {
@@ -201,8 +224,7 @@
       })) return;
       var genes = Object.keys(request.controls).filter(function (id) { return id !== 'coordviews_expression_mode'; })
         .map(function (id) { return request.controls[id]; }).flat().filter(Boolean);
-      s.expression = !genes.length ? 'No expression selected' : message.ok ?
-        'Expression loaded: ' + genes.join(', ') : 'Expression unavailable for this selection';
+      s.expression = !genes.length || message.ok ? '' : 'Expression unavailable for this selection';
       draw('linked');
     });
   }
@@ -309,7 +331,10 @@
     window.addEventListener('cerebro:view-operation', function (event) {
       var d = event.detail;
       if (!d || !specs[d.id] || !fresh(d)) return;
-      state(d.id).operation = d.text || ''; draw(d.id);
+      // Success/absence is already evident in the plot and image selector.
+      // Keep only in-flight work and actionable failures, on every page.
+      state(d.id).operation = /loading|updating|unavailable|unable|failed/i.test(d.text || '') ? d.text : '';
+      draw(d.id);
     });
     window.addEventListener('cerebro:view-appearance', function (event) {
       var d = event.detail;
