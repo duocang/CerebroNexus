@@ -4,17 +4,10 @@ gene_selection_body <- function(file, output) {
     "gene.selection.source",
     viewer_test_path("gene_expression")
   )
-  expressions <- parse(file.path(root, file))
-  assignment <- Filter(
-    function(x) {
-      is.call(x) &&
-        identical(x[[1]], as.name("<-")) &&
-        is.call(x[[2]]) &&
-        identical(x[[2]][[1]], as.name("[[")) &&
-        identical(x[[2]][[3]], output)
-    },
-    as.list(expressions)
-  )[[1]]
+  assignment <- viewer_r_assignment(
+    file.path(root, file),
+    paste0("output.", output)
+  )
   assignment[[3]][[2]]
 }
 

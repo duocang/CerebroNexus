@@ -1,5 +1,6 @@
 const fs=require('fs'),assert=require('assert');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const js = require("./js-source.cjs")(source);
 let D={n:1462702},bordersOn=false,revision=0,selection=null;
 const GPU_MIN_CELLS=20000,window={devicePixelRatio:1};
 let spaceById={clone:{_axisSpec:{},_unit:{}}};
@@ -11,8 +12,8 @@ function context(){return {copies:0,globalAlpha:.95,fillStyle:'red',strokeStyle:
  setTransform(){},drawImage(){this.copies++;}};}
 const document={createElement(){const ctx=context();return {width:0,height:0,getContext(){return ctx;}};}};
 const p={spaceId:'clone',W:400,H:300,canvas:{width:400,height:300},ctx:context(),_renderPointSize:2,view:null};
-eval(source.slice(source.indexOf('  function sameGpuDataState('),source.indexOf('  function gpuCandidate(')));
-eval(source.slice(source.indexOf('  function cloneBaseState('),source.indexOf('  function draw(p,')));
+eval(js.declarations(["sameGpuDataState"]));
+eval(js.declarations(["cloneBaseState","restoreCloneBase","rememberCloneBase"]));
 assert.equal(restoreCloneBase(p,cloneBaseState(p)),false);
 rememberCloneBase(p,cloneBaseState(p));const bitmap=p.cloneBase.canvas;
 assert(restoreCloneBase(p,cloneBaseState(p)));assert.equal(p.ctx.copies,1);assert.equal(p.ctx.globalAlpha,.95);

@@ -1,6 +1,6 @@
 const assert = require('assert'), fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
-function between(start, end) { return source.slice(source.indexOf(start), source.indexOf(end)); }
+const js = require("./js-source.cjs")(source);
 var D, panels, singleViews, singleActive, singleSpaceIds, singleSpaceModes, spaceById;
 var singleIndexCells, singleIndexMap, rebuildingBase = false;
 var colorBy, _ordD, _clipD, pick, hoverCell, cardMeta, _layoutKey;
@@ -30,11 +30,11 @@ function singleView(id) { return singleViews[id]; }
 function sameDatasetContext(a,b) { return JSON.stringify(a) === JSON.stringify(b); }
 function currentDatasetContext() { return datasetContext; }
 function datasetMessageFresh(message) { return sameDatasetContext(message.dataset_context,datasetContext); }
-eval(between('  function singleIndex()', '  function singlePayloadCells'));
-eval(between('  var _fldCacheD =', '  function fieldForMode('));
-eval(between('  function quantisedField(', '  function singleEdges('));
-eval(between('  function singleGpuReady(', '  function activateSingle('));
-eval(between('  function updateSingleExpression(', '  function clearSingleSelection('));
+eval(js.declarations(["singleIndex","emptyVector"]));
+eval(js.declarations(["_fldCacheD","_fldCacheKey","_fldCacheVal","fieldOf"]));
+eval(js.declarations(["quantisedField","directColorField","singleRgbData"]));
+eval(js.declarations(["singleGpuReady","reportSinglePainted"]));
+eval(js.declarations(["updateSingleExpression","recolorSingle"]));
 const id = 'expression_projection', spaceId = 'single::' + id;
 function setup() {
   calls = {activate: 0, legend: 0, draw: 0}; emitted = [];

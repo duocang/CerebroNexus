@@ -1,8 +1,10 @@
 const assert = require('assert'), fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
+const js = require("./js-source.cjs")(source);
 let linkedHoverOn = true, singleActive = null, D = {n:1462702};
 let hoverCell = null, lookups = 0, draws = 0;
-const selection = new Set([42]), checkbox = {}, tip = {style:{opacity:0}};
+let sel = new Set([42]);
+const checkbox = {}, tip = {style:{opacity:0}};
 const listeners = {}, spaceById = {main:{}};
 const p = {spaceId:'main', tipId:'tip', canvas:{
   addEventListener:(event,fn)=>listeners[event]=fn,
@@ -11,7 +13,8 @@ const p = {spaceId:'main', tipId:'tip', canvas:{
 const panels = [p], pinnedTip = {panel:null};
 function $(id){return id==='cv-hover'?checkbox:tip;}
 function setHoverCell(i){if(i!==hoverCell){hoverCell=i;draws++;}}
-function interactionIsStatic(){return false;}
+function singleInteractionIsStatic(){return false;}
+eval(js.declarations(["interactionIsStatic"]));
 function requestSingleAux(){}
 function nearest(){lookups++;return 42;}
 function singleHoverEnabledAt(){return true;}
@@ -20,8 +23,7 @@ function hoverHtml(i){return hoverValue+' '+i;}
 function scheduleSingleMetadata(){}
 function singleView(){return null;}
 function placeTip(){}
-eval(source.slice(source.indexOf('  function syncLinkedHoverDefault('),
-  source.indexOf('  // ---- brush + pick')));
+eval(js.declarations(["syncLinkedHoverDefault","setLinkedHover","refreshPanelHover","wireHover"]));
 syncLinkedHoverDefault(true); wireHover(p);
 assert.strictEqual(linkedHoverOn,true);
 assert.strictEqual(checkbox.checked,true);
@@ -34,7 +36,7 @@ assert.strictEqual(lookups,1); assert.strictEqual(tip.innerHTML,'cell 42');
 syncLinkedHoverDefault(false); assert.strictEqual(linkedHoverOn,true);
 setLinkedHover(false);
 assert.strictEqual(hoverCell,null); assert.strictEqual(tip.style.opacity,0);
-assert.deepStrictEqual([...selection],[42]);
+assert.deepStrictEqual([...sel],[42]);
 singleActive='expression_projection';
 listeners.mousemove({clientX:10,clientY:10});
 assert.strictEqual(lookups,2); // Linked preference must not disable Gene hover.
@@ -55,8 +57,7 @@ function restoreNode(){restored++;}
 p.canvas.style={pointerEvents:'none'};
 const classes=new Set(['cv-pane-static']);
 p.pane={classList:{remove:name=>classes.delete(name)}};
-eval(source.slice(source.indexOf('  function restoreLinkedSurface() {'),
-  source.indexOf('  function singleInteractionConfig(')));
+eval(js.declarations(["restoreLinkedSurface"]));
 restoreLinkedSurface();
 assert.strictEqual(p.canvas.style.pointerEvents,'');
 assert.strictEqual(classes.has('cv-pane-static'),false);

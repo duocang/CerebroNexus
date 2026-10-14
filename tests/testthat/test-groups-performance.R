@@ -1,91 +1,144 @@
 test_that("Groups reads only the active columns after its viewport gate", {
-  composition <- paste(
-    readLines(viewer_test_path("groups", "composition.R"), warn = FALSE),
-    collapse = "\n"
+  withr::local_package("magrittr")
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      reads <- list()
+      colour_reads <- character()
+      metadata <- data.frame(
+        sample = c("A", "B"),
+        nUMI = c(1, 3),
+        nGene = c(2, 4),
+        unused = 5:6
+      )
+      getGroups <- function() "sample"
+      getMetaData <- reactive_colors <- function() {
+        stop("full metadata or colour scan")
+      }
+      viewerPackCurrent <- function() NULL
+      viewerPackGroupMetric <- function(...) NULL
+      groupsMetadataColumns <- function(columns) {
+        reads[[length(reads) + 1L]] <<- columns
+        metadata[, columns, drop = FALSE]
+      }
+      reactive_group_colors <- function(group) {
+        colour_reads <<- c(colour_reads, group)
+        c(A = "red", B = "blue")
+      }
+      cachePlot <- function(x, ...) x
+      plotlyViolin <- function(table, colors, ...) {
+        force(colors)
+        plotly::plot_ly(x = table[[1]], y = table[[2]], type = "bar")
+      }
+      available_crb_files <- list(selected = "tiny")
+      viewer_server_load(
+        viewer_server_statements("groups", "expression_metrics.R"),
+        scope,
+        names = c(
+          "groupsMetricData",
+          "output$groups_nUMI_plot",
+          "output$groups_nGene_plot"
+        )
+      )
+    },
+    {
+      session$setInputs(
+        groups_selected_group = "sample",
+        groups_expression_metrics_tabs = "Number of transcripts"
+      )
+      expect_error(output$groups_nUMI_plot, class = "shiny.silent.error")
+      expect_length(scope$reads, 0L)
+      expect_length(scope$colour_reads, 0L)
+      session$setInputs(groups_expression_metrics_render_request = 1)
+      invisible(output$groups_nUMI_plot)
+      expect_identical(scope$reads, list(c("sample", "nUMI")))
+      session$setInputs(
+        groups_expression_metrics_tabs = "Number of expressed genes"
+      )
+      invisible(output$groups_nGene_plot)
+      expect_identical(
+        scope$reads,
+        list(c("sample", "nUMI"), c("sample", "nGene"))
+      )
+      expect_identical(scope$colour_reads, c("sample", "sample"))
+      session$setInputs(groups_selected_group = "old-dataset-group")
+      expect_error(output$groups_nGene_plot, class = "shiny.silent.error")
+      expect_length(scope$reads, 2L)
+    }
   )
-  metrics <- paste(
-    readLines(viewer_test_path("groups", "expression_metrics.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  ui <- paste(
-    readLines(viewer_test_path("groups", "UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_false(grepl("getMetaData()", composition, fixed = TRUE))
-  expect_false(grepl("getMetaData()", metrics, fixed = TRUE))
-  expect_match(composition, "groupsMetadataColumns", fixed = TRUE)
-  expect_match(metrics, "groupsMetricData", fixed = TRUE)
-  expect_match(
-    metrics,
-    "groups_expression_metrics_render_request",
-    fixed = TRUE
-  )
-  expect_match(metrics, "groups_expression_metrics_tabs", fixed = TRUE)
-  expect_match(ui, "IntersectionObserver", fixed = TRUE)
-  expect_match(ui, "groups_expression_metrics_render_request", fixed = TRUE)
 })
 
 groups_test_function <- function(name) {
-  expressions <- parse(viewer_test_path("groups", "composition.R"))
-  assignment <- Filter(
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], quote(`<-`)) &&
-        identical(as.character(expression[[2L]]), name)
-    },
-    expressions
+  assignment <- viewer_r_assignment(
+    viewer_test_path("groups", "composition.R"),
+    name
   )
-  stopifnot(length(assignment) == 1L)
   scope <- new.env(parent = globalenv())
   if (!identical(name, "groupsFormatComposition")) {
     scope$groupsFormatComposition <- groups_test_function(
       "groupsFormatComposition"
     )
   }
-  eval(assignment[[1L]], envir = scope)
+  eval(assignment, envir = scope)
   scope[[name]]
 }
 
 test_that("Groups builds its first-frame controls without a renderUI cascade", {
-  composition <- paste(
-    readLines(viewer_test_path("groups", "composition.R"), warn = FALSE),
-    collapse = "\n"
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("groups", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_groups)
+  expect_equal(page$find("#groups_by_other_group_plot")$length(), 1L)
+  dependencies <- htmltools::renderTags(scope$tab_groups)$dependencies
+  expect_true(any(vapply(
+    dependencies,
+    function(x) grepl("plotly", x$name),
+    logical(1)
+  )))
+  shiny::testServer(
+    function(input, output, session) {
+      getGroups <- function() c("sample", "cluster")
+      sys.source(viewer_test_path("groups", "select_group.R"), environment())
+    },
+    {
+      first <- output$groups_controls_UI$html
+      expect_match(first, 'id="groups_selected_group"', fixed = TRUE)
+      expect_match(
+        first,
+        'id="groups_by_other_group_second_group"',
+        fixed = TRUE
+      )
+      session$setInputs(groups_selected_group = "cluster")
+      expect_identical(output$groups_controls_UI$html, first)
+    }
   )
-  controls <- paste(
-    readLines(viewer_test_path("groups", "select_group.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  ui <- paste(
-    readLines(viewer_test_path("groups", "UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_false(grepl("groups_composition_UI", composition, fixed = TRUE))
-  expect_false(grepl(
-    "groups_by_other_group_output_UI",
-    composition,
-    fixed = TRUE
-  ))
-  expect_match(controls, "groups_controls_UI", fixed = TRUE)
-  expect_match(ui, "plotlyOutput(\"groups_by_other_group_plot\")", fixed = TRUE)
-  expect_match(ui, "groups_plotly_dependencies", fixed = TRUE)
 })
 
 test_that("Groups reports passive request-bound Plotly readiness", {
-  ui <- paste(
-    readLines(viewer_test_path("groups", "UI.R"), warn = FALSE),
-    collapse = "\n"
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("groups", "UI.R"), scope)
+  scripts <- htmltools::tagQuery(scope$tab_groups)$find("script")$selectedTags()
+  payload <- tempfile(fileext = ".json")
+  on.exit(unlink(payload), add = TRUE)
+  writeLines(
+    jsonlite::toJSON(
+      unname(lapply(scripts, function(tag) {
+        paste(tag$children, collapse = "\n")
+      })),
+      auto_unbox = TRUE
+    ),
+    payload
   )
-
-  expect_match(ui, "plotly_afterplot", fixed = TRUE)
-  expect_match(ui, "cerebro:groups-primary-ready", fixed = TRUE)
-  expect_match(ui, "datasetFingerprint", fixed = TRUE)
-  expect_match(ui, "selectedGroup", fixed = TRUE)
-  expect_match(ui, "benchmarkGeneration", fixed = TRUE)
-  expect_false(grepl("waitForFirstPlotDraw", ui, fixed = TRUE))
-  expect_match(ui, "observer.observe(target)", fixed = TRUE)
-  expect_match(ui, "if (!visible || target.dataset.requested", fixed = TRUE)
+  output <- system2(
+    "node",
+    c(
+      shQuote(testthat::test_path("fixtures", "groups-readiness.js")),
+      shQuote(payload)
+    ),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
 })
 
 test_that("Groups composition counts factors without sorting every cell", {
@@ -113,28 +166,6 @@ test_that("Groups composition counts factors without sorting every cell", {
   expect_equal(wide$a2, c(1L, 0L, 1L))
   expect_equal(wide$b1, c(0L, 2L, 0L))
 })
-
-test_that("Groups resolves only the colours used by the active plot", {
-  composition <- paste(
-    readLines(viewer_test_path("groups", "composition.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  metrics <- paste(
-    readLines(viewer_test_path("groups", "expression_metrics.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  setup <- paste(
-    readLines(viewer_test_path("color_setup.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_false(grepl("reactive_colors()", composition, fixed = TRUE))
-  expect_false(grepl("reactive_colors()", metrics, fixed = TRUE))
-  expect_match(composition, "reactive_group_colors", fixed = TRUE)
-  expect_match(metrics, "reactive_group_colors", fixed = TRUE)
-  expect_match(setup, "reactive_group_colors <- function", fixed = TRUE)
-})
-
 
 test_that("single-group controls keep expression metrics usable across dataset changes", {
   withr::local_package("shiny")

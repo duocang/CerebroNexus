@@ -10,36 +10,10 @@
 #   * a standard `spatial` slot and a `trekker` slot collapsing into one space
 #     instead of two — each builder keeps its own space identity.
 
-inst_candidates <- c(
-  normalizePath("inst", mustWork = FALSE),
-  normalizePath("../../inst", mustWork = FALSE),
-  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE)
-)
-local_inst <- inst_candidates[file.exists(file.path(
-  inst_candidates,
-  "viewer"
-))][1]
-if (!is.na(local_inst)) {
-  bundle_file <- file.path(
-    local_inst,
-    "viewer/coordinated_views/bundle.R"
-  )
-  tcr_crb <- file.path(local_inst, "extdata/examples/demo_full_tcr_bcr.crb")
-  trekker_crb <- file.path(local_inst, "extdata/examples/demo_trekker.crb")
-} else {
-  bundle_file <- system.file(
-    "viewer/coordinated_views/bundle.R",
-    package = "CerebroNexus"
-  )
-  tcr_crb <- system.file(
-    "extdata/examples/demo_full_tcr_bcr.crb",
-    package = "CerebroNexus"
-  )
-  trekker_crb <- system.file(
-    "extdata/examples/demo_trekker.crb",
-    package = "CerebroNexus"
-  )
-}
+local_inst <- viewer_app_test_path()
+bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
+tcr_crb <- file.path(local_inst, "extdata/examples/demo_full_tcr_bcr.crb")
+trekker_crb <- file.path(local_inst, "extdata/examples/demo_trekker.crb")
 
 ## Source the pure builders into an isolated env (no app scope). The app-only
 ## helpers cerebro_group_colors() / Cerebro.options are absent here; bundle.R
@@ -61,40 +35,6 @@ if (have_bundle) {
   sys.source(contract_file, envir = cv_env)
   sys.source(bundle_file, envir = cv_env)
 }
-
-test_that("bundle.R parses and defines the builder API", {
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
-  expect_no_error(parse(file = bundle_file))
-  api <- c(
-    "cv_group",
-    "cv_space",
-    "cv_clone",
-    "cv_build_groups",
-    "cv_build_projections",
-    "cv_build_trajectories",
-    "cv_build_spatial",
-    "cv_build_trekker",
-    "cv_build_clone",
-    "cv_build_attribute",
-    "cv_build_compact_supplement",
-    "cv_defer_clone_details",
-    "cv_defer_assets",
-    "cv_asset_data_uri",
-    "cv_canonical_metadata",
-    "cv_selected_metadata",
-    "cv_cell_metadata",
-    "cv_build_bundle"
-  )
-  for (fn in api) {
-    expect_true(is.function(get0(fn, envir = cv_env)), info = fn)
-  }
-  bundle_src <- paste(readLines(bundle_file, warn = FALSE), collapse = "\n")
-  expect_match(
-    bundle_src,
-    "rotateSpatialCoordinates(co, rotation)",
-    fixed = TRUE
-  )
-})
 
 test_that("Viewer Colour by honours registered groups and main group", {
   skip_if_not(have_bundle)
@@ -211,92 +151,6 @@ test_that("trajectory coordinates and graph enter Linked views", {
   expect_length(spaces[[1]]$edges, 1)
 })
 
-test_that("Linked views treats projections as a multi-panel selection", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(ui_file) && file.exists(js_file))
-
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-
-  expect_match(
-    ui,
-    'tags\\$select\\(id = "cv-pick-proj", multiple = "multiple"\\)'
-  )
-  expect_match(js, "var selectedProjections = []", fixed = TRUE)
-  expect_match(
-    js,
-    "function rebuildProjectionInstances(previousSpaces)",
-    fixed = TRUE
-  )
-  expect_match(js, "function setSelectedProjections(names)", fixed = TRUE)
-  expect_match(js, "selectedProjections.forEach", fixed = TRUE)
-  expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
-})
-
-test_that("Linked views gives Colour by the shared Selectize control", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js_file))
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  expect_match(js, "function fillColorPicker()", fixed = TRUE)
-  expect_match(js, "window.jQuery(sel).selectize", fixed = TRUE)
-  expect_match(js, "sel.selectize.setValue(colorBy, true)", fixed = TRUE)
-})
-
-test_that("Linked views delegates menu height to the shared viewport sizing", {
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "multiselect.js")
-  skip_if_not(file.exists(css_file))
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  expect_false(grepl(
-    "#cv-pick-color + .selectize-control .selectize-dropdown-content",
-    css,
-    fixed = TRUE
-  ))
-  expect_match(
-    js,
-    "--cerebro-select-menu-max-height",
-    fixed = TRUE
-  )
-  expect_match(
-    js,
-    "window.innerHeight - top - 16",
-    fixed = TRUE
-  )
-  expect_match(
-    js,
-    "select._cerebroDropdownInstance !== instance",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "dataset.cerebroDropdownReady",
-    js,
-    fixed = TRUE
-  ))
-})
-
-test_that("Linked views places the shared legend above the panel grid", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  skip_if_not(file.exists(ui_file))
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  legend_pos <- regexpr('id = "cv-legend"', ui, fixed = TRUE)[[1]]
-  cbar_pos <- regexpr('id = "cv-cbar"', ui, fixed = TRUE)[[1]]
-  panes_pos <- regexpr('class = "cv-panes"', ui, fixed = TRUE)[[1]]
-  expect_gt(legend_pos, 0)
-  expect_gt(cbar_pos, 0)
-  expect_gt(panes_pos, 0)
-  expect_lt(legend_pos, panes_pos)
-  expect_lt(cbar_pos, panes_pos)
-})
-
-test_that("Linked views hides its empty pane slots before data arrives", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  skip_if_not(file.exists(ui_file))
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  expect_match(ui, 'class = "cv-pane cv-hidden"', fixed = TRUE)
-})
-
 run_config_transport_node <- function(body) {
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- tempfile(fileext = ".js")
@@ -305,6 +159,7 @@ run_config_transport_node <- function(body) {
     c(
       "const fs = require('fs');",
       "const timers = []; const sent = []; const handlers = {}; let applied = 0;",
+      "const events = {}; let ready = true, selectedCells = 1, captures = 0;",
       "function classes(){return {toggle:()=>{},add:()=>{},remove:()=>{}};}",
       "function element(id){return {id:id,value:'',disabled:false,open:false,attrs:{},",
       "  classList:classes(),listeners:{},addEventListener:function(n,f){this.listeners[n]=f;},",
@@ -322,7 +177,7 @@ run_config_transport_node <- function(body) {
       "global.document={readyState:'complete',activeElement:null,body:{appendChild:()=>{}},",
       "  getElementById:id=>ids[id]||null,querySelectorAll:()=>[],addEventListener:()=>{},",
       "  contains:()=>true,createElement:()=>element('created')};",
-      "global.window=global; window.devicePixelRatio=1; window.addEventListener=()=>{};",
+      "global.window=global; window.devicePixelRatio=1; window.addEventListener=(name,fn)=>{events[name]=fn;};",
       "window.setTimeout=(fn,delay)=>{const timer={fn:fn,delay:delay};timers.push(timer);return timer;};",
       "window.clearTimeout=timer=>{const at=timers.indexOf(timer);if(at>=0)timers.splice(at,1);};",
       "window.FileReader=function(){this.readAsText=file=>{this.result=file.text;this.onload();};};",
@@ -333,8 +188,8 @@ run_config_transport_node <- function(body) {
       "    message.dataset_context.epoch===datasetContext.epoch&&",
       "    message.dataset_context.dataset_key===datasetContext.dataset_key&&",
       "    message.dataset_context.generation===datasetContext.generation)};",
-      "window.cerebroLinkedViewsState={ready:()=>true,summary:()=>({selectedCells:1}),",
-      "  capture:()=>({}),apply:()=>{applied+=1;return {selectedCells:1};},downloadPNG:()=>true};",
+      "window.cerebroLinkedViewsState={ready:()=>ready,summary:()=>({selectedCells}),",
+      "  capture:()=>{captures++;return {selection:{cells:[]}};},apply:()=>{applied+=1;return {selectedCells:1};},downloadPNG:()=>true};",
       "global.Shiny={setInputValue:(id,value)=>sent.push({id:id,value:value}),",
       "  addCustomMessageHandler:(id,fn)=>{handlers[id]=fn;}};",
       sprintf(
@@ -350,6 +205,32 @@ run_config_transport_node <- function(body) {
   )
   system2("node", runner, stdout = TRUE, stderr = TRUE)
 }
+
+test_that("sharing waits for readiness but accepts an empty selection", {
+  output <- run_config_transport_node(c(
+    "ready=false; selectedCells=0;",
+    "events['cerebro:linkedviews-ready']({detail:{ready,selectedCells}});",
+    "const blocked=ids['cv-config-download'].disabled;",
+    "ids['cv-config-download'].click();",
+    "const blockedCaptures=captures, blockedRequests=sent.length;",
+    "ready=true;",
+    "events['cerebro:linkedviews-ready']({detail:{ready,selectedCells}});",
+    "const allowed=!ids['cv-config-download'].disabled;",
+    "ids['cv-config-download'].click();",
+    "console.log(JSON.stringify({blocked,allowed,blockedCaptures,blockedRequests,captures,sent}));"
+  ))
+  expect_equal(attr(output, "status"), NULL)
+  result <- jsonlite::fromJSON(output, simplifyVector = FALSE)
+  expect_true(result$blocked)
+  expect_true(result$allowed)
+  expect_identical(result$blockedCaptures, 0L)
+  expect_identical(result$blockedRequests, 0L)
+  expect_identical(result$captures, 1L)
+  expect_length(result$sent, 1L)
+  expect_identical(result$sent[[1L]]$id, "coordviews_config_request")
+  expect_identical(result$sent[[1L]]$value$action, "prepare")
+  expect_length(result$sent[[1L]]$value$config$selection$cells, 0L)
+})
 
 test_that("JSON upload transport is atomic and ignores timed-out responses", {
   output <- run_config_transport_node(c(
@@ -386,217 +267,26 @@ test_that("JSON upload transport is atomic and ignores timed-out responses", {
   expect_identical(result$label, "Download PNG")
 })
 
-test_that("Linked views exposes a composed workspace PNG download", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  config_file <- file.path(
-    dirname(bundle_file),
-    "..",
-    "www",
-    "coordviews-config.js"
-  )
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(
-    file.exists(ui_file) &&
-      file.exists(js_file) &&
-      file.exists(config_file) &&
-      file.exists(css_file)
-  )
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  config <- paste(readLines(config_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, 'id = "cv-config-png"', fixed = TRUE)
-  expect_match(ui, 'tags$span("Download PNG")', fixed = TRUE)
-  expect_false(grepl("cerebro-download-png", ui, fixed = TRUE))
-  expect_match(js, "function downloadWorkspacePNG()", fixed = TRUE)
-  expect_match(js, "function downloadVisiblePanelsPNG(filename)", fixed = TRUE)
-  expect_match(
-    js,
-    "function downloadPanelsPNG(candidates, filename)",
-    fixed = TRUE
-  )
-  expect_match(js, "downloadPNG: downloadWorkspacePNG", fixed = TRUE)
-  expect_match(
-    js,
-    "return downloadVisiblePanelsPNG(pngFilename(id))",
-    fixed = TRUE
-  )
-  expect_match(js, "drawExportKey(context", fixed = TRUE)
-  expect_match(js, "drawExportColorbar(context", fixed = TRUE)
-  expect_match(js, "maxPixels = 32 * 1024 * 1024", fixed = TRUE)
-  expect_match(config, "target.downloadPNG()", fixed = TRUE)
-  expect_match(config, "byId('cv-config-png')", fixed = TRUE)
-  expect_match(config, "PNG download started.", fixed = TRUE)
-  expect_match(config, "cerebro:png-result", fixed = TRUE)
-  expect_match(js, "cerebro:png-result", fixed = TRUE)
-  expect_match(
-    config,
-    "(?s)cerebro:specialist-state.*window\\.setTimeout",
-    perl = TRUE
-  )
-  expect_match(config, "upload.disabled = exportBusy", fixed = TRUE)
-  expect_match(config, "coordviews_config_upload_request", fixed = TRUE)
-  expect_false(grepl("coordviews_config_upload_nonce", config, fixed = TRUE))
-  expect_match(
-    css,
-    "(?s)\\.cv-config-dialog \\{[^}]*box-sizing: border-box",
-    perl = TRUE
-  )
-  expect_match(
-    css,
-    ".cv-config-actions > .cv-config-upload { width: 118px; }",
-    fixed = TRUE
-  )
-  expect_match(css, ".cv-config-upload.is-disabled", fixed = TRUE)
-})
-
-test_that("Linked views highlights only the visualization under the pointer", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(file.exists(ui_file) && file.exists(css_file))
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, 'class = "coordviews-page linked-views-page"', fixed = TRUE)
-  expect_match(
-    css,
-    ".linked-views-page > .cerebro-page-loading-region > .cv-panes > .cv-pane:hover",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "(?m)^\\.coordviews-page \\.cv-pane:hover \\{$",
-    css,
-    perl = TRUE
-  ))
-  expect_false(grepl(".cv-pane.cv-active-spatial", css, fixed = TRUE))
-})
-
-test_that("Linked views reflows after its workspace becomes wider", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js_file))
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-
-  expect_match(js, "resizeObserver._cvPanesObserved", fixed = TRUE)
-  expect_match(js, "resizeObserver.observe(panesHost)", fixed = TRUE)
-})
-
-test_that("Linked views panel sizing remains automatic", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(
-    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
-  )
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_false(grepl('class = "cv-resize-handle"', ui, fixed = TRUE))
-  expect_false(grepl("beginPanelResize", js, fixed = TRUE))
-  expect_false(grepl("panelSizes", js, fixed = TRUE))
-  expect_match(css, ".coordviews-page .cv-panes {", fixed = TRUE)
-  expect_match(css, "flex-wrap: wrap", fixed = TRUE)
-  expect_false(grepl("cv-resize-handle", css, fixed = TRUE))
-})
-
-test_that("Linked views chooses its grid from both viewport dimensions", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(
-    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
-  )
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_match(js, "function bestOverviewGrid", fixed = TRUE)
-  expect_match(js, "BALANCED_SIZE_TOLERANCE = 0.85", fixed = TRUE)
-  expect_match(js, "lastRow === 1", fixed = TRUE)
-  expect_match(
-    js,
-    "candidate.side >= maxSide * BALANCED_SIZE_TOLERANCE",
-    fixed = TRUE
-  )
-  expect_match(css, "gap: 8px; justify-content: center;", fixed = TRUE)
-  expect_match(js, "getComputedStyle(panes).columnGap", fixed = TRUE)
-  expect_no_match(js, "var gap = 14", fixed = TRUE)
-  expect_match(js, "Math.ceil(panelCount / cols)", fixed = TRUE)
-  expect_match(js, "widthSide", fixed = TRUE)
-  expect_match(js, "heightSide", fixed = TRUE)
-  expect_match(js, "VIEWPORT_GUTTER", fixed = TRUE)
-  expect_match(js, "var VIEWPORT_GUTTER = 7", fixed = TRUE)
-  expect_no_match(
-    ui,
-    "Lasso-drag in any panel to select cells.",
-    fixed = TRUE
-  )
-  expect_match(ui, 'id = "cv-readout"', fixed = TRUE)
-  expect_match(ui, 'style = "display:none"', fixed = TRUE)
-  expect_match(js, "host.style.display = 'none'", fixed = TRUE)
-})
-
-test_that("Linked views keeps replacement controls contextual and user-facing", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  skip_if_not(
-    file.exists(ui_file) && file.exists(js_file) && file.exists(server_file)
-  )
-
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
-
-  expect_no_match(ui, "cv-trekker-morph", fixed = TRUE)
-  expect_no_match(js, "function setTrekkerMorph", fixed = TRUE)
-  expect_no_match(js, "function playTrekkerMorph", fixed = TRUE)
-  expect_no_match(server, "cv-img-copy", fixed = TRUE)
-  expect_no_match(js, "function copyImgPreset", fixed = TRUE)
-  expect_match(ui, "cv-moran-badge", fixed = TRUE)
-  expect_match(js, "function updateMoranBadges", fixed = TRUE)
-  expect_match(js, "function fieldSummaryHtml", fixed = TRUE)
-})
-
 test_that("Trekker depth views form one collapsed insights region", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(
-    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
+  ui <- htmltools::tagQuery(viewer_ui_test_pages()$coordinated_views)
+  region <- ui$find("#cv-tk-insights")
+  expect_equal(region$length(), 1L)
+  for (id in c(
+    "cv-tk-insights-toggle",
+    "cv-tk-tab-cell",
+    "cv-tk-tab-qc",
+    "cv-tk-tab-moran",
+    "cv-tk-panel-stage",
+    "cv-tk-cell-body"
+  )) {
+    expect_equal(region$find(paste0("#", id))$length(), 1L, info = id)
+  }
+  expect_identical(
+    region$find("#cv-tk-insights-toggle")$selectedTags()[[1]]$attribs[[
+      "aria-expanded"
+    ]],
+    "false"
   )
-
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, 'id = "cv-tk-insights"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-insights-toggle"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-cell"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-qc"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-moran"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-panel-stage"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-cell-body"', fixed = TRUE)
-  expect_no_match(ui, 'id = "cv-tk-modal"', fixed = TRUE)
-
-  expect_match(js, "function openTrekkerInsights", fixed = TRUE)
-  expect_match(js, "function selectTrekkerInsight", fixed = TRUE)
-  expect_match(js, "function animateTrekkerInsight", fixed = TRUE)
-  expect_match(js, "function trekkerScrollHost", fixed = TRUE)
-  expect_match(js, "function fillTrekkerInsights", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--position", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--evidence", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--metadata", fixed = TRUE)
-
-  expect_match(css, "#cv-tk-cell-body > .cv-tk-cell-block", fixed = TRUE)
-  expect_match(
-    css,
-    "grid-template-columns: repeat(4, minmax(0, 1fr))",
-    fixed = TRUE
-  )
-  expect_match(css, ".cv-tk-panel-stage.is-switching", fixed = TRUE)
 })
 
 test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
@@ -727,196 +417,6 @@ test_that("large linked-view vectors use a lossless compact wire format", {
   expect_identical(decode(header$clone$size), c(3L, 2L))
 })
 
-test_that("Linked views negotiates compact transport with a legacy fallback", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(server, 'input[["coordviews_wire_supported"]]', fixed = TRUE)
-  expect_match(server, "sendBinaryMessage(", fixed = TRUE)
-  expect_match(server, '"coordviews_binary"', fixed = TRUE)
-  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
-  expect_match(server, "include_cells = FALSE", fixed = TRUE)
-  expect_match(server, "cv_wire_pack_bundle(primary", fixed = TRUE)
-  expect_match(
-    server,
-    "viewerProjectionAsset(projection, primary$cells)",
-    fixed = TRUE
-  )
-  expect_match(server, "$projection_resource <- resource", fixed = TRUE)
-  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
-  expect_match(server, '"coordviews_supplement"', fixed = TRUE)
-  expect_match(server, 'input[["coordviews_wire_fallback"]]', fixed = TRUE)
-  expect_match(client, "CBViewWire.unpack(buffer)", fixed = TRUE)
-  expect_no_match(client, "CBViewWire.unpackCells(buffer)", fixed = TRUE)
-  expect_match(client, "coordviews_wire_supported", fixed = TRUE)
-  expect_match(client, "coordviews_wire_fallback", fixed = TRUE)
-  expect_match(client, "coordviews_primary_ready", fixed = TRUE)
-  expect_match(
-    client,
-    "a[href=\"#shiny-tab-coordinated_views\"]",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "Shiny.setInputValue('coordviews_visible', true, { priority: 'event' })",
-    fixed = TRUE
-  )
-  expect_match(client, "onBinarySupplement", fixed = TRUE)
-  expect_match(client, "hydrateLinkedPrimaryResources", fixed = TRUE)
-  expect_match(
-    client,
-    "projectionFetchMs: hydrated.projectionFetchMs",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "projectionBytes: hydrated.projectionBytes",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "metadataBytes: hydrated.metadataBytes",
-    fixed = TRUE
-  )
-  expect_match(client, "projectionDownloadMs", fixed = TRUE)
-  expect_match(client, "projectionDecodeMs", fixed = TRUE)
-  expect_match(client, "rendererInitializationMs", fixed = TRUE)
-  expect_match(client, "D.n >= 200000", fixed = TRUE)
-  expect_match(client, "LABEL_BINS = 256", fixed = TRUE)
-  expect_match(client, "categoricalRgba", fixed = TRUE)
-  expect_match(
-    client,
-    "ensurePanelSlots(1);\n    buildPanels();",
-    fixed = TRUE
-  )
-  expect_equal(
-    sum(gregexpr("coordviews_wire_supported", client, fixed = TRUE)[[1L]] > 0),
-    1L
-  )
-})
-
-test_that("progressive Linked views separates primary paint from completion", {
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(client, "primaryReady: rendered", fixed = TRUE)
-  expect_match(
-    client,
-    "ready: complete",
-    fixed = TRUE
-  )
-  expect_match(client, "complete: complete", fixed = TRUE)
-  expect_match(client, "primaryReady: summary.primaryReady", fixed = TRUE)
-  expect_match(client, "ready: summary.ready", fixed = TRUE)
-  expect_match(
-    client,
-    "if (summary.primaryReady && D.progressive && Shiny.setInputValue)",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "primaryReady: function () { return workspaceSummary().primaryReady; }",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "resizeAll();\n          reportWorkspaceReady();",
-    fixed = TRUE
-  )
-  expect_match(client, "function linkedVisualReady()", fixed = TRUE)
-  expect_match(client, "requestAnimationFrame", fixed = TRUE)
-  expect_match(client, "panel.gpu.idle()", fixed = TRUE)
-  expect_match(client, "visualReady: linkedVisualReady", fixed = TRUE)
-})
-
-test_that("progressive supplement reuses the painted primary projection", {
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    client,
-    "rebuildProjectionInstances(previousSpaces)",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "previous.x === pj.x && previous.y === pj.y",
-    fixed = TRUE
-  )
-  expect_match(client, "_unit: reusable ? previous._unit : null", fixed = TRUE)
-  expect_match(
-    client,
-    "dataset: D.dataset_fingerprint || D.cell_fingerprint || D.dataset_id || D",
-    fixed = TRUE
-  )
-  expect_no_match(client, "data: D,\n      unit:", fixed = TRUE)
-})
-
-test_that("image controls reuse progressive spaces without building the full bundle", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    "coordviews_image_spaces <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "coordviews_image_spaces(supplement$spaces %||% list())",
-    fixed = TRUE
-  )
-  image_ui <- strsplit(
-    server,
-    'output[["coordviews_image_ui"]] <- renderUI({',
-    fixed = TRUE
-  )[[1]][[2]]
-  image_ui <- strsplit(image_ui, "outputOptions(", fixed = TRUE)[[1]][[1]]
-  expect_match(image_ui, "spaces <- coordviews_image_spaces()", fixed = TRUE)
-  expect_no_match(image_ui, "coordviews_bundle()", fixed = TRUE)
-})
-
-test_that("empty gene controls do not build the full linked bundle", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  gene_section <- strsplit(
-    server,
-    "## Gene-expression colouring",
-    fixed = TRUE
-  )[[1]][[2]]
-  gene_section <- strsplit(
-    gene_section,
-    "## Spatial histology-image controls",
-    fixed = TRUE
-  )[[1]][[1]]
-
-  expect_match(gene_section, "if (length(genes) == 0)", fixed = TRUE)
-  expect_no_match(gene_section, "coordviews_bundle()", fixed = TRUE)
-})
-
 test_that("saved per-gene panels use the dynamic payload contract", {
   skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
@@ -997,15 +497,6 @@ test_that("Linked views does not duplicate immutable bundle data", {
 
   expect_true(all(c("x", "y") %in% names(bundle$projections$umap)))
   expect_false(any(c("x", "y", "z") %in% names(expression_space)))
-  javascript <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(
-    javascript,
-    "s.id !== 'expression' && s.id !== 'spatial'",
-    fixed = TRUE
-  )
   expect_null(bundle$cell_fingerprint)
 })
 
@@ -1296,129 +787,29 @@ test_that("primary bundle can build canonical group codes externally", {
   expect_identical(as.integer(fallback$groups$cell_type$values), c(1L, 0L, 1L))
 })
 
-test_that("Linked views reuses the saved-view fingerprint", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  server <- paste(
-    readLines(server_file, warn = FALSE),
-    collapse = "\n"
-  )
-  viewer_server <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "shiny_server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    "b$dataset_fingerprint <- viewerDatasetIdentity()$fingerprint",
-    fixed = TRUE
-  )
-  expect_no_match(
-    server,
-    "b$dataset_fingerprint <- cv_saved_view_dataset()$fingerprint",
-    fixed = TRUE
-  )
-  expect_match(viewer_server, "dataset$cell_fingerprint", fixed = TRUE)
-  expect_false(grepl(
-    "dataset$crb_schema$cell_fingerprint",
-    viewer_server,
-    fixed = TRUE
-  ))
-  expect_false(grepl(
-    "b$dataset_fingerprint <- cv_config_cell_fingerprint(b$cells)",
-    server,
-    fixed = TRUE
-  ))
-})
-
 test_that("saved-view startup identity does not materialize cell names", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  coord_server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
-  server <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "shiny_server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      data_set <- reactive(list(cell_fingerprint = input$fingerprint))
+      getNumberOfCells <- function() 1000000L
+      cv_saved_view_cells <- function() stop("must not read cell names")
+      viewer_server_load(
+        viewer_server_statements("shiny_server.R", server = TRUE),
+        scope,
+        names = "viewerDatasetIdentity"
+      )
+    },
+    {
+      for (letter in c("a", "b")) {
+        fingerprint <- paste0("md5-cell-set-v1:", strrep(letter, 32))
+        session$setInputs(fingerprint = fingerprint)
+        expect_identical(viewerDatasetIdentity()$fingerprint, fingerprint)
+        expect_equal(viewerDatasetIdentity()$cell_count, 1000000L)
+      }
+    }
   )
-
-  expect_match(server, "viewerDatasetIdentity <- reactive({", fixed = TRUE)
-  expect_match(server, "cell_count = getNumberOfCells()", fixed = TRUE)
-  expect_match(
-    server,
-    "identity <- viewerDatasetIdentity()",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "input[[\"sidebar\"]]\n    identity <- viewerDatasetIdentity()",
-    fixed = TRUE
-  )
-  expect_no_match(
-    coord_server,
-    "viewerDatasetIdentity <- reactive({",
-    fixed = TRUE
-  )
-  expect_match(
-    coord_server,
-    "progressive <- isTRUE(input[[\"coordviews_wire_supported\"]])",
-    fixed = TRUE
-  )
-  expect_no_match(coord_server, ">= 200000L", fixed = TRUE)
-})
-
-test_that("supplement work starts only after the painted primary reports ready", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  initial_push <- strsplit(
-    server,
-    'observeEvent(\n  input[["coordviews_primary_ready"]]',
-    fixed = TRUE
-  )[[1L]][[1L]]
-
-  send_at <- regexpr(
-    "session$sendBinaryMessage(",
-    initial_push,
-    fixed = TRUE
-  )[[1L]]
-  expect_gt(send_at, 0L)
-  expect_no_match(initial_push, "cv_start_clone_task(", fixed = TRUE)
-  expect_match(
-    server,
-    'observeEvent(\n  input[["coordviews_primary_ready"]]',
-    fixed = TRUE
-  )
-  expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
-  expect_match(
-    server,
-    "modalities <- unique(as.character(request$modalities",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "cv_prepare_progressive_supplement(\n      primary,\n      primary_n,\n      modalities\n    )",
-    fixed = TRUE
-  )
-  primary_ready <- strsplit(
-    server,
-    'observeEvent(\n  input[["coordviews_primary_ready"]]',
-    fixed = TRUE
-  )[[1L]][[2L]]
-  expect_match(
-    primary_ready,
-    "cv_start_clone_task(prepared$clone_spec)",
-    fixed = TRUE
-  )
-  expect_match(client, "modalities: requestedModalities()", fixed = TRUE)
 })
 
 test_that("primary colour selection does not scan unused categorical columns", {
@@ -1502,22 +893,6 @@ test_that("deferred metadata builds only the requested attribute", {
     "meta:ignored_missing",
     colors
   ))
-})
-
-test_that("progressive colour source retains deferred numeric fields", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    paste0(
-      "current_colors$fields <- c(\n    current_colors$fields %||% list(),\n    ",
-      "supplement$fields %||% list()\n  )"
-    ),
-    fixed = TRUE
-  )
 })
 
 test_that("deferred assets leave only descriptors in the supplement", {
@@ -1608,125 +983,6 @@ test_that("external image files stay server-side until requested", {
   expect_true(isTRUE(image$deferred))
   expect_identical(asset, list(path = image_path, mime = "image/png"))
   expect_match(cv_env$cv_asset_data_uri(asset), "^data:image/png;base64,")
-})
-
-test_that("hidden gene controls stay dormant until their colour mode is chosen", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    'coordviews_gene_controls_active"]], "gene"',
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'coordviews_gene_controls_active"]], "rgb"',
-    fixed = TRUE
-  )
-  expect_match(client, "coordviews_gene_controls_active", fixed = TRUE)
-  expect_match(client, "mode === RGB_MODE ? 'rgb'", fixed = TRUE)
-})
-
-test_that("deferred browser assets are requested only when displayed", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(server, 'input[["coordviews_asset_request"]]', fixed = TRUE)
-  expect_match(server, '"coordviews_asset"', fixed = TRUE)
-  expect_match(client, "function requestDeferredAsset", fixed = TRUE)
-  expect_match(client, "img.asset_key", fixed = TRUE)
-  expect_match(
-    client,
-    "Shiny.addCustomMessageHandler('coordviews_asset'",
-    fixed = TRUE
-  )
-  expect_match(client, "trekker-evidence:", fixed = TRUE)
-})
-
-test_that("colour observation starts only after a bundle is sent", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  server <- paste(
-    readLines(server_file, warn = FALSE),
-    collapse = "\n"
-  )
-
-  sent <- regexpr(
-    "coordviews_build_log$sent_n <- bundle_n",
-    server,
-    fixed = TRUE
-  )[[1]]
-  observer <- regexpr(
-    "if (!isTRUE(coordviews_build_log$color_observer_started))",
-    server,
-    fixed = TRUE
-  )[[1]]
-
-  expect_gt(sent, 0)
-  expect_gt(observer, sent)
-})
-
-test_that("large-dataset work stays off the initial response", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
-
-  expect_no_match(server, "later::later(", fixed = TRUE)
-  expect_match(server, "cv_prepare_progressive_supplement", fixed = TRUE)
-  expect_match(server, "cv_start_clone_task(prepared$clone_spec)", fixed = TRUE)
-  expect_match(server, 'input[["coordviews_primary_ready"]]', fixed = TRUE)
-  expect_match(
-    server,
-    "cv_build_progressive_supplement(",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'input[["coordviews_wire_fallback"]]',
-    fixed = TRUE
-  )
-  supplement_at <- regexpr(
-    '"coordviews_supplement"',
-    server,
-    fixed = TRUE
-  )[[1L]]
-  expect_gt(supplement_at, 0L)
-  expect_no_match(server, '"coordviews_cells"', fixed = TRUE)
-  expect_match(server, 'input[["coordviews_selection_indices"]]', fixed = TRUE)
-  expect_match(
-    server,
-    "coordviews_background_ready <- reactiveVal(FALSE)",
-    fixed = TRUE
-  )
-  expect_no_match(
-    server,
-    "coordviews_background_ready\\(\\) &&"
-  )
-  expect_match(
-    server,
-    paste0(
-      "coordviews_visible\\(\\) &&\\s+",
-      "identical\\(input\\[\\[\"coordviews_gene_controls_active\"\\]\\], ",
-      "\"gene\"\\) &&\\s+cv_has_expression\\(\\)"
-    )
-  )
 })
 
 test_that("bundle cell identity falls back to metadata row names", {
@@ -1846,15 +1102,6 @@ test_that("palette patches can refresh an existing bundle", {
   expect_identical(as.character(refreshed$groups$cluster$colors), "#123456")
 })
 
-test_that("hidden palette changes are replayed without rebuilding data", {
-  server_file <- file.path(dirname(bundle_file), "server.R")
-  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
-
-  expect_match(server, "cv_apply_color_patch(", fixed = TRUE)
-  expect_match(server, "color_observer_started", fixed = TRUE)
-  expect_match(server, '"coordviews_colors"', fixed = TRUE)
-})
-
 ## A minimal but realistically-shaped IR table: the CT* columns spell out chain
 ## names, because that is what the receptor scoping reads. c1/c2 share a CTgene
 ## clone that CTstrict splits in two -- the exact case where reading the wrong
@@ -1949,24 +1196,6 @@ test_that("both clone pages read one definition of a clone", {
   expect_equal(length(cv_env$CEREBRO_CLONE_LABELS), 5)
   expect_match(cv_env$CEREBRO_CLONE_LABELS[5], "Hyperexpanded")
   expect_equal(cv_env$cerebro_clonecall_col(), "CTgene")
-
-  ## And that neither page has quietly gone back to declaring its own. This is a
-  ## source check because the divergence was not a wrong value anywhere -- both
-  ## pages were self-consistent -- but two right-looking definitions of one term.
-  ir_data <- file.path(
-    dirname(bundle_file),
-    "..",
-    "immune_repertoire",
-    "data.R"
-  )
-  skip_if_not(file.exists(ir_data))
-  txt <- paste(readLines(ir_data, warn = FALSE), collapse = "\n")
-  expect_match(txt, "IR_CLONE_BINS <- CEREBRO_CLONE_BINS", fixed = TRUE)
-  expect_match(txt, "IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS", fixed = TRUE)
-
-  bundle_txt <- paste(readLines(bundle_file, warn = FALSE), collapse = "\n")
-  expect_false(grepl("breaks = c(0, 1, 5, 20", bundle_txt, fixed = TRUE))
-  expect_match(bundle_txt, "cerebro_clone_expansion(", fixed = TRUE)
 })
 
 test_that("cv_build_fields turns every numeric meta column into a colouring", {
@@ -2287,29 +1516,6 @@ test_that("Builder Trekker backgrounds and appearance reach Linked views", {
   expect_identical(bundle$default_point_opacity, 0.65)
   expect_null(trekker$builder_point_opacity)
   expect_null(trekker$builder_point_size)
-
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(js, "function pointSizeOf(p)", fixed = TRUE)
-  expect_match(js, "function pointOpacityOf(p)", fixed = TRUE)
-})
-
-test_that("Canvas uses one point-size unit in linked and standalone views", {
-  skip_if_not(have_bundle)
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-
-  expect_match(js, "var radius = pointSize / 2;", fixed = TRUE)
-  expect_no_match(
-    js,
-    "Number(payload.data && payload.data.point_size) || ps * 2) / 2",
-    fixed = TRUE
-  )
-  expect_match(js, "function syncPointControls()", fixed = TRUE)
 })
 
 test_that("a clone's label names its dominant CDR3 and says how many it hides", {
@@ -2523,82 +1729,6 @@ test_that("compact supplement avoids full CRB hydration", {
   expect_length(metadata_only$spaces, 0L)
 })
 
-test_that("canonical clone supplement runs outside the Shiny session", {
-  server <- paste(
-    readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(
-      file.path(dirname(bundle_file), "..", "www", "cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(server, "shiny::ExtendedTask$new", fixed = TRUE)
-  expect_match(server, "mirai::mirai", fixed = TRUE)
-  expect_match(server, "cv_async_clone_spec", fixed = TRUE)
-  expect_match(server, "coordviews_clone_task$invoke", fixed = TRUE)
-  expect_match(server, "coordviews_clone_task$result()", fixed = TRUE)
-  expect_lt(
-    regexpr("coordviews_clone_task$invoke", server, fixed = TRUE)[[1L]],
-    regexpr('input[["coordviews_primary_ready"]]', server, fixed = TRUE)[[1L]]
-  )
-  expect_match(
-    server,
-    'input[["coordviews_clone_details_request"]]',
-    fixed = TRUE
-  )
-  expect_match(client, "coordviews_clone_details_request", fixed = TRUE)
-  expect_match(client, "coordviews_clone_details", fixed = TRUE)
-  expect_match(client, "group.clone_index", fixed = TRUE)
-  expect_match(server, "progressive_complete = FALSE", fixed = TRUE)
-  send_supplement <- strsplit(
-    strsplit(
-      server,
-      "cv_send_progressive_supplement <- function(prepared)",
-      fixed = TRUE
-    )[[1L]][[2L]],
-    "observe({",
-    fixed = TRUE
-  )[[1L]][[1L]]
-  expect_match(
-    send_supplement,
-    "coordviews_color_source(current_colors)",
-    fixed = TRUE
-  )
-  expect_no_match(
-    send_supplement,
-    "coordviews_color_source(list(",
-    fixed = TRUE
-  )
-  expect_match(client, "function applyCloneSupplement(extra)", fixed = TRUE)
-  expect_match(
-    client,
-    "if (cloneOnly && applyCloneSupplement(extra))",
-    fixed = TRUE
-  )
-  clone_path <- strsplit(
-    strsplit(client, "function applyCloneSupplement(extra)", fixed = TRUE)[[
-      1L
-    ]][[2L]],
-    "function applyHydratedSupplement(extra, metric)",
-    fixed = TRUE
-  )[[1L]][[1L]]
-  expect_no_match(clone_path, "applyData(", fixed = TRUE)
-  expect_match(
-    client,
-    "extra.progressive_complete === false",
-    fixed = TRUE
-  )
-  expect_no_match(
-    client,
-    "extra.progressive_token !== D.progressive_token ||\n          !D.progressive",
-    fixed = TRUE
-  )
-})
-
 test_that("clone core omits duplicate indices and deferred labels", {
   clone <- cv_env$cv_build_clone_rows(
     clone = c("a", "a", "b"),
@@ -2707,36 +1837,6 @@ test_that("receptor detection does not stop at the third sample", {
   expect_setequal(cv_env$cerebro_receptors_present(ir), c("TCR", "BCR"))
 })
 
-test_that("the histology bar offers compact numeric alignment controls", {
-  ## A preset can be non-uniform. A single Scale control had to collapse the two
-  ## axes into one number, and every other control in the bar then rewrote the
-  ## pair from it -- so a nudge to the opacity squared the image up. Pinned at
-  ## the source because the bar only renders for a data set carrying an image,
-  ## which no test app loads.
-  path <- file.path(
-    dirname(bundle_file),
-    "server.R"
-  )
-  skip_if_not(file.exists(path))
-  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "cv-img-scalex", fixed = TRUE)
-  expect_match(txt, "cv-img-scaley", fixed = TRUE)
-  expect_match(txt, "cv-img-lock", fixed = TRUE)
-  expect_match(txt, "cv-img-reset", fixed = TRUE)
-  expect_match(txt, 'type = "number"', fixed = TRUE)
-  expect_match(txt, 'paste0(id, "-number")', fixed = TRUE)
-  expect_match(txt, "cv-img-checks", fixed = TRUE)
-  expect_no_match(txt, "cv-img-range-min", fixed = TRUE)
-  expect_no_match(txt, "cv-img-range-max", fixed = TRUE)
-  expect_no_match(txt, "cv-img-range-value", fixed = TRUE)
-  expect_no_match(txt, "\"cv-img-scale\"")
-
-  css_path <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  css <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
-  expect_no_match(css, ".cv-img-range::after", fixed = TRUE)
-})
-
-
 ## The card's Positioning section is only as good as what the builder actually
 ## ships. It used to be tested against a hand-written payload, which is how it
 ## came to read a `fields.bead_noise` that no builder has ever produced while
@@ -2782,21 +1882,6 @@ test_that("the trekker bundle carries what a placement is judged on", {
   tk_fields <- Filter(function(k) !startsWith(k, "meta:"), names(b$fields))
   expect_true(length(tk_fields) > 0)
   expect_false("bead_noise" %in% tk_fields)
-})
-
-test_that("the histology bar exists when any section carries an image", {
-  ## A space's own `image` is its FIRST sample's. A data set whose first section
-  ## has no histology therefore rendered no bar at all, and switching to a
-  ## section that does have one revealed an empty box. Pinned at the source: the
-  ## bar only renders for a data set with an image, which no test app loads.
-  path <- file.path(dirname(bundle_file), "server.R")
-  skip_if_not(file.exists(path))
-  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(
-    txt,
-    "for \\(smp in \\(s\\$samples[\\s\\S]{0,120}smp\\$image",
-    perl = TRUE
-  )
 })
 
 test_that("each section offers only its own configured backgrounds", {
@@ -2974,17 +2059,6 @@ test_that("each section offers only its own configured backgrounds", {
       opacity = 0.6
     )
   )
-
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
-  expect_match(
-    js,
-    "rotateDataPoint(b.xmin, b.ymax, state.rotate)",
-    fixed = TRUE
-  )
 })
 
 test_that("per-image settings also apply to embedded backgrounds", {
@@ -3064,12 +2138,6 @@ test_that("per-image settings also apply to embedded backgrounds", {
       geometryBaked = TRUE
     )
   )
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
-  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
 })
 
 test_that("legacy spatial images share identity and point appearance", {
@@ -3127,36 +2195,6 @@ test_that("legacy spatial images share identity and point appearance", {
       percentage_cells_to_show = 100
     )
   )
-})
-
-test_that("the alignment bar follows the chosen background, not the data set", {
-  ## With "None" chosen there is nothing on screen for those controls to adjust,
-  ## so the bar goes away with the image. Keyed on the CURRENT choice rather than
-  ## on whether the data set has an image at all, which is what it used to ask.
-  js <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js))
-  txt <- paste(readLines(js, warn = FALSE), collapse = "\n")
-  expect_match(
-    txt,
-    "hasImg = !!\\(sp && currentImage\\(sp\\)\\)",
-    perl = TRUE
-  )
-  expect_no_match(txt, "hasImg = D.spaces.some", fixed = TRUE)
-})
-
-test_that("background display is one image dropdown with None last", {
-  ui_path <- file.path(dirname(bundle_file), "UI.R")
-  ui <- paste(readLines(ui_path, warn = FALSE), collapse = "\n")
-  js_path <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  js <- paste(readLines(js_path, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, 'id = "cv-bg-image-select"', fixed = TRUE)
-  expect_match(ui, 'class = "form-control"', fixed = TRUE)
-  expect_no_match(ui, 'data-cv-bg-mode', fixed = TRUE)
-  expect_no_match(ui, '"Auto"', fixed = TRUE)
-  expect_no_match(ui, '"Customize…"', fixed = TRUE)
-  expect_match(js, ".concat(['<option value=\"' + IMG_NONE", fixed = TRUE)
-  expect_match(js, "selectize.addOption(options)", fixed = TRUE)
 })
 
 test_that("bundling two images of the same basename keeps both", {
@@ -3281,129 +2319,9 @@ test_that("bundling two images of the same basename keeps both", {
   expect_true(all(file.exists(file.path(app_dir, paths))))
 })
 
-test_that("external images retain their spatial-entry ownership", {
-  path <- bundle_file
-  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "cv_external_images(nm, defer = TRUE)", fixed = TRUE)
-  expect_no_match(txt, "for (ex in cv_external_images())", fixed = TRUE)
-})
-
-test_that("the alignment sliders contain the preset they are given", {
-  ## A preset is a calibration someone measured. A slider ranged on the
-  ## coordinate span alone clamps anything outside it, and because the bar is
-  ## read back as a whole the clamped number is then written into the state by an
-  ## unrelated nudge -- the alignment quietly becoming one nobody chose.
-  path <- file.path(dirname(bundle_file), "server.R")
-  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "abs(pr$offsetX", fixed = TRUE)
-  expect_match(txt, "scale_lo", fixed = TRUE)
-  expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
-})
-
-test_that("More settings is an accessible drawer rather than a draggable window", {
-  skip_if(is.na(local_inst), "viewer sources not found")
-
-  ui <- paste(
-    readLines(
-      file.path(local_inst, "viewer/coordinated_views/UI.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  shared_ui <- paste(
-    readLines(
-      file.path(local_inst, "viewer/shiny_UI.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  js <- paste(
-    readLines(
-      file.path(local_inst, "viewer/www/cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  css <- paste(
-    readLines(
-      file.path(local_inst, "viewer/www/coordviews.css"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  shared_css <- paste(
-    readLines(
-      file.path(local_inst, "viewer/www/custom.css"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(ui, "cerebroSettingsDrawer(", fixed = TRUE)
-  expect_match(shared_ui, 'role = "dialog"', fixed = TRUE)
-  expect_match(shared_ui, '`aria-hidden` = "true"', fixed = TRUE)
-  expect_no_match(ui, "data-cv-more-drag-handle", fixed = TRUE)
-  expect_no_match(ui, "Drag to move", fixed = TRUE)
-  expect_no_match(js, "beginMoreDrag", fixed = TRUE)
-  expect_no_match(js, "moreFloating", fixed = TRUE)
-  expect_match(
-    shared_css,
-    "@media (prefers-reduced-motion: reduce)",
-    fixed = TRUE
-  )
-  expect_match(shared_css, ".cerebro-settings-drawer {", fixed = TRUE)
-  expect_no_match(css, "#cv-more", fixed = TRUE)
-  expect_no_match(css, "transition: transform .3s", fixed = TRUE)
-})
-
-test_that("Linked views keeps labels in More settings and explains RGB blends", {
-  skip_if(is.na(local_inst), "viewer sources not found")
-
-  ui <- paste(
-    readLines(
-      file.path(local_inst, "viewer/coordinated_views/UI.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  js <- paste(
-    readLines(
-      file.path(local_inst, "viewer/www/cell_views.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  appearance_pos <- regexpr(
-    '"Appearance"',
-    ui,
-    fixed = TRUE
-  )[1]
-  labels_pos <- regexpr('"cv-labels"', ui, fixed = TRUE)[1]
-  expect_gt(appearance_pos, 0)
-  expect_gt(labels_pos, appearance_pos)
-
-  expect_match(js, "Low expression", fixed = TRUE)
-  expect_match(js, "R + G", fixed = TRUE)
-  expect_match(js, "R + B", fixed = TRUE)
-  expect_match(js, "G + B", fixed = TRUE)
-  expect_match(js, "R + G + B", fixed = TRUE)
-  expect_match(js, "Each channel is scaled independently", fixed = TRUE)
-})
-
-test_that("Linked views stylesheet has balanced rule blocks", {
-  skip_if(is.na(local_inst), "viewer sources not found")
-  css <- paste(
-    readLines(
-      file.path(local_inst, "viewer/www/coordviews.css"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  count <- function(token) {
-    lengths(regmatches(css, gregexpr(token, css, fixed = TRUE)))
-  }
-  expect_equal(count("{"), count("}"))
+test_that("Linked labels remain reachable in Settings", {
+  ui <- htmltools::tagQuery(viewer_ui_test_pages()$coordinated_views)
+  expect_equal(ui$find(".cerebro-settings-drawer #cv-labels")$length(), 1L)
 })
 
 test_that("external backgrounds require matching PNG or JPEG magic bytes", {
@@ -3453,43 +2371,16 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
 })
 
-test_that("background state keys namespace FOV and direct modalities", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js_file))
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  expect_match(js, "function backgroundStateKey\\(sp\\)")
-  expect_match(js, "return 'fov:' \\+ \\(sp.id \\|\\| spatialName\\(sp\\)\\)")
-  expect_match(js, "return 'space:' \\+ \\(sp.id \\|\\| 'unknown'\\)")
-})
-
-test_that("same-dataset refresh preserves percentage and group filters", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js_file))
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  expect_match(
-    js,
-    "if \\(dataChanged\\) \\{[\\s\\S]{0,1600}groupFilter = \\{\\};[\\s\\S]{0,2600}rebuildPctMask\\(\\)",
-    perl = TRUE
+test_that("Linked backgrounds preserve choices and identity, with readable RGB legends", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  output <- system2(
+    "node",
+    c(
+      shQuote(test_path("fixtures", "background-controls.js")),
+      shQuote(viewer_test_path("www", "cell_views.js"))
+    ),
+    stdout = TRUE,
+    stderr = TRUE
   )
-  expect_no_match(
-    js,
-    "pctMask = null; groupFilter = \\{\\};[[:space:]]*rebuildPctMask\\(\\)"
-  )
-})
-
-test_that("brush gestures start from visualization pane whitespace", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  skip_if_not(file.exists(js_file))
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  expect_match(js, "var brushTarget = p.pane || p.canvas;", fixed = TRUE)
-  expect_match(
-    js,
-    "brushTarget.addEventListener('mousedown'",
-    fixed = TRUE
-  )
-  expect_match(
-    js,
-    "window.addEventListener('mousemove'",
-    fixed = TRUE
-  )
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
 })

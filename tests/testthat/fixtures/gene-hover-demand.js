@@ -1,5 +1,6 @@
 const assert=require('assert'),fs=require('fs'),path=require('path');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const js = require("./js-source.cjs")(source);
 var window={};eval(fs.readFileSync(path.join(path.dirname(process.argv[2]),'cell_views_state.js'),'utf8'));
 var CBViewState=window.CBViewState, singleActive='expression_projection', linkedHoverOn=false;
 var view, sent, frames, hits, metadata, point, tip={style:{}}, pinnedTip={panel:null};
@@ -12,9 +13,8 @@ function setHoverCell(){} function scheduleSingleMetadata(){metadata++;}
 function hoverHtml(){return 'hover';} function placeTip(){}
 function requestAnimationFrame(f){frames.push(f);}
 var Shiny={setInputValue:(name,value)=>sent.push({name,value})};
-function extract(start,end){return source.slice(source.indexOf(start),source.indexOf(end));}
-eval(extract('  function requestSingleAux()', '  function cloneBaseState('));
-eval(extract('  function refreshPanelHover(', '  function wireHover('));
+eval(js.declarations(["requestSingleAux"]));
+eval(js.declarations(["refreshPanelHover"]));
 function flush(){while(frames.length)frames.shift()();}
 function reset(){view={data:{wire_token:7},dataset_context:{generation:1}};sent=[];frames=[];hits=0;metadata=0;point=0;singleActive='expression_projection';spaceById.s._hoverEnabled=false;}
 reset();refreshPanelHover(panel);refreshPanelHover(panel);flush();

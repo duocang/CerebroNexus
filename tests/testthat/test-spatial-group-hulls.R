@@ -74,11 +74,15 @@ test_that("NA coordinates are ignored", {
 })
 
 test_that("the shared cell-view engine consumes and draws Spatial hulls", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
+  skip_if(Sys.which("node") == "", "node unavailable")
+  expect_equal(
+    system2(
+      "node",
+      c(
+        shQuote(test_path("fixtures", "spatial-consumers.js")),
+        shQuote(viewer_test_path("www", "cell_views.js"))
+      )
+    ),
+    0L
   )
-  expect_match(engine, "function singleHulls", fixed = TRUE)
-  expect_match(engine, "function drawHulls", fixed = TRUE)
-  expect_match(engine, "drawHulls(p, underlay);", fixed = TRUE)
 })

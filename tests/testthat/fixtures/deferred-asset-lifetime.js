@@ -1,17 +1,7 @@
 const assert = require('assert'), fs = require('fs'), vm = require('vm');
 const source = fs.readFileSync(process.argv[2], 'utf8');
-function extract(name) {
-  const start = source.indexOf('  function ' + name + '(');
-  assert(start >= 0, name);
-  const brace = source.indexOf('{', start);
-  let depth = 1, end = brace + 1;
-  while (depth && end < source.length) {
-    if (source[end] === '{') depth++;
-    if (source[end] === '}') depth--;
-    end++;
-  }
-  return source.slice(start, end);
-}
+const js = require("./js-source.cjs")(source);
+const extract = name => js.declarations([name]);
 const handlers = {}, requests = [], applied = [];
 const sandbox = {
   assetCache: Object.create(null), pendingAssets: new Set(), spaceById: {}, imgToken: 0,
@@ -33,10 +23,7 @@ for (const name of ['datasetContextApi', 'currentDatasetContext', 'currentDatase
   'requestDeferredAsset', 'invalidateDatasetViewState']) {
   vm.runInContext(extract(name), sandbox);
 }
-const handlerStart = source.indexOf("    Shiny.addCustomMessageHandler('coordviews_asset',");
-const handlerEnd = source.indexOf("    Shiny.addCustomMessageHandler('cell_view_binary',", handlerStart);
-assert(handlerStart >= 0 && handlerEnd > handlerStart);
-vm.runInContext(source.slice(handlerStart, handlerEnd), sandbox);
+vm.runInContext(js.handler('coordviews_asset'), sandbox);
 const C = sandbox.CerebroDatasetContext;
 function activate(dataset, generation) {
   const context = {epoch: 'session', dataset_key: dataset, generation};

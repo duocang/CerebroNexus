@@ -1,45 +1,3 @@
-test_that("the million-cell renderer is loaded before cell views", {
-  renderer <- viewer_test_path("www", "cell_points_gpu.js")
-  expect_true(file.exists(renderer))
-  renderer_source <- paste(readLines(renderer, warn = FALSE), collapse = "\n")
-  expect_match(renderer_source, "backend: 'webgpu'", fixed = TRUE)
-
-  ui <- paste(
-    readLines(viewer_test_path("shiny_UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(ui, 'cerebro_js("cell_points_gpu.js")', fixed = TRUE)
-  expect_lt(
-    regexpr("cell_points_gpu.js", ui, fixed = TRUE)[1],
-    regexpr("cell_views.js", ui, fixed = TRUE)[1]
-  )
-
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(engine, "CerebroPointRenderer.create", fixed = TRUE)
-  expect_match(engine, "replaceGpuWithWebGl", fixed = TRUE)
-  expect_match(engine, "setData", fixed = TRUE)
-
-  benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
-    "benchmark_million_cell_renderer.R"
-  )
-  if (file.exists(benchmark_file)) {
-    benchmark <- paste(
-      readLines(benchmark_file, warn = FALSE),
-      collapse = "\n"
-    )
-    expect_match(
-      benchmark,
-      'setdiff(chromote::get_chrome_args(), "--disable-gpu")',
-      fixed = TRUE
-    )
-  }
-})
-
 test_that("WebGPU failures make the renderer fall back", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   renderer <- viewer_test_path("www", "cell_points_gpu.js")
@@ -87,13 +45,6 @@ test_that("WebGPU failures make the renderer fall back", {
   status <- system2("node", runner)
 
   expect_identical(status, 0L)
-
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(engine, "renderer.failed.then", fixed = TRUE)
-  expect_match(engine, "CerebroPointRenderer.createWebGl", fixed = TRUE)
 })
 
 test_that("WebGL2 fallback submits a million points in one GPU draw", {
@@ -174,47 +125,23 @@ test_that("WebGL2 fallback submits a million points in one GPU draw", {
 
 test_that("WebGPU fallback keeps validity from the materialized CPU unit", {
   skip_if(Sys.which("node") == "", "node not on PATH")
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  occupancy_source <- regmatches(
-    engine,
-    regexpr(
-      "(?s)var OCC = 64;.*?(?=\\n  function occCount)",
-      engine,
-      perl = TRUE
-    )
-  )
-  unit_source <- regmatches(
-    engine,
-    regexpr(
-      "(?s)function deferredUnitOf\\(space\\).*?(?=\\n  function transitionUnit)",
-      engine,
-      perl = TRUE
-    )
-  )
-  project_source <- regmatches(
-    engine,
-    regexpr(
-      "(?s)function project\\(p, forceCpu\\).*?(?=\\n  function pointScreenX)",
-      engine,
-      perl = TRUE
-    )
-  )
+  engine <- viewer_test_path("www", "cell_views.js")
   runner <- tempfile(fileext = ".js")
   on.exit(unlink(runner), add = TRUE)
   writeLines(
     c(
       "const assert = require('assert');",
-      occupancy_source,
-      unit_source,
+      viewer_js_loader(),
+      sprintf(
+        "const source = require('fs').readFileSync(%s, 'utf8');",
+        encodeString(engine, quote = '"')
+      ),
+      "eval(js(source).declarations(['OCC','occIdx','occSAT','deferredUnitOf','unitOf','project']));",
       "const D = {n:2};",
       "const space = {x:[0,1],y:[0,1],xRange:[0,1],yRange:[0,1]};",
       "const spaceById = {projection:space};",
       "const isSpatialSpace = () => false;",
       "const gpuCandidate = () => true;",
-      project_source,
       "const panel = {spaceId:'projection',W:100,H:100,view:null};",
       "project(panel, false);",
       "assert.strictEqual(panel.ok, space._unit.ok);",

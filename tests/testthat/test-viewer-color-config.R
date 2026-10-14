@@ -82,27 +82,6 @@ test_that("createShinyApp rejects invalid nested colour values", {
   )
 })
 
-test_that("the Viewer sources configured colour support", {
-  server <- paste(
-    readLines(
-      viewer_test_path("shiny_server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  setup <- paste(
-    readLines(
-      viewer_test_path("color_setup.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(server, "viewer/color_config\\.R", fixed = FALSE)
-  expect_match(setup, "resolve_configured_colors", fixed = TRUE)
-  expect_match(setup, "apply_configured_colors", fixed = TRUE)
-})
-
 test_that("colour pickers stay mounted while shared colours update", {
   files <- c(A = "/data/a.crb", B = "/data/b.crb")
   server <- function(input, output, session) {

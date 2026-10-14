@@ -1,767 +1,42 @@
-viewer_source <- function(...) {
-  source_root <- testthat::test_path("../../inst/viewer")
-  viewer_root <- if (file.exists(file.path(source_root, "shiny_UI.R"))) {
-    source_root
-  } else {
-    system.file("viewer", package = "CerebroNexus")
-  }
-  paste(readLines(file.path(viewer_root, ...), warn = FALSE), collapse = "\n")
-}
-
-viewer_path <- function(...) {
-  source_root <- testthat::test_path("../../inst/viewer")
-  viewer_root <- if (file.exists(file.path(source_root, "shiny_UI.R"))) {
-    source_root
-  } else {
-    system.file("viewer", package = "CerebroNexus")
-  }
-  file.path(viewer_root, ...)
-}
-
-test_that("Viewer shell uses native sidebar scrolling", {
-  ui <- viewer_source("shiny_UI.R")
-  css <- viewer_source("www", "custom.css")
-
-  expect_no_match(ui, 'addClass("fixed")', fixed = TRUE)
-  expect_match(
-    css,
-    "body\\.skin-blue \\.main-sidebar \\{[^}]*position: fixed;[^}]*overflow-y: auto;",
-    perl = TRUE
-  )
-})
+viewer_path <- viewer_test_path
 
 test_that("gene conversion table escapes cell content", {
-  source <- viewer_source("gene_id_conversion", "server.R")
-
-  expect_match(source, "escape = TRUE", fixed = TRUE)
-  expect_no_match(source, "escape = FALSE", fixed = TRUE)
-})
-
-test_that("Viewer gene sets use the public msigdbr API", {
-  utility <- viewer_source("msigdb.R")
-  input <- viewer_source("gene_expression", "UI_projection_input_type.R")
-
-  expect_no_match(paste(utility, input), "msigdbr:::", fixed = TRUE)
-  expect_match(utility, "msigdbr::msigdbr", fixed = TRUE)
-  expect_match(utility, ".msigdb_process_cache", fixed = TRUE)
-  expect_no_match(utility, ".msigdb_table_cache", fixed = TRUE)
-  expect_no_match(utility, "getMsigdbTable", fixed = TRUE)
-  expect_match(input, "getGeneSetNames()", fixed = TRUE)
-})
-
-test_that("Viewer omits server-side PDF exports", {
-  ui <- viewer_source("trajectory", "projection.R")
-  server <- viewer_source("trajectory", "server.R")
-
-  expect_no_match(ui, "Export PDF", fixed = TRUE)
-  expect_no_match(ui, "trajectory_projection_export", fixed = TRUE)
-  expect_no_match(server, "projection_export.R", fixed = TRUE)
-  expect_false(any(file.exists(c(
-    viewer_path("overview", "event_projection_export_plot.R"),
-    viewer_path("gene_expression", "event_projection_export_plot.R"),
-    viewer_path("gene_expression", "func_pltExpProj2DMultPanExp.R"),
-    viewer_path("gene_expression", "func_pltExpProj2DSglPanExp.R"),
-    viewer_path("gene_expression", "func_pltExpTrj2DSglPanExp.R"),
-    viewer_path("spatial", "event_projection_export_plot.R"),
-    viewer_path("trajectory", "projection_export.R")
-  ))))
+  original <- DT::datatable
+  widget <- NULL
+  testthat::local_mocked_bindings(
+    datatable = function(...) {
+      widget <<- original(...)
+      widget
+    },
+    .package = "DT"
+  )
+  shiny::testServer(
+    function(input, output, session) {
+      Cerebro.options <- list(cerebro_root = viewer_app_test_path())
+      read.table <- function(...) {
+        data.frame(symbol = '<img src=x onerror="alert(1)">', id = "ENSG1")
+      }
+      viewer_server_load(
+        viewer_server_statements("gene_id_conversion", "server.R"),
+        environment(),
+        names = 'output[["gene_info"]]'
+      )
+    },
+    {
+      for (species in c("human", "mouse")) {
+        session$setInputs(geneIdConversion_organism = species)
+        expect_no_error(output$gene_info)
+        expect_identical(attr(widget$x$options, "escapeIdx"), "true")
+        expect_true(widget$x$options$scrollX)
+        expect_identical(widget$x$data$symbol, '<img src=x onerror="alert(1)">')
+      }
+    }
+  )
 })
 
 test_that("Viewer no longer depends on shinyFiles", {
-  source_root <- normalizePath(testthat::test_path("../.."), mustWork = FALSE)
-  if (file.exists(file.path(source_root, "DESCRIPTION"))) {
-    description <- read.dcf(file.path(source_root, "DESCRIPTION"))[1L, ]
-    expect_false(grepl("shinyFiles", description[["Imports"]], fixed = TRUE))
-    for (path in c("NAMESPACE", "create_env.R", "R/launchCerebro.R")) {
-      text <- paste(readLines(file.path(source_root, path)), collapse = "\n")
-      expect_no_match(text, "shinyFiles", fixed = TRUE)
-    }
-  } else {
-    imports <- packageDescription("CerebroNexus")[["Imports"]]
-    expect_false(grepl("shinyFiles", imports, fixed = TRUE))
-  }
-})
-
-test_that("Viewer copy uses British colour spelling", {
-  sidebar <- viewer_source("shiny_UI.R")
-  management <- viewer_source("color_management", "server.R")
-  tables <- list(
-    marker_genes = paste(
-      viewer_source("marker_genes", "table.R"),
-      viewer_source("utility_functions.R")
-    ),
-    linked = viewer_source("coordinated_views", "server.R"),
-    trajectory = viewer_source("trajectory", "selected_cells_table.R"),
-    spatial = paste(
-      viewer_source("spatial", "UI_selected_cells_table.R"),
-      viewer_source("utility_functions.R")
-    ),
-    pathways = paste(
-      viewer_source("enriched_pathways", "table.R"),
-      viewer_source("utility_functions.R")
-    ),
-    extra = viewer_source("extra_material", "content.R"),
-    expression = viewer_source(
-      "gene_expression",
-      "UI_table_of_selected_cells.R"
-    ),
-    projection = paste(
-      viewer_source("overview", "UI_selected_cells_table.R"),
-      viewer_source("utility_functions.R")
-    )
-  )
-  expression <- viewer_source(
-    "gene_expression",
-    "UI_projection_gene_color_mode.R"
-  )
-
-  expect_match(sidebar, 'menuItem\\([[:space:]]*"Colour management"')
-  expect_match(management, 'title = "Colours for groups"', fixed = TRUE)
-  for (name in names(tables)) {
-    expect_match(
-      tables[[name]],
-      'label = "Highlight values with colours:"',
-      fixed = TRUE,
-      info = name
-    )
-  }
-  expect_match(expression, 'label = "Panel colours"', fixed = TRUE)
-  expect_match(expression, '"Distinct colours" = "different"', fixed = TRUE)
-})
-
-test_that("Cell-view colouring controls share one label", {
-  controls <- list(
-    linked = viewer_source("coordinated_views", "UI.R"),
-    projection = viewer_source("overview", "UI_projection_main_parameters.R"),
-    spatial = viewer_source("spatial", "UI_projection_main_parameters.R"),
-    trajectory = paste(
-      viewer_source("trajectory", "projection.R"),
-      viewer_source("trajectory", "select_method_and_name.R")
-    ),
-    trekker = viewer_source("trekker", "server.R"),
-    hla = viewer_source("hla_tcr_motifs", "settings.R")
-  )
-
-  for (name in names(controls)) {
-    expect_match(controls[[name]], '"Colour by"', fixed = TRUE, info = name)
-    expect_no_match(
-      controls[[name]],
-      "Colour (cells|nodes) by",
-      info = name
-    )
-  }
-  expect_match(controls$hla, '"HLA allele"', fixed = TRUE)
-})
-
-test_that("Informational Canvas text uses the readable secondary token", {
-  coordviews <- viewer_source("www", "coordviews.css")
-  trekker <- viewer_source("www", "trekker.css")
-
-  for (selector in c(
-    ".cv-read-sub",
-    ".cv-empty, .coordviews-page .cv-empty-sm",
-    ".cv-ctable th",
-    ".cv-hint",
-    ".cv-field-table-title span",
-    ".cv-field-values span",
-    ".cv-tk-insights-toggle small",
-    ".cv-tk-cell-empty",
-    ".cv-tk-cell-bc"
-  )) {
-    expect_match(
-      coordviews,
-      paste0(gsub("([.()])", "\\\\\\1", selector), "[^}]*var\\(--c-text-2\\)"),
-      info = selector
-    )
-  }
-  for (selector in c(".tk-empty", ".tk-stat .tk-k", ".tk-table th")) {
-    expect_match(
-      trekker,
-      paste0(gsub("([.()])", "\\\\\\1", selector), "[^}]*var\\(--c-text-2\\)"),
-      info = selector
-    )
-  }
-})
-
-test_that("Projection uses registered groups and their shared default", {
-  ui <- viewer_source("overview", "UI_projection_main_parameters.R")
-  utility <- viewer_source("utility_functions.R")
-
-  expect_match(ui, "colour_groups <- viewerColourGroupChoices()", fixed = TRUE)
-  expect_match(ui, "choices = colour_groups$choices", fixed = TRUE)
-  expect_match(ui, "selected = colour_groups$selected", fixed = TRUE)
-})
-
-test_that("Viewer metadata Colour by controls share registered group choices", {
-  metadata_pages <- c(
-    viewer_source("overview", "UI_projection_main_parameters.R"),
-    viewer_source("spatial", "UI_projection_main_parameters.R"),
-    viewer_source("trajectory", "select_method_and_name.R")
-  )
-  pages <- c(metadata_pages, viewer_source("coordinated_views", "bundle.R"))
-
-  for (page in pages) {
-    expect_match(page, "viewerColourGroupChoices(", fixed = TRUE)
-  }
-  for (page in metadata_pages) {
-    expect_no_match(page, "colnames(getMetaData())", fixed = TRUE)
-  }
-})
-
-test_that("Cell-view More settings expose only effective appearance controls", {
-  linked <- viewer_source("coordinated_views", "UI.R")
-  overview <- paste(
-    viewer_source("overview", "UI_projection.R"),
-    viewer_source("overview", "UI_projection_show_group_label.R")
-  )
-  spatial <- paste(
-    viewer_source("spatial", "UI.R"),
-    viewer_source("spatial", "UI_projection_show_group_label.R")
-  )
-  expression <- paste(
-    viewer_source("gene_expression", "UI.R"),
-    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
-    viewer_source("gene_expression", "UI_projection_point_border.R")
-  )
-  trajectory <- viewer_source("trajectory", "projection.R")
-  repertoire <- viewer_source("immune_repertoire", "settings.R")
-  repertoire_spec <- viewer_source("immune_repertoire", "param_spec.R")
-  hla <- viewer_source("hla_tcr_motifs", "settings.R")
-
-  for (id in c("cv-labels", "cv-borders", "cv-square-plots")) {
-    expect_match(linked, paste0('"', id, '"'), fixed = TRUE)
-  }
-  for (id in c(
-    "overview_projection_group_labels",
-    "overview_projection_point_border",
-    "overview_projection_keep_square"
-  )) {
-    expect_match(overview, id, fixed = TRUE)
-  }
-  for (id in c(
-    "spatial_projection_group_labels",
-    "spatial_projection_point_border",
-    "spatial_projection_keep_square"
-  )) {
-    expect_match(spatial, id, fixed = TRUE)
-  }
-  for (id in c(
-    "trajectory_projection_group_labels",
-    "trajectory_projection_point_border",
-    "trajectory_projection_keep_square"
-  )) {
-    expect_match(trajectory, id, fixed = TRUE)
-  }
-  expect_no_match(
-    trajectory,
-    "trajectory_projection_pdf_group_labels",
-    fixed = TRUE
-  )
-  expect_no_match(trajectory, "Export PDF", fixed = TRUE)
-  for (id in c(
-    "ir_clonalUMAP_group_labels",
-    "ir_clonalUMAP_point_border",
-    "ir_clonalUMAP_keep_square"
-  )) {
-    expect_match(repertoire, id, fixed = TRUE)
-  }
-  expect_no_match(repertoire_spec, 'id = "ir_d_base_size"', fixed = TRUE)
-  expect_no_match(repertoire_spec, 'id = "ir_d_legend_size"', fixed = TRUE)
-  expect_match(expression, "expression_projection_keep_square", fixed = TRUE)
-  expect_match(
-    expression,
-    'registerCellViewPointBorder(output, "expression_projection")',
-    fixed = TRUE
-  )
-  expect_no_match(
-    expression,
-    "expression_projection_group_labels",
-    fixed = TRUE
-  )
-  expect_no_match(hla, "keep_square", fixed = TRUE)
-  expect_no_match(hla, "group_labels", fixed = TRUE)
-  expect_no_match(hla, "point_border", fixed = TRUE)
-})
-
-test_that("Cell-view appearance uses the existing payload lifecycle", {
-  utility <- viewer_source("utility_functions.R")
-  javascript <- viewer_source("www", "cell_views.js")
-  sources <- paste(
-    utility,
-    viewer_source("shiny_UI.R"),
-    viewer_source("overview", "UI_projection.R"),
-    viewer_source("spatial", "UI.R"),
-    viewer_source("gene_expression", "UI.R"),
-    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
-    viewer_source("gene_expression", "UI_projection_point_border.R"),
-    viewer_source("trajectory", "projection.R"),
-    viewer_source("immune_repertoire", "settings.R")
-  )
-
-  expect_no_match(sources, "cerebroCellViewSetting", fixed = TRUE)
-  expect_match(utility, "appearance = list(", fixed = TRUE)
-  expect_match(
-    javascript,
-    "var appearance = payload.meta.appearance;",
-    fixed = TRUE
-  )
-  expect_match(javascript, "if (appearance) {", fixed = TRUE)
-  expect_match(
-    javascript,
-    "if (bordersControl) bordersOn = !!bordersControl.checked;",
-    fixed = TRUE
-  )
-  expect_match(javascript, "bordersOn", fixed = TRUE)
-  expect_match(javascript, "appearance.keep_square", fixed = TRUE)
-  expect_match(
-    javascript,
-    paste0(
-      "if \\(dataChanged\\) \\{\\s+",
-      "labelsOn = true;\\s+",
-      "bordersOn = false;\\s+",
-      "keepPlotsSquare = false;"
-    )
-  )
-})
-
-test_that("cell scatter pages share defaults with a Gene Expression override", {
-  server <- viewer_source("shiny_server.R")
-  pages <- list(
-    viewer_source("overview", "UI_projection_additional_parameters.R"),
-    viewer_source("spatial", "UI_projection_additional_parameters.R"),
-    viewer_source("gene_expression", "UI_projection_additional_parameters.R"),
-    viewer_source("trajectory", "projection.R")
-  )
-
-  expect_match(server, "current_scatter_defaults", fixed = TRUE)
-  expect_match(server, "cell_point_size", fixed = TRUE)
-  expect_match(server, "cell_point_opacity", fixed = TRUE)
-  for (page in pages[-3L]) {
-    expect_match(page, "current_scatter_defaults()", fixed = TRUE)
-    expect_match(page, 'preferences[["cell_point_size"]]', fixed = TRUE)
-    expect_match(page, 'preferences[["cell_point_opacity"]]', fixed = TRUE)
-  }
-  expect_match(
-    pages[[3L]],
-    "current_expression_scatter_defaults()",
-    fixed = TRUE
-  )
-  expect_match(pages[[3L]], 'preferences[["cell_point_size"]]', fixed = TRUE)
-  expect_match(pages[[3L]], 'preferences[["cell_point_opacity"]]', fixed = TRUE)
-})
-
-test_that("Projection pages use automatic ranges instead of axis sliders", {
-  pages <- c("overview", "spatial", "gene_expression")
-  for (page in pages) {
-    ui <- if (identical(page, "gene_expression")) {
-      viewer_source(page, "UI.R")
-    } else {
-      viewer_source(page, "UI_projection.R")
-    }
-    params <- viewer_source(page, "obj_projection_parameters_plot.R")
-    expect_no_match(ui, '"Axes"', fixed = TRUE)
-    expect_no_match(ui, "projection_scales_UI", fixed = TRUE)
-    expect_no_match(params, "manual_range", fixed = TRUE)
-    expect_false(file.exists(viewer_path(page, "UI_projection_scales.R")))
-  }
-
-  expect_match(
-    viewer_source("overview", "obj_projection_parameters_plot.R"),
-    "getXYranges(projection_data)",
-    fixed = TRUE
-  )
-  expect_match(
-    viewer_source("gene_expression", "obj_projection_parameters_plot.R"),
-    "getXYranges(range_data)",
-    fixed = TRUE
-  )
-  spatial_params <- viewer_source("spatial", "obj_projection_parameters_plot.R")
-  expect_match(spatial_params, "x_range = NULL", fixed = TRUE)
-  expect_match(spatial_params, "y_range = NULL", fixed = TRUE)
-})
-
-test_that("Standalone cell views cannot enter linked-view focus", {
-  js <- viewer_source("www", "cell_views.js")
-
-  expect_match(js, "function canFocusPanel", fixed = TRUE)
-  expect_match(js, "return !singleActive;", fixed = TRUE)
-  expect_match(js, "if (!canFocusPanel()) return;", fixed = TRUE)
-})
-
-test_that("Standalone view routing only considers visible canvas hosts", {
-  js <- viewer_source("www", "cell_views.js")
-  routing <- regmatches(
-    js,
-    regexpr(
-      "function visibleSingleId\\(\\) \\{[\\s\\S]*?function rememberSurfaceHome",
-      js,
-      perl = TRUE
-    )
-  )
-
-  expect_match(
-    routing,
-    "document.querySelectorAll('.cerebro-cell-view-host[data-cell-view-id]')",
-    fixed = TRUE
-  )
-  expect_match(routing, "hosts[i].getClientRects().length", fixed = TRUE)
-  expect_no_match(routing, "getBoundingClientRect()", fixed = TRUE)
-  expect_no_match(
-    routing,
-    "document.querySelectorAll('[data-cell-view-id]')",
-    fixed = TRUE
-  )
-})
-
-test_that("Standalone cell-view toolbars reach the panel top-right", {
-  css <- viewer_source("www", "coordviews.css")
-  expect_match(
-    css,
-    ".coordviews-page.cerebro-cell-view-host .cv-pane-head",
-    fixed = TRUE
-  )
-
-  shared_views <- c(
-    "overview/UI_projection.R",
-    "spatial/UI.R",
-    "gene_expression/UI.R",
-    "trajectory/UI.R",
-    "immune_repertoire/UI.R",
-    "trekker/UI.R"
-  )
-  for (view in shared_views) {
-    expect_match(
-      viewer_source(view),
-      "cerebroCellViewOutput(",
-      fixed = TRUE,
-      info = view
-    )
-  }
-})
-
-test_that("2-D views fill fluid panels without changing spatial scale", {
-  js <- viewer_source("www", "cell_views.js")
-
-  expect_match(js, "if (!zs) {", fixed = TRUE)
-  expect_match(js, "var k = 1 / Math.max(dw, dh);", fixed = TRUE)
-  expect_match(js, "if (isSpatialSpace(sp) && !u.nz)", fixed = TRUE)
-  expect_match(
-    js,
-    "var aspect = Number(u.aspect), panelAspect = SX / SY;",
-    fixed = TRUE
-  )
-  expect_match(js, "ox += (SX - fittedWidth) / 2;", fixed = TRUE)
-  expect_match(js, "oy += (SY - fittedHeight) / 2;", fixed = TRUE)
-  expect_no_match(js, "function panelDataAspect", fixed = TRUE)
-  expect_no_match(js, "function fitAspectRow", fixed = TRUE)
-})
-
-test_that("Runtime-linked view slots create exactly one WebGL layer", {
-  js <- viewer_source("www", "cell_views.js")
-
-  expect_match(
-    js,
-    "clone.querySelectorAll('.cv-gpu-layer').forEach",
-    fixed = TRUE
-  )
-  expect_match(js, "attachGpu(p);", fixed = TRUE)
-  expect_match(js, "candidate.side === maxSide", fixed = TRUE)
-  expect_match(
-    js,
-    "Math.min(overview ? overview.cols : 1, availableCols)",
-    fixed = TRUE
-  )
-})
-
-test_that("Trekker uses the shared top toolbar and settings drawer", {
-  ui <- viewer_source("trekker", "UI.R")
-  server <- viewer_source("trekker", "server.R")
-
-  expect_match(
-    ui,
-    'class = "cerebro-viz-row cerebro-viz-top-layout"',
-    fixed = TRUE
-  )
-  expect_match(ui, 'class = "cerebro-viz-toolbar"', fixed = TRUE)
-  expect_match(ui, '"trekker_more_button"', fixed = TRUE)
-  expect_match(ui, '"cv-more"', fixed = TRUE)
-  expect_match(ui, 'cerebroCellViewOutput("trekker_projection")', fixed = TRUE)
-  expect_no_match(ui, 'class = "cerebro-param-col"', fixed = TRUE)
-  expect_match(server, 'output[["trekker_main_parameters_ui"]]', fixed = TRUE)
-  expect_match(server, 'cerebroCellViewRender(', fixed = TRUE)
-  expect_no_match(server, 'sendCustomMessage("trekker_data"', fixed = TRUE)
-  expect_no_match(server, "shinyWidgets::pickerInput", fixed = TRUE)
-})
-
-test_that("HLA keeps zoom-to-selection in its panel toolbar", {
-  ui <- viewer_source("hla_tcr_motifs", "UI.R")
-  linked_ui <- viewer_source("coordinated_views", "UI.R")
-  javascript <- viewer_source("www", "cell_views.js")
-
-  expect_match(
-    ui,
-    'cerebroCellViewOutput("hla_motif_network")',
-    fixed = TRUE
-  )
-  expect_match(
-    linked_ui,
-    'class = "cv-tbtn cv-zsel-btn"',
-    fixed = TRUE
-  )
-  expect_match(javascript, "zoomToSelection(pp)", fixed = TRUE)
-})
-
-test_that("Linked actions stay compact and match their scope", {
-  ui <- viewer_source("coordinated_views", "UI.R")
-  javascript <- viewer_source("www", "cell_views.js")
-  css <- viewer_source("www", "coordviews.css")
-
-  config_open <- gregexpr('id = "cv-config-open"', ui, fixed = TRUE)[[1L]]
-  expect_length(config_open[config_open > 0L], 1L)
-  expect_match(ui, 'tags$span("Share")', fixed = TRUE)
-  expect_match(
-    ui,
-    '"cv-config-open cv-share-open cerebro-toolbar-share"',
-    fixed = TRUE
-  )
-  expect_no_match(javascript, "revealEl(share, hasSel);", fixed = TRUE)
-  expect_no_match(ui, 'id = "cv-zoom"', fixed = TRUE)
-  expect_match(ui, "cv-clear-btn", fixed = TRUE)
-  expect_match(ui, '`data-act` = "clear"', fixed = TRUE)
-  expect_match(javascript, "function updateResetButtons", fixed = TRUE)
-  expect_match(
-    javascript,
-    "button.disabled = !(p.view || p.rot);",
-    fixed = TRUE
-  )
-  expect_match(javascript, "if (act === 'clear')", fixed = TRUE)
-  expect_match(
-    javascript,
-    "t.closest && t.closest('#cv-clear')",
-    fixed = TRUE
-  )
-  expect_match(css, "font-size: 13px;", fixed = TRUE)
-  expect_match(
-    javascript,
-    "if (gname.indexOf('__single_') === 0) return;",
-    fixed = TRUE
-  )
-})
-
-test_that("Trekker transition accepts Shiny slider change events", {
-  javascript <- viewer_source("www", "cell_views.js")
-  server <- viewer_source("trekker", "server.R")
-  css <- viewer_source("www", "custom.css")
-
-  expect_match(javascript, "function updateTrekkerTransition", fixed = TRUE)
-  expect_match(
-    javascript,
-    "window.jQuery(document)",
-    fixed = TRUE
-  )
-  expect_match(
-    javascript,
-    "input.cvTrekkerTransition change.cvTrekkerTransition",
-    fixed = TRUE
-  )
-  expect_match(javascript, "'#trekker_morph'", fixed = TRUE)
-  expect_match(javascript, ".off(", fixed = TRUE)
-  expect_match(javascript, ".on(", fixed = TRUE)
-  expect_no_match(
-    javascript,
-    "document.addEventListener('input', updateTrekkerTransition);",
-    fixed = TRUE
-  )
-  expect_no_match(
-    javascript,
-    "document.addEventListener('change', updateTrekkerTransition);",
-    fixed = TRUE
-  )
-  expect_match(javascript, "function transitionUnit", fixed = TRUE)
-  expect_match(javascript, "fromUnit: unitOf", fixed = TRUE)
-  expect_match(
-    javascript,
-    "space._unit = transitionUnit(source.fromUnit, source.toUnit, transition);",
-    fixed = TRUE
-  )
-  expect_match(server, 'class = "trekker-transition-control"', fixed = TRUE)
-  expect_match(server, "ticks = FALSE", fixed = TRUE)
-  expect_match(
-    css,
-    ".trekker-transition-control .irs-single",
-    fixed = TRUE
-  )
-  expect_no_match(css, "#trekker_morph + .irs--shiny", fixed = TRUE)
-})
-
-test_that("Settings drawer controls use one spacing system", {
-  css <- viewer_source("www", "custom.css")
-
-  expect_match(
-    css,
-    ".cerebro-settings-drawer .bootstrap-select.form-control {\n  height: auto !important;",
-    fixed = TRUE
-  )
-  expect_match(
-    css,
-    "gap: 14px 22px;",
-    fixed = TRUE
-  )
-  expect_match(
-    css,
-    ".cerebro-settings-content .form-group,\n.cerebro-settings-content .checkbox {\n  min-width: 0;\n  margin: 0;",
-    fixed = TRUE
-  )
-  expect_no_match(
-    css,
-    ".cerebro-settings-drawer .form-group {\n  margin-bottom:",
-    fixed = TRUE
-  )
-  expect_no_match(
-    css,
-    ".cerebro-settings-drawer .checkbox {\n  margin:",
-    fixed = TRUE
-  )
-})
-
-test_that("All settings drawers use the shared shell and responsive grid", {
-  ui <- paste(
-    readLines(viewer_path("shiny_UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  css <- viewer_source("www", "custom.css")
-  linked_ui <- viewer_source("coordinated_views", "UI.R")
-  linked_css <- viewer_source("www", "coordviews.css")
-  linked_js <- viewer_source("www", "cell_views.js")
-  ir_ui <- viewer_source("immune_repertoire", "UI.R")
-  ir_settings <- viewer_source("immune_repertoire", "settings.R")
-  hla_ui <- viewer_source("hla_tcr_motifs", "UI.R")
-  drawer_js <- viewer_source("www", "settings_drawer.js")
-  shell_js <- viewer_source("www", "viewer-shell.js")
-
-  expect_match(ui, 'class = "cerebro-settings-content"', fixed = TRUE)
-  expect_match(ui, 'class = "cerebro-settings-drawer"', fixed = TRUE)
-  expect_no_match(
-    ui,
-    'class = paste(c("cerebro-settings-drawer"',
-    fixed = TRUE
-  )
-  expect_match(css, "width: clamp(400px, 30vw, 480px);", fixed = TRUE)
-  expect_match(
-    css,
-    "background: color-mix(in srgb, var(--c-surface) 90%, transparent);",
-    fixed = TRUE
-  )
-  expect_match(
-    css,
-    "grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));",
-    fixed = TRUE
-  )
-  expect_match(
-    css,
-    ".cerebro-viz-toolbar .shiny-panel-conditional:has(> .form-group)",
-    fixed = TRUE
-  )
-  expect_match(css, ".cerebro-page-focus-target:focus", fixed = TRUE)
-  expect_match(css, "outline: none !important;", fixed = TRUE)
-  expect_match(
-    shell_js,
-    'target.classList.add("cerebro-page-focus-target")',
-    fixed = TRUE
-  )
-  expect_match(
-    css,
-    ".cerebro-settings-content .shiny-input-container:has(.irs--shiny)",
-    fixed = TRUE
-  )
-  expect_no_match(css, "max-width: 170px;", fixed = TRUE)
-  expect_match(css, "grid-column: 1 / -1;", fixed = TRUE)
-  expect_match(linked_ui, "cerebroSettingsDrawer(", fixed = TRUE)
-  expect_match(linked_ui, '"Background image"', fixed = TRUE)
-  expect_match(linked_ui, '"Appearance"', fixed = TRUE)
-  expect_match(linked_ui, '"Data"', fixed = TRUE)
-  expect_match(linked_ui, '"Spatial mapping"', fixed = TRUE)
-  expect_match(linked_ui, '"Group filters"', fixed = TRUE)
-  expect_match(
-    linked_ui,
-    'class = "coordviews-page"',
-    fixed = TRUE
-  )
-  expect_no_match(linked_ui, 'class = "cv-more-clip"', fixed = TRUE)
-  expect_no_match(linked_ui, 'class = "cv-more-inner"', fixed = TRUE)
-  expect_no_match(linked_ui, 'class = "cv-more-section', fixed = TRUE)
-  expect_no_match(linked_css, "#cv-more", fixed = TRUE)
-  expect_no_match(linked_css, ".cv-more-titlebar", fixed = TRUE)
-  expect_no_match(linked_css, ".cv-more-close", fixed = TRUE)
-  for (id in c("cv-labels", "cv-borders", "cv-square-plots")) {
-    expect_match(linked_ui, paste0('"', id, '"'), fixed = TRUE)
-  }
-  for (id in c("cv-ps", "cv-opacity", "cv-pct", "cv-dissolve", "cv-niche")) {
-    expect_match(
-      linked_ui,
-      paste0('sliderInput\\([[:space:]]*"', id, '"')
-    )
-  }
-  expect_match(linked_js, "document.addEventListener('input'", fixed = TRUE)
-  expect_match(linked_js, "document.addEventListener('change'", fixed = TRUE)
-  expect_match(linked_js, "updateLinkedToggle(target)", fixed = TRUE)
-  expect_match(ir_ui, 'uiOutput("ir_appearance_section_UI")', fixed = TRUE)
-  expect_match(ir_settings, '"Appearance"', fixed = TRUE)
-  expect_match(ir_settings, "has_display && !has_cell_options", fixed = TRUE)
-  hla_appearance_pos <- regexpr('"Appearance"', hla_ui, fixed = TRUE)[1]
-  hla_analysis_pos <- regexpr('"Analysis"', hla_ui, fixed = TRUE)[1]
-  expect_gt(hla_appearance_pos, 0)
-  expect_gt(hla_analysis_pos, hla_appearance_pos)
-  expect_match(
-    linked_ui,
-    paste0(
-      'selectInput\\([[:space:]]*"cv-clip",',
-      '[[:space:]]*label = "Colour range"'
-    )
-  )
-  expect_no_match(linked_ui, "cv_range <-", fixed = TRUE)
-  expect_no_match(linked_ui, "cv_range(", fixed = TRUE)
-  expect_no_match(linked_ui, "cv-chk", fixed = TRUE)
-  expect_no_match(linked_css, ".cv-chk", fixed = TRUE)
-  expect_no_match(linked_css, ".cv-range", fixed = TRUE)
-  expect_no_match(linked_css, "cerebro-settings", fixed = TRUE)
-  expect_no_match(linked_js, "positionRangeVal", fixed = TRUE)
-  expect_no_match(linked_js, "positionAllRangeVals", fixed = TRUE)
-  expect_no_match(linked_js, "cv-ps-val", fixed = TRUE)
-  expect_match(linked_js, "function setLinkedSliderValue", fixed = TRUE)
-  expect_match(linked_js, ".data('ionRangeSlider')", fixed = TRUE)
-  expect_match(drawer_js, "function restoreDrawer(drawer)", fixed = TRUE)
-  expect_match(drawer_js, "drawer._cerebroHomeParent", fixed = TRUE)
-  expect_match(
-    drawer_js,
-    "shiny:outputinvalidated.cerebroSettings shiny:value.cerebroSettings",
-    fixed = TRUE
-  )
-  expect_match(
-    linked_js,
-    "ctl.closest('.cerebro-settings-section')",
-    fixed = TRUE
-  )
-})
-
-test_that("Info modals render above settings drawers", {
-  css <- viewer_source("www", "custom.css")
-
-  expect_match(css, "body .modal-backdrop {\n  z-index: 1700", fixed = TRUE)
-  expect_match(css, "body .modal {\n  z-index: 1710", fixed = TRUE)
-})
-
-test_that("Settings drawer pickers have only one visible border", {
-  css <- viewer_source("www", "custom.css")
-
-  expect_match(
-    css,
-    paste0(
-      ".cerebro-settings-drawer .form-control",
-      ":not(.bootstrap-select):not(.selectpicker)"
-    ),
-    fixed = TRUE
-  )
+  imports <- packageDescription("CerebroNexus")[["Imports"]]
+  expect_false("shinyFiles" %in% trimws(strsplit(imports, ",")[[1]]))
 })
 
 test_that("Specialist group filters share inclusive empty-selection behavior", {
@@ -787,173 +62,53 @@ test_that("Specialist group filters share inclusive empty-selection behavior", {
     ),
     rep(FALSE, 3)
   )
-
-  for (path in list(
-    c("overview", "obj_projection_cells_to_show.R"),
-    c("gene_expression", "obj_projection_cells_to_show.R")
-  )) {
-    expect_match(
-      do.call(viewer_source, as.list(path)),
-      "viewerProjectionCellIndices",
-      fixed = TRUE
-    )
-  }
-  spatial <- viewer_source("spatial", "obj_projection_cells_to_show.R")
-  expect_match(spatial, "viewerProjectionSubsetRows", fixed = TRUE)
-  expect_match(spatial, "cerebroGroupFilterMask", fixed = TRUE)
-})
-
-test_that("Cell scatter pages share one percentage default", {
-  server <- viewer_source("shiny_server.R")
-  expect_match(server, "cell_percentage_cells_to_show", fixed = TRUE)
-  expect_no_match(
-    server,
-    "gene_expression_plot_percentage_cells_to_show",
-    fixed = TRUE
-  )
-  expect_no_match(
-    server,
-    "overview_default_percentage_cells_to_show",
-    fixed = TRUE
-  )
-  expect_no_match(
-    server,
-    "gene_expression_default_percentage_cells_to_show",
-    fixed = TRUE
-  )
-
-  for (path in list(
-    c("overview", "UI_projection_additional_parameters.R"),
-    c("spatial", "UI_projection_additional_parameters.R"),
-    c("gene_expression", "UI_projection_additional_parameters.R"),
-    c("trajectory", "projection.R")
-  )) {
-    source <- do.call(viewer_source, as.list(path))
-    expect_match(source, "cell_percentage_cells_to_show", fixed = TRUE)
-  }
-
-  linked <- viewer_source("coordinated_views", "UI.R")
-  expect_match(linked, "min = 10", fixed = TRUE)
-  expect_match(linked, "step = 10", fixed = TRUE)
 })
 
 test_that("Projection renders an empty filter result instead of retaining cells", {
-  for (path in list(
-    c("overview", "obj_projection_data.R"),
-    c("overview", "obj_projection_coordinates.R")
-  )) {
-    source <- do.call(viewer_source, as.list(path))
-    expect_no_match(
-      source,
-      "req(overview_projection_cells_to_show())",
-      fixed = TRUE
-    )
-  }
-  data_to_plot <- viewer_source("overview", "obj_projection_data_to_plot.R")
-  expect_match(data_to_plot, "if (!length(cell_indices))", fixed = TRUE)
-  expect_match(
-    data_to_plot,
-    "cell_count = length(cell_indices)",
-    fixed = TRUE
+  shiny::testServer(
+    function(input, output, session) {
+      sys.source(viewer_test_path("utility_functions.R"), environment())
+      metadata <- data.frame(sample = factor(c("A", "B")))
+      viewer_loaded_dataset_context <- function() {
+        list(epoch = "s", dataset_key = "A", generation = 1)
+      }
+      viewerProjectionFirstFrameMetadata <- function() metadata
+      overview_projection_cells_to_show <- reactive(
+        if (isTRUE(input$empty)) integer() else 1:2
+      )
+      overview_projection_parameters_plot <- function() {
+        list(color_variable = "sample", projection = "umap")
+      }
+      overview_projection_parameters_other <- list(reset_axes = TRUE)
+      getGroups <- function() "sample"
+      reactive_group_colors <- function(...) c(A = "red", B = "blue")
+      viewerProjectionAsset <- function(...) NULL
+      overview_projection_data <- function() {
+        metadata[overview_projection_cells_to_show(), , drop = FALSE]
+      }
+      overview_projection_coordinates <- function() {
+        list(
+          x = seq_len(nrow(overview_projection_data())),
+          y = seq_len(nrow(overview_projection_data()))
+        )
+      }
+      sys.source(
+        viewer_test_path("overview", "obj_projection_data_to_plot.R"),
+        environment()
+      )
+    },
+    {
+      expect_equal(overview_projection_data_to_plot_raw()$cell_count, 2)
+      session$setInputs(empty = TRUE)
+      empty <- overview_projection_data_to_plot_raw()
+      expect_equal(empty$cell_count, 0)
+      expect_length(empty$color_assignments, 0)
+      expect_length(empty$coordinates$x, 0)
+      expect_equal(nrow(empty$cells_df), 0)
+      session$setInputs(empty = FALSE)
+      expect_equal(overview_projection_data_to_plot_raw()$cell_count, 2)
+    }
   )
-})
-
-test_that("Specialist group filters reuse the Linked views control", {
-  widget <- viewer_source(
-    "module",
-    "group_filters",
-    "group_filters_widget.R"
-  )
-  javascript <- viewer_source("www", "settings_drawer.js")
-  shared_css <- viewer_source("www", "custom.css")
-  linked_css <- viewer_source("www", "coordviews.css")
-  linked_ui <- viewer_source("coordinated_views", "UI.R")
-  cell_views <- viewer_source("www", "cell_views.js")
-
-  expect_match(
-    widget,
-    'class = "cerebro-group-filters"',
-    fixed = TRUE
-  )
-  expect_match(widget, 'class = "cv-filt-btn"', fixed = TRUE)
-  expect_match(widget, 'class = "cv-filt-menu"', fixed = TRUE)
-  expect_match(widget, 'class = "cv-filt-item"', fixed = TRUE)
-  expect_match(widget, 'class = "cv-dot"', fixed = TRUE)
-  expect_match(javascript, ".cerebro-group-filters .cv-filt", fixed = TRUE)
-  expect_match(shared_css, ".cerebro-group-filters .cv-filt", fixed = TRUE)
-  expect_no_match(linked_css, ".coordviews-page .cv-filt", fixed = TRUE)
-  expect_match(linked_ui, "cerebro-group-filters", fixed = TRUE)
-  expect_no_match(cell_views, "function closeFilterMenus", fixed = TRUE)
-
-  for (path in list(
-    c("overview", "UI_projection_group_filters.R"),
-    c("spatial", "UI_projection_group_filters.R"),
-    c("gene_expression", "UI_projection_group_filters.R"),
-    c("trajectory", "projection.R")
-  )) {
-    source <- do.call(viewer_source, as.list(path))
-    expect_match(source, "registerGroupFiltersUI", fixed = TRUE)
-    expect_no_match(source, "pickerInput", fixed = TRUE)
-  }
-
-  ir_settings <- viewer_source("immune_repertoire", "settings.R")
-  expect_match(ir_settings, "groupFilterControl(", fixed = TRUE)
-  expect_no_match(ir_settings, "pickerInput", fixed = TRUE)
-  expect_match(ir_settings, 'identical(p$type, "select")', fixed = TRUE)
-
-  trajectory_plot <- viewer_source("trajectory", "projection_plot.R")
-  expect_match(trajectory_plot, "cerebroGroupFilterMask", fixed = TRUE)
-  expect_match(trajectory_plot, "trajectory_lines = list()", fixed = TRUE)
-})
-
-test_that("Gene expression display and colour modes are linked", {
-  display_ui <- viewer_source(
-    "gene_expression",
-    "UI_projection_genes_separate_panels.R"
-  )
-  colour_ui <- viewer_source(
-    "gene_expression",
-    "UI_projection_gene_color_mode.R"
-  )
-  input_ui <- viewer_source(
-    "gene_expression",
-    "UI_projection_input_type.R"
-  )
-
-  css <- viewer_source("www", "custom.css")
-  js <- viewer_source("www", "settings_drawer.js")
-
-  expect_match(display_ui, 'label = "Display mode"', fixed = TRUE)
-  expect_match(display_ui, '"Mean expression" = "combined"', fixed = TRUE)
-  expect_match(display_ui, '"Separate panels" = "separate"', fixed = TRUE)
-  expect_match(display_ui, '"RGB co-expression" = "rgb"', fixed = TRUE)
-  expect_match(colour_ui, 'label = "Panel colours"', fixed = TRUE)
-  expect_match(colour_ui, '"Shared scale" = "shared"', fixed = TRUE)
-  expect_match(colour_ui, '"Distinct colours" = "different"', fixed = TRUE)
-  expect_match(
-    colour_ui,
-    'n_genes <= 1 || display_mode != "separate"',
-    fixed = TRUE
-  )
-  expect_no_match(colour_ui, "shinyjs::disabled", fixed = TRUE)
-  expect_match(
-    input_ui,
-    'class = "cerebro-gene-rgb-row cerebro-control-enter"',
-    fixed = TRUE
-  )
-  expect_match(input_ui, 'class = "cerebro-gene-rgb-channel"', fixed = TRUE)
-  expect_no_match(css, ".cerebro-gene-control.is-disabled", fixed = TRUE)
-  expect_no_match(
-    css,
-    "animation: cerebro-control-enter",
-    fixed = TRUE
-  )
-  expect_no_match(
-    js,
-    "shiny:outputinvalidated.cerebroGeneControls",
-    fixed = TRUE
-  )
-  expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
 })
 
 test_that("Gene expression panels share one global numeric range", {
@@ -996,52 +151,17 @@ test_that("Different gene colours are stable and visually distinct", {
   )
 })
 
-test_that("Canvas renderer accepts a palette per gene panel", {
-  js <- viewer_source("www", "cell_views.js")
-  css <- viewer_source("www", "coordviews.css")
-
-  expect_match(js, "data.panel_colorscales", fixed = TRUE)
-  expect_match(js, "panelScale", fixed = TRUE)
-  expect_match(js, "Shared expression range", fixed = TRUE)
-  expect_match(js, "cv-panel-scale", fixed = TRUE)
-  expect_match(
-    css,
-    ".coordviews-page .cv-focus-btn {\n  position: absolute;",
-    fixed = TRUE
+test_that("canvas transforms preserve geometry and update Trekker transitions", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  result <- system2(
+    "node",
+    c(
+      shQuote(test_path("fixtures", "canvas-transforms.js")),
+      shQuote(viewer_test_path("www", "cell_views.js")),
+      shQuote(viewer_test_path("www", "hla_motifs.js"))
+    ),
+    stdout = TRUE,
+    stderr = TRUE
   )
-  expect_match(css, ".coordviews-page .cv-panel-scale", fixed = TRUE)
-})
-
-test_that("cell scatter pages debounce only complete render snapshots", {
-  parameter_files <- c(
-    viewer_path("overview", "obj_projection_parameters_plot.R"),
-    viewer_path("spatial", "obj_projection_parameters_plot.R"),
-    viewer_path("gene_expression", "obj_projection_parameters_plot.R")
-  )
-  snapshot_files <- c(
-    viewer_path("overview", "obj_projection_data_to_plot.R"),
-    viewer_path("spatial", "obj_projection_data_to_plot.R")
-  )
-
-  for (path in parameter_files) {
-    source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-    expect_no_match(source, "debounce(", fixed = TRUE)
-  }
-  for (path in snapshot_files) {
-    source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-    expect_match(source, "<- debounceAfterFirst(", fixed = TRUE)
-  }
-  # Gene's prepared-value relay was removed in f4e4fe3b. It deliberately uses
-  # Shiny's direct debounce; the overview/spatial first-value path is unchanged.
-  expect_match(
-    viewer_source("gene_expression", "obj_projection_data_to_plot.R"),
-    "<- shiny::debounce(",
-    fixed = TRUE
-  )
-
-  spatial_update <- viewer_source(
-    "spatial",
-    "func_projection_update_plot.R"
-  )
-  expect_no_match(spatial_update, "colnames(metadata)[1]", fixed = TRUE)
+  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
 })

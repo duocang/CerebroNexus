@@ -1,5 +1,6 @@
 const fs=require('fs'),assert=require('assert');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const js = require("./js-source.cjs")(source);
 const n=97,RGB_MODE='rgb';
 const window={},spaceById={};
 function catOf(){return null;}
@@ -12,8 +13,8 @@ function gpuDataState(){return {data:D,unit,mode,opacity,revision,selection:sel,
 function panelColorMode(){return mode;}function pointOpacityOf(){return opacity;}function paintOrder(){return order;}
 function gpuColor(key){return key==='flat'?palette[0]:palette[key];}function colorOf(i){return i%palette.length;}
 function rgbGpuColor(r,g,b){return r|(g<<8)|(b<<16)|((r+g+b>0)?0x1000000:0);}
-eval(source.slice(source.indexOf('  function sameGpuDataState('),source.indexOf('  function gpuCandidate(')));
-eval(source.slice(source.indexOf('  function updateGpuSelection('),source.indexOf('  function drawGpuPoints(')));
+eval(js.declarations(["sameGpuDataState"]));
+eval(js.declarations(["updateGpuSelection","buildGpuData"]));
 function compare(p,mask=shown,count=shownCount){
  const before=p.gpuData;const actual=buildGpuData(p,mask,count),expected=buildGpuData({},mask,count);
  // GPU draws count vertices; unused capacity differs between the flat-fill

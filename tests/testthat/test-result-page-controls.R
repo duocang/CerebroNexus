@@ -87,8 +87,13 @@ test_that("stored expression metric preference survives a grouping change", {
   definitions <- Filter(
     function(e) {
       is.call(e) &&
-        identical(e[[1L]], quote(`<-`)) &&
-        paste(deparse(e[[2L]]), collapse = "") %in% wanted
+        as.character(e[[1L]])[1] %in% c("<-", "=") &&
+        viewer_server_key(e[[2L]]) %in%
+          vapply(
+            wanted,
+            function(key) viewer_server_key(parse(text = key)[[1]]),
+            character(1)
+          )
     },
     expressions
   )
@@ -151,8 +156,13 @@ test_that("ambiguous legacy pct values reach the table without unit conversion",
   definitions <- Filter(
     function(e) {
       is.call(e) &&
-        identical(e[[1L]], quote(`<-`)) &&
-        paste(deparse(e[[2L]]), collapse = "") %in% wanted
+        as.character(e[[1L]])[1] %in% c("<-", "=") &&
+        viewer_server_key(e[[2L]]) %in%
+          vapply(
+            wanted,
+            function(key) viewer_server_key(parse(text = key)[[1]]),
+            character(1)
+          )
     },
     expressions
   )
@@ -210,18 +220,10 @@ test_that("ambiguous legacy pct values reach the table without unit conversion",
 })
 
 test_that("Abundance waits for dynamic controls before choosing a renderer", {
-  expressions <- as.list(parse(viewer_test_path(
-    "immune_repertoire",
-    "visualizations.R"
-  )))
-  definition <- Filter(
-    function(e) {
-      is.call(e) &&
-        identical(e[[1L]], quote(`<-`)) &&
-        identical(e[[2L]], quote(output$ir_plot_clonalAbundance))
-    },
-    expressions
-  )[[1L]]
+  definition <- viewer_r_assignment(
+    viewer_test_path("immune_repertoire", "visualizations.R"),
+    "output.ir_plot_clonalAbundance"
+  )
   # Evaluate the production renderPlotly body, without the output/cache wrapper.
   scope <- new.env(parent = environment())
   scope$req <- shiny::req

@@ -1,5 +1,6 @@
 const fs=require('fs'),assert=require('assert');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const js = require("./js-source.cjs")(source);
 let D,paint=[],fallback=0,reports=0,selection=[1,2],fail=false;
 const panels=[{spaceId:'main'},{spaceId:'clone'}];
 function shownState(){return {mask:null,count:2};}
@@ -20,8 +21,8 @@ function datasetMessageFresh(message){return window.CerebroDatasetContext.accept
 function sameDatasetContext(left,right){return window.CerebroDatasetContext.same(left,right);}
 const CBViewState={telemetry:{snapshot:x=>x}};
 let transportMetrics={},pendingCloneSupplement=null;
-eval(source.slice(source.indexOf('  var drawAllDeferred = false;'),source.indexOf('  // Drop any committed lasso')));
-eval(source.slice(source.indexOf('  function applyHydratedSupplement('),source.indexOf('  function onBinarySupplement(')));
+eval(js.declarations(["drawAllDeferred","drawAll"]));
+eval(js.declarations(["applyHydratedSupplement"]));
 function reset(){D={dataset_id:'a',dataset_context:context,progressive_token:4,progressive:true,n:2,cells:['a','b']};selection=[1,2];paint=[];}
 const extra={dataset_id:'a',dataset_context:context,dataset_fingerprint:'fp',progressive_token:4,spaces:[{id:'other'}]};
 reset();applyHydratedSupplement(extra);assert.equal(paint.length,2);assert(paint.every(p=>!p.progressive));assert.deepStrictEqual(paint[0].selection,[1,2]);assert.equal(reports,1);assert.equal(fallback,0);

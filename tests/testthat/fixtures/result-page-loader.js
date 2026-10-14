@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict'), path = require('path');
 const source = fs.readFileSync(process.argv[2] || path.resolve(__dirname, '../../../inst/viewer/www/viewer-shell.js'), 'utf8');
-const block = source.match(/ready\(function \(\) \{\s+if \(!window.jQuery\) return;\s+var loader = document.getElementById\("cerebro-page-loader"\);[\s\S]+?\n  \}\);/)[0];
+const block = require('./js-source.cjs')(source).readyFor('cerebro-page-loader');
 let count = 0;
 function check(value, message) { assert.ok(value, message); count++; }
 function scenario(page = 'markerGenes') {
@@ -173,15 +173,5 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   check(!s.loader.hidden,'Extra PNG waits for image load');
   img.complete=true;img.naturalWidth=500;s.events.load({target:img});s.frame();s.frame();s.flush();
   check(s.loader.hidden,'Extra PNG completes after load and two frames');
-}
-{
-  const ui=fs.readFileSync(process.argv[3] || path.resolve(__dirname,'../../../inst/viewer/groups/UI.R'),'utf8');
-  const bind=ui.match(/function bind\(plot\) \{[\s\S]+?\n      \}/)[0];
-  const listeners=[];const context={report:()=>{},plot:{on:(name,fn)=>listeners.push(fn)}};
-  vm.runInNewContext(bind+'; bind(plot); bind(plot);',context);
-  check(listeners.length===1,'Groups callback binds once per emitter');
-  context.plot.on=(name,fn)=>listeners.push(fn);
-  vm.runInNewContext('bind(plot);',context);
-  check(listeners.length===2,'Groups callback rebinds after Plotly replaces emitter');
 }
 console.log(count+' result page loader assertions passed');

@@ -56,19 +56,10 @@ test_that("marker selectors start together and follow valid method choices", {
 })
 
 test_that("marker result shell distinguishes missing and empty results", {
-  expressions <- as.list(parse(viewer_test_path("marker_genes", "table.R")))
-  result_ui <- Filter(
-    function(e) {
-      is.call(e) &&
-        identical(e[[1L]], quote(`<-`)) &&
-        grepl(
-          'marker_genes_table_or_text_UI',
-          paste(deparse(e[[2L]]), collapse = ""),
-          fixed = TRUE
-        )
-    },
-    expressions
-  )[[1L]]
+  result_ui <- viewer_r_assignment(
+    viewer_test_path("marker_genes", "table.R"),
+    "output.marker_genes_table_or_text_UI"
+  )
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()

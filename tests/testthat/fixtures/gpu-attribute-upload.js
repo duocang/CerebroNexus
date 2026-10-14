@@ -1,11 +1,11 @@
 const fs=require('fs'),assert=require('assert'),vm=require('vm');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const js = require("./js-source.cjs")(source);
 for(const backend of ['webgpu','webgl2']){
- let start=source.indexOf('    function setData(next)');if(backend==='webgl2')start=source.indexOf('    function setData(next)',start+1);
- const end=source.indexOf(backend==='webgpu'?'    function uniforms(':'    function drawPass(',start);
+
  const uploads=[];const scope={ready:true,data:null,positionBuffer:{},colorBuffer:{},layerBuffer:{},metrics:{},lastFrame:{},program:{},performance,
   gl:{useProgram(){}},replaceBuffer:(buffer,array)=>{uploads.push(array);return buffer;},upload:(buffer,location,array)=>uploads.push(array)};
- vm.createContext(scope);vm.runInContext(source.slice(start,end),scope);
+ vm.createContext(scope);vm.runInContext(js.declarations(['setData'], backend === 'webgpu' ? 'createWebGpu' : 'createWebGl'),scope);
  const positions=new Float32Array([0,0,1,1]),colors=new Uint8Array([1,2,3,255,4,5,6,255]),layers=new Uint32Array([0,0]);
  scope.setData({positions,colors,layers,count:2,foreground:false});assert.equal(uploads.length,3);
  scope.setData({positions,colors,layers,count:2,foreground:false});assert.equal(uploads.length,3);

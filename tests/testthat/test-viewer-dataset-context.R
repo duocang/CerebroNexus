@@ -1,23 +1,5 @@
 dataset_context_javascript <- viewer_test_path("www", "dataset-context.js")
 
-test_that("the context gate loads before every consumer", {
-  ui <- paste(
-    readLines(viewer_test_path("shiny_UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  gate_at <- regexpr('cerebro_js("dataset-context.js")', ui, fixed = TRUE)[1L]
-  cell_views_at <- regexpr('cerebro_js("cell_views.js")', ui, fixed = TRUE)[1L]
-  specialist_at <- regexpr(
-    'cerebro_js("specialist-view-state.js"',
-    ui,
-    fixed = TRUE
-  )[1L]
-
-  expect_true(gate_at > 0L)
-  expect_true(cell_views_at > gate_at)
-  expect_true(specialist_at > gate_at)
-})
-
 run_dataset_context_node <- function(body) {
   skip_if(Sys.which("node") == "", "node not on PATH")
   expect_true(
@@ -116,64 +98,17 @@ test_that("dataset context freshness is epoch/key/generation exact", {
 })
 
 test_that("every asynchronous specialist channel fails closed on stale context", {
-  output <- run_dataset_context_node(c(
-    "const C = window.CerebroDatasetContext;",
-    "const a1 = {epoch:'session',dataset_key:'A',generation:1};",
-    "const b2 = {epoch:'session',dataset_key:'B',generation:2};",
-    "C.receive({phase:'ready',dataset_context:b2});",
-    "const channels = ['json','binary','aux','background','image'];",
-    "const stale = {}; const missing = {}; const current = {};",
-    "channels.forEach(channel => {",
-    "  stale[channel] = C.accepts({channel:channel,dataset_context:a1});",
-    "  missing[channel] = C.accepts({channel:channel});",
-    "  current[channel] = C.accepts({channel:channel,dataset_context:b2});",
-    "});",
-    "let imageCommits = 0;",
-    "const guardedImageCommit = captured => {",
-    "  if (C.accepts({dataset_context:captured})) imageCommits += 1;",
-    "};",
-    "guardedImageCommit(a1); guardedImageCommit(null); guardedImageCommit(b2);",
-    "console.log(JSON.stringify({stale,missing,current,imageCommits}));"
-  ))
-
-  expect_equal(attr(output, "status"), NULL)
-  result <- jsonlite::fromJSON(output, simplifyVector = FALSE)
-  expect_false(any(unlist(result$stale, use.names = FALSE)))
-  expect_false(any(unlist(result$missing, use.names = FALSE)))
-  expect_true(all(unlist(result$current, use.names = FALSE)))
-  expect_identical(result$imageCommits, 1L)
-})
-
-test_that("every specialist transport is wired through the context gate", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  result <- system2(
+    "node",
+    c(
+      shQuote(test_path("fixtures", "dataset-channels.js")),
+      shQuote(viewer_test_path("www"))
+    ),
+    stdout = TRUE,
+    stderr = TRUE
   )
-  expect_match(
-    engine,
-    "function renderSingle\\(message\\)[\\s\\S]+?datasetMessageFresh\\(message\\)",
-    perl = TRUE
-  )
-  expect_match(
-    engine,
-    "function onSingleBinary\\(buffer\\)[\\s\\S]+?renderSingle\\(message\\)",
-    perl = TRUE
-  )
-  expect_match(
-    engine,
-    "function onSingleAuxBinary\\(buffer\\)[\\s\\S]+?datasetMessageFresh\\(message\\)",
-    perl = TRUE
-  )
-  expect_match(
-    engine,
-    "function updateSingleBackground\\(message\\)[\\s\\S]+?datasetMessageFresh\\(message\\)",
-    perl = TRUE
-  )
-  expect_match(
-    engine,
-    "var stillCurrent = function \\(\\)[\\s\\S]+?sameDatasetContext\\(imageDatasetContext, currentDatasetContext\\(\\)\\)",
-    perl = TRUE
-  )
+  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
 })
 
 test_that("R dataset contexts validate and compare the full identity", {
@@ -426,239 +361,243 @@ test_that("browser-visible dataset keys are opaque and never file paths", {
   expect_identical(unname(choices), c("tumor", "control"))
   expect_identical(names(choices), unname(labels))
   expect_false(any(unname(private_paths) %in% c(names(choices), choices)))
-
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(server, 'dataset_key <- "__single__"', fixed = TRUE)
-  expect_match(server, 'dataset_key <- "__example__"', fixed = TRUE)
-  expect_match(
-    server,
-    'dataset_key <- paste0("__upload_", viewer_upload_serial, "__")',
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "dataset_key <- viewerDatasetName(",
-    fixed = TRUE
-  )
-  expect_no_match(server, "dataset_key <- dataset_target", fixed = TRUE)
-  expect_no_match(server, "dataset_key <- file_to_load", fixed = TRUE)
 })
 
-test_that("spatial rendering carries the computation context end to end", {
-  projection <- paste(
-    readLines(
-      viewer_test_path("spatial", "obj_projection_data_to_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  event <- paste(
-    readLines(
-      viewer_test_path("spatial", "event_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    projection,
-    "dataset_context <- viewer_loaded_dataset_context()",
-    fixed = TRUE
-  )
-  expect_match(
-    projection,
-    "dataset_context = dataset_context",
-    fixed = TRUE
-  )
-  expect_match(
-    event,
-    "viewerDatasetContextEqual(",
-    fixed = TRUE
-  )
-  expect_match(
-    event,
-    "viewerDatasetContextToken(current_context)",
-    fixed = TRUE
-  )
-  expect_match(
-    event,
-    "viewerDatasetContextEqual(data$dataset_context, current_context)",
-    fixed = TRUE
-  )
-})
-
-test_that("reconnects fail closed until the server replays its snapshot", {
-  client <- paste(
-    readLines(viewer_test_path("www", "dataset-context.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  views <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(client, "currentPhase = 'pending'", fixed = TRUE)
-  expect_match(client, "viewer_dataset_context_sync", fixed = TRUE)
-  expect_match(server, 'input[["viewer_dataset_context_sync"]]', fixed = TRUE)
-  expect_match(
-    server,
-    "snapshot <- isolate(viewer_dataset_snapshot())",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'if (isTRUE(snapshot$ok)) "ready" else "error"',
-    fixed = TRUE
-  )
-  expect_match(
-    views,
-    "imgChoice = {};\n    geneWanted = null;\n    pendingColorPatch = null;",
-    fixed = TRUE
+test_that("dataset switches invalidate old generations and reconnects replay the loaded snapshot", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      sent <- list()
+      session$sendCustomMessage <- function(type, message) {
+        sent[[length(sent) + 1L]] <<- list(type = type, message = message)
+      }
+      available_crb_files <- reactiveValues(selected = NULL)
+      viewer_dataset_epoch <- "session"
+      viewer_dataset_generation <- 0
+      viewer_dataset_request <- reactiveVal(NULL)
+      viewer_clear_cell_view_aux <- function() NULL
+      viewer_dataset_snapshot <- reactive({
+        request <- viewer_dataset_request()
+        if (is.null(request)) {
+          return(NULL)
+        }
+        list(
+          ok = !isTRUE(input$load_failed),
+          dataset_context = request$dataset_context
+        )
+      })
+      viewer_server_load(
+        viewer_server_statements("shiny_server.R", server = TRUE),
+        scope,
+        names = c("viewer_send_dataset_phase", "viewer_request_dataset"),
+        events = "viewer_dataset_context_sync"
+      )
+    },
+    {
+      session$flushReact()
+      session$setInputs(viewer_dataset_context_sync = list(nonce = 1))
+      expect_length(scope$sent, 0L)
+      contexts <- list()
+      for (selection in c("A", "B", "A")) {
+        request <- viewer_request_dataset(
+          selection,
+          paste0("/private/", selection, ".crb"),
+          selection,
+          "configured"
+        )
+        contexts[[length(contexts) + 1L]] <- request$dataset_context
+        pending <- tail(scope$sent, 1)[[1]]
+        expect_identical(pending$type, "cerebro_dataset_context")
+        expect_identical(pending$message$phase, "pending")
+        expect_identical(
+          pending$message$dataset_context,
+          request$dataset_context
+        )
+        expect_identical(pending$message$selection, selection)
+        session$setInputs(
+          viewer_dataset_context_sync = list(nonce = length(contexts) + 1)
+        )
+        ready <- tail(scope$sent, 1)[[1]]$message
+        expect_identical(ready$phase, "ready")
+        expect_identical(ready$dataset_context, request$dataset_context)
+        expect_false(any(grepl("/private/", unlist(ready), fixed = TRUE)))
+      }
+      expect_identical(
+        vapply(contexts, `[[`, numeric(1), "generation"),
+        c(1, 2, 3)
+      )
+      expect_false(viewerDatasetContextEqual(contexts[[1]], contexts[[3]]))
+      before <- length(scope$sent)
+      viewer_request_dataset("A", "/private/A.crb", "A", "configured")
+      expect_length(scope$sent, before)
+      session$setInputs(
+        load_failed = TRUE,
+        viewer_dataset_context_sync = list(nonce = 5)
+      )
+      expect_identical(tail(scope$sent, 1)[[1]]$message$phase, "error")
+      expect_identical(
+        tail(scope$sent, 1)[[1]]$message$dataset_context,
+        contexts[[3]]
+      )
+    }
   )
 })
 
 test_that("portable-view requests and responses use one captured context", {
-  server <- paste(
-    readLines(
-      viewer_test_path("coordinated_views", "server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    'c("nonce", "action", "dataset_context", "config")',
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    paste0(
-      '"nonce",\n            "action",\n            "dataset_context",',
-      '\n            "name"'
-    ),
-    fixed = TRUE
-  )
-  expect_gte(
-    sum(
-      gregexpr(
-        "viewerDatasetContextEqual(request_context, current_context)",
-        server,
-        fixed = TRUE
-      )[[1L]] >
-        0
-    ),
-    2L
-  )
-  expect_match(server, "dataset_context = dataset_context", fixed = TRUE)
-  # Restrict this contract to portable-view handlers and their response helper.
-  # The synchronous expression-feedback helper legitimately captures live context.
-  config_expressions <- Filter(
-    function(expr) {
-      if (!is.call(expr)) {
-        return(FALSE)
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      sys.source(viewer_test_path("coordinated_views", "config.R"), scope)
+      context <- list(epoch = "session", dataset_key = "A", generation = 1)
+      current <- context
+      viewer_loaded_dataset_context <- function() current
+      reads <- 0L
+      cv_saved_view_dataset <- function() {
+        reads <<- reads + 1L
+        list(
+          cells = c("c1", "c2"),
+          fingerprint = "fp",
+          dataset_context = current
+        )
       }
-      if (identical(expr[[1L]], as.name("<-"))) {
-        return(identical(expr[[2L]], as.name("cv_config_send_result")))
+      messages <- list()
+      session$sendCustomMessage <- function(type, payload) {
+        messages[[length(messages) + 1L]] <<- payload
       }
-      identical(expr[[1L]], as.name("observeEvent")) &&
-        any(vapply(
-          c("coordviews_config_request", "coordviews_config_upload_request"),
-          function(id) {
-            grepl(id, paste(deparse(expr[[2L]]), collapse = ""), fixed = TRUE)
-          },
-          logical(1)
-        ))
+      normalized <- list(
+        schema = CV_CONFIG_SCHEMA,
+        selection = list(cells = "c2")
+      )
+      cv_config_materialize_selection <- function(config, cells) config
+      cv_config_prepare <- function(config, cells, fingerprint) {
+        current <<- modifyList(current, list(generation = 2))
+        list(json = "prepared", config = normalized)
+      }
+      cv_config_decode <- function(text, cells, fingerprint) {
+        current <<- modifyList(current, list(generation = 2))
+        normalized
+      }
+      cv_config_validate_genes <- function(...) NULL
+      cv_config_json_document <- identity
+      viewer_server_load(
+        viewer_server_statements("coordinated_views", "server.R"),
+        scope,
+        names = c("cv_config_send_result", "cv_config_log_failure"),
+        events = c(
+          "coordviews_config_request",
+          "coordviews_config_upload_request"
+        )
+      )
     },
-    as.list(parse(text = server))
-  )
-  expect_length(config_expressions, 3L)
-  expect_no_match(
-    paste(
-      vapply(
-        config_expressions,
-        function(expr) paste(deparse(expr), collapse = "\n"),
-        character(1)
-      ),
-      collapse = "\n"
-    ),
-    "dataset_context = viewer_loaded_dataset_context()",
-    fixed = TRUE
+    {
+      session$flushReact()
+      for (upload in c(FALSE, TRUE)) {
+        scope$current <- context
+        request <- if (upload) {
+          list(
+            nonce = "upload",
+            action = "apply",
+            name = "view.json",
+            size = 2L,
+            text = "{}"
+          )
+        } else {
+          list(nonce = "prepare", action = "prepare", config = list())
+        }
+        id <- if (upload) {
+          "coordviews_config_upload_request"
+        } else {
+          "coordviews_config_request"
+        }
+        request$dataset_context <- modifyList(context, list(generation = 0))
+        before <- length(scope$messages)
+        reads <- scope$reads
+        do.call(session$setInputs, setNames(list(request), id))
+        expect_length(scope$messages, before)
+        expect_equal(scope$reads, reads)
+        request$dataset_context <- context
+        do.call(session$setInputs, setNames(list(request), id))
+        response <- tail(scope$messages, 1)[[1]]
+        expect_true(response$ok)
+        expect_identical(response$dataset_context, context)
+        expect_equal(scope$current$generation, 2)
+        expect_equal(response$selected_cells, 1)
+        if (upload) {
+          expect_equal(as.integer(response$selection_indices), 1L)
+        } else {
+          expect_identical(response$json, "prepared")
+        }
+      }
+    }
   )
 })
 
 test_that("all specialist state inputs fail closed on context", {
-  client <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(
-    client,
-    "dataset_context: activeView && activeView.dataset_context",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "singleActive + '_hidden_groups', {",
-    fixed = TRUE
-  )
-  expect_no_match(client, "pendingStableSelection ? null", fixed = TRUE)
-
-  for (path in list(
-    c("overview", "obj_projection_selected_cells.R"),
-    c("spatial", "obj_projection_selected_cells.R"),
-    c("trajectory", "projection_plot.R")
-  )) {
-    source <- paste(
-      readLines(do.call(viewer_test_path, as.list(path)), warn = FALSE),
-      collapse = "\n"
+  for (page in c("overview", "spatial")) {
+    shiny::testServer(
+      function(input, output, session) {
+        scope <- environment()
+        sys.source(viewer_test_path("utility_functions.R"), scope)
+        context <- list(epoch = "session", dataset_key = "A", generation = 1)
+        viewer_loaded_dataset_context <- function() context
+        getProjection <- function(...) data.frame(x = c(1, 2), y = c(3, 4))
+        getMetaData <- function() {
+          data.frame(cell_barcode = c("c1", "c2"), group = c("A", "B"))
+        }
+        overview_projection_data_to_plot <- function() TRUE
+        spatial_projection_data_to_plot <- function() {
+          list(
+            coordinates = getProjection(),
+            cells_df = data.frame(cell_index = 1:2)
+          )
+        }
+        id <- paste0(page, "_projection")
+        viewer_server_load(
+          viewer_server_statements(page, "obj_projection_selected_cells.R"),
+          scope,
+          names = c(
+            if (page == "spatial") "spatial_projection_interaction_data",
+            paste0(id, "_selected_cells")
+          )
+        )
+        selected <- get(paste0(id, "_selected_cells"), scope)
+      },
+      {
+        selection <- list(
+          x = c(1, 2),
+          y = c(3, 4),
+          ids = c("c1", "c2"),
+          dataset_context = context
+        )
+        values <- setNames(
+          list(selection, "group", "umap"),
+          paste0(id, c("_persistent_selection", "_point_color", "_to_display"))
+        )
+        do.call(session$setInputs, values)
+        expect_identical(selected()$selection_key, c("c1", "c2"))
+        hidden <- list(groups = "A", dataset_context = context)
+        do.call(
+          session$setInputs,
+          setNames(list(hidden), paste0(id, "_hidden_groups"))
+        )
+        expect_identical(selected()$selection_key, "c2")
+        hidden$dataset_context$generation <- 0
+        do.call(
+          session$setInputs,
+          setNames(list(hidden), paste0(id, "_hidden_groups"))
+        )
+        expect_identical(selected()$selection_key, c("c1", "c2"))
+        selection$dataset_context$generation <- 0
+        do.call(
+          session$setInputs,
+          setNames(list(selection), paste0(id, "_persistent_selection"))
+        )
+        expect_null(selected())
+      }
     )
-    expect_match(source, "hidden_request", fixed = TRUE)
-    expect_match(source, "viewerDatasetContextEqual(", fixed = TRUE)
   }
-
-  coordinated <- paste(
-    readLines(viewer_test_path("coordinated_views", "server.R")),
-    collapse = "\n"
-  )
-  hla <- paste(
-    readLines(viewer_test_path("hla_tcr_motifs", "network_table.R")),
-    collapse = "\n"
-  )
-  expect_match(coordinated, "is.list(request)", fixed = TRUE)
-  expect_no_match(coordinated, "bc <- detail_request\n  } else", fixed = TRUE)
-  expect_match(hla, "is.list(request)", fixed = TRUE)
-  expect_no_match(
-    hla,
-    'hla_selection_values(input[["hla_motif_selected_keys"]])',
-    fixed = TRUE
-  )
-})
-
-test_that("same-context renders are monotonically ordered", {
-  client <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(client, "Number.isSafeInteger(renderToken)", fixed = TRUE)
-  expect_match(client, "renderToken <= previous.render_token", fixed = TRUE)
-  expect_match(
-    client,
-    "extra.progressive_token !== D.progressive_token",
-    fixed = TRUE
-  )
-  expect_match(
-    client,
-    "Number(view.aux_render_token) !== Number(message.render_token)",
-    fixed = TRUE
-  )
 })
 
 test_that("a rapid selector A/B/A sequence rejects stale ready messages", {

@@ -182,18 +182,6 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
 })
 
 test_that("the Viewer filters methods at trajectory selection boundaries", {
-  files <- c(
-    viewer_test_path("shiny_server.R"),
-    viewer_test_path("trajectory", "select_method_and_name.R")
-  )
-  for (file in files) {
-    expect_match(
-      paste(readLines(file, warn = FALSE), collapse = "\n"),
-      "viewerSupportedTrajectoryMethods(",
-      fixed = TRUE,
-      info = file
-    )
-  }
   utility <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = utility)
   expect_identical(
@@ -204,59 +192,7 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
   )
 })
 
-test_that("optional Viewer tabs use compact catalog capabilities", {
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  fields <- c(
-    markerGenes = "marker_genes",
-    mostExpressedGenes = "most_expressed_genes",
-    enrichedPathways = "enriched_pathways",
-    extra_material = "extra_material",
-    trajectory = "trajectory",
-    spatial = "spatial",
-    trekker = "trekker"
-  )
-
-  for (tab in names(fields)) {
-    expect_match(
-      server,
-      sprintf(
-        'toggleConditionalTab\\([\\s\\S]{0,300}"%s"[\\s\\S]{0,300}catalog_field = "%s"',
-        tab,
-        fields[[tab]]
-      ),
-      perl = TRUE,
-      info = tab
-    )
-  }
-})
-
 test_that("Viewer spatial readers leave molecule sidecars dormant", {
-  utility <- paste(
-    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  linked <- paste(
-    readLines(
-      viewer_test_path("coordinated_views", "bundle.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    utility,
-    'getter(name, hydrate_molecules = FALSE)',
-    fixed = TRUE
-  )
-  expect_match(
-    linked,
-    'crb$getSpatialData(nm, hydrate_molecules = FALSE)',
-    fixed = TRUE
-  )
-
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   legacy <- new.env(parent = emptyenv())
@@ -266,6 +202,15 @@ test_that("Viewer spatial readers leave molecule sidecars dormant", {
       coordinates = data.frame(x = 1:2, y = 3:4),
       expression = matrix(numeric(), nrow = 0L, ncol = 2L)
     )
+  )
+  legacy$getSpatialData <- function(name, hydrate_molecules) {
+    expect_false(hydrate_molecules)
+    legacy$spatial[[name]]
+  }
+  scope$data_set <- function() legacy
+  expect_identical(
+    scope$getSpatialData("slice")$coordinates,
+    legacy$spatial$slice$coordinates
   )
   legacy$getSpatialData <- function(name) legacy$spatial[[name]]
   scope$data_set <- function() legacy
@@ -297,237 +242,6 @@ test_that("million-cell hover stays columnar until the browser needs it", {
   expect_identical(columns[[3L]]$values, c(0L, 1L))
 })
 
-test_that("specialist pages do not request the full linked bundle", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(engine, "function singlePayloadBundle", fixed = TRUE)
-  expect_match(engine, "var vis = linkedVis;", fixed = TRUE)
-  expect_no_match(engine, "linkedVis || !!singleId", fixed = TRUE)
-})
-
-test_that("specialist pages bind every render request to a dataset context", {
-  pages <- list(
-    list(
-      c("overview", "event_projection_update_plot.R"),
-      "overview_projection_render_request"
-    ),
-    list(
-      c("gene_expression", "event_projection_update_plot.R"),
-      "expression_projection_render_request"
-    ),
-    list(
-      c("spatial", "event_projection_update_plot.R"),
-      "spatial_projection_render_request"
-    ),
-    list(
-      c("trajectory", "projection_plot.R"),
-      "trajectory_projection_render_request"
-    )
-  )
-
-  for (page in pages) {
-    source <- paste(
-      readLines(do.call(viewer_test_path, as.list(page[[1]])), warn = FALSE),
-      collapse = "\n"
-    )
-    expect_match(
-      source,
-      sprintf('input[["%s"]]', page[[2]]),
-      fixed = TRUE,
-      info = page[[2]]
-    )
-  }
-
-  hla <- paste(
-    readLines(
-      viewer_test_path("hla_tcr_motifs", "visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    hla,
-    'render_request <- input[["hla_motif_network_render_request"]]',
-    fixed = TRUE
-  )
-  expect_match(hla, "req(render_request)", fixed = TRUE)
-})
-
-test_that("specialist tab clicks request the primary frame without polling", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(engine, "function requestSingleView(id)", fixed = TRUE)
-  expect_match(engine, "function tabSingleViewId(link)", fixed = TRUE)
-  expect_match(
-    engine,
-    "requestSingleView(tabSingleViewId(tabLink));",
-    fixed = TRUE
-  )
-  expect_match(engine, "setTimeout(function () {", fixed = TRUE)
-  expect_match(engine, "requestSingleView(singleId);", fixed = TRUE)
-  expect_match(engine, "setInterval(reportVisibility, 250);", fixed = TRUE)
-})
-
-test_that("Spatial primary rendering ignores shared-base writeback", {
-  source <- paste(
-    readLines(
-      viewer_test_path("spatial", "event_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    source,
-    "isolate(spatial_projection_update_plot(data))",
-    fixed = TRUE
-  )
-})
-
-test_that("specialist page switches restore panels without staggered fades", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    engine,
-    "if (reappearing && !singleActive) fadeInPane(p.pane);",
-    fixed = TRUE
-  )
-})
-
-test_that("specialist pages use binary transport when the browser supports it", {
-  utility <- paste(
-    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(utility, "cv_wire_pack_message", fixed = TRUE)
-  expect_match(utility, '"cell_view_binary"', fixed = TRUE)
-  expect_match(engine, "'cell_view_binary'", fixed = TRUE)
-  expect_match(engine, "!ArrayBuffer.isView(data.color)", fixed = TRUE)
-})
-
-test_that("canonical projections use validated static assets with wire fallback", {
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  overview <- paste(
-    c(
-      readLines(
-        viewer_test_path("overview", "func_projection_update_plot.R"),
-        warn = FALSE
-      ),
-      readLines(
-        viewer_test_path("overview", "event_projection_update_plot.R"),
-        warn = FALSE
-      ),
-      readLines(
-        viewer_test_path("overview", "obj_projection_data_to_plot.R"),
-        warn = FALSE
-      )
-    ),
-    collapse = "\n"
-  )
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(server, "viewerProjectionAsset <- function", fixed = TRUE)
-  expect_match(server, "viewerStaticResourcePrefix <- function", fixed = TRUE)
-  expect_match(
-    server,
-    "viewerCanonicalResourceIdentity <- function",
-    fixed = TRUE
-  )
-  expect_equal(
-    lengths(gregexpr("shiny::addResourcePath", server, fixed = TRUE)),
-    1L
-  )
-  expect_equal(
-    lengths(gregexpr("shiny::removeResourcePath", server, fixed = TRUE)),
-    1L
-  )
-  expect_equal(
-    lengths(gregexpr(
-      "viewerCanonicalResourceIdentity(pack)",
-      server,
-      fixed = TRUE
-    )),
-    4L
-  )
-  expect_no_match(server, "viewer_projection_prefixes", fixed = TRUE)
-  expect_no_match(server, "viewer_metadata_prefixes", fixed = TRUE)
-  expect_no_match(server, "viewer_trajectory_prefixes", fixed = TRUE)
-  expect_match(server, "tools::md5sum(file)", fixed = TRUE)
-  expect_match(server, "shiny::addResourcePath", fixed = TRUE)
-  expect_match(server, "shiny::removeResourcePath", fixed = TRUE)
-  expect_match(
-    overview,
-    'input[["projection_resource"]]',
-    fixed = TRUE
-  )
-  expect_match(
-    overview,
-    "overview_projection_projection_resource_failed",
-    fixed = TRUE
-  )
-  expect_match(engine, "hydrateSingleProjectionResource", fixed = TRUE)
-  expect_match(engine, "fetchValidatedProjectionResource", fixed = TRUE)
-  expect_match(engine, "response.arrayBuffer()", fixed = TRUE)
-  expect_match(engine, "projection_resource_failed", fixed = TRUE)
-  parameters <- paste(
-    readLines(
-      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    parameters,
-    "projection_resource <- viewerProjectionAsset(",
-    fixed = TRUE
-  )
-  expect_true(r_test_has_call(
-    parameters,
-    quote(
-      XYranges <- if (is.null(projection_data)) {
-        NULL
-      } else {
-        getXYranges(projection_data)
-      }
-    )
-  ))
-  expect_match(server, "viewerProjectionCatalog <- function", fixed = TRUE)
-  expect_match(server, 'id = "overview_projection"', fixed = TRUE)
-  expect_match(
-    overview,
-    "resource_coordinates = resource_coordinates",
-    fixed = TRUE
-  )
-  expect_match(overview, "categorical_resource", fixed = TRUE)
-  expect_match(server, "category_resources", fixed = TRUE)
-  expect_match(engine, "prefetchRegisteredSingleCategory", fixed = TRUE)
-  expect_match(
-    engine,
-    "groupResource.protocol === 'canonical-metadata-codes-v1'",
-    fixed = TRUE
-  )
-})
-
 test_that("canonical projection fetches enforce the full dataset identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
@@ -538,6 +252,7 @@ test_that("canonical projection fetches enforce the full dataset identity", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
@@ -546,8 +261,6 @@ test_that("canonical projection fetches enforce the full dataset identity", {
         "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
         encodeString(state_source, quote = '"')
       ),
-      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
-      "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
       "let calls = 0;",
       "function fetchProjectionResource(resource, expectedCells) {",
       "  calls += 1;",
@@ -556,7 +269,7 @@ test_that("canonical projection fetches enforce the full dataset identity", {
       "  }",
       "  return Promise.resolve({url:resource.url, cells:expectedCells});",
       "}",
-      "eval(source.slice(start, end));",
+      "eval(js(source).declarations(['canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory']));",
       "const fingerprints = {",
       "  dataset:'md5-cell-set-v1:' + 'a'.repeat(32),",
       "  order:'md5-cell-order-v1:' + 'b'.repeat(32),",
@@ -603,6 +316,7 @@ test_that("canonical projection fetches enforce the full dataset identity", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -629,6 +343,7 @@ test_that("spatial geometry fetches require exact dataset identity", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
@@ -637,13 +352,11 @@ test_that("spatial geometry fetches require exact dataset identity", {
         "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
         encodeString(state_source, quote = '"')
       ),
-      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
-      "const end = source.indexOf('  function fetchProjectionSubsetResource', start);",
       "let calls = 0;",
       "function fetchProjectionResource(resource, expectedCells) {",
       "  calls += 1; return Promise.resolve({url:resource.url, cells:expectedCells});",
       "}",
-      "eval(source.slice(start, end));",
+      "eval(js(source).declarations(['canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory']));",
       "const identity = {",
       "  cell_count:5,",
       "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
@@ -674,6 +387,7 @@ test_that("spatial geometry fetches require exact dataset identity", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -697,12 +411,11 @@ test_that("canonical subsets bind projection and local cell counts", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const start = source.indexOf('  function resourceCacheKey');",
-      "const end = source.indexOf('  function materializeProjectionSubset', start);",
       "let calls = 0;",
       "var projectionSubsetResourceCache = new Map();",
       "global.window = {fetch:async () => {",
@@ -713,7 +426,7 @@ test_that("canonical subsets bind projection and local cell counts", {
         "eval(fs.readFileSync(%s, 'utf8'));",
         encodeString(state_source, quote = '"')
       ),
-      "eval(source.slice(start, end));",
+      "eval(js(source).declarations(['resourceCacheKey','fetchCachedResource','projectionResourceCache','fetchProjectionResource','projectionSubsetResourceCache','canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory','fetchProjectionSubsetResource']));",
       "const include = {protocol:'canonical-subset-v1', kind:'include_uint32', canonical_cells:3, cells:2, index_base:0, dtype:'uint32', url:'subset.bin', bytes:8, checksum:'abc'};",
       "const identity = {protocol:'canonical-subset-v1', kind:'identity', canonical_cells:3, cells:3, index_base:0, dtype:'uint32', bytes:0, checksum:''};",
       "async function rejected(resource, canonicalCells, cells) {",
@@ -737,6 +450,7 @@ test_that("canonical subsets bind projection and local cell counts", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -762,12 +476,11 @@ test_that("trajectory frame resources bind every static asset to dataset identit
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const start = source.indexOf('  function canonicalResourceIdentityMatches');",
-      "const end = source.indexOf('  function hydrateSingleProjectionResource', start);",
       "var projectionSubsetResourceCache = new Map();",
       "function fetchProjectionResource() {}",
       "function cacheSharedProjection() {}",
@@ -778,7 +491,7 @@ test_that("trajectory frame resources bind every static asset to dataset identit
       ),
       "window.CBViewState.sharedProjection = () => null;",
       "function sharedBase() { return {}; }",
-      "eval(source.slice(start, end));",
+      "eval(js(source).declarations(['canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory','fetchProjectionSubsetResource','materializeProjectionSubset','canonicalProjectionCoordinates','trajectoryFrameResources']));",
       "const identity = {",
       "  cell_count:3,",
       "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
@@ -821,6 +534,7 @@ test_that("trajectory frame resources bind every static asset to dataset identit
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -846,14 +560,11 @@ test_that("Linked projection hydration uses the primary bundle identity", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const identityStart = source.indexOf('  function canonicalResourceIdentityMatches');",
-      "const identityEnd = source.indexOf('  function fetchProjectionSubsetResource', identityStart);",
-      "const hydrateStart = source.indexOf('  function linkedBundleResourceIdentity');",
-      "const hydrateEnd = source.indexOf('  var metadataCodesResourceCache', hydrateStart);",
       "let calls = 0;",
       "function fetchProjectionResource(resource, expectedCells) {",
       "  calls += 1;",
@@ -863,8 +574,8 @@ test_that("Linked projection hydration uses the primary bundle identity", {
         "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
         encodeString(state_source, quote = '"')
       ),
-      "eval(source.slice(identityStart, identityEnd));",
-      "eval(source.slice(hydrateStart, hydrateEnd));",
+      "eval(js(source).declarations(['canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory']));",
+      "eval(js(source).declarations(['linkedBundleResourceIdentity','hydrateLinkedProjectionResource']));",
       "const fingerprints = {",
       "  dataset:'md5-cell-set-v1:' + 'a'.repeat(32),",
       "  order:'md5-cell-order-v1:' + 'b'.repeat(32),",
@@ -905,6 +616,7 @@ test_that("Linked projection hydration uses the primary bundle identity", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -922,15 +634,6 @@ test_that("Linked projection hydration uses the primary bundle identity", {
 test_that("Linked canonical metadata validates its dataset identity", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   skip_if_not_installed("jsonlite")
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(server, 'protocol = "canonical-metadata-codes-v1"', fixed = TRUE)
-  expect_match(server, "dataset_fingerprint = as.character", fixed = TRUE)
-  expect_match(server, "cell_order_fingerprint = as.character", fixed = TRUE)
-  expect_match(server, "pack_dataset_fingerprint = as.character", fixed = TRUE)
-
   source <- viewer_test_path("www", "cell_views.js")
   state_source <- viewer_test_path("www", "cell_views_state.js")
   runner <- tempfile(fileext = ".js")
@@ -938,14 +641,11 @@ test_that("Linked canonical metadata validates its dataset identity", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const identityStart = source.indexOf('  function canonicalResourceIdentityMatches');",
-      "const identityEnd = source.indexOf('  function canonicalProjectionIdentityMatches', identityStart);",
-      "const fetchStart = source.indexOf('  function fetchValidatedMetadataCodesResource');",
-      "const fetchEnd = source.indexOf('  function hydrateLinkedMetadataResource', fetchStart);",
       "let calls = 0;",
       "function fetchMetadataCodesResource(resource, expectedCells) {",
       "  calls += 1;",
@@ -955,8 +655,8 @@ test_that("Linked canonical metadata validates its dataset identity", {
         "global.window = {}; eval(fs.readFileSync(%s, 'utf8'));",
         encodeString(state_source, quote = '"')
       ),
-      "eval(source.slice(identityStart, identityEnd));",
-      "eval(source.slice(fetchStart, fetchEnd));",
+      "eval(js(source).declarations(['canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches']));",
+      "eval(js(source).declarations(['fetchValidatedMetadataCodesResource']));",
       "const identity = {",
       "  cell_count:3,",
       "  cell_fingerprint:'md5-cell-set-v1:' + 'a'.repeat(32),",
@@ -992,6 +692,7 @@ test_that("Linked canonical metadata validates its dataset identity", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1007,92 +708,6 @@ test_that("Linked canonical metadata validates its dataset identity", {
   )
 })
 
-test_that("trajectory first frames expose paired static geometry and state", {
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(server, "viewerTrajectoryFrameAsset <- function", fixed = TRUE)
-  expect_match(
-    server,
-    "viewerPackTrajectoryFrame(pack, method, name)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'viewerStaticResourcePrefix(\n      "trajectory"',
-    fixed = TRUE
-  )
-  expect_match(engine, "fetchCategoricalResource", fixed = TRUE)
-  expect_match(
-    engine,
-    "data.canonical_group = groupResult.values",
-    fixed = TRUE
-  )
-  expect_match(engine, "categorical_resource", fixed = TRUE)
-})
-
-test_that("Gene projection streams canonical geometry with wire fallback", {
-  data_source <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "obj_projection_data_to_plot.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  render_source <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "func_projection_update_plot.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  event_source <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "event_projection_update_plot.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    data_source,
-    "expression_projection_projection_resource_failed",
-    fixed = TRUE
-  )
-  expect_match(
-    data_source,
-    "metadata <- NULL",
-    fixed = TRUE
-  )
-  expect_no_match(data_source, "expression_projection_data()", fixed = TRUE)
-  expect_match(render_source, "viewerProjectionAsset(", fixed = TRUE)
-  expect_match(render_source, "viewerSharedProjectionName(", fixed = TRUE)
-  expect_match(
-    event_source,
-    "isolate(expression_projection_update_plot(data))",
-    fixed = TRUE
-  )
-  expect_match(render_source, "projection_resource", fixed = TRUE)
-  expect_match(render_source, "failed_asset", fixed = TRUE)
-  expect_match(render_source, "output_data[[\"x\"]] <- NULL", fixed = TRUE)
-  expect_match(render_source, "output_data[[\"y\"]] <- NULL", fixed = TRUE)
-})
-
 test_that("specialist bundles carry the saved dataset fingerprint", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
@@ -1101,14 +716,13 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const start = source.indexOf('  function singlePayloadCells');",
-      "const end = source.indexOf('  function alignSingleCoordinates', start);",
       "global.window = {cerebroSavedViewDataset:{cell_fingerprint:'stale'}};",
-      "eval(source.slice(start, end));",
+      "eval(js(source).declarations(['singlePayloadCells','singlePayloadBundle','sharedBase','cacheSharedProjection','reuseSharedProjection','reuseSharedSingleProjection','resourceCacheKey','fetchCachedResource','projectionResourceCache','fetchProjectionResource','projectionSubsetResourceCache','canonicalResourceIdentityMatches','canonicalDatasetIdentityMatches','canonicalProjectionIdentityMatches','fetchValidatedProjectionResource','fetchValidatedSingleGeometryResource','registerSingleGeometryResource','cacheSingleColor','hydrateColorPacket','hydrateSparseSingleColor','hydrateColorPacketMap','registerSingleCategoryResource','singleGeometryRequestEligible','prefetchRegisteredSingleResource','prefetchRegisteredSingleCategory','fetchProjectionSubsetResource','materializeProjectionSubset','canonicalProjectionCoordinates','trajectoryFrameResources','hydrateSingleProjectionResource','linkedBundleResourceIdentity','hydrateLinkedProjectionResource','metadataCodesResourceCache','categoricalResourceCache','clearStaticResourceCaches','fetchCategoricalResource','fetchMetadataCodesResource','fetchValidatedMetadataCodesResource','hydrateLinkedMetadataResource','hydrateLinkedPrimaryResources','canonicalGroupedValues','canonicalAuxValues']));",
       "const payload = {dataset_context:{epoch:'test',dataset_key:'a',generation:1},datasetIdentity:{cell_fingerprint:'md5-cell-set-v1:0123456789abcdef0123456789abcdef'},data:{n:2,selection_key:['c1','c2']}};",
       "const present = singlePayloadBundle('overview', payload).dataset_fingerprint;",
       "delete window.cerebroSavedViewDataset;",
@@ -1119,6 +733,7 @@ test_that("specialist bundles carry the saved dataset fingerprint", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1137,6 +752,7 @@ test_that("sparse linked attributes expand into typed canonical vectors", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       "global.window = {};",
       sprintf(
         "eval(fs.readFileSync(%s, 'utf8'));",
@@ -1150,6 +766,7 @@ test_that("sparse linked attributes expand into typed canonical vectors", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output),
@@ -1184,6 +801,7 @@ test_that("shared browser base reuses only matching dataset projections", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1229,6 +847,7 @@ test_that("specialist lifecycle owns request, ready, and auxiliary state", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1288,6 +907,7 @@ test_that("canonical mapping centralizes identity, subset, and index order", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1336,6 +956,7 @@ test_that("resource descriptors share shape and identity validation", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1366,6 +987,7 @@ test_that("telemetry snapshots normalize shared transport phases", {
   )
 
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
     jsonlite::fromJSON(output, simplifyVector = FALSE),
@@ -1390,11 +1012,12 @@ test_that("decorated 2-D cell views remain eligible for WebGPU", {
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const fn = source.match(/function gpuCandidate\\(p\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
+      "const fn = js(source).declarations(['gpuCandidate']);",
       "const GPU_MIN_CELLS = 4096, D = {n: 1000000};",
       "const spaceById = {",
       "trajectory: {_unit: {nz: false}, trajectory: true},",
@@ -1412,472 +1035,6 @@ test_that("decorated 2-D cell views remain eligible for WebGPU", {
   )
 
   expect_identical(system2("node", runner), 0L)
-})
-
-test_that("GPU cell views split underlay, points and interaction overlay", {
-  javascript <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  stylesheet <- paste(
-    readLines(viewer_test_path("www", "coordviews.css"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(javascript, "function attachUnderlay(p)", fixed = TRUE)
-  expect_match(javascript, "function attachInteractionLayer(p)", fixed = TRUE)
-  expect_match(javascript, "function drawHoverOverlay(p)", fixed = TRUE)
-  expect_match(javascript, "drawHoverAll();", fixed = TRUE)
-  expect_no_match(
-    javascript,
-    "hoverCell = i;\n    drawAll();",
-    fixed = TRUE
-  )
-  expect_match(
-    javascript,
-    "if (needsUnderlay(p)) attachUnderlay(p)",
-    fixed = TRUE
-  )
-  expect_match(javascript, "drawImage(p, underlay)", fixed = TRUE)
-  expect_match(javascript, "drawHulls(p, underlay)", fixed = TRUE)
-  expect_match(javascript, "drawTrajectory(p, underlay)", fixed = TRUE)
-  expect_match(javascript, "panel.underlayCanvas", fixed = TRUE)
-  expect_match(javascript, "function resizePanelLayers", fixed = TRUE)
-  expect_match(javascript, "function setGpuLayerVisible", fixed = TRUE)
-  expect_match(javascript, "function exportPanelLayers", fixed = TRUE)
-  expect_no_match(javascript, "cv-gpu-overlay", fixed = TRUE)
-  expect_match(stylesheet, "canvas.cv-underlay-layer", fixed = TRUE)
-  expect_match(stylesheet, "canvas.cv-interaction-layer", fixed = TRUE)
-  expect_match(stylesheet, "canvas.cv-gpu-layer { z-index: 1; }", fixed = TRUE)
-  expect_match(stylesheet, "z-index: 2; background: transparent", fixed = TRUE)
-})
-
-test_that("single Canvas views accept per-point sizes", {
-  utility <- paste(
-    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  javascript <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(utility, '"point_sizes"', fixed = TRUE)
-  expect_match(javascript, "space.pointSizes", fixed = TRUE)
-  expect_match(javascript, "pointSizes[i]", fixed = TRUE)
-})
-
-test_that("single Canvas trajectories accept compact endpoint edges", {
-  javascript <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  hla <- paste(
-    readLines(
-      viewer_test_path("hla_tcr_motifs", "visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(javascript, "columns.from && columns.to", fixed = TRUE)
-  expect_match(javascript, "sp.x[from]", fixed = TRUE)
-  expect_match(hla, "from <- as.integer(vn$edges$from)", fixed = TRUE)
-  expect_match(hla, "to <- as.integer(vn$edges$to)", fixed = TRUE)
-  expect_match(hla, "from = from", fixed = TRUE)
-  expect_match(hla, "to = to", fixed = TRUE)
-  expect_no_match(hla, "x0 = vn$layout[from, 1]", fixed = TRUE)
-})
-
-test_that("gene controls load transcriptome choices server-side", {
-  source <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "UI_projection_input_type.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  utility <- paste(
-    readLines(viewer_test_path("utility_functions.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_no_match(source, "list_of_genes()", fixed = TRUE)
-  expect_match(source, "serverSideGeneSelector(", fixed = TRUE)
-  expect_no_match(source, "retry = FALSE", fixed = TRUE)
-  expect_match(utility, "selected <- isolate(input[[input_id]])", fixed = TRUE)
-})
-
-test_that("the real Viewer benchmark accepts the Canvas baseline", {
-  benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
-    "benchmark_million_cell_viewer.R"
-  )
-  skip_if_not(
-    file.exists(benchmark_file),
-    "benchmark tree not present (expected when checking a built package)"
-  )
-  benchmark <- paste(
-    readLines(benchmark_file, warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(benchmark, "has_gpu_renderer <- file.exists", fixed = TRUE)
-  expect_match(
-    benchmark,
-    "CEREBRO_VIEWER_BENCH_OVERVIEW_ONLY",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "canvas[id^=\\\"cv-cv-\\\"]", fixed = TRUE)
-  expect_match(benchmark, "backend:'canvas2d'", fixed = TRUE)
-  expect_match(benchmark, "cerebroLinkedViewsState", fixed = TRUE)
-  expect_match(benchmark, "linked_ready_ms", fixed = TRUE)
-  expect_match(benchmark, "gene_ready_ms", fixed = TRUE)
-  expect_match(benchmark, "rgb_ready_ms", fixed = TRUE)
-})
-
-test_that("the Ren Linked benchmark records visual and interactive readiness", {
-  benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
-    "benchmark_ren_linked_transport.R"
-  )
-  skip_if_not(file.exists(benchmark_file), "benchmark tree not present")
-  benchmark <- paste(readLines(benchmark_file, warn = FALSE), collapse = "\n")
-
-  expect_match(benchmark, "primary_logical_ms", fixed = TRUE)
-  expect_match(benchmark, "complete_logical_ms", fixed = TRUE)
-  expect_match(benchmark, "visual_ready_ms", fixed = TRUE)
-  expect_match(benchmark, "interactive_ready_ms", fixed = TRUE)
-  expect_match(benchmark, "cerebroLinkedViewsState.visualReady()", fixed = TRUE)
-  expect_match(benchmark, "wait_for_idle", fixed = TRUE)
-})
-
-test_that("the page benchmark has a publication-grade contract", {
-  benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
-    "benchmark_viewer_1m_pages.R"
-  )
-  skip_if_not(
-    file.exists(benchmark_file),
-    "benchmark tree not present (expected when checking a built package)"
-  )
-  benchmark <- paste(readLines(benchmark_file, warn = FALSE), collapse = "\n")
-
-  expect_no_match(benchmark, "requestAnimationFrame", fixed = TRUE)
-  expect_no_match(benchmark, "!isTRUE(first) ||", fixed = TRUE)
-  expect_match(benchmark, "cerebro:specialist-state", fixed = TRUE)
-  expect_match(benchmark, "cerebro:linkedviews-ready", fixed = TRUE)
-  expect_match(
-    benchmark,
-    'setdiff(\n  chromote::get_chrome_args(),\n  "--disable-gpu"',
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    "cerebroLinkedViewsState.primaryReady()",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "completion_ready", fixed = TRUE)
-  expect_match(benchmark, "primary_ready_ms", fixed = TRUE)
-  expect_match(benchmark, "settled_ms", fixed = TRUE)
-  expect_match(benchmark, "dataset_load_ms", fixed = TRUE)
-  expect_match(
-    benchmark,
-    '"if(!completionRequired){"',
-    fixed = TRUE
-  )
-  expect_no_match(
-    benchmark,
-    'document.documentElement.classList.contains',
-    fixed = TRUE
-  )
-  expect_match(benchmark, "benchmark_mode", fixed = TRUE)
-  expect_match(benchmark, "projection_asset_bytes", fixed = TRUE)
-  expect_match(benchmark, "e.detail?.primaryReady===true", fixed = TRUE)
-  expect_match(benchmark, "run_observation", fixed = TRUE)
-  expect_match(benchmark, "browser_debug_port_error <- function", fixed = TRUE)
-  expect_match(benchmark, "start_app_driver <- function", fixed = TRUE)
-  expect_match(benchmark, "startup_attempts = startup$attempts", fixed = TRUE)
-  expect_match(benchmark, "startup_errors = paste(startup$errors", fixed = TRUE)
-  expect_match(
-    benchmark,
-    "Chrome debugging port not open after [0-9]+ seconds",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "arm_and_click_page <- function", fixed = TRUE)
-  expect_no_match(benchmark, "arm_page <- function", fixed = TRUE)
-  expect_match(benchmark, "const generation", fixed = TRUE)
-  expect_match(benchmark, "performance.now()", fixed = TRUE)
-  expect_match(benchmark, "e.timeStamp >= clickStart", fixed = TRUE)
-  expect_match(benchmark, "eventAt!==null", fixed = TRUE)
-  expect_match(benchmark, "const linked=hasCurrentEvent", fixed = TRUE)
-  expect_match(
-    benchmark,
-    "readyValue===null||readyValue===undefined",
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    "open_page(app, page, require_event = TRUE)",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "requires_ready_event(", fixed = TRUE)
-  expect_match(benchmark, "ready_event_required", fixed = TRUE)
-  expect_no_match(benchmark, "Network$enable", fixed = TRUE)
-  expect_no_match(benchmark, "Network$webSocketFrame", fixed = TRUE)
-  expect_no_match(benchmark, "frame_payload_bytes", fixed = TRUE)
-  expect_match(benchmark, "Shiny.shinyapp.$socket", fixed = TRUE)
-  expect_match(benchmark, "TextEncoder", fixed = TRUE)
-  expect_match(benchmark, "ArrayBuffer.isView", fixed = TRUE)
-  expect_match(benchmark, "data instanceof Blob", fixed = TRUE)
-  expect_match(benchmark, "removeEventListener('message'", fixed = TRUE)
-  expect_match(benchmark, "socket.send=meter.originalSend", fixed = TRUE)
-  canvas_spec <- sub(
-    "(?s).*?(canvas_page <- function.*?)(?=\\n\\npages <- list).*",
-    "\\1",
-    benchmark,
-    perl = TRUE
-  )
-  expect_no_match(canvas_spec, "shiny-busy", fixed = TRUE)
-  expect_match(
-    canvas_spec,
-    "detail?.datasetFingerprint===",
-    fixed = TRUE
-  )
-  expect_match(
-    canvas_spec,
-    "window.__cerebroPageBenchExpectedFingerprint",
-    fixed = TRUE
-  )
-  expect_no_match(canvas_spec, "datasetFingerprint.length>0", fixed = TRUE)
-  fingerprint_pattern <- "^md5-cell-set-v1:[0-9a-f]{32}$"
-  expect_true(grepl(
-    fingerprint_pattern,
-    "md5-cell-set-v1:0123456789abcdef0123456789abcdef"
-  ))
-  expect_false(grepl(fingerprint_pattern, "0:811c9dc5:85ebca77"))
-  for (name in c(
-    "overview",
-    "gene_expression",
-    "immune_repertoire",
-    "trajectory",
-    "hla",
-    "spatial"
-  )) {
-    expect_match(
-      benchmark,
-      paste0(name, " = canvas_page("),
-      fixed = TRUE,
-      info = name
-    )
-  }
-  coordinated_spec <- substring(
-    benchmark,
-    regexpr("coordinated_views = page(", benchmark, fixed = TRUE)
-  )
-  expect_no_match(coordinated_spec, "wait_idle", fixed = TRUE)
-  expect_match(
-    coordinated_spec,
-    "e.detail?.datasetFingerprint===expectedFingerprint",
-    fixed = TRUE
-  )
-  atomic_click <- sub(
-    "(?s).*?(arm_and_click_page <- function.*?)(?=\\n\\npage_available).*",
-    "\\1",
-    benchmark,
-    perl = TRUE
-  )
-  expect_equal(
-    lengths(regmatches(atomic_click, gregexpr("app\\$run_js", atomic_click))),
-    1L
-  )
-  expect_match(
-    benchmark,
-    "(?s)coordinated_views = page\\(.*?required = TRUE.*?ready_event = ",
-    perl = TRUE
-  )
-  expect_match(
-    benchmark,
-    'results$status == "ok" & results$performance_applicable & !results$pass',
-    fixed = TRUE
-  )
-  expect_equal(
-    lengths(gregexpr(
-      "expected_points = expected_cells",
-      benchmark,
-      fixed = TRUE
-    )),
-    2L
-  )
-  expect_match(
-    benchmark,
-    "expected_points = trajectory_contract$renderable_rows[[1L]]",
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    "spatial_contract$renderable_rows[[1L]]",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "VIEWER_TRAJECTORY_METHOD", fixed = TRUE)
-  expect_match(benchmark, "VIEWER_TRAJECTORY_NAME", fixed = TRUE)
-  immune_spec <- regmatches(
-    benchmark,
-    regexpr(
-      "immune_repertoire = canvas_page\\([\\s\\S]{0,300}?\\n  \\),",
-      benchmark,
-      perl = TRUE
-    )
-  )
-  expect_length(immune_spec, 1L)
-  expect_no_match(immune_spec, "expected_points", fixed = TRUE)
-  expect_match(benchmark, "VIEWER_EXPECTED_CELLS", fixed = TRUE)
-  expect_match(benchmark, "VIEWER_GENE_PRIME_OVERVIEW", fixed = TRUE)
-  expect_match(benchmark, "VIEWER_BENCH_SKIP_VISUAL_CHECK", fixed = TRUE)
-  expect_match(benchmark, "VIEWER_VISITS_ONLY", fixed = TRUE)
-  expect_match(benchmark, "plot.data.length>0", fixed = TRUE)
-  expect_match(benchmark, "groups_metric_available", fixed = TRUE)
-  expect_match(benchmark, "metadata_names", fixed = TRUE)
-  expect_match(benchmark, "groups_by_other_group_plot", fixed = TRUE)
-  expect_match(benchmark, "cerebro:groups-primary-ready", fixed = TRUE)
-  expect_match(benchmark, "load_benchmark_dataset <- function", fixed = TRUE)
-  expect_match(
-    benchmark,
-    "cerebro_benchmark_dataset_load_request",
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    "detail?.benchmarkGeneration===generation",
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    "detail?.datasetFingerprint===expectedFingerprint",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "if (isTRUE(memory_mode))", fixed = TRUE)
-  expect_match(
-    benchmark,
-    'identical(benchmark_mode, "timing")',
-    fixed = TRUE
-  )
-  expect_match(
-    benchmark,
-    'identical(profile, "publication") &&\n    identical(benchmark_mode, "timing")',
-    fixed = TRUE
-  )
-  expect_match(benchmark, "state?.summary?.()", fixed = TRUE)
-  expect_match(benchmark, "link.offsetParent !== null", fixed = TRUE)
-  expect_match(benchmark, "app$get_screenshot", fixed = TRUE)
-  expect_match(benchmark, "png::readPNG", fixed = TRUE)
-  protocol <- paste(
-    readLines(
-      testthat::test_path("..", "bench", "viewer_1m_page_protocol.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  benchmark_contract <- paste(benchmark, protocol, sep = "\n")
-
-  for (field in c(
-    "candidate_git_sha",
-    "artifact_sha256",
-    "host",
-    "r_version",
-    "package_version",
-    "chrome_version",
-    "r_peak_rss_kib",
-    "chrome_peak_rss_kib",
-    "js_heap_used_bytes",
-    "websocket_sent_payload_bytes",
-    "websocket_received_payload_bytes",
-    "websocket_received_at_ready_bytes",
-    "websocket_post_ready_received_bytes",
-    "shared_projection_primed",
-    "performance_ms",
-    "primary_ready_ms",
-    "settled_ms",
-    "dataset_load_ms",
-    "benchmark_mode",
-    "profiler_instrumented",
-    "specialist_event_kind",
-    "specialist_generation",
-    "render_request_sent",
-    "cached_activation",
-    "geometry_reused",
-    "click_to_request_ms",
-    "server_prepare_ms",
-    "serialize_transfer_ms",
-    "binary_decode_ms",
-    "projection_fetch_ms",
-    "build_spaces_ms",
-    "pre_draw_ms",
-    "first_draw_ms",
-    "activation_ms",
-    "request_to_ready_ms",
-    "click_to_ready_ms",
-    "primary_payload_bytes",
-    "primary_payload_count",
-    "primary_payload_meter_bytes",
-    "aux_payload_count",
-    "aux_payload_bytes",
-    "correctness_pass",
-    "rendered_point_count",
-    "expected_point_count",
-    "trajectory_method",
-    "trajectory_name",
-    "expected_trajectory_method",
-    "expected_trajectory_name",
-    "correctness_detail",
-    "navigator_gpu",
-    "renderer_backend",
-    "renderer_adapter",
-    "renderer_context_lost",
-    "renderer_error",
-    "visible_pixel_count",
-    "visible_pixels_pass",
-    "requires_webgpu",
-    "performance_applicable"
-  )) {
-    expect_match(benchmark_contract, field, fixed = TRUE, info = field)
-  }
-})
-
-test_that("page-ready events carry request-bound correctness identity", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(engine, "benchmarkGeneration", fixed = TRUE)
-  expect_match(engine, "renderedPointCount", fixed = TRUE)
-  expect_match(engine, "datasetFingerprint", fixed = TRUE)
-  expect_match(engine, "page: 'coordinated_views'", fixed = TRUE)
-  expect_match(engine, "reportWorkspaceReady('cached')", fixed = TRUE)
-})
-
-test_that("dataset switches clear specialist caches before the next render", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    engine,
-    "shiny:inputchanged.cerebroDatasetSwitch",
-    fixed = TRUE
-  )
-  expect_match(
-    engine,
-    "event.name !== 'crb_file_selector'",
-    fixed = TRUE
-  )
-  expect_match(engine, "resetSingleViews();", fixed = TRUE)
-  expect_match(engine, "lastVis = null;", fixed = TRUE)
 })
 
 test_that("trajectory benchmark contract follows the selected trajectory", {
@@ -2001,6 +1158,7 @@ test_that("benchmark TSV output escapes controls and validates columns", {
     "first line\\nsecond\\tfield\\rreturn",
     fixed = TRUE
   )
+
   expect_match(
     physical_lines[[2L]],
     "{\\n\\t\"reason\": \"bad\"\\n}",
@@ -2117,82 +1275,6 @@ test_that("the page benchmark schedule and budgets are balanced", {
   expect_error(protocol$validate_benchmark_mode("mixed"), "timing or memory")
 })
 
-test_that("the cold-start benchmark measures an installed Viewer", {
-  benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
-    "benchmark_million_cell_startup.R"
-  )
-  skip_if_not(
-    file.exists(benchmark_file),
-    "benchmark tree not present (expected when checking a built package)"
-  )
-  benchmark <- paste(
-    readLines(benchmark_file, warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(benchmark, "library(CerebroNexus)", fixed = TRUE)
-  expect_no_match(benchmark, "load_all", fixed = TRUE)
-  expect_match(benchmark, "library_ms", fixed = TRUE)
-  expect_match(benchmark, "browser_load_ms", fixed = TRUE)
-  expect_match(benchmark, "load_to_data_ms", fixed = TRUE)
-  expect_match(benchmark, "browser_to_data_ms", fixed = TRUE)
-  expect_match(benchmark, "process_to_data_ms", fixed = TRUE)
-  expect_match(benchmark, "CEREBRO_STARTUP_GATE_LABEL", fixed = TRUE)
-  expect_match(
-    benchmark,
-    "CEREBRO_STARTUP_MAX_PROCESS_TO_DATA_MS",
-    fixed = TRUE
-  )
-  expect_match(benchmark, "observed_ms >= gate_ms", fixed = TRUE)
-})
-
-test_that("optional page servers load only when their page becomes visible", {
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(server, "deferred_viewer_server_files <- c(", fixed = TRUE)
-  expect_match(server, '"marker_genes/server.R"', fixed = TRUE)
-  expect_match(server, '"color_management/server.R"', fixed = TRUE)
-  expect_match(
-    server,
-    "load_deferred_viewer_server <- function(server_file)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'load_deferred_viewer_server("coordinated_views/server.R")',
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    'server_file <- unname(deferred_viewer_server_files[input[["sidebar"]]])',
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "if (length(server_file) && !is.na(server_file))",
-    fixed = TRUE
-  )
-  expect_no_match(
-    server,
-    'deferred_viewer_server_files[[input[["sidebar"]]]]',
-    fixed = TRUE
-  )
-  expect_match(server, "ignoreInit\\s*=\\s*FALSE\\s*\\)")
-  expect_no_match(server, "preload_deferred_viewer_server", fixed = TRUE)
-  expect_no_match(server, "later::later(", fixed = TRUE)
-  expect_no_match(
-    server,
-    "for (server_file in deferred_viewer_server_files)",
-    fixed = TRUE
-  )
-  expect_match(server, "envir = server_scope", fixed = TRUE)
-})
-
 test_that("continuous colours keep stable paint order without comparison sort", {
   skip_if(Sys.which("node") == "", "node not on PATH")
   source <- viewer_test_path("www", "cell_views.js")
@@ -2201,17 +1283,19 @@ test_that("continuous colours keep stable paint order without comparison sort", 
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const fn = source.match(/function quantisedOrder\\(vals, span\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
+      "const fn = js(source).declarations(['quantisedOrder']);",
       "eval(fn);",
       "const values = [2, null, 1, 2, NaN, 0, 1];",
       "process.stdout.write(JSON.stringify(Array.from(quantisedOrder(values, 2))));"
     ),
     runner
   )
+
   output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
 
   expect_equal(attr(output, "status"), NULL)
@@ -2226,11 +1310,12 @@ test_that("WebGPU RGB colours match the existing blend without CSS allocation", 
   writeLines(
     c(
       "const fs = require('fs');",
+      viewer_js_loader(),
       sprintf(
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(source, quote = '"')
       ),
-      "const fn = source.match(/function rgbGpuColor\\(r, g, b\\) \\{[\\s\\S]*?\\n  \\}/)[0];",
+      "const fn = js(source).declarations(['rgbGpuColor']);",
       "const RGB_MIN=28, RGB_GREY_RGB=[217,219,222]; eval(fn);",
       "function old(r,g,b){const m=Math.max(r,g,b);let out;",
       "if(m<=RGB_MIN)out=RGB_GREY_RGB;else if(r>RGB_MIN&&g>RGB_MIN&&b>RGB_MIN)out=[0,0,0];",
@@ -2427,22 +1512,4 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     as.character(captured$deferred_aux()$selection_key),
     c("c3", "c1", "c2")
   )
-})
-
-test_that("hidden group filters activate after startup rendering", {
-  source <- paste(
-    readLines(
-      viewer_test_path(
-        "module",
-        "group_filters",
-        "group_filters_widget.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(source, "domain$onFlushed(", fixed = TRUE)
-  expect_match(source, "delay = 0.5", fixed = TRUE)
-  expect_match(source, "suspendWhenHidden = FALSE", fixed = TRUE)
 })

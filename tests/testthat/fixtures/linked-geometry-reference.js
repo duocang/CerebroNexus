@@ -1,13 +1,11 @@
 const assert=require('assert'),fs=require('fs');
 const source=fs.readFileSync(process.argv[2],'utf8');
-const start=source.indexOf('  function hydrateLinkedGeometry(');
-const end=source.indexOf('\n  function hydrateSparseLinked',start);
-assert(start>=0&&end>start);
+const js = require("./js-source.cjs")(source);
 const D={n:3,projections:{umap:{x:new Float32Array([1,2,3]),y:new Float32Array([4,5,6])}}};
 const unit={id:'existing-unit'};
 const projectionId=x=>'projection::'+x;
 const spaceById={'projection::umap':{_unit:unit}};
-eval(source.slice(start,end));
+eval(js.declarations(['hydrateLinkedGeometry']));
 const extra={spaces:[{geometry_ref:{projection:'umap',exclude:[]}},{geometry_ref:{projection:'umap',exclude:[1]}}]};
 hydrateLinkedGeometry(extra);
 assert.strictEqual(extra.spaces[0].x,D.projections.umap.x);

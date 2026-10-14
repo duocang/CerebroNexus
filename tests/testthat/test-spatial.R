@@ -50,45 +50,37 @@ test_that("spatial accessor methods are defined on the class", {
 })
 
 test_that("addSpatialData validates its input structure", {
-  # A malformed entry (missing coordinates/expression) must be rejected so the
-  # class contract getSpatialData() relies on cannot be violated silently.
-  cls_text <- paste(
-    deparse(Cerebro$public_methods$addSpatialData),
-    collapse = "\n"
-  )
-  expect_match(cls_text, "coordinates", fixed = TRUE)
-  expect_match(cls_text, "expression", fixed = TRUE)
-})
-
-test_that("spatial utility wrappers are defined in the app scope", {
-  # The Spatial tab (Session B) calls these free functions. They were missing
-  # from dev and must be present before the module is mounted. Cross-line-
-  # tolerant regex per project convention (air may reflow).
-  util_src <- paste(
-    readLines(file.path(shiny_root, "utility_functions.R")),
-    collapse = "\n"
-  )
-  for (fn in c(
-    "availableSpatial",
-    "getSpatialData",
-    "serverSideGeneSelector"
+  object <- Cerebro$new()
+  for (entry in list(
+    list(),
+    list(coordinates = data.frame(x = 1, y = 2)),
+    list(expression = matrix(1))
   )) {
-    expect_match(
-      util_src,
-      paste0(fn, "[\\s]{0,3}<-[\\s]{0,3}function"),
-      perl = TRUE,
-      info = fn
+    expect_error(
+      object$addSpatialData("malformed", entry),
+      "coordinates|expression"
     )
   }
+  valid <- list(coordinates = data.frame(x = 1, y = 2), expression = matrix(1))
+  object$addSpatialData("valid", valid)
+  expect_identical(
+    object$getSpatialData("valid")$coordinates,
+    valid$coordinates
+  )
+  expect_identical(object$getSpatialData("valid")$expression, valid$expression)
 })
 
 test_that("exportFromSeurat carries the spatial extraction path", {
-  # Guard that the spatial export block survived the port: exportFromSeurat must
-  # reference the internal .getSpatialData() extractor and stash results via
-  # addSpatialData(). Reading the deparsed function body is robust to air reflow.
-  fn_text <- paste(deparse(exportFromSeurat), collapse = "\n")
-  expect_match(fn_text, ".getSpatialData", fixed = TRUE)
-  expect_match(fn_text, "addSpatialData", fixed = TRUE)
+  skip_if_not_installed("Seurat")
+  object <- make_synthetic_spatial_seurat(n_cells = 8, n_genes = 6)
+  out <- withr::local_tempdir()
+  path <- convert_synthetic_to_crb(object, out, "spatial export")
+  exported <- readCerebro(path)
+  expect_identical(exported$availableSpatial(), "fov")
+  coordinates <- exported$getSpatialData("fov")$coordinates
+  expected <- SeuratObject::GetTissueCoordinates(object[["fov"]])
+  expect_equal(coordinates$x, expected$x)
+  expect_equal(coordinates$y, expected$y)
 })
 
 ##----------------------------------------------------------------------------##
@@ -141,15 +133,10 @@ test_that("spatial coordinate reuse requires exact canonical full order", {
 })
 
 test_that("validated spatial coordinates reuse canonical storage with fallback", {
-  expressions <- parse(viewer_test_path("utility_functions.R"))
-  assignment <- Filter(
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("viewerSpatialCoordinates"))
-    },
-    as.list(expressions)
-  )[[1L]]
+  assignment <- viewer_r_assignment(
+    viewer_test_path("utility_functions.R"),
+    "viewerSpatialCoordinates"
+  )
   coordinates <- data.frame(x = 1:3, y = 4:6)
   dataset <- new.env(parent = emptyenv())
   class(dataset) <- c("Cerebro", "R6")
@@ -228,251 +215,6 @@ test_that("spatial coordinates retain subset and dataset-switch fallbacks", {
   })
 })
 
-test_that("background-image selection only recreates image calibration controls", {
-  # The scatter controls retain user-selected values while moving between
-  # backgrounds. Keep them in their own renderUI so that the selected image
-  # can safely seed the calibration controls without recreating the point-size,
-  # point-opacity, or sampling sliders.
-  ui_file <- file.path(
-    shiny_root,
-    "spatial",
-    "UI_projection_additional_parameters.R"
-  )
-  src <- paste(readLines(ui_file), collapse = "\n")
-
-  expect_match(
-    src,
-    'output\\[\\["spatial_projection_scatter_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    'output\\[\\["spatial_projection_background_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    'input\\[\\["spatial_projection_more_render_request"\\]\\]',
-    perl = TRUE
-  )
-
-  scatter_src <- sub(
-    '^[\\s\\S]*?output\\[\\["spatial_projection_scatter_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI\\(\\{',
-    "",
-    src,
-    perl = TRUE
-  )
-  scatter_src <- sub(
-    'output\\[\\["spatial_projection_background_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI[\\s\\S]*$',
-    "",
-    scatter_src,
-    perl = TRUE
-  )
-  expect_false(
-    grepl(
-      'input\\[\\["spatial_projection_background_image"\\]\\]',
-      scatter_src,
-      fixed = FALSE
-    )
-  )
-
-  projection_ui <- paste(
-    readLines(file.path(shiny_root, "spatial", "UI.R")),
-    collapse = "\n"
-  )
-  expect_match(
-    projection_ui,
-    'uiOutput\\("spatial_projection_scatter_parameters_UI"\\)'
-  )
-  expect_no_match(
-    projection_ui,
-    'uiOutput\\("spatial_projection_background_select_UI"\\)'
-  )
-  main_parameters_ui <- paste(
-    readLines(file.path(
-      shiny_root,
-      "spatial",
-      "UI_projection_main_parameters.R"
-    )),
-    collapse = "\n"
-  )
-  expect_match(
-    main_parameters_ui,
-    'output\\[\\["spatial_projection_background_selector_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
-    perl = TRUE
-  )
-  selector_source <- sub(
-    '^[\\s\\S]*?output\\[\\["spatial_projection_background_selector_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI\\(\\{',
-    "",
-    main_parameters_ui,
-    perl = TRUE
-  )
-  selector_source <- sub(
-    "serverSideGeneSelector[\\s\\S]*$",
-    "",
-    selector_source,
-    perl = TRUE
-  )
-  selector_request <- regexpr(
-    'identical(input[["sidebar"]], "spatial")',
-    selector_source,
-    fixed = TRUE
-  )[[1]]
-  selector_spatial_read <- regexpr(
-    "getSpatialData(current_spatial)",
-    selector_source,
-    fixed = TRUE
-  )[[1]]
-  ## Sidebar navigation must not reconstruct a mounted selector. Shiny
-  ## suspends this output while hidden instead.
-  expect_identical(selector_request, -1L)
-  expect_gt(selector_spatial_read, 0)
-  expect_match(main_parameters_ui, "suspendWhenHidden = TRUE", fixed = TRUE)
-  expect_match(
-    projection_ui,
-    'uiOutput\\("spatial_projection_background_selector_UI"\\)'
-  )
-  expect_match(
-    projection_ui,
-    'uiOutput\\("spatial_projection_background_parameters_UI"\\)'
-  )
-  expect_match(
-    projection_ui,
-    'class = "spatial-image-controls"',
-    fixed = TRUE
-  )
-  additional_ui <- paste(
-    readLines(
-      file.path(shiny_root, "spatial", "UI_projection_additional_parameters.R")
-    ),
-    collapse = "\n"
-  )
-  for (class_name in c(
-    "cerebro-settings-content",
-    "cerebro-settings-full",
-    "spatial-image-offset-row",
-    "spatial-image-checks",
-    "spatial-image-actions"
-  )) {
-    expect_match(additional_ui, class_name, fixed = TRUE)
-  }
-  expect_no_match(additional_ui, "cerebroSettingsSection(", fixed = TRUE)
-  expect_match(additional_ui, '"Opacity"', fixed = TRUE)
-  expect_no_match(additional_ui, '"Image opacity"', fixed = TRUE)
-  expect_match(additional_ui, 'paste0(id, "_num")', fixed = TRUE)
-  expect_match(
-    additional_ui,
-    'slider_number_input(\n        "spatial_projection_background_opacity"',
-    fixed = TRUE
-  )
-  for (obsolete_class in c(
-    "spatial-image-control-group",
-    "spatial-image-transform-group",
-    "spatial-image-scale-pair",
-    "spatial-image-flips"
-  )) {
-    expect_no_match(additional_ui, obsolete_class, fixed = TRUE)
-  }
-  settings_css <- paste(
-    readLines(file.path(shiny_root, "www", "custom.css")),
-    collapse = "\n"
-  )
-  expect_match(settings_css, ".spatial-image-offset-row {", fixed = TRUE)
-  expect_match(
-    settings_css,
-    ".spatial-image-offset-slider .irs-grid",
-    fixed = TRUE
-  )
-  expect_match(settings_css, "grid-template-columns: 1fr;", fixed = TRUE)
-  expect_match(settings_css, "margin-top: 12px;", fixed = TRUE)
-  expect_match(
-    settings_css,
-    ".cerebro-settings-section {",
-    fixed = TRUE
-  )
-  expect_no_match(
-    settings_css,
-    ".spatial-image-controls .shiny-panel-conditional {\n  display: grid;",
-    fixed = TRUE
-  )
-  expect_match(projection_ui, '"Appearance"', fixed = TRUE)
-  expect_match(projection_ui, '"Background image"', fixed = TRUE)
-})
-
-
-test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
-  # getExpressionMatrix / getMeanExpressionForCells are Cerebro R6 methods,
-  # not bare functions — they must be called through data_set()$. A bare
-  # getExpressionMatrix(...) crashed the ImageFeaturePlot (gene-coloured) path
-  # with "could not find function". Guard every expression-method call in the
-  # spatial module against the bare form.
-  spatial_dir <- file.path(shiny_root, "spatial")
-  skip_if_not(dir.exists(spatial_dir), message = "spatial module missing")
-  methods <- c("getExpressionMatrix", "getMeanExpressionForCells")
-  for (fpath in list.files(spatial_dir, pattern = "\\.R$", full.names = TRUE)) {
-    src <- paste(readLines(fpath), collapse = "\n")
-    for (m in methods) {
-      # a call to the method NOT immediately preceded by `$`
-      bare <- gregexpr(
-        paste0("(^|[^$[:alnum:]_.])", m, "\\("),
-        src,
-        perl = TRUE
-      )[[1]]
-      expect_true(
-        bare[1] == -1,
-        info = paste0(
-          "bare ",
-          m,
-          "() in ",
-          basename(fpath),
-          " — use data_set()$"
-        )
-      )
-    }
-  }
-})
-
-test_that("hidden Moran's I exits before reading Spatial data", {
-  morans_source <- paste(
-    readLines(file.path(shiny_root, "spatial", "out_morans_i.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  projection_ui <- paste(
-    readLines(file.path(shiny_root, "spatial", "UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    projection_ui,
-    "input.spatial_projection_plot_type == 'ImageFeaturePlot'",
-    fixed = TRUE
-  )
-  expect_match(
-    projection_ui,
-    'textOutput("spatial_projection_morans_i", inline = TRUE)',
-    fixed = TRUE
-  )
-  early_guard <- regexpr(
-    'req(identical(input[["spatial_projection_plot_type"]], "ImageFeaturePlot"))',
-    morans_source,
-    fixed = TRUE
-  )[[1]]
-  parameter_read <- regexpr(
-    "plot_parameters <- spatial_projection_parameters_plot()",
-    morans_source,
-    fixed = TRUE
-  )[[1]]
-  spatial_read <- regexpr(
-    "spatial_data <- getSpatialData(",
-    morans_source,
-    fixed = TRUE
-  )[[1]]
-
-  expect_gt(early_guard, 0)
-  expect_gt(parameter_read, early_guard)
-  expect_gt(spatial_read, parameter_read)
-})
-
 test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested", {
   shiny::testServer(
     function(input, output, session) {
@@ -536,58 +278,11 @@ test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested
   )
 })
 
-test_that("group_filters widget the spatial tab depends on is present", {
-  # spatial/UI_projection_group_filters.R calls registerGroupFiltersUI() and
-  # registerGroupFiltersInfo(); those are only defined in the shared module,
-  # which must be shipped and sourced or the tab errors on mount.
-  widget <- file.path(
-    shiny_root,
-    "module",
-    "group_filters",
-    "group_filters_widget.R"
-  )
-  skip_if_not(file.exists(widget))
-  widget_src <- paste(readLines(widget), collapse = "\n")
-  for (fn in c("registerGroupFiltersUI", "registerGroupFiltersInfo")) {
-    expect_match(
-      widget_src,
-      paste0(fn, "[\\s]{0,3}<-[\\s]{0,3}function"),
-      perl = TRUE,
-      info = fn
-    )
-  }
-})
-
 test_that("spatial UI defines correct tabName", {
-  ui_file <- file.path(shiny_root, "spatial", "UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-  expect_match(content, 'tabName\\s*=\\s*"spatial"', perl = TRUE)
-})
-
-test_that("Spatial tab is wired into the app UI and server", {
-  # Guard the integration points so a future refactor that drops the wiring
-  # (module present but never mounted) fails loudly. Cross-line-tolerant regex
-  # per project convention (air may reflow).
-  ui_src <- paste(
-    readLines(file.path(shiny_root, "shiny_UI.R")),
-    collapse = "\n"
-  )
-  expect_match(ui_src, "spatial/UI\\.R")
-  expect_match(ui_src, "tab_spatial")
-  expect_match(ui_src, 'conditionalSidebarItem\\("Spatial", "spatial"')
-
-  server_src <- paste(
-    readLines(file.path(shiny_root, "shiny_server.R")),
-    collapse = "\n"
-  )
-  expect_match(server_src, "spatial/server\\.R")
-  expect_match(server_src, "group_filters/group_filters_widget\\.R")
-  expect_match(
-    server_src,
-    'toggleConditionalTab\\([\\s\\S]{0,80}"spatial"',
-    perl = TRUE
-  )
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("spatial", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_spatial)
+  expect_equal(page$filter("#shiny-tab-spatial")$length(), 1L)
 })
 
 ##----------------------------------------------------------------------------##
@@ -658,49 +353,6 @@ test_that("createShinyApp migrates legacy spatial settings into its bundle", {
     cfg[["spatial_plot_rotation"]][["Legacy spatial"]][[spatial_name]],
     37
   )
-})
-
-test_that("Spatial UI seeds and resets every field from the shared image preset", {
-  ui <- paste(
-    readLines(
-      file.path(shiny_root, "spatial", "UI_projection_additional_parameters.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  controls <- paste(
-    readLines(
-      file.path(shiny_root, "spatial", "obj_projection_background_controls.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    ui,
-    "spatial_projection_background_opacity[\\s\\S]{0,200}preset\\$opacity",
-    perl = TRUE
-  )
-  expect_match(
-    controls,
-    "spatial_projection_background_opacity[\\s\\S]{0,120}value = preset\\$opacity",
-    perl = TRUE
-  )
-  for (numeric_id in c(
-    "spatial_projection_background_opacity_num",
-    "spatial_projection_background_scale_num",
-    "spatial_projection_background_scale_x_num",
-    "spatial_projection_background_scale_y_num",
-    "spatial_projection_background_rotate_num"
-  )) {
-    expect_match(controls, numeric_id, fixed = TRUE)
-  }
-  expect_match(controls, '"spatial_copy_preset"', fixed = TRUE)
-  page_js <- paste(
-    readLines(file.path(shiny_root, "spatial", "js_page_helpers.js")),
-    collapse = "\n"
-  )
-  expect_match(page_js, "navigator.clipboard.writeText", fixed = TRUE)
-  expect_match(page_js, "document.execCommand('copy')", fixed = TRUE)
 })
 
 test_that("createShinyApp bundles a spatial image and writes the option", {
@@ -862,13 +514,14 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   )
   expect_identical(sd$histology_images, list())
 
-  # app.R must wire the external image via spatial_images for the Visium dataset
-  app_src <- paste(
-    readLines(system.file("app.R", package = "CerebroNexus")),
-    collapse = "\n"
-  )
-  expect_match(app_src, "spatial_images", fixed = TRUE)
-  expect_match(app_src, "demo_spatial_visium_he\\.png", perl = TRUE)
+  configured <- viewer_demo_options()$spatial_images[["Mouse brain (Visium)"]][[
+    spatial_name
+  ]]
+  expect_true(any(vapply(
+    configured,
+    function(path) basename(path) == "demo_spatial_visium_he.png",
+    logical(1)
+  )))
 
   renderer <- new.env(parent = globalenv())
   sys.source(
@@ -1040,278 +693,6 @@ test_that("external spatial image encoding is cached by file version", {
   expect_identical(calls, 2L)
 })
 
-test_that("spatial hull geometry is prepared outside the renderer", {
-  data_flow <- paste(
-    readLines(viewer_test_path("spatial", "obj_projection_data_to_plot.R")),
-    collapse = "\n"
-  )
-  renderer <- paste(
-    readLines(viewer_test_path("spatial", "func_projection_update_plot.R")),
-    collapse = "\n"
-  )
-
-  expect_match(
-    data_flow,
-    "spatial_projection_group_hulls <- reactive({",
-    fixed = TRUE
-  )
-  hull_lists <- Filter(
-    function(node) "group_hulls" %in% names(node),
-    r_test_calls(data_flow, "list")
-  )
-  expect_true(any(vapply(
-    hull_lists,
-    function(node) {
-      identical(
-        r_test_normalize(node$group_hulls),
-        quote(if (resource_first) list() else spatial_projection_group_hulls())
-      )
-    },
-    logical(1)
-  )))
-  expect_no_match(renderer, "compute_group_hulls(", fixed = TRUE)
-})
-
-test_that("hidden Spatial appearance controls do not rebuild primary data", {
-  parameters <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_parameters_plot.R"
-    )),
-    collapse = "\n"
-  )
-  data_flow <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_data_to_plot.R"
-    )),
-    collapse = "\n"
-  )
-  controls <- paste(
-    unlist(lapply(
-      c(
-        "UI_projection_point_border.R",
-        "UI_projection_show_group_label.R"
-      ),
-      function(file) {
-        readLines(viewer_test_path("spatial", file), warn = FALSE)
-      }
-    )),
-    collapse = "\n"
-  )
-  projection_ui <- paste(
-    readLines(viewer_test_path("spatial", "UI.R")),
-    collapse = "\n"
-  )
-
-  expect_match(
-    parameters,
-    "spatial_projection_appearance <- reactiveValues(",
-    fixed = TRUE
-  )
-  expect_match(parameters, '"cell_view_appearance"', fixed = TRUE)
-  expect_match(
-    parameters,
-    "draw_border = isolate(spatial_projection_appearance$draw_border)",
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    "group_labels = isolate(spatial_projection_appearance$group_labels)",
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    "keep_square = isolate(spatial_projection_appearance$keep_square)",
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    "show_region_outlines = spatial_projection_region_outlines()",
-    fixed = TRUE
-  )
-  expect_match(
-    data_flow,
-    "!isTRUE(spatial_projection_region_outlines())",
-    fixed = TRUE
-  )
-  expect_match(
-    controls,
-    'req(input[["spatial_projection_more_render_request"]])',
-    fixed = TRUE
-  )
-  expect_match(
-    projection_ui,
-    'uiOutput("spatial_projection_keep_square_UI")',
-    fixed = TRUE
-  )
-})
-
-test_that("first Spatial frame uses deduplicated server-side control defaults", {
-  parameters <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_parameters_plot.R"
-    )),
-    collapse = "\n"
-  )
-  cells <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_cells_to_show.R"
-    )),
-    collapse = "\n"
-  )
-
-  expect_match(
-    parameters,
-    "spatial_projection_controls <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    'req(input[["spatial_projection_render_request"]])',
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    "if (!identical(isolate(spatial_projection_controls()), controls))",
-    fixed = TRUE
-  )
-  observer <- r_test_observer(
-    parameters,
-    "observe",
-    quote(spatial_projection_controls(controls))
-  )
-  expect_identical(observer$priority, 1000)
-  expect_match(
-    parameters,
-    "controls <- spatial_projection_controls()",
-    fixed = TRUE
-  )
-  expect_match(
-    cells,
-    "percentage <- controls$percentage_cells_to_show",
-    fixed = TRUE
-  )
-})
-
-test_that("shared Canvas owns spatial background identity and appearance", {
-  engine <- paste(
-    readLines(viewer_test_path("www", "cell_views.js")),
-    collapse = "\n"
-  )
-  controls <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_background_controls.R"
-    )),
-    collapse = "\n"
-  )
-  background_ui <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "UI_projection_additional_parameters.R"
-    )),
-    collapse = "\n"
-  )
-  page_helpers <- paste(
-    readLines(viewer_test_path("spatial", "js_page_helpers.js")),
-    collapse = "\n"
-  )
-  parameters <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_parameters_plot.R"
-    )),
-    collapse = "\n"
-  )
-
-  expect_match(engine, "JSON.stringify(meta.background_identity)", fixed = TRUE)
-  expect_match(
-    engine,
-    "rotation: Number(meta.background_rotation) || 0",
-    fixed = TRUE
-  )
-  expect_match(engine, "function updateSingleBackground", fixed = TRUE)
-  expect_match(engine, "stashImgState(space)", fixed = TRUE)
-  expect_match(controls, "cerebroCellViewBackground(", fixed = TRUE)
-  expect_match(
-    controls,
-    "dataset_context = dataset_context",
-    fixed = TRUE
-  )
-  expect_match(
-    controls,
-    "background_identity = background_identity",
-    fixed = TRUE
-  )
-  expect_match(
-    controls,
-    'input[["spatial_projection_background_controls"]]',
-    fixed = TRUE
-  )
-  expect_match(
-    controls,
-    "spatial_background_identity_equal(",
-    fixed = TRUE
-  )
-  expect_match(
-    background_ui,
-    'id = "spatial_projection_background_control_scope"',
-    fixed = TRUE
-  )
-  expect_match(background_ui, "data-background-identity", fixed = TRUE)
-  expect_match(
-    page_helpers,
-    "spatial_projection_background_controls",
-    fixed = TRUE
-  )
-  expect_match(
-    page_helpers,
-    "dataset_context: datasetContext",
-    fixed = TRUE
-  )
-  expect_match(
-    page_helpers,
-    "background_identity: backgroundIdentity",
-    fixed = TRUE
-  )
-  expect_match(
-    parameters,
-    "background_opacity <- background_preset$opacity",
-    fixed = TRUE
-  )
-  expect_no_match(
-    parameters,
-    'isolate(\n    input[["spatial_projection_background_opacity"]]',
-    fixed = TRUE
-  )
-  expect_match(controls, "dataset_context = dataset_context", fixed = TRUE)
-  expect_match(
-    controls,
-    "background_identity = background_identity",
-    fixed = TRUE
-  )
-  expect_match(page_helpers, "stillCurrent(message)", fixed = TRUE)
-
-  renderer_src <- paste(
-    readLines(viewer_test_path("spatial", "func_projection_update_plot.R")),
-    collapse = "\n"
-  )
-  assignments <- gregexpr(
-    "background_identity = plot_parameters",
-    renderer_src,
-    fixed = TRUE
-  )[[1L]]
-  expect_length(assignments[assignments > 0L], 1L)
-  expect_match(
-    renderer_src,
-    'payload[["meta"]] <- c(background_meta, payload[["meta"]])',
-    fixed = TRUE
-  )
-})
-
 test_that("spatial first frames replace only exact flat geometry with an asset", {
   renderer <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
@@ -1424,162 +805,47 @@ test_that("Spatial first-frame data bypasses the legacy full accessor", {
   expect_false("molecules" %in% names(result))
 })
 
-test_that("bounded Spatial backgrounds remain eligible for resource first frames", {
-  data_flow <- paste(
-    readLines(viewer_test_path("spatial", "obj_projection_data_to_plot.R")),
-    collapse = "\n"
-  )
-  expect_match(
-    data_flow,
-    "background_geometry_ready <- is.null(background_descriptor)",
-    fixed = TRUE
-  )
-  expect_match(
-    data_flow,
-    "is.atomic(background_bounds) || is.list(background_bounds)",
-    fixed = TRUE
-  )
-})
-
 test_that("Spatial geometry catalog is registered but fetched only on page request", {
-  server_source <- paste(
-    readLines(viewer_test_path("shiny_server.R")),
-    collapse = "\n"
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), scope)
+  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
+  scope$Cerebro.options <- list()
+  scope$available_crb_files <- list(
+    files = c(tiny = "tiny.crb"),
+    selected = "tiny.crb"
   )
-  expect_match(
-    server_source,
-    "viewerSpatialGeometryCatalog <- function()",
-    fixed = TRUE
+  scope$viewerPackCurrent <- function() {
+    list(
+      manifest = list(
+        spatial_frames = data.frame(name = c("sliceA", "sliceB", "sliceA"))
+      )
+    )
+  }
+  scope$viewerPackSpatialIndex <- function(pack, name) {
+    if (name == "sliceA") 1:4 else 5:8
+  }
+  requested <- list()
+  scope$viewerSpatialGeometryAsset <- function(name, indices, rotation) {
+    requested[[name]] <<- indices
+    if (name == "sliceA") list(url = "sliceA.bin", cells = 4L) else NULL
+  }
+  viewer_server_load(
+    viewer_server_statements("shiny_server.R", server = TRUE),
+    scope,
+    names = "viewerSpatialGeometryCatalog"
   )
-  expect_match(server_source, '"cell_view_resource_catalog"', fixed = TRUE)
-  expect_match(
-    server_source,
-    "viewerPackSpatialIndex(pack, name)",
-    fixed = TRUE
+  expect_equal(
+    scope$viewerSpatialGeometryCatalog(),
+    list(list(url = "sliceA.bin", cells = 4L))
   )
-  browser_source <- paste(
-    readLines(viewer_test_path("www", "cell_views.js")),
-    collapse = "\n"
-  )
-  click_prefetch <- regexpr(
-    "prefetchRegisteredSingleResource(id);",
-    browser_source,
-    fixed = TRUE
-  )[[1L]]
-  render_request <- regexpr(
-    "Shiny.setInputValue(id + '_render_request'",
-    browser_source,
-    fixed = TRUE
-  )[[1L]]
-  expect_gt(click_prefetch, 0L)
-  expect_gt(render_request, click_prefetch)
-  expect_match(
-    browser_source,
-    "Number(percentage.value) !== 100",
-    fixed = TRUE
-  )
-  expect_match(
-    browser_source,
-    "if (!boxes[j].checked) return false;",
-    fixed = TRUE
-  )
-  expect_match(
-    server_source,
-    "default_resource_name = default_resource_name",
-    fixed = TRUE
-  )
-  spatial_catalog <- regexpr(
-    'id = "spatial_projection"',
-    server_source,
-    fixed = TRUE
-  )[[1L]]
-  overview_catalog <- regexpr(
-    'id = "overview_projection"',
-    server_source,
-    fixed = TRUE
-  )[[1L]]
-  expect_gt(spatial_catalog, 0L)
-  expect_gt(overview_catalog, spatial_catalog)
-  expect_match(
-    browser_source,
-    "return singleDefaultResourceNames.has(id);",
-    fixed = TRUE
-  )
-  expect_match(
-    browser_source,
-    "if (!name) name = singleDefaultResourceNames.get(id);",
-    fixed = TRUE
-  )
-  expect_match(
-    browser_source,
-    "if (singleRequests.has(singleRequestKey(message.id, message.dataset_context))) {",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "cell_view_resource_prefetch",
-    browser_source,
-    fixed = TRUE
-  ))
+  expect_equal(requested, list(sliceA = 1:4, sliceB = 5:8))
+  scope$viewerPackCurrent <- function() NULL
+  expect_length(scope$viewerSpatialGeometryCatalog(), 0L)
 })
 
 test_that("empty spatial selection returns before million-cell plot data", {
-  selected_source <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "obj_projection_selected_cells.R"
-    )),
-    collapse = "\n"
-  )
-  selection_reactive <- r_test_calls(selected_source, "reactive")[[1L]]
-  scope <- new.env(parent = baseenv())
-  scope$input <- list(spatial_projection_persistent_selection = NULL)
-  scope$viewer_loaded_dataset_context <- function() list(generation = 1L)
-  scope$viewerPersistentSelection <- function(selection, context) selection
-  scope$req <- function(value) force(value)
-  scope$spatial_projection_data_to_plot <- function() {
-    stop("plot data was forced")
-  }
-  selected_cells <- eval(
-    call("function", pairlist(), selection_reactive[[2L]]),
-    scope
-  )
-  expect_null(selected_cells())
-  # The same body must reach plot data for a nonempty selection.
-  scope$input$spatial_projection_persistent_selection <- data.frame(
-    cell_index = 1L
-  )
-  expect_error(selected_cells(), "plot data was forced")
-
-  summary_source <- paste(
-    readLines(viewer_test_path(
-      "spatial",
-      "out_number_of_selected_cells.R"
-    )),
-    collapse = "\n"
-  )
-  expect_gte(
-    lengths(regmatches(
-      summary_source,
-      gregexpr(
-        "req(!is.null(selection), nrow(selection) > 0L)",
-        summary_source,
-        fixed = TRUE
-      )
-    )),
-    2L
-  )
-
   calls <- new.env(parent = emptyenv())
   calls$plot_data <- 0L
-  selected_lines <- readLines(viewer_test_path(
-    "spatial",
-    "obj_projection_selected_cells.R"
-  ))
-  observer_line <- grep("^observeEvent\\(", selected_lines)[[1L]]
-  selected_reactive_source <- paste(
-    selected_lines[seq_len(observer_line - 1L)],
-    collapse = "\n"
-  )
   server <- function(input, output, session) {
     dataset_context <- list(epoch = "test", dataset_key = "a", generation = 1)
     viewer_loaded_dataset_context <- function() dataset_context
@@ -1601,7 +867,11 @@ test_that("empty spatial selection returns before million-cell plot data", {
         "hidden-group filtering should not run in this contract"
       )
     }
-    eval(parse(text = selected_reactive_source), envir = environment())
+    viewer_server_load(
+      viewer_server_statements("spatial", "obj_projection_selected_cells.R"),
+      environment(),
+      names = "spatial_projection_selected_cells"
+    )
   }
 
   shiny::testServer(server, {
@@ -1831,24 +1101,11 @@ test_that("each real spatial demo exposes coordinates with x/y", {
 })
 
 test_that("real spatial demos are wired into the bundled dropdown", {
-  # The three technology-labelled demos must appear in app.R's crb_file_to_load
-  # so the switcher offers them. Cross-line-tolerant per project convention.
-  app_src <- paste(
-    readLines(system.file("app.R", package = "CerebroNexus")),
-    collapse = "\n"
-  )
-  for (f in real_spatial_demos) {
-    expect_match(
-      app_src,
-      gsub(".", "\\.", basename(f), fixed = TRUE),
-      perl = TRUE
-    )
+  files <- viewer_demo_options()$crb_file_to_load
+  expect_true(all(basename(real_spatial_demos) %in% basename(files)))
+  for (technology in c("Visium", "Slide-seq", "MERFISH", "Xenium")) {
+    expect_true(any(grepl(technology, names(files), fixed = TRUE)))
   }
-  # the labels must name the technology in brackets
-  expect_match(app_src, "Visium")
-  expect_match(app_src, "Slide-seq")
-  expect_match(app_src, "MERFISH")
-  expect_match(app_src, "Xenium")
 })
 
 test_that("image-free demo (Slide-seq) carries no histology image", {
@@ -1892,35 +1149,16 @@ test_that("embedded image demos store the image natively with no flip flag", {
 })
 
 test_that("app.R ships the Visium H&E overlay pre-aligned", {
-  # The bundled Visium demo opens with its H&E overlay already aligned to the
-  # points, so users see a correct overlay without nudging it. app.R therefore
-  # sets the per-dataset alignment presets (move + scale + a vertical flip that
-  # this dataset needs); the Spatial tab still lets users adjust or Reset.
-  app_src <- paste(
-    readLines(system.file("app.R", package = "CerebroNexus")),
-    collapse = "\n"
+  options <- viewer_demo_options()
+  preset <- spatialImagePreset(
+    options,
+    "Mouse brain (Visium)",
+    "anterior1",
+    "Tissue background"
   )
-  expect_match(app_src, "\"spatial_image_settings\"", fixed = TRUE)
-  expect_match(app_src, "offset_x = 600", fixed = TRUE)
-  expect_match(app_src, "scale_x = 1.55", fixed = TRUE)
-  expect_match(app_src, "flip_y = TRUE", fixed = TRUE)
-})
-
-test_that("app.R configures MERFISH plot and image rotations separately", {
-  app_src <- paste(
-    readLines(system.file("app.R", package = "CerebroNexus")),
-    collapse = "\n"
-  )
-  expect_match(
-    app_src,
-    '"fov" = 90',
-    fixed = TRUE
-  )
-  expect_match(
-    app_src,
-    '"Tissue background" = list(rotation = 90)',
-    fixed = TRUE
-  )
+  expect_identical(preset$offsetX, 600)
+  expect_identical(preset$scaleX, 1.55)
+  expect_true(preset$flipY)
 })
 
 ##----------------------------------------------------------------------------##
@@ -1956,49 +1194,4 @@ test_that(".getSpatialData tolerates a real Slide-seq object (NA-named coord col
   expect_true(nrow(res$coordinates) > 0)
   # the NA-named column must not have leaked through the sanitiser
   expect_false(any(is.na(colnames(res$coordinates))))
-})
-
-
-test_that("Spatial background picker is in the toolbar and labels default off", {
-  shell <- paste(
-    readLines(viewer_test_path("spatial", "UI.R")),
-    collapse = "\n"
-  )
-  selector <- paste(
-    readLines(viewer_test_path("spatial", "UI_projection_main_parameters.R")),
-    collapse = "\n"
-  )
-  parameters <- paste(
-    readLines(viewer_test_path("spatial", "obj_projection_parameters_plot.R")),
-    collapse = "\n"
-  )
-  drawer <- regexpr("cerebroSettingsDrawer(", shell, fixed = TRUE)[[1L]]
-  picker <- regexpr(
-    'uiOutput("spatial_projection_background_selector_UI")',
-    shell,
-    fixed = TRUE
-  )[[1L]]
-  expect_gt(picker, 0L)
-  expect_lt(picker, drawer)
-  picker_source <- strsplit(
-    selector,
-    'output[["spatial_projection_background_selector_UI"]] <- renderUI({',
-    fixed = TRUE
-  )[[1L]][[2L]]
-  picker_source <- strsplit(
-    picker_source,
-    "serverSideGeneSelector(",
-    fixed = TRUE
-  )[[1L]][[1L]]
-  expect_no_match(
-    picker_source,
-    "spatial_projection_more_render_request",
-    fixed = TRUE
-  )
-  expect_match(parameters, "group_labels = FALSE", fixed = TRUE)
-  expect_match(
-    parameters,
-    'spatial_update_appearance("group_labels", value)',
-    fixed = TRUE
-  )
 })

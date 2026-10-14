@@ -1,12 +1,8 @@
 test_that("trajectory metadata columns preserve exact values, order and row names", {
-  expr <- Filter(
-    function(x) {
-      is.call(x) &&
-        identical(x[[1L]], as.name("<-")) &&
-        identical(x[[2L]], as.name("trajectory_cells_reactive"))
-    },
-    parse(viewer_test_path("trajectory", "server.R"))
-  )[[1L]]
+  expr <- viewer_r_assignment(
+    viewer_test_path("trajectory", "server.R"),
+    "trajectory_cells_reactive"
+  )
   env <- new.env(parent = globalenv())
   metadata <- data.frame(
     cell_barcode = letters[1:5],
@@ -67,17 +63,10 @@ test_that("empty Trajectory selection preserves summary without hydrating metada
   )
   scope$output <- list()
   scope$renderUI <- function(expr) eval(substitute(expr), parent.frame())
-  expr <- Filter(
-    function(x) {
-      is.call(x) &&
-        identical(x[[1L]], as.name("<-")) &&
-        identical(
-          paste(deparse(x[[2L]]), collapse = ""),
-          'output[["trajectory_number_of_selected_cells"]]'
-        )
-    },
-    parse(viewer_test_path("trajectory", "projection_plot.R"))
-  )[[1L]]
+  expr <- viewer_r_assignment(
+    viewer_test_path("trajectory", "projection_plot.R"),
+    "output.trajectory_number_of_selected_cells"
+  )
   expected <- as.character(scope$cerebroSelectionSummary(
     NULL,
     "path",

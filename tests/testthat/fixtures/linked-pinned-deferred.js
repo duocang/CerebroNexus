@@ -1,5 +1,6 @@
 const assert = require('assert'), fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
+const js = require("./js-source.cjs")(source);
 const singleActive = null, HOVER_MAX_GROUPS = 12, GENE_MODE = '__gene__';
 let colorBy = 'cluster';
 let D = {groups: {
@@ -10,8 +11,8 @@ let D = {groups: {
 function fieldOf(){return null;}
 function cellLabel(i){return 'cell-'+i;}
 function esc(x){return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
-eval(source.slice(source.indexOf('  function groupLabel('),source.indexOf('  // The categorical variable')));
-eval(source.slice(source.indexOf('  function hoverHtml('),source.indexOf('  // ---- single-cell detail card')));
+eval(js.declarations(["groupLabel","catOf"]));
+eval(js.declarations(["hoverHtml"]));
 
 const before = JSON.stringify(D);
 const ordinary = hoverHtml(0,false), pinned = hoverHtml(0,true);

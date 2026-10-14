@@ -66,19 +66,6 @@ test_that("feedback matches painted operations and rejects stale datasets", {
 })
 
 test_that("Trajectory label updates carry the existing dataset context", {
-  expressions <- as.list(parse(viewer_test_path("trajectory", "projection.R")))
-  observer <- Filter(
-    function(e) {
-      is.call(e) &&
-        identical(e[[1]], as.name("observeEvent")) &&
-        grepl(
-          "trajectory_projection_group_labels",
-          paste(deparse(e[[2]]), collapse = ""),
-          fixed = TRUE
-        )
-    },
-    expressions
-  )[[1]]
   shiny::testServer(
     function(input, output, session) {
       sent <- NULL
@@ -90,7 +77,11 @@ test_that("Trajectory label updates carry the existing dataset context", {
         list(epoch = "session", dataset_key = "A", generation = 3L)
       }
       session$sendCustomMessage <- function(type, message) sent <<- message
-      eval(observer, environment())
+      viewer_server_load(
+        viewer_server_statements("trajectory", "projection.R"),
+        scope,
+        events = "trajectory_projection_group_labels"
+      )
     },
     {
       session$setInputs(trajectory_projection_group_labels = FALSE)

@@ -20,34 +20,11 @@ testthat::skip_if(
   "utility_functions.R not found in source tree or installed package"
 )
 
-# The file references helpers/objects only defined inside the running app; we
-# only need match_dataset_by_url(), so extract just that function's source and
-# evaluate it in a throwaway environment.
-extract_fn <- function(path, fn) {
-  lines <- readLines(path, warn = FALSE)
-  start <- grep(paste0("^", fn, " <- function"), lines)
-  testthat::skip_if(
-    length(start) == 0,
-    "helper not found in utility_functions.R"
-  )
-  # find the closing brace at column 1 after the definition start
-  end <- start
-  depth <- 0L
-  for (i in seq(start, length(lines))) {
-    depth <- depth + lengths(regmatches(lines[i], gregexpr("\\{", lines[i])))
-    depth <- depth - lengths(regmatches(lines[i], gregexpr("\\}", lines[i])))
-    if (i > start && depth == 0L) {
-      end <- i
-      break
-    }
-  }
-  eval(
-    parse(text = paste(lines[start:end], collapse = "\n")),
-    envir = globalenv()
-  )
-}
-
-extract_fn(ir_utils, "match_dataset_by_url")
+# Load a parsed declaration, independent of layout and braces in comments.
+match_dataset_by_url <- eval(
+  viewer_r_assignment(ir_utils, "match_dataset_by_url")[[3]],
+  new.env(parent = globalenv())
+)
 
 test_that("matches a named dataset by its name", {
   files <- c(alpha = "/data/a.crb", beta = "/data/b.crb")

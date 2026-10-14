@@ -61,7 +61,6 @@ test_that("most_expressed_genes tab navigates and renders table", {
   expect_false(grepl("no.*available|not.*found|error", tolower(table_html)))
 })
 
-
 test_that("enriched_pathways tab content exists in DOM", {
   app <- shared_app()
 
@@ -72,7 +71,6 @@ test_that("enriched_pathways tab content exists in DOM", {
   expect_true(has_div)
 })
 
-
 test_that("extra_material tab content exists in DOM", {
   app <- shared_app()
 
@@ -82,7 +80,6 @@ test_that("extra_material tab content exists in DOM", {
   )
   expect_true(has_div)
 })
-
 
 test_that("all three new tabs are visible in sidebar after data load", {
   app <- shared_app()
@@ -101,44 +98,4 @@ test_that("all three new tabs are visible in sidebar after data load", {
     'document.querySelector(\'a[href="#shiny-tab-extra_material"]\') !== null;'
   )
   expect_true(extra_mat)
-})
-
-test_that("toggleConditionalTab is defined and wired to conditional tabs", {
-  server_file <- file.path(inst_dir, "viewer/shiny_server.R")
-  skip_if_not(file.exists(server_file))
-  content <- paste(readLines(server_file), collapse = "\n")
-
-  # Function is defined with the tab identity and availability check.
-  expect_match(
-    content,
-    "toggleConditionalTab\\s*<-\\s*function\\s*\\(\\s*tab_name\\s*,\\s*check_fn",
-    perl = TRUE
-  )
-
-  # Calls are present for enriched pathways and extra material.
-  expect_match(
-    content,
-    'toggleConditionalTab\\s*\\(\\s*"enrichedPathways"',
-    perl = TRUE
-  )
-  expect_match(
-    content,
-    'toggleConditionalTab\\s*\\(\\s*"extra_material"',
-    perl = TRUE
-  )
-  expect_match(content, 'catalog_field = "immune_repertoire"', fixed = TRUE)
-  expect_match(content, 'catalog_field = "tcr_repertoire"', fixed = TRUE)
-})
-
-test_that("conditional sidebar items exist in the initial UI", {
-  ui_file <- file.path(inst_dir, "viewer/shiny_UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-
-  expect_match(
-    content,
-    '"Enriched pathways",\\s*"enrichedPathways"',
-    perl = TRUE
-  )
-  expect_match(content, '"Extra material", "extra_material"', perl = TRUE)
 })

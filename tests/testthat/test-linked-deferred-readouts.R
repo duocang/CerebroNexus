@@ -9,7 +9,8 @@ test_that("deferred categories do not block selection and clone completion", {
         "const source=fs.readFileSync(%s,'utf8');",
         encodeString(viewer_test_path("www", "cell_views.js"), quote = '"')
       ),
-      "function fn(name){let a=source.indexOf('  function '+name+'(');assert(a>=0);return source.slice(a,source.indexOf('\\n  }',a)+4);}",
+      viewer_js_loader(),
+      "const fn = name => js(source).declarations([name]);",
       "const loaded={levels:['A','B'],values:new Int8Array([0,1])};",
       "const pending={levels:['X'],values:null,deferred:true};",
       "const c={D:{n:2,groups:{cell_type:pending,cluster:loaded},cat_extra:{}},colorBy:'cluster'};vm.createContext(c);",

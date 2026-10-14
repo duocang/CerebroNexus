@@ -354,8 +354,8 @@ test_that("empty Linked selections do not build the full cell index", {
         "const source = fs.readFileSync(%s, 'utf8');",
         encodeString(viewer_test_path("www", "cell_views.js"), quote = '"')
       ),
-      "const start = source.indexOf('  function validateWorkspace(');",
-      "eval(source.slice(start, source.indexOf('\\n  function ', start + 1)));",
+      viewer_js_loader(),
+      "eval(js(source).declarations(['validateWorkspace']));",
       "const D = {projections:{umap:{}}, groups:{cell_type:{}}};",
       "const GENE_MODE='gene', GENE_PANELS_MODE='genes', RGB_MODE='rgb';",
       "function configFingerprint(){return 'same';}",

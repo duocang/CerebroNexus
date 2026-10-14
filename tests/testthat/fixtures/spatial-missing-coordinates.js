@@ -1,9 +1,9 @@
 const assert = require('assert'), fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
+const js = require("./js-source.cjs")(source);
 let D = {n:4};
 function emptyVector(value) { return Array(D.n).fill(value); }
-eval(source.slice(source.indexOf('  function alignSingleCoordinates('),
-  source.indexOf('  function quantisedField(')));
+eval(js.declarations(["alignSingleCoordinates"]));
 for (const nested of [false,true]) {
   const payload = nested ? {
     meta:{traces:['A','B']},
