@@ -37,6 +37,18 @@ publication_browser_json_cells <- function(filename) {
 }
 
 test_that("the real Viewer restores both publication selections", {
+  crb <- CerebroNexus::readCerebro(file.path(
+    publication_browser_artifacts, "demo_hla_tcr_dextramer.crb"
+  ))
+  canonical_cells <- as.character(crb$getMetaData()$cell_barcode)
+  restored_cells <- function(app) {
+    # Current Viewer transports canonical indices instead of every barcode.
+    indices <- unlist(app$get_js(
+      "window.cerebroLinkedViewsState.capture().selection.indices"
+    ), use.names = FALSE)
+    expect_true(all(indices >= 0 & indices < length(canonical_cells)))
+    canonical_cells[as.integer(indices) + 1L]
+  }
   local_app_support(publication_browser_inst)
   app <- AppDriver$new(
     publication_browser_inst,
@@ -126,9 +138,7 @@ test_that("the real Viewer restores both publication selections", {
     ),
     timeout = 120000
   )
-  restored_strict <- app$get_js(
-    "window.cerebroLinkedViewsState.capture().selection.cells"
-  )
+  restored_strict <- restored_cells(app)
   expect_length(restored_strict, length(expected_strict))
   expect_setequal(unname(unlist(restored_strict)), expected_strict)
   expect_identical(app$get_js(
@@ -187,9 +197,7 @@ test_that("the real Viewer restores both publication selections", {
     ),
     timeout = 120000
   )
-  restored_viewer <- app$get_js(
-    "window.cerebroLinkedViewsState.capture().selection.cells"
-  )
+  restored_viewer <- restored_cells(app)
   expect_length(restored_viewer, length(expected_viewer))
   expect_setequal(unname(unlist(restored_viewer)), expected_viewer)
   expect_identical(app$get_js(
