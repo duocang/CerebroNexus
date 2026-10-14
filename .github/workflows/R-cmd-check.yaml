@@ -46,6 +46,8 @@ jobs:
       # Run R CMD check via devtools::check()
       - name: Run R-CMD-check
         run: |
+          npm ci --prefix tests
+          export NODE_PATH="$GITHUB_WORKSPACE/tests/node_modules"
           nix-shell default.nix --run "Rscript -e \"
             devtools::check(vignettes = TRUE, error_on = 'warning')
           \""

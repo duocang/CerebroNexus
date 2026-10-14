@@ -71,6 +71,7 @@ let
       base64enc
       biomaRt
       callr
+      chromote
       colourpicker
       devtools
       dplyr
@@ -116,7 +117,8 @@ let
       tidyr
       tidyselect
       visNetwork
-      withr;
+      withr
+      xml2;
   };
  
     BPCells-src = pkgs.fetchgit {
@@ -159,6 +161,7 @@ let
   system_packages = builtins.attrValues {
     inherit (pkgs) 
       chromium
+      nodejs
       glibcLocales
       nix
       pandoc

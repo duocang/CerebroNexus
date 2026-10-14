@@ -56,3 +56,4 @@ tests/bench/scratch/
 # Historical one-off Viewer investigations are archived outside the checkout.
 /tests/bench/viewer-followup/
 /tests/bench/viewer-final-protocol/
+node_modules/
