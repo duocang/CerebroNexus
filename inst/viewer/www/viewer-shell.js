@@ -784,15 +784,13 @@
     var MOBILE = "(max-width: 700px)";
     var EDGE = 8;
     var drag = null;
+    var clampPending = false;
 
     function isMobile() {
       return window.matchMedia(MOBILE).matches;
     }
-    function frameOf(slot) {
-      return slot && slot.parentElement;
-    }
     function place(slot, left, top) {
-      var frame = frameOf(slot);
+      var frame = slot.parentElement;
       if (!frame || !slot.getClientRects().length || isMobile()) return;
       var frameRect = frame.getBoundingClientRect();
       var slotRect = slot.getBoundingClientRect();
@@ -805,7 +803,7 @@
     }
     function pin(slot) {
       if (slot.dataset.dragged === "true") return;
-      var frame = frameOf(slot);
+      var frame = slot.parentElement;
       var frameRect = frame.getBoundingClientRect();
       var slotRect = slot.getBoundingClientRect();
       place(slot, slotRect.left - frameRect.left, slotRect.top - frameRect.top);
@@ -822,8 +820,13 @@
       );
     }
     function scheduleClamp() {
+      if (clampPending) return;
+      clampPending = true;
       window.requestAnimationFrame(function () {
-        window.requestAnimationFrame(clampAll);
+        window.requestAnimationFrame(function () {
+          clampPending = false;
+          clampAll();
+        });
       });
     }
     function finish(pointerId) {
@@ -859,7 +862,7 @@
     });
     document.addEventListener("pointermove", function (event) {
       if (!drag || drag.pointerId !== event.pointerId) return;
-      var frameRect = frameOf(drag.slot).getBoundingClientRect();
+      var frameRect = drag.slot.parentElement.getBoundingClientRect();
       place(
         drag.slot,
         event.clientX - frameRect.left - drag.offsetX,
@@ -867,13 +870,9 @@
       );
       event.preventDefault();
     });
-    document.addEventListener("pointerup", function (event) {
-      finish(event.pointerId);
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (name) {
+      document.addEventListener(name, finish);
     });
-    document.addEventListener("pointercancel", function (event) {
-      finish(event.pointerId);
-    });
-    document.addEventListener("lostpointercapture", finish);
     window.addEventListener("blur", finish);
     document.addEventListener("keydown", function (event) {
       var handle = event.target.closest && event.target.closest(HANDLE);

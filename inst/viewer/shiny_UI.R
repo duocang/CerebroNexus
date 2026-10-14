@@ -146,10 +146,15 @@ cerebroCellViewOutput <- function(id) {
   )
 }
 
-cerebroShareButton <- function(plot_id) {
+cerebroShareButton <- function(
+  plot_id,
+  ...,
+  class = "cerebro-config-open cerebro-toolbar-share"
+) {
   tags$button(
     type = "button",
-    class = "cerebro-config-open cerebro-toolbar-share",
+    class = class,
+    ...,
     `data-view-id` = plot_id,
     disabled = "disabled",
     `aria-disabled` = "true",
@@ -421,7 +426,6 @@ idleTimer();",
   (timeoutSeconds - timeoutWarningSeconds) * 1000,
   timeoutSeconds * 1000
 )
-
 
 ##----------------------------------------------------------------------------##
 ## Load UI content for each tab.
