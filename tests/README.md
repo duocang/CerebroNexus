@@ -16,7 +16,9 @@ tests/
 └── smoke/                 # local dev scratch (gitignored, see its own README)
 ```
 
-Only `tests/testthat/` is part of the package. `tests/smoke/` is a local sandbox for hand-driven smoke tests; it does not run under `R CMD check`.
+The testthat suite is included in package builds. Benchmark scripts, Node modules
+and local browser artifacts are excluded. `tests/smoke/` is a local sandbox for
+hand-driven smoke tests; it does not run under `R CMD check`.
 
 ## Prerequisites
 
@@ -28,8 +30,15 @@ R `>= 3.5.1` and the package's runtime deps installed. For the full test suite y
 | `shinytest2 (>= 0.2.0)` | drives the Shiny app in `test-app-inst.R` |
 | `chromote` | transitive dep of `shinytest2`; controls headless Chrome |
 | Google Chrome / Chromium | actual browser binary `chromote` launches |
+| Node.js and npm | execute JavaScript fixtures; install their pinned Acorn parser |
 
-Both `testthat` and `shinytest2` are declared in `DESCRIPTION` `Suggests`. To install everything in one shot:
+From the repository root, run `npm ci --prefix tests` before the R tests.
+`tests/node_modules` is ignored and excluded from package builds. For an installed
+package or `R CMD check`, set `NODE_PATH` to the absolute path of that directory
+so fixtures copied into the check directory can still resolve Acorn. CI does this
+before invoking `devtools::check()`.
+
+The test packages are declared in `DESCRIPTION` `Suggests`. To install them:
 
 ```r
 install.packages(c("testthat", "shinytest2", "chromote"))
@@ -46,6 +55,52 @@ Sys.setenv(CHROMOTE_CHROME = "/path/to/Chromium")
 ```
 
 ## Running tests
+
+Viewer UI regressions are organized by behavior: `test-viewer-ui-components.R`
+checks generated controls, `test-app-visualization-layout.R` exercises all eight
+visualization pages, and `test-app-viewport-layout.R` covers sharing, selection,
+dragging and responsive interaction. IR's grouped/ungrouped sharing checks live
+in `test-app-immune_repertoire.R`; missing-gene feedback lives in
+`test-gene-validation.R`. Test observable output and interaction rather than R,
+JavaScript or CSS source spelling. Keep shared-component coverage in one place.
+
+`test-hla-consumer-lifecycle.R` and `test-trekker.R` execute page/subtab
+transitions to check that hidden consumers stay idle. `test-trajectory-data-flow.R`
+checks shared row mapping and deferred controls. `test-dataset-loading-progress.R`
+checks server progress and readiness messages; the visualization browser test
+also exercises the visible loading overlay. `test-ren-backend-benchmark.R` runs
+the real command-line workers against tiny CRBs, including deliberately changed
+values, dimensions and backend expectations. It tests correctness, not speed.
+
+`test-hla-allele-state.R` compares actual network colours and overlap counts
+after changing either allele picker. The browser layout test also checks
+selection persistence across HLA tabs and drawer geometry at both widths.
+`test-app-dataset-lifecycle.R` switches real datasets A/B/A, injects late frames,
+holds and releases the reconnect handshake, and verifies recovery. Its current
+frame positive control ensures rejected messages are not merely ignored by a
+broken renderer. Trajectory tests change cell order, annotations and values,
+then switch back to verify both cache invalidation and correct output.
+
+Set `CEREBRO_LAYOUT_ARTIFACTS` to an output directory when running
+`app-visualization-layout` to save screenshots and measured geometry for visual
+review. The test waits for geometry to settle; it does not compare entire HTML
+or freeze incidental pixel values into snapshots.
+Shared file reads and viewer paths live in `helper-viewer-path.R`. Drawer
+accessibility, reduced motion and panel placement are checked on rendered output.
+
+`helper-viewer-server.R` loads real R declarations and subscriptions into small
+Shiny sessions; assertions check their emitted values, invalidation and deferred
+work. `fixtures/js-source.cjs` uses Acorn to load real JavaScript entry points,
+independently of whitespace, comments or quote style. Neither helper asserts
+that a production function has a particular body or sequence of statements.
+
+Coverage includes actual HLA graph/table output, IR renderer arguments and cache
+invalidation, Spatial RGB/hulls/backgrounds, first-frame and supplement transport,
+stale dataset messages, Canvas geometry and PNG exports, login layout, benchmark
+readiness/byte counters and shell failure cleanup. Expensive atlas downloads and
+timing thresholds remain opt-in; small deterministic inputs exercise correctness.
+Retained text checks concern published documentation, metadata, private output
+contents and parity of bundled core files, rather than implementation spelling.
 
 From the package root.
 
