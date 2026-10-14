@@ -354,16 +354,7 @@ test_that("BCR isotype/SHM helpers produce a plot for the bundled BCR data", {
 test_that("BCR isotype extraction preserves sample names from the IR list", {
   server_file <- file.path(local_inst, "viewer/immune_repertoire/server.R")
   skip_if_not(file.exists(server_file))
-  expressions <- parse(server_file)
-  definition <- expressions[vapply(
-    expressions,
-    function(expr) {
-      is.call(expr) &&
-        identical(expr[[1]], as.name("<-")) &&
-        identical(as.character(expr[[2]]), "bcr_extract_isotype")
-    },
-    logical(1)
-  )][[1]]
+  definition <- viewer_r_assignment(server_file, "bcr_extract_isotype")
   env <- new.env(parent = globalenv())
   eval(definition, envir = env)
 
