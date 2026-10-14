@@ -20,11 +20,11 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
 pkgload::load_all(repo_root, export_all = FALSE, quiet = TRUE, helpers = FALSE)
 message("Viewer source: ", repo_root)
 source(
-  file.path(repo_root, "tests", "bench", "prepare_viewer_1m_data.R"),
+  file.path(repo_root, "tests", "benchmarks", "viewer", "scripts", "prepare_viewer_1m_data.R"),
   local = TRUE
 )
 source(
-  file.path(repo_root, "tests", "bench", "prepare_viewer_ren_data.R"),
+  file.path(repo_root, "tests", "benchmarks", "viewer", "scripts", "prepare_viewer_ren_data.R"),
   local = TRUE
 )
 

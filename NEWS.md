@@ -2,6 +2,9 @@
 
 ## Unreleased changes since 5.0.0
 
+- Adds a real-data backend benchmark with separate full-source and six-tier
+  scale studies, five builds and two access processes per build. Retained
+  September results describe CerebroNexus 4.6.4; they do not measure this release.
 - Reduces the nine bundled demo CRBs from 30.26 to 21.22 MiB (about 30%) through
   stronger build-time compression and a maximum of 1,500 expression genes per
   demo. Smaller panels remain whole; available demonstration markers,
@@ -223,7 +226,7 @@
 
 ## Internal
 
-- **A reproducible benchmark harness now lives in `tests/bench/`.** It reads public HDF5 cell blocks through the `rhdf5` ROS3 driver, rotates backend order across repeated exports, validates row and block values against the source matrix, and records Git, dependency, host, and SHA-256 source provenance.
+- **A reproducible benchmark harness now lives in `tests/benchmarks/expression-backends/scripts/`.** It reads public HDF5 cell blocks through the `rhdf5` ROS3 driver, rotates backend order across repeated exports, validates row and block values against the source matrix, and records Git, dependency, host, and SHA-256 source provenance.
 - **Benchmark result publication is failure-safe.** Runs are staged and validated before entering an immutable result directory; the `CURRENT` pointer changes last, so an interruption cannot erase the previous evidence.
 - **Benchmark plans are checked against the host before bulk transfer.** The harness reports estimated peak memory, R's vector limit, sparse-index capacity, and free-disk budget for every source/tier. Normal comparison profiles exclude deliberate memory-boundary tiers; those are isolated in the explicit `stress` profile.
 - `rhdf5` is now listed in `Suggests` for the benchmark harness and its reader contract test.

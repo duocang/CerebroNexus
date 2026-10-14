@@ -126,18 +126,18 @@ Use the same dataset, viewport, source revision, browser and initial state on
 both sides. Record timing and memory profiles in separate runs.
 
 The historical five-round browser series and its immutable candidate/fixture
-identities remain under `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3*`.
+identities remain under `tests/benchmarks/results/viewer/million_cell_pages_pr4_pr5_4_6_3*`.
 Those records used macOS Chrome and an older completion boundary for Linked
 Views. Later Windows Brave acceptance used **WSL R**, not Windows-native R.
 Neither series can be pooled with the other. Durable results and limitations
-are summarized in `tests/bench/PR184_ACCEPTANCE.md` in a repository checkout.
+are summarized in `tests/benchmarks/results/viewer/PR184_ACCEPTANCE.md` in a repository checkout.
 Stable Gene first usability below three seconds has not been established, and
 there is no matched current-release, all-page speedup claim.
 
 # Earlier exploratory pilot
 
 The 2026-07-30 embedded/BPCells/HDF5 sweep is retained under
-`tests/bench/result/archive/pilot-2026-07-30/`. It used real mouse-brain and
+the retired pilot (see `tests/benchmarks/results/expression-backends/PRELIMINARY_BACKEND_RESULTS.md`). It used real mouse-brain and
 human-PFC counts, synthetic grouping/embeddings, and contiguous cell blocks.
 The macOS arm64 host had 32 GB RAM. The run preceded balanced independent
 repeats and complete provenance; its tables and figures are exploratory.
@@ -155,7 +155,7 @@ runs instead of treating this pilot as release evidence.
 From a repository checkout, with R installed:
 
 ```{bash, eval=FALSE}
-Rscript tests/bench/plot_ren_backend_acceptance.R   inst/extdata/benchmarks/ren-backends-20261008.tsv ren-backends.png
+Rscript tests/benchmarks/viewer/scripts/plot_ren_backend_acceptance.R   inst/extdata/benchmarks/ren-backends-20261008.tsv ren-backends.png
 ```
 
 The command and the figure above share `inst/extdata/benchmarks/plot-ren.R` and
@@ -179,27 +179,27 @@ inspect the preparation script and available disk before starting it. Do not
 use an arbitrary memory limit or a historical completion time as a guarantee.
 
 ```{r prepare-mouse, eval=FALSE}
-source("tests/bench/prepare_viewer_1m_data.R")
+source("tests/benchmarks/viewer/scripts/prepare_viewer_1m_data.R")
 pkgload::load_all(".")
 crb <- prepareViewer1mBenchmarkData()
 ```
 
 ```{bash, eval=FALSE}
 # Two already-prepared CRBs of the same Ren v2 expression data; three rounds.
-Rscript tests/bench/benchmark_ren_expression_backends.R   /data/ren-bpcells.crb /data/ren-h5.crb /results/ren-backends 3
+Rscript tests/benchmarks/viewer/scripts/benchmark_ren_expression_backends.R   /data/ren-bpcells.crb /data/ren-h5.crb /results/ren-backends 3
 
 # CRB lifecycle, five alternating rounds on the same sidecar.
-Rscript tests/bench/benchmark_million_cell_crb.R   /data/cerebro_mouse_brain_1m.crb 5 /results/crb-lifecycle.csv
+Rscript tests/benchmarks/viewer/scripts/benchmark_million_cell_crb.R   /data/cerebro_mouse_brain_1m.crb 5 /results/crb-lifecycle.csv
 
 # Resource-checked repeated expression-backend experiment.
-BENCH_PROFILE=publication tests/bench/run_sweep.sh
+bash tests/benchmarks/expression-backends/run.sh
 ```
 
 A Ren comparison on already-prepared artifacts usually needs minutes rather
 than the complete preparation workflow; actual duration remains host-dependent.
 A full repeated export/access sweep can take hours. Its resource preflight
 records memory, sparse-index and disk constraints before bulk transfer.
-See `tests/bench/README.md` for explicit page/renderer harness arguments and
-`tests/bench/METHODOLOGY.md` for experimental units, profiling and publication
+See `tests/benchmarks/viewer/README.md` for explicit page/renderer harness arguments and
+`tests/benchmarks/expression-backends/README.md` for experimental units, profiling and publication
 gates. Preserve raw rounds, source identities, failed observations and limits;
 never replace them with a single favorable timing.

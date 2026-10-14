@@ -23,8 +23,7 @@ test_that("the million-cell renderer is loaded before cell views", {
   expect_match(engine, "setData", fixed = TRUE)
 
   benchmark_file <- testthat::test_path(
-    "..",
-    "bench",
+    "..", "benchmarks", "viewer", "scripts",
     "benchmark_million_cell_renderer.R"
   )
   if (file.exists(benchmark_file)) {

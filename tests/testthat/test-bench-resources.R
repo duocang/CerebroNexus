@@ -1,4 +1,4 @@
-bench_resources <- file.path("..", "bench", "lib", "resource_planning.R")
+bench_resources <- file.path("..", "benchmarks", "expression-backends", "scripts", "benchmark.R")
 
 skip_unless_bench_resources <- function() {
   testthat::skip_if_not(
@@ -6,6 +6,62 @@ skip_unless_bench_resources <- function() {
     "benchmark tree not present (expected when checking a built package)"
   )
 }
+
+test_that("streaming tiers remain runnable when embedded exceeds the budget", {
+  skip_unless_bench_resources()
+  root <- normalizePath(dirname(bench_resources))
+  stage <- tempfile("scale-resource-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  paths <- file.path(stage, c("inventory.csv", "plan.csv", "manifest.csv", "resource_check.csv"))
+  write.csv(data.frame(source = "human", nnz_per_cell = 4112,
+    nnz = 4112 * 1486324, n_cells = 1486324, source_bytes = 14.2e9), paths[1], row.names = FALSE)
+  write.csv(data.frame(source = "human", n_cells = c(100000, 500000)), paths[2], row.names = FALSE)
+  write.csv(data.frame(key = c("memory_mb", "r_vector_limit_mb"),
+    value = c("112640", "Inf")), paths[3], row.names = FALSE)
+  output <- bench_test_system2(file.path(R.home("bin"), "Rscript"),
+    c(file.path(root, "benchmark_cli.R"), "full-resources", paths),
+    stdout = TRUE, stderr = TRUE,
+    env = c(paste0("BENCH_ROOT=", root), "BENCH_FREE_DISK_BYTES=200000000000"))
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  got <- read.csv(paths[4])
+  expect_true(all(got$safe))
+  expect_identical(got$embedded_safe, c(TRUE, FALSE))
+  expect_match(got$embedded_reason[2], "memory")
+})
+
+test_that("embedded preflight skips before reading or materialising source data", {
+  skip_unless_bench_resources()
+  skip_if_not_installed("CerebroNexus")
+  root <- normalizePath(dirname(bench_resources))
+  stage <- tempfile("embedded-skip-")
+  dir.create(file.path(stage, "result"), recursive = TRUE)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  assessment <- data.frame(source = "human_pfc", n_cells = 500000,
+    estimated_nnz = 2e9, memory_budget_mb = 10000,
+    embedded_safe = FALSE, embedded_reason = "estimated memory exceeds safe budget")
+  # Use a real configured source name, but deliberately provide no source file.
+  source(bench_resources, local = TRUE)
+  assessment$source <- names(BENCH_SOURCES)[1]
+  output_csv <- file.path(stage, "result", "exports.csv")
+  plan_path <- file.path(stage, "plan.rds")
+  for (preflight in c(TRUE, FALSE)) {
+    assessment$embedded_safe <- !preflight
+    write.csv(assessment, file.path(stage, "result", "resource_check.csv"), row.names = FALSE)
+    saveRDS(list(nnz = 2e9, query_plan_fingerprint = "dense-prefix"), plan_path)
+    output <- bench_test_system2(file.path(R.home("bin"), "Rscript"),
+      c(file.path(root, "benchmark_cli.R"), "export", assessment$source,
+        "500000", "embedded", "1", "1", stage, output_csv, plan_path),
+      stdout = TRUE, stderr = TRUE,
+      env = c(paste0("BENCH_ROOT=", root), "BENCH_PROFILE=scale", "BENCH_RUN_ID=fixture"))
+    expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+    got <- tail(read.csv(output_csv), 1L)
+    expect_match(got$status, "SKIPPED(resource):", fixed = TRUE)
+    expect_true(is.na(got$read_secs))
+    expect_true(is.na(got$export_secs))
+    expect_match(got$status, if (preflight) "preflight:" else "source-tier estimate")
+  }
+})
 
 test_that("resource planning explains safe and unsafe memory tiers", {
   skip_unless_bench_resources()
@@ -83,7 +139,7 @@ test_that("unsafe plans fail unless explicitly overridden", {
 
 test_that("resource checker rejects unsafe plans before a run", {
   skip_unless_bench_resources()
-  bench_root <- normalizePath(file.path("..", "bench"))
+  bench_root <- normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts"))
   stage <- tempfile("bench-resource-stage-")
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
@@ -113,10 +169,11 @@ test_that("resource checker rejects unsafe plans before a run", {
     manifest_path,
     row.names = FALSE
   )
-  output <- suppressWarnings(system2(
+  output <- suppressWarnings(bench_test_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "04_check_resources.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "resources",
       inventory_path,
       plan_path,
       manifest_path,
@@ -132,4 +189,57 @@ test_that("resource checker rejects unsafe plans before a run", {
   expect_false(is.null(attr(output, "status")))
   expect_true(file.exists(output_path))
   expect_match(paste(output, collapse = "\n"), "unsafe benchmark plan")
+})
+
+test_that("resource checker accepts an unlimited R vector heap", {
+  skip_unless_bench_resources()
+  bench_root <- normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts"))
+  stage <- tempfile("bench-resource-unlimited-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  inventory_path <- file.path(stage, "data_inventory.csv")
+  plan_path <- file.path(stage, "run_plan.csv")
+  manifest_path <- file.path(stage, "run_manifest.csv")
+  output_path <- file.path(stage, "resource_check.csv")
+  utils::write.csv(
+    data.frame(
+      source = "fixture",
+      nnz_per_cell = 100,
+      source_bytes = 1e6
+    ),
+    inventory_path,
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(source = "fixture", n_cells = 1000),
+    plan_path,
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      key = c("memory_mb", "r_vector_limit_mb"),
+      value = c("32768", "Inf")
+    ),
+    manifest_path,
+    row.names = FALSE
+  )
+  output <- suppressWarnings(bench_test_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(
+      file.path(bench_root, "benchmark_cli.R"),
+      "resources",
+      inventory_path,
+      plan_path,
+      manifest_path,
+      output_path
+    ),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = c(
+      paste0("BENCH_ROOT=", bench_root),
+      "BENCH_FREE_DISK_BYTES=100000000000"
+    )
+  ))
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_true(file.exists(output_path))
 })

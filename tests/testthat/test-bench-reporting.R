@@ -1,6 +1,6 @@
-bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
-bench_reporting <- file.path("..", "bench", "lib", "reporting.R")
-bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
+bench_protocol <- file.path("..", "benchmarks", "expression-backends", "scripts", "benchmark.R")
+bench_reporting <- bench_protocol
+bench_root <- normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts"), mustWork = FALSE)
 
 skip_unless_bench_reporting <- function() {
   testthat::skip_if_not(
@@ -75,8 +75,8 @@ test_that("evidence labels prevent quick runs from sounding definitive", {
     "Exploratory"
   )
   expect_match(
-    bench_evidence_notice(bench_profile("publication")),
-    "Publication-profile"
+    bench_evidence_notice(bench_profile("scale")),
+    "Benchmark evidence"
   )
 })
 
@@ -100,7 +100,7 @@ test_that("current result resolution is safe and backward compatible", {
   expect_error(bench_current_result_dir(root), "unsafe CURRENT")
 })
 
-test_that("report and plots consume repeated publication rows", {
+test_that("report and plots consume repeated benchmark rows", {
   skip_unless_bench_reporting()
   testthat::skip_if_not_installed("ggplot2")
   testthat::skip_if_not_installed("patchwork")
@@ -118,7 +118,7 @@ test_that("report and plots consume repeated publication rows", {
     stringsAsFactors = FALSE
   )
   exports$run_id <- "test-run"
-  exports$profile <- "publication"
+  exports$profile <- "scale"
   exports$source <- "fixture"
   exports$label <- "fixture"
   exports$n_cells <- 1000
@@ -134,6 +134,7 @@ test_that("report and plots consume repeated publication rows", {
   exports$total_mb <- rep(c(3, 1, 2), 3)
   exports$rss_mb <- 10
   exports$r_peak_mb <- 20
+  exports$peak_rss_mb <- 24
   exports$query_plan_fingerprint <- "plan"
   utils::write.csv(
     exports,
@@ -155,9 +156,11 @@ test_that("report and plots consume repeated publication rows", {
   ]
   access$access_repeat <- rep(1:2, nrow(exports))
   access$status <- "OK"
+  access$access_contract <- "materialized-v2"
   access$load_secs <- 0.1
   access$attach_secs <- 0.2
   access$rss_mb <- rep(c(30, 10, 20), 6)
+  access$peak_rss_mb <- access$rss_mb + 5
   access$first_query_secs <- 0.03
   access$hot_p50_secs <- rep(c(0.03, 0.01, 0.02), 6)
   access$hot_p95_secs <- access$hot_p50_secs * 1.2
@@ -203,7 +206,7 @@ test_that("report and plots consume repeated publication rows", {
   )
   manifest <- c(
     run_id = "test-run",
-    profile = "publication",
+    profile = "scale",
     git_sha = paste(rep("a", 40), collapse = ""),
     generated_at = "2026-08-04",
     git_branch = "test",
@@ -233,11 +236,12 @@ test_that("report and plots consume repeated publication rows", {
     row.names = FALSE
   )
 
-  env <- paste0("BENCH_ROOT=", normalizePath(file.path("..", "bench")))
-  report_status <- system2(
+  env <- paste0("BENCH_ROOT=", normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts")))
+  report_status <- bench_test_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "40_write_report.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "report",
       result_dir
     ),
     stdout = TRUE,
@@ -249,13 +253,15 @@ test_that("report and plots consume repeated publication rows", {
     info = paste(report_status, collapse = "\n")
   )
   report <- readLines(file.path(result_dir, "summary.md"), warn = FALSE)
-  expect_true(any(grepl("Publication-profile evidence", report, fixed = TRUE)))
+  expect_true(any(grepl("Benchmark evidence", report, fixed = TRUE)))
   expect_true(any(grepl("n=3", report, fixed = TRUE)))
+  expect_true(any(grepl("peak process RSS MiB", report, fixed = TRUE)))
 
-  plot_status <- system2(
+  plot_status <- bench_test_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "41_draw_figures.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "figure",
       result_dir,
       out_dir
     ),
@@ -275,4 +281,153 @@ test_that("report and plots consume repeated publication rows", {
     out_dir,
     "expression_backend_benchmark_ceiling.png"
   )))
+
+  # Old timing semantics must not acquire fresh-looking figures.
+  access$access_contract <- "legacy"
+  utils::write.csv(access, file.path(result_dir, "20_access.csv"), row.names = FALSE)
+  rejected_dir <- file.path(out_dir, "rejected")
+  rejected <- suppressWarnings(bench_test_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(file.path(bench_root, "benchmark_cli.R"), "figure", result_dir, rejected_dir),
+    stdout = TRUE, stderr = TRUE, env = env
+  ))
+  expect_false(is.null(attr(rejected, "status")))
+  expect_match(paste(rejected, collapse = "\n"), "materialized-v2")
+  expect_false(dir.exists(rejected_dir))
+})
+
+test_that("paper export preserves previous output and rejects unsuitable evidence", {
+  skip_unless_bench_reporting()
+  script <- normalizePath(file.path("..", "..", "paper", "figures",
+    "draw_expression_backend_benchmark.R"), mustWork = FALSE)
+  testthat::skip_if_not(file.exists(script), "paper tree not present")
+  root <- tempfile("paper-export-")
+  input <- file.path(root, "input")
+  output <- file.path(root, "old-output")
+  dir.create(input, recursive = TRUE)
+  dir.create(output)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  writeLines("keep", file.path(output, "figure.pdf"))
+  run <- function(target) suppressWarnings(bench_test_system2(
+    file.path(R.home("bin"), "Rscript"), c(script, input, target),
+    stdout = TRUE, stderr = TRUE
+  ))
+  expect_match(paste(run(output), collapse = "\n"), "previous exports are preserved")
+  expect_equal(readLines(file.path(output, "figure.pdf")), "keep")
+  nested <- file.path(input, "figures")
+  expect_match(paste(run(nested), collapse = "\n"), "outside the immutable input")
+  expect_false(dir.exists(nested))
+
+  utils::write.csv(data.frame(status = "OK"), file.path(input, "10_export.csv"), row.names = FALSE)
+  utils::write.csv(data.frame(status = "OK", correctness = "OK"),
+    file.path(input, "20_access.csv"), row.names = FALSE)
+  utils::write.csv(data.frame(source = "fixture"), file.path(input, "source_manifest.csv"), row.names = FALSE)
+  fresh <- file.path(root, "new-output")
+  for (profile in c("quick", "scale", "panel_c2")) {
+    utils::write.csv(data.frame(key = "profile", value = profile),
+      file.path(input, "run_manifest.csv"), row.names = FALSE)
+    result <- run(fresh)
+    expect_false(is.null(attr(result, "status")))
+    expect_match(paste(result, collapse = "\n"),
+      if (profile == "panel_c2") "materialized-v2" else "full-dataset profile")
+    expect_false(dir.exists(fresh))
+  }
+})
+
+test_that("benchmark figure labels distinct expression workloads", {
+  skip_unless_bench_reporting()
+  script <- readLines(
+    file.path(bench_root, "benchmark_cli.R"),
+    warn = FALSE
+  )
+  source <- paste(script, collapse = "\n")
+
+  expect_match(source, "Interactive single-gene latency", fixed = TRUE)
+  expect_match(source, "Marker-panel block latency", fixed = TRUE)
+  expect_match(source, "warmed expression lookup", fixed = TRUE)
+  expect_match(source, 'plot_annotation(tag_levels = "A")', fixed = TRUE)
+})
+
+test_that("scale-limit summaries use embedded exports only", {
+  skip_unless_bench_reporting()
+  source <- paste(
+    readLines(file.path(bench_root, "benchmark_cli.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
+})
+
+test_that("study environment comparison rejects incompatible phases", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  baseline <- c(
+    r_version = "R 4.6.1",
+    r_platform = "x86_64-pc-linux-gnu",
+    cpu = "host-a",
+    benchmark_threads = "1",
+    package_Matrix = "1.7-4"
+  )
+  same <- baseline
+  changed <- baseline
+  changed[["cpu"]] <- "host-b"
+
+  expect_true(
+    bench_compare_environments(
+      baseline,
+      same,
+      keys = names(baseline)
+    )$comparable
+  )
+  comparison <- bench_compare_environments(
+    baseline,
+    changed,
+    keys = names(baseline)
+  )
+  expect_false(comparison$comparable)
+  expect_equal(comparison$different, "cpu")
+})
+
+test_that("frozen run paths cannot escape their result roots", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  root <- tempfile("bench-frozen-root-")
+  dir.create(file.path(root, "runs", "run-1"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  expect_equal(
+    bench_result_run_dir(root, "run-1"),
+    normalizePath(file.path(root, "runs", "run-1"))
+  )
+  expect_error(bench_result_run_dir(root, "../escape"), "unsafe run id")
+  expect_error(bench_result_run_dir(root, "missing"), "does not exist")
+})
+
+test_that("backend ratios retain direction and matched tiers", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  summary <- data.frame(
+    source = rep("fixture", 3),
+    n_cells = rep(1000, 3),
+    backend = c("embedded", "bpcells", "h5"),
+    seconds_median = c(4, 2, 1),
+    stringsAsFactors = FALSE
+  )
+  got <- bench_backend_ratios(
+    summary,
+    metric = "seconds_median",
+    reference = "embedded"
+  )
+
+  expect_equal(got$ratio[got$backend == "bpcells"], 0.5)
+  expect_equal(got$ratio[got$backend == "h5"], 0.25)
+  expect_true(all(got$reference_backend == "embedded"))
+
+  summary$seconds_median[summary$backend == "embedded"] <- 0
+  expect_equal(
+    nrow(bench_backend_ratios(summary, "seconds_median", "embedded")),
+    0L
+  )
 })

@@ -1,180 +1,73 @@
-# Running tests locally
+# Running tests
 
-This directory holds the package's automated tests. `R CMD check` and CI (`.github/workflows/R-tests.yaml`, `R-cmd-check.yaml`) run these on every PR.
+Run these commands from the repository root on Linux or WSL. Use the project environment so R and its dependencies match the checkout:
 
-## Layout
+```bash
+nix-shell default.nix -A shell
 
+# Run the full regression suite; a failure returns a nonzero exit code.
+Rscript -e 'devtools::test(reporter="summary", stop_on_failure=TRUE)'
+
+# Run one group while working on it.
+Rscript -e 'devtools::test(filter="million-cell-renderer", reporter="summary", stop_on_failure=TRUE)'
+
+# Run the Shiny browser tests.
+Rscript -e 'devtools::test(filter="app-inst", reporter="summary", stop_on_failure=TRUE)'
 ```
+
+`devtools::test()` loads the current source, so you do not need to reinstall the package after each edit. Replace the filter with the part after `test-` in a test filename. For a package build and check, run `Rscript -e 'devtools::check()'`; this tests the built package rather than only the source checkout.
+
+## Directory layout
+
+```text
 tests/
-├── testthat.R             # entry point picked up by R CMD check
-├── testthat/              # actual unit + shinytest2 suite (committed)
-│   ├── setup.R            # sets NOT_CRAN=true so shinytest2 tests are not skipped
-│   ├── test-app-inst.R    # shinytest2 end-to-end smoke tests against inst/
-│   ├── test-exportFromSeurat.R
-│   ├── test-r-functions.R
-│   └── _snaps/            # testthat snapshot fixtures
-└── smoke/                 # local dev scratch (gitignored, see its own README)
+├── README.md
+├── testthat.R              # R CMD check entry point
+├── testthat/               # Regression tests and helpers
+│   ├── fixtures/           # Small test inputs and JavaScript test scripts
+│   ├── _snaps/             # Expected snapshots, tracked in Git
+│   └── _artifacts/         # Generated browser diagnostics, ignored by Git
+└── benchmarks/             # Performance experiments, separate from regression tests
+    ├── expression-backends/
+    ├── viewer/
+    └── results/
 ```
 
-Only `tests/testthat/` is part of the package. `tests/smoke/` is a local sandbox for hand-driven smoke tests; it does not run under `R CMD check`.
+See [benchmark commands](benchmarks/README.md) for H5 / BPCells / embedded comparisons and Viewer measurements. Benchmarks and generated browser diagnostics are excluded from R package builds. `_snaps/` contains expected test output and must not be treated as disposable logs.
 
-## Prerequisites
+## Dependencies
 
-R `>= 3.5.1` and the package's runtime deps installed. For the full test suite you also need:
-
-| Package | Why |
-|---|---|
-| `testthat (>= 3.0.0)` | core framework |
-| `shinytest2 (>= 0.2.0)` | drives the Shiny app in `test-app-inst.R` |
-| `chromote` | transitive dep of `shinytest2`; controls headless Chrome |
-| Google Chrome / Chromium | actual browser binary `chromote` launches |
-
-Both `testthat` and `shinytest2` are declared in `DESCRIPTION` `Suggests`. To install everything in one shot:
-
-```r
-install.packages(c("testthat", "shinytest2", "chromote"))
-# or pull the whole Suggests list:
-devtools::install_dev_deps()
-```
-
-Verify Chrome is discoverable:
-
-```r
-chromote::find_chrome()
-# Override if needed:
-Sys.setenv(CHROMOTE_CHROME = "/path/to/Chromium")
-```
-
-## Running tests
-
-From the package root.
-
-**Interactive R session (RStudio / VS Code R console / `R`)**:
-
-```r
-# Full suite (loads dev source via load_all)
-devtools::test()
-
-# A single file (matches tests/testthat/test-<filter>*.R)
-devtools::test(filter = "app-inst")
-devtools::test(filter = "exportFromSeurat")
-
-# Just the currently open file
-devtools::test_active_file()
-```
-
-**From the shell (CI / scripting / one-shot runs)**:
+- R and package dependencies: use the project Nix environment; supported R versions are declared in `DESCRIPTION`.
+- R test tools: `devtools`, `testthat`, `shinytest2` and `chromote`.
+- Browser tests: Chrome or Chromium, discoverable by `chromote`.
+- JavaScript tests: Node.js on `PATH`. Tests that require Node.js are skipped when it is unavailable.
 
 ```bash
-# Same as devtools::test() above, but driven from a shell prompt
-Rscript -e 'Sys.setenv(NOT_CRAN="true"); devtools::test(filter="app-inst", reporter="summary")'
-
-# Whole suite, default reporter
-Rscript -e 'devtools::test()'
-
-# What R CMD check effectively runs (uses installed package, not dev source)
-Rscript -e 'testthat::test_dir("tests/testthat")'
+node --version
+Rscript -e 'chromote::find_chrome()'
 ```
 
-Why the extra bits in that first shell one-liner:
+The JavaScript tests use Node.js built-in modules (`assert`, `fs`, `path` and `vm`). **No `npm install` is needed.** The old `tests/node_modules/` held a local Acorn parser installation; no current tests referenced it, so it was removed. There is no npm project or npm dependency manifest under `tests/`.
 
-- `Sys.setenv(NOT_CRAN="true")` — tells `skip_on_cran()` we are not on CRAN, so shinytest2 tests do not get skipped. `tests/testthat/setup.R` sets the same thing inside the R session, but some hooks fire earlier than setup; setting it at the shell level is the safe belt-and-braces.
-- `filter="app-inst"` — only run `tests/testthat/test-app-inst.R`. Skips the non-shinytest2 files. Useful when debugging the Shiny end-to-end suite.
-- `reporter="summary"` — one line per `test_that()` plus full diff on failure. Other useful options: `"minimal"` (compact `.EFWS` stream), `"progress"` (default), `"check"` (matches `R CMD check`).
-
-Inside an `R CMD check` run, the suite is invoked through `tests/testthat.R`, which is just:
-
-```r
-library(testthat)
-library(CerebroNexus)
-test_check("CerebroNexus")
-```
-
-### Picking the right entry point
-
-| Entry point | Requires the package to be installed? | `R/` source loaded from | `inst/` files read from |
-|---|---|---|---|
-| `devtools::test()` | no | dev source (via `pkgload::load_all`) | local `inst/` (`system.file()` is redirected by `load_all`) |
-| `Rscript tests/testthat.R` | yes (`library(CerebroNexus)` aborts otherwise) | installed package | installed package |
-| `testthat::test_dir("tests/testthat")` | yes (same reason) | installed package | installed package |
-| `R CMD check` / CI | self-installs into a temp library | that temp install | that temp install |
-
-While iterating on the package, use `devtools::test()` — it picks up edits to both `R/` and `inst/` immediately, no reinstall needed. Run `R CMD check` (or `testthat::test_dir()` after `devtools::install()`) before opening a PR to verify what CI will see.
-
-## Pitfalls and FAQ
-
-### Linux authentication deployment permissions
-
-`test-viewer-auth-runtime.R` covers secret source precedence, content and
-file-type errors, and the exact POSIX `0600` requirement. POSIX checks are
-explicitly skipped on Windows; fault-injected read failures are not presented
-as cross-UID integration coverage.
-
-See the [authentication guide](../vignettes/control_access_to_cerebro_with_a_login_page.Rmd)
-for deployment and Windows-to-Linux transfer limitations. Generated Apps retain
-a brief offline checklist.
-
-
-### How `inst_dir` is resolved in `test-app-inst.R`
-
-```r
-inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
-```
-
-In practice `system.file(package = "CerebroNexus")` always resolves to something with `app.R` at its root:
-
-- Under `devtools::test()`, `pkgload::load_all()` redirects `system.file()` to `<project>/inst/` (the source tree itself acts as the "installed root").
-- Under `Rscript tests/testthat.R` or `testthat::test_dir()`, `library(CerebroNexus)` has already loaded the installed package, so `system.file()` returns its install location.
-
-The fallback to `testthat::test_path("../../inst")` is effectively dead code — none of the supported entry points reach it. (`library(CerebroNexus)` aborts before the test file is sourced when the package is not installed; under `devtools::test()` the first branch already succeeds.)
-
-If you edit `inst/` and want the change reflected:
-
-- Under `devtools::test()` — nothing to do, it reads `inst/` directly.
-- Under `testthat::test_dir()` / `R CMD check` — reinstall:
-  ```r
-  devtools::install(".", quick = TRUE, upgrade = "never")
-  ```
-
-### Stale `inst/extdata/examples/example.crb` after R6 class changes
-
-`example.crb` is a serialized `Cerebro` R6 object. R6 method tables are baked into the object at serialization time. If a method is added or renamed on the class definition under `R/`, an older `example.crb` will not have that method, and calling it from the Shiny app yields:
-
-```
-Error in <fn>: attempt to apply non-function
-```
-
-The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms`.
-
-Whenever you add or rename methods on `Cerebro`, regenerate the example fixture by re-exporting from `inst/extdata/examples/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
-
-### shinytest2 needs `NOT_CRAN=true`
-
-`tests/testthat/setup.R` sets this so shinytest2 tests are not skipped by `skip_on_cran()`. When running tests outside `devtools::test()` (e.g. directly via `Rscript`), make sure the env var is set:
+If Chrome is not found, set its path before running the browser tests:
 
 ```bash
-NOT_CRAN=true Rscript -e 'testthat::test_dir("tests/testthat", filter = "app-inst")'
+export CHROMOTE_CHROME=/path/to/chromium
+Rscript -e 'devtools::test(filter="app-inst", reporter="summary", stop_on_failure=TRUE)'
 ```
 
-### chromote leaves zombie processes after Ctrl-C
+## Failures and snapshots
 
-If you interrupt a shinytest2 run mid-flight, the headless Chrome and the spawned Shiny process can survive:
+Read the test output first. Browser diagnostics may appear in `tests/testthat/_artifacts/` or temporary directories printed in the failure report. Keep them while investigating; they are generated output and are not committed.
 
-```bash
-pkill -f chromote
-pkill -f 'shiny::runApp'
-```
-
-### Snapshot tests under `_snaps/`
-
-`testthat::expect_snapshot()` writes golden files into `tests/testthat/_snaps/`. Review diffs with:
+Review snapshot changes in R before accepting them:
 
 ```r
 testthat::snapshot_review()
-testthat::snapshot_accept()   # only after you've confirmed the new output is correct
+# Accept only after checking that the new output is correct.
+testthat::snapshot_accept()
 ```
 
----
+`tests/testthat/setup.R` sets `NOT_CRAN=true` and a longer browser startup timeout. Some tests also need external data or optional packages; a skip means that check did not run. POSIX file-permission tests need Linux/WSL. See the [authentication guide](../vignettes/control_access_to_cerebro_with_a_login_page.Rmd) for deployment details.
+
+`tests/testthat.R` loads the installed package for `R CMD check`. Calling `testthat::test_dir()` alone does not load the development package; use `devtools::test()` for normal local work.

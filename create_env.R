@@ -97,11 +97,13 @@ rix(
     "tidyr",
     "tidyselect",
     "stringdist",
+    "systemfonts",
     "visNetwork"
   ),
   system_pkgs = c(
     "chromium", # headless browser for shinytest2
-    "pandoc" # required for building vignettes
+    "pandoc", # required for building vignettes
+    "poppler-utils" # pdffonts for publication-figure font audits
   ),
   git_pkgs = list(
     # BPCells is not on CRAN, install from GitHub
@@ -176,6 +178,30 @@ if (length(bp_start) == 1 && !is.na(bp_end)) {
 
   writeLines(nix_lines, nix_file)
 }
+
+# Preserve the benchmark's Linux ROS3 support whenever rix regenerates Nix.
+patch_benchmark_nix <- function(lines) {
+  marker <- grep("^let$", lines)
+  inputs <- grep("buildInputs = \\[ BPCells rpkgs system_packages \\];", lines)
+  if (length(marker) != 1L || length(inputs) != 1L) {
+    stop("Unexpected rix output; cannot apply benchmark environment settings")
+  }
+  lines[inputs] <- paste(
+    "    buildInputs = [ BPCells hdf5Ros3 ] ++ rpkgs ++ system_packages;",
+    "    shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''",
+    "      export LD_LIBRARY_PATH=\"${hdf5Ros3}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"",
+    "    '';", sep = "\n"
+  )
+  append(lines, c(
+    "  hdf5Ros3 = if pkgs.stdenv.hostPlatform.isLinux then",
+    "    pkgs.hdf5.overrideAttrs (old: {",
+    "      buildInputs = (old.buildInputs or []) ++ [ pkgs.curl.dev ];",
+    "      cmakeFlags = (old.cmakeFlags or []) ++ [ \"-DHDF5_ENABLE_ROS3_VFD=ON\" ];",
+    "    }) else pkgs.hdf5;"
+  ), after = marker)
+}
+nix_lines <- patch_benchmark_nix(nix_lines)
+writeLines(nix_lines, nix_file)
 
 cat(
   "###################################################################################################\n"

@@ -1,8 +1,8 @@
 test_that("Ren backend comparison is narrow, isolated, and correctness gated", {
   candidates <- c(
-    file.path("tests", "bench"),
-    file.path("..", "bench"),
-    file.path("..", "..", "tests", "bench")
+    file.path("tests", "benchmarks", "viewer", "scripts"),
+    file.path("benchmarks", "viewer", "scripts"),
+    file.path("..", "benchmarks", "viewer", "scripts")
   )
   bench_root <- candidates[dir.exists(candidates)][1L]
   skip_if(is.na(bench_root), "benchmark scripts are unavailable")

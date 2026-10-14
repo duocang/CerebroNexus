@@ -1,0 +1,4 @@
+# Bash entry points use Unix line endings.
+tests/benchmarks/**/*.sh text eol=lf
+# Preserve recorded evidence bytes and hashes on every platform.
+tests/benchmarks/results/** -text
