@@ -802,6 +802,29 @@ observeEvent(
           fingerprint = dataset$fingerprint
         )
         colour_data <- cv_config_validate_genes(normalized, dataset$cells)
+        source <- isolate(coordviews_color_source())
+        attribute_data <- list()
+        if (viewerDatasetContextEqual(source$dataset_context, dataset_context)) {
+          attribute_data <- cv_build_config_attributes(
+            data_set(),
+            {
+              first_frame <- viewerProjectionFirstFrameCache()
+              if (is.data.frame(first_frame$meta_data)) {
+                first_frame$meta_data
+              } else {
+                cv_canonical_metadata(getMetaData())
+              }
+            },
+            source,
+            normalized,
+            function(group_name, levels) {
+              tryCatch(
+                cerebro_group_colors(length(levels)),
+                error = function(error) cv_colors_for(levels)
+              )
+            }
+          )
+        }
         cv_config_send_result(
           nonce,
           action,
@@ -809,6 +832,7 @@ observeEvent(
           dataset_context,
           config = cv_config_json_document(normalized),
           colour_data = colour_data,
+          attribute_data = attribute_data,
           selection_indices = I(as.integer(
             match(normalized$selection$cells, dataset$cells) - 1L
           )),

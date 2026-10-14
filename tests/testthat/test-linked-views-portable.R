@@ -387,3 +387,41 @@ test_that("empty Linked selections do not build the full cell index", {
   expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
   expect_identical(output, "selection index validation passed")
 })
+
+
+test_that("imported deferred colours are hydrated before workspace validation", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(c(
+    "const fs=require('fs'), assert=require('assert');",
+    sprintf("const source=fs.readFileSync(%s,'utf8');",
+      encodeString(viewer_test_path("www", "cell_views.js"), quote = '"')),
+    "for (const name of ['validateWorkspace','applyWorkspace']) {",
+    " const start=source.indexOf('  function '+name+'(');",
+    " eval(source.slice(start,source.indexOf('\\n  function ',start+1))); }",
+    "const D={n:2,projections:{umap:{}},groups:{sample:{deferred:true}}};",
+    "const GENE_MODE='gene',GENE_PANELS_MODE='genes',RGB_MODE='rgb';",
+    "function configFingerprint(){return 'same';}",
+    "function spatialSamples(){return [];}",
+    "function catOf(mode){const g=D.groups[mode];return g && g.values && g.levels;}",
+    "function fieldForMode(){return false;}",
+    "function baseOrderedSpaces(){return ['projection::umap'];}",
+    "function configError(message){throw new Error(message);}",
+    "function restoreWorkspace(config){const x=validateWorkspace(config);return {selected_cells:x.indices.length};}",
+    "const config={dataset:{cell_fingerprint:'same'},selection:{cells:['b']},view:{",
+    "projections:['umap'],spatial_sections:[],colour:{mode:'sample'},filters:{},lenses:[]}};",
+    "assert.throws(()=>applyWorkspace(config,null,[1]),/colour mode/);",
+    "const attributes=[{kind:'groups',name:'sample',value:{values:[0,1],levels:['d1','d2']}}];",
+    "config.dataset.cell_fingerprint='other';",
+    "assert.throws(()=>applyWorkspace(config,null,[1],attributes),/different cell population/);",
+    "assert.strictEqual(D.groups.sample.deferred,true);",
+    "config.dataset.cell_fingerprint='same';",
+    "assert.strictEqual(applyWorkspace(config,null,[1],attributes).selectedCells,1);",
+    "assert.deepStrictEqual(D.groups.sample.values,[0,1]);",
+    "console.log('deferred import validation passed');"
+  ), runner)
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_identical(output, "deferred import validation passed")
+})

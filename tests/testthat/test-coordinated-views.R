@@ -1504,6 +1504,47 @@ test_that("deferred metadata builds only the requested attribute", {
   ))
 })
 
+test_that("imported views hydrate only their deferred metadata", {
+  metadata <- data.frame(
+    cell_type = c("B", "T", "B"),
+    donor = c("d1", "d1", "d2"),
+    score = c(1, 2, 4)
+  )
+  crb <- list(getGroups = function() "cell_type")
+  colors <- function(name, levels) rep("#000000", length(levels))
+  source <- list(
+    groups = list(cell_type = list(deferred = TRUE)),
+    cat_extra = list(donor = list(deferred = TRUE)),
+    fields = list("meta:score" = list(deferred = TRUE))
+  )
+  config <- list(
+    schema = "cerebronexus-linked-view",
+    view = list(colour = list(mode = "donor"), filters = list(), hidden_levels = list())
+  )
+  build <- function() cv_env$cv_build_config_attributes(crb, metadata, source, config, colors)
+  result <- build()
+  expect_length(result, 1L)
+  expect_identical(result[[1]]$kind, "cat_extra")
+  expect_identical(as.integer(result[[1]]$value$values), c(0L, 0L, 1L))
+
+  config$view$colour$mode <- "__field__meta:score"
+  config$view$filters <- list(cell_type = "B")
+  config$view$hidden_levels <- list(list(group = "donor", levels = "d2"))
+  result <- build()
+  expect_identical(vapply(result, `[[`, character(1), "kind"), c("groups", "cat_extra", "fields"))
+  expect_identical(as.integer(result[[3]]$value$v), c(0L, 333L, 1000L))
+
+  source$groups$cell_type$deferred <- FALSE
+  config$view$colour$mode <- "cell_type"
+  config$view$hidden_levels <- list()
+  # A view using already loaded metadata must not force a metadata read.
+  expect_identical(cv_env$cv_build_config_attributes(
+    crb, stop("unnecessary metadata read"), source, config, colors
+  ), list())
+  config$schema <- "cerebronexus-specialist-view"
+  expect_identical(build(), list())
+})
+
 test_that("progressive colour source retains deferred numeric fields", {
   server <- paste(
     readLines(file.path(dirname(bundle_file), "server.R"), warn = FALSE),

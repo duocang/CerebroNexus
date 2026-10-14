@@ -9553,7 +9553,19 @@
     };
   }
 
-  function applyWorkspace(config, colourData, selectionIndices) {
+  function applyWorkspace(config, colourData, selectionIndices, attributeData) {
+    // Imported views can use metadata that has not yet been requested by the
+    // colour picker. Hydrate it before validating or restoring the workspace.
+    if (D && config && config.dataset &&
+        config.dataset.cell_fingerprint === configFingerprint() &&
+        Array.isArray(attributeData)) {
+      attributeData.forEach(function (attribute) {
+        if (['groups', 'cat_extra', 'fields'].indexOf(attribute.kind) < 0) return;
+        var target = D[attribute.kind];
+        if (target && Object.prototype.hasOwnProperty.call(target, attribute.name) &&
+            attribute.value) target[attribute.name] = attribute.value;
+      });
+    }
     if (Array.isArray(selectionIndices)) {
       config.selection.indices = selectionIndices;
     }

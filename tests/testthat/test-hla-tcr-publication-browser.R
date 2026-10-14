@@ -131,6 +131,9 @@ test_that("the real Viewer restores both publication selections", {
   )
   expect_length(restored_strict, length(expected_strict))
   expect_setequal(unname(unlist(restored_strict)), expected_strict)
+  expect_identical(app$get_js(
+    "window.cerebroLinkedViewsState.capture().view.colour.mode"
+  ), "sample")
   capture(
     "hla_tcr_strict_linked_views_selected.png",
     "linked-views-strict-selection",
@@ -189,6 +192,9 @@ test_that("the real Viewer restores both publication selections", {
   )
   expect_length(restored_viewer, length(expected_viewer))
   expect_setequal(unname(unlist(restored_viewer)), expected_viewer)
+  expect_identical(app$get_js(
+    "window.cerebroLinkedViewsState.capture().view.colour.mode"
+  ), "sample")
   capture(
     "hla_tcr_main_case_linked_views_selected.png",
     "linked-views-viewer-selection",

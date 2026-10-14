@@ -833,6 +833,40 @@ cv_build_extra_groups <- function(md, group_names, colors_fn, only = NULL) {
 ## Materialise exactly one deferred colour attribute. The first-frame transport
 ## carries descriptors for every metadata column, but choosing one must not
 ## rebuild projections, spatial images, clones, Trekker data, or gene names.
+cv_build_config_attributes <- function(crb, md, source, config, colors_fn) {
+  if (!identical(config$schema, "cerebronexus-linked-view")) {
+    return(list())
+  }
+  mode <- config$view$colour$mode
+  categorical <- unique(c(
+    mode,
+    names(config$view$filters),
+    vapply(config$view$hidden_levels, function(x) x$group, character(1))
+  ))
+  requested <- list(
+    groups = intersect(categorical, names(source$groups)),
+    cat_extra = intersect(categorical, names(source$cat_extra)),
+    fields = if (startsWith(mode, "__field__")) {
+      intersect(sub("^__field__", "", mode), names(source$fields))
+    } else {
+      character()
+    }
+  )
+  result <- list()
+  for (kind in names(requested)) {
+    for (name in requested[[kind]]) {
+      if (!isTRUE(source[[kind]][[name]]$deferred)) next
+      value <- cv_build_attribute(crb, md, kind, name, colors_fn)
+      if (!is.null(value)) {
+        result[[length(result) + 1L]] <- list(
+          kind = kind, name = name, value = value
+        )
+      }
+    }
+  }
+  result
+}
+
 cv_build_attribute <- function(
   crb,
   md,

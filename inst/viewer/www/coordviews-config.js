@@ -249,7 +249,8 @@
       var summary = target.apply(
         result.config,
         result.colour_data || null,
-        result.selection_indices || null
+        result.selection_indices || null,
+        result.attribute_data || null
       );
       status(
         'Restored ' + summary.selectedCells + ' selected cells and view settings.',
