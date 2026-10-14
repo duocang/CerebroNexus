@@ -8,7 +8,7 @@ This directory holds the package's automated tests. `R CMD check` and CI (`.gith
 tests/
 ├── testthat.R             # entry point picked up by R CMD check
 ├── testthat/              # actual unit + shinytest2 suite (committed)
-│   ├── setup.R            # sets NOT_CRAN=true so shinytest2 tests are not skipped
+│   ├── setup.R            # browser timeouts; respects the caller's CRAN settings
 │   ├── test-app-inst.R    # shinytest2 end-to-end smoke tests against inst/
 │   ├── test-exportFromSeurat.R
 │   ├── test-r-functions.R
@@ -30,13 +30,40 @@ R `>= 3.5.1` and the package's runtime deps installed. For the full test suite y
 | `shinytest2 (>= 0.2.0)` | drives the Shiny app in `test-app-inst.R` |
 | `chromote` | transitive dep of `shinytest2`; controls headless Chrome |
 | Google Chrome / Chromium | actual browser binary `chromote` launches |
-| Node.js and npm | execute JavaScript fixtures; install their pinned Acorn parser |
+| Node.js and npm | execute JavaScript fixtures; optional Acorn parser for isolated private callbacks |
 
-From the repository root, run `npm ci --prefix tests` before the R tests.
-`tests/node_modules` is ignored and excluded from package builds. For an installed
-package or `R CMD check`, set `NODE_PATH` to the absolute path of that directory
-so fixtures copied into the check directory can still resolve Acorn. CI does this
-before invoking `devtools::check()`.
+For the full development suite, run `npm ci --prefix tests` and set
+`NOT_CRAN=true`. The R-tests workflow does this explicitly. Complete JavaScript
+scripts, including the binary decoder and GPU renderer, run without Acorn.
+Fixtures that still isolate private cell-view callbacks require Acorn and skip
+with a diagnostic when it is unavailable; they never install it during tests.
+`tests/node_modules` is ignored and excluded from package builds.
+
+Ordinary package checks leave `NOT_CRAN` unset: heavy browser tests skip, while
+lightweight R/Shiny and available Node tests run. The R-CMD-check workflow builds
+the source tarball and checks it outside the checkout, without npm installation,
+`NODE_PATH`, `NOT_CRAN` or `CI`. Node's global module search is disabled as well,
+so a system-wide Acorn installation cannot accidentally satisfy the tests.
+
+On Linux/WSL, reproduce both modes from the repository root:
+
+```bash
+npm ci --prefix tests
+NOT_CRAN=true NODE_PATH="$PWD/tests/node_modules" Rscript -e \
+  'devtools::load_all("."); testthat::test_dir("tests/testthat", stop_on_failure=TRUE)'
+
+source_dir="$PWD"
+check_dir=$(mktemp -d)
+cd "$check_dir"
+R CMD build "$source_dir"
+env -u CI -u NOT_CRAN -u NODE_PATH NODE_OPTIONS=--no-global-search-paths \
+  R CMD check --as-cran --no-manual CerebroNexus_*.tar.gz
+```
+
+`--no-manual` omits the PDF manual (which requires TeX); tests and HTML vignettes
+still run. This portability check does not establish complete CRAN readiness.
+To run the full suite against an installed package, opt in with `NOT_CRAN=true`
+and point `NODE_PATH` at the separately installed test modules.
 
 The test packages are declared in `DESCRIPTION` `Suggests`. To install them:
 

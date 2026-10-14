@@ -1,4 +1,5 @@
 test_that("missing spatial coordinates do not become selectable points at zero", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   expect_identical(
     system2(

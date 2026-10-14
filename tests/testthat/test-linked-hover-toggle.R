@@ -1,4 +1,5 @@
 test_that("Linked hover can be disabled without disabling selection or Gene hover", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "linked-hover-toggle.js")
   expect_identical(

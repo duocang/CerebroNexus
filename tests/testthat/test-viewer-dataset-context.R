@@ -98,6 +98,7 @@ test_that("dataset context freshness is epoch/key/generation exact", {
 })
 
 test_that("every asynchronous specialist channel fails closed on stale context", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   result <- system2(
     "node",

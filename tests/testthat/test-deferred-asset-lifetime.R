@@ -1,4 +1,5 @@
 test_that("deferred image ownership ends with its dataset generation", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   expect_identical(
     system2(

@@ -752,7 +752,6 @@ test_that("sparse linked attributes expand into typed canonical vectors", {
   writeLines(
     c(
       "const fs = require('fs');",
-      viewer_js_loader(),
       "global.window = {};",
       sprintf(
         "eval(fs.readFileSync(%s, 'utf8'));",

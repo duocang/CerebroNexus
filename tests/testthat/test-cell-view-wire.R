@@ -54,7 +54,6 @@ test_that("the browser restores compact linked-view vectors", {
   writeLines(
     c(
       "const fs = require('fs');",
-      viewer_js_loader(),
       "global.window = global;",
       sprintf(
         "eval(fs.readFileSync(%s, 'utf8'));",
@@ -151,7 +150,6 @@ test_that("specialist cell views use the same binary envelope", {
   writeLines(
     c(
       "const fs = require('fs');",
-      viewer_js_loader(),
       "global.window = global;",
       sprintf(
         "eval(fs.readFileSync(%s, 'utf8'));",

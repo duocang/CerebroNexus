@@ -1,4 +1,5 @@
 test_that("Linked pinned tooltip preserves deferred groups and loaded values", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "linked-pinned-deferred.js")
   expect_identical(

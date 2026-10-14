@@ -1,4 +1,5 @@
 test_that("Gene hover metadata is requested on demand and retires stale work", {
+  skip_if_no_viewer_js_parser()
   node <- Sys.which("node")
   skip_if(!nzchar(node), "node is unavailable")
   result <- system2(

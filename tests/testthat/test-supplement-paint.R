@@ -1,4 +1,5 @@
 test_that("Supplement repaint waits for the restored final workspace", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "supplement-paint.js")
   expect_identical(

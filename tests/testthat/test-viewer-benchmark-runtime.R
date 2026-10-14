@@ -17,6 +17,7 @@ viewer_benchmark_scope <- function() {
 }
 
 test_that("page benchmarks reject stale readiness and count actual websocket bytes", {
+  skip_on_cran()
   scope <- viewer_benchmark_scope()
   skip_if_not_installed("chromote")
   browser <- chromote::ChromoteSession$new()

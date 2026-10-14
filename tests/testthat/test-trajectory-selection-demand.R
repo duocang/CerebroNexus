@@ -25,6 +25,7 @@ test_that("selected table does not require lazy appearance controls", {
 })
 
 test_that("hover dictionaries preserve singleton labels and missing values", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   script <- testthat::test_path("fixtures", "single-hover-levels.js")
   result <- system2(

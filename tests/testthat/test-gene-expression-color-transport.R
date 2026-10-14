@@ -38,6 +38,7 @@ test_that("sparse expression colour transport is exact and density-gated", {
 })
 
 test_that("browser hydrates Gene colours without float32 rounding", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "gene-color-f64.js")
   expect_identical(

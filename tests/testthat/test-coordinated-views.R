@@ -2372,6 +2372,7 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
 })
 
 test_that("Linked backgrounds preserve choices and identity, with readable RGB legends", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   output <- system2(
     "node",

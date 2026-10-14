@@ -47,6 +47,7 @@ test_that('Linked references only validated canonical two-dimensional trajectory
 })
 
 test_that('Linked browser shares full geometry and preserves exact excluded rows', {
+  skip_if_no_viewer_js_parser()
   node <- Sys.which('node')
   skip_if(!nzchar(node))
   result <- system2(

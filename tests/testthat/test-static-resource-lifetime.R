@@ -1,4 +1,5 @@
 test_that("static resource caches release old datasets and reject late eviction", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   output <- system2(
     "node",

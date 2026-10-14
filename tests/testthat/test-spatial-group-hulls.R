@@ -74,6 +74,7 @@ test_that("NA coordinates are ignored", {
 })
 
 test_that("the shared cell-view engine consumes and draws Spatial hulls", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node unavailable")
   expect_equal(
     system2(

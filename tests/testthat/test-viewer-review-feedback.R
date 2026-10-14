@@ -152,6 +152,7 @@ test_that("Different gene colours are stable and visually distinct", {
 })
 
 test_that("canvas transforms preserve geometry and update Trekker transitions", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   result <- system2(
     "node",

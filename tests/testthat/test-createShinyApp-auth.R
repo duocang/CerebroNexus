@@ -594,6 +594,7 @@ auth_test_package_file <- function(path) {
 }
 
 test_that("authentication stylesheet implements the balanced responsive UI", {
+  skip_on_cran()
   skip_if_not_installed("shinymanager")
   skip_if_not_installed("chromote")
   scope <- new.env(parent = globalenv())

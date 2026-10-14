@@ -1,4 +1,5 @@
 test_that("Selection GPU updates preserve full rebuild colors and geometry", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "gpu-selection-update.js")
   expect_identical(

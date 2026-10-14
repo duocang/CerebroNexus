@@ -1,4 +1,5 @@
 test_that("Clonal base caching invalidates when its rendered content changes", {
+  skip_if_no_viewer_js_parser()
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- testthat::test_path("fixtures", "clone-base-cache.js")
   expect_identical(
