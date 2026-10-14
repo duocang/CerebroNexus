@@ -17,6 +17,90 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 `DATASETS.md` is the single source of truth for provenance across all data types. The per-type notes files (`spatial.md`, `immune_repertoire.md`, `trajectory.md`) carry only design and rebuild details and link back to it. This keeps citations in one place and avoids duplicating source info per file.
 
+## Demo gene budget
+
+The active builders call `save_demo_crb()` from `demo_gene_panel.R` before
+publishing their final artifacts. It caps embedded expression at **1,500 genes**;
+smaller panels are kept whole. Available neural, stromal and immune markers,
+the Trekker picker/myelination genes and its upstream Moran genes are protected.
+Remaining places are filled by variance of the stored normalized expression,
+with deterministic input-order ties. This is a demo policy, not a biological
+feature-selection method or a filter applied to users' data.
+
+Filtering happens after analysis. Retained values, sparse representation, cell
+identity/order, metadata (including full-input nUMI/nGene), groups, coordinates,
+trajectories, receptor/HLA data and images are preserved. Spatial expression is
+subset by the same genes without changing its cell order. The writer refuses
+to shrink objects carrying gene-analysis tables or gene lists until their
+references are explicitly reviewed. Panel provenance is stored in
+`parameters$demo_gene_panel`.
+
+Gene search and any *new* gene-set analysis are limited to the exported panel;
+these artifacts are not whole-transcriptome datasets. Full-input precomputed
+scores retain their original interpretation. The active builders use the public
+CRB I/O functions, and the final writer uses qs2 level 19 with an exact decoded
+payload check. There is no separate release-compaction CLI or runtime change.
+
+### Refreshing existing artifacts without recomputing their analyses
+
+Run from the repository root in the project R environment, using a fresh output
+directory. After validation, replace only the CRBs, preserving companion images
+and HDF5 files at their original locations:
+
+```r
+pkgload::load_all(".", quiet = TRUE)
+source("data-raw/demo_gene_panel.R")
+output <- "/path/to/new-demo-staging"
+stopifnot(!file.exists(output))
+dir.create(output, recursive = TRUE)
+for (input in list.files("inst/extdata/examples", "\\.crb$", full.names = TRUE)) {
+  save_demo_crb(readCerebro(input), file.path(output, basename(input)))
+}
+```
+
+The 2026-10-12 artifacts were derived this way from master `4d74a839`, without
+rerunning raw-data downloads, normalization, UMAP or cell sampling. All nine
+retain exactly their previous cells; four have fewer genes. The legacy synthetic
+Spatial fixture was transformed from its checked-in CRB, not regenerated from
+an original raw-data generator. Future active builder runs apply the same final
+export policy; full pipeline byte identity across dependency versions is not
+claimed.
+
+### Measured artifact sizes (2026-10-12)
+
+| CRB | Cells (unchanged) | Genes before → after | Before MiB | After MiB |
+|---|---:|---:|---:|---:|
+| demo_full_tcr_bcr.crb | 1476 | 967 → 967 | 1.04 | 0.87 |
+| demo_hla_tcr_dextramer.crb | 12000 | 2000 → 1500 | 9.03 | 7.15 |
+| demo_spatial_merfish.crb | 5000 | 241 → 241 | 1.82 | 1.68 |
+| demo_spatial_slideseq.crb | 5000 | 2000 → 1500 | 1.48 | 1.20 |
+| demo_spatial_visium.crb | 2696 | 1200 → 1200 | 5.74 | 4.55 |
+| demo_spatial_xenium.crb | 5000 | 248 → 248 | 2.72 | 2.13 |
+| demo_spatial.crb | 1000 | 2500 → 1500 | 0.62 | 0.35 |
+| demo_trekker.crb | 2536 | 21374 → 1500 | 6.79 | 2.43 |
+| example.crb | 1476 | 967 → 967 | 1.03 | 0.86 |
+
+Total: **30.26 → 21.22 MiB (29.9% smaller)** versus master. This includes both gene selection and build-time compression; it is not a load-time speedup claim. Smaller gene counts do not imply proportional disk savings because low-expression rows were already sparse. Images and sidecars are unchanged. Git history size is not reduced.
+
+### Validation
+
+Validated with R 4.6.1 / qs2 0.3.1 in WSL on 2026-10-12:
+
+- All nine input CRB hashes matched master `4d74a839`. Before/after checks
+  compared every retained expression value and all non-expression data fields,
+  including metadata, projections, receptor/HLA data, Trekker scores/images and
+  spatial coordinates/images. Only expression rows and panel provenance changed.
+- The source test suite passed **14,468 assertions**, with no failures or errors
+  and two conditional skips for unavailable external artifacts. This includes
+  71 demo-panel assertions, covering the real Spatial post-export function.
+- `R CMD check --no-tests` passed with **0 errors, 0 warnings, 1 NOTE** (the existing
+  `.GlobalEnv` assignment in `launchCerebro`). Tests ran separately as above.
+- Both updated HLA and Trekker vignettes rendered successfully. Air formatting
+  checks passed for the changed builder/panel/Trekker R files and panel tests.
+
+This is artifact/data-integrity and existing automated UI coverage, not a new
+Windows Brave acceptance run or a whole-application performance benchmark.
+
 ## Data families
 
 | Family | Datasets | Build script | Runs | Notes |

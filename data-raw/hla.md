@@ -350,7 +350,7 @@ umap       <- as.data.frame(Seurat::Embeddings(so, "umap"))
 colnames(umap) <- c("UMAP_1", "UMAP_2")
 ```
 
-Only the 2,000 variable genes ship — 33,538 × 12,000 would be a large file for a demo whose point is the receptors.
+The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step retains at most 1,500 genes, protecting available immune markers and filling by normalized-expression variance. All 12,000 cells, donor genotypes, receptors, dextramer calls and UMAP coordinates are preserved. Gene search is restricted to the exported panel.
 
 ## 3.9 Step 6 — assembling the `.crb`
 
@@ -424,7 +424,8 @@ crb$addHLATyping(
 # STAGING, not the shipped path -- S3.10 decides whether this ever becomes OUT.
 staged <- paste0(OUT, ".staged")
 on.exit(unlink(staged), add = TRUE)
-saveRDS(crb, staged, compress = "xz")
+source("data-raw/demo_gene_panel.R")
+save_demo_crb(crb, staged)
 ```
 
 Note also that `expression` was kept **sparse** in S3.8: a `dgCMatrix`, like
@@ -446,7 +447,7 @@ The object is written to a **staging** path. The script then re-reads that file,
 This is a gate, not a report. An earlier version printed the same numbers *after* saving, so a drifted input still replaced a good demo and still exited 0.
 
 ```r
-check <- readRDS(staged)          # the STAGED bytes, not the shipped file
+check <- readCerebro(staged)          # the STAGED bytes, not the shipped file
 
 stopifnot(
   "donors are not balanced"            = all(table(m$sample) == CELLS_PER_DONOR),
@@ -473,10 +474,10 @@ stopifnot(
 if (!file.rename(staged, OUT)) {
   stop("could not publish the staged object -- the shipped file is untouched")
 }
-published <- readRDS(OUT)
+published <- readCerebro(OUT)
 ```
 
-Current output, and what the shipped object contains:
+Historical verification output before the 1,500-gene panel update (current sizes are in `README.md`):
 
 ```
    cells: 12000 in 4 donors, balanced

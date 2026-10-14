@@ -28,6 +28,7 @@ suppressMessages({
 })
 
 ## ---- Paths (override via env for a tmp dry-run) ---------------------------
+source("data-raw/demo_gene_panel.R")
 src_crb <- Sys.getenv("SRC_CRB", "inst/extdata/examples/example.crb")
 t_csv <- Sys.getenv("T_CSV", "data-raw/vdj_10x/pbmc3_t_contig.csv")
 b_csv <- Sys.getenv("B_CSV", "data-raw/vdj_10x/pbmc3_b_contig.csv")
@@ -277,12 +278,12 @@ full$immune_repertoire <- split_ir_by_sample(full_ir, full$getMetaData())
 ## ---- 6. save + verify ------------------------------------------------------
 message("[5/5] Saving and verifying ...")
 dir.create(dirname(out_full), recursive = TRUE, showWarnings = FALSE)
-saveRDS(healthy, out_healthy)
-saveRDS(bcell, out_bcell)
-saveRDS(full, out_full)
+save_demo_crb(healthy, out_healthy)
+save_demo_crb(bcell, out_bcell)
+save_demo_crb(full, out_full)
 
 verify <- function(path) {
-  o <- readRDS(path)
+  o <- readCerebro(path)
   m <- o$getMetaData()
   ir <- o$immune_repertoire
   ct <- unlist(lapply(ir, function(d) d$CTgene))
