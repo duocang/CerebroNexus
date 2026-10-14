@@ -671,6 +671,7 @@ ui <- dashboardPage(
     tags$head(
       tags$style(HTML("html, body { background: #f7f7f9; } .cerebro-starting .wrapper { visibility: hidden; } #cerebro-startup { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; background: #f7f7f9; color: #51545c; font: 16px Arial, sans-serif; transition: opacity .12s ease-out; } #cerebro-startup > div { text-align: center; } #cerebro-startup button { margin-top: 16px; } @media (prefers-reduced-motion: reduce) { #cerebro-startup { transition: none; } }")),
       tags$script(HTML("document.documentElement.classList.add('cerebro-starting');")),
+      cerebro_js("page-lifecycle.js", defer = TRUE),
       cerebro_js("startup.js", defer = TRUE),
       cerebro_css("custom.css"),
       cerebro_css("trekker.css"),
@@ -689,6 +690,7 @@ ui <- dashboardPage(
       cerebro_js("view-feedback.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
       cerebro_js("gene-selector.js", defer = TRUE),
+      cerebro_js("background-model.js"),
       cerebro_js("cell_views.js"),
       cerebro_js("settings_drawer.js", defer = TRUE),
       cerebro_js("specialist-view-state.js", defer = TRUE)

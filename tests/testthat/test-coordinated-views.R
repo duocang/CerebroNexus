@@ -3026,7 +3026,8 @@ test_that("each section offers only its own configured backgrounds", {
     readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
     collapse = "\n"
   )
-  expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
+  # Preset rotation/default behavior is exercised by viewer-shared-models.js.
+  expect_match(js, "presetState = backgrounds.presetState", fixed = TRUE)
   expect_match(
     js,
     "c.rotate(-state.rotate * Math.PI / 180)",
@@ -3613,7 +3614,7 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
 })
 
 test_that("background state keys namespace FOV and direct modalities", {
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "background-model.js")
   skip_if_not(file.exists(js_file))
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
   expect_match(js, "function backgroundStateKey\\(sp\\)")

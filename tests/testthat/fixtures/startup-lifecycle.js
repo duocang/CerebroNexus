@@ -14,6 +14,7 @@ function setup(reduced = false) {
     querySelector: () => pane, documentElement: {classList: {remove: () => {revealed = true;}}}};
   const window = {addEventListener: (key, fn) => events.set(key, fn),
     removeEventListener: key => events.delete(key)};
+vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2]), 'page-lifecycle.js'), 'utf8'), {window});
   vm.runInNewContext(source, {document, window,
     setTimeout: (fn, delay) => {const id = ++serial;timers.set(id,{fn,at:now+delay});return id;},
     clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn(),
@@ -34,7 +35,7 @@ assert.equal(a.events.size,0);
 // Reduced motion, explicit terminal results and failed loads all release it.
 const b = setup(true);
 b.emit('cerebro:view-terminal', {page:'unrelated'});assert(!b.revealed);
-b.pane.querySelector=selector=>selector==='.cerebro-page-feedback.is-terminal'?{hidden:true}:null;
+b.pane.dataset.cerebroPageTerminal='true';
 b.emit('cerebro:view-terminal');b.tick(0);assert(b.removed);
 const c = setup();c.emit('cerebro:dataset-context',{phase:'pending'});assert(!c.revealed);
 c.emit('cerebro:dataset-context',{phase:'error'});c.tick(120);assert(c.removed);
