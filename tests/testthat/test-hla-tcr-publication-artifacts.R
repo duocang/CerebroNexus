@@ -81,6 +81,11 @@ test_that("the unified publication artifact set is complete", {
   expect_identical(manifest$schema, "cerebronexus-hla-tcr-publication")
   expect_identical(as.integer(manifest$version), 1L)
   expect_identical(as.integer(manifest$dataset$cell_count), 12000L)
+  expect_identical(as.integer(manifest$dataset$expression_features), 1500L)
+  expect_identical(
+    publication_sha256(file.path(artifact_dir, manifest$dataset$file)),
+    manifest$dataset$sha256
+  )
   expect_identical(as.integer(manifest$strict_case$cell_count), 10L)
   expect_identical(as.integer(manifest$strict_case$motif$node_count), 15L)
   expect_identical(as.integer(manifest$strict_case$motif$cell_count), 30L)

@@ -1,13 +1,13 @@
 {
   "schema": "cerebronexus-hla-tcr-publication",
   "version": 1,
-  "release_date": "2026-09-08",
+  "release_date": "2026-10-14",
   "dataset": {
     "file": "demo_hla_tcr_dextramer.crb",
     "cell_count": 12000,
     "donor_count": 4,
-    "expression_features": 2000,
-    "sha256": "61b7e5e288f4c3ec06663eec45f8bbe877b4c764e00e352f91c75667025b0d41",
+    "expression_features": 1500,
+    "sha256": "ff359df26d5f883431e964d871c1f531f07166923025b3dc8ee8b77a7d9526f6",
     "cell_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc"
   },
   "strict_case": {
@@ -60,7 +60,7 @@
     {
       "file": "demo_hla_tcr_dextramer.case.json",
       "bytes": 3896,
-      "sha256": "1caf8f99fce16595e0aeaa45af46c354e33f2bd0708a45fb076835926f4fbc3b"
+      "sha256": "de4fb5222aca142ed8fd764c8cf7e1a2edfcb096218c82751ccd7183f4d49d93"
     },
     {
       "file": "demo_hla_tcr_dextramer.golden-clone.barcodes.tsv",
@@ -75,7 +75,7 @@
     {
       "file": "demo_hla_tcr_dextramer.sha256",
       "bytes": 92,
-      "sha256": "575f3de3f8d20557de79cafa060846cc6350d6aaf9cb87044388a116c960a9a3"
+      "sha256": "908b812924a56818225ffaba28f50656447e021277b65a6e091e1e59094e2ddd"
     },
     {
       "file": "demo_hla_tcr_main_case.expectations.json",
@@ -113,19 +113,19 @@
       "file": "vignettes/img/hla_tcr_publication_umap.svg",
       "width_in": 10,
       "height_in": 4.8,
-      "sha256": "7aaea121b221653e78f7f2c9b30f959a43c1ff9b8cdf1b276c4dc7e963ec9003"
+      "sha256": "95b050be03b8b70e84a803e20599a16a4226f9df6c7125131773e3257355e3fb"
     },
     "hla_tcr_publication_motifs.svg": {
       "file": "vignettes/img/hla_tcr_publication_motifs.svg",
       "width_in": 10,
       "height_in": 4.8,
-      "sha256": "049fdc3c547893186e55deb4040f3940e020c5d45f01ad66843ada6ae8e9c7d3"
+      "sha256": "f07c9c140bc4191093a1a57b77d3cdc739a58a852762650547cf79ed8b959285"
     },
     "hla_tcr_publication_restriction.svg": {
       "file": "vignettes/img/hla_tcr_publication_restriction.svg",
       "width_in": 7.2,
       "height_in": 4.8,
-      "sha256": "850e736fdf810270f60d1cb89959fd0603fc2c329ff73ba64cfd9edaefca8c77"
+      "sha256": "810951cae9567ca536723c08753ea2c3fc348d6e351de9ef650d6ae7ecd2d7d4"
     }
   },
   "screenshot_source_commit": "eb6fa10eef5d54ea681cf11e883566ad8f137341",

@@ -8,7 +8,7 @@ publication_data_inst <- publication_data_inst_candidates[file.exists(file.path(
   publication_data_inst_candidates,
   "extdata/examples/demo_hla_tcr_dextramer.crb"
 ))][1]
-publication_data_crb <- readRDS(file.path(
+publication_data_crb <- CerebroNexus::readCerebro(file.path(
   publication_data_inst,
   "extdata/examples/demo_hla_tcr_dextramer.crb"
 ))
@@ -37,7 +37,7 @@ test_that("the publication object contains aligned real single-cell data", {
   umap <- crb$projections$umap
 
   expect_s4_class(expression, "CsparseMatrix")
-  expect_identical(dim(expression), c(2000L, 12000L))
+  expect_identical(dim(expression), c(1500L, 12000L))
   expect_identical(colnames(expression), metadata$cell_barcode)
   expect_identical(rownames(umap), metadata$cell_barcode)
   expect_identical(dim(umap), c(12000L, 2L))

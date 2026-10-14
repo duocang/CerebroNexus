@@ -102,7 +102,7 @@ annotate_repertoire <- function(crb) {
   }, repertoire, names(repertoire))
 }
 
-crb <- readRDS(crb_path)
+crb <- CerebroNexus::readCerebro(crb_path)
 metadata <- crb$getMetaData()
 cells <- as.character(metadata$cell_barcode)
 repertoire <- annotate_repertoire(crb)
@@ -774,7 +774,7 @@ if (file.exists(screenshot_metadata_path)) {
 manifest <- list(
   schema = "cerebronexus-hla-tcr-publication",
   version = 1L,
-  release_date = "2026-09-08",
+  release_date = "2026-10-14",
   dataset = list(
     file = basename(crb_path),
     cell_count = length(cells),

@@ -6,7 +6,7 @@
     "path": "inst/extdata/examples/demo_hla_tcr_dextramer.crb",
     "cell_count": 12000,
     "donor_count": 4,
-    "sha256": "61b7e5e288f4c3ec06663eec45f8bbe877b4c764e00e352f91c75667025b0d41",
+    "sha256": "ff359df26d5f883431e964d871c1f531f07166923025b3dc8ee8b77a7d9526f6",
     "cell_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc",
     "source": "10x Genomics CD8+ T cells of Healthy Donor 1-4 (2019), Zhang et al. Sci Adv 2021, CC BY 4.0",
     "build_command": "Rscript data-raw/build_hla_tcr_dextramer_demo.R",

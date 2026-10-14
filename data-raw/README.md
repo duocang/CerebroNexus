@@ -24,6 +24,10 @@ The normal offline gate starts from the tracked `.crb`:
 Rscript data-raw/build_hla_tcr_publication.R --from-crb --verify
 ```
 
+The publication reader uses `readCerebro()` and the current 1,500-gene demo.
+Regenerated manifests bind the evidence to the exact CRB bytes; the 12,000
+cells, strict 10-cell clonotype and 293-cell Viewer selection remain unchanged.
+
 Run without `--verify` to regenerate the two cases, CSV tables, scientific
 figures, Linked views configurations, and checksummed manifest. For a release
 audit, `--from-raw` first rebuilds the Cerebro object from the 12 inputs pinned
