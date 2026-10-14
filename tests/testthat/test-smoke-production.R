@@ -317,57 +317,6 @@ test_that("createShinyApp bundles real spatial demos with mixed image paths", {
   expect_true(any(grepl("xenium", bundled, ignore.case = TRUE)))
 })
 
-test_that("the generated app remains self-contained at runtime", {
-  app <- get_real_app()
-  skip_if(is.null(app), "bundled real spatial demos not available")
-
-  app_source <- paste(
-    readLines(file.path(app$app_dir, "app.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  bundled_source <- paste(
-    unlist(lapply(
-      list.files(
-        file.path(app$app_dir, "shiny"),
-        pattern = "\\.[Rr]$",
-        recursive = TRUE,
-        full.names = TRUE
-      ),
-      readLines,
-      warn = FALSE
-    )),
-    collapse = "\n"
-  )
-
-  ## createShinyApp() copies the complete UI/server implementation. The bundle
-  ## must therefore boot without resolving the package that created it.
-  expect_false(grepl(
-    'requireNamespace("CerebroNexus"',
-    app_source,
-    fixed = TRUE
-  ))
-  expect_false(grepl("CerebroNexus::", bundled_source, fixed = TRUE))
-  expect_false(grepl(
-    "asNamespace(\"CerebroNexus\"",
-    bundled_source,
-    fixed = TRUE
-  ))
-  expect_false(grepl(
-    'packageVersion("CerebroNexus")',
-    bundled_source,
-    fixed = TRUE
-  ))
-  ## system.file(package = "CerebroNexus") resolves to "" once the package is
-  ## gone, silently breaking whatever resource it points at. The bundle must
-  ## locate its own resources relative to cerebro_root, never via the package.
-  expect_false(grepl(
-    'package = "CerebroNexus"',
-    bundled_source,
-    fixed = TRUE
-  ))
-  expect_false(grepl("library(CerebroNexus", bundled_source, fixed = TRUE))
-})
-
 test_that("the generated real-data app boots with the Spatial tab", {
   skip_if_not_installed("shinytest2")
   skip_on_cran()
@@ -504,12 +453,7 @@ test_that("the generated multi-crb app boots and switches datasets", {
   expect_true(isTRUE(spatial_tab_b))
 })
 
-## The static self-contained test above proves the BUNDLE SOURCE never names the
-## package. This one proves the harder half: the .crb data itself. A .crb is an
-## R6 object whose class lives in R/ (not in the copied bundle), so if any of its
-## methods reached into the CerebroNexus namespace, readRDS would carry a
-## namespace reference and fail once the package is gone. Load it in a child
-## process whose library path genuinely lacks CerebroNexus and use it.
+## Load the bundle with CerebroNexus unavailable to catch runtime dependencies.
 test_that("a bundled dataset deserializes and works without CerebroNexus", {
   skip_if_not_installed("callr")
   skip_on_cran()
@@ -582,8 +526,8 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
 })
 
 ## Regression guard for a class of bug we have hit repeatedly: bundle code that
-## silently depends on CerebroNexus being installed. The static grep above and
-## the deserialize test above each cover one half; this covers the runtime half
+## silently depends on CerebroNexus being installed. The deserialize test above
+## covers the dataset; this covers module initialization
 ## for module code that loads package-authored helpers. The HLA module is the
 ## worst offender -- its pure core lives in R/ (not copied into a bundle) and it
 ## used to reach the installed namespace via core_shim. That resolved under

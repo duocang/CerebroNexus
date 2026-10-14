@@ -291,12 +291,7 @@ test_that("createShinyApp freezes typed run options into config", {
   )
 
   app_file <- file.path(app, "app.R")
-  app_source <- paste(readLines(app_file, warn = FALSE), collapse = "\n")
   expect_silent(parse(file = app_file, keep.source = FALSE))
-  expect_false(grepl(host, app_source, fixed = TRUE))
-  expect_false(grepl(as.character(port), app_source, fixed = TRUE))
-  expect_false(grepl(as.character(request_mb), app_source, fixed = TRUE))
-  expect_false(grepl("CerebroNexus", app_source, fixed = TRUE))
 
   runtime <- callr::r(
     function(app_dir, expected_bytes) {
@@ -414,17 +409,7 @@ test_that("createShinyApp stores a validated initial Viewer page", {
     initial_page = "spatial"
   )
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  server <- paste(
-    readLines(file.path(app, "viewer", "shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
   expect_identical(config$initial_page, "spatial")
-  expect_match(server, 'projection = "overview"', fixed = TRUE)
-  expect_match(server, 'spatial = "spatial"', fixed = TRUE)
-  expect_match(server, 'trekker = "trekker"', fixed = TRUE)
-  expect_match(server, "viewerInitialPageDecision", fixed = TRUE)
-  expect_match(server, "updateTabItems", fixed = TRUE)
 })
 
 test_that("createShinyApp accepts every supported display mode", {

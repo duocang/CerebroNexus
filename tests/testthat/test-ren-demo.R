@@ -104,31 +104,108 @@ test_that("the Ren h5ad selectors accept standard AnnData paths", {
 })
 
 test_that("the Ren preparation keeps large categorical and repertoire data lazy", {
-  script <- ren_demo_script()
-  skip_if_not(file.exists(script), "benchmark tree not present")
-  source <- paste(readLines(script), collapse = "\n")
-
-  expect_match(source, ".viewerRenVersion <- 2L", fixed = TRUE)
-  expect_match(source, "metadata[categorical] <- lapply", fixed = TRUE)
-  expect_match(source, "immune_repertoire.qs2", fixed = TRUE)
-  expect_match(source, "immune_repertoire_backend", fixed = TRUE)
-  expect_false(grepl("addImmuneRepertoire(repertoire)", source, fixed = TRUE))
-})
-
-test_that("run-demo prepares both full-scale datasets", {
-  launcher <- testthat::test_path("..", "..", "run-demo.R")
-  skip_if_not(
-    file.exists(launcher),
-    "repository-only demo launcher is not installed with the package"
+  skip_if_not_installed("data.table")
+  skip_if_not_installed("qs2")
+  env <- new.env(parent = globalenv())
+  sys.source(ren_demo_script(), env)
+  cells <- paste0("cell-", seq_len(1462702L))
+  annotations <- data.frame(
+    cellName = cells,
+    sampleID = "sample",
+    celltype = "T",
+    majorType = "lymphocyte"
   )
-  skip_if_not(
-    file.exists(launcher),
-    "repository-only demo launcher is not included in the built package"
+  local_mocked_bindings(
+    fread = function(...) annotations,
+    .package = "data.table"
   )
-  script <- paste(readLines(launcher), collapse = "\n")
-  expect_match(script, "prepareViewer1mBenchmarkData()", fixed = TRUE)
-  expect_match(script, "prepareViewerRenDemoData()", fixed = TRUE)
-  expect_match(script, "CEREBRO_REN_DEMO_CRB", fixed = TRUE)
+  clinical_names <- c(
+    "sample",
+    "geo_accession",
+    "patient",
+    "dataset",
+    "tissue",
+    "severity",
+    "stage",
+    "age",
+    "sex",
+    "days_after_symptom_onset",
+    "sars_cov_2",
+    "outcome",
+    "comorbidities",
+    "bcr_sequenced",
+    "tcr_sequenced"
+  )
+  clinical <- as.data.frame(setNames(
+    as.list(rep("sample", length(clinical_names))),
+    clinical_names
+  ))
+  env$.viewerRenReadClinical <- function(...) clinical
+  chosen <- cells[c(2, 1)]
+  metadata <- env$.viewerRenReadCells("annotation", "clinical", chosen)
+  expect_identical(metadata$cell_barcode, chosen)
+  expect_identical(rownames(metadata), chosen)
+  expect_true(all(vapply(metadata[-1], is.factor, logical(1))))
+  expect_identical(as.character(metadata$cell_type), c("T", "T"))
+  expect_error(
+    env$.viewerRenReadCells("annotation", "clinical", "missing"),
+    "barcodes do not match"
+  )
+
+  root <- withr::local_tempdir()
+  paths <- env$.viewerRenPaths(root)
+  dir.create(dirname(paths$crb), recursive = TRUE)
+  dir.create(paths$sidecar)
+  env$.viewerRenWriteSidecar <- function(...) {
+    matrix(numeric(), 0, length(cells), dimnames = list(NULL, cells))
+  }
+  env$.viewerRenReadCells <- function(...) metadata
+  env$.viewerRenProjection <- function(...) {
+    structure(
+      data.frame(x = 1:2, y = 3:4, row.names = chosen),
+      source = "/obsm/X_umap"
+    )
+  }
+  repertoire <- list(
+    sample = data.frame(
+      barcode = chosen,
+      CTgene = c("TRAV1_TRBV2", "TRAV1_TRBV2")
+    )
+  )
+  env$.viewerRenRepertoire <- function(...) repertoire
+  object <- new.env(parent = emptyenv())
+  for (method in c(
+    "setVersion",
+    "addExperiment",
+    "addParameters",
+    "setExpression",
+    "setExpressionBackend",
+    "setMetaData",
+    "addGroup",
+    "addProjection",
+    "addExtraTable"
+  )) {
+    object[[method]] <- function(...) invisible(NULL)
+  }
+  object$addImmuneRepertoire <- function(...) {
+    stop("must not hydrate repertoire")
+  }
+  env$Cerebro <- list(new = function() object)
+  saved <- NULL
+  env$saveCerebro <- function(value, path) {
+    saved <<- value
+    file.create(path)
+  }
+  expect_identical(env$.viewerRenBuildObject(paths), paths$crb)
+  expect_identical(saved, object)
+  backend <- object$immune_repertoire_backend
+  expect_identical(backend$type, "bpcells-file")
+  expect_identical(backend$samples, "sample")
+  expect_setequal(backend$chains, c("TRA", "TRB"))
+  sidecar <- file.path(paths$sidecar, backend$file)
+  expect_identical(qs2::qs_read(sidecar), repertoire)
+  expect_identical(backend$md5, unname(tools::md5sum(sidecar)))
+  expect_null(object$immune_repertoire)
 })
 
 test_that("Ren preparation preserves prior datasets on failure and upgrade", {

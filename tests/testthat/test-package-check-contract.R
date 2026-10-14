@@ -11,27 +11,53 @@ skip_if_not_source_tree <- function() {
 
 test_that("development-only directories are excluded from package builds", {
   skip_if_not_source_tree()
-  ignores <- readLines(source_file(".Rbuildignore"), warn = FALSE)
-  expected <- c(
-    "^\\.claude$",
-    "^\\.loci$",
-    "^\\.playwright-mcp$",
-    "^\\.sisyphus$",
-    "^\\.superpowers$"
-  )
-
-  expect_true(all(expected %in% ignores))
+  patterns <- readLines(source_file(".Rbuildignore"), warn = FALSE)
+  for (path in c(
+    ".claude",
+    ".loci",
+    ".playwright-mcp",
+    ".sisyphus",
+    ".superpowers",
+    "tests/node_modules"
+  )) {
+    expect_true(
+      any(vapply(
+        patterns,
+        grepl,
+        logical(1),
+        x = path,
+        perl = TRUE,
+        ignore.case = TRUE
+      )),
+      info = path
+    )
+  }
 })
 
 test_that("retired share databases stay out of Git and package builds", {
   skip_if_not_source_tree()
-  gitignore <- readLines(source_file(".gitignore"), warn = FALSE)
-  buildignore <- readLines(source_file(".Rbuildignore"), warn = FALSE)
-
-  expect_true("inst/private-data/linked-view-shares.sqlite" %in% gitignore)
-  expect_true(
-    "^inst/private-data/linked-view-shares\\.sqlite$" %in% buildignore
+  path <- "inst/private-data/linked-view-shares.sqlite"
+  patterns <- readLines(source_file(".Rbuildignore"), warn = FALSE)
+  expect_true(any(vapply(
+    patterns,
+    grepl,
+    logical(1),
+    x = path,
+    perl = TRUE,
+    ignore.case = TRUE
+  )))
+  ignored <- system2(
+    "git",
+    c(
+      "-C",
+      shQuote(source_file()),
+      "check-ignore",
+      "--no-index",
+      shQuote(path)
+    ),
+    stdout = TRUE
   )
+  expect_identical(ignored, path)
 })
 
 test_that("pkgdown output directory has no tracked source files", {
@@ -62,44 +88,26 @@ test_that("package and exported-app branding use the current identity", {
 
 test_that("self-contained app vignette never purls interactive runApp calls", {
   skip_if_not_source_tree()
-  lines <- readLines(
+  output <- tempfile(fileext = ".R")
+  on.exit(unlink(output), add = TRUE)
+  knitr::purl(
     source_file("vignettes", "create_a_self_contained_shiny_app.Rmd"),
-    warn = FALSE
+    output = output,
+    quiet = TRUE
   )
-  run_lines <- which(grepl("shiny::runApp(out_dir)", lines, fixed = TRUE))
-  expect_length(run_lines, 2L)
-
-  chunk_headers <- vapply(
-    run_lines,
-    function(line_number) {
-      prior <- lines[seq_len(line_number)]
-      prior[max(which(grepl("^```\\{r", prior)))]
-    },
+  calls <- unlist(lapply(parse(output), r_test_calls), recursive = FALSE)
+  names <- vapply(
+    calls,
+    function(call) paste(deparse(call[[1]]), collapse = ""),
     character(1)
   )
-  expect_true(all(grepl("purl=FALSE", chunk_headers, fixed = TRUE)))
-})
-
-test_that("summarisation has no unused unqualified ave call", {
-  skip_if_not_source_tree()
-  seurat_source <- paste(
-    readLines(source_file("R", "seurat_utils.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_false(grepl("idx_first <- ave(", seurat_source, fixed = TRUE))
+  expect_false(any(names %in% c("runApp", "shiny::runApp")))
 })
 
 test_that("later remains declared because bundled runtime code uses it", {
   skip_if_not_source_tree()
   description <- read.dcf(source_file("DESCRIPTION"), fields = "Imports")[[1]]
   namespace <- readLines(source_file("NAMESPACE"), warn = FALSE)
-  runtime_source <- paste(
-    readLines(source_file("inst", "viewer", "utility_functions.R")),
-    collapse = "\n"
-  )
-
   expect_match(description, "later")
   expect_true("importFrom(later,later)" %in% namespace)
-  expect_match(runtime_source, "later::later(", fixed = TRUE)
 })

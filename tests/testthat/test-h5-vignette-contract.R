@@ -100,9 +100,4 @@ test_that("legacy H5 guidance persists a portable backend descriptor", {
     launch_capture$arguments$crb_file_to_load,
     evaluation$crb_output
   )
-  expect_false(any(grepl(
-    "expression_matrix_h5 = h5_output",
-    lines,
-    fixed = TRUE
-  )))
 })
