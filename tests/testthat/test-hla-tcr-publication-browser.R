@@ -65,6 +65,14 @@ test_that("the real Viewer restores both publication selections", {
     if (!nzchar(capture_root)) {
       return(invisible(NULL))
     }
+    app$wait_for_idle(timeout = 120000)
+    app$wait_for_js(
+      paste0(
+        "['cerebro-page-loader','cerebro-dataset-loading'].every(function(id){",
+        "var x=document.getElementById(id); return !x || x.hidden;})"
+      ),
+      timeout = 120000
+    )
     temporary <- tempfile(fileext = ".png")
     on.exit(unlink(temporary), add = TRUE)
     app$get_screenshot(temporary, selector = "viewport")
@@ -280,6 +288,13 @@ test_that("the real Viewer restores both publication selections", {
     ),
     timeout = 120000
   )
+  app$wait_for_js(
+    paste0(
+      "(function(){var x=document.getElementById('hla_overlap_table');",
+      "return !!x && x.textContent.indexOf('donor4') >= 0;})()"
+    ),
+    timeout = 120000
+  )
   capture("hla_tcr_real_hla_associations.png", "hla-association-context")
 
   app$set_inputs(hla_tabs = "Data & QC", wait_ = FALSE)
@@ -289,6 +304,15 @@ test_that("the real Viewer restores both publication selections", {
       "'#hla_tabs li.active a[data-value=\"Data & QC\"]');",
       "var body=document.getElementById('hla_data_qc_ui');",
       "return !!active && !!body && body.textContent.trim().length > 100;})()"
+    ),
+    timeout = 120000
+  )
+  app$wait_for_js(
+    paste0(
+      "(function(){var x=document.getElementById('hla_coverage_table');",
+      "var source=document.getElementById('hla_active_source_ui');",
+      "return !!x && x.textContent.indexOf('donor4') >= 0 && ",
+      "!!source && source.textContent.indexOf('genotyped') >= 0;})()"
     ),
     timeout = 120000
   )
