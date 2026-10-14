@@ -1,6 +1,6 @@
-# CerebroNexus 5.0.0
+# CerebroNexus 5.0.1
 
-## Unreleased changes since 5.0.0
+## Unreleased changes since 5.0.1
 
 - Completes the source-test cleanup across Viewer modules, transport, dataset
   lifecycle, authentication and benchmark tools. Tests now execute renderers,
@@ -19,6 +19,9 @@
   reordered Trajectory data, stale frames and reconnect recovery.
 - Keeps settings drawers open during global Shiny value notifications; only
   replacement of their containing output closes them.
+
+## Changes in 5.0.1
+
 - Reduces the nine bundled demo CRBs from 30.26 to 21.22 MiB (about 30%) through
   stronger build-time compression and a maximum of 1,500 expression genes per
   demo. Smaller panels remain whole; available demonstration markers,
@@ -32,6 +35,8 @@
   named image collection.
 - Replaces formatting-sensitive Viewer test assertions with parsed R expression
   checks and a behavioral check for Spatial's empty-selection early return.
+
+# CerebroNexus 5.0.0
 
 ## Viewer
 
