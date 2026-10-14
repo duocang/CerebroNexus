@@ -79,6 +79,7 @@ let
       formattable
       future_apply
       ggplot2
+      ggtree
       glue
       GSVA
       HDF5Array
@@ -88,6 +89,7 @@ let
       later
       Matrix
       mirai
+      monocle
       msigdbr
       pbapply
       pkgdown
