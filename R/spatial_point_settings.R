@@ -11,17 +11,15 @@
     .spatialManifestNames(value, context)
   }
   leaf <- function(value, context) {
-    fields <- c(if (roi) "rotation_degrees", "point_size", "point_opacity")
-    keys <- named(value, context)
-    if (!setequal(keys, fields) || !all(vapply(value, function(x)
-      is.numeric(x) && length(x) == 1L && is.finite(x), logical(1)))) {
-      stop(context, " requires finite numeric ", paste(fields, collapse = ", "), ".", call. = FALSE)
+    named(value, context)
+    normalized <- viewerSpatialPointSetting(value, roi)
+    if (is.null(normalized)) {
+      stop(context, ": requires finite numeric ",
+        if (roi) "rotation_degrees, ",
+        "point_size (1–20) and point_opacity (0–1).", call. = FALSE)
     }
-    if (value$point_size < 1 || value$point_size > 20 ||
-        value$point_opacity < 0 || value$point_opacity > 1) {
-      stop(context, ": point_size must be 1–20 and point_opacity 0–1.", call. = FALSE)
-    }
-    lapply(value, as.numeric)
+    # Preserve the caller's field order; the shared contract owns validation.
+    normalized[names(value)]
   }
   result <- list()
   for (dataset in named(settings, argument)) {

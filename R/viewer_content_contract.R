@@ -2,6 +2,23 @@
 ## and generated app bundles. Keep this file pure base R: the runtime copy is
 ## sourced from a self-contained bundle with no package namespace available.
 
+## Coordinate appearance has one typed contract for authoring and rendering.
+viewerNamedSettings <- function(value) {
+  is.list(value) && !is.object(value) &&
+    (!length(value) || (!is.null(names(value)) && !anyNA(names(value)) &&
+      all(nzchar(names(value))) && !anyDuplicated(names(value))))
+}
+
+viewerSpatialPointSetting <- function(value, roi = FALSE) {
+  fields <- c(if (roi) "rotation_degrees", "point_opacity", "point_size")
+  if (!viewerNamedSettings(value) || !setequal(names(value), fields) ||
+      !all(vapply(value, function(x) is.numeric(x) && length(x) == 1L &&
+        is.finite(x), logical(1))) ||
+      value$point_size < 1 || value$point_size > 20 ||
+      value$point_opacity < 0 || value$point_opacity > 1) return(NULL)
+  lapply(value[fields], as.numeric)
+}
+
 ## Extra-material labels are presentation metadata keyed by immutable table IDs.
 ## Discard unavailable labels and unrelated source-file metadata.
 viewerExtraMaterialTableIndex <- function(value = NULL, table_names = NULL) {
