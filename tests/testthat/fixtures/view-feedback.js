@@ -4,7 +4,7 @@ const events = {}, messages = {}, handlers = {}, elements = {}, domEvents = {};
 const storage = new Map();
 function element(id) {
   const classes = new Set(['active']); let text = '';
-  return { id, get textContent() { return text + this.children.map(c=>c.textContent).join(''); },
+  return { id, dataset: {}, get textContent() { return text + this.children.map(c=>c.textContent).join(''); },
     set textContent(v) { text=v; this.children=[]; }, value: '', children: [], tagName: 'INPUT',
     classList: {add(k) {classes.add(k);},toggle(k,on) { if(on) classes.add(k); else classes.delete(k); }, contains(k) {return classes.has(k);}},
     setAttribute() {}, querySelector(selector) {return selector === 'label' ? {textContent:'Colour'} : this.children.find(c=>(c.className || '').split(' ').includes(selector.slice(1))) || null;},
@@ -24,6 +24,7 @@ const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
   addEventListener:(name,fn)=>events[name]=fn, dispatchEvent:event=>{if(events[event.type])events[event.type](event);},
   Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn},
   CerebroDatasetContext:{phase:()=> 'ready', accepts:m=>m.dataset_context?.generation===generation}};
+vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2] || path.resolve(__dirname, '../../../inst/viewer/www/view-feedback.js')), 'page-lifecycle.js'), 'utf8'), {window});
 vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
   {window,document,setTimeout:fn=>{timeoutCalls++;fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
 let count=0;
@@ -69,7 +70,7 @@ paint('hla_motif_network',7);
 handlers['shiny:value']({target:{id:'hla_motif_note',querySelector:()=>({textContent:'No motifs',getAttribute:()=> 'empty'})}});
 check(row('hla_motif_network').textContent.includes('No motifs'));
 check(!row('hla_motif_network').classList.contains('is-error'));
-check(header('hla_motif_network').classList.contains('is-terminal'));
+check(window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-hla_tcr_motifs']));
 check(header('hla_motif_network').hidden);
 paint('hla_motif_network',7);check(row('hla_motif_network').textContent.includes('No motifs'));
 change('hla_motif_network','hla_show_isolated',true);
@@ -77,7 +78,7 @@ check(row('hla_motif_network').textContent.includes('Updating'));
 paint('hla_motif_network',7);check(elements.hla_motif_network_cell_view_host.classList.contains('cerebro-view-terminal'));
 map('hla_motif_network',8,{hla_show_isolated:true});paint('hla_motif_network',8);
 check(!elements.hla_motif_network_cell_view_host.classList.contains('cerebro-view-terminal'));
-check(!header('hla_motif_network').classList.contains('is-terminal'));
+check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-hla_tcr_motifs']));
 check(!row('hla_motif_network').textContent.includes('Updating'));
 change('spatial_projection','spatial_projection_group_labels',true);
 emit('cerebro:view-appearance',{id:'spatial_projection',values:{group_labels:true}});
@@ -153,11 +154,11 @@ console.log(count+' feedback assertions passed, including compact local status')
 // The hidden header still carries the terminal contract used by both loaders.
 handlers['shiny:error']({target:{id:'overview_projection_cell_view_host',
   closest:()=>({id:'shiny-tab-overview'})},error:{message:'Plot failed'}});
-check(header('overview_projection').classList.contains('is-terminal'));
+check(window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-overview']));
 check(header('overview_projection').hidden);
 check(row('overview_projection').classList.contains('is-error'));
 map('overview_projection',101,{});paint('overview_projection',101);
-check(!header('overview_projection').classList.contains('is-terminal'));
+check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-overview']));
 generation++;emit('cerebro:dataset-context',{changed:true,phase:'pending'});
-for(const id of Object.keys(ids)) check(!header(id).classList.contains('is-terminal'));
+for(const id of Object.keys(ids)) check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-'+ids[id]]));
 console.log('PASS terminal marker, hidden header, recovery and dataset reset');

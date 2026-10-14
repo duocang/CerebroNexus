@@ -586,7 +586,7 @@
     function finish(pane) {
       if (!pane) return;
       cancelScheduledFinish();
-      pane.dataset.cerebroPageReady = "true";
+      window.CerebroPageLifecycle.setReady(pane);
       pane.classList.remove('cerebro-page-initializing');
       setBusy(pane, false);
       window.dispatchEvent(new CustomEvent("cerebro:page-ready"));
@@ -607,7 +607,7 @@
       window.clearTimeout(slowTimer);
       window.clearTimeout(showTimer);
       window.clearTimeout(hideTimer);
-      if (pane.dataset.cerebroPageReady === "true") {
+      if (window.CerebroPageLifecycle.isReady(pane)) {
         if (activePane && activePane !== pane) setBusy(activePane, false);
         activePane = pane;
         finish(pane);
@@ -615,7 +615,7 @@
       }
       if (activePane && activePane !== pane) setBusy(activePane, false);
       activePane = pane;
-      if (pane.querySelector('.cerebro-page-feedback.is-terminal')) {
+      if (window.CerebroPageLifecycle.isTerminal(pane)) {
         pane.classList.remove('cerebro-page-initializing');
         if (announcement) announcement.textContent = '';
         setBusy(pane, false);
@@ -688,7 +688,7 @@
       controlValues.clear();
       document.querySelectorAll('.tab-pane[id^="shiny-tab-"]').forEach(
         function (pane) {
-          delete pane.dataset.cerebroPageReady;
+          window.CerebroPageLifecycle.reset(pane);
           pane.classList.remove('cerebro-page-initializing');
           pane.removeAttribute("aria-busy");
         }
@@ -997,8 +997,7 @@
 
     function pageReady() {
       var pane = document.querySelector('.tab-pane.active[id^="shiny-tab-"]');
-      return !pane || pane.dataset.cerebroPageReady === "true" ||
-        !!pane.querySelector('.cerebro-page-feedback.is-terminal');
+      return !pane || window.CerebroPageLifecycle.isSettled(pane);
     }
 
     function ensureOverlay() {
