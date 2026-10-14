@@ -84,11 +84,14 @@ test_that("the real Viewer restores both publication selections", {
 
   app$wait_for_idle(timeout = 30000)
   app$wait_for_js(
-    "document.getElementById('crb_file_selector') !== null",
+    paste0(
+      "(() => { const x = document.getElementById('crb_file_selector');",
+      "return !!(x && x.selectize && x.selectize.options['HLA & TCR']); })()"
+    ),
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_hla_tcr_dextramer.crb",
+    crb_file_selector = "HLA & TCR",
     wait_ = FALSE
   )
   app$wait_for_js(
@@ -146,11 +149,14 @@ test_that("the real Viewer restores both publication selections", {
     load_timeout = 60000
   )
   app$wait_for_js(
-    "document.getElementById('crb_file_selector') !== null",
+    paste0(
+      "(() => { const x = document.getElementById('crb_file_selector');",
+      "return !!(x && x.selectize && x.selectize.options['HLA & TCR']); })()"
+    ),
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_hla_tcr_dextramer.crb",
+    crb_file_selector = "HLA & TCR",
     wait_ = FALSE
   )
   app$wait_for_js(
@@ -212,11 +218,14 @@ test_that("the real Viewer restores both publication selections", {
     load_timeout = 60000
   )
   app$wait_for_js(
-    "document.getElementById('crb_file_selector') !== null",
+    paste0(
+      "(() => { const x = document.getElementById('crb_file_selector');",
+      "return !!(x && x.selectize && x.selectize.options['HLA & TCR']); })()"
+    ),
     timeout = 30000
   )
   app$set_inputs(
-    crb_file_selector = "extdata/examples/demo_hla_tcr_dextramer.crb",
+    crb_file_selector = "HLA & TCR",
     wait_ = FALSE
   )
   app$wait_for_js(
@@ -236,11 +245,12 @@ test_that("the real Viewer restores both publication selections", {
   app$set_inputs(hla_chain = "TRB", hla_tabs = "Motif Network", wait_ = FALSE)
   app$wait_for_js(
     paste0(
-      "(function(){var x=document.getElementById('hla_plot_motifNetwork');",
+      "(function(){var x=document.getElementById('hla_motif_network_cell_view_host');",
+      "var state=window.cerebroCellViews && ",
+      "window.cerebroCellViews.summary('hla_motif_network');",
       "return !!x && !x.classList.contains('recalculating') && ",
-      "x.style.visibility !== 'hidden' && ",
-      "document.querySelector('#hla_plot_motifNetwork .vis-network canvas') ",
-      "!== null;})()"
+      "x.getClientRects().length > 0 && !!x.querySelector('canvas') && ",
+      "!!state && state.ready && state.pointCount > 0;})()"
     ),
     timeout = 120000
   )
