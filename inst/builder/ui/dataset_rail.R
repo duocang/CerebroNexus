@@ -742,7 +742,7 @@ builder_import_rail_row_ui <- function(model) {
       shiny::span(class = "ds-state-dot", `aria-hidden` = "true"),
       shiny::span(
         class = "ds-body",
-        shiny::span(class = "nm", model$label),
+        shiny::span(class = "nm", title = model$label, model$label),
         if (!is.null(model$detail)) shiny::span(class = "meta", model$detail),
         shiny::span(
           class = paste(
@@ -961,7 +961,7 @@ builder_dataset_rail_row_ui <- function(model) {
       shiny::span(class = "ds-idx", model$index),
       shiny::span(
         class = "ds-body",
-        shiny::span(class = "nm", model$label),
+        shiny::span(class = "nm", title = model$label, model$label),
         shiny::span(
           class = if (identical(model$readiness_label, "Needs attention")) {
             "meta bad"

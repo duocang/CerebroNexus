@@ -669,7 +669,7 @@ builder_spatial_alignment_server <- function(
   sync_coordinate_control("image_opacity", 0, 100)
   sync_coordinate_control("coordinate_rotation", -180, 180)
   sync_coordinate_control("point_opacity", 0, 100)
-  sync_coordinate_control("point_size", 1, 12)
+  sync_coordinate_control("point_size", 1, 20)
   sync_coordinate_control("cell_percentage", 10, 100)
 
   sections_for <- function(entry) {
@@ -1271,8 +1271,7 @@ builder_spatial_alignment_server <- function(
     percentage <- if (is.null(entry)) {
       20
     } else {
-      entry$settings$overview_percentage_cells_to_show %||%
-        builder_default_percentage_cells_to_show(entry$profile$n_cells)
+      entry$settings$spatial_percentage_cells_to_show %||% 100
     }
     update_paired_control(
       "enhance-cell_percentage",
@@ -1937,8 +1936,7 @@ builder_spatial_alignment_server <- function(
       entry$settings$images %||% list()
     )
     changed <- FALSE
-    stored_percentage <- entry$settings$overview_percentage_cells_to_show %||%
-      builder_default_percentage_cells_to_show(entry$profile$n_cells)
+    stored_percentage <- entry$settings$spatial_percentage_cells_to_show %||% 100
     if (
       !isTRUE(all.equal(
         cell_percentage,
@@ -1946,7 +1944,7 @@ builder_spatial_alignment_server <- function(
         check.attributes = FALSE
       ))
     ) {
-      entry$settings$overview_percentage_cells_to_show <- cell_percentage
+      entry$settings$spatial_percentage_cells_to_show <- cell_percentage
       changed <- TRUE
     }
     active_record <- NULL
@@ -2842,8 +2840,7 @@ builder_spatial_alignment_server <- function(
       identity = identity,
       generation = generation,
       reset_token = canvas_reset_token(),
-      cell_percentage = entry$settings$overview_percentage_cells_to_show %||%
-        builder_default_percentage_cells_to_show(entry$profile$n_cells),
+      cell_percentage = entry$settings$spatial_percentage_cells_to_show %||% 100,
       dataset = contract$id,
       snapshot_identity = contract$snapshot_identity,
       section = section

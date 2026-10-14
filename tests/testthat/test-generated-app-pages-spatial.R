@@ -24,14 +24,10 @@ test_that("Linked views renders both retained spatial sections and images", {
     fixture$expected$spatial_sections
   )
 
-  sections_js <- .generated_app_e2e_js_array(
+  expect_setequal(
+    unlist(driver$get_js("document.getElementById('cv-pick-spatial').selectize.getValue()")),
     fixture$expected$spatial_sections
   )
-  driver$run_js(paste0(
-    "document.getElementById('cv-pick-spatial').selectize.setValue(",
-    sections_js,
-    ");"
-  ))
   driver$wait_for_js(
     paste0(
       "document.querySelectorAll(",
@@ -44,39 +40,19 @@ test_that("Linked views renders both retained spatial sections and images", {
     expect_true(any(grepl(section, titles, fixed = TRUE)), info = section)
   }
 
-  ## Each FOV owns its own external image asset. Activate its background scope
-  ## and assert that the picker exposes that section's asset; this exercises the
-  ## generated asset -> app config -> Linked views image contract.
-  for (section in fixture$expected$spatial_sections) {
-    section_js <- .generated_app_e2e_js_value(section)
-    driver$run_js(paste0(
-      "(function(){var tab=Array.from(document.querySelectorAll(",
-      "'.cv-bg-space-tab')).find(function(node){return ",
-      "(node.textContent||'').trim()===",
-      section_js,
-      ";});if(tab)tab.click();})()"
-    ))
-    expected_label <- basename(fixture$attachments[[section]]$path)
-    expected_label_js <- .generated_app_e2e_js_value(expected_label)
-    driver$wait_for_js(
-      paste0(
-        "(function(){var picker=document.getElementById('cv-bg-image-select');",
-        "return !!(picker && Array.from(picker.options).some(function(option){",
-        "return option.textContent===",
-        expected_label_js,
-        ";}));})()"
-      ),
-      timeout = 60000
-    )
-    labels <- unname(unlist(
-      driver$get_js(
-        "Array.from(document.getElementById('cv-bg-image-select').options).map(function(option){return option.textContent;})"
-      ),
-      use.names = FALSE
-    ))
-    expect_true(expected_label %in% labels, info = section)
-    expect_identical(length(labels), 1L, info = section)
-  }
+  ## Linked views uses the first eligible image for each FOV; image selection
+  ## belongs to Spatial. Verify both scopes survive in the portable view state.
+  driver$wait_for_js(
+    "window.cerebroLinkedViewsState.capture().view.spatial_backgrounds.length === 2",
+    timeout = 60000
+  )
+  backgrounds <- driver$get_js(
+    "window.cerebroLinkedViewsState.capture().view.spatial_backgrounds"
+  )
+  expect_setequal(vapply(backgrounds, `[[`, character(1), "section"),
+    fixture$expected$spatial_sections)
+  expect_true(all(vapply(backgrounds, function(x)
+    identical(x$mode, "image") && nzchar(x$image_id), logical(1))))
 
   expect_identical(
     driver$get_js(

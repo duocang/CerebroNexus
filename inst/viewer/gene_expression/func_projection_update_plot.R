@@ -383,7 +383,9 @@ expression_projection_update_plot <- function(input) {
     output_data[['z']] <- coordinates[[3]]
   }
   if (n_dimensions == 3 || !is.list(input[["expression_levels"]]) || multi) {
-    legend_label <- if (is.list(expression_levels)) {
+    legend_label <- if (no_gene_selected) {
+      plot_parameters[["projection"]]
+    } else if (is.list(expression_levels)) {
       "Expression"
     } else if (length(color_settings[["genes"]]) == 1) {
       color_settings[["genes"]][[1]]
@@ -396,6 +398,7 @@ expression_projection_update_plot <- function(input) {
       list(
         color_type = "continuous",
         color_variable = legend_label,
+        show_color_scale = !no_gene_selected,
         space_label = plot_parameters[["projection"]],
         appearance = appearance
       ),

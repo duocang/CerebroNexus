@@ -83,8 +83,17 @@
 }
 .coordviews-page .cv-bg-display .selectize-control { width: 100%; }
 .coordviews-page .cv-bg-space-tabs {
-  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+  display: block; margin-bottom: 12px;
 }
+.coordviews-page .cv-bg-space-tabs > label { display: block; margin-bottom: 7px; font-size: 12px; }
+.coordviews-page .cv-bg-space-tabs .selectize-control { width: 100%; min-width: 0; }
+.coordviews-page .cv-bg-space-tabs .selectize-input > .item {
+  max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.coordviews-page .cv-bg-space-tabs .selectize-dropdown .option {
+  white-space: normal; overflow-wrap: anywhere;
+}
+.coordviews-page .cv-bg-session-note { color: var(--c-text-2); font-size: 12px; margin: 12px 0 0; }
 .coordviews-page .cv-bg-space-tab {
   max-width: 185px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 6px 10px; border: 1px solid var(--c-border); border-radius: 6px;

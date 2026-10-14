@@ -499,7 +499,7 @@ test_that("Linked views highlights only the visualization under the pointer", {
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
-  expect_match(ui, 'class = "coordviews-page linked-views-page"', fixed = TRUE)
+  expect_match(ui, 'class = "coordviews-page linked-views-page ', fixed = TRUE)
   expect_match(
     css,
     ".linked-views-page > .cerebro-page-loading-region > .cv-panes > .cv-pane:hover",
@@ -3144,12 +3144,12 @@ test_that("per-image settings also apply to embedded backgrounds", {
   expect_match(js, "xRange: sample.x_range || null", fixed = TRUE)
   expect_match(
     js,
-    "!pointSizeEdited && sp && sp.builder_point_size",
+    "(!pointSizeEdited || !singleActive) && sp && sp.builder_point_size",
     fixed = TRUE
   )
   expect_match(
     js,
-    "!pointOpacityEdited && sp && sp.builder_point_opacity",
+    "(!pointOpacityEdited || !singleActive) && sp && sp.builder_point_opacity",
     fixed = TRUE
   )
 })
@@ -3710,6 +3710,8 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   expect_identical(vapply(scenes,`[[`,character(1),"label"),
     c("fov · All ROIs (spatial)", "fov · A (spatial)",
       "fov · B (spatial)", "fov.2 · A (spatial)"))
+  expect_identical(vapply(scenes,`[[`,logical(1),"is_roi_overview"),
+    c(TRUE,FALSE,FALSE,FALSE))
   expect_length(scenes[[1]]$images,0)
   expect_equal(scenes[[2]]$x,structure(roi$x,class="AsIs"))
   expect_length(scenes[[3]]$images,0)
@@ -3717,6 +3719,7 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   one$availableSpatial <- function() "fov.2"
   single_space <- cv_env$cv_build_spatial(one,cells)
   expect_identical(single_space$name,"fov.2")
+  expect_false(single_space$is_roi_overview)
   expect_identical(single_space$label,"fov.2 · A (spatial)")
   # Multiple matching images keep declaration order, independent of labels.
   cv_env$Cerebro.options$spatial_images$ds$fov.2 <- list(Zebra=image,Alpha=image)

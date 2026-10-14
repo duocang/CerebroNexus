@@ -472,7 +472,7 @@ test_that("Viewer resolves scatter defaults for the selected dataset", {
   )
   expect_identical(
     runtime$viewerScatterDefaults(options, "Xenium", "expression"),
-    list(point_size = 2, point_opacity = 1, percentage_cells_to_show = 100)
+    list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
   )
   expect_identical(
     runtime$viewerScatterDefaults(options, "Missing", "expression"),
@@ -547,6 +547,10 @@ test_that("createShinyApp freezes compact dataset information", {
       date = "2026-09-17",
       immune_repertoire = FALSE,
       tcr_repertoire = FALSE,
+      projection_names = character(),
+      overview = list(version = 2L, description = NULL, source = NULL,
+        experiment = NULL, genes = NULL, samples = NULL, spatial = character(),
+        projections = character(), sample = NULL, annotations = list()),
       capabilities = list(
         marker_genes = FALSE,
         most_expressed_genes = FALSE,

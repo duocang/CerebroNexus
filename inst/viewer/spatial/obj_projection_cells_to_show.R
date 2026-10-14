@@ -1,13 +1,22 @@
 ##----------------------------------------------------------------------------##
 ## Indices of cells to show in projection.
 ##----------------------------------------------------------------------------##
-spatial_projection_cell_index <- reactive({
+## A change in colour/point appearance must not draw a new random sample.
+spatial_projection_sampling <- reactiveVal(NULL)
+observe({
   controls <- spatial_projection_controls()
+  req(controls)
+  sampling <- controls[c("projection", "percentage_cells_to_show")]
+  if (!identical(isolate(spatial_projection_sampling()), sampling)) {
+    spatial_projection_sampling(sampling)
+  }
+}, priority = 950)
+
+spatial_projection_cell_index <- reactive({
+  controls <- spatial_projection_sampling()
   req(controls)
   spatial_name <- controls$projection
   req(spatial_name %in% availableSpatial())
-  parameters <- spatial_projection_parameters_plot()
-  req(identical(parameters[["projection"]], spatial_name))
   coordinates <- viewerSpatialCoordinates(spatial_name)
   req(coordinates)
   spatial_cells <- rownames(coordinates)
@@ -45,7 +54,7 @@ spatial_projection_cell_index <- reactive({
 })
 
 spatial_projection_cells_to_show <- reactive({
-  controls <- spatial_projection_controls()
+  controls <- spatial_projection_sampling()
   req(controls, controls$percentage_cells_to_show)
   groups <- getGroups()
   filters <- stats::setNames(

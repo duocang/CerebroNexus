@@ -130,33 +130,10 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
   )
 })
 
-observeEvent(
-  input[["trajectory_point_size"]],
-  {
-    trajectory_update_appearance("point_size", input[["trajectory_point_size"]])
-  },
-  ignoreNULL = TRUE
-)
-observeEvent(
-  input[["trajectory_point_opacity"]],
-  {
-    trajectory_update_appearance(
-      "point_opacity",
-      input[["trajectory_point_opacity"]]
-    )
-  },
-  ignoreNULL = TRUE
-)
-observeEvent(
-  input[["trajectory_percentage_cells_to_show"]],
-  {
-    trajectory_update_appearance(
-      "percentage_cells_to_show",
-      input[["trajectory_percentage_cells_to_show"]]
-    )
-  },
-  ignoreNULL = TRUE
-)
+observe({
+  appearance <- current_scatter_defaults()
+  for (field in names(appearance)) trajectory_update_appearance(field, appearance[[field]])
+})
 observeEvent(
   input[["trajectory_projection_point_border"]],
   {

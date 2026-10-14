@@ -463,8 +463,8 @@ builder_e2e_run_generated_app <- function(
           "document.getElementById('expression_genes_input') !== null && ",
           "document.getElementById('expression_projection_to_display') !== null && ",
           "document.getElementById('expression_feedback') && ",
-          "document.getElementById('expression_feedback').textContent === ",
-          "'Showing: No gene selected'"
+          "document.getElementById('expression_feedback').hidden && ",
+          "window.cerebroCellViews?.summary('expression_projection').ready"
         ),
         timeout = 60000
       )
@@ -487,9 +487,9 @@ builder_e2e_run_generated_app <- function(
           "var feedback = document.getElementById('expression_feedback');",
           "return !!(canvas && canvas.width > 0 && canvas.height > 0 && ",
           "Number(canvas.dataset.pointCount) > 0 && feedback && ",
-          "feedback.textContent === ",
-          jsonlite::toJSON(paste0("Showing: ", gene), auto_unbox = TRUE),
-          " && ",
+          "feedback.hidden && host.innerText.includes(",
+          jsonlite::toJSON(gene, auto_unbox = TRUE),
+          ") && ",
           "!feedback.classList.contains('is-pending'));",
           "})()"
         ),

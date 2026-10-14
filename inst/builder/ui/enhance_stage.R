@@ -163,8 +163,7 @@ builder_enhance_model <- function(
     controls[c("point_opacity", "point_size")] <-
       active_roi_settings[c("point_opacity", "point_size")]
   }
-  controls$cell_percentage <- settings$overview_percentage_cells_to_show %||%
-    builder_default_percentage_cells_to_show(profile$n_cells)
+  controls$cell_percentage <- settings$spatial_percentage_cells_to_show %||% 100
   ranges <- builder_alignment_control_ranges(active_image_record)
   controls$dx_min <- ranges$dx$min
   controls$dx_max <- ranges$dx$max
@@ -738,7 +737,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                       "point_size",
                       "Size",
                       1,
-                      12,
+                      20,
                       controls$point_size %||% 5,
                       1
                     ),
@@ -748,7 +747,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                       "Cells shown (%)",
                       10,
                       100,
-                      controls$cell_percentage %||% 20,
+                      controls$cell_percentage %||% 100,
                       1
                     ),
                     div(

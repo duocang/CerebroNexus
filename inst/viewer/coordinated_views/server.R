@@ -1739,6 +1739,7 @@ output[["coordviews_image_ui"]] <- renderUI({
       tags$input(
         type = "range",
         id = id,
+        `aria-label` = label,
         min = mn,
         max = mx,
         value = val,
@@ -1797,12 +1798,12 @@ output[["coordviews_image_ui"]] <- renderUI({
     ),
     div(
       class = "cv-img-ctl",
-      tags$label(`for` = "cv-img-offx-number", "Move X"),
+      tags$label(`for` = "cv-img-offx-number", "Horizontal"),
       rng("cv-img-offx", "Move X", -sx, sx, pr$offsetX %||% 0, "any")
     ),
     div(
       class = "cv-img-ctl",
-      tags$label(`for` = "cv-img-offy-number", "Move Y"),
+      tags$label(`for` = "cv-img-offy-number", "Vertical"),
       rng("cv-img-offy", "Move Y", -sy, sy, pr$offsetY %||% 0, "any")
     ),
     ## Two scales, not one. A preset can carry scaleX != scaleY -- a calibration
@@ -1836,7 +1837,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     ),
     div(
       class = "cv-img-ctl",
-      tags$label(`for` = "cv-img-rotate-number", "Rotate"),
+      tags$label(`for` = "cv-img-rotate-number", "Rotation"),
       rng(
         "cv-img-rotate",
         "Rotate",
@@ -1848,14 +1849,14 @@ output[["coordviews_image_ui"]] <- renderUI({
     ),
     div(
       class = "cv-img-checks",
-      chk("cv-img-show", "Show", TRUE),
+      chk("cv-img-show", "Show this image", TRUE),
       chk(
         "cv-img-lock",
-        "Lock aspect",
+        "Lock aspect ratio",
         isTRUE(is.null(pr$scaleY) || identical(pr$scaleY, pr$scaleX))
       ),
-      chk("cv-img-flipx", "Flip X", isTRUE(pr$flipX)),
-      chk("cv-img-flipy", "Flip Y", isTRUE(pr$flipY))
+      chk("cv-img-flipx", "Flip horizontally", isTRUE(pr$flipX)),
+      chk("cv-img-flipy", "Flip vertically", isTRUE(pr$flipY))
     ),
     ## Alignment is fiddly and easy to lose; the preset is the state the data set
     ## shipped with, so there has to be a way back to it that is not "reload".

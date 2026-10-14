@@ -39,7 +39,10 @@ createShinyApp(
   dataset_labels = NULL,
   initial_dataset = NULL,
   initial_page = NULL,
-  initial_projections = NULL
+  initial_projections = NULL,
+  spatial_point_appearance = NULL,
+  spatial_roi_settings = NULL,
+  spatial_percentage_cells_to_show = 100
 )
 }
 \arguments{
@@ -116,16 +119,32 @@ after restoration.}
 
 \item{point_size}{Point size from 1 through 20. Supply one number for every
 dataset, or a named numeric vector/list whose names exactly match
-\code{cerebro_data}. The value initializes every cell scatter view.}
+\code{cerebro_data}. Applies across ordinary projection views, including
+Gene expression and Linked views; Spatial is configured independently.}
 
 \item{point_opacity}{Point opacity from 0.1 through 1. Supply one number for
 every dataset, or a named numeric vector/list whose names exactly match
-\code{cerebro_data}. The value initializes every cell scatter view.}
+\code{cerebro_data}. Applies across ordinary projection views, including
+Gene expression and Linked views; Spatial is configured independently.}
 
 \item{percentage_cells_to_show}{Percentage of cells from 10 through 100.
 Supply one number for every dataset, or a named numeric vector/list whose
 names exactly match \code{cerebro_data}. The value initializes every cell
-scatter view; subsequent UI changes remain page-local.}
+projection view. Viewer edits are shared by projection pages for the current
+dataset; Spatial uses its own coordinate settings.}
+
+\item{spatial_point_appearance}{Optional named list in
+\code{dataset -> FOV -> list(point_size, point_opacity)} form. Point size
+is from 1 to 20 and opacity from 0 to 1. Used by Spatial and spatial panels
+in Linked views, independently of projection appearance.}
+
+\item{spatial_roi_settings}{Optional named list in
+\code{dataset -> FOV -> ROI -> list(rotation_degrees, point_size, point_opacity)}
+form, matching Builder Coordinate settings. Rotation is a Viewer rotation
+after any coordinate transform baked into the exported CRB.}
+
+\item{spatial_percentage_cells_to_show}{Independent spatial sampling percentage
+from 10 to 100; one number or a numeric vector named by dataset. Defaults to 100.}
 
 \item{variable_to_compare}{Forwarded to \code{Cerebro.options}.}
 

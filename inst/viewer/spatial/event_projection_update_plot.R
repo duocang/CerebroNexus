@@ -39,9 +39,13 @@ observe({
     viewerDatasetContextEqual(data$dataset_context, current_context)
   )
 
-  withProgress(message = 'Updating spatial plot...', value = 0.5, {
+  if (dataset_changed || render_requested) {
+    withProgress(message = 'Updating spatial plot...', value = 0.5, {
+      isolate(spatial_projection_update_plot(data))
+    })
+  } else {
     isolate(spatial_projection_update_plot(data))
-  })
+  }
   spatial_projection_render_context(viewerDatasetContextToken(current_context))
   spatial_projection_render_request_seen(request_nonce)
 })

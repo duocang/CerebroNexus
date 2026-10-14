@@ -1118,6 +1118,20 @@ dedent <- function(string) {
   }
   experiment <- object$getExperiment()
   metadata <- object$getMetaData()
+  overview_helpers <- new.env(parent = baseenv())
+  sys.source(.cerebroPackageResource("viewer", "core", "dataset_overview.R"), overview_helpers)
+  overview <- overview_helpers$viewerDatasetOverview(object)
+  # Thin CRBs omit expression. Read only the external matrix dimensions here.
+  if (is.null(overview$genes)) {
+    overview["genes"] <- list(tryCatch({
+      descriptor <- .readBundleBackend(path, object)
+      if (descriptor$type == "bpcells" && requireNamespace("BPCells", quietly = TRUE)) {
+        as.integer(nrow(BPCells::open_matrix_dir(.cerebroSidecar(path, descriptor))))
+      } else if (descriptor$type == "h5" && requireNamespace("HDF5Array", quietly = TRUE)) {
+        as.integer(ncol(HDF5Array::TENxMatrix(.cerebroSidecar(path, descriptor), group = "expression")))
+      } else NULL
+    }, error = function(error) NULL))
+  }
   backend <- tryCatch(object$immune_repertoire_backend, error = function(e) {
     NULL
   })
@@ -1148,6 +1162,8 @@ dedent <- function(string) {
     date = .datasetInfoScalar(experiment$date_of_export),
     immune_repertoire = immune_repertoire,
     tcr_repertoire = tcr_repertoire,
+    projection_names = as.character(object$availableProjections()),
+    overview = overview,
     capabilities = .viewerDatasetCapabilities(object)
   )
 }
@@ -2626,14 +2642,27 @@ dedent <- function(string) {
 #' @param welcome_message Welcome message shown in the Load Data tab.
 #' @param point_size Point size from 1 through 20. Supply one number for every
 #'   dataset, or a named numeric vector/list whose names exactly match
-#'   \code{cerebro_data}. The value initializes every cell scatter view.
+#'   \code{cerebro_data}. Applies across ordinary projection views, including
+#'   Gene expression and Linked views; Spatial is configured independently.
 #' @param point_opacity Point opacity from 0.1 through 1. Supply one number for
 #'   every dataset, or a named numeric vector/list whose names exactly match
-#'   \code{cerebro_data}. The value initializes every cell scatter view.
+#'   \code{cerebro_data}. Applies across ordinary projection views, including
+#'   Gene expression and Linked views; Spatial is configured independently.
 #' @param percentage_cells_to_show Percentage of cells from 10 through 100.
 #'   Supply one number for every dataset, or a named numeric vector/list whose
 #'   names exactly match \code{cerebro_data}. The value initializes every cell
-#'   scatter view; subsequent UI changes remain page-local.
+#'   projection view. Viewer edits are shared by projection pages for the current
+#'   dataset; Spatial uses its own coordinate settings.
+#' @param spatial_point_appearance Optional named list in
+#'   \code{dataset -> FOV -> list(point_size, point_opacity)} form. Point size
+#'   is from 1 to 20 and opacity from 0 to 1. Used by Spatial and spatial panels
+#'   in Linked views, independently of projection appearance.
+#' @param spatial_roi_settings Optional named list in
+#'   \code{dataset -> FOV -> ROI -> list(rotation_degrees, point_size, point_opacity)}
+#'   form, matching Builder Coordinate settings. Rotation is a Viewer rotation
+#'   after any coordinate transform baked into the exported CRB.
+#' @param spatial_percentage_cells_to_show Independent spatial sampling percentage
+#'   from 10 to 100; one number or a numeric vector named by dataset. Defaults to 100.
 #' @param variable_to_compare Forwarded to \code{Cerebro.options}.
 #' @param spatial_images Optional nested external-image manifest in
 #'   \code{dataset -> spatial entry -> image label -> path} form. Dataset names
@@ -2742,7 +2771,10 @@ createShinyApp <- function(
   dataset_labels = NULL,
   initial_dataset = NULL,
   initial_page = NULL,
-  initial_projections = NULL
+  initial_projections = NULL,
+  spatial_point_appearance = NULL,
+  spatial_roi_settings = NULL,
+  spatial_percentage_cells_to_show = 100
 ) {
   # Validate inputs ----------------------------------------------------------##
   if (is.list(cerebro_data)) {
@@ -3192,6 +3224,13 @@ createShinyApp <- function(
     names(spatial_backends) <- names(cerebro_data)
   }
   spatial_catalogs <- preflight_data$spatial_catalogs
+  spatial_point_appearance <- .normalizeAppSpatialPointSettings(
+    spatial_point_appearance, spatial_catalogs, roi = FALSE)
+  spatial_roi_settings <- .normalizeAppSpatialPointSettings(
+    spatial_roi_settings, spatial_catalogs, roi = TRUE)
+  spatial_percentage_cells_to_show <- .normalizeDatasetNumericOption(
+    spatial_percentage_cells_to_show, names(cerebro_data),
+    "spatial_percentage_cells_to_show", 10, 100)
   spatial_plot_rotation <- .normalizeAppSpatialPlotRotation(
     spatial_plot_rotation,
     spatial_catalogs
@@ -3740,6 +3779,17 @@ createShinyApp <- function(
   if (!is.null(initial_page)) {
     cerebro_options[["initial_page"]] <- initial_page
   }
+  # Drop obsolete per-page overrides so generated apps have a single source.
+  for (field in c("point_size", "point_opacity", "percentage_cells_to_show")) {
+    cerebro_options[[paste0("expression_", field)]] <- NULL
+  }
+  for (field in c("spatial_point_appearance", "spatial_roi_settings")) {
+    values <- get(field)
+    for (dataset in names(values)) {
+      cerebro_options$viewer_content[[dataset]][[field]] <- values[[dataset]]
+    }
+  }
+  cerebro_options[["spatial_percentage_cells_to_show"]] <- spatial_percentage_cells_to_show
   cerebro_options[["point_size"]] <- point_size
   cerebro_options[["point_opacity"]] <- point_opacity
   cerebro_options[["percentage_cells_to_show"]] <- percentage_cells_to_show

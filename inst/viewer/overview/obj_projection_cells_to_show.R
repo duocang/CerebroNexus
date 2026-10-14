@@ -2,10 +2,7 @@
 ## Indices of cells to show in projection.
 ##----------------------------------------------------------------------------##
 overview_projection_cells_to_show <- reactive({
-  percentage <- input[["overview_projection_percentage_cells_to_show"]]
-  if (is.null(percentage)) {
-    percentage <- current_scatter_defaults()$percentage_cells_to_show
-  }
+  percentage <- current_scatter_percentage()
   viewerProjectionCellIndices(
     "overview_projection",
     metadata = viewerProjectionFirstFrameMetadata(),
