@@ -5340,7 +5340,7 @@ cerebroSelectedCellsPlotInfo <- function() {
   list(
     title = "Plot of selected cells",
     text = shiny::p(
-      "Depending on the variable selected to colour cells in the dimensional reduction, this plot will show different things. If you select a categorical variable, e.g. 'sample' or 'cluster', you will get a bar plot showing which groups the cells selected with the box or lasso tool come from. Instead, if you select a continuous variable, e.g. the number of transcripts (nUMI), you will see a violin/box plot showing the distribution of that variable in the selected vs. non-selected cells."
+      "For categorical colours, bars show the groups in the selected cells. For continuous colours, violin/box plots compare selected and unselected cells."
     )
   )
 }
@@ -5564,16 +5564,29 @@ cerebroProjectionInfo <- function() {
   )
 }
 
-registerCellViewPointBorder <- function(output, prefix) {
+registerCellViewPointBorder <- function(
+  output,
+  prefix,
+  defaults = function() list(draw_border = FALSE, keep_square = FALSE)
+) {
   output_id <- paste0(prefix, "_point_border_UI")
   output[[output_id]] <- shiny::renderUI({
     shiny::checkboxInput(
       inputId = paste0(prefix, "_point_border"),
       label = "Draw border around cells",
-      value = FALSE
+      value = defaults()$draw_border
     )
   })
   shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
+  square_id <- paste0(prefix, "_keep_square_UI")
+  output[[square_id]] <- shiny::renderUI({
+    shiny::checkboxInput(
+      inputId = paste0(prefix, "_keep_square"),
+      label = "Keep plots square",
+      value = defaults()$keep_square
+    )
+  })
+  shiny::outputOptions(output, square_id, suspendWhenHidden = FALSE)
 }
 
 cerebroResultTableControls <- function(prefix, results_df, grouped) {

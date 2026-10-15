@@ -225,7 +225,10 @@ server <- function(input, output, session) {
   if (!is.null(initial_tab) && !initial_tab %in% conditional_tabs) {
     session$onFlushed(
       function() {
-        updateTabItems(session, "sidebar", selected = initial_tab)
+        session$sendCustomMessage(
+          "cerebro_initial_page",
+          list(selected = initial_tab)
+        )
         initial_page_applied(TRUE)
       },
       once = TRUE
@@ -342,6 +345,14 @@ server <- function(input, output, session) {
       viewer_requested_dataset_context()$dataset_key
     )
   })
+
+  current_page_display_defaults <- function(page) {
+    viewerPageDisplayDefaults(
+      Cerebro.options,
+      viewer_requested_dataset_context()$dataset_key,
+      page
+    )
+  }
 
   current_expression_scatter_defaults <- reactive({
     viewerScatterDefaults(
@@ -1770,7 +1781,10 @@ server <- function(input, output, session) {
       if (!is.null(decision)) {
         initial_page_applied(decision$applied)
         if (!is.null(decision$selected)) {
-          updateTabItems(session, "sidebar", selected = decision$selected)
+          session$sendCustomMessage(
+            "cerebro_initial_page",
+            list(selected = decision$selected)
+          )
         }
       }
     })

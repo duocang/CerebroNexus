@@ -594,11 +594,16 @@ observe(
     show_all <- ir_param("ir_p_umap_show_all", TRUE)
     req(receptor, projection)
     group_labels <- input[["ir_clonalUMAP_group_labels"]]
+    display <- current_page_display_defaults("ir")
     if (is.null(group_labels)) {
-      group_labels <- TRUE
+      group_labels <- display$group_labels
     }
-    point_border <- isTRUE(input[["ir_clonalUMAP_point_border"]])
-    keep_square <- isTRUE(input[["ir_clonalUMAP_keep_square"]])
+    point_border <- isTRUE(
+      input[["ir_clonalUMAP_point_border"]] %||% display$draw_border
+    )
+    keep_square <- isTRUE(
+      input[["ir_clonalUMAP_keep_square"]] %||% display$keep_square
+    )
     clone_call <- "gene"
     show_all <- isTRUE(show_all)
     cells <- ir_umap_cells_to_show()
@@ -961,7 +966,7 @@ output$ir_ui_pairedScatter <- renderUI({
   if (length(groups) < 2) {
     return(div(
       class = "alert alert-info",
-      "Paired scatter requires at least two groups to compare. Use Compare by to choose a metadata column with multiple levels."
+      "Paired scatter needs at least two groups. Choose a multi-group column in Compare by."
     ))
   }
   meta <- ir_sample_meta()

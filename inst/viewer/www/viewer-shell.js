@@ -24,6 +24,40 @@
     }
   }
 
+  // A first server flush (or a conditional page becoming available) can arrive
+  // after the reader has already navigated. Author defaults must not undo that
+  // choice. Record intent in the browser, including clicks before Shiny connects.
+  function installInitialNavigation() {
+    var navigated = false;
+    var installed = false;
+    document.addEventListener("click", function (event) {
+      var target = event.target;
+      if (target && target.closest &&
+          target.closest('.main-sidebar a[data-toggle="tab"]')) {
+        navigated = true;
+      }
+    }, true);
+    function install() {
+      if (installed || !window.Shiny || !window.Shiny.addCustomMessageHandler) return;
+      installed = true;
+      window.Shiny.addCustomMessageHandler("cerebro_initial_page", function (message) {
+        if (navigated || !message || typeof message.selected !== "string") return;
+        var links = document.querySelectorAll('.main-sidebar a[data-toggle="tab"]');
+        for (var i = 0; i < links.length; i++) {
+          if (links[i].getAttribute("data-value") === message.selected) {
+            window.jQuery(links[i]).tab("show");
+            break;
+          }
+        }
+      });
+    }
+    if (window.jQuery) {
+      window.jQuery(document).on("shiny:connected.cerebroInitialNavigation", install);
+    }
+    install();
+  }
+  ready(installInitialNavigation);
+
   ready(function () {
     var body = document.body;
     var sidebar = document.querySelector(".main-sidebar");

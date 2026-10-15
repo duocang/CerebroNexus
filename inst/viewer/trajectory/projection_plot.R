@@ -231,9 +231,10 @@ observeEvent(
     trajectory_projection_appearance$point_opacity <- appearance$point_opacity
     trajectory_projection_appearance$percentage_cells_to_show <-
       appearance$percentage_cells_to_show
-    trajectory_projection_appearance$group_labels <- TRUE
-    trajectory_projection_appearance$draw_border <- TRUE
-    trajectory_projection_appearance$keep_square <- FALSE
+    display <- current_page_display_defaults("trajectory")
+    trajectory_projection_appearance$group_labels <- display$group_labels
+    trajectory_projection_appearance$draw_border <- display$draw_border
+    trajectory_projection_appearance$keep_square <- display$keep_square
     trajectory_projection_sent(FALSE)
   },
   ignoreInit = TRUE
@@ -484,7 +485,7 @@ cerebroRegisterInfo(
 trajectory_projection_info <- list(
   title = "Trajectory",
   text = p(
-    "This plot shows cells projected into trajectory space, coloured by the specified meta info, e.g. sample or cluster. The path of the trajectory is shown as a black line. Specific to this analysis, every cell has a 'pseudotime' and a transcriptional 'state' which corresponds to its position along the trajectory path."
+    "Cells are coloured by the selected metadata. The black line shows the trajectory; pseudotime and state describe each cell's position along it."
   )
 )
 

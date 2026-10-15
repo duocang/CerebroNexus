@@ -214,21 +214,18 @@
   }
 
   function prepareCanvasSemantics(p) {
-    var ids = (p.canvas.getAttribute('aria-describedby') || '').trim().split(/\s+/)
-      .filter(Boolean);
-    var description = null;
-    ids.some(function (id) {
-      description = document.getElementById(id);
-      return !!description;
-    });
+    // Cloned panels inherit the original canvas' attributes. A description
+    // belongs to this canvas, never to the panel it was cloned from.
+    var descriptionId = p.canvas.id.replace(/^cv-cv-/, 'cv-description-');
+    var description = document.getElementById(descriptionId);
+    if (description && description.parentNode !== p.canvas.parentNode) description = null;
     if (!description) {
       description = document.createElement('span');
-      description.id = p.canvas.id + '-description';
+      description.id = descriptionId;
       description.className = 'sr-only';
       p.canvas.parentNode.insertBefore(description, p.canvas.nextSibling);
-      ids.push(description.id);
-      p.canvas.setAttribute('aria-describedby', ids.join(' '));
     }
+    p.canvas.setAttribute('aria-describedby', descriptionId);
     p.description = description;
     if (p.mini) p.mini.setAttribute('aria-hidden', 'true');
     updateCanvasDescription(p);
@@ -1509,7 +1506,11 @@
     if (!SX || !SY) return;
     c.save();
     c.globalAlpha = 1;
-    c.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+    var authorDisplay = D.display_defaults || {};
+    var labelSize = Math.max(8, Math.min(24, Number(authorDisplay.label_size) || 11));
+    var labelFamily = ['Arial', 'Georgia'].indexOf(authorDisplay.font_family) >= 0
+      ? authorDisplay.font_family : 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    c.font = '600 ' + labelSize + 'px ' + labelFamily;
     c.textAlign = 'center'; c.textBaseline = 'middle';
     var u3 = spaceById[p.spaceId] && spaceById[p.spaceId]._unit;
     var rot = (u3 && u3.nz) ? p.rot : null;
@@ -1529,8 +1530,12 @@
       if (x < ox || x > ox + SX || y < oy || y > oy + SY) return;
       var t = o.text.length > 18 ? o.text.slice(0, 17) + '…' : o.text;
       var w = c.measureText(t).width;
+      // Keep larger author-selected labels inside the canvas at cluster edges.
+      x = Math.max(w / 2 + 6, Math.min(p.W - w / 2 - 6, x));
+      y = Math.max((labelSize + 5) / 2 + 2,
+        Math.min(p.H - (labelSize + 5) / 2 - 2, y));
       c.fillStyle = 'rgba(255,255,255,.80)';
-      c.fillRect(x - w / 2 - 4, y - 8, w + 8, 16);
+      c.fillRect(x - w / 2 - 4, y - (labelSize + 5) / 2, w + 8, labelSize + 5);
       c.fillStyle = '#1c1c1e';
       c.fillText(t, x, y);
     });
@@ -9176,9 +9181,14 @@
     // can be re-sent after returning to the tab; that refresh must not discard
     // the user's shared override.
     if (dataChanged) {
-      labelsOn = true;
-      bordersOn = false;
-      keepPlotsSquare = false;
+      var authorDisplay = D.display_defaults || {};
+      labelsOn = authorDisplay.group_labels !== false;
+      bordersOn = authorDisplay.draw_border === true;
+      keepPlotsSquare = authorDisplay.keep_square === true;
+      colorClip = [0, 0.01, 0.02, 0.05].indexOf(authorDisplay.color_clip) >= 0
+        ? authorDisplay.color_clip : 0.01;
+      var clipControl = $('cv-clip');
+      if (clipControl) clipControl.value = String(colorClip);
       groupFilter = {};
       var labelsControl = $('cv-labels');
       if (labelsControl) labelsControl.checked = labelsOn;
