@@ -179,6 +179,9 @@ if (identical(command, "inspect")) {
     run_id = Sys.getenv("BENCH_RUN_ID"),
     profile = Sys.getenv("BENCH_PROFILE", "quick"),
     generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+    timing_contract = "monotonic-v1",
+    elapsed_clock = "CLOCK_MONOTONIC",
+    clock_resolution_secs = as.character(bench_clock()[["resolution"]]),
     git_sha = git_value("rev-parse", "HEAD"),
     git_branch = git_value("branch", "--show-current"),
     git_dirty = if (nzchar(status)) "true" else "false",
@@ -352,7 +355,11 @@ if (identical(command, "inspect")) {
   # Keep tier-level rows for the streaming backends and record embedded limits
   # separately so a skipped embedded build does not suppress H5/BPCells.
   embedded <- bench_assess_resources(
-    inventory, planned, memory_mb, memory_mb, disk_free
+    inventory,
+    planned,
+    memory_mb,
+    memory_mb,
+    disk_free
   )
   assessment$embedded_peak_mb <- embedded$estimated_peak_mb
   assessment$embedded_safe <- embedded$safe
@@ -670,8 +677,11 @@ if (identical(command, "inspect")) {
 
   fail <- function(stage, e) {
     row$status <- sprintf("FAILED(%s): %s", stage, conditionMessage(e))
-    if (identical(row$profile, "scale") && identical(backend, "embedded") &&
-        bench_resource_limit(e)) {
+    if (
+      identical(row$profile, "scale") &&
+        identical(backend, "embedded") &&
+        bench_resource_limit(e)
+    ) {
       row$status <- paste0("SKIPPED(resource): ", conditionMessage(e))
     }
     bench_append_row(result, row)
@@ -681,14 +691,28 @@ if (identical(command, "inspect")) {
 
   gc(reset = TRUE)
   if (identical(row$profile, "scale") && identical(backend, "embedded")) {
-    assessment <- utils::read.csv(file.path(scratch, "result", "resource_check.csv"))
-    tier <- assessment[assessment$source == src_name & assessment$n_cells == n_cells, , drop = FALSE]
-    if (nrow(tier) != 1L || !all(c("embedded_safe", "embedded_reason") %in% names(tier)) ||
-        is.na(tier$embedded_safe)) {
+    assessment <- utils::read.csv(file.path(
+      scratch,
+      "result",
+      "resource_check.csv"
+    ))
+    tier <- assessment[
+      assessment$source == src_name & assessment$n_cells == n_cells,
+      ,
+      drop = FALSE
+    ]
+    if (
+      nrow(tier) != 1L ||
+        !all(c("embedded_safe", "embedded_reason") %in% names(tier)) ||
+        is.na(tier$embedded_safe)
+    ) {
       stop("missing embedded resource assessment", call. = FALSE)
     }
     if (!tier$embedded_safe) {
-      row$status <- paste0("SKIPPED(resource): preflight: ", tier$embedded_reason)
+      row$status <- paste0(
+        "SKIPPED(resource): preflight: ",
+        tier$embedded_reason
+      )
       row$nnz <- tier$estimated_nnz
       bench_append_row(result, row)
       bench_msg("%s / %.0f cells / embedded: %s", src_name, n_cells, row$status)
@@ -698,8 +722,15 @@ if (identical(command, "inspect")) {
     # source-wide average and may underestimate an unusually dense prefix.
     exact_plan <- readRDS(query_plan_path)
     exact_peak_mb <- 1024 + exact_plan$nnz * 64 / 2^20
-    if (exact_peak_mb > tier$memory_budget_mb || exact_plan$nnz > .Machine$integer.max) {
-      row$status <- sprintf("SKIPPED(resource): source-tier estimate %.0f MiB exceeds budget %.0f MiB or sparse-index limit", exact_peak_mb, tier$memory_budget_mb)
+    if (
+      exact_peak_mb > tier$memory_budget_mb ||
+        exact_plan$nnz > .Machine$integer.max
+    ) {
+      row$status <- sprintf(
+        "SKIPPED(resource): source-tier estimate %.0f MiB exceeds budget %.0f MiB or sparse-index limit",
+        exact_peak_mb,
+        tier$memory_budget_mb
+      )
       row$nnz <- exact_plan$nnz
       row$query_plan_fingerprint <- exact_plan$query_plan_fingerprint
       bench_append_row(result, row)
@@ -990,6 +1021,7 @@ if (identical(command, "inspect")) {
     rss_mb = NA_real_,
     peak_rss_mb = NA_real_,
     access_contract = "materialized-v2",
+    timing_contract = "monotonic-v1",
     first_query_secs = NA_real_,
     hot_p50_secs = NA_real_,
     hot_p95_secs = NA_real_,
@@ -1018,15 +1050,43 @@ if (identical(command, "inspect")) {
     quit(status = 0)
   }
 
+  timing_state <- new.env(parent = emptyenv())
+  timing_state$sequence <- 0L
+  record_timing <- function(timing) {
+    timing_state$sequence <- timing_state$sequence + 1L
+    timing <- cbind(
+      row[c(
+        "run_id",
+        "source",
+        "n_cells",
+        "backend",
+        "export_repeat",
+        "access_repeat"
+      )],
+      sequence = timing_state$sequence,
+      timing
+    )
+    bench_append_row(
+      file.path(dirname(result), "21_access_timings.csv"),
+      timing
+    )
+  }
+
   obj <- NULL
   query_plan <- tryCatch(
     readRDS(query_plan_path),
     error = function(e) fail("query plan", e)
   )
-  row$startup_secs <- tryCatch(
-    bench_time(obj <- readCerebro(crb)),
+  startup <- tryCatch(
+    bench_timed(
+      function() readCerebro(crb),
+      record = record_timing,
+      phase = "startup"
+    ),
     error = function(e) fail("startup", e)
   )
+  obj <- startup$value
+  row$startup_secs <- startup$seconds
   row$rss_mb <- bench_rss_mb()
 
   metrics <- tryCatch(
@@ -1036,7 +1096,8 @@ if (identical(command, "inspect")) {
       hot_iterations = bench_profile(Sys.getenv(
         "BENCH_PROFILE",
         "quick"
-      ))$hot_iterations
+      ))$hot_iterations,
+      record = record_timing
     ),
     error = function(e) fail("correctness/access", e)
   )
@@ -1114,15 +1175,32 @@ if (identical(command, "inspect")) {
   bench_require_safe_plan(resource_check)
 
   if (identical(Sys.getenv("BENCH_PROFILE"), "scale")) {
-    if (!all(c("embedded_safe", "embedded_reason") %in% names(resource_check)) ||
-        anyNA(resource_check$embedded_safe)) {
+    if (
+      !all(c("embedded_safe", "embedded_reason") %in% names(resource_check)) ||
+        anyNA(resource_check$embedded_safe)
+    ) {
       stop("scale results require embedded resource assessments", call. = FALSE)
     }
     embedded_rows <- exports[exports$backend == "embedded", , drop = FALSE]
-    checks <- resource_check[match(tier_key(embedded_rows$source, embedded_rows$n_cells), resource_keys), , drop = FALSE]
-    expected_skip <- paste0("SKIPPED(resource): preflight: ", checks$embedded_reason)
-    if (any(!checks$embedded_safe & embedded_rows$status != expected_skip) ||
-        any(checks$embedded_safe & grepl("^SKIPPED\\(resource\\): preflight:", embedded_rows$status))) {
+    checks <- resource_check[
+      match(
+        tier_key(embedded_rows$source, embedded_rows$n_cells),
+        resource_keys
+      ),
+      ,
+      drop = FALSE
+    ]
+    expected_skip <- paste0(
+      "SKIPPED(resource): preflight: ",
+      checks$embedded_reason
+    )
+    if (
+      any(!checks$embedded_safe & embedded_rows$status != expected_skip) ||
+        any(
+          checks$embedded_safe &
+            grepl("^SKIPPED\\(resource\\): preflight:", embedded_rows$status)
+        )
+    ) {
       stop("embedded outcomes do not match resource preflight", call. = FALSE)
     }
   }
@@ -1358,6 +1436,14 @@ if (identical(command, "inspect")) {
     )
   }
 
+  if (!identical(manifest_values[["timing_contract"]], "monotonic-v1")) {
+    stop("new publication requires a monotonic-v1 rerun", call. = FALSE)
+  }
+  bench_validate_timing_evidence(
+    exports,
+    access,
+    read_required("21_access_timings.csv")
+  )
   bench_validate_results(schedule, exports, access, crashes, profile)
   message(
     sprintf(
@@ -1381,7 +1467,14 @@ if (identical(command, "inspect")) {
   result_dir <- if (length(args) >= 1L) {
     normalizePath(args[1], mustWork = TRUE)
   } else {
-    bench_current_result_dir(file.path(here, "..", "..", "results", "expression-backends", "full"))
+    bench_current_result_dir(file.path(
+      here,
+      "..",
+      "..",
+      "results",
+      "expression-backends",
+      "full"
+    ))
   }
 
   read_if <- function(name) {
@@ -1588,8 +1681,14 @@ if (identical(command, "inspect")) {
       "## Runtime access",
       "",
       "Access counts describe fresh processes nested within independently built artifacts (two processes per build), not independent build replicates.",
-      if ("access_contract" %in% names(access) &&
-          all(!is.na(access$access_contract) & access$access_contract == "materialized-v2")) {
+      if (
+        "access_contract" %in%
+          names(access) &&
+          all(
+            !is.na(access$access_contract) &
+              access$access_contract == "materialized-v2"
+          )
+      ) {
         "Timing contract: materialized-v2. All timed results are materialized before the timer stops."
       } else {
         "Historical timing contract: lazy blocks may have been materialized after the timer stopped. These block timings cannot support a completed-read comparison."
@@ -1761,7 +1860,14 @@ if (identical(command, "inspect")) {
   result_dir <- if (length(args) >= 1L) {
     normalizePath(args[1], mustWork = TRUE)
   } else {
-    bench_current_result_dir(file.path(here, "..", "..", "results", "expression-backends", "full"))
+    bench_current_result_dir(file.path(
+      here,
+      "..",
+      "..",
+      "results",
+      "expression-backends",
+      "full"
+    ))
   }
   out_dir <- if (length(args) >= 2L) args[2] else "vignettes/img"
 
@@ -1786,10 +1892,17 @@ if (identical(command, "inspect")) {
     file.path(result_dir, "20_access.csv"),
     stringsAsFactors = FALSE
   )
-  if (!nrow(access) || !all(c("access_contract", "correctness", "status") %in% names(access)) ||
+  if (
+    !nrow(access) ||
+      !all(c("access_contract", "correctness", "status") %in% names(access)) ||
       !all(access$access_contract %in% "materialized-v2") ||
-      !all(access$correctness %in% "OK") || !all(access$status %in% "OK")) {
-    stop("figures require correct, freshly measured materialized-v2 access results", call. = FALSE)
+      !all(access$correctness %in% "OK") ||
+      !all(access$status %in% "OK")
+  ) {
+    stop(
+      "figures require correct, freshly measured materialized-v2 access results",
+      call. = FALSE
+    )
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1931,7 +2044,9 @@ if (identical(command, "inspect")) {
   }
   message("validated complete staged benchmark outputs")
 } else if (identical(command, "recover-publication")) {
-  if (length(command_args) != 1L) stop("need <result_root>", call. = FALSE)
+  if (length(command_args) != 1L) {
+    stop("need <result_root>", call. = FALSE)
+  }
   bench_recover_activation(command_args[[1L]])
 } else if (identical(command, "publish")) {
   # Publish a validated result directory without replacing prior runs.

@@ -1,4 +1,10 @@
-bench_protocol <- file.path("..", "benchmarks", "expression-backends", "scripts", "benchmark.R")
+bench_protocol <- file.path(
+  "..",
+  "benchmarks",
+  "expression-backends",
+  "scripts",
+  "benchmark.R"
+)
 bench_access_metrics <- bench_protocol
 
 skip_unless_bench_access <- function() {
@@ -195,11 +201,15 @@ test_that("lazy block reads are materialized before the timer stops", {
   plan <- bench_build_query_plan(m, n_genes = 2L)
   obj <- list(
     getExpressionRow = function(gene, cells = NULL) {
-      if (is.null(cells)) cells <- seq_len(ncol(m))
+      if (is.null(cells)) {
+        cells <- seq_len(ncol(m))
+      }
       as.numeric(m[gene, cells])
     },
     getExpressionBlock = function(genes, cells = NULL) {
-      if (is.null(cells)) cells <- seq_len(ncol(m))
+      if (is.null(cells)) {
+        cells <- seq_len(ncol(m))
+      }
       lazy[genes, cells, drop = FALSE]
     }
   )
@@ -208,11 +218,57 @@ test_that("lazy block reads are materialized before the timer stops", {
     value <- fn()
     expect_true(is.numeric(value))
     expect_false(inherits(value, "IterableMatrix"))
-    if (is.matrix(value)) block_reads <<- block_reads + 1L
+    if (is.matrix(value)) {
+      block_reads <<- block_reads + 1L
+    }
     list(seconds = 0.01, value = value)
   }
   result <- bench_measure_backend(obj, plan, 1L, timer)
   expect_equal(block_reads, 2L)
   expect_identical(result$access_contract, "materialized-v2")
   expect_identical(result$correctness, "OK")
+})
+
+
+test_that("monotonic timings survive wall-clock corrections and fail closed", {
+  skip_unless_bench_access()
+  source(bench_protocol, local = TRUE)
+  readings <- list(
+    c(monotonic = 10, wall = 100, resolution = 1e-9),
+    c(monotonic = 10.25, wall = 90, resolution = 1e-9)
+  )
+  index <- 0L
+  clock <- function() {
+    index <<- index + 1L
+    readings[[index]]
+  }
+  got <- bench_default_timer(function() 42, clock = clock)
+  expect_equal(got$seconds, 0.25)
+  expect_equal(got$value, 42)
+  expect_lt(got$timing$wall_end, got$timing$wall_start)
+  records <- list()
+  for (bad in c(-1, NA_real_, Inf, NaN)) {
+    expect_error(
+      bench_timed(
+        function() 42,
+        timer = function(fn) list(seconds = bad, value = fn()),
+        record = function(row) records[[length(records) + 1L]] <<- row
+      ),
+      "invalid elapsed time"
+    )
+  }
+  expect_length(records, 4L)
+})
+
+test_that("native monotonic clock measures actual waiting", {
+  skip_unless_bench_access()
+  source(bench_protocol, local = TRUE)
+  got <- bench_timed(function() {
+    Sys.sleep(0.02)
+    "done"
+  })
+  expect_equal(got$value, "done")
+  expect_gte(got$seconds, 0.015)
+  expect_identical(got$timing$clock, "CLOCK_MONOTONIC")
+  expect_gt(got$timing$resolution_secs, 0)
 })

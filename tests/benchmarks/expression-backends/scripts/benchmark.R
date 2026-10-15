@@ -409,6 +409,142 @@ bench_subset_cells <- function(n_cells, limit = 100000L) {
   )
 }
 
+bench_validate_timing_evidence <- function(exports, access, timings) {
+  check_seconds <- function(values) {
+    if (any(!is.finite(values) | values < 0)) {
+      stop("invalid elapsed time in benchmark evidence", call. = FALSE)
+    }
+  }
+  for (rows in list(exports, access)) {
+    for (column in grep("_secs$", names(rows), value = TRUE)) {
+      values <- rows[[column]]
+      # Shell serialization is not a separate operation in the small-tier path.
+      optional <- column %in% c("shell_secs", "serialize_secs")
+      check_seconds(values[
+        (!is.na(rows$status) & rows$status == "OK" & !optional) |
+          !is.na(values)
+      ])
+    }
+  }
+  if (
+    !"timing_contract" %in% names(access) ||
+      anyNA(access$timing_contract) ||
+      any(access$timing_contract != "monotonic-v1")
+  ) {
+    stop("new publication requires monotonic-v1 timing evidence", call. = FALSE)
+  }
+  ids <- c(
+    "run_id",
+    "source",
+    "n_cells",
+    "backend",
+    "export_repeat",
+    "access_repeat"
+  )
+  required <- c(
+    ids,
+    "sequence",
+    "phase",
+    "clock",
+    "resolution_secs",
+    "monotonic_start",
+    "monotonic_end",
+    "wall_start",
+    "wall_end",
+    "seconds"
+  )
+  if (
+    !all(required %in% names(timings)) ||
+      !nrow(timings) ||
+      !all(ids %in% names(access)) ||
+      anyNA(timings[required])
+  ) {
+    stop("incomplete raw timing evidence", call. = FALSE)
+  }
+  check_seconds(timings$seconds)
+  if (
+    any(timings$clock != "CLOCK_MONOTONIC") ||
+      any(
+        !is.finite(as.matrix(timings[c(
+          "monotonic_start",
+          "monotonic_end",
+          "wall_start",
+          "wall_end",
+          "resolution_secs"
+        )]))
+      ) ||
+      any(timings$resolution_secs <= 0) ||
+      any(timings$monotonic_end < timings$monotonic_start) ||
+      any(
+        abs(
+          timings$seconds - (timings$monotonic_end - timings$monotonic_start)
+        ) >
+          pmax(1e-6, 2 * timings$resolution_secs)
+      )
+  ) {
+    stop("invalid clock endpoints in raw timing evidence", call. = FALSE)
+  }
+  key <- function(rows) do.call(paste, c(rows[ids], sep = "\r"))
+  access_keys <- key(access)
+  timing_keys <- key(timings)
+  if (anyDuplicated(access_keys) || !setequal(access_keys, timing_keys)) {
+    stop("incomplete raw timing coverage", call. = FALSE)
+  }
+  single <- c(
+    startup = "startup_secs",
+    first = "first_query_secs",
+    block = "block_secs",
+    subset_row = "subset_row_secs",
+    subset_block = "subset_block_secs"
+  )
+  for (i in seq_len(nrow(access))) {
+    rows <- timings[timing_keys == access_keys[i], , drop = FALSE]
+    if (
+      !is.finite(access$n_hot[i]) ||
+        access$n_hot[i] < 1 ||
+        nrow(rows) != access$n_hot[i] + length(single) ||
+        !identical(as.integer(rows$sequence), seq_len(nrow(rows))) ||
+        any(!rows$phase %in% c(names(single), "hot")) ||
+        any(
+          vapply(names(single), function(x) sum(rows$phase == x), integer(1)) !=
+            1L
+        ) ||
+        sum(rows$phase == "hot") != access$n_hot[i]
+    ) {
+      stop("incomplete raw timing sequence", call. = FALSE)
+    }
+    observed <- c(
+      stats::setNames(
+        vapply(
+          names(single),
+          function(x) rows$seconds[rows$phase == x],
+          numeric(1)
+        ),
+        single
+      ),
+      hot_p50_secs = unname(stats::quantile(
+        rows$seconds[rows$phase == "hot"],
+        0.5
+      )),
+      hot_p95_secs = unname(stats::quantile(
+        rows$seconds[rows$phase == "hot"],
+        0.95
+      ))
+    )
+    if (
+      !all(names(observed) %in% names(access)) ||
+        !isTRUE(all.equal(
+          unname(observed),
+          as.numeric(access[i, names(observed)]),
+          tolerance = 1e-8
+        ))
+    ) {
+      stop("timing summary differs from raw observations", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
 bench_validate_results <- function(
   schedule,
   exports,
@@ -454,8 +590,12 @@ bench_validate_results <- function(
   }
   if (identical(profile$name, "scale")) {
     failed_embedded <- exports$backend == "embedded" & exports$status != "OK"
-    if (any(failed_embedded & !grepl("^SKIPPED\\(resource\\):", exports$status)) ||
-        length(crash_keys)) {
+    if (
+      any(
+        failed_embedded & !grepl("^SKIPPED\\(resource\\):", exports$status)
+      ) ||
+        length(crash_keys)
+    ) {
       stop("build failure is not a documented resource limit", call. = FALSE)
     }
   }
@@ -508,9 +648,14 @@ bench_validate_results <- function(
     ) {
       stop("access process failed", call. = FALSE)
     }
-    if (anyNA(access$access_contract) ||
-        any(access$access_contract != "materialized-v2")) {
-      stop("access results require the materialized-v2 timing contract", call. = FALSE)
+    if (
+      anyNA(access$access_contract) ||
+        any(access$access_contract != "materialized-v2")
+    ) {
+      stop(
+        "access results require the materialized-v2 timing contract",
+        call. = FALSE
+      )
     }
     mismatch <-
       checked_access$correctness != "OK" |
@@ -552,8 +697,11 @@ bench_validate_results <- function(
       )
     }
     repeats <- access$access_repeat[access_keys == key]
-    if (anyNA(repeats) || anyDuplicated(repeats) ||
-        !setequal(repeats, seq_len(wanted))) {
+    if (
+      anyNA(repeats) ||
+        anyDuplicated(repeats) ||
+        !setequal(repeats, seq_len(wanted))
+    ) {
       stop("invalid or duplicate access repeat", call. = FALSE)
     }
   }
@@ -608,20 +756,105 @@ bench_build_query_plan <- function(m, n_genes = 50L) {
   plan
 }
 
-bench_default_timer <- function(fn) {
-  started <- proc.time()[["elapsed"]]
+# Compile once per process, before measuring; no extra R dependency is needed.
+bench_clock <- local({
+  native <- NULL
+  function() {
+    if (is.null(native)) {
+      src <- tempfile("bench-clock-", fileext = ".c")
+      dll <- sub("\\.c$", .Platform$dynlib.ext, src)
+      writeLines(
+        c(
+          "#define _POSIX_C_SOURCE 200809L",
+          "#include <R.h>",
+          "#include <Rinternals.h>",
+          "#include <time.h>",
+          "SEXP bench_clock_read(void) {",
+          "  struct timespec mono, wall, resolution;",
+          "  if (clock_gettime(CLOCK_MONOTONIC, &mono) ||",
+          "      clock_gettime(CLOCK_REALTIME, &wall) ||",
+          "      clock_getres(CLOCK_MONOTONIC, &resolution))",
+          "    error(\"monotonic clock unavailable\");",
+          "  SEXP out = PROTECT(allocVector(REALSXP, 3));",
+          "  REAL(out)[0] = mono.tv_sec + mono.tv_nsec * 1e-9;",
+          "  REAL(out)[1] = wall.tv_sec + wall.tv_nsec * 1e-9;",
+          "  REAL(out)[2] = resolution.tv_sec + resolution.tv_nsec * 1e-9;",
+          "  UNPROTECT(1); return out;",
+          "}"
+        ),
+        src
+      )
+      output <- system2(
+        file.path(R.home("bin"), "R"),
+        c("CMD", "SHLIB", "-o", shQuote(dll), shQuote(src)),
+        stdout = TRUE,
+        stderr = TRUE
+      )
+      if (!file.exists(dll) || !is.null(attr(output, "status"))) {
+        stop(
+          "cannot build monotonic clock: ",
+          paste(output, collapse = "\n"),
+          call. = FALSE
+        )
+      }
+      loaded <- dyn.load(dll)
+      native <<- getNativeSymbolInfo("bench_clock_read", loaded)
+    }
+    stats::setNames(.Call(native), c("monotonic", "wall", "resolution"))
+  }
+})
+
+bench_default_timer <- function(fn, clock = bench_clock) {
+  started <- clock()
   value <- fn()
+  ended <- clock()
+  seconds <- unname(ended[["monotonic"]] - started[["monotonic"]])
   list(
-    seconds = unname(proc.time()[["elapsed"]] - started),
-    value = value
+    seconds = seconds,
+    value = value,
+    timing = data.frame(
+      clock = "CLOCK_MONOTONIC",
+      resolution_secs = unname(started[["resolution"]]),
+      monotonic_start = unname(started[["monotonic"]]),
+      monotonic_end = unname(ended[["monotonic"]]),
+      wall_start = unname(started[["wall"]]),
+      wall_end = unname(ended[["wall"]]),
+      seconds = seconds
+    )
   )
+}
+
+bench_timed <- function(
+  fn,
+  timer = bench_default_timer,
+  record = function(row) NULL,
+  phase = "elapsed",
+  query = ""
+) {
+  measured <- timer(fn)
+  timing <- measured$timing
+  if (is.null(timing)) {
+    timing <- data.frame(seconds = measured$seconds)
+  }
+  timing$phase <- phase
+  timing$query <- paste(query, collapse = ";")
+  record(timing)
+  if (
+    length(measured$seconds) != 1L ||
+      !is.finite(measured$seconds) ||
+      measured$seconds < 0
+  ) {
+    stop("invalid elapsed time for ", phase, call. = FALSE)
+  }
+  measured
 }
 
 bench_measure_backend <- function(
   obj,
   plan,
   hot_iterations = 5L,
-  timer = bench_default_timer
+  timer = bench_default_timer,
+  record = function(row) NULL
 ) {
   if (!identical(plan$schema_version, 2L)) {
     stop("unsupported query-plan schema", call. = FALSE)
@@ -632,7 +865,20 @@ bench_measure_backend <- function(
     stop("query plan must contain exactly one first gene", call. = FALSE)
   }
 
-  first <- timer(function() as.numeric(obj$getExpressionRow(first_gene)))
+  measure <- function(fn, phase, query) {
+    bench_timed(
+      fn,
+      timer = timer,
+      record = record,
+      phase = phase,
+      query = query
+    )
+  }
+  first <- measure(
+    function() as.numeric(obj$getExpressionRow(first_gene)),
+    "first",
+    first_gene
+  )
   row_fingerprint <- bench_numeric_fingerprint(first$value)
   if (!identical(row_fingerprint, plan$reference_row_fingerprint)) {
     stop("first-query fingerprint mismatch", call. = FALSE)
@@ -642,23 +888,39 @@ bench_measure_backend <- function(
   if (!length(hot_genes)) {
     hot_genes <- first_gene
   }
-  invisible(lapply(hot_genes, function(gene) as.numeric(obj$getExpressionRow(gene))))
+  invisible(lapply(hot_genes, function(gene) {
+    as.numeric(obj$getExpressionRow(gene))
+  }))
   hot_order <- rep(hot_genes, times = max(1L, as.integer(hot_iterations)))
   hot_secs <- vapply(
     hot_order,
-    function(gene) timer(function() as.numeric(obj$getExpressionRow(gene)))$seconds,
+    function(gene) {
+      measure(
+        function() as.numeric(obj$getExpressionRow(gene)),
+        "hot",
+        gene
+      )$seconds
+    },
     numeric(1)
   )
 
-  block <- timer(function() as.matrix(obj$getExpressionBlock(panel$gene)))
+  block <- measure(
+    function() as.matrix(obj$getExpressionBlock(panel$gene)),
+    "block",
+    panel$gene
+  )
   block_fingerprint <- bench_numeric_fingerprint(block$value)
   if (!identical(block_fingerprint, plan$reference_block_fingerprint)) {
     stop("block fingerprint mismatch", call. = FALSE)
   }
 
-  subset_row <- timer(function() {
-    as.numeric(obj$getExpressionRow(first_gene, cells = plan$subset_cells))
-  })
+  subset_row <- measure(
+    function() {
+      as.numeric(obj$getExpressionRow(first_gene, cells = plan$subset_cells))
+    },
+    "subset_row",
+    first_gene
+  )
   subset_row_fingerprint <- bench_numeric_fingerprint(subset_row$value)
   if (
     !identical(
@@ -669,9 +931,13 @@ bench_measure_backend <- function(
     stop("subset-row fingerprint mismatch", call. = FALSE)
   }
 
-  subset_block <- timer(function() {
-    as.matrix(obj$getExpressionBlock(panel$gene, cells = plan$subset_cells))
-  })
+  subset_block <- measure(
+    function() {
+      as.matrix(obj$getExpressionBlock(panel$gene, cells = plan$subset_cells))
+    },
+    "subset_block",
+    panel$gene
+  )
   subset_block_fingerprint <- bench_numeric_fingerprint(subset_block$value)
   if (
     !identical(
@@ -754,11 +1020,9 @@ bench_path_mb <- function(path) {
   file.size(path) / 2^20
 }
 
-# Wall clock of one expression, in seconds.
+# Elapsed time includes waiting and native work, without wall-clock corrections.
 bench_time <- function(expr) {
-  t0 <- Sys.time()
-  force(expr)
-  as.numeric(difftime(Sys.time(), t0, units = "secs"))
+  bench_timed(function() force(expr))$seconds
 }
 
 # Append one row to a CSV, writing the header only when creating the file. Rows
@@ -832,7 +1096,10 @@ bench_read_export_matrix <- function(spec, path, n_cells, profile) {
   if (identical(profile, "scale")) {
     # The frozen scale plan and disk backends use this exact prefix, not the
     # historical four dispersed chunks selected by bench_read_subset().
-    return(methods::as(bench_open_source_tier(spec, path, n_cells), "dgCMatrix"))
+    return(methods::as(
+      bench_open_source_tier(spec, path, n_cells),
+      "dgCMatrix"
+    ))
   }
   spec$local_path <- path
   bench_read_subset(spec, n_cells, n_chunks = 4L, verbose = TRUE)
@@ -841,7 +1108,8 @@ bench_read_export_matrix <- function(spec, path, n_cells, profile) {
 bench_resource_limit <- function(error) {
   grepl(
     "cannot allocate vector|vector memory (limit|exhausted)|32-bit.*(index|limit)|dgCMatrix.*(2\\^31|integer.max)|more than 2\\^31-1 nonzero",
-    conditionMessage(error), ignore.case = TRUE
+    conditionMessage(error),
+    ignore.case = TRUE
   )
 }
 
@@ -1732,6 +2000,16 @@ bench_publish_result <- function(stage, result_root, run_id) {
   if (!grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", run_id)) {
     stop("unsafe run id: ", run_id, call. = FALSE)
   }
+  if (file.exists(file.path(stage, "20_access.csv"))) {
+    evidence <- function(name) {
+      utils::read.csv(file.path(stage, name), stringsAsFactors = FALSE)
+    }
+    bench_validate_timing_evidence(
+      evidence("10_export.csv"),
+      evidence("20_access.csv"),
+      evidence("21_access_timings.csv")
+    )
+  }
   bench_recover_activation(result_root)
 
   tree_fingerprint <- function(path) {
@@ -1813,28 +2091,57 @@ bench_publish_result <- function(stage, result_root, run_id) {
 # Only image exports belong in the latest figures directory. Historical run
 # contents are kept intact; QA, reports and nested directories are not copied.
 bench_figure_files <- function(directory) {
-  files <- list.files(directory, full.names = TRUE, all.files = TRUE, no.. = TRUE)
-  files[!dir.exists(files) & grepl("\\.(png|pdf|svg|tiff?|jpe?g|webp)$", files, ignore.case = TRUE)]
+  files <- list.files(
+    directory,
+    full.names = TRUE,
+    all.files = TRUE,
+    no.. = TRUE
+  )
+  files[
+    !dir.exists(files) &
+      grepl("\\.(png|pdf|svg|tiff?|jpe?g|webp)$", files, ignore.case = TRUE)
+  ]
 }
 
 bench_copy_figure_directory <- function(source, destination, replace = FALSE) {
   dir.create(destination, recursive = TRUE, showWarnings = FALSE)
   if (replace) {
-    entries <- list.files(destination, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+    entries <- list.files(
+      destination,
+      full.names = TRUE,
+      all.files = TRUE,
+      no.. = TRUE
+    )
     unlink(entries, recursive = TRUE)
     if (length(list.files(destination, all.files = TRUE, no.. = TRUE))) {
       stop("cannot replace latest figures; files may be open", call. = FALSE)
     }
   }
-  entries <- list.files(source, full.names = TRUE, all.files = TRUE, no.. = TRUE)
-  if (length(entries) && !all(file.copy(entries, destination, recursive = TRUE))) {
+  entries <- list.files(
+    source,
+    full.names = TRUE,
+    all.files = TRUE,
+    no.. = TRUE
+  )
+  if (
+    length(entries) && !all(file.copy(entries, destination, recursive = TRUE))
+  ) {
     stop("cannot copy figure directory", call. = FALSE)
   }
   files <- list.files(source, recursive = TRUE, all.files = TRUE, no.. = TRUE)
-  copied <- list.files(destination, recursive = TRUE, all.files = TRUE, no.. = TRUE)
-  if (!identical(files, copied) ||
-      !identical(unname(tools::md5sum(file.path(source, files))),
-                 unname(tools::md5sum(file.path(destination, files))))) {
+  copied <- list.files(
+    destination,
+    recursive = TRUE,
+    all.files = TRUE,
+    no.. = TRUE
+  )
+  if (
+    !identical(files, copied) ||
+      !identical(
+        unname(tools::md5sum(file.path(source, files))),
+        unname(tools::md5sum(file.path(destination, files)))
+      )
+  ) {
     stop("figure directory copy differs from source", call. = FALSE)
   }
 }
@@ -1843,10 +2150,15 @@ bench_copy_figure_directory <- function(source, destination, replace = FALSE) {
 # restores the previous pair before retrying. Nothing is left after success.
 bench_recover_activation <- function(result_root) {
   transaction <- file.path(result_root, ".publish")
-  if (!dir.exists(transaction)) return(invisible(NULL))
+  if (!dir.exists(transaction)) {
+    return(invisible(NULL))
+  }
   state_path <- file.path(transaction, "state.rds")
-  if (file.exists(state_path) && file.exists(file.path(transaction, "switching")) &&
-      !file.exists(file.path(transaction, "committed"))) {
+  if (
+    file.exists(state_path) &&
+      file.exists(file.path(transaction, "switching")) &&
+      !file.exists(file.path(transaction, "committed"))
+  ) {
     state <- readRDS(state_path)
     latest <- file.path(result_root, "figures")
     backup <- file.path(transaction, "figures.previous")
@@ -1859,7 +2171,13 @@ bench_recover_activation <- function(result_root) {
     }
     pointer <- file.path(result_root, "CURRENT")
     if (state$had_pointer) {
-      if (!file.copy(file.path(transaction, "CURRENT.previous"), pointer, overwrite = TRUE)) {
+      if (
+        !file.copy(
+          file.path(transaction, "CURRENT.previous"),
+          pointer,
+          overwrite = TRUE
+        )
+      ) {
         stop("cannot restore previous CURRENT", call. = FALSE)
       }
     } else {
@@ -1867,7 +2185,9 @@ bench_recover_activation <- function(result_root) {
     }
   }
   unlink(transaction, recursive = TRUE)
-  if (dir.exists(transaction)) stop("cannot clean publication transaction", call. = FALSE)
+  if (dir.exists(transaction)) {
+    stop("cannot clean publication transaction", call. = FALSE)
+  }
   invisible(NULL)
 }
 
@@ -1889,22 +2209,40 @@ bench_activate_result <- function(result_root, run_id) {
     stop("completed run has no valid figure exports", call. = FALSE)
   }
   transaction <- file.path(result_root, ".publish")
-  if (!dir.create(transaction)) stop("another publication is active", call. = FALSE)
+  if (!dir.create(transaction)) {
+    stop("another publication is active", call. = FALSE)
+  }
   on.exit(bench_recover_activation(result_root), add = TRUE)
-  if (file.exists(pointer) && !file.copy(pointer, file.path(transaction, "CURRENT.previous"))) {
+  if (
+    file.exists(pointer) &&
+      !file.copy(pointer, file.path(transaction, "CURRENT.previous"))
+  ) {
     stop("cannot preserve previous CURRENT", call. = FALSE)
   }
   if (update_figures && dir.exists(latest)) {
-    bench_copy_figure_directory(latest, file.path(transaction, "figures.previous"))
+    bench_copy_figure_directory(
+      latest,
+      file.path(transaction, "figures.previous")
+    )
   }
-  saveRDS(list(update_figures = update_figures, had_figures = dir.exists(latest),
-               had_pointer = file.exists(pointer)), file.path(transaction, "state.rds"))
+  saveRDS(
+    list(
+      update_figures = update_figures,
+      had_figures = dir.exists(latest),
+      had_pointer = file.exists(pointer)
+    ),
+    file.path(transaction, "state.rds")
+  )
   pending <- file.path(transaction, "figures.next")
   if (update_figures) {
     dir.create(pending)
-    if (!all(file.copy(files, pending)) ||
-        !identical(unname(tools::md5sum(files)),
-                   unname(tools::md5sum(file.path(pending, basename(files)))))) {
+    if (
+      !all(file.copy(files, pending)) ||
+        !identical(
+          unname(tools::md5sum(files)),
+          unname(tools::md5sum(file.path(pending, basename(files))))
+        )
+    ) {
       stop("failed to stage latest figure copies", call. = FALSE)
     }
   }
@@ -1915,19 +2253,28 @@ bench_activate_result <- function(result_root, run_id) {
     if (identical(fail_at, name)) stop("injected failure ", name, call. = FALSE)
   }
   checkpoint("before-pointer")
-  if (!file.create(file.path(transaction, "switching"))) stop("cannot start publication", call. = FALSE)
+  if (!file.create(file.path(transaction, "switching"))) {
+    stop("cannot start publication", call. = FALSE)
+  }
   if (update_figures) {
     bench_copy_figure_directory(pending, latest, replace = TRUE)
   }
   checkpoint("after-figures")
   if (identical(fail_at, "interrupt-after-figures")) {
-    stop(structure(list(message = "injected interrupt", call = NULL), class = c("interrupt", "condition")))
+    stop(structure(
+      list(message = "injected interrupt", call = NULL),
+      class = c("interrupt", "condition")
+    ))
   }
-  if (identical(fail_at, "crash-after-figures")) quit(status = 99L, runLast = FALSE)
+  if (identical(fail_at, "crash-after-figures")) {
+    quit(status = 99L, runLast = FALSE)
+  }
   if (!file.rename(pending_pointer, pointer)) {
     stop("cannot atomically update CURRENT", call. = FALSE)
   }
   checkpoint("after-pointer")
-  if (!file.create(file.path(transaction, "committed"))) stop("cannot commit publication", call. = FALSE)
+  if (!file.create(file.path(transaction, "committed"))) {
+    stop("cannot commit publication", call. = FALSE)
+  }
   invisible(run)
 }

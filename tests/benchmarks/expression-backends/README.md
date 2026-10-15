@@ -37,6 +37,8 @@ The complete matrices exceed the sparse-index limit of embedded storage, so full
 
 In full and scale runs, each source, size and backend gets five independent builds. Each successful build is opened in two fresh R processes. Runs use the same cells, gene names and fixed 12-gene queries, including full-cell reads and non-contiguous subsets of up to 100,000 cells. Reading a lazy matrix fully into memory is included in the timer; value checks happen afterward. Processes run sequentially with one thread by default.
 
+Elapsed durations use `CLOCK_MONOTONIC`; system-clock timestamps are retained only as provenance. A small native clock reader is compiled once per R process using `R CMD SHLIB` before the first timed operation (the existing Nix toolchain supplies the compiler). Clock initialization fails closed; there is no wall-clock fallback. `21_access_timings.csv` retains every startup, first read, warmed read, block and subset read, including monotonic endpoints, wall-clock endpoints and clock resolution. CSV writes and value checks occur outside timed operations. Publication requires finite nonnegative durations, complete raw observations and summaries matching those observations.
+
 Incorrect values, crashes or unexpected build failures stop publication. An explicit embedded memory or sparse-index limit is recorded as a resource limit. A new result becomes `CURRENT` only after all required checks pass.
 
 Scale checks embedded separately because it loads the matrix into memory. If its conservative estimate exceeds 70% of available memory or the sparse-index limit, that tier is recorded as `SKIPPED(resource)` while H5 and BPCells continue. The check uses both the source-wide estimate and the actual tier's nonzero count. These skips describe this machine's resource budget, not a measured universal size limit.
@@ -85,7 +87,7 @@ Use `quick` or `scale` instead of `full` for those reports. `10_export.csv` cont
 
 Numbers are medians with observed ranges, not confidence intervals. The two access processes share one built artifact. The first read may benefit from the operating-system cache. Storage and memory fields ending in `_mb` use MiB. Embedded `export_secs` includes the full exporter, while H5/BPCells measure the backend writer; do not compare that column alone as equal work.
 
-**Existing results are historical.** The September 22 runs predate the corrected timer, and their embedded size-comparison reads failed correctness checks. Use fresh `materialized-v2` measurements for backend comparisons; changing the scripts does not update old results.
+**Existing results are historical.** The September 22 runs predate materialized reads, and the October measurements at `b64f8df3` contain four negative subset-block durations (one full, three scale). Their timing evidence remains provisional. Fresh runs must satisfy both `materialized-v2` and `monotonic-v1`. Retain the original CSVs; do not clip, take absolute values or delete invalid observations. `resume` cannot certify a legacy run without raw monotonic observations. Repeat full and scale on the same 12900K WSL host; local Mac smoke checks do not replace those performance measurements.
 
 ## Keep it simple
 
