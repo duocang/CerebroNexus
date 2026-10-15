@@ -598,7 +598,8 @@ output$ir_cell_view_options_UI <- renderUI({
     checkboxInput(
       "ir_clonalUMAP_keep_square",
       "Keep plots square",
-      value = current_page_display_defaults("ir")$keep_square
+      value = isolate(input[["ir_clonalUMAP_keep_square"]]) %||%
+        current_page_display_defaults("ir")$keep_square
     )
   )
 })

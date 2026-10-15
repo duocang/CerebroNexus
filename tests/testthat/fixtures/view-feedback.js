@@ -3,11 +3,11 @@ const fs = require('fs'), vm = require('vm'), assert = require('assert/strict'),
 const events = {}, messages = {}, handlers = {}, elements = {}, domEvents = {};
 const storage = new Map();
 function element(id) {
-  const classes = new Set(['active']); let text = '';
+  const classes = new Set(['active']), attributes = {}; let text = '';
   return { id, dataset: {}, get textContent() { return text + this.children.map(c=>c.textContent).join(''); },
     set textContent(v) { text=v; this.children=[]; }, value: '', children: [], tagName: 'INPUT',
     classList: {add(k) {classes.add(k);},toggle(k,on) { if(on) classes.add(k); else classes.delete(k); }, contains(k) {return classes.has(k);}},
-    setAttribute() {}, querySelector(selector) {return selector === 'label' ? {textContent:'Colour'} : this.children.find(c=>(c.className || '').split(' ').includes(selector.slice(1))) || null;},
+    setAttribute(k,v) {attributes[k]=v;}, getAttribute(k) {return attributes[k];}, querySelector(selector) {return selector === 'label' ? {textContent:'Colour'} : this.children.find(c=>(c.className || '').split(' ').includes(selector.slice(1))) || null;},
     insertBefore(el) {this.children.push(el);}, appendChild(el) {this.children.push(el);}, closest() {return this;},
     contains(el) {return el === this;} };
 }
@@ -20,13 +20,14 @@ Object.entries(ids).forEach(([id,pane]) => {
 const document = {addEventListener:(name,fn)=>domEvents[name]=fn,readyState:'complete',activeElement:null,getElementById:id=>elements[id],createElement:()=>element('')};
 const jq = {on(names,fn) {names.split(' ').forEach(name=>handlers[name.split('.')[0]]=fn);return jq;}};
 let generation = 1, timeoutCalls = 0;
+const inputChanges = [];
 const window = { jQuery:()=>jq, setTimeout:fn=>fn(),
   addEventListener:(name,fn)=>events[name]=fn, dispatchEvent:event=>{if(events[event.type])events[event.type](event);},
-  Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn},
+  Shiny:{addCustomMessageHandler:(name,fn)=>messages[name]=fn,setInputValue:(...args)=>inputChanges.push(args)},
   CerebroDatasetContext:{phase:()=> 'ready', accepts:m=>m.dataset_context?.generation===generation}};
 vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2] || path.resolve(__dirname, '../../../inst/viewer/www/view-feedback.js')), 'page-lifecycle.js'), 'utf8'), {window});
 vm.runInNewContext(fs.readFileSync(process.argv[2] || path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js'),'utf8'),
-  {window,document,setTimeout:fn=>{timeoutCalls++;fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
+  {window,document,Event:function(type,options){this.type=type;this.bubbles=options.bubbles;},setTimeout:fn=>{timeoutCalls++;fn();return 1;},clearTimeout:()=>{},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},CustomEvent:function(type,data){this.type=type;this.detail=data.detail;}});
 let count=0;
 function check(v){assert.ok(v);count++;}
 function header(id){return elements['shiny-tab-'+ids[id]].querySelector('.cerebro-page-feedback');}
@@ -107,30 +108,43 @@ change('linked','cv-pick-color','__gene__');
 check(!row('linked').textContent.includes('Updating expression'));
 change('linked','coordviews_gene','');
 check(row('linked').hidden);
-// Layout suggestions share the row, ignore stale contexts, and respect dismissal.
-function hasHint(id) {return header(id).children.some(c=>c.className==='cerebro-layout-hint');}
+// Layout controls survive square/narrow layouts and reuse existing inputs.
+function hasHint(id) {return !header(id).hidden && !!header(id)._layoutSwitch;}
+function isSquare(id) {return header(id)._layoutSwitch._buttons[1].getAttribute('aria-pressed') === 'true';}
+function chooseLayout(id,shape) {
+  domEvents.click({target:{closest:s=>s==='[data-layout-id]'?{
+    getAttribute:k=>k==='data-layout-id'?id:shape}:null}});
+}
+function measured(id,square=false,eligible=true,g=generation) {
+  emit('cerebro:plot-layout',{id,square,eligible,wide:!square,dataset_context:{generation:g}});
+}
 paint('overview_projection', 12);
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
+measured('overview_projection');check(hasHint('overview_projection'));
 check(!header('overview_projection').hidden);
-emit('cerebro:plot-layout',{id:'overview_projection',square:true,wide:true});check(!hasHint('overview_projection'));
+const stableSwitch = header('overview_projection')._layoutSwitch;
+measured('overview_projection',true);check(hasHint('overview_projection'));check(isSquare('overview_projection'));
 check(row('overview_projection').hidden);
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false});check(!hasHint('overview_projection'));
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true,dataset_context:{generation:0}});check(!hasHint('overview_projection'));
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
-domEvents.click({target:{closest:s=>s==='[data-layout-dismiss]'?{getAttribute:()=> 'overview_projection'}:null}});check(!hasHint('overview_projection'));
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(!hasHint('overview_projection'));
+measured('overview_projection',false,false);check(!hasHint('overview_projection'));
+measured('overview_projection',false,true,0);check(!hasHint('overview_projection'));
+measured('overview_projection');check(hasHint('overview_projection'));
+check(header('overview_projection')._layoutSwitch === stableSwitch);
+chooseLayout('overview_projection','square');
+check(inputChanges.at(-1)[0] === 'overview_projection_keep_square' && inputChanges.at(-1)[1] === true);
+check(isSquare('overview_projection'));check(hasHint('overview_projection'));
+chooseLayout('overview_projection','wide');check(!isSquare('overview_projection'));
+check(inputChanges.at(-1)[1] === false);
 emit('cerebro:linkedviews-ready',{primaryReady:true,painted:true,complete:true});
-emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(hasHint('linked'));
-domEvents.change({target:{id:'cv-square-plots',checked:false},isTrusted:true});check(!hasHint('linked'));
-emit('cerebro:plot-layout',{id:'linked',square:false,wide:true});check(hasHint('linked'));
-// An explicit uncheck resets dismissal, but only measured wide canvases qualify.
-domEvents.change({target:{id:'overview_projection_keep_square',checked:false},isTrusted:true});
-const beforeImmediateLayout = timeoutCalls;
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:true});check(hasHint('overview_projection'));
-check(timeoutCalls === beforeImmediateLayout);
-domEvents.change({target:{id:'overview_projection_keep_square',checked:true},isTrusted:true});check(!hasHint('overview_projection'));
-domEvents.change({target:{id:'overview_projection_keep_square',checked:false},isTrusted:true});
-emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false});check(!hasHint('overview_projection'));
+measured('linked');check(hasHint('linked'));
+let linkedChanges = 0;
+elements['cv-square-plots'] = {checked:false,dispatchEvent(e) {
+  check(e.type === 'change' && e.bubbles);linkedChanges++;domEvents.change({target:this});
+},id:'cv-square-plots'};
+chooseLayout('linked','square');check(elements['cv-square-plots'].checked);check(isSquare('linked'));
+chooseLayout('linked','square');check(linkedChanges === 1);
+chooseLayout('linked','wide');check(!elements['cv-square-plots'].checked);check(!isSquare('linked'));
+domEvents.change({target:{id:'overview_projection_keep_square',checked:true}});check(isSquare('overview_projection'));
+domEvents.change({target:{id:'overview_projection_keep_square',checked:false}});check(!isSquare('overview_projection'));
+emit('cerebro:plot-layout',{id:'overview_projection',square:false,wide:false,eligible:true});check(hasHint('overview_projection'));
 console.log(count+' view feedback assertions passed');
 
 // All surfaces suppress routine successful status, without hiding errors/work.
@@ -163,7 +177,7 @@ generation++;emit('cerebro:dataset-context',{changed:true,phase:'pending'});
 for(const id of Object.keys(ids)) check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-'+ids[id]]));
 console.log('PASS terminal marker, hidden header, recovery and dataset reset');
 
-// Clonal and trajectory advice uses the existing drawer controls and never
+// Clonal and trajectory switches use the existing inputs and never
 // leaks onto the other immune analysis tabs or a faceted static plot.
 const ir = 'ir_clonalUMAP_projection';
 ids[ir] = 'immune_repertoire';
@@ -172,33 +186,32 @@ elements[ir+'_cell_view_host'] = element(ir);
 let clonalVisible = true;
 elements[ir+'_cell_view_host'].getClientRects = () => clonalVisible ? [{}] : [];
 for (const [id, buttonId, inputId, label] of [
-  [ir, 'ir_more_button', 'ir_clonalUMAP_keep_square', 'Wide UMAP'],
-  ['trajectory_projection', 'trajectory_projection_more_button', 'trajectory_projection_keep_square', 'Wide trajectory']
+  [ir, 'ir_more_button', 'ir_clonalUMAP_keep_square', 'UMAP layout'],
+  ['trajectory_projection', 'trajectory_projection_more_button', 'trajectory_projection_keep_square', 'Trajectory layout']
 ]) {
   paint(id, 200);
-  emit('cerebro:plot-layout', {id, square:false, wide:true});
+  measured(id);
   check(hasHint(id));
-  check(header(id).children.find(c=>c.className==='cerebro-layout-hint').innerHTML.includes(label));
-  let opened = 0, focused = 0;
-  const labelClasses = {add() {}, remove() {}};
+  check(header(id)._layoutSwitch.textContent.includes(label));
+  let opened = 0, changed = 0;
   elements[buttonId] = {getAttribute:()=> 'false', click:()=>opened++};
-  elements[inputId] = {getClientRects:()=>[{}], scrollIntoView() {}, focus:()=>focused++,
-    closest:()=>({classList:labelClasses})};
-  domEvents.click({target:{closest:s=>s==='[data-layout-settings]'?{getAttribute:()=>id}:null}});
-  check(opened === 1 && focused === 1);
-  domEvents.change({target:{id:inputId,checked:true}}); check(!hasHint(id));
-  emit('cerebro:plot-layout', {id, square:true, wide:true}); check(!hasHint(id));
-  domEvents.change({target:{id:inputId,checked:false}});
-  emit('cerebro:plot-layout', {id, square:false, wide:false}); check(!hasHint(id));
-  emit('cerebro:plot-layout', {id, square:false, wide:true, dataset_context:{generation:0}}); check(!hasHint(id));
+  elements[inputId] = {id:inputId,checked:false,dispatchEvent(e) {
+    check(e.type === 'change' && e.bubbles);changed++;domEvents.change({target:this});
+  }};
+  chooseLayout(id,'square');check(opened === 0 && changed === 1);
+  check(isSquare(id));check(hasHint(id));
+  measured(id,true);check(isSquare(id));check(hasHint(id));
+  chooseLayout(id,'wide');check(!isSquare(id));
+  measured(id,false,false);check(!hasHint(id));
+  measured(id,false,true,0);check(!hasHint(id));
 }
-emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(hasHint(ir));
+measured(ir);check(hasHint(ir));
 handlers.change({name:'ir_tabs',value:'Abundance',target:{}}); check(!hasHint(ir));
 clonalVisible = false;
-emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(!hasHint(ir));
+measured(ir);check(!hasHint(ir));
 check(row(ir) === null); // Existing immune loading/status remains untouched.
 clonalVisible = true;
-emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(hasHint(ir));
+measured(ir);check(hasHint(ir));
 handlers.change({name:'ir_p_umap_group_by',value:'sample',target:{}}); check(!hasHint(ir));
 
 // Exercise the renderer's actual canvas measurement, including a named
@@ -224,4 +237,8 @@ check(layout('trajectory_projection','B_cell_maturation',1000,500).wide);
 check(!layout('trajectory_projection','B_cell_maturation',800,500).wide);
 check(!layout('trajectory_projection','B_cell_maturation',1000,500,[1]).wide);
 check(!layout('overview_projection','PCA',1000,500).wide);
-console.log(count+' total assertions passed, including specialist layout advice');
+check(layout('overview_projection','UMAP',500,500).eligible);
+check(layout('trajectory_projection','B_cell_maturation',500,500).eligible);
+check(!layout('overview_projection','PCA',1000,500).eligible);
+check(!layout('overview_projection','UMAP',1000,500,[1]).eligible);
+console.log(count+' total assertions passed, including direct layout switches');

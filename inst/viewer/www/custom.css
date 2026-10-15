@@ -3255,7 +3255,7 @@ body .shiny-bound-output.cerebro-output-waiting {
   flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%;
 }
 
-/* Optional layout advice shares the existing status row, without another bar. */
+/* Layout controls follow Info in the heading, wrapping only when needed. */
 .cerebro-page-feedback { display: flex; align-items: center; gap: 12px; }
 .cerebro-page-feedback[hidden] { display: none; }
 .cerebro-page-initializing .cerebro-viz-toolbar,
@@ -3270,37 +3270,44 @@ body .shiny-bound-output.cerebro-output-waiting {
 #cerebro-startup svg { width: 200px; height: auto; display: block; }
 .cerebro-groups-controls:has([data-composition-unavailable]) { min-height: 0; }
 .cerebro-feedback-text { flex: 1; min-width: 0; }
-.cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.cerebro-viz-page-heading:has(.cerebro-page-feedback:not([hidden])) {
+  flex-wrap: wrap;
 }
-/* A compact accent surface makes the suggestion discoverable at a glance. */
-.cerebro-page-feedback:has(.cerebro-layout-hint) { padding-block: 5px; }
-.cerebro-layout-hint {
-  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
-  box-sizing: border-box; height: 32px; padding: 2px 3px 2px 10px;
-  border: 1px solid var(--c-amber-200); border-radius: 7px;
-  background: var(--c-amber-50); color: var(--c-amber-700);
-  font-size: 13px; line-height: 1; white-space: nowrap;
+.cerebro-viz-page-heading > .cerebro-page-feedback {
+  flex: 0 0 auto; min-height: 0; max-width: 100%; margin: 0; padding: 0;
+  border: 0; background: transparent; box-shadow: none;
 }
-.cerebro-layout-copy { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; }
-.cerebro-layout-copy i { font-size: 12px; }
-.cerebro-layout-hint button {
-  display: inline-flex; align-items: center; justify-content: center;
-  box-sizing: border-box; min-height: 26px; border: 0; border-radius: 4px;
-  cursor: pointer; font: inherit; touch-action: manipulation;
+.cerebro-layout-switch {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  max-width: 100%; color: var(--c-text-2); font-size: 12px;
 }
-.cerebro-layout-settings {
-  padding: 0 10px; background: var(--c-amber-700); color: #fff; font-weight: 600 !important;
+.cerebro-layout-label { font-weight: 500; white-space: nowrap; }
+.cerebro-layout-segments {
+  display: inline-flex; gap: 3px; padding: 3px; border-radius: 8px;
+  border: 1px solid var(--c-border); background: var(--c-surface);
 }
-.cerebro-layout-settings:hover { background: #873505; }
-.cerebro-layout-settings:active { background: #6e2b04; }
-.cerebro-layout-dismiss { width: 26px; padding: 0; background: transparent; color: var(--c-amber-700); font-size: 18px !important; }
-.cerebro-layout-dismiss:hover { background: var(--c-amber-100); }
-.cerebro-layout-hint button:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: 2px; }
-.cerebro-setting-highlight { outline: 2px solid var(--c-amber-200); outline-offset: 4px; border-radius: 4px; }
-@media (max-width: 700px) {
-  .cerebro-layout-copy { display: none; }
-  .cerebro-layout-hint { padding-left: 3px; gap: 3px; }
+.cerebro-layout-segments button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 28px; padding: 4px 9px; border: 1px solid transparent;
+  border-radius: 5px; background: transparent; color: var(--c-text-2);
+  cursor: pointer; font: inherit; font-weight: 500; line-height: 1.2;
+  touch-action: manipulation; white-space: nowrap;
+}
+.cerebro-layout-segments button[aria-pressed="true"] {
+  border-color: var(--c-amber-200); background: var(--c-amber-50); color: var(--c-amber-700);
+}
+.cerebro-layout-segments button:hover { color: var(--c-amber-700); }
+.cerebro-layout-segments button:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: 2px; }
+.cerebro-layout-icon {
+  display: inline-block; box-sizing: border-box; flex-shrink: 0;
+  width: 14px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px;
+}
+.cerebro-layout-icon.is-square { width: 12px; height: 12px; }
+@media (max-width: 767px) {
+  .cerebro-viz-page-heading > .cerebro-page-feedback { grid-column: 1 / -1; grid-row: 3; }
+}
+@media (pointer: coarse) {
+  .cerebro-layout-segments button { min-height: 44px; }
 }
 /* Dataset overview: compact metadata, lightweight HTML composition bars. */
 .dataset-overview { margin-top: 22px; color: #292b30; }

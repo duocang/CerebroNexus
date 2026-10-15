@@ -1,5 +1,5 @@
-/* Presentation only: control requests acknowledge existing painted tokens.
- * No new Shiny inputs, data reads, render scheduling, or readiness signals. */
+/* Feedback acknowledges existing painted tokens. Layout shortcuts reuse the
+ * existing square-plot inputs; they introduce no new data/readiness requests. */
 (function () {
   'use strict';
   var specs = {
@@ -12,7 +12,6 @@
     linked: ['coordinated_views', 'Linked views', /^$/]
   };
   var states = {}, installed = false;
-  var layoutTimers = {}, dismissedLayout = {};
   var layoutControls = {
     overview_projection: ['overview_projection_more_button', 'overview_projection_keep_square'],
     expression_projection: ['expression_projection_more_button', 'expression_projection_keep_square'],
@@ -20,31 +19,50 @@
     ir_clonalUMAP_projection: ['ir_more_button', 'ir_clonalUMAP_keep_square'],
     linked: ['cv-more-btn', 'cv-square-plots']
   };
-  function layoutDismissed(id) {
-    try { return dismissedLayout[id] || sessionStorage.getItem('cerebro-square-hint:' + id) === 'dismissed'; }
-    catch (_) { return !!dismissedLayout[id]; }
-  }
-  function dismissLayout(id) {
-    dismissedLayout[id] = true;
-    try { sessionStorage.setItem('cerebro-square-hint:' + id, 'dismissed'); } catch (_) {}
+  function setSquareLayout(id, square) {
+    if (!layoutControls[id] || !state(id).layoutEligible) return;
+    var inputId = layoutControls[id][1], input = document.getElementById(inputId);
+    if (input) {
+      if (input.checked === square) return;
+      input.checked = square;
+      // Native change reaches both Shiny's checkbox binding and Linked views.
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (id !== 'linked' && window.Shiny && window.Shiny.setInputValue) {
+      // Settings drawers render lazily. Their existing server input also works
+      // before the drawer has been opened for the first time.
+      window.Shiny.setInputValue(inputId, square, { priority: 'event' });
+    } else return;
+    state(id).squareLayout = square;
     draw(id);
   }
-  function openSquareSetting(id) {
-    var controls = layoutControls[id], button = controls && document.getElementById(controls[0]);
-    if (!button) return;
-    if (button.getAttribute('aria-expanded') !== 'true') button.click();
-    var attempts = 0;
-    function focusSetting() {
-      var input = document.getElementById(controls[1]);
-      if (input && input.getClientRects().length) {
-        input.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-        input.focus({ preventScroll: true });
-        var label = input.closest('.checkbox') || input.parentElement;
-        label.classList.add('cerebro-setting-highlight');
-        setTimeout(function () { label.classList.remove('cerebro-setting-highlight'); }, 2000);
-      } else if (++attempts < 40) setTimeout(focusSetting, 50);
-    }
-    setTimeout(focusSetting, 80);
+  function layoutSwitch(id, el) {
+    if (el._layoutSwitch) return el._layoutSwitch;
+    var group = document.createElement('span');
+    group.className = 'cerebro-layout-switch';
+    group.setAttribute('role', 'group');
+    var label = document.createElement('span');
+    label.className = 'cerebro-layout-label';
+    label.id = id + '_layout_label';
+    label.textContent = id === 'trajectory_projection' ? 'Trajectory layout' : 'UMAP layout';
+    group.setAttribute('aria-labelledby', label.id);
+    group.appendChild(label);
+    var segments = document.createElement('span');
+    segments.className = 'cerebro-layout-segments';
+    group._buttons = ['wide', 'square'].map(function (shape) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('data-layout-id', id);
+      button.setAttribute('data-layout-shape', shape);
+      button.title = shape === 'wide' ? 'Use the available plot width' : 'Use equal plot width and height';
+      button.innerHTML = '<i class="cerebro-layout-icon is-' + shape + '" aria-hidden="true"></i>' +
+        (shape === 'wide' ? 'Wide' : 'Square');
+      segments.appendChild(button);
+      return button;
+    });
+    group.appendChild(segments);
+    el.appendChild(group);
+    el._layoutSwitch = group;
+    return group;
   }
   function normal(value) {
     return JSON.stringify((value == null ? [] : Array.isArray(value) ? value : [value]).map(String).sort());
@@ -63,10 +81,8 @@
     if (!el) {
       el = document.createElement('div');
       el.className = 'cerebro-view-feedback cerebro-page-feedback';
-      el.setAttribute('role', 'status');
-      el.setAttribute('aria-live', 'polite');
       var heading = pane.querySelector('.cerebro-viz-page-heading');
-      if (heading) heading.insertAdjacentElement('afterend', el);
+      if (heading) heading.appendChild(el);
       else pane.insertBefore(el, pane.firstChild);
     }
     return el;
@@ -100,7 +116,6 @@
     }).join(' · ') : s.terminal || (s.ready ? s.empty ? 'No cells match these filters' : '' : 'Loading ' + specs[id][1] + '…');
     // Settled selection counts already belong to the Active cohort toolbar.
     text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
-    el.textContent = '';
     // Clonal projection joins only the layout advice; its existing specialist
     // lifecycle continues to own loading and errors for the other IR tabs.
     var layoutOnly = id === 'ir_clonalUMAP_projection';
@@ -120,20 +135,15 @@
     var pane = el.closest('.tab-pane');
     var host = document.getElementById(id + '_cell_view_host');
     var layoutVisible = !layoutOnly || (host && host.getClientRects().length > 0);
-    var showHint = layoutVisible && layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
-        !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active');
-    if (showHint) {
-      var hint = document.createElement('span');
-      hint.className = 'cerebro-layout-hint';
-      hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> ' +
-        (id === 'trajectory_projection' ? 'Wide trajectory' : 'Wide UMAP') + '</span>' +
-        '<button type="button" class="cerebro-layout-settings" data-layout-settings="' + id +
-        '" title="Open Settings and find Keep plots square">Square plot settings</button>' +
-        '<button type="button" class="cerebro-layout-dismiss" data-layout-dismiss="' + id +
-        '" aria-label="Dismiss square plot suggestion for this session">×</button>';
-      el.appendChild(hint);
+    var showLayout = layoutVisible && layoutControls[id] && s.layoutEligible && s.ready && !s.empty && !s.terminal &&
+        pane && pane.classList.contains('active');
+    if (showLayout) {
+      var group = layoutSwitch(id, el);
+      group._buttons.forEach(function (button, index) {
+        button.setAttribute('aria-pressed', String((index === 1) === !!s.squareLayout));
+      });
     }
-    el.hidden = !showHint;
+    el.hidden = !showLayout;
     // A terminal result is explicitly not a painted/ready acknowledgement.
     if (host && !layoutOnly) host.classList.toggle('cerebro-view-terminal', !!s.terminal);
   }
@@ -156,8 +166,7 @@
   function changed(event) {
     var key = event.name || event.target.id;
     if (key === 'ir_tabs' || key === 'ir_p_umap_group_by') {
-      clearTimeout(layoutTimers.ir_clonalUMAP_projection);
-      state('ir_clonalUMAP_projection').wideLayout = false;
+      state('ir_clonalUMAP_projection').layoutEligible = false;
       draw('ir_clonalUMAP_projection');
       return;
     }
@@ -254,44 +263,24 @@
   function init() {
     Object.keys(specs).forEach(draw);
     document.addEventListener('click', function (event) {
-      var close = event.target.closest('[data-layout-dismiss]');
-      var settings = event.target.closest('[data-layout-settings]');
-      if (close) dismissLayout(close.getAttribute('data-layout-dismiss'));
-      if (settings) openSquareSetting(settings.getAttribute('data-layout-settings'));
+      var button = event.target.closest('[data-layout-id]');
+      if (button) setSquareLayout(button.getAttribute('data-layout-id'),
+        button.getAttribute('data-layout-shape') === 'square');
     });
     document.addEventListener('change', function (event) {
       Object.keys(layoutControls).forEach(function (id) {
         if (event.target.id !== layoutControls[id][1]) return;
-        var s = state(id);
-        clearTimeout(layoutTimers[id]);
-        s.wideLayout = false;
-        s.immediateLayout = !event.target.checked;
-        // A new fluid-layout choice reopens advice, even if previously dismissed.
-        if (!event.target.checked) {
-          delete dismissedLayout[id];
-          try { sessionStorage.removeItem('cerebro-square-hint:' + id); } catch (_) {}
-        }
+        state(id).squareLayout = !!event.target.checked;
         draw(id);
       });
-    }, true); // Arm the check before the renderer's bubbling change handlers.
+    }, true);
     window.addEventListener('cerebro:plot-layout', function (event) {
       var d = event.detail;
       if (!d || !layoutControls[d.id] || !fresh(d)) return;
-      clearTimeout(layoutTimers[d.id]);
       var s = state(d.id);
-      // The renderer measures the new canvas when it applies the setting.
-      // Skip resize debounce for this explicit action; never measure old geometry.
-      if (!d.square && s.immediateLayout) {
-        s.immediateLayout = false;
-        s.wideLayout = !!d.wide;
-        draw(d.id);
-        return;
-      }
-      if (d.square || !d.wide) { state(d.id).wideLayout = false; draw(d.id); return; }
-      layoutTimers[d.id] = setTimeout(function () {
-        if (!fresh(d) || !window.CerebroDatasetContext || window.CerebroDatasetContext.phase() !== 'ready') return;
-        state(d.id).wideLayout = true; draw(d.id);
-      }, 500);
+      s.layoutEligible = !!d.eligible;
+      s.squareLayout = !!d.square;
+      draw(d.id);
     });
     install();
     if (window.jQuery) window.jQuery(document)
@@ -365,8 +354,6 @@
       var d = event.detail || {};
       if (!d.changed && d.phase === 'ready') return;
       Object.keys(states).forEach(function (id) { Object.keys(states[id].pending).forEach(function (key) { mark(key, false); }); });
-      Object.keys(layoutTimers).forEach(function (id) { clearTimeout(layoutTimers[id]); });
-      layoutTimers = {};
       states = {}; Object.keys(specs).forEach(draw);
     });
   }

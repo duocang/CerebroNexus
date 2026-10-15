@@ -6530,6 +6530,7 @@
     });
     window.dispatchEvent(new CustomEvent('cerebro:plot-layout', { detail: {
       id: hintId, dataset_context: currentDatasetContext(), square: keepPlotsSquare,
+      eligible: hintPanels.length > 0,
       wide: hintPanels.some(function (p) { return p.W > 0 && p.H > 0 && p.W / p.H > 1.6; })
     } }));
     return true;
