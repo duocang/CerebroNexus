@@ -27,6 +27,10 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
+  data.table,
+  ggdendro,
+  patchwork,
+  htmltools,
   base64enc,
   biomaRt (>= 2.38.0),
   colourpicker (>= 1.0),
