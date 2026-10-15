@@ -56,6 +56,42 @@ spatial_projection_cells_to_show <- reactive({
   )
   filters <- filters[!vapply(filters, is.null, logical(1))]
   index <- spatial_projection_cell_index()
+  frame_metadata <- viewerProjectionFirstFrameMetadata()
+  for (scope in list(
+    list(
+      value = input[["spatial_projection_sample"]],
+      fields = c("sample", "sample_id", "orig.ident")
+    ),
+    list(
+      value = spatial_roi_value(input[["spatial_projection_roi"]] %||% ""),
+      fields = c("sample_roi", "roi", "roi_id", "region_of_interest")
+    )
+  )) {
+    selected <- scope$value %||% ""
+    if (
+      !is.character(selected) ||
+        length(selected) != 1L ||
+        is.na(selected) ||
+        !nzchar(selected)
+    ) {
+      next
+    }
+    field_index <- match(
+      tolower(scope$fields),
+      tolower(colnames(frame_metadata)),
+      nomatch = 0L
+    )
+    field_index <- field_index[field_index > 0L]
+    if (!length(field_index)) {
+      next
+    }
+    field <- colnames(frame_metadata)[[field_index[[1L]]]]
+    values <- as.character(frame_metadata[[field]][index])
+    if (!selected %in% values) {
+      next
+    }
+    index <- index[!is.na(values) & values == selected]
+  }
   if (length(filters)) {
     metadata <- viewerProjectionSubsetRows(
       viewerProjectionFirstFrameMetadata(),

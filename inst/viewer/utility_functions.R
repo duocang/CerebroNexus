@@ -1,6 +1,10 @@
 ##----------------------------------------------------------------------------##
 ## Upload policy.
 ##----------------------------------------------------------------------------##
+`%||%` <- function(value, fallback) {
+  if (is.null(value)) fallback else value
+}
+
 viewerUploadsEnabled <- function(options) {
   is.list(options) && identical(options[["mode"]], "open")
 }
@@ -388,6 +392,38 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
   )
 }
 
+spatialEmbeddedImagePreset <- function(preset, alignment) {
+  if (!is.list(alignment)) {
+    return(preset)
+  }
+  number <- function(key, fallback) {
+    value <- suppressWarnings(as.numeric(alignment[[key]]))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      fallback
+    } else {
+      unname(value)
+    }
+  }
+  preset$offsetX <- number("dx", preset$offsetX)
+  preset$offsetY <- number("dy", preset$offsetY)
+  embedded_scale <- number("scale", preset$scaleX)
+  preset$scaleX <- embedded_scale
+  preset$scaleY <- embedded_scale
+  preset$rotation <- number("rotation", preset$rotation)
+  if (!is.null(alignment[["flip_x"]])) {
+    preset$flipX <- isTRUE(alignment[["flip_x"]])
+  }
+  if (!is.null(alignment[["flip_y"]])) {
+    preset$flipY <- isTRUE(alignment[["flip_y"]])
+  }
+  preset$opacity <- number("image_opacity", preset$opacity)
+  # Existing embedded CRBs store transformed pixels and their final bounds.
+  # Retain master's relative-edit drawing contract to avoid applying the saved
+  # calibration twice; external images use spatialImagePreset() instead.
+  preset$geometryBaked <- TRUE
+  preset
+}
+
 spatialPlotRotation <- function(options, dataset, spatial_name) {
   configured <- if (is.list(options)) {
     options[["spatial_plot_rotation"]]
@@ -413,15 +449,166 @@ spatialPlotRotation <- function(options, dataset, spatial_name) {
   }
 }
 
-rotateSpatialCoordinates <- function(coordinates, degrees) {
+spatialPointAppearance <- function(options, dataset, spatial_name) {
+  setting <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_point_appearance"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  fields <- c("point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 2L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[1L]] < 0 ||
+      values[[1L]] > 1 ||
+      values[[2L]] <= 0 ||
+      values[[2L]] > 20
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
+spatialRoiSettings <- function(options, dataset, spatial_name) {
+  settings <- if (
+    is.list(options) &&
+      is.character(dataset) &&
+      length(dataset) == 1L &&
+      !is.na(dataset) &&
+      nzchar(dataset) &&
+      is.character(spatial_name) &&
+      length(spatial_name) == 1L &&
+      !is.na(spatial_name) &&
+      nzchar(spatial_name)
+  ) {
+    options[["viewer_content"]][[dataset]][["spatial_roi_settings"]][[
+      spatial_name
+    ]]
+  } else {
+    NULL
+  }
+  if (is.list(settings) && !is.object(settings)) settings else list()
+}
+
+spatialRoiSetting <- function(options, dataset, spatial_name, roi) {
+  if (
+    !is.character(roi) ||
+      length(roi) != 1L ||
+      is.na(roi) ||
+      !nzchar(roi)
+  ) {
+    return(NULL)
+  }
+  setting <- spatialRoiSettings(options, dataset, spatial_name)[[roi]]
+  fields <- c("rotation_degrees", "point_opacity", "point_size")
+  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
+  if (
+    !is.list(setting) ||
+      length(values) != 3L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      values[[2L]] < 0 ||
+      values[[2L]] > 1 ||
+      values[[3L]] <= 0
+  ) {
+    return(NULL)
+  }
+  stats::setNames(as.list(values), fields)
+}
+
+rotateSpatialCoordinates <- function(coordinates, degrees, pivot = c(0, 0)) {
   if (is.null(coordinates) || identical(degrees, 0)) {
     return(coordinates)
   }
   theta <- degrees * pi / 180
-  x <- coordinates[, 1]
-  y <- coordinates[, 2]
-  coordinates[, 1] <- x * cos(theta) - y * sin(theta)
-  coordinates[, 2] <- x * sin(theta) + y * cos(theta)
+  x <- coordinates[, 1] - pivot[[1L]]
+  y <- coordinates[, 2] - pivot[[2L]]
+  coordinates[, 1] <- x * cos(theta) - y * sin(theta) + pivot[[1L]]
+  coordinates[, 2] <- x * sin(theta) + y * cos(theta) + pivot[[2L]]
+  coordinates
+}
+
+spatialRoiPivots <- function(coordinates, roi_values, degrees = 0) {
+  coordinates <- rotateSpatialCoordinates(coordinates, degrees)
+  if (is.null(coordinates) || length(roi_values) != nrow(coordinates)) {
+    return(list())
+  }
+  rois <- unique(as.character(roi_values))
+  rois <- rois[!is.na(rois) & nzchar(rois)]
+  pivots <- lapply(rois, function(roi) {
+    selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    pivot <- vapply(
+      coordinates[selected, 1:2, drop = FALSE],
+      function(values) mean(range(values, na.rm = TRUE)),
+      numeric(1)
+    )
+    if (any(!is.finite(pivot))) NULL else pivot
+  })
+  valid <- !vapply(pivots, is.null, logical(1))
+  stats::setNames(pivots[valid], rois[valid])
+}
+
+rotateSpatialCoordinatesByRoi <- function(
+  coordinates,
+  roi_values,
+  settings,
+  degrees = 0,
+  pivots = NULL
+) {
+  coordinates <- rotateSpatialCoordinates(coordinates, degrees)
+  if (
+    is.null(coordinates) ||
+      !is.list(settings) ||
+      !length(settings) ||
+      length(roi_values) != nrow(coordinates)
+  ) {
+    return(coordinates)
+  }
+  if (is.null(pivots)) {
+    pivots <- spatialRoiPivots(coordinates, roi_values)
+  }
+  if (!is.list(pivots)) {
+    pivots <- list()
+  }
+  for (roi in intersect(unique(as.character(roi_values)), names(settings))) {
+    rotation <- suppressWarnings(as.numeric(
+      settings[[roi]][["rotation_degrees"]]
+    ))
+    if (length(rotation) != 1L || is.na(rotation) || !is.finite(rotation)) {
+      next
+    }
+    selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    roi_coordinates <- coordinates[selected, , drop = FALSE]
+    pivot <- pivots[[roi]]
+    if (
+      !is.numeric(pivot) ||
+        length(pivot) != 2L ||
+        anyNA(pivot) ||
+        any(!is.finite(pivot))
+    ) {
+      next
+    }
+    coordinates[selected, ] <- rotateSpatialCoordinates(
+      roi_coordinates,
+      rotation,
+      pivot
+    )
+  }
   coordinates
 }
 
@@ -5531,4 +5718,234 @@ trajectorySelectionValid <- function(
     return(FALSE)
   }
   name %in% names_for_method
+}
+
+viewerImageMime <- function(path) {
+  if (!isTRUE(file_test("-f", path))) {
+    return(NULL)
+  }
+  ext <- tolower(tools::file_ext(path))
+  if (!ext %in% c("png", "jpg", "jpeg")) {
+    return(NULL)
+  }
+  bytes <- tryCatch(
+    readBin(path, what = "raw", n = 8L),
+    error = function(error) raw()
+  )
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+  if (identical(ext, "png") && identical(bytes, png_magic)) {
+    return("image/png")
+  }
+  if (
+    ext %in%
+      c("jpg", "jpeg") &&
+      length(bytes) >= length(jpeg_magic) &&
+      identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+  ) {
+    return("image/jpeg")
+  }
+  NULL
+}
+
+# Serve trusted image bytes through a session-scoped route. Filesystem paths and
+# Base64 payloads never enter the browser response model.
+
+viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
+  if (is.null(session)) {
+    session <- get0("session", envir = parent.frame(), inherits = TRUE)
+  }
+  if (is.null(session) || !is.function(session$registerDataObj)) {
+    return(NULL)
+  }
+  path <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  mime <- if (is.null(path)) NULL else viewerImageMime(path)
+  if (is.null(path) || is.null(mime)) {
+    return(NULL)
+  }
+  info <- suppressWarnings(file.info(path))
+  bytes <- if (nrow(info) == 1L) {
+    unname(as.numeric(info$size[[1L]]))
+  } else {
+    NA_real_
+  }
+  modified <- if (nrow(info) == 1L) {
+    unname(as.numeric(info$mtime[[1L]]))
+  } else {
+    NA_real_
+  }
+  if (!is.finite(bytes) || !is.finite(modified) || isTRUE(info$isdir[[1L]])) {
+    return(NULL)
+  }
+  md5 <- tryCatch(
+    unname(as.character(tools::md5sum(path))),
+    error = function(error) NA_character_
+  )
+  if (
+    is.na(md5) ||
+      (!is.null(expected_md5) && !identical(as.character(expected_md5), md5))
+  ) {
+    return(NULL)
+  }
+  if (is.null(session$userData$cerebro_private_image_urls)) {
+    session$userData$cerebro_private_image_urls <- new.env(parent = emptyenv())
+  }
+  cache <- session$userData$cerebro_private_image_urls
+  cached <- get0(md5, envir = cache, inherits = FALSE)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+  data <- list(
+    path = path,
+    mime = mime,
+    md5 = md5,
+    bytes = bytes,
+    modified = modified
+  )
+  url <- session$registerDataObj(
+    paste0("cerebro-image-", md5),
+    data,
+    function(data, request) {
+      current <- suppressWarnings(file.info(data$path))
+      current_bytes <- if (nrow(current) == 1L) {
+        unname(as.numeric(current$size[[1L]]))
+      } else {
+        NA_real_
+      }
+      current_modified <- if (nrow(current) == 1L) {
+        unname(as.numeric(current$mtime[[1L]]))
+      } else {
+        NA_real_
+      }
+      if (
+        !identical(current_bytes, data$bytes) ||
+          !identical(current_modified, data$modified) ||
+          isTRUE(current$isdir[[1L]])
+      ) {
+        return(shiny::httpResponse(404L, "text/plain", "Not found"))
+      }
+      shiny::httpResponse(
+        200L,
+        data$mime,
+        list(file = data$path, owned = FALSE),
+        headers = list(
+          "Cache-Control" = "private, max-age=31536000, immutable",
+          "ETag" = paste0('"', data$md5, '"'),
+          "X-Content-Type-Options" = "nosniff"
+        )
+      )
+    }
+  )
+  assign(md5, url, envir = cache)
+  url
+}
+
+viewerTrekkerExternalImage <- function() {
+  if (!exists("Cerebro.options", inherits = TRUE)) {
+    return(NULL)
+  }
+  options <- get("Cerebro.options", inherits = TRUE)
+  dataset <- viewerSelectedDatasetName()
+  images <- options[["spatial_images"]]
+  if (
+    is.null(dataset) ||
+      !is.list(images) ||
+      !dataset %in% names(images) ||
+      !is.list(images[[dataset]])
+  ) {
+    return(NULL)
+  }
+  configured <- images[[dataset]][["trekker"]]
+  if (!is.list(configured) || !length(configured)) {
+    return(NULL)
+  }
+  configured_names <- names(configured)
+  descriptor <- configured[[1L]]
+  relative <- if (is.list(descriptor)) descriptor$path else descriptor
+  label <- if (
+    !is.null(configured_names) &&
+      length(configured_names) >= 1L &&
+      !is.na(configured_names[[1L]]) &&
+      nzchar(configured_names[[1L]])
+  ) {
+    configured_names[[1L]]
+  } else if (is.character(relative) && length(relative) == 1L) {
+    basename(relative)
+  } else {
+    "Trekker background"
+  }
+  root <- options[["cerebro_root"]]
+  path <- authorized_spatial_image_path(relative, relative, root)
+  if (is.null(path)) {
+    return(NULL)
+  }
+  url <- viewerPrivateImageUrl(path)
+  if (is.null(url)) {
+    return(NULL)
+  }
+  list(
+    uri = url,
+    bounds = if (is.list(descriptor)) descriptor$bounds else NULL,
+    viewport_bounds = if (is.list(descriptor)) {
+      descriptor$viewport_bounds
+    } else {
+      NULL
+    },
+    preset = spatialImagePreset(options, dataset, "trekker", label),
+    label = if (is.list(descriptor)) descriptor$label %||% label else label
+  )
+}
+
+centerOfGroups <- function(coordinates, df, n_dimensions, group) {
+  ## Guard against a missing grouping column: callers occasionally pass a
+  ## group that isn't present in df (e.g. a metadata column dropped for a
+  ## selected-cells slice), which would otherwise make df[[group]] NULL and
+  ## crash the tibble construction. Return a typed empty result instead.
+  if (is.null(group) || !group %in% colnames(df)) {
+    return(tidyr::tibble(
+      group = character(),
+      x_median = numeric(),
+      y_median = numeric(),
+      z_median = numeric()
+    ))
+  }
+  ## check number of dimenions in projection
+  ## ... 2 dimensions
+  if (n_dimensions == 2) {
+    ## calculate center for groups and return
+    tidyr::tibble(
+      x = coordinates[[1]],
+      y = coordinates[[2]],
+      group = df[[group]]
+    ) %>%
+      dplyr::group_by(.data$group) %>%
+      dplyr::summarise(
+        x_median = median(x),
+        y_median = median(y),
+        .groups = 'drop_last'
+      ) %>%
+      dplyr::ungroup() %>%
+      return()
+    ## ... 3 dimensions
+  } else if (n_dimensions == 3 && is.numeric(coordinates[, 3])) {
+    ## calculate center for groups and return
+    tidyr::tibble(
+      x = coordinates[[1]],
+      y = coordinates[[2]],
+      z = coordinates[[3]],
+      group = df[[group]]
+    ) %>%
+      dplyr::group_by(.data$group) %>%
+      dplyr::summarise(
+        x_median = median(x),
+        y_median = median(y),
+        z_median = median(z),
+        .groups = 'drop_last'
+      ) %>%
+      dplyr::ungroup() %>%
+      return()
+  }
 }
