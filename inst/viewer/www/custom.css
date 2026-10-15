@@ -350,6 +350,7 @@ body .sidebar .cerebro-sidebar-preferences .shiny-input-container {
 /* Brand block at the top of the sidebar. The inline SVG wordmark inherits the
    sidebar text colour, with an accent on "Nexus". */
 body.skin-blue .sidebar .cerebro-brand {
+  position: relative;
   color: var(--c-text) !important;
   padding: 18px 20px 12px;
   margin-bottom: 2px;
@@ -358,6 +359,20 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
   display: block;
   width: 188px;
   height: auto;
+}
+/* Fit the version into the existing bottom padding without moving the menu. */
+body.skin-blue .sidebar .cerebro-brand-version {
+  position: absolute;
+  left: 20px;
+  bottom: 0;
+  width: 188px;
+  color: var(--c-text-2);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 11px;
+  text-align: right;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .cerebro-nav-close,
 #cerebro-nav-scrim { display: none; }

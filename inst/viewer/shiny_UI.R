@@ -522,6 +522,19 @@ source(
 ##----------------------------------------------------------------------------##
 ## Create dashboard with different tabs.
 ##----------------------------------------------------------------------------##
+## Use the recorded version so standalone bundles need no installed package.
+brand_version <- Cerebro.options[["cerebro_version"]]
+brand_version_label <- NULL
+if (
+  length(brand_version) &&
+    !is.na(brand_version[[1L]]) &&
+    nzchar(as.character(brand_version[[1L]]))
+) {
+  brand_version_label <- tags$span(
+    class = "cerebro-brand-version",
+    paste0("v", as.character(brand_version[[1L]]))
+  )
+}
 ui <- dashboardPage(
   title = "CerebroNexus",
   ## Header is collapsed to zero height by the theme (see www/custom.css); the
@@ -547,7 +560,8 @@ ui <- dashboardPage(
           ),
           collapse = ""
         )
-      )
+      ),
+      brand_version_label
     ),
     tags$button(
       type = "button",
