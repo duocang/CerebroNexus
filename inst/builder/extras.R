@@ -2055,7 +2055,10 @@ builder_attach_crb_extras <- function(
     return(list(applied = character(), trekker = FALSE))
   }
 
-  codec <- try(.cerebroPayloadCodec(crb_path), silent = TRUE)
+  codec <- try(
+    .builder_build_runtime_function(".cerebroPayloadCodec")(crb_path),
+    silent = TRUE
+  )
   crb <- try(readCerebro(crb_path), silent = TRUE)
   if (inherits(crb, "try-error")) {
     return(list(error = "The exported .crb could not be read back."))
@@ -2108,12 +2111,19 @@ builder_attach_crb_extras <- function(
 
   written <- try(
     {
-      payload <- .thinCerebroPayload(crb, crb_path)
+      payload <- .builder_build_runtime_function(".thinCerebroPayload")(
+        crb,
+        crb_path
+      )
       if (identical(codec, "rds")) {
         connection <- .open_gz(temporary, open = "wb", compression = 1L)
         tryCatch(saveRDS(payload, connection), finally = close(connection))
       } else {
-        .writeCerebroPayload(payload, temporary, codec)
+        .builder_build_runtime_function(".writeCerebroPayload")(
+          payload,
+          temporary,
+          codec
+        )
       }
     },
     silent = TRUE
