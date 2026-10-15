@@ -325,6 +325,7 @@ server <- function(input, output, session) {
     ## makes the browser reject every previous generation while the new object
     ## is loading, and prevents old progressive aux data crossing the boundary.
     viewer_clear_cell_view_aux()
+    removeNotification("dataset-load-error")
     viewer_send_dataset_phase("pending", dataset_context, request)
     viewer_dataset_request(request)
     if (!identical(isolate(available_crb_files$selected), selection)) {
@@ -566,21 +567,25 @@ server <- function(input, output, session) {
       }
       selectInput(
         inputId = "crb_file_selector",
-        label = "Sample data set",
+        label = "Dataset",
         choices = choices,
         selected = selected,
-        width = "72ch"
+        width = "100%"
       )
     }
   })
 
   ## listen to the dataset switcher and update the current selection
+  outputOptions(output, "crb_file_selector_UI", suspendWhenHidden = FALSE)
   observeEvent(
     list(input[['crb_file_selector']], input[['viewer_dataset_selection']]),
     {
       if (
         !is.null(input[['crb_file_selector']]) &&
-          !is.null(available_crb_files$files)
+          !is.null(available_crb_files$files) &&
+          input[['crb_file_selector']] %in% unname(viewerDatasetChoices(
+            available_crb_files$files, available_crb_files$labels
+          ))
       ) {
         pending <- input[['viewer_dataset_selection']]
         nonce <- if (
@@ -715,16 +720,33 @@ server <- function(input, output, session) {
   })
 
   datasetLoadProgress <- function(label, percent, detail, done = FALSE) {
+    request <- isolate(viewer_dataset_request())
     session$sendCustomMessage(
       "cerebro_dataset_load",
       list(
         label = as.character(label %||% "Dataset"),
         percent = max(0, min(100, as.numeric(percent))),
         detail = as.character(detail %||% ""),
-        done = isTRUE(done)
+        done = isTRUE(done),
+        dataset_context = request$dataset_context,
+        selection = as.character(request$selection %||% ""),
+        selection_nonce = request$selection_nonce %||% 0
       )
     )
   }
+
+  ## Catalog-backed Data info does not need to materialize the full dataset.
+  ## Finish its switch feedback without falsely marking analysis data ready.
+  observe({
+    request <- viewer_dataset_request()
+    req(is.list(request), !isTRUE(dataset_load_requested()))
+    req(current_dataset_info())
+    datasetLoadProgress(
+      viewerDatasetLabel(available_crb_files$files, request$selection,
+                        available_crb_files$labels),
+      100, "Dataset information ready", done = TRUE
+    )
+  })
 
   viewer_dataset_snapshot <- reactive({
     request <- viewer_dataset_request()
@@ -869,9 +891,10 @@ server <- function(input, output, session) {
 
   data_set <- reactive({
     snapshot <- viewer_dataset_snapshot()
-    if (!isTRUE(snapshot$ok)) {
-      stop(snapshot$error)
-    }
+    ## A failed dataset is recoverable through the global selector. A regular
+    ## error escaping a downstream observer would close the whole Shiny session.
+    validate(need(isTRUE(snapshot$ok),
+      "The dataset could not be loaded. Choose another dataset."))
     snapshot$data
   })
 
@@ -897,6 +920,10 @@ server <- function(input, output, session) {
           call. = FALSE
         )
         viewer_send_dataset_phase("error", snapshot$dataset_context)
+        showNotification(
+          "The dataset could not be loaded. Choose another dataset or reload the app.",
+          type = "error", duration = NULL, id = "dataset-load-error"
+        )
       }
     },
     priority = 1000
@@ -1776,6 +1803,13 @@ server <- function(input, output, session) {
     observe({
       should_show <- show_reactive()
       shinyjs::toggle(id = item_id, condition = should_show)
+      if (!isTRUE(should_show) && identical(isolate(input[["sidebar"]]), tab_name)) {
+        updateTabItems(session, "sidebar", selected = "loadData")
+        showNotification(
+          "This page is unavailable for the selected dataset. Showing Data info.",
+          id = "dataset-page-unavailable", duration = 6
+        )
+      }
       decision <- viewerInitialPageDecision(
         initial_tab,
         tab_name,

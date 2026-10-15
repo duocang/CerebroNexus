@@ -172,7 +172,7 @@ cv_pane <- function(key) {
 tab_coordinated_views <- tabItem(
   tabName = "coordinated_views",
   div(
-    class = "coordviews-page linked-views-page",
+    class = "coordviews-page linked-views-page cv-workspace-pending",
     cerebroVizPageHeader(
       "Linked views",
       "coordinated_views_info",

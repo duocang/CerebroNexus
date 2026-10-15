@@ -576,6 +576,7 @@
       cancelScheduledFinish();
       pane.dataset.cerebroPageReady = "true";
       setBusy(pane, false);
+      window.dispatchEvent(new CustomEvent("cerebro:page-ready"));
       if (pane !== activePane) return;
       if (announcement) announcement.textContent = '';
       window.clearTimeout(slowTimer);
@@ -786,7 +787,7 @@
       if (pane && pane === currentPane()) finish(pane);
     });
     window.addEventListener("cerebro:linkedviews-ready", function (event) {
-      if (!event.detail || !event.detail.primaryReady || !event.detail.painted) return;
+      if (!event.detail || !event.detail.complete || !event.detail.painted) return;
       if (window.CerebroDatasetContext && !window.CerebroDatasetContext.accepts(event.detail)) return;
       var pane = document.getElementById("shiny-tab-coordinated_views");
       if (pane && pane === currentPane()) finish(pane);
@@ -955,6 +956,22 @@
     var visibleAt = 0;
     var fadingOut = false;
     var installed = false;
+    var completion = null;
+
+    function workspaceBusy(busy) {
+      var content = document.getElementById("main-content");
+      if (content) {
+        content.inert = busy;
+        if (busy) content.setAttribute("aria-busy", "true");
+        else content.removeAttribute("aria-busy");
+      }
+    }
+
+    function pageReady() {
+      var pane = document.querySelector('.tab-pane.active[id^="shiny-tab-"]');
+      return !pane || pane.dataset.cerebroPageReady === "true" ||
+        !!pane.querySelector('.cerebro-page-feedback.is-terminal');
+    }
 
     function ensureOverlay() {
       if (overlay) return overlay;
@@ -1002,6 +1019,7 @@
       }
       fadingOut = false;
       document.body.classList.add("cerebro-dataset-is-loading");
+      workspaceBusy(true);
       var labelNode = element.querySelector(".cerebro-dataset-loading-label");
       var detailNode = element.querySelector(".cerebro-dataset-loading-detail");
       // Do not re-announce an unchanged stage on every progress update.
@@ -1017,6 +1035,8 @@
 
     function update(message) {
       message = message || {};
+      var context = window.CerebroDatasetContext;
+      if (context && !context.acceptsProgress(message)) return;
       begin(message.label, message.detail);
       var percent = Math.max(0, Math.min(100, Number(message.percent) || 0));
       overlay.querySelector(".cerebro-dataset-loading-track span").style.width =
@@ -1026,12 +1046,22 @@
       overlay.querySelector(".cerebro-dataset-loading-elapsed").textContent =
         elapsedText();
       if (message.done) {
+        // The object being loaded is not yet a painted visualization. Let the
+        // existing page readiness events own this boundary (including empties).
+        if (!message.failed && !pageReady()) {
+          completion = message;
+          overlay.querySelector(".cerebro-dataset-loading-detail").textContent =
+            "Updating the current page…";
+          return;
+        }
+        completion = null;
         window.clearInterval(elapsedTimer);
         var hide = function () {
           overlay.hidden = true;
           overlay.classList.remove("is-visible");
           fadingOut = false;
           document.body.classList.remove("cerebro-dataset-is-loading");
+          workspaceBusy(false);
         };
         if (revealTimer !== null) {
           window.clearTimeout(revealTimer);
@@ -1063,12 +1093,41 @@
         install
       );
     }
+    window.addEventListener("cerebro:dataset-context", function (event) {
+      var detail = event.detail || {};
+      if (detail.selectionPending) {
+        completion = null;
+        var input = document.getElementById("crb_file_selector");
+        var selected = input && input.options[input.selectedIndex];
+        begin(selected ? selected.textContent : "Dataset", "Updating dataset…");
+        overlay.querySelector(".cerebro-dataset-loading-track span").style.width = "0%";
+        overlay.querySelector(".cerebro-dataset-loading-percent").textContent = "0%";
+      } else if (detail.phase === "error") {
+        completion = null;
+        // This event has already passed the context/selection freshness gate.
+        window.clearTimeout(hideTimer);
+        window.clearTimeout(revealTimer);
+        window.clearInterval(elapsedTimer);
+        revealTimer = null;
+        if (overlay) { overlay.hidden = true; overlay.classList.remove("is-visible"); }
+        document.body.classList.remove("cerebro-dataset-is-loading");
+        workspaceBusy(false);
+      }
+    });
+    function finishPage() {
+      if (completion) update(completion);
+    }
+    window.addEventListener("cerebro:page-ready", finishPage);
+    window.addEventListener("cerebro:view-terminal", finishPage);
     document.addEventListener("change", function (event) {
       var input = event.target;
       if (!input || (input.id !== "crb_file_selector" && input.id !== "input_file")) {
         return;
       }
       if (input.id === "input_file" && !(input.files && input.files.length)) return;
+      // Selectize emits Shiny input events; beginSelection supplies immediate,
+      // deduplicated feedback for keyboard, mouse, and programmatic changes.
+      if (input.id === "crb_file_selector") return;
       var selected = input.id === "crb_file_selector" &&
         input.options[input.selectedIndex];
       begin(selected ? selected.textContent : "Dataset", "Waiting for the server");

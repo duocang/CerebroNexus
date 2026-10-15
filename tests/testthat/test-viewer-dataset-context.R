@@ -614,3 +614,20 @@ test_that("a rapid selector A/B/A sequence rejects stale ready messages", {
     )
   )
 })
+
+test_that("progress rejects old generations and repeated-choice responses", {
+  result <- run_dataset_context_node(c(
+    "const gate = window.CerebroDatasetContext;",
+    "const a = {epoch:'test',dataset_key:'a',generation:1};",
+    "const b = {epoch:'test',dataset_key:'b',generation:2};",
+    "gate.receive({phase:'ready',dataset_context:a,selection:'a',selection_nonce:0});",
+    "gate.beginSelection('b');",
+    "if(gate.acceptsProgress({dataset_context:a,selection:'a',selection_nonce:0})) throw Error('Old A progress');",
+    "gate.receive({phase:'pending',dataset_context:b,selection:'b',selection_nonce:1});",
+    "if(!gate.acceptsProgress({dataset_context:b,selection:'b',selection_nonce:1})) throw Error('Current B rejected');",
+    "gate.beginSelection('a');",
+    "if(gate.acceptsProgress({dataset_context:b,selection:'b',selection_nonce:1})) throw Error('Old B progress');",
+    "if(gate.acceptsProgress({dataset_context:a,selection:'a',selection_nonce:0})) throw Error('Earlier A accepted');"
+  ))
+  expect_null(attr(result, "status"))
+})

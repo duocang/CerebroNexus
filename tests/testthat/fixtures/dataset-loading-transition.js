@@ -4,10 +4,12 @@ const vm = require('vm');
 const source = fs.readFileSync(process.argv[2], 'utf8');
 const code = source.slice(source.lastIndexOf('  ready(function () {'), source.lastIndexOf('}());'));
 function session(reducedMotion = false) {
-  let now = 0, serial = 0, overlay;
+  let now = 0, serial = 0, overlay, pane = null;
   const tasks = new Map(), handlers = {}, events = {};
   const classes = () => { const values = new Set(); return {add: x => values.add(x), remove: x => values.delete(x), contains: x => values.has(x)}; };
   const document = {
+    getElementById: () => null,
+    querySelector: () => pane,
     body: {classList: classes(), appendChild: e => {overlay = e;}},
     createElement: () => {
       const nodes = {};
@@ -17,6 +19,7 @@ function session(reducedMotion = false) {
   };
   const schedule = (fn, delay, interval) => {const id = ++serial; tasks.set(id, {fn, at: now + delay, interval}); return id;};
   const window = {
+    addEventListener: (name, fn) => {events[name] = fn;},
     performance: {now: () => now},
     setTimeout: (fn, delay) => schedule(fn, delay, 0),
     clearTimeout: id => tasks.delete(id),
@@ -29,6 +32,9 @@ function session(reducedMotion = false) {
   return {
     get overlay() {return overlay;},
     get busy() {return document.body.classList.contains('cerebro-dataset-is-loading');},
+    setPane: value => {pane = value;},
+    emit: (name, detail = {}) => events[name]({detail}),
+    window,
     update: message => handlers.cerebro_dataset_load(Object.assign({label:'Dataset A',percent:10,detail:'Loading'},message)),
     tick: ms => {
       const end = now + ms;
@@ -73,3 +79,28 @@ for (const duringFade of [false,true]) {
   s.update({done:true,percent:100}); s.tick(0); assert(s.overlay.hidden);
 }
 console.log('PASS fast, slow, repeated progress, consecutive loads, interrupted fade and reduced motion');
+// Dataset materialization must not uncover an outgoing or unfinished plot.
+{
+  const s = session();
+  const pane = {dataset:{},querySelector:()=>null}; s.setPane(pane);
+  s.update(); s.tick(500); s.update({done:true,percent:100}); s.tick(500);
+  assert(s.busy); assert(visible(s));
+  pane.dataset.cerebroPageReady = 'true'; s.emit('cerebro:page-ready'); s.tick(150);
+  assert(!s.busy); assert(s.overlay.hidden);
+}
+// A late completion from an older selection must neither relabel nor dismiss.
+{
+  const s = session(); s.window.CerebroDatasetContext = {acceptsProgress:m=>m.selection_nonce===2};
+  s.update({label:'New dataset',selection_nonce:2}); s.tick(500);
+  s.update({label:'Old dataset',selection_nonce:1,done:true}); s.tick(500);
+  assert(s.busy); assert.strictEqual(s.overlay.querySelector('.cerebro-dataset-loading-label').textContent,'New dataset');
+  s.update({selection_nonce:2,done:true}); s.tick(150); assert(!s.busy);
+}
+// Failed loads release the workspace so the picker can recover in-place.
+{
+  const s = session(); s.update(); s.tick(300);
+  s.emit('cerebro:dataset-context', {phase:'error'});
+  assert(!s.busy); assert(s.overlay.hidden);
+  s.update({label:'Recovered dataset'}); s.tick(200); assert(visible(s));
+  s.update({done:true}); s.tick(400); assert(!s.busy);
+}

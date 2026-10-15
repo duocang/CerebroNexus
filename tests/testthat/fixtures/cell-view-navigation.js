@@ -32,7 +32,8 @@ function session() {
     requestSingleView: () => {},
     activateSingle: id => {c.stashSingleState(); c.singleActive = id; c.D = {id, n: 7};},
     stashSingleState: () => {if (c.singleActive) c.saved[c.singleActive] = c.D;},
-    restoreLinkedSurface: () => {}, showUnavailable: () => {},
+    restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
+    setLinkedPresentationReady: value => {c.presented = value;},
     workspaceSummary: () => ({primaryReady: true}), reportWorkspaceReady: () => {},
     onData: bundle => {c.D = bundle;}, restoreWorkspace: state => c.restored.push(state),
     datasetMessageFresh: extra => !!extra && extra.dataset_context === 'generation-1',
@@ -112,6 +113,32 @@ for (const override of [{dataset_context: 'generation-0'}, {dataset_id: 'ds0'},
   assert.strictEqual(s.fallbacks, 0);
 }
 console.log(`${routes} page routes and delayed supplement regressions passed`);
+
+// A specialist canvas parked through a neutral page must never become the
+// first Linked frame when this dataset has no cached Linked bundle yet.
+for (const via of ['direct', 'groups', 'loadData']) {
+  const s = session(); s.linkedBundle = null; s.go(ids[0]);
+  if (via !== 'direct') s.go(via);
+  s.go('linked');
+  assert.strictEqual(s.D, null); assert.strictEqual(s.presented, false);
+}
+
+// Linked readiness is about ownership as well as cell count: even a same-size
+// specialist or an older generation cannot acknowledge the Linked workspace.
+{
+  const base = {n:7, dataset_context:'current', progressive:true};
+  const c = {D:base, linkedBundle:base, singleActive:null,
+    panels:[{spaceId:'umap',canvas:{dataset:{pointCount:7}}}],
+    datasetMessageFresh:x=>x.dataset_context==='current',configFingerprint:()=> 'fp',
+    sel:null,selectedCellIds:()=>[],colorBy:'group',selectedProjections:['umap'],
+    selectedSpatial:[],activeSpatial:()=>null,transportMetrics:{}};
+  vm.createContext(c); vm.runInContext(fn('workspaceSummary'),c);
+  assert(c.workspaceSummary().primaryReady); assert(!c.workspaceSummary().complete);
+  c.D.progressive = false; assert(c.workspaceSummary().complete);
+  c.singleActive = ids[0]; assert(!c.workspaceSummary().primaryReady);
+  c.singleActive = null; c.D = {...base}; assert(!c.workspaceSummary().primaryReady);
+  c.D = base; base.dataset_context='retired'; assert(!c.workspaceSummary().primaryReady);
+}
 
 // Background visibility is independent from coordinates/selection and applies
 // only to Linked views; specialist pages still draw their own selected image.

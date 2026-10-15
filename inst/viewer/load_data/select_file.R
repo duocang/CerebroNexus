@@ -31,9 +31,7 @@ output[["load_data_select_file_UI"]] <- renderUI({
             width = '350px',
             buttonLabel = "Browse...",
             placeholder = "No file selected"
-          ),
-          ## dataset switcher; renders only when >1 .crb files are loaded
-          uiOutput("crb_file_selector_UI")
+          )
         )
       )
     )
@@ -42,13 +40,6 @@ output[["load_data_select_file_UI"]] <- renderUI({
       div(
         class = "cerebro-welcome",
         htmlOutput("load_data_mode_closed")
-      ),
-      fluidRow(
-        column(
-          12,
-          ## dataset switcher; renders only when >1 .crb files are loaded
-          uiOutput("crb_file_selector_UI")
-        )
       )
     )
   }
@@ -83,7 +74,7 @@ output[["load_data_mode_closed"]] <- renderText({
     HTML(Cerebro.options[["welcome_message"]])
   } else {
     HTML(
-      "<p>This app uses pre-loaded data. Choose a data set below to begin exploring.</p>"
+      "<p>Explore the loaded dataset using the pages in the sidebar.</p>"
     )
   }
 })

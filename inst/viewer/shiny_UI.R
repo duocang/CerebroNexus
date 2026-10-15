@@ -556,6 +556,7 @@ ui <- dashboardPage(
       `aria-label` = "Close navigation",
       HTML("&times;")
     ),
+    uiOutput("crb_file_selector_UI", class = "cerebro-dataset-switcher"),
     sidebarMenu(
       id = "sidebar",
       menuItem(
