@@ -157,6 +157,28 @@ expressionProjectionCachedRow <- function(data, cells, gene) {
   value
 }
 
+expressionProjectionGeneMeans <- function(data, genes) {
+  genes <- unique(as.character(genes))
+  dataset_key <- expressionProjectionDatasetKey()
+  rows <- stats::setNames(
+    lapply(genes, function(gene) {
+      expressionProjectionRowCacheGet(
+        if (!is.null(dataset_key)) paste(dataset_key, gene, sep = "::") else NULL
+      )
+    }), genes
+  )
+  # Never densify an uncached gene set just to compute its means. The native
+  # backend reduction remains the fallback for subsets and larger gene sets.
+  if (any(vapply(rows, is.null, logical(1)))) {
+    return(data$getMeanExpressionForGenes(genes))
+  }
+  data.frame(
+    gene = names(rows),
+    expression = unname(vapply(rows, mean, numeric(1))),
+    stringsAsFactors = FALSE
+  )
+}
+
 expressionProjectionRenderKey <- function(genes, display_mode) {
   present <- as.character(genes[["genes_to_display_present"]] %||% character())
   rgb <- genes[["rgb_genes"]] %||% list()
