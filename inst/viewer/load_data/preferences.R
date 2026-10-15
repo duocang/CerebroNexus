@@ -30,8 +30,8 @@ output[["preferences_options"]] <- renderUI({
     ),
     preference(
       "hover_info_in_projections_checkbox",
-      "Cell details", isTRUE(Cerebro.options[['projections_show_hover_info']]),
-      "Show cell details on hover in Projection, Gene expression, Spatial and trajectory plots. Linked views has its own linked hover control."
+      "Cell tooltips", isTRUE(Cerebro.options[['projections_show_hover_info']] %||% TRUE),
+      "Show brief information on hover in all cell views and the HLA motif network. Click a cell to pin its summary and open Details, even when tooltips are off. Cross-view highlighting is controlled separately."
     )
   )
 })
@@ -51,10 +51,7 @@ observeEvent(input[["webgl_checkbox"]], {
 ##----------------------------------------------------------------------------##
 
 observeEvent(input[["hover_info_in_projections_checkbox"]], {
-  preferences[["show_hover_info_in_projections"]] <- input[[
-    "hover_info_in_projections_checkbox"
-  ]]
-  print(glue::glue(
-    "[{Sys.time()}] Show hover info status: {preferences[['show_hover_info_in_projections']]}"
+  session$sendCustomMessage("cerebro_cell_tooltips", list(
+    enabled = isTRUE(input[["hover_info_in_projections_checkbox"]])
   ))
 })

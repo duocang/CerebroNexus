@@ -315,14 +315,13 @@ tab_coordinated_views <- tabItem(
       ),
       div(
         class = "cv-actions-row",
-        ## Display switches share one responsive row with Share and Settings. Disabling hover leaves
-        ## zoom, brushing and selection available.
+        ## Cross-view highlighting is independent of the global cell tooltips.
         div(
           class = "cv-linked-hover",
-          title = "Hover over a cell to highlight the same cell across linked views.",
+          title = "Highlight the same cell in other linked plots. Cell tooltips are controlled in Preferences; clicking and selection remain available.",
           shinyWidgets::materialSwitch(
             inputId = "cv-hover",
-            label = "Linked hover",
+            label = "Cross-view highlight",
             value = TRUE,
             status = "primary",
             inline = TRUE

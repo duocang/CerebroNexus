@@ -167,7 +167,7 @@ Cerebro.options <<- list(
     "HLA & TCR" = 0.3
   ),
   "percentage_cells_to_show" = 100,
-  "projections_show_hover_info" = FALSE
+  "projections_show_hover_info" = TRUE
 )
 Cerebro.options <<- viewerAddMillionCellDemo(Cerebro.options)
 Cerebro.options <<- viewerAddRenDemo(Cerebro.options)

@@ -147,12 +147,10 @@ server <- function(input, output, session) {
       step = 10
     ),
     use_webgl = TRUE,
-    show_hover_info_in_projections = ifelse(
-      exists('Cerebro.options') &&
-        !is.null(Cerebro.options[['projections_show_hover_info']]),
-      Cerebro.options[['projections_show_hover_info']],
-      TRUE
-    )
+    # Cell summaries use the already loaded colour/coordinate data. Complete
+    # metadata is requested for one cell through Details, never for all points.
+    # Retain this legacy payload flag for the shared scatter producers.
+    show_hover_info_in_projections = FALSE
   )
 
   ## Outputs inside collapsed boxes may stay active while their owning sidebar
@@ -1976,6 +1974,11 @@ server <- function(input, output, session) {
   ## Spatial's controls and observers can wait until its page is requested.
   source(
     file.path(Cerebro.options[["cerebro_root"]], "viewer/spatial/func_spatial_helpers.R"),
+    local = TRUE
+  )
+
+  source(
+    file.path(Cerebro.options[["cerebro_root"]], "viewer/core/cell_inspection.R"),
     local = TRUE
   )
 

@@ -96,6 +96,8 @@
   // in the others -- that is how the eye carries a position in the embedding over
   // to a position in tissue. Null when the cursor is not on a cell.
   var hoverCell = null;
+  var hoverPanel = null;
+  var cellTooltipsOn = true;
   var linkedHoverOn = true;
   var linkedBackgroundsOn = true;
   // The gene a reply is still wanted for. Set when one is asked for and cleared by
@@ -2417,6 +2419,7 @@
     if (!c) return;
     c.clearRect(0, 0, p.W, p.H);
     if (hoverCell == null || hoverCell === pick || !p.ok || !p.ok[hoverCell]) return;
+    if (!singleActive && !linkedHoverOn && p !== hoverPanel) return;
     // Thinner and cooler than the pick ring so hover and selection never read
     // as the same state.
     c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
@@ -3942,7 +3945,36 @@
     }
     return String(value);
   }
-  function hoverHtml(i, pinned) {
+  function hoverHtml(i, pinned, panel) {
+    var actions = pinned ? '<div class="cv-tip-act">' +
+      '<button type="button" class="cv-tip-btn cv-tip-details">Details</button>' +
+      '<button type="button" class="cv-tip-btn cv-tip-close" aria-label="Close">Close</button></div>' : '';
+    if (singleActive && singleActive !== 'hla_motif_network') {
+      var view = singleView(singleActive), mode = panelColorMode(panel);
+      var lines = [];
+      var cell = Array.isArray(D && D.cells) && D.cells[i];
+      lines.push(cell ? 'Cell: ' + cell : 'Cell identifier available in Details');
+      var category = catOf(mode), field = fieldOf(panel);
+      if (category && category.values) {
+        var level = category.levels[category.values[i]];
+        lines.push(((view && view.meta && view.meta.color_variable) || groupLabel(mode)) +
+          ': ' + (level == null ? 'NA' : level));
+      }
+      if (field) {
+        var number = fieldValue(field, i);
+        if (number != null) lines.push(field.label + ': ' + fmtVal(number));
+      }
+      // Supplemental fields already present on the client may enrich a pinned
+      // summary, but hover never requests the full metadata columns.
+      var space = panel && spaceById[panel.spaceId] || spaceById[singleSpaceIds[0]];
+      if (pinned && space && Array.isArray(space._hoverColumns)) {
+        space._hoverColumns.slice(0, HOVER_MAX_GROUPS).forEach(function (column) {
+          var line = column.label + ': ' + singleHoverColumnValue(column, i, space);
+          if (lines.indexOf(line) < 0) lines.push(line);
+        });
+      }
+      return '<div class="cv-tip-row">' + esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>' + actions;
+    }
     if (singleActive) {
       var singleSpace = spaceById[singleSpaceIds[0]];
       var activeSingleView = singleView(singleActive);
@@ -3977,12 +4009,13 @@
       return '<div class="cv-tip-row">' + esc(text).replace(/\n/g, '<br>') + '</div>';
     }
     var rows = [];
-    var g = catOf(colorBy);
+    var g = catOf(panelColorMode(panel));
     // headline = the active categorical level, else the barcode
     var head = g ? g.levels[g.values[i]] : cellLabel(i);
     var h = '<div class="cv-tip-row"><b>' + esc(head) + '</b></div>';
+    if (g) rows.push(['Cell', cellLabel(i)]);
     // the continuous variable in play, at its true value
-    var fld = fieldOf();
+    var fld = fieldOf(panel);
     if (fld) rows.push([fld.label, fmtVal(fieldValue(fld, i))]);
     if (colorBy === GENE_MODE && D.gene) {
       rows.push([D.gene.gene, fmtVal(D.gene.v[i] / 255 * D.gene.max)]);
@@ -4012,10 +4045,7 @@
       // panels at the moment a Trekker user was clicking nuclei to read their
       // niche. Close dismisses this tooltip and nothing else: the pick it came
       // from stays, because the niche readout is what the click was for.
-      h += '<div class="cv-tip-act">' +
-        '<button type="button" class="cv-tip-btn cv-tip-details">Details</button>' +
-        '<button type="button" class="cv-tip-btn cv-tip-close" ' +
-        'aria-label="Close">Close</button></div>';
+      h += actions;
     }
     return h;
   }
@@ -4031,6 +4061,27 @@
   // exactly the kind of thing worth being exact about.
   var cardCell = null;          // cell index the card is showing, or null
   var cardMeta = null;          // { cell, rows } from the server, when it lands
+  var cardRequest = null, cardRequestSerial = 0;
+
+  function requestCardMetadata() {
+    if (!cardOpen() || !D || (cardRequest && cardRequest.sent)) return;
+    var cell = Array.isArray(D.cells) && D.cells[cardCell];
+    if (cell == null) { requestSingleAux(); return; }
+    var request = cardRequest = {
+      request_id: ++cardRequestSerial, cell: String(cell), client_index: cardCell,
+      view_id: singleActive || 'linked', dataset_context: D.dataset_context, sent: true
+    };
+    Shiny.setInputValue('coordviews_cell_detail', request, { priority: 'event' });
+  }
+
+  function receiveCardMetadata(message) {
+    if (!D || !cardOpen() || !cardRequest || !message || !datasetMessageFresh(message) ||
+        !sameDatasetContext(message.dataset_context, D.dataset_context) ||
+        message.request_id !== cardRequest.request_id || message.view_id !== (singleActive || 'linked') ||
+        message.cell !== cardRequest.cell || Number(message.client_index) !== cardCell) return;
+    cardMeta = { index: cardCell, cell: message.cell, rows: message.rows || [], error: message.error };
+    renderCard();
+  }
 
   function cardOpen() { return cardCell != null; }
 
@@ -4165,7 +4216,8 @@
     // the full meta row, or a placeholder until the server answers
     var metaHtml = '';
     if (cardMeta && cardMeta.index === i && cardMeta.rows) {
-      metaHtml = kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
+      metaHtml = cardMeta.error ? '<div class="cv-card-sub">' + esc(cardMeta.error) + '</div>' :
+        kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
     } else {
       metaHtml = '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
     }
@@ -4260,34 +4312,30 @@
       return;
     }
     cardCell = i;
+    cardRequest = null;
     if (!cardMeta || cardMeta.index !== i) cardMeta = null;
     renderCard();
     // The tooltip has just been promoted into the card — leaving it up would
     // show the same cell twice, once truncated. It returns on the next hover.
-    var tip = p && $(p.tipId);
-    if (tip) tip.style.opacity = 0;
+    unpinTip();
     cardFlyFrom(p, i);
     // ask for the exact meta row; the card is already on screen either way
-    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', { index: i, dataset_context:D.dataset_context },
-        { priority: 'event' });
-    }
+    requestCardMetadata();
   }
 
   function openTrekkerInspector(i) {
     cardCell = i;
+    cardRequest = null;
     if (!cardMeta || cardMeta.index !== i) cardMeta = null;
     renderCard();
     openTrekkerInsights('cell');
-    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('coordviews_cell_detail', { index: i, dataset_context:D.dataset_context },
-        { priority: 'event' });
-    }
+    requestCardMetadata();
   }
 
   function closeCard() {
     var card = $('cv-card');
     cardCell = null;
+    cardRequest = null;
     var empty = $('cv-tk-cell-empty'), content = $('cv-tk-cell-content');
     if (empty) empty.style.display = '';
     if (content) content.style.display = 'none';
@@ -4324,7 +4372,7 @@
     var tip = $(p.tipId); if (!tip) return;
     pinnedTip = { panel: p, cell: i };
     tip.classList.add('cv-tip-pinned');
-    tip.innerHTML = hoverHtml(i, true);
+    tip.innerHTML = hoverHtml(i, true, p);
     var detailHandled = false;
     var runDetails = function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -4389,7 +4437,7 @@
   }
 
   function syncLinkedHoverDefault(dataChanged) {
-    if (dataChanged) linkedHoverOn = true;
+    // This is a user preference, not a dataset display default.
     var control = $('cv-hover');
     if (control) control.checked = linkedHoverOn;
   }
@@ -4397,13 +4445,22 @@
   function setLinkedHover(enabled) {
     linkedHoverOn = !!enabled;
     syncLinkedHoverDefault(false);
-    if (!linkedHoverOn) {
-      panels.forEach(function (panel) {
-        var tip = $(panel.tipId);
-        if (tip && pinnedTip.panel !== panel) tip.style.opacity = 0;
-      });
-      setHoverCell(null);
-    }
+    setHoverCell(null);
+    panels.forEach(refreshPanelHover);
+  }
+
+  function setCellTooltips(enabled) {
+    cellTooltipsOn = !!enabled;
+    var control = $('hover_info_in_projections_checkbox');
+    if (control) control.checked = cellTooltipsOn;
+    panels.forEach(function (panel) {
+      var tip = $(panel.tipId);
+      if (!cellTooltipsOn && pinnedTip.panel !== panel && tip) {
+        tip.style.opacity = 0;
+      }
+    });
+    setHoverCell(null);
+    panels.forEach(refreshPanelHover);
   }
 
   function syncLinkedBackgroundsDefault(dataChanged) {
@@ -4431,14 +4488,16 @@
       return;
     }
     if (interactionIsStatic()) return;
-    // Linked hover is optional; specialist pages retain their own settings.
-    // Return before nearest-point lookup. Click and brush handlers stay active.
-    if (!singleActive && !linkedHoverOn) return;
+    // Point tooltips, including HLA motif nodes, share the global preference.
+    // Cross-view highlighting remains independent of tooltip text.
+    var showText = cellTooltipsOn;
+    var crossHighlight = !singleActive && linkedHoverOn;
+    if (!showText && !crossHighlight) {
+      if (tip && pinnedTip.panel !== p) tip.style.opacity = 0;
+      setHoverCell(null); return;
+    }
     var space = singleActive && spaceById[p.spaceId];
-    var demandView = (singleActive === 'expression_projection' || singleActive === 'trajectory_projection') && singleView(singleActive);
-    var pendingIds = demandView && demandView.data && demandView.data.wire_token != null &&
-      demandView._auxToken !== demandView.data.wire_token;
-    if (space && space._hoverEnabled === false && !pendingIds) {
+    if (singleActive === 'hla_motif_network' && space && space._hoverEnabled === false) {
       tip.style.opacity = 0; setHoverCell(null); return;
     }
     var r = p.canvas.getBoundingClientRect();
@@ -4446,25 +4505,22 @@
     // A pinned tooltip owns this panel's tooltip element until it is closed —
     // but the cross-panel mark still follows the cursor.
     var own = pinnedTip.panel !== p;
-    if (p.drag || p.panning) {
+    if (p.drag || p.panning || p.orbiting) {
       if (own) tip.style.opacity = 0;
       setHoverCell(null);
       return;
     }
     var i = nearest(p, mx, my);
-    // These views paint with indices before stable IDs are needed. A real
-    // point hover must request IDs even while hover content is pending.
-    if (i >= 0 && demandView) requestSingleAux();
-    if (i < 0 || (space && !singleHoverEnabledAt(space, i))) {
+    if (i < 0 || (singleActive === 'hla_motif_network' && space && !singleHoverEnabledAt(space, i))) {
       if (own) tip.style.opacity = 0;
       setHoverCell(null);
       return;
     }
-    requestSingleAux();
+    if (hoverPanel !== p) { hoverPanel = p; drawHoverAll(); }
     setHoverCell(i);
-    scheduleSingleMetadata(singleActive, true);
     if (!own) return;
-    tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
+    if (!showText) { tip.style.opacity = 0; return; }
+    tip.innerHTML = hoverHtml(i, false, p); tip.style.opacity = 1;
     placeTip(p, tip, i);
   }
 
@@ -4476,6 +4532,7 @@
     });
     p.canvas.addEventListener('mouseleave', function () {
       p.hoverPointer = null;
+      hoverPanel = null;
       setHoverCell(null);
       if (pinnedTip.panel === p) return;
       tip.style.opacity = 0;
@@ -4483,15 +4540,53 @@
   }
 
   // ---- brush + pick --------------------------------------------------------
+  function pickCell(p, index) {
+    requestSingleAux();
+    pick = index >= 0 && index !== pick ? index : null;
+    closeCard(); unpinTip();
+    if (pick != null) pinTip(p, pick);
+    // Picking still drives Trekker's niche readout. Full metadata is opened
+    // deliberately through Details, as on the other cell views.
+    rebuildNiche(); updateSelActions(); renderSelbar(); drawAll();
+    if (!sel) renderReadout();
+  }
+
+  function clearTransientHover() {
+    hoverPanel = null;
+    setHoverCell(null);
+    panels.forEach(function (panel) {
+      panel.hoverPointer = null;
+      var tip = $(panel.tipId);
+      if (tip && pinnedTip.panel !== panel) tip.style.opacity = 0;
+    });
+  }
+
   function wireBrush(p) {
     var brushTarget = p.pane || p.canvas;
     var pos = function (e) {
       var r = p.canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     };
+    // A tap pins a cell without consuming the touch gesture used to scroll.
+    // Ignore the browser's subsequent compatibility mouse events for that tap.
+    p.canvas.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'touch' || e.isPrimary === false || interactionIsStatic()) return;
+      p.touchStart = {x:e.clientX,y:e.clientY,id:e.pointerId};
+      clearTransientHover();
+    });
+    p.canvas.addEventListener('pointercancel', function () { p.touchStart = null; });
+    p.canvas.addEventListener('pointerup', function (e) {
+      var start = p.touchStart; p.touchStart = null;
+      if (!start || start.id !== e.pointerId) return;
+      p.ignoreMouseUntil = Date.now() + 700;
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) return;
+      var point = pos(e); pickCell(p, nearest(p, point[0], point[1]));
+    });
     brushTarget.addEventListener('mousedown', function (e) {
+      if (Date.now() < (p.ignoreMouseUntil || 0)) return;
       if (interactionIsStatic()) return;
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
+      clearTransientHover();
       requestSingleAux();
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
       // A rotatable panel NAVIGATES; it does not select. Selection here is done
@@ -4515,6 +4610,7 @@
       if (dragKind === 'orbit') {
         e.preventDefault();
         p.orbiting = true; p.orbitFrom = pos(e);
+        p.moved = false;
         p.orbitBase = p.rot ? { rx: p.rot.rx, ry: p.rot.ry } : { rx: 0, ry: 0 };
         p.canvas.classList.add('cv-grabbing');
         return;
@@ -4526,6 +4622,7 @@
       if (dragKind === 'pan') {
         e.preventDefault();
         p.panning = true; p.panFrom = pos(e);
+        p.moved = false;
         p.panView = p.view
           ? { cx: p.view.cx, cy: p.view.cy, span: p.view.span }
           : { cx: 0.5, cy: 0.5, span: 1 };
@@ -4542,6 +4639,7 @@
     window.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
         var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
+        if (Math.hypot(oq[0] - p.orbitFrom[0], oq[1] - p.orbitFrom[1]) > 4) p.moved = true;
         p.rot = {
           ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
           // Pitch stops short of ±90°: past vertical the cloud reads as
@@ -4554,6 +4652,7 @@
       }
       if (p.panning) {
         var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
+        if (Math.hypot(pq[0] - p.panFrom[0], pq[1] - p.panFrom[1]) > 4) p.moved = true;
         // screen delta -> view units; y is inverted (canvas y grows downward).
         // Clamped, so dragging on past the edge simply stops instead of sailing
         // off into blank canvas.
@@ -4592,12 +4691,14 @@
         p.canvas.classList.remove('cv-grabbing');
         p.miniBg = null;    // the thumbnail is of the old angle
         drawAll();
+        if (!p.moved) { var orbitPoint = pos(e); pickCell(p, nearest(p, orbitPoint[0], orbitPoint[1])); }
         return;
       }
       if (p.panning) {
         p.panning = false;
         p.canvas.classList.remove('cv-grabbing');
         drawAll();
+        if (!p.moved) { var panPoint = pos(e); pickCell(p, nearest(p, panPoint[0], panPoint[1])); }
         return;
       }
       if (!p.drag) return;
@@ -4627,20 +4728,7 @@
         //
         // Clicking the picked cell again drops the pick, so the click that made
         // it is also the click that undoes it.
-        var again = (k >= 0 && k === pick);
-        pick = (k >= 0 && !again) ? k : null;
-        // Any open card described a cell the user has now moved on from.
-        if (cardOpen()) closeCard();
-        unpinTip();
-        if (pick != null) {
-          pinTip(p, pick);
-          if (D.trekker) openTrekkerInspector(pick);
-        }
-        rebuildNiche();              // Trekker: cells within the picked niche
-        updateSelActions();          // niche pick → show the (animated) Clear button
-        renderSelbar();               // expose the shared Active cell state
-        drawAll();
-        if (!sel) renderReadout();   // Trekker niche readout for the picked cell
+        pickCell(p, k);
       }
       if (!keep) { p.lasso = null; p.lassoData = null; }
       draw(p);
@@ -8441,10 +8529,9 @@
     timing.firstDrawMs = performance.now() - drawStarted;
     timing.activationMs = performance.now() - activationStarted;
     reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
-    // Gene's selection core is requested by hover or brush. Sending all cell
+    // Gene's selection core is requested by click or brush. Sending all cell
     // IDs here competes with the user's first gene operation on the R thread.
     if (id !== 'expression_projection' && id !== 'trajectory_projection') requestSingleAux();
-    scheduleSingleMetadata(id);
     // Canvas drawing is synchronous, but the browser does not composite it
     // until a later frame. Keep the page loader in place until that first
     // painted frame is actually visible; otherwise users see a blank gap
@@ -8644,7 +8731,6 @@
     // against the retained geometry and refresh values after the colour change.
     activePanels.forEach(refreshPanelHover);
     reportSinglePainted(id, view, D);
-    scheduleSingleMetadata(id);
 
     return true;
   }
@@ -9287,32 +9373,14 @@
         var tip = $(panel.tipId);
         var cell = pinnedTip.panel === panel ? pinnedTip.cell : hoverCell;
         if (tip && cell != null && Number(tip.style.opacity) > 0) {
-          tip.innerHTML = hoverHtml(cell, pinnedTip.panel === panel);
+          if (pinnedTip.panel === panel) pinTip(panel, cell);
+          else tip.innerHTML = hoverHtml(cell, false, panel);
         }
       });
-      scheduleSingleMetadata(message.id);
+      if (cardOpen()) requestCardMetadata();
     } catch (error) {
       return;
     }
-  }
-
-  function scheduleSingleMetadata(id, fromHover) {
-    var view = singleView(id), token = view && view.data && view.data.wire_token;
-    if (!view || !view.hover || !view.hover.pending || token == null ||
-        view._metadataRequested === token || singleActive !== id) return;
-    // Gene changes need expression colors, not every cell's hover columns.
-    // Preserve the selection core and fetch the exact metadata on first hover.
-    if ((id === 'expression_projection' || id === 'trajectory_projection') && fromHover !== true) return;
-    view._metadataRequested = token;
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (singleView(id) !== view || view.data.wire_token !== token) return;
-        if (singleActive !== id) { view._metadataRequested = null; return; }
-        Shiny.setInputValue('cell_view_aux_request', {
-          id: id, wire_token: token, stage: 'metadata', dataset_context: view.dataset_context
-        }, { priority: 'event' });
-      });
-    });
   }
 
   function applyData(bundle) {
@@ -10219,6 +10287,14 @@
     if (booted) return true;
     if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return false;
     booted = true;
+    var tooltipControl = $('hover_info_in_projections_checkbox');
+    if (tooltipControl) cellTooltipsOn = tooltipControl.checked;
+    Shiny.addCustomMessageHandler('cerebro_cell_tooltips', function (message) {
+      if (message) setCellTooltips(!!message.enabled);
+    });
+    document.addEventListener('change', function (event) {
+      if (event.target.id === 'hover_info_in_projections_checkbox') setCellTooltips(event.target.checked);
+    });
     Shiny.addCustomMessageHandler('cerebro_scatter_defaults', function (message) {
       if (!message || !sameDatasetContext(message.dataset_context, currentDatasetContext())) return;
       sharedScatter = message;
@@ -10470,11 +10546,7 @@
     // The exact meta row behind the open detail card. Ignored if the card has
     // since moved on to another cell (or closed) — a slow reply must not
     // repaint a card that is now describing something else.
-    Shiny.addCustomMessageHandler('coordviews_cell_meta', function (m) {
-      if (!m || m.index == null || !m.cell) return;
-      cardMeta = { index: Number(m.index), cell: m.cell, rows: m.rows || [] };
-      if (cardOpen() && cardCell === cardMeta.index) renderCard();
-    });
+    Shiny.addCustomMessageHandler('coordviews_cell_meta', receiveCardMetadata);
     // Three 0-255 channels for RGB co-expression.
     Shiny.addCustomMessageHandler('coordviews_rgbval', function (m) {
       if (!D || !m || !datasetMessageFresh(m) ||
@@ -10568,6 +10640,7 @@
       var mounted = !singleId || !!(surfaceHome && surface &&
         surface.contains(surfaceHome.panes));
       if (key === lastVis && mounted) return;
+      if (key !== lastVis) { clearTransientHover(); unpinTip(); closeCard(); }
       lastVis = key;
       requestSingleView(singleId);
       if (singleId && singleView(singleId)) {
@@ -10765,8 +10838,7 @@
         return;
       }
       if (t && t.closest && t.closest('#cv-card-x')) {
-        pick = null; unpinTip(); closeCard(); drawAll();
-        if (!sel) { rebuildNiche(); renderReadout(); }
+        closeCard();
         return;
       }
       if (t && t.closest && t.closest('#cv-clear')) {
@@ -10951,14 +11023,8 @@
     // drawer and its group-filter menus.
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (!cardOpen()) return;
-      pick = null; unpinTip(); closeCard(); drawAll();
-      if (!sel) {
-        rebuildNiche();
-        updateSelActions();
-        renderSelbar();
-        renderReadout();
-      }
+      if (cardOpen()) closeCard();
+      else if (pinnedTip.panel) unpinTip();
     });
     window.addEventListener('resize', function () {
       if (D) resizeAll();
