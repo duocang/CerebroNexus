@@ -821,13 +821,15 @@ viewerProjectionCellIndices <- function(
   percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
 ) {
   groups <- getGroups()
+  filter_ids <- paste0(prefix, "_group_filter_", groups)
+  bound_inputs <- shiny::isolate(names(input))
   filter_inputs <- stats::setNames(
     lapply(groups, function(group) {
       input[[paste0(prefix, "_group_filter_", group)]]
     }),
     groups
   )
-  if (!length(groups) || all(vapply(filter_inputs, is.null, logical(1)))) {
+  if (!length(groups) || !any(filter_ids %in% bound_inputs)) {
     cell_count <- nrow(metadata)
     if (!cell_count) {
       return(integer())
@@ -841,7 +843,15 @@ viewerProjectionCellIndices <- function(
   filters <- stats::setNames(
     lapply(groups, function(group) {
       value <- filter_inputs[[group]]
-      if (is.null(value)) getGroupLevels(group) else value
+      ## Shiny decodes a checkbox group's empty array as NULL. Only an input
+      ## that has not been bound yet means "all"; a bound NULL means None.
+      if (is.null(value)) {
+        if (paste0(prefix, "_group_filter_", group) %in% bound_inputs) {
+          character()
+        } else {
+          getGroupLevels(group)
+        }
+      } else value
     }),
     groups
   )
