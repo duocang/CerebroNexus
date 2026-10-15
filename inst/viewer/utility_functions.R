@@ -494,21 +494,7 @@ spatialPointAppearance <- function(options, dataset, spatial_name) {
   } else {
     NULL
   }
-  fields <- c("point_opacity", "point_size")
-  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
-  if (
-    !is.list(setting) ||
-      length(values) != 2L ||
-      anyNA(values) ||
-      any(!is.finite(values)) ||
-      values[[1L]] < 0 ||
-      values[[1L]] > 1 ||
-      values[[2L]] <= 0 ||
-      values[[2L]] > 20
-  ) {
-    return(NULL)
-  }
-  stats::setNames(as.list(values), fields)
+  viewerSpatialPointSetting(setting)
 }
 
 spatialRoiSettings <- function(options, dataset, spatial_name) {
@@ -542,20 +528,7 @@ spatialRoiSetting <- function(options, dataset, spatial_name, roi) {
     return(NULL)
   }
   setting <- spatialRoiSettings(options, dataset, spatial_name)[[roi]]
-  fields <- c("rotation_degrees", "point_opacity", "point_size")
-  values <- suppressWarnings(as.numeric(unlist(setting[fields])))
-  if (
-    !is.list(setting) ||
-      length(values) != 3L ||
-      anyNA(values) ||
-      any(!is.finite(values)) ||
-      values[[2L]] < 0 ||
-      values[[2L]] > 1 ||
-      values[[3L]] <= 0
-  ) {
-    return(NULL)
-  }
-  stats::setNames(as.list(values), fields)
+  viewerSpatialPointSetting(setting, roi = TRUE)
 }
 
 rotateSpatialCoordinates <- function(coordinates, degrees, pivot = c(0, 0)) {

@@ -23,3 +23,37 @@ test_that("function coordinate settings validate dataset, FOV and numeric bounds
   points$a$section$point_opacity <- 2
   expect_error(.normalizeAppSpatialPointSettings(points, catalogs), "point_opacity")
 })
+
+test_that("function and Viewer agree on coordinate appearance bounds", {
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_content_contract.R"), env)
+  sys.source(viewer_test_path("utility_functions.R"), env)
+  catalogs <- list(dataset = list(fov = list()))
+  for (roi in c(FALSE, TRUE)) {
+    for (size in c(.5, 1, 20, 21, Inf, NA_real_)) {
+      leaf <- list(point_size = size, point_opacity = .6)
+      if (roi) leaf$rotation_degrees <- 30
+      setting <- if (roi) list(region = leaf) else leaf
+      entries <- list(fov = setting)
+      valid <- is.finite(size) && size >= 1 && size <= 20
+      config <- list(viewer_content = list(dataset = list()))
+      key <- if (roi) "spatial_roi_settings" else "spatial_point_appearance"
+      config$viewer_content$dataset[[key]] <- entries
+      displayed <- if (roi) env$spatialRoiSetting(config, "dataset", "fov", "region") else
+        env$spatialPointAppearance(config, "dataset", "fov")
+      expect_identical(!is.null(displayed), valid)
+      if (valid) {
+        expect_equal(.normalizeAppSpatialPointSettings(list(dataset = entries), catalogs, roi),
+          list(dataset = entries))
+      } else {
+        expect_error(.normalizeAppSpatialPointSettings(list(dataset = entries), catalogs, roi),
+          "point_size")
+      }
+    }
+    for (bad in list("4", TRUE, numeric(), c(2, 3), list(4))) {
+      leaf <- list(point_size = bad, point_opacity = .6)
+      if (roi) leaf$rotation_degrees <- 0
+      expect_null(env$viewerSpatialPointSetting(leaf, roi))
+    }
+  }
+})
