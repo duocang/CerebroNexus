@@ -73,7 +73,6 @@ Suggests:
   chromote,
   DelayedArray,
   formattable (>= 0.2.0.1),
-  ggtree,
   HDF5Array (>= 1.18.1),
   httpuv,
   htmltools,

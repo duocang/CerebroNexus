@@ -5,6 +5,9 @@
 #  > "testthat",
 #  > "pkgdown",
 #  > "shinytest2",
+#  > "chromote",
+#  > "xml2",
+#  > "monocle",
 #  > "callr",
 #  > "png",
 #  > "withr",
@@ -51,6 +54,7 @@
 #  > "stringdist",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
+#  > "nodejs",
 #  > "pandoc"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
@@ -79,7 +83,6 @@ let
       formattable
       future_apply
       ggplot2
-      ggtree
       glue
       GSVA
       HDF5Array
