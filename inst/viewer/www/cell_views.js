@@ -6525,7 +6525,8 @@
     var hintPanels = vis.filter(function (p) {
       var space = spaceById[p.spaceId];
       var name = hintView ? hintView.meta && hintView.meta.space_label : space && space._projectionName;
-      return space && !space.z && /umap/i.test(String(name || ''));
+      return space && !space.z && (hintId === 'trajectory_projection' ||
+          /umap/i.test(String(name || '')));
     });
     window.dispatchEvent(new CustomEvent('cerebro:plot-layout', { detail: {
       id: hintId, dataset_context: currentDatasetContext(), square: keepPlotsSquare,

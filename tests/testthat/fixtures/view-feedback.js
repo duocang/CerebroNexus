@@ -162,3 +162,66 @@ check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-overview']));
 generation++;emit('cerebro:dataset-context',{changed:true,phase:'pending'});
 for(const id of Object.keys(ids)) check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-'+ids[id]]));
 console.log('PASS terminal marker, hidden header, recovery and dataset reset');
+
+// Clonal and trajectory advice uses the existing drawer controls and never
+// leaks onto the other immune analysis tabs or a faceted static plot.
+const ir = 'ir_clonalUMAP_projection';
+ids[ir] = 'immune_repertoire';
+elements['shiny-tab-immune_repertoire'] = element('immune_repertoire');
+elements[ir+'_cell_view_host'] = element(ir);
+let clonalVisible = true;
+elements[ir+'_cell_view_host'].getClientRects = () => clonalVisible ? [{}] : [];
+for (const [id, buttonId, inputId, label] of [
+  [ir, 'ir_more_button', 'ir_clonalUMAP_keep_square', 'Wide UMAP'],
+  ['trajectory_projection', 'trajectory_projection_more_button', 'trajectory_projection_keep_square', 'Wide trajectory']
+]) {
+  paint(id, 200);
+  emit('cerebro:plot-layout', {id, square:false, wide:true});
+  check(hasHint(id));
+  check(header(id).children.find(c=>c.className==='cerebro-layout-hint').innerHTML.includes(label));
+  let opened = 0, focused = 0;
+  const labelClasses = {add() {}, remove() {}};
+  elements[buttonId] = {getAttribute:()=> 'false', click:()=>opened++};
+  elements[inputId] = {getClientRects:()=>[{}], scrollIntoView() {}, focus:()=>focused++,
+    closest:()=>({classList:labelClasses})};
+  domEvents.click({target:{closest:s=>s==='[data-layout-settings]'?{getAttribute:()=>id}:null}});
+  check(opened === 1 && focused === 1);
+  domEvents.change({target:{id:inputId,checked:true}}); check(!hasHint(id));
+  emit('cerebro:plot-layout', {id, square:true, wide:true}); check(!hasHint(id));
+  domEvents.change({target:{id:inputId,checked:false}});
+  emit('cerebro:plot-layout', {id, square:false, wide:false}); check(!hasHint(id));
+  emit('cerebro:plot-layout', {id, square:false, wide:true, dataset_context:{generation:0}}); check(!hasHint(id));
+}
+emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(hasHint(ir));
+handlers.change({name:'ir_tabs',value:'Abundance',target:{}}); check(!hasHint(ir));
+clonalVisible = false;
+emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(!hasHint(ir));
+check(row(ir) === null); // Existing immune loading/status remains untouched.
+clonalVisible = true;
+emit('cerebro:plot-layout', {id:ir,square:false,wide:true}); check(hasHint(ir));
+handlers.change({name:'ir_p_umap_group_by',value:'sample',target:{}}); check(!hasHint(ir));
+
+// Exercise the renderer's actual canvas measurement, including a named
+// non-UMAP trajectory and the existing 2-D-only/width threshold restrictions.
+const renderer = fs.readFileSync(path.join(path.dirname(process.argv[2] ||
+  path.resolve(__dirname,'../../../inst/viewer/www/view-feedback.js')), 'cell_views.js'),'utf8');
+const start = renderer.indexOf('var hintView = singleActive && singleView(singleActive);');
+const end = renderer.indexOf('    return true;', start);
+assert(start >= 0 && end > start);
+function layout(id, name, width, height, z) {
+  let result;
+  vm.runInNewContext(renderer.slice(start,end), {
+    singleActive:id, singleView:()=>({meta:{space_label:name}}),
+    vis:[{spaceId:'test',W:width,H:height}], spaceById:{test:{z}},
+    keepPlotsSquare:false, currentDatasetContext:()=>({generation}),
+    window:{dispatchEvent:e=>result=e.detail},
+    CustomEvent:function(type,data){this.detail=data.detail;}
+  });
+  return result;
+}
+check(layout(ir,'Clonal UMAP',1000,500).wide);
+check(layout('trajectory_projection','B_cell_maturation',1000,500).wide);
+check(!layout('trajectory_projection','B_cell_maturation',800,500).wide);
+check(!layout('trajectory_projection','B_cell_maturation',1000,500,[1]).wide);
+check(!layout('overview_projection','PCA',1000,500).wide);
+console.log(count+' total assertions passed, including specialist layout advice');

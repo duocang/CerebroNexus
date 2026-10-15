@@ -8,6 +8,7 @@
     trajectory_projection: ['trajectory', 'Trajectory', /^trajectory_(selected_method|selected_name|point_color|point_size|point_opacity|projection_group_labels|projection_point_border|projection_keep_square|percentage_cells_to_show|projection_group_filter_.+)$/],
     spatial_projection: ['spatial', 'Spatial', /^spatial_projection_(to_display|plot_type|point_color|point_size|point_opacity|group_labels|point_border|keep_square|percentage_cells_to_show|feature_to_display|coexpr_[rgb]|show_region_outlines|background_image|group_filter_.+)$/],
     hla_motif_network: ['hla_tcr_motifs', 'HLA / TCR motifs', /^hla_(chain|scope|color_by|color_allele|pair_allele_i|pair_allele_ii|min_nodes|by_v|show_isolated|node_scale|legend_mode|group_filter_.+)$/],
+    ir_clonalUMAP_projection: ['immune_repertoire', 'Clonal projection', /^$/],
     linked: ['coordinated_views', 'Linked views', /^$/]
   };
   var states = {}, installed = false;
@@ -15,6 +16,8 @@
   var layoutControls = {
     overview_projection: ['overview_projection_more_button', 'overview_projection_keep_square'],
     expression_projection: ['expression_projection_more_button', 'expression_projection_keep_square'],
+    trajectory_projection: ['trajectory_projection_more_button', 'trajectory_projection_keep_square'],
+    ir_clonalUMAP_projection: ['ir_more_button', 'ir_clonalUMAP_keep_square'],
     linked: ['cv-more-btn', 'cv-square-plots']
   };
   function layoutDismissed(id) {
@@ -98,10 +101,13 @@
     // Settled selection counts already belong to the Active cohort toolbar.
     text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
     el.textContent = '';
-    window.CerebroPageLifecycle.setTerminal(
+    // Clonal projection joins only the layout advice; its existing specialist
+    // lifecycle continues to own loading and errors for the other IR tabs.
+    var layoutOnly = id === 'ir_clonalUMAP_projection';
+    if (!layoutOnly) window.CerebroPageLifecycle.setTerminal(
       document.getElementById('shiny-tab-' + specs[id][0]), !!s.terminal);
     // Routine feedback lives over the plot; it never adds a page-header row.
-    var status = localStatus(id);
+    var status = layoutOnly ? null : localStatus(id);
     var failed = !!s.terminal && s.terminalKind !== 'empty' ||
       /unavailable|unable|failed/i.test([s.operation, s.expression].join(' '));
     if (status) {
@@ -112,12 +118,15 @@
       status.classList.toggle('is-error', failed);
     }
     var pane = el.closest('.tab-pane');
-    var showHint = layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
+    var host = document.getElementById(id + '_cell_view_host');
+    var layoutVisible = !layoutOnly || (host && host.getClientRects().length > 0);
+    var showHint = layoutVisible && layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
         !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active');
     if (showHint) {
       var hint = document.createElement('span');
       hint.className = 'cerebro-layout-hint';
-      hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> Wide UMAP</span>' +
+      hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> ' +
+        (id === 'trajectory_projection' ? 'Wide trajectory' : 'Wide UMAP') + '</span>' +
         '<button type="button" class="cerebro-layout-settings" data-layout-settings="' + id +
         '" title="Open Settings and find Keep plots square">Square plot settings</button>' +
         '<button type="button" class="cerebro-layout-dismiss" data-layout-dismiss="' + id +
@@ -126,8 +135,7 @@
     }
     el.hidden = !showHint;
     // A terminal result is explicitly not a painted/ready acknowledgement.
-    var host = document.getElementById(id + '_cell_view_host');
-    if (host) host.classList.toggle('cerebro-view-terminal', !!s.terminal);
+    if (host && !layoutOnly) host.classList.toggle('cerebro-view-terminal', !!s.terminal);
   }
   function settle(id) {
     var s = state(id), controls = s.frames.get(s.painted);
@@ -147,6 +155,12 @@
   }
   function changed(event) {
     var key = event.name || event.target.id;
+    if (key === 'ir_tabs' || key === 'ir_p_umap_group_by') {
+      clearTimeout(layoutTimers.ir_clonalUMAP_projection);
+      state('ir_clonalUMAP_projection').wideLayout = false;
+      draw('ir_clonalUMAP_projection');
+      return;
+    }
     if (/^(coordviews_gene(?:_[rgb])?|coordviews_expression_mode|cv-pick-color)$/.test(key)) {
       linkedExpressionChange(key);
       return;
