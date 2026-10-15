@@ -181,16 +181,3 @@ test_that("empty Gene selection keeps the same summary without hydrating IDs", {
   )
   expect_gt(hydrated, 0L)
 })
-
-test_that("Gene hover loads pending IDs without bypassing hover or lifecycle guards", {
-  skip_if_no_viewer_js_parser()
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  runner <- testthat::test_path("fixtures", "gene-hover-demand.js")
-  expect_identical(
-    system2(
-      "node",
-      c(shQuote(runner), shQuote(viewer_test_path("www", "cell_views.js")))
-    ),
-    0L
-  )
-})

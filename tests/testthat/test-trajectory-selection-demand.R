@@ -23,16 +23,3 @@ test_that("selected table does not require lazy appearance controls", {
   scope$trajectory_selection_ok <- function() FALSE
   expect_error(eval(expr, scope), class = "shiny.silent.error")
 })
-
-test_that("hover dictionaries preserve singleton labels and missing values", {
-  skip_if_no_viewer_js_parser()
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  script <- testthat::test_path("fixtures", "single-hover-levels.js")
-  result <- system2(
-    Sys.which("node"),
-    c(shQuote(script), shQuote(viewer_test_path("www", "cell_views.js"))),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
-})

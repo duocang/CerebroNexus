@@ -1,8 +1,0 @@
-{
-  "name": "cerebronexus-test-tools",
-  "private": true,
-  "description": "JavaScript syntax parser for isolated runtime tests",
-  "dependencies": {
-    "acorn": "8.15.0"
-  }
-}

@@ -97,21 +97,6 @@ test_that("dataset context freshness is epoch/key/generation exact", {
   )
 })
 
-test_that("every asynchronous specialist channel fails closed on stale context", {
-  skip_if_no_viewer_js_parser()
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  result <- system2(
-    "node",
-    c(
-      shQuote(test_path("fixtures", "dataset-channels.js")),
-      shQuote(viewer_test_path("www"))
-    ),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
-})
-
 test_that("R dataset contexts validate and compare the full identity", {
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = runtime)

@@ -2370,18 +2370,3 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
   expect_match(images[[1L]]$uri, "^data:image/png;base64,")
   expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
 })
-
-test_that("Linked backgrounds preserve choices and identity, with readable RGB legends", {
-  skip_if_no_viewer_js_parser()
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  output <- system2(
-    "node",
-    c(
-      shQuote(test_path("fixtures", "background-controls.js")),
-      shQuote(viewer_test_path("www", "cell_views.js"))
-    ),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
-})

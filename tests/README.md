@@ -30,26 +30,23 @@ R `>= 3.5.1` and the package's runtime deps installed. For the full test suite y
 | `shinytest2 (>= 0.2.0)` | drives the Shiny app in `test-app-inst.R` |
 | `chromote` | transitive dep of `shinytest2`; controls headless Chrome |
 | Google Chrome / Chromium | actual browser binary `chromote` launches |
-| Node.js and npm | execute JavaScript fixtures; optional Acorn parser for isolated private callbacks |
+| Node.js | execute complete JavaScript scripts using built-in modules only |
 
-For the full development suite, run `npm ci --prefix tests` and set
-`NOT_CRAN=true`. The R-tests workflow does this explicitly. Complete JavaScript
-scripts, including the binary decoder and GPU renderer, run without Acorn.
-Fixtures that still isolate private cell-view callbacks require Acorn and skip
-with a diagnostic when it is unavailable; they never install it during tests.
-`tests/node_modules` is ignored and excluded from package builds.
+For the full development suite, set `NOT_CRAN=true`. No npm installation is
+needed. Node tests load complete scripts and exercise registered messages and
+public APIs. Canvas and interaction tests use Chrome with the actual Viewer UI;
+only external boundaries (Shiny, downloads and GPU submission) are instrumented.
+The separate renderer fixture exercises actual WebGPU and WebGL2 upload logic.
 
 Ordinary package checks leave `NOT_CRAN` unset: heavy browser tests skip, while
 lightweight R/Shiny and available Node tests run. The R-CMD-check workflow builds
-the source tarball and checks it outside the checkout, without npm installation,
-`NODE_PATH`, `NOT_CRAN` or `CI`. Node's global module search is disabled as well,
-so a system-wide Acorn installation cannot accidentally satisfy the tests.
+the source tarball and checks it outside the checkout, without `NODE_PATH`,
+`NOT_CRAN` or `CI`. Node's global module search is disabled as well.
 
 On Linux/WSL, reproduce both modes from the repository root:
 
 ```bash
-npm ci --prefix tests
-NOT_CRAN=true NODE_PATH="$PWD/tests/node_modules" Rscript -e \
+NOT_CRAN=true Rscript -e \
   'devtools::load_all("."); testthat::test_dir("tests/testthat", stop_on_failure=TRUE)'
 
 source_dir="$PWD"
@@ -62,8 +59,7 @@ env -u CI -u NOT_CRAN -u NODE_PATH NODE_OPTIONS=--no-global-search-paths \
 
 `--no-manual` omits the PDF manual (which requires TeX); tests and HTML vignettes
 still run. This portability check does not establish complete CRAN readiness.
-To run the full suite against an installed package, opt in with `NOT_CRAN=true`
-and point `NODE_PATH` at the separately installed test modules.
+To run the full suite against an installed package, opt in with `NOT_CRAN=true`.
 
 The test packages are declared in `DESCRIPTION` `Suggests`. To install them:
 
@@ -117,7 +113,7 @@ accessibility, reduced motion and panel placement are checked on rendered output
 
 `helper-viewer-server.R` loads real R declarations and subscriptions into small
 Shiny sessions; assertions check their emitted values, invalidation and deferred
-work. `fixtures/js-source.cjs` uses Acorn to load real JavaScript entry points,
+work. JavaScript fixtures load complete scripts through Node or Chrome,
 independently of whitespace, comments or quote style. Neither helper asserts
 that a production function has a particular body or sequence of statements.
 
@@ -160,7 +156,7 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 
 Why the extra bits in that first shell one-liner:
 
-- `Sys.setenv(NOT_CRAN="true")` — tells `skip_on_cran()` we are not on CRAN, so shinytest2 tests do not get skipped. `tests/testthat/setup.R` sets the same thing inside the R session, but some hooks fire earlier than setup; setting it at the shell level is the safe belt-and-braces.
+- `Sys.setenv(NOT_CRAN="true")` — tells `skip_on_cran()` we are not on CRAN, so shinytest2 tests do not get skipped. The full CI workflow sets this explicitly; `tests/testthat/setup.R` preserves the caller’s environment.
 - `filter="app-inst"` — only run `tests/testthat/test-app-inst.R`. Skips the non-shinytest2 files. Useful when debugging the Shiny end-to-end suite.
 - `reporter="summary"` — one line per `test_that()` plus full diff on failure. Other useful options: `"minimal"` (compact `.EFWS` stream), `"progress"` (default), `"check"` (matches `R CMD check`).
 

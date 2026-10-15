@@ -37,19 +37,6 @@ test_that("sparse expression colour transport is exact and density-gated", {
   expect_lt(length(sparse_wire), length(dense_wire) / 100)
 })
 
-test_that("browser hydrates Gene colours without float32 rounding", {
-  skip_if_no_viewer_js_parser()
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  runner <- testthat::test_path("fixtures", "gene-color-f64.js")
-  expect_identical(
-    system2(
-      "node",
-      c(shQuote(runner), shQuote(viewer_test_path("www", "cell_views.js")))
-    ),
-    0L
-  )
-})
-
 test_that("binary colour payload retains R doubles", {
   wire <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = wire)

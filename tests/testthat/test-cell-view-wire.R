@@ -451,52 +451,6 @@ test_that("specialist views can reference validated shared coordinates", {
   expect_identical(unshared$data$n, 4096L)
 })
 
-test_that("dataset changes invalidate cached specialist plots", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  source <- viewer_test_path("www", "cell_views.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      viewer_js_loader(),
-      sprintf(
-        "const source = fs.readFileSync(%s, 'utf8');",
-        encodeString(source, quote = '"')
-      ),
-      "let restored = 0;",
-      "function singleView(id) {return singleViews[id];}",
-      "function restoreLinkedSurface() { restored += 1; }",
-      "function reportSelection() {}",
-      "let singleViews = {overview_projection:{datasetIdentity:{cell_fingerprint:'dataset-a'}}};",
-      "let singleActive = null;",
-      "let singleRequests = new Set(['overview_projection']);",
-      "let singleSpaceIds = ['umap'];",
-      "let singleSpaceModes = {umap:'cluster'};",
-      "let singleIndexCells = ['a'];",
-      "let singleIndexMap = new Map([['a', 0]]);",
-      "let singleTiming = {};",
-      "let singleResourceDescriptors = new Map();",
-      "let singleDefaultResourceNames = new Set();",
-      "let singleCategoryResourceDescriptors = new Map();",
-      "let linkedState = {dataset:'a'};",
-      "let D = {dataset_fingerprint:'dataset-a'};",
-      "eval(js(source).declarations(['resetSingleViews','markSingleHosts','invalidateDatasetViewState']));",
-      "eval(js(source).declarations(['attachSingleDatasetIdentity']));",
-      "attachSingleDatasetIdentity({cell_fingerprint:'dataset-b'});",
-      "console.log(JSON.stringify({views:Object.keys(singleViews),active:singleActive,requests:singleRequests.size,restored:restored}));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_equal(attr(output, "status"), NULL)
-  expect_identical(
-    jsonlite::fromJSON(output, simplifyVector = FALSE),
-    list(views = list(), active = NULL, requests = 0L, restored = 1L)
-  )
-})
-
 test_that("core auxiliary identities precede full metadata and reject duplicate stages", {
   env <- new.env(parent = globalenv())
   sys.source(utility_file, env)

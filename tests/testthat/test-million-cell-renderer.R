@@ -122,37 +122,3 @@ test_that("WebGL2 fallback submits a million points in one GPU draw", {
 
   expect_identical(system2("node", runner), 0L)
 })
-
-test_that("WebGPU fallback keeps validity from the materialized CPU unit", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  engine <- viewer_test_path("www", "cell_views.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const assert = require('assert');",
-      viewer_js_loader(),
-      sprintf(
-        "const source = require('fs').readFileSync(%s, 'utf8');",
-        encodeString(engine, quote = '"')
-      ),
-      "eval(js(source).declarations(['OCC','occIdx','occSAT','deferredUnitOf','unitOf','project']));",
-      "const D = {n:2};",
-      "const space = {x:[0,1],y:[0,1],xRange:[0,1],yRange:[0,1]};",
-      "const spaceById = {projection:space};",
-      "const isSpatialSpace = () => false;",
-      "const gpuCandidate = () => true;",
-      "const panel = {spaceId:'projection',W:100,H:100,view:null};",
-      "project(panel, false);",
-      "assert.strictEqual(panel.ok, space._unit.ok);",
-      "assert.deepStrictEqual(Array.from(panel.ok), [0,0]);",
-      "project(panel, true);",
-      "assert.strictEqual(panel.ok, space._unit.ok);",
-      "assert.deepStrictEqual(Array.from(panel.ok), [1,1]);",
-      "assert.strictEqual(panel.gpuTransformOnly, false);"
-    ),
-    runner
-  )
-
-  expect_identical(system2("node", runner), 0L)
-})

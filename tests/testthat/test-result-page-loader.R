@@ -1,5 +1,4 @@
 test_that("result page completion follows local draws and preserves paint gates", {
-  skip_if_no_viewer_js_parser()
   node <- Sys.which("node")
   skip_if(!nzchar(node), "Node unavailable")
   result <- system2(
