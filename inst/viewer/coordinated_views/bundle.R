@@ -1087,6 +1087,9 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
       section_appearance <- appearance[c("point_opacity", "point_size")]
     }
   }
+  spatial_defaults <- viewerScatterDefaults(
+    if (exists("Cerebro.options")) Cerebro.options else list(),
+    cv_selected_dataset_name(), "spatial")
   for (embedded_index in seq_along(embedded)) {
     entry <- embedded[[embedded_index]]
     embedded_names <- names(embedded)
@@ -1198,6 +1201,7 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
       ""
     }, " (spatial)"),
     roi = if (nzchar(roi_value)) roi_value else NULL,
+    is_roi_overview = !nzchar(roi_value) && length(rois) > 1L,
     x = as.numeric(co[sidx, 1]),
     y = as.numeric(co[sidx, 2]),
     x_range = if (is.null(viewport)) {
@@ -1216,8 +1220,9 @@ cv_spatial_one <- function(crb, cells, nm, allow_external, roi_value = NULL,
         "ymax"
       )]))
     },
-    builder_point_opacity = section_appearance$point_opacity %||% NULL,
-    builder_point_size = section_appearance$point_size %||% NULL,
+    builder_point_opacity = section_appearance$point_opacity %||% spatial_defaults$point_opacity,
+    builder_point_size = section_appearance$point_size %||% spatial_defaults$point_size,
+    builder_percentage_cells = spatial_defaults$percentage_cells_to_show,
     ## `image` is the default one, kept so anything reading the older singular
     ## contract still works; `images` is the list the picker is built from.
     image = image,
@@ -1269,6 +1274,7 @@ cv_build_spatial <- function(crb, cells) {
   )
   ## Labels describe FOV/ROI scope; the persisted selection key stays stable.
   space$name <- first$name
+  space$is_roi_overview <- first$is_roi_overview
   if (!is.null(first$image)) {
     space$image <- first$image
   }
@@ -1278,6 +1284,7 @@ cv_build_spatial <- function(crb, cells) {
   }
   space$builder_point_opacity <- first$builder_point_opacity
   space$builder_point_size <- first$builder_point_size
+  space$builder_percentage_cells <- first$builder_percentage_cells
   ## Only when there is no `samples` list to hold them: with one, the space's
   ## default section IS samples[[1]] and repeating its images here would send
   ## every one of them twice.
@@ -1288,6 +1295,7 @@ cv_build_spatial <- function(crb, cells) {
     space$samples <- lapply(built, function(s) {
       list(
         name = s$name,
+        is_roi_overview = s$is_roi_overview,
         label = s$label %||% paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
@@ -1295,6 +1303,7 @@ cv_build_spatial <- function(crb, cells) {
         y_range = if (is.null(s$y_range)) NULL else I(s$y_range),
         builder_point_opacity = s$builder_point_opacity,
         builder_point_size = s$builder_point_size,
+        builder_percentage_cells = s$builder_percentage_cells,
         image = s$image,
         images = I(s$images)
       )
@@ -1936,10 +1945,12 @@ cv_build_bundle <- function(
   ## workspace without changing the dedicated Projection/Spatial/Trekker pages.
   viewer_content <- cv_selected_viewer_content()
   initial_projections <- character()
-  appearance <- viewerScatterDefaults(
-    if (exists("Cerebro.options")) Cerebro.options else list(),
-    cv_selected_dataset_name()
-  )
+  appearance <- if (exists("current_scatter_defaults", mode = "function")) {
+    shiny::isolate(current_scatter_defaults())
+  } else {
+    viewerScatterDefaults(if (exists("Cerebro.options")) Cerebro.options else list(),
+      cv_selected_dataset_name())
+  }
   default_point_size <- appearance$point_size
   default_percentage_cells_to_show <- appearance$percentage_cells_to_show
   default_point_opacity <- appearance$point_opacity

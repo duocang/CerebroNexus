@@ -17,7 +17,8 @@ output[["load_data_select_file_UI"]] <- renderUI({
     tagList(
       div(
         class = "cerebro-welcome",
-        htmlOutput("load_data_mode_open")
+        HTML(Cerebro.options[["welcome_message"]] %||%
+          "<p>Please load your data set or explore the pre-loaded data.</p>")
       ),
       fluidRow(
         column(
@@ -39,7 +40,8 @@ output[["load_data_select_file_UI"]] <- renderUI({
     tagList(
       div(
         class = "cerebro-welcome",
-        htmlOutput("load_data_mode_closed")
+        HTML(Cerebro.options[["welcome_message"]] %||%
+          "<p>Explore the loaded dataset using the pages in the sidebar.</p>")
       )
     )
   }

@@ -373,6 +373,7 @@ test_that("projection can render before its dynamic controls bind", {
 test_that("a new projection mount redraws unchanged data", {
   server <- function(input, output, session) {
     renders <- 0L
+    overview_projection_parameters_other <- reactiveValues(reset_axes = TRUE)
     context <- list(epoch = "test", dataset_key = "A", generation = 1L)
     viewer_loaded_dataset_context <- function() context
     viewerDatasetContextEqual <- function(a, b) identical(a, b)

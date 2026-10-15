@@ -56,10 +56,10 @@
     el.textContent = pending
       ? (painted == null ? '' : 'Last confirmed: ' + paintedLabel(painted) + ' · ') +
         'Updating: ' + requestLabel(values)
-      : painted == null ? 'Choose a gene to explore expression.' : 'Showing: ' + paintedLabel(painted);
+      : '';
     // The picker and plot title already identify a completed expression view.
-    // Keep feedback for pending requests and empty states, without an idle row.
-    el.hidden = !pending && painted != null && paintedLabel(painted) !== 'No gene selected';
+    // A gene-free projection is a useful grey overview, not an empty state.
+    el.hidden = !pending;
     el.classList.toggle('is-pending', pending);
     if (pending) el.setAttribute('aria-busy', 'true');
     else el.removeAttribute('aria-busy');

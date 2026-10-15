@@ -39,6 +39,41 @@ viewerInitialPageDecision <- function(
   )
 }
 
+## NULL means an older catalog does not describe its projections yet. Never
+## interpret an incomplete catalog or the first progressive frame as absence.
+viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
+  if (!is.null(object)) {
+    read <- function(value) tryCatch(force(value), error = function(e) NULL)
+    projections <- as.character(read(object$availableProjections()))
+    projections <- unique(projections[!is.na(projections) & nzchar(projections)])
+    if (length(projections) > 1L) return(TRUE)
+    if (length(read(object$availableSpatial())) > 0L) return(TRUE)
+    if (any(vapply(
+      as.character(read(object$getMethodsForTrajectories())),
+      function(method) length(read(object$getNamesOfTrajectories(method))) > 0L,
+      logical(1)
+    ))) return(TRUE)
+    if (length(read(object$getTrekker())) > 0L) return(TRUE)
+    return(length(read(object$getImmuneRepertoire())) > 0L)
+  }
+  if (!is.list(info)) return(NULL)
+  extra <- list(
+    spatial = info$capabilities$spatial,
+    trajectory = info$capabilities$trajectory,
+    trekker = info$capabilities$trekker,
+    immune_repertoire = info$immune_repertoire
+  )
+  if (any(vapply(extra, isTRUE, logical(1)))) return(TRUE)
+  projections <- info$projection_names
+  if (!is.character(projections)) return(NULL)
+  projections <- unique(projections[!is.na(projections) & nzchar(projections)])
+  if (length(projections) > 1L) return(TRUE)
+  if (!all(vapply(extra, function(x) identical(x, FALSE), logical(1)))) {
+    return(NULL)
+  }
+  FALSE
+}
+
 viewerDatasetName <- function(files, selected) {
   if (is.null(files) || is.null(selected) || is.null(names(files))) {
     return(NULL)
@@ -291,7 +326,7 @@ viewerColourGroupChoices <- function(
 viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
   resolve <- function(key, fallback, minimum, maximum) {
     value <- options[[key]]
-    if (length(value) > 1L && !is.null(dataset) && !is.null(names(value))) {
+    if (!is.null(dataset) && !is.null(names(value))) {
       value <- value[dataset]
     }
     value <- suppressWarnings(as.numeric(value))
@@ -317,34 +352,13 @@ viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
       100
     )
   )
-  if (
-    is.null(page) ||
-      length(page) != 1L ||
-      is.na(page) ||
-      !nzchar(page)
-  ) {
-    return(defaults)
-  }
-  page <- as.character(page)[[1L]]
+  # Ordinary projection views share one author configuration. Legacy page
+  # overrides (e.g. expression_point_size) must not shadow it.
+  if (!identical(page, "spatial")) return(defaults)
   list(
-    point_size = resolve(
-      paste0(page, "_point_size"),
-      defaults$point_size,
-      1,
-      20
-    ),
-    point_opacity = resolve(
-      paste0(page, "_point_opacity"),
-      defaults$point_opacity,
-      0.1,
-      1
-    ),
-    percentage_cells_to_show = resolve(
-      paste0(page, "_percentage_cells_to_show"),
-      defaults$percentage_cells_to_show,
-      10,
-      100
-    )
+    point_size = resolve("spatial_point_size", 5, 1, 20),
+    point_opacity = resolve("spatial_point_opacity", 1, 0.1, 1),
+    percentage_cells_to_show = resolve("spatial_percentage_cells_to_show", 100, 10, 100)
   )
 }
 
@@ -1559,6 +1573,22 @@ cerebroCellViewAuxRequest <- function(request) {
 ## Small UI snapshots only. Never enumerate values of all Shiny inputs: those
 ## include million-cell selections and transport caches. Reads are isolated so
 ## feedback cannot add a dependency to an existing preparation path.
+## Pure display toggles patch the mounted renderer, without fetching geometry.
+cerebroObserveLocalAppearance <- function(id, input, session) {
+  ids <- c(group_labels = paste0(id, "_group_labels"),
+           draw_border = paste0(id, "_point_border"),
+           keep_square = paste0(id, "_keep_square"))
+  shiny::observeEvent(lapply(ids, function(key) input[[key]]), {
+    values <- lapply(ids, function(key) input[[key]])
+    values <- values[!vapply(values, is.null, logical(1))]
+    identity <- viewerDatasetIdentity()
+    shiny::req(identity$fingerprint, length(values))
+    session$sendCustomMessage("cell_view_appearance", list(
+      id = id, dataset_context = viewer_loaded_dataset_context(),
+      dataset_fingerprint = identity$fingerprint, values = values))
+  }, ignoreInit = TRUE)
+}
+
 cerebroFeedbackControls <- function(id, input, overrides = list()) {
   pattern <- switch(
     id,
@@ -4625,6 +4655,10 @@ extra_material_table_groups <- function(
   if (missing(embedded)) {
     data <- data_set()
     dataset <- viewerSelectedDatasetName()
+    stored_index <- tryCatch(
+      data$getTechnicalInfo()$extra_material_table_index,
+      error = function(error) NULL
+    )
     if (
       is.null(table_index) &&
         !is.null(dataset) &&
@@ -4633,6 +4667,10 @@ extra_material_table_groups <- function(
       table_index <- Cerebro.options$viewer_content[[
         dataset
       ]]$extra_material_table_index
+    }
+    # Per-app overrides win; unmodified records keep their portable CRB labels.
+    if (is.list(stored_index)) {
+      table_index <- utils::modifyList(stored_index, table_index %||% list())
     }
     embedded <- if (is_cerebro_dataset(data)) {
       data$getExtraMaterial()$tables

@@ -85,7 +85,20 @@ console.log('PASS fast, slow, repeated progress, consecutive loads, interrupted 
   const pane = {dataset:{},querySelector:()=>null}; s.setPane(pane);
   s.update(); s.tick(500); s.update({done:true,percent:100}); s.tick(500);
   assert(s.busy); assert(visible(s));
+  assert(Number.parseInt(s.overlay.querySelector('.cerebro-dataset-loading-percent').textContent,10) < 100);
   pane.dataset.cerebroPageReady = 'true'; s.emit('cerebro:page-ready'); s.tick(150);
+  assert.strictEqual(s.overlay.querySelector('.cerebro-dataset-loading-percent').textContent,'100%');
+  assert(!s.busy); assert(s.overlay.hidden);
+}
+// A terminal result releases the overlay without claiming a painted page.
+{
+  const s = session(); let terminal = false;
+  s.setPane({dataset:{},querySelector:selector=>
+    terminal && selector==='.cerebro-page-feedback.is-terminal'?{hidden:true}:null});
+  s.update(); s.tick(500); s.update({done:true,percent:100});
+  s.emit('cerebro:view-terminal',{page:'unrelated'}); s.tick(150);
+  assert(s.busy);
+  terminal = true; s.emit('cerebro:view-terminal'); s.tick(150);
   assert(!s.busy); assert(s.overlay.hidden);
 }
 // A late completion from an older selection must neither relabel nor dismiss.

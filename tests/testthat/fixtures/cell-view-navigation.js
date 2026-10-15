@@ -29,7 +29,8 @@ function session() {
     visibleSingleId: () => ids.includes(c.page) ? c.page : null,
     singleHost: () => ({querySelector: () => ({contains: () => true})}),
     singleView: id => c.missing === id ? null : {id},
-    requestSingleView: () => {},
+    requestSingleView: () => {}, reportRendererStatus: () => {}, syncSharedScatter: () => {},
+    syncPointControls: () => {}, drawAll: () => {},
     activateSingle: id => {c.stashSingleState(); c.singleActive = id; c.D = {id, n: 7};},
     stashSingleState: () => {if (c.singleActive) c.saved[c.singleActive] = c.D;},
     restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
@@ -146,7 +147,7 @@ for (const via of ['direct', 'groups', 'loadData']) {
   const checkbox = {}, panel = {spaceId: 'spatial', miniBg: {}, view: {cx: 5}};
   const c = {linkedBackgroundsOn: true, singleActive: null, panels: [panel],
     $: () => checkbox, spaceById: {spatial: {}}, calls: 0, drawn: 0,
-    currentImage: () => {c.calls++; return null;}, viewOperation: () => {}};
+    currentImage: () => {c.calls++; return null;}, viewOperation: () => {}, renderImagePicker: () => {}};
   vm.createContext(c);
   vm.runInContext(['drawImage','syncLinkedBackgroundsDefault','setLinkedBackgrounds','spatialSamples'].map(fn).join('\n'),c);
   c.drawAll = () => {c.drawn++; c.drawImage(panel);};

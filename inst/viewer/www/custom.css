@@ -297,8 +297,56 @@ body.skin-blue .main-sidebar {
   border-right: 1px solid var(--c-border) !important;
   box-shadow: none !important;
 }
-body.skin-blue .sidebar { padding-top: 4px; }
-body.skin-blue .sidebar-menu:hover { overflow: hidden; }
+body.skin-blue .sidebar {
+  display: flex; flex-direction: column; height: 100% !important;
+  min-height: 0; padding-top: 4px; padding-bottom: 0;
+}
+body.skin-blue .sidebar > .cerebro-brand,
+body.skin-blue .sidebar > .cerebro-dataset-switcher { flex-shrink: 0; }
+body.skin-blue .sidebar > .sidebar-menu {
+  flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto !important;
+}
+.cerebro-sidebar-preferences {
+  flex: 0 0 auto; margin: 8px 14px 0; padding: 12px 0 14px;
+  border-top: 1px solid var(--c-border);
+}
+.cerebro-preferences-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 7px; color: var(--c-text-2); font-size: 12px; font-weight: 600;
+}
+.cerebro-renderer-status {
+  padding: 2px 6px; border-radius: 4px; background: var(--c-surface-2);
+  color: var(--c-text-2); font-size: 10px; font-weight: 500; cursor: help;
+}
+body .sidebar .cerebro-sidebar-preferences .shiny-input-container {
+  width: 100%; min-width: 0; margin: 0; padding: 0;
+}
+.cerebro-sidebar-preferences .checkbox { margin: 0; }
+.cerebro-sidebar-preferences .checkbox label {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; min-height: 34px; padding: 0; font-size: 13px;
+  color: var(--c-text); font-weight: 400; cursor: pointer;
+}
+.cerebro-sidebar-preferences input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; position: relative;
+  order: 2; flex: 0 0 30px; width: 30px; height: 18px; margin: 0;
+  border: 1px solid var(--c-border); border-radius: 10px;
+  background: #d1d5db; cursor: pointer; transition: background .15s ease;
+}
+.cerebro-sidebar-preferences input[type=checkbox]::before {
+  content: ''; display: block; width: 14px; height: 14px; margin: 1px;
+  border-radius: 50%; background: white; transition: transform .15s ease;
+}
+.cerebro-sidebar-preferences input[type=checkbox]:checked {
+  background: var(--c-amber); border-color: var(--c-amber);
+}
+.cerebro-sidebar-preferences input[type=checkbox]:checked::before { transform: translateX(12px); }
+.cerebro-sidebar-preferences input:focus-visible,
+.cerebro-renderer-status:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-sidebar-preferences input[type=checkbox],
+  .cerebro-sidebar-preferences input[type=checkbox]::before { transition: none; }
+}
 /* Brand block at the top of the sidebar. The inline SVG wordmark inherits the
    sidebar text colour, with an accent on "Nexus". */
 body.skin-blue .sidebar .cerebro-brand {
@@ -328,7 +376,9 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
 body .sidebar .cerebro-dataset-switcher .shiny-input-container {
   margin: 0; padding: 0; width: 100%;
 }
-.cerebro-dataset-switcher .selectize-control { margin-bottom: 0; }
+.cerebro-dataset-switcher .selectize-control {
+  min-width: 0; max-width: 100%; margin-bottom: 0;
+}
 body .sidebar .cerebro-dataset-switcher label {
   color: var(--c-text-2); font-size: 12px; font-weight: 600;
   margin-bottom: 6px;
@@ -338,10 +388,13 @@ body .cerebro-dataset-switcher .selectize-input {
   min-height: 40px; padding-right: 28px !important;
 }
 body .cerebro-dataset-switcher .selectize-input > .item {
+  display: block; flex: 0 1 auto; max-width: 100%;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 body .cerebro-dataset-switcher .selectize-dropdown .option {
-  white-space: normal; overflow-wrap: anywhere;
+  height: auto; max-height: none; line-height: 1.45;
+  white-space: normal; overflow-wrap: anywhere; word-break: normal;
+  overflow: visible; text-overflow: clip;
 }
 .cerebro-dataset-switcher { --cerebro-select-menu-max-height: 240px; }
 body.skin-blue .sidebar-menu > li { position: relative; }
@@ -827,6 +880,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   position: fixed;
   z-index: 1600;
   inset: 0 0 0 auto;
+  right: var(--cerebro-drawer-right, 0px);
   width: clamp(400px, 30vw, 480px);
   max-width: calc(100vw - 24px);
   height: 100vh;
@@ -848,7 +902,14 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   opacity: 1;
   pointer-events: auto;
 }
+@media (min-width: 901px) {
+  .cerebro-settings-drawer.is-floating {
+    border-radius: 12px;
+    box-shadow: 0 4px 28px rgba(0, 0, 0, .14);
+  }
+}
 .cerebro-settings-titlebar {
+  position: relative;
   display: flex;
   flex: 0 0 52px;
   align-items: center;
@@ -857,6 +918,58 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   font-size: 14px;
   font-weight: 700;
 }
+.cerebro-settings-drag {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 44px);
+  width: 88px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.cerebro-settings-drag::before {
+  content: '';
+  display: block;
+  width: 46px;
+  height: 5px;
+  margin: auto;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--c-border), 0 1px 3px rgba(0, 0, 0, .12);
+}
+.cerebro-settings-drag:hover::before,
+.cerebro-settings-drag:focus-visible::before {
+  background: var(--c-amber-700);
+  box-shadow: none;
+}
+.cerebro-settings-drag:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: -2px; }
+.cerebro-settings-drawer.is-dragging .cerebro-settings-drag { cursor: grabbing; }
+.cerebro-settings-drag-tip {
+  position: absolute;
+  top: 33px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--c-text);
+  color: var(--c-surface);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 2;
+}
+.cerebro-settings-drag:hover .cerebro-settings-drag-tip,
+.cerebro-settings-drag:focus-visible .cerebro-settings-drag-tip { visibility: visible; }
+.cerebro-settings-drawer.is-dragging .cerebro-settings-drag-tip { visibility: hidden; }
 .cerebro-settings-close {
   width: 32px;
   height: 32px;
@@ -1113,6 +1226,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   border-radius: 50%;
 }
 @media (max-width: 900px) {
+  .cerebro-settings-drag { display: none; }
   .cerebro-settings-drawer {
     inset: 0;
     width: 100vw;
@@ -2099,7 +2213,7 @@ html body.skin-blue.cerebro-dataset-is-loading #cerebro-nav-scrim { z-index: 200
 }
 .cerebro-dataset-loading-track span {
   display: block; width: 0; height: 100%; border-radius: inherit;
-  background: var(--c-amber); transition: width .2s var(--ease);
+  background: var(--c-amber);
 }
 .cerebro-dataset-loading-meta {
   display: flex; justify-content: space-between; margin-top: 8px;
@@ -2172,6 +2286,33 @@ body .shiny-spinner-output-container > .load-container {
   border-bottom: 1px solid var(--c-border);
   margin: -4px 0 10px;
   min-height: 44px;
+}
+.cerebro-feedback-region { position: relative; }
+.cerebro-local-feedback {
+  position: absolute;
+  z-index: 25;
+  top: 48px;
+  right: 12px;
+  max-width: min(440px, calc(100% - 24px));
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  pointer-events: none;
+}
+.cerebro-local-feedback[hidden] { display: none; }
+.cerebro-local-feedback.is-error { pointer-events: auto; }
+body .cerebro-local-feedback.is-pending::before {
+  width: 12px; height: 12px; vertical-align: -2px; margin-right: 6px;
+}
+.cerebro-view-terminal > .cerebro-local-feedback { visibility: visible; }
+.cerebro-page-initializing .cerebro-local-feedback,
+body.cerebro-dataset-is-loading .cerebro-local-feedback,
+.tab-pane.active:has(.cerebro-page-loader.is-visible) .cerebro-local-feedback.is-pending {
+  visibility: hidden;
 }
 .cerebro-view-feedback.is-error { color: #a13a2b; }
 .cerebro-view-terminal { visibility: hidden; }
@@ -3102,6 +3243,17 @@ body .shiny-bound-output.cerebro-output-waiting {
 /* Optional layout advice shares the existing status row, without another bar. */
 .cerebro-page-feedback { display: flex; align-items: center; gap: 12px; }
 .cerebro-page-feedback[hidden] { display: none; }
+.cerebro-page-initializing .cerebro-viz-toolbar,
+.cerebro-page-initializing .cv-controls { visibility: hidden; }
+.cerebro-page-initializing .cerebro-page-feedback,
+.cerebro-page-initializing #expression_feedback { display: none; }
+#shiny-tab-groups:has([data-composition-unavailable]) > .row:has(#groups_by_other_group_plot) {
+  display: none;
+}
+.cerebro-starting .cerebro-dataset-loading { visibility: hidden; }
+#cerebro-startup [hidden] { display: none !important; }
+#cerebro-startup svg { width: 200px; height: auto; display: block; }
+.cerebro-groups-controls:has([data-composition-unavailable]) { min-height: 0; }
 .cerebro-feedback-text { flex: 1; min-width: 0; }
 .cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3134,4 +3286,38 @@ body .shiny-bound-output.cerebro-output-waiting {
 @media (max-width: 700px) {
   .cerebro-layout-copy { display: none; }
   .cerebro-layout-hint { padding-left: 3px; gap: 3px; }
+}
+/* Dataset overview: compact metadata, lightweight HTML composition bars. */
+.dataset-overview { margin-top: 22px; color: #292b30; }
+.dataset-summary-heading h2 { margin: 0 0 10px; font-size: 26px; font-weight: 650; overflow-wrap: anywhere; }
+.dataset-description, .dataset-source p { white-space: pre-line; overflow-wrap: anywhere; max-width: 85ch; line-height: 1.6; }
+.dataset-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; color: #656872; font-size: 14px; }
+.dataset-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 1px; margin: 24px 0; border: 1px solid #e6e6ea; border-radius: 14px; background: #e6e6ea; overflow: hidden; }
+.dataset-stat { background: #fff; padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
+.dataset-stat strong { font-size: clamp(26px, 2.7vw, 36px); line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dataset-stat > span { color: #656872; font-size: 14px; }
+.dataset-compositions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 20px; align-items: start; }
+.dataset-panel { min-width: 0; background: #fff; border: 1px solid #e6e6ea; border-radius: 14px; padding: 22px 24px; }
+.dataset-overview h3 { margin: 0 0 14px; font-size: 17px; font-weight: 650; }
+.dataset-note { color: #6a6c75; font-size: 13px; margin: 6px 0 16px; }
+.dataset-panel .form-group { margin-bottom: 18px; }
+.dataset-bars { display: grid; gap: 11px; }
+.dataset-bar-row { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(55px, 1.35fr) 100px; gap: 14px; align-items: center; }
+.dataset-bar-label { font-size: 13px; overflow-wrap: anywhere; }
+.dataset-bar-track { background: #f2f2f5; height: 8px; border-radius: 4px; overflow: hidden; }
+.dataset-bar-track > span { display: block; background: #ef944e; height: 100%; border-radius: inherit; }
+.dataset-bar-value { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dataset-bar-value small { display: inline-block; color: #6a6c75; min-width: 44px; margin-left: 8px; }
+.dataset-explore, .dataset-source { margin-top: 28px; }
+.dataset-explore-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.dataset-explore-link { position: relative; display: block; padding: 16px 40px 16px 18px; color: #34363d !important; background: #fff; border: 1px solid #e6e6ea; border-radius: 10px; }
+.dataset-explore-link strong, .dataset-explore-link small { display: block; overflow-wrap: anywhere; }
+.dataset-explore-link small { color: #6a6c75; margin-top: 4px; font-size: 13px; }
+.dataset-link-arrow { position: absolute; right: 17px; top: 18px; color: #b94f05; }
+.dataset-explore-link:hover { border-color: #f0ba92; background: #fff8f3; }
+.dataset-explore-link:focus-visible { outline: 2px solid #c85a0b; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .dataset-panel { padding: 18px 16px; }
+  .dataset-stat { padding: 16px; }
+  .dataset-bar-row { gap: 8px; grid-template-columns: minmax(70px, 1fr) minmax(40px, 1fr) 92px; }
 }

@@ -256,7 +256,8 @@ if (window.jQuery) {
       window.cerebroCellViews.summary &&
       window.cerebroCellViews.summary('spatial_projection');
     return !summary || !summary.ready ||
-      summary.backgroundIdentity === incomingIdentity;
+      summary.backgroundIdentity === incomingIdentity ||
+      (summary.backgroundIdentities || []).indexOf(incomingIdentity) >= 0;
   }
 
   function copyText(text) {

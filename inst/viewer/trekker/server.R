@@ -197,7 +197,8 @@ observe({
     external_histology$preset
   } else {
     list(
-      opacity = alignment$image_opacity %||% 0.6,
+      # Match Spatial and Linked views: saved alignment supplies geometry only.
+      opacity = 0.6,
       offsetX = alignment$offset_x %||% 0,
       offsetY = alignment$offset_y %||% 0,
       scaleX = alignment$scale_x %||% 1,

@@ -76,6 +76,7 @@
     metric.byId[key].bytes += Number(bytes) || 0;
   }
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
+  var gpuAcceleration = true;   // session preference, independent of data/page
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionZoomed = false;
   var selectionSource = null;   // label of the lens that created the active cohort
@@ -142,6 +143,54 @@
   // state remains global, while viewport and 3-D rotation live on the panel.
   var selectedProjections = [];
   var pctShow = 100;            // % of cells to render
+  var sharedScatter = null;
+  var scatterUserEdit = null;
+  var scatterControlFields = {
+    'cv-ps': 'point_size', 'cv-opacity': 'point_opacity',
+    'cv-pct': 'percentage_cells_to_show',
+    'ir_d_point_size': 'point_size', 'ir_d_alpha': 'point_opacity',
+    'ir_d_percentage_cells_to_show': 'percentage_cells_to_show'
+  };
+  ['overview_projection', 'expression_projection', 'trajectory'].forEach(function (prefix) {
+    ['point_size', 'point_opacity', 'percentage_cells_to_show'].forEach(function (field) {
+      scatterControlFields[prefix + '_' + field] = field;
+    });
+  });
+  function sharedScatterValues() {
+    return sharedScatter && sameDatasetContext(sharedScatter.dataset_context,
+      currentDatasetContext()) ? sharedScatter.values : null;
+  }
+  function syncSharedScatter() {
+    var values = sharedScatterValues();
+    if (!values) return;
+    if (linkedBundle) {
+      linkedBundle.default_point_size = values.point_size;
+      linkedBundle.default_point_opacity = values.point_opacity;
+      linkedBundle.default_percentage_cells_to_show = values.percentage_cells_to_show;
+    }
+    if (linkedState && linkedState.view) Object.assign(linkedState.view.display, {
+      point_size: values.point_size, point_opacity: values.point_opacity,
+      percentage_cells: values.percentage_cells_to_show
+    });
+    // Spatial has its own section/ROI settings. Never apply projection edits.
+    if (singleActive === 'spatial_projection') return;
+    ps = values.point_size; pointOpacity = values.point_opacity;
+    if (!singleActive) {
+      pctShow = values.percentage_cells_to_show;
+      rebuildPctMask();
+    }
+  }
+  function publishScatterEdit(field, value) {
+    if (!field || !currentDatasetContext()) return;
+    var known = sharedScatterValues();
+    var values = Object.assign({}, known || {});
+    values[field] = value;
+    if (known) sharedScatter = {dataset_context: currentDatasetContext(), values: values};
+    Shiny.setInputValue('viewer_scatter_edit', {
+      dataset_context: currentDatasetContext(), values: values,
+      nonce: Date.now()
+    }, {priority: 'event'});
+  }
   var pctMask = null;           // Uint8Array subsample mask, or null (all shown)
   var groupFilter = {};         // groupName -> Set(allowed level idx); absent = all
   var spaceById = {};
@@ -837,8 +886,21 @@
   // A cell is "active" when it survives the group filters AND the % subsample.
   // Inactive cells are drawn in no panel and are not selectable, matching the
   // Overview page's group-filter + "show % of cells" behaviour.
-  function activeCell(i) {
-    if (pctMask && !pctMask[i]) return false;
+  function panelPctMask(p) {
+    var space = p && spaceById[p.spaceId];
+    if (singleActive || !isSpatialSpace(space)) return pctMask;
+    var percentage = Number(space.builder_percentage_cells);
+    if (!isFinite(percentage) || percentage >= 100) return null;
+    if (!space._pctMask || space._pctMask.length !== D.n) {
+      space._pctMask = new Uint8Array(D.n);
+      for (var j = 0; j < D.n; j++)
+        space._pctMask[j] = (Math.imul(j + 1, 2654435761) >>> 0) / 4294967296 < percentage / 100 ? 1 : 0;
+    }
+    return space._pctMask;
+  }
+  function activeCell(i, p) {
+    var mask = panelPctMask(p);
+    if (mask && !mask[i]) return false;
     // Trekker: dissolve the least-confidently-positioned nuclei.
     if (dissolveThresh != null && D.trekker && D.trekker.conf) {
       var cf = D.trekker.conf[i];
@@ -873,7 +935,7 @@
     dissolveThresh = vals[Math.min(k, vals.length - 1)];
   }
   // Legend-visible AND filter-active — the single gate every render/hit-test uses.
-  function shown(i, p) { return visible(i, p) && activeCell(i); }
+  function shown(i, p) { return visible(i, p) && activeCell(i, p); }
   // Stable per-cell subsample: the same subset persists across redraws/toggles
   // (deterministic hash), so lowering "% of cells" never reshuffles the view.
   function rebuildPctMask() {
@@ -890,7 +952,7 @@
   function applyActiveChange() {
     if (sel) {
       var s = new Set();
-      sel.forEach(function (i) { if (activeCell(i)) s.add(i); });
+      sel.forEach(function (i) { if (panels.some(function (p) { return p.spaceId && shown(i, p); })) s.add(i); });
       setSelection(s.size ? s : null);
     } else {
       drawAll();
@@ -1620,14 +1682,14 @@
   // exactly where it matters most.
   function pointSizeOf(p) {
     var sp = spaceById[p.spaceId];
-    if (!pointSizeEdited && sp && sp.builder_point_size != null) {
+    if ((!pointSizeEdited || !singleActive) && sp && sp.builder_point_size != null) {
       return Math.max(1, Math.min(20, Number(sp.builder_point_size)));
     }
     return ps;
   }
   function pointOpacityOf(p) {
     var sp = spaceById[p.spaceId];
-    if (!pointOpacityEdited && sp && sp.builder_point_opacity != null) {
+    if ((!pointOpacityEdited || !singleActive) && sp && sp.builder_point_opacity != null) {
       return Math.max(0, Math.min(1, Number(sp.builder_point_opacity)));
     }
     return pointOpacity;
@@ -1657,7 +1719,7 @@
 
   var allShownData = null, allShownMask = null;
   function shownState(p) {
-    var filtered = pctMask || dissolveThresh != null || hidden.size;
+    var filtered = panelPctMask(p) || dissolveThresh != null || hidden.size;
     if (!filtered) {
       for (var name in groupFilter) {
         if (groupFilter[name]) { filtered = true; break; }
@@ -1728,7 +1790,7 @@
       fieldConstantColor: field && field.constantColor,
       groupValues: group && group.values,
       groupColors: group && group.colors && group.colors.join(','),
-      pctMask: pctMask,
+      pctMask: panelPctMask(p),
       dissolve: dissolveThresh,
       filter: gpuFilterKey(),
       selection: sel,
@@ -1744,7 +1806,7 @@
   }
 
   function gpuCandidate(p) {
-    if (!p.gpu || !D || D.n < GPU_MIN_CELLS) return false;
+    if (!gpuAcceleration || !p.gpu || !D || D.n < GPU_MIN_CELLS) return false;
     var space = spaceById[p.spaceId], unit = space && space._unit;
     // Images, hulls and trajectories live on the CPU underlay; axes, labels and
     // interaction marks live on the CPU overlay. Only features that change the
@@ -1824,7 +1886,9 @@
   }
 
   function attachGpu(p) {
+    if (!gpuAcceleration || p.gpu) return;
     if (!window.CerebroPointRenderer || !window.CerebroPointRenderer.create) return;
+    if (p.gpuCanvas) p.gpuCanvas.remove();
     var canvas = document.createElement('canvas');
     canvas.className = 'cv-gpu-layer';
     canvas.style.display = 'none';
@@ -1834,12 +1898,64 @@
       p.gpuCanvas = canvas;
       p.gpu = window.CerebroPointRenderer.create(canvas);
       canvas._cerebroPointRenderer = p.gpu;
+      if (p.W && p.H) p.gpu.resize(p.W, p.H, window.devicePixelRatio || 1);
       var renderer = p.gpu;
       watchGpu(p, renderer);
     } catch (error) {
       canvas.remove();
       p.gpuCanvas = null;
     }
+  }
+
+  function setGpuAcceleration(enabled) {
+    enabled = enabled !== false;
+    if (gpuAcceleration === enabled) { reportRendererStatus(); return; }
+    gpuAcceleration = enabled;
+    panels.forEach(function (p) {
+      // Keep a working renderer available for a later toggle. Redrawing the
+      // same panel preserves the camera, filters, brush and cell identities.
+      if (enabled) attachGpu(p); else hideGpu(p);
+      p.cloneBase = null;
+      if (D && p.spaceId) project(p, !enabled);
+    });
+    if (D) drawAll();
+    reportRendererStatus();
+  }
+
+  function reportRendererStatus() {
+    var badge = document.getElementById('cerebro-renderer-status');
+    if (!badge) return;
+    var backends = [];
+    panels.forEach(function (p) {
+      if (!p.spaceId || !p.canvas.offsetParent ||
+          getComputedStyle(p.canvas).visibility === 'hidden') return;
+      var stats = p.gpu && p.gpuCanvas && p.gpuCanvas.style.display !== 'none'
+        && p.gpu.stats ? p.gpu.stats() : null;
+      var backend = stats && stats.backend === 'webgpu' ? 'WebGPU'
+        : stats && stats.backend === 'webgl2' ? 'WebGL2' : 'Canvas';
+      if (backends.indexOf(backend) < 0) backends.push(backend);
+    });
+    // Plotly-backed pages still honour the same server-side preference.
+    if (!backends.length) {
+      document.querySelectorAll('.tab-pane.active .js-plotly-plot').forEach(function (plot) {
+        if (!plot.offsetParent || !plot._fullData) return;
+        plot._fullData.forEach(function (trace) {
+          if (trace.visible === false || trace.visible === 'legendonly') return;
+          var backend = /gl$|3d$|^(surface|mesh3d|volume|isosurface|splom|parcoords)$/.test(trace.type)
+            ? 'WebGL' : 'SVG';
+          if (backends.indexOf(backend) < 0) backends.push(backend);
+        });
+      });
+    }
+    var label = backends.length > 1 ? 'Mixed' : backends[0] || (gpuAcceleration ? 'Auto' : 'Off');
+    var detail = backends.length ? 'Current plots: ' + backends.join(', ') + '.'
+      : 'No active plot.';
+    var title = detail + (gpuAcceleration
+      ? ' GPU acceleration is on. Small or unsupported cell views may use Canvas.'
+      : ' GPU acceleration is off. Cell views use Canvas.');
+    if (badge.textContent !== label) badge.textContent = label;
+    if (badge.title !== title) badge.title = title;
+    badge.dataset.backend = label;
   }
 
   function attachUnderlay(p) {
@@ -1876,7 +1992,11 @@
 
   function needsUnderlay(p) {
     var space = spaceById[p.spaceId];
-    return !!(space && (space.background_scope || space.trajectory ||
+    // Linked and Trekker scenes can carry images without background_scope.
+    // Keep every image below both GPU points and Canvas points, including
+    // images whose pixels are still loading.
+    return !!(space && (space.background_scope || space.image ||
+      (space.images && space.images.length) || space.trajectory ||
       (space.hulls && space.hulls.length)));
   }
 
@@ -3671,6 +3791,11 @@
     L.style.fontSize = isFinite(singleFontSize) && singleFontSize > 0
       ? singleFontSize + 'px' : '';
     L.innerHTML = '';
+    if (singlePayload && singlePayload.meta && singlePayload.meta.show_color_scale === false) {
+      renderColorbar(false);
+      renderPanelScales(false);
+      return;
+    }
     var distinctPanels = !!(singlePayload && singlePayload.data &&
       singlePayload.data.panel_colorscales &&
       Object.keys(singlePayload.data.panel_colorscales).length > 1);
@@ -4303,6 +4428,7 @@
     syncLinkedBackgroundsDefault(false);
     if (!singleActive) {
       panels.forEach(function (panel) { panel.miniBg = null; });
+      renderImagePicker();
       drawAll();
       viewOperation('linked', linkedBackgroundsOn
         ? 'Background images shown' : 'Background images hidden');
@@ -5585,6 +5711,10 @@
       return;
     }
     var feedbackId = singleActive || 'linked';
+    // Select the image's own transform before deferred pixels arrive. Otherwise
+    // the editor briefly shows (and can overwrite) the previous image's values.
+    var k = imgKey(space, img);
+    space._imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     viewOperation(feedbackId, feedbackId === 'linked' && !linkedBackgroundsOn
       ? 'Background images hidden' : 'Loading background: ' + (space.label || space.id) + '…');
     if (!img.uri && img.asset_key) {
@@ -5595,8 +5725,6 @@
       viewOperation(feedbackId, 'Background unavailable: ' + (space.label || space.id));
       return;
     }
-    var k = imgKey(space, img);
-    space._imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     // Only the newest request may paint. Without the token a large image chosen
     // first can finish decoding after a small one chosen second and replace it.
     var mine = space._imgToken;
@@ -5707,39 +5835,46 @@
     if (section) section.style.display = visible ? '' : 'none';
   }
 
-  // The background picker is scoped to the selected spatial section. Its tabs
-  // stay at the top of the Background image section so the mode below and the
-  // Image alignment bar both read as settings for that chosen section.
+  // Only sections carrying images are editable. Scope adjustments by stable
+  // section/image identities; never modify the bundle's saved presets.
   function renderImagePicker() {
     var ctl = $('cv-img-pick-ctl'), select = $('cv-bg-image-select');
     var tabs = $('cv-bg-space-tabs');
     if (!ctl || !select) return;
-    var allSpaces = backgroundSpaces();
+    var allSpaces = backgroundSpaces().filter(function (sp) { return spatialImages(sp).length > 0; });
     var active = activeSpatial();
     if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
+    if (active) activeSpatialId = active.id;
     var section = ctl.closest('.cerebro-settings-section');
-    // Linked views has one background visibility switch. Image selection and
-    // calibration remain in Spatial; the first matching image is the default.
-    if (!singleActive) {
-      if (section) section.style.display = 'none';
-      ctl.style.display = 'none';
-      return;
-    }
     if (section) section.style.display = active ? '' : 'none';
     ctl.style.display = active ? '' : 'none';
     if (tabs) {
-      tabs.innerHTML = allSpaces.map(function (sp) {
-        return '<button type="button" class="cv-bg-space-tab' + (sp === active ? ' is-on' : '') +
-          '" data-cv-bg-tab="' + esc(sp.id) + '">' +
-          esc(sp._sampleName || sp.label || sp.id) + '</button>';
-      }).join('');
-      Array.prototype.forEach.call(tabs.querySelectorAll('[data-cv-bg-tab]'), function (tab) {
-        tab.onclick = function () {
-          backgroundScopePulse = true;
-          activateSpatial(tab.getAttribute('data-cv-bg-tab'));
-          renderImagePicker();
-        };
+      var scope = $('cv-bg-space-select');
+      if (!scope) {
+        tabs.innerHTML = '<label for="cv-bg-space-select">Adjust background</label>' +
+          '<select id="cv-bg-space-select" class="form-control"></select>';
+        scope = $('cv-bg-space-select');
+      }
+      var scopeOptions = allSpaces.map(function (sp) {
+        return { value: sp.id, text: (sp.label || sp._sampleName || sp.id).replace(/ \(spatial\)$/, '') };
       });
+      if (!scope.selectize && window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+        window.jQuery(scope).selectize({ persist: false, onChange: function (id) {
+          if (id) { backgroundScopePulse = true; activateSpatial(id); }
+        } });
+      }
+      if (scope.selectize) {
+        scope.selectize.clear(true);
+        scope.selectize.clearOptions(true);
+        scope.selectize.addOption(scopeOptions);
+        scope.selectize.setValue(active ? active.id : '', true);
+      } else {
+        scope.innerHTML = scopeOptions.map(function (option) {
+          return '<option value="' + esc(option.value) + '">' + esc(option.text) + '</option>';
+        }).join('');
+        scope.value = active ? active.id : '';
+        scope.onchange = function () { activateSpatial(scope.value); };
+      }
       if (backgroundScopePulse) {
         var settings = ctl.querySelector('.cv-bg-settings');
         if (settings) {
@@ -5750,6 +5885,10 @@
         backgroundScopePulse = false;
       }
     }
+    var note = $('cv-bg-session-note');
+    if (note) note.textContent = !singleActive && !linkedBackgroundsOn
+      ? 'Background images are hidden. Enable Background images to preview changes.'
+      : 'Changes apply only to this session.';
     var images = active ? spatialImages(active) : [];
     var options = images.map(function (im) {
       return { value: im.id, text: im.label || im.id };
@@ -5764,6 +5903,9 @@
       });
     }
     if (select.selectize) {
+      // Selectize retains the selected option in clearOptions(). Clear the
+      // value first so an image from the previous ROI cannot remain selectable.
+      select.selectize.clear(true);
       select.selectize.clearOptions(true);
       select.selectize.addOption(options);
       select.selectize.setValue(value, true);
@@ -5776,6 +5918,7 @@
       select.value = value;
       select.onchange = function () { setSpatialImage(select.value, active); };
     }
+    seedImgControls();
   }
 
   // Switch background. The cells have not moved -- only what is behind them --
@@ -5784,6 +5927,7 @@
   function setSpatialImage(id, sp) {
     sp = sp || activeSpatial();
     if (!sp || !id) return;
+    if (id !== IMG_NONE && !spatialImages(sp).some(function (image) { return image.id === id; })) return;
     stashImgState(sp);
     sp._customImageId = id;
     imgChoice[backgroundStateKey(sp)] = id;
@@ -5887,12 +6031,14 @@
     return [{
       name: spatialTemplate.name || spatialTemplate.label.replace(/ \(spatial\)$/, ''),
       label: spatialTemplate.label,
+      is_roi_overview: spatialTemplate.is_roi_overview,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
       x_range: spatialTemplate.x_range,
       y_range: spatialTemplate.y_range,
       builder_point_opacity: spatialTemplate.builder_point_opacity,
       builder_point_size: spatialTemplate.builder_point_size,
+      builder_percentage_cells: spatialTemplate.builder_percentage_cells,
       image: spatialTemplate.image,
       images: spatialTemplate.images || []
     }];
@@ -5921,6 +6067,7 @@
         yRange: sample.y_range || null,
         builder_point_opacity: sample.builder_point_opacity,
         builder_point_size: sample.builder_point_size,
+        builder_percentage_cells: sample.builder_percentage_cells,
         image: sample.image || null,
         images: images,
         _sampleName: sample.name,
@@ -7954,6 +8101,7 @@
       space.xRange = panel.x_range;
       space.yRange = panel.y_range;
       var panelImage = panel.background_image || meta.background_image;
+      space._backgroundIdentity = canonicalIdentity(panel.image_identity || meta.background_identity);
       var panelBounds = panel.image_bounds || meta.image_bounds;
       if (panelImage && panelBounds) {
         var opacity = Number(meta.background_opacity);
@@ -8165,7 +8313,28 @@
       });
     });
   }
-  function activateSingle(id, resetAxes, preserveTargetState, eventKind) {
+  function sameSingleLayout(previous, meta, data) {
+    if (!previous || !previous.data || !previous.meta || data.reset_axes) return false;
+    if (previous.meta.space_label !== meta.space_label || !!previous.data.z !== !!data.z) return false;
+    function layout(value) {
+      return (value.panels || []).map(function (panel) {
+        return [panel.id, panel.label, !!panel.spatial, !!panel.projection, !!panel.z];
+      });
+    }
+    return JSON.stringify(layout(previous.data)) === JSON.stringify(layout(data));
+  }
+
+  function sameSingleImages(left, right) {
+    left = left || []; right = right || [];
+    return left.length === right.length && left.every(function (image, index) {
+      var other = right[index];
+      return image.id === other.id && image.uri === other.uri && image.asset_key === other.asset_key &&
+        JSON.stringify(image.bounds) === JSON.stringify(other.bounds) &&
+        JSON.stringify(image.preset) === JSON.stringify(other.preset);
+    });
+  }
+
+  function activateSingle(id, resetAxes, preserveTargetState, eventKind, reuseSurface, refreshFilters) {
     var activationStarted = performance.now();
     var timing = CBViewState.specialistLifecycle.activate(
       singleTiming, id, activationStarted
@@ -8184,10 +8353,12 @@
       stashSingleState();
     }
     if (resetAxes) payload.lenses = [];
-    restoreLinkedSurface();
+    var previousSpaces = reuseSurface ? spaceById : null;
+    var previousFocus = reuseSurface ? focusPanel : null;
+    if (!reuseSurface) restoreLinkedSurface();
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
-    setSelectionZoomed(false);
-    if (!mountSingleSurface(id)) { singleActive = null; return false; }
+    if (!reuseSurface) setSelectionZoomed(false);
+    if (!reuseSurface && !mountSingleSurface(id)) { singleActive = null; return false; }
     var base = singlePayloadBundle(id, payload);
     D = Object.assign({}, base, {
       fields: Object.assign({}, base.fields),
@@ -8208,7 +8379,17 @@
     singleSpaceIds = built.spaces; singleSpaceModes = built.modes;
     sanitiseColors(D);
     singleSpaceIds.forEach(function (spaceId) {
-      var space = spaceById[spaceId]; if (isSpatialSpace(space)) loadSpaceImage(space);
+      var space = spaceById[spaceId], old = previousSpaces && previousSpaces[spaceId];
+      if (!isSpatialSpace(space)) return;
+      // Cell sampling/recolouring does not invalidate a decoded background.
+      if (old && sameSingleImages(old.images, space.images)) {
+        ['_imgEl', '_imgReady', '_imgState', '_imgToken'].forEach(function (key) {
+          space[key] = old[key];
+        });
+        // A pending decode callback belongs to the old space; reload only then.
+        if (space._imgReady || !currentImage(space)) return;
+      }
+      loadSpaceImage(space);
     });
     if (payload.backgroundState) updateSingleBackground({
       id: id,
@@ -8216,11 +8397,17 @@
       background_identity: payload.background_identity_value,
       values: payload.backgroundState
     });
+    Object.keys(payload.backgroundEdits || {}).forEach(function (key) {
+      var edit = payload.backgroundEdits[key];
+      updateSingleBackground({ id: id, dataset_context: payload.dataset_context,
+        background_identity: edit.identity, values: edit.values });
+    });
     colorBy = singleSpaceModes[singleSpaceIds[0]] || colorBy;
     hidden = new Set(); groupFilter = {}; sel = null; selectionSource = null;
     selectionSourceSpace = null;
-    pick = null; hoverCell = null; focusPanel = null;
-    var appearance = payload.meta.appearance;
+    pick = null; hoverCell = null; focusPanel = previousFocus;
+    var appearance = payload.meta.appearance || payload.appearanceOverrides
+      ? Object.assign({}, payload.meta.appearance || {}, payload.appearanceOverrides || {}) : null;
     if (appearance) {
       labelsOn = appearance.group_labels === true;
       bordersOn = !!appearance.draw_border;
@@ -8251,8 +8438,8 @@
     if (isFinite(incomingPointSize) && incomingPointSize >= 1) {
       ps = Math.min(20, incomingPointSize);
     }
-    pointOpacity = Math.max(0.05,
-      Math.min(1, Number(payload.data && payload.data.point_opacity) || pointOpacity));
+    var incomingOpacity = Number(payload.data && payload.data.point_opacity);
+    if (isFinite(incomingOpacity)) pointOpacity = Math.max(0, Math.min(1, incomingOpacity));
     var panelPointSize = Array.isArray(payload.data && payload.data.panels) &&
       payload.data.panels.some(function (panel) {
         return panel && panel.builder_point_size != null;
@@ -8264,10 +8451,31 @@
     psSeeded = true;
     pointSizeEdited = !panelPointSize;
     pointOpacityEdited = !panelPointOpacity;
-    ensurePanelSlots(singleSpaceIds.length); buildPanels(); layoutPanels();
+    if (payload.pointAppearance) {
+      if (Number.isFinite(payload.pointAppearance.point_size)) {
+        ps = payload.pointAppearance.point_size; pointSizeEdited = true;
+      }
+      if (Number.isFinite(payload.pointAppearance.point_opacity)) {
+        pointOpacity = payload.pointAppearance.point_opacity; pointOpacityEdited = true;
+      }
+    }
+    syncSharedScatter();
+    if (reuseSurface) {
+      panels.forEach(function (panel) {
+        if (!panel.spaceId) return;
+        panel.colorBy = singleSpaceModes[panel.spaceId] || null;
+        panel.miniBg = null; panel.miniUnit = null;
+        updateCanvasDescription(panel);
+        project(panel);
+      });
+    } else {
+      ensurePanelSlots(singleSpaceIds.length); buildPanels(); layoutPanels();
+    }
     updateSingleInteractionMode();
-    renderGroupFilters();
-    updateSpaceScopedControls();
+    if (!reuseSurface || refreshFilters) {
+      renderGroupFilters();
+      updateSpaceScopedControls();
+    }
     setTrekkerSettingsVisible(!!D.trekker);
     var trekkerInsights = $('cv-tk-insights');
     if (trekkerInsights) trekkerInsights.style.display = D.trekker ? '' : 'none';
@@ -8337,6 +8545,9 @@
       rebuildingBase = false;
     }
     if (state) restoreWorkspace(state);
+    syncSharedScatter();
+    syncPointControls();
+    drawAll();
     linkedState = null;
     var pending = deferredLinkedSupplements;
     deferredLinkedSupplements = [];
@@ -8396,6 +8607,11 @@
       else delete host.dataset.backgroundIdentity;
     }
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
+    var reuseSurface = singleActive === id && visibleSingleId() === id &&
+      ['overview_projection', 'expression_projection', 'spatial_projection'].indexOf(id) >= 0 &&
+      previous.meta.color_type === meta.color_type &&
+      sameSingleLayout(previous, meta, data);
+    if (!sameSingleLayout(previous, meta, data)) previous.pointAppearance = null;
     singleViews[cacheKey] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
       extra: extra || {}, dataset_context: context,
@@ -8411,7 +8627,7 @@
       singleViews[cacheKey].pendingSavedState = null;
       applySingleState(id, pending);
     } else if (visibleSingleId() === id) {
-      activateSingle(id, !!data.reset_axes, false, 'primary');
+      activateSingle(id, !!data.reset_axes, false, 'primary', reuseSurface, changedGroup);
     }
     return true;
   }
@@ -8592,9 +8808,14 @@
       generation: context && context.generation || null,
       epoch: context && context.epoch || null,
       pointCount: isFinite(pointCount) ? pointCount : 0,
+      pointSize: ready ? (singleActive === id ? ps : view.data.point_size) : null,
+      pointOpacity: ready ? (singleActive === id ? pointOpacity : view.data.point_opacity) : null,
       xExtent: ready ? numericExtent(view.data.x) : null,
       yExtent: ready ? numericExtent(view.data.y) : null,
       backgroundIdentity: ready ? view.background_identity || null : null,
+      backgroundIdentities: ready ? (view.data.panels || []).map(function (panel) {
+        return canonicalIdentity(panel.image_identity);
+      }).filter(Boolean) : [],
       wireToken: ready && view.data.wire_token != null
         ? view.data.wire_token : null
     });
@@ -8644,17 +8865,25 @@
     var id = message.id;
     var view = singleView(id); if (!view) return false;
     var incomingIdentity = canonicalIdentity(message.background_identity);
-    if (!incomingIdentity || incomingIdentity !== view.background_identity) return false;
+    var panelMatch = (view.data && view.data.panels || []).some(function (panel) {
+      return canonicalIdentity(panel.image_identity) === incomingIdentity;
+    });
+    if (!incomingIdentity || (incomingIdentity !== view.background_identity && !panelMatch)) return false;
     var values = message.values || {};
     var names = {
       opacity: 'opacity', offsetX: 'offsetX', offsetY: 'offsetY',
       scaleX: 'scaleX', scaleY: 'scaleY', flipX: 'flipX',
       flipY: 'flipY', rotate: 'rotate'
     };
-    view.backgroundState = Object.assign({}, view.backgroundState || {}, values);
+    view.backgroundEdits = view.backgroundEdits || {};
+    var oldEdit = view.backgroundEdits[incomingIdentity];
+    view.backgroundEdits[incomingIdentity] = { identity: message.background_identity,
+      values: Object.assign({}, oldEdit && oldEdit.values || {}, values) };
+    if (!panelMatch) view.backgroundState = Object.assign({}, view.backgroundState || {}, values);
     if (singleActive !== id) return true;
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (!space || !space._imgState) return;
+      if (panelMatch && space._backgroundIdentity !== incomingIdentity) return;
       Object.keys(names).forEach(function (name) {
         if (values[name] != null) space._imgState[names[name]] = values[name];
       });
@@ -8900,7 +9129,7 @@
         try {
           applyData(merged);
           // The primary frame has no Spatial choice to restore. Keep the
-          // first arriving section, but preserve an explicit empty choice
+          // default arriving sections, but preserve an explicit empty choice
           // when Spatial was already available before this supplement.
           if (!hadSpatial && spatialTemplate && saved.view) {
             saved.view.spatial_sections = selectedSpatial.slice();
@@ -9188,6 +9417,7 @@
     syncLinkedHoverDefault(dataChanged);
     syncLinkedBackgroundsDefault(dataChanged);
     var previousSelected = selectedSpatial.slice();
+    var hadSpatial = !!spatialTemplate;
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
     if (dataChanged) {
@@ -9238,8 +9468,13 @@
     selectedSpatial = dataChanged ? [] : previousSelected.filter(function (name) {
       return availableSamples.indexOf(name) >= 0;
     });
-    if (!selectedSpatial.length && initialSamples.length) {
-      selectedSpatial = [initialSamples[0].name];
+    // Show individual FOV/ROI scenes by default, without their duplicate
+    // All ROIs overviews. Use scene metadata, never dataset names or labels.
+    // Later bundles preserve manual choices, including overviews or none.
+    if ((dataChanged || !hadSpatial) && initialSamples.length) {
+      selectedSpatial = initialSamples.filter(function (sample) {
+        return sample.is_roi_overview !== true;
+      }).map(function (sample) { return sample.name; });
     }
     var activeName = !dataChanged && selectedSpatial.indexOf(previousActiveName) >= 0
       ? previousActiveName : selectedSpatial[0];
@@ -9299,6 +9534,8 @@
       rebuildPctMask();
       setLinkedSliderValue('cv-pct', pctShow, 10);
     }
+    syncSharedScatter();
+    syncPointControls();
     closeMore();   // a new data set starts with advanced settings closed
     // Trekker controls reset
     dissolvePct = 0; dissolveThresh = null; evidenceOn = false; nicheRadius = 250;
@@ -10046,6 +10283,53 @@
     if (booted) return true;
     if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return false;
     booted = true;
+    Shiny.addCustomMessageHandler('cerebro_scatter_defaults', function (message) {
+      if (!message || !sameDatasetContext(message.dataset_context, currentDatasetContext())) return;
+      sharedScatter = message;
+      Object.keys(scatterControlFields).forEach(function (id) {
+        setLinkedSliderValue(id, message.values[scatterControlFields[id]]);
+      });
+      syncSharedScatter();
+      if (D && !singleActive) { applyActiveChange(); }
+      else if (D && singleActive !== 'spatial_projection') { drawAll(); }
+    });
+    // Input bindings also emit on mount and on server updates. Accept ordinary
+    // slider changes only after pointer/keyboard interaction with that control.
+    function markScatterInteraction(event) {
+      var container = event.target && event.target.closest &&
+        event.target.closest('.shiny-input-container');
+      var control = container && container.querySelector('input');
+      if (control && scatterControlFields[control.id]) scatterUserEdit = {
+        id: control.id, context: currentDatasetContext(), time: Date.now()
+      };
+    }
+    document.addEventListener('pointerdown', markScatterInteraction, true);
+    document.addEventListener('keydown', markScatterInteraction, true);
+    window.jQuery(document).on('shiny:inputchanged.cerebroScatter', function (event) {
+      var edit = scatterUserEdit, field = scatterControlFields[event.name];
+      if (!edit || !field || event.name.indexOf('cv-') === 0 || edit.id !== event.name ||
+          Date.now() - edit.time > 30000 || !sameDatasetContext(edit.context, currentDatasetContext()) ||
+          (event.el && event.el._cvSyncing)) return;
+      var values = sharedScatterValues();
+      if (values && Number(event.value) === values[field]) return;
+      publishScatterEdit(field, Number(event.value));
+    });
+    // Newly rendered hidden drawers receive the latest values without causing
+    // a second user edit or replacing their DOM on every slider movement.
+    window.jQuery(document).on('shiny:bound.cerebroScatter', function (event) {
+      var values = sharedScatterValues(), field = scatterControlFields[event.target.id];
+      if (values && field) setLinkedSliderValue(event.target.id, values[field]);
+    });
+    Shiny.addCustomMessageHandler('cerebro_gpu_acceleration', function (message) {
+      if (message) setGpuAcceleration(message.enabled);
+    });
+    document.addEventListener('change', function (event) {
+      if (event.target && event.target.id === 'webgl_checkbox') {
+        setGpuAcceleration(event.target.checked);
+      }
+    });
+    var gpuPreference = document.getElementById('webgl_checkbox');
+    if (gpuPreference) setGpuAcceleration(gpuPreference.checked);
     Shiny.addCustomMessageHandler('coordviews_data', onData);
     Shiny.addCustomMessageHandler('coordviews_binary', onBinaryData);
     Shiny.addCustomMessageHandler('coordviews_attribute', onBinaryAttribute);
@@ -10142,7 +10426,21 @@
         view.meta.appearance || {},
         message.values
       );
+      view.appearanceOverrides = Object.assign({}, view.appearanceOverrides || {}, message.values);
+      ['point_size', 'point_opacity'].forEach(function (key) {
+        if (Number.isFinite(message.values[key])) {
+          view.data[key] = message.values[key];
+          view.pointAppearance = view.pointAppearance || {};
+          view.pointAppearance[key] = message.values[key];
+        }
+      });
       if (singleActive !== message.id) return;
+      if (Number.isFinite(message.values.point_size)) {
+        ps = Math.max(1, Math.min(20, message.values.point_size)); pointSizeEdited = true;
+      }
+      if (Number.isFinite(message.values.point_opacity)) {
+        pointOpacity = Math.max(0, Math.min(1, message.values.point_opacity)); pointOpacityEdited = true;
+      }
       if (Object.prototype.hasOwnProperty.call(message.values, 'group_labels')) {
         labelsOn = message.values.group_labels === true;
       }
@@ -10152,8 +10450,7 @@
       if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) {
         keepPlotsSquare = !!message.values.keep_square;
       }
-      renderLegend();
-      resizeAll();
+      if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) resizeAll();
       drawAll();
       window.dispatchEvent(new CustomEvent('cerebro:view-appearance', { detail: {
         id: message.id, values: message.values, dataset_context: message.dataset_context
@@ -10324,6 +10621,7 @@
       return host && host.dataset.cellViewId || null;
     }
     function reportVisibility() {
+      reportRendererStatus();
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
       var singleId = visibleSingleId();
@@ -10582,6 +10880,7 @@
       if (!target || target._cvSyncing) return;
       var id = target.id, value = Number(target.value);
       if (!isFinite(value)) return;
+      if (scatterControlFields[id]) publishScatterEdit(scatterControlFields[id], value);
       if (id === 'cv-ps') {
         psSeeded = true;
         pointSizeEdited = true;

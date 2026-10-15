@@ -1,5 +1,4 @@
-## Viewer display settings shared by the package
-## and generated app bundles. Keep this file pure base R: the runtime copy is
+## Viewer display settings shared by the package and generated app bundles. Keep this file pure base R: the runtime copy is
 ## sourced from a self-contained bundle with no package namespace available.
 
 ## Coordinate appearance has one typed contract for authoring and rendering.
