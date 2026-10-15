@@ -24,9 +24,11 @@ output[["gene_info"]] <- DT::renderDataTable({
     selection = "multiple",
     escape = TRUE,
     rownames = FALSE,
+    extensions = "Buttons",
     options = list(
       scrollX = TRUE,
       dom = "Bfrtip",
+      buttons = c("copy", "excel", "csv", "print"),
       lengthMenu = c(15, 30, 50, 100),
       pageLength = 50
     )
