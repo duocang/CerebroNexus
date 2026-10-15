@@ -395,7 +395,7 @@ tab_coordinated_views <- tabItem(
               checkboxInput(
                 "cv-labels",
                 "Group labels",
-                value = TRUE
+                value = FALSE
               ),
               checkboxInput(
                 "cv-borders",

@@ -11,6 +11,38 @@
     linked: ['coordinated_views', 'Linked views', /^$/]
   };
   var states = {}, installed = false;
+  var layoutTimers = {}, dismissedLayout = {};
+  var layoutControls = {
+    overview_projection: ['overview_projection_more_button', 'overview_projection_keep_square'],
+    expression_projection: ['expression_projection_more_button', 'expression_projection_keep_square'],
+    linked: ['cv-more-btn', 'cv-square-plots']
+  };
+  function layoutDismissed(id) {
+    try { return dismissedLayout[id] || sessionStorage.getItem('cerebro-square-hint:' + id) === 'dismissed'; }
+    catch (_) { return !!dismissedLayout[id]; }
+  }
+  function dismissLayout(id) {
+    dismissedLayout[id] = true;
+    try { sessionStorage.setItem('cerebro-square-hint:' + id, 'dismissed'); } catch (_) {}
+    draw(id);
+  }
+  function openSquareSetting(id) {
+    var controls = layoutControls[id], button = controls && document.getElementById(controls[0]);
+    if (!button) return;
+    if (button.getAttribute('aria-expanded') !== 'true') button.click();
+    var attempts = 0;
+    function focusSetting() {
+      var input = document.getElementById(controls[1]);
+      if (input && input.getClientRects().length) {
+        input.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        input.focus({ preventScroll: true });
+        var label = input.closest('.checkbox') || input.parentElement;
+        label.classList.add('cerebro-setting-highlight');
+        setTimeout(function () { label.classList.remove('cerebro-setting-highlight'); }, 2000);
+      } else if (++attempts < 40) setTimeout(focusSetting, 50);
+    }
+    setTimeout(focusSetting, 80);
+  }
   function normal(value) {
     return JSON.stringify((value == null ? [] : Array.isArray(value) ? value : [value]).map(String).sort());
   }
@@ -47,12 +79,27 @@
     var pending = Object.keys(s.pending);
     var text = pending.length ? 'Updating: ' + pending.map(function (key) {
       return s.pending[key].label;
-    }).join(' · ') : s.terminal || (s.ready ? s.empty ? 'No cells match these filters' : 'View ready' : 'Loading ' + specs[id][1] + '…');
-    if (s.operation) text += ' · ' + s.operation;
-    if (s.expression) text += ' · ' + s.expression;
-    if (s.selection != null) text += ' · ' + s.selection;
-    if (s.auxiliary) text += ' · ' + s.auxiliary;
-    el.textContent = text;
+    }).join(' · ') : s.terminal || (s.ready ? s.empty ? 'No cells match these filters' : '' : 'Loading ' + specs[id][1] + '…');
+    // Settled selection counts already belong to the Active cohort toolbar.
+    text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
+    el.textContent = '';
+    var status = document.createElement('span');
+    status.className = 'cerebro-feedback-text'; status.textContent = text;
+    el.appendChild(status);
+    var pane = el.closest('.tab-pane');
+    var showHint = layoutControls[id] && s.wideLayout && s.ready && !s.empty && !s.terminal &&
+        !pending.length && !layoutDismissed(id) && pane && pane.classList.contains('active');
+    if (showHint) {
+      var hint = document.createElement('span');
+      hint.className = 'cerebro-layout-hint';
+      hint.innerHTML = '<span class="cerebro-layout-copy"><i class="fas fa-expand" aria-hidden="true"></i> Wide UMAP</span>' +
+        '<button type="button" class="cerebro-layout-settings" data-layout-settings="' + id +
+        '" title="Open Settings and find Keep plots square">Square plot settings</button>' +
+        '<button type="button" class="cerebro-layout-dismiss" data-layout-dismiss="' + id +
+        '" aria-label="Dismiss square plot suggestion for this session">×</button>';
+      el.appendChild(hint);
+    }
+    el.hidden = !text && !showHint;
     el.classList.toggle('is-pending', !s.terminal && (pending.length > 0 || !s.ready));
     el.classList.toggle('is-terminal', !!s.terminal);
     el.classList.toggle('is-error', !!s.terminal && s.terminalKind !== 'empty');
@@ -171,6 +218,46 @@
   }
   function init() {
     Object.keys(specs).forEach(draw);
+    document.addEventListener('click', function (event) {
+      var close = event.target.closest('[data-layout-dismiss]');
+      var settings = event.target.closest('[data-layout-settings]');
+      if (close) dismissLayout(close.getAttribute('data-layout-dismiss'));
+      if (settings) openSquareSetting(settings.getAttribute('data-layout-settings'));
+    });
+    document.addEventListener('change', function (event) {
+      Object.keys(layoutControls).forEach(function (id) {
+        if (event.target.id !== layoutControls[id][1]) return;
+        var s = state(id);
+        clearTimeout(layoutTimers[id]);
+        s.wideLayout = false;
+        s.immediateLayout = !event.target.checked;
+        // A new fluid-layout choice reopens advice, even if previously dismissed.
+        if (!event.target.checked) {
+          delete dismissedLayout[id];
+          try { sessionStorage.removeItem('cerebro-square-hint:' + id); } catch (_) {}
+        }
+        draw(id);
+      });
+    }, true); // Arm the check before the renderer's bubbling change handlers.
+    window.addEventListener('cerebro:plot-layout', function (event) {
+      var d = event.detail;
+      if (!d || !layoutControls[d.id] || !fresh(d)) return;
+      clearTimeout(layoutTimers[d.id]);
+      var s = state(d.id);
+      // The renderer measures the new canvas when it applies the setting.
+      // Skip resize debounce for this explicit action; never measure old geometry.
+      if (!d.square && s.immediateLayout) {
+        s.immediateLayout = false;
+        s.wideLayout = !!d.wide;
+        draw(d.id);
+        return;
+      }
+      if (d.square || !d.wide) { state(d.id).wideLayout = false; draw(d.id); return; }
+      layoutTimers[d.id] = setTimeout(function () {
+        if (!fresh(d) || !window.CerebroDatasetContext || window.CerebroDatasetContext.phase() !== 'ready') return;
+        state(d.id).wideLayout = true; draw(d.id);
+      }, 500);
+    });
     install();
     if (window.jQuery) window.jQuery(document)
       .on('change.cerebroViewFeedback shiny:inputchanged.cerebroViewFeedback', changed)
@@ -202,8 +289,7 @@
     window.addEventListener('cerebro:specialist-state', function (event) {
       var d = event.detail;
       if (!d || !specs[d.viewId] || !fresh(d)) return;
-      state(d.viewId).selection = d.selectedCells ? d.selectedCells.toLocaleString() +
-        ' selected' + (d.selectionPending ? ' · Loading identities for summaries and table…' : '') : 'No selection';
+      state(d.viewId).selection = d.selectionPending ? 'Loading identities for summaries and table…' : '';
       draw(d.viewId);
     });
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
@@ -217,7 +303,7 @@
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var d = event.detail;
       if (!d || !fresh(d)) return;
-      state('linked').selection = d.selectedCells ? d.selectedCells.toLocaleString() + ' selected' : 'No selection';
+      state('linked').selection = '';
       draw('linked');
     });
     window.addEventListener('cerebro:view-operation', function (event) {
@@ -241,6 +327,8 @@
       var d = event.detail || {};
       if (!d.changed && d.phase === 'ready') return;
       Object.keys(states).forEach(function (id) { Object.keys(states[id].pending).forEach(function (key) { mark(key, false); }); });
+      Object.keys(layoutTimers).forEach(function (id) { clearTimeout(layoutTimers[id]); });
+      layoutTimers = {};
       states = {}; Object.keys(specs).forEach(draw);
     });
   }

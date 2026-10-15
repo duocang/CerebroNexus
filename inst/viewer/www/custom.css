@@ -2030,8 +2030,13 @@ body .shiny-progress-container .progress-detail  { color: var(--c-text-2) !impor
 .cerebro-dataset-loading {
   position: fixed; inset: 0; z-index: 20000;
   display: grid; place-items: center; padding: 24px;
-  background: var(--c-bg);
+  /* Keep the workspace recognisable instead of replacing it with a blank page. */
+  background: rgba(20, 24, 32, .10);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0; transition: opacity .12s ease-out;
 }
+.cerebro-dataset-loading.is-visible { opacity: 1; }
 .cerebro-dataset-loading[hidden] { display: none; }
 .cerebro-dataset-loading-card {
   box-sizing: border-box; width: min(430px, calc(100vw - 48px));
@@ -2237,7 +2242,16 @@ body .shiny-progress-container .progress-detail {
   visibility: hidden;
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .cerebro-dataset-loading {
+    background: transparent;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .cerebro-dataset-loading,
+  .cerebro-dataset-loading-track span { transition: none; }
+  .cerebro-dataset-loading-kicker::before { animation: none; }
   .cerebro-page-loader { transition: none; }
   .cerebro-page-loader-spinner { animation: none; }
   .cerebro-view-feedback { transition: none; }
@@ -3031,4 +3045,55 @@ body .shiny-bound-output.cerebro-output-waiting {
   flex: 0 1 var(--c-control-width);
   width: var(--c-control-width);
   min-width: min(var(--c-select-min-width), 100%);
+}
+
+/* Background chips use the space beside actions before adding vertical rows.
+   Flex wrapping follows the actual container, including sidebar changes. */
+.cerebro-spatial-background-row {
+  display: flex; flex: 1 0 100%; flex-wrap: wrap;
+  align-items: flex-end; gap: 10px; min-width: 0; max-width: 100%;
+}
+.cerebro-spatial-background-row > #spatial_projection_background_selector_UI {
+  display: block; flex: 1 1 280px; min-width: min(280px, 100%);
+}
+.cerebro-viz-toolbar .cerebro-spatial-background-row .spatial-roi-background-picker,
+.cerebro-viz-toolbar .cerebro-spatial-background-row .form-group {
+  flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%;
+}
+
+/* Optional layout advice shares the existing status row, without another bar. */
+.cerebro-page-feedback { display: flex; align-items: center; gap: 12px; }
+.cerebro-page-feedback[hidden] { display: none; }
+.cerebro-feedback-text { flex: 1; min-width: 0; }
+.cerebro-page-feedback:has(.cerebro-layout-hint) .cerebro-feedback-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A compact accent surface makes the suggestion discoverable at a glance. */
+.cerebro-page-feedback:has(.cerebro-layout-hint) { padding-block: 5px; }
+.cerebro-layout-hint {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  box-sizing: border-box; height: 32px; padding: 2px 3px 2px 10px;
+  border: 1px solid var(--c-amber-200); border-radius: 7px;
+  background: var(--c-amber-50); color: var(--c-amber-700);
+  font-size: 13px; line-height: 1; white-space: nowrap;
+}
+.cerebro-layout-copy { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; }
+.cerebro-layout-copy i { font-size: 12px; }
+.cerebro-layout-hint button {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; min-height: 26px; border: 0; border-radius: 4px;
+  cursor: pointer; font: inherit; touch-action: manipulation;
+}
+.cerebro-layout-settings {
+  padding: 0 10px; background: var(--c-amber-700); color: #fff; font-weight: 600 !important;
+}
+.cerebro-layout-settings:hover { background: #873505; }
+.cerebro-layout-settings:active { background: #6e2b04; }
+.cerebro-layout-dismiss { width: 26px; padding: 0; background: transparent; color: var(--c-amber-700); font-size: 18px !important; }
+.cerebro-layout-dismiss:hover { background: var(--c-amber-100); }
+.cerebro-layout-hint button:focus-visible { outline: 2px solid var(--c-amber-700); outline-offset: 2px; }
+.cerebro-setting-highlight { outline: 2px solid var(--c-amber-200); outline-offset: 4px; border-radius: 4px; }
+@media (max-width: 700px) {
+  .cerebro-layout-copy { display: none; }
+  .cerebro-layout-hint { padding-left: 3px; gap: 3px; }
 }

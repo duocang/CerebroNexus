@@ -157,6 +157,18 @@ viewerDatasetChoices <- function(files, display_labels = NULL) {
   stats::setNames(ids, unname(labels))
 }
 
+## Presentation only: stable dataset ids continue to own switching and caches.
+viewerDatasetLabel <- function(files, selected, display_labels = NULL) {
+  if (is.null(names(files)) || length(selected) != 1L || is.na(selected)) {
+    return("Dataset")
+  }
+  choices <- viewerDatasetChoices(files, display_labels)
+  index <- match(selected, unname(choices))
+  if (is.na(index)) return("Dataset")
+  label <- names(choices)[[index]]
+  if (is.na(label) || !nzchar(trimws(label))) "Dataset" else label
+}
+
 viewerSelectedDatasetName <- function() {
   if (
     exists("viewer_current_dataset_key", mode = "function", inherits = TRUE)
@@ -388,7 +400,8 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = isTRUE(setting[["flip_x"]]),
     flipY = isTRUE(setting[["flip_y"]]),
     rotation = number("rotation", defaults$rotation),
-    opacity = number("image_opacity", defaults$opacity, 0, 1)
+    # Alignment presets do not override the Viewer display default.
+    opacity = defaults$opacity
   )
 }
 
@@ -416,7 +429,7 @@ spatialEmbeddedImagePreset <- function(preset, alignment) {
   if (!is.null(alignment[["flip_y"]])) {
     preset$flipY <- isTRUE(alignment[["flip_y"]])
   }
-  preset$opacity <- number("image_opacity", preset$opacity)
+  # Keep the Viewer opacity default; saved alignment only supplies geometry.
   # Existing embedded CRBs store transformed pixels and their final bounds.
   # Retain master's relative-edit drawing contract to avoid applying the saved
   # calibration twice; external images use spatialImagePreset() instead.
@@ -1801,7 +1814,7 @@ cerebroCellViewScatterPayload <- function(
   selection_keys,
   point_size,
   point_opacity,
-  group_labels = TRUE,
+  group_labels = FALSE,
   keep_square = FALSE,
   color_assignments = NULL,
   hover_info = NULL,

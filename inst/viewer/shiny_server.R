@@ -735,7 +735,11 @@ server <- function(input, output, session) {
     )
     req(isTRUE(dataset_load_requested()))
     dataset_to_load <- request$target
-    dataset_label <- request$dataset_context$dataset_key
+    dataset_label <- isolate(viewerDatasetLabel(
+      available_crb_files$files,
+      request$dataset_context$dataset_key,
+      available_crb_files$labels
+    ))
     datasetLoadProgress(dataset_label, 8, "Preparing dataset")
     tryCatch(
       {

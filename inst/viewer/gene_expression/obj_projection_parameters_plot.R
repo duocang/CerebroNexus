@@ -27,7 +27,7 @@ expression_projection_parameters_plot <- reactive({
   }
   req(
     selected_projection,
-    input[["expression_projection_plotting_order"]],
+    !is.null(input[["expression_projection_plotting_order"]]),
     input[["expression_projection_point_size"]],
     input[["expression_projection_point_opacity"]],
     !is.null(input[["expression_projection_point_border"]]),
@@ -52,7 +52,11 @@ expression_projection_parameters_plot <- reactive({
   XYranges <- getXYranges(range_data)
   parameters <- list(
     projection = selected_projection,
-    plot_order = input[["expression_projection_plotting_order"]],
+    plot_order = if (isTRUE(input[["expression_projection_plotting_order"]])) {
+      "Highest expression on top"
+    } else {
+      "Input order"
+    },
     n_dimensions = n_dimensions,
     is_trajectory = is_trajectory,
     point_size = input[["expression_projection_point_size"]],
