@@ -7,8 +7,7 @@
     var finished = false;
     function finish(allowError) {
       var pane = document.querySelector('.tab-pane.active[id^="shiny-tab-"]');
-      if (finished || !pane || (allowError !== true && pane.dataset.cerebroPageReady !== 'true' &&
-          !pane.querySelector('.cerebro-page-feedback.is-terminal'))) return;
+      if (finished || !pane || (allowError !== true && !window.CerebroPageLifecycle.isSettled(pane))) return;
       finished = true;
       clearTimeout(slow);
       document.documentElement.classList.remove('cerebro-starting');

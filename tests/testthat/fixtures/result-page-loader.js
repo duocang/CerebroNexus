@@ -47,19 +47,22 @@ function scenario(page = 'markerGenes') {
   const controls = new Node(page === 'groups' ? 'groups_controls_UI' : 'controls', 'shiny-bound-output cerebro-result-controls', pane);
   const select = new Node('select', '', controls); select.tagName = 'SELECT';
   const region = new Node('region', 'cerebro-page-loading-region', pane);
-  const slot = new Node('slot', 'shiny-bound-output cerebro-result-slot', region);
+  const slot = new Node(page === 'loadData' ? 'load_data_overview' : 'slot', 'shiny-bound-output cerebro-result-slot', region);
   const table = new Node('table', 'shiny-bound-output datatables', slot);
   const tableDom = new Node('table-dom', '', table); tableDom.tagName = 'TABLE';
   const jq = {on(names, selector, callback) { const fn=callback || selector; names.split(' ').forEach(n=>(handlers[n.split('.')[0]] ||= []).push(fn)); return jq; }};
   const window = {
     jQuery:()=>jq, setTimeout:(fn,ms)=>{ const t={fn,ms};timers.push(t);return t; }, clearTimeout:t=>{if(t)t.cancel=true;},
     requestAnimationFrame:fn=>frames.push(fn), addEventListener:(n,f)=>events[n]=f,
+    dispatchEvent:e=>events[e.type]?.(e),
     CerebroDatasetContext:{phase:()=>phase,accepts:()=>false},
     MutationObserver:class { constructor(fn) {observer=fn;} observe() {} }
   };
   const document = {getElementById:id=>nodes[id],querySelector:s=>s.includes(".tab-pane")?active:null,addEventListener:(n,f)=>events[n]=f,
     querySelectorAll:s=>s.includes(".tab-pane")?Object.values(nodes).filter(n=>n.id.startsWith('shiny-tab-')):[]};
-  vm.runInNewContext(source,{window,document,ready:fn=>fn(),MutationObserver:window.MutationObserver,Set,WeakSet,Array});
+vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2] || require('path').resolve(__dirname, '../../../inst/viewer/www/viewer-shell.js')), 'page-lifecycle.js'), 'utf8'), {window});
+  vm.runInNewContext(source,{window,document,ready:fn=>fn(),MutationObserver:window.MutationObserver,Set,WeakSet,Array,
+    CustomEvent:class {constructor(type, options={}) {this.type=type;this.detail=options.detail;}}});
   function emit(name,target=table,extra={}) { for(const f of handlers[name] || [])f({target,...extra}); }
   function flush() { const batch=timers.splice(0);batch.forEach(t=>{if(!t.cancel&&t.ms<1000)t.fn();}); }
   function frame() { frames.splice(0).forEach(f=>f()); }
@@ -70,14 +73,14 @@ function scenario(page = 'markerGenes') {
     phase:v=>phase=v,active:v=>active=v,focus:v=>document.activeElement=v,Node};
 }
 {
-  const s=scenario();s.start();
+  const s=scenario();s.start();s.flush();
   check(s.loader.parentElement===s.region,'page card belongs to the result region');
   check(!s.slot.contains(s.loader),'renderUI cannot replace the shared card');
   check(!s.pane.contains(s.announcement) && s.announcement.textContent==='Loading Marker genes…',
     'stage announcement is outside the busy pane');
   const next = new s.Node('shiny-tab-geneExpression', 'tab-pane active', s.pane.parent);
   const nextRegion = new s.Node('next-region', 'cerebro-page-loading-region', next);
-  s.active(next);s.emit('shown',next);
+  s.active(next);s.emit('shown',next);s.flush();
   check(s.loader.parentElement===nextRegion && !s.region.contains(s.loader),'navigation moves one card to the next result region');
   check(s.announcement.textContent==='Loading Gene expression…','navigation announces the new page');
 }
@@ -188,7 +191,7 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   check(s.pane.getAttribute('aria-busy')===null,'metadata completion clears busy state');
   const next = new s.Node('shiny-tab-spatial','tab-pane active',s.pane.parent);
   new s.Node('spatial-region','cerebro-page-loading-region',next);
-  s.active(next);s.emit('shown',next);
+  s.active(next);s.emit('shown',next);s.flush();
   check(!s.loader.hidden,'Spatial retains its standalone loading card');
   delete s.pane.dataset.cerebroPageReady;
   s.active(s.pane);s.emit('shown',s.pane);

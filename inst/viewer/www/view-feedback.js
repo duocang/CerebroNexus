@@ -98,9 +98,8 @@
     // Settled selection counts already belong to the Active cohort toolbar.
     text = [text, s.operation, s.expression, s.selection, s.auxiliary].filter(Boolean).join(' · ');
     el.textContent = '';
-    // Startup and dataset loading use this marker even while the row is hidden.
-    // Keep terminal completion distinct from a successfully painted view.
-    el.classList.toggle('is-terminal', !!s.terminal);
+    window.CerebroPageLifecycle.setTerminal(
+      document.getElementById('shiny-tab-' + specs[id][0]), !!s.terminal);
     // Routine feedback lives over the plot; it never adds a page-header row.
     var status = localStatus(id);
     var failed = !!s.terminal && s.terminalKind !== 'empty' ||

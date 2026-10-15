@@ -28,6 +28,7 @@ function session(reducedMotion = false) {
     matchMedia: () => ({matches: reducedMotion}),
     Shiny: {addCustomMessageHandler: (name, fn) => {handlers[name] = fn;}}
   };
+vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2]), 'page-lifecycle.js'), 'utf8'), {window});
   vm.runInNewContext(code, {window, document, ready: fn => fn()});
   return {
     get overlay() {return overlay;},
@@ -92,13 +93,12 @@ console.log('PASS fast, slow, repeated progress, consecutive loads, interrupted 
 }
 // A terminal result releases the overlay without claiming a painted page.
 {
-  const s = session(); let terminal = false;
-  s.setPane({dataset:{},querySelector:selector=>
-    terminal && selector==='.cerebro-page-feedback.is-terminal'?{hidden:true}:null});
+  const s = session(), pane = {dataset:{},querySelector:()=>null};
+  s.setPane(pane);
   s.update(); s.tick(500); s.update({done:true,percent:100});
   s.emit('cerebro:view-terminal',{page:'unrelated'}); s.tick(150);
   assert(s.busy);
-  terminal = true; s.emit('cerebro:view-terminal'); s.tick(150);
+  s.window.CerebroPageLifecycle.setTerminal(pane,true); s.emit('cerebro:view-terminal'); s.tick(150);
   assert(!s.busy); assert(s.overlay.hidden);
 }
 // A late completion from an older selection must neither relabel nor dismiss.
