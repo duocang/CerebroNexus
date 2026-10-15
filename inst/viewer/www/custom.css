@@ -543,16 +543,18 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-gene-rgb-channel,
 .cerebro-gene-rgb-row .form-group { min-width: 0; margin-bottom: 0; }
-.cerebro-viz-toolbar .form-group,
-.coordviews-page .cv-topbar > .cv-ctl {
+.cerebro-viz-toolbar .form-group {
   flex: 0 1 var(--c-control-width);
   width: var(--c-control-width);
   min-width: min(var(--c-select-min-width), 100%);
   max-width: 100%;
   margin-bottom: 0;
 }
-.cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded,
-.coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host.cerebro-multiselect-expanded {
+.cerebro-viz-toolbar .form-group.cerebro-multiselect-host {
+  flex: 0 1 var(--c-control-width);
+  width: var(--c-control-width);
+}
+.cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
   flex-basis: var(--cerebro-multiselect-width, var(--c-control-width));
   width: var(--cerebro-multiselect-width, var(--c-control-width));
 }
@@ -1618,6 +1620,14 @@ body .bootstrap-select {
   overflow: visible !important;
   white-space: normal !important;
 }
+/* Selected labels remain in flow, including names wider than the control. */
+.cerebro-viz-toolbar .selectize-control.multi .selectize-input > .item,
+.coordviews-page .cv-topbar .selectize-control.multi .selectize-input > .item {
+  flex: 0 1 auto !important;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 /* The dropdown is an overlay: give BOTH the outer panel and its inner content
    a solid white fill and a high z-index, or the options render over a
    see-through panel (page content shows through) and clicks miss. */
@@ -1688,10 +1698,7 @@ body .selectize-control.plugin-remove_button .item .remove:hover {
 @media (max-width: 767px) {
   .cerebro-viz-toolbar .form-group,
   .cerebro-viz-toolbar .form-group.cerebro-multiselect-host,
-  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded,
-  .coordviews-page .cv-topbar > .cv-ctl,
-  .coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host,
-  .coordviews-page .cv-topbar > .cv-ctl.cerebro-multiselect-host.cerebro-multiselect-expanded {
+  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
     flex: 1 1 100%;
     width: 100%;
     max-width: none;

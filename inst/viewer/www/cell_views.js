@@ -48,6 +48,7 @@
   var pendingAssets = new Set();
   var pendingCloneDetails = new Set();
   var pendingCloneSupplement = null;
+  var deferredLinkedSupplements = [];
   var transportMetrics = {};
   var linkedRequestTiming = {};
   var singleTiming = Object.create(null);
@@ -89,6 +90,7 @@
   // to a position in tissue. Null when the cursor is not on a cell.
   var hoverCell = null;
   var linkedHoverOn = true;
+  var linkedBackgroundsOn = true;
   // The gene a reply is still wanted for. Set when one is asked for and cleared by
   // the reply, so a late answer for a gene the user has moved on from is dropped
   // rather than drawn under the current gene's name.
@@ -1176,6 +1178,7 @@
       x * Math.sin(theta) + y * Math.cos(theta)];
   }
   function drawImage(p, context) {
+    if (!singleActive && !linkedBackgroundsOn) return;
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
     var state = sp && sp._imgState;
@@ -4272,6 +4275,23 @@
     }
   }
 
+  function syncLinkedBackgroundsDefault(dataChanged) {
+    if (dataChanged) linkedBackgroundsOn = true;
+    var control = $('cv-backgrounds');
+    if (control) control.checked = linkedBackgroundsOn;
+  }
+
+  function setLinkedBackgrounds(enabled) {
+    linkedBackgroundsOn = !!enabled;
+    syncLinkedBackgroundsDefault(false);
+    if (!singleActive) {
+      panels.forEach(function (panel) { panel.miniBg = null; });
+      drawAll();
+      viewOperation('linked', linkedBackgroundsOn
+        ? 'Background images shown' : 'Background images hidden');
+    }
+  }
+
   function refreshPanelHover(p) {
     var tip = $(p.tipId);
     if (!p.hoverPointer) {
@@ -5548,7 +5568,8 @@
       return;
     }
     var feedbackId = singleActive || 'linked';
-    viewOperation(feedbackId, 'Loading background: ' + (space.label || space.id) + '…');
+    viewOperation(feedbackId, feedbackId === 'linked' && !linkedBackgroundsOn
+      ? 'Background images hidden' : 'Loading background: ' + (space.label || space.id) + '…');
     if (!img.uri && img.asset_key) {
       requestDeferredAsset(img.asset_key);
       return;
@@ -5575,7 +5596,8 @@
     im.onload = function () {
       if (!stillCurrent()) return;
       space._imgReady = true; drawAll();
-      viewOperation(feedbackId, 'Background loaded: ' + (space.label || space.id));
+      viewOperation(feedbackId, feedbackId === 'linked' && !linkedBackgroundsOn
+        ? 'Background images hidden' : 'Background loaded: ' + (space.label || space.id));
     };
     im.onerror = function () {
       if (!stillCurrent()) return;
@@ -5679,6 +5701,13 @@
     var active = activeSpatial();
     if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
     var section = ctl.closest('.cerebro-settings-section');
+    // Linked views has one background visibility switch. Image selection and
+    // calibration remain in Spatial; the first matching image is the default.
+    if (!singleActive) {
+      if (section) section.style.display = 'none';
+      ctl.style.display = 'none';
+      return;
+    }
     if (section) section.style.display = active ? '' : 'none';
     ctl.style.display = active ? '' : 'none';
     if (tabs) {
@@ -5839,7 +5868,7 @@
       return spatialTemplate.samples;
     }
     return [{
-      name: spatialTemplate.label.replace(/ \(spatial\)$/, ''),
+      name: spatialTemplate.name || spatialTemplate.label.replace(/ \(spatial\)$/, ''),
       label: spatialTemplate.label,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
@@ -5902,7 +5931,8 @@
     }
     ctl.style.display = samples.length > 1 ? '' : 'none';
     selEl.innerHTML = samples.map(function (s) {
-      return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
+      var label = (s.label || s.name).replace(/ \(spatial\)$/, '');
+      return '<option value="' + esc(s.name) + '">' + esc(label) + '</option>';
     }).join('');
     Array.prototype.forEach.call(selEl.options, function (option) {
       option.selected = selectedSpatial.indexOf(option.value) >= 0;
@@ -6642,6 +6672,7 @@
     geneWanted = null;
     pendingColorPatch = null;
     progressiveRequestedKey = null;
+    deferredLinkedSupplements = [];
     linkedBundle = null;
     sel = null;
     selectionSource = null;
@@ -8113,7 +8144,7 @@
     if (!payload || rebuildingBase ||
         !sameDatasetContext(payload.dataset_context, currentDatasetContext())) return false;
     if (!singleActive && linkedBundle && D && !linkedState) {
-      linkedState = exportWorkspace();
+      linkedState = exportRuntimeWorkspace();
     }
     if (CBViewState.shouldStashSingleState(
       singleActive,
@@ -8277,6 +8308,12 @@
     }
     if (state) restoreWorkspace(state);
     linkedState = null;
+    var pending = deferredLinkedSupplements;
+    deferredLinkedSupplements = [];
+    pending.forEach(function (item) {
+      if (item.buffer) onBinarySupplement(item.buffer);
+      else applyHydratedSupplement(item.extra, item.metric);
+    });
   }
 
   function registerSingle(id, context) {
@@ -8786,10 +8823,22 @@
     return true;
   }
 
+  function linkedSupplementFresh(extra) {
+    return !!(extra && linkedBundle && datasetMessageFresh(extra) &&
+      sameDatasetContext(extra.dataset_context, linkedBundle.dataset_context) &&
+      extra.dataset_id === linkedBundle.dataset_id &&
+      extra.dataset_fingerprint === configFingerprint() &&
+      extra.progressive_token === linkedBundle.progressive_token);
+  }
+
   function applyHydratedSupplement(extra, metric) {
-    if (!datasetMessageFresh(extra) || !D || !sameDatasetContext(extra.dataset_context, D.dataset_context) || extra.dataset_id !== D.dataset_id ||
-        extra.dataset_fingerprint !== configFingerprint() ||
-        extra.progressive_token !== D.progressive_token) return;
+    if (!linkedSupplementFresh(extra)) return;
+    // A clone supplement can arrive here in a later animation frame, after
+    // navigation has mounted another page's data in the shared renderer.
+    if (D !== linkedBundle) {
+      deferredLinkedSupplements.push({ extra: extra, metric: metric });
+      return;
+    }
     var drawStarted = performance.now();
     try {
       var structural = !!(extra.clone || extra.trekker ||
@@ -8803,7 +8852,7 @@
         if (extra.progressive_complete !== false) D.progressive = false;
         reportWorkspaceReady();
       } else if (structural) {
-        var saved = exportWorkspace();
+        var saved = exportRuntimeWorkspace();
         var hadSpatial = !!spatialTemplate;
         var merged = Object.assign({}, D, {
           groups: Object.assign({}, D.groups, extra.groups),
@@ -8871,11 +8920,14 @@
     try {
       var extra = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!D || !datasetMessageFresh(extra)) return;
       if (!extra) throw new Error('Linked views supplement is empty');
-      if (extra.dataset_id !== D.dataset_id ||
-          extra.dataset_fingerprint !== configFingerprint() ||
-          extra.progressive_token !== D.progressive_token) return;
+      if (!linkedSupplementFresh(extra)) return;
+      // Hydration and drawing use D. Keep the wire payload until the Linked
+      // bundle is mounted again, instead of dropping it on a specialist tab.
+      if (D !== linkedBundle) {
+        deferredLinkedSupplements.push({ buffer: buffer });
+        return;
+      }
       extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
       var metric = CBViewState.telemetry.transport(
         extra.transport_profile,
@@ -9104,6 +9156,7 @@
     var datasetIdentity = datasetContextApi().key(D.dataset_context);
     var dataChanged = datasetIdentity !== dataShown;
     syncLinkedHoverDefault(dataChanged);
+    syncLinkedBackgroundsDefault(dataChanged);
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
@@ -9113,6 +9166,7 @@
       imgChoice = {};
       pendingCloneDetails.clear();
       pendingCloneSupplement = null;
+      deferredLinkedSupplements = [];
     }
     dataShown = datasetIdentity;
     imgToken++;
@@ -9410,6 +9464,19 @@
     });
   }
 
+  function exportRuntimeWorkspace() {
+    var config = exportWorkspace();
+    // Internal navigation/progressive redraws must retain author defaults.
+    // Keep this out of the portable JSON schema; imported views still apply
+    // their explicitly saved display settings.
+    Object.defineProperty(config, '_pointOverrides', {
+      value: { size: pointSizeEdited, opacity: pointOpacityEdited }
+    });
+    return config;
+  }
+  function workspacePointOverrides(config) {
+    return config._pointOverrides || { size: true, opacity: true };
+  }
   function exportWorkspace() {
     if (!D) throw new Error('Load a data set before saving a linked view.');
     var active = activeSpatial();
@@ -9455,6 +9522,7 @@
           percentage_cells: pctShow,
           group_labels: labelsOn,
           cell_borders: bordersOn,
+          background_images: linkedBackgroundsOn,
           selection_mode: selectMode === 'box' ? 'box' : 'lasso',
           clone_layout: CLONE_MODE,
           keep_square: keepPlotsSquare
@@ -9636,9 +9704,14 @@
     ps = finiteNumber(display.point_size, ps, 0, 20);
     pointOpacity = finiteNumber(display.point_opacity, pointOpacity, 0, 1);
     pctShow = finiteNumber(display.percentage_cells, pctShow, 5, 100);
-    psSeeded = pointSizeEdited = pointOpacityEdited = true;
+    psSeeded = true;
+    var overrides = workspacePointOverrides(config);
+    pointSizeEdited = overrides.size;
+    pointOpacityEdited = overrides.opacity;
     labelsOn = display.group_labels !== false;
     bordersOn = !!display.cell_borders;
+    linkedBackgroundsOn = display.background_images !== false;
+    syncLinkedBackgroundsDefault(false);
     keepPlotsSquare = !!display.keep_square;
     selectMode = display.selection_mode;
     applyCloneLayout(display.clone_layout);
@@ -10233,14 +10306,16 @@
         cachedTiming.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
           ? cachedAt - window.__cerebroPageBenchClickStart : null;
         activateSingle(singleId, false, false, 'cached');
+      } else if (linkedVis && linkedBundle && (singleActive || D !== linkedBundle)) {
+        // A non-canvas tab clears singleActive but leaves the specialist data
+        // mounted in D. Restore the Linked bundle on return through those tabs
+        // too, before its projection controls operate on the shared renderer.
+        activateLinked();
       } else if (singleActive) {
-        if (linkedVis && linkedBundle) {
-          activateLinked();
-        } else {
-          restoreLinkedSurface();
-          singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
-          if (linkedVis) showUnavailable('Loading linked views…');
-        }
+        stashSingleState();
+        restoreLinkedSurface();
+        singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+        if (linkedVis) showUnavailable('Loading linked views…');
       }
       if (enteringCachedLinked && !singleActive) {
         reportWorkspaceReady('cached');
@@ -10489,6 +10564,10 @@
       var id = target && target.id;
       if (id === 'cv-hover') {
         setLinkedHover(target.checked);
+        return true;
+      }
+      if (id === 'cv-backgrounds') {
+        setLinkedBackgrounds(target.checked);
         return true;
       }
       if (id === 'cv-labels') {
