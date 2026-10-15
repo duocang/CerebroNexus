@@ -10,6 +10,12 @@ builder_release_runtime_files <- function() {
   roots <- roots[nzchar(roots)]
   required <- c(
     contract = file.path("core", "bundle_path_contract.R"),
+    viewer_contract = file.path(
+      "..",
+      "viewer",
+      "core",
+      "viewer_content_contract.R"
+    ),
     publish = "publish.R",
     app_bundle = "app_bundle.R",
     report = "report.R",

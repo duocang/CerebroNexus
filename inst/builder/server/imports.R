@@ -1489,13 +1489,7 @@ builder_start_release_settlement_process <- function(
           source_utf8(path, envir = runtime)
         }
       }
-      for (name in c(
-        "contract",
-        "publish",
-        "app_bundle",
-        "report",
-        "coordinator"
-      )) {
+      for (name in setdiff(names(runtime_files), "root")) {
         source_utf8(runtime_files[[name]], envir = runtime)
       }
       if (!is.null(package_source)) {
