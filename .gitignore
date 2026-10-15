@@ -33,7 +33,6 @@ Rplots.pdf
 inst/private-data/linked-view-shares.sqlite
 # Benchmark source and small immutable evidence are tracked; generated work is not.
 /tests/benchmarks/results/**/logs/
-paper/figures/output/
 
 # Local test dependencies and generated browser diagnostics.
 /tests/node_modules/

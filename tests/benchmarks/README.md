@@ -24,7 +24,7 @@ The full run measures build time, file size, memory, startup and gene reads on m
 tail -f "${XDG_CACHE_HOME:-$HOME/.cache}/cerebronexus-benchmark/runner/benchmark.log"
 ```
 
-Results are saved under `results/expression-backends/`, separately for `quick`, `full` and `scale`. Each run has its own directory; previous results remain available. Full and scale runs also generate report figures. See [backend instructions](expression-backends/README.md) for reading results, recovering a failed final step and exporting paper figures.
+Results are saved under `results/expression-backends/`, separately for `quick`, `full` and `scale`. Each run has its own directory; previous results remain available. Full and scale keep each run's images in `runs/<run-id>/figures/` and copy the latest successful set directly into their top-level `figures/`, alongside `CURRENT`. See [backend instructions](expression-backends/README.md) for reading results and recovering a failed final step.
 
 ## Viewer: page speed and basic functionality
 

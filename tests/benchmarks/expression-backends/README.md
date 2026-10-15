@@ -43,15 +43,33 @@ Scale checks embedded separately because it loads the matrix into memory. If its
 
 ## Reruns and saved files
 
-Every run gets a timestamp-and-commit directory under `results/expression-backends/<quick|full|scale>/runs/`. Existing runs are never overwritten. The CSV measurements, source checksums, environment, report, stage logs and generated report figures stay together. `CURRENT` selects the latest successful run in each study independently: if full succeeds and scale fails, full advances while scale keeps its previous result.
+Every run gets a timestamp-and-commit directory under `results/expression-backends/<quick|full|scale>/runs/`. Existing runs are never overwritten by a later run. The CSV measurements, source checksums, environment, report, stage logs and figures stay together. After a full or scale run passes validation and is archived, publication replaces that study's `figures/` with copies of the archived images and updates `CURRENT`. The two studies advance independently: if full succeeds and scale fails, full advances while scale keeps its previous result.
+
+Publication stages the new images before switching and rolls back both the images and `CURRENT` on an error or ordinary interrupt. If the publisher is killed, the runner restores the old pair; if the entire runner or host stops, the next publication recovers it before retrying. Successful publication removes its temporary rollback directory. Run only one publisher per study at a time.
 
 Verified source downloads stay in the external cache. Failed runs keep their scratch directory by default; `resume` retries validation, reporting and publication only. It does not resume measurements or start the next study. Generated CRB/backend files are temporary and normally removed after measurement; start with `BENCH_KEEP=1 bash tests/benchmarks/expression-backends/run.sh` if you need to retain them too. Starting another run archives the previous launcher log under `runner/logs/` in the cache.
 
 ## Figures
 
-Full runs automatically save `figures/expression_backend_benchmark_overview.png`. Scale runs also save `figures/expression_backend_benchmark_ceiling.png`. These 150 dpi PNGs are report previews, not final submission artwork. Quick runs produce measurements and a report without figures.
+Full and scale runs save `figures/expression_backend_benchmark_overview.png` (350 dpi) and an editable vector PDF. The full comparison uses backend categories, shows every process observation plus median and range, and includes numeric medians below the backend names. It uses logarithmic axes for warmed reads and storage, and an expanded linear axis for loaded memory. Scale overviews use logarithmic cell-count and value axes for all four panels, including memory and storage; storage is drawn as a trend rather than bars. Both memory and storage use explicit binary units. Skipped embedded tiers are identified in the caption. Read processes are nested within builds; ranges are not confidence intervals. Scale runs also save a 350 dpi embedded build-memory plot (legacy filename `expression_backend_benchmark_ceiling.png`): measured peak R heap in GiB against nonzero elements in millions, with no extrapolated memory ceiling. Quick runs produce measurements and a report without figures.
 
-For a full-dataset paper figure with vector PDF, 350 dpi TIFF, legend and source data, follow [paper figure commands](../../../paper/figures/README.md). Exporting paper figures is a separate step and preserves the benchmark results. Old timing records, incomplete runs and quick/scale inputs are rejected by that exporter. Final submission still needs review of the fresh figure at its printed size.
+The same layout applies to full and scale:
+
+```text
+full/ or scale/
+  CURRENT                     latest successful run ID
+  figures/                    latest images, replaced after successful publication
+    *.png / *.pdf
+  runs/<run-id>/figures/       images archived with that run
+    *.png / *.pdf
+```
+
+Open the [latest full figures](../results/expression-backends/full/figures/) or
+[latest scale figures](../results/expression-backends/scale/figures/). These directories
+contain image exports only: no run-ID subdirectories, QA files or README files.
+Their images are byte-for-byte copies of the run selected by `CURRENT`. Plotting
+does not rerun measurements. Export dimensions prioritize readability; check text
+at the intended final size before reducing them.
 
 ## Read results
 
@@ -71,4 +89,13 @@ Numbers are medians with observed ranges, not confidence intervals. The two acce
 
 ## Keep it simple
 
-Use `run.sh` for normal work. The implementation stays in three files: `scripts/run.sh` runs the stages, `scripts/benchmark.R` holds shared functions, and `scripts/benchmark_cli.R` runs one stage. Reuse verified downloads and the fixed query plan. Keep Viewer checks separate, and avoid adding overlapping launchers or configuration layers.
+Use `run.sh` for normal work; it runs both studies and publishes their images automatically.
+All implementation lives in `scripts/`:
+
+- `run.sh`: environment, cached downloads, independent measurement processes and finalization.
+- `benchmark.R`: source/configuration settings at the top, shared measurement and publication functions below.
+- `benchmark_cli.R`: command-line stages; selects the appropriate plotting function.
+- `figure_full.R` and `figure_scale.R`: full and scale plots; write image exports only.
+
+Reuse verified downloads and the fixed query plan. Keep Viewer checks separate,
+and avoid adding overlapping launchers or configuration layers.

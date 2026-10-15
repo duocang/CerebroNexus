@@ -1,0 +1,116 @@
+{
+  "started_at_utc": "2026-10-15T09:46:13.525932+00:00",
+  "source_commit": "b64f8df3ce5bc553b7084dfdaca3698aa69f475c",
+  "run_id": "20261014T224107Z-b64f8df3ce5b-scale",
+  "preserved_builds": 120,
+  "preserved_accesses": 240,
+  "remaining_schedule_entries": 50,
+  "reason": "Interrupted process; trailing NUL bytes in access/crash files. Artifact for incomplete repeat no longer exists. Rebuild that complete repeat, preserving all 120 completed repeats unchanged.",
+  "superseded_build": {
+    "run_id": "20261014T224107Z-b64f8df3ce5b-scale",
+    "profile": "scale",
+    "source": "human_pfc_hbcc",
+    "label": "human PFC cross-disorder (HBCC)",
+    "n_cells": "50000",
+    "n_genes": "34176",
+    "nnz": "196009814",
+    "backend": "embedded",
+    "export_repeat": "2",
+    "order_position": "3",
+    "status": "OK",
+    "read_secs": "30.2581489086151",
+    "seurat_secs": "8.00691056251526",
+    "export_secs": "5.09322595596313",
+    "shell_secs": "NA",
+    "serialize_secs": "NA",
+    "crb_mb": "318.107711791992",
+    "sibling_mb": "NA",
+    "total_mb": "318.107711791992",
+    "rss_mb": "5306.15234375",
+    "peak_rss_mb": "10536.01171875",
+    "r_peak_mb": "10396.1",
+    "query_plan_fingerprint": "3e741b8a7c009672d0c19f98b0b7a3f2"
+  },
+  "superseded_access": {
+    "run_id": "20261014T224107Z-b64f8df3ce5b-scale",
+    "profile": "scale",
+    "source": "human_pfc_hbcc",
+    "n_cells": "50000",
+    "backend": "embedded",
+    "export_repeat": "2",
+    "order_position": "3",
+    "access_repeat": "1",
+    "status": "OK",
+    "startup_secs": "3.07554817199707",
+    "rss_mb": "2706.796875",
+    "peak_rss_mb": "2831.16796875",
+    "access_contract": "materialized-v2",
+    "first_query_secs": "0.495000000000001",
+    "hot_p50_secs": "0.420999999999999",
+    "hot_p95_secs": "0.4456",
+    "block_secs": "0.448999999999998",
+    "subset_row_secs": "0.431000000000001",
+    "subset_block_secs": "0.48",
+    "subset_n_cells": "50000",
+    "n_hot": "33",
+    "correctness": "OK",
+    "row_fingerprint": "2dcddade9f3b94e1993418df0021e773",
+    "reference_row_fingerprint": "2dcddade9f3b94e1993418df0021e773",
+    "block_fingerprint": "632cab007106b43342daf3da7e1ddb98",
+    "reference_block_fingerprint": "632cab007106b43342daf3da7e1ddb98",
+    "subset_row_fingerprint": "dab2711a98bce2695609897ae1f3dea0",
+    "reference_subset_row_fingerprint": "dab2711a98bce2695609897ae1f3dea0",
+    "subset_block_fingerprint": "d20a1370d6d5a6af82cfb965f3b44205",
+    "reference_subset_block_fingerprint": "d20a1370d6d5a6af82cfb965f3b44205",
+    "query_plan_fingerprint": "3e741b8a7c009672d0c19f98b0b7a3f2"
+  },
+  "original_files": {
+    "source_manifest.csv": {
+      "sha256": "34362a1c278c4d589cc9d4cb90536d121fe4106bfc5b24a52c0dbac85f153375",
+      "trailing_nul_bytes": 0
+    },
+    "05_schedule.csv": {
+      "sha256": "4b0c96557b8dd6c4d3b6ec15667318e16baae9c2a3a778f4fa27cf9ce90776e3",
+      "trailing_nul_bytes": 0
+    },
+    "20_access.csv": {
+      "sha256": "ba7d9e07fef1b9635d396ec567970610720b10c168fe0d9e61a04bf334bb8eb3",
+      "trailing_nul_bytes": 578
+    },
+    "10_export.csv": {
+      "sha256": "8a996fea6eb3d4360fb8189ef3bac0fac6033fb26c43dcd1cbeb24cec0fd276f",
+      "trailing_nul_bytes": 0
+    },
+    "resource_check.csv": {
+      "sha256": "b05a397b04c5249344e3ab7e9c9ef75ef6bce7f28c53400c8c0eb95d2288c64d",
+      "trailing_nul_bytes": 0
+    },
+    "00_probe.csv": {
+      "sha256": "b4995c6a9b40b3d917deb78d4494a312dc912950c0b96425231a7c9f37c5d27b",
+      "trailing_nul_bytes": 0
+    },
+    "run_manifest.csv": {
+      "sha256": "741640557003d6f1312eac3675d1bf96963506af12ee78dd4290533dceeedb3e",
+      "trailing_nul_bytes": 0
+    },
+    "crashes.csv": {
+      "sha256": "91f47816d1860cace3e5d294299d30deea8dfb1b64f6261a29ba7fb00767875f",
+      "trailing_nul_bytes": 1773
+    },
+    "query_panel.csv": {
+      "sha256": "d1c37ff117a70f074fe17122fd96516e843d1266b24644add120607e83ace8ee",
+      "trailing_nul_bytes": 0
+    },
+    "query_plan_manifest.csv": {
+      "sha256": "8bdd6076d9df1e3b6a9f183188ea23748242f3d646b879e1fbc35a85fa09b227",
+      "trailing_nul_bytes": 0
+    }
+  },
+  "archive_sha256": "16be9b493f8a115ce6335441ca520f0b278b382c591681474adb314737d052df",
+  "full_current_before": "20261014T194814Z-b64f8df3ce5b-full\n",
+  "full_evidence_sha256_before": "6ea263e293f9868b53cb32b7da0d339fd29024660bd7e89ec6b6a1cc14da6f00",
+  "measurements_completed_at_utc": "2026-10-15T12:41:56.855938+00:00",
+  "final_build_records": 170,
+  "final_access_records": 330,
+  "full_run_unchanged": true
+}

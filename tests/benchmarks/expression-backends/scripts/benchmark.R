@@ -1726,3 +1726,208 @@ bench_require_safe_plan <- function(
     call. = FALSE
   )
 }
+
+# Publish a completed run, then activate its CURRENT and latest image copy.
+bench_publish_result <- function(stage, result_root, run_id) {
+  if (!grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", run_id)) {
+    stop("unsafe run id: ", run_id, call. = FALSE)
+  }
+  bench_recover_activation(result_root)
+
+  tree_fingerprint <- function(path) {
+    files <- list.files(
+      path,
+      recursive = TRUE,
+      full.names = TRUE,
+      all.files = TRUE,
+      no.. = TRUE
+    )
+    files <- files[!dir.exists(files)]
+    relative <- substring(files, nchar(path) + 2L)
+    order <- order(relative)
+    data.frame(
+      path = relative[order],
+      md5 = unname(tools::md5sum(files[order])),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  source_fingerprint <- tree_fingerprint(stage)
+  if (!nrow(source_fingerprint)) {
+    stop("staged result directory is empty", call. = FALSE)
+  }
+
+  runs <- file.path(result_root, "runs")
+  dir.create(runs, recursive = TRUE, showWarnings = FALSE)
+  destination <- file.path(runs, run_id)
+
+  if (dir.exists(destination)) {
+    if (!identical(source_fingerprint, tree_fingerprint(destination))) {
+      stop("conflicting existing run: ", run_id, call. = FALSE)
+    }
+  } else {
+    staged_destination <- tempfile(
+      paste0(".stage-", run_id, "-"),
+      tmpdir = runs
+    )
+    dir.create(staged_destination)
+    on.exit(
+      {
+        if (dir.exists(staged_destination)) {
+          unlink(staged_destination, recursive = TRUE)
+        }
+      },
+      add = TRUE
+    )
+    entries <- list.files(
+      stage,
+      full.names = TRUE,
+      all.files = TRUE,
+      no.. = TRUE
+    )
+    copied <- file.copy(
+      entries,
+      staged_destination,
+      recursive = TRUE,
+      copy.mode = TRUE,
+      copy.date = TRUE
+    )
+    if (
+      !all(copied) ||
+        !identical(
+          source_fingerprint,
+          tree_fingerprint(staged_destination)
+        )
+    ) {
+      stop("failed to stage an exact result copy", call. = FALSE)
+    }
+    if (!file.rename(staged_destination, destination)) {
+      stop("failed to publish immutable result directory", call. = FALSE)
+    }
+  }
+
+  bench_activate_result(result_root, run_id)
+  message("published immutable benchmark run ", run_id)
+}
+
+# Only image exports belong in the latest figures directory. Historical run
+# contents are kept intact; QA, reports and nested directories are not copied.
+bench_figure_files <- function(directory) {
+  files <- list.files(directory, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+  files[!dir.exists(files) & grepl("\\.(png|pdf|svg|tiff?|jpe?g|webp)$", files, ignore.case = TRUE)]
+}
+
+bench_copy_figure_directory <- function(source, destination, replace = FALSE) {
+  dir.create(destination, recursive = TRUE, showWarnings = FALSE)
+  if (replace) {
+    entries <- list.files(destination, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+    unlink(entries, recursive = TRUE)
+    if (length(list.files(destination, all.files = TRUE, no.. = TRUE))) {
+      stop("cannot replace latest figures; files may be open", call. = FALSE)
+    }
+  }
+  entries <- list.files(source, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+  if (length(entries) && !all(file.copy(entries, destination, recursive = TRUE))) {
+    stop("cannot copy figure directory", call. = FALSE)
+  }
+  files <- list.files(source, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  copied <- list.files(destination, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  if (!identical(files, copied) ||
+      !identical(unname(tools::md5sum(file.path(source, files))),
+                 unname(tools::md5sum(file.path(destination, files))))) {
+    stop("figure directory copy differs from source", call. = FALSE)
+  }
+}
+
+# A short-lived rollback directory survives a killed publisher. The next publish
+# restores the previous pair before retrying. Nothing is left after success.
+bench_recover_activation <- function(result_root) {
+  transaction <- file.path(result_root, ".publish")
+  if (!dir.exists(transaction)) return(invisible(NULL))
+  state_path <- file.path(transaction, "state.rds")
+  if (file.exists(state_path) && file.exists(file.path(transaction, "switching")) &&
+      !file.exists(file.path(transaction, "committed"))) {
+    state <- readRDS(state_path)
+    latest <- file.path(result_root, "figures")
+    backup <- file.path(transaction, "figures.previous")
+    if (state$update_figures) {
+      if (dir.exists(backup)) {
+        bench_copy_figure_directory(backup, latest, replace = TRUE)
+      } else if (!state$had_figures) {
+        unlink(latest, recursive = TRUE)
+      }
+    }
+    pointer <- file.path(result_root, "CURRENT")
+    if (state$had_pointer) {
+      if (!file.copy(file.path(transaction, "CURRENT.previous"), pointer, overwrite = TRUE)) {
+        stop("cannot restore previous CURRENT", call. = FALSE)
+      }
+    } else {
+      unlink(pointer)
+    }
+  }
+  unlink(transaction, recursive = TRUE)
+  if (dir.exists(transaction)) stop("cannot clean publication transaction", call. = FALSE)
+  invisible(NULL)
+}
+
+bench_activate_result <- function(result_root, run_id) {
+  run <- bench_result_run_dir(result_root, run_id)
+  source <- file.path(run, "figures")
+  latest <- file.path(result_root, "figures")
+  pointer <- file.path(result_root, "CURRENT")
+  manifest <- file.path(run, "run_manifest.csv")
+  if (file.exists(manifest)) {
+    profile <- bench_manifest_values(utils::read.csv(manifest))[["profile"]]
+    if (profile %in% c("panel_c2", "scale") && !dir.exists(source)) {
+      stop("completed full/scale run has no figures", call. = FALSE)
+    }
+  }
+  update_figures <- dir.exists(source)
+  files <- bench_figure_files(source)
+  if (update_figures && (!length(files) || any(file.info(files)$size <= 0))) {
+    stop("completed run has no valid figure exports", call. = FALSE)
+  }
+  transaction <- file.path(result_root, ".publish")
+  if (!dir.create(transaction)) stop("another publication is active", call. = FALSE)
+  on.exit(bench_recover_activation(result_root), add = TRUE)
+  if (file.exists(pointer) && !file.copy(pointer, file.path(transaction, "CURRENT.previous"))) {
+    stop("cannot preserve previous CURRENT", call. = FALSE)
+  }
+  if (update_figures && dir.exists(latest)) {
+    bench_copy_figure_directory(latest, file.path(transaction, "figures.previous"))
+  }
+  saveRDS(list(update_figures = update_figures, had_figures = dir.exists(latest),
+               had_pointer = file.exists(pointer)), file.path(transaction, "state.rds"))
+  pending <- file.path(transaction, "figures.next")
+  if (update_figures) {
+    dir.create(pending)
+    if (!all(file.copy(files, pending)) ||
+        !identical(unname(tools::md5sum(files)),
+                   unname(tools::md5sum(file.path(pending, basename(files)))))) {
+      stop("failed to stage latest figure copies", call. = FALSE)
+    }
+  }
+  pending_pointer <- file.path(transaction, "CURRENT.next")
+  writeLines(run_id, pending_pointer, useBytes = TRUE)
+  fail_at <- Sys.getenv("BENCH_PUBLISH_FAIL_AT")
+  checkpoint <- function(name) {
+    if (identical(fail_at, name)) stop("injected failure ", name, call. = FALSE)
+  }
+  checkpoint("before-pointer")
+  if (!file.create(file.path(transaction, "switching"))) stop("cannot start publication", call. = FALSE)
+  if (update_figures) {
+    bench_copy_figure_directory(pending, latest, replace = TRUE)
+  }
+  checkpoint("after-figures")
+  if (identical(fail_at, "interrupt-after-figures")) {
+    stop(structure(list(message = "injected interrupt", call = NULL), class = c("interrupt", "condition")))
+  }
+  if (identical(fail_at, "crash-after-figures")) quit(status = 99L, runLast = FALSE)
+  if (!file.rename(pending_pointer, pointer)) {
+    stop("cannot atomically update CURRENT", call. = FALSE)
+  }
+  checkpoint("after-pointer")
+  if (!file.create(file.path(transaction, "committed"))) stop("cannot commit publication", call. = FALSE)
+  invisible(run)
+}

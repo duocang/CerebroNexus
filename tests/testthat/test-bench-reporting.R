@@ -296,48 +296,10 @@ test_that("report and plots consume repeated benchmark rows", {
   expect_false(dir.exists(rejected_dir))
 })
 
-test_that("paper export preserves previous output and rejects unsuitable evidence", {
-  skip_unless_bench_reporting()
-  script <- normalizePath(file.path("..", "..", "paper", "figures",
-    "draw_expression_backend_benchmark.R"), mustWork = FALSE)
-  testthat::skip_if_not(file.exists(script), "paper tree not present")
-  root <- tempfile("paper-export-")
-  input <- file.path(root, "input")
-  output <- file.path(root, "old-output")
-  dir.create(input, recursive = TRUE)
-  dir.create(output)
-  on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  writeLines("keep", file.path(output, "figure.pdf"))
-  run <- function(target) suppressWarnings(bench_test_system2(
-    file.path(R.home("bin"), "Rscript"), c(script, input, target),
-    stdout = TRUE, stderr = TRUE
-  ))
-  expect_match(paste(run(output), collapse = "\n"), "previous exports are preserved")
-  expect_equal(readLines(file.path(output, "figure.pdf")), "keep")
-  nested <- file.path(input, "figures")
-  expect_match(paste(run(nested), collapse = "\n"), "outside the immutable input")
-  expect_false(dir.exists(nested))
-
-  utils::write.csv(data.frame(status = "OK"), file.path(input, "10_export.csv"), row.names = FALSE)
-  utils::write.csv(data.frame(status = "OK", correctness = "OK"),
-    file.path(input, "20_access.csv"), row.names = FALSE)
-  utils::write.csv(data.frame(source = "fixture"), file.path(input, "source_manifest.csv"), row.names = FALSE)
-  fresh <- file.path(root, "new-output")
-  for (profile in c("quick", "scale", "panel_c2")) {
-    utils::write.csv(data.frame(key = "profile", value = profile),
-      file.path(input, "run_manifest.csv"), row.names = FALSE)
-    result <- run(fresh)
-    expect_false(is.null(attr(result, "status")))
-    expect_match(paste(result, collapse = "\n"),
-      if (profile == "panel_c2") "materialized-v2" else "full-dataset profile")
-    expect_false(dir.exists(fresh))
-  }
-})
-
 test_that("benchmark figure labels distinct expression workloads", {
   skip_unless_bench_reporting()
   script <- readLines(
-    file.path(bench_root, "benchmark_cli.R"),
+    file.path(bench_root, "figure_scale.R"),
     warn = FALSE
   )
   source <- paste(script, collapse = "\n")
@@ -345,13 +307,13 @@ test_that("benchmark figure labels distinct expression workloads", {
   expect_match(source, "Interactive single-gene latency", fixed = TRUE)
   expect_match(source, "Marker-panel block latency", fixed = TRUE)
   expect_match(source, "warmed expression lookup", fixed = TRUE)
-  expect_match(source, 'plot_annotation(tag_levels = "A")', fixed = TRUE)
+  expect_match(source, 'plot_annotation(tag_levels = "A"', fixed = TRUE)
 })
 
-test_that("scale-limit summaries use embedded exports only", {
+test_that("embedded build-memory summaries use embedded exports only", {
   skip_unless_bench_reporting()
   source <- paste(
-    readLines(file.path(bench_root, "benchmark_cli.R"), warn = FALSE),
+    readLines(file.path(bench_root, "figure_scale.R"), warn = FALSE),
     collapse = "\n"
   )
   expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)

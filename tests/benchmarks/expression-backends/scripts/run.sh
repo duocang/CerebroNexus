@@ -102,6 +102,31 @@ bench_fetch_source() {
   BENCH_FETCHED_SHA256=$sha
 }
 
+# Shared finalization for normal completion and retrying a completed measurement.
+finish_profile() {
+  local stage=$1 result_root=$2 run_id=$3
+  mkdir -p "$stage/logs"
+  Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage" || return 1
+  Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage" \
+    > "$stage/logs/report.log" 2>&1 || return 1
+  if [ "$BENCH_PROFILE" = "scale" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
+    Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
+      > "$stage/logs/figures.log" 2>&1 || {
+      tail -20 "$stage/logs/figures.log"
+      return 1
+    }
+  fi
+  Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage" || return 1
+  Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage" || return 1
+  # The publisher archives this run and activates its latest images with CURRENT.
+  if ! Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$stage" "$result_root" "$run_id"; then
+    # Also restore the old pair if the publisher was killed without running R's
+    # exit handlers. Leave the measurements staged for a later retry.
+    Rscript "$BENCH_ROOT/benchmark_cli.R" recover-publication "$result_root" || return 1
+    return 1
+  fi
+}
+
 run_profile_engine() (
 set +e
 
@@ -312,29 +337,8 @@ for src in $SOURCES; do
   fi
 done
 
-echo "==> checking measurements"
-Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$STAGE" || exit 1
-
-echo "==> writing report"
-Rscript "$BENCH_ROOT/benchmark_cli.R" report "$STAGE" 2>&1 \
-  | tee "$LOG_DIR/report.log" || exit 1
-
-if [ "$BENCH_PROFILE" = "scale" ] || \
-   [ "$BENCH_PROFILE" = "panel_c2" ]; then
-  echo "==> drawing benchmark figures"
-  Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$STAGE" "$STAGE/figures" \
-    > "$LOG_DIR/figures.log" 2>&1 || {
-    tail -20 "$LOG_DIR/figures.log"
-    exit 1
-  }
-fi
-
-echo "==> checking report and figures"
-Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$STAGE" || exit 1
-Rscript "$BENCH_ROOT/benchmark_cli.R" check "$STAGE" || exit 1
-
-echo "==> publishing immutable result run"
-Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
+echo "==> validating, drawing and publishing results"
+finish_profile "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
 
 echo "==> done: $RESULT_ROOT/runs/$BENCH_RUN_ID"
 )
@@ -445,17 +449,7 @@ resume_inside() {
       ;;
   esac
 
-  Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage"
-  Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage"
-  mkdir -p "$stage/logs"
-  if [ "$BENCH_PROFILE" != quick ]; then
-    Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
-      > "$stage/logs/figures-resume.log" 2>&1
-  fi
-  Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage"
-  Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage"
-  Rscript "$BENCH_ROOT/benchmark_cli.R" publish \
-    "$stage" "$REPO/tests/benchmarks/results/expression-backends/$result_name" "$BENCH_RUN_ID"
+  finish_profile "$stage" "$REPO/tests/benchmarks/results/expression-backends/$result_name" "$BENCH_RUN_ID"
   printf '0\n' > "$EXIT_FILE"
   printf 'benchmark result published: %s\n' \
     "$REPO/tests/benchmarks/results/expression-backends/$result_name/runs/$BENCH_RUN_ID"
