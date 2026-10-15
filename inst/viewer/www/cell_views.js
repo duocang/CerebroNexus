@@ -8240,6 +8240,16 @@
   function sameSingleLayout(previous, meta, data) {
     if (!previous || !previous.data || !previous.meta || data.reset_axes) return false;
     if (previous.meta.space_label !== meta.space_label || !!previous.data.z !== !!data.z) return false;
+    // Flat continuous payloads also describe multiple panels through a named
+    // colour map. Reusing a single mean-expression panel for that map leaves
+    // its space ID pointing at geometry that no longer exists.
+    function colourPanels(value) {
+      var color = value.color;
+      return color && typeof color === 'object' && !Array.isArray(color) &&
+        !ArrayBuffer.isView(color) ? Object.keys(color) : [];
+    }
+    if (JSON.stringify(colourPanels(previous.data)) !==
+        JSON.stringify(colourPanels(data))) return false;
     function layout(value) {
       return (value.panels || []).map(function (panel) {
         return [panel.id, panel.label, !!panel.spatial, !!panel.projection, !!panel.z];

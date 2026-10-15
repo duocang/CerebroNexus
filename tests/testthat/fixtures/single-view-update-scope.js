@@ -10,6 +10,14 @@ vm.runInContext(fn('sameSingleLayout') + fn('sameSingleImages'), c);
 const meta = {space_label:'fov'};
 const data = {panels:[{id:'a',label:'ROI A',spatial:true},{id:'b',label:'ROI B',spatial:true}]};
 const previous = {meta, data};
+const mean = {meta, data:{color:new Float64Array([1,2])}};
+const separate = {color:{CD3D:[1,2],MS4A1:[2,1],LYZ:[0,1]}};
+assert(!c.sameSingleLayout(mean, meta, separate));
+assert(!c.sameSingleLayout({meta,data:separate}, meta, mean.data));
+assert(c.sameSingleLayout({meta,data:separate}, meta,
+  {color:{CD3D:[2,3],MS4A1:[1,0],LYZ:[1,2]}}));
+assert(!c.sameSingleLayout({meta,data:separate}, meta,
+  {color:{CD3D:[1,2],MS4A1:[2,1]}}));
 assert(c.sameSingleLayout(previous, meta, {...data,n:20}));
 assert(!c.sameSingleLayout(previous, meta, {...data,reset_axes:true}));
 assert(!c.sameSingleLayout(previous, {space_label:'different'}, data));

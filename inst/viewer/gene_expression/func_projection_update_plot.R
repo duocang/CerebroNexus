@@ -365,6 +365,7 @@ expression_projection_update_plot <- function(input) {
       list(
         color_type = "rgb",
         color_variable = "RGB co-expression",
+        show_color_scale = TRUE,
         space_label = plot_parameters[["projection"]],
         appearance = appearance
       ),
