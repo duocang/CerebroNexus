@@ -305,6 +305,13 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   )
   withr::defer(app$stop())
 
+  app$run_js(paste0(
+    "window.genePanelErrors = [];",
+    "window.addEventListener('error', e => genePanelErrors.push(e.message));",
+    "window.addEventListener('unhandledrejection', ",
+    "e => genePanelErrors.push(String(e.reason)));"
+  ))
+
   app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
   app$wait_for_js(
     "document.getElementById('expression_genes_input') !== null",
@@ -405,6 +412,18 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   )
   app$wait_for_js(
     paste0(
+      "(() => {const panes = Array.from(document.querySelectorAll(",
+      "'#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));",
+      "return panes.length === 2 && panes.every(p => ",
+      "Number(p.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)')",
+      "?.dataset.pointCount) > 0) && ",
+      "String(Shiny.shinyapp.$inputValues.expression_projection_rendered_key)",
+      ".startsWith('separate');})()"
+    ),
+    timeout = 20000
+  )
+  app$wait_for_js(
+    paste0(
       "document.getElementById('expression_by_group')?.innerText",
       ".includes('MS4A1')"
     ),
@@ -436,4 +455,5 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     timeout = 60000
   )
+  expect_length(app$get_js("genePanelErrors"), 0L)
 })

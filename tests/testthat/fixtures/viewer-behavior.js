@@ -45,6 +45,48 @@ window.viewerScenarios = {
     t.check(paints.length>0&&paints.every(e=>e.renderToken===b.render_token),'Stale paint cannot announce readiness');
     return true;
   },
+  async genePanels() {
+    const t = viewerTest, errors = [];
+    const onError = event => errors.push(event.message || String(event.reason));
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onError);
+    t.dataset();
+    try {
+      for (const binary of [false, true]) {
+        for (const packed of [false, true]) {
+          // Every transition receives exactly one frame: a later update must
+          // not be needed to recover from a failed first paint.
+          for (const genes of [[], ['A', 'B'], ['B', 'C', 'D'], ['C'], []]) {
+            const values = Object.fromEntries(genes.map((gene, i) =>
+              [gene, [i, i + 1, i + 2]]));
+            const data = genes.length ? packed ? {
+              color: null,
+              packed_colors: Object.fromEntries(Object.entries(values).map(([gene, color]) =>
+                [gene, {protocol: 'dense-f64-v1', length: 3, color}]))
+            } : {color: values} : {color: [0, 1, 2]};
+            t.resetPaint();
+            const frame = await t.render(data, {space_label: 'UMAP'},
+              'expression_projection', {}, binary);
+            const panes = Array.from(document.querySelectorAll(
+              '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));
+            t.equal(panes.map(p => p.querySelector('.cv-ptitle').textContent),
+              genes.length ? genes : ['GENE'], 'Visible gene panels');
+            for (const pane of panes) {
+              const canvas = pane.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)');
+              t.check(t.arcs(canvas.id).length >= 3, 'Each panel paints its cells');
+            }
+            t.check(t.events.some(e => e.name === 'cerebro:cell-view-ready' &&
+              e.painted && e.renderToken === frame.render_token), 'First frame completes');
+            t.equal(errors, [], 'No errors while changing panel count');
+          }
+        }
+      }
+    } finally {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onError);
+    }
+    return true;
+  },
   async geometry() {
     const t=viewerTest;t.dataset();
     for(const [width,height] of [[620,220],[220,620]]) {

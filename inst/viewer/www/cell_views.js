@@ -8334,7 +8334,9 @@
     // colour map. Reusing a single mean-expression panel for that map leaves
     // its space ID pointing at geometry that no longer exists.
     function colourPanels(value) {
-      var color = value.color;
+      // Incoming packets have not been hydrated by buildSingleSpaces yet.
+      // Their gene names already identify the layout, without decoding values.
+      var color = value.packed_colors || value.color;
       return color && typeof color === 'object' && !Array.isArray(color) &&
         !ArrayBuffer.isView(color) ? Object.keys(color) : [];
     }
