@@ -292,6 +292,20 @@ test_that("gene summary hosts change only when their layout changes", {
   )
 })
 
+## Summaries update only while visible (expression_summary_viewport_request).
+## Scroll on every poll: the page may still grow and push the gate back out.
+viewer_show_expression_summary <- function(app) {
+  app$wait_for_js(
+    paste0(
+      "(() => {document.getElementById('expression_summary_gate')",
+      "?.scrollIntoView();",
+      "return Shiny.shinyapp.$inputValues",
+      ".expression_summary_viewport_request === true;})()"
+    ),
+    timeout = 60000
+  )
+}
+
 test_that("gene expression panels follow gene, selection, and display mode", {
   skip_if_not_installed("shinytest2")
   inst_dir <- viewer_app_test_path()
@@ -332,16 +346,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     timeout = 60000
   )
-  app$run_js(
-    "document.getElementById('expression_summary_gate')?.scrollIntoView()"
-  )
-  app$wait_for_js(
-    paste0(
-      "Number.isFinite(Number(window.Shiny?.shinyapp?.$inputValues?",
-      ".expression_summary_viewport_request))"
-    ),
-    timeout = 60000
-  )
+  viewer_show_expression_summary(app)
   app$wait_for_js(
     "document.querySelector('#expression_by_group_UI h3') !== null",
     timeout = 60000
@@ -422,6 +427,8 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     timeout = 20000
   )
+  ## The box selection above scrolled the projection into view.
+  viewer_show_expression_summary(app)
   app$wait_for_js(
     paste0(
       "document.getElementById('expression_by_group')?.innerText",
@@ -446,6 +453,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   viewer_set_selectize(app, "expression_rgb_gene_r", "MS4A1")
   viewer_set_selectize(app, "expression_rgb_gene_g", "CD3D")
   viewer_set_selectize(app, "expression_rgb_gene_b", "")
+  viewer_show_expression_summary(app)
   app$wait_for_js(
     paste0(
       "(() => {const text=document.getElementById(",

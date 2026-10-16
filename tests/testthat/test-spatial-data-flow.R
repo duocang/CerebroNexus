@@ -156,10 +156,12 @@ test_that("Spatial defaults and appearance updates do not repeat primary computa
     expect_identical(scope$frames, 1L)
     expect_false(spatial_projection_parameters_plot()$group_labels)
     original <- output$spatial_projection_scatter_parameters_UI$html
+    ## The Settings drawer binds the same Spatial defaults the server resolved
+    ## for the first frame (current_spatial_scatter_defaults(), point size 5).
     session$setInputs(
       spatial_projection_plot_type = "ImageDimPlot",
       spatial_projection_point_color = "group",
-      spatial_projection_point_size = 2,
+      spatial_projection_point_size = 5,
       spatial_projection_point_opacity = 1,
       spatial_projection_percentage_cells_to_show = 100,
       spatial_projection_group_labels = FALSE,
