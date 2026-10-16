@@ -47,6 +47,38 @@ source(
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
 ## each session's load. The value depends only on the file's cells.
 .viewer_cell_fingerprint_cache <- new.env(parent = emptyenv())
+## Viewer Pack assets are verified against their manifest checksum before a
+## session exposes them. Hash each file version once per process, not once per
+## session and asset.
+.viewer_file_md5_cache <- new.env(parent = emptyenv())
+.viewerFileMd5 <- function(paths) {
+  vapply(
+    as.character(paths),
+    function(path) {
+      info <- suppressWarnings(file.info(path, extra_cols = FALSE))
+      if (is.na(info$size) || isTRUE(info$isdir)) {
+        return(NA_character_)
+      }
+      key <- paste(
+        normalizePath(path, winslash = "/", mustWork = FALSE),
+        info$size,
+        format(as.numeric(info$mtime), digits = 17),
+        sep = ""
+      )
+      cached <- .viewer_file_md5_cache[[key]]
+      if (!is.null(cached)) {
+        return(cached)
+      }
+      value <- unname(tools::md5sum(path))
+      if (!is.na(value)) {
+        assign(key, value, envir = .viewer_file_md5_cache)
+      }
+      value
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
 .viewerCellFingerprintCached <- function(path, compute) {
   info <- if (is.character(path) && length(path) == 1L && !is.na(path)) {
     suppressWarnings(file.info(path, extra_cols = FALSE))
@@ -1172,7 +1204,7 @@ server <- function(input, output, session) {
         as.numeric(assets$bytes[[asset_row]])
       ) &&
       identical(
-        unname(tools::md5sum(file)),
+        unname(.viewerFileMd5(file)),
         as.character(assets$checksum[[asset_row]])
       )
     if (!valid) {
@@ -1263,7 +1295,7 @@ server <- function(input, output, session) {
         as.numeric(file.info(files)$size) == as.numeric(assets$bytes[rows])
       ) &&
       all(
-        unname(tools::md5sum(files)) == as.character(assets$checksum[rows])
+        unname(.viewerFileMd5(files)) == as.character(assets$checksum[rows])
       )
     if (!isTRUE(valid)) {
       return(NULL)
@@ -1339,7 +1371,7 @@ server <- function(input, output, session) {
             as.numeric(assets$bytes[[subset_row]])
           ) &&
           identical(
-            unname(tools::md5sum(subset_file)),
+            unname(.viewerFileMd5(subset_file)),
             as.character(assets$checksum[[subset_row]])
           )
         if (!isTRUE(subset_valid)) {
@@ -1376,7 +1408,7 @@ server <- function(input, output, session) {
           as.numeric(assets$bytes[[geometry_row]])
         ) &&
         identical(
-          unname(tools::md5sum(geometry_file)),
+          unname(.viewerFileMd5(geometry_file)),
           as.character(assets$checksum[[geometry_row]])
         )
       if (!isTRUE(geometry_valid)) {
@@ -1482,7 +1514,7 @@ server <- function(input, output, session) {
         as.numeric(assets$bytes[[asset_row]])
       ) &&
       identical(
-        unname(tools::md5sum(file)),
+        unname(.viewerFileMd5(file)),
         as.character(assets$checksum[[asset_row]])
       )
     if (!isTRUE(valid)) {
@@ -1598,11 +1630,11 @@ server <- function(input, output, session) {
         as.numeric(assets$bytes[[dictionary_row]])
       ) &&
       identical(
-        unname(tools::md5sum(codes_file)),
+        unname(.viewerFileMd5(codes_file)),
         as.character(assets$checksum[[codes_row]])
       ) &&
       identical(
-        unname(tools::md5sum(dictionary_file)),
+        unname(.viewerFileMd5(dictionary_file)),
         as.character(assets$checksum[[dictionary_row]])
       )
     if (!valid_files) {
@@ -1722,6 +1754,17 @@ server <- function(input, output, session) {
     )
   })
 
+  ## Group levels scan every cell; resolve them once per dataset rather than on
+  ## every page switch that republishes the catalogs below.
+  viewer_overview_category_resources <- reactive({
+    Filter(
+      Negate(is.null),
+      lapply(getGroups(), function(group) {
+        viewerMetadataCodesAsset(group, getGroupLevels(group))
+      })
+    )
+  })
+
   observe({
     input[["sidebar"]]
     identity <- viewerDatasetIdentity()
@@ -1775,12 +1818,7 @@ server <- function(input, output, session) {
     ## they cannot delay that prefetch on a first Spatial visit.
     projection_resources <- viewerProjectionCatalog()
     if (length(projection_resources)) {
-      category_resources <- Filter(
-        Negate(is.null),
-        lapply(getGroups(), function(group) {
-          viewerMetadataCodesAsset(group, getGroupLevels(group))
-        })
-      )
+      category_resources <- viewer_overview_category_resources()
       session$sendCustomMessage(
         "cell_view_resource_catalog",
         list(

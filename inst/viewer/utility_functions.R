@@ -4569,7 +4569,9 @@ get_or_load_crb <- function(
       obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
     }
   } else if (be$type == "h5") {
-    if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+    ## Check installation without loading the namespace (seconds when cold);
+    ## pages that never read expression must not pay for it.
+    if (!nzchar(system.file(package = "HDF5Array"))) {
       stop(
         "h5-backed crb requires the HDF5Array package; please install it ",
         "via BiocManager::install(\"HDF5Array\").",
@@ -4591,18 +4593,23 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue(
-      "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
-    ))
-
     ## On-disk layout is cells x genes (TENxMatrix orientation, optimised for
     ## per-gene column reads). Cerebro's internal layout is genes x cells, so
     ## we transpose lazily — DelayedArray::t() is O(1), no data is read.
     ## The matrix is never materialised into a dgCMatrix at attach time;
     ## queries stream from disk through the DelayedMatrix path in
-    ## getExpressionRow / getExpressionBlock.
-    m_disk <- HDF5Array::TENxMatrix(loc_abs, group = "expression")
-    obj$expression <- t(m_disk)
+    ## getExpressionRow / getExpressionBlock. Attach on first expression use.
+    delayedAssign(
+      "expression",
+      {
+        print(glue::glue(
+          "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
+        ))
+        t(HDF5Array::TENxMatrix(loc_abs, group = "expression"))
+      },
+      eval.env = environment(),
+      assign.env = obj
+    )
   } else {
     stop(
       sprintf(
@@ -5908,10 +5915,20 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (!is.finite(bytes) || !is.finite(modified) || isTRUE(info$isdir[[1L]])) {
     return(NULL)
   }
-  md5 <- tryCatch(
-    unname(as.character(tools::md5sum(path))),
-    error = function(error) NA_character_
-  )
+  ## Background frames resend this descriptor; hash a file version once.
+  if (is.null(session$userData$cerebro_private_image_md5)) {
+    session$userData$cerebro_private_image_md5 <- new.env(parent = emptyenv())
+  }
+  md5_cache <- session$userData$cerebro_private_image_md5
+  md5_key <- paste(path, bytes, format(modified, digits = 17), sep = "")
+  md5 <- get0(md5_key, envir = md5_cache, inherits = FALSE)
+  if (is.null(md5)) {
+    md5 <- tryCatch(
+      unname(as.character(tools::md5sum(path))),
+      error = function(error) NA_character_
+    )
+    if (!is.na(md5)) assign(md5_key, md5, envir = md5_cache)
+  }
   if (
     is.na(md5) ||
       (!is.null(expected_md5) && !identical(as.character(expected_md5), md5))
