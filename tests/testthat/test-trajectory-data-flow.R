@@ -248,6 +248,9 @@ test_that("supplementary trajectory controls appear only after projection and vi
     scope <- viewer_ui_test_env()
     scope$output <- list()
     scope$renderUI <- function(expr) eval(substitute(expr), parent.frame())
+    ## Supplementary panels read the author display defaults for their page; this
+    ## harness configures none.
+    scope$current_page_display_defaults <- function(page) list()
     scope$trajectory_projection_sent <- function() ready
     scope$trajectory_selection_ok <- function() TRUE
     scope$getVariableToCompareChoices <- scope$getGroups <- function() "group"

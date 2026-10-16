@@ -36,6 +36,7 @@ test_that("run-demo loads the worktree and avoids a busy default port", {
   )
   for (ren_only in c(FALSE, TRUE)) {
     prepared <- character()
+    packs <- character()
     scope <- new.env(parent = globalenv())
     scope$commandArgs <- function(trailingOnly) {
       if (!trailingOnly) {
@@ -54,10 +55,19 @@ test_that("run-demo loads the worktree and avoids a busy default port", {
         prepared <<- c(prepared, "ren")
         datasets[[2]]
       }
+      ## The launcher builds a Viewer Pack for each demo data set it prepares.
+      scope$prepareDemoViewerPack <- function(crb) {
+        packs <<- c(packs, basename(crb))
+        invisible(crb)
+      }
     }
     sys.source(launcher, scope)
     expect_identical(loaded, root)
     expect_identical(prepared, if (ren_only) "ren" else c("one", "ren"))
+    expect_identical(
+      packs,
+      basename(if (ren_only) datasets[[2]] else datasets)
+    )
     expect_identical(
       Sys.getenv("CEREBRO_REN_DEMO_CRB"),
       normalizePath(datasets[[2]])

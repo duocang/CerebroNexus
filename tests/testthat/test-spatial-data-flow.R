@@ -86,6 +86,17 @@ spatial_flow_server <- function(input, output, session) {
   viewer_loaded_dataset_context <- function() {
     list(epoch = "s", dataset_key = "tiny", generation = 1L)
   }
+  ## Author display settings are resolved for the data set the viewer requested;
+  ## this harness configures none.
+  viewer_requested_dataset_context <- function() {
+    list(epoch = "s", dataset_key = "tiny", generation = 1L)
+  }
+  current_page_display_defaults <- function(page) list()
+  ## The renderers also read the spatial point appearance; this harness uses the
+  ## viewer's own defaults.
+  current_spatial_scatter_defaults <- function() {
+    list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
+  }
   viewerDatasetIdentity <- function() list(fingerprint = "tiny")
   getGeneNames <- function() c("G1", "G2")
   expression <- rbind(G1 = c(1, 2, 3, 4), G2 = c(4, 3, 2, 1))
