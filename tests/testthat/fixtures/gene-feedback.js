@@ -15,7 +15,8 @@ function element(value) {
 }
 const ids = ['expression_analysis_mode', 'expression_genes_input',
   'expression_projection_genes_in_separate_panels', 'expression_rgb_gene_r',
-  'expression_rgb_gene_g', 'expression_rgb_gene_b', 'expression_select_gene_set'];
+  'expression_rgb_gene_g', 'expression_rgb_gene_b', 'expression_select_gene_set',
+  'expression_rgb_layout'];
 const elements = Object.fromEntries(ids.map(id => [id, element('')]));
 elements[ids[0]].value = '';
 elements[ids[0]].querySelector = () => ({value:'Gene(s)'});
@@ -112,4 +113,11 @@ check(label.textContent.includes('Updating: RGB: Gad1, —, —'));
 map(key('Gad1','rgb','Gad1\x1c\x1c')); paint(key('Gad1','rgb','Gad1\x1c\x1c'));
 check(label.hidden && label.textContent === '');
 check(!label.getAttribute('aria-busy'));
+elements[ids[7]].value='separate';
+handlers.change({target:elements[ids[7]]});
+check(!label.hidden);
+const splitKey=key('Gad1','rgb','Gad1\x1c\x1c')+'\x1dseparate';
+map(splitKey); paint(key('Gad1','rgb','Gad1\x1c\x1c'));
+check(!label.hidden); // A composite paint cannot complete the split request.
+paint(splitKey); check(label.hidden);
 console.log(`${count} Gene feedback assertions passed`);

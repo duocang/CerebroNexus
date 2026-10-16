@@ -1,3 +1,12 @@
+# CerebroNexus (development)
+
+- Adds Composite RGB and Separate channels layouts to Gene expression. RGB
+  starts with the first three available selected genes, retains manual channel
+  assignments across display-mode switches, and preserves the full gene list.
+  Separate channels retains the composite's per-channel intensity scaling.
+- Fixes switching from mean expression to packed multi-gene panels getting stuck
+  before the first paint completes.
+
 # CerebroNexus 5.0.2
 
 - Completes the source-test cleanup across Viewer modules, transport, dataset

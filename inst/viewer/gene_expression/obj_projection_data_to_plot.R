@@ -44,6 +44,7 @@ expression_projection_data_to_plot_raw <- reactive({
     metadata = metadata,
     trajectory = expression_projection_trajectory(),
     display_mode = input[["expression_projection_genes_in_separate_panels"]],
+    rgb_layout = input[["expression_rgb_layout"]],
     render_key = expression_projection_render_key(),
     cell_indices = expression_projection_cells_to_show(),
     projection_resource_failed = input[[

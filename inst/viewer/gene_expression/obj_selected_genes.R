@@ -1,6 +1,35 @@
 ##----------------------------------------------------------------------------##
 ## Reactive data that holds genes provided by user or in selected gene set.
 ##----------------------------------------------------------------------------##
+expressionInputGenes <- function(value) {
+  genes <- unique(trimws(unlist(strsplit(as.character(value), "[,;[:space:]]+"))))
+  genes[!is.na(genes) & nzchar(genes)]
+}
+
+## Mean/separate retain their full list. Seed RGB only when that list changes;
+## returning to RGB must preserve manual channel assignments, including blanks.
+expression_rgb_seed <- NULL
+observeEvent(
+  list(input[["expression_projection_genes_in_separate_panels"]],
+    input[["expression_genes_input"]], list_of_genes()),
+  {
+    req(identical(input[["expression_projection_genes_in_separate_panels"]], "rgb"))
+    source <- input[["expression_genes_input"]]
+    req(!is.null(source))
+    source <- expressionInputGenes(source)
+    available <- list_of_genes()
+    genes <- unique(available[match(tolower(source), tolower(available))])
+    genes <- genes[!is.na(genes)]
+    if (identical(expression_rgb_seed, genes)) return()
+    expression_rgb_seed <<- genes
+    session$sendCustomMessage("cerebro_expression_rgb_seed", list(
+      dataset_context = viewer_loaded_dataset_context(),
+      source = as.list(as.character(input[["expression_genes_input"]])),
+      genes = as.list(head(genes, 3L))
+    ))
+  }
+)
+
 expression_selected_genes_input <- reactive({
   req(
     input[["expression_analysis_mode"]],
@@ -25,40 +54,15 @@ expression_selected_genes_input <- reactive({
         input[[paste0("expression_rgb_gene_", channel)]]
       })
       names(rgb) <- c("r", "g", "b")
-      if (
-        !any(vapply(
-          rgb,
-          function(gene) {
-            !is.null(gene) && length(gene) && nzchar(gene[[1L]])
-          },
-          logical(1)
-        ))
-      ) {
-        previous <- head(input[["expression_genes_input"]] %||% character(), 3)
-        rgb[seq_along(previous)] <- as.list(previous)
-      }
       gene_sets[["rgb_genes"]] <- rgb
       gene_sets[["genes_to_display"]] <- unique(unlist(Filter(
         function(gene) !is.null(gene) && nzchar(gene),
         rgb
       )))
     } else {
-      ## check if user provided input in gene box
-      ## ... if user provided input
-      if (!is.null(input[["expression_genes_input"]])) {
-        ## - grab user input
-        ## - split by comma, space, semicolon and line
-        ## - convert to vector
-        ## - remove spaces
-        ## - remove duplicated strings
-        ## - remove empty strings
-        gene_sets[["genes_to_display"]] <- input[["expression_genes_input"]] %>%
-          strsplit(",| |;|\n") %>%
-          unlist() %>%
-          gsub(pattern = " ", replacement = "", fixed = TRUE) %>%
-          unique() %>%
-          .[. != ""]
-      }
+      gene_sets[["genes_to_display"]] <- expressionInputGenes(
+        input[["expression_genes_input"]]
+      )
     }
     ## ...
   } else if (input[["expression_analysis_mode"]] == "Gene set") {

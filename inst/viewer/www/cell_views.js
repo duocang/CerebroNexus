@@ -3755,7 +3755,12 @@
       var scale = document.createElement('span');
       scale.className = 'cv-panel-scale';
       scale.style.background = 'linear-gradient(90deg,' + stops.join(',') + ')';
-      scale.title = field.label + ' colour scale; numeric range shared across panels';
+      scale.title = field.rgbChannel
+        ? field.label + ': 0 to ' + field.max + ' (channel maximum)'
+        : field.label + ' colour scale; numeric range shared across panels';
+      if (field.rgbChannel) {
+        scale.setAttribute('aria-label', scale.title);
+      }
       var title = panel.pane.querySelector('.cv-ptitle');
       if (title) title.insertAdjacentElement('afterend', scale);
     });
@@ -3814,6 +3819,19 @@
       return;
     }
     var fld = fieldOf();
+    if (fld && fld.rgbChannel) {
+      renderColorbar(false);
+      renderPanelScales(true);
+      panels.forEach(function (panel) {
+        var field = fieldOf(panel);
+        if (!panel.spaceId || !field || !field.rgbChannel) return;
+        var range = document.createElement('span');
+        range.className = 'cv-lg';
+        range.textContent = field.label + ': 0–' + Number(field.max).toPrecision(3);
+        L.appendChild(range);
+      });
+      return;
+    }
     if (distinctPanels && fld) {
       renderSharedExpressionRange(fld);
       return;
@@ -7933,7 +7951,7 @@
   }
   function singleRgbData(data, aligned) {
     var index = aligned ? null : singleIndex(), keys = Array.isArray(data.selection_key)
-      ? data.selection_key : [], raw = data.rgb || {}, out = {};
+      ? data.selection_key : [], raw = data.rgb || {}, out = {maxima: {}};
     var direct = !keys.length || aligned;
     ['r', 'g', 'b'].forEach(function (channel) {
       var source = raw[channel] || [], maximum = 0;
@@ -7952,6 +7970,7 @@
         }
       }
       out[channel] = scaled;
+      out.maxima[channel] = maximum;
     });
     var genes = data.rgb_genes || {};
     out.genes = ['r', 'g', 'b'].map(function (channel) {
@@ -8239,8 +8258,33 @@
       modes[baseId] = groupName;
     } else if (meta.color_type === 'rgb') {
       D.rgb = singleRgbData(data);
-      makeSpace(baseId, meta.space_label || id);
-      modes[baseId] = RGB_MODE;
+      if (meta.rgb_layout === 'separate' && D.rgb.genes.some(Boolean)) {
+        ['r', 'g', 'b'].forEach(function (channel, index) {
+          var gene = D.rgb.genes[index];
+          if (!gene) return;
+          var label = channel.toUpperCase() + ' · ' + gene;
+          var maximum = D.rgb.maxima[channel];
+          var field = quantisedField(label, data.rgb[channel] || [], data.selection_key || [],
+            {color_range: [0, maximum], paint_order: data.paint_order});
+          // Use the same 8-bit intensities and low-expression threshold as
+          // the composite, with only this channel enabled. Keep raw values
+          // for hover and selection summaries.
+          field.v = D.rgb[channel]; field.scale = 255;
+          field.min = 0; field.max = maximum; field.rgbChannel = channel;
+          field.palette = Array.from({length: 256}, function (_, value) {
+            var color = rgbGpuColor(channel === 'r' ? value : 0,
+              channel === 'g' ? value : 0, channel === 'b' ? value : 0);
+            return 'rgb(' + (color & 255) + ',' + ((color >> 8) & 255) + ',' + ((color >> 16) & 255) + ')';
+          });
+          var fieldName = 'single:' + id + ':rgb:' + channel;
+          var spaceId = baseId + ':rgb:' + channel;
+          D.fields[fieldName] = field;
+          makeSpace(spaceId, label); modes[spaceId] = FIELD_PREFIX + fieldName;
+        });
+      } else {
+        makeSpace(baseId, meta.space_label || id);
+        modes[baseId] = RGB_MODE;
+      }
     } else if (meta.color_type === 'coexpression') {
       var directName = 'single:' + id + ':rgb';
       D.fields[directName] = directColorField(
@@ -8330,6 +8374,9 @@
   function sameSingleLayout(previous, meta, data) {
     if (!previous || !previous.data || !previous.meta || data.reset_axes) return false;
     if (previous.meta.space_label !== meta.space_label || !!previous.data.z !== !!data.z) return false;
+    if (previous.meta.rgb_layout !== meta.rgb_layout) return false;
+    if (meta.rgb_layout === 'separate' &&
+        JSON.stringify(previous.data.rgb_genes) !== JSON.stringify(data.rgb_genes)) return false;
     // Flat continuous payloads also describe multiple panels through a named
     // colour map. Reusing a single mean-expression panel for that map leaves
     // its space ID pointing at geometry that no longer exists.

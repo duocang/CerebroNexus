@@ -179,7 +179,7 @@ expressionProjectionGeneMeans <- function(data, genes) {
   )
 }
 
-expressionProjectionRenderKey <- function(genes, display_mode) {
+expressionProjectionRenderKey <- function(genes, display_mode, rgb_layout = "composite") {
   present <- as.character(genes[["genes_to_display_present"]] %||% character())
   rgb <- genes[["rgb_genes"]] %||% list()
   rgb <- vapply(
@@ -190,18 +190,24 @@ expressionProjectionRenderKey <- function(genes, display_mode) {
     },
     character(1)
   )
-  paste(
+  key <- paste(
     as.character(display_mode %||% "single"),
     paste(present, collapse = "\034"),
     paste(rgb, collapse = "\034"),
     sep = "\035"
   )
+  if (identical(display_mode, "rgb")) {
+    key <- paste(key, if (identical(rgb_layout, "separate")) "separate" else "composite",
+      sep = "\035")
+  }
+  key
 }
 
 expression_projection_render_key <- reactive({
   expressionProjectionRenderKey(
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]]
+    input[["expression_projection_genes_in_separate_panels"]],
+    input[["expression_rgb_layout"]]
   )
 })
 
@@ -291,7 +297,8 @@ expression_projection_expression_levels <- reactive({
     length(genes_present),
     ncol(expression_projection_coordinates())
   )
-  render_key <- expression_projection_render_key()
+  ## Layout only changes the projection; it must not re-read expression rows.
+  render_key <- isolate(expression_projection_render_key())
   painted_key <- isolate(input[["expression_projection_rendered_key"]])
   ## Visibility/request state controls the progress UI, not expression reads.
   ## Navigation and request acknowledgements must not invalidate these values.

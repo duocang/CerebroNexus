@@ -3,7 +3,8 @@
   'use strict';
   var ids = ['expression_analysis_mode', 'expression_genes_input',
     'expression_projection_genes_in_separate_panels', 'expression_rgb_gene_r',
-    'expression_rgb_gene_g', 'expression_rgb_gene_b', 'expression_select_gene_set'];
+    'expression_rgb_gene_g', 'expression_rgb_gene_b', 'expression_select_gene_set',
+    'expression_rgb_layout'];
   var mapped = null, painted = null, requested = null, installed = false;
   function array(value) {
     return value == null ? [] : (Array.isArray(value) ? value : [value]).map(String);
@@ -24,7 +25,7 @@
     var mode = array(values[ids[2]])[0] || '';
     var analysis = array(values[ids[0]])[0] || '';
     var active = analysis === 'Gene set' ? [ids[6]] :
-      mode === 'rgb' ? ids.slice(3, 6) : [ids[1]];
+      mode === 'rgb' ? ids.slice(3, 6).concat(ids[7]) : [ids[1]];
     return JSON.stringify([analysis, mode].concat(active.map(function (id) {
       return array(values[id]).filter(Boolean);
     })));
