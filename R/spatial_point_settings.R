@@ -16,7 +16,7 @@
     if (is.null(normalized)) {
       stop(context, ": requires finite numeric ",
         if (roi) "rotation_degrees, ",
-        "point_size (1–20) and point_opacity (0–1).", call. = FALSE)
+        "point_size (1-20) and point_opacity (0-1).", call. = FALSE)
     }
     # Preserve the caller's field order; the shared contract owns validation.
     normalized[names(value)]
