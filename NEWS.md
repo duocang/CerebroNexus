@@ -1,5 +1,22 @@
-# CerebroNexus (development)
+# CerebroNexus 5.1.0
 
+- Adds Viewer Packs: `buildViewerPack()` writes a sidecar directory next to a
+  `.crb` file so that large data sets skip re-reading the object on every
+  session, and `saveCerebro()` builds one automatically above 500,000 cells.
+- Spatial scenes are grouped by sample and ROI, and background images are
+  delivered per session: the browser receives a private URL for the file it is
+  allowed to see instead of a data URI or a filesystem path. The Background
+  image picker holds one removable chip and is hidden for data sets that
+  configure no image.
+- Linked views selects the section whose background is adjusted from a picker
+  instead of a tab strip, with one switch that shows or hides every background
+  image.
+- Ordinary projection views share one author configuration: legacy per-page
+  overrides such as `expression_point_size` no longer shadow it, while
+  `spatial_*` settings still apply to Spatial.
+- The data set selector drives one data set context, so progress, results and
+  hover metadata started for a previous data set are discarded instead of being
+  applied to the new one.
 - Keeps the "UMAP layout" shortcut on Immune repertoire once its plot is painted.
   The values Shiny reports for re-created tab and grouping controls are no longer
   mistaken for edits, which used to hide the shortcut for the rest of the visit.
