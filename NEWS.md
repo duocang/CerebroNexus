@@ -1,5 +1,8 @@
 # CerebroNexus (development)
 
+- Keeps the "UMAP layout" shortcut on Immune repertoire once its plot is painted.
+  The values Shiny reports for re-created tab and grouping controls are no longer
+  mistaken for edits, which used to hide the shortcut for the rest of the visit.
 - Fixes the page loader staying on "Preparing the current view…" after a dataset
   switch rebuilt a page's result once its value had already arrived, which left
   Extra material tables rendered but unreachable until another page was opened.

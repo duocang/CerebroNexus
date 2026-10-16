@@ -163,9 +163,25 @@
     if (el.multiple) return Array.from(el.selectedOptions).map(function (o) { return o.value; });
     return el.value;
   }
+  // The Immune repertoire tabset and its controls are rebuilt by renderUI
+  // whenever ir_data() changes, and Shiny then reports the rebuilt controls'
+  // current values as input changes. Those reports are not edits: invalidating
+  // on them hides advice that still matches the painted plot, and nothing
+  // brings it back until a paint that may never come.
+  var irLayoutInputs = {};
+  function irLayoutEdited(event, key) {
+    var element = event.el || document.getElementById(key);
+    var value = normal(
+      event.value !== undefined ? event.value : element && inputValue(element)
+    );
+    var seen = irLayoutInputs[key];
+    irLayoutInputs[key] = { element: element, value: value };
+    return !!seen && seen.element === element && seen.value !== value;
+  }
   function changed(event) {
     var key = event.name || event.target.id;
     if (key === 'ir_tabs' || key === 'ir_p_umap_group_by') {
+      if (!irLayoutEdited(event, key)) return;
       state('ir_clonalUMAP_projection').layoutEligible = false;
       draw('ir_clonalUMAP_projection');
       return;

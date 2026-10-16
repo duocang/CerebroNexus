@@ -212,14 +212,28 @@ for (const [id, buttonId, inputId, label] of [
   measured(id,false,false);check(!hasHint(id));
   measured(id,false,true,0);check(!hasHint(id));
 }
+// The Immune repertoire tabset and its controls are rebuilt by renderUI
+// whenever ir_data() changes. Shiny reports the rebuilt controls' values again;
+// those reports are not edits and must not invalidate advice that still matches
+// the painted plot, because no further paint would bring it back.
+elements['ir_tabs'] = element('ir_tabs');
+elements['ir_p_umap_group_by'] = element('ir_p_umap_group_by');
+function irInput(key, value, el) {
+  handlers.change({name:key, value, el:el || elements[key], target:el || elements[key]});
+}
 measured(ir);check(hasHint(ir));
-handlers.change({name:'ir_tabs',value:'Abundance',target:{}}); check(!hasHint(ir));
+irInput('ir_tabs','Clonal UMAP');check(hasHint(ir));
+irInput('ir_tabs','Abundance');check(!hasHint(ir));
+measured(ir);check(hasHint(ir));
+elements['ir_tabs'] = element('ir_tabs');
+irInput('ir_tabs','Abundance');check(hasHint(ir));
+irInput('ir_p_umap_group_by','');check(hasHint(ir));
+irInput('ir_p_umap_group_by','sample');check(!hasHint(ir));
 clonalVisible = false;
 measured(ir);check(!hasHint(ir));
 check(row(ir) === null); // Existing immune loading/status remains untouched.
 clonalVisible = true;
 measured(ir);check(hasHint(ir));
-handlers.change({name:'ir_p_umap_group_by',value:'sample',target:{}}); check(!hasHint(ir));
 
 // Exercise the renderer's actual canvas measurement, including a named
 // non-UMAP trajectory and the existing 2-D-only/width threshold restrictions.
