@@ -5167,7 +5167,10 @@ serverSideGeneSelector <- function(
       later::later(function() send_update(TRUE), delay = 0.3)
       later::later(function() send_update(TRUE), delay = 1.0)
     } else {
-      later::later(function() send_update(TRUE), delay = 0.3)
+      ## This is the only registration for the dataset. Skipping it when the
+      ## selection moved (e.g. an RGB seed) would leave the control searching
+      ## the previous dataset; send_update() already uses the current value.
+      later::later(function() send_update(), delay = 0.3)
     }
   })
 }
