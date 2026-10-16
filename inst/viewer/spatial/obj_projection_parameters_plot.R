@@ -197,6 +197,7 @@ observeEvent(
   ignoreNULL = TRUE
 )
 
+spatial_projection_facet_memo <- viewerMemoOne()
 spatial_projection_parameters_plot <- reactive({
   controls <- spatial_projection_controls()
   req(
@@ -211,8 +212,6 @@ spatial_projection_parameters_plot <- reactive({
   color_variable <- NULL
   feature_to_display <- NULL
   split_by <- ""
-  spatial_name <- input[["spatial_projection_to_display"]]
-  spatial_data <- getSpatialData(spatial_name)
 
   if (plot_type == "ImageDimPlot") {
     color_variable <- controls$color_variable
@@ -247,23 +246,32 @@ spatial_projection_parameters_plot <- reactive({
   n_dimensions <- ncol(spatial_data$coordinates)
   spatial_name <- controls$projection
   dataset <- viewer_current_dataset_key()
-  spatial_cells <- rownames(spatial_data$coordinates) %||% character()
   selected_sample <- input[["spatial_projection_sample"]] %||% ""
-  if (nzchar(selected_sample)) {
-    sample_facet <- spatial_metadata_facet(
-      getMetaData(),
-      spatial_cells,
-      c("sample", "sample_id", "orig.ident")
-    )
-    spatial_cells <- names(sample_facet$by_cell)[
-      !is.na(sample_facet$by_cell) & sample_facet$by_cell == selected_sample
-    ]
-  }
-  roi_values <- spatial_metadata_facet(
-    getMetaData(),
-    spatial_cells,
-    c("sample_roi", "roi", "roi_id", "region_of_interest")
-  )$values
+  ## Facets match every barcode against the metadata. They depend only on the
+  ## section and sample, so colour or feature changes reuse them.
+  roi_facet <- spatial_projection_facet_memo(
+    list(data_set(), spatial_name, selected_sample),
+    function() {
+      spatial_cells <- rownames(spatial_data$coordinates) %||% character()
+      if (nzchar(selected_sample)) {
+        sample_facet <- spatial_metadata_facet(
+          getMetaData(),
+          spatial_cells,
+          c("sample", "sample_id", "orig.ident")
+        )
+        spatial_cells <- names(sample_facet$by_cell)[
+          !is.na(sample_facet$by_cell) &
+            sample_facet$by_cell == selected_sample
+        ]
+      }
+      spatial_metadata_facet(
+        getMetaData(),
+        spatial_cells,
+        c("sample_roi", "roi", "roi_id", "region_of_interest")
+      )
+    }
+  )
+  roi_values <- roi_facet$values
   selected_roi <- input[["spatial_projection_roi"]] %||%
     spatial_default_roi_selection(roi_values)
   roi_modes <- c("__all__", if (length(roi_values) > 1L) "__separate__")
@@ -273,11 +281,6 @@ spatial_projection_parameters_plot <- reactive({
   roi_value <- spatial_roi_value(selected_roi)
   separate_roi_values <- character()
   if (identical(selected_roi, "__separate__")) {
-    roi_facet <- spatial_metadata_facet(
-      getMetaData(),
-      spatial_cells,
-      c("sample_roi", "roi", "roi_id", "region_of_interest")
-    )
     split_by <- roi_facet$field %||% ""
     separate_roi_values <- roi_facet$values
   }

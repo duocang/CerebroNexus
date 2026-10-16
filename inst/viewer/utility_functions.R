@@ -682,6 +682,22 @@ debounceAfterFirst <- function(reactive, millis, active = NULL) {
   })
 }
 
+## Single-entry memo for values recomputed with identical inputs within and
+## across flushes. Put any data_set() reference in `key`.
+viewerMemoOne <- function() {
+  state <- new.env(parent = emptyenv())
+  function(key, compute) {
+    if (isTRUE(state$set) && identical(state$key, key)) {
+      return(state$value)
+    }
+    value <- compute()
+    state$key <- key
+    state$value <- value
+    state$set <- TRUE
+    value
+  }
+}
+
 viewerOutputTab <- function(ids) {
   prefixes <- c(
     overview_ = "overview",
@@ -5033,11 +5049,33 @@ availableSpatial <- function() {
   }
   tryCatch(ds$availableSpatial(), error = function(e) character(0))
 }
+## The public getter validates and normalizes coordinates and every embedded
+## image (about a second for large images). Its result depends only on the
+## loaded object, so keep it per section until data_set() changes.
+.viewer_spatial_data_cache <- new.env(parent = emptyenv())
 getSpatialData <- function(name) {
   ds <- data_set()
   if (!any(grepl("Cerebro", class(ds)))) {
     return(NULL)
   }
+  cache <- .viewer_spatial_data_cache
+  if (!identical(cache$dataset, ds)) {
+    rm(list = ls(cache, all.names = TRUE), envir = cache)
+    cache$dataset <- ds
+  }
+  key <- if (is.character(name) && length(name) == 1L && !is.na(name)) {
+    paste0("section:", name)
+  }
+  if (!is.null(key) && !is.null(cache[[key]])) {
+    return(cache[[key]])
+  }
+  value <- viewerReadSpatialData(ds, name)
+  if (!is.null(key) && !is.null(value)) {
+    assign(key, value, envir = cache)
+  }
+  value
+}
+viewerReadSpatialData <- function(ds, name) {
   getter <- ds$getSpatialData
   tryCatch(
     {

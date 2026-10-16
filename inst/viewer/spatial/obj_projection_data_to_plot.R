@@ -1,6 +1,25 @@
 ##----------------------------------------------------------------------------##
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
+## ROI membership, sample scope and pivots for a section. Ranges, hulls and the
+## frame all need it with the same inputs; computing it matches every barcode
+## (about a second for a million cells), so share one result.
+spatial_projection_roi_context_memo <- viewerMemoOne()
+spatial_projection_roi_context <- function(spatial_name, rotation_angle) {
+  sample_value <- input[["spatial_projection_sample"]] %||% ""
+  spatial_projection_roi_context_memo(
+    list(data_set(), spatial_name, sample_value, rotation_angle),
+    function() {
+      spatial_roi_transform_context(
+        viewerSpatialCoordinates(spatial_name),
+        getMetaData(),
+        sample_value,
+        rotation_angle
+      )
+    }
+  )
+}
+
 spatial_projection_full_ranges <- reactive({
   spatial_name <- input[["spatial_projection_to_display"]]
   req(spatial_name %in% availableSpatial())
@@ -15,12 +34,7 @@ spatial_projection_full_ranges <- reactive({
   )
   full_coords <- viewerSpatialCoordinates(spatial_name)
   if (parameters[["roi_mode"]] %in% c("single", "separate")) {
-    roi_context <- spatial_roi_transform_context(
-      full_coords,
-      getMetaData(),
-      input[["spatial_projection_sample"]] %||% "",
-      rotation_angle
-    )
+    roi_context <- spatial_projection_roi_context(spatial_name, rotation_angle)
     scoped_cells <- roi_context$scoped_cells
     selected_roi <- spatial_roi_value(parameters[["roi_selection"]])
     if (nzchar(selected_roi)) {
@@ -75,12 +89,7 @@ spatial_projection_group_hulls <- reactive({
   )
   parameters <- spatial_projection_parameters_plot()
   if (parameters[["roi_mode"]] %in% c("single", "separate")) {
-    roi_context <- spatial_roi_transform_context(
-      viewerSpatialCoordinates(spatial_name),
-      getMetaData(),
-      input[["spatial_projection_sample"]] %||% "",
-      rotation_angle
-    )
+    roi_context <- spatial_projection_roi_context(spatial_name, rotation_angle)
     coordinates <- rotateSpatialCoordinatesByRoi(
       coordinates,
       as.character(roi_context$roi_by_cell[rownames(coordinates)]),
@@ -273,10 +282,8 @@ spatial_projection_data_to_plot_raw <- reactive({
     full_coordinates <- viewerSpatialCoordinates(plot_parameters[[
       "projection"
     ]])
-    roi_context <- spatial_roi_transform_context(
-      full_coordinates,
-      getMetaData(),
-      input[["spatial_projection_sample"]] %||% "",
+    roi_context <- spatial_projection_roi_context(
+      plot_parameters[["projection"]],
       rotation_angle
     )
     roi_settings <- spatialRoiSettings(

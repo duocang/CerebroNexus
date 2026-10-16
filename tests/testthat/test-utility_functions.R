@@ -1033,3 +1033,43 @@ test_that("cachePlot caches by key and invalidates on key or dataset change", {
     expect_equal(compute_count, first + 2)
   })
 })
+
+test_that("Spatial sections are normalized once per loaded dataset", {
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), env)
+  reads <- 0L
+  make_dataset <- function() {
+    dataset <- new.env()
+    dataset$getSpatialData <- function(name, hydrate_molecules = TRUE) {
+      reads <<- reads + 1L
+      list(coordinates = data.frame(x = 1, y = 2), name = name)
+    }
+    class(dataset) <- c("Cerebro_v1.3", "environment")
+    dataset
+  }
+  current <- make_dataset()
+  env$data_set <- function() current
+  expect_identical(env$getSpatialData("slice")$name, "slice")
+  expect_identical(env$getSpatialData("slice")$name, "slice")
+  expect_identical(reads, 1L)
+  env$getSpatialData("other")
+  expect_identical(reads, 2L)
+  current <- make_dataset()
+  env$getSpatialData("slice")
+  expect_identical(reads, 3L)
+})
+
+test_that("single-entry memos recompute only for a different key", {
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), env)
+  memo <- env$viewerMemoOne()
+  calls <- 0L
+  compute <- function() {
+    calls <<- calls + 1L
+    calls
+  }
+  expect_identical(memo(list("a", 1), compute), 1L)
+  expect_identical(memo(list("a", 1), compute), 1L)
+  expect_identical(memo(list("a", 2), compute), 2L)
+  expect_identical(memo(list("a", 1), compute), 3L)
+})
