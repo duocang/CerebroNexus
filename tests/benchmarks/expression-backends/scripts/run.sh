@@ -524,13 +524,25 @@ resume_run() {
   require_clean
   export BENCH_RECOVERY_SCRATCH="$scratch"
   printf -v command 'bash %q _resume' "$SCRIPT"
+  bench_isolate_r
   nix-shell "$REPO/default.nix" -A shell --run "$command"
+}
+
+# Every benchmark R process, including the Scale memory snapshot taken before
+# the scratch library exists, must see only the Nix site libraries. A caller's
+# R_LIBS, R_LIBS_SITE, user library, ~/.Renviron or ~/.Rprofile can otherwise
+# load packages built for another R. Call before nix-shell, whose setup hooks
+# append to an inherited R_LIBS_SITE rather than replacing it.
+bench_isolate_r() {
+  unset R_LIBS R_LIBS_SITE
+  export R_LIBS_USER=/nonexistent R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null
 }
 
 worker() {
   local code command tmp_exit
   printf '==> benchmark mode: %s\n' "${1:-run}"
   printf -v command 'bash %q _inside %q' "$SCRIPT" "${1:-run}"
+  bench_isolate_r
   set +e
   nix-shell "$REPO/default.nix" -A shell --run "$command"
   code=$?

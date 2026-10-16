@@ -323,3 +323,44 @@ test_that("only an observed cgroup OOM kill turns a failed build into a skip", {
   expect_false(killed("", "4"))
   expect_false(killed("3", ""))
 })
+
+test_that("the worker hides the caller's personal R setup from nix-shell", {
+  skip_unless_bench_cli()
+  bash <- Sys.which("bash")
+  if (.Platform$OS.type == "windows") {
+    bash <- file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe")
+  }
+  testthat::skip_if_not(nzchar(bash) && file.exists(bash), "native Bash is unavailable")
+  helper <- file.path(bench_root, "run.sh")
+  root <- gsub("\\", "/", tempfile("bench-renv-"), fixed = TRUE)
+  dir.create(file.path(root, "bin"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  seen <- file.path(root, "seen")
+  # Stand-in nix-shell records the R environment it would hand to R.
+  writeLines(c(
+    "#!/usr/bin/env bash",
+    sprintf(
+      "printf '%%s\n' \"R_LIBS=${R_LIBS-unset}\" \"R_LIBS_SITE=${R_LIBS_SITE-unset}\" \"R_LIBS_USER=$R_LIBS_USER\" \"R_ENVIRON_USER=$R_ENVIRON_USER\" \"R_PROFILE_USER=$R_PROFILE_USER\" > %s",
+      shQuote(seen)
+    )
+  ), file.path(root, "bin", "nix-shell"))
+  Sys.chmod(file.path(root, "bin", "nix-shell"), "0755")
+  command <- file.path(root, "worker.sh")
+  writeLines(c(
+    sprintf("export BENCH_CACHE_ROOT=%s", shQuote(file.path(root, "cache"))),
+    "export R_LIBS=/home/someone/R_libs R_LIBS_SITE=/home/someone/site R_LIBS_USER=/home/someone/user",
+    sprintf("source %s", shQuote(normalizePath(helper, winslash = "/"))),
+    sprintf("export PATH=%s:\"$PATH\"", shQuote(file.path(root, "bin"))),
+    "mkdir -p \"$STATE_DIR\"",
+    "( worker quick )"
+  ), command)
+  output <- bench_test_system2(bash, command, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_identical(readLines(seen), c(
+    "R_LIBS=unset",
+    "R_LIBS_SITE=unset",
+    "R_LIBS_USER=/nonexistent",
+    "R_ENVIRON_USER=/dev/null",
+    "R_PROFILE_USER=/dev/null"
+  ))
+})
