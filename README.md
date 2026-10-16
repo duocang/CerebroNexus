@@ -56,6 +56,26 @@ Prepared versions use separate directories (`ren/cerebro-v2/`); preparation
 never upgrades the earlier `ren/cerebro/` atlas in place. Failed builds are not
 published, and source downloads are shared between versions.
 
+The launcher also prepares each data set's derived **Viewer Pack** (the
+`<name>.viewer/` directory beside `<name>.crb`) and rebuilds it when it is
+missing or predates an asset the viewer reads. Large data sets are expected to
+have one: pack assets are what keep first entry to the HLA & TCR motifs, Linked
+views, trajectory and spatial pages from recomputing those tables in the R
+session. Without a pack the motifs page spends about 15 s building and laying
+out the CDR3 Hamming-1 graph at Ren's scale — about 25 s for the whole first
+entry, with nothing else in the app to explain the wait; with it, the same entry
+settles in under two seconds. If you start the viewer against a prepared `.crb`
+yourself, build the pack once:
+
+```r
+CerebroNexus::buildViewerPack("path/to/data.crb", overwrite = TRUE)
+```
+
+It takes about a minute for Ren and needs no other input. The builder validates
+what it wrote against the CRB it read, and the viewer ignores a pack whose
+dataset fingerprint or asset checksums no longer match, so rerunning that command
+after re-preparing a CRB is also the repair.
+
 The first run downloads and prepares both the official 10x one-million-neuron
 matrix and the Ren et al. [COVID-19 immune atlas](https://explore.data.humancellatlas.org/projects/5f607e50-ba22-4598-b1e9-f3d9d7a35dcc)
 ([GEO GSE158055](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE158055);
