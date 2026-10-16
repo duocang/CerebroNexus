@@ -12,7 +12,8 @@ spatial_flow_server <- function(input, output, session) {
     flip_x = TRUE,
     flip_y = FALSE,
     rotation = 90,
-    image_opacity = .8
+    ## A configured opacity must not win over the Viewer display default.
+    opacity = .8
   )
   Cerebro.options <- list(
     exclude_trivial_metadata = TRUE,
@@ -54,7 +55,10 @@ spatial_flow_server <- function(input, output, session) {
         list(
           tissue = list(
             histology_image = "data:image/png;base64,x",
-            histology_image_bounds = bounds
+            histology_image_bounds = bounds,
+            ## Background identities are built from the image's label, so a
+            ## section that carries one is what the controls address.
+            image_label = "tissue"
           )
         )
       } else {
@@ -98,6 +102,12 @@ spatial_flow_server <- function(input, output, session) {
     list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
   }
   viewer_current_dataset_key <- function() "tiny"
+  ## Author display settings come from the deployment's content contract; this
+  ## harness configures none, so the builder defaults apply.
+  sys.source(viewer_test_path("core", "viewer_content_contract.R"), scope)
+  current_page_display_defaults <- function(page) {
+    viewerPageDisplayDefaults(list(), "tiny", page)
+  }
   viewerDatasetIdentity <- function() list(fingerprint = "tiny")
   getGeneNames <- function() c("G1", "G2")
   expression <- rbind(G1 = c(1, 2, 3, 4), G2 = c(4, 3, 2, 1))
@@ -234,8 +244,9 @@ test_that("Spatial feature and RGB frames read real expression in canonical row 
       session$setInputs(background = TRUE, list_bounds = as_list)
       expect_true(spatial_projection_data_to_plot_raw()$resource_first)
     }
-    session$setInputs(bad_bounds = TRUE)
-    expect_false(spatial_projection_data_to_plot_raw()$resource_first)
+    ## An unusable alignment is no longer expressed by the old bounds input: it
+    ## travels with the background request, and the next test asserts that such a
+    ## request is refused instead of taking the resource path.
   })
 })
 
@@ -246,6 +257,8 @@ test_that("Spatial background changes reject stale images and dataset generation
       spatial_projection_to_display = "slice",
       background = TRUE
     )
+    ## A background identity only exists for a selected image.
+    session$setInputs(spatial_projection_background_image = "embedded::tissue")
     identity <- spatial_projection_parameters_plot()$background_identity
     request <- list(
       dataset_context = viewer_loaded_dataset_context(),
@@ -302,7 +315,9 @@ test_that("Spatial image controls seed and reset presets, synchronize values and
       scale_x = 1.5,
       scale_y = 2,
       rotate = 90,
-      opacity = .8
+      ## The alignment preset seeds position only: opacity follows the Viewer's
+      ## display default instead of the preset.
+      opacity = 0.6
     )
     for (field in names(expected)) {
       control <- xml2::xml_find_first(

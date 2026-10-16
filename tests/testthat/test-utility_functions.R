@@ -105,27 +105,24 @@ test_that("Data Info uses the catalog before the full dataset", {
       current_dataset_info <- function() {
         list(cells = 12345L, organism = "hg", date = "2026-01-02")
       }
-      ## Data info now sources its overview panel from the deployment root. It is
-      ## loaded the way the server loads it, so that nested source(local = TRUE)
-      ## registers its outputs here.
+      ## Data info now sources its overview panel from the deployment root. Load
+      ## the helpers it uses, then the page itself.
       Cerebro.options <- list(cerebro_root = viewer_app_test_path())
+      sys.source(viewer_test_path("core", "dataset_overview.R"), environment())
+      sys.source(viewer_test_path("load_data", "overview_ui.R"), environment())
       source(
         viewer_test_path("load_data", "sample_info.R"),
         local = TRUE
       )
     },
     {
-      expect_match(
-        output$load_data_number_of_cells$html,
-        "12,345",
-        fixed = TRUE
-      )
-      expect_match(output$load_data_organism$html, ">hg<", fixed = TRUE)
-      expect_match(
-        output$load_data_date_of_export$html,
-        "2026-01-02",
-        fixed = TRUE
-      )
+      ## The overview panel carries the catalog figures as elements now, instead
+      ## of one output per statistic.
+      overview <- output$load_data_overview$html
+      expect_match(overview, "load_data_number_of_cells", fixed = TRUE)
+      expect_match(overview, "12,345", fixed = TRUE)
+      expect_match(overview, "Human", fixed = TRUE)
+      expect_match(overview, "2026-01-02", fixed = TRUE)
     }
   )
 })
