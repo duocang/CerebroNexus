@@ -363,6 +363,11 @@ test_that("dataset switches invalidate old generations and reconnects replay the
       viewer_dataset_generation <- 0
       viewer_dataset_request <- reactiveVal(NULL)
       viewer_clear_cell_view_aux <- function() NULL
+      ## Requests decide whether to load; without a catalog they always do.
+      sys.source(viewer_test_path("core", "dataset_overview.R"), scope)
+      dataset_load_requested <- reactiveVal(FALSE)
+      initial_tab <- NULL
+      initial_page_applied <- reactiveVal(TRUE)
       viewer_dataset_snapshot <- reactive({
         request <- viewer_dataset_request()
         if (is.null(request)) {
@@ -376,7 +381,11 @@ test_that("dataset switches invalidate old generations and reconnects replay the
       viewer_server_load(
         viewer_server_statements("shiny_server.R", server = TRUE),
         scope,
-        names = c("viewer_send_dataset_phase", "viewer_request_dataset"),
+        names = c(
+          "viewer_send_dataset_phase",
+          "viewer_dataset_load_required",
+          "viewer_request_dataset"
+        ),
         events = "viewer_dataset_context_sync"
       )
     },
