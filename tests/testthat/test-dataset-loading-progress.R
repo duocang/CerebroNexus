@@ -10,6 +10,14 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
       reads <- 0L
       dataset_load_requested <- reactiveVal(FALSE)
       context <- list(epoch = "session", dataset_key = "tiny", generation = 1L)
+      ## The load boundary resolves the loader's label through the data set
+      ## selector, so the harness has to provide its store.
+      available_crb_files <- reactiveValues(
+        files = c(tiny = "tiny.crb"),
+        selected = "tiny",
+        names = "tiny",
+        labels = NULL
+      )
       viewer_dataset_request <- reactive({
         list(target = input$path, dataset_context = context)
       })
@@ -79,8 +87,15 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
       expect_identical(tail(scope$sent, 1)[[1]]$message$request, "request-2")
       scope$sent <- list()
       session$setInputs(path = "broken.crb")
-      expect_error(data_set(), "Unreadable dataset")
+      ## A failed load is recoverable: the page reports a generic message and the
+      ## selector can switch data sets, while the original error stays available
+      ## on the snapshot instead of closing the session.
+      expect_error(data_set(), "could not be loaded")
       expect_false(viewer_dataset_snapshot()$ok)
+      expect_match(
+        conditionMessage(viewer_dataset_snapshot()$error),
+        "Unreadable dataset"
+      )
       expect_false(any(vapply(
         scope$sent,
         function(x) isTRUE(x$message$done),
