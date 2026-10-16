@@ -5164,6 +5164,9 @@ canonicalGeneSelection <- function(selected, genes) {
   selected
 }
 
+## Gene expression registers four selectors on the same gene list; a locale
+## sort of a whole transcriptome takes about half a second. Share one.
+.viewer_sorted_gene_choices <- viewerMemoOne()
 serverSideGeneSelector <- function(
   session,
   input_id,
@@ -5202,7 +5205,11 @@ serverSideGeneSelector <- function(
     ) {
       return(invisible(NULL))
     }
-    genes <- sort(choices())
+    choice_values <- choices()
+    genes <- .viewer_sorted_gene_choices(
+      list(choice_values),
+      function() sort(choice_values)
+    )
     req(!is.null(genes), length(genes) > 0)
 
     initial_selection <- isolate(input[[input_id]])

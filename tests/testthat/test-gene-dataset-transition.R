@@ -98,3 +98,30 @@ test_that("summaries wait for visibility without recomputing on scroll alone", {
     expect_identical(scope$reads, 2L)
   })
 })
+
+test_that("a dataset switch notifies gene consumers once", {
+  shiny::testServer(function(input, output, session) {
+    scope <- environment()
+    sys.source(viewer_test_path("utility_functions.R"), environment())
+    list_of_genes <- reactiveVal(c("A", "B"))
+    sys.source(viewer_test_path("gene_expression", "obj_selected_genes.R"), environment())
+    runs <- 0L
+    observe({
+      expression_selected_genes()
+      runs <<- runs + 1L
+    })
+  }, {
+    session$setInputs(expression_analysis_mode = "Gene(s)", expression_genes_input = "A")
+    session$elapse(1000)
+    before <- scope$runs
+    list_of_genes(c("A", "B", "C"))
+    session$flushReact()
+    session$elapse(1000)
+    expect_identical(scope$runs, before)
+    list_of_genes(c("a", "b"))
+    session$flushReact()
+    session$elapse(1000)
+    expect_identical(scope$runs, before + 1L)
+    expect_identical(as.character(expression_selected_genes()$genes_to_display_present), "a")
+  })
+})

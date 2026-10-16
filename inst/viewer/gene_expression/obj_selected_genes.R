@@ -100,7 +100,7 @@ expression_selection_snapshot <- debounceAfterFirst(
   reactive(list(available = list_of_genes(), value = expression_selected_genes_input())),
   200
 )
-expression_selected_genes <- reactive({
+expression_selected_genes_current <- reactive({
   snapshot <- expression_selection_snapshot()
   ## A previous dataset's canonical selection is never a valid intermediate
   ## frame. Only debounce edits within the same gene universe.
@@ -108,4 +108,27 @@ expression_selected_genes <- reactive({
     return(expression_selected_genes_input())
   }
   snapshot$value
+})
+
+## After a dataset switch the value above is taken immediately, and the
+## debounced snapshot later settles on the same selection. Publish changes of
+## value only, so expression reads, payloads and summaries run once.
+expression_selection_unavailable <- structure(
+  list(),
+  class = "cerebro_selection_unavailable"
+)
+expression_selected_genes_state <- reactiveVal(expression_selection_unavailable)
+observe({
+  value <- tryCatch(
+    expression_selected_genes_current(),
+    error = function(error) expression_selection_unavailable
+  )
+  if (!identical(isolate(expression_selected_genes_state()), value)) {
+    expression_selected_genes_state(value)
+  }
+}, priority = 200)
+expression_selected_genes <- reactive({
+  value <- expression_selected_genes_state()
+  req(!inherits(value, "cerebro_selection_unavailable"))
+  value
 })

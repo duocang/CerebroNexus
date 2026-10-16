@@ -382,7 +382,12 @@ test_that("secondary expression summaries wait for the painted primary frame", {
             "obj_projection_expression_levels.R"
           ),
           scope,
-          names = "expression_projection_summary_ready"
+          names = c(
+            "expressionProjectionPaintedCurrent",
+            "expression_projection_summary_ready_state",
+            "expression_projection_summary_ready"
+          ),
+          events = "expressionProjectionPaintedCurrent"
         )
         viewer_server_load(
           viewer_server_statements("gene_expression", cases[[id]]),

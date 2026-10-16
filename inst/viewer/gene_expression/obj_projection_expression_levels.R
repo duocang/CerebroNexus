@@ -211,17 +211,35 @@ expression_projection_render_key <- reactive({
   )
 })
 
-expression_projection_summary_ready <- reactive({
+expressionProjectionPaintedCurrent <- function() {
   painted <- input[["expression_projection_rendered_state"]]
   is.list(painted) &&
     viewerDatasetContextEqual(painted$dataset_context, viewer_loaded_dataset_context()) &&
     identical(painted$render_key, expression_projection_render_key())
+}
+
+## Every paint republishes the rendered state as an event, including repaints
+## of an unchanged key. Summaries, selected-cell outputs and their million-value
+## reads must follow readiness changes only.
+expression_projection_summary_ready_state <- reactiveVal(FALSE)
+observe({
+  ## Not ready while its inputs are unavailable (e.g. before a dataset loads).
+  ready <- isTRUE(tryCatch(
+    expressionProjectionPaintedCurrent(),
+    error = function(error) FALSE
+  ))
+  if (!identical(isolate(expression_projection_summary_ready_state()), ready)) {
+    expression_projection_summary_ready_state(ready)
+  }
+}, priority = 100)
+expression_projection_summary_ready <- reactive({
+  expression_projection_summary_ready_state()
 })
 
 observeEvent(
   input[["expression_projection_rendered_state"]],
   {
-    if (expression_projection_summary_ready()) {
+    if (expressionProjectionPaintedCurrent()) {
       expressionProjectionProgressClose(expression_projection_render_key())
     }
   },
@@ -252,7 +270,7 @@ expression_projection_backend_warmed <- reactiveVal(FALSE)
 observeEvent(
   input[["expression_projection_rendered_state"]],
   {
-    req(expression_projection_summary_ready())
+    req(expressionProjectionPaintedCurrent())
     if (isTRUE(expression_projection_backend_warmed())) {
       return()
     }
