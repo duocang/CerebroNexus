@@ -98,6 +98,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
       )
     },
     {
+      session$setInputs(sidebar = "overview")
       expect_equal(overview_projection_data_to_plot_raw()$cell_count, 2)
       session$setInputs(empty = TRUE)
       empty <- overview_projection_data_to_plot_raw()
