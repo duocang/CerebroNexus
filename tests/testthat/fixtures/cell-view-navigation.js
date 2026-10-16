@@ -42,6 +42,9 @@ function session() {
     hydrateLinkedGeometry: extra => {assert.strictEqual(c.D, c.linkedBundle); c.hydrated.push(extra); return extra;},
     hydrateSparseLinked: x => x, requestWireFallback: () => c.fallbacks++,
     sanitiseColors: () => {}, fillColorPicker: () => {}, renderGroupFilters: () => {}, renderLegend: () => {},
+    // reportVisibility() clears the transient hover and any pinned card when the
+    // visible surface changes; the browser regression covers their real bodies.
+    clearTransientHover: () => {}, unpinTip: () => {}, closeCard: () => {},
     applyCloneSupplement: extra => {c.D.clone = extra.clone; return true;}
   };
   c.window = {CBViewWire: {unpack: buffer => buffer.extra},
