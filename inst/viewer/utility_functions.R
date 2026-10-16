@@ -638,12 +638,30 @@ cachePlot <- function(x, ...) {
 
 ## Return the first complete reactive value immediately; debounce only later
 ## invalidations caused by interactive controls.
-debounceAfterFirst <- function(reactive, millis) {
+##
+## shiny::debounce() evaluates its source eagerly on every invalidation, so a
+## page-owned `reactive` should req() its page itself. Pass the same predicate
+## as `active`: returning to the page then reads the source immediately instead
+## of first replaying the value held from before the page was left.
+debounceAfterFirst <- function(reactive, millis, active = NULL) {
   initialized <- FALSE
   current <- NULL
   revision <- shiny::reactiveVal(0L)
+  was_inactive <- FALSE
+  if (is.function(active)) {
+    shiny::observe({
+      if (!isTRUE(active())) was_inactive <<- TRUE
+    })
+  }
   shiny::reactive({
     revision()
+    if (is.function(active)) {
+      shiny::req(isTRUE(active()))
+      if (initialized && was_inactive) {
+        current <<- reactive()
+      }
+      was_inactive <<- FALSE
+    }
     if (!initialized) {
       current <<- reactive()
       initialized <<- TRUE

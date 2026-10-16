@@ -24,7 +24,10 @@ trajectory_projection_lines <- function(trajectory_edges) {
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
 ## the coordinates sent to the plot match those used for selection and hover.
 ##----------------------------------------------------------------------------##
+## shiny::debounce() evaluates this eagerly; only the visible page may pay for it.
+trajectory_projection_active <- function() identical(input[["sidebar"]], "trajectory")
 trajectory_projection_prepared_raw <- reactive({
+  req(trajectory_projection_active())
   dataset_context <- viewer_loaded_dataset_context()
   req(
     trajectory_selection_ok(),
@@ -124,7 +127,8 @@ trajectory_projection_prepared_raw <- reactive({
 ## apply to their parameter/data reactives.
 trajectory_projection_prepared <- debounceAfterFirst(
   trajectory_projection_prepared_raw,
-  200
+  200,
+  active = trajectory_projection_active
 )
 
 ##----------------------------------------------------------------------------##
@@ -241,6 +245,9 @@ observeEvent(
 )
 
 observe({
+  ## Shared point defaults change from other pages; do not rebuild and send
+  ## this page's frame in the background.
+  req(trajectory_projection_active())
   render_request <- input[["trajectory_projection_render_request"]]
   req(
     is.list(render_request),

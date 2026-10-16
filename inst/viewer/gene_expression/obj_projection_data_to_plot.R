@@ -2,6 +2,9 @@
 ## Object that combines all data required for updating projection plot.
 ##----------------------------------------------------------------------------##
 expression_projection_data_to_plot_raw <- reactive({
+  ## shiny::debounce() below evaluates this eagerly. Off the page it would read
+  ## million-cell expression rows for a view nobody is looking at.
+  req(identical(input[["sidebar"]], "geneExpression"))
   dataset_context <- viewer_loaded_dataset_context()
   coordinates <- expression_projection_coordinates()
   parameters <- expression_projection_parameters_plot()

@@ -109,6 +109,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
         scope,
         names = c(
           "trajectory_projection_lines",
+          "trajectory_projection_active",
           "trajectory_projection_prepared_raw",
           "trajectory_projection_prepared"
         )
@@ -119,7 +120,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
       })
     },
     {
-      session$setInputs(trajectory_point_color = "group")
+      session$setInputs(sidebar = "trajectory", trajectory_point_color = "group")
       expect_equal(tail(scope$seen, 1)[[1]]$point_size, 3)
       trajectory_projection_appearance$point_size <- 4
       session$flushReact()

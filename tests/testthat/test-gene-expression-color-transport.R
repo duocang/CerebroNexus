@@ -281,6 +281,7 @@ test_that("gene primary colours do not materialize metadata", {
     {
       for (genes in list(character(), "A")) {
         session$setInputs(
+          sidebar = "geneExpression",
           genes = genes,
           expression_projection_genes_in_separate_panels = "single"
         )
