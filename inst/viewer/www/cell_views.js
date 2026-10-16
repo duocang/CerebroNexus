@@ -3976,6 +3976,21 @@
       var lines = [];
       var cell = Array.isArray(D && D.cells) && D.cells[i];
       lines.push(cell ? 'Cell: ' + cell : 'Cell identifier available in Details');
+      // The dictionary already present on the client for this view IS the
+      // tooltip's content: pinning adds the Details/Close actions, it must not
+      // decide whether the columns are shown. Nothing is requested here.
+      var space = panel && spaceById[panel.spaceId] || spaceById[singleSpaceIds[0]];
+      var awaiting = !!(view && view.hover && view.hover.pending);
+      var columns = space && space._hoverColumns;
+      if (!awaiting && Array.isArray(columns) && columns.length) {
+        columns.slice(0, HOVER_MAX_GROUPS).forEach(function (column) {
+          var line = column.label + ': ' + singleHoverColumnValue(column, i, space);
+          if (lines.indexOf(line) < 0) lines.push(line);
+        });
+        return '<div class="cv-tip-row">' + esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>' + actions;
+      }
+      // Without a dictionary, summarise what the client already knows: the
+      // active level and the continuous variable in play.
       var category = catOf(mode), field = fieldOf(panel);
       if (category && category.values) {
         var level = category.levels[category.values[i]];
@@ -3985,15 +4000,6 @@
       if (field) {
         var number = fieldValue(field, i);
         if (number != null) lines.push(field.label + ': ' + fmtVal(number));
-      }
-      // Supplemental fields already present on the client may enrich a pinned
-      // summary, but hover never requests the full metadata columns.
-      var space = panel && spaceById[panel.spaceId] || spaceById[singleSpaceIds[0]];
-      if (pinned && space && Array.isArray(space._hoverColumns)) {
-        space._hoverColumns.slice(0, HOVER_MAX_GROUPS).forEach(function (column) {
-          var line = column.label + ': ' + singleHoverColumnValue(column, i, space);
-          if (lines.indexOf(line) < 0) lines.push(line);
-        });
       }
       return '<div class="cv-tip-row">' + esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>' + actions;
     }
@@ -4538,6 +4544,10 @@
       setHoverCell(null);
       return;
     }
+    // These views paint with indices before stable IDs are needed. A real point
+    // hover must request them, and requestAux() deduplicates while one is in
+    // flight, so sweeping the pointer across the cloud asks once.
+    requestSingleAux();
     if (hoverPanel !== p) { hoverPanel = p; drawHoverAll(); }
     setHoverCell(i);
     if (!own) return;
