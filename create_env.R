@@ -52,6 +52,9 @@ rix(
     "testthat",
     "pkgdown",
     "shinytest2",
+    "chromote",
+    "xml2",
+    "monocle",
     "callr",
     "png",
     "withr",
@@ -102,6 +105,7 @@ rix(
   ),
   system_pkgs = c(
     "chromium", # headless browser for shinytest2
+    "nodejs", # complete-script JavaScript tests
     "pandoc", # required for building vignettes
     "poppler-utils" # pdffonts for publication-figure font audits
   ),

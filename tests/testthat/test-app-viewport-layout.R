@@ -1,18 +1,7 @@
-library(shinytest2)
-
-inst_candidates <- c(
-  normalizePath("inst", mustWork = FALSE),
-  normalizePath("../../inst", mustWork = FALSE),
-  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE)
-)
-inst_dir <- inst_candidates[file.exists(file.path(inst_candidates, "app.R"))][1]
-if (is.na(inst_dir)) {
-  inst_dir <- system.file(package = "CerebroNexus")
-}
-
-test_that("IR fill layout survives tab activation and responsive resize", {
+test_that("shared selection actions and layouts survive navigation and resize", {
+  inst_dir <- viewer_app_test_path()
   local_app_support(inst_dir)
-  app <- AppDriver$new(
+  app <- shinytest2::AppDriver$new(
     inst_dir,
     name = "ir_fill_viewport",
     height = 950,
@@ -21,6 +10,34 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 20000)
+
+  # Observe the actual JSON blob after the server has validated the export.
+  # Keep the real adapter, Shiny request, download handler and click behavior.
+  download_view_config <- function(share_selector) {
+    app$run_js(paste0(
+      "(() => {const original=URL.createObjectURL;window.__testViewJSON=null;",
+      "window.__restoreViewDownload=()=>{URL.createObjectURL=original;",
+      "delete window.__restoreViewDownload;delete window.__testViewJSON;};",
+      "URL.createObjectURL=function(blob){",
+      "if(blob.type.startsWith('application/json'))",
+      "blob.text().then(text=>{window.__testViewJSON=text;});",
+      "return original.call(URL,blob);};})()"
+    ))
+    on.exit(app$run_js("window.__restoreViewDownload()"), add = TRUE)
+    app$click(selector = share_selector)
+    app$wait_for_js(
+      "document.getElementById('cv-config-dialog').open && !document.getElementById('cv-config-download').disabled",
+      timeout = 10000
+    )
+    app$click(selector = "#cv-config-download")
+    app$wait_for_js("window.__testViewJSON !== null", timeout = 15000)
+    config <- jsonlite::fromJSON(
+      app$get_js("window.__testViewJSON"),
+      simplifyVector = FALSE
+    )
+    app$click(selector = "#cv-config-close")
+    config
+  }
 
   app$wait_for_js(
     'document.querySelector(\'a[href="#shiny-tab-coordinated_views"]\') !== null',
@@ -61,6 +78,12 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   expect_true(app$get_js(
     "document.getElementById('cv-config-open').offsetParent !== null"
   ))
+  app$wait_for_js("!document.getElementById('cv-config-open').disabled")
+  empty_linked <- download_view_config("#cv-config-open")
+  expect_identical(empty_linked$schema, "cerebronexus-linked-view")
+  expect_length(empty_linked$selection$cells, 0L)
+  expect_gt(empty_linked$dataset$cell_count, 0)
+  expect_true(nzchar(empty_linked$dataset$cell_fingerprint))
   linked_right_edges <- app$get_js(paste0(
     "(() => {",
     "const top=document.querySelector('#shiny-tab-coordinated_views .cv-topbar')",
@@ -158,6 +181,8 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   ))
   expect_true(linked_actions$shareBefore)
   expect_true(linked_actions$settingsRightmost)
+  selected_linked <- download_view_config("#cv-config-open")
+  expect_gt(length(selected_linked$selection$cells), 0L)
 
   expect_length(
     unlist(app$get_js(
@@ -202,6 +227,10 @@ test_that("IR fill layout survives tab activation and responsive resize", {
     "document.getElementById('cv-selbar').classList.contains('cv-collapse')",
     timeout = 10000
   )
+  cleared_linked <- download_view_config("#cv-config-open")
+  expect_length(cleared_linked$selection$cells, 0L)
+  expect_null(cleared_linked$selection$geometry)
+  expect_identical(cleared_linked$dataset, selected_linked$dataset)
   ## Touch users cannot reveal a hover-only toolbar. Coarse-pointer media must
   ## keep the controls visible and provide practical tap targets.
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(
@@ -815,6 +844,72 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   expect_lt(card_after$top, card_before$top - 50)
   expect_true(card_after$inside)
 
+  # Cancellation must stop movement as well as release the pointer. Checking
+  # the card's position catches a stale drag handler after blur/cancel/capture loss.
+  for (ending in c("pointercancel", "blur", "lostpointercapture")) {
+    start <- app$get_js(paste0(
+      "(() => {const h=document.querySelector('#shiny-tab-overview ",
+      ".cerebro-selection-composition-head');const r=h.getBoundingClientRect();",
+      "h.addEventListener('pointerdown',e=>{window.__dragPointer=e.pointerId;},{once:true});",
+      "return {x:r.left+r.width/2,y:r.top+r.height/2};})()"
+    ))
+    mouse <- app$get_chromote_session()$Input$dispatchMouseEvent
+    mouse(
+      type = "mousePressed",
+      x = start$x,
+      y = start$y,
+      button = "left",
+      buttons = 1,
+      clickCount = 1
+    )
+    app$wait_for_js(
+      "document.querySelector('.cerebro-selection-composition-slot.is-dragging') !== null"
+    )
+    # Deliver a move so the browser activates pending pointer capture before
+    # testing its loss (releasing pending capture alone emits no loss event).
+    mouse(
+      type = "mouseMoved",
+      x = start$x + 1,
+      y = start$y + 1,
+      button = "left",
+      buttons = 1
+    )
+    position <- function() {
+      app$get_js(
+        "(() => {const r=document.querySelector('#shiny-tab-overview .cerebro-selection-composition-slot').getBoundingClientRect();return {x:r.x,y:r.y};})()"
+      )
+    }
+    before_cancel <- position()
+    app$run_js(switch(
+      ending,
+      pointercancel = "document.dispatchEvent(new PointerEvent('pointercancel',{pointerId:window.__dragPointer,bubbles:true}))",
+      blur = "window.dispatchEvent(new Event('blur'))",
+      lostpointercapture = "document.querySelector('#shiny-tab-overview .cerebro-selection-composition-head').releasePointerCapture(window.__dragPointer)"
+    ))
+    mouse(
+      type = "mouseMoved",
+      x = start$x - 50,
+      y = start$y + 30,
+      button = "left",
+      buttons = 1
+    )
+    app$wait_for_js(
+      "!document.querySelector('.cerebro-selection-composition-slot.is-dragging')"
+    )
+    expect_equal(position(), before_cancel, tolerance = 1, info = ending)
+    expect_false(app$get_js(
+      "document.querySelector('#shiny-tab-overview .cerebro-selection-composition-head').hasPointerCapture(window.__dragPointer)"
+    ))
+    mouse(
+      type = "mouseReleased",
+      x = start$x - 50,
+      y = start$y + 30,
+      button = "left",
+      buttons = 0,
+      clickCount = 1
+    )
+  }
+
   app$get_chromote_session()$set_viewport_size(width = 390, height = 844)
   app$wait_for_js(
     "window.innerWidth === 390 && window.innerHeight === 844",
@@ -828,4 +923,21 @@ test_that("IR fill layout survives tab activation and responsive resize", {
   ))
   expect_identical(mobile_card$position, "static")
   expect_identical(mobile_card$handle, "none")
+
+  app$get_chromote_session()$set_viewport_size(width = 1200, height = 800)
+  projection_share <- '#shiny-tab-overview .cerebro-toolbar-share'
+  selected_projection <- download_view_config(projection_share)
+  expect_identical(selected_projection$schema, "cerebronexus-specialist-view")
+  expect_identical(selected_projection$page$id, "overview_projection")
+  expect_gt(length(selected_projection$selection$cells), 0L)
+  app$click(selector = "#overview_projection_clear_selection")
+  app$wait_for_js(paste0(
+    "document.getElementById('overview_projection_selection_guide')",
+    ".getClientRects().length > 0 && ",
+    "!document.querySelector('#shiny-tab-overview .cerebro-selection-composition-drag')"
+  ))
+  cleared_projection <- download_view_config(projection_share)
+  expect_length(cleared_projection$selection$cells, 0L)
+  expect_null(cleared_projection$selection$geometry)
+  expect_identical(cleared_projection$dataset, selected_projection$dataset)
 })

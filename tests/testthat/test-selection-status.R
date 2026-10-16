@@ -1,69 +1,45 @@
-selection_status_function <- function() {
-  source_file <- viewer_test_path("shiny_UI.R")
-  expressions <- parse(source_file)
-  index <- which(vapply(
-    expressions,
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("cerebroSelectionStatus"))
-    },
-    logical(1)
-  ))
-  environment <- list2env(
-    list(
-      tags = shiny::tags,
-      div = shiny::div,
-      icon = shiny::icon,
-      actionButton = shiny::actionButton,
-      htmlOutput = shiny::htmlOutput,
-      tagList = shiny::tagList
-    ),
-    parent = globalenv()
-  )
-  icon_index <- which(vapply(
-    expressions,
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("cerebroIcon"))
-    },
-    logical(1)
-  ))
-  share_index <- which(vapply(
-    expressions,
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("cerebroShareButton"))
-    },
-    logical(1)
-  ))
-  eval(expressions[[icon_index]], envir = environment)
-  eval(expressions[[share_index]], envir = environment)
-  eval(expressions[[index]], envir = environment)
-  environment$cerebroSelectionStatus
-}
+test_that("selection status renders scoped actions without duplicate sharing", {
+  status <- viewer_ui_test_env()$cerebroSelectionStatus
+  for (portable in c(TRUE, FALSE)) {
+    ui <- htmltools::tagQuery(shiny::div(
+      status("projection", "count", portable = portable)
+    ))
+    share <- ui$find("button.cerebro-toolbar-share")$selectedTags()
+    expect_length(share, as.integer(portable))
+    if (portable) {
+      expect_identical(share[[1L]]$attribs[["data-view-id"]], "projection")
+      expect_identical(share[[1L]]$attribs[["aria-disabled"]], "true")
+    }
+    expect_equal(ui$find("#count")$length(), 1L)
+    for (action in c("focus", "clear")) {
+      button <- ui$find(paste0(
+        "#projection_",
+        action,
+        "_selection"
+      ))$selectedTags()
+      expect_length(button, 1L)
+      expect_identical(
+        button[[1L]]$attribs[["data-cell-view-id"]],
+        "projection"
+      )
+      expect_identical(button[[1L]]$attribs[["data-cell-view-action"]], action)
+    }
+    # Decorative icons must not replace the buttons' visible accessible labels.
+    for (icon in ui$find("button i")$selectedTags()) {
+      expect_identical(icon$attribs[["aria-hidden"]], "true")
+      expect_null(icon$attribs[["aria-label"]])
+    }
+  }
+})
 
-test_that("selection status keeps one compact action per scope", {
-  status <- selection_status_function()
-
-  with_portable <- as.character(status("projection", "count"))
-  without_portable <- as.character(
-    status("trekker_projection", "count", portable = FALSE)
-  )
-
-  expect_match(with_portable, "cerebro-toolbar-share", fixed = TRUE)
-  expect_false(grepl("display:none", with_portable, fixed = TRUE))
-  expect_match(with_portable, ">Share<", fixed = TRUE)
-  expect_match(with_portable, ">Focus<", fixed = TRUE)
-  expect_match(with_portable, ">Clear<", fixed = TRUE)
-  expect_false(grepl("share-alt icon", with_portable, fixed = TRUE))
-  expect_false(grepl("Zoom to selection", with_portable, fixed = TRUE))
-  expect_match(with_portable, 'data-cell-view-action="focus"', fixed = TRUE)
-  expect_length(
-    gregexpr(">Share<", with_portable, fixed = TRUE)[[1L]],
-    1L
-  )
-  expect_false(grepl("cerebro-config-open", without_portable, fixed = TRUE))
+test_that("server-owned selection clearing renders a Shiny action button", {
+  status <- viewer_ui_test_env()$cerebroSelectionStatus
+  ui <- htmltools::tagQuery(shiny::div(
+    status("projection", "count", client_actions = FALSE)
+  ))
+  expect_equal(ui$find("#projection_focus_selection")$length(), 0L)
+  clear <- ui$find("#projection_clear_selection")
+  expect_equal(clear$length(), 1L)
+  expect_true(clear$hasClass("action-button"))
+  expect_null(clear$selectedTags()[[1L]]$attribs[["data-cell-view-action"]])
 })

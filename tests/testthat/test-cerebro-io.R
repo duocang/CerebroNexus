@@ -345,14 +345,6 @@ test_that("Data Info reads the v2 cell count without forcing metadata", {
 
   expect_identical(runtime$.runtimeCerebroCellCount(object), 4L)
   expect_true(rlang::env_binding_are_lazy(object, "meta_data"))
-
-  sample_info <- paste(
-    readLines(viewer_test_path("load_data", "sample_info.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(sample_info, "current_dataset_info\\(\\)")
-  expect_false(grepl("getNumberOfCells\\(\\)", sample_info))
-  expect_false(grepl("nrow\\(data_set\\(\\)\\$meta_data\\)", sample_info))
 })
 
 test_that("thin schema v2 hydrates row-major BPCells sidecars", {

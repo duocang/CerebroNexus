@@ -37,3 +37,8 @@ inst/private-data/linked-view-shares.sqlite
 # Local test dependencies and generated browser diagnostics.
 /tests/node_modules/
 /tests/testthat/_artifacts/
+
+# Historical one-off Viewer investigations are archived outside the checkout.
+/tests/bench/viewer-followup/
+/tests/bench/viewer-final-protocol/
+node_modules/

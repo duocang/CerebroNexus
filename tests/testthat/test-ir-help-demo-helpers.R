@@ -110,32 +110,44 @@ test_that("local seeding restores an initially absent RNG state", {
 })
 
 test_that("backed help examples keep an explicit load boundary", {
-  help_file <- file.path(
-    local_inst,
-    "viewer/immune_repertoire/help.R"
-  )
-  source <- paste(readLines(help_file, warn = FALSE), collapse = "\n")
-  renderer <- regmatches(
-    source,
-    regexpr(
-      "output\\$ir_demo_plot <- renderPlot\\(\\{[\\s\\S]*?\\n\\}\\)",
-      source,
-      perl = TRUE
-    )
-  )
-
-  expect_length(renderer, 1L)
-  expect_match(
-    renderer,
-    paste0(
-      'identical\\(demo_kind, "backed"\\)[\\s\\S]{0,160}',
-      "req_scRepertoire\\(\\)"
-    ),
-    perl = TRUE
-  )
-  expect_match(
-    renderer,
-    '"Paired Scatter"\\s*=\\s*scRepertoire::clonalScatter',
-    perl = TRUE
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      output <- new.env()
+      renderPlot <- function(expr, ...) {
+        reactive(substitute(expr), env = parent.frame(), quoted = TRUE)
+      }
+      sys.source(
+        viewer_test_path("immune_repertoire", "help_demo_helpers.R"),
+        scope
+      )
+      req_plot_space <- function(...) NULL
+      req_scRepertoire <- function() {
+        stop("backed renderer reached load boundary")
+      }
+      local_reads <- 0L
+      .get_bcr_demo_data <- function() {
+        local_reads <<- local_reads + 1L
+        list()
+      }
+      bcr_isotype_plot <- function(...) "local plot"
+      viewer_server_load(
+        viewer_server_statements("immune_repertoire", "help.R"),
+        scope,
+        names = "output$ir_demo_plot"
+      )
+    },
+    {
+      expect_null(scope$output$ir_demo_plot())
+      session$setInputs(ir_tabs = "Isotype")
+      expect_no_error(scope$output$ir_demo_plot())
+      expect_equal(scope$local_reads, 1)
+      session$setInputs(ir_tabs = "Paired Scatter")
+      expect_error(
+        scope$output$ir_demo_plot(),
+        "backed renderer reached load boundary"
+      )
+      expect_equal(scope$local_reads, 1)
+    }
   )
 })

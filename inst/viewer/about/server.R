@@ -24,21 +24,28 @@ output[["about"]] <- renderText({
     version,
     '<br>
     <br>
-    <b>Authors</b><br>
-    Roman Hillje<br>
+    <b>Current developers and maintainers</b><br>
     Michael Heming<br>
     Xuesong Wang<br>
+    <br>
+    CerebroNexus (CellReportBrowser Nexus) is a Shiny platform for exploring and sharing single-cell and spatial transcriptomics data, with gene-expression, immune-repertoire, trajectory, and HLA-TCR analyses.<br>
+    <br>
+    CerebroNexus originated as a fork of
+    <a href="https://github.com/romanhaa/cerebroApp" target="_blank" rel="noopener noreferrer">cerebroApp</a>,
+    originally developed by Roman Hillje.<br>
     <br>
     <b>Links</b><br>
     <ul>
       <li><a href=https://github.com/mihem/CerebroNexus title="CerebroNexus on GitHub" target="_blank"><b>CerebroNexus on GitHub</b></a></li>
-      <li><a href=https://github.com/romanhaa/Cerebro title="Discontinued Cerebro repository on GitHub (Roman Hillje)" target="_blank"><b>Discontinued Cerebro repository on GitHub (Roman Hillje)</b></a></li>
     </ul>
     <br>
     <b>Citation</b><br>
-    If you used CerebroNexus for your research, please cite the original Cerebro publication:
-    <br>
-    Roman Hillje, Pier Giuseppe Pelicci, Lucilla Luzi, Cerebro: Interactive visualization of scRNA-seq data, Bioinformatics, btz877, <a href=https://doi.org/10.1093/bioinformatics/btz877 title="DOI" target="_blank">https://doi.org/10.1093/bioinformatics/btz877</a><br>
+    If you used CerebroNexus for your research, please cite:<br>
+    Michael Heming, Xuesong Wang.
+    <i>CerebroNexus</i> [software]. Version ',
+    htmltools::htmlEscape(version),
+    '.
+    <a href="https://github.com/mihem/CerebroNexus" target="_blank" rel="noopener noreferrer">https://github.com/mihem/CerebroNexus</a>.
     <br>
     <b>License</b><br>
     CerebroNexus is distributed under the terms of the <a href=https://github.com/mihem/CerebroNexus/blob/master/LICENSE.md title="MIT license" target="_blank">MIT license.</a><br>

@@ -328,18 +328,11 @@ tab_coordinated_views <- tabItem(
           "cv-more-btn",
           "cv-more"
         ),
-        tags$button(
-          type = "button",
+        cerebroShareButton(
+          "linked_views",
           id = "cv-config-open",
           class = "cv-config-open cv-share-open cerebro-toolbar-share",
-          `data-view-id` = "linked_views",
-          disabled = "disabled",
-          `aria-disabled` = "true",
-          `aria-haspopup` = "dialog",
-          `aria-controls` = "cv-config-dialog",
-          title = "The linked workspace is waiting for its plots",
-          icon("share-alt"),
-          tags$span("Share")
+          title = "The linked workspace is waiting for its plots"
         )
       ),
       ## Right-aligned global filter/subsample readout. Cohort actions belong to

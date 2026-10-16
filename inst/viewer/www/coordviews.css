@@ -14,7 +14,6 @@
 }
 /* ---- top control bar (the layout fix) ----------------------------------- */
 .coordviews-page .cv-topbar {
-  gap: 8px 10px;
   position: relative;
 }
 .coordviews-page .cv-ctl { display: flex; flex-direction: column; gap: 0; }
@@ -93,18 +92,8 @@
   white-space: nowrap;
 }
 .coordviews-page .cv-config-open {
-  height: var(--c-toolbar-control-height); display: inline-flex; align-items: center; gap: 7px;
-  padding: 0 13px; border: 1px solid var(--c-amber);
-  border-radius: 6px; background: var(--c-amber);
-  color: var(--c-text); font: 750 12px/1 inherit;
-  white-space: nowrap; cursor: pointer;
-}
-.coordviews-page .cv-config-open:hover:not(:disabled) {
-  background: var(--c-amber-700); border-color: var(--c-amber-700);
-  color: var(--c-white);
-}
-.coordviews-page .cv-config-open:disabled {
-  opacity: .48; cursor: not-allowed;
+  height: var(--c-toolbar-control-height); gap: 7px;
+  padding: 0 13px; border-radius: 6px; font: 750 12px/1 inherit;
 }
 /* The status row keeps one compact global Clear action. Per-panel zoom remains
    in each pane's own toolbar, while Share stays in the main control row. */
@@ -114,8 +103,7 @@
   transition: opacity .16s ease, transform .16s ease;
 }
 .coordviews-page .cv-selactions .btn {
-  min-width: 0; height: 32px; padding: 0 10px;
-  font-size: 13px; gap: 6px;
+  gap: 6px;
 }
 /* collapsed (hidden) state — a quiet fade + tiny lift */
 .coordviews-page .cv-selactions.cv-collapse {

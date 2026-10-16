@@ -1,25 +1,47 @@
-read_bundled_source <- function(...) {
-  path <- system.file(..., package = "CerebroNexus")
-  if (!nzchar(path)) {
-    path <- testthat::test_path("..", "..", "inst", ...)
-  }
-  paste(readLines(path, warn = FALSE), collapse = "\n")
-}
-
 test_that("launchers do not replace the process-wide Shiny error handler", {
-  launcher <- paste(deparse(body(launchCerebro)), collapse = "\n")
-  bundled_app <- read_bundled_source("app.R")
-
-  expect_false(grepl("options(shiny.error", launcher, fixed = TRUE))
-  expect_false(grepl("options(shiny.error", bundled_app, fixed = TRUE))
-  expect_false(grepl("cerebro-errors.log", launcher, fixed = TRUE))
-  expect_false(grepl("cerebro-errors.log", bundled_app, fixed = TRUE))
+  handler <- function() "user handler"
+  withr::local_options(list(
+    shiny.error = handler,
+    shiny.maxRequestSize = getOption("shiny.maxRequestSize")
+  ))
+  rlang::local_bindings(Cerebro.options = NULL, .env = .GlobalEnv)
+  withr::local_envvar(c(CEREBRO_1M_DEMO_CRB = NA, CEREBRO_REN_DEMO_CRB = NA))
+  for (launcher in c("package", "demo")) {
+    scope <- new.env(parent = environment(launchCerebro))
+    scope$ui <- shiny::div("test")
+    scope$server <- function(input, output, session) NULL
+    scope$source <- function(file, local, ...) {
+      if (basename(file) == "million_cell_demo.R") {
+        sys.source(viewer_test_path("million_cell_demo.R"), scope)
+      }
+      invisible(NULL)
+    }
+    if (launcher == "package") {
+      launch <- launchCerebro
+      environment(launch) <- scope
+      app <- launch()
+    } else {
+      app <- source(
+        file.path(viewer_app_test_path(), "app.R"),
+        local = scope
+      )$value
+    }
+    expect_s3_class(app, "shiny.appobj")
+    expect_identical(getOption("shiny.error"), handler)
+  }
 })
 
 test_that("server startup and dataset loading fail with the original error", {
-  server <- read_bundled_source("viewer", "shiny_server.R")
-
-  expect_false(grepl("try_source <-", server, fixed = TRUE))
-  expect_false(grepl("tab module failed to load", server, fixed = TRUE))
-  expect_false(grepl("failed to load dataset", server, fixed = TRUE))
+  original <- structure(
+    list(message = "module failure", call = NULL, detail = "keep me"),
+    class = c("fixture_failure", "error", "condition")
+  )
+  scope <- new.env(parent = globalenv())
+  scope$Cerebro.options <- list(cerebro_root = viewer_app_test_path())
+  scope$viewerSource <- function(...) stop(original)
+  eval(viewer_r_assignment(viewer_test_path("shiny_server.R"), "server"), scope)
+  observed <- tryCatch(scope$server(list(), list(), list()), error = identity)
+  expect_identical(observed, original)
+  # Dataset-read failures and absence of a success acknowledgement are exercised
+  # by test-dataset-loading-progress.R through the real server reactive.
 })

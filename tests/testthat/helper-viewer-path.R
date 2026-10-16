@@ -63,3 +63,8 @@ viewer_set_selectize <- function(app, input_id, value) {
     input_json
   ))
 }
+
+# Read published fixture content without duplicating file-reading boilerplate.
+viewer_test_text <- function(path) {
+  paste(readLines(path, warn = FALSE), collapse = "\n")
+}

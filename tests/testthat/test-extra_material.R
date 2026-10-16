@@ -38,10 +38,10 @@ test_that("extra_material module files parse without errors", {
 })
 
 test_that("extra_material UI defines correct tabName", {
-  ui_file <- file.path(shiny_root, "extra_material", "UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-  expect_match(content, 'tabName\\s*=\\s*"extra_material"', perl = TRUE)
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("extra_material", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_extra_material)
+  expect_equal(page$filter("#shiny-tab-extra_material")$length(), 1L)
 })
 
 test_that("example.crb extra material returns valid content", {

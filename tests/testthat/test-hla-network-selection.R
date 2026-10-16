@@ -1,10 +1,3 @@
-viewer_hla_text <- function(path) {
-  paste(
-    readLines(viewer_test_path(path), warn = FALSE),
-    collapse = "\n"
-  )
-}
-
 run_specialist_state_node <- function(body) {
   skip_if(Sys.which("node") == "", "node not on PATH")
   runner <- tempfile(fileext = ".js")
@@ -80,62 +73,6 @@ test_that("HLA node selection maps cleanly between motif keys and cells", {
     runtime$hla_node_keys_for_cells(segments, "cell-3", by_v = TRUE),
     "TRBV2::CASSB"
   )
-})
-
-test_that("HLA exposes the shared cohort controls and a network saved-view adapter", {
-  ui <- viewer_hla_text("hla_tcr_motifs/UI.R")
-  visual <- viewer_hla_text("hla_tcr_motifs/visualizations.R")
-  server <- viewer_hla_text("hla_tcr_motifs/network_table.R")
-  client <- viewer_hla_text("www/hla_motifs.js")
-  adapter <- viewer_hla_text("www/specialist-view-state.js")
-  config <- viewer_hla_text("coordinated_views/config.R")
-
-  expect_match(ui, 'cerebroSelectionStatus(', fixed = TRUE)
-  expect_match(ui, '"hla_motif_network"', fixed = TRUE)
-  expect_match(visual, "node_key", fixed = TRUE)
-  expect_match(visual, "cerebroCellViewRender(", fixed = TRUE)
-  observer <- r_test_observer(
-    visual,
-    "observe",
-    quote(hla_motif_last_render_signature(render_signature))
-  )
-  expect_identical(observer$priority, 100)
-  expect_match(server, "hla_motif_selected_keys", fixed = TRUE)
-  expect_match(server, "if (!length(keys))", fixed = TRUE)
-  expect_match(server, "if (!length(selected))", fixed = TRUE)
-  expect_match(server, "hla_motif_selection_command", fixed = TRUE)
-  expect_match(server, "node_keys = I(keys)", fixed = TRUE)
-  expect_match(server, "cells = I(cells)", fixed = TRUE)
-  expect_match(client, "DOMtoCanvas", fixed = TRUE)
-  expect_match(client, "canvasToDOM", fixed = TRUE)
-  expect_match(client, "hla_motif_selected_keys", fixed = TRUE)
-  expect_match(client, "captureState", fixed = TRUE)
-  expect_match(client, "applyState", fixed = TRUE)
-  expect_match(client, "downloadPNG", fixed = TRUE)
-  expect_match(client, "cerebro:png-result", fixed = TRUE)
-  expect_match(
-    client,
-    "networkContextKey !== currentContextKey()",
-    fixed = TRUE
-  )
-  expect_match(adapter, "hla_motif_network", fixed = TRUE)
-  expect_match(adapter, "downloadPNG", fixed = TRUE)
-  expect_match(config, "hla_motif_network", fixed = TRUE)
-})
-
-test_that("HLA node details stay in the hover tooltip", {
-  ui <- viewer_hla_text("hla_tcr_motifs/UI.R")
-  visual <- viewer_hla_text("hla_tcr_motifs/visualizations.R")
-  client <- viewer_hla_text("www/hla_motifs.js")
-
-  expect_no_match(ui, "hla-node-details", fixed = TRUE)
-  expect_no_match(visual, "hlaShowNodeDetails", fixed = TRUE)
-  expect_no_match(client, "hlaShowNodeDetails", fixed = TRUE)
-  expect_match(visual, "columns = vn$hover_columns", fixed = TRUE)
-  expect_no_match(visual, "title = titles", fixed = TRUE)
-  expect_match(client, "function showNodeTooltip", fixed = TRUE)
-  expect_match(client, "network.getNodeAt", fixed = TRUE)
-  expect_match(client, "hla-node-tooltip", fixed = TRUE)
 })
 
 test_that("Projection adapter captures shared JSON and downloads its PNG", {

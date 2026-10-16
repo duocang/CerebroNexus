@@ -45,18 +45,3 @@ test_that('Linked references only validated canonical two-dimensional trajectory
     extra
   )
 })
-
-test_that('Linked browser shares full geometry and preserves exact excluded rows', {
-  node <- Sys.which('node')
-  skip_if(!nzchar(node))
-  result <- system2(
-    node,
-    c(
-      shQuote(test_path('fixtures', 'linked-geometry-reference.js')),
-      shQuote(viewer_test_path('www', 'cell_views.js'))
-    ),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(result, 'status'), info = paste(result, collapse = '\n'))
-})

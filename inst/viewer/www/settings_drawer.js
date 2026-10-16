@@ -228,6 +228,8 @@
       if (
         activeDrawer &&
         activeDrawer._cerebroHomeParent &&
+        event.target.classList &&
+        event.target.classList.contains('shiny-bound-output') &&
         event.target.contains(activeDrawer._cerebroHomeParent)
       ) {
         if (

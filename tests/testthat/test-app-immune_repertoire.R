@@ -5,59 +5,13 @@
 
 library(shinytest2)
 
-inst_candidates <- c(
-  normalizePath("inst", mustWork = FALSE),
-  normalizePath("../../inst", mustWork = FALSE),
-  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE)
-)
-inst_dir <- inst_candidates[file.exists(file.path(inst_candidates, "app.R"))][1]
-if (is.na(inst_dir)) {
-  inst_dir <- system.file(package = "CerebroNexus")
-}
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
+inst_dir <- viewer_app_test_path()
 
 ir_sidebar_selector <- 'a[href="#shiny-tab-immune_repertoire"]'
 ir_canvas_selector <- paste0(
   "#ir_clonalUMAP_projection_cell_view_host ",
   ".cv-canvas-wrap > canvas:not(.cv-mini)"
 )
-
-test_that("Clonal projection defers full repertoire controls", {
-  settings <- paste(
-    readLines(file.path(inst_dir, "viewer", "immune_repertoire", "settings.R")),
-    collapse = "\n"
-  )
-  visualizations <- paste(
-    readLines(file.path(
-      inst_dir,
-      "viewer",
-      "immune_repertoire",
-      "visualizations.R"
-    )),
-    collapse = "\n"
-  )
-
-  expect_match(
-    settings,
-    'tab <- ir_param("ir_tabs", "Clonal UMAP")',
-    fixed = TRUE
-  )
-  expect_match(settings, "ir_repertoire_available()", fixed = TRUE)
-  expect_match(settings, "if (identical(tab, \"Clone Sharing\"))", fixed = TRUE)
-  expect_no_match(
-    settings,
-    "groups <- tryCatch(getGroups(), error = function(e) character(0))\n  genes <- ir_gene_families()",
-    fixed = TRUE
-  )
-  expect_match(visualizations, "ir_repertoire_available()", fixed = TRUE)
-  expect_no_match(
-    visualizations,
-    'output[["ir_selection_status_UI"]] <- renderUI({\n  if (!has_scRepertoire() || is.null(ir_data()))',
-    fixed = TRUE
-  )
-})
 
 wait_for_ir_sidebar <- function(app, timeout = 60000) {
   app$wait_for_js(
@@ -663,6 +617,9 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
   expect_false(isTRUE(exists_el(
     ir_canvas_selector
   )))
+  expect_false(app$get_js(
+    "document.querySelector('#shiny-tab-immune_repertoire .cerebro-toolbar-share').getClientRects().length > 0"
+  ))
   expect_true(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
   static_size <- app$get_js(
     paste0(
@@ -686,6 +643,9 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
 
   expect_true(isTRUE(exists_el(ir_canvas_selector)))
   expect_false(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
+  app$wait_for_js(
+    "document.querySelector('#shiny-tab-immune_repertoire .cerebro-toolbar-share').getClientRects().length > 0"
+  )
   logs <- app$get_logs()
   bad_logs <- grepl(
     "figure margins too large|Invalid IHDR|could not write",
