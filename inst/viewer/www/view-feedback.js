@@ -297,9 +297,16 @@
       })
       .on('shiny:error.cerebroViewFeedback', function (event) {
         if (!event.error || !event.error.message) return;
-        var pane = event.target.closest('.tab-pane');
+        // Shiny reports an output that has no bound element on `document`
+        // (ShinyApp.receiveError). That target has no closest() and no page to
+        // attribute the failure to. Throwing here would abort the rest of the
+        // message frame, dropping the input updates and notifications Shiny
+        // batched with it.
+        var target = event.target;
+        if (!target || typeof target.closest !== 'function') return;
+        var pane = target.closest('.tab-pane');
         var id = Object.keys(specs).find(function (id) { return pane && pane.id === 'shiny-tab-' + specs[id][0]; });
-        if (id && /projection|motif_note/.test(event.target.id)) terminal(id, 'Unable to update this view. ' + event.error.message);
+        if (id && /projection|motif_note/.test(target.id)) terminal(id, 'Unable to update this view. ' + event.error.message);
       });
     window.addEventListener('cerebro:cell-view-ready', function (event) {
       var d = event.detail;

@@ -490,7 +490,7 @@
     var shinyBusy = false;
     var localPages = new Set(['loadData', 'groups', 'markerGenes', 'mostExpressedGenes',
       'enrichedPathways', 'extra_material']);
-    var delivered = new WeakSet();
+    var delivered = new Set();
     var drawnTables = new WeakSet();
     var drawnPlots = new WeakSet();
     var controlValues = new Map();
@@ -538,8 +538,28 @@
       }
       return pane && localPages.has(paneName(pane));
     }
+    // Shiny re-applies an output's last value when a renderUI re-render
+    // replaces its element (bindOutput() feeds the cached value straight to the
+    // binding), so the replacement is filled without another `shiny:value`
+    // event. Delivery therefore belongs to the output, not to whichever DOM
+    // node happened to receive the value first. A value cached before the
+    // current dataset was selected is still rejected: the reset clears it.
+    function outputKey(element) {
+      return element && typeof element.id === "string" && element.id
+        ? element.id
+        : null;
+    }
+    function markDelivered(element) {
+      var key = outputKey(element);
+      if (key) delivered.add(key);
+    }
+    function clearDelivered(element) {
+      var key = outputKey(element);
+      if (key) delivered.delete(key);
+    }
     function outputSettled(element) {
-      if (!element || !delivered.has(element) ||
+      var key = outputKey(element);
+      if (!key || !delivered.has(key) ||
           element.classList.contains('recalculating') ||
           element.getAttribute('aria-busy') === 'true') return false;
       if (element.classList.contains('shiny-output-error')) return true;
@@ -682,7 +702,7 @@
       }, 180);
     }
     function resetPages() {
-      delivered = new WeakSet();
+      delivered = new Set();
       drawnTables = new WeakSet();
       drawnPlots = new WeakSet();
       controlValues.clear();
@@ -733,7 +753,7 @@
         if (paneName(activePane) === 'groups' && !input.closest('#groups_controls_UI')) return;
         cancelScheduledFinish();
         activePane.querySelectorAll('.datatables, .plotly, .shiny-plot-output').forEach(function (output) {
-          delivered.delete(output); drawnTables.delete(output); drawnPlots.delete(output);
+          clearDelivered(output); drawnTables.delete(output); drawnPlots.delete(output);
         });
       })
       .on("shiny:busy.cerebroPageLoader", function () {
@@ -747,7 +767,7 @@
         scheduleFinish(pane);
       })
       .on("shiny:value.cerebroPageLoader", function (event) {
-        delivered.add(event.target);
+        markDelivered(event.target);
         drawnTables.delete(event.target);
         drawnPlots.delete(event.target);
         var pane = paneFor(event.target);
@@ -760,7 +780,7 @@
         }
       })
       .on('shiny:outputinvalidated.cerebroPageLoader', function (event) {
-        delivered.delete(event.target);
+        clearDelivered(event.target);
         drawnTables.delete(event.target);
         drawnPlots.delete(event.target);
         if (paneFor(event.target) === activePane && localCompletion(activePane) && ownsOutput(activePane, event.target)) cancelScheduledFinish();
@@ -781,7 +801,7 @@
       })
       .on("shiny:error.cerebroPageLoader", function (event) {
         // Silent req() conditions are not terminal results.
-        if (event.error && event.error.message) delivered.add(event.target);
+        if (event.error && event.error.message) markDelivered(event.target);
         var pane = paneFor(event.target);
         if (pane && pane === currentPane() && ownsOutput(pane, event.target)) {
           cancelScheduledFinish();

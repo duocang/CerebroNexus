@@ -173,6 +173,13 @@ check(header('overview_projection').hidden);
 check(row('overview_projection').classList.contains('is-error'));
 map('overview_projection',101,{});paint('overview_projection',101);
 check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-overview']));
+// Shiny fires an output error with no bound element on `document` (see
+// ShinyApp.receiveError), which has no closest(). It must not throw: an
+// exception here aborts the rest of the Shiny message frame, including the
+// input updates and notifications batched with it.
+handlers['shiny:error']({target:document,error:{message:'Method unavailable'}});
+check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-overview']));
+check(!row('overview_projection').classList.contains('is-error'));
 generation++;emit('cerebro:dataset-context',{changed:true,phase:'pending'});
 for(const id of Object.keys(ids)) check(!window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-'+ids[id]]));
 console.log('PASS terminal marker, hidden header, recovery and dataset reset');

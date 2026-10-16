@@ -154,6 +154,39 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   s.emit('shiny:inputchanged',s.nodes.select,{name:'select',el:s.nodes.select,value:'a'});
   s.frame();s.flush();check(s.loader.hidden,'unchanged input rebinding does not invalidate a finished draw');
 }
+// A renderUI re-render can replace the element that already received a value.
+// Shiny replays the last value onto the replacement through bindOutput()
+// without another shiny:value event, so completion must follow the output, not
+// the DOM node that happened to receive the value first.
+function replaceTable(s) {
+  const replacement = new s.Node('table', 'shiny-bound-output datatables', s.slot);
+  const replacementDom = new s.Node('table-dom', '', replacement);
+  replacementDom.tagName = 'TABLE';
+  s.slot.children = s.slot.children.filter(n => n !== s.table);
+  return {replacement, replacementDom};
+}
+{
+  const s=scenario('extra_material');s.start();s.values();s.emit('draw',s.tableDom);s.frame();s.frame();s.flush();
+  check(s.loader.hidden,'extra material settles before the dataset switch');
+  s.phase('pending');s.events['cerebro:dataset-context']({detail:{changed:true,phase:'pending'}});
+  s.phase('ready');s.frame();s.flush();
+  check(!s.loader.hidden,'dataset switch reopens the page card');
+  s.values();s.flush();
+  const {replacementDom}=replaceTable(s);
+  s.emit('draw',replacementDom);s.flush();s.frame();s.frame();s.flush();
+  check(s.loader.hidden,'a value replayed onto a replaced element still completes the page');
+}
+{
+  const s=scenario('extra_material');s.start();s.values();s.emit('draw',s.tableDom);s.frame();s.frame();s.flush();
+  s.phase('pending');s.events['cerebro:dataset-context']({detail:{changed:true,phase:'pending'}});
+  s.phase('ready');s.frame();s.flush();
+  const {replacement,replacementDom}=replaceTable(s);
+  s.emit('shiny:value',s.controls);s.emit('shiny:value',s.slot);
+  s.emit('draw',replacementDom);s.flush();s.frame();s.frame();s.flush();
+  check(!s.loader.hidden,'the previous dataset value replayed on bind is not a new result');
+  s.emit('shiny:value',replacement);s.emit('draw',replacementDom);s.flush();s.frame();s.frame();s.flush();
+  check(s.loader.hidden,'a fresh value for the replaced element settles the page');
+}
 {
   const s=scenario('groups');s.controls.classList.add('cerebro-groups-controls');s.table.visible=false;
   const plot=new s.Node('groups_by_other_group_plot','plotly shiny-bound-output',s.pane);
