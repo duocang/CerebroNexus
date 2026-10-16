@@ -627,7 +627,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-viz-primary {
   display: flex;
-  flex: 1 1 0;
+  flex: 1 1 640px;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
@@ -637,25 +637,22 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   display: contents;
 }
 .cerebro-gene-rgb-row {
-  display: grid; grid-template-columns: repeat(3, minmax(132px, 1fr));
-  gap: 8px; flex: 1 1 430px; min-width: min(430px, 100%);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr));
+  gap: 8px; min-width: 0;
 }
 .cerebro-gene-rgb-channel,
 .cerebro-gene-rgb-row .form-group { min-width: 0; margin-bottom: 0; }
 .cerebro-viz-toolbar .form-group {
-  flex: 0 1 var(--c-control-width);
-  width: var(--c-control-width);
+  flex: 1 1 180px;
+  width: 100%;
   min-width: min(var(--c-select-min-width), 100%);
   max-width: 100%;
   margin-bottom: 0;
 }
-.cerebro-viz-toolbar .form-group.cerebro-multiselect-host {
-  flex: 0 1 var(--c-control-width);
-  width: var(--c-control-width);
-}
-.cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
-  flex-basis: var(--cerebro-multiselect-width, var(--c-control-width));
-  width: var(--cerebro-multiselect-width, var(--c-control-width));
+/* Multi-value fields get more of each row; CSS also reacts to drawer/sidebar
+   and container resizing without measuring every selected chip in JavaScript. */
+.cerebro-viz-toolbar .form-group:has(select[multiple]) {
+  flex: 3 1 280px;
 }
 .cerebro-viz-toolbar .cerebro-multiselect,
 .coordviews-page .cv-topbar .cerebro-multiselect {
@@ -666,14 +663,21 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   align-self: center;
 }
 .cerebro-viz-toolbar .shiny-panel-conditional {
-  flex: 1 1 auto;
+  flex: 1 1 180px;
   min-width: 0;
 }
 .cerebro-viz-toolbar .shiny-panel-conditional:has(> .form-group) {
-  flex: 0 1 var(--c-control-width);
-  width: var(--c-control-width);
+  /* Keep a real box: Shiny uses jQuery visibility checks when toggling it. */
+  flex: 1 1 180px;
   min-width: min(var(--c-select-min-width), 100%);
   max-width: 100%;
+}
+.cerebro-viz-toolbar .shiny-panel-conditional:has(> .form-group select[multiple]) {
+  flex: 3 1 280px;
+}
+.cerebro-viz-toolbar .shiny-panel-conditional:has(> .cerebro-gene-rgb-row) {
+  flex: 3 1 430px;
+  min-width: min(430px, 100%);
 }
 .cerebro-viz-toolbar .spatial-rgb-controls {
   display: flex;
@@ -683,8 +687,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-viz-toolbar .spatial-rgb-controls .form-group {
   flex: 1 1 180px;
-  min-width: 180px;
-  max-width: 240px;
+  min-width: min(180px, 100%);
 }
 .cerebro-viz-toolbar .control-label,
 .coordviews-page .cv-ctl > label {
@@ -777,8 +780,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-viz-primary .ir-flow-control-item {
   flex: 1 1 180px !important;
-  min-width: 180px !important;
-  max-width: 240px;
+  min-width: min(180px, 100%) !important;
 }
 .cerebro-gene-validation {
   display: inline-flex;
@@ -1038,7 +1040,7 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-settings-content {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 14px 22px;
   align-items: start;
 }
@@ -1051,6 +1053,8 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-settings-content .form-group,
 .cerebro-settings-content .checkbox {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   margin: 0;
 }
@@ -1853,16 +1857,6 @@ body .selectize-control.plugin-remove_button .item .remove {
 }
 body .selectize-control.plugin-remove_button .item .remove:hover {
   background: var(--c-amber-100);
-}
-
-@media (max-width: 767px) {
-  .cerebro-viz-toolbar .form-group,
-  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host,
-  .cerebro-viz-toolbar .form-group.cerebro-multiselect-host.cerebro-multiselect-expanded {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: none;
-  }
 }
 
 body label, body .control-label {
@@ -3193,6 +3187,21 @@ body .shiny-bound-output.cerebro-output-waiting {
    Reserve real layout space, without an animated skeleton or a reveal gate. */
 .cerebro-groups-controls { min-height: 246px; }
 .cerebro-result-controls { min-height: 90px; }
+.cerebro-groups-controls:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 0;
+}
+.cerebro-groups-controls > .form-group {
+  flex: 1 1 240px;
+}
+.cerebro-groups-controls > .row,
+.cerebro-groups-controls > p { flex: 1 1 100%; margin-inline: 0; }
+.cerebro-groups-controls .form-group,
+.cerebro-result-controls .form-group {
+  width: 100%; min-width: 0; max-width: 100%; margin-inline: 0;
+}
 .cerebro-result-slot { min-height: 460px; }
 .cerebro-result-slot:has(> p:only-child) { min-height: 0; }
 .cerebro-dataset-stats .shiny-html-output { min-height: 104px; }
@@ -3224,7 +3233,7 @@ body .shiny-bound-output.cerebro-output-waiting {
 }
 
 .cerebro-viz-toolbar .shiny-panel-conditional:has(> .spatial-image-dim-controls) {
-  flex: 0 1 calc(2 * var(--c-control-width) + 10px);
+  flex: 2 1 370px;
 }
 .cerebro-viz-toolbar .spatial-image-dim-controls {
   display: flex;
@@ -3233,7 +3242,7 @@ body .shiny-bound-output.cerebro-output-waiting {
   gap: 10px;
 }
 .cerebro-viz-toolbar .spatial-image-dim-controls .form-group {
-  flex: 0 1 var(--c-control-width);
+  flex: 1 1 180px;
 }
 .cerebro-viz-toolbar .spatial-roi-background-picker {
   flex: 0 1 var(--c-control-width);

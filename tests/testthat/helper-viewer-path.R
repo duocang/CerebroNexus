@@ -54,7 +54,8 @@ viewer_set_selectize <- function(app, input_id, value) {
     paste0(
       "(() => {const s=document.getElementById(%s)?.selectize;",
       "if(!s)throw new Error('Selectize input is not ready');",
-      "const v=%s;v.filter(Boolean).forEach(x=>s.addOption({value:x,text:x}));",
+      "const v=%s;v.filter(Boolean).forEach(x=>s.addOption({",
+      "[s.settings.valueField]:x,[s.settings.labelField]:x}));",
       "const out=s.settings.maxItems===1?(v[0]||''):v;s.setValue(out);",
       "Shiny.setInputValue(%s,out,{priority:'event'});})()"
     ),

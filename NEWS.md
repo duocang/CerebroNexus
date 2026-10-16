@@ -1,5 +1,9 @@
 # CerebroNexus (development)
 
+- Makes visualization parameter bars fill available space automatically, giving
+  multi-select fields more room and wrapping controls on narrower screens.
+  Groups selectors and Settings fields also fill their available space. Removes
+  JavaScript chip-width measurements in favour of responsive CSS.
 - Adds Composite RGB and Separate channels layouts to Gene expression. RGB
   starts with the first three available selected genes, retains manual channel
   assignments across display-mode switches, and preserves the full gene list.

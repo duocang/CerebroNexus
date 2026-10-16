@@ -47,12 +47,12 @@ tab_gene_expression <- tabItem(
                 choices = c("Composite RGB" = "composite", "Separate channels" = "separate"),
                 selected = "composite")
             ),
+            uiOutput("expression_projection_gene_color_mode_UI"),
             uiOutput("expression_projection_select_projection_UI"),
             uiOutput(
               "expression_projection_input_type_UI",
               class = "cerebro-gene-input-output"
             ),
-            uiOutput("expression_projection_gene_color_mode_UI"),
             uiOutput("expression_genes_displayed")
           ),
           cerebroToolbarActions(
