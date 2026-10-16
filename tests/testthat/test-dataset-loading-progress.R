@@ -140,3 +140,93 @@ test_that("loading transitions avoid flashes and survive consecutive switches", 
     shQuote(viewer_test_path("www", "viewer-shell.js"))
   )), 0L)
 })
+
+test_that("catalog Data info decides loading with the request and loads once", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      sys.source(viewer_test_path("core", "dataset_overview.R"), scope)
+      session$sendCustomMessage <- function(type, message) NULL
+      removeNotification <- function(...) NULL
+      reads <- 0L
+      Cerebro.options <- list(.dataset_catalog = list(
+        a.crb = list(path = "a.crb", cells = 3),
+        b.crb = list(path = "b.crb", cells = 4)
+      ))
+      .saved_overviews <- list()
+      .cerebro_cell_view_aux_pending <- new.env()
+      initial_tab <- NULL
+      initial_page_applied <- reactiveVal(TRUE)
+      dataset_load_requested <- reactiveVal(FALSE)
+      viewer_dataset_request <- reactiveVal(NULL)
+      viewer_dataset_epoch <- "session"
+      viewer_dataset_generation <- 0
+      available_crb_files <- reactiveValues(
+        files = c(a = "a.crb", b = "b.crb"),
+        selected = NULL,
+        names = c("a", "b"),
+        labels = NULL
+      )
+      .crb_process_cache <- new.env()
+      crb_prefetch_tasks <- list()
+      get_or_load_crb <- function(...) {
+        reads <<- reads + 1L
+        list(print = function() "", expression = NULL)
+      }
+      viewer_server_load(
+        viewer_server_statements("shiny_server.R", server = TRUE),
+        scope,
+        names = c(
+          "viewer_send_dataset_phase", "viewer_clear_cell_view_aux",
+          "viewer_dataset_load_required", "viewer_request_dataset",
+          "datasetLoadProgress", "viewer_dataset_snapshot"
+        )
+      )
+      ## Mirrors the priority-1000 ready observer, which used to run before the
+      ## loading decision and read the previous request's flag.
+      observe(try(viewer_dataset_snapshot(), silent = TRUE), priority = 1000)
+      observeEvent(input$pick, {
+        viewer_request_dataset(
+          input$pick, paste0(input$pick, ".crb"), input$pick, "configured"
+        )
+      })
+    },
+    {
+      session$setInputs(sidebar = "loadData", pick = "a")
+      expect_false(dataset_load_requested())
+      expect_identical(scope$reads, 0L)
+      session$setInputs(pick = "b")
+      expect_identical(scope$reads, 0L)
+      ## Opening an analysis page loads the current request exactly once.
+      dataset_load_requested(TRUE)
+      session$flushReact()
+      expect_identical(scope$reads, 1L)
+      session$setInputs(sidebar = "overview", pick = "a")
+      expect_true(dataset_load_requested())
+      expect_identical(scope$reads, 2L)
+    }
+  )
+})
+
+test_that("cell fingerprints are computed once per CRB file version", {
+  scope <- new.env()
+  viewer_server_load(
+    viewer_server_statements("shiny_server.R"),
+    scope,
+    names = c(".viewer_cell_fingerprint_cache", ".viewerCellFingerprintCached")
+  )
+  path <- withr::local_tempfile(fileext = ".crb")
+  writeLines("a", path)
+  calls <- 0L
+  compute <- function() {
+    calls <<- calls + 1L
+    list(fingerprint = calls)
+  }
+  cached <- scope$.viewerCellFingerprintCached
+  expect_identical(cached(path, compute)$fingerprint, 1L)
+  expect_identical(cached(path, compute)$fingerprint, 1L)
+  writeLines("a changed file", path)
+  expect_identical(cached(path, compute)$fingerprint, 2L)
+  expect_identical(cached(NULL, compute)$fingerprint, 3L)
+})

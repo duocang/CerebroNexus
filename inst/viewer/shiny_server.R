@@ -44,6 +44,32 @@ source(
   local = TRUE
 )
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
+## CRBs without a stored cell fingerprint would otherwise hash every barcode on
+## each session's load. The value depends only on the file's cells.
+.viewer_cell_fingerprint_cache <- new.env(parent = emptyenv())
+.viewerCellFingerprintCached <- function(path, compute) {
+  info <- if (is.character(path) && length(path) == 1L && !is.na(path)) {
+    suppressWarnings(file.info(path, extra_cols = FALSE))
+  } else {
+    NULL
+  }
+  if (is.null(info) || is.na(info$size) || isTRUE(info$isdir)) {
+    return(compute())
+  }
+  key <- paste(
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    info$size,
+    format(as.numeric(info$mtime), digits = 17),
+    sep = "\r"
+  )
+  cached <- .viewer_cell_fingerprint_cache[[key]]
+  if (!is.null(cached)) {
+    return(cached)
+  }
+  value <- compute()
+  assign(key, value, envir = .viewer_cell_fingerprint_cache)
+  value
+}
 source(file.path(Cerebro.options[["cerebro_root"]], "viewer/core/dataset_overview.R"), local = TRUE)
 .overview_file <- file.path(Cerebro.options[["cerebro_root"]], "viewer/dataset_overviews.rds")
 .saved_overviews <- if (file.exists(.overview_file)) readRDS(.overview_file) else list()
@@ -287,6 +313,26 @@ server <- function(input, output, session) {
     }
   }
 
+  ## Whether a request must materialize the full CRB: always outside Data info,
+  ## and on Data info only without a usable catalog summary.
+  viewer_dataset_load_required <- function(target) {
+    catalog <- if (exists("Cerebro.options")) {
+      Cerebro.options[[".dataset_catalog"]]
+    } else {
+      NULL
+    }
+    info <- viewerDatasetInfo(catalog, target)
+    saved_overview <- if (!is.null(info)) {
+      info$overview %||% viewerSavedOverview(.saved_overviews, info$path)
+    } else NULL
+    viewerOverviewTruncated(saved_overview) || viewerDatasetLoadRequired(
+      isolate(input[["sidebar"]]),
+      info,
+      initial_tab,
+      isolate(initial_page_applied())
+    )
+  }
+
   viewer_request_dataset <- function(
     selection,
     target,
@@ -329,6 +375,11 @@ server <- function(input, output, session) {
     viewer_clear_cell_view_aux()
     removeNotification("dataset-load-error")
     viewer_send_dataset_phase("pending", dataset_context, request)
+    ## Decide loading together with the request. A separate observer would run
+    ## after the snapshot observer (priority 1000), which then loaded the CRB
+    ## synchronously with the previous request's decision. Within one request
+    ## the flag only moves from FALSE to TRUE, so the snapshot is built once.
+    dataset_load_requested(viewer_dataset_load_required(target))
     viewer_dataset_request(request)
     if (!identical(isolate(available_crb_files$selected), selection)) {
       available_crb_files$selected <- selection
@@ -645,9 +696,9 @@ server <- function(input, output, session) {
     }
   )
 
-  ## Keep the lightweight Data Info page independent of the full CRB. Opening
-  ## another page, or selecting a dataset absent from the catalog, enables the
-  ## ordinary data_set() chain.
+  ## Keep the lightweight Data Info page independent of the full CRB: while the
+  ## catalog describes the selection, read it in the background. Opening another
+  ## page enables the ordinary data_set() chain (viewer_request_dataset()).
   observeEvent(
     available_crb_files$selected,
     {
@@ -663,15 +714,6 @@ server <- function(input, output, session) {
           available_crb_files$selected
         )
       )
-      saved_overview <- if (!is.null(info)) {
-        info$overview %||% viewerSavedOverview(.saved_overviews, info$path)
-      } else NULL
-      dataset_load_requested(viewerOverviewTruncated(saved_overview) || viewerDatasetLoadRequired(
-        isolate(input[["sidebar"]]),
-        info,
-        initial_tab,
-        isolate(initial_page_applied())
-      ))
       selected <- available_crb_files$selected
       if (!is.null(info) && length(selected) == 1L) {
         session$onFlushed(
@@ -924,6 +966,13 @@ server <- function(input, output, session) {
         }
         datasetLoadProgress(dataset_label, 94, "Finalizing the workspace")
         attr(data, "cerebro_viewer_pack") <- viewer_pack
+        attr(data, "cerebro_dataset_path") <- if (
+          is.character(dataset_to_load) &&
+            length(dataset_to_load) == 1L &&
+            file.exists(dataset_to_load)
+        ) {
+          dataset_to_load
+        }
         datasetLoadProgress(dataset_label, 100, "Ready", done = TRUE)
         list(ok = TRUE, data = data, dataset_context = request$dataset_context)
       },
@@ -1646,10 +1695,19 @@ server <- function(input, output, session) {
         pack_fingerprint = pack_fingerprint
       ))
     }
-    cells <- cv_saved_view_cells()
+    cell_identity <- .viewerCellFingerprintCached(
+      attr(dataset, "cerebro_dataset_path", exact = TRUE),
+      function() {
+        cells <- cv_saved_view_cells()
+        list(
+          cell_count = length(cells),
+          fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint)
+        )
+      }
+    )
     list(
-      cell_count = length(cells),
-      fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint),
+      cell_count = cell_identity$cell_count,
+      fingerprint = cell_identity$fingerprint,
       order_fingerprint = order_fingerprint,
       pack_fingerprint = pack_fingerprint
     )

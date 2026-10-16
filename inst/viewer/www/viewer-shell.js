@@ -578,12 +578,17 @@
         element.id === 'groups_by_other_group_plot' || element.id === 'groups_by_other_group_table';
     }
     function localResultSettled(pane) {
-      if (window.CerebroDatasetContext && window.CerebroDatasetContext.phase() !== 'ready') return false;
+      var phase = window.CerebroDatasetContext && window.CerebroDatasetContext.phase();
       if (paneName(pane) === 'loadData') {
+        // A catalog describes the selection without loading it, so Data info
+        // also settles while pending. resetPages() clears every delivery when
+        // the context changes, so the overview below belongs to this selection.
+        if (phase && phase !== 'ready' && phase !== 'pending') return false;
         // Overview includes the initial annotation bars in the same response.
         // A later child-output binding must not hold the entire workspace shut.
         return outputSettled(document.getElementById('load_data_overview'));
       }
+      if (phase && phase !== 'ready') return false;
       var controls = pane.querySelector('.cerebro-result-controls, .cerebro-groups-controls');
       if (!outputSettled(controls)) return false;
       if (paneName(pane) === 'groups') {
