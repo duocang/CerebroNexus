@@ -1,0 +1,49 @@
+{
+  "pdf": "C:\\Users\\wangx\\Projects\\CerebroNexus\\paper\\figure-drafts\\expression-backends\\fig-scale-expression-backends-stdpdf.pdf",
+  "auditable": true,
+  "verdict": "REVIEW REQUIRED",
+  "page_count": 1,
+  "visible_text_box_count": 130,
+  "text_trace_count": 130,
+  "stroke_path_count": 745,
+  "filled_region_count": 203,
+  "image_region_count": 0,
+  "summary": {
+    "fail": 0,
+    "warn": 1,
+    "contained_fill_overlays": 132,
+    "contained_image_overlays": 0
+  },
+  "thresholds": {
+    "text_inset_pt": 0.6,
+    "min_overlap_ratio": 0.05,
+    "clipping_tolerance_pt": 0.5
+  },
+  "findings": [
+    {
+      "severity": "WARN",
+      "kind": "text-fill-edge",
+      "page": 1,
+      "message": "Text partially overlaps the edge of 2 filled region(s)",
+      "text": "BPCells",
+      "text_bbox": [
+        236.39999389648438,
+        490.0332946777344,
+        261.2919921875,
+        497.0332946777344
+      ],
+      "other_text": null,
+      "other_bbox": [
+        5.480000019073486,
+        363.0299987792969,
+        476.4100036621094,
+        509.5199890136719
+      ],
+      "object_count": 2,
+      "object_indexes": [
+        8000,
+        9000
+      ]
+    }
+  ]
+}
