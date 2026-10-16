@@ -83,8 +83,11 @@ bench_full_panels <- function(exports, access) {
       if (spec$log) stopifnot(all(dat$value > 0))
       present <- intersect(c("h5", "bpcells", "embedded"), unique(as.character(dat$backend)))
       dat$backend <- factor(as.character(dat$backend), levels = present)
+      # Reduce read processes to one value per build before summarizing builds.
+      builds <- aggregate(dat["value"], by = dat[c("backend", "export_repeat")],
+                          FUN = median)
       centre <- do.call(rbind, lapply(present, function(b) {
-        values <- dat$value[dat$backend == b]
+        values <- builds$value[builds$backend == b]
         data.frame(backend = b, x = match(b, present), y = median(values),
                    lo = min(values), hi = max(values), stringsAsFactors = FALSE)
       }))

@@ -311,6 +311,35 @@ test_that("benchmark figure labels distinct expression workloads", {
   expect_match(source, 'plot_annotation(tag_levels = "a"', fixed = TRUE)
 })
 
+test_that("full figure summarizes builds, not individual read processes", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  source(file.path(bench_root, "figure_full.R"), local = TRUE)
+
+  # Two reads per build; H5 read processes span 1-9 but every build median is 5.
+  access <- data.frame(
+    source = "fixture", n_cells = 1000,
+    backend = rep(c("h5", "bpcells"), each = 6),
+    export_repeat = rep(rep(1:3, each = 2), 2),
+    status = "OK", correctness = "OK", access_contract = "materialized-v2",
+    hot_p50_secs = c(1, 9, 4, 6, 5, 5, 2, 2, 2, 4, 10, 10),
+    block_secs = 1, rss_mb = 1024
+  )
+  exports <- data.frame(
+    source = "fixture", n_cells = 1000,
+    backend = rep(c("h5", "bpcells"), each = 3),
+    export_repeat = rep(1:3, 2), status = "OK", total_mb = 1024
+  )
+  hot <- bench_full_panels(exports, access)$plots[[1]]
+  centre <- hot$layers[[2]]$data
+  centre <- centre[order(as.character(centre$backend)), c("backend", "y", "lo", "hi")]
+
+  expect_identical(as.character(centre$backend), c("bpcells", "h5"))
+  expect_equal(centre$y, c(3, 5))
+  expect_equal(centre$lo, c(2, 5))
+  expect_equal(centre$hi, c(10, 5))
+})
+
 test_that("embedded build-memory summaries use embedded exports only", {
   skip_unless_bench_reporting()
   source <- paste(

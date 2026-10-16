@@ -358,9 +358,11 @@ if (identical(command, "inspect")) {
   # Only 12 queried rows are materialised. Four GiB covers R, native buffers and
   # the full-cell metadata shell with a conservative margin.
   estimated_peak_mb <- 4096 + planned$n_cells * 12 * 8 / 2^20
-  # One cached source and one staged backend coexist; 2.5x source bytes leaves a
-  # compression-independent margin without pretending both backends coexist.
-  required_disk <- source$source_bytes * 2.5
+  # The cached source coexists with one staged backend. An H5 build also holds a
+  # cell-major BPCells copy (and briefly its sort spill) while writing. Measured
+  # BPCells directories reach about 2x source bytes, so source + max(2 copies,
+  # copy + H5) stays within 5x source bytes.
+  required_disk <- source$source_bytes * 5
   assessment <- data.frame(
     source = planned$source,
     n_cells = planned$n_cells,
@@ -724,6 +726,18 @@ if (identical(command, "inspect")) {
 
   gc(reset = TRUE)
   if (identical(row$profile, "scale") && identical(backend, "embedded")) {
+    # Under the Scale cgroup cap the kernel kills an oversized build instead of
+    # failing its allocation. run.sh re-enters here after confirming that kill.
+    killed <- Sys.getenv("BENCH_EXPORT_OOM_KILLED")
+    if (nzchar(killed)) {
+      exact_plan <- readRDS(query_plan_path)
+      row$status <- paste0("SKIPPED(resource): ", killed)
+      row$nnz <- exact_plan$nnz
+      row$query_plan_fingerprint <- exact_plan$query_plan_fingerprint
+      bench_append_row(result, row)
+      bench_msg("%s / %.0f cells / embedded: %s", src_name, n_cells, row$status)
+      quit(status = 0L)
+    }
     assessment <- utils::read.csv(file.path(
       scratch,
       "result",

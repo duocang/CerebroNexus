@@ -84,6 +84,39 @@ test_that("embedded preflight skips before reading or materialising source data"
   }
 })
 
+test_that("a Scale embedded build killed at the memory cap is a resource skip", {
+  skip_unless_bench_resources()
+  skip_if_not_installed("CerebroNexus")
+  root <- normalizePath(dirname(bench_resources))
+  stage <- tempfile("embedded-killed-")
+  dir.create(file.path(stage, "result"), recursive = TRUE)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  source(bench_resources, local = TRUE)
+  src <- names(BENCH_SOURCES)[1]
+  # The assessment allowed the build; only the observed kill makes it a skip.
+  write.csv(data.frame(source = src, n_cells = 500000, estimated_nnz = 1e9,
+    memory_budget_mb = 1e6, embedded_safe = TRUE, embedded_reason = "safe"),
+    file.path(stage, "result", "resource_check.csv"), row.names = FALSE)
+  plan_path <- file.path(stage, "plan.rds")
+  saveRDS(list(nnz = 2e9, query_plan_fingerprint = "dense-prefix"), plan_path)
+  output_csv <- file.path(stage, "result", "exports.csv")
+  output <- bench_test_system2(file.path(R.home("bin"), "Rscript"),
+    c(file.path(root, "benchmark_cli.R"), "export", src,
+      "500000", "embedded", "2", "7", stage, output_csv, plan_path),
+    stdout = TRUE, stderr = TRUE,
+    env = c(paste0("BENCH_ROOT=", root), "BENCH_PROFILE=scale", "BENCH_RUN_ID=fixture",
+      "BENCH_EXPORT_OOM_KILLED=killed at the Scale memory cap (cgroup oom_kill, exit 137)"))
+  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  got <- read.csv(output_csv)
+  expect_equal(nrow(got), 1L)
+  expect_identical(got$status,
+    "SKIPPED(resource): killed at the Scale memory cap (cgroup oom_kill, exit 137)")
+  expect_identical(c(got$export_repeat, got$order_position), c(2L, 7L))
+  expect_equal(got$nnz, 2e9)
+  expect_identical(got$query_plan_fingerprint, "dense-prefix")
+  expect_true(is.na(got$read_secs))
+})
+
 test_that("resource planning explains safe and unsafe memory tiers", {
   skip_unless_bench_resources()
   source(bench_resources, local = TRUE)

@@ -102,22 +102,42 @@ bench_fetch_source() {
   BENCH_FETCHED_SHA256=$sha
 }
 
+# OOM kills recorded for this process's cgroup-v2 group; empty when unreadable.
+bench_oom_kills() {
+  local group
+  group=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null) || return 0
+  awk '$1 == "oom_kill" { print $2 }' "/sys/fs/cgroup${group}/memory.events" \
+    2>/dev/null || true
+}
+
+# True only when the OOM-kill count is readable and grew since $1.
+bench_oom_killed_since() {
+  local after
+  after=$(bench_oom_kills)
+  [ -n "$1" ] && [ -n "$after" ] && [ "$after" -gt "$1" ]
+}
+
 # Shared finalization for normal completion and retrying a completed measurement.
 finish_profile() {
   local stage=$1 result_root=$2 run_id=$3
-  mkdir -p "$stage/logs"
-  Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage" || return 1
-  Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage" \
-    > "$stage/logs/report.log" 2>&1 || return 1
-  if [ "$BENCH_PROFILE" = "scale" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
-    Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
-      > "$stage/logs/figures.log" 2>&1 || {
-      tail -20 "$stage/logs/figures.log"
-      return 1
-    }
+  # Once archived, the run is immutable. Regenerating reports or PDFs (which
+  # embed a creation date) would no longer match it, so a retry after a failed
+  # activation only lets the publisher re-verify the archive and activate it.
+  if [ ! -d "$result_root/runs/$run_id" ]; then
+    mkdir -p "$stage/logs"
+    Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage" || return 1
+    Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage" \
+      > "$stage/logs/report.log" 2>&1 || return 1
+    if [ "$BENCH_PROFILE" = "scale" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
+      Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
+        > "$stage/logs/figures.log" 2>&1 || {
+        tail -20 "$stage/logs/figures.log"
+        return 1
+      }
+    fi
+    Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage" || return 1
+    Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage" || return 1
   fi
-  Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage" || return 1
-  Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage" || return 1
   # The publisher archives this run and activates its latest images with CURRENT.
   if ! Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$stage" "$result_root" "$run_id"; then
     # Also restore the old pair if the publisher was killed without running R's
@@ -279,6 +299,10 @@ for src in $SOURCES; do
       missing_ok=1
     fi
 
+    oom_before=""
+    if [ "$missing_ok" = "1" ]; then
+      oom_before=$(bench_oom_kills)
+    fi
     echo "==> [$tag] build (position $order_position)"
     Rscript "$BENCH_ROOT/benchmark_cli.R" "$build_command" \
       "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
@@ -286,6 +310,20 @@ for src in $SOURCES; do
       > "$LOG_DIR/export_$tag.log" 2>&1
     rc=$?
     tail -3 "$LOG_DIR/export_$tag.log" | sed 's/^/    /'
+    # A Scale embedded build killed by the memory cap is a resource outcome,
+    # not a crash. Only an observed cgroup OOM kill qualifies.
+    if [ "$rc" -ne 0 ] && bench_oom_killed_since "$oom_before" && \
+       BENCH_EXPORT_OOM_KILLED="killed at the Scale memory cap (cgroup oom_kill, exit $rc)" \
+         Rscript "$BENCH_ROOT/benchmark_cli.R" export \
+         "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
+         "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
+         >> "$LOG_DIR/export_$tag.log" 2>&1; then
+      echo "    !! embedded build killed at the Scale memory cap; recorded as SKIPPED(resource)"
+      if [ "${BENCH_KEEP:-0}" != "1" ]; then
+        rm -rf -- "$out_dir"
+      fi
+      continue
+    fi
     if [ "$rc" -ne 0 ]; then
       echo "    !! export process died (exit $rc)"
       printf '"%s","%s","%s",%s,"%s",%s,%s,"export",%s\n' \

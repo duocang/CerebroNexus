@@ -1140,10 +1140,23 @@ bench_write_full_backend <- function(matrix, backend, path) {
     if (file.exists(path)) {
       unlink(path)
     }
-    disk_matrix <- BPCells::transpose_storage_order(DelayedArray::t(matrix))
+    # The 10x layout needs a cell-major copy. Keep it and BPCells' sort spill
+    # beside the output, inside the preflighted scratch, and drop it once the
+    # H5 is written instead of leaving it in R's session tempdir.
+    transposed <- tempfile("h5-transpose-", tmpdir = dirname(path))
+    on.exit(unlink(transposed, recursive = TRUE), add = TRUE)
+    disk_matrix <- BPCells::transpose_storage_order(
+      DelayedArray::t(matrix),
+      outdir = transposed,
+      tmpdir = dirname(path)
+    )
+    # BPCells defaults to gzip_level = 0; use the level the package's own H5
+    # exporter (HDF5Array::writeTENxMatrix) applies so sizes and reads are
+    # those of a shipped sidecar.
     BPCells::write_matrix_10x_hdf5(
       disk_matrix,
       path,
+      gzip_level = HDF5Array::getHDF5DumpCompressionLevel(),
       type = "auto"
     )
     local({

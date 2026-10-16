@@ -99,8 +99,16 @@ test_that("full-source writers round-trip both runtime backends", {
 
   bpcells_path <- file.path(root, "matrix.bpcells")
   h5_path <- file.path(root, "matrix.h5")
+  session_temp <- list.files(tempdir(), all.files = TRUE, no.. = TRUE)
   bench_write_full_backend(source_matrix, "bpcells", bpcells_path)
   bench_write_full_backend(source_matrix, "h5", h5_path)
+
+  # The H5 build's cell-major copy stays in scratch and does not outlive it.
+  expect_setequal(
+    list.files(tempdir(), all.files = TRUE, no.. = TRUE),
+    session_temp
+  )
+  expect_length(list.files(root, pattern = "^(h5-transpose-|transpose_tmp)"), 0L)
 
   bpcells <- BPCells::open_matrix_dir(bpcells_path)
   h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "expression"))
@@ -109,6 +117,20 @@ test_that("full-source writers round-trip both runtime backends", {
   expect_identical(dimnames(bpcells), dimnames(fixture$matrix))
   expect_identical(dimnames(h5), dimnames(fixture$matrix))
   expect_identical(BPCells::storage_order(bpcells), "row")
+
+  # An uncompressed H5 would not represent the sidecar the package exports.
+  h5_filters <- local({
+    file <- rhdf5::H5Fopen(h5_path, flags = "H5F_ACC_RDONLY")
+    on.exit(rhdf5::H5Fclose(file), add = TRUE)
+    data <- rhdf5::H5Dopen(file, "expression/data")
+    on.exit(rhdf5::H5Dclose(data), add = TRUE, after = FALSE)
+    plist <- rhdf5::H5Dget_create_plist(data)
+    on.exit(rhdf5::H5Pclose(plist), add = TRUE, after = FALSE)
+    vapply(seq_len(rhdf5::H5Pget_nfilters(plist)), function(i) {
+      rhdf5::H5Pget_filter(plist, i)[[2L]]
+    }, character(1))
+  })
+  expect_true("deflate" %in% h5_filters)
 })
 
 test_that("full-source H5 writer stays on the lazy BPCells path", {
@@ -116,6 +138,12 @@ test_that("full-source H5 writer stays on the lazy BPCells path", {
 
   expect_match(body, "BPCells::write_matrix_10x_hdf5", fixed = TRUE)
   expect_match(body, "rhdf5::H5Lmove", fixed = TRUE)
+  # rhdf5 does not report the deflate level, so pin it to the package exporter.
+  expect_match(
+    body,
+    "gzip_level = HDF5Array::getHDF5DumpCompressionLevel()",
+    fixed = TRUE
+  )
 })
 
 test_that("full-source query plan and portable shell use bounded expression", {

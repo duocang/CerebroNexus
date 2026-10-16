@@ -220,8 +220,9 @@ full_panel <- function(metric, src) {
   }
   raw$value <- raw[[metric$key]] / metric$divisor
   raw$backend <- factor(raw$backend, levels = c("h5", "bpcells"))
+  builds <- aggregate(raw["value"], by = raw[c("backend", "export_repeat")], FUN = median)
   centre <- do.call(rbind, lapply(levels(raw$backend), function(b) {
-    v <- raw$value[raw$backend == b]
+    v <- builds$value[builds$backend == b]
     data.frame(backend = b, y = median(v), lo = min(v), hi = max(v), stringsAsFactors = FALSE)
   }))
   centre$backend <- factor(centre$backend, levels = c("h5", "bpcells"))

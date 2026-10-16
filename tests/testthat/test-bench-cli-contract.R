@@ -222,3 +222,74 @@ test_that("benchmark sources pin SHA-256 values", {
   )
   expect_true(all(grepl("^[0-9a-f]{64}$", pinned)))
 })
+
+test_that("finalization retries only re-verify an already archived run", {
+  skip_unless_bench_cli()
+  bash <- Sys.which("bash")
+  if (.Platform$OS.type == "windows") {
+    bash <- file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe")
+  }
+  testthat::skip_if_not(nzchar(bash) && file.exists(bash), "native Bash is unavailable")
+  helper <- file.path(bench_root, "run.sh")
+  root <- gsub("\\", "/", tempfile("bench-finish-"), fixed = TRUE)
+  dir.create(file.path(root, "bin"), recursive = TRUE)
+  dir.create(file.path(root, "stage"))
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  log <- file.path(root, "calls")
+  # Record the CLI subcommand instead of running R.
+  writeLines(
+    c("#!/usr/bin/env bash", sprintf("printf '%%s\n' \"$2\" >> %s", shQuote(log))),
+    file.path(root, "bin", "Rscript")
+  )
+  Sys.chmod(file.path(root, "bin", "Rscript"), "0755")
+  finish <- function() {
+    unlink(log)
+    command <- file.path(root, "finish.sh")
+    writeLines(c(
+      "set -euo pipefail",
+      sprintf("source %s", shQuote(normalizePath(helper, winslash = "/"))),
+      sprintf("export PATH=%s:\"$PATH\" BENCH_PROFILE=scale", shQuote(file.path(root, "bin"))),
+      sprintf("finish_profile %s %s run-1", shQuote(file.path(root, "stage")), shQuote(file.path(root, "result")))
+    ), command)
+    output <- bench_test_system2(bash, command, stdout = TRUE, stderr = TRUE)
+    expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+    readLines(log)
+  }
+
+  expect_identical(
+    finish(),
+    c("validate", "report", "figure", "evidence", "check", "publish")
+  )
+  dir.create(file.path(root, "result", "runs", "run-1"), recursive = TRUE)
+  expect_identical(finish(), "publish")
+})
+
+test_that("only an observed cgroup OOM kill turns a failed build into a skip", {
+  skip_unless_bench_cli()
+  bash <- Sys.which("bash")
+  if (.Platform$OS.type == "windows") {
+    bash <- file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe")
+  }
+  testthat::skip_if_not(nzchar(bash) && file.exists(bash), "native Bash is unavailable")
+  helper <- file.path(bench_root, "run.sh")
+  command <- tempfile("bench-oom-", fileext = ".sh")
+  on.exit(unlink(command), add = TRUE)
+  killed <- function(before, after) {
+    writeLines(c(
+      "set -euo pipefail",
+      sprintf("source %s", shQuote(normalizePath(helper, winslash = "/"))),
+      sprintf("bench_oom_kills() { printf '%%s' %s; }", shQuote(after)),
+      sprintf("if bench_oom_killed_since %s; then echo yes; else echo no; fi", shQuote(before))
+    ), command)
+    output <- bench_test_system2(bash, gsub("\\", "/", command, fixed = TRUE),
+      stdout = TRUE, stderr = TRUE)
+    expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+    identical(output, "yes")
+  }
+
+  expect_true(killed("3", "4"))
+  expect_false(killed("3", "3"))
+  # Unreadable counters never excuse a crash.
+  expect_false(killed("", "4"))
+  expect_false(killed("3", ""))
+})
