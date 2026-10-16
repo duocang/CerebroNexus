@@ -77,7 +77,7 @@ test_that("runner keeps isolated processes and safe cleanup", {
   expect_true(all(positions > 0L))
 })
 
-test_that("one public launcher runs both benchmark profiles in the background", {
+test_that("one public launcher runs Scale independently in the background", {
   skip_unless_bench_cli()
   launcher <- paste(
     readLines(file.path(bench_root, "run.sh"), warn = FALSE),
@@ -100,7 +100,9 @@ test_that("one public launcher runs both benchmark profiles in the background", 
     fixed = TRUE
   )[1L]
   expect_gt(full, 0L)
-  expect_gt(scale, full)
+  expect_gt(scale, 0L)
+  expect_match(launcher, "run|scale) run_profile scale scale ;;", fixed = TRUE)
+  expect_match(launcher, "full) run_profile panel_c2 full ;;", fixed = TRUE)
 })
 
 test_that("schedule CLI includes embedded through 500k", {
@@ -118,11 +120,11 @@ test_that("schedule CLI includes embedded through 500k", {
   schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
   expect_setequal(
     unique(schedule$n_cells),
-    c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+    c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6, 1306127, 1486324)
   )
   expect_setequal(
     unique(schedule$n_cells[schedule$backend == "embedded"]),
-    c(1e3, 10e3, 50e3, 100e3, 500e3)
+    c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3)
   )
   expect_false(any(schedule$backend == "embedded" & schedule$n_cells > 500e3))
   expect_false(any(grepl("[eE][+-]", readLines(tsv, warn = FALSE))))

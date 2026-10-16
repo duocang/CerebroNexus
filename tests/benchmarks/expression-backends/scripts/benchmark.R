@@ -37,10 +37,9 @@ BENCH_SOURCES <- list(
     ),
     full_cells = 1306127,
     panel_c1_cells = 400e3,
-    # Shared scale tiers. The complete 1,306,127-cell matrix is
-    # measured separately by full and is never labelled as 1m.
-    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
-    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+    # Shared tiers; bench_scale_schedule also appends this source's full_cells.
+    tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6)
   ),
 
   # CELLxGENE Discover: population-scale cross-disorder atlas of the human
@@ -69,10 +68,9 @@ BENCH_SOURCES <- list(
     ),
     full_cells = 1486324,
     panel_c1_cells = 300e3,
-    # The same fixed tiers are used for direct scale comparison. The complete
-    # 1,486,324-cell matrix remains a separate full observation.
-    tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6),
-    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+    # Shared tiers; the exact full endpoint is measured within Scale itself.
+    tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6),
+    comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6)
   ),
 
   # Same collection, MSSM cohort: 4,140,453 cells, 33.6 GB remote. Opt-in via
@@ -203,16 +201,17 @@ bench_scale_schedule <- function(specs) {
   }
   embedded_specs <- external_specs <- specs
   for (source in sources) {
+    full <- specs[[source]]$full_cells
+    if (length(full) != 1L || !is.finite(full) || full < 1) {
+      stop("scale requires a valid full_cells for ", source, call. = FALSE)
+    }
+    tiers <- sort(unique(c(specs[[source]]$comparison_tiers, full)))
     embedded_specs[[source]]$tiers <-
       embedded_specs[[source]]$comparison_tiers <-
-        specs[[source]]$comparison_tiers[
-          specs[[source]]$comparison_tiers <= 500e3
-        ]
+        tiers[tiers <= 500e3]
     external_specs[[source]]$tiers <-
       external_specs[[source]]$comparison_tiers <-
-        specs[[source]]$comparison_tiers[
-          specs[[source]]$comparison_tiers > 500e3
-        ]
+        tiers[tiers > 500e3]
   }
   rbind(
     bench_schedule(
@@ -1890,6 +1889,57 @@ bench_backend_ratios <- function(summary, metric, reference) {
 
 # ---- resource_planning.R ----
 # Pure host-resource planning helpers for the real-data benchmark.
+
+# Available RAM, not MemFree or total RAM. Honour the remaining allowance of
+# every cgroup v2 ancestor; swap is deliberately excluded. Fail closed on hosts
+# where Linux memory accounting is unavailable.
+bench_available_memory_bytes <- function(
+  meminfo = "/proc/meminfo", cgroup = "/proc/self/cgroup",
+  cgroup_root = "/sys/fs/cgroup"
+) {
+  lines <- readLines(meminfo, warn = FALSE)
+  available <- grep("^MemAvailable:", lines, value = TRUE)
+  available <- suppressWarnings(as.numeric(gsub("[^0-9]", "", available))) * 1024
+  if (length(available) != 1L || !is.finite(available) || available <= 0) {
+    stop("cannot determine available RAM", call. = FALSE)
+  }
+  if (file.exists(cgroup)) {
+    entry <- grep("^0::", readLines(cgroup, warn = FALSE), value = TRUE)
+    if (length(entry) == 1L) {
+      root <- normalizePath(cgroup_root, winslash = "/", mustWork = TRUE)
+      directory <- normalizePath(file.path(root, sub("^0::/?", "", entry)),
+                                 winslash = "/", mustWork = TRUE)
+      if (!(directory == root || startsWith(directory, paste0(root, "/")))) {
+        stop("cgroup path outside memory controller", call. = FALSE)
+      }
+      repeat {
+        limit_file <- file.path(directory, "memory.max")
+        if (file.exists(limit_file)) {
+          limit <- trimws(readLines(limit_file, n = 1L, warn = FALSE))
+          if (!identical(limit, "max")) {
+            limit <- suppressWarnings(as.numeric(limit))
+            used <- suppressWarnings(as.numeric(readLines(
+              file.path(directory, "memory.current"), n = 1L, warn = FALSE)))
+            if (!is.finite(limit) || !is.finite(used)) stop("invalid cgroup memory accounting")
+            available <- min(available, max(0, limit - used))
+          }
+        }
+        if (identical(directory, root)) break
+        directory <- dirname(directory)
+      }
+    }
+  }
+  if (available <= 0) stop("no available RAM within cgroup limits", call. = FALSE)
+  available
+}
+
+bench_scale_memory_budget <- function(available_bytes, vector_limit_mb = Inf) {
+  if (length(available_bytes) != 1L || !is.finite(available_bytes) || available_bytes <= 0 ||
+      length(vector_limit_mb) != 1L || is.na(vector_limit_mb) || vector_limit_mb <= 0) {
+    stop("invalid available-memory budget", call. = FALSE)
+  }
+  min(floor(available_bytes * 0.99), vector_limit_mb * 2^20)
+}
 
 bench_assess_resources <- function(
   inventory,

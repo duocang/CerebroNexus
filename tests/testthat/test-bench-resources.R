@@ -17,17 +17,38 @@ test_that("streaming tiers remain runnable when embedded exceeds the budget", {
   write.csv(data.frame(source = "human", nnz_per_cell = 4112,
     nnz = 4112 * 1486324, n_cells = 1486324, source_bytes = 14.2e9), paths[1], row.names = FALSE)
   write.csv(data.frame(source = "human", n_cells = c(100000, 500000)), paths[2], row.names = FALSE)
-  write.csv(data.frame(key = c("memory_mb", "r_vector_limit_mb"),
-    value = c("112640", "Inf")), paths[3], row.names = FALSE)
+  write.csv(data.frame(key = c("memory_mb", "r_vector_limit_mb", "memory_available_bytes"),
+    value = c("112640", "Inf", as.character(90 * 2^30))), paths[3], row.names = FALSE)
   output <- bench_test_system2(file.path(R.home("bin"), "Rscript"),
     c(file.path(root, "benchmark_cli.R"), "full-resources", paths),
     stdout = TRUE, stderr = TRUE,
-    env = c(paste0("BENCH_ROOT=", root), "BENCH_FREE_DISK_BYTES=200000000000"))
+    env = c(paste0("BENCH_ROOT=", root), "BENCH_PROFILE=scale", "BENCH_FREE_DISK_BYTES=200000000000"))
   expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
   got <- read.csv(paths[4])
   expect_true(all(got$safe))
   expect_identical(got$embedded_safe, c(TRUE, FALSE))
   expect_match(got$embedded_reason[2], "memory")
+  expect_equal(got$memory_budget_mb, rep(90 * 1024 * .99, 2), tolerance = 1)
+})
+
+test_that("Scale budgets available RAM and the tightest cgroup ancestor", {
+  skip_unless_bench_resources()
+  source(bench_resources, local = TRUE)
+  root <- tempfile("memory-fixture-")
+  dir.create(file.path(root, "cg", "parent", "child"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  writeLines(c("MemTotal: 100000 kB", "MemAvailable: 80000 kB"), file.path(root, "meminfo"))
+  writeLines("0::/parent/child", file.path(root, "cgroup"))
+  writeLines("max", file.path(root, "cg", "parent", "child", "memory.max"))
+  writeLines("50000000", file.path(root, "cg", "parent", "memory.max"))
+  writeLines("10000000", file.path(root, "cg", "parent", "memory.current"))
+  available <- bench_available_memory_bytes(file.path(root, "meminfo"), file.path(root, "cgroup"), file.path(root, "cg"))
+  expect_equal(available, 40000000)
+  expect_equal(bench_scale_memory_budget(available), 39600000)
+  expect_equal(bench_scale_memory_budget(available, 10), 10 * 2^20)
+  expect_error(bench_scale_memory_budget(NA_real_), "invalid")
+  writeLines("50000000", file.path(root, "cg", "parent", "memory.current"))
+  expect_error(bench_available_memory_bytes(file.path(root, "meminfo"), file.path(root, "cgroup"), file.path(root, "cg")), "no available")
 })
 
 test_that("embedded preflight skips before reading or materialising source data", {

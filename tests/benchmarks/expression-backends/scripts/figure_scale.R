@@ -54,7 +54,8 @@ bench_figure_scale <- function(exports, access, manifest_values, out_dir) {
       legend.title = element_blank(),
       plot.title = element_text(face = "bold", size = 12),
       plot.subtitle = element_text(size = 9, colour = "grey35"),
-      axis.text = element_text(size = 9, colour = "#30343B"),
+        axis.text = element_text(size = 9, colour = "#30343B"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
       panel.spacing.x = grid::unit(8, "mm"),
       plot.margin = margin(6, 8, 6, 6)
     )
@@ -94,7 +95,7 @@ bench_figure_scale <- function(exports, access, manifest_values, out_dir) {
                           labels = c(embedded = "Embedded", bpcells = "BPCells", h5 = "H5")) +
       scale_shape_manual(values = c(embedded = 17, bpcells = 16, h5 = 15),
                          labels = c(embedded = "Embedded", bpcells = "BPCells", h5 = "H5")) +
-      scale_x_log10(breaks = c(1e3, 1e4, 5e4, 1e5, 5e5, 1e6), labels = k_cells,
+      scale_x_log10(breaks = c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5, 1e6), labels = k_cells,
                     expand = expansion(mult = c(0.045, 0.065))) +
       labs(title = title, subtitle = subtitle, x = "Cells (log10 scale)",
            y = if (log_y) paste0(ylab, ", log10 scale") else ylab) +
@@ -163,7 +164,8 @@ bench_figure_scale <- function(exports, access, manifest_values, out_dir) {
         "Per completed source/tier/backend: ", count_range(exports[exports$status == "OK", ]),
         " builds; ", count_range(access), " read processes (nested within builds).\n",
         "Embedded skipped: ", skipped_note, ".\n",
-        "Embedded at 1M was not scheduled in either dataset. Lines join measured tiers; gaps are not measurements."
+        "Full endpoints: Mouse 1,306,127; Human 1,486,324 cells. Embedded above 500k is not scheduled.\n",
+        "Lines join measured tiers; gaps are not measurements."
       ),
       theme = theme(plot.title = element_text(size = 15, face = "bold"),
                     plot.caption = element_text(size = 8, hjust = 0, lineheight = 1.2),

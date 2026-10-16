@@ -388,11 +388,26 @@ require_clean() {
 run_profile() {
   local profile="$1"
   local result_name="$2"
-  local head_sha study_id
+  local head_sha study_id memory_snapshot
   require_clean
   head_sha=$(git -C "$REPO" rev-parse HEAD)
   study_id="$(date -u +%Y%m%dT%H%M%SZ)-${head_sha:0:12}-$result_name"
   printf '==> running %s\n' "$result_name"
+  if [ "$profile" = "scale" ]; then
+    # One launch-time budget for the entire serial study. A cgroup enforces the
+    # cap for child R processes as well; never silently run without the limit.
+    command -v systemd-run >/dev/null || { echo 'Scale requires systemd-run for its memory cap' >&2; return 1; }
+    memory_snapshot=$(Rscript -e 'source(commandArgs(TRUE)[1]); a <- bench_available_memory_bytes(); cat(sprintf("%.0f %.0f", a, bench_scale_memory_budget(a)))' "$BENCH_ROOT/benchmark.R") || return 1
+    read -r BENCH_AVAILABLE_MEMORY_BYTES BENCH_MEMORY_LIMIT_BYTES <<< "$memory_snapshot"
+    export BENCH_AVAILABLE_MEMORY_BYTES BENCH_MEMORY_LIMIT_BYTES
+    printf '==> Scale available RAM=%s bytes; 99%% hard cap=%s bytes; swap=0\n' "$BENCH_AVAILABLE_MEMORY_BYTES" "$BENCH_MEMORY_LIMIT_BYTES"
+    BENCH_PROFILE="$profile" BENCH_STUDY_ID="$study_id" BENCH_RUN_ID="$study_id" \
+      BENCH_RESULT_ROOT="$REPO/tests/benchmarks/results/expression-backends/$result_name" \
+      systemd-run --user --scope --quiet \
+        -p "MemoryMax=$BENCH_MEMORY_LIMIT_BYTES" -p MemorySwapMax=0 \
+        bash "$SCRIPT" _profile
+    return $?
+  fi
   BENCH_PROFILE="$profile" \
     BENCH_STUDY_ID="$study_id" \
     BENCH_RUN_ID="$study_id" \
@@ -403,10 +418,8 @@ run_profile() {
 run_all() {
   case "${1:-run}" in
     quick) run_profile quick quick ;;
-    run)
-      run_profile panel_c2 full
-      run_profile scale scale
-      ;;
+    run|scale) run_profile scale scale ;;
+    full) run_profile panel_c2 full ;;
     *) printf 'unknown benchmark mode: %s\n' "$1" >&2; return 2 ;;
   esac
 }
@@ -518,10 +531,10 @@ case "$ACTION" in
     resume_run "${2:-}"
     exit $?
     ;;
-  run|quick)
+  run|quick|scale|full)
     ;;
   *)
-    printf 'usage: %s [quick|run|status|resume <scratch-directory>]\n' "$0" >&2
+    printf 'usage: %s [quick|run|scale|full|status|resume <scratch-directory>]\n' "$0" >&2
     exit 2
     ;;
 esac

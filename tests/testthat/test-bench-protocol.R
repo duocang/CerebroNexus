@@ -94,7 +94,7 @@ test_that("default sources share the complete scale grid", {
     function(source) {
       identical(
         source$comparison_tiers,
-        c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+        c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6)
       )
     },
     logical(1)
@@ -149,9 +149,18 @@ test_that("scale profile runs embedded through 500k", {
   source(bench_protocol, local = TRUE)
 
   schedule <- bench_scale_schedule(BENCH_SOURCES)
-  expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 500e3, 1e6)
+  expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6, 1306127, 1486324)
 
-  expect_equal(nrow(schedule), 2L * (5L * 3L + 2L) * 5L)
+  expect_equal(nrow(schedule), 2L * (6L * 3L + 4L) * 5L)
+  for (src in c("mouse_brain_e18", "human_pfc_hbcc")) {
+    full <- schedule[schedule$source == src & schedule$n_cells == BENCH_SOURCES[[src]]$full_cells, ]
+    expect_equal(nrow(full), 10L)
+    expect_setequal(full$backend, c("h5", "bpcells"))
+  }
+  # A full endpoint already listed in the grid is not scheduled twice.
+  specs <- BENCH_SOURCES
+  specs$mouse_brain_e18$comparison_tiers <- c(specs$mouse_brain_e18$comparison_tiers, 1306127)
+  expect_equal(bench_scale_schedule(specs), schedule)
   expect_setequal(
     unique(schedule$source),
     c(

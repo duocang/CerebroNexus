@@ -12,6 +12,19 @@ if (!nzchar(here)) {
 }
 source(file.path(here, "benchmark.R"))
 
+# Assembled collections are one-off, self-validating deliveries; the repo-side
+# CLI no longer carries their validator. Each collection ships its own archived
+# validate.R and code copies, so it is validated in place.
+if (command %in% c("validate", "check", "publish", "report", "figure") && length(command_args)) {
+  manifest_file <- file.path(command_args[1], "run_manifest.csv")
+  if (file.exists(manifest_file)) {
+    values <- bench_manifest_values(read.csv(manifest_file, stringsAsFactors=FALSE))
+    if ("result_kind" %in% names(values) && identical(values[["result_kind"]], "assembled")) {
+      stop("Assembled collection: run Rscript validate.R inside its directory; the repo-side assembled validator is retired", call.=FALSE)
+    }
+  }
+}
+
 if (identical(command, "inspect")) {
   # Inspect every configured source over ROS3 and record what it contains.
   #
@@ -199,6 +212,14 @@ if (identical(command, "inspect")) {
     scratch_df = scratch_df,
     storage_description = Sys.getenv("BENCH_STORAGE_DESCRIPTION"),
     memory_mb = format(memory_mb(), scientific = FALSE, trim = TRUE),
+    memory_available_bytes = if (identical(Sys.getenv("BENCH_PROFILE"), "scale"))
+      Sys.getenv("BENCH_AVAILABLE_MEMORY_BYTES", format(bench_available_memory_bytes(), scientific = FALSE, trim = TRUE)) else "not_recorded",
+    memory_limit_bytes = Sys.getenv("BENCH_MEMORY_LIMIT_BYTES", "not_enforced"),
+    memory_policy = if (identical(Sys.getenv("BENCH_PROFILE"), "scale")) {
+      if (nzchar(Sys.getenv("BENCH_MEMORY_LIMIT_BYTES")))
+        "99pct-available-at-start; cgroup-v2; swap-disabled" else
+        "99pct-available-preflight; no runner hard cap recorded"
+    } else "legacy-70pct-total-preflight",
     r_vector_limit_mb = format(mem.maxVSize(), scientific = FALSE, trim = TRUE)
   )
   packages <- c(
@@ -322,6 +343,17 @@ if (identical(command, "inspect")) {
     as.numeric(values[["r_vector_limit_mb"]]),
     na.rm = TRUE
   )
+  memory_fraction <- 0.70
+  if (identical(Sys.getenv("BENCH_PROFILE"), "scale")) {
+    available <- suppressWarnings(as.numeric(values["memory_available_bytes"]))
+    if (length(available) != 1L || !is.finite(available) || available <= 0)
+      stop("scale requires a recorded available-memory snapshot", call. = FALSE)
+    memory_mb <- bench_scale_memory_budget(available, memory_mb) / 2^20
+    enforced <- suppressWarnings(as.numeric(values["memory_limit_bytes"]))
+    if (length(enforced) == 1L && is.finite(enforced) && enforced > 0)
+      memory_mb <- min(memory_mb, enforced / 2^20)
+    memory_fraction <- 1
+  }
   disk_free <- free_disk_bytes(dirname(output))
   # Only 12 queried rows are materialised. Four GiB covers R, native buffers and
   # the full-cell metadata shell with a conservative margin.
@@ -334,10 +366,10 @@ if (identical(command, "inspect")) {
     n_cells = planned$n_cells,
     estimated_nnz = source$nnz * planned$n_cells / source$n_cells,
     estimated_peak_mb = round(estimated_peak_mb),
-    memory_budget_mb = round(memory_mb * 0.70),
+    memory_budget_mb = round(memory_mb * memory_fraction),
     source_bytes = source$source_bytes,
     disk_budget_bytes = disk_free * 0.80,
-    memory_ok = estimated_peak_mb <= memory_mb * 0.70,
+    memory_ok = estimated_peak_mb <= memory_mb * memory_fraction,
     index_ok = TRUE,
     disk_ok = required_disk <= disk_free * 0.80,
     stringsAsFactors = FALSE
@@ -359,7 +391,8 @@ if (identical(command, "inspect")) {
     planned,
     memory_mb,
     memory_mb,
-    disk_free
+    disk_free,
+    memory_fraction = memory_fraction
   )
   assessment$embedded_peak_mb <- embedded$estimated_peak_mb
   assessment$embedded_safe <- embedded$safe

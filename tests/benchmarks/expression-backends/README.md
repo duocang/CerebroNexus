@@ -8,8 +8,10 @@ Compare expression-storage backends by build time, file size, memory, startup an
 # Small correctness run: 1,000 cells per source, all three backends.
 bash tests/benchmarks/expression-backends/run.sh quick
 
-# Full measurements: full datasets, then the size comparison.
-bash tests/benchmarks/expression-backends/run.sh
+# Independent size comparison, including both full-dataset endpoints.
+bash tests/benchmarks/expression-backends/run.sh scale
+# No argument (or run) also runs Scale only. Optional separate Full study:
+# bash tests/benchmarks/expression-backends/run.sh full
 
 # Check progress.
 bash tests/benchmarks/expression-backends/run.sh status
@@ -31,7 +33,7 @@ bash tests/benchmarks/expression-backends/run.sh resume /path/to/cerebro-bench.X
 | Study | Data | Backends |
 |---|---|---|
 | Full datasets | 10x mouse brain: 1,306,127 cells; PsychAD human PFC: 1,486,324 cells | H5 and BPCells |
-| Size comparison | The same sources at 1k, 10k, 50k, 100k, 500k and 1m cells | H5 and BPCells at every size; embedded attempted through 500k |
+| Size comparison | The same sources at 1k, 10k, 50k, 100k, 300k, 500k, 1m, then each exact full-dataset size | H5 and BPCells at every size; embedded attempted through 500k |
 
 The complete matrices exceed the sparse-index limit of embedded storage, so full-dataset embedded results are unavailable. They are not replaced with smaller samples.
 
@@ -41,7 +43,11 @@ Elapsed durations use `CLOCK_MONOTONIC`; system-clock timestamps are retained on
 
 Incorrect values, crashes or unexpected build failures stop publication. An explicit embedded memory or sparse-index limit is recorded as a resource limit. A new result becomes `CURRENT` only after all required checks pass.
 
-Scale checks embedded separately because it loads the matrix into memory. If its conservative estimate exceeds 70% of available memory or the sparse-index limit, that tier is recorded as `SKIPPED(resource)` while H5 and BPCells continue. The check uses both the source-wide estimate and the actual tier's nonzero count. These skips describe this machine's resource budget, not a measured universal size limit.
+Scale snapshots Linux `MemAvailable` at launch, capped by the remaining memory allowance of every cgroup-v2 ancestor. It uses 99% of that available RAM, not 99% of installed RAM. The runner enforces this byte limit with a systemd user scope (`MemoryMax`), with task swap disabled; failure to create the scope stops the run. The snapshot, byte limit and policy are recorded in the manifest. This is a fixed launch-time limit, not a moving target during measurements. A working systemd user manager with memory-controller delegation is required.
+
+Scale checks embedded separately because it loads the matrix into memory. Its conservative estimate remains 1 GiB plus 64 bytes per nonzero, checked against that budget and the R vector limit, first using source density and then actual tier nonzeros. Exceeding the budget or 32-bit sparse-index limit records `SKIPPED(resource)` while H5 and BPCells continue; increasing the budget does not guarantee a formerly skipped tier will pass the estimator. No automatic cell-count reduction occurs. Historical runs retain their original policies (including the old 70%-of-total-RAM preflight); they are not retroactively labelled as 99% runs.
+
+Scale now measures its own full endpoints and does not read Full results. The optional `full` command remains available, but default `run` does not run both studies or measure the endpoints twice.
 
 ## Reruns and saved files
 
@@ -87,11 +93,35 @@ Use `quick` or `scale` instead of `full` for those reports. `10_export.csv` cont
 
 Numbers are medians with observed ranges, not confidence intervals. The two access processes share one built artifact. The first read may benefit from the operating-system cache. Storage and memory fields ending in `_mb` use MiB. Embedded `export_secs` includes the full exporter, while H5/BPCells measure the backend writer; do not compare that column alone as equal work.
 
+### Assembled Scale evidence (2026-10-16)
+
+The latest Scale collection may have `result_kind=assembled` in its manifest.
+It consolidates the verified October 16 Scale, 300k supplement, original Full
+endpoints and the completed Human 500k embedded series (one feasibility build
+plus four prospective repeats) without new measurements.
+It is self-contained: original acquisition CSVs, logs, environments and checksums
+are copied under `inputs/`; replotting does not read the external Full directory.
+Original `run_id` and `profile` values remain unchanged in merged measurement
+tables, with `collection_id`, `source_run_id`, `source_profile` and `tier_type`
+recording provenance. It is not a new acquisition under the 99% memory policy.
+
+All 44 configured dataset/tier/backend combinations have real observations with
+five builds and ten reads each; Human 500k embedded is one feasibility build plus
+four repeats. Original five resource skips are retained separately, never counted
+as successes or silently replaced by invented repeats. The collection's schedule
+describes included successful builds rather than the prospective five-repeat
+protocol. Its `summary.md` explains these limitations. Each collection ships its
+own archived `validate.R`/`code`; run it inside the collection directory to check
+every origin, raw timing and exact row conservation. The repo-side CLI no longer
+carries the assembled validator. Use the collection's archived `replot.R` for
+figures; the ordinary single-run report/figure commands deliberately reject
+assembled collections to avoid pooling acquisition identities.
+
 **Existing results are historical.** The September 22 runs predate materialized reads, and the October measurements at `b64f8df3` contain four negative subset-block durations (one full, three scale). Their timing evidence remains provisional. Fresh runs must satisfy both `materialized-v2` and `monotonic-v1`. Retain the original CSVs; do not clip, take absolute values or delete invalid observations. `resume` cannot certify a legacy run without raw monotonic observations. Repeat full and scale on the same 12900K WSL host; local Mac smoke checks do not replace those performance measurements.
 
 ## Keep it simple
 
-Use `run.sh` for normal work; it runs both studies and publishes their images automatically.
+Use `run.sh scale` (or the default `run.sh`) for normal work; it runs the independent Scale study and publishes its images automatically.
 All implementation lives in `scripts/`:
 
 - `run.sh`: environment, cached downloads, independent measurement processes and finalization.
