@@ -6,6 +6,10 @@ let count = 0;
 function check(value, message) { assert.ok(value, message); count++; }
 function scenario(page = 'markerGenes') {
   const nodes = {}, handlers = {}, events = {}, timers = [], frames = [];
+  function listen(name, fn) {
+    const previous = events[name];
+    events[name] = event => { if (previous) previous(event); fn(event); };
+  }
   let active, observer, phase = 'ready';
   class Node {
     constructor(id, classes = '', parent) {
@@ -53,12 +57,12 @@ function scenario(page = 'markerGenes') {
   const jq = {on(names, selector, callback) { const fn=callback || selector; names.split(' ').forEach(n=>(handlers[n.split('.')[0]] ||= []).push(fn)); return jq; }};
   const window = {
     jQuery:()=>jq, setTimeout:(fn,ms)=>{ const t={fn,ms};timers.push(t);return t; }, clearTimeout:t=>{if(t)t.cancel=true;},
-    requestAnimationFrame:fn=>frames.push(fn), addEventListener:(n,f)=>events[n]=f,
+    requestAnimationFrame:fn=>frames.push(fn), addEventListener:listen,
     dispatchEvent:e=>events[e.type]?.(e),
     CerebroDatasetContext:{phase:()=>phase,accepts:()=>false},
     MutationObserver:class { constructor(fn) {observer=fn;} observe() {} }
   };
-  const document = {getElementById:id=>nodes[id],querySelector:s=>s.includes(".tab-pane")?active:null,addEventListener:(n,f)=>events[n]=f,
+  const document = {getElementById:id=>nodes[id],querySelector:s=>s.includes(".tab-pane")?active:null,addEventListener:listen,
     querySelectorAll:s=>s.includes(".tab-pane")?Object.values(nodes).filter(n=>n.id.startsWith('shiny-tab-')):[]};
 vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2] || require('path').resolve(__dirname, '../../../inst/viewer/www/viewer-shell.js')), 'page-lifecycle.js'), 'utf8'), {window});
   vm.runInNewContext(source,{window,document,ready:fn=>fn(),MutationObserver:window.MutationObserver,Set,WeakSet,Array,
