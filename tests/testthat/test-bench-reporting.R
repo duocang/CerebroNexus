@@ -304,10 +304,11 @@ test_that("benchmark figure labels distinct expression workloads", {
   )
   source <- paste(script, collapse = "\n")
 
-  expect_match(source, "Interactive single-gene latency", fixed = TRUE)
-  expect_match(source, "Marker-panel block latency", fixed = TRUE)
-  expect_match(source, "warmed expression lookup", fixed = TRUE)
-  expect_match(source, 'plot_annotation(tag_levels = "A"', fixed = TRUE)
+  expect_match(source, "Warmed single-gene read", fixed = TRUE)
+  expect_match(source, "12-gene block read", fixed = TRUE)
+  expect_match(source, "Memory after load", fixed = TRUE)
+  expect_match(source, "Total on-disk footprint", fixed = TRUE)
+  expect_match(source, 'plot_annotation(tag_levels = "a"', fixed = TRUE)
 })
 
 test_that("embedded build-memory summaries use embedded exports only", {

@@ -1,130 +1,181 @@
 # Full-source plots. Called by benchmark_cli.R figure; writes images only.
-# Read timings are nested within builds; the dots are not independent builds.
-bench_full_plot <- function(exports, access) {
-  sources <- c("mouse_brain_e18", "human_pfc_hbcc")
-  source_names <- c("Mouse brain E18", "Human PFC (HBCC)")
-  backends <- c("h5", "bpcells")
-  colours <- c(h5 = "#3F7F93", bpcells = "#D9A03C")
+#
+# Statistical unit: one BUILD per backend. Each build is read by two nested
+# access processes; the plotted dots are those individual read processes (not
+# independent replicates), the marker is the build median and the whiskers are
+# the observed min-max across builds. Cell counts are not biological
+# replicates. No figure title or caption is written into the file.
+bench_full_style <- function() {
+  palette <- c(embedded = "#D55E00", h5 = "#0072B2", bpcells = "#E69F00")
+  shapes <- c(embedded = 17, h5 = 15, bpcells = 16)
+  list(
+    palette = palette,
+    shapes = shapes,
+    labels = c(embedded = "Embedded", h5 = "H5", bpcells = "BPCells")
+  )
+}
+
+bench_full_family <- function() {
+  if (requireNamespace("systemfonts", quietly = TRUE)) {
+    candidates <- c("Arial", "Helvetica", "Nimbus Sans", "Liberation Sans", "DejaVu Sans")
+    families <- unique(systemfonts::system_fonts()$family)
+    hit <- candidates[candidates %in% families]
+    if (length(hit)) return(hit[1])
+  }
+  "sans"
+}
+
+bench_full_theme <- function(family) {
+  ggplot2::theme_bw(base_size = 7, base_family = family) +
+    ggplot2::theme(
+      panel.background = ggplot2::element_rect(fill = "white", colour = NA),
+      plot.background = ggplot2::element_rect(fill = "white", colour = NA),
+      panel.border = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(colour = "#EDEDED", linewidth = 0.2),
+      axis.line = ggplot2::element_line(colour = "#202020", linewidth = 0.25),
+      axis.ticks = ggplot2::element_line(colour = "#202020", linewidth = 0.25),
+      axis.ticks.length = grid::unit(1.5, "pt"),
+      axis.text = ggplot2::element_text(colour = "#202020", size = 6.5),
+      axis.title = ggplot2::element_text(colour = "#202020", size = 7),
+      plot.title = ggplot2::element_text(size = 7, hjust = 0.5, margin = ggplot2::margin(b = 1.5)),
+      legend.title = ggplot2::element_blank(),
+      legend.text = ggplot2::element_text(size = 7),
+      legend.key.height = grid::unit(3.2, "mm"),
+      legend.key.width = grid::unit(4.0, "mm"),
+      plot.tag = ggplot2::element_text(size = 8, face = "bold"),
+      plot.margin = ggplot2::margin(2, 3, 2, 2, unit = "mm")
+    )
+}
+
+bench_full_sources <- function(access) {
+  sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), unique(access$source))
+  c(sources, setdiff(unique(access$source), sources))
+}
+
+bench_full_panels <- function(exports, access) {
   stopifnot(
-    setequal(unique(access$source), sources),
-    setequal(unique(exports$source), sources),
-    all(access$backend %in% backends), all(exports$backend %in% backends),
     all(access$status == "OK"), all(exports$status == "OK"),
     all(access$correctness == "OK"),
     all(access$access_contract == "materialized-v2")
   )
-  # Reuse the original four metrics without filtering or sampling any rows.
-  specs <- list(
-    list(data = access, metric = "hot_p50_secs", divisor = 1,
-         title = "Warmed single-gene read", unit = "Time (s, log10 scale)", log = TRUE),
-    list(data = access, metric = "block_secs", divisor = 1,
-         title = "12-gene read across all cells", unit = "Time (s)", log = FALSE),
-    list(data = access, metric = "rss_mb", divisor = 1,
-         title = "Memory after load and attach", unit = "Process RSS (MiB)", log = FALSE),
-    list(data = exports, metric = "total_mb", divisor = 1024,
-         title = "Total on-disk footprint", unit = "Storage (GiB, log10 scale)", log = TRUE)
+  style <- bench_full_style()
+  sources <- bench_full_sources(access)
+  source_titles <- c(mouse_brain_e18 = "Mouse brain E18", human_pfc_hbcc = "Human PFC (HBCC)")
+  metrics <- list(
+    list(key = "hot_p50_secs", title = "Warmed single-gene read", unit = "Time (s), log10",
+         divisor = 1, log = TRUE),
+    list(key = "block_secs", title = "12-gene block read", unit = "Time (s), log10",
+         divisor = 1, log = TRUE),
+    list(key = "rss_mb", title = "Memory after load", unit = "RSS (GiB)",
+         divisor = 1024, log = FALSE),
+    list(key = "total_mb", title = "Total on-disk footprint", unit = "Storage (GiB), log10",
+         divisor = 1024, log = TRUE)
   )
+  family <- bench_full_family()
   plots <- list()
-  for (row in seq_along(specs)) {
-    spec <- specs[[row]]
-    raw <- spec$data
-    raw$value <- raw[[spec$metric]] / spec$divisor
-    stopifnot(all(is.finite(raw$value)), all(raw$value >= 0))
-    if (spec$log) stopifnot(all(raw$value > 0))
-    limits <- if (spec$log) {
-      range(raw$value) * c(0.75, 1.8)
-    } else if (spec$metric == "rss_mb") {
-      range(raw$value) + diff(range(raw$value)) * c(-0.3, 0.5)
-    } else c(0, max(raw$value) * 1.3)
-    for (col in seq_along(sources)) {
-      dat <- raw[raw$source == sources[col], , drop = FALSE]
-      dat <- dat[order(dat$backend, dat$export_repeat,
-                       if ("access_repeat" %in% names(dat)) dat$access_repeat else rep(0, nrow(dat))), ]
-      dat$x <- match(dat$backend, backends)
-      dat$offset <- ave(dat$x, dat$backend, FUN = function(x) seq(-0.17, 0.17, length.out = length(x)))
-      centre <- do.call(rbind, lapply(backends, function(backend) {
-        values <- dat$value[dat$backend == backend]
-        stopifnot(length(values) > 0L)
-        data.frame(backend = backend, x = match(backend, backends),
-                   median = median(values), lower = min(values), upper = max(values))
+  for (spec in metrics) {
+    raw <- if (spec$key == "total_mb") exports else access
+    for (src in sources) {
+      dat <- raw[raw$source == src, , drop = FALSE]
+      dat$value <- dat[[spec$key]] / spec$divisor
+      stopifnot(all(is.finite(dat$value)), all(dat$value >= 0))
+      if (spec$log) stopifnot(all(dat$value > 0))
+      present <- intersect(c("h5", "bpcells", "embedded"), unique(as.character(dat$backend)))
+      dat$backend <- factor(as.character(dat$backend), levels = present)
+      centre <- do.call(rbind, lapply(present, function(b) {
+        values <- dat$value[dat$backend == b]
+        data.frame(backend = b, x = match(b, present), y = median(values),
+                   lo = min(values), hi = max(values), stringsAsFactors = FALSE)
       }))
-      centre$label <- if (spec$metric == "rss_mb") {
-        format(round(centre$median), big.mark = ",", trim = TRUE)
-      } else vapply(centre$median, function(x) format(signif(x, 3), scientific = FALSE, trim = TRUE), character(1))
+      centre$backend <- factor(centre$backend, levels = present)
+      dat$x <- match(as.character(dat$backend), present)
+      dat$offset <- ave(dat$x, dat$backend, FUN = function(z) {
+        if (length(z) == 1L) return(0)
+        seq(-0.16, 0.16, length.out = length(z))
+      })
+      title <- unname(source_titles[src])
+      if (is.na(title)) title <- src
       cell_count <- unique(dat$n_cells)
       stopifnot(length(cell_count) == 1L)
-      p <- ggplot2::ggplot(dat, ggplot2::aes(x = x, y = value, colour = backend)) +
-        ggplot2::geom_point(ggplot2::aes(x = x + offset), size = 1.6, alpha = 0.55) +
-        ggplot2::geom_errorbar(data = centre,
-          ggplot2::aes(x = x, ymin = lower, ymax = upper, colour = backend),
-          inherit.aes = FALSE, width = 0.11, linewidth = 0.45) +
-        ggplot2::geom_point(data = centre,
-          ggplot2::aes(x = x, y = median, fill = backend), inherit.aes = FALSE,
-          shape = 23, size = 2.8, stroke = 0.45, colour = "#202020") +
-        ggplot2::scale_colour_manual(values = colours) +
-        ggplot2::scale_fill_manual(values = colours) +
-        ggplot2::scale_x_continuous(breaks = 1:2,
-                                   labels = paste0(c("H5", "BPCells"), "\n", centre$label),
-                                   limits = c(0.55, 2.45)) +
+      p <- ggplot2::ggplot() +
+        ggplot2::geom_point(
+          data = dat, ggplot2::aes(x + offset, value, colour = backend),
+          size = 1.2, alpha = 0.5
+        ) +
+        ggplot2::geom_errorbar(
+          data = centre,
+          ggplot2::aes(x, y, ymin = lo, ymax = hi, colour = backend),
+          width = 0.07, linewidth = 0.5
+        ) +
+        ggplot2::geom_point(
+          data = centre,
+          ggplot2::aes(x, y, colour = backend, shape = backend), size = 2.0
+        ) +
+        ggplot2::scale_x_continuous(
+          breaks = seq_along(present),
+          labels = unname(style$labels[present]),
+          limits = c(0.6, length(present) + 0.4)
+        ) +
+        ggplot2::scale_colour_manual(
+          values = style$palette[present], labels = style$labels[present], drop = TRUE
+        ) +
+        ggplot2::scale_shape_manual(
+          values = style$shapes[present], labels = style$labels[present], drop = TRUE
+        ) +
         ggplot2::labs(
-          title = if (col == 1L) paste0(letters[row], "  ", spec$title) else " ",
-          subtitle = if (row == 1L) paste0(source_names[col], " | ",
-            format(cell_count, big.mark = ",", scientific = FALSE, trim = TRUE), " cells") else NULL,
+          title = paste0(spec$title, " | ", title),
+          subtitle = sprintf("%s cells", format(cell_count, big.mark = ",", trim = TRUE)),
           x = NULL, y = spec$unit
         ) +
-        ggplot2::theme_minimal(base_size = 10, base_family = "sans") +
+        bench_full_theme(family) +
         ggplot2::theme(
-          legend.position = "none",
-          panel.grid.minor = ggplot2::element_blank(),
           panel.grid.major.x = ggplot2::element_blank(),
-          panel.grid.major.y = ggplot2::element_line(colour = "#E5E7EB", linewidth = 0.3),
-          axis.text = ggplot2::element_text(colour = "#30343B", size = 9.5),
-          axis.title.y = ggplot2::element_text(size = 9.5, margin = ggplot2::margin(r = 5)),
-          plot.title = ggplot2::element_text(face = "bold", size = 11, margin = ggplot2::margin(b = 6)),
-          plot.subtitle = ggplot2::element_text(size = 9, margin = ggplot2::margin(b = 6)),
-          plot.margin = ggplot2::margin(5, 8, 5, 5)
+          plot.subtitle = ggplot2::element_text(size = 6.5, hjust = 0.5, colour = "#404040",
+                                                margin = ggplot2::margin(b = 2))
         )
       p <- if (spec$log) {
-        p + ggplot2::scale_y_log10(limits = limits,
-          breaks = if (spec$metric == "hot_p50_secs") c(0.03, 0.1, 0.3, 1) else c(3, 10, 30, 100),
-          labels = scales::label_number(), expand = ggplot2::expansion(mult = 0))
+        p + ggplot2::scale_y_log10(
+          labels = function(x) format(x, trim = TRUE, scientific = FALSE)
+        )
       } else {
-        p + ggplot2::scale_y_continuous(limits = limits,
-          expand = ggplot2::expansion(mult = 0), n.breaks = 4)
+        p + ggplot2::scale_y_continuous(
+          labels = function(x) format(x, trim = TRUE, scientific = FALSE)
+        )
       }
       plots[[length(plots) + 1L]] <- p
     }
   }
-  access_counts <- table(access$source, access$backend)
-  build_counts <- table(exports$source, exports$backend)
-  stopifnot(length(unique(as.vector(access_counts))) == 1L,
-            length(unique(as.vector(build_counts))) == 1L)
-  patchwork::wrap_plots(plots, ncol = 2) + patchwork::plot_annotation(
-    title = "Full-dataset expression backend comparison",
-    caption = paste0(
-      "Small dots: all recorded processes. Diamonds: median. Whiskers: observed min-max (not confidence intervals).\n",
-      "Per dataset/backend: ", as.vector(build_counts)[1], " independent builds; ",
-      as.vector(access_counts)[1], " read processes (2 per build). Read processes share built artifacts.\n",
-      "Values below backend names are medians. A and D: log10 axes; C: expanded linear axis (not from zero).\n",
-      "Single-gene timing uses each process's warmed median. Embedded exceeds sparse-index capacity."
-    ),
-    theme = ggplot2::theme(
-      plot.title = ggplot2::element_text(size = 14, face = "bold", margin = ggplot2::margin(b = 8)),
-      plot.caption = ggplot2::element_text(size = 8, hjust = 0, lineheight = 1.2,
-                                          margin = ggplot2::margin(t = 8)),
-      plot.margin = ggplot2::margin(8, 8, 8, 8)
+  list(plots = plots, sources = sources)
+}
+
+bench_full_plot <- function(exports, access) {
+  built <- bench_full_panels(exports, access)
+  patchwork::wrap_plots(
+    built$plots, ncol = min(length(built$sources), 2L), guides = "collect"
+  ) +
+    patchwork::plot_annotation(tag_levels = "a") &
+    ggplot2::theme(
+      legend.position = "bottom",
+      plot.tag.position = c(0, 1),
+      plot.tag = ggplot2::element_text(size = 8, face = "bold")
     )
-  )
 }
 
 bench_figure_full <- function(exports, access, out_dir) {
+  if (!capabilities("cairo")) {
+    message("note: cairo is unavailable; falling back to the standard PDF device")
+  }
   plot <- bench_full_plot(exports, access)
+  sources <- bench_full_sources(access)
+  rows <- ceiling(length(unique(access$source)) * 4L / min(length(sources), 2L))
+  height_mm <- rows * 33 + 28
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   stem <- file.path(out_dir, "expression_backend_benchmark_overview")
-  grDevices::pdf(paste0(stem, ".pdf"), width = 220 / 25.4, height = 230 / 25.4,
-                 family = "Helvetica", useDingbats = FALSE)
-  print(plot)
-  grDevices::dev.off()
-  ggplot2::ggsave(paste0(stem, ".png"), plot, width = 220, height = 230,
-                  units = "mm", dpi = 350, bg = "white")
+  device <- if (capabilities("cairo")) grDevices::cairo_pdf else grDevices::pdf
+  ggplot2::ggsave(paste0(stem, ".pdf"), plot, device = device,
+                  width = 170, height = height_mm, units = "mm", scale = 1, bg = "white")
+  ggplot2::ggsave(paste0(stem, ".png"), plot,
+                  width = 170, height = height_mm, units = "mm", dpi = 340, bg = "white")
+  invisible(plot)
 }
