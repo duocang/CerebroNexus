@@ -57,7 +57,9 @@ hla_ir_annotated <- reactive({
     tryCatch(getMetaData(), error = function(e) NULL)
   )
 }) %>%
-  hla_bindCache(available_crb_files$selected)
+  ## Packed segments are per chain; without the chain in the key a chain
+  ## switch returned the previous chain's segments.
+  hla_bindCache(hla_active_chain(), available_crb_files$selected)
 
 ## ---- Analysis cohort filters ----------------------------------------- ##
 ## Motif construction is quadratic within CDR3-length bins, so an atlas-scale

@@ -1,3 +1,13 @@
+## Keep a control's current value when the toolbar is rebuilt for another tab.
+ir_keep_selection <- function(previous, choices, default) {
+  values <- unname(as.character(unlist(choices)))
+  if (length(previous) == 1L && !is.na(previous) && previous %in% values) {
+    previous
+  } else {
+    default
+  }
+}
+
 ## ---- Main parameters (left column, box 1) ----------------------------- ##
 ## Core controls needed to select a plot: the global cloneCall / chain /
 ## group-by (shown only on tabs they apply to) plus the current tab's
@@ -69,7 +79,13 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_cloneCall",
           "Clone call:",
           choices = c("gene", "nt", "aa", "strict"),
-          selected = "gene",
+          ## Rebuilding the toolbar for another tab must keep the user's
+          ## choice; resetting it also recomputed the new tab twice.
+          selected = ir_keep_selection(
+            isolate(input$ir_cloneCall),
+            c("gene", "nt", "aa", "strict"),
+            "gene"
+          ),
           selectize = FALSE
         ))
       )
@@ -81,7 +97,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_chain",
           "Chain:",
           choices = chain_choices,
-          selected = "both",
+          selected = ir_keep_selection(
+            isolate(input$ir_chain),
+            chain_choices,
+            "both"
+          ),
           selectize = FALSE
         ))
       )
@@ -137,11 +157,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_sharing_unit",
           "Sharing unit:",
           choices = ir_sharing_unit_choices(),
-          selected = if ("sample" %in% ir_sharing_unit_choices()) {
-            "sample"
-          } else {
-            NULL
-          },
+          selected = ir_keep_selection(
+            isolate(input$ir_sharing_unit),
+            ir_sharing_unit_choices(),
+            if ("sample" %in% ir_sharing_unit_choices()) "sample" else NULL
+          ),
           selectize = FALSE
         )
       }
