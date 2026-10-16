@@ -1,0 +1,14 @@
+{
+  "source": "C:\\Users\\wangx\\.codex\\worktrees\\benchmark-clock-smoke\\CerebroNexus\\tests\\benchmarks\\results",
+  "backup": "C:\\Users\\wangx\\Downloads\\CerebroNexus-results-before-scale-reassembly-20261016-130552",
+  "files": 1829,
+  "bytes": 31951190,
+  "status": "VERIFIED",
+  "verified_at": "2026-10-16T13:05:55.648715+02:00",
+  "pre_update_all_files_verified": 1829,
+  "backup_files_reverified": 1829,
+  "original_results_files_reverified": 1802,
+  "changed_files": 27,
+  "changed_files_scope": "expression-backends/derived/20261016-scale-with-full only",
+  "all_original_results_unchanged_after_replot": true
+}

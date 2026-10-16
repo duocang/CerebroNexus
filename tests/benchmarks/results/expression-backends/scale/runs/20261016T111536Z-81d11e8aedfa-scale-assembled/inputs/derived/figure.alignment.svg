@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680.3149606299213pt" height="737.0078740157481pt" viewBox="0 0 680.3149606299213 737.0078740157481">
+<rect width="100%" height="100%" fill="white"/>
+<rect x="60.847" y="69.724" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="62.847" y="79.724" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">a</text>
+<rect x="391.042" y="69.724" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="393.042" y="79.724" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">b</text>
+<rect x="60.847" y="220.274" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="62.847" y="230.274" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">c</text>
+<rect x="391.042" y="220.274" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="393.042" y="230.274" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">d</text>
+<rect x="60.847" y="370.825" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="62.847" y="380.825" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">e</text>
+<rect x="391.042" y="370.825" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="393.042" y="380.825" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">f</text>
+<rect x="60.847" y="521.376" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="62.847" y="531.376" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">g</text>
+<rect x="391.042" y="521.376" width="269.347" height="72.131" fill="none" stroke="#2c7bb6" stroke-width="1.2"/>
+<text x="393.042" y="531.376" font-family="Arial, sans-serif" font-size="8" fill="#2c7bb6">h</text>
+<text x="4" y="732.008" font-family="Arial, sans-serif" font-size="7" fill="#333">PASS: 0 fail, 0 warn</text>
+</svg>

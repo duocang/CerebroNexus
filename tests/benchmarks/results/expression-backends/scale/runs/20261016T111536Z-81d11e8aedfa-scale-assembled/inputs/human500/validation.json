@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "run_id": "20261016T061232Z-81d11e8aedfa-human500k-embedded-99G",
+  "experiment_type": "bounded supplemental feasibility; not a formal scale run",
+  "build_repeats": 1,
+  "access_processes": 2,
+  "raw_timing_records": 76,
+  "memory_max_gib": 99,
+  "swap_max_bytes": 0,
+  "query_plan_fingerprint": "47fca3dda5ed5d1c8b7ddeb57c94d078"
+}

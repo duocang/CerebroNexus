@@ -1,0 +1,109 @@
+Running as unit: cerebro-scale300-20261016-081232.service; invocation ID: fec0fb4f311140679a2ab56ca9241513
+warning: ignoring untrusted substituter 'https://osmzhlab.uni-muenster.de:4949/r-packages', you are not a trusted user.
+Run `man nix.conf` for more information on the `substituters` configuration option.
+warning: ignoring the client-specified setting 'trusted-public-keys', because it is a restricted setting and you are not a trusted user
+warning: ignoring untrusted substituter 'https://osmzhlab.uni-muenster.de:4949/r-packages', you are not a trusted user.
+Run `man nix.conf` for more information on the `substituters` configuration option.
+warning: ignoring the client-specified setting 'trusted-public-keys', because it is a restricted setting and you are not a trusted user
+/nix/store/rplwbx3hgs4wzc9hcs6r3cgp9r048fgl-stdenv-linux/setup: line 264: $'\r': command not found
+wrote run provenance to /mnt/c/Users/wangx/AppData/Local/Temp/cerebro-supplement-20261016-081232/scale300/run_manifest.csv
+full-source out-of-core resource plan is safe
+QUERY_PLAN mouse_brain_e18 300000 2026-10-16T08:15:48+02:00
+BUILD mouse_brain_e18_300000_embedded_r1 2026-10-16T08:16:34+02:00
+ACCESS mouse_brain_e18_300000_embedded_r1 1 2026-10-16T08:19:06+02:00
+ACCESS mouse_brain_e18_300000_embedded_r1 2 2026-10-16T08:20:21+02:00
+BUILD mouse_brain_e18_300000_bpcells_r1 2026-10-16T08:21:39+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r1 1 2026-10-16T08:22:24+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r1 2 2026-10-16T08:22:41+02:00
+BUILD mouse_brain_e18_300000_h5_r1 2026-10-16T08:22:58+02:00
+ACCESS mouse_brain_e18_300000_h5_r1 1 2026-10-16T08:23:55+02:00
+ACCESS mouse_brain_e18_300000_h5_r1 2 2026-10-16T08:24:06+02:00
+BUILD mouse_brain_e18_300000_bpcells_r2 2026-10-16T08:24:18+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r2 1 2026-10-16T08:25:06+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r2 2 2026-10-16T08:25:22+02:00
+BUILD mouse_brain_e18_300000_h5_r2 2026-10-16T08:25:40+02:00
+ACCESS mouse_brain_e18_300000_h5_r2 1 2026-10-16T08:26:36+02:00
+ACCESS mouse_brain_e18_300000_h5_r2 2 2026-10-16T08:26:48+02:00
+BUILD mouse_brain_e18_300000_embedded_r2 2026-10-16T08:26:59+02:00
+ACCESS mouse_brain_e18_300000_embedded_r2 1 2026-10-16T08:29:31+02:00
+ACCESS mouse_brain_e18_300000_embedded_r2 2 2026-10-16T08:30:43+02:00
+BUILD mouse_brain_e18_300000_h5_r3 2026-10-16T08:31:52+02:00
+ACCESS mouse_brain_e18_300000_h5_r3 1 2026-10-16T08:32:51+02:00
+ACCESS mouse_brain_e18_300000_h5_r3 2 2026-10-16T08:33:02+02:00
+BUILD mouse_brain_e18_300000_embedded_r3 2026-10-16T08:33:17+02:00
+ACCESS mouse_brain_e18_300000_embedded_r3 1 2026-10-16T08:35:53+02:00
+ACCESS mouse_brain_e18_300000_embedded_r3 2 2026-10-16T08:37:14+02:00
+BUILD mouse_brain_e18_300000_bpcells_r3 2026-10-16T08:38:22+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r3 1 2026-10-16T08:39:10+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r3 2 2026-10-16T08:39:25+02:00
+BUILD mouse_brain_e18_300000_embedded_r4 2026-10-16T08:39:44+02:00
+ACCESS mouse_brain_e18_300000_embedded_r4 1 2026-10-16T08:42:12+02:00
+ACCESS mouse_brain_e18_300000_embedded_r4 2 2026-10-16T08:43:26+02:00
+BUILD mouse_brain_e18_300000_bpcells_r4 2026-10-16T08:44:36+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r4 1 2026-10-16T08:45:22+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r4 2 2026-10-16T08:45:36+02:00
+BUILD mouse_brain_e18_300000_h5_r4 2026-10-16T08:45:57+02:00
+ACCESS mouse_brain_e18_300000_h5_r4 1 2026-10-16T08:46:58+02:00
+ACCESS mouse_brain_e18_300000_h5_r4 2 2026-10-16T08:47:09+02:00
+BUILD mouse_brain_e18_300000_bpcells_r5 2026-10-16T08:47:23+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r5 1 2026-10-16T08:48:07+02:00
+ACCESS mouse_brain_e18_300000_bpcells_r5 2 2026-10-16T08:48:25+02:00
+BUILD mouse_brain_e18_300000_h5_r5 2026-10-16T08:48:40+02:00
+ACCESS mouse_brain_e18_300000_h5_r5 1 2026-10-16T08:49:39+02:00
+ACCESS mouse_brain_e18_300000_h5_r5 2 2026-10-16T08:49:52+02:00
+BUILD mouse_brain_e18_300000_embedded_r5 2026-10-16T08:50:07+02:00
+ACCESS mouse_brain_e18_300000_embedded_r5 1 2026-10-16T08:52:42+02:00
+ACCESS mouse_brain_e18_300000_embedded_r5 2 2026-10-16T08:54:04+02:00
+QUERY_PLAN human_pfc_hbcc 300000 2026-10-16T08:55:20+02:00
+BUILD human_pfc_hbcc_300000_embedded_r1 2026-10-16T08:57:28+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r1 1 2026-10-16T09:03:47+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r1 2 2026-10-16T09:06:06+02:00
+BUILD human_pfc_hbcc_300000_bpcells_r1 2026-10-16T09:08:19+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r1 1 2026-10-16T09:09:55+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r1 2 2026-10-16T09:10:12+02:00
+BUILD human_pfc_hbcc_300000_h5_r1 2026-10-16T09:10:32+02:00
+ACCESS human_pfc_hbcc_300000_h5_r1 1 2026-10-16T09:12:25+02:00
+ACCESS human_pfc_hbcc_300000_h5_r1 2 2026-10-16T09:12:40+02:00
+BUILD human_pfc_hbcc_300000_bpcells_r2 2026-10-16T09:12:53+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r2 1 2026-10-16T09:14:27+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r2 2 2026-10-16T09:14:47+02:00
+BUILD human_pfc_hbcc_300000_h5_r2 2026-10-16T09:15:04+02:00
+ACCESS human_pfc_hbcc_300000_h5_r2 1 2026-10-16T09:17:05+02:00
+ACCESS human_pfc_hbcc_300000_h5_r2 2 2026-10-16T09:17:20+02:00
+BUILD human_pfc_hbcc_300000_embedded_r2 2026-10-16T09:17:38+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r2 1 2026-10-16T09:23:49+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r2 2 2026-10-16T09:26:17+02:00
+BUILD human_pfc_hbcc_300000_h5_r3 2026-10-16T09:28:36+02:00
+ACCESS human_pfc_hbcc_300000_h5_r3 1 2026-10-16T09:30:34+02:00
+ACCESS human_pfc_hbcc_300000_h5_r3 2 2026-10-16T09:30:47+02:00
+BUILD human_pfc_hbcc_300000_embedded_r3 2026-10-16T09:31:05+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r3 1 2026-10-16T09:37:12+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r3 2 2026-10-16T09:39:50+02:00
+BUILD human_pfc_hbcc_300000_bpcells_r3 2026-10-16T09:42:14+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r3 1 2026-10-16T09:44:05+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r3 2 2026-10-16T09:44:30+02:00
+BUILD human_pfc_hbcc_300000_embedded_r4 2026-10-16T09:44:55+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r4 1 2026-10-16T09:52:59+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r4 2 2026-10-16T09:56:06+02:00
+BUILD human_pfc_hbcc_300000_bpcells_r4 2026-10-16T09:59:19+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r4 1 2026-10-16T10:01:17+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r4 2 2026-10-16T10:01:36+02:00
+BUILD human_pfc_hbcc_300000_h5_r4 2026-10-16T10:01:57+02:00
+ACCESS human_pfc_hbcc_300000_h5_r4 1 2026-10-16T10:03:59+02:00
+ACCESS human_pfc_hbcc_300000_h5_r4 2 2026-10-16T10:04:13+02:00
+BUILD human_pfc_hbcc_300000_bpcells_r5 2026-10-16T10:04:30+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r5 1 2026-10-16T10:06:09+02:00
+ACCESS human_pfc_hbcc_300000_bpcells_r5 2 2026-10-16T10:06:29+02:00
+BUILD human_pfc_hbcc_300000_h5_r5 2026-10-16T10:06:53+02:00
+ACCESS human_pfc_hbcc_300000_h5_r5 1 2026-10-16T10:09:11+02:00
+ACCESS human_pfc_hbcc_300000_h5_r5 2 2026-10-16T10:09:31+02:00
+BUILD human_pfc_hbcc_300000_embedded_r5 2026-10-16T10:09:47+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r5 1 2026-10-16T10:16:49+02:00
+ACCESS human_pfc_hbcc_300000_embedded_r5 2 2026-10-16T10:19:38+02:00
+SCALE300_VALIDATED 2026-10-16T10:22:42+02:00
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1h 56min 20.644s
+CPU time consumed: 2h 6min 51.168s
+Memory peak: 90.0G
+Memory swap peak: 0B

@@ -1,0 +1,21 @@
+Purpose: add new 300k scale measurements and a separately marked Human embedded 500k feasibility point, retaining reused full endpoints without remeasurement.
+Question: how do interactive latency, block latency, loaded memory and storage change from common subsets to the full datasets?
+Claim boundary: observed backend trade-offs on these two datasets and this machine, not universal complexity or a fixed-gene scaling experiment.
+Archetype: quantitative grid, four metric rows and two dataset columns.
+Evidence roles: warmed single-gene latency (interaction), 12-gene block latency (multi-gene workload), loaded RSS (memory feasibility), total storage (disk cost).
+Backend: R ggplot2/patchwork, adapted structurally from the repository's scale plot; existing raw results and plotting source remain intact.
+Mapping: source -> dataset; n_cells -> actual x position; backend -> colour/shape; hot_p50_secs/block_secs -> seconds; rss_mb/total_mb -> GiB after /1024.
+Statistics: each metric uses all successful observations. Access metrics first take the median of the two processes belonging to each build, then median and min-max across five builds. Storage uses five builds directly. These ranges are descriptive, not confidence intervals.
+Exception: Human embedded 500k is one build with two nested reads, drawn as a disconnected hollow diamond with no between-build error bar. It does not establish five-build repeatability.
+Exclusions: five resource-skipped Human PFC embedded builds at 500k have no values. Embedded 1m/full was not scheduled. No invented values or interpolated measurements.
+Comparability: profiles panel_c2 and scale share 12 query genes, three hot repetitions, five builds, two independent access processes, materialized-v2 and monotonic-v1. Genes are selected per tier; joined points do not isolate the effect of cell count alone.
+Full endpoint coordinates: Mouse 1306127; Human PFC 1486324. Dashed connections and rings distinguish reused full data. No new full-scale benchmark was run.
+Exports: 240 x 260 mm PDF with editable text and 350-dpi PNG; minimum glyph size 5 pt; panel alignment tolerance 1.5 pt; collision/text/source QA plus visual inspection.
+Source full run: 20261015T213433Z-81d11e8aedfa-full
+Source scale run: 20261016T002447Z-81d11e8aedfa-scale
+Both git SHA: 81d11e8aedfae380516f16e4f95c29728fbad02a
+Supplement runs: 20261016T061232Z-81d11e8aedfa-scale-300k (30 builds/60 reads) and 20261016T061232Z-81d11e8aedfa-human500k-embedded-99G (1 build/2 reads).
+New resource policies: 90 GiB cap for 300k; 99 GiB cap for 500k; zero task swap; Nice=10/IOWeight=10. Different resource policies and host/cache state limit strict controlled performance comparisons across runs.
+Combined evidence: 216 successful builds, 432 read processes, 16416 raw timings; five original resource skips preserved.
+Current verified backup: C:/Users/wangx/Downloads/CerebroNexus-results-before-300k-supplement-20261016-081413 (724 files, 11102798 bytes, SHA256 checked).
+Backup verified before creating this directory: C:/Users/wangx/Downloads/CerebroNexus-results-before-full-endpoints-20261016-074602 (691 files, 8127849 bytes, SHA256 checked).

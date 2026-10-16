@@ -1,0 +1,2 @@
+PASS: systemd scope enforces MemoryMax=64MiB and MemorySwapMax=0 (shell probe only)
+PASS: default and Scale dispatch call only Scale; optional Full remains separate (mocked dispatcher)

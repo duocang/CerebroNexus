@@ -1,0 +1,3 @@
+"run_id","profile","source","n_cells","n_genes","nnz","source_prepare_secs","query_plan_secs","peak_rss_mb","subset_n_cells","subset_cells_fingerprint","query_plan_fingerprint","status"
+"20261016T061232Z-81d11e8aedfa-scale-300k","scale","mouse_brain_e18",3e+05,27998,602617490,5.3025797070004,32.5582007429985,902.16015625,100000,"098fa98e20f6d892461afbb280e3a4b9","69e83369a53369c70559e2d40de92774","OK"
+"20261016T061232Z-81d11e8aedfa-scale-300k","scale","human_pfc_hbcc",3e+05,34176,1203312063,5.68524442399939,106.091924128996,970.75390625,100000,"098fa98e20f6d892461afbb280e3a4b9","22b8622e1cde40ac9681a74a4a112e67","OK"

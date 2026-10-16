@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "png_identical_to_approved": true,
+  "effective_min_font_pt": 8.0,
+  "text_spans": 139,
+  "standalone_replot": true,
+  "external_full_or_derived_reads": false,
+  "visual_review": "Panels a-h inspected: exact full coordinates, separate n=1 diamonds, 300k ticks, uncertainty and legend/caption remain unchanged."
+}

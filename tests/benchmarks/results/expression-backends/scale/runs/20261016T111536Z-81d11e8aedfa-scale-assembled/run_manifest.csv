@@ -1,0 +1,19 @@
+key,value
+study_id,20261016T111536Z-81d11e8aedfa-scale-assembled
+run_id,20261016T111536Z-81d11e8aedfa-scale-assembled
+profile,scale
+result_kind,assembled
+new_measurements,0
+assembled_at,2026-10-16T11:15:38.603952+00:00
+measurement_git_sha,81d11e8aedfae380516f16e4f95c29728fbad02a
+git_sha,81d11e8aedfae380516f16e4f95c29728fbad02a
+git_branch,paper/real-data-benchmark
+assembly_worktree_dirty,true
+timing_contract,monotonic-v1
+elapsed_clock,CLOCK_MONOTONIC
+acquisition_environment,see inputs/*/run_manifest.csv and inputs/human500fill/runner.log
+memory_policy,mixed historical acquisition policies; Human embedded 500k builds 2-5 used a fixed 99-percent-of-available cgroup cap (107379944939 bytes) with swap disabled
+repeat_policy,44 combinations x 5 builds; 2 reads per build
+previous_current,20261016T090954Z-81d11e8aedfa-scale-assembled
+full_dependency,none: full evidence is copied under inputs/full
+coverage,all 44 configured dataset/tier/backend combinations with five builds each

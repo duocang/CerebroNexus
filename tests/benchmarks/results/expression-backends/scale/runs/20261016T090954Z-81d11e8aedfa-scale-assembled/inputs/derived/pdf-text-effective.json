@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "minimum_effective_font_pt": 8.0,
+  "text_spans": 139,
+  "raw_Tf_auditor_exit": 1,
+  "note": "R PDF Tf operands are scaled by text matrices; effective PyMuPDF span sizes include those transforms."
+}

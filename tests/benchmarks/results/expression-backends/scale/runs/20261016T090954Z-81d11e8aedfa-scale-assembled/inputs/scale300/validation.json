@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "run_id": "20261016T061232Z-81d11e8aedfa-scale-300k",
+  "build_count": 30,
+  "access_count": 60,
+  "timing_count": 2280,
+  "profile": "scale",
+  "tier_type": "scale_supplement",
+  "build_repeats": 5,
+  "access_repeats_per_build": 2,
+  "cli_validation_passed": true
+}

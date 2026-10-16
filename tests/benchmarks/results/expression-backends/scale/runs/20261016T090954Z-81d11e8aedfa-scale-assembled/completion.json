@@ -1,0 +1,20 @@
+{
+  "status": "ASSEMBLY_COMPLETE",
+  "result_kind": "assembled",
+  "run_id": "20261016T090954Z-81d11e8aedfa-scale-assembled",
+  "verified_at": "2026-10-16T09:19:31.403306+00:00",
+  "new_measurements": 0,
+  "successful_builds": 216,
+  "access_processes": 432,
+  "raw_timings": 16416,
+  "combinations": 44,
+  "replicated_combinations": 43,
+  "single_build_combination": "human_pfc_hbcc/500000/embedded",
+  "historical_skips_preserved": 5,
+  "backup": "C:\\Users\\wangx\\Downloads\\CerebroNexus-results-before-scale-assembly-20261016-110215",
+  "backup_verified_files": 859,
+  "full_dependency": false,
+  "acquisition_commit": "81d11e8aedfae380516f16e4f95c29728fbad02a",
+  "future_memory_policy": "95% of launch-time available RAM; enforced cgroup cap; no task swap",
+  "activation": "The result is active only when scale/CURRENT contains this collection ID."
+}

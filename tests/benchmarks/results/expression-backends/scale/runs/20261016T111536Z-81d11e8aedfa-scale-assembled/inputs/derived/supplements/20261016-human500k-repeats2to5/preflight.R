@@ -1,0 +1,7 @@
+source(file.path(Sys.getenv('BENCH_ROOT'),'benchmark.R'))
+testthat::test_dir('tests/testthat',filter='^bench-resources$',reporter='summary',stop_on_failure=TRUE)
+a <- bench_available_memory_bytes(); b <- bench_scale_memory_budget(a)
+stopifnot(b==floor(a*.99))
+writeLines(c(sprintf('export BENCH_AVAILABLE_MEMORY_BYTES=%.0f',a),sprintf('export BENCH_MEMORY_LIMIT_BYTES=%.0f',b)),file.path(Sys.getenv('TASK'),'memory.env'))
+jsonlite::write_json(list(snapshot_utc=format(Sys.time(),tz='UTC',usetz=TRUE),available_bytes=a,memory_max_bytes=b,fraction=.99,swap_max_bytes=0),file.path(Sys.getenv('TASK'),'memory.json'),pretty=TRUE,auto_unbox=TRUE)
+writeLines(capture.output(sessionInfo()),file.path(Sys.getenv('TASK'),'sessionInfo.txt'))

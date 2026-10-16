@@ -1,0 +1,12 @@
+unpacking 'https://github.com/rstats-on-nix/nixpkgs/archive/2026-10-05.tar.gz' into the Git cache...
+warning: ignoring untrusted substituter 'https://osmzhlab.uni-muenster.de:4949/r-packages', you are not a trusted user.
+Run `man nix.conf` for more information on the `substituters` configuration option.
+warning: ignoring the client-specified setting 'trusted-public-keys', because it is a restricted setting and you are not a trusted user
+warning: ignoring untrusted substituter 'https://osmzhlab.uni-muenster.de:4949/r-packages', you are not a trusted user.
+Run `man nix.conf` for more information on the `substituters` configuration option.
+warning: ignoring the client-specified setting 'trusted-public-keys', because it is a restricted setting and you are not a trusted user
+unpacking 'https://flakehub.com/f/DeterminateSystems/nixpkgs-weekly/%2A.tar.gz' into the Git cache...
+/nix/store/rplwbx3hgs4wzc9hcs6r3cgp9r048fgl-stdenv-linux/setup: line 264: $'\r': command not found
+bench-resources: ....................................
+
+══ DONE ════════════════════════════════════════════════════════════════════════

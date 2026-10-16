@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "full_run": "20261015T213433Z-81d11e8aedfa-full",
+  "scale_run": "20261016T002447Z-81d11e8aedfa-scale",
+  "supplement_300k_run": "20261016T061232Z-81d11e8aedfa-scale-300k",
+  "feasibility_500k_run": "20261016T061232Z-81d11e8aedfa-human500k-embedded-99G",
+  "successful_builds": 216,
+  "resource_skips": 5,
+  "access_processes": 432,
+  "raw_timing_records": 16416,
+  "clocks": "CLOCK_MONOTONIC",
+  "profiles_share_query_strategy": true,
+  "query_genes_fixed_across_tiers": false,
+  "summary": "Two read processes are summarized within each build; median/min-max across five builds except Human embedded 500k: one build, no across-build uncertainty."
+}

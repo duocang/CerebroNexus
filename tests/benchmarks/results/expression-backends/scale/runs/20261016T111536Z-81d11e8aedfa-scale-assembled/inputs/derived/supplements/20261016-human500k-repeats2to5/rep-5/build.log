@@ -1,0 +1,31 @@
+[12:29:12] Supplemental bounded build: materializing the exact 500k scale prefix
+[12:36:29] Materialized 34176 genes x 500000 cells; nnz 1982146320
+[12:38:39] Exporting embedded
+[12:38:39] Start collecting data...
+[12:39:00] Adding expression data (embedded)...
+[12:39:00] Overview of Cerebro object:
+
+class: Cerebro
+exporter package version: 5.0.0
+experiment name: human_pfc_hbcc_500000
+organism: hg38
+date of analysis: 
+date of export: 2026-10-16
+number of cells: 500,000
+number of genes: 34,176
+grouping variables (2): sample, cluster
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:
+HLA typing: none
+Spatial data:
+
+[12:39:00] Saving Cerebro object to: /home/wang/.cache/cerebronexus-benchmark/human500-fill-20261016T092703Z/rep-5/bench.crb
+[12:39:44] Done!
+[12:39:46] BUILD_OK 3211.1 MiB; peak 99512.8 MiB

@@ -1,0 +1,53 @@
+Authorized request: add a 300k scale tier for Mouse brain E18 and Human PFC;
+then retry Human PFC 500k embedded with a 99 GiB memory limit.
+User's destination typo wangx.codex is resolved to the existing worktree:
+C:/Users/wangx/.codex/worktrees/benchmark-clock-smoke/CerebroNexus/tests/benchmarks/results/expression-backends/derived/20261016-scale-with-full.
+
+Commit: 81d11e8aedfae380516f16e4f95c29728fbad02a; branch paper/real-data-benchmark.
+No code changes, package installation/upgrades, download, cleanup, commit or push.
+Prior full/scale results and CURRENT remain untouched.
+Pre-update entire-results backup: see backup-record.json, SHA256-verified.
+
+300k: run ID 20261016T061232Z-81d11e8aedfa-scale-300k.
+Two sources; 3 backends; 5 independent builds per combination; 2 fresh R access
+processes per build. Total 30 builds, 60 access processes. Existing CLI commands
+environment/full-resources/query-plan/export/build-full/access/validate are used.
+Only an explicit local copy of the source registry's tier list is set to 300000
+for bench_scale_schedule; repository registry and production code unchanged.
+All counters and timing/correctness checks retained. No run.sh or publication.
+90 GiB cgroup limit, zero swap; low CPU/I/O priority; threads=1; serialized runs.
+Prior source metadata inventory reused, both local source SHA256 rechecked before
+measurement. Data objects retained in a dedicated WSL scratch directory.
+WSL scratch: /home/wang/.cache/cerebronexus-benchmark/supplement-300k-20261016-081232
+Results: this directory/scale300 (not yet merged into derived results).
+
+500k: run ID 20261016T061232Z-81d11e8aedfa-human500k-embedded-99G.
+One independently bounded build, followed by two unmodified CLI access processes
+only if build succeeds. Existing build.R from the 90 GiB attempt reuses actual
+benchmark helpers and export arguments, but this remains an explicitly labelled
+feasibility experiment outside formal scale preflight. No fabricated assessment.
+The previous exact scale-prefix query plan is reused (not recomputed), with SHA256
+5e7a34637084ca652834ede09f9cafc6ed7b1aba08280f79f45de95811479581;
+matrix fingerprint 47fca3dda5ed5d1c8b7ddeb57c94d078, nnz 1982146320.
+99 GiB cgroup limit (106300440576 bytes), zero swap; max 2 hours.
+Begins only after the 300k unit exits and >=100 GiB MemAvailable is reported.
+500k failure must not prevent validated 300k data from being incorporated.
+If it succeeds, label n=1 build with 2 nested accesses; never five replicates.
+
+Sequential driver: cerebro-supplement-driver-20261016-081232.service
+300k unit: cerebro-scale300-20261016-081232.service
+500k unit: cerebro-human500-99g-20261016-081232.service
+Read-only status: systemctl --user show those units; tail scale300.log and
+human500-99G/run.log. runner.complete and runner.exit indicate final driver exit.
+Do not restart or repeat these measurements. Finish plotting after they exit.
+
+Post-run: use nature-figure and existing R replot.R; verify CLI validation, source
+hashes, raw CLOCK_MONOTONIC timing consistency, fingerprints, all five independent
+builds and nested access processes. Recheck saved backup and original hashes.
+Archive new supplemental CSV/logs/provenance into a unique subdirectory of the
+requested derived directory, retaining old measurement rows/skips unchanged.
+Merge 300k via source_run_id/profile/tier_type; draw real 300k x coordinates.
+Keep old actual full endpoints at 1306127/1486324, common scale through 1m.
+If 500k fails, keep original five resource skips and do not plot an artificial point.
+Update reproducible R code, input manifest, caption, QA, completion record; run
+alignment, collision, effective PDF font, numeric and visual QA before delivery.

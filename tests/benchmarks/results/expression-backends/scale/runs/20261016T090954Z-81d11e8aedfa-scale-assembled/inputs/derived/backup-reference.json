@@ -1,0 +1,12 @@
+{
+  "source": "C:\\Users\\wangx\\.codex\\worktrees\\benchmark-clock-smoke\\CerebroNexus\\tests\\benchmarks\\results",
+  "backup": "C:\\Users\\wangx\\Downloads\\CerebroNexus-results-before-300k-supplement-20261016-081413",
+  "files": 724,
+  "bytes": 11102798,
+  "status": "VERIFIED",
+  "verified_at": "2026-10-16T08:14:14.451853+02:00",
+  "pre_update_all_files_verified": 724,
+  "original_results_files_reverified": 691,
+  "original_results_unchanged_after_replot": true,
+  "backup_files_reverified": 724
+}

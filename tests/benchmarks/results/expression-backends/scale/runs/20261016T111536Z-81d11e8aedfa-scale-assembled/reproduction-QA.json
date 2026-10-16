@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "png_identical_to_approved": true,
+  "effective_min_font_pt": 8.0,
+  "text_spans": 141,
+  "standalone_replot": true,
+  "external_full_or_derived_reads": false,
+  "visual_review": "Panels a-h inspected: exact full coordinates, the Human 500k point is a filled five-build summary with a min-max whisker, 300k ticks, uncertainty and legend/caption remain correct."
+}

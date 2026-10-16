@@ -1,0 +1,706 @@
+{
+  "pdf": "C:\\Users\\wangx\\AppData\\Local\\Temp\\cerebro-scale-assembled-20261016\\20261016T090954Z-81d11e8aedfa-scale-assembled\\replot-output\\scale_with_full_endpoints.pdf",
+  "auditable": true,
+  "minimum_required_pt": 5.0,
+  "minimum_found_pt": 1.0,
+  "text_run_count": 139,
+  "below_minimum_count": 139,
+  "below_minimum": [
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F8",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F7",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F2",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F2",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F2",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F2",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F2",
+      "size_pt": 1.0
+    },
+    {
+      "stream": 1,
+      "font": "F3",
+      "size_pt": 1.0
+    }
+  ],
+  "warnings": []
+}

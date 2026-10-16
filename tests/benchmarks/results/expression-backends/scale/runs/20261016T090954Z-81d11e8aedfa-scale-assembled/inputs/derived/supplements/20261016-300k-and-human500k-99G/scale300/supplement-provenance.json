@@ -1,0 +1,11 @@
+{
+  "type": "additional scale tier",
+  "n_cells": 300000,
+  "source_metadata_origin": "20261016T002447Z-81d11e8aedfa-scale",
+  "metadata_reused": true,
+  "source_files_rehashed_before_measurements": true,
+  "memory_max_gib": 90,
+  "swap_max_bytes": 0,
+  "run_id": "20261016T061232Z-81d11e8aedfa-scale-300k",
+  "original_runs_and_CURRENT_unchanged": true
+}
