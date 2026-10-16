@@ -96,7 +96,16 @@ expression_selected_genes_input <- reactive({
 
 ## Let a multi-select gesture settle before any million-cell expression read.
 ## The first value still initializes immediately.
-expression_selected_genes <- debounceAfterFirst(
-  expression_selected_genes_input,
+expression_selection_snapshot <- debounceAfterFirst(
+  reactive(list(available = list_of_genes(), value = expression_selected_genes_input())),
   200
 )
+expression_selected_genes <- reactive({
+  snapshot <- expression_selection_snapshot()
+  ## A previous dataset's canonical selection is never a valid intermediate
+  ## frame. Only debounce edits within the same gene universe.
+  if (!identical(snapshot$available, list_of_genes())) {
+    return(expression_selected_genes_input())
+  }
+  snapshot$value
+})

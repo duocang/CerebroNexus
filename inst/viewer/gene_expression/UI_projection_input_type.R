@@ -129,9 +129,9 @@ observeEvent(
           id,
           canonical_selection = TRUE,
           refresh_on_activation = FALSE,
-          ## These controls are already mounted when analysis_mode binds.
-          ## One registration avoids a retry restoring pre-seed empty values.
-          retry = identical(id, "expression_genes_input"),
+          ## These controls are already mounted. Do not schedule repeated URL
+          ## registrations while a large dataset is still being prepared.
+          retry = FALSE,
           active = function() identical(input[["sidebar"]], "geneExpression")
         )
       })

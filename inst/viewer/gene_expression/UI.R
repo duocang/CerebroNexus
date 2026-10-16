@@ -130,13 +130,12 @@ tab_gene_expression <- tabItem(
       if (!target || target.dataset.observed) return;
       target.dataset.observed = 'true';
       var observer = new IntersectionObserver(function (entries) {
-        if (!entries.some(function (entry) { return entry.isIntersecting; })) return;
         Shiny.setInputValue(
           'expression_summary_viewport_request',
-          Date.now(),
-          {priority: 'event'}
+          entries.some(function (entry) {
+            return entry.isIntersecting && entry.intersectionRatio >= 0.25;
+          })
         );
-        observer.disconnect();
       }, {threshold: 0.25});
       observer.observe(target);
     })();

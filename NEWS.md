@@ -1,5 +1,9 @@
 # CerebroNexus (development)
 
+- Keeps Gene expression selections stable while switching datasets, rejects
+  late gene-search results, and confirms a finished plot only for the current
+  dataset generation. Defers updates to off-screen expression summaries until
+  they are visible, while retaining already computed plots during scrolling.
 - Makes visualization parameter bars fill available space automatically, giving
   multi-select fields more room and wrapping controls on narrower screens.
   Groups selectors and Settings fields also fill their available space. Removes

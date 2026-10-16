@@ -212,18 +212,18 @@ expression_projection_render_key <- reactive({
 })
 
 expression_projection_summary_ready <- reactive({
-  identical(
-    input[["expression_projection_rendered_key"]],
-    expression_projection_render_key()
-  )
+  painted <- input[["expression_projection_rendered_state"]]
+  is.list(painted) &&
+    viewerDatasetContextEqual(painted$dataset_context, viewer_loaded_dataset_context()) &&
+    identical(painted$render_key, expression_projection_render_key())
 })
 
 observeEvent(
-  input[["expression_projection_rendered_key"]],
+  input[["expression_projection_rendered_state"]],
   {
-    expressionProjectionProgressClose(
-      input[["expression_projection_rendered_key"]]
-    )
+    if (expression_projection_summary_ready()) {
+      expressionProjectionProgressClose(expression_projection_render_key())
+    }
   },
   ignoreInit = TRUE
 )
@@ -250,8 +250,9 @@ if (
 ## backend initialization out of the user's first gene selection.
 expression_projection_backend_warmed <- reactiveVal(FALSE)
 observeEvent(
-  input[["expression_projection_rendered_key"]],
+  input[["expression_projection_rendered_state"]],
   {
+    req(expression_projection_summary_ready())
     if (isTRUE(expression_projection_backend_warmed())) {
       return()
     }
@@ -305,7 +306,7 @@ expression_projection_expression_levels <- reactive({
   if (
     identical(isolate(input[["sidebar"]]), "geneExpression") &&
       !is.null(isolate(input[["expression_projection_render_request"]])) &&
-      !identical(painted_key, render_key) &&
+      !isTRUE(isolate(expression_projection_summary_ready())) &&
       (length(genes_present) || !is.null(painted_key))
   ) {
     expressionProjectionProgressStart(render_key)

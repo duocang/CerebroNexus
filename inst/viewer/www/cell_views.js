@@ -3235,6 +3235,10 @@
         });
         var renderKey = activeView && activeView.data && activeView.data.render_key;
         if (eventKind === 'primary' && renderKey != null) {
+          Shiny.setInputValue(singleActive + '_rendered_state', {
+            render_key: String(renderKey),
+            dataset_context: activeView.dataset_context
+          }, { priority: 'event' });
           Shiny.setInputValue(
             singleActive + '_rendered_key',
             String(renderKey),

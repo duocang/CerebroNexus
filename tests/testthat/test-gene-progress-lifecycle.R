@@ -3,6 +3,7 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
     function(input, output, session) {
       scope <- environment()
       sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext("session", "A", 1))
       sys.source(
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         scope
@@ -41,7 +42,9 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
       expect_false(is.null(scope$expression_projection_progress_handle))
       key <- expression_projection_render_key()
       ## A stale acknowledgement cannot close a newer operation's progress.
-      session$setInputs(expression_projection_rendered_key = "obsolete")
+      session$setInputs(expression_projection_rendered_state = list(
+        render_key = "obsolete", dataset_context = viewer_loaded_dataset_context()
+      ))
       expect_identical(scope$expression_projection_progress_key, key)
       session$setInputs(sidebar = "overview")
       expect_null(scope$expression_projection_progress_handle)
@@ -54,10 +57,33 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
       session$setInputs(expression_projection_render_request = list(nonce = 2))
       expression_projection_expression_levels()
       expect_identical(scope$reads, 1L)
-      session$setInputs(expression_projection_rendered_key = key, revision = 2)
+      session$setInputs(expression_projection_rendered_key = key, revision = 2,
+        expression_projection_rendered_state = list(
+          render_key = key, dataset_context = viewer_loaded_dataset_context()
+        ))
       expression_projection_expression_levels()
       expect_null(scope$expression_projection_progress_handle)
       expect_identical(scope$reads, 2L)
+      expect_true(expression_projection_summary_ready())
+      original <- viewer_loaded_dataset_context()
+      ## Identical genes in B, and then A again, still need a fresh paint.
+      for (context in list(viewerDatasetContext("session", "B", 2),
+                           viewerDatasetContext("session", "A", 3))) {
+        viewer_loaded_dataset_context(context)
+        session$flushReact()
+        expect_false(expression_projection_summary_ready())
+        expressionProjectionProgressStart(key)
+        session$setInputs(expression_projection_rendered_state = list(
+          render_key = key, dataset_context = original
+        ))
+        expect_false(expression_projection_summary_ready())
+        expect_false(is.null(scope$expression_projection_progress_handle))
+        session$setInputs(expression_projection_rendered_state = list(
+          render_key = key, dataset_context = context
+        ))
+        expect_true(expression_projection_summary_ready())
+        expect_null(scope$expression_projection_progress_handle)
+      }
       ## No request yet, or hidden recalculation, must never open global progress.
       session$setInputs(
         expression_projection_render_request = NULL,
@@ -89,6 +115,7 @@ test_that("Gene rejects obsolete group columns and clears rather than retaining 
   body <- assignment[[3]][[2]]
   env <- new.env(parent = globalenv())
   env$req <- shiny::req
+  env$isolate <- shiny::isolate
   env$input <- list(
     expression_summary_viewport_request = 1,
     expression_by_group_selected_group = "old_group"
