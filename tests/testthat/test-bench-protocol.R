@@ -122,15 +122,15 @@ test_that("Panel C1 is the exact three-backend scale bridge", {
   expect_true(all(schedule$access_repeats == 2L))
 })
 
-test_that("Panel C2 is the exact two-backend full-source schedule", {
+test_that("Panel C2 is the exact three-backend full-source schedule", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
   source(bench_protocol, local = TRUE)
 
   schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c2")
 
-  expect_equal(nrow(schedule), 20L)
-  expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
+  expect_equal(nrow(schedule), 30L)
+  expect_setequal(unique(schedule$backend), c("bpcells", "h5", "h5_uncompressed"))
   expect_equal(
     unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
     1306127
@@ -151,11 +151,11 @@ test_that("scale profile runs embedded through 500k", {
   schedule <- bench_scale_schedule(BENCH_SOURCES)
   expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6, 1306127, 1486324)
 
-  expect_equal(nrow(schedule), 2L * (6L * 3L + 4L) * 5L)
+  expect_equal(nrow(schedule), 2L * (6L * 4L + 2L * 3L) * 5L)
   for (src in c("mouse_brain_e18", "human_pfc_hbcc")) {
     full <- schedule[schedule$source == src & schedule$n_cells == BENCH_SOURCES[[src]]$full_cells, ]
-    expect_equal(nrow(full), 10L)
-    expect_setequal(full$backend, c("h5", "bpcells"))
+    expect_equal(nrow(full), 15L)
+    expect_setequal(full$backend, c("h5", "h5_uncompressed", "bpcells"))
   }
   # A full endpoint already listed in the grid is not scheduled twice.
   specs <- BENCH_SOURCES
@@ -168,7 +168,7 @@ test_that("scale profile runs embedded through 500k", {
       "human_pfc_hbcc"
     )
   )
-  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
+  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5", "h5_uncompressed"))
   expect_identical(sort(unique(schedule$n_cells)), expected_tiers)
   expect_true(all(schedule$n_cells[schedule$backend == "embedded"] <= 500e3))
   expect_false(any(
@@ -176,11 +176,11 @@ test_that("scale profile runs embedded through 500k", {
   ))
   expect_setequal(
     unique(schedule$backend[schedule$n_cells <= 500e3]),
-    c("embedded", "bpcells", "h5")
+    c("embedded", "bpcells", "h5", "h5_uncompressed")
   )
   expect_setequal(
     unique(schedule$backend[schedule$n_cells == 1e6]),
-    c("bpcells", "h5")
+    c("bpcells", "h5", "h5_uncompressed")
   )
   expect_true(all(schedule$export_repeat %in% seq_len(5L)))
   expect_true(all(schedule$access_repeats == 2L))

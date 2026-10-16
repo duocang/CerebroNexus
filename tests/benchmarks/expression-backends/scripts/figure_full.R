@@ -5,15 +5,8 @@
 # independent replicates), the marker is the build median and the whiskers are
 # the observed min-max across builds. Cell counts are not biological
 # replicates. No figure title or caption is written into the file.
-bench_full_style <- function() {
-  palette <- c(embedded = "#D55E00", h5 = "#0072B2", bpcells = "#E69F00")
-  shapes <- c(embedded = 17, h5 = 15, bpcells = 16)
-  list(
-    palette = palette,
-    shapes = shapes,
-    labels = c(embedded = "Embedded", h5 = "H5", bpcells = "BPCells")
-  )
-}
+# Shared with figure_scale.R; defined in benchmark.R, which the CLI sources first.
+bench_full_style <- function() bench_backend_style()
 
 bench_full_family <- function() {
   if (requireNamespace("systemfonts", quietly = TRUE)) {
@@ -81,7 +74,8 @@ bench_full_panels <- function(exports, access) {
       dat$value <- dat[[spec$key]] / spec$divisor
       stopifnot(all(is.finite(dat$value)), all(dat$value >= 0))
       if (spec$log) stopifnot(all(dat$value > 0))
-      present <- intersect(c("h5", "bpcells", "embedded"), unique(as.character(dat$backend)))
+      stopifnot(all(as.character(dat$backend) %in% style$order))
+      present <- intersect(style$order, unique(as.character(dat$backend)))
       dat$backend <- factor(as.character(dat$backend), levels = present)
       # Reduce read processes to one value per build before summarizing builds.
       builds <- aggregate(dat["value"], by = dat[c("backend", "export_repeat")],
@@ -117,7 +111,8 @@ bench_full_panels <- function(exports, access) {
         ) +
         ggplot2::scale_x_continuous(
           breaks = seq_along(present),
-          labels = unname(style$labels[present]),
+          # Four categories share an 85 mm panel; break "H5 (...)" over two lines.
+          labels = sub(" (", "\n(", unname(style$labels[present]), fixed = TRUE),
           limits = c(0.6, length(present) + 0.4)
         ) +
         ggplot2::scale_colour_manual(

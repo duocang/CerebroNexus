@@ -128,6 +128,33 @@ test_that("schedule CLI includes embedded through 500k", {
   )
   expect_false(any(schedule$backend == "embedded" & schedule$n_cells > 500e3))
   expect_false(any(grepl("[eE][+-]", readLines(tsv, warn = FALSE))))
+  # Both H5 variants and BPCells run at every size, five builds each.
+  expect_setequal(
+    unique(schedule$backend),
+    c("embedded", "bpcells", "h5", "h5_uncompressed")
+  )
+  out_of_core <- schedule[schedule$backend != "embedded", , drop = FALSE]
+  builds <- stats::aggregate(
+    export_repeat ~ source + n_cells + backend, out_of_core, length
+  )
+  tiers <- unique(schedule[c("source", "n_cells")])
+  expect_equal(nrow(builds), nrow(tiers) * 3L)
+  expect_true(all(builds$export_repeat == 5L))
+})
+
+test_that("full-source study compares BPCells with both H5 variants", {
+  skip_unless_bench_cli()
+  csv <- tempfile(fileext = ".csv")
+  tsv <- tempfile(fileext = ".tsv")
+  on.exit(unlink(c(csv, tsv)), add = TRUE)
+
+  run <- run_bench_command("plan", c(csv, tsv), env = "BENCH_PROFILE=panel_c2")
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
+  expect_setequal(unique(schedule$backend), c("bpcells", "h5", "h5_uncompressed"))
+  # Rotation lets each backend lead some builds instead of always running first.
+  first <- schedule$backend[schedule$order_position == 1L]
+  expect_setequal(unique(first), c("bpcells", "h5", "h5_uncompressed"))
 })
 
 test_that("manifest CLI records the run identity", {
@@ -152,6 +179,9 @@ test_that("manifest CLI records the run identity", {
   expect_equal(values[["run_id"]], "test-run")
   expect_equal(values[["benchmark_threads"]], "3")
   expect_match(values[["git_sha"]], "^[0-9a-f]{40}$")
+  # Figures relabel "h5" from runs that predate this key as uncompressed.
+  expect_match(values[["h5_gzip_level"]], "^[1-9]$")
+  expect_equal(values[["h5_uncompressed_gzip_level"]], "0")
   cli <- paste(
     readLines(file.path(bench_root, "benchmark_cli.R"), warn = FALSE),
     collapse = "\n"

@@ -1,32 +1,44 @@
 # Draft re-render of the expression-backend benchmark figures in one shared
 # style (Genome Biology submission target).
 #
-# Data inputs (read-only):
-#   scale: tests/benchmarks/results/expression-backends/scale/runs/
-#          20261016T111536Z-81d11e8aedfa-scale-assembled/{10_export,20_access}.csv
-#          (the published five-build assembled Scale collection)
-#   full:  tests/benchmarks/results/expression-backends/full/runs/
-#          20261015T213433Z-81d11e8aedfa-full/{10_export,20_access}.csv
+# Data inputs (read-only): {10_export,20_access}.csv of the run each study's
+# CURRENT points to under tests/benchmarks/results/expression-backends/, or the
+# directories given with --scale=DIR / --full=DIR. Both single runs and the
+# assembled Scale collection (with tier_type and source_run_id) are accepted.
+# Backends: H5 (compressed, the package default), H5 (uncompressed reference),
+# BPCells and Embedded; older runs simply have fewer of them.
 #
 # Statistical unit: one BUILD (export_repeat) per dataset/size/backend.
 # Each build is read by two nested access processes; a build value is the
-# median of its two process values. Across the five builds the plotted point
-# is the median and the whisker is the observed min-max (descriptive range,
-# not a confidence interval). Cell counts are not biological replicates.
+# median of its two process values. Across the builds the plotted point is the
+# median and the whisker is the observed min-max (descriptive range, not a
+# confidence interval). Cell counts are not biological replicates.
+#
+# Usage: Rscript rebuild-figures.R [REPO] [--scale=DIR] [--full=DIR]
+#          [--out=DIR] [--family=NAME] [--stdpdf]
 
 args <- commandArgs(TRUE)
-root <- normalizePath(if (length(args)) args[1] else getwd())
-opts <- list(family = NULL, stdpdf = FALSE)
+positional <- args[!startsWith(args, "--")]
+root <- normalizePath(if (length(positional)) positional[1] else getwd())
+opts <- list(family = NULL, stdpdf = FALSE, scale = NULL, full = NULL, out = NULL)
 for (a in args) {
   if (grepl("^--family=", a)) opts$family <- sub("^--family=", "", a)
   if (identical(a, "--stdpdf")) opts$stdpdf <- TRUE
+  for (key in c("scale", "full", "out")) {
+    prefix <- paste0("--", key, "=")
+    if (startsWith(a, prefix)) opts[[key]] <- normalizePath(substring(a, nchar(prefix) + 1L))
+  }
 }
 
-scale_dir <- file.path(root, "tests/benchmarks/results/expression-backends/scale/runs",
-                       "20261016T111536Z-81d11e8aedfa-scale-assembled")
-full_dir <- file.path(root, "tests/benchmarks/results/expression-backends/full/runs",
-                      "20261015T213433Z-81d11e8aedfa-full")
-out_dir <- file.path(root, "paper/figure-drafts/expression-backends")
+current_run <- function(study) {
+  study_root <- file.path(root, "tests/benchmarks/results/expression-backends", study)
+  run_id <- trimws(readLines(file.path(study_root, "CURRENT"), warn = FALSE)[1])
+  file.path(study_root, "runs", run_id)
+}
+scale_dir <- if (is.null(opts$scale)) current_run("scale") else opts$scale
+full_dir <- if (is.null(opts$full)) current_run("full") else opts$full
+out_dir <- if (is.null(opts$out)) file.path(root, "paper/figure-drafts/expression-backends") else opts$out
+cat(sprintf("scale input: %s\nfull input:  %s\n", scale_dir, full_dir))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 suppressPackageStartupMessages({
@@ -57,9 +69,14 @@ FAM <- if (!is.null(opts$family)) opts$family else font$family
 if (opts$stdpdf) cat(sprintf("stdpdf pass: using '%s' text on the standard PDF device\n", FAM))
 
 # --- shared style -----------------------------------------------------------
-palette <- c(embedded = "#D55E00", h5 = "#0072B2", bpcells = "#E69F00")
-shapes  <- c(embedded = 17,      h5 = 15,      bpcells = 16)
-labels  <- c(embedded = "Embedded", h5 = "H5", bpcells = "BPCells")
+# Same identities as bench_backend_style() in the benchmark harness.
+backend_order <- c("h5", "h5_uncompressed", "bpcells", "embedded")
+palette   <- c(h5 = "#0072B2", h5_uncompressed = "#56B4E9", bpcells = "#E69F00", embedded = "#D55E00")
+shapes    <- c(h5 = 15,        h5_uncompressed = 0,         bpcells = 16,        embedded = 17)
+linetypes <- c(h5 = "solid",   h5_uncompressed = "22",      bpcells = "solid",   embedded = "solid")
+labels    <- c(h5 = "H5 (compressed)", h5_uncompressed = "H5 (uncompressed)",
+               bpcells = "BPCells", embedded = "Embedded")
+full_cells <- c(mouse_brain_e18 = 1306127, human_pfc_hbcc = 1486324)
 
 source_levels <- c("mouse_brain_e18", "human_pfc_hbcc")
 source_titles <- c(mouse_brain_e18 = "Mouse brain E18", human_pfc_hbcc = "Human PFC (HBCC)")
@@ -104,10 +121,20 @@ base_theme <- function() {
 }
 
 # --- data loading -----------------------------------------------------------
+# Full/scale runs whose manifest predates h5_gzip_level wrote "h5" with BPCells'
+# default gzip level 0; label those rows as the uncompressed reference.
+legacy_uncompressed_h5 <- function(dir) {
+  manifest <- file.path(dir, "run_manifest.csv")
+  if (!file.exists(manifest)) return(TRUE)
+  m <- read.csv(manifest, stringsAsFactors = FALSE)
+  !"h5_gzip_level" %in% m$key
+}
 read_ok <- function(dir, name) {
   d <- read.csv(file.path(dir, name), stringsAsFactors = FALSE)
   d <- d[d$status == "OK", , drop = FALSE]
   if ("correctness" %in% names(d)) d <- d[d$correctness == "OK", , drop = FALSE]
+  if (legacy_uncompressed_h5(dir)) d$backend[d$backend == "h5"] <- "h5_uncompressed"
+  stopifnot(all(d$backend %in% backend_order))
   d
 }
 
@@ -115,6 +142,9 @@ scale_access  <- read_ok(scale_dir, "20_access.csv")
 scale_exports <- read_ok(scale_dir, "10_export.csv")
 full_access   <- read_ok(full_dir,  "20_access.csv")
 full_exports  <- read_ok(full_dir,  "10_export.csv")
+present_backends <- function(...) {
+  intersect(backend_order, unique(unlist(lapply(list(...), `[[`, "backend"))))
+}
 
 # --- scale figure data ------------------------------------------------------
 # One value per build/backend/metric, then median and min-max across builds.
@@ -126,42 +156,50 @@ build_medians <- function(data, keys, metrics_keys) {
     agg
   }))
 }
-keys_access <- c("source", "n_cells", "backend", "source_run_id", "export_repeat")
+# Assembled collections also key builds by their originating run.
+build_keys <- function(data) {
+  intersect(c("source", "n_cells", "backend", "source_run_id", "export_repeat"), names(data))
+}
 
-acc_build <- build_medians(scale_access, keys_access, c("hot_p50_secs", "block_secs", "rss_mb"))
-exp_build <- build_medians(scale_exports, keys_access, c("total_mb"))
-builds <- rbind(acc_build, exp_build)
+acc_build <- build_medians(scale_access, build_keys(scale_access), c("hot_p50_secs", "block_secs", "rss_mb"))
+exp_build <- build_medians(scale_exports, build_keys(scale_exports), c("total_mb"))
+builds <- rbind(acc_build[c("source", "n_cells", "backend", "value", "metric")],
+                exp_build[c("source", "n_cells", "backend", "value", "metric")])
 
-# Five-build summary per combination; the feasibility build and the four
-# repeats of Human 500k embedded share a key and therefore pool to five.
+# Build summary per combination. In the assembled collection the feasibility
+# build and the four repeats of Human 500k embedded pool to five.
 summary_rows <- do.call(rbind, lapply(split(builds, list(builds$source, builds$n_cells, builds$backend, builds$metric), drop = TRUE), function(d) {
   data.frame(source = d$source[1], n_cells = d$n_cells[1], backend = d$backend[1], metric = d$metric[1],
              n_builds = nrow(d), value = median(d$value),
              lo = min(d$value), hi = max(d$value), stringsAsFactors = FALSE)
 }))
-tier_of <- function(d) {
-  is_full <- d$tier_type == "full"
-  if (any(is_full)) "full endpoint" else "scale grid"
+# The assembled collection marks endpoints; a single run reaches them as tiers.
+is_full_endpoint <- function(d) {
+  if ("tier_type" %in% names(d)) return(d$tier_type == "full")
+  d$n_cells == unname(full_cells[d$source])
 }
-tiers <- do.call(rbind, lapply(split(scale_access, list(scale_access$source, scale_access$n_cells, scale_access$backend), drop = TRUE), function(d) {
-  data.frame(source = d$source[1], n_cells = d$n_cells[1], backend = d$backend[1],
-             tier = tier_of(d), stringsAsFactors = FALSE)
-}))
-tiers_exp <- do.call(rbind, lapply(split(scale_exports, list(scale_exports$source, scale_exports$n_cells, scale_exports$backend), drop = TRUE), function(d) {
-  data.frame(source = d$source[1], n_cells = d$n_cells[1], backend = d$backend[1],
-             tier = tier_of(d), stringsAsFactors = FALSE)
-}))
-tiers <- unique(rbind(tiers, tiers_exp))
-summary_rows <- merge(summary_rows, tiers, by = c("source", "n_cells", "backend"), all.x = TRUE)
-backends_scale <- c("embedded", "bpcells", "h5")
-stopifnot(all(summary_rows$backend %in% backends_scale),
-          all(summary_rows$n_builds == 5L))
+endpoint <- unique(rbind(
+  data.frame(scale_access[c("source", "n_cells", "backend")], full = is_full_endpoint(scale_access)),
+  data.frame(scale_exports[c("source", "n_cells", "backend")], full = is_full_endpoint(scale_exports))
+))
+endpoint <- aggregate(full ~ source + n_cells + backend, endpoint, any)
+endpoint$tier <- ifelse(endpoint$full, "full endpoint", "scale grid")
+summary_rows <- merge(summary_rows, endpoint[c("source", "n_cells", "backend", "tier")],
+                      by = c("source", "n_cells", "backend"), all.x = TRUE)
+scale_backends <- present_backends(scale_access, scale_exports)
+short <- unique(summary_rows[summary_rows$n_builds < 5L, c("source", "n_cells", "backend", "n_builds")])
+if (nrow(short)) {
+  cat("combinations with fewer than five successful builds:\n")
+  print(short, row.names = FALSE)
+}
 
 # --- full figure data -------------------------------------------------------
 full_acc <- full_access
 full_exp <- full_exports
-stopifnot(setequal(unique(full_acc$backend), c("h5", "bpcells")),
-          all(table(full_acc$source, full_acc$backend) == 10L)) # 5 builds x 2 reads
+full_backends <- present_backends(full_acc, full_exp)
+stopifnot(all(table(full_acc$source, full_acc$backend) == 10L)) # 5 builds x 2 reads
+cat(sprintf("scale backends: %s\nfull backends:  %s\n",
+            paste(scale_backends, collapse = ", "), paste(full_backends, collapse = ", ")))
 
 # --- figure builder ---------------------------------------------------------
 scale_panel <- function(metric, src) {
@@ -170,12 +208,12 @@ scale_panel <- function(metric, src) {
   endp <- d[d$tier == "full endpoint", , drop = FALSE]
   grid$y <- grid$value / metric$divisor; grid$lo <- grid$lo / metric$divisor; grid$hi <- grid$hi / metric$divisor
   endp$y <- endp$value / metric$divisor
-  grid$backend <- factor(grid$backend, levels = c("h5", "bpcells", "embedded"))
-  endp$backend <- factor(endp$backend, levels = c("h5", "bpcells", "embedded"))
+  grid$backend <- factor(grid$backend, levels = scale_backends)
+  endp$backend <- factor(endp$backend, levels = scale_backends)
   dmax <- max(grid$n_cells)
   bridge <- merge(grid[grid$n_cells == dmax, c("backend", "y", "n_cells")],
                   endp[, c("backend", "y", "n_cells")], by = "backend", suffixes = c("", "_end"))
-  bridge$backend <- factor(bridge$backend, levels = c("h5", "bpcells", "embedded"))
+  bridge$backend <- factor(bridge$backend, levels = scale_backends)
   full_x <- unique(endp$n_cells)
   if (!length(full_x)) full_x <- NA_real_
   subtitle <- if (is.finite(full_x)) {
@@ -184,7 +222,7 @@ scale_panel <- function(metric, src) {
   p <- ggplot() +
     geom_errorbar(data = grid, aes(n_cells, y, ymin = lo, ymax = hi, colour = backend),
                   width = 0.02, linewidth = 0.35) +
-    geom_line(data = grid, aes(n_cells, y, colour = backend), linewidth = 0.5) +
+    geom_line(data = grid, aes(n_cells, y, colour = backend, linetype = backend), linewidth = 0.5) +
     geom_point(data = grid, aes(n_cells, y, colour = backend, shape = backend), size = 1.7) +
     geom_segment(data = bridge, aes(n_cells, y, xend = n_cells_end, yend = y_end, colour = backend),
                  linetype = "dashed", linewidth = 0.4) +
@@ -194,8 +232,9 @@ scale_panel <- function(metric, src) {
                   limits = if (is.finite(full_x)) c(800, full_x * 1.18),
                   labels = function(x) ifelse(x >= 1e6, paste0(x / 1e6, "M"), paste0(x / 1e3, "k"))) +
     y_scale(metric) +
-    scale_colour_manual(values = palette, labels = labels, drop = FALSE) +
-    scale_shape_manual(values = shapes, labels = labels, drop = FALSE) +
+    scale_colour_manual(values = palette[scale_backends], labels = labels[scale_backends], drop = FALSE) +
+    scale_shape_manual(values = shapes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
+    scale_linetype_manual(values = linetypes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
     labs(title = paste0(metric$title, " | ", source_titles[[src]]),
          subtitle = subtitle,
          x = "Cells (log10)", y = y_label(metric)) +
@@ -219,13 +258,13 @@ full_panel <- function(metric, src) {
     full_acc[full_acc$source == src, , drop = FALSE]
   }
   raw$value <- raw[[metric$key]] / metric$divisor
-  raw$backend <- factor(raw$backend, levels = c("h5", "bpcells"))
+  raw$backend <- factor(raw$backend, levels = full_backends)
   builds <- aggregate(raw["value"], by = raw[c("backend", "export_repeat")], FUN = median)
   centre <- do.call(rbind, lapply(levels(raw$backend), function(b) {
     v <- builds$value[builds$backend == b]
     data.frame(backend = b, y = median(v), lo = min(v), hi = max(v), stringsAsFactors = FALSE)
   }))
-  centre$backend <- factor(centre$backend, levels = c("h5", "bpcells"))
+  centre$backend <- factor(centre$backend, levels = full_backends)
   raw$x <- as.numeric(raw$backend)
   raw$offset <- ave(raw$x, raw$backend, FUN = function(z) seq(-0.16, 0.16, length.out = length(z)))
   centre$x <- as.numeric(centre$backend)
@@ -236,12 +275,14 @@ full_panel <- function(metric, src) {
     geom_errorbar(data = centre, aes(x, y, ymin = lo, ymax = hi, colour = backend),
                   width = 0.07, linewidth = 0.5) +
     geom_point(data = centre, aes(x, y, colour = backend, shape = backend), size = 2.0) +
-    scale_x_continuous(breaks = 1:2, labels = c("H5", "BPCells"), limits = c(0.6, 2.4)) +
+    scale_x_continuous(breaks = seq_along(full_backends),
+                       labels = sub(" (", "\n(", unname(labels[full_backends]), fixed = TRUE),
+                       limits = c(0.6, length(full_backends) + 0.4)) +
     y_scale(metric) +
-    scale_colour_manual(values = palette[c("h5", "bpcells")],
-                        labels = labels[c("h5", "bpcells")], drop = TRUE) +
-    scale_shape_manual(values = shapes[c("h5", "bpcells")],
-                       labels = labels[c("h5", "bpcells")], drop = TRUE) +
+    scale_colour_manual(values = palette[full_backends],
+                        labels = labels[full_backends], drop = TRUE) +
+    scale_shape_manual(values = shapes[full_backends],
+                       labels = labels[full_backends], drop = TRUE) +
     labs(title = paste0(metric$title, " | ", source_titles[[src]]),
          subtitle = sprintf("%s cells", format(cell_count, big.mark = ",", trim = TRUE)),
          x = NULL, y = y_label(metric)) +

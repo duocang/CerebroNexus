@@ -5,13 +5,8 @@
 # the plotted point is the median across builds and the whiskers are the
 # observed min-max (descriptive range, not a confidence interval). Cell counts
 # are not biological replicates. No title or caption is written into the file.
-bench_scale_style <- function() {
-  list(
-    palette = c(embedded = "#D55E00", h5 = "#0072B2", bpcells = "#E69F00"),
-    shapes = c(embedded = 17, h5 = 15, bpcells = 16),
-    labels = c(embedded = "Embedded", h5 = "H5", bpcells = "BPCells")
-  )
-}
+# Shared with figure_full.R; defined in benchmark.R, which the CLI sources first.
+bench_scale_style <- function() bench_backend_style()
 
 bench_scale_family <- function() {
   if (requireNamespace("systemfonts", quietly = TRUE)) {
@@ -112,7 +107,8 @@ bench_scale_panels <- function(exports, access) {
       d$y <- d$value / metric$divisor
       d$lo <- d$lo / metric$divisor
       d$hi <- d$hi / metric$divisor
-      present <- intersect(c("h5", "bpcells", "embedded"), unique(as.character(d$backend)))
+      stopifnot(all(as.character(d$backend) %in% style$order))
+      present <- intersect(style$order, unique(as.character(d$backend)))
       d$backend <- factor(as.character(d$backend), levels = present)
       title <- unname(source_titles[src])
       if (is.na(title)) title <- src
@@ -126,7 +122,8 @@ bench_scale_panels <- function(exports, access) {
           width = 0.02, linewidth = 0.35
         ) +
         ggplot2::geom_line(
-          data = d, ggplot2::aes(n_cells, y, colour = backend), linewidth = 0.5
+          data = d, ggplot2::aes(n_cells, y, colour = backend, linetype = backend),
+          linewidth = 0.5
         ) +
         ggplot2::geom_point(
           data = d, ggplot2::aes(n_cells, y, colour = backend, shape = backend), size = 1.7
@@ -141,6 +138,9 @@ bench_scale_panels <- function(exports, access) {
         ) +
         ggplot2::scale_shape_manual(
           values = style$shapes[present], labels = style$labels[present], drop = TRUE
+        ) +
+        ggplot2::scale_linetype_manual(
+          values = style$linetypes[present], labels = style$labels[present], drop = TRUE
         ) +
         ggplot2::labs(title = paste0(metric$title, " | ", title), subtitle = subtitle,
                       x = "Cells (log10)", y = metric$unit) +

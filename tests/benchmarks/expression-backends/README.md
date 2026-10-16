@@ -32,10 +32,12 @@ bash tests/benchmarks/expression-backends/run.sh resume /path/to/cerebro-bench.X
 
 | Study | Data | Backends |
 |---|---|---|
-| Full datasets | 10x mouse brain: 1,306,127 cells; PsychAD human PFC: 1,486,324 cells | H5 and BPCells |
-| Size comparison | The same sources at 1k, 10k, 50k, 100k, 300k, 500k, 1m, then each exact full-dataset size | H5 and BPCells at every size; embedded attempted through 500k |
+| Full datasets | 10x mouse brain: 1,306,127 cells; PsychAD human PFC: 1,486,324 cells | H5 (compressed), H5 (uncompressed) and BPCells |
+| Size comparison | The same sources at 1k, 10k, 50k, 100k, 300k, 500k, 1m, then each exact full-dataset size | Both H5 variants and BPCells at every size; embedded attempted through 500k |
 
 The complete matrices exceed the sparse-index limit of embedded storage, so full-dataset embedded results are unavailable. They are not replaced with smaller samples.
+
+`h5` is the 10x H5 sidecar at the package exporter's compression level (`HDF5Array::getHDF5DumpCompressionLevel()`, 6 by default), i.e. what CerebroNexus ships. `h5_uncompressed` is the same file written at gzip level 0, a storage/read trade-off reference that the package does not produce by default; both are opened through the package's `h5` backend. Both are built in the same run and interleaved with BPCells (and embedded in Scale), so they share host conditions. The manifest records both levels (`h5_gzip_level`, `h5_uncompressed_gzip_level`). Full/scale runs without these keys predate the fix: their `h5` rows were written at gzip level 0 and are uncompressed results; `paper/figure-drafts/expression-backends/rebuild-figures.R` labels them accordingly. Uncompressed H5 needs about 12 bytes per nonzero on disk, so the preflight requires the cached source plus 18 bytes per nonzero of free scratch space (about 125 GB for the full human matrix) within 80% of free disk.
 
 In full and scale runs, each source, size and backend gets five independent builds. Each successful build is opened in two fresh R processes. Runs use the same cells, gene names and fixed 12-gene queries, including full-cell reads and non-contiguous subsets of up to 100,000 cells. Reading a lazy matrix fully into memory is included in the timer; value checks happen afterward. Processes run sequentially with one thread by default.
 
@@ -59,7 +61,7 @@ Verified source downloads stay in the external cache. Failed runs keep their scr
 
 ## Figures
 
-Full and scale runs save `figures/expression_backend_benchmark_overview.png` (340 dpi) and an editable vector PDF on the Cairo device. Both figures share one style: white background, Okabe-Ito colours (H5 `#0072B2`, BPCells `#E69F00`, Embedded `#D55E00`), lowercase panel letters a-h at the top-left of each panel, and no title or caption inside the file. The full comparison uses backend categories, shows every read process as a small dot plus the build median and observed min-max whiskers. The scale overview plots medians across builds against cell count on a log10 x axis. Timing and storage use logarithmic axes; loaded memory is linear (GiB). Read processes are nested within builds and ranges are descriptive min-max, not confidence intervals. Scale runs also save a 340 dpi embedded build-memory plot (legacy filename `expression_backend_benchmark_ceiling.png`): measured peak R heap in GiB against nonzero elements in millions, with no extrapolated memory ceiling. Quick runs produce measurements and a report without figures.
+Full and scale runs save `figures/expression_backend_benchmark_overview.png` (340 dpi) and an editable vector PDF on the Cairo device. Both figures share one style: white background, Okabe-Ito colours (H5 compressed `#0072B2` filled square, H5 uncompressed `#56B4E9` open square and dashed line, BPCells `#E69F00`, Embedded `#D55E00`; defined once in `bench_backend_style()`), lowercase panel letters a-h at the top-left of each panel, and no title or caption inside the file. The full comparison uses backend categories, shows every read process as a small dot plus the build median and observed min-max whiskers. The scale overview plots medians across builds against cell count on a log10 x axis. Timing and storage use logarithmic axes; loaded memory is linear (GiB). Read processes are nested within builds and ranges are descriptive min-max, not confidence intervals. Scale runs also save a 340 dpi embedded build-memory plot (legacy filename `expression_backend_benchmark_ceiling.png`): measured peak R heap in GiB against nonzero elements in millions, with no extrapolated memory ceiling. Quick runs produce measurements and a report without figures.
 
 The same layout applies to full and scale:
 

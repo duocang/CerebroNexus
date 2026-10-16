@@ -314,6 +314,7 @@ test_that("benchmark figure labels distinct expression workloads", {
 test_that("full figure summarizes builds, not individual read processes", {
   skip_unless_bench_reporting()
   skip_if_not_installed("ggplot2")
+  source(bench_protocol, local = TRUE)
   source(file.path(bench_root, "figure_full.R"), local = TRUE)
 
   # Two reads per build; H5 read processes span 1-9 but every build median is 5.
@@ -338,6 +339,54 @@ test_that("full figure summarizes builds, not individual read processes", {
   expect_equal(centre$y, c(3, 5))
   expect_equal(centre$lo, c(2, 5))
   expect_equal(centre$hi, c(10, 5))
+})
+
+test_that("figures give the two H5 variants separate identities", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "figure_full.R"), local = TRUE)
+  source(file.path(bench_root, "figure_scale.R"), local = TRUE)
+  style <- bench_backend_style()
+  expect_setequal(style$order, c("h5", "h5_uncompressed", "bpcells", "embedded"))
+  for (field in c("palette", "shapes", "linetypes", "labels")) {
+    expect_setequal(names(style[[field]]), style$order)
+  }
+  expect_false(anyDuplicated(style$palette) > 0)
+  expect_false(anyDuplicated(style$labels) > 0)
+
+  backends <- c("h5", "h5_uncompressed", "bpcells", "embedded")
+  grid <- expand.grid(
+    backend = backends, export_repeat = 1:2, access_repeat = 1:2,
+    n_cells = c(1000, 10000), stringsAsFactors = FALSE
+  )
+  access <- data.frame(
+    source = "fixture", grid, status = "OK", correctness = "OK",
+    access_contract = "materialized-v2",
+    hot_p50_secs = match(grid$backend, backends), block_secs = 1, rss_mb = 1024
+  )
+  exports <- unique(access[c("source", "n_cells", "backend", "export_repeat")])
+  exports$status <- "OK"
+  exports$total_mb <- 1024
+
+  scale_hot <- bench_scale_panels(exports, access)$plots[[1]]
+  built <- ggplot2::ggplot_build(scale_hot)
+  colours <- unique(built$data[[3]][c("colour", "shape")])
+  expect_equal(nrow(colours), 4L)
+
+  full <- access[access$n_cells == 1000 & access$backend != "embedded", , drop = FALSE]
+  full_exports <- exports[exports$n_cells == 1000 & exports$backend != "embedded", , drop = FALSE]
+  full_hot <- bench_full_panels(full_exports, full)$plots[[1]]
+  centre <- full_hot$layers[[2]]$data
+  expect_setequal(as.character(centre$backend), c("h5", "h5_uncompressed", "bpcells"))
+  expect_equal(
+    centre$y[match(c("h5", "h5_uncompressed", "bpcells"), centre$backend)],
+    c(1, 2, 3)
+  )
+
+  # An unrecognised backend must fail rather than vanish from the figure.
+  full$backend[1] <- "h5_typo"
+  expect_error(bench_full_panels(full_exports, full))
 })
 
 test_that("embedded build-memory summaries use embedded exports only", {

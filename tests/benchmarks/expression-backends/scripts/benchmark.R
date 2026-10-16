@@ -191,6 +191,38 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
   profile
 }
 
+# Out-of-core backends built by build-full. "h5" is the package exporter's
+# compressed layout; "h5_uncompressed" is the same 10x H5 at gzip level 0, a
+# storage/read trade-off reference. The package opens both as its "h5" backend.
+BENCH_FULL_BACKENDS <- c("bpcells", "h5", "h5_uncompressed")
+
+bench_storage_backend <- function(backend) {
+  if (identical(backend, "h5_uncompressed")) "h5" else backend
+}
+
+# One plotting identity per backend, shared by figure_full.R and figure_scale.R.
+# Okabe-Ito colours; uncompressed H5 is the lighter blue with an open square.
+bench_backend_style <- function() {
+  list(
+    order = c("h5", "h5_uncompressed", "bpcells", "embedded"),
+    palette = c(h5 = "#0072B2", h5_uncompressed = "#56B4E9",
+                bpcells = "#E69F00", embedded = "#D55E00"),
+    shapes = c(h5 = 15, h5_uncompressed = 0, bpcells = 16, embedded = 17),
+    linetypes = c(h5 = "solid", h5_uncompressed = "22",
+                  bpcells = "solid", embedded = "solid"),
+    labels = c(h5 = "H5 (compressed)", h5_uncompressed = "H5 (uncompressed)",
+               bpcells = "BPCells", embedded = "Embedded")
+  )
+}
+
+bench_h5_gzip_level <- function(backend) {
+  if (identical(backend, "h5_uncompressed")) {
+    0L
+  } else {
+    HDF5Array::getHDF5DumpCompressionLevel()
+  }
+}
+
 bench_scale_schedule <- function(specs) {
   sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
   if (length(sources) != 2L) {
@@ -218,13 +250,13 @@ bench_scale_schedule <- function(specs) {
       embedded_specs,
       "scale",
       sources = sources,
-      backends = c("embedded", "bpcells", "h5")
+      backends = c("embedded", BENCH_FULL_BACKENDS)
     ),
     bench_schedule(
       external_specs,
       "scale",
       sources = sources,
-      backends = c("bpcells", "h5")
+      backends = BENCH_FULL_BACKENDS
     )
   )
 }
@@ -262,7 +294,7 @@ bench_panel_c_schedule <- function(specs, part = c("c1", "c2")) {
     backends = if (part == "c1") {
       c("embedded", "bpcells", "h5")
     } else {
-      c("bpcells", "h5")
+      BENCH_FULL_BACKENDS
     }
   )
 }
@@ -1136,7 +1168,7 @@ bench_write_full_backend <- function(matrix, backend, path) {
       unlink(path, recursive = TRUE)
     }
     written <- CerebroNexus:::.writeBpcellsGeneMajor(matrix, path)
-  } else if (backend == "h5") {
+  } else if (backend %in% c("h5", "h5_uncompressed")) {
     if (file.exists(path)) {
       unlink(path)
     }
@@ -1150,13 +1182,13 @@ bench_write_full_backend <- function(matrix, backend, path) {
       outdir = transposed,
       tmpdir = dirname(path)
     )
-    # BPCells defaults to gzip_level = 0; use the level the package's own H5
-    # exporter (HDF5Array::writeTENxMatrix) applies so sizes and reads are
-    # those of a shipped sidecar.
+    # BPCells defaults to gzip_level = 0. "h5" uses the level the package's own
+    # H5 exporter (HDF5Array::writeTENxMatrix) applies, so sizes and reads are
+    # those of a shipped sidecar; "h5_uncompressed" keeps level 0 on purpose.
     BPCells::write_matrix_10x_hdf5(
       disk_matrix,
       path,
-      gzip_level = HDF5Array::getHDF5DumpCompressionLevel(),
+      gzip_level = bench_h5_gzip_level(backend),
       type = "auto"
     )
     local({
@@ -1168,7 +1200,7 @@ bench_write_full_backend <- function(matrix, backend, path) {
       HDF5Array::TENxMatrix(path, group = "expression")
     )
   } else {
-    stop("backend must be bpcells or h5", call. = FALSE)
+    stop("backend must be bpcells, h5 or h5_uncompressed", call. = FALSE)
   }
   if (
     !identical(dim(written), dim(matrix)) ||
@@ -1246,7 +1278,7 @@ bench_make_full_shell <- function(
   if (identical(backend, "bpcells")) {
     obj$setExpression(matrix, backend = "external")
   }
-  obj$setExpressionBackend(backend, location)
+  obj$setExpressionBackend(bench_storage_backend(backend), location)
   obj
 }
 

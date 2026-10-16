@@ -195,6 +195,9 @@ if (identical(command, "inspect")) {
     timing_contract = "monotonic-v1",
     elapsed_clock = "CLOCK_MONOTONIC",
     clock_resolution_secs = as.character(bench_clock()[["resolution"]]),
+    # Full/scale runs without this key wrote "h5" at BPCells' gzip level 0.
+    h5_gzip_level = as.character(bench_h5_gzip_level("h5")),
+    h5_uncompressed_gzip_level = as.character(bench_h5_gzip_level("h5_uncompressed")),
     git_sha = git_value("rev-parse", "HEAD"),
     git_branch = git_value("branch", "--show-current"),
     git_dirty = if (nzchar(status)) "true" else "false",
@@ -360,13 +363,14 @@ if (identical(command, "inspect")) {
   estimated_peak_mb <- 4096 + planned$n_cells * 12 * 8 / 2^20
   # The cached source coexists with one staged backend. An H5 build also holds a
   # cell-major BPCells copy (and briefly its sort spill) while writing. Measured
-  # BPCells directories reach about 2x source bytes, so source + max(2 copies,
-  # copy + H5) stays within 5x source bytes.
-  required_disk <- source$source_bytes * 5
+  # sizes: uncompressed H5 about 12.2 bytes and BPCells at most about 4.8 bytes
+  # per nonzero, so the largest build needs source + 18 bytes per nonzero.
+  estimated_nnz <- source$nnz * planned$n_cells / source$n_cells
+  required_disk <- source$source_bytes + estimated_nnz * 18
   assessment <- data.frame(
     source = planned$source,
     n_cells = planned$n_cells,
-    estimated_nnz = source$nnz * planned$n_cells / source$n_cells,
+    estimated_nnz = estimated_nnz,
     estimated_peak_mb = round(estimated_peak_mb),
     memory_budget_mb = round(memory_mb * memory_fraction),
     source_bytes = source$source_bytes,

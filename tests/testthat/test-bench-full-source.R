@@ -99,9 +99,11 @@ test_that("full-source writers round-trip both runtime backends", {
 
   bpcells_path <- file.path(root, "matrix.bpcells")
   h5_path <- file.path(root, "matrix.h5")
+  raw_path <- file.path(root, "matrix-uncompressed.h5")
   session_temp <- list.files(tempdir(), all.files = TRUE, no.. = TRUE)
   bench_write_full_backend(source_matrix, "bpcells", bpcells_path)
   bench_write_full_backend(source_matrix, "h5", h5_path)
+  bench_write_full_backend(source_matrix, "h5_uncompressed", raw_path)
 
   # The H5 build's cell-major copy stays in scratch and does not outlive it.
   expect_setequal(
@@ -111,16 +113,17 @@ test_that("full-source writers round-trip both runtime backends", {
   expect_length(list.files(root, pattern = "^(h5-transpose-|transpose_tmp)"), 0L)
 
   bpcells <- BPCells::open_matrix_dir(bpcells_path)
-  h5 <- DelayedArray::t(HDF5Array::TENxMatrix(h5_path, group = "expression"))
   expect_equal(as.matrix(bpcells), as.matrix(fixture$matrix))
-  expect_equal(as.matrix(h5), as.matrix(fixture$matrix))
   expect_identical(dimnames(bpcells), dimnames(fixture$matrix))
-  expect_identical(dimnames(h5), dimnames(fixture$matrix))
   expect_identical(BPCells::storage_order(bpcells), "row")
+  for (path in c(h5_path, raw_path)) {
+    h5 <- DelayedArray::t(HDF5Array::TENxMatrix(path, group = "expression"))
+    expect_equal(as.matrix(h5), as.matrix(fixture$matrix), info = path)
+    expect_identical(dimnames(h5), dimnames(fixture$matrix), info = path)
+  }
 
-  # An uncompressed H5 would not represent the sidecar the package exports.
-  h5_filters <- local({
-    file <- rhdf5::H5Fopen(h5_path, flags = "H5F_ACC_RDONLY")
+  h5_filters <- function(path) {
+    file <- rhdf5::H5Fopen(path, flags = "H5F_ACC_RDONLY")
     on.exit(rhdf5::H5Fclose(file), add = TRUE)
     data <- rhdf5::H5Dopen(file, "expression/data")
     on.exit(rhdf5::H5Dclose(data), add = TRUE, after = FALSE)
@@ -129,21 +132,28 @@ test_that("full-source writers round-trip both runtime backends", {
     vapply(seq_len(rhdf5::H5Pget_nfilters(plist)), function(i) {
       rhdf5::H5Pget_filter(plist, i)[[2L]]
     }, character(1))
-  })
-  expect_true("deflate" %in% h5_filters)
+  }
+  # "h5" must match the package's compressed sidecar; the reference must not.
+  expect_true("deflate" %in% h5_filters(h5_path))
+  expect_false("deflate" %in% h5_filters(raw_path))
 })
 
 test_that("full-source H5 writer stays on the lazy BPCells path", {
+  skip_if_not_installed("HDF5Array")
+  source(full_source_lib, local = TRUE)
   body <- paste(readLines(full_source_lib, warn = FALSE), collapse = "\n")
 
   expect_match(body, "BPCells::write_matrix_10x_hdf5", fixed = TRUE)
   expect_match(body, "rhdf5::H5Lmove", fixed = TRUE)
+  expect_match(body, "gzip_level = bench_h5_gzip_level(backend)", fixed = TRUE)
   # rhdf5 does not report the deflate level, so pin it to the package exporter.
-  expect_match(
-    body,
-    "gzip_level = HDF5Array::getHDF5DumpCompressionLevel()",
-    fixed = TRUE
+  expect_identical(
+    bench_h5_gzip_level("h5"),
+    HDF5Array::getHDF5DumpCompressionLevel()
   )
+  expect_identical(bench_h5_gzip_level("h5_uncompressed"), 0L)
+  expect_identical(bench_storage_backend("h5_uncompressed"), "h5")
+  expect_identical(bench_storage_backend("bpcells"), "bpcells")
 })
 
 test_that("full-source query plan and portable shell use bounded expression", {
@@ -187,19 +197,23 @@ test_that("full-source query plan and portable shell use bounded expression", {
   metrics <- bench_measure_backend(loaded, plan, hot_iterations = 1L)
   expect_identical(metrics$correctness, "OK")
 
-  h5_sibling <- file.path(root, "bench.h5")
-  h5_crb <- file.path(root, "bench-h5.crb")
-  bench_write_full_backend(source_matrix, "h5", h5_sibling)
-  h5_obj <- bench_make_full_shell(
-    source_matrix,
-    backend = "h5",
-    location = basename(h5_sibling),
-    source_name = "fixture",
-    organism = "mm10",
-    run_id = "run-1"
-  )
-  CerebroNexus::saveCerebro(h5_obj, h5_crb)
-  h5_attached <- CerebroNexus::readCerebro(h5_crb)
-  h5_metrics <- bench_measure_backend(h5_attached, plan, hot_iterations = 1L)
-  expect_identical(h5_metrics$correctness, "OK")
+  # Both H5 variants are opened by the package through its "h5" backend.
+  for (backend in c("h5", "h5_uncompressed")) {
+    h5_sibling <- file.path(root, paste0(backend, ".h5"))
+    h5_crb <- file.path(root, paste0(backend, ".crb"))
+    bench_write_full_backend(source_matrix, backend, h5_sibling)
+    h5_obj <- bench_make_full_shell(
+      source_matrix,
+      backend = backend,
+      location = basename(h5_sibling),
+      source_name = "fixture",
+      organism = "mm10",
+      run_id = "run-1"
+    )
+    CerebroNexus::saveCerebro(h5_obj, h5_crb)
+    h5_attached <- CerebroNexus::readCerebro(h5_crb)
+    expect_identical(h5_attached$getExpressionBackend()$type, "h5", info = backend)
+    h5_metrics <- bench_measure_backend(h5_attached, plan, hot_iterations = 1L)
+    expect_identical(h5_metrics$correctness, "OK", info = backend)
+  }
 })
