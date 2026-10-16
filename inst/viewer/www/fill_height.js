@@ -64,24 +64,13 @@
     );
   }
 
-  function ancestorWithClass(el, className) {
-    var node = el;
-    while (node) {
-      if (node.classList && node.classList.contains(className)) {
-        return node;
-      }
-      node = node.parentElement;
-    }
-    return null;
-  }
-
   /* Anchor the fill to its unscrolled position inside the app's scrollport.
      getBoundingClientRect().top alone moves upward as the user scrolls; feeding
      that moving value back into the height makes the plot grow by exactly the
      scroll delta and permanently keeps the following panels below the viewport. */
   function layoutTop(el) {
     var rect = el.getBoundingClientRect();
-    var scrollport = ancestorWithClass(el, "content-wrapper");
+    var scrollport = el.closest(".content-wrapper");
     if (!scrollport || typeof scrollport.getBoundingClientRect !== "function") {
       return rect.top;
     }
@@ -127,16 +116,15 @@
        section.content for any fill that is not inside a plot column (behaviour
        unchanged there). For a well-behaved page whose plot column is the tallest,
        both frames give the same result. */
-    var content = ancestorWithClass(el, "content");
-    var frame = el.closest && el.closest(".cerebro-viz-col");
+    var content = el.closest(".content");
+    var frame = el.closest(".cerebro-viz-col");
     if (!frame) {
       frame = content;
     }
     if (!frame || typeof frame.getBoundingClientRect !== "function") {
       return 0;
     }
-    var wrapper = content ?
-      ancestorWithClass(content.parentElement, "content-wrapper") : null;
+    var wrapper = content && content.closest(".content-wrapper");
     var frameRect = frame.getBoundingClientRect();
     var fillRect = el.getBoundingClientRect();
     var fillBottom = fillRect.bottom - frameRect.top + (frame.scrollTop || 0);

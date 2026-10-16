@@ -27,10 +27,10 @@ ir_test_body <- function(file, output, wrapper, env) {
   expr <- Filter(
     function(x) {
       is.call(x) &&
-        identical(x[[1]], as.name("<-")) &&
+        as.character(x[[1]])[1] %in% c("<-", "=") &&
         identical(
-          paste(deparse(x[[2]]), collapse = ""),
-          paste0("output$", output)
+          viewer_server_key(x[[2]]),
+          paste0("output.", output)
         )
     },
     as.list(exprs)
@@ -67,7 +67,7 @@ test_that("Abundance renderer reads the current pack before repertoire data", {
   for (expr in parse(file.path(ir_test_root, "data.R"))) {
     if (
       is.call(expr) &&
-        identical(expr[[1]], as.name("<-")) &&
+        as.character(expr[[1]])[1] %in% c("<-", "=") &&
         is.call(expr[[3]]) &&
         identical(expr[[3]][[1]], as.name("function"))
     ) {

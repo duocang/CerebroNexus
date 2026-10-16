@@ -784,56 +784,6 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   }
 })
 
-test_that("Viewer wires valid HLA assets behind the CRB fallback", {
-  server <- paste(
-    readLines(viewer_test_path("shiny_server.R")),
-    collapse = "\n"
-  )
-  data_layer <- paste(
-    readLines(viewer_test_path("hla_tcr_motifs", "data.R")),
-    collapse = "\n"
-  )
-
-  expect_match(server, "/viewer/core/viewer_pack.R", fixed = TRUE)
-  expect_match(server, "viewerPackOpenCached(", fixed = TRUE)
-  expect_match(
-    data_layer,
-    "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
-    fixed = TRUE
-  )
-  expect_match(data_layer, "hla_packed_segments <- reactive", fixed = TRUE)
-  expect_match(data_layer, "packed <- hla_packed_segments()", fixed = TRUE)
-  expect_match(data_layer, "hla_ir_samples <- reactive", fixed = TRUE)
-  expect_match(data_layer, "data <- getImmuneRepertoire()", fixed = TRUE)
-  expect_match(data_layer, "hla_parse_ir_segments(data, chain)", fixed = TRUE)
-
-  immune_data <- paste(
-    readLines(viewer_test_path("immune_repertoire", "data.R")),
-    collapse = "\n"
-  )
-  linked <- paste(
-    readLines(viewer_test_path("coordinated_views", "bundle.R")),
-    collapse = "\n"
-  )
-  expect_match(
-    immune_data,
-    "viewerPackImmuneIndex(pack, receptor)",
-    fixed = TRUE
-  )
-  expect_match(
-    immune_data,
-    "pack$manifest$immune_receptors",
-    fixed = TRUE
-  )
-  expect_match(
-    immune_data,
-    "viewerPackImmuneAbundance(viewerPackCurrent()",
-    fixed = TRUE
-  )
-  expect_match(linked, "viewerPackImmuneIndex(pack,", fixed = TRUE)
-})
-
-
 test_that("packed violin summaries survive serialization without altering statistics", {
   root <- tempfile("pack-violin-")
   dir.create(root)

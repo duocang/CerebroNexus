@@ -1,6 +1,3 @@
-## testthat setup: run as if not on CRAN so shinytest2 tests are not skipped
-Sys.setenv(NOT_CRAN = "true")
-
 ## Booting the full CerebroNexus app to idle can exceed shinytest2's 15s default
 ## load_timeout under R CMD check (the app starts from the installed/checked
 ## copy after the whole build+check+vignette pipeline has loaded the runner),
@@ -9,6 +6,17 @@ Sys.setenv(NOT_CRAN = "true")
 ## default here so every $new() gets the same headroom. An explicit
 ## load_timeout on a call still wins over this option.
 options(shinytest2.load_timeout = 60 * 1000)
+
+## Chrome itself starts before AppDriver's load timeout applies. Give cold CI
+## starts the same headroom, and fail CI setup if Chrome cannot start instead
+## of letting shinytest2 silently skip browser coverage.
+options(chromote.timeout = 60)
+if (identical(Sys.getenv("CI"), "true") && identical(Sys.getenv("NOT_CRAN"), "true")) {
+  local({
+    browser <- chromote::default_chromote_object()$new_session()
+    browser$close()
+  })
+}
 
 ## The bundled app lives at the installed package root, so shiny::loadSupport()
 ## warns about the package layout even though sourcing these files is intended.

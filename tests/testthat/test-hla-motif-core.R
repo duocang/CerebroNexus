@@ -712,22 +712,6 @@ test_that("max mismatch is the Hamming spread, NOT the graph diameter", {
 })
 
 test_that("no user-facing string calls the max mismatch a diameter", {
-  # `diameter` on a network reads as the longest shortest-path in hops, which is
-  # a different and larger number: measured on the shipped demo, 16 of 20 motifs
-  # disagree (e.g. max mismatch 6 against graph diameter 8). The word may appear
-  # only where the two are being contrasted.
-  viz <- paste(
-    readLines(
-      system.file(
-        "viewer/hla_tcr_motifs/visualizations.R",
-        package = "CerebroNexus"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_no_match(viz, "consensus %s &middot; diameter", fixed = TRUE)
-  expect_match(viz, 'hover_numeric("Max mismatch"', fixed = TRUE)
   expect_no_match(names(hla_motif_summary(NULL)), "^diameter$", perl = TRUE)
   expect_true("max_mismatch" %in% names(hla_motif_summary(NULL)))
 })

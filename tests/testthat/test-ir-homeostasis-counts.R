@@ -14,7 +14,7 @@ if (!file.exists(ir_home_file)) {
 for (expr in parse(ir_home_file)) {
   if (
     is.call(expr) &&
-      identical(expr[[1]], as.name("<-")) &&
+      as.character(expr[[1]])[1] %in% c("<-", "=") &&
       is.call(expr[[3]]) &&
       identical(expr[[3]][[1]], as.name("function"))
   ) {

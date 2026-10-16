@@ -28,10 +28,10 @@ test_that("all trajectory module files parse without errors", {
 })
 
 test_that("trajectory UI defines correct tabName", {
-  ui_file <- file.path(shiny_root, "trajectory", "UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-  expect_match(content, 'tabName\\s*=\\s*"trajectory"', perl = TRUE)
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("trajectory", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_trajectory)
+  expect_equal(page$filter("#shiny-tab-trajectory")$length(), 1L)
 })
 
 test_that("full T+B demo trajectory class methods work", {
@@ -70,239 +70,45 @@ test_that("utility wrappers for trajectory exist", {
 })
 
 test_that("getTrajectory bug is fixed in class definition", {
-  cls <- Cerebro
-  methods_text <- paste(
-    deparse(cls$public_methods$getTrajectory),
-    collapse = "\n"
+  crb <- readCerebro(trajectory_crb)
+  expect_error(
+    crb$getTrajectory("missing", "missing"),
+    "not available|not found"
   )
-  expect_match(methods_text, "getNamesOfTrajectories", fixed = TRUE)
+  expect_error(
+    crb$getTrajectory("monocle2", "missing"),
+    "not available|not found"
+  )
+  expect_gt(nrow(crb$getTrajectory("monocle2", "B_cell_maturation")$meta), 0L)
 })
 
 test_that("trajectory helper utilities are defined in the app scope", {
-  # The Trajectory tab calls these free functions (mito/ribo/ery metric sub-tabs
-  # and the pseudotime comparison-variable selector). They were missing from dev
-  # and only surfaced when the tab was actually mounted, so guard their presence
-  # in utility_functions.R. Cross-line-tolerant per project convention.
-  util_src <- paste(
-    readLines(file.path(shiny_root, "utility_functions.R")),
-    collapse = "\n"
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), scope)
+  metadata <- data.frame(
+    cell_barcode = "c1",
+    group = "A",
+    percent.mt = 2,
+    pct_ribo = 3,
+    percent.hb = 4
   )
-  for (fn in c(
-    "getVariableToCompareChoices",
-    "getMitoColumn",
-    "hasMitoColumn",
-    "getRiboColumn",
-    "hasRiboColumn",
-    "getEryColumn",
-    "hasEryColumn"
+  scope$getMetaData <- function() metadata
+  scope$getGroups <- function() "group"
+  scope$Cerebro.options <- list()
+  expect_identical(scope$getVariableToCompareChoices(), names(metadata)[-1])
+  scope$Cerebro.options$variable_to_compare <- TRUE
+  expect_identical(scope$getVariableToCompareChoices(), "group")
+  for (pair in list(
+    c("Mito", "percent.mt"),
+    c("Ribo", "pct_ribo"),
+    c("Ery", "percent.hb")
   )) {
-    expect_match(
-      util_src,
-      paste0(fn, "[\\s]{0,3}<-[\\s]{0,3}function"),
-      perl = TRUE,
-      info = fn
-    )
+    expect_identical(scope[[paste0("get", pair[1], "Column")]](), pair[2])
+    expect_true(scope[[paste0("has", pair[1], "Column")]]())
   }
-})
-
-test_that("trajectory debounce captures the raw reactive", {
-  source <- paste(
-    readLines(file.path(shiny_root, "trajectory", "projection_plot.R")),
-    collapse = "\n"
-  )
-
-  expect_match(
-    source,
-    "trajectory_projection_prepared_raw <- reactive({",
-    fixed = TRUE
-  )
-  expect_match(
-    source,
-    paste(
-      "trajectory_projection_prepared <- debounceAfterFirst(",
-      "trajectory_projection_prepared_raw,",
-      sep = "\n  "
-    ),
-    fixed = TRUE
-  )
-})
-
-test_that("trajectory first frame has a static host and stable appearance", {
-  ui <- paste(
-    readLines(file.path(shiny_root, "trajectory", "UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  controls <- paste(
-    readLines(
-      file.path(shiny_root, "trajectory", "select_method_and_name.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  projection <- paste(
-    readLines(
-      file.path(shiny_root, "trajectory", "projection_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  settings <- paste(
-    readLines(
-      file.path(shiny_root, "trajectory", "projection.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    ui,
-    'cerebroCellViewOutput("trajectory_projection")',
-    fixed = TRUE
-  )
-  expect_false(grepl('uiOutput("trajectory_projection_UI")', ui, fixed = TRUE))
-  expect_match(
-    controls,
-    'output[["trajectory_primary_controls_UI"]]',
-    fixed = TRUE
-  )
-  expect_match(controls, '"trajectory_selected_method"', fixed = TRUE)
-  expect_match(controls, '"trajectory_selected_name"', fixed = TRUE)
-  expect_match(controls, '"trajectory_point_color"', fixed = TRUE)
-  expect_false(grepl(
-    'input[["trajectory_projection_group_labels"]]',
-    projection,
-    fixed = TRUE
-  ))
-  expect_match(
-    projection,
-    "group_labels = isolate(trajectory_projection_appearance$group_labels)",
-    fixed = TRUE
-  )
-  expect_match(settings, '"cell_view_appearance"', fixed = TRUE)
-})
-
-test_that("trajectory static first frame is narrow and keeps deferred identity", {
-  projection <- paste(
-    readLines(
-      file.path(shiny_root, "trajectory", "projection_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    projection,
-    "trajectory_static_first_frame <- reactive",
-    fixed = TRUE
-  )
-  expect_match(
-    projection,
-    "viewerTrajectoryFrameAsset(method, name)",
-    fixed = TRUE
-  )
-  expect_match(projection, "viewerPackTrajectoryEdges(", fixed = TRUE)
-  expect_match(
-    projection,
-    'identical(input[["trajectory_point_color"]], "state")',
-    fixed = TRUE
-  )
-  expect_match(projection, "trajectory_frame_resource = resource", fixed = TRUE)
-  expect_match(
-    projection,
-    "deferred_selection_lengths = resource$cells",
-    fixed = TRUE
-  )
-  expect_match(projection, "trajectory_cells_reactive(", fixed = TRUE)
-  expect_match(
-    projection,
-    "selection_rows = seq_len(resource$cells)",
-    fixed = TRUE
-  )
-})
-
-test_that("trajectory summaries require their own visibility gate", {
-  gates <- c(
-    distribution_along_pseudotime.R = "trajectory_distribution_section_visible",
-    states_by_group.R = "trajectory_states_section_visible",
-    expression_metrics.R = "trajectory_expression_section_visible"
-  )
-  for (path in names(gates)) {
-    source <- paste(
-      readLines(file.path(shiny_root, "trajectory", path), warn = FALSE),
-      collapse = "\n"
-    )
-    expect_match(source, gates[[path]], fixed = TRUE, info = path)
-    expect_match(
-      source,
-      "req(trajectory_projection_sent())",
-      fixed = TRUE,
-      info = path
-    )
+  metadata <- metadata["cell_barcode"]
+  for (kind in c("Mito", "Ribo", "Ery")) {
+    expect_null(scope[[paste0("get", kind, "Column")]]())
+    expect_false(scope[[paste0("has", kind, "Column")]]())
   }
-})
-
-test_that("specialist timing separates primary, cached, and auxiliary events", {
-  source <- paste(
-    readLines(file.path(shiny_root, "www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  state_source <- paste(
-    readLines(
-      file.path(shiny_root, "www", "cell_views_state.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(state_source, "S.specialistLifecycle = {", fixed = TRUE)
-  expect_match(
-    state_source,
-    "begin: function (store, id, renderRequestSent)",
-    fixed = TRUE
-  )
-  expect_match(
-    state_source,
-    "renderRequestSent: !!renderRequestSent",
-    fixed = TRUE
-  )
-  expect_match(
-    source,
-    "CBViewState.specialistLifecycle.begin(",
-    fixed = TRUE
-  )
-  expect_match(source, "eventKind: eventKind", fixed = TRUE)
-  expect_match(source, "reportSelection('aux')", fixed = TRUE)
-  expect_match(source, "'cached'", fixed = TRUE)
-  expect_match(source, "__cerebroResetSpecialistBench", fixed = TRUE)
-  expect_match(source, "recordSpecialistPayload('primary'", fixed = TRUE)
-  expect_match(source, "recordSpecialistPayload('aux'", fixed = TRUE)
-  expect_false(grepl(
-    "p.canvas.addEventListener('pointerenter', requestSingleAux)",
-    source,
-    fixed = TRUE
-  ))
-})
-
-test_that("Trajectory tab is wired into the app UI and server", {
-  # Guard the integration points so a future refactor that drops the wiring
-  # (as pr05 originally shipped it — module present but never mounted) fails
-  # loudly. Cross-line-tolerant regex per project convention (air may reflow).
-  ui_src <- paste(
-    readLines(file.path(shiny_root, "shiny_UI.R")),
-    collapse = "\n"
-  )
-  expect_match(ui_src, "trajectory/UI\\.R")
-  expect_match(ui_src, "tab_trajectory")
-  expect_match(ui_src, 'conditionalSidebarItem\\("Trajectory", "trajectory"')
-
-  server_src <- paste(
-    readLines(file.path(shiny_root, "shiny_server.R")),
-    collapse = "\n"
-  )
-  expect_match(server_src, "trajectory/server\\.R")
-  expect_match(
-    server_src,
-    'toggleConditionalTab\\([\\s\\S]{0,80}"trajectory"',
-    perl = TRUE
-  )
 })

@@ -5,6 +5,9 @@
 #  > "testthat",
 #  > "pkgdown",
 #  > "shinytest2",
+#  > "chromote",
+#  > "xml2",
+#  > "monocle",
 #  > "callr",
 #  > "png",
 #  > "withr",
@@ -51,6 +54,7 @@
 #  > "stringdist",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
+#  > "nodejs",
 #  > "pandoc"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
@@ -71,6 +75,7 @@ let
       base64enc
       biomaRt
       callr
+      chromote
       colourpicker
       devtools
       dplyr
@@ -87,6 +92,7 @@ let
       later
       Matrix
       mirai
+      monocle
       msigdbr
       pbapply
       pkgdown
@@ -116,7 +122,8 @@ let
       tidyr
       tidyselect
       visNetwork
-      withr;
+      withr
+      xml2;
   };
  
     BPCells-src = pkgs.fetchgit {
@@ -159,6 +166,7 @@ let
   system_packages = builtins.attrValues {
     inherit (pkgs) 
       chromium
+      nodejs
       glibcLocales
       nix
       pandoc

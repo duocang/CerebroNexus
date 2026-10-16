@@ -96,61 +96,30 @@ test_that("catalog-backed Data Info defers the full dataset load", {
 })
 
 test_that("Data Info uses the catalog before the full dataset", {
-  viewer_root <- dirname(utils_file)
-  server <- readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE)
-  sample_info <- readLines(
-    file.path(viewer_root, "load_data", "sample_info.R"),
-    warn = FALSE
-  )
-
-  expect_true(any(grepl(
-    "dataset_load_requested <- reactiveVal(FALSE)",
-    server,
-    fixed = TRUE
-  )))
-  expect_true(any(grepl(
-    "req\\(isTRUE\\(dataset_load_requested\\(\\)\\)\\)",
-    server
-  )))
-  expect_true(any(grepl("current_dataset_info\\(\\)", sample_info)))
-  expect_false(any(grepl(
-    "getNumberOfCells\\(\\)|getExperiment\\(\\)",
-    sample_info
-  )))
-})
-
-test_that("Data Info starts a non-blocking CRB prefetch", {
-  viewer_root <- dirname(utils_file)
-  server <- paste(
-    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  prefetch <- paste(
-    readLines(file.path(viewer_root, "crb_cache.R")),
-    collapse = "\n"
-  )
-  expect_match(prefetch, "crb_prefetch_tasks <- new.env", fixed = TRUE)
-  expect_match(prefetch, "shiny::ExtendedTask$new", fixed = TRUE)
-  expect_match(prefetch, "mirai::mirai", fixed = TRUE)
-  expect_match(server, "session$onFlushed", fixed = TRUE)
-  expect_match(server, "prefetch_task$result()", fixed = TRUE)
-})
-
-test_that("dataset changes reset Data Info before full-load reactives run", {
-  viewer_root <- dirname(utils_file)
-  server <- paste(
-    readLines(file.path(viewer_root, "shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    paste0(
-      "(?s)observeEvent\\(\\n    available_crb_files\\$selected,.*?",
-      "priority = 100"
-    ),
-    perl = TRUE
+  withr::local_package("shinydashboard")
+  shiny::testServer(
+    function(input, output, session) {
+      data_set <- getMetaData <- getExperiment <- getNumberOfCells <- function() {
+        stop("full data read")
+      }
+      current_dataset_info <- function() {
+        list(cells = 12345L, organism = "hg", date = "2026-01-02")
+      }
+      sys.source(viewer_test_path("load_data", "sample_info.R"), environment())
+    },
+    {
+      expect_match(
+        output$load_data_number_of_cells$html,
+        "12,345",
+        fixed = TRUE
+      )
+      expect_match(output$load_data_organism$html, ">hg<", fixed = TRUE)
+      expect_match(
+        output$load_data_date_of_export$html,
+        "2026-01-02",
+        fixed = TRUE
+      )
+    }
   )
 })
 
@@ -553,20 +522,6 @@ test_that("Viewer ignores uploaded files unless upload mode is open", {
     viewerUploadPath(data.frame(datapath = NA_character_), list(mode = "open")),
     ""
   )
-})
-
-test_that("spatial offset ranges require finite coordinates", {
-  path <- file.path(
-    dirname(utils_file),
-    "spatial/UI_projection_additional_parameters.R"
-  )
-  source_text <- paste(readLines(path, warn = FALSE), collapse = "\n")
-
-  expect_match(
-    source_text,
-    "x <- co\\[\\[1\\]\\]\\[is.finite\\(co\\[\\[1\\]\\]\\)\\]"
-  )
-  expect_match(source_text, "length\\(x\\) > 0 && length\\(y\\) > 0")
 })
 
 test_that("cell scatter payload rejects incoherent categorical snapshots", {

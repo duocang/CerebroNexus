@@ -465,6 +465,9 @@
       if (pending) clearPending();
       exportReady = false;
       refreshExportControls();
+      document.querySelectorAll('.cv-config-open, .cerebro-config-open').forEach(function (button) {
+        setReadyFor(button.getAttribute('data-view-id'), false, 0);
+      });
     });
     window.addEventListener('cerebro:png-result', announceExternalPNG);
     refreshActiveState();

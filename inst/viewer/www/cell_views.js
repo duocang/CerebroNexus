@@ -3765,6 +3765,7 @@
   }
   function singleHoverEnabledAt(space, i) {
     var modes = space && space._hoverModes;
+    if (space && space._hoverMask && !space._hoverMask[i]) return false;
     if (!space || !space._hoverOffsets || !Array.isArray(modes)) {
       return modes !== 'skip';
     }

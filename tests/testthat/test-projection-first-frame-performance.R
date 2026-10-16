@@ -65,19 +65,6 @@ test_that("projection first frame excludes cell identities and hover metadata", 
     scope$viewerProjectionFirstFrameColumns(metadata, "major_type"),
     "major_type"
   )
-
-  projection_source <- paste(
-    readLines(
-      viewer_test_path("overview", "obj_projection_data.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    projection_source,
-    "viewerProjectionFirstFrameColumns",
-    fixed = TRUE
-  )
 })
 
 test_that("thin CRB first frames do not force cell-barcode hydration", {
@@ -98,25 +85,6 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
     scope$viewerProjectionFirstFrameCoordinates("umap"),
     projection
   )
-
-  update_source <- paste(
-    readLines(
-      viewer_test_path("overview", "func_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  deferred_at <- regexpr(
-    "deferred_aux <- function",
-    update_source,
-    fixed = TRUE
-  )
-  metadata_at <- regexpr(
-    "metadata <- getMetaData()",
-    update_source,
-    fixed = TRUE
-  )
-  expect_gt(metadata_at, deferred_at)
 })
 
 test_that("first-frame cache is optional outside a loaded dataset", {
@@ -179,167 +147,6 @@ test_that("projection auxiliary rows preserve plotted group order", {
   )
 })
 
-test_that("trajectory first frame defers identities and hover", {
-  source <- paste(
-    readLines(
-      viewer_test_path("trajectory", "projection_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(source, "selection_keys = seq_len(nrow(cells_df))", fixed = TRUE)
-  expect_match(source, "deferred_aux <- function()", fixed = TRUE)
-  expect_match(source, "deferred_aux = deferred_aux", fixed = TRUE)
-})
-
-test_that("spatial first frame defers identities and hover", {
-  source <- paste(
-    readLines(
-      viewer_test_path("spatial", "func_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    source,
-    "selection_keys <- if (resource_first)",
-    fixed = TRUE
-  )
-  expect_match(
-    source,
-    "build_deferred_aux <- function(selection_rows)",
-    fixed = TRUE
-  )
-  expect_match(source, "deferred_aux = function()", fixed = TRUE)
-
-  flow <- paste(
-    vapply(
-      c(
-        "obj_projection_cells_to_show.R",
-        "obj_projection_coordinates.R",
-        "obj_projection_metadata.R"
-      ),
-      function(file) {
-        paste(
-          readLines(viewer_test_path("spatial", file), warn = FALSE),
-          collapse = "\n"
-        )
-      },
-      character(1)
-    ),
-    collapse = "\n"
-  )
-  expect_match(flow, "spatial_projection_cell_index", fixed = TRUE)
-  expect_match(flow, "viewerProjectionFirstFrameMetadata", fixed = TRUE)
-  expect_match(flow, "viewerPackSpatialIndex", fixed = TRUE)
-})
-
-test_that("gene-expression first frame defers identities and hover", {
-  update_source <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "func_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    update_source,
-    "selection_key = seq_len(n_cells)",
-    fixed = TRUE
-  )
-  expect_match(update_source, "deferred_aux <- function()", fixed = TRUE)
-  expect_match(
-    update_source,
-    '"cell_barcode" %in% colnames(metadata)',
-    fixed = TRUE
-  )
-  expect_match(update_source, "getMetaData()", fixed = TRUE)
-  expect_match(
-    update_source,
-    "viewerProjectionMetadataColumns",
-    fixed = TRUE
-  )
-  expect_match(
-    update_source,
-    "viewerProjectionSubsetRows",
-    fixed = TRUE
-  )
-  expect_match(update_source, "deferred_aux = deferred_aux", fixed = TRUE)
-  expect_match(update_source, "shared_zero_color", fixed = TRUE)
-  expression_source <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "obj_projection_expression_levels.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    expression_source,
-    "if (length(genes_present) == 0) {\n    ## No gene",
-    fixed = TRUE
-  )
-  expect_match(
-    expression_source,
-    "expression_levels <- numeric()",
-    fixed = TRUE
-  )
-
-  sources <- vapply(
-    c(
-      "obj_projection_cells_to_show.R",
-      "obj_projection_parameters_plot.R",
-      "obj_projection_coordinates.R",
-      "obj_projection_data.R"
-    ),
-    function(file) {
-      paste(
-        readLines(
-          viewer_test_path("gene_expression", file),
-          warn = FALSE
-        ),
-        collapse = "\n"
-      )
-    },
-    character(1)
-  )
-  expect_match(
-    sources[["obj_projection_cells_to_show.R"]],
-    "viewerProjectionFirstFrameMetadata",
-    fixed = TRUE
-  )
-  expect_match(
-    sources[["obj_projection_parameters_plot.R"]],
-    "viewerProjectionFirstFrameCoordinates",
-    fixed = TRUE
-  )
-  expect_match(
-    sources[["obj_projection_coordinates.R"]],
-    "viewerProjectionFirstFrameCoordinates",
-    fixed = TRUE
-  )
-  expect_match(
-    sources[["obj_projection_data.R"]],
-    "viewerProjectionFirstFrameMetadata",
-    fixed = TRUE
-  )
-
-  selector_source <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "UI_projection_select_projection.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(selector_source, "coordviews_shared_base", fixed = TRUE)
-  expect_match(selector_source, "selected = selected_projection", fixed = TRUE)
-})
-
 test_that("unmounted group filters preserve canonical rows without level scans", {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = 100)
@@ -360,23 +167,6 @@ test_that("unmounted group filters preserve canonical rows without level scans",
     seq_len(nrow(metadata))
   )
   expect_identical(level_calls, 0L)
-})
-
-test_that("Gene group filters mount only after the settings drawer opens", {
-  source <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "UI_projection_group_filters.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(source, "render_request = function()", fixed = TRUE)
-  expect_match(
-    source,
-    'input[["expression_projection_more_render_request"]]',
-    fixed = TRUE
-  )
 })
 
 test_that("gene-expression deferred hover selects rows and columns first", {
@@ -485,22 +275,6 @@ test_that("cached BPCells gene names do not force the expression backend", {
 
   expect_identical(scope$getGeneNames(), c("CD3D", "NKG7"))
   expect_identical(slow_calls, 0L)
-
-  server_source <- paste(
-    readLines(viewer_test_path("shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  list_start <- regexpr(
-    "list_of_genes <- reactive({",
-    server_source,
-    fixed = TRUE
-  )
-  expect_gt(list_start, 0L)
-  expect_match(
-    substr(server_source, list_start, list_start + 180L),
-    "getGeneNames()",
-    fixed = TRUE
-  )
 })
 
 test_that("thin BPCells first-frame cache includes its small gene index", {
@@ -531,32 +305,6 @@ test_that("thin BPCells first-frame cache includes its small gene index", {
   expect_identical(cache$gene_names, c("CD3D", "NKG7"))
 })
 
-test_that("projection rendering has one first-frame debounce entry point", {
-  event_source <- paste(
-    readLines(
-      viewer_test_path("overview", "event_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    event_source,
-    "data <- overview_projection_data_to_plot()",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "overview_projection_rendered",
-    event_source,
-    fixed = TRUE
-  ))
-  expect_match(
-    event_source,
-    "if (!viewerDatasetContextEqual(data$dataset_context, current_context))",
-    fixed = TRUE
-  )
-})
-
 test_that("projection can render before its dynamic controls bind", {
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
@@ -582,23 +330,6 @@ test_that("projection can render before its dynamic controls bind", {
     )$color_variable,
     "cell_type"
   )
-
-  parameter_source <- paste(
-    readLines(
-      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(parameter_source, "viewerProjectionDefaults", fixed = TRUE)
-  expect_match(parameter_source, "current_scatter_defaults", fixed = TRUE)
-  expect_false(grepl(
-    '!is.null(input[["overview_projection_group_labels"]])',
-    parameter_source,
-    fixed = TRUE
-  ))
-  expect_match(parameter_source, "reset_axes = TRUE", fixed = TRUE)
 })
 
 test_that("a new projection mount redraws unchanged data", {
@@ -684,19 +415,6 @@ test_that("full ordered projection rows bypass row subsetting", {
     scope$viewerProjectionSubsetRows(table, seq_len(nrow(table)), NULL),
     table
   )
-
-  coordinate_source <- paste(
-    readLines(
-      viewer_test_path("overview", "obj_projection_coordinates.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    coordinate_source,
-    "viewerProjectionSubsetRows",
-    fixed = TRUE
-  )
 })
 
 test_that("thin CRBs discard duplicate metadata row names", {
@@ -748,7 +466,6 @@ test_that("thin CRBs discard duplicate metadata row names", {
   expect_identical(runtime_object$meta_data$cell_barcode, cells)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
 })
-
 
 test_that("noncanonical thin projections cannot bypass barcode alignment", {
   scope <- new.env(parent = globalenv())

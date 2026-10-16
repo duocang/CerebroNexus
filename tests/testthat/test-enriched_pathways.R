@@ -16,10 +16,10 @@ test_that("enriched_pathways module files parse without errors", {
 })
 
 test_that("enriched_pathways UI defines correct tabName", {
-  ui_file <- file.path(shiny_root, "enriched_pathways", "UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-  expect_match(content, 'tabName\\s*=\\s*"enrichedPathways"', perl = TRUE)
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("enriched_pathways", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_enriched_pathways)
+  expect_equal(page$filter("#shiny-tab-enrichedPathways")$length(), 1L)
 })
 
 test_that("example.crb enriched_pathways class methods work", {

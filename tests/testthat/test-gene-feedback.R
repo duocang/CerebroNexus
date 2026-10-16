@@ -3,18 +3,13 @@ test_that("Gene feedback uses canonical keys without preparing expression", {
     function(input, output, session) {
       scope <- environment()
       sys.source(viewer_test_path("utility_functions.R"), scope)
-      expressions <- parse(viewer_test_path(
-        "gene_expression",
-        "obj_projection_expression_levels.R"
-      ))
-      key_function <- Filter(
-        function(e) {
-          is.call(e) &&
-            identical(e[[1]], as.name("<-")) &&
-            identical(e[[2]], as.name("expressionProjectionRenderKey"))
-        },
-        as.list(expressions)
-      )[[1]]
+      key_function <- viewer_r_assignment(
+        viewer_test_path(
+          "gene_expression",
+          "obj_projection_expression_levels.R"
+        ),
+        "expressionProjectionRenderKey"
+      )
       eval(key_function, scope)
       viewer_loaded_dataset_context <- function() {
         list(epoch = "e", dataset_key = "A", generation = 1L)

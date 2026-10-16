@@ -82,17 +82,10 @@ test_that("Gene rejects obsolete group columns and clears rather than retaining 
     "gene.lifecycle.source",
     viewer_test_path("gene_expression")
   )
-  expressions <- parse(file.path(root, "UI_expression_by_group.R"))
-  assignment <- Filter(
-    function(x) {
-      is.call(x) &&
-        identical(x[[1]], as.name("<-")) &&
-        is.call(x[[2]]) &&
-        identical(x[[2]][[1]], as.name("[[")) &&
-        identical(x[[2]][[3]], "expression_by_group")
-    },
-    as.list(expressions)
-  )[[1]]
+  assignment <- viewer_r_assignment(
+    file.path(root, "UI_expression_by_group.R"),
+    "output.expression_by_group"
+  )
   body <- assignment[[3]][[2]]
   env <- new.env(parent = globalenv())
   env$req <- shiny::req

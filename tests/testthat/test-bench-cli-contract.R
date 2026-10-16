@@ -10,24 +10,44 @@ skip_unless_bench_cli <- function() {
   )
 }
 
-test_that("sweep cleanup cannot run twice through signal and exit traps", {
+test_that("sweep publishes after validation and cleans up on every exit", {
   skip_unless_bench_cli()
-  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
-  cleanup <- sweep[seq(
-    grep("^cleanup\\(\\)", sweep),
-    grep("^trap cleanup", sweep) - 1L
-  )]
-
-  expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
-})
-
-test_that("sweep stages use plain names in a safe publication order", {
-  skip_unless_bench_cli()
+  skip_if(
+    .Platform$OS.type != "unix" || Sys.which("bash") == "",
+    "requires bash"
+  )
+  root <- tempfile("sweep-process-")
+  dir.create(file.path(root, "tests", "bench"), recursive = TRUE)
+  dir.create(file.path(root, "bin"))
+  dir.create(file.path(root, "scratch"))
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  script <- file.path(root, "tests", "bench", "run_sweep.sh")
+  writeLines(readLines(file.path(bench_root, "run_sweep.sh")), script)
+  for (tool in c("Rscript", "R", "curl", "rm")) {
+    target <- file.path(root, "bin", tool)
+    writeLines(readLines(test_path("fixtures", "bench-shell.sh")), target)
+    Sys.chmod(target, "0755")
+  }
+  log <- file.path(root, "calls")
+  withr::local_envvar(c(
+    PATH = paste(
+      file.path(root, "bin"),
+      Sys.getenv("PATH"),
+      sep = .Platform$path.sep
+    ),
+    BENCH_TEST_ROOT = root,
+    BENCH_TEST_LOG = log,
+    BENCH_PROFILE = "publication",
+    BENCH_RUN_ID = "test",
+    BENCH_SCRATCH_PARENT = file.path(root, "scratch"),
+    BENCH_KEEP = "0"
+  ))
   expected <- c(
     "01_inspect_data.R",
     "02_record_environment.R",
     "03_plan_runs.R",
     "04_check_resources.R",
+    "install",
     "10_export_backend.R",
     "20_measure_backend.R",
     "30_check_measurements.R",
@@ -36,19 +56,49 @@ test_that("sweep stages use plain names in a safe publication order", {
     "50_check_outputs.R",
     "60_publish_results.R"
   )
-  expect_true(all(file.exists(file.path(bench_root, "src", expected))))
-
-  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
-  positions <- vapply(
-    expected,
-    function(name) {
-      hit <- grep(name, sweep, fixed = TRUE)
-      if (length(hit)) hit[1] else Inf
-    },
-    numeric(1)
-  )
-  expect_true(all(is.finite(positions)))
-  expect_true(all(diff(positions) > 0))
+  for (mode in c("success", "failed-validation", "interrupted")) {
+    writeLines(character(), log)
+    withr::with_envvar(
+      c(
+        BENCH_TEST_STOP = if (mode == "failed-validation") {
+          "50_check_outputs.R"
+        } else {
+          ""
+        },
+        BENCH_TEST_SIGNAL = if (mode == "interrupted") {
+          "02_record_environment.R"
+        } else {
+          ""
+        }
+      ),
+      {
+        result <- suppressWarnings(system2(
+          "bash",
+          shQuote(script),
+          stdout = TRUE,
+          stderr = TRUE
+        ))
+      }
+    )
+    calls <- readLines(log)
+    stages <- calls[!startsWith(calls, "remove ")]
+    if (mode == "success") {
+      expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
+      expect_identical(stages, expected)
+    } else if (mode == "failed-validation") {
+      expect_false("60_publish_results.R" %in% stages)
+      expect_equal(attr(result, "status"), 1)
+    } else {
+      expect_false("60_publish_results.R" %in% stages)
+    }
+    removals <- sub("^remove ", "", calls[startsWith(calls, "remove ")])
+    scratch_removals <- removals[
+      dirname(removals) == file.path(root, "scratch")
+    ]
+    expect_length(scratch_removals, 1L)
+    expect_length(list.files(file.path(root, "scratch")), 0L)
+    expect_true(file.exists(script))
+  }
 })
 
 run_bench_rscript <- function(script, args = character(), env = character()) {

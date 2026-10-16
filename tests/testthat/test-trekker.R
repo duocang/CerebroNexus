@@ -87,19 +87,79 @@ test_that("trekker_numeric_meta_cols ignores NA when judging constancy", {
   expect_setequal(out, "varying")
 })
 
-test_that("Trekker payload stays lazy until its page is visible", {
-  server <- paste(
-    readLines(viewer_test_path("trekker", "server.R"), warn = FALSE),
-    collapse = "\n"
+test_that("Trekker only prepares payloads for a visible, current dataset", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      reads <- 0L
+      sent <- list()
+      context <- list(epoch = "session", dataset_key = "tiny", generation = 1L)
+      viewer_loaded_dataset_context <- function() context
+      tk <- list(
+        barcodes = c("a", "b"),
+        clusters = c(0L, 1L),
+        celltype = c("T", "B"),
+        x = c(2, 4),
+        y = c(3, 5),
+        ux = c(-1, 1),
+        uy = c(1, -1)
+      )
+      data_set <- function() {
+        list(getTrekker = function() {
+          reads <<- reads + 1L
+          tk
+        })
+      }
+      current_scatter_defaults <- function() {
+        list(point_size = 3, point_opacity = 1, percentage_cells_to_show = 100)
+      }
+      cerebro_group_colors <- function(n) c("red", "blue")[seq_len(n)]
+      cerebroCellViewRender <- function(...) {
+        sent[[length(sent) + 1L]] <<- list(...)
+      }
+      viewer_server_load(
+        viewer_server_statements("trekker", "server.R"),
+        scope,
+        names = "trekker_slot",
+        events = "trekker_projection_render_request"
+      )
+    },
+    {
+      request <- list(dataset_context = context)
+      session$setInputs(
+        sidebar = "overview",
+        trekker_projection_render_request = request
+      )
+      expect_identical(scope$reads, 0L)
+      expect_length(scope$sent, 0L)
+      session$setInputs(
+        sidebar = "trekker",
+        trekker_projection_render_request = NULL
+      )
+      expect_identical(scope$reads, 0L)
+      session$setInputs(
+        trekker_projection_render_request = list(
+          dataset_context = list(
+            epoch = "session",
+            dataset_key = "old",
+            generation = 0L
+          )
+        )
+      )
+      expect_identical(scope$reads, 0L)
+      session$setInputs(trekker_projection_render_request = request)
+      expect_identical(scope$reads, 1L)
+      expect_length(scope$sent, 1L)
+      expect_identical(scope$sent[[1]]$data$selection_key, c("a", "b"))
+      expect_identical(scope$sent[[1]]$data$panels[[1]]$x, c(2, 4))
+      expect_identical(scope$sent[[1]]$data$panels[[2]]$x, c(-1, 1))
+      session$setInputs(sidebar = "overview", trekker_view = "sp")
+      expect_length(scope$sent, 1L)
+      session$setInputs(sidebar = "trekker")
+      expect_length(scope$sent, 2L)
+      expect_length(scope$sent[[2]]$data$panels, 1L)
+      expect_identical(scope$reads, 1L)
+    }
   )
-  expect_match(
-    server,
-    'req(identical(input[["sidebar"]], "trekker"))',
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    'outputOptions(output, "trekker_main_parameters_ui"',
-    server,
-    fixed = TRUE
-  ))
 })

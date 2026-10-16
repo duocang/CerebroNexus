@@ -1,16 +1,8 @@
 test_that("hidden Linked selection UI drops selection and dataset dependencies", {
-  expressions <- parse(viewer_test_path("coordinated_views", "server.R"))
-  target <- Filter(
-    function(x) {
-      is.call(x) &&
-        identical(x[[1L]], as.name("<-")) &&
-        identical(
-          paste(deparse(x[[2L]]), collapse = ""),
-          'output[["coordviews_selected_cells_UI"]]'
-        )
-    },
-    expressions
-  )[[1L]]
+  target <- viewer_r_assignment(
+    viewer_test_path("coordinated_views", "server.R"),
+    "output.coordviews_selected_cells_UI"
+  )
   shiny::testServer(
     function(input, output, session) {
       renderUI <- shiny::renderUI

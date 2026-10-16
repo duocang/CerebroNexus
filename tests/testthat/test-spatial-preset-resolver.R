@@ -54,15 +54,7 @@ test_that("one resolver rotates spatial coordinates for every Viewer surface", {
 })
 
 test_that("MERFISH plot and image rotations are configured independently", {
-  app_env <- new.env(parent = globalenv())
-  app_lines <- readLines(system.file("app.R", package = "CerebroNexus"))
-  options_start <- grep("^Cerebro.options", app_lines)[[1L]]
-  options_end <- grep('^  "projections_show_hover_info"', app_lines)[[1L]]
-  expression <- app_lines[options_start:(options_end + 1L)]
-  expression[[1L]] <- sub("<<-", "<-", expression[[1L]], fixed = TRUE)
-  app_env$custom_welcome_message <- "test"
-  eval(parse(text = expression), envir = app_env)
-  options <- app_env$Cerebro.options
+  options <- viewer_demo_options()
 
   expect_identical(
     options$spatial_plot_rotation[["Mouse ileum (MERFISH)"]][["fov"]],

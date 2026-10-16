@@ -1,18 +1,10 @@
 gene_expression_test_function <- function(file, name) {
-  expressions <- parse(viewer_test_path("gene_expression", file))
-  assignment <- Filter(
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], quote(`<-`)) &&
-        identical(as.character(expression[[2L]]), name) &&
-        is.call(expression[[3L]]) &&
-        identical(expression[[3L]][[1L]], as.name("function"))
-    },
-    expressions
+  assignment <- viewer_r_assignment(
+    viewer_test_path("gene_expression", file),
+    name
   )
-  stopifnot(length(assignment) == 1L)
   scope <- new.env(parent = globalenv())
-  eval(assignment[[1L]], envir = scope)
+  eval(assignment, envir = scope)
   scope[[name]]
 }
 
@@ -43,18 +35,6 @@ test_that("sparse expression colour transport is exact and density-gated", {
   ))
   dense_wire <- wire$cv_wire_pack_message(list(data = list(color = values)))
   expect_lt(length(sparse_wire), length(dense_wire) / 100)
-})
-
-test_that("browser hydrates Gene colours without float32 rounding", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  runner <- testthat::test_path("fixtures", "gene-color-f64.js")
-  expect_identical(
-    system2(
-      "node",
-      c(shQuote(runner), shQuote(viewer_test_path("www", "cell_views.js")))
-    ),
-    0L
-  )
 })
 
 test_that("binary colour payload retains R doubles", {
@@ -269,130 +249,166 @@ test_that("full canonical expression reads omit the million-index slice", {
 })
 
 test_that("gene primary colours do not materialize metadata", {
-  source <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "obj_projection_data_to_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      expression_projection_data <- getMetaData <- function(...) {
+        stop("metadata was hydrated")
+      }
+      viewer_loaded_dataset_context <- function() list(generation = 1L)
+      expression_projection_coordinates <- function() {
+        data.frame(x = 1:2, y = 2:1)
+      }
+      expression_projection_parameters_plot <- function() {
+        list(is_trajectory = FALSE)
+      }
+      expression_projection_expression_levels <- function() c(0, 2)
+      expression_selected_genes <- function() {
+        list(genes_to_display_present = input$genes)
+      }
+      expression_projection_parameters_color <- function() list(scale = "blue")
+      expression_projection_trajectory <- function() list(meta = data.frame())
+      cerebroFeedbackControls <- function(...) list()
+      data_set <- function() "dataset"
+      expression_projection_parameters_other <- list(reset_axes = FALSE)
+      expression_projection_render_key <- function() "key"
+      expression_projection_cells_to_show <- function() 1:2
+      sys.source(
+        viewer_test_path("gene_expression", "obj_projection_data_to_plot.R"),
+        scope
+      )
+    },
+    {
+      for (genes in list(character(), "A")) {
+        session$setInputs(
+          genes = genes,
+          expression_projection_genes_in_separate_panels = "single"
+        )
+        result <- expression_projection_data_to_plot_raw()
+        expect_null(result$metadata)
+        expect_identical(result$cell_indices, 1:2)
+        expect_identical(result$expression_levels, c(0, 2))
+        expect_equal(result$coordinates, data.frame(x = 1:2, y = 2:1))
+      }
+    }
   )
-  expect_match(source, "metadata <- NULL", fixed = TRUE)
-  expect_false(grepl(
-    "if (no_gene_selected) NULL else expression_projection_data()",
-    source,
-    fixed = TRUE
-  ))
 })
 
 test_that("single-gene colour caches are bounded on both sides", {
-  server <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "obj_projection_expression_levels.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      sys.source(
+        viewer_test_path(
+          "gene_expression",
+          "obj_projection_expression_levels.R"
+        ),
+        scope
+      )
+      dataset <- "A"
+      viewerDatasetIdentity <- function() list(pack_fingerprint = dataset)
+      available_crb_files <- list(selected = "same-file")
+      reads <- character()
+      viewerExpressionValues <- function(data, cells, genes) {
+        reads <<- c(reads, genes)
+        setNames(
+          lapply(genes, function(gene) data$expression[gene, cells]),
+          genes
+        )
+      }
+      matrix <- matrix(
+        seq_len(18),
+        nrow = 6,
+        dimnames = list(LETTERS[1:6], NULL)
+      )
+      object <- list(expression = matrix)
+    },
+    {
+      for (gene in LETTERS[1:4]) {
+        expect_identical(
+          expressionProjectionCachedRow(scope$object, 1:3, gene),
+          unname(matrix[gene, ])
+        )
+      }
+      expressionProjectionCachedRow(scope$object, 1:3, "A")
+      expect_identical(scope$reads, LETTERS[1:4])
+      expressionProjectionCachedRow(scope$object, 1:3, "E")
+      expressionProjectionCachedRow(scope$object, 1:3, "A")
+      expect_identical(scope$reads, LETTERS[1:5])
+      expressionProjectionCachedRow(scope$object, 1:3, "B")
+      expect_identical(tail(scope$reads, 1), "B")
+      scope$dataset <- "B"
+      scope$object$expression <- matrix + 100L
+      expect_identical(
+        expressionProjectionCachedRow(scope$object, 1:3, "A"),
+        unname(matrix["A", ] + 100L)
+      )
+      for (i in 1:2) {
+        expect_identical(
+          expressionProjectionCachedRow(scope$object, c(3L, 1L), "A"),
+          unname(matrix["A", c(3, 1)] + 100L)
+        )
+      }
+      expect_identical(tail(scope$reads, 3), rep("A", 3))
+    }
   )
-  browser <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    server,
-    "expression_projection_row_cache_limit <- 4L",
-    fixed = TRUE
-  )
-  expect_match(server, "expressionProjectionCachedRow", fixed = TRUE)
-  expect_match(server, "expression_projection_backend_warmed", fixed = TRUE)
-  expect_match(
-    server,
-    'input[["expression_projection_rendered_key"]]',
-    fixed = TRUE
-  )
-  expect_match(browser, "SINGLE_COLOR_CACHE_LIMIT = 4", fixed = TRUE)
-  expect_match(browser, "hydrateSparseSingleColor(data)", fixed = TRUE)
-  expect_match(browser, "hydrateColorPacketMap(", fixed = TRUE)
-  expect_match(server, "expressionProjectionCachedRows", fixed = TRUE)
 })
 
 test_that("secondary expression summaries wait for the painted primary frame", {
-  summaries <- paste(
-    vapply(
-      c(
-        "UI_expression_by_group.R",
-        "UI_expression_by_gene.R",
-        "UI_expression_in_selected_cells.R",
-        "UI_table_of_selected_cells.R"
-      ),
-      function(file) {
-        paste(
-          readLines(viewer_test_path("gene_expression", file), warn = FALSE),
-          collapse = "\n"
+  cases <- c(
+    expression_by_group = "UI_expression_by_group.R",
+    expression_by_gene = "UI_expression_by_gene.R",
+    expression_in_selected_cells = "UI_expression_in_selected_cells.R",
+    expression_details_selected_cells = "UI_table_of_selected_cells.R"
+  )
+  for (id in names(cases)) {
+    shiny::testServer(
+      function(input, output, session) {
+        scope <- environment()
+        reads <- 0L
+        read_data <- function() {
+          reads <<- reads + 1L
+          stop("summary data reached")
+        }
+        expression_projection_data <- expression_projection_parameters_color <- read_data
+        expression_projection_render_key <- function() "current"
+        viewer_server_load(
+          viewer_server_statements(
+            "gene_expression",
+            "obj_projection_expression_levels.R"
+          ),
+          scope,
+          names = "expression_projection_summary_ready"
+        )
+        viewer_server_load(
+          viewer_server_statements("gene_expression", cases[[id]]),
+          scope,
+          names = paste0("output$", id)
         )
       },
-      character(1)
-    ),
-    collapse = "\n"
-  )
-  browser <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    summaries,
-    "expression_projection_summary_ready()",
-    fixed = TRUE
-  )
-  expect_match(browser, "singleActive + '_rendered_key'", fixed = TRUE)
-  expect_match(browser, "eventKind === 'primary'", fixed = TRUE)
-
-  ui <- paste(
-    readLines(viewer_test_path("gene_expression", "UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(ui, "expression_summary_gate", fixed = TRUE)
-  expect_match(ui, "IntersectionObserver", fixed = TRUE)
-  expect_match(ui, "expression_summary_viewport_request", fixed = TRUE)
-  expect_match(ui, "observer.observe(target)", fixed = TRUE)
-  expect_false(grepl("armSummaryGate", ui, fixed = TRUE))
-  expect_match(
-    summaries,
-    'input[["expression_summary_viewport_request"]]',
-    fixed = TRUE
-  )
-})
-
-test_that("gene expression progress remains open until the browser paints", {
-  levels <- paste(
-    readLines(
-      viewer_test_path(
-        "gene_expression",
-        "obj_projection_expression_levels.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  render <- paste(
-    readLines(
-      viewer_test_path("gene_expression", "event_projection_update_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(levels, "shiny::Progress$new", fixed = TRUE)
-  expect_false(grepl("withProgress(", levels, fixed = TRUE))
-  expect_match(
-    levels,
-    'input[["expression_projection_rendered_key"]]',
-    fixed = TRUE
-  )
-  expect_match(levels, "expressionProjectionProgressClose(", fixed = TRUE)
-  expect_match(render, "Transferring expression colours...", fixed = TRUE)
-  expect_match(render, "Drawing expression colours...", fixed = TRUE)
+      {
+        session$setInputs(
+          expression_summary_viewport_request = 1,
+          expression_projection_rendered_key = "old"
+        )
+        expect_error(output[[id]], class = "shiny.silent.error")
+        expect_identical(scope$reads, 0L)
+        if (id %in% c("expression_by_group", "expression_by_gene")) {
+          session$setInputs(
+            expression_summary_viewport_request = NULL,
+            expression_projection_rendered_key = "current"
+          )
+          expect_error(output[[id]], class = "shiny.silent.error")
+          expect_identical(scope$reads, 0L)
+        }
+        session$setInputs(
+          expression_summary_viewport_request = 1,
+          expression_projection_rendered_key = "current"
+        )
+        expect_error(output[[id]], "summary data reached")
+        expect_gt(scope$reads, 0L)
+      }
+    )
+  }
 })

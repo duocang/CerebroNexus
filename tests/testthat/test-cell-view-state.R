@@ -172,16 +172,6 @@ test_that("specialist restore does not overwrite a saved state on its active pag
     jsonlite::fromJSON(output, simplifyVector = FALSE),
     list(current = FALSE, navigating = TRUE, normal = TRUE)
   )
-
-  renderer <- paste(
-    readLines(viewer_test_path("www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(
-    renderer,
-    "activateSingle(id, false, true)",
-    fixed = TRUE
-  )
 })
 
 test_that("specialist selected-cell results wait for stable identities", {

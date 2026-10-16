@@ -26,3 +26,5 @@ TODO.md
 Rplots\.pdf$
 ^inst/private-data/linked-view-shares\.sqlite$
 ^tests/bench$
+^tests/node_modules$
+^tests/testthat/_artifacts$

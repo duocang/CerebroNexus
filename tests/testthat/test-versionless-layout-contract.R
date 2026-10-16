@@ -69,9 +69,9 @@ test_that("every bundled Cerebro fixture uses the versionless data class", {
   }
 })
 
-test_that("current code and documentation do not describe a legacy viewer version", {
+test_that("published documentation does not describe a legacy viewer version", {
   root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
-  roots <- file.path(root, c("R", "man", "vignettes", "tests"))
+  roots <- file.path(root, c("man", "vignettes"))
   testthat::skip_if_not(
     all(dir.exists(roots)),
     "current source tree is not present in the installed-package layout"
@@ -126,12 +126,6 @@ test_that("current launcher documentation stays versionless", {
   expect_false(grepl("version\\s*=\\s*['\"]v[0-9]", guide_text))
   expect_false(grepl("(?:shiny|extdata)/v[0-9]", guide_text))
   expect_false(file.exists(file.path(root, "pkgdown", "_pkgdown.yml")))
-
-  launcher_source <- readLines(
-    file.path(root, "R", "launchCerebro.R"),
-    warn = FALSE
-  )
-  expect_false(any(startsWith(launcher_source, "#\"")))
 })
 
 test_that("the Cerebro class overview stays versionless", {

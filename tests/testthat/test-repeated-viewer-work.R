@@ -2,7 +2,7 @@ repeat_definitions <- function(file, env) {
   for (x in parse(file)) {
     if (
       is.call(x) &&
-        identical(x[[1]], as.name("<-")) &&
+        as.character(x[[1]])[1] %in% c("<-", "=") &&
         is.call(x[[3]]) &&
         identical(x[[3]][[1]], as.name("function"))
     ) {
@@ -144,7 +144,7 @@ test_that("Groups shares counts across display forms but refreshes data", {
       for (x in expressions) {
         if (
           is.call(x) &&
-            identical(x[[1]], as.name("<-")) &&
+            as.character(x[[1]])[1] %in% c("<-", "=") &&
             identical(x[[2]], as.name("groups_composition_counts"))
         ) {
           eval(x, environment())

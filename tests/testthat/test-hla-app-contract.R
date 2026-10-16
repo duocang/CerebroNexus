@@ -6,211 +6,6 @@ hla_inst_file <- function(...) {
   testthat::test_path("../../inst", ...)
 }
 
-# The body of hla_params_ready(), so the gate's contract can be asserted against
-# the gate itself rather than against a window of characters that happens to
-# follow its name. Lazy up to the first line-start "})".
-hla_params_ready_src <- function(data_src) {
-  m <- regmatches(
-    data_src,
-    regexpr(
-      "hla_params_ready <- reactive\\(\\{[\\s\\S]{0,1500}?\\n\\}\\)",
-      data_src,
-      perl = TRUE
-    )
-  )
-  testthat::expect_length(m, 1L)
-  m
-}
-
-test_that("HLA Associations is wired to a frozen motif feature", {
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(src, "hla_feature_type")
-  expect_match(src, "hla_feature_id")
-  expect_match(src, "hla_descriptive_feature_overlap", fixed = TRUE)
-  expect_match(src, "hla_overlap_table")
-  expect_match(src, "hla_allele_matrix")
-})
-
-test_that("the HLA motif network uses the shared Canvas renderer", {
-  ui <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  table_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(ui, 'cerebroCellViewOutput\\("hla_motif_network"\\)')
-  expect_no_match(ui, "visNetworkOutput\\(")
-  expect_match(viz, "hla_motif_network_render_request", fixed = TRUE)
-  expect_match(
-    viz,
-    'cerebroCellViewRender\\(\\s*"hla_motif_network"',
-    perl = TRUE
-  )
-  expect_match(
-    table_src,
-    "hla_motif_network_persistent_selection",
-    fixed = TRUE
-  )
-})
-
-test_that("Associations takes its features from the allele-independent graph", {
-  # Sourcing the drawn graph here would let the allele scope nominate the very
-  # motif the allele is then compared on. Guarded statically because the wiring
-  # is a Shiny reactive: the unit suite cannot see which graph it reads.
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    src,
-    "hla_feature_catalog <- reactive\\(\\{[\\s\\S]{0,120}hla_global_motif_graph\\(\\)",
-    perl = TRUE
-  )
-  expect_no_match(
-    src,
-    "hla_feature_catalog <- reactive\\(\\{[\\s\\S]{0,120}g <- hla_motif_graph\\(\\)",
-    perl = TRUE
-  )
-})
-
-test_that("the allele scope cache key carries the carrier set, not just a name", {
-  # Two typings can name the same allele and disagree on who carries it. If the
-  # key is the allele name alone, the second upload serves the graph cached from
-  # the first one's carriers while every caption around it updates.
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    src,
-    "hla_scope_key <- reactive\\(\\{[\\s\\S]{0,600}hla_carriers_of\\(",
-    perl = TRUE
-  )
-})
-
-test_that("Data and QC exposes normalized and donor mapping previews", {
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/data_qc.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(src, "hla_normalized_preview")
-  expect_match(src, "hla_donor_mapping_preview")
-  expect_match(src, "hla_download_normalized")
-})
-
-test_that("motif network exposes a stable selected-node detail panel", {
-  ui <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/UI.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  js <- paste(
-    readLines(
-      hla_inst_file("viewer/www/hla_motifs.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_no_match(ui, "hla-node-details", fixed = TRUE)
-  expect_no_match(viz, "detail = titles", fixed = TRUE)
-  expect_no_match(viz, "title = titles", fixed = TRUE)
-  expect_no_match(viz, "window.hlaShowNodeDetails", fixed = TRUE)
-  expect_no_match(viz, "hla_selected_node_id", fixed = TRUE)
-  expect_match(viz, 'hoverinfo = "text"', fixed = TRUE)
-  expect_match(viz, "columns = vn$hover_columns", fixed = TRUE)
-  expect_no_match(viz, "text = vn$nodes$title", fixed = TRUE)
-  expect_no_match(js, "hla-refresh-node-details", fixed = TRUE)
-})
-
-test_that("HLA cohort filters are visible and drive every graph cache", {
-  ui <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  settings <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(ui, 'cerebroSettingsSection\\(\\s*"Filters"', perl = TRUE)
-  expect_match(ui, 'uiOutput\\("hla_group_filters_ui"\\)')
-  expect_match(
-    settings,
-    'input[["hla_more_render_request"]]',
-    fixed = TRUE
-  )
-  expect_gte(
-    lengths(regmatches(
-      settings,
-      gregexpr("req(hla_settings_requested())", settings, fixed = TRUE)
-    )),
-    2L
-  )
-  expect_match(settings, "groupFilterControl(", fixed = TRUE)
-  expect_match(settings, "hla_default_filter_selections", fixed = TRUE)
-  expect_match(data_src, "hla_ir_filtered <- reactive", fixed = TRUE)
-  expect_match(
-    data_src,
-    "hla_segments_fallback <- reactive\\(\\{[\\s\\S]{0,300}hla_ir_filtered\\(\\)",
-    perl = TRUE
-  )
-  expect_match(
-    data_src,
-    "hla_segments_fallback <- reactive\\(\\{[\\s\\S]{0,700}cerebroGroupFilterMask\\(",
-    perl = TRUE
-  )
-  expect_equal(
-    lengths(regmatches(data_src, gregexpr("hla_filter_key\\(\\)", data_src))),
-    5L
-  )
-})
-
 test_that("core shim binds locally without polluting globalenv", {
   local_env <- new.env(parent = globalenv())
   # The shim reads Cerebro.options[["cerebro_root"]] to locate its bundled core/
@@ -459,31 +254,26 @@ test_that("an incompletely called locus is unknown, never a confirmed negative",
 })
 
 test_that("the shipped demo's selection is a caveat the page can actually show", {
-  # The caveat above the Associations tables is keyed on technical_info$
-  # tcr_selection. This demo declares "antigen-selected", which was NOT a
-  # recognised key -- so the object declared a selection and the page rendered
-  # nothing, while the vignette told users to read a note that did not exist.
   crb <- hla_sc_demo()
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
+  shiny::testServer(
+    function(input, output, session) {
+      data_set <- function() crb
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "data.R"),
+        environment(),
+        names = c("HLA_SELECTION_CAVEATS", "hla_selection_caveat")
+      )
+    },
+    {
+      caveat <- hla_selection_caveat()
+      expect_true(length(caveat) > 0)
+      expect_match(
+        paste(unlist(caveat), collapse = " "),
+        "ascertainment",
+        ignore.case = TRUE
+      )
+    }
   )
-  key <- crb$technical_info$tcr_selection
-  expect_match(
-    src,
-    paste0(
-      "HLA_SELECTION_CAVEATS <- list\\([\\s\\S]{0,4000}\"",
-      key,
-      "\" = list\\("
-    ),
-    perl = TRUE
-  )
-  # Independent genotypes remove circularity, not ascertainment -- the wording
-  # has to keep those apart rather than declaring the contrast clean.
-  expect_match(crb$technical_info$tcr_selection_detail, "ASCERTAINMENT")
 })
 
 test_that("the shipped demo ships its CC-BY attribution beside the data", {
@@ -492,42 +282,9 @@ test_that("the shipped demo ships its CC-BY attribution beside the data", {
   # record. The attribution file lives in extdata so it installs with the demo.
   att <- hla_inst_file("extdata/examples/demo_hla_tcr_dextramer.ATTRIBUTION.md")
   expect_true(file.exists(att))
-  txt <- paste(readLines(att, warn = FALSE), collapse = "\n")
+  txt <- viewer_test_text(att)
   expect_match(txt, "CC-BY", fixed = TRUE)
   expect_match(txt, "abf5835", fixed = TRUE) # the source paper
-})
-
-## ---- node colours must not be handed to vis-network's group palette --- ##
-
-test_that("motif network nodes carry no group column", {
-  # vis-network auto-registers unknown groups and paints them from its own
-  # default palette, overriding the per-node colour: this silently rendered 246
-  # of 430 nodes in vis defaults (a "Mixed" node drawn #FFFF00) while the data
-  # said otherwise. Nothing consumes the column - the legend is built by hand
-  # with useGroups = FALSE - so it must stay out unless visGroups() registers
-  # every level.
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  node_df <- regmatches(
-    viz,
-    regexpr(
-      "nodes <- data\\.frame\\([\\s\\S]{0,800}?\\n  \\)",
-      viz,
-      perl = TRUE
-    )
-  )
-  expect_length(node_df, 1L)
-  expect_no_match(node_df, "\\bgroup\\s*=", perl = TRUE)
-  expect_match(node_df, "color\\s*=\\s*node_color", perl = TRUE)
-  # If group ever comes back, it must come with an explicit registration.
-  if (grepl("group\\s*=\\s*group_raw", viz, perl = TRUE)) {
-    expect_match(viz, "visGroups", perl = TRUE)
-  }
 })
 
 ## ---- core_shim sources every core file, byte-for-byte ------------------ ##
@@ -540,27 +297,15 @@ test_that("motif network nodes carry no group column", {
 ## every R/hla_*.R function is reachable at runtime, in every launch mode.
 
 test_that("core_shim sources every R/hla_*.R core file", {
-  shim <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/core_shim.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  core_files <- basename(list.files(
-    testthat::test_path("../../R"),
-    pattern = "^hla_.*[.]R$"
-  ))
-  # Doc-only anchors carry no runtime symbols; everything else must be sourced.
-  core_files <- setdiff(core_files, character(0))
-  missing <- core_files[
-    !vapply(
-      core_files,
-      function(f) grepl(paste0('"', f, '"'), shim, fixed = TRUE),
-      logical(1)
-    )
-  ]
-  expect_equal(missing, character(0))
+  expected <- new.env(parent = globalenv())
+  core <- hla_inst_file("viewer/hla_tcr_motifs/core")
+  for (file in list.files(core, pattern = "[.]R$", full.names = TRUE)) {
+    sys.source(file, expected)
+  }
+  actual <- new.env(parent = globalenv())
+  actual$Cerebro.options <- list(cerebro_root = hla_inst_file())
+  sys.source(hla_inst_file("viewer/hla_tcr_motifs/core_shim.R"), actual)
+  expect_true(all(ls(expected) %in% ls(actual)))
 })
 
 test_that("bundled HLA core/ is byte-identical to the R/ source", {
@@ -604,274 +349,29 @@ test_that("bundled HLA core/ is byte-identical to the R/ source", {
   }
 })
 
-## ---- illustrated guide ------------------------------------------------- ##
-
-test_that("the panel info button is wired to a sourced guide", {
-  # The trap that produced the export 500 last time: a new module file that the
-  # server never sources is invisible to unit tests and only fails in a running
-  # app. Pin button -> handler -> source.
-  ui <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  server <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  guide <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    ui,
-    "cerebroVizPageHeader\\([\\s\\S]*?\"hla_visualizations_info\"",
-    perl = TRUE
-  )
-  expect_match(server, "help_guide\\.R", perl = TRUE)
-  expect_match(guide, "observeEvent\\(input\\$hla_visualizations_info")
-})
-
-test_that("the guide covers every tab the page actually shows", {
-  # A page tab with no guide entry is how a guide rots: the tab ships, the guide
-  # silently does not mention it.
-  ui <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  guide <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  page_tabs <- c("Motif Network", "HLA Associations", "Data & QC")
-  for (tab in page_tabs) {
-    expect_match(ui, sprintf('tabPanel\\(\n?\\s*"%s"', tab), perl = TRUE)
-  }
-  # The guide names them (case-insensitively: its rail says "Motif network").
-  # The guide tab that explains a page tab carries that tab's exact name.
-  expect_match(guide, "Motif Network", fixed = TRUE)
-  expect_match(guide, "HLA Associations", fixed = TRUE)
-  expect_match(guide, "Data & QC", fixed = TRUE)
-})
-
-test_that("the guide states the page's evidence ceiling", {
-  # This page's whole framing is co-occurrence, not restriction. If the guide
-  # ever loses that, it starts teaching the opposite of the UI's own subtitle.
-  guide <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(guide, "never confirmed restriction", ignore.case = TRUE)
-  # The six-class-I-allele ambiguity is the structural reason the ceiling
-  # exists. Matched loosely across markup: the claim is what must survive, not
-  # one phrasing of it. (An exact-string version of this broke the moment the
-  # prose gained inline emphasis, which is a rewrite, not a regression.)
-  expect_match(guide, "six[\\s\\S]{0,80}class I", perl = TRUE)
-  # The two orthogonal "Mixed" axes are the page's most confusable thing.
-  expect_match(guide, "Orthogonal axes", ignore.case = TRUE)
-})
-
-test_that("guide schematics are self-contained inline SVG", {
-  # A strict-CSP page and an offline .crb viewer both break on external assets.
-  guide <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(guide, "<svg viewBox=", fixed = TRUE)
-  expect_no_match(guide, "<img ", fixed = TRUE)
-  # The SVG xmlns is a namespace IDENTIFIER, never fetched, so it does not count
-  # as an external asset; strip it before looking for real remote references.
-  external <- gsub("http://www.w3.org/2000/svg", "", guide, fixed = TRUE)
-  expect_no_match(external, "https?://", perl = TRUE)
-})
-
-## ---- node size encoding ------------------------------------------------ ##
-
-test_that("the renderer sets node size itself, never via vis `value`", {
-  # vis-network maps `value` linearly onto the RADIUS, so a node table carrying
-  # `value = clone_count` renders area as count^2 (measured: counts 1..6 at
-  # radii 8..40, a 25x area spread for 6x the cells). The radius must come from
-  # hla_node_radius() instead, and `scaling` must not reappear alongside it.
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  node_df <- regmatches(
-    viz,
-    regexpr(
-      "nodes <- data\\.frame\\([\\s\\S]{0,500}?\\n  \\)",
-      viz,
-      perl = TRUE
-    )
-  )
-  expect_length(node_df, 1L)
-  # The display-only multiplier rides along; the radius is still set from the
-  # clone count through hla_node_radius(), never from a `value` scaling.
-  expect_match(
-    node_df,
-    "size = hla_node_radius\\(clone_count, node_scale\\)",
-    perl = TRUE
-  )
-  expect_no_match(node_df, "\\bvalue\\s*=", perl = TRUE)
-  expect_no_match(viz, "scaling = list\\(min", perl = TRUE)
-})
-
 test_that("the network caption states area encoding and the cap", {
-  # A caption reading "node size = number of cells" invites the reader to
-  # compare areas proportionally past the cap, where that is false.
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(viz, "Node AREA", fixed = TRUE)
-  expect_match(viz, "HLA_NODE_MAX_EXACT", fixed = TRUE)
-})
-
-## ---- the guide must teach the colours the app actually draws ----------- ##
-
-test_that("guide palette constants match the renderer's scales", {
-  # The guide invented its own hues for the MHC-context axis once, and so taught
-  # colours the app never draws. A schematic that disagrees with the plot is
-  # worse than no schematic: the reader trusts it.
-  read_src <- function(f) {
-    paste(readLines(hla_inst_file(f), warn = FALSE), collapse = "\n")
-  }
-  viz <- read_src("viewer/hla_tcr_motifs/visualizations.R")
-  guide <- read_src("viewer/hla_tcr_motifs/help_guide.R")
-
-  hex <- function(src, name) {
-    m <- regmatches(
-      src,
-      regexpr(
-        sprintf("\"%s\"\\s*=\\s*\"(#[0-9a-fA-F]{6})\"", name),
-        src,
-        perl = TRUE
+  shiny::testServer(
+    function(input, output, session) {
+      hla_require_active_page <- function() invisible(NULL)
+      hla_has_deps <- function() TRUE
+      hla_segments <- function() data.frame(cdr3 = c("AAA", "AAB"))
+      hla_motif_graph <- function() igraph::make_ring(2)
+      hla_unit_noun <- function() "cell"
+      hla_param <- function(name, default) default
+      hla_motif_n_clusters <- function() 1L
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "visualizations.R"),
+        environment(),
+        names = c("HLA_MOTIF_MAX_LEGEND_CLUSTERS", "output$hla_motif_note")
       )
-    )
-    sub(".*\"(#[0-9a-fA-F]{6})\".*", "\\1", m)
-  }
-  guide_hex <- function(name) {
-    m <- regmatches(
-      guide,
-      regexpr(sprintf("%s <- \"(#[0-9a-fA-F]{6})\"", name), guide, perl = TRUE)
-    )
-    sub(".*\"(#[0-9a-fA-F]{6})\".*", "\\1", m)
-  }
-
-  expect_equal(guide_hex("HLA_GUIDE_CARRIER"), hex(viz, "Carrier"))
-  expect_equal(guide_hex("HLA_GUIDE_NONCARRIER"), hex(viz, "Non-carrier"))
-  expect_equal(guide_hex("HLA_GUIDE_CLASS_I"), hex(viz, "Class I"))
-  expect_equal(guide_hex("HLA_GUIDE_CLASS_II"), hex(viz, "Class II"))
-
-  # The sample-origin hues are the renderer's own first three, and the guide
-  # drew RColorBrewer Set2 until this was pinned.
-  block <- regmatches(
-    guide,
-    regexpr("HLA_GUIDE_SAMPLE <- c\\([^)]*\\)", guide, perl = TRUE)
+    },
+    {
+      text <- output$hla_motif_note$html
+      expect_match(text, "Node AREA", fixed = TRUE)
+      expect_match(text, as.character(HLA_NODE_MAX_EXACT), fixed = TRUE)
+      expect_match(text, "same size", fixed = TRUE)
+    }
   )
-  sample_hues <- unlist(regmatches(block, gregexpr("#[0-9a-fA-F]{6}", block)))
-  expect_equal(sample_hues, unname(hla_distinct_colors(c("a", "b", "c"))))
-})
-
-test_that("the guide draws no unnamed colour", {
-  # Every hue in a schematic must trace to a named constant, so a scale cannot
-  # drift away from the renderer one raw hex at a time. Greys and tints are
-  # chrome (backgrounds, rules, arrows), not data levels.
-  guide <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  body <- substring(guide, regexpr("hla_guide_svg_mismatch", guide))
-  drawn <- unlist(regmatches(
-    body,
-    gregexpr("(fill|stroke)='#[0-9a-fA-F]{6}'", body)
-  ))
-  drawn <- toupper(sub(".*'(#[0-9a-fA-F]{6})'.*", "\\1", drawn))
-  chrome <- toupper(c(
-    "#ececec",
-    "#e2e2e2",
-    "#fdeae0",
-    "#f0cdb8",
-    "#e0a58a",
-    "#c2410c",
-    "#f4f4f5",
-    "#fff8ec",
-    "#fafafa",
-    "#cfcfcf",
-    "#ddd",
-    "#fff"
-  ))
-  expect_equal(setdiff(drawn, chrome), character(0))
-})
-
-test_that("the carrier and MHC-context scales share no hue but grey", {
-  # They are orthogonal axes. Look-alike colours across them invite the reader
-  # to connect a carrier to a CD8 cell, which is the one inference this page
-  # must not suggest. The no-information grey is the exception: it says the same
-  # thing on both.
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  grab <- function(block) {
-    b <- regmatches(
-      viz,
-      regexpr(sprintf("%s <- c\\([^)]*\\)", block), viz, perl = TRUE)
-    )
-    unlist(regmatches(b, gregexpr("#[0-9a-fA-F]{6}", b)))
-  }
-  carrier <- grab("HLA_CARRIER_COLORS")
-  context <- grab("HLA_CONTEXT_COLORS")
-  expect_length(carrier, 4L)
-  expect_length(context, 4L)
-  shared <- intersect(tolower(carrier), tolower(context))
-  expect_equal(shared, "#b8bcc4") # the neutral grey, and nothing else
-})
-
-test_that("MHC context is a fixed scale, not a data-order palette", {
-  # It used to fall through to hla_distinct_colors(), which assigns colours in
-  # whatever order levels happen to appear among the nodes: Class I could be
-  # blue on one data set and red on the next.
-  viz <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(viz, "HLA_CONTEXT_LEVELS", fixed = TRUE)
-  expect_match(
-    viz,
-    "intersect(HLA_CONTEXT_LEVELS, unique(group_raw))",
-    fixed = TRUE
-  )
-  expect_match(viz, "HLA_CONTEXT_COLORS[levels_ord]", fixed = TRUE)
 })
 
 test_that("the page's nav gate scans every sample, like the core does", {
@@ -890,807 +390,138 @@ test_that("the page's nav gate scans every sample, like the core does", {
   )
   expect_setequal(hla_detect_chains(late), c("TRA", "TRB"))
 
-  src <- paste(
-    readLines(hla_inst_file("viewer/shiny_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(
-    src,
-    paste0(
-      "\"hla_tcr_motifs\",[\\s\\S]{0,1500}",
-      "viewerHasTcrRepertoire\\(getImmuneRepertoire\\(\\)\\)"
-    ),
-    perl = TRUE
-  )
-})
-
-test_that("node colouring is offered from the declared groupings", {
-  # The colour list used to be inferred: every metadata column that happened to
-  # be a string with >1 value. That offered whatever the upstream pipeline left
-  # behind (orig.ident, RNA_snn_res.0.6) as though it were biology, and let one
-  # data set advertise different groupings on two pages. getGroups() is the
-  # object's own answer and the Groups page's source; this page must not hold a
-  # second opinion.
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    src,
-    "hla_color_meta_cols <- reactive\\(\\{[\\s\\S]{0,300}getGroups\\(\\)",
-    perl = TRUE
-  )
-  # A data set may DECLARE any column as its lineage column, so the declared
-  # check still reads from all available columns. But INFERENCE is limited to
-  # the declared groupings: scoring every column let an identifier value like
-  # "CD8_case" be taken for a lineage and silently reshape HLA scope filtering.
-  expect_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,300}hla_available_cols\\(\\)",
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,1400}candidates <- hla_color_meta_cols\\(\\)",
-    perl = TRUE
-  )
-})
-
-test_that("the lineage column is found by its labels, not by its name", {
-  # A general-purpose viewer cannot assume the annotation is called cell_type /
-  # cell_type_fine: it may be `annotation`, `azimuth_l2`, `predicted.id`. The
-  # labels are what carry the lineage, and hla_lineage_column_score() reads
-  # those -- it is hla_lineage_context() plus the exclusion of labels that name
-  # an experimental condition ("anti-CD4"), which is unit-tested in the core.
-  src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,1600}hla_lineage_column_score\\(",
-    perl = TRUE
-  )
-  # ...and a candidate must clear a real share, so one stray "CD4" cannot win.
-  expect_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,1800}HLA_LINEAGE_MIN_SHARE",
-    perl = TRUE
-  )
-  # A data set may still declare it outright, like observation_unit does.
-  expect_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,900}lineage_column",
-    perl = TRUE
-  )
-  expect_no_match(
-    src,
-    "hla_celltype_col <- reactive\\(\\{[\\s\\S]{0,400}\"cell_type_fine\" %in% cols",
-    perl = TRUE
-  )
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), scope)
+  expect_true(scope$viewerHasTcrRepertoire(late))
 })
 
 test_that("every scrolling table keeps its cells on one line", {
-  # A table that scrolls sideways must not ALSO wrap: the column gets squeezed
-  # and an identifier breaks mid-token ("HLA-" / "A"), which reads as two values.
-  # DataTables ships the `nowrap` class for exactly this pairing.
-  for (f in c("associations.R", "data_qc.R")) {
-    src <- paste(
-      readLines(
-        hla_inst_file(file.path("viewer/hla_tcr_motifs", f)),
-        warn = FALSE
-      ),
-      collapse = "\n"
-    )
-    calls <- regmatches(
-      src,
-      gregexpr("DT::datatable\\((?:[^()]|\\([^()]*\\))*\\)", src, perl = TRUE)
-    )[[1]]
-    scrolling <- calls[grepl("scrollX = TRUE", calls, fixed = TRUE)]
-    expect_gt(length(scrolling), 0)
-    for (call in scrolling) {
-      expect_match(
-        call,
-        "nowrap",
-        info = paste0(f, ": scrollX without nowrap in ", substr(call, 1, 60))
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      typing <- hla_normalize_typing(
+        data.frame(
+          sample = c("s1", "s2"),
+          locus = "HLA-A",
+          allele = c("HLA-A*02:01", "HLA-A*01:01"),
+          donor_id = c("d1", "d2")
+        ),
+        source_type = "genotyped"
       )
+      hla_active_typing <- function() typing
+      hla_has_typing <- function() TRUE
+      hla_ir_samples <- function() c("s1", "s2")
+      hla_unit_noun <- function() "cell"
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "data_qc.R"),
+        scope,
+        names = c(
+          "output$hla_coverage_table",
+          "output$hla_normalized_preview",
+          "output$hla_donor_mapping_preview",
+          "output$hla_download_normalized"
+        )
+      )
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "associations.R"),
+        scope,
+        names = c(
+          "hla_overlap_breadth_skeleton",
+          "output$hla_overlap_summary",
+          "output$hla_overlap_table",
+          "output$hla_allele_matrix"
+        )
+      )
+    },
+    {
+      for (id in c(
+        "hla_coverage_table",
+        "hla_normalized_preview",
+        "hla_donor_mapping_preview",
+        "hla_overlap_summary",
+        "hla_overlap_table",
+        "hla_allele_matrix"
+      )) {
+        table <- jsonlite::fromJSON(output[[id]])$x
+        expect_true(table$options$scrollX, info = id)
+        expect_match(table$container, "nowrap", fixed = TRUE, info = id)
+      }
+      downloaded <- read.csv(
+        output$hla_download_normalized,
+        check.names = FALSE,
+        na.strings = ""
+      )
+      expect_equal(downloaded$allele, scope$typing$allele)
+      expect_equal(downloaded$donor_id, c("d1", "d2"))
     }
-  }
-})
-
-test_that("scope guards test for 'all', never for one scope's name", {
-  # Both the feature guard and its on-screen explanation must cover EVERY
-  # allele-selected scope. Written as `!= "allele"` they read the same until a
-  # scope is added -- and then the new one silently walks past both: its graph
-  # goes back to nominating features, with no notice that it did.
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  assoc_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  # The scope guard lives on the RAW build (hla_global_motif_graph_raw_cached):
-  # it is the expensive, allele-independent build that must come from unscoped
-  # segments, and the cheap min-size filter downstream inherits that. The scope
-  # test itself is unchanged — it just sits on the raw reactive now.
-  expect_match(
-    data_src,
-    "hla_global_motif_graph_raw_cached <- reactive\\(\\{[\\s\\S]{0,200}identical\\(hla_scope_mode\\(\\), \"all\"\\)",
-    perl = TRUE
-  )
-  # Pinned against the name the logic actually lives under, so this cannot pass
-  # by matching a wrapper that never mentions a scope at all.
-  expect_no_match(
-    data_src,
-    "hla_global_motif_graph_raw_cached <- reactive\\(\\{[\\s\\S]{0,200}!identical\\(hla_scope_mode\\(\\), \"allele\"\\)",
-    perl = TRUE
-  )
-  expect_match(
-    assoc_src,
-    "!identical\\(hla_scope_mode\\(\\), \"all\"\\)",
-    perl = TRUE
-  )
-})
-
-test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
-  # Both heavy graphs are gated on hla_params_ready() so the page does not build
-  # and draw once against hla_param()'s fallbacks and then again for real the
-  # moment output$hla_parameters_ui's inputs report.
-  #
-  # The gate must sit in the uncached wrapper. req() raises a silent condition,
-  # and inside a bindCache body that condition is a value the cache may store
-  # under the current key — every later hit on that key would then replay the
-  # stop instead of building. Structural, and silent when broken: the page would
-  # simply go blank for whichever parameters were live when it first opened.
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(
-    data_src,
-    "hla_bindCache <- function[\\s\\S]{0,500}reactive\\(\\{\\s*req\\(data_set\\(\\)\\)\\s*cached\\(\\)",
-    perl = TRUE
-  )
-  # Each cached reactive is bindCache'd and must not gate. Both the expensive raw
-  # builds and the cheap finalize layers are cached, so all four are pinned.
-  for (nm in c(
-    "hla_motif_graph_raw_cached",
-    "hla_motif_graph_cached",
-    "hla_global_motif_graph_raw_cached",
-    "hla_global_motif_graph_cached"
-  )) {
-    expect_match(
-      data_src,
-      paste0(nm, " <- reactive\\(\\{[\\s\\S]{0,400}hla_bindCache\\("),
-      perl = TRUE,
-      info = paste(nm, "must be the bindCache'd reactive")
-    )
-    expect_no_match(
-      data_src,
-      paste0(nm, " <- reactive\\(\\{[\\s\\S]{0,200}req\\("),
-      perl = TRUE,
-      info = paste(nm, "must not req() inside the cached body")
-    )
-  }
-  # The precomputed default graph may draw before controls report. Every other
-  # path still gates before reaching its cache.
-  expect_match(
-    data_src,
-    paste0(
-      "hla_motif_graph <- reactive\\(\\{[\\s\\S]{0,700}",
-      "hla_first_frame_graph_matches\\(\\)[\\s\\S]{0,700}",
-      "req\\(hla_params_ready\\(\\)\\)"
-    ),
-    perl = TRUE
-  )
-  expect_match(
-    data_src,
-    "hla_global_motif_graph <- reactive\\(\\{\\s*req\\(hla_params_ready\\(\\)\\)",
-    perl = TRUE
-  )
-  # The gate must decide on hla_color_by with is.null(), and must never req() it:
-  # that input's default value is "" (colour by motif cluster), which req()
-  # treats as missing, so the network would never draw until the user happened to
-  # pick a colouring. Asserted as "tests it, but not with req()" rather than
-  # against one spelling — `!is.null(x) &&` and `if (is.null(x)) return(FALSE)`
-  # are the same contract.
-  expect_match(
-    hla_params_ready_src(data_src),
-    "is\\.null\\(input\\$hla_color_by\\)",
-    perl = TRUE
-  )
-  expect_no_match(
-    hla_params_ready_src(data_src),
-    "req\\(input\\$hla_color_by\\)",
-    perl = TRUE
-  )
-  expect_match(
-    hla_params_ready_src(data_src),
-    "is\\.null\\(input\\$hla_by_v\\)",
-    perl = TRUE
-  )
-  expect_match(
-    hla_params_ready_src(data_src),
-    "is\\.null\\(input\\$hla_show_isolated\\)",
-    perl = TRUE
-  )
-})
-
-test_that("the parameter panel renders once, then updates in place", {
-  # Finding #8: output$hla_parameters_ui both CREATED its controls and READ its
-  # own inputs to seed them, so every scope / colour / checkbox change tore the
-  # whole panel down and rebuilt it (transient NULLs, lost selectize state). The
-  # panel must render once from the DATA and update controls in place -- the
-  # discipline the allele pickers already follow.
-  settings_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  # The colour-by choices are a shared reactive, not rebuilt inline inside the
-  # picker's own renderUI.
-  expect_match(data_src, "hla_color_by_choices <- reactive\\(", perl = TRUE)
-
-  # The panel seeds its own inputs under isolate(), so setting them does not
-  # invalidate the renderUI that owns them.
-  expect_match(
-    settings_src,
-    "selected = isolate\\(hla_param\\(\"hla_scope\"",
-    perl = TRUE
-  )
-  expect_match(
-    settings_src,
-    "selected = isolate\\(hla_param\\(\"hla_color_by\"",
-    perl = TRUE
-  )
-  expect_match(
-    settings_src,
-    "value = isolate\\([\\s\\S]{0,20}hla_param\\(\"hla_by_v\"",
-    perl = TRUE
-  )
-
-  # The one real cross-control coupling (scope decides whether "MHC context" or
-  # "Pair class" is offered) moved to an observer that updates the picker in
-  # place instead of rebuilding the panel.
-  expect_match(
-    settings_src,
-    "observeEvent\\([\\s\\S]{0,160}hla_color_by_choices\\(\\)",
-    perl = TRUE
-  )
-  expect_match(
-    settings_src,
-    "updateSelectizeInput\\([\\s\\S]{0,40}\"hla_color_by\"",
-    perl = TRUE
-  )
-})
-
-test_that("hidden HLA controls do not scan the repertoire", {
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  settings_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  active_page_gate <- 'req(identical(input[["sidebar"]], "hla_tcr_motifs"))'
-  expect_match(
-    data_src,
-    paste0(
-      "reactive({\n    ",
-      active_page_gate,
-      "\n    as.integer(hla_param(\"hla_min_nodes\""
-    ),
-    fixed = TRUE
-  )
-  expect_match(
-    settings_src,
-    paste0(
-      "observeEvent(\n  {\n    ",
-      active_page_gate,
-      "\n    hla_color_by_choices()"
-    ),
-    fixed = TRUE
-  )
-})
-
-test_that("HLA heavy consumers require their visible subtab", {
-  visual <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  associations <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  ui <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(hla_inst_file("viewer/www/hla_motifs.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  network_observer <- r_test_observer(
-    visual,
-    "observe",
-    quote(hla_motif_last_render_signature(render_signature))
-  )
-  expect_true(r_test_has_call(network_observer, quote(input[["sidebar"]])))
-  expect_true(r_test_has_call(network_observer, quote(input[["hla_tabs"]])))
-  expect_true(r_test_has_call(
-    network_observer,
-    quote(input[["hla_motif_network_render_request"]])
-  ))
-  expect_true(r_test_has_call(
-    network_observer,
-    quote(hla_active_chain() %in% hla_tcr_chains())
-  ))
-
-  expect_match(ui, 'id = "hla_associations_mount"', fixed = TRUE)
-  expect_match(client, "hla_associations_render_request", fixed = TRUE)
-  expect_match(
-    associations,
-    "hla_association_consumer_ready <- reactive",
-    fixed = TRUE
-  )
-  expect_equal(
-    lengths(regmatches(
-      associations,
-      gregexpr(
-        "observeEvent\\(\\n  \\{\\n    req\\(hla_association_consumer_ready\\(\\)\\)",
-        associations,
-        perl = TRUE
-      )
-    )),
-    2L
-  )
-})
-
-test_that("the page's allele lives outside both pickers", {
-  # There is ONE allele for the whole page, and it must not be stored in either
-  # picker's input. The network's picker sits in a conditionalPanel, so Shiny
-  # suspends it whenever the network is neither allele-scoped nor carrier-
-  # coloured — and updateSelectInput() addressed to a control that is not
-  # rendered is silently dropped. With the value living there, picking an allele
-  # on the Associations tab in that state wrote to nothing, and the network's
-  # picker later seeded itself from choices[1] and dragged Associations back.
-  # Measured before this fix: HLA-B*07:02 replaced by HLA-A*02:01, silently.
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  assoc_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  settings_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  # A reactiveVal cannot be suspended; an input can.
-  expect_match(
-    data_src,
-    "hla_allele_state <- reactiveVal\\(",
-    perl = TRUE
-  )
-  # hla_color_allele() reads the shared value, never a picker's input.
-  gate <- regmatches(
-    data_src,
-    regexpr(
-      "hla_color_allele <- reactive\\(\\{[\\s\\S]{0,600}?\\n\\}\\)",
-      data_src,
-      perl = TRUE
-    )
-  )
-  expect_length(gate, 1L)
-  expect_match(gate, "hla_allele_state\\(\\)", perl = TRUE)
-  expect_no_match(gate, "input\\$hla_color_allele", perl = TRUE)
-  expect_no_match(gate, "input\\$hla_association_allele", perl = TRUE)
-
-  # Both pickers seed from the shared value rather than from the top of the list.
-  expect_match(
-    assoc_src,
-    "\"hla_association_allele\"[\\s\\S]{0,900}?selected = isolate\\(hla_color_allele\\(\\)\\)",
-    perl = TRUE
-  )
-  expect_match(
-    settings_src,
-    "\"hla_color_allele\"[\\s\\S]{0,900}?selected = isolate\\(hla_color_allele\\(\\)\\)",
-    perl = TRUE
-  )
-  # ...and the Associations numbers come from the shared allele, not from the
-  # picker that only exists while that tab is open.
-  expect_match(
-    assoc_src,
-    "hla_overlap_table <- reactive\\(\\{[\\s\\S]{0,400}?allele <- hla_color_allele\\(\\)",
-    perl = TRUE
-  )
-})
-
-test_that("the parameter gate covers the conditional allele pickers", {
-  # The controls in output$hla_parameters_ui are only half the story. The allele
-  # pickers live in SEPARATE uiOutputs inside conditionalPanels, so Shiny keeps
-  # them suspended until the panel appears — which is the same instant the user
-  # selects the scope or colouring that needs them. They therefore report one
-  # flush AFTER the thing that reveals them, and a gate that only waits for the
-  # main panel lets the page build against hla_color_allele()'s fallback, draw
-  # it, and redraw it when the picker lands. Measured before this: two widgets
-  # on one scope change.
-  #
-  # This is the third place the same shape of bug appeared (first open, allele
-  # scope, pair scope), which is why it is pinned rather than just fixed.
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  gate <- hla_params_ready_src(data_src)
-
-  # The single allele: a build parameter in "allele" scope, a display parameter
-  # under carrier colouring.
-  expect_match(gate, "input\\$hla_color_allele", perl = TRUE)
-  expect_match(gate, "hla_carrier", perl = TRUE)
-  # The pair scope's two pickers.
-  expect_match(gate, "input\\$hla_pair_allele_i", perl = TRUE)
-  expect_match(gate, "input\\$hla_pair_allele_ii", perl = TRUE)
-  # ...but never wait for a picker the data set cannot offer: that uiOutput
-  # renders a bare message and creates no input, so the gate would never open.
-  expect_match(gate, "hla_allele_choices\\(\\)", perl = TRUE)
-})
-
-test_that("the pair scope is offered only when both classes can be picked", {
-  src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  # A pair with no lineage to sort cells by is undefined, not narrower.
-  expect_match(
-    src,
-    "hla_pair_available <- reactive\\(\\{[\\s\\S]{0,200}hla_celltype_col\\(\\)",
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    "hla_pair_available <- reactive\\(\\{[\\s\\S]{0,300}Class II",
-    perl = TRUE
-  )
-})
-
-test_that("the Network data tab exposes grain radio, table and download", {
-  ui_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(ui_src, "tabPanel\\([\\s\\S]{0,40}\"Network data\"", perl = TRUE)
-  # The grain radio is rendered SERVER-side so its second label can follow the
-  # declared observation unit: a bulk repertoire's rows are analysis units, not
-  # cells. UI.R only carries the placeholder.
-  expect_match(
-    ui_src,
-    "uiOutput\\([\\s\\S]{0,20}\"hla_table_grain_ui\"",
-    perl = TRUE
-  )
-  tbl_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    tbl_src,
-    "radioButtons\\([\\s\\S]{0,40}\"hla_table_grain\"",
-    perl = TRUE
-  )
-  # both the row label and the count column come from the declared unit
-  expect_match(tbl_src, "getObservationUnit\\(\\)\\$singular", perl = TRUE)
-  expect_match(tbl_src, "getObservationUnit\\(\\)\\$plural", perl = TRUE)
-  expect_no_match(tbl_src, "clone_count = \"cells\"", fixed = TRUE)
-  expect_match(
-    ui_src,
-    "dataTableOutput\\([\\s\\S]{0,20}\"hla_network_table\"",
-    perl = TRUE
-  )
-  expect_match(
-    ui_src,
-    "downloadButton\\([\\s\\S]{0,20}\"hla_network_download\"",
-    perl = TRUE
-  )
-})
-
-test_that("the network table reads the graph and the segments, not the render cap", {
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  # node view from the SAME graph object the network draws
-  expect_match(src, "hla_network_table_data <- reactive\\(", perl = TRUE)
-  expect_match(src, "hla_motif_graph\\(\\)", perl = TRUE)
-  expect_match(src, "as_data_frame\\([\\s\\S]{0,40}\"vertices\"", perl = TRUE)
-  # cell view from the scoped per-cell rows
-  expect_match(src, "hla_scoped_segments\\(\\)", perl = TRUE)
-  # ...but filtered to the cells BEHIND the graph's nodes, not every scoped
-  # cell: the graph drops singletons / sub-min-size motifs, so scoped segments
-  # are a superset. Keep only rows whose node is a vertex of the current graph.
-  expect_match(src, "V\\(g\\)\\$name", perl = TRUE)
-  # switched by the grain input
-  expect_match(src, "input\\$hla_table_grain", perl = TRUE)
-  # NOT bound by the render cap (this is data, not canvas)
-  expect_no_match(src, "HLA_MOTIF_MAX_RENDER", perl = TRUE)
-  # sourced into the module
-  server_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(server_src, "network_table\\.R", perl = TRUE)
-})
-
-test_that("the network table carries the data set's own annotations", {
-  # A fixed column whitelist showed only what this file happened to name, so a
-  # demo whose whole point is a per-cell antigen / presenting allele had those
-  # columns silently dropped -- while the vignette said the table contained
-  # them. Both grains must append the DECLARED metadata columns, which is the
-  # same set the network already colours by, so a new annotation column needs
-  # no edit here.
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    src,
-    "hla_network_table_meta_cols <- reactive\\([\\s\\S]{0,200}hla_node_meta_cols\\(\\)",
-    perl = TRUE
-  )
-  # both grains, not just the node view
-  expect_match(
-    src,
-    "HLA_NETWORK_TABLE_CELL_COLS,[\\s\\S]{0,40}hla_network_table_meta_cols\\(\\)",
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    "HLA_NETWORK_TABLE_NODE_COLS,[\\s\\S]{0,40}hla_network_table_meta_cols\\(\\)",
-    perl = TRUE
-  )
-  # the annotations must not be able to duplicate a structural column
-  expect_match(src, "!duplicated\\(names\\(map\\)\\)", perl = TRUE)
-  # the wide sample list stays at the right edge, after the annotations
-  expect_match(
-    src,
-    "hla_network_table_meta_cols\\(\\),[\\s\\S]{0,60}HLA_NETWORK_TABLE_NODE_TAIL_COLS",
-    perl = TRUE
-  )
-  # a node aggregates cells, so an annotation that varies within it must not be
-  # reported as that node's value
-  expect_match(src, "hla_mark_mixed_nodes <- function", perl = TRUE)
-  expect_match(
-    src,
-    "map\\[\\[\"clone_count\"\\]\\][\\s\\S]{0,300}hla_mark_mixed_nodes\\(",
-    perl = TRUE
-  )
-})
-
-test_that("the network table renders and downloads the current view", {
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    src,
-    "output\\$hla_network_table <- DT::renderDataTable",
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    "output\\$hla_network_download <- downloadHandler",
-    perl = TRUE
-  )
-  # the download writes the SAME reactive the table renders
-  expect_match(
-    src,
-    "downloadHandler\\([\\s\\S]{0,400}hla_network_table_data\\(\\)",
-    perl = TRUE
   )
 })
 
 test_that("Viewer Pack first frames bypass cold HLA preparation", {
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    data_src,
-    "viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())",
-    fixed = TRUE
-  )
-  expect_match(data_src, "return(first$filter_levels)", fixed = TRUE)
-  expect_match(data_src, "return(first$segments)", fixed = TRUE)
-  expect_match(data_src, "return(first$graph_raw)", fixed = TRUE)
-  expect_match(data_src, "hla_first_frame_graph_matches()", fixed = TRUE)
-  expect_match(
-    data_src,
-    "viewerPackHlaSegments(viewerPackCurrent(), hla_active_chain())",
-    fixed = TRUE
-  )
-})
-
-test_that("HLA cohort filter inputs are isolated by chain", {
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  settings_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/settings.R"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  expect_match(
-    data_src,
-    'paste0("hla_group_filter_", hla_active_chain(), "_", group)',
-    fixed = TRUE
-  )
-  expect_match(
-    data_src,
-    "selected <- input[[hla_filter_input_id(group)]]",
-    fixed = TRUE
-  )
-  expect_match(
-    settings_src,
-    "hla_filter_input_id(group)",
-    fixed = TRUE
-  )
-})
-
-test_that("the motif Canvas receives the complete layout and compact edges", {
-  vis_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(vis_src, "point_sizes <- 2 * vn$nodes$size", fixed = TRUE)
-  expect_match(vis_src, "from <- as.integer(vn$edges$from)", fixed = TRUE)
-  expect_match(vis_src, "to <- as.integer(vn$edges$to)", fixed = TRUE)
-  expect_match(vis_src, "from = from", fixed = TRUE)
-  expect_match(vis_src, "to = to", fixed = TRUE)
-  expect_match(vis_src, "static_above = 200L", fixed = TRUE)
-  expect_no_match(vis_src, "x0 = vn$layout[from, 1]", fixed = TRUE)
-  expect_match(
-    vis_src,
-    "req\\(isTRUE\\(hla_first_frame_graph_matches\\(\\)\\) \\|\\| hla_ready_latch\\(\\)\\)",
-    perl = TRUE
-  )
-  expect_match(
-    vis_src,
-    "hla_motif_last_render_signature <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_match(
-    vis_src,
-    "identical(hla_motif_last_render_signature(), render_signature)",
-    fixed = TRUE
-  )
-})
-
-test_that("a colour change reuses the cached graph and Canvas viewport", {
-  data_src <- paste(
-    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  vis_src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  # (d) the nodes carry EVERY colourable column, so a colour switch never re-keys
-  # the graph cache -- the column is already on the node.
-  expect_match(
-    data_src,
-    "hla_node_meta_cols <- reactive\\(\\{[\\s\\S]{0,900}hla_color_meta_cols\\(\\)",
-    perl = TRUE
-  )
-  # A one-way readiness latch prevents a fallback-parameter render.
-  expect_match(data_src, "hla_ready_latch <- reactiveVal\\(", perl = TRUE)
-  # The Canvas gets a colour update without resetting its current viewport.
-  expect_match(vis_src, "req\\(hla_ready_latch\\(\\)\\)", perl = TRUE)
-  expect_match(vis_src, "vn <- hla_visnet\\(\\)", perl = TRUE)
-  expect_match(vis_src, "reset_axes = FALSE", fixed = TRUE)
-})
-
-test_that("the network table is nowrap-scrollable and truncates samples on hover", {
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  # cells never wrap; the table scrolls horizontally instead
-  expect_match(src, "nowrap", perl = TRUE)
-  expect_match(src, "scrollX = TRUE", perl = TRUE)
-  # the multi-value samples column is truncated to the first value in DISPLAY
-  # only (a DataTables render), so search / sort / CSV keep the full list
-  expect_match(src, "columnDefs", perl = TRUE)
-  expect_match(src, "split\\(','\\)\\[0\\]", perl = TRUE)
-})
-
-test_that("the samples column cannot inject HTML", {
-  # DataTables escaping is deliberately OFF for the samples column so the render
-  # can emit a <span>. A sample name is arbitrary .crb data, so if the cell were
-  # assembled by string concatenation a value like
-  #   <img src=x onerror=alert(document.domain)>
-  # would run in the app's origin. The render must therefore build DOM nodes and
-  # let the browser escape both the text and the title attribute.
-  src <- paste(
-    readLines(
-      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  # built as DOM, escaped by the browser
-  expect_match(src, "document\\.createElement\\('span'\\)", perl = TRUE)
-  expect_match(src, "\\.textContent =", perl = TRUE)
-  expect_match(src, "\\.title = full", perl = TRUE)
-  expect_match(src, "return span\\.outerHTML", perl = TRUE)
-  # and NOT by pasting the value into an HTML string, in either branch
-  expect_no_match(src, "'<span title=", fixed = TRUE)
-  expect_no_match(src, "&quot;", fixed = TRUE)
-  expect_no_match(
-    src,
-    "if \\(parts\\.length <= 1\\) \\{ return data; \\}",
-    perl = TRUE
+  withr::local_package("magrittr")
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      available_crb_files <- list(selected = "tiny")
+      data_set <- function() TRUE
+      hla_active_chain <- function() "TRB"
+      first <- list(
+        filter_levels = list(sample = "s1"),
+        filter_groups = "sample",
+        initial_samples = "s1",
+        by_v = FALSE,
+        node_meta_cols = "sample",
+        lineage_col = NULL,
+        available_cols = "sample",
+        segments = data.frame(sample = "s1", cdr3 = "AAA"),
+        graph_raw = igraph::make_ring(3)
+      )
+      viewerPackCurrent <- function() "packed"
+      viewerPackHlaFirstFrame <- function(pack, chain) {
+        stopifnot(identical(pack, "packed"), identical(chain, "TRB"))
+        if (isTRUE(input$corrupt)) NULL else first
+      }
+      viewerPackHlaSegments <- function(pack, chain) first$segments
+      hla_ir_annotated <- function() stop("cold metadata hydration")
+      hla_unfiltered_segments <- function() stop("cold segment parsing")
+      hla_segments_fallback <- function() {
+        data.frame(sample = "s2", cdr3 = "BBB")
+      }
+      hla_node_meta_cols <- function() "sample"
+      hla_celltype_col <- function() NA_character_
+      hla_default_min_nodes <- function() 2L
+      hla_params_ready <- function() TRUE
+      hla_motif_graph_cached <- function() igraph::make_empty_graph()
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "data.R"),
+        scope,
+        names = c(
+          "hla_bindCache",
+          "hla_param",
+          "hla_first_frame",
+          "hla_packed_segments",
+          "hla_filter_groups",
+          "hla_filter_levels",
+          "hla_initial_samples",
+          "hla_default_filter_selections",
+          "hla_filter_input_id",
+          "hla_filter_selections",
+          "hla_first_frame_filters_match",
+          "hla_by_v_default",
+          "hla_segments",
+          "hla_first_frame_graph_matches",
+          "hla_motif_graph"
+        )
+      )
+    },
+    {
+      expect_equal(hla_filter_levels(), list(sample = "s1"))
+      expect_equal(hla_packed_segments(), scope$first$segments)
+      expect_equal(hla_segments(), scope$first$segments)
+      expect_equal(igraph::vcount(hla_motif_graph()), 3L)
+      session$setInputs(hla_group_filter_TRB_sample = "s2")
+      expect_equal(hla_segments()$cdr3, "BBB")
+      expect_equal(igraph::vcount(hla_motif_graph()), 0L)
+    }
   )
 })

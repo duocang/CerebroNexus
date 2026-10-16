@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict'), path = require('path');
 const source = fs.readFileSync(process.argv[2] || path.resolve(__dirname, '../../../inst/viewer/www/viewer-shell.js'), 'utf8');
-const block = source.match(/ready\(function \(\) \{\s+if \(!window.jQuery\) return;\s+var loader = document.getElementById\("cerebro-page-loader"\);[\s\S]+?\n  \}\);/)[0];
+
 let count = 0;
 function check(value, message) { assert.ok(value, message); count++; }
 function scenario(page = 'markerGenes') {
@@ -50,16 +50,16 @@ function scenario(page = 'markerGenes') {
   const slot = new Node('slot', 'shiny-bound-output cerebro-result-slot', region);
   const table = new Node('table', 'shiny-bound-output datatables', slot);
   const tableDom = new Node('table-dom', '', table); tableDom.tagName = 'TABLE';
-  const jq = {on(names, fn) { names.split(' ').forEach(n=>(handlers[n.split('.')[0]] ||= []).push(fn)); return jq; }};
+  const jq = {on(names, selector, callback) { const fn=callback || selector; names.split(' ').forEach(n=>(handlers[n.split('.')[0]] ||= []).push(fn)); return jq; }};
   const window = {
     jQuery:()=>jq, setTimeout:(fn,ms)=>{ const t={fn,ms};timers.push(t);return t; }, clearTimeout:t=>{if(t)t.cancel=true;},
     requestAnimationFrame:fn=>frames.push(fn), addEventListener:(n,f)=>events[n]=f,
     CerebroDatasetContext:{phase:()=>phase,accepts:()=>false},
     MutationObserver:class { constructor(fn) {observer=fn;} observe() {} }
   };
-  const document = {getElementById:id=>nodes[id],querySelector:()=>active,addEventListener:(n,f)=>events[n]=f,
-    querySelectorAll:()=>Object.values(nodes).filter(n=>n.id.startsWith('shiny-tab-'))};
-  vm.runInNewContext(block,{window,document,ready:fn=>fn(),MutationObserver:window.MutationObserver,Set,WeakSet,Array});
+  const document = {getElementById:id=>nodes[id],querySelector:s=>s.includes(".tab-pane")?active:null,addEventListener:(n,f)=>events[n]=f,
+    querySelectorAll:s=>s.includes(".tab-pane")?Object.values(nodes).filter(n=>n.id.startsWith('shiny-tab-')):[]};
+  vm.runInNewContext(source,{window,document,ready:fn=>fn(),MutationObserver:window.MutationObserver,Set,WeakSet,Array});
   function emit(name,target=table,extra={}) { for(const f of handlers[name] || [])f({target,...extra}); }
   function flush() { const batch=timers.splice(0);batch.forEach(t=>{if(!t.cancel&&t.ms<1000)t.fn();}); }
   function frame() { frames.splice(0).forEach(f=>f()); }
@@ -173,15 +173,5 @@ for (const page of ['markerGenes','mostExpressedGenes','enrichedPathways','extra
   check(!s.loader.hidden,'Extra PNG waits for image load');
   img.complete=true;img.naturalWidth=500;s.events.load({target:img});s.frame();s.frame();s.flush();
   check(s.loader.hidden,'Extra PNG completes after load and two frames');
-}
-{
-  const ui=fs.readFileSync(process.argv[3] || path.resolve(__dirname,'../../../inst/viewer/groups/UI.R'),'utf8');
-  const bind=ui.match(/function bind\(plot\) \{[\s\S]+?\n      \}/)[0];
-  const listeners=[];const context={report:()=>{},plot:{on:(name,fn)=>listeners.push(fn)}};
-  vm.runInNewContext(bind+'; bind(plot); bind(plot);',context);
-  check(listeners.length===1,'Groups callback binds once per emitter');
-  context.plot.on=(name,fn)=>listeners.push(fn);
-  vm.runInNewContext('bind(plot);',context);
-  check(listeners.length===2,'Groups callback rebinds after Plotly replaces emitter');
 }
 console.log(count+' result page loader assertions passed');

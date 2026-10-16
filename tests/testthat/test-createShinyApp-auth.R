@@ -386,9 +386,6 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
       timeout_minutes = 15L
     )
   )
-  app_source <- readLines(file.path(app, "app.R"), warn = FALSE)
-  expect_true(any(grepl("viewer/auth.R", app_source, fixed = TRUE)))
-  expect_true(any(grepl("viewer_auth_apply", app_source, fixed = TRUE)))
   expect_true(file.exists(file.path(app, "viewer", "www", "auth.css")))
   expect_true(file.exists(file.path(
     app,
@@ -597,33 +594,41 @@ auth_test_package_file <- function(path) {
 }
 
 test_that("authentication stylesheet implements the balanced responsive UI", {
-  css_path <- system.file(
-    "viewer",
-    "www",
-    "auth.css",
-    package = "CerebroNexus"
+  skip_on_cran()
+  skip_if_not_installed("shinymanager")
+  skip_if_not_installed("chromote")
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("auth.R"), scope)
+  brand <- scope$.viewer_auth_brand(viewer_app_test_path())
+  ui <- shiny::fluidPage(
+    brand$head,
+    shinymanager::auth_ui(
+      "auth",
+      tags_top = brand$top,
+      tags_bottom = brand$bottom
+    )
   )
-  if (!nzchar(css_path)) {
-    css_path <- auth_test_package_file(file.path(
-      "inst",
-      "viewer",
-      "www",
-      "auth.css"
-    ))
-  }
-  expect_true(file.exists(css_path))
-  css <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
-  required <- c(
-    ".panel-auth",
-    "max-width: 448px",
-    "#ea6a0f",
-    ":focus-visible",
-    "min-height: 44px",
-    "overflow-wrap: anywhere",
-    "@media (max-width: 576px)"
-  )
-  for (term in required) {
-    expect_match(css, term, fixed = TRUE)
+  root <- tempfile("auth-layout-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  page <- file.path(root, "index.html")
+  htmltools::save_html(ui, page, libdir = file.path(root, "lib"))
+  browser <- chromote::ChromoteSession$new()
+  on.exit(browser$close(), add = TRUE)
+  browser$Page$navigate(paste0("file:///", normalizePath(page, winslash = "/")))
+  browser$Page$loadEventFired()
+  for (width in c(1440, 360)) {
+    browser$set_viewport_size(width = width, height = 900)
+    result <- browser$Runtime$evaluate(
+      "(() => {const panel=document.querySelector('.panel-auth');const r=panel.querySelector('.panel').getBoundingClientRect();const controls=Array.from(panel.querySelectorAll('input,button')).filter(el=>el.getClientRects().length);return {width:r.width,fits:r.left>=0&&r.right<=innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,controls:controls.map(el=>el.getBoundingClientRect().height),password:!!panel.querySelector('input[type=password]'),brand:!!document.querySelector('.cerebro-auth-brand svg')};})()",
+      returnByValue = TRUE
+    )$result$value
+    expect_true(result$fits)
+    expect_false(result$overflow)
+    expect_true(result$password)
+    expect_true(result$brand)
+    expect_lt(result$width, 600)
+    expect_true(all(unlist(result$controls) >= 40))
   }
 })
 
@@ -733,7 +738,9 @@ test_that("authentication deployment documentation is runnable and credited", {
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
-  expect_false(any(grepl("askpass|chromote", suggests)))
+  # Authentication and browser-test tools must remain optional dependencies.
+  required <- description[1L, c("Depends", "Imports")]
+  expect_false(any(grepl("\\b(askpass|chromote|shinymanager)\\b", required)))
 
   news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
   expect_identical(

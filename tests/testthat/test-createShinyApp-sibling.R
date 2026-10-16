@@ -3162,8 +3162,6 @@ test_that("external spatial images render from disk without an HTTP mapping", {
       "histology.png"
     )
   )
-  app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
-  expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
 
   rendered_meta <- render_bundle_spatial_background(
     app,
@@ -3656,7 +3654,6 @@ test_that("the runtime rejects an H5 backend that is a directory", {
     "missing or not a file"
   )
 })
-
 
 test_that("colliding CRB basenames keep each pack beside its final bundled name", {
   for (both in c(FALSE, TRUE)) {
