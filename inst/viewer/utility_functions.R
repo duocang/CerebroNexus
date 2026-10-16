@@ -1406,6 +1406,9 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 .cerebro_cell_view_wire_serial <- 0L
 .cerebro_cell_view_render_serial <- 0
 .cerebro_cell_view_aux_pending <- new.env(parent = emptyenv())
+## Last core aux actually delivered per view: its cell key and wire token. A
+## later render with the same cells lets the browser reuse those barcodes.
+.cerebro_cell_view_aux_served <- new.env(parent = emptyenv())
 
 cerebroCellViewDeferredAux <- function(
   selection_rows,
@@ -1547,6 +1550,13 @@ cerebroCellViewAuxRequest <- function(request) {
     .cerebro_cell_view_aux_pending[[key]] <- message
     if (!isTRUE(core$hover$pending)) {
       rm(list = key, envir = .cerebro_cell_view_aux_pending)
+      if (!is.null(message$aux_key)) {
+        .cerebro_cell_view_aux_served[[message$id]] <- list(
+          key = message$aux_key,
+          wire_token = message$wire_token,
+          dataset_context = message$dataset_context
+        )
+      }
     }
     session$sendBinaryMessage(
       "cell_view_aux_binary",
@@ -1637,7 +1647,8 @@ cerebroCellViewRender <- function(
   deferred_aux = NULL,
   core_aux = NULL,
   dataset_context = NULL,
-  feedback = NULL
+  feedback = NULL,
+  aux_key = NULL
 ) {
   dataset_context <- viewerDatasetContext(
     dataset_context$epoch,
@@ -1751,6 +1762,16 @@ cerebroCellViewRender <- function(
       token <- .cerebro_cell_view_wire_serial
       message$data$n <- n_cells
       message$data$wire_token <- token
+      ## Same dataset and cells as the barcodes the browser already holds:
+      ## name that delivery so it can skip requesting them again.
+      served <- if (!is.null(aux_key)) .cerebro_cell_view_aux_served[[id]]
+      if (
+        is.list(served) &&
+          identical(served$key, aux_key) &&
+          viewerDatasetContextEqual(served$dataset_context, dataset_context)
+      ) {
+        message$data$aux_reuse <- served$wire_token
+      }
       message$data$selection_key <- NULL
       full_hover <- message$hover
       message$hover <- list(hoverinfo = "skip")
@@ -1780,7 +1801,8 @@ cerebroCellViewRender <- function(
           dataset_context = dataset_context,
           render_token = message$render_token,
           build = deferred_aux,
-          core_builder = core_aux
+          core_builder = core_aux,
+          aux_key = aux_key
         )
       } else {
         list(

@@ -42,6 +42,9 @@
   var singleActive = null;      // plot id currently using the shared surface
   var singleIndexCells = null;  // cells array behind the cached barcode index
   var singleIndexMap = null;
+  // Last barcode (core aux) message per view. A render whose cells match a
+  // delivered one names it in data.aux_reuse, so it is not downloaded again.
+  var singleAuxCache = {};
   var singleSpaceIds = [];      // one space, or one per gene in multi-panel mode
   var singleSpaceModes = {};    // space id -> categorical/continuous colour mode
   var singleColorCache = new Map();
@@ -2198,6 +2201,14 @@
         if (singleView(id) !== view || view.data.wire_token !== token || singleActive !== id) {
           if (view._auxPending === token) view._auxPending = null;
           return;
+        }
+        var cached = singleAuxCache[id], reuse = view.data.aux_reuse;
+        if (reuse != null && cached && Number(cached.aux_origin_token) === Number(reuse) &&
+            sameDatasetContext(cached.dataset_context, view.dataset_context)) {
+          applySingleAux(Object.assign({}, cached, {
+            wire_token: token, render_token: view.aux_render_token
+          }));
+          if (view._auxToken === token) return;
         }
         Shiny.setInputValue('cell_view_aux_request', {id:id, wire_token:token, dataset_context:view.dataset_context}, {priority:'event'});
       });
@@ -6839,6 +6850,7 @@
   }
   function resetSingleViews() {
     restoreLinkedSurface();
+    singleAuxCache = {};
     Object.keys(singleViews).forEach(function (cacheKey) {
       var view = singleViews[cacheKey];
       if (view && view._auxTimer) clearTimeout(view._auxTimer);
@@ -9367,11 +9379,20 @@
   }
 
   function onSingleAuxBinary(buffer) {
+    var message;
     try {
-      var message = window.CBViewWire.unpack(buffer);
-      if (message && message.id) {
-        recordSpecialistPayload('aux', message.id, buffer.byteLength);
-      }
+      message = window.CBViewWire.unpack(buffer);
+    } catch (error) {
+      return;
+    }
+    if (message && message.id) {
+      recordSpecialistPayload('aux', message.id, buffer.byteLength);
+    }
+    applySingleAux(message);
+  }
+
+  function applySingleAux(message) {
+    try {
       if (!datasetMessageFresh(message)) return;
       var view = message && singleView(message.id, message.dataset_context);
       if (!view || !sameDatasetContext(view.dataset_context, message.dataset_context) ||
@@ -9379,6 +9400,12 @@
       if (!CBViewState.specialistLifecycle.acceptAux(view, message)) return;
       var hasCells = message.selection_key != null;
       if (hasCells) view.data.selection_key = message.selection_key;
+      if (hasCells && !(message.hover && message.hover.pending)) {
+        singleAuxCache[message.id] = Object.assign({}, message, {
+          aux_origin_token: message.aux_origin_token != null
+            ? message.aux_origin_token : message.wire_token
+        });
+      }
       view.hover = message.hover || {};
       if (singleActive !== message.id) return;
       var canonicalGroups = view.data.canonical_group;
