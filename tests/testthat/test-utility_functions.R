@@ -105,9 +105,14 @@ test_that("Data Info uses the catalog before the full dataset", {
       current_dataset_info <- function() {
         list(cells = 12345L, organism = "hg", date = "2026-01-02")
       }
-      ## Data info now sources its overview panel from the deployment root.
+      ## Data info now sources its overview panel from the deployment root. It is
+      ## loaded the way the server loads it, so that nested source(local = TRUE)
+      ## registers its outputs here.
       Cerebro.options <- list(cerebro_root = viewer_app_test_path())
-      sys.source(viewer_test_path("load_data", "sample_info.R"), environment())
+      source(
+        viewer_test_path("load_data", "sample_info.R"),
+        local = TRUE
+      )
     },
     {
       expect_match(

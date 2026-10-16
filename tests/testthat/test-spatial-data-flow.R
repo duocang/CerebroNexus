@@ -97,6 +97,7 @@ spatial_flow_server <- function(input, output, session) {
   current_spatial_scatter_defaults <- function() {
     list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
   }
+  viewer_current_dataset_key <- function() "tiny"
   viewerDatasetIdentity <- function() list(fingerprint = "tiny")
   getGeneNames <- function() c("G1", "G2")
   expression <- rbind(G1 = c(1, 2, 3, 4), G2 = c(4, 3, 2, 1))
