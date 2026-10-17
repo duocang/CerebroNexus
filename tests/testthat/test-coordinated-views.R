@@ -675,6 +675,9 @@ test_that("thin preloaded primary and supplement align unverified projections on
   scope <- new.env(parent = globalenv())
   sys.source(file.path(dirname(utility_file), "crb_cache.R"), scope)
   sys.source(utility_file, scope)
+  ## The bundle resolves author display defaults; installed checks cannot
+  ## reach the package's internal copy of these helpers.
+  sys.source(viewer_test_path("core", "viewer_content_contract.R"), scope)
   sys.source(contract_file, scope)
   sys.source(bundle_file, scope)
   loaded <- scope$get_or_load_crb(path)
