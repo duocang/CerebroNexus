@@ -26,6 +26,72 @@ if (length(args) < 3L) {
 
 quote_r <- function(value) encodeString(value, quote = '"')
 
+## Measure the viewer as deployments run it. An installed package loads only its
+## NAMESPACE imports; devtools::load_all() also attaches every DESCRIPTION
+## Imports package (GSVA, scRepertoire, biomaRt, HDF5Array, ...), which
+## multiplies the R heap and makes each full garbage collection take seconds,
+## so pauses land on whichever page step allocates next. Set
+## VIEWER_BENCH_LOAD=load_all only to profile an uninstalled source tree.
+validate_viewer_load_mode <- function(mode) {
+  if (!mode %in% c("installed", "load_all")) {
+    stop("VIEWER_BENCH_LOAD must be installed or load_all.", call. = FALSE)
+  }
+  invisible(mode)
+}
+
+install_candidate_package <- function(candidate, library_root) {
+  name <- gsub("[^A-Za-z0-9_.-]", "_", candidate[["label"]])
+  library <- file.path(library_root, name)
+  dir.create(library, recursive = TRUE, showWarnings = FALSE)
+  log <- file.path(library_root, paste0(name, "-install.log"))
+  status <- system2(
+    file.path(R.home("bin"), "R"),
+    c(
+      "CMD", "INSTALL", "--no-docs", "--no-multiarch", "--no-test-load",
+      paste0("--library=", shQuote(library)),
+      shQuote(candidate[["root"]])
+    ),
+    stdout = log,
+    stderr = log
+  )
+  if (!identical(as.integer(status), 0L)) {
+    stop(
+      "Installing candidate '", candidate[["label"]], "' failed; see ", log,
+      call. = FALSE
+    )
+  }
+  normalizePath(library, winslash = "/")
+}
+
+viewer_app_lines <- function(candidate, crb, load_mode) {
+  load <- if (identical(load_mode, "load_all")) {
+    sprintf("devtools::load_all(%s, quiet = TRUE)", quote_r(candidate[["root"]]))
+  } else {
+    sprintf(
+      "library(CerebroNexus, lib.loc = %s)",
+      quote_r(candidate[["library"]])
+    )
+  }
+  c(
+    load,
+    "launchCerebro(",
+    "  mode = \"closed\",",
+    sprintf("  crb_file_to_load = c(\"1M pages\" = %s),", quote_r(crb)),
+    "  percentage_cells_to_show = 100,",
+    "  projections_show_hover_info = TRUE",
+    ")"
+  )
+}
+
+## Data info renders its cell count inside the load_data_overview output; the
+## element keeps the old load_data_number_of_cells id but is no output.
+data_info_cells_js <- function() {
+  paste0(
+    "(() => {const cells=document.getElementById('load_data_number_of_cells');",
+    "return cells ? cells.innerText : null;})()"
+  )
+}
+
 parse_candidate <- function(value, default_label = "candidate") {
   separator <- regexpr("=", value, fixed = TRUE)
   if (separator > 1L) {
@@ -113,6 +179,24 @@ if (any(!nzchar(candidate_labels)) || anyDuplicated(candidate_labels)) {
   stop("Candidate labels must be non-empty and unique.", call. = FALSE)
 }
 names(candidate_specs) <- candidate_labels
+viewer_load_mode <- validate_viewer_load_mode(tolower(Sys.getenv(
+  "VIEWER_BENCH_LOAD",
+  unset = "installed"
+)))
+if (identical(viewer_load_mode, "installed")) {
+  candidate_library_root <- tempfile("viewer-1m-page-libraries-")
+  dir.create(candidate_library_root)
+  for (label in candidate_labels) {
+    message("Installing candidate ", label, " into a temporary library...")
+    candidate_specs[[label]] <- c(
+      candidate_specs[[label]],
+      library = install_candidate_package(
+        candidate_specs[[label]],
+        candidate_library_root
+      )
+    )
+  }
+}
 
 viewer_pack_manifest <- file.path(
   dirname(crb),
@@ -1244,18 +1328,7 @@ run_observation <- function(schedule_row, candidate, page, crb) {
   dir.create(app_dir)
   on.exit(unlink(app_dir, recursive = TRUE, force = TRUE), add = TRUE)
   writeLines(
-    c(
-      sprintf(
-        "devtools::load_all(%s, quiet = TRUE)",
-        quote_r(candidate[["root"]])
-      ),
-      "launchCerebro(",
-      "  mode = \"closed\",",
-      sprintf("  crb_file_to_load = c(\"1M pages\" = %s),", quote_r(crb)),
-      "  percentage_cells_to_show = 100,",
-      "  projections_show_hover_info = TRUE",
-      ")"
-    ),
+    viewer_app_lines(candidate, crb, viewer_load_mode),
     file.path(app_dir, "app.R")
   )
   suppressWarnings(shinytest2::local_app_support(app_dir))
@@ -1273,15 +1346,15 @@ run_observation <- function(schedule_row, candidate, page, crb) {
     },
     add = TRUE
   )
-  app$wait_for_value(output = "load_data_number_of_cells", timeout = 900000)
-  count <- app$get_value(output = "load_data_number_of_cells")
+  app$wait_for_js(paste0(data_info_cells_js(), " !== null"), timeout = 900000)
+  count <- app$get_js(data_info_cells_js())
   expected_label <- format(
     expected_cells,
     big.mark = ",",
     scientific = FALSE,
     trim = TRUE
   )
-  if (is.null(count$html) || !grepl(expected_label, count$html, fixed = TRUE)) {
+  if (!is.character(count) || !grepl(expected_label, count, fixed = TRUE)) {
     stop("Data Info did not report ", expected_label, " cells.", call. = FALSE)
   }
   dataset_metrics <- load_benchmark_dataset(app)
@@ -1537,6 +1610,7 @@ provenance <- do.call(
         benchmark_mode = benchmark_mode,
         expected_renderer = expected_renderer,
         profiler_instrumented = isTRUE(memory_mode),
+        viewer_load_mode = viewer_load_mode,
         rounds = rounds,
         stringsAsFactors = FALSE
       ),

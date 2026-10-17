@@ -132,3 +132,39 @@ test_that("benchmark browser retries clean up failures and preserve real errors"
   expect_equal(starts, 1)
   expect_equal(stops, 1)
 })
+
+test_that("page benchmarks launch installed candidates by default", {
+  scope <- viewer_benchmark_scope()
+  candidate <- c(label = "current", root = "/src/cerebro", library = "/tmp/lib")
+  installed <- scope$viewer_app_lines(candidate, "/data/1m.crb", "installed")
+  expect_identical(
+    installed[[1L]],
+    'library(CerebroNexus, lib.loc = "/tmp/lib")'
+  )
+  expect_false(any(grepl("load_all", installed, fixed = TRUE)))
+  expect_true(any(grepl('"1M pages" = "/data/1m.crb"', installed, fixed = TRUE)))
+  source_tree <- scope$viewer_app_lines(candidate, "/data/1m.crb", "load_all")
+  expect_identical(
+    source_tree[[1L]],
+    'devtools::load_all("/src/cerebro", quiet = TRUE)'
+  )
+  expect_error(scope$validate_viewer_load_mode("source"), "VIEWER_BENCH_LOAD")
+})
+
+test_that("page benchmarks read the Data info cell count inside the overview", {
+  skip_on_cran()
+  skip_if_not_installed("chromote")
+  scope <- viewer_benchmark_scope()
+  browser <- chromote::ChromoteSession$new()
+  on.exit(browser$close(), add = TRUE)
+  js <- function(code) {
+    browser$Runtime$evaluate(code, returnByValue = TRUE)$result$value
+  }
+  expect_null(js(scope$data_info_cells_js()))
+  js(paste0(
+    "document.body.innerHTML='<div id=load_data_overview><div class=dataset-stat ",
+    "id=load_data_number_of_cells><strong>1,000,000</strong> <span>Cells</span>",
+    "</div></div>'"
+  ))
+  expect_match(js(scope$data_info_cells_js()), "1,000,000", fixed = TRUE)
+})
