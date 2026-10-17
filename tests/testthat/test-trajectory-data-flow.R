@@ -121,20 +121,32 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
     },
     {
       session$setInputs(sidebar = "trajectory", trajectory_point_color = "group")
-      expect_equal(tail(scope$seen, 1)[[1]]$point_size, 3)
+      percentage <- function(frame) {
+        frame$feedback$trajectory_percentage_cells_to_show
+      }
+      expect_equal(percentage(tail(scope$seen, 1)[[1]]), "100")
+      ## Point size is a renderer patch: no new frame.
+      frames <- length(scope$seen)
       trajectory_projection_appearance$point_size <- 4
       session$flushReact()
-      session$elapse(50)
-      trajectory_projection_appearance$point_size <- 8
-      session$flushReact()
-      expect_equal(tail(scope$seen, 1)[[1]]$point_size, 3)
       session$elapse(1000)
-      expect_equal(tail(scope$seen, 1)[[1]]$point_size, 8)
+      expect_length(scope$seen, frames)
+      trajectory_projection_appearance$percentage_cells_to_show <- 60
+      session$flushReact()
+      session$elapse(50)
+      trajectory_projection_appearance$percentage_cells_to_show <- 50
+      session$flushReact()
+      expect_equal(percentage(tail(scope$seen, 1)[[1]]), "100")
+      session$elapse(1000)
+      expect_equal(percentage(tail(scope$seen, 1)[[1]]), "50")
       expect_false(any(vapply(
         scope$seen,
-        function(frame) frame$point_size == 4,
+        function(frame) identical(percentage(frame), "60"),
         logical(1)
       )))
+      trajectory_projection_appearance$percentage_cells_to_show <- 100
+      session$flushReact()
+      session$elapse(1000)
       session$setInputs(trajectory_projection_group_filter_group = character())
       session$elapse(1000)
       expect_equal(nrow(tail(scope$seen, 1)[[1]]$cells_df), 0)

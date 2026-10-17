@@ -71,8 +71,8 @@ trajectory_projection_prepared_raw <- reactive({
         "trajectory_projection",
         input,
         list(
-          trajectory_point_size = trajectory_projection_appearance$point_size,
-          trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+          trajectory_point_size = isolate(trajectory_projection_appearance$point_size),
+          trajectory_point_opacity = isolate(trajectory_projection_appearance$point_opacity),
           trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
         )
       ),
@@ -80,8 +80,8 @@ trajectory_projection_prepared_raw <- reactive({
       trajectory_lines = list(),
       hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
       color_variable = input[["trajectory_point_color"]],
-      point_size = trajectory_projection_appearance$point_size,
-      point_opacity = trajectory_projection_appearance$point_opacity,
+      point_size = isolate(trajectory_projection_appearance$point_size),
+      point_opacity = isolate(trajectory_projection_appearance$point_opacity),
       draw_border = trajectory_projection_appearance$draw_border,
       keep_square = trajectory_projection_appearance$keep_square
     ))
@@ -104,8 +104,8 @@ trajectory_projection_prepared_raw <- reactive({
       "trajectory_projection",
       input,
       list(
-        trajectory_point_size = trajectory_projection_appearance$point_size,
-        trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+        trajectory_point_size = isolate(trajectory_projection_appearance$point_size),
+        trajectory_point_opacity = isolate(trajectory_projection_appearance$point_opacity),
         trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
       )
     ),
@@ -113,8 +113,8 @@ trajectory_projection_prepared_raw <- reactive({
     trajectory_lines = trajectory_lines,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
     color_variable = color_variable,
-    point_size = trajectory_projection_appearance$point_size,
-    point_opacity = trajectory_projection_appearance$point_opacity,
+    point_size = isolate(trajectory_projection_appearance$point_size),
+    point_opacity = isolate(trajectory_projection_appearance$point_opacity),
     draw_border = trajectory_projection_appearance$draw_border,
     keep_square = trajectory_projection_appearance$keep_square
   )
@@ -244,6 +244,34 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+## Point size and opacity are renderer patches, as on Spatial: changing them
+## must not resample or rebuild the frame. Other pages' edits reach this view
+## through the shared scatter defaults and the next render.
+observeEvent(
+  list(
+    trajectory_projection_appearance$point_size,
+    trajectory_projection_appearance$point_opacity
+  ),
+  {
+    req(trajectory_projection_active(), isTRUE(trajectory_projection_sent()))
+    identity <- viewerDatasetIdentity()
+    req(identity$fingerprint)
+    session$sendCustomMessage(
+      "cell_view_appearance",
+      list(
+        id = "trajectory_projection",
+        dataset_context = viewer_loaded_dataset_context(),
+        dataset_fingerprint = identity$fingerprint,
+        values = list(
+          point_size = trajectory_projection_appearance$point_size,
+          point_opacity = trajectory_projection_appearance$point_opacity
+        )
+      )
+    )
+  },
+  ignoreInit = TRUE
+)
+
 observe({
   ## Shared point defaults change from other pages; do not rebuild and send
   ## this page's frame in the background.
@@ -286,8 +314,8 @@ observe({
     )
     primary <- list(
       color = as.list(unname(static_frame$colors)),
-      point_size = trajectory_projection_appearance$point_size,
-      point_opacity = trajectory_projection_appearance$point_opacity,
+      point_size = isolate(trajectory_projection_appearance$point_size),
+      point_opacity = isolate(trajectory_projection_appearance$point_opacity),
       point_line = point_line,
       x_range = list(),
       y_range = list(),
@@ -344,8 +372,8 @@ observe({
         "trajectory_projection",
         input,
         list(
-          trajectory_point_size = trajectory_projection_appearance$point_size,
-          trajectory_point_opacity = trajectory_projection_appearance$point_opacity,
+          trajectory_point_size = isolate(trajectory_projection_appearance$point_size),
+          trajectory_point_opacity = isolate(trajectory_projection_appearance$point_opacity),
           trajectory_percentage_cells_to_show = trajectory_projection_appearance$percentage_cells_to_show
         )
       )
@@ -405,8 +433,10 @@ observe({
     color = color_input,
     color_variable = color_variable,
     selection_keys = seq_len(nrow(cells_df)),
-    point_size = prepared[["point_size"]],
-    point_opacity = prepared[["point_opacity"]],
+    ## Point size and opacity are patched in place; send their current values
+    ## rather than those cached with the prepared frame.
+    point_size = isolate(trajectory_projection_appearance$point_size),
+    point_opacity = isolate(trajectory_projection_appearance$point_opacity),
     group_labels = isolate(trajectory_projection_appearance$group_labels),
     keep_square = prepared[["keep_square"]],
     point_line = point_line,
@@ -465,7 +495,14 @@ observe({
     extra = list(shapes = prepared[["trajectory_lines"]]),
     deferred_aux = deferred_aux,
     dataset_context = prepared[["dataset_context"]],
-    feedback = prepared[["feedback"]]
+    feedback = utils::modifyList(prepared[["feedback"]], list(
+      trajectory_point_size = as.character(
+        isolate(trajectory_projection_appearance$point_size)
+      ),
+      trajectory_point_opacity = as.character(
+        isolate(trajectory_projection_appearance$point_opacity)
+      )
+    ))
   )
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
