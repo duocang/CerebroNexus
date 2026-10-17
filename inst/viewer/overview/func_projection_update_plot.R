@@ -93,6 +93,12 @@ overview_projection_update_plot <- function(input) {
     )
   }
 
+  if (isTRUE(input[["client_percentage"]])) {
+    ## The browser applies "% of cells" to this full frame; later slider edits
+    ## arrive through the shared scatter defaults without a new frame.
+    payload$data$client_percentage <- TRUE
+    payload$data$percentage_cells_to_show <- isolate(current_scatter_percentage())
+  }
   cerebroCellViewRender(
     "overview_projection",
     payload[["meta"]],

@@ -83,6 +83,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
       getGroups <- function() "sample"
       reactive_group_colors <- function(...) c(A = "red", B = "blue")
       viewerProjectionAsset <- function(...) NULL
+      overview_projection_client_percentage <- function() FALSE
       overview_projection_data <- function() {
         metadata[overview_projection_cells_to_show(), , drop = FALSE]
       }

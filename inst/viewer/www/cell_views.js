@@ -186,10 +186,16 @@
     // Spatial has its own section/ROI settings. Never apply projection edits.
     if (singleActive === 'spatial_projection') return;
     ps = values.point_size; pointOpacity = values.point_opacity;
-    if (!singleActive) {
+    if (!singleActive || singleClientPercentage()) {
       pctShow = values.percentage_cells_to_show;
       rebuildPctMask();
     }
+  }
+  // Single views whose frame carries every cell and leaves "% of cells" to
+  // the browser (Overview with a Viewer Pack).
+  function singleClientPercentage() {
+    var view = singleActive && singleView(singleActive);
+    return !!(view && view.data && view.data.client_percentage);
   }
   function publishScatterEdit(field, value) {
     if (!field || !currentDatasetContext()) return;
@@ -8560,9 +8566,11 @@
       if (bordersControl) bordersOn = !!bordersControl.checked;
       if (squareControl) keepPlotsSquare = !!squareControl.checked;
     }
-    var incomingPercentage = Number(
-      payload.data && payload.data.percentage_cells_to_show
-    );
+    var shared = payload.data && payload.data.client_percentage
+      ? sharedScatterValues() : null;
+    var incomingPercentage = Number(shared
+      ? shared.percentage_cells_to_show
+      : payload.data && payload.data.percentage_cells_to_show);
     pctShow = isFinite(incomingPercentage)
       ? Math.max(10, Math.min(100, incomingPercentage)) : 100;
     pctMask = null; rebuildPctMask();
@@ -10433,7 +10441,7 @@
         setLinkedSliderValue(id, message.values[scatterControlFields[id]]);
       });
       syncSharedScatter();
-      if (D && !singleActive) { applyActiveChange(); }
+      if (D && (!singleActive || singleClientPercentage())) { applyActiveChange(); }
       else if (D && singleActive !== 'spatial_projection') { drawAll(); }
     });
     // Input bindings also emit on mount and on server updates. Accept ordinary

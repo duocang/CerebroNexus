@@ -62,7 +62,8 @@ overview_projection_data_to_plot_raw <- reactive({
     color_assignments = color_assignments,
     projection_resource = projection_resource,
     categorical_resource = categorical_resource,
-    resource_coordinates = resource_coordinates
+    resource_coordinates = resource_coordinates,
+    client_percentage = isTRUE(overview_projection_client_percentage())
   )
 })
 
