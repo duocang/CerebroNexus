@@ -213,7 +213,11 @@ test_that("cell fingerprints are computed once per CRB file version", {
   viewer_server_load(
     viewer_server_statements("shiny_server.R"),
     scope,
-    names = c(".viewer_cell_fingerprint_cache", ".viewerCellFingerprintCached")
+    names = c(
+      ".viewer_cell_fingerprint_cache",
+      ".viewerFileVersionKey",
+      ".viewerCellFingerprintCached"
+    )
   )
   path <- withr::local_tempfile(fileext = ".crb")
   writeLines("a", path)

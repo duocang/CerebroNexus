@@ -47,6 +47,15 @@ source(
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
 ## each session's load. The value depends only on the file's cells.
 .viewer_cell_fingerprint_cache <- new.env(parent = emptyenv())
+## Process caches key one version of a file by its path, size and mtime.
+.viewerFileVersionKey <- function(path, info) {
+  paste(
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    info$size,
+    format(as.numeric(info$mtime), digits = 17),
+    sep = "\r"
+  )
+}
 ## Viewer Pack assets are verified against their manifest checksum before a
 ## session exposes them. Hash each file version once per process, not once per
 ## session and asset.
@@ -59,12 +68,7 @@ source(
       if (is.na(info$size) || isTRUE(info$isdir)) {
         return(NA_character_)
       }
-      key <- paste(
-        normalizePath(path, winslash = "/", mustWork = FALSE),
-        info$size,
-        format(as.numeric(info$mtime), digits = 17),
-        sep = "\r"
-      )
+      key <- .viewerFileVersionKey(path, info)
       cached <- .viewer_file_md5_cache[[key]]
       if (!is.null(cached)) {
         return(cached)
@@ -88,12 +92,7 @@ source(
   if (is.null(info) || is.na(info$size) || isTRUE(info$isdir)) {
     return(compute())
   }
-  key <- paste(
-    normalizePath(path, winslash = "/", mustWork = FALSE),
-    info$size,
-    format(as.numeric(info$mtime), digits = 17),
-    sep = "\r"
-  )
+  key <- .viewerFileVersionKey(path, info)
   cached <- .viewer_cell_fingerprint_cache[[key]]
   if (!is.null(cached)) {
     return(cached)
