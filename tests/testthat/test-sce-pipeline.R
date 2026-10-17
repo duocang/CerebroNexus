@@ -188,7 +188,7 @@ test_that("convertSCEToCerebro reads .qs2 files and reports bad input clearly", 
     convertSCEToCerebro(bad, dir, groups = "cluster"),
     "not a SingleCellExperiment"
   )
-  txt <- file.path(dir, "x.h5ad")
+  txt <- file.path(dir, "x.loom")
   file.create(txt)
   expect_error(
     convertSCEToCerebro(txt, dir, groups = "cluster"),

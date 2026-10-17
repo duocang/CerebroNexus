@@ -28,14 +28,17 @@ convertSCEToCerebro(
   marker_file = NULL,
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
-  most_expressed_genes = NULL
+  most_expressed_genes = NULL,
+  .source_name = NULL
 )
 }
 \arguments{
 \item{sce_file}{A \code{SingleCellExperiment} object, or the path to a
 \code{.rds} (\code{saveRDS()}) or \code{.qs2} (\code{qs2::qs_save()}) file
-holding one. There is no SCE-specific file extension: an SCE is an ordinary
-R object, so it is stored with whichever of these serializers was used.}
+holding one, or to an \code{.h5ad} file (read with
+\code{\link{readH5adAsSCE}}; see \code{\link{convertH5adToCerebro}}).
+There is no SCE-specific file extension: an SCE is an ordinary R object, so
+it is stored with whichever of these serializers was used.}
 
 \item{result_dir}{Directory the \code{.crb} is written to (created if
 missing). The file is named \code{cerebro_<basename>.crb}.}
@@ -79,6 +82,10 @@ expression per group; default \code{TRUE}.}
 
 \item{most_expressed_genes}{Optional pre-computed most-expressed-genes
 table(s); see \code{\link{convertSeuratToCerebro}}.}
+
+\item{.source_name}{Internal. Base name used for the output file and the
+default experiment name when \code{sce_file} is an object that was read
+from a file by a caller (see \code{\link{convertH5adToCerebro}}).}
 }
 \value{
 The path of the written \code{.crb}, invisibly.

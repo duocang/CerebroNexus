@@ -48,6 +48,12 @@
   Both exporters now share one format-independent core, so further input formats
   only need a thin adapter. `exportFromSCE()` now registers `metadata()` tables
   only for the requested `groups`, as the Seurat route does.
+- Adds `convertH5adToCerebro()` and `readH5adAsSCE()` for AnnData (`.h5ad`)
+  files from scanpy and the wider scverse ecosystem. The file is read natively
+  from HDF5 with rhdf5, so neither Python nor zellkonverter is needed; a sparse
+  CSR `X` is used without a transpose. `obs`, `var`, `layers`, `obsm` and
+  scanpy's `rank_genes_groups` become metadata, assays, projections and marker
+  genes, and `convertSCEToCerebro()` now also accepts a `.h5ad` path.
 - Streams delayed-matrix exports without whole-matrix dense realization, and
   bounds external enrichment request time and error handling.
 

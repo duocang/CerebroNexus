@@ -14,10 +14,12 @@
       }
       qs2::qs_read(sce_file)
     },
+    h5ad = readH5adAsSCE(sce_file),
     stop(
       "Unsupported sce_file format: .",
       ext,
-      ". Use .rds (saved with saveRDS) or .qs2 (saved with qs2::qs_save).",
+      ". Use .rds (saved with saveRDS), .qs2 (saved with qs2::qs_save) or ",
+      ".h5ad (AnnData).",
       call. = FALSE
     )
   )
@@ -77,8 +79,10 @@
 #'
 #' @param sce_file A \code{SingleCellExperiment} object, or the path to a
 #'   \code{.rds} (\code{saveRDS()}) or \code{.qs2} (\code{qs2::qs_save()}) file
-#'   holding one. There is no SCE-specific file extension: an SCE is an ordinary
-#'   R object, so it is stored with whichever of these serializers was used.
+#'   holding one, or to an \code{.h5ad} file (read with
+#'   \code{\link{readH5adAsSCE}}; see \code{\link{convertH5adToCerebro}}).
+#'   There is no SCE-specific file extension: an SCE is an ordinary R object, so
+#'   it is stored with whichever of these serializers was used.
 #' @param result_dir Directory the \code{.crb} is written to (created if
 #'   missing). The file is named \code{cerebro_<basename>.crb}.
 #' @param assay Name of the assay to export; default \code{"logcounts"}.
@@ -108,6 +112,10 @@
 #'   expression per group; default \code{TRUE}.
 #' @param most_expressed_genes Optional pre-computed most-expressed-genes
 #'   table(s); see \code{\link{convertSeuratToCerebro}}.
+#'
+#' @param .source_name Internal. Base name used for the output file and the
+#'   default experiment name when \code{sce_file} is an object that was read
+#'   from a file by a caller (see \code{\link{convertH5adToCerebro}}).
 #'
 #' @return The path of the written \code{.crb}, invisibly.
 #'
@@ -155,7 +163,8 @@ convertSCEToCerebro <- function(
   marker_file = NULL,
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
-  most_expressed_genes = NULL
+  most_expressed_genes = NULL,
+  .source_name = NULL
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
@@ -286,6 +295,9 @@ convertSCEToCerebro <- function(
   if (is.character(sce_file)) {
     base_name <- tools::file_path_sans_ext(basename(sce_file))
     source_label <- basename(sce_file)
+  } else if (!is.null(.source_name)) {
+    base_name <- tools::file_path_sans_ext(basename(.source_name))
+    source_label <- basename(.source_name)
   } else {
     base_name <- gsub(
       "[^A-Za-z0-9._-]",
@@ -295,7 +307,7 @@ convertSCEToCerebro <- function(
     source_label <- "<SingleCellExperiment>"
   }
   if (is.null(experiment_name)) {
-    experiment_name <- if (is.character(sce_file)) {
+    experiment_name <- if (is.character(sce_file) || !is.null(.source_name)) {
       base_name
     } else {
       "SingleCellExperiment"
