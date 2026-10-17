@@ -174,6 +174,69 @@ test_that("a prefetched CRB prototype enters the process cache", {
   expect_identical(cache[[key]]$object, prototype)
 })
 
+test_that("a prefetch daemon inherits the Viewer's runtime library paths", {
+  skip_on_cran()
+  skip_if_not_installed("mirai")
+
+  runtime_lib <- normalizePath(
+    tempfile("runtime-lib-"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  dir.create(runtime_lib)
+  previous_paths <- .libPaths()
+  withr::defer(.libPaths(previous_paths))
+  .libPaths(c(runtime_lib, previous_paths))
+  withr::local_envvar(R_LIBS = NA)
+
+  daemon <- utils_env$.withDaemonLibPaths(
+    mirai::mirai(.libPaths(), .timeout = 60000L)
+  )
+  while (mirai::unresolved(daemon)) {
+    Sys.sleep(0.1)
+  }
+
+  ## A daemon that cannot see the parent's libraries exits on
+  ## loadNamespace("mirai"); the unanswered request then resolves to an
+  ## errorValue (integer) instead of the library paths.
+  expect_type(daemon$data, "character")
+  expect_true(runtime_lib %in% normalizePath(daemon$data, winslash = "/"))
+  expect_identical(Sys.getenv("R_LIBS", unset = NA_character_), NA_character_)
+})
+
+test_that("daemon library paths restore a pre-existing R_LIBS", {
+  withr::local_envvar(R_LIBS = "kept-by-user")
+
+  seen <- utils_env$.withDaemonLibPaths(Sys.getenv("R_LIBS"))
+
+  expect_identical(seen, paste(.libPaths(), collapse = .Platform$path.sep))
+  expect_identical(Sys.getenv("R_LIBS"), "kept-by-user")
+})
+
+test_that("a prefetch that never answers times out so loading can fall back", {
+  path <- tempfile(fileext = ".crb")
+  writeBin(raw(10L * 1024L^2), path)
+
+  withr::local_options(cerebro.crb_prefetch_timeout = NULL)
+  default_ms <- utils_env$.crbPrefetchTimeoutMs(path)
+  expect_gt(default_ms, 60 * 1000)
+  expect_lt(default_ms, 120 * 1000)
+
+  withr::local_options(cerebro.crb_prefetch_timeout = 5)
+  expect_identical(utils_env$.crbPrefetchTimeoutMs(path), 5000L)
+  expect_identical(
+    utils_env$.crbPrefetchTimeoutMs(tempfile()),
+    5000L
+  )
+
+  prefetch <- paste(
+    readLines(file.path(dirname(utils_file), "crb_cache.R")),
+    collapse = "
+"
+  )
+  expect_match(prefetch, ".timeout = timeout", fixed = TRUE)
+})
+
 test_that("the lightweight TCR gate scans every sample", {
   repertoire <- list(
     s1 = data.frame(CTgene = NA_character_),
