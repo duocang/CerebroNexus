@@ -474,8 +474,6 @@ server <- function(input, output, session) {
     )
   }
 
-  current_expression_scatter_defaults <- current_scatter_defaults
-
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
     selection <- viewerUploadPath(input[["input_file"]], Cerebro.options)
