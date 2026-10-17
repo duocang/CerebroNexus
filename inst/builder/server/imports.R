@@ -2686,6 +2686,13 @@ observe({
           progress$stage,
           progress$generation
         )
+        imports(builder_import_set_progress_bytes(
+          isolate(imports()),
+          p$id,
+          progress$generation,
+          progress$bytes_done %||% NULL,
+          progress$bytes_total %||% NULL
+        ))
       }
     } else if (identical(p$kind, "build") && !is.null(p$progress_path)) {
       phase <- builder_build_progress_read(p$progress_path)

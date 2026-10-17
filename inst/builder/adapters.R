@@ -1552,11 +1552,13 @@ builder_adapter_inspect <- function(adapter) {
 
 ## -- Snapshot publication and public lifecycle -----------------------------
 
+## `progress(copied_bytes, total_bytes)` reports a reusable source copy.
 .builder_snapshot_seurat_impl <- function(
   object,
   snapshot_dir,
   available_bytes = NULL,
-  source = NULL
+  source = NULL,
+  progress = NULL
 ) {
   if (!inherits(object, "Seurat")) {
     .builder_adapter_abort("A snapshot requires a Seurat object.")
@@ -1641,7 +1643,8 @@ builder_adapter_inspect <- function(adapter) {
       builder_copy_file_verified(
         reusable_source$location,
         stub_path,
-        expected_md5 = reusable_source$expected_md5
+        expected_md5 = reusable_source$expected_md5,
+        on_progress = progress
       ),
       error = function(error) {
         .builder_adapter_abort(conditionMessage(error))
@@ -2031,6 +2034,16 @@ builder_open_snapshot <- function(snapshot) {
   object
 }
 
+## Import progress callbacks from the worker accept (stage, bytes_done,
+## bytes_total); older single-argument callbacks only receive stages.
+.builder_progress_reports_bytes <- function(progress) {
+  if (!is.function(progress)) {
+    return(FALSE)
+  }
+  arguments <- names(formals(progress))
+  "..." %in% arguments || length(arguments) >= 3L
+}
+
 .builder_register_adapter <- function(adapter, id, progress = NULL) {
   if (!.builder_adapter_scalar_text(id)) {
     .builder_adapter_abort("A dataset registration requires a non-empty id.")
@@ -2098,7 +2111,10 @@ builder_open_snapshot <- function(snapshot) {
   frozen <- .builder_snapshot_seurat_impl(
     inspected$object,
     target,
-    source = inspected$snapshot_source
+    source = inspected$snapshot_source,
+    progress = if (.builder_progress_reports_bytes(progress)) {
+      function(copied, total) progress("preparing", copied, total)
+    }
   )
   snapshot <- frozen$snapshot
   snapshot$source_fingerprint <- if (identical(adapter$type, "file")) {

@@ -257,6 +257,7 @@ builder_import_transition <- function(
     entry$started_at_ms <- as.numeric(Sys.time()) * 1000
   }
   entry$load_state <- state
+  entry$progress_percent <- NULL
   entry$progress_label <- if (isTRUE(entry$cancelling)) {
     .builder_import_cancelling_label
   } else {
@@ -297,6 +298,51 @@ builder_import_mark_cancelling <- function(queue, id) {
   queue$entries[[id]] <- entry
   queue$revision <- as.integer(queue$revision) + 1L
   queue
+}
+
+## Record byte-level progress of the current stage as a whole percent; the
+## queue only changes when the percent does.
+builder_import_set_progress_bytes <- function(
+  queue,
+  id,
+  generation,
+  bytes_done = NULL,
+  bytes_total = NULL
+) {
+  .builder_import_queue_assert(queue)
+  entry <- queue$entries[[id]]
+  if (
+    is.null(entry) ||
+      !identical(.builder_import_generation(generation), entry$generation)
+  ) {
+    return(queue)
+  }
+  percent <- .builder_import_progress_percent(bytes_done, bytes_total)
+  if (identical(entry$progress_percent, percent)) {
+    return(queue)
+  }
+  entry$progress_percent <- percent
+  queue$entries[[id]] <- entry
+  queue$revision <- as.integer(queue$revision) + 1L
+  queue
+}
+
+.builder_import_progress_percent <- function(bytes_done, bytes_total) {
+  done <- suppressWarnings(as.numeric(bytes_done))
+  total <- suppressWarnings(as.numeric(bytes_total))
+  if (
+    length(done) != 1L ||
+      length(total) != 1L ||
+      is.na(done) ||
+      is.na(total) ||
+      !is.finite(done) ||
+      !is.finite(total) ||
+      total <= 0 ||
+      done < 0
+  ) {
+    return(NULL)
+  }
+  as.integer(floor(100 * min(done, total) / total))
 }
 
 builder_import_retry <- function(queue, id) {
@@ -384,7 +430,13 @@ builder_import_progress_path <- function(root, id, generation) {
   )
 }
 
-.builder_import_progress_record <- function(stage, generation, elapsed_ms) {
+.builder_import_progress_record <- function(
+  stage,
+  generation,
+  elapsed_ms,
+  bytes_done = NULL,
+  bytes_total = NULL
+) {
   generation <- .builder_import_generation(generation)
   if (
     !.builder_import_text(stage) || !stage %in% .builder_import_active_states
@@ -395,23 +447,52 @@ builder_import_progress_path <- function(root, id, generation) {
   if (is.na(elapsed_ms) || !is.finite(elapsed_ms) || elapsed_ms < 0) {
     .builder_import_abort("Import progress elapsed time must be non-negative.")
   }
-  list(
+  record <- list(
     stage = stage,
     generation = generation,
     elapsed_ms = elapsed_ms
   )
+  if (is.null(bytes_done) && is.null(bytes_total)) {
+    return(record)
+  }
+  bytes_done <- suppressWarnings(as.numeric(bytes_done))
+  bytes_total <- suppressWarnings(as.numeric(bytes_total))
+  if (
+    length(bytes_done) != 1L ||
+      length(bytes_total) != 1L ||
+      is.na(bytes_done) ||
+      is.na(bytes_total) ||
+      !is.finite(bytes_done) ||
+      !is.finite(bytes_total) ||
+      bytes_total <= 0 ||
+      bytes_done < 0 ||
+      bytes_done > bytes_total
+  ) {
+    .builder_import_abort("Import byte progress must lie within the file size.")
+  }
+  record$bytes_done <- bytes_done
+  record$bytes_total <- bytes_total
+  record
 }
 
 builder_import_progress_write <- function(
   path,
   stage,
   generation,
-  elapsed_ms
+  elapsed_ms,
+  bytes_done = NULL,
+  bytes_total = NULL
 ) {
   if (!.builder_import_text(path) || !dir.exists(dirname(path))) {
     return(FALSE)
   }
-  record <- .builder_import_progress_record(stage, generation, elapsed_ms)
+  record <- .builder_import_progress_record(
+    stage,
+    generation,
+    elapsed_ms,
+    bytes_done = bytes_done,
+    bytes_total = bytes_total
+  )
   temporary <- tempfile(".progress-", tmpdir = dirname(path))
   on.exit(unlink(temporary, force = TRUE), add = TRUE)
   saved <- try(saveRDS(record, temporary, version = 2), silent = TRUE)
@@ -436,10 +517,12 @@ builder_import_progress_read <- function(path, generation) {
     return(NULL)
   }
   record <- try(readRDS(path), silent = TRUE)
+  fields <- c("stage", "generation", "elapsed_ms")
   if (
     inherits(record, "try-error") ||
       !is.list(record) ||
-      !identical(names(record), c("stage", "generation", "elapsed_ms")) ||
+      !(identical(names(record), fields) ||
+        identical(names(record), c(fields, "bytes_done", "bytes_total"))) ||
       !identical(record$generation, generation)
   ) {
     return(NULL)
@@ -448,7 +531,9 @@ builder_import_progress_read <- function(path, generation) {
     .builder_import_progress_record(
       record$stage,
       record$generation,
-      record$elapsed_ms
+      record$elapsed_ms,
+      bytes_done = record$bytes_done,
+      bytes_total = record$bytes_total
     ),
     silent = TRUE
   )
@@ -487,19 +572,43 @@ builder_import_progress_cleanup <- function(root) {
   as.integer(sum(existed & !file.exists(records)))
 }
 
-.builder_import_progress_callback <- function(path, generation) {
+## Byte progress is written at most every `min_interval` seconds and only when
+## the whole percent changes, so a copy loop can report every buffer.
+.builder_import_progress_callback <- function(
+  path,
+  generation,
+  min_interval = 0.25
+) {
   generation <- .builder_import_generation(generation)
   started <- proc.time()[["elapsed"]]
-  function(stage) {
+  last_written_at <- -Inf
+  last_percent <- NULL
+  function(stage, bytes_done = NULL, bytes_total = NULL) {
     if (is.null(path)) {
       return(invisible(FALSE))
     }
-    elapsed <- (proc.time()[["elapsed"]] - started) * 1000
+    now <- proc.time()[["elapsed"]]
+    percent <- .builder_import_progress_percent(bytes_done, bytes_total)
+    if (is.null(percent)) {
+      bytes_done <- bytes_total <- NULL
+    } else if (
+      percent < 100L &&
+        (identical(percent, last_percent) ||
+          now - last_written_at < min_interval)
+    ) {
+      return(invisible(FALSE))
+    } else {
+      bytes_done <- min(as.numeric(bytes_done), as.numeric(bytes_total))
+    }
+    last_written_at <<- now
+    last_percent <<- percent
     invisible(builder_import_progress_write(
       path,
       stage,
       generation,
-      elapsed
+      (now - started) * 1000,
+      bytes_done = bytes_done,
+      bytes_total = bytes_total
     ))
   }
 }

@@ -665,6 +665,11 @@ builder_import_rail_row_model <- function(entry, index, current = NULL) {
     },
     load_state = entry$load_state,
     progress_label = entry$progress_label,
+    progress_percent = if (isTRUE(entry$cancelling)) {
+      NULL
+    } else {
+      entry$progress_percent
+    },
     cancelling = isTRUE(entry$cancelling),
     error = entry$error,
     started_at_ms = suppressWarnings(as.numeric(entry$started_at_ms)),
@@ -682,6 +687,7 @@ builder_import_rail_row_fingerprint <- function(model) {
       "detail",
       "load_state",
       "progress_label",
+      "progress_percent",
       "cancelling",
       "error",
       "started_at_ms",
@@ -710,6 +716,29 @@ builder_import_rail_row_fingerprint <- function(model) {
     ))
   }
   NULL
+}
+
+## The status line, with the byte-level percent of a running copy.
+.builder_rail_import_status <- function(model) {
+  percent <- model$progress_percent
+  has_percent <- is.numeric(percent) &&
+    length(percent) == 1L &&
+    !is.na(percent)
+  shiny::span(
+    class = paste(
+      "builder-import-status",
+      paste0("is-", model$load_state)
+    ),
+    role = if (has_percent) "progressbar" else NULL,
+    `aria-valuemin` = if (has_percent) 0 else NULL,
+    `aria-valuemax` = if (has_percent) 100 else NULL,
+    `aria-valuenow` = if (has_percent) percent else NULL,
+    if (has_percent) {
+      paste0(model$progress_label, " ", percent, "%")
+    } else {
+      model$progress_label
+    }
+  )
 }
 
 builder_import_rail_row_ui <- function(model) {
@@ -746,13 +775,7 @@ builder_import_rail_row_ui <- function(model) {
         class = "ds-body",
         shiny::span(class = "nm", title = model$label, model$label),
         if (!is.null(model$detail)) shiny::span(class = "meta", model$detail),
-        shiny::span(
-          class = paste(
-            "builder-import-status",
-            paste0("is-", model$load_state)
-          ),
-          model$progress_label
-        ),
+        .builder_rail_import_status(model),
         if (
           failed &&
             is.character(model$error) &&
