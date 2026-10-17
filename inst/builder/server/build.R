@@ -245,6 +245,68 @@ output$build_stage_footer <- renderUI({
   )
 })
 
+## Dataset/step progress written by the worker (and phases written by the
+## settlement process) for the Build progress panel.
+builder_build_progress_path <- reactive({
+  pending <- protocol()$pending
+  path <- if (is.list(pending) && identical(pending$kind, "build")) {
+    pending$payload$progress_path %||% NULL
+  } else {
+    NULL
+  }
+  if (is.null(path)) {
+    context <- release_settlement_context()
+    if (is.list(context)) {
+      path <- context$progress_path %||% NULL
+    }
+  }
+  if (builder_has_text(path %||% "")) path else NULL
+})
+
+builder_build_progress_sent <- new.env(parent = emptyenv())
+builder_build_progress_sent$message <- NULL
+
+builder_send_build_progress <- function(message) {
+  if (identical(message, builder_build_progress_sent$message)) {
+    return(invisible(FALSE))
+  }
+  builder_build_progress_sent$message <- message
+  session$sendCustomMessage("builder_build_progress", message)
+  invisible(TRUE)
+}
+
+observe({
+  path <- builder_build_progress_path()
+  if (is.null(path)) {
+    if (!is.null(builder_build_progress_sent$message)) {
+      builder_send_build_progress(list(active = FALSE))
+    }
+    return()
+  }
+  invalidateLater(750)
+  detail <- tryCatch(
+    builder_build_progress_detail(path),
+    error = function(error) NULL
+  )
+  if (is.null(detail)) {
+    return()
+  }
+  message <- builder_build_progress_message(detail)
+  # The browser runs the clock; resend only when the step changes.
+  sent <- builder_build_progress_sent$message
+  if (
+    is.list(sent) &&
+      identical(sent[c("active", "phase", "text")], message[c(
+        "active",
+        "phase",
+        "text"
+      )])
+  ) {
+    return()
+  }
+  builder_send_build_progress(message)
+})
+
 observe({
   session$sendCustomMessage(
     "builder_dataset_mutation_lock",

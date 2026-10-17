@@ -589,6 +589,74 @@ test_that("build progress records reject unsupported phases", {
   )
 })
 
+test_that("build progress names the dataset and step in progress", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, ".build-progress-detail.rds")
+  callback <- .builder_build_progress_callback(path)
+  reported <- list()
+  on_progress <- function(phase, detail = NULL) {
+    reported[[length(reported) + 1L]] <<- c(
+      list(phase = phase),
+      builder_build_progress_detail({
+        callback(phase, detail)
+        path
+      })
+    )
+  }
+  plan <- builder_build_two_dataset_plan("marker_genes")
+  hooks <- builder_build_test_hooks()
+  hooks$run_analyses <- function(object, item, on_progress = NULL) {
+    on_progress("Marker genes")
+    list(object = object, completed = item$analyses, failed = character())
+  }
+
+  result <- builder_execute_plan(
+    plan,
+    withr::local_tempdir(),
+    snapshots = list(`dataset-a` = list(), `dataset-b` = list()),
+    hooks = hooks,
+    on_progress = on_progress
+  )
+
+  expect_identical(result$state, "success")
+  steps <- vapply(
+    reported,
+    function(value) {
+      paste(
+        value$dataset_index %||% "-",
+        value$dataset_count %||% "-",
+        value$step_label %||% value$phase,
+        sep = "|"
+      )
+    },
+    character(1)
+  )
+  expect_identical(
+    steps,
+    c(
+      "-|-|datasets",
+      "1|2|Opening dataset",
+      "1|2|Preparing dataset",
+      "1|2|Marker genes",
+      "1|2|Writing CRB",
+      "1|2|Verifying CRB",
+      "2|2|Opening dataset",
+      "2|2|Preparing dataset",
+      "2|2|Marker genes",
+      "2|2|Writing CRB",
+      "2|2|Verifying CRB"
+    )
+  )
+  last <- reported[[length(reported)]]
+  expect_identical(last$dataset_name, "Dataset B")
+  expect_true(is.numeric(last$started_at))
+  expect_identical(builder_build_progress_read(path), "datasets")
+
+  # Settlement still writes bare phases, which read back without detail.
+  expect_true(builder_build_progress_write(path, "publish"))
+  expect_identical(builder_build_progress_detail(path), list(phase = "publish"))
+})
+
 test_that("terminal progress preserves a missed Viewer phase", {
   root <- withr::local_tempdir()
   path <- file.path(root, ".build-progress-test.rds")

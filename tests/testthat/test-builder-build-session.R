@@ -123,3 +123,57 @@ test_that("a published Build records its CRBs for the next Build", {
     expect_identical(record$path, kept)
   })
 })
+
+test_that("the Build panel shows dataset, step and elapsed time", {
+  app_env <- builder_build_session_app()
+  now <- as.POSIXct("2026-10-17 12:00:00", tz = "UTC")
+  message <- app_env$builder_build_progress_message(
+    list(
+      phase = "datasets",
+      dataset_index = 2L,
+      dataset_count = 5L,
+      dataset_name = "PBMC 3k",
+      step_label = "Marker genes",
+      started_at = as.numeric(now) - 83
+    ),
+    now = now
+  )
+  expect_identical(message$text, "Dataset 2/5 · PBMC 3k · Marker genes")
+  expect_identical(message$elapsed_seconds, 83)
+  expect_identical(
+    app_env$builder_build_progress_message(list(phase = "publish"))$text,
+    "Publishing release"
+  )
+  expect_false(app_env$builder_build_progress_message(NULL)$active)
+
+  html <- as.character(app_env$builder_build_stage_status_body_ui(list(
+    state = "building",
+    message = "Building 5 datasets…"
+  )))
+  expect_match(html, "data-build-progress-detail", fixed = TRUE)
+
+  progress <- withr::local_tempfile(fileext = ".rds")
+  shiny::testServer(app_env$server, {
+    session$flushReact()
+    app_env$builder_build_progress_write(
+      progress,
+      "datasets",
+      list(
+        dataset_index = 1L,
+        dataset_count = 2L,
+        dataset_name = "Lung",
+        step_label = "Writing CRB",
+        started_at = as.numeric(Sys.time())
+      )
+    )
+    release_settlement_context(list(progress_path = progress))
+    session$flushReact()
+    sent <- builder_build_progress_sent$message
+    expect_true(sent$active)
+    expect_identical(sent$text, "Dataset 1/2 · Lung · Writing CRB")
+
+    release_settlement_context(NULL)
+    session$flushReact()
+    expect_identical(builder_build_progress_sent$message, list(active = FALSE))
+  })
+})

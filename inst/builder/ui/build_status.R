@@ -940,6 +940,61 @@ builder_build_stage_status_model <- function(
   )
 }
 
+## Live dataset/step line for the Build progress panel. The worker writes the
+## detail record; the browser keeps the elapsed clock running between polls.
+builder_build_progress_message <- function(detail, now = Sys.time()) {
+  if (!is.list(detail) || !builder_stage_has_text(detail$phase %||% "")) {
+    return(list(active = FALSE))
+  }
+  phase <- detail$phase
+  index <- detail$dataset_index %||% NULL
+  count <- detail$dataset_count %||% NULL
+  name <- detail$dataset_name %||% NULL
+  step <- detail$step_label %||% NULL
+  parts <- switch(
+    phase,
+    datasets = c(
+      if (is.numeric(index) && is.numeric(count) && count > 0L) {
+        paste0("Dataset ", index, "/", count)
+      },
+      if (builder_stage_has_text(name %||% "")) name,
+      if (builder_stage_has_text(step %||% "")) step
+    ),
+    viewer = "Packaging Viewer",
+    verify = "Verifying output",
+    publish = "Publishing release",
+    character()
+  )
+  started <- suppressWarnings(as.numeric(detail$started_at %||% NA_real_))
+  elapsed <- as.numeric(now) - started
+  list(
+    active = TRUE,
+    phase = phase,
+    text = paste(parts, collapse = " · "),
+    elapsed_seconds = if (length(elapsed) == 1L && is.finite(elapsed)) {
+      max(0, round(elapsed, 1))
+    } else {
+      NULL
+    }
+  )
+}
+
+builder_build_progress_detail_ui <- function(id = NULL) {
+  tags$p(
+    id = id,
+    class = "builder-build-progress-detail",
+    `data-build-progress-detail` = "true",
+    hidden = "hidden",
+    tags$span(
+      class = "builder-build-progress-text",
+      role = "status",
+      `aria-live` = "polite"
+    ),
+    # A ticking clock is visible only; announcing it every second is noise.
+    tags$span(class = "builder-build-progress-elapsed", `aria-hidden` = "true")
+  )
+}
+
 builder_build_operation_overlay_model <- function(
   flow,
   protocol,
@@ -1145,11 +1200,13 @@ builder_build_stage_status_body_ui <- function(model) {
     ),
     queued = tagList(
       builder_build_pipeline_ui("queued"),
-      p(model$message %||% "Build queued…")
+      p(model$message %||% "Build queued…"),
+      builder_build_progress_detail_ui()
     ),
     building = tagList(
       builder_build_pipeline_ui("building"),
-      p(model$message %||% "Building Viewer…")
+      p(model$message %||% "Building Viewer…"),
+      builder_build_progress_detail_ui()
     ),
     result = tagList(
       builder_build_status_ui(model$result_model),

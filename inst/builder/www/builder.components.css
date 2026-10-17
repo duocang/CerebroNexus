@@ -266,6 +266,26 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   font-weight: 650;
   white-space: nowrap;
 }
+.builder-build-progress-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .15rem .65rem;
+  align-items: baseline;
+  margin: 0;
+  color: var(--c-text);
+  font-size: .86rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.builder-build-progress-detail[hidden] { display: none; }
+.builder-build-progress-text { min-width: 0; overflow-wrap: anywhere; }
+.builder-build-progress-elapsed {
+  color: var(--c-text-muted);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .builder-operation-overlay-detail {
   color: var(--c-text);
   font-size: .92rem;

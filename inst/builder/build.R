@@ -245,14 +245,59 @@ builder_build_progress_note <- function(plan, phase) {
   )
 }
 
-builder_build_progress_write <- function(path, phase) {
+## Progress records are either a bare phase (settlement) or a detail record
+## naming the dataset and step, so the overlay can say what is running.
+.builder_build_progress_detail_fields <- c(
+  "dataset_index",
+  "dataset_count",
+  "dataset_name",
+  "step_label",
+  "started_at"
+)
+
+.builder_build_progress_record <- function(phase, detail = NULL) {
+  if (!is.list(detail) || !length(detail)) {
+    return(phase)
+  }
+  text <- function(value) {
+    if (.builder_build_text(value)) substr(value, 1L, 200L) else NULL
+  }
+  count <- function(value) {
+    value <- suppressWarnings(as.integer(value))
+    if (length(value) == 1L && !is.na(value) && value >= 0L) value else NULL
+  }
+  started <- suppressWarnings(as.numeric(detail$started_at))
+  record <- list(
+    schema_version = 1L,
+    phase = phase,
+    dataset_index = count(detail$dataset_index),
+    dataset_count = count(detail$dataset_count),
+    dataset_name = text(detail$dataset_name),
+    step_label = text(detail$step_label),
+    started_at = if (length(started) == 1L && is.finite(started)) {
+      started
+    } else {
+      NULL
+    }
+  )
+  Filter(Negate(is.null), record)
+}
+
+builder_build_progress_write <- function(path, phase, detail = NULL) {
   phase <- .builder_build_progress_phase(phase)
   if (!.builder_build_text(path) || !dir.exists(dirname(path))) {
     return(FALSE)
   }
   temporary <- tempfile(".progress-", tmpdir = dirname(path))
   on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  saved <- try(saveRDS(phase, temporary, version = 2), silent = TRUE)
+  saved <- try(
+    saveRDS(
+      .builder_build_progress_record(phase, detail),
+      temporary,
+      version = 2
+    ),
+    silent = TRUE
+  )
   if (inherits(saved, "try-error")) {
     return(FALSE)
   }
@@ -268,13 +313,31 @@ builder_build_progress_write <- function(path, phase) {
   moved
 }
 
-builder_build_progress_read <- function(path) {
+builder_build_progress_detail <- function(path) {
   if (!.builder_build_text(path) || !file.exists(path)) {
     return(NULL)
   }
-  phase <- try(readRDS(path), silent = TRUE)
-  checked <- try(.builder_build_progress_phase(phase), silent = TRUE)
-  if (inherits(checked, "try-error")) NULL else checked
+  record <- try(readRDS(path), silent = TRUE)
+  detailed <- is.list(record) && identical(record$schema_version, 1L)
+  phase <- try(
+    .builder_build_progress_phase(if (detailed) record$phase else record),
+    silent = TRUE
+  )
+  if (inherits(phase, "try-error")) {
+    return(NULL)
+  }
+  if (!detailed) {
+    return(list(phase = phase))
+  }
+  value <- .builder_build_progress_record(
+    phase,
+    record[intersect(names(record), .builder_build_progress_detail_fields)]
+  )
+  if (is.list(value)) value else list(phase = phase)
+}
+
+builder_build_progress_read <- function(path) {
+  builder_build_progress_detail(path)$phase
 }
 
 builder_build_progress_remove <- function(path) {
@@ -354,12 +417,16 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
 }
 
 .builder_build_progress_callback <- function(path) {
-  function(phase) {
+  started_at <- as.numeric(Sys.time())
+  function(phase, detail = NULL) {
     if (is.null(path)) {
       return(invisible(FALSE))
     }
     builder_build_check_cancel(path)
-    invisible(builder_build_progress_write(path, phase))
+    if (is.list(detail)) {
+      detail$started_at <- started_at
+    }
+    invisible(builder_build_progress_write(path, phase, detail))
   }
 }
 
@@ -1893,14 +1960,42 @@ builder_execute_plan <- function(
   if (!all(vapply(hooks[required_hooks], is.function, logical(1)))) {
     stop("Build execution hooks are incomplete.", call. = FALSE)
   }
-  report_progress <- function(phase) {
+  report_progress <- function(phase, detail = NULL) {
     if (is.function(on_progress)) {
-      progress_result <- try(on_progress(phase), silent = TRUE)
+      progress_result <- try(
+        if (is.null(detail)) {
+          on_progress(phase)
+        } else {
+          on_progress(phase, detail)
+        },
+        silent = TRUE
+      )
       if (
         inherits(attr(progress_result, "condition"), "builder_build_cancelled")
       ) {
         stop(attr(progress_result, "condition"))
       }
+    }
+    invisible(NULL)
+  }
+  # Dataset/step detail for the overlay; only for callbacks that take it, so
+  # a phase-only callback still sees each phase once.
+  detail_progress <- is.function(on_progress) &&
+    .builder_build_hook_accepts(on_progress, "detail")
+  item_count <- length(plan$items)
+  item_index <- 0L
+  item_name <- NULL
+  report_step <- function(label) {
+    if (isTRUE(detail_progress)) {
+      report_progress(
+        "datasets",
+        list(
+          dataset_index = item_index,
+          dataset_count = item_count,
+          dataset_name = item_name,
+          step_label = label
+        )
+      )
     }
     invisible(NULL)
   }
@@ -1936,8 +2031,11 @@ builder_execute_plan <- function(
   )
   for (item in plan$items) {
     cancel_point()
+    item_index <- item_index + 1L
+    item_name <- item$name %||% item$id
     reused <- item$reused_artifact %||% NULL
     if (is.list(reused)) {
+      report_step("Reusing CRB")
       if (
         !.builder_build_safe_relative(item$filename) ||
           !is.character(reused$path) ||
@@ -2085,6 +2183,9 @@ builder_execute_plan <- function(
         "."
       )))
     }
+    if (is.null(object)) {
+      report_step("Opening dataset")
+    }
     object <- if (!is.null(object)) {
       object
     } else {
@@ -2101,6 +2202,7 @@ builder_execute_plan <- function(
         conditionMessage(object)
       )))
     }
+    report_step("Preparing dataset")
     object <- .builder_build_raise_cancel(tryCatch(
       hooks$prepare(object, item),
       error = function(error) error
@@ -2118,7 +2220,12 @@ builder_execute_plan <- function(
         hooks$run_analyses(
           object,
           item,
-          on_progress = function(...) cancel_point()
+          on_progress = function(label = NULL, ...) {
+            cancel_point()
+            if (.builder_build_text(label)) {
+              report_step(label)
+            }
+          }
         )
       } else {
         hooks$run_analyses(object, item)
@@ -2164,6 +2271,7 @@ builder_execute_plan <- function(
         "A build artifact target is outside the assigned stage."
       ))
     }
+    report_step("Writing CRB")
     export_diagnostics <- NULL
     exported <- tryCatch(
       withCallingHandlers(
@@ -2224,6 +2332,7 @@ builder_execute_plan <- function(
     analyses <- NULL
     extras <- NULL
     invisible(gc(FALSE))
+    report_step("Verifying CRB")
     verified <- .builder_build_raise_cancel(tryCatch(
       hooks$verify(exported, item),
       error = function(error) error
