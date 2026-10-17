@@ -202,7 +202,7 @@ test_that("convertH5adToCerebro picks layers and backends, rejects wrong calls",
   saveRDS(1, rds)
   expect_error(
     convertH5adToCerebro(rds, out, groups = "x"),
-    "must be a .h5ad file"
+    "must be a .h5ad \\(or MuData .h5mu\\) file"
   )
 })
 

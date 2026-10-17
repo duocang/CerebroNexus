@@ -54,6 +54,18 @@
   CSR `X` is used without a transpose. `obs`, `var`, `layers`, `obsm` and
   scanpy's `rank_genes_groups` become metadata, assays, projections and marker
   genes, and `convertSCEToCerebro()` now also accepts a `.h5ad` path.
+- Reads the h5ad files public data actually comes in. `readH5adAsSCE()` and
+  `convertH5adToCerebro()` now handle AnnData written before 0.7 (compound `obs`/`var`,
+  `uns[<col>_categories]`, `raw.X`, as in the classic scanpy PBMC3k and scVelo
+  files), MuData `.h5mu` files (`modality =`), and Ensembl-ID `var` indexes, which
+  are replaced by `feature_name` / `gene_symbols` when present (`gene_names =`).
+  scanpy `rank_genes_groups` keeps its group labels in the old layout too.
+- Point-coordinate spatial data (MERFISH, Slide-seq, `obsm["spatial"]`, or a
+  `spatial` reducedDim) now fills the Spatial tab for SCE and AnnData input, and
+  `spatial_split_by =` divides one coordinate frame into its tissue sections.
+  A marker file whose `cluster` column holds the values of one grouping variable
+  is stored as one table for that variable, with the Viewer's per-group filter.
+  A missing reduction now says how to add one.
 - Adds `exportToH5ad()`, the reverse of `convertH5adToCerebro()`: a `.crb` (or
   Cerebro object) is written as an `.h5ad` that anndata and scanpy open as it is,
   natively with rhdf5. With it `.crb` is the hub between Seurat, SingleCellExperiment

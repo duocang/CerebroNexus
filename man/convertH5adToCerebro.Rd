@@ -9,6 +9,8 @@ convertH5adToCerebro(
   result_dir,
   assay = "X",
   use_raw = FALSE,
+  modality = NULL,
+  gene_names = NULL,
   experiment_name = NULL,
   organism = "Human",
   groups = NULL,
@@ -29,11 +31,14 @@ convertH5adToCerebro(
   marker_file = NULL,
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
-  most_expressed_genes = NULL
+  most_expressed_genes = NULL,
+  spatial_split_by = NULL
 )
 }
 \arguments{
-\item{h5ad_file}{Path to a \code{.h5ad} file written by anndata 0.8 or later.}
+\item{h5ad_file}{Path to a \code{.h5ad} file (any anndata version, including
+the pre-0.7 layout), or to a MuData \code{.h5mu} file together with
+\code{modality}.}
 
 \item{result_dir}{Directory the \code{.crb} is written to (created if
 missing). The file is named \code{cerebro_<basename>.crb}.}
@@ -44,6 +49,13 @@ the matrix is \code{raw/X} and this must stay \code{"X"}.}
 
 \item{use_raw}{Use \code{raw/X} (and \code{raw/var}) as the expression
 matrix; see \code{\link{readH5adAsSCE}}.}
+
+\item{modality}{For a MuData file, the modality to convert (e.g.
+\code{"gex"}); see \code{\link{readH5adAsSCE}}.}
+
+\item{gene_names}{\code{var} column to use as gene names (default: the index,
+or a symbol column when the index is Ensembl IDs); see
+\code{\link{readH5adAsSCE}}.}
 
 \item{experiment_name, organism, groups_naming, max_group_levels, add_all_meta_data, use_delayed_array, expression_matrix_mode, codec, viewer_binary, viewer_binary_threshold, verbose, cell_cycle, main_group, projections, add_most_expressed_genes, most_expressed_genes}{As in \code{\link{convertSCEToCerebro}}. \code{experiment_name} defaults to
 the file's base name.}
@@ -61,6 +73,10 @@ per cell. By default the usual scanpy/Seurat names are looked for
 \item{marker_file, marker_method}{Optional marker table, as in
 \code{\link{convertSCEToCerebro}}. When given, it replaces the marker
 results taken from scanpy.}
+
+\item{spatial_split_by}{\code{obs} column dividing \code{obsm["spatial"]} into
+one section per level (e.g. the tissue sections of a MERFISH data set); see
+\code{\link{exportFromSCE}}.}
 }
 \value{
 The path of the written \code{.crb}, invisibly.

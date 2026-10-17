@@ -14,7 +14,8 @@
       }
       qs2::qs_read(sce_file)
     },
-    h5ad = readH5adAsSCE(sce_file),
+    h5ad = ,
+    h5mu = readH5adAsSCE(sce_file),
     stop(
       "Unsupported sce_file format: .",
       ext,
@@ -113,6 +114,8 @@
 #' @param most_expressed_genes Optional pre-computed most-expressed-genes
 #'   table(s); see \code{\link{convertSeuratToCerebro}}.
 #'
+#' @param spatial_split_by Optional \code{colData} column dividing the spatial
+#'   coordinates into one section per level; see \code{\link{exportFromSCE}}.
 #' @param .source_name Internal. Base name used for the output file and the
 #'   default experiment name when \code{sce_file} is an object that was read
 #'   from a file by a caller (see \code{\link{convertH5adToCerebro}}).
@@ -164,6 +167,7 @@ convertSCEToCerebro <- function(
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
+  spatial_split_by = NULL,
   .source_name = NULL
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
@@ -253,7 +257,13 @@ convertSCEToCerebro <- function(
     sce@metadata,
     marker_file,
     marker_method,
-    verbose
+    verbose,
+    group_values = stats::setNames(
+      lapply(groups, function(group) {
+        unique(as.character(SummarizedExperiment::colData(sce)[[group]]))
+      }),
+      groups
+    )
   )
 
   provided <- .convertAddProvidedMostExpressed(
@@ -336,7 +346,8 @@ convertSCEToCerebro <- function(
         viewer_binary_threshold = viewer_binary_threshold,
         verbose = verbose,
         main_group = main_group,
-        projections = projections
+        projections = projections,
+        spatial_split_by = spatial_split_by
       )
       cat("Successfully exported:", file_name, "\n")
     },

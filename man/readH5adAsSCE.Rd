@@ -4,14 +4,32 @@
 \alias{readH5adAsSCE}
 \title{Read an h5ad file as a SingleCellExperiment}
 \usage{
-readH5adAsSCE(file, use_raw = FALSE, verbose = FALSE)
+readH5adAsSCE(
+  file,
+  use_raw = FALSE,
+  modality = NULL,
+  gene_names = NULL,
+  verbose = FALSE
+)
 }
 \arguments{
-\item{file}{Path to a \code{.h5ad} file.}
+\item{file}{Path to a \code{.h5ad} file, or a \code{.h5mu} (MuData) file
+together with \code{modality}. Files written by anndata before 0.7
+(compound-dataset layout, \code{raw.X}) are read too.}
 
 \item{use_raw}{Use \code{raw/X} (and \code{raw/var}) as the expression
 matrix, as scanpy workflows often keep the full, unfiltered gene set
 there. \code{layers} are then not read, because their genes differ.}
+
+\item{modality}{For a MuData file (\code{.h5mu}), the modality to read, e.g.
+\code{"gex"}. Optional when the file has one modality or one obviously
+expression-like name (\code{rna}, \code{gex}).}
+
+\item{gene_names}{Name of a \code{var} column to use as the gene names, e.g.
+\code{"feature_name"} (CELLxGENE) or \code{"gene_symbols"}. By default the
+\code{var} index is used, except when it is made of Ensembl IDs and such a
+column exists. The original index stays in \code{rowData} as
+\code{var_index}.}
 
 \item{verbose}{Print what was skipped.}
 }

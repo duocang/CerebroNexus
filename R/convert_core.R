@@ -275,7 +275,20 @@
 
 #' @keywords internal
 #' @noRd
-.convertAttachMarkers <- function(misc, marker_file, marker_method, verbose) {
+#' @param group_values Optional named list (grouping variable -> its values). When
+#'   the marker table's cluster column holds values of exactly one of them, the
+#'   table is stored as ONE table named after that grouping variable, with the
+#'   cluster column first and renamed to it. That is the shape the Viewer's
+#'   per-group filter expects (and what scanpy's results arrive as); without it,
+#'   or when no grouping variable matches, the table is split per cluster value
+#'   as the Seurat route has always done.
+.convertAttachMarkers <- function(
+  misc,
+  marker_file,
+  marker_method,
+  verbose,
+  group_values = NULL
+) {
   if (!is.null(marker_file) && nzchar(marker_file)) {
     if (!file.exists(marker_file)) {
       stop("marker_file not found: ", marker_file, call. = FALSE)
@@ -289,7 +302,22 @@
     # otherwise dump as a single 'all' group under the chosen method.
     if (!is.null(markers_df) && nrow(markers_df) > 0) {
       group_col <- intersect(c("cluster", "group"), colnames(markers_df))[1]
-      if (!is.na(group_col)) {
+      matched <- character()
+      if (!is.na(group_col) && length(group_values)) {
+        cluster_values <- unique(as.character(markers_df[[group_col]]))
+        matched <- names(group_values)[vapply(
+          group_values,
+          function(values) all(cluster_values %in% as.character(values)),
+          logical(1)
+        )]
+      }
+      if (length(matched) == 1L) {
+        table <- markers_df[
+          c(group_col, setdiff(names(markers_df), group_col))
+        ]
+        names(table)[[1L]] <- matched
+        per_group <- stats::setNames(list(table), matched)
+      } else if (!is.na(group_col)) {
         per_group <- split(markers_df, markers_df[[group_col]], drop = TRUE)
       } else {
         per_group <- list(all = markers_df)

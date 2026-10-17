@@ -18,7 +18,9 @@
 #' \code{SingleCellExperiment} goes through \code{\link{convertSCEToCerebro}},
 #' so every option of that route applies here too.
 #'
-#' @param h5ad_file Path to a \code{.h5ad} file written by anndata 0.8 or later.
+#' @param h5ad_file Path to a \code{.h5ad} file (any anndata version, including
+#'   the pre-0.7 layout), or to a MuData \code{.h5mu} file together with
+#'   \code{modality}.
 #' @param result_dir Directory the \code{.crb} is written to (created if
 #'   missing). The file is named \code{cerebro_<basename>.crb}.
 #' @param assay Which matrix to export: \code{"X"} (default) or the name of an
@@ -26,6 +28,11 @@
 #'   the matrix is \code{raw/X} and this must stay \code{"X"}.
 #' @param use_raw Use \code{raw/X} (and \code{raw/var}) as the expression
 #'   matrix; see \code{\link{readH5adAsSCE}}.
+#' @param gene_names \code{var} column to use as gene names (default: the index,
+#'   or a symbol column when the index is Ensembl IDs); see
+#'   \code{\link{readH5adAsSCE}}.
+#' @param modality For a MuData file, the modality to convert (e.g.
+#'   \code{"gex"}); see \code{\link{readH5adAsSCE}}.
 #' @param nUMI,nGene \code{obs} columns holding transcripts and expressed genes
 #'   per cell. By default the usual scanpy/Seurat names are looked for
 #'   (\code{total_counts}, \code{n_counts}, \code{nCount_RNA}, \code{nUMI} and
@@ -37,6 +44,9 @@
 #' @param experiment_name,organism,groups_naming,max_group_levels,add_all_meta_data,use_delayed_array,expression_matrix_mode,codec,viewer_binary,viewer_binary_threshold,verbose,cell_cycle,main_group,projections,add_most_expressed_genes,most_expressed_genes
 #'   As in \code{\link{convertSCEToCerebro}}. \code{experiment_name} defaults to
 #'   the file's base name.
+#' @param spatial_split_by \code{obs} column dividing \code{obsm["spatial"]} into
+#'   one section per level (e.g. the tissue sections of a MERFISH data set); see
+#'   \code{\link{exportFromSCE}}.
 #' @param marker_file,marker_method Optional marker table, as in
 #'   \code{\link{convertSCEToCerebro}}. When given, it replaces the marker
 #'   results taken from scanpy.
@@ -67,6 +77,8 @@ convertH5adToCerebro <- function(
   result_dir,
   assay = "X",
   use_raw = FALSE,
+  modality = NULL,
+  gene_names = NULL,
   experiment_name = NULL,
   organism = "Human",
   groups = NULL,
@@ -87,7 +99,8 @@ convertH5adToCerebro <- function(
   marker_file = NULL,
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
-  most_expressed_genes = NULL
+  most_expressed_genes = NULL,
+  spatial_split_by = NULL
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
@@ -95,11 +108,21 @@ convertH5adToCerebro <- function(
   if (!is.character(h5ad_file) || length(h5ad_file) != 1L) {
     stop("`h5ad_file` must be one file path.", call. = FALSE)
   }
-  if (!identical(tolower(tools::file_ext(h5ad_file)), "h5ad")) {
-    stop("`h5ad_file` must be a .h5ad file: ", h5ad_file, call. = FALSE)
+  if (!tolower(tools::file_ext(h5ad_file)) %in% c("h5ad", "h5mu")) {
+    stop(
+      "`h5ad_file` must be a .h5ad (or MuData .h5mu) file: ",
+      h5ad_file,
+      call. = FALSE
+    )
   }
 
-  sce <- readH5adAsSCE(h5ad_file, use_raw = use_raw, verbose = verbose)
+  sce <- readH5adAsSCE(
+    h5ad_file,
+    use_raw = use_raw,
+    modality = modality,
+    gene_names = gene_names,
+    verbose = verbose
+  )
 
   obs_columns <- names(SummarizedExperiment::colData(sce))
   if (is.null(nUMI)) {
@@ -142,6 +165,7 @@ convertH5adToCerebro <- function(
     marker_method = marker_method,
     add_most_expressed_genes = add_most_expressed_genes,
     most_expressed_genes = most_expressed_genes,
+    spatial_split_by = spatial_split_by,
     .source_name = h5ad_file
   )
 }

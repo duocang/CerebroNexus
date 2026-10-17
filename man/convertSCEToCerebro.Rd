@@ -29,6 +29,7 @@ convertSCEToCerebro(
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
+  spatial_split_by = NULL,
   .source_name = NULL
 )
 }
@@ -82,6 +83,9 @@ expression per group; default \code{TRUE}.}
 
 \item{most_expressed_genes}{Optional pre-computed most-expressed-genes
 table(s); see \code{\link{convertSeuratToCerebro}}.}
+
+\item{spatial_split_by}{Optional \code{colData} column dividing the spatial
+coordinates into one section per level; see \code{\link{exportFromSCE}}.}
 
 \item{.source_name}{Internal. Base name used for the output file and the
 default experiment name when \code{sce_file} is an object that was read

@@ -4,7 +4,8 @@ Written with the real anndata/scanpy so the tests exercise the on-disk format
 as the Python ecosystem produces it (not a hand-written imitation):
 
     python -m venv .venv && .venv/Scripts/pip install anndata scanpy
-    .venv/Scripts/python make_fixtures.py
+    .venv/Scripts/python make_fixtures.py          # small_csr / csc / dense
+    .venv/Scripts/python make_fixtures.py extra    # small_ensembl / spatial / mudata
 
 Fixtures were generated with anndata 0.13.4, scanpy 1.12.4, h5py 3.16.0.
 
@@ -50,10 +51,39 @@ def build():
     a.obsm["X_single"] = rng.normal(size=(n_obs, 1))          # 1 column: must be skipped
     return a
 
-a = build()
-sc.tl.rank_genes_groups(a, "cell_type", method="t-test", n_genes=8)
-a.write_h5ad(here / "small_csr.h5ad")
+import sys
+which = sys.argv[1] if len(sys.argv) > 1 else "base"
 
-c = build(); c.X = sp.csc_matrix(c.X); c.write_h5ad(here / "small_csc.h5ad")
-d = build(); d.X = np.asarray(d.X.todense()); d.layers.clear(); d.write_h5ad(here / "small_dense.h5ad")
-for f in sorted(here.glob("*.h5ad")): print(f.name, f.stat().st_size, "bytes")
+if which == "base":
+    a = build()
+    sc.tl.rank_genes_groups(a, "cell_type", method="t-test", n_genes=8)
+    a.write_h5ad(here / "small_csr.h5ad")
+
+    c = build(); c.X = sp.csc_matrix(c.X); c.write_h5ad(here / "small_csc.h5ad")
+    d = build(); d.X = np.asarray(d.X.todense()); d.layers.clear(); d.write_h5ad(here / "small_dense.h5ad")
+
+if which == "extra":
+    # CELLxGENE-style: Ensembl IDs as var_names and the symbols in var["feature_name"]
+    e = build()
+    e.var["feature_name"] = list(e.var_names)
+    e.var_names = [f"ENSG{i:011d}" for i in range(e.n_vars)]
+    e.write_h5ad(here / "small_ensembl.h5ad")
+
+    # two tissue sections in one coordinate frame: obsm["spatial"] + obs["section"]
+    sp_ad = build()
+    rng2 = np.random.default_rng(11)
+    sp_ad.obs["section"] = pd.Categorical(["s1" if i % 2 == 0 else "s2" for i in range(sp_ad.n_obs)])
+    sp_ad.obsm["spatial"] = rng2.uniform(0, 1, size=(sp_ad.n_obs, 2))
+    sp_ad.write_h5ad(here / "small_spatial.h5ad")
+
+    # MuData-style .h5mu: modalities are AnnData groups under mod/<name>
+    import h5py
+    from anndata.io import write_elem
+    prot = ad.AnnData(X=np.abs(rng.normal(size=(n_obs, 4))).astype("float32"),
+                      obs=pd.DataFrame(index=cells), var=pd.DataFrame(index=[f"P{i}" for i in range(4)]))
+    with h5py.File(here / "small_mudata.h5mu", "w") as f:
+        mod = f.create_group("mod")
+        write_elem(mod, "gex", build())
+        write_elem(mod, "prot", prot)
+
+for f in sorted(here.glob("*.h5*")): print(f.name, f.stat().st_size, "bytes")

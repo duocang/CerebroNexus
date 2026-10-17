@@ -25,14 +25,29 @@
 #' once instead of reopening the file for every question.
 #' @keywords internal
 #' @noRd
-.h5adContext <- function(file) {
+.h5adContext <- function(file, root = NULL) {
   listing <- rhdf5::h5ls(file, recursive = TRUE, datasetinfo = FALSE)
   parent <- ifelse(listing$group == "/", "", listing$group)
-  list(
-    file = file,
-    path = paste0(parent, "/", listing$name),
-    otype = listing$otype
-  )
+  path <- paste0(parent, "/", listing$name)
+  otype <- listing$otype
+  prefix <- ""
+  if (!is.null(root)) {
+    ## MuData keeps one AnnData-shaped group per modality under mod/<name>;
+    ## re-root so every reader below sees plain AnnData paths.
+    start <- paste0("/", root, "/")
+    keep <- startsWith(path, start)
+    path <- substring(path[keep], nchar(start))
+    otype <- otype[keep]
+    prefix <- paste0(root, "/")
+  }
+  list(file = file, path = path, otype = otype, prefix = prefix)
+}
+
+#' Read a dataset relative to the context's root (plain file, or one modality).
+#' @keywords internal
+#' @noRd
+.h5adRead <- function(ctx, path, ...) {
+  rhdf5::h5read(ctx$file, paste0(ctx$prefix, path), ...)
 }
 
 #' @keywords internal
@@ -60,7 +75,10 @@
 #' @keywords internal
 #' @noRd
 .h5adAttrs <- function(ctx, path) {
-  tryCatch(rhdf5::h5readAttributes(ctx$file, path), error = function(e) list())
+  tryCatch(
+    rhdf5::h5readAttributes(ctx$file, paste0(ctx$prefix, path)),
+    error = function(e) list()
+  )
 }
 
 #' @keywords internal
@@ -95,9 +113,9 @@
   switch(
     type,
     array = ,
-    "string-array" = .h5adVector(rhdf5::h5read(ctx$file, path)),
+    "string-array" = .h5adVector(.h5adRead(ctx, path)),
     categorical = {
-      codes <- as.integer(.h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/codes"))))
+      codes <- as.integer(.h5adVector(.h5adRead(ctx, paste0(path, "/codes"))))
       cats <- .h5adReadElement(ctx, paste0(path, "/categories"))
       ordered <- isTRUE(as.logical(.h5adAttrs(ctx, path)[["ordered"]]))
       codes[codes < 0L] <- NA_integer_
@@ -106,8 +124,8 @@
     "nullable-integer" = ,
     "nullable-boolean" = ,
     "nullable-string-array" = {
-      values <- .h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/values")))
-      mask <- .h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/mask")))
+      values <- .h5adVector(.h5adRead(ctx, paste0(path, "/values")))
+      mask <- .h5adVector(.h5adRead(ctx, paste0(path, "/mask")))
       if (identical(type, "nullable-boolean")) {
         values <- as.logical(values)
       }
@@ -125,6 +143,42 @@
   )
 }
 
+#' Pre-0.7 AnnData stores obs/var as one compound dataset (a structured array)
+#' with the index as its `index` field; categorical columns are integer codes
+#' whose labels sit in uns[<column>_categories].
+#' @keywords internal
+#' @noRd
+.h5adReadLegacyFrame <- function(ctx, path) {
+  table <- .h5adRead(ctx, path)
+  if (!is.data.frame(table) || !ncol(table)) {
+    stop("Could not read `", path, "` as an AnnData table.", call. = FALSE)
+  }
+  index_name <- intersect(c("index", "_index"), names(table))[1L]
+  if (is.na(index_name)) {
+    index_name <- names(table)[[1L]]
+  }
+  index <- as.character(.h5adVector(table[[index_name]]))
+  columns <- lapply(table[setdiff(names(table), index_name)], .h5adVector)
+  for (column in names(columns)) {
+    labels_path <- paste0("uns/", column, "_categories")
+    if (is.integer(columns[[column]]) && .h5adHas(ctx, labels_path)) {
+      columns[[column]] <- .h5adCodesToFactor(
+        columns[[column]],
+        as.character(.h5adVector(.h5adRead(ctx, labels_path)))
+      )
+    }
+  }
+  list(index = index, columns = columns)
+}
+
+#' @keywords internal
+#' @noRd
+.h5adCodesToFactor <- function(codes, labels) {
+  codes <- as.integer(codes)
+  codes[codes < 0L] <- NA_integer_
+  factor(labels[codes + 1L], levels = labels)
+}
+
 #' Read an AnnData dataframe group (obs, var, raw/var) as an index plus columns.
 #' @keywords internal
 #' @noRd
@@ -133,14 +187,7 @@
     stop("h5ad file has no `", path, "` table.", call. = FALSE)
   }
   if (!.h5adIsGroup(ctx, path)) {
-    stop(
-      "`",
-      path,
-      "` is stored in the legacy (anndata < 0.7) compound-dataset layout. ",
-      "Re-save the file with a current anndata, e.g. ",
-      "`anndata.read_h5ad(f).write_h5ad(f)`.",
-      call. = FALSE
-    )
+    return(.h5adReadLegacyFrame(ctx, path))
   }
   attrs <- .h5adAttrs(ctx, path)
   children <- .h5adChildren(ctx, path)
@@ -162,7 +209,17 @@
   columns <- columns[nzchar(columns) & columns %in% children]
   values <- lapply(columns, function(column) {
     tryCatch(
-      .h5adReadElement(ctx, paste0(path, "/", column)),
+      {
+        value <- .h5adReadElement(ctx, paste0(path, "/", column))
+        labels_path <- paste0(path, "/__categories/", column)
+        if (is.integer(value) && .h5adHas(ctx, labels_path)) {
+          value <- .h5adCodesToFactor(
+            value,
+            as.character(.h5adVector(.h5adRead(ctx, labels_path)))
+          )
+        }
+        value
+      },
       error = function(e) {
         if (verbose) {
           message("[INFO] Skipping h5ad column `", column, "`: ", conditionMessage(e))
@@ -217,9 +274,9 @@
         call. = FALSE
       )
     }
-    data <- as.numeric(.h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/data"))))
-    indices <- .h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/indices")))
-    indptr <- .h5adVector(rhdf5::h5read(ctx$file, paste0(path, "/indptr")))
+    data <- as.numeric(.h5adVector(.h5adRead(ctx, paste0(path, "/data"))))
+    indices <- .h5adVector(.h5adRead(ctx, paste0(path, "/indices")))
+    indptr <- .h5adVector(.h5adRead(ctx, paste0(path, "/indptr")))
     if (length(data) > .Machine$integer.max) {
       stop(
         "`",
@@ -256,7 +313,7 @@
 
   if (identical(type, "array")) {
     ## C-order (cells x genes) is read by rhdf5 as an R (genes x cells) array
-    dense <- rhdf5::h5read(ctx$file, path)
+    dense <- .h5adRead(ctx, path)
     if (!identical(as.integer(dim(dense)), c(as.integer(n_vars), as.integer(n_obs)))) {
       stop("Dense matrix `", path, "` does not match obs/var.", call. = FALSE)
     }
@@ -281,6 +338,33 @@
     return(list())
   }
   result <- list()
+  if (!.h5adIsGroup(ctx, "obsm")) {
+    ## legacy: one compound dataset whose array fields are the embeddings
+    parts <- tryCatch(
+      .h5adRead(ctx, "obsm", compoundAsDataFrame = FALSE),
+      error = function(e) list()
+    )
+    for (entry in names(parts)) {
+      embedding <- parts[[entry]]
+      if (is.matrix(embedding)) {
+        embedding <- t(embedding)
+      }
+      if (
+        !is.matrix(embedding) ||
+          nrow(embedding) != length(cells) ||
+          ncol(embedding) < 2L
+      ) {
+        next
+      }
+      storage.mode(embedding) <- "double"
+      dimnames(embedding) <- list(
+        cells,
+        paste0(.h5adReductionName(entry), "_", seq_len(ncol(embedding)))
+      )
+      result[[.h5adReductionName(entry)]] <- embedding
+    }
+    return(result)
+  }
   for (entry in .h5adChildren(ctx, "obsm")) {
     path <- paste0("obsm/", entry)
     embedding <- tryCatch(
@@ -293,7 +377,7 @@
           numeric <- table$columns[vapply(table$columns, is.numeric, logical(1))]
           do.call(cbind, numeric)
         } else {
-          raw <- rhdf5::h5read(ctx$file, path)
+          raw <- .h5adRead(ctx, path)
           if (is.matrix(raw)) t(raw) else NULL
         }
       },
@@ -333,7 +417,7 @@
     }
     read_field <- function(field) {
       path <- paste0(base, "/", field)
-      if (.h5adHas(ctx, path)) tryCatch(rhdf5::h5read(ctx$file, path), error = function(e) NULL)
+      if (.h5adHas(ctx, path)) tryCatch(.h5adRead(ctx, path), error = function(e) NULL)
     }
     gene <- read_field("names")
     if (!is.data.frame(gene)) {
@@ -341,7 +425,7 @@
     }
     params <- function(field) {
       path <- paste0(base, "/params/", field)
-      if (.h5adHas(ctx, path)) as.character(.h5adVector(rhdf5::h5read(ctx$file, path)))[[1L]] else NA_character_
+      if (.h5adHas(ctx, path)) as.character(.h5adVector(.h5adRead(ctx, path)))[[1L]] else NA_character_
     }
     groupby <- params("groupby")
     method <- params("method")
@@ -351,6 +435,22 @@
       p_val = read_field("pvals"),
       p_val_adj = read_field("pvals_adj")
     )
+    group_labels <- names(gene)
+    labels_path <- paste0("uns/", groupby, "_categories")
+    if (
+      !is.na(groupby) &&
+        all(grepl("^[0-9]+$", group_labels)) &&
+        .h5adHas(ctx, labels_path)
+    ) {
+      ## legacy files name the columns by group code, not label
+      labels <- as.character(.h5adVector(.h5adRead(ctx, labels_path)))
+      names(gene) <- labels[as.integer(group_labels) + 1L]
+      for (field in names(fields)) {
+        if (is.data.frame(fields[[field]])) {
+          names(fields[[field]]) <- labels[as.integer(names(fields[[field]])) + 1L]
+        }
+      }
+    }
     tables <- lapply(names(gene), function(level) {
       table <- data.frame(
         level = level,
@@ -407,6 +507,42 @@
   markers
 }
 
+#' Use a var column (feature_name, gene_symbols, ...) as the gene names. By
+#' default this happens only when the var index is made of Ensembl IDs and such
+#' a column exists, which is how CELLxGENE files are laid out.
+#' @keywords internal
+#' @noRd
+.h5adGeneNames <- function(index, columns, gene_names = NULL) {
+  if (is.null(gene_names)) {
+    looks_ensembl <- mean(grepl("^ENS[A-Z]*[GTP][0-9]{6,}", utils::head(index, 200L))) > 0.9
+    candidates <- intersect(
+      c("feature_name", "gene_symbols", "gene_symbol", "gene_name", "gene_names", "symbol"),
+      names(columns)
+    )
+    if (!looks_ensembl || !length(candidates)) {
+      return(index)
+    }
+    gene_names <- candidates[[1L]]
+  } else if (!gene_names %in% names(columns)) {
+    stop(
+      "`gene_names = \"",
+      gene_names,
+      "\"` is not a column of var: ",
+      paste(names(columns), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  symbols <- as.character(columns[[gene_names]])
+  missing <- is.na(symbols) | !nzchar(symbols)
+  symbols[missing] <- index[missing]
+  message(
+    "[INFO] Using var column `",
+    gene_names,
+    "` as gene names (the var index is kept in rowData as `var_index`)."
+  )
+  symbols
+}
+
 #' Read an h5ad file as a SingleCellExperiment
 #'
 #' @description
@@ -438,10 +574,20 @@
 #' cells. Other \code{uns}, \code{obsp}, \code{varm} and \code{varp} content is
 #' not read.
 #'
-#' @param file Path to a \code{.h5ad} file.
+#' @param file Path to a \code{.h5ad} file, or a \code{.h5mu} (MuData) file
+#'   together with \code{modality}. Files written by anndata before 0.7
+#'   (compound-dataset layout, \code{raw.X}) are read too.
 #' @param use_raw Use \code{raw/X} (and \code{raw/var}) as the expression
 #'   matrix, as scanpy workflows often keep the full, unfiltered gene set
 #'   there. \code{layers} are then not read, because their genes differ.
+#' @param modality For a MuData file (\code{.h5mu}), the modality to read, e.g.
+#'   \code{"gex"}. Optional when the file has one modality or one obviously
+#'   expression-like name (\code{rna}, \code{gex}).
+#' @param gene_names Name of a \code{var} column to use as the gene names, e.g.
+#'   \code{"feature_name"} (CELLxGENE) or \code{"gene_symbols"}. By default the
+#'   \code{var} index is used, except when it is made of Ensembl IDs and such a
+#'   column exists. The original index stays in \code{rowData} as
+#'   \code{var_index}.
 #' @param verbose Print what was skipped.
 #'
 #' @return A \code{SingleCellExperiment} with genes in rows and cells in
@@ -457,7 +603,13 @@
 #' @seealso \code{\link{convertH5adToCerebro}}, \code{\link{convertSCEToCerebro}}
 #'
 #' @export
-readH5adAsSCE <- function(file, use_raw = FALSE, verbose = FALSE) {
+readH5adAsSCE <- function(
+  file,
+  use_raw = FALSE,
+  modality = NULL,
+  gene_names = NULL,
+  verbose = FALSE
+) {
   .h5adRequire()
   if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
     stop(
@@ -474,6 +626,39 @@ readH5adAsSCE <- function(file, use_raw = FALSE, verbose = FALSE) {
       stop("`", file, "` is not a readable HDF5/h5ad file: ", conditionMessage(e), call. = FALSE)
     }
   )
+  if (.h5adHas(ctx, "mod")) {
+    ## MuData (.h5mu): read one modality, which is an AnnData in its own right
+    available <- .h5adChildren(ctx, "mod")
+    if (is.null(modality)) {
+      guess <- available[tolower(available) %in% c("rna", "gex", "expression")]
+      if (length(guess) != 1L && length(available) != 1L) {
+        stop(
+          "`",
+          file,
+          "` is a MuData file with modalities ",
+          paste(available, collapse = ", "),
+          ". Choose the expression one with `modality =`.",
+          call. = FALSE
+        )
+      }
+      modality <- if (length(guess) == 1L) guess else available
+    }
+    if (!modality %in% available) {
+      stop(
+        "Modality `",
+        modality,
+        "` not found; the file has: ",
+        paste(available, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    if (verbose) {
+      message("[INFO] Reading MuData modality `", modality, "`.")
+    }
+    ctx <- .h5adContext(file, root = paste0("mod/", modality))
+  } else if (!is.null(modality)) {
+    stop("`modality` is only for MuData (.h5mu) files.", call. = FALSE)
+  }
   if (!.h5adHas(ctx, "X") && !.h5adHas(ctx, "layers")) {
     stop("`", file, "` has no `X` matrix or layers; is it an h5ad file?", call. = FALSE)
   }
@@ -487,14 +672,18 @@ readH5adAsSCE <- function(file, use_raw = FALSE, verbose = FALSE) {
   var_path <- "var"
   x_path <- "X"
   if (isTRUE(use_raw)) {
-    if (!.h5adHas(ctx, "raw/X")) {
+    ## current files use raw/X; anndata < 0.7 wrote raw.X
+    raw_x <- c("raw/X", "raw.X")[c(.h5adHas(ctx, "raw/X"), .h5adHas(ctx, "raw.X"))][1L]
+    if (is.na(raw_x)) {
       stop("`use_raw = TRUE` but the file has no `raw/X`.", call. = FALSE)
     }
-    var_path <- "raw/var"
-    x_path <- "raw/X"
+    x_path <- raw_x
+    var_path <- sub("X$", "var", raw_x)
   }
   var <- .h5adReadDataFrame(ctx, var_path, verbose)
   genes <- var$index
+  genes <- .h5adGeneNames(genes, var$columns, gene_names)
+  var$columns$var_index <- var$index
   if (anyNA(genes) || any(!nzchar(genes))) {
     stop("h5ad var index (gene names) must be non-empty.", call. = FALSE)
   }

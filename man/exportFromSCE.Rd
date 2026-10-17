@@ -22,7 +22,9 @@ exportFromSCE(
   viewer_binary_threshold = 500000L,
   verbose = FALSE,
   main_group = NULL,
-  projections = NULL
+  projections = NULL,
+  spatial_reductions = NULL,
+  spatial_split_by = NULL
 )
 }
 \arguments{
@@ -90,6 +92,16 @@ defaults to \code{FALSE}.}
 \item{projections}{Optional character vector naming the
 \code{reducedDims(object)} to export. By default every non-PCA reduction is
 exported (PCA only when it is the sole reduction).}
+
+\item{spatial_reductions}{Optional character vector naming the
+\code{reducedDims(object)} that hold spatial point coordinates (cells x >= 2).
+By default a reduction named \code{spatial} (any case) is used, which is how
+AnnData \code{obsm["spatial"]} arrives; they fill the Spatial tab.}
+
+\item{spatial_split_by}{Optional \code{colData} column. When given, the
+spatial coordinates are divided by its values into one section per level
+(e.g. the tissue sections of a MERFISH or multi-slice Visium data set that
+share one coordinate frame), selectable in the Spatial tab.}
 }
 \value{
 No data returned.

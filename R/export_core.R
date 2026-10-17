@@ -653,7 +653,12 @@
     invert = TRUE
   )]
   if (length(projections_available) == 0) {
-    stop('No dimensional reductions available.', call. = FALSE)
+    stop(
+      "No dimensional reductions available. Add at least one first, e.g. ",
+      "scater::runPCA() / scater::runUMAP() on a SingleCellExperiment, ",
+      "scanpy.tl.umap() on an AnnData, or RunUMAP() on a Seurat object.",
+      call. = FALSE
+    )
   } else if (explicit_projections) {
     if (verbose) {
       message(
@@ -1233,4 +1238,109 @@
       .call = FALSE
     )
   }
+}
+
+#' Spatial tab from point coordinates held in embeddings (MERFISH, Slide-seq,
+#' AnnData obsm["spatial"]): each embedding with at least two numeric columns
+#' becomes a spatial entry, paired with the expression of the same cells. With
+#' `split` (a vector named by cell) the cells are divided into one entry per
+#' level, which is how several tissue sections kept in one coordinate frame are
+#' shown as separate sections. Same record the Seurat route builds for a spatial
+#' reduction.
+#' @keywords internal
+#' @noRd
+.exportAddSpatialFromEmbeddings <- function(
+  export,
+  embeddings,
+  expression_data,
+  assay,
+  layer,
+  split = NULL,
+  verbose = FALSE
+) {
+  add_entry <- function(entry_name, source_name, embedding) {
+    spatial_data <- tryCatch(
+      {
+        cells <- intersect(rownames(embedding), colnames(expression_data))
+        coordinates <- data.frame(
+          .cell = cells,
+          .image = entry_name,
+          .coordinate_source = paste0("reduction.", source_name),
+          x = as.numeric(embedding[cells, 1L]),
+          y = as.numeric(embedding[cells, 2L]),
+          row.names = cells,
+          stringsAsFactors = FALSE
+        )
+        if (
+          !length(cells) ||
+            anyDuplicated(rownames(embedding)) ||
+            any(!is.finite(coordinates$x)) ||
+            any(!is.finite(coordinates$y))
+        ) {
+          stop("The spatial reduction has no safe paired coordinates.")
+        }
+        projection <- .spx_export_projection_coordinates(coordinates)
+        list(
+          coordinates = if (is.null(projection)) coordinates else projection,
+          expression = expression_data[, cells, drop = FALSE],
+          assay = assay,
+          requested_layer = layer,
+          layer = layer,
+          image = entry_name,
+          coordinate_source = paste0("reduction.", source_name)
+        )
+      },
+      error = function(e) {
+        ## never drop spatial data silently
+        warning(
+          "Could not extract spatial data for `",
+          entry_name,
+          "`: ",
+          conditionMessage(e),
+          call. = FALSE
+        )
+        NULL
+      }
+    )
+    if (is.null(spatial_data)) {
+      return(invisible(NULL))
+    }
+    export$addSpatialData(entry_name, spatial_data)
+    if (verbose) {
+      message(
+        '[',
+        format(Sys.time(), '%H:%M:%S'),
+        '] Added spatial data: ',
+        entry_name,
+        ' (',
+        nrow(spatial_data$coordinates),
+        ' cells)'
+      )
+    }
+  }
+
+  for (image_name in names(embeddings)) {
+    embedding <- embeddings[[image_name]]
+    if (is.null(split)) {
+      add_entry(image_name, image_name, embedding)
+      next
+    }
+    section <- as.character(split[rownames(embedding)])
+    levels_present <- unique(section[!is.na(section)])
+    ## numeric-looking sections (e.g. Bregma -29, -24, ...) sort numerically
+    numeric_levels <- suppressWarnings(as.numeric(levels_present))
+    if (!anyNA(numeric_levels)) {
+      levels_present <- levels_present[order(numeric_levels)]
+    } else {
+      levels_present <- sort(levels_present)
+    }
+    for (level in levels_present) {
+      add_entry(
+        paste0(image_name, " [", level, "]"),
+        image_name,
+        embedding[!is.na(section) & section == level, , drop = FALSE]
+      )
+    }
+  }
+  invisible(export)
 }

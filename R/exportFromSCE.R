@@ -49,6 +49,14 @@
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #' @param main_group Optional entry of \code{groups} to use as the main group.
+#' @param spatial_reductions Optional character vector naming the
+#' \code{reducedDims(object)} that hold spatial point coordinates (cells x >= 2).
+#' By default a reduction named \code{spatial} (any case) is used, which is how
+#' AnnData \code{obsm["spatial"]} arrives; they fill the Spatial tab.
+#' @param spatial_split_by Optional \code{colData} column. When given, the
+#' spatial coordinates are divided by its values into one section per level
+#' (e.g. the tissue sections of a MERFISH or multi-slice Visium data set that
+#' share one coordinate frame), selectable in the Spatial tab.
 #' @param projections Optional character vector naming the
 #' \code{reducedDims(object)} to export. By default every non-PCA reduction is
 #' exported (PCA only when it is the sole reduction).
@@ -102,7 +110,9 @@ exportFromSCE <- function(
   viewer_binary_threshold = 500000L,
   verbose = FALSE,
   main_group = NULL,
-  projections = NULL
+  projections = NULL,
+  spatial_reductions = NULL,
+  spatial_split_by = NULL
 ) {
   ##--------------------------------------------------------------------------##
   ## safety checks before starting to do anything
@@ -254,6 +264,47 @@ exportFromSCE <- function(
     cells = cells,
     verbose = verbose
   )
+
+  ## Point coordinates (MERFISH, Slide-seq, AnnData obsm["spatial"]) held as a
+  ## reduction named "spatial" also feed the Spatial tab.
+  if (!is.null(spatial_split_by) && !spatial_split_by %in% names(meta)) {
+    stop(
+      "`spatial_split_by` must be a column of colData: ",
+      spatial_split_by,
+      call. = FALSE
+    )
+  }
+  if (is.null(spatial_reductions)) {
+    spatial_reductions <- available_reductions[
+      tolower(available_reductions) == "spatial"
+    ]
+  } else if (!all(spatial_reductions %in% available_reductions)) {
+    stop(
+      "`spatial_reductions` must name reducedDims of the object.",
+      call. = FALSE
+    )
+  }
+  if (length(spatial_reductions)) {
+    .exportAddSpatialFromEmbeddings(
+      export = export,
+      embeddings = stats::setNames(
+        lapply(spatial_reductions, function(name) {
+          SingleCellExperiment::reducedDim(object, name)
+        }),
+        spatial_reductions
+      ),
+      expression_data = expression_data,
+      assay = assay,
+      layer = assay,
+      split = if (!is.null(spatial_split_by)) {
+        stats::setNames(
+          as.character(meta[[spatial_split_by]]),
+          cells
+        )
+      },
+      verbose = verbose
+    )
+  }
 
   .exportFinalize(
     export = export,
