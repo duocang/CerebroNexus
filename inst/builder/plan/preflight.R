@@ -105,7 +105,71 @@ builder_plan_requires_app <- function(entries) {
   requires_app
 }
 
-.builder_plan_preflight_entries <- function(entries, make_app = FALSE) {
+.builder_plan_file_stat_key <- function(path) {
+  stat <- tryCatch(fs::file_info(path), error = function(error) NULL)
+  if (!is.data.frame(stat) || nrow(stat) != 1L) {
+    return(NULL)
+  }
+  value <- function(name) {
+    if (!name %in% names(stat)) {
+      return(NA_real_)
+    }
+    suppressWarnings(as.double(stat[[name]][[1L]]))
+  }
+  values <- vapply(
+    c("size", "modification_time", "change_time", "inode", "device_id"),
+    value,
+    numeric(1)
+  )
+  if (!all(is.finite(values[c("size", "modification_time")]))) {
+    return(NULL)
+  }
+  paste(
+    c(
+      normalizePath(path, winslash = "/", mustWork = FALSE),
+      sprintf("%.17g", values)
+    ),
+    collapse = "|"
+  )
+}
+
+.builder_plan_image_cache_limit <- 512L
+
+# Full-resolution images can be hundreds of MB, and every BuildPlan freeze
+# runs on the Shiny process. A session cache keyed by path, size, timestamps
+# and file id lets repeated freezes skip rehashing an unchanged file.
+.builder_plan_source_md5 <- function(path, cache = NULL) {
+  key <- if (is.environment(cache)) {
+    .builder_plan_file_stat_key(path)
+  } else {
+    NULL
+  }
+  if (!is.null(key)) {
+    cached <- get0(key, envir = cache, inherits = FALSE)
+    if (is.character(cached) && length(cached) == 1L) {
+      return(cached)
+    }
+  }
+  md5 <- unname(as.character(tools::md5sum(path)))
+  if (
+    !is.null(key) &&
+      length(md5) == 1L &&
+      !is.na(md5) &&
+      identical(.builder_plan_file_stat_key(path), key)
+  ) {
+    if (length(ls(cache, all.names = TRUE)) >= .builder_plan_image_cache_limit) {
+      rm(list = ls(cache, all.names = TRUE), envir = cache)
+    }
+    assign(key, md5, envir = cache)
+  }
+  md5
+}
+
+.builder_plan_preflight_entries <- function(
+  entries,
+  make_app = FALSE,
+  file_verification_cache = NULL
+) {
   for (entry in entries) {
     state_error <- tryCatch(
       {
@@ -187,7 +251,7 @@ builder_plan_requires_app <- function(entries) {
         !dir.exists(source_path)
       expected_md5 <- image[["source_content_md5", exact = TRUE]]
       observed_md5 <- if (valid_path) {
-        unname(as.character(tools::md5sum(source_path)))
+        .builder_plan_source_md5(source_path, file_verification_cache)
       } else {
         NULL
       }

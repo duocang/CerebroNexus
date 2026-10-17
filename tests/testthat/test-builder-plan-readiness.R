@@ -283,6 +283,72 @@ test_that("artifact entries validate restored Project Spatial images", {
   })
 })
 
+test_that("repeated preflight does not rehash unchanged Spatial images", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    image_path <- withr::local_tempfile(fileext = ".png")
+    write_dummy_png(image_path)
+    inspected <- builder_read_image(image_path)
+    entry$load_state <- "artifact_ready"
+    entry$snapshot <- NULL
+    entry$settings$spatial_image_storage <- "external"
+    entry$settings$images <- list(
+      fov = list(
+        `H&E` = list(
+          project_asset = list(path = "spatial-assets/ds1/fov/image.png"),
+          source_path = inspected$source_path,
+          source_content_md5 = inspected$source_content_md5,
+          bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+          outside = 0L
+        )
+      )
+    )
+    cache <- new.env(parent = emptyenv())
+    real_md5sum <- tools::md5sum
+    digests <- 0L
+    testthat::local_mocked_bindings(
+      md5sum = function(files) {
+        if (identical(files, inspected$source_path)) {
+          digests <<- digests + 1L
+        }
+        real_md5sum(files)
+      },
+      .package = "tools"
+    )
+
+    first <- .builder_plan_preflight_entries(
+      list(entry),
+      make_app = TRUE,
+      file_verification_cache = cache
+    )
+    second <- .builder_plan_preflight_entries(
+      list(entry),
+      make_app = TRUE,
+      file_verification_cache = cache
+    )
+
+    expect_null(first$error_code)
+    expect_null(second$error_code)
+    expect_identical(digests, 1L)
+
+    connection <- file(inspected$source_path, open = "ab")
+    writeBin(as.raw(0L), connection)
+    close(connection)
+    changed <- .builder_plan_preflight_entries(
+      list(entry),
+      make_app = TRUE,
+      file_verification_cache = cache
+    )
+
+    expect_identical(changed$error_code, "invalid_external_spatial_image")
+    expect_identical(digests, 2L)
+  })
+})
+
 test_that("reusable CRBs refresh Spatial images from Project configuration", {
   local({
     builder_repo_source("preview.R")

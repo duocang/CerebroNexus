@@ -194,7 +194,8 @@ builder_freeze_plan <- function(
     timeout_minutes = 15L
   ),
   dataset_state_cache = NULL,
-  review_identity = NULL
+  review_identity = NULL,
+  file_verification_cache = NULL
 ) {
   if (
     !exists(
@@ -311,7 +312,11 @@ builder_freeze_plan <- function(
       "unsafe_reference"
     ))
   }
-  preflight <- .builder_plan_preflight_entries(entries, make_app = make_app)
+  preflight <- .builder_plan_preflight_entries(
+    entries,
+    make_app = make_app,
+    file_verification_cache = file_verification_cache
+  )
   if (inherits(preflight, "builder_plan_failure")) {
     return(preflight)
   }

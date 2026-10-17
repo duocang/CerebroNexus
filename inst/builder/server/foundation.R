@@ -359,6 +359,7 @@ dataset_revisions <- reactive({
 })
 builder_configuration_identity_cache <- new.env(parent = emptyenv())
 builder_dataset_state_cache <- new.env(parent = emptyenv())
+builder_spatial_image_verification_cache <- new.env(parent = emptyenv())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()

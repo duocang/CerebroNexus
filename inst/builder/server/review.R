@@ -244,7 +244,8 @@ freeze_plan_for_output <- function(
     review_identity = review_identity,
     app_options = app_options,
     app_auth = builder_auth_summary(login_enabled, parsed_auth$accounts),
-    dataset_state_cache = builder_dataset_state_cache
+    dataset_state_cache = builder_dataset_state_cache,
+    file_verification_cache = builder_spatial_image_verification_cache
   )
 }
 
