@@ -3,6 +3,7 @@ viewer_benchmark_scope <- function() {
   skip_if_not(file.exists(file), "benchmark tree not present")
   scope <- new.env(parent = globalenv())
   sys.source(test_path("..", "bench", "viewer_1m_page_protocol.R"), scope)
+  sys.source(test_path("..", "bench", "lib", "viewer_launch.R"), scope)
   for (expression in parse(file)) {
     if (
       is.call(expression) &&
@@ -167,4 +168,32 @@ test_that("page benchmarks read the Data info cell count inside the overview", {
     "</div></div>'"
   ))
   expect_match(js(scope$data_info_cells_js()), "1,000,000", fixed = TRUE)
+})
+
+test_that("browser benchmarks share installed launches and Data info waits", {
+  scope <- viewer_benchmark_scope()
+  candidate <- c(label = "a b", root = "/src/a", library = "/lib/a")
+  expect_identical(
+    scope$viewer_load_line(candidate, "installed"),
+    'library(CerebroNexus, lib.loc = "/lib/a")'
+  )
+  expect_identical(
+    scope$viewer_load_line(candidate, "load_all"),
+    'devtools::load_all("/src/a", quiet = TRUE)'
+  )
+  ## Source-tree mode installs nothing.
+  candidates <- list(a = c(label = "a", root = "/src/a"))
+  expect_identical(
+    scope$prepare_viewer_candidates(candidates, "load_all"),
+    candidates
+  )
+  waited <- character()
+  app <- list(
+    wait_for_js = function(script, timeout) waited <<- c(waited, script),
+    get_js = function(script) "1,000,000 Cells"
+  )
+  expect_identical(scope$wait_for_data_info_cells(app, "1,000,000"), "1,000,000 Cells")
+  expect_length(waited, 1L)
+  expect_error(scope$wait_for_data_info_cells(app, "2,000,000"), "2,000,000")
+  expect_identical(scope$wait_for_data_info_cells(app), "1,000,000 Cells")
 })
