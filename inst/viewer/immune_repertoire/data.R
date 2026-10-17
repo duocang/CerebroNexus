@@ -281,13 +281,19 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
 
 ## Discovery scans the whole repertoire and metadata (seconds for large data)
 ## and depends only on the loaded dataset, not on the visit to this tab.
-ir_sharing_unit_memo <- viewerMemoOne()
+ir_sharing_unit_memo <- new.env(parent = emptyenv())
 ir_sharing_unit_choices <- reactive({
   req(identical(input[["ir_tabs"]], "Clone Sharing"))
   # Discovery is independent of ir_data_annotated and the selected sharing unit.
-  ir_sharing_unit_memo(list(data_set()), function() {
-    ir_discover_sharing_units(ir_data_raw(), getMetaData())
-  })
+  dataset <- data_set()
+  if (!identical(ir_sharing_unit_memo$dataset, dataset)) {
+    ir_sharing_unit_memo$value <- ir_discover_sharing_units(
+      ir_data_raw(),
+      getMetaData()
+    )
+    ir_sharing_unit_memo$dataset <- dataset
+  }
+  ir_sharing_unit_memo$value
 })
 
 ## ---- Reactive: parameters --------------------------------------------- ##
