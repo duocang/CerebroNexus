@@ -1228,6 +1228,10 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
           cex = 0.9
         )
       } else {
+        shiny::validate(shiny::need(
+          requireNamespace("patchwork", quietly = TRUE),
+          "Install the patchwork package to show faceted paired scatter plots."
+        ))
         ncol_p <- min(4L, length(panels))
         patchwork::wrap_plots(panels, ncol = ncol_p)
       }

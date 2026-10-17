@@ -817,6 +817,10 @@ ir_size_profile_plot <- function(profiles, method = "ward.D2") {
   if (!(method %in% allowed)) {
     method <- "ward.D2"
   }
+  shiny::validate(shiny::need(
+    requireNamespace("ggdendro", quietly = TRUE),
+    "Install the ggdendro package to cluster clone-size profiles."
+  ))
   tree <- stats::hclust(stats::dist(profile), method = method)
   dendro <- ggdendro::dendro_data(tree, type = "rectangle")
   ggplot2::ggplot() +

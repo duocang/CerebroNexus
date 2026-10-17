@@ -124,9 +124,7 @@ output[["expression_select_gene_set_UI"]] <- renderUI({
   selectizeInput(
     "expression_select_gene_set",
     label = "Gene set",
-    choices = data.table::as.data.table(
-      data.frame("Gene sets" = c("-", getGeneSetNames()))
-    ),
+    choices = list("Gene sets" = as.list(c("-", getGeneSetNames()))),
     multiple = FALSE
   )
 })
