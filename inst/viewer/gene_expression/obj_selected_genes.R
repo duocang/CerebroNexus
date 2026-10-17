@@ -30,6 +30,36 @@ observeEvent(
   }
 )
 
+## Genes chosen in the RGB channels must survive leaving RGB. Append channel
+## genes absent from the gene list (the list itself is never reordered or
+## shortened), and record the extended list as the RGB seed so that returning
+## to RGB keeps the edited channels instead of reseeding them.
+expression_previous_display_mode <- NULL
+observeEvent(
+  input[["expression_projection_genes_in_separate_panels"]],
+  {
+    mode <- input[["expression_projection_genes_in_separate_panels"]]
+    previous <- expression_previous_display_mode
+    expression_previous_display_mode <<- mode
+    req(identical(previous, "rgb"), !identical(mode, "rgb"))
+    channels <- unlist(lapply(c("r", "g", "b"), function(channel) {
+      as.character(input[[paste0("expression_rgb_gene_", channel)]] %||% character())
+    }), use.names = FALSE)
+    channels <- unique(channels[!is.na(channels) & nzchar(channels)])
+    current <- expressionInputGenes(input[["expression_genes_input"]])
+    missing <- channels[!tolower(channels) %in% tolower(current)]
+    req(length(missing) > 0L)
+    genes <- c(current, missing)
+    available <- list_of_genes()
+    seeded <- unique(available[match(tolower(genes), tolower(available))])
+    expression_rgb_seed <<- seeded[!is.na(seeded)]
+    session$sendCustomMessage("cerebro_expression_gene_list", list(
+      dataset_context = viewer_loaded_dataset_context(),
+      genes = as.list(genes)
+    ))
+  }
+)
+
 expression_selected_genes_input <- reactive({
   req(
     input[["expression_analysis_mode"]],

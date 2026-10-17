@@ -150,3 +150,69 @@ test_that("four selected genes survive RGB layout and display-mode round trips",
   expect_identical(unlist(channels(), use.names = FALSE), c("CD3E", "CD79A", ""))
   expect_length(app$get_js("modeErrors"), 0L)
 })
+
+test_that("genes chosen in RGB channels carry over to the gene list", {
+  skip_on_cran()
+  skip_if_not_installed("shinytest2")
+  inst_dir <- viewer_app_test_path()
+  suppressWarnings(shinytest2::local_app_support(inst_dir))
+  app <- shinytest2::AppDriver$new(inst_dir, name = "gene_rgb_carry_over",
+    height = 950, width = 1440, load_timeout = 60000)
+  withr::defer(app$stop())
+  app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
+  mode <- function(value) {
+    app$set_inputs(expression_projection_genes_in_separate_panels = value, wait_ = FALSE)
+  }
+  genes <- function() {
+    unlist(app$get_js("document.getElementById('expression_genes_input').selectize.getValue()"))
+  }
+  channels <- function() {
+    unlist(app$get_js(
+      "['r','g','b'].map(c=>document.getElementById('expression_rgb_gene_'+c).selectize.getValue())"))
+  }
+  ## A user edits a channel well before switching mode; wait until the edit has
+  ## been sent rather than racing Shiny's input batching.
+  sent <- function(id, value) {
+    app$wait_for_js(sprintf(paste0(
+      "(() => {const v=Shiny.shinyapp.$inputValues;",
+      "const x=v['%1$s:shiny.selectize']!==undefined?v['%1$s:shiny.selectize']:v['%1$s'];",
+      "return JSON.stringify(x)===JSON.stringify(%2$s);})()"),
+      id, jsonlite::toJSON(value, auto_unbox = TRUE)), timeout = 20000)
+  }
+  ## Let the mode selector and gene controls bind before using them.
+  app$wait_for_js(paste0(
+    "!!document.getElementById('expression_projection_genes_in_separate_panels') && ",
+    "typeof document.getElementById('expression_genes_input')?.selectize?.settings.load === 'function'"
+  ), timeout = 30000)
+  ## Genes chosen only inside RGB become the gene list.
+  mode("rgb")
+  sent("expression_projection_genes_in_separate_panels", "rgb")
+  viewer_set_selectize(app, "expression_rgb_gene_r", "MS4A1")
+  viewer_set_selectize(app, "expression_rgb_gene_g", "CD3D")
+  sent("expression_rgb_gene_g", "CD3D")
+  mode("combined")
+  app$wait_for_js(
+    "document.getElementById('expression_genes_input').selectize.getValue().length === 2",
+    timeout = 20000
+  )
+  expect_identical(genes(), c("MS4A1", "CD3D"))
+  ## An edited channel is appended to an existing list and kept on return.
+  viewer_set_selectize(app, "expression_genes_input", c("MS4A1", "CD3D", "CD79A"))
+  sent("expression_genes_input", c("MS4A1", "CD3D", "CD79A"))
+  mode("rgb")
+  app$wait_for_js(
+    "document.getElementById('expression_rgb_gene_b').selectize.getValue() === 'CD79A'",
+    timeout = 20000
+  )
+  viewer_set_selectize(app, "expression_rgb_gene_r", "CD3E")
+  sent("expression_rgb_gene_r", "CD3E")
+  mode("separate")
+  app$wait_for_js(
+    "document.getElementById('expression_genes_input').selectize.getValue().length === 4",
+    timeout = 20000
+  )
+  expect_identical(genes(), c("MS4A1", "CD3D", "CD79A", "CD3E"))
+  mode("rgb")
+  Sys.sleep(2)
+  expect_identical(channels(), c("CD3E", "CD3D", "CD79A"))
+})

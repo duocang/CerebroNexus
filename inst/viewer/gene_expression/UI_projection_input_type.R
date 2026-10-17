@@ -71,6 +71,26 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
     ),
     tags$script(HTML("
     (function () {
+      // Leaving RGB appends the channel genes to the gene list.
+      Shiny.addCustomMessageHandler('cerebro_expression_gene_list', function (message) {
+        var attempts = 0;
+        function apply() {
+          if (!window.CerebroDatasetContext?.accepts(message)) return;
+          var source = document.getElementById('expression_genes_input')?.selectize;
+          if (!source || typeof source.settings.load !== 'function' || source.loading) {
+            if (++attempts < 400) setTimeout(apply, 25);
+            return;
+          }
+          message.genes.forEach(function (gene) {
+            var option = {};
+            option[source.settings.valueField] = gene;
+            option[source.settings.labelField] = gene;
+            source.addOption(option);
+          });
+          source.setValue(message.genes);
+        }
+        setTimeout(apply, 0);
+      });
       var revision = 0;
       Shiny.addCustomMessageHandler('cerebro_expression_rgb_seed', function (message) {
         var token = ++revision;
