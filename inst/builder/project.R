@@ -132,11 +132,12 @@ builder_activity_capabilities <- function(activity) {
   manifest_busy <- activity$project_phase %in% c("autosaving", "registering")
   mutable <- connected && !isTRUE(activity$build_locked) && !project_busy
   stable <- mutable && !importing
+  # Optional CRB builds do not hold Open back: opening a Project cancels
+  # them when it replaces the workspace.
   open_safe <- connected &&
     !isTRUE(activity$build_locked) &&
     !importing &&
     !isTRUE(activity$source_syncing) &&
-    !isTRUE(activity$crb_generating) &&
     !activity$project_phase %in%
       c("choosing", "saving", "autosaving", "opening", "restoring", "registering")
   list(
@@ -222,9 +223,6 @@ builder_activity_reason <- function(activity, operation) {
   }
   if (isTRUE(activity$source_syncing)) {
     return("Wait for the current Project source files to finish saving.")
-  }
-  if (isTRUE(activity$crb_generating)) {
-    return("Wait for the current Project CRB to finish.")
   }
   switch(
     operation,
@@ -5120,18 +5118,45 @@ builder_project_store_artifact_bundle <- function(
       stop("The artifact staging folder could not be created.", call. = FALSE)
     }
     primary_target <- file.path(staging, basename(built))
-    stage_file <- function(source, target) {
+    # A promoted file keeps its identity when renamed on the same volume. If
+    # its size, modification time and file id are unchanged, the bytes hashed
+    # above are the staged bytes and need no second read.
+    renamed_md5 <- character()
+    stage_file <- function(source, target, fingerprint) {
       moved <- isTRUE(promote) && isTRUE(file.rename(source, target))
       if (moved) {
         promoted[[length(promoted) + 1L]] <<- list(
           source = source,
           staged = target
         )
+        staged <- builder_project_file_metadata(target)
+        if (
+          is.list(fingerprint) &&
+            builder_project_fingerprint_metadata_matches(fingerprint, staged) &&
+            identical(fingerprint$stat_version %||% NULL, 1L) &&
+            identical(staged$stat_version %||% NULL, 1L) &&
+            .builder_project_text(fingerprint$file_id %||% NULL) &&
+            identical(fingerprint$file_id, staged$file_id) &&
+            .builder_project_text(fingerprint$md5 %||% NULL)
+        ) {
+          renamed_md5[[target]] <<- as.character(fingerprint$md5)
+        }
         return(TRUE)
       }
       builder_project_copy_file(source, target)
     }
-    if (!stage_file(built, primary_target)) {
+    # Only MD5s this process computed are reused; release MD5s are still
+    # checked against the staged bytes.
+    hashed_here <- function(source, fingerprint) {
+      if (isTRUE(source$preverified)) NULL else fingerprint
+    }
+    if (
+      !stage_file(
+        built,
+        primary_target,
+        hashed_here(primary_source, primary_fingerprint)
+      )
+    ) {
       stop("The dataset artifact could not be staged.", call. = FALSE)
     }
     for (index in seq_along(members)) {
@@ -5146,7 +5171,13 @@ builder_project_store_artifact_bundle <- function(
       ) {
         stop("An artifact member folder could not be staged.", call. = FALSE)
       }
-      if (!stage_file(members[[index]]$source, member_target)) {
+      if (
+        !stage_file(
+          members[[index]]$source,
+          member_target,
+          hashed_here(member_sources[[index]], member_fingerprints[[index]])
+        )
+      ) {
         stop("An artifact member could not be staged.", call. = FALSE)
       }
     }
@@ -5164,7 +5195,13 @@ builder_project_store_artifact_bundle <- function(
       primary_fingerprint$md5,
       vapply(member_fingerprints, `[[`, character(1), "md5")
     )
-    staged_md5 <- unname(as.character(tools::md5sum(staged_paths)))
+    staged_md5 <- unname(renamed_md5[staged_paths])
+    unverified <- is.na(staged_md5)
+    if (any(unverified)) {
+      staged_md5[unverified] <- unname(as.character(
+        tools::md5sum(staged_paths[unverified])
+      ))
+    }
     if (!identical(staged_md5, expected)) {
       stop(
         "The artifact generation could not be committed safely.",

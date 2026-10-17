@@ -26,6 +26,7 @@ builder_project_open_task <- reactiveVal(NULL)
 builder_project_registration_task <- reactiveVal(NULL)
 builder_project_crb_jobs <- reactiveVal(list())
 builder_project_crb_task <- reactiveVal(NULL)
+builder_project_crb_batch <- reactiveVal(0L)
 builder_project_source_save_waiter <- reactiveVal(NULL)
 builder_project_open_generation <- reactiveVal(0)
 builder_project_open_previous_phase <- reactiveVal("idle")
@@ -699,9 +700,14 @@ observe({
 })
 
 reset_builder_project_crb_pipeline <- function() {
-  if (!is.null(isolate(builder_project_crb_task()))) {
+  task <- isolate(builder_project_crb_task())
+  if (
+    inherits(task, "builder_async_task") &&
+      task$state %in% c("queued", "running", "cancelling")
+  ) {
     stop("Wait for the current Project CRB to finish.", call. = FALSE)
   }
+  builder_project_crb_task(NULL)
   builder_project_crb_jobs(list())
   builder_project_source_save_waiter(NULL)
   invisible(TRUE)
@@ -904,6 +910,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     return(invisible(FALSE))
   }
   finish_record <- function(recorded) {
+    if (!builder_project_crb_job_current(id, token)) {
+      # Cancelled, or the Project was replaced, while the record was written.
+      return(invisible(isTRUE(recorded)))
+    }
     if (!isTRUE(recorded)) {
       builder_project_update_crb_job(id, NULL)
       showNotification(
@@ -929,6 +939,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     )
     invisible(TRUE)
   }
+  job$recording <- TRUE
+  builder_project_update_crb_job(id, job)
   recorded <- tryCatch(
     builder_project_record_crb(
       id,
@@ -1133,7 +1145,8 @@ start_next_builder_project_crb_job <- function() {
         entry = captured_entry,
         runtime_files = runtime_files,
         source_utf8 = builder_source_utf8
-      )
+      ),
+      .pool = "crb"
     ),
     error = identity
   )
@@ -1156,6 +1169,7 @@ start_next_builder_project_crb_job <- function() {
 
 queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
   ids <- intersect(as.character(ids), isolate(checked_dataset_ids()))
+  added <- 0L
   entries <- isolate(sets())
   entry_map <- stats::setNames(
     entries,
@@ -1191,16 +1205,90 @@ queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
     ) {
       next
     }
+    if (!is.list(current)) {
+      added <- added + 1L
+    }
     jobs[[id]] <- list(
       status = "queued",
       identity = identity,
       token = builder_project_crb_job_token(id, identity)
     )
   }
+  builder_project_crb_batch(
+    if (length(jobs)) as.integer(isolate(builder_project_crb_batch())) + added else 0L
+  )
   builder_project_crb_jobs(jobs)
   start_next_builder_project_crb_job()
   invisible(TRUE)
 }
+
+## Progress of the CRB queue for the status bar: the dataset being built and
+## its position in the batch queued since the queue was last empty.
+builder_project_crb_progress <- reactive({
+  jobs <- builder_project_crb_jobs()
+  if (!length(jobs)) {
+    return(NULL)
+  }
+  total <- max(as.integer(builder_project_crb_batch()), length(jobs))
+  active <- Filter(
+    function(job) job$status %in% c("generating", "registering"),
+    jobs
+  )
+  id <- if (length(active)) names(active)[[1L]] else names(jobs)[[1L]]
+  entry <- isolate(entry_of(id))
+  list(
+    total = as.integer(total),
+    position = as.integer(total - length(jobs) + 1L),
+    name = as.character(entry$settings$name %||% id)
+  )
+})
+
+observe({
+  if (!length(builder_project_crb_jobs()) &&
+      !identical(isolate(builder_project_crb_batch()), 0L)) {
+    builder_project_crb_batch(0L)
+  }
+})
+
+## Stops queued and running CRB builds. A CRB already being recorded in the
+## manifest finishes its transaction; Save queues the missing CRBs again.
+cancel_builder_project_crb_queue <- function() {
+  jobs <- isolate(builder_project_crb_jobs())
+  task <- isolate(builder_project_crb_task())
+  recording <- Filter(function(job) isTRUE(job$recording), jobs)
+  if (
+    inherits(task, "builder_async_task") &&
+      task$state %in% c("queued", "running", "cancelling")
+  ) {
+    try(builder_async_cancel(task), silent = TRUE)
+  }
+  for (job in jobs[setdiff(names(jobs), names(recording))]) {
+    output <- job$output %||% NULL
+    if (.builder_project_text(output)) {
+      try(
+        builder_project_cleanup_checkpoint(output, dirname(dirname(output))),
+        silent = TRUE
+      )
+    }
+  }
+  builder_project_crb_jobs(recording)
+  if (!length(recording)) {
+    builder_project_crb_task(NULL)
+  }
+  invisible(length(jobs) > 0L)
+}
+
+observeEvent(input$cancel_builder_project_crbs, {
+  if (!length(isolate(builder_project_crb_jobs()))) {
+    return()
+  }
+  cancel_builder_project_crb_queue()
+  showNotification(
+    "Dataset cache builds stopped. Save again to build them.",
+    type = "message",
+    duration = 5
+  )
+})
 
 builder_project_open_is_current <- function(generation) {
   identical(
@@ -2763,7 +2851,8 @@ output$project_status <- renderUI({
   builder_project_status_ui(
     if (is.null(project)) NULL else list(name = project$name),
     phase = builder_project_phase(),
-    source_sync = builder_project_source_sync()
+    source_sync = builder_project_source_sync(),
+    crb = builder_project_crb_progress()
   )
 })
 
@@ -3547,6 +3636,9 @@ complete_builder_project_open <- function(actions = NULL) {
     builder_request_protocol(current_protocol$epoch)
   }
   invalidate_builder_project_source_sync()
+  # Opening replaces the workspace, so its optional CRB builds stop here
+  # instead of holding Open back.
+  cancel_builder_project_crb_queue()
   reset_builder_project_crb_pipeline()
   protocol(next_protocol)
   store(next_store)

@@ -3493,13 +3493,11 @@ test_that("background CRB generation permits editing but protects project bounda
   expect_true(capabilities$check_dataset)
   expect_true(capabilities$navigate_workflow)
   expect_true(capabilities$save_project)
-  expect_false(capabilities$open_project)
+  ## Opening a Project cancels its optional CRB builds instead of waiting.
+  expect_true(capabilities$open_project)
   expect_null(capabilities$prepare_crbs)
   expect_true(capabilities$warn_before_unload)
-  expect_identical(
-    runtime$builder_activity_reason(activity, "open_project"),
-    "Wait for the current Project CRB to finish."
-  )
+  expect_null(runtime$builder_activity_reason(activity, "open_project"))
 })
 
 test_that("project autosave waits for both import queues to drain", {

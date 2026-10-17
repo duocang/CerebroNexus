@@ -342,3 +342,163 @@ test_that("Save with nothing to write reports Saved immediately", {
     expect_false(builder_project_save_is_noop())
   })
 })
+
+test_that("CRB builds run in their own pool and never starve short tasks", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(builder_test_inst_path("builder", "async.R"), envir = runtime)
+  on.exit(runtime$builder_async_stop(), add = TRUE)
+  processes <- list()
+  runtime$.builder_async$spawn <- function(...) {
+    process <- new.env(parent = emptyenv())
+    process$alive <- TRUE
+    process$is_alive <- function() process$alive
+    process$kill_tree <- function() process$alive <- FALSE
+    process$kill <- function() process$alive <- FALSE
+    process$wait <- function(...) invisible(TRUE)
+    process$get_result <- function() TRUE
+    processes[[length(processes) + 1L]] <<- process
+    process
+  }
+  short <- lapply(1:3, function(index) {
+    runtime$builder_async_submit(quote(TRUE))
+  })
+  crb <- runtime$builder_async_submit(quote(TRUE), .pool = "crb")
+  second_crb <- runtime$builder_async_submit(quote(TRUE), .pool = "crb")
+
+  expect_identical(
+    vapply(short, function(task) task$state, character(1)),
+    c("running", "running", "queued")
+  )
+  expect_identical(crb$state, "running")
+  expect_identical(second_crb$state, "queued")
+  expect_identical(crb$pool, "crb")
+  expect_error(
+    runtime$builder_async_submit(quote(TRUE), .pool = "missing"),
+    "Unknown Builder background pool"
+  )
+})
+
+test_that("the Project status shows CRB progress with a Cancel action", {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+  sys.source(builder_test_inst_path("builder", "ui", "project.R"), envir = runtime)
+  attach_shiny <- function(env) {
+    for (name in c("tags", "tagList", "actionButton", "span", "uiOutput")) {
+      assign(name, getExportedValue("shiny", name), envir = env)
+    }
+  }
+  attach_shiny(runtime)
+  crb <- list(total = 3L, position = 2L, name = "Kidney atlas")
+  html <- as.character(runtime$builder_project_status_ui(
+    list(name = "P"),
+    phase = "clean",
+    crb = crb
+  ))
+  expect_match(html, "Building dataset cache · 2 of 3 · Kidney atlas", fixed = TRUE)
+  expect_match(html, "cancel_builder_project_crbs", fixed = TRUE)
+  expect_match(html, "is-busy", fixed = TRUE)
+
+  syncing <- as.character(runtime$builder_project_status_ui(
+    list(name = "P"),
+    phase = "clean",
+    source_sync = list(status = "syncing", completed = 0L, total = 1L),
+    crb = crb
+  ))
+  expect_false(grepl("cancel_builder_project_crbs", syncing, fixed = TRUE))
+  saving <- as.character(runtime$builder_project_status_ui(
+    list(name = "P"),
+    phase = "saving",
+    crb = crb
+  ))
+  expect_match(saving, "Saving project", fixed = TRUE)
+})
+
+test_that("CRB queue progress and Cancel keep only the record being written", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    output_dir <- withr::local_tempdir()
+    builder_project_crb_batch(3L)
+    builder_project_crb_jobs(list(
+      ds1 = list(status = "registering", recording = TRUE, token = "t1"),
+      ds2 = list(status = "generating", output = output_dir, token = "t2"),
+      ds3 = list(status = "queued", token = "t3")
+    ))
+    progress <- isolate(builder_project_crb_progress())
+    expect_identical(progress$total, 3L)
+    expect_identical(progress$position, 1L)
+    expect_identical(progress$name, "ds1")
+
+    cancel_builder_project_crb_queue()
+    expect_identical(names(isolate(builder_project_crb_jobs())), "ds1")
+    progress <- isolate(builder_project_crb_progress())
+    expect_identical(progress$position, 3L)
+
+    builder_project_crb_jobs(list())
+    session$flushReact()
+    expect_null(isolate(builder_project_crb_progress()))
+    expect_identical(isolate(builder_project_crb_batch()), 0L)
+  })
+
+  source <- paste(
+    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  open_block <- substr(
+    source,
+    regexpr("complete_builder_project_open <- function", source, fixed = TRUE),
+    regexpr("observeEvent(input$confirm_builder_project_open", source, fixed = TRUE)
+  )
+  expect_match(open_block, "cancel_builder_project_crb_queue()", fixed = TRUE)
+  expect_match(source, '.pool = "crb"', fixed = TRUE)
+})
+
+test_that("a promoted CRB is not hashed again after its rename", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  build <- file.path(root, "build")
+  dir.create(project)
+  dir.create(build)
+  write_build <- function() {
+    built <- file.path(build, "dataset.crb")
+    writeBin(as.raw(sample.int(255L, 4096L, replace = TRUE)), built)
+    writeBin(charToRaw("sidecar"), file.path(build, "dataset.extra"))
+    built
+  }
+  hashed <- character()
+  real_md5sum <- tools::md5sum
+  testthat::local_mocked_bindings(
+    md5sum = function(files) {
+      hashed <<- c(hashed, files)
+      real_md5sum(files)
+    },
+    .package = "tools"
+  )
+  stored <- runtime$builder_project_store_artifact_bundle(
+    write_build(),
+    sidecars = "dataset.extra",
+    dataset_id = "ds1",
+    root = project,
+    promote = TRUE
+  )
+  expect_false(any(grepl("/.artifact-", gsub("\\\\", "/", hashed), fixed = TRUE)))
+  expect_length(hashed, 2L)
+  stored_path <- file.path(project, stored$path)
+  expect_identical(
+    unname(real_md5sum(stored_path)),
+    stored$fingerprint$md5
+  )
+  ## A copied (not promoted) bundle still verifies the staged bytes.
+  hashed <- character()
+  unlink(file.path(project, "artifacts"), recursive = TRUE)
+  runtime$builder_project_store_artifact_bundle(
+    write_build(),
+    sidecars = "dataset.extra",
+    dataset_id = "ds1",
+    root = project,
+    promote = FALSE
+  )
+  expect_true(any(grepl("/.artifact-", gsub("\\\\", "/", hashed), fixed = TRUE)))
+})

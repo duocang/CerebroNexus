@@ -26,9 +26,13 @@ builder_project_toolbar_ui <- function() {
 builder_project_status_ui <- function(
   project = NULL,
   phase = "none",
-  source_sync = NULL
+  source_sync = NULL,
+  crb = NULL
 ) {
   syncing <- is.list(source_sync) && identical(source_sync$status, "syncing")
+  crb_building <- is.list(crb) &&
+    isTRUE(as.integer(crb$total %||% 0L) > 0L) &&
+    phase %in% c("clean", "dirty")
   cancelling <- is.list(source_sync) &&
     identical(source_sync$status, "cancelling")
   sync_failed <- is.list(source_sync) && identical(source_sync$status, "failed")
@@ -44,6 +48,15 @@ builder_project_status_ui <- function(
     )
   } else if (sync_failed) {
     "Some source files could not be saved"
+  } else if (crb_building) {
+    paste0(
+      "Building dataset cache · ",
+      as.integer(crb$position %||% 1L),
+      " of ",
+      as.integer(crb$total),
+      " · ",
+      crb$name %||% "Dataset"
+    )
   } else if (sync_ready && identical(phase, "clean")) {
     "Saved · Safe to close"
   } else if (is.null(project)) {
@@ -63,7 +76,7 @@ builder_project_status_ui <- function(
       "Saved"
     )
   }
-  status_class <- if (syncing || cancelling) {
+  status_class <- if (syncing || cancelling || (crb_building && !sync_failed)) {
     "is-busy"
   } else if (sync_failed) {
     "is-error"
@@ -90,7 +103,28 @@ builder_project_status_ui <- function(
     tags$span(
       class = "builder-project-status-detail",
       tags$span(class = "builder-project-status-dot", `aria-hidden` = "true"),
-      tags$span(label)
+      if (crb_building && !syncing && !cancelling && !sync_failed) {
+        tagList(
+          # The label is not the last child here, so it carries the
+          # truncation the stylesheet gives the last status span.
+          tags$span(
+            style = paste(
+              "min-width: 0; overflow: hidden;",
+              "text-overflow: ellipsis; white-space: nowrap;"
+            ),
+            label
+          ),
+          actionButton(
+            "cancel_builder_project_crbs",
+            "Cancel",
+            class = "btn btn-link builder-project-status-cancel",
+            style = "flex: 0 0 auto; padding: 0; font-size: inherit;",
+            `aria-label` = "Cancel dataset cache builds"
+          )
+        )
+      } else {
+        tags$span(label)
+      }
     )
   )
 }
