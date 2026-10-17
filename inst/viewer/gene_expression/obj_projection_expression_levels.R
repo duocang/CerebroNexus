@@ -292,6 +292,11 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+## Plot parameters (projection, order, hover) rebuild the coordinates and
+## re-run the reactive below, but the values depend only on these inputs. Keep
+## the last result so such changes do not re-read million-cell expression.
+expression_projection_levels_memo <- new.env(parent = emptyenv())
+
 expression_projection_expression_levels <- reactive({
   req(
     expression_projection_cells_to_show(),
@@ -316,6 +321,17 @@ expression_projection_expression_levels <- reactive({
     length(genes_present),
     ncol(expression_projection_coordinates())
   )
+  levels_key <- list(
+    data_set(),
+    cells_to_show,
+    genes_present,
+    display_mode,
+    if (identical(display_mode, "rgb")) genes_data[["rgb_genes"]]
+  )
+  memo <- expression_projection_levels_memo
+  if (isTRUE(memo$set) && identical(memo$key, levels_key)) {
+    return(memo$value)
+  }
   ## Layout only changes the projection; it must not re-read expression rows.
   render_key <- isolate(expression_projection_render_key())
   painted_key <- isolate(input[["expression_projection_rendered_key"]])
@@ -414,6 +430,9 @@ expression_projection_expression_levels <- reactive({
     )
   }
   success <- TRUE
+  memo$key <- levels_key
+  memo$value <- expression_levels
+  memo$set <- TRUE
   expression_levels
 })
 

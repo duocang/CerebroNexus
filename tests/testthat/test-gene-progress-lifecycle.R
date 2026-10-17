@@ -8,9 +8,10 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         scope
       )
+      ## Each revision stands for a new cell sample; identical cells reuse the
+      ## last expression values without a read.
       expression_projection_cells_to_show <- reactive({
-        input$revision
-        1:2
+        if (input$revision %% 2 == 1) 1:2 else 2:1
       })
       expression_projection_coordinates <- function() {
         data.frame(x = 1:2, y = 2:1)
@@ -138,4 +139,54 @@ test_that("Gene rejects obsolete group columns and clears rather than retaining 
     data.frame(new_group = I(matrix(1:4, nrow = 2)))
   }
   expect_error(eval(body, env), class = "shiny.silent.error")
+})
+
+test_that("plot parameter changes reuse expression values", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext("session", "A", 1))
+      sys.source(
+        viewer_test_path("gene_expression", "func_expression_summary.R"),
+        scope
+      )
+      expression_projection_cells_to_show <- reactive(1:2)
+      ## Coordinates follow plot parameters such as the projection or order.
+      expression_projection_coordinates <- reactive({
+        input$projection
+        data.frame(x = 1:2, y = 2:1)
+      })
+      expression_selected_genes <- reactive({
+        list(genes_to_display_present = input$genes)
+      })
+      getGeneNames <- function() c("g1", "g2")
+      dataset <- new.env()
+      data_set <- function() dataset
+      sys.source(
+        viewer_test_path("gene_expression", "obj_projection_expression_levels.R"),
+        scope
+      )
+      reads <- 0L
+      expressionProjectionCachedRow <- function(...) {
+        reads <<- reads + 1L
+        c(0, 2)
+      }
+    },
+    {
+      session$setInputs(
+        sidebar = "geneExpression",
+        projection = "UMAP",
+        genes = "g1",
+        expression_projection_genes_in_separate_panels = "single"
+      )
+      expect_identical(expression_projection_expression_levels(), c(0, 2))
+      session$setInputs(projection = "tSNE")
+      expect_identical(expression_projection_expression_levels(), c(0, 2))
+      expect_identical(scope$reads, 1L)
+      session$setInputs(genes = "g2")
+      expression_projection_expression_levels()
+      expect_identical(scope$reads, 2L)
+    }
+  )
 })
