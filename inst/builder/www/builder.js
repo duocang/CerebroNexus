@@ -124,7 +124,9 @@
   var buildStatusFocusToken = 0;
   var buildOperationActive = false;
   var buildOperationFocusHeld = false;
-  var buildProgressState = { active: false, text: "", anchor: null, timer: null };
+  var buildProgressState = {
+    active: false, text: "", phase: null, anchor: null, timer: null,
+  };
   var buildOperationRestoreFocus = null;
   var buildOperationFocusToken = 0;
   var projectOpenOperationActive = false;
@@ -1232,6 +1234,7 @@
         builderActivityState.busy_phase
       );
     }
+    renderBuildProgressDetail();
     if (!builderProjectSaveResultOpen) {
       if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
         projectOpenCancelPending = false;
@@ -1318,7 +1321,15 @@
     var elapsed = running
       ? formatBuildElapsed(Date.now() - buildProgressState.anchor)
       : "";
-    var text = buildProgressState.active ? buildProgressState.text : "";
+    // The step header and this detail line arrive in separate messages. When
+    // the header has already moved on (Writing CRB -> Packaging Viewer), the
+    // previous step's dataset line is stale; show the clock alone until the
+    // matching detail arrives.
+    var headerPhase = builderActivityState.busy_phase;
+    var stale = typeof headerPhase === "string" && headerPhase.length > 0 &&
+      typeof buildProgressState.phase === "string" &&
+      buildProgressState.phase !== headerPhase;
+    var text = buildProgressState.active && !stale ? buildProgressState.text : "";
     document.querySelectorAll("[data-build-progress-detail]").forEach(function (node) {
       var label = node.querySelector(".builder-build-progress-text");
       var clock = node.querySelector(".builder-build-progress-elapsed");
@@ -1336,6 +1347,7 @@
     if (!active) {
       buildProgressState.anchor = null;
       buildProgressState.text = "";
+      buildProgressState.phase = null;
     }
     buildProgressState.active = active;
     if (active && buildProgressState.timer === null) {
@@ -1350,10 +1362,12 @@
   function handleBuildProgress(message) {
     if (!message || message.active !== true) {
       buildProgressState.text = "";
+      buildProgressState.phase = null;
       renderBuildProgressDetail();
       return;
     }
     buildProgressState.text = typeof message.text === "string" ? message.text : "";
+    buildProgressState.phase = typeof message.phase === "string" ? message.phase : null;
     var elapsed = Number(message.elapsed_seconds);
     if (Number.isFinite(elapsed) && elapsed >= 0) {
       // After a reload the worker's start time is earlier than this page's.
@@ -2045,19 +2059,14 @@
     var container = document.getElementById("ds_client_import_queue");
     if (!container) return;
     container.replaceChildren();
-    var sequence = document.querySelectorAll(
-      "#ds_ready_list > .ds, #ds_import_list .ds"
-    ).length;
     clientImportQueue.concat(clientImportFailures).forEach(function (entry, index) {
       if (entry.serverId && entry === activeClientImport) return;
-      sequence += 1;
       var row = document.createElement("div");
       row.className = "ds ds--import ds--client-upload";
       row.dataset.clientImportId = entry.clientId;
       row.dataset.loadState = entry.state;
       var ordinal = document.createElement("span");
       ordinal.className = "ds-idx";
-      ordinal.textContent = String(sequence);
       var body = document.createElement("span");
       body.className = "ds-body";
       var name = document.createElement("span");
@@ -2104,7 +2113,24 @@
       }
       container.appendChild(row);
     });
+    renumberClientImportQueue();
     applyClientImportQueueLock();
+  }
+
+  // Waiting browser imports continue the numbering of the rows above them.
+  // Those rows change on their own (an import starts or finishes), so number
+  // again whenever either rail changes instead of only when the queue does.
+  function renumberClientImportQueue() {
+    var container = document.getElementById("ds_client_import_queue");
+    if (!container) return;
+    var sequence = document.querySelectorAll(
+      "#ds_ready_list > .ds, #ds_import_list .ds"
+    ).length;
+    container.querySelectorAll(":scope > .ds > .ds-idx").forEach(function (ordinal) {
+      sequence += 1;
+      var label = String(sequence);
+      if (ordinal.textContent !== label) ordinal.textContent = label;
+    });
   }
 
   function failClientDispatch(entry, message) {
@@ -2987,6 +3013,7 @@
     }
 
     removeReadyImportOverlap();
+    renumberClientImportQueue();
 
     var nextFocus = railFocusTarget(rail, focusIdentity, datasetRailContract);
     if (nextFocus && focusedElement !== nextFocus) nextFocus.focus();
@@ -3041,6 +3068,7 @@
     if (!target) return;
     if (!target.length) {
       host.replaceChildren();
+      renumberClientImportQueue();
       updateRailSummary();
       return;
     }
@@ -3061,6 +3089,7 @@
     });
     existing.forEach(function (row) { row.remove(); });
     removeReadyImportOverlap();
+    renumberClientImportQueue();
     var nextFocus = railFocusTarget(list, focusIdentity, importRailContract);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
     if (window.BuilderIcons) window.BuilderIcons.decorate(host);

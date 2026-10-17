@@ -706,13 +706,10 @@ observe({
   message <- if (!alignment_settled) {
     "Saving the latest spatial adjustment…"
   } else if (length(unchecked)) {
-    paste0(
+    builder_configure_check_message(
       length(ids) - length(unchecked),
-      " of ",
       length(ids),
-      " datasets checked · ",
-      length(unchecked),
-      " remaining"
+      length(imports()$entries %||% list())
     )
   } else {
     readiness$message
@@ -745,6 +742,16 @@ observe({
     configure_actions_state(state)
   }
 })
+
+configure_dataset_name <- reactiveVal(NULL)
+observe({
+  entry <- entry_of(current())
+  name <- if (is.null(entry)) "" else entry$settings$name %||% entry$id
+  if (!identical(name, isolate(configure_dataset_name()))) {
+    configure_dataset_name(name)
+  }
+})
+output$configure_dataset_name <- renderText(configure_dataset_name())
 
 output$configure_actions <- renderUI({
   state <- configure_actions_state()
@@ -1101,7 +1108,16 @@ render_configure_workbench <- function() {
     `data-workflow-stage` = "configure",
     builder_stage_header_ui(
       "Configure",
-      paste("Configure", entry$settings$name %||% entry$id),
+      tagList(
+        "Configure ",
+        # The workbench is not rebuilt for a rename; this span follows the
+        # dataset name the way the rail does.
+        tags$span(
+          id = "configure_dataset_name",
+          class = "shiny-text-output",
+          entry$settings$name %||% entry$id
+        )
+      ),
       "Set essentials, then check this dataset."
     ),
     div(

@@ -174,6 +174,32 @@ builder_configure_primary_action_ui <- function(
   )
 }
 
+## Datasets still loading are rows in the rail too; count them so the footer
+## never says "0 of 3" next to four rows.
+builder_configure_check_message <- function(checked, loaded, loading = 0L) {
+  checked <- as.integer(checked)
+  loaded <- as.integer(loaded)
+  loading <- as.integer(loading)
+  if (loading > 0L) {
+    return(paste0(
+      checked,
+      " of ",
+      loaded + loading,
+      " datasets checked · ",
+      loading,
+      " still loading"
+    ))
+  }
+  paste0(
+    checked,
+    " of ",
+    loaded,
+    " datasets checked · ",
+    loaded - checked,
+    " remaining"
+  )
+}
+
 builder_configure_actions_ui <- function(
   message,
   can_continue,

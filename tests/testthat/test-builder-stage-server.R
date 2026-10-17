@@ -3201,3 +3201,71 @@ test_that("table inventories stay with their dataset owner and project epoch", {
     8
   ))
 })
+
+test_that("the Configure title follows a dataset rename", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this workflow test.")
+  }
+  shiny::testServer(app_env$server, {
+    use_state_only_fixture(list(list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a", extras = list()),
+      settings = list(name = "Dataset A")
+    )))
+    session$flushReact()
+    expect_identical(output$configure_dataset_name, "Dataset A")
+
+    ## A rename does not rebuild the workbench; the title follows it.
+    entries <- isolate(sets())
+    entries[[1L]]$settings$name <- "Renamed A"
+    sets(entries)
+    session$flushReact()
+    expect_identical(output$configure_dataset_name, "Renamed A")
+  })
+
+  review <- paste(
+    readLines(builder_profile_inst_path("builder", "server", "review.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(review, 'id = "configure_dataset_name"', fixed = TRUE)
+  expect_false(grepl(
+    'paste("Configure", entry$settings$name %||% entry$id)',
+    review,
+    fixed = TRUE
+  ))
+})
+
+test_that("the Configure footer counts datasets that are still loading", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  expect_identical(
+    app_env$builder_configure_check_message(1L, 2L),
+    "1 of 2 datasets checked · 1 remaining"
+  )
+  expect_identical(
+    app_env$builder_configure_check_message(0L, 3L, 1L),
+    "0 of 4 datasets checked · 1 still loading"
+  )
+  review <- paste(
+    readLines(builder_profile_inst_path("builder", "server", "review.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(
+    review,
+    "length(imports()$entries %||% list())",
+    fixed = TRUE
+  )
+})

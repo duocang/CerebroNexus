@@ -693,6 +693,48 @@ builder_browser_pipeline_fake_dom <- c(
   "function row(label) { const r = new El('div', 'ds'); r.appendChild(new El('span', 'ds-idx', label)); return r; }"
 )
 
+test_that("waiting browser imports keep numbering after the rows above change", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  renumber <- builder_browser_pipeline_js_function(js, "renumberClientImportQueue")
+  out <- builder_browser_pipeline_run_node(
+    c(builder_browser_pipeline_fake_dom, renumber),
+    c(
+      "const assert = require('assert');",
+      "const ready = body.appendChild(withId(new El('div'), 'ds_ready_list'));",
+      "const imports = body.appendChild(withId(new El('div'), 'ds_import_list'));",
+      "const waiting = body.appendChild(withId(new El('div'), 'ds_client_import_queue'));",
+      "ready.appendChild(row('1'));",
+      "waiting.appendChild(row('2')); waiting.appendChild(row('3'));",
+      "const labels = () => waiting.children.map(r => r.children[0].textContent);",
+      "renumberClientImportQueue();",
+      "assert.deepStrictEqual(labels(), ['2', '3']);",
+      "// The first waiting file started loading: its server row now sits above.",
+      "const list = imports.appendChild(new El('div', 'builder-import-list'));",
+      "list.appendChild(row('2'));",
+      "waiting.children[0].remove();",
+      "renumberClientImportQueue();",
+      "assert.deepStrictEqual(labels(), ['3']);",
+      "// An example started while two dropped files wait behind it.",
+      "waiting.appendChild(row('?'));",
+      "list.appendChild(row('3'));",
+      "renumberClientImportQueue();",
+      "assert.deepStrictEqual(labels(), ['4', '5']);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  for (caller in c("reconcileDatasetRail", "reconcileImportRail", "renderClientImportQueue")) {
+    expect_match(
+      builder_browser_pipeline_js_function(js, caller),
+      "renumberClientImportQueue();",
+      fixed = TRUE,
+      info = caller
+    )
+  }
+})
+
 test_that("Build actions say why they wait for a Project write", {
   js <- builder_browser_pipeline_text("www", "builder.js")
   reason <- builder_browser_pipeline_js_function(js, "applyBuildBlockedReason")
@@ -733,4 +775,40 @@ test_that("Build actions say why they wait for a Project write", {
   expect_match(apply, 'build_same_folder: activityCapability("build")', fixed = TRUE)
   expect_match(apply, "applyBuildBlockedReason();", fixed = TRUE)
   expect_match(js, "build_reason: typeof message.build_reason", fixed = TRUE)
+})
+
+test_that("the Build card hides the previous step's dataset line", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  render <- builder_browser_pipeline_js_function(js, "renderBuildProgressDetail")
+  out <- builder_browser_pipeline_run_node(
+    c(builder_browser_pipeline_fake_dom, render),
+    c(
+      "const assert = require('assert');",
+      "function formatBuildElapsed() { return '0:05'; }",
+      "const buildProgressState = { active: true, anchor: 0, phase: 'datasets',",
+      "  text: 'Dataset 4/4 · Spatial · Writing CRB' };",
+      "let builderActivityState = { busy_phase: 'datasets' };",
+      "const detail = body.appendChild(new El('div'));",
+      "detail.setAttribute('data-build-progress-detail', '');",
+      "const label = detail.appendChild(new El('span', 'builder-build-progress-text'));",
+      "const clock = detail.appendChild(new El('span', 'builder-build-progress-elapsed'));",
+      "renderBuildProgressDetail();",
+      "assert.strictEqual(label.textContent, 'Dataset 4/4 · Spatial · Writing CRB');",
+      "// The header moved to Packaging Viewer before the matching detail arrived.",
+      "builderActivityState.busy_phase = 'viewer';",
+      "renderBuildProgressDetail();",
+      "assert.strictEqual(label.textContent, '');",
+      "assert.strictEqual(clock.textContent, '0:05');",
+      "assert.strictEqual(detail.hidden, false);",
+      "buildProgressState.phase = 'viewer'; buildProgressState.text = 'Packaging Viewer';",
+      "renderBuildProgressDetail();",
+      "assert.strictEqual(label.textContent, 'Packaging Viewer');",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  handler <- builder_browser_pipeline_js_function(js, "handleBuildProgress")
+  expect_match(handler, "buildProgressState.phase = typeof message.phase", fixed = TRUE)
 })
