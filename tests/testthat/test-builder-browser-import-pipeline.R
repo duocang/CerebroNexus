@@ -597,8 +597,40 @@ test_that("retained loader uses clone-aware copy with an atomic part file", {
   expect_match(loader, ".copy = builder_project_copy_file", fixed = TRUE)
   expect_match(loader, 'fileext = ".part"', fixed = TRUE)
   expect_match(loader, "file.rename(part, target)", fixed = TRUE)
-  expect_false(grepl("file.rename(source$source", loader, fixed = TRUE))
+  # Only a Builder-owned browser upload may be moved instead of copied.
+  expect_match(
+    loader,
+    paste0(
+      "moved <- isTRUE(source$transport_owned) &&
+",
+      "      isTRUE(suppressWarnings(file.rename(source$source, target)))"
+    ),
+    fixed = TRUE
+  )
+  expect_identical(
+    lengths(regmatches(
+      loader,
+      gregexpr("file.rename(source$source", loader, fixed = TRUE)
+    )),
+    1L
+  )
   expect_false(grepl("unlink(source$source", loader, fixed = TRUE))
+
+  imports <- builder_browser_pipeline_text("server", "imports.R")
+  expect_match(
+    imports,
+    "transport_owned = builder_upload_transport_owned(path)",
+    fixed = TRUE
+  )
+  expect_match(
+    imports,
+    paste0(
+      "transport_owned <- isTRUE(retain_in_worker) &&
+",
+      "    isTRUE(file_meta$transport_owned)"
+    ),
+    fixed = TRUE
+  )
 })
 
 test_that("local sources do not opt into browser transport retention", {

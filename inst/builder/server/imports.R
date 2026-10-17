@@ -268,6 +268,8 @@ start_load <- function(
     }
     retained_source <- retained
   }
+  transport_owned <- isTRUE(retain_in_worker) &&
+    isTRUE(file_meta$transport_owned)
   if (isTRUE(retain_in_worker) && builder_has_text(progress_path)) {
     transport_retained_path <- paste0(
       progress_path,
@@ -286,6 +288,7 @@ start_load <- function(
     staged_path = retained_source %||%
       if (identical(kind, "file")) arg else NULL,
     transport_path = if (isTRUE(retain_in_worker)) arg else NULL,
+    transport_owned = transport_owned,
     example = example_id %||% if (identical(kind, "example")) arg else NULL,
     reservation_key = reservation$key,
     expected_md5 = expected_md5,
@@ -328,6 +331,7 @@ start_load <- function(
     path = if (identical(kind, "file")) arg else NA_character_,
     retained_path = retained_source,
     retain_source = retain_in_worker,
+    transport_owned = transport_owned,
     transport_retained_path = transport_retained_path,
     example = example_id %||% if (identical(kind, "example")) arg else NULL,
     source_origin = source_descriptor$origin,
@@ -419,7 +423,12 @@ process_client_import_upload <- function(uploads, dispatch) {
     "file",
     path,
     tools::file_path_sans_ext(basename(label)),
-    file_meta = list(name = label, type = type, size = size),
+    file_meta = list(
+      name = label,
+      type = type,
+      size = size,
+      transport_owned = builder_upload_transport_owned(path)
+    ),
     client_id = pending_client_id
   )
   invisible(TRUE)
@@ -895,6 +904,7 @@ observeEvent(input$retry_import, {
     path = retry_path,
     retained_path = entry$source$staged_path,
     retain_source = builder_has_text(entry$source$transport_path),
+    transport_owned = isTRUE(entry$source$transport_owned),
     example = entry$source$example,
     source_origin = entry$source$origin,
     label = entry$label,
@@ -1176,7 +1186,8 @@ dispatch_builder_worker_request <- function(dispatched, preparation = NULL) {
             list(
               source = nxt$path,
               retained_path = nxt$retained_path,
-              transport_retained_path = nxt$transport_retained_path
+              transport_retained_path = nxt$transport_retained_path,
+              transport_owned = isTRUE(nxt$transport_owned)
             )
           } else {
             nxt$path

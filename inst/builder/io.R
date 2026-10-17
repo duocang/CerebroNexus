@@ -12,11 +12,42 @@
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+## An incremental MD5 over the bytes a copy loop already holds, or NULL when
+## openssl's digest primitives are unavailable (callers then hash the file).
+.builder_md5_stream <- function() {
+  if (!requireNamespace("openssl", quietly = TRUE)) {
+    return(NULL)
+  }
+  namespace <- asNamespace("openssl")
+  init <- get0("md_init", envir = namespace, mode = "function")
+  feed <- get0("md_feed", envir = namespace, mode = "function")
+  final <- get0("md_final", envir = namespace, mode = "function")
+  if (is.null(init) || is.null(feed) || is.null(final)) {
+    return(NULL)
+  }
+  state <- tryCatch(init("md5"), error = function(error) NULL)
+  if (is.null(state)) {
+    return(NULL)
+  }
+  list(
+    feed = function(bytes) invisible(feed(state, bytes)),
+    final = function() {
+      digest <- final(state)
+      if (!is.raw(digest) || length(digest) != 16L) {
+        return(NA_character_)
+      }
+      paste(as.character(digest), collapse = "")
+    }
+  )
+}
+
+## `on_progress(copied_bytes, total_bytes)` is called after each buffer.
 builder_copy_file_verified <- function(
   source,
   destination,
   expected_md5 = NULL,
-  buffer_bytes = 16L * 1024L^2
+  buffer_bytes = 16L * 1024L^2,
+  on_progress = NULL
 ) {
   if (
     !is.character(source) ||
@@ -87,6 +118,8 @@ builder_copy_file_verified <- function(
   }
   input <- file(source, open = "rb")
   output <- file(destination, open = "wb")
+  # Hash each buffer while it is in memory instead of rereading the copy.
+  digest <- .builder_md5_stream()
   copied <- 0
   repeat {
     bytes <- readBin(input, what = "raw", n = as.integer(buffer_bytes))
@@ -94,12 +127,21 @@ builder_copy_file_verified <- function(
       break
     }
     writeBin(bytes, output)
+    if (!is.null(digest)) {
+      digest$feed(bytes)
+    }
     copied <- copied + length(bytes)
+    if (is.function(on_progress)) {
+      try(on_progress(copied, expected_bytes), silent = TRUE)
+    }
   }
   close(input)
   close(output)
   input <- output <- NULL
-  actual_md5 <- unname(tools::md5sum(destination))
+  actual_md5 <- if (is.null(digest)) NA_character_ else digest$final()
+  if (is.na(actual_md5)) {
+    actual_md5 <- unname(tools::md5sum(destination))
+  }
   if (
     !is.finite(expected_bytes) || !identical(as.double(copied), expected_bytes)
   ) {
@@ -113,6 +155,38 @@ builder_copy_file_verified <- function(
   }
   complete <- TRUE
   list(path = destination, bytes = as.double(copied), md5 = actual_md5)
+}
+
+## Shiny writes browser uploads below this R session's tempdir(). Only such a
+## file may be moved into Builder's private session sources; anything else
+## (a picked local file, a project file) is the user's and is copied.
+builder_upload_transport_owned <- function(path, temp_root = tempdir()) {
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !nzchar(path) ||
+      !file.exists(path) ||
+      dir.exists(path)
+  ) {
+    return(FALSE)
+  }
+  canonical <- function(value) {
+    tryCatch(
+      normalizePath(value, winslash = "/", mustWork = TRUE),
+      error = function(error) NA_character_
+    )
+  }
+  candidate <- canonical(path)
+  root <- canonical(temp_root)
+  if (is.na(candidate) || is.na(root)) {
+    return(FALSE)
+  }
+  if (.Platform$OS.type == "windows") {
+    candidate <- tolower(candidate)
+    root <- tolower(root)
+  }
+  startsWith(candidate, paste0(sub("/+$", "", root), "/"))
 }
 
 builder_server_path_roots <- function(

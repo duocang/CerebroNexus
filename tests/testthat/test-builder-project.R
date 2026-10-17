@@ -211,6 +211,64 @@ test_that("browser uploads are retained by the background loader", {
   )
 })
 
+test_that("a Builder-owned upload is moved into session sources", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "browser-upload.qs2")
+  retained <- file.path(root, "session-sources", "ds1", "sample.qs2")
+  writeBin(charToRaw("uploaded-bytes"), source)
+
+  loaded <- runtime$builder_project_load_retained_source(
+    "ds1",
+    list(source = source, retained_path = retained, transport_owned = TRUE),
+    progress = NULL,
+    .adapter = function(path) list(path = path),
+    .register = function(adapter, id, progress) list(adapter = adapter),
+    .copy = function(...) stop("an owned upload must not be copied")
+  )
+
+  expect_false(file.exists(source))
+  expect_identical(
+    loaded$retained_path,
+    normalizePath(retained, winslash = "/")
+  )
+  expect_identical(
+    readBin(retained, "raw", n = 100L),
+    charToRaw("uploaded-bytes")
+  )
+  expect_length(
+    list.files(dirname(retained), pattern = "[.]part$", all.files = TRUE),
+    0L
+  )
+})
+
+test_that("a source that is not Builder-owned is copied, never moved", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "user-file.qs2")
+  retained <- file.path(root, "session-sources", "ds1", "sample.qs2")
+  writeBin(charToRaw("user-bytes"), source)
+  copies <- 0L
+
+  for (owned in list(NULL, FALSE, NA)) {
+    unlink(retained)
+    runtime$builder_project_load_retained_source(
+      "ds1",
+      list(source = source, retained_path = retained, transport_owned = owned),
+      progress = NULL,
+      .adapter = function(path) list(path = path),
+      .register = function(adapter, id, progress) list(adapter = adapter),
+      .copy = function(source, target) {
+        copies <<- copies + 1L
+        file.copy(source, target)
+      }
+    )
+    expect_true(file.exists(source))
+    expect_identical(readBin(retained, "raw", n = 100L), charToRaw("user-bytes"))
+  }
+  expect_identical(copies, 3L)
+})
+
 test_that("failed background retention removes its partial file", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
