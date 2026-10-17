@@ -26,9 +26,13 @@ builder_project_toolbar_ui <- function() {
 builder_project_status_ui <- function(
   project = NULL,
   phase = "none",
-  source_sync = NULL
+  source_sync = NULL,
+  crb = NULL
 ) {
   syncing <- is.list(source_sync) && identical(source_sync$status, "syncing")
+  crb_building <- is.list(crb) &&
+    isTRUE(as.integer(crb$total %||% 0L) > 0L) &&
+    phase %in% c("clean", "dirty")
   cancelling <- is.list(source_sync) &&
     identical(source_sync$status, "cancelling")
   sync_failed <- is.list(source_sync) && identical(source_sync$status, "failed")
@@ -36,14 +40,33 @@ builder_project_status_ui <- function(
   label <- if (cancelling) {
     "Stopping file copy…"
   } else if (syncing) {
-    paste0(
-      "Saving source files · ",
-      source_sync$completed %||% 0L,
-      " of ",
-      source_sync$total %||% 0L
-    )
+    bytes_total <- suppressWarnings(as.double(source_sync$bytes_total %||% 0))
+    if (isTRUE(bytes_total > 0) && exists("builder_file_human_size", mode = "function")) {
+      paste0(
+        "Saving source files · ",
+        builder_file_human_size(source_sync$bytes_done %||% 0),
+        " of ",
+        builder_file_human_size(bytes_total)
+      )
+    } else {
+      paste0(
+        "Saving source files · ",
+        source_sync$completed %||% 0L,
+        " of ",
+        source_sync$total %||% 0L
+      )
+    }
   } else if (sync_failed) {
     "Some source files could not be saved"
+  } else if (crb_building) {
+    paste0(
+      "Building dataset cache · ",
+      as.integer(crb$position %||% 1L),
+      " of ",
+      as.integer(crb$total),
+      " · ",
+      crb$name %||% "Dataset"
+    )
   } else if (sync_ready && identical(phase, "clean")) {
     "Saved · Safe to close"
   } else if (is.null(project)) {
@@ -63,7 +86,7 @@ builder_project_status_ui <- function(
       "Saved"
     )
   }
-  status_class <- if (syncing || cancelling) {
+  status_class <- if (syncing || cancelling || (crb_building && !sync_failed)) {
     "is-busy"
   } else if (sync_failed) {
     "is-error"
@@ -90,7 +113,28 @@ builder_project_status_ui <- function(
     tags$span(
       class = "builder-project-status-detail",
       tags$span(class = "builder-project-status-dot", `aria-hidden` = "true"),
-      tags$span(label)
+      if (crb_building && !syncing && !cancelling && !sync_failed) {
+        tagList(
+          # The label is not the last child here, so it carries the
+          # truncation the stylesheet gives the last status span.
+          tags$span(
+            style = paste(
+              "min-width: 0; overflow: hidden;",
+              "text-overflow: ellipsis; white-space: nowrap;"
+            ),
+            label
+          ),
+          actionButton(
+            "cancel_builder_project_crbs",
+            "Cancel",
+            class = "btn btn-link builder-project-status-cancel",
+            style = "flex: 0 0 auto; padding: 0; font-size: inherit;",
+            `aria-label` = "Cancel dataset cache builds"
+          )
+        )
+      } else {
+        tags$span(label)
+      }
     )
   )
 }
@@ -254,6 +298,46 @@ builder_project_opening_dialog <- function() {
     ),
     footer = actionButton(
       "cancel_builder_project_open",
+      "Cancel",
+      class = "btn builder-button-secondary"
+    ),
+    easyClose = FALSE,
+    size = "s"
+  )
+}
+
+builder_project_open_wait_dialog <- function(message) {
+  modalDialog(
+    title = tagList(
+      tags$span(class = "builder-project-modal-kicker", "Builder project"),
+      tags$span("Opening project")
+    ),
+    tags$div(
+      class = "builder-project-dialog builder-project-opening-dialog",
+      role = "status",
+      `aria-live` = "polite",
+      tags$div(
+        class = "builder-project-dialog-summary",
+        tags$span(
+          class = "builder-project-dialog-icon",
+          `aria-hidden` = "true",
+          shiny::icon("hourglass-half")
+        ),
+        tags$div(
+          tags$strong("Waiting for the background worker"),
+          tags$p(message)
+        )
+      ),
+      tags$div(
+        class = "builder-project-opening-progress",
+        `aria-hidden` = "true",
+        tags$span(),
+        tags$span(),
+        tags$span()
+      )
+    ),
+    footer = actionButton(
+      "cancel_builder_project_open_wait",
       "Cancel",
       class = "btn builder-button-secondary"
     ),

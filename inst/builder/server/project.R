@@ -26,11 +26,14 @@ builder_project_open_task <- reactiveVal(NULL)
 builder_project_registration_task <- reactiveVal(NULL)
 builder_project_crb_jobs <- reactiveVal(list())
 builder_project_crb_task <- reactiveVal(NULL)
+builder_project_crb_batch <- reactiveVal(0L)
 builder_project_source_save_waiter <- reactiveVal(NULL)
 builder_project_open_generation <- reactiveVal(0)
 builder_project_open_previous_phase <- reactiveVal("idle")
 builder_project_open_actions <- reactiveVal(NULL)
 builder_project_open_request <- reactiveVal(NULL)
+builder_project_open_discard_confirmed <- reactiveVal(FALSE)
+builder_project_open_wait <- reactiveVal(NULL)
 builder_project_table_asset_process <- reactiveVal(NULL)
 builder_project_table_asset_generation <- reactiveVal(0)
 builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
@@ -74,8 +77,54 @@ builder_project_build_entries <- function(entries) {
     entries,
     isolate(builder_project_artifacts()),
     project$root,
-    builder_configuration_identity_cache
+    builder_configuration_identity_cache,
+    verification_cache = builder_checkpoint_verification_cache
   )
+}
+
+## Applies entries returned by a Project write or source copy. Unlike sets(),
+## which clears every per-dataset cache, only the entries that changed are
+## evicted, so the derived state of untouched datasets is reused.
+builder_project_update_entries <- function(entries) {
+  current_state <- isolate(store())
+  updated <- tryCatch(
+    builder_reduce_state(
+      current_state,
+      list(type = "replace_all", datasets = entries),
+      trusted = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(updated, "condition")) {
+    sets(entries)
+    return(invisible(TRUE))
+  }
+  entry_ids <- function(values) {
+    vapply(values, function(entry) as.character(entry$id), character(1))
+  }
+  previous <- current_state$datasets %||% list()
+  previous_ids <- entry_ids(previous)
+  next_ids <- entry_ids(updated$datasets)
+  changed <- next_ids[!vapply(
+    seq_along(updated$datasets),
+    function(index) {
+      position <- match(next_ids[[index]], previous_ids)
+      !is.na(position) &&
+        identical(updated$datasets[[index]], previous[[position]])
+    },
+    logical(1)
+  )]
+  if (!length(changed) && identical(next_ids, previous_ids)) {
+    return(invisible(FALSE))
+  }
+  kept <- setdiff(intersect(next_ids, previous_ids), changed)
+  builder_dataset_state_cache_retain(builder_dataset_state_cache, kept)
+  builder_project_configuration_cache_retain_datasets(
+    builder_configuration_identity_cache,
+    kept
+  )
+  store(updated)
+  invisible(TRUE)
 }
 
 builder_project_record_map <- function(manifest) {
@@ -494,6 +543,8 @@ observe({
       completed = as.integer(progress$completed %||% 0L),
       total = as.integer(progress$total %||% 0L),
       failed = as.integer(progress$failed %||% 0L),
+      bytes_done = as.double(progress$bytes_done %||% 0),
+      bytes_total = as.double(progress$bytes_total %||% 0),
       error = progress$error %||% NULL
     )
   )
@@ -611,10 +662,102 @@ builder_project_registration_runtime_files <- function() {
   normalizePath(files, winslash = "/", mustWork = TRUE)
 }
 
+## Warm Project workers. Manifest writes and attachment staging share one
+## session so their transactions stay ordered; source copies run in their own
+## session so a long copy never delays a manifest write.
+builder_project_writer <- builder_project_worker_new("writer")
+builder_project_copier <- builder_project_worker_new("copier")
+
+builder_project_worker_runtime_files <- function(full = FALSE) {
+  project <- builder_project_source_runtime_file()
+  builder_dir <- dirname(project)
+  files <- if (isTRUE(full)) {
+    c(
+      builder_project_package_runtime_files(builder_dir),
+      file.path(builder_dir, "core", "bundle_path_contract.R"),
+      file.path(builder_dir, "io.R"),
+      project,
+      file.path(builder_dir, "app_bundle", c("contract.R", "backend.R", "topology.R")),
+      file.path(builder_dir, "extras.R")
+    )
+  } else {
+    c(
+      file.path(builder_dir, "core", "bundle_path_contract.R"),
+      file.path(builder_dir, "io.R"),
+      project,
+      file.path(builder_dir, "extras.R")
+    )
+  }
+  if (any(!file.exists(files))) {
+    stop("The Builder Project worker runtime could not be found.", call. = FALSE)
+  }
+  normalizePath(files, winslash = "/", mustWork = TRUE)
+}
+
+builder_project_worker_task_call <- function(worker, task, args) {
+  builder_project_worker_call(
+    worker,
+    builder_project_worker_run,
+    list(
+      task = builder_project_portable_function(task),
+      args = args,
+      runtime_files = builder_project_worker_runtime_files(),
+      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
+      source_utf8 = builder_source_utf8
+    )
+  )
+}
+
+## Load the worker runtimes as soon as a Project is active, so the first Save
+## does not wait for an R session to start and source the Builder.
+builder_project_prewarm_workers <- function() {
+  if (
+    builder_session_closed() ||
+      !isTRUE(getOption("CerebroNexus.builder.project_worker_prewarm", TRUE))
+  ) {
+    return(invisible(FALSE))
+  }
+  for (worker in list(builder_project_writer, builder_project_copier)) {
+    if (is.null(worker$session) && !builder_project_worker_busy(worker)) {
+      try(
+        builder_project_worker_task_call(
+          worker,
+          function(runtime_for, args) {
+            runtime_for(FALSE)
+            TRUE
+          },
+          list()
+        ),
+        silent = TRUE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+observe({
+  if (is.null(builder_project())) {
+    return()
+  }
+  later::later(
+    function() {
+      if (!builder_session_closed()) {
+        builder_project_prewarm_workers()
+      }
+    },
+    delay = 0.5
+  )
+})
+
 reset_builder_project_crb_pipeline <- function() {
-  if (!is.null(isolate(builder_project_crb_task()))) {
+  task <- isolate(builder_project_crb_task())
+  if (
+    inherits(task, "builder_async_task") &&
+      task$state %in% c("queued", "running", "cancelling")
+  ) {
     stop("Wait for the current Project CRB to finish.", call. = FALSE)
   }
+  builder_project_crb_task(NULL)
   builder_project_crb_jobs(list())
   builder_project_source_save_waiter(NULL)
   invisible(TRUE)
@@ -817,6 +960,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     return(invisible(FALSE))
   }
   finish_record <- function(recorded) {
+    if (!builder_project_crb_job_current(id, token)) {
+      # Cancelled, or the Project was replaced, while the record was written.
+      return(invisible(isTRUE(recorded)))
+    }
     if (!isTRUE(recorded)) {
       builder_project_update_crb_job(id, NULL)
       showNotification(
@@ -842,6 +989,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     )
     invisible(TRUE)
   }
+  job$recording <- TRUE
+  builder_project_update_crb_job(id, job)
   recorded <- tryCatch(
     builder_project_record_crb(
       id,
@@ -1046,7 +1195,8 @@ start_next_builder_project_crb_job <- function() {
         entry = captured_entry,
         runtime_files = runtime_files,
         source_utf8 = builder_source_utf8
-      )
+      ),
+      .pool = "crb"
     ),
     error = identity
   )
@@ -1069,6 +1219,7 @@ start_next_builder_project_crb_job <- function() {
 
 queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
   ids <- intersect(as.character(ids), isolate(checked_dataset_ids()))
+  added <- 0L
   entries <- isolate(sets())
   entry_map <- stats::setNames(
     entries,
@@ -1104,16 +1255,90 @@ queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
     ) {
       next
     }
+    if (!is.list(current)) {
+      added <- added + 1L
+    }
     jobs[[id]] <- list(
       status = "queued",
       identity = identity,
       token = builder_project_crb_job_token(id, identity)
     )
   }
+  builder_project_crb_batch(
+    if (length(jobs)) as.integer(isolate(builder_project_crb_batch())) + added else 0L
+  )
   builder_project_crb_jobs(jobs)
   start_next_builder_project_crb_job()
   invisible(TRUE)
 }
+
+## Progress of the CRB queue for the status bar: the dataset being built and
+## its position in the batch queued since the queue was last empty.
+builder_project_crb_queue_status <- reactive({
+  jobs <- builder_project_crb_jobs()
+  if (!length(jobs)) {
+    return(NULL)
+  }
+  total <- max(as.integer(builder_project_crb_batch()), length(jobs))
+  active <- Filter(
+    function(job) job$status %in% c("generating", "registering"),
+    jobs
+  )
+  id <- if (length(active)) names(active)[[1L]] else names(jobs)[[1L]]
+  entry <- isolate(entry_of(id))
+  list(
+    total = as.integer(total),
+    position = as.integer(total - length(jobs) + 1L),
+    name = as.character(entry$settings$name %||% id)
+  )
+})
+
+observe({
+  if (!length(builder_project_crb_jobs()) &&
+      !identical(isolate(builder_project_crb_batch()), 0L)) {
+    builder_project_crb_batch(0L)
+  }
+})
+
+## Stops queued and running CRB builds. A CRB already being recorded in the
+## manifest finishes its transaction; Save queues the missing CRBs again.
+cancel_builder_project_crb_queue <- function() {
+  jobs <- isolate(builder_project_crb_jobs())
+  task <- isolate(builder_project_crb_task())
+  recording <- Filter(function(job) isTRUE(job$recording), jobs)
+  if (
+    inherits(task, "builder_async_task") &&
+      task$state %in% c("queued", "running", "cancelling")
+  ) {
+    try(builder_async_cancel(task), silent = TRUE)
+  }
+  for (job in jobs[setdiff(names(jobs), names(recording))]) {
+    output <- job$output %||% NULL
+    if (.builder_project_text(output)) {
+      try(
+        builder_project_cleanup_checkpoint(output, dirname(dirname(output))),
+        silent = TRUE
+      )
+    }
+  }
+  builder_project_crb_jobs(recording)
+  if (!length(recording)) {
+    builder_project_crb_task(NULL)
+  }
+  invisible(length(jobs) > 0L)
+}
+
+observeEvent(input$cancel_builder_project_crbs, {
+  if (!length(isolate(builder_project_crb_jobs()))) {
+    return()
+  }
+  cancel_builder_project_crb_queue()
+  showNotification(
+    "Dataset cache builds stopped. Save again to build them.",
+    type = "message",
+    duration = 5
+  )
+})
 
 builder_project_open_is_current <- function(generation) {
   identical(
@@ -1133,7 +1358,7 @@ builder_project_open_discard_dialog <- function() {
     title = "Discard unsaved workspace changes?",
     shiny::tags$p(
       paste(
-        "Opening this project will replace the datasets and settings in the",
+        "Opening a project will replace the datasets and settings in the",
         "current workspace. Unsaved changes cannot be recovered."
       )
     ),
@@ -1191,6 +1416,7 @@ builder_project_fail_open <- function(generation, error) {
   if (!builder_project_open_is_current(generation)) {
     return(invisible(FALSE))
   }
+  builder_project_open_discard_confirmed(FALSE)
   builder_project_restore(NULL)
   task <- isolate(builder_project_open_task())
   if (!is.null(task)) {
@@ -1593,26 +1819,15 @@ builder_project_start_source_sync <- function() {
   )
   builder_project_source_progress(progress_path)
   process <- tryCatch(
-    callr::r_bg(
-      function(jobs, progress_path, runtime_files, source_utf8) {
-        runtime <- new.env(parent = globalenv())
-        runtime$`%||%` <- function(left, right) {
-          if (is.null(left)) right else left
-        }
-        for (runtime_file in runtime_files) {
-          source_utf8(runtime_file, runtime)
-        }
-        runtime$builder_project_copy_source_jobs(jobs, progress_path)
+    builder_project_worker_task_call(
+      builder_project_copier,
+      function(runtime_for, args) {
+        runtime_for(FALSE)$builder_project_copy_source_jobs(
+          args$jobs,
+          args$progress_path
+        )
       },
-      args = list(
-        jobs = unname(jobs),
-        progress_path = progress_path,
-        runtime_files = builder_project_open_runtime_files(),
-        source_utf8 = builder_source_utf8
-      ),
-      supervise = TRUE,
-      stdout = "|",
-      stderr = "|"
+      list(jobs = unname(jobs), progress_path = progress_path)
     ),
     error = identity
   )
@@ -1637,6 +1852,7 @@ builder_project_start_source_sync <- function() {
     }
   }
   builder_project_source_queue(queued)
+  source_run$jobs <- unname(jobs)
   builder_project_source_process(process)
   builder_project_source_run(source_run)
   builder_project_source_sync(list(
@@ -1673,7 +1889,10 @@ builder_project_poll_source_sync <- function() {
         status = "syncing",
         completed = as.integer(progress$completed %||% 0L),
         total = as.integer(progress$total %||% 0L),
-        failed = as.integer(progress$failed %||% 0L)
+        failed = as.integer(progress$failed %||% 0L),
+        bytes_done = as.double(progress$bytes_done %||% 0),
+        bytes_total = as.double(progress$bytes_total %||% 0),
+        current = progress$current %||% NULL
       ))
     }
   }
@@ -1749,6 +1968,13 @@ builder_project_poll_source_sync <- function() {
       )
     })
   }
+  # Session copies moved into the Project no longer exist at their old path;
+  # repoint live entries now, whatever happens to the results write.
+  live_entries <- isolate(sets())
+  relocated <- builder_project_relocate_moved_sources(live_entries, results)
+  if (!identical(relocated, live_entries)) {
+    builder_project_update_entries(relocated)
+  }
   finish <- function(written) {
     run_is_current <- builder_project_source_context_matches(
       source_run,
@@ -1789,6 +2015,7 @@ builder_project_poll_source_sync <- function() {
         duration = 8
       )
     } else {
+      project <- isolate(builder_project())
       project$manifest <- written$manifest
       project$path <- written$path
       builder_project(project)
@@ -1808,7 +2035,7 @@ builder_project_poll_source_sync <- function() {
         !inherits(committed, "condition") &&
           !identical(committed$entries, live_entries)
       ) {
-        sets(committed$entries)
+        builder_project_update_entries(committed$entries)
       }
     }
     builder_project_source_sync(list(
@@ -1839,18 +2066,21 @@ builder_project_poll_source_sync <- function() {
   if (!isTRUE(run_is_current)) {
     return(finish(NULL))
   }
-  updated <- tryCatch(
-    builder_project_apply_source_results(
-      project$manifest,
-      results,
-      project$root
-    ),
-    error = identity
+  # Merge into the manifest current when the write runs: Saves, autosaves and
+  # CRB registrations committed while the copy ran keep their changes, and
+  # the copy is not discarded.
+  start_builder_project_manifest_write(
+    function(current) {
+      builder_project_apply_source_results(
+        current$manifest,
+        results,
+        current$root,
+        only_pending = TRUE
+      )
+    },
+    project,
+    finish
   )
-  if (inherits(updated, "condition")) {
-    return(finish(updated))
-  }
-  start_builder_project_manifest_write(updated, project, finish)
   invisible(TRUE)
 }
 
@@ -1859,11 +2089,32 @@ request_builder_project_source_sync <- function(jobs) {
   if (!length(jobs)) {
     return(invisible(FALSE))
   }
-  queued <- isolate(builder_project_source_queue())
-  for (job in jobs) {
-    queued[[job$id]] <- job
+  source_run <- isolate(builder_project_source_run())
+  running <- if (is.list(source_run) && !isTRUE(source_run$cancelling)) {
+    source_run$jobs %||% list()
+  } else {
+    list()
   }
+  # A job identical to the running copy waits for that copy instead.
+  # The Builder's own session copies may be moved into the Project instead
+  # of copied, when both are on the same volume.
+  session_root <- isolate(worker())$snapshot_root %||% NULL
+  jobs <- lapply(jobs, function(job) {
+    job$session_owned <- builder_project_session_owned_source(
+      job$source,
+      session_root
+    )
+    job
+  })
+  queued <- builder_project_source_queue_add(
+    isolate(builder_project_source_queue()),
+    jobs,
+    running
+  )
   builder_project_source_queue(queued)
+  if (!length(queued)) {
+    return(invisible(TRUE))
+  }
   if (!is.null(isolate(builder_project_source_process()))) {
     return(invisible(TRUE))
   }
@@ -1956,6 +2207,21 @@ restore_builder_project_last_ui_after_flush <- function(last_ui) {
   )
 }
 
+## Manifest writes run one at a time. Each starts from the Project as it is
+## when its turn comes, so a write queued behind another (autosave, Save, CRB
+## registration, source results) commits on top of it instead of failing the
+## revision check. `manifest` is the Project manifest the caller started from
+## (replaced by the current one), or a function deriving the manifest to write
+## from the current Project.
+builder_project_manifest_writes <- new.env(parent = emptyenv())
+builder_project_manifest_writes$active <- FALSE
+builder_project_manifest_writes$queue <- list()
+
+builder_project_manifest_write_pending <- function() {
+  isTRUE(builder_project_manifest_writes$active) ||
+    length(builder_project_manifest_writes$queue) > 0L
+}
+
 start_builder_project_manifest_write <- function(
   manifest,
   project,
@@ -1965,52 +2231,37 @@ start_builder_project_manifest_write <- function(
   context = NULL,
   artifact_record = NULL
 ) {
-  process <- tryCatch(
-    builder_project_write_process(
-      manifest,
-      project$root,
-      project$manifest$project$revision,
-      c(
-        builder_project_package_runtime_files(dirname(builder_project_source_runtime_file())),
-        builder_project_open_runtime_files(include_server_paths = TRUE),
-        file.path(
-          dirname(builder_project_source_runtime_file()),
-          "app_bundle",
-          c("contract.R", "backend.R", "topology.R")
-        ),
-        file.path(dirname(builder_project_source_runtime_file()), "extras.R")
-      ),
-      builder_source_utf8,
-      entries = entries,
-      context = context,
-      artifact_record = artifact_record,
-      configuration_cache = if (is.null(entries)) {
-        list()
-      } else {
-        as.list(builder_configuration_identity_cache)
-      }
-    ),
-    error = identity
+  queue <- builder_project_manifest_writes$queue
+  queue[[length(queue) + 1L]] <- list(
+    manifest = manifest,
+    project = project,
+    complete = complete,
+    on_closed = on_closed,
+    entries = entries,
+    context = context,
+    artifact_record = artifact_record
   )
-  if (inherits(process, "condition")) {
-    later::later(
-      function() {
-        if (!builder_session_closed()) {
-          shiny::withReactiveDomain(session, shiny::isolate(complete(process)))
-        } else if (is.function(on_closed)) {
-          on_closed()
-        }
-      },
-      delay = 0
-    )
-    return(invisible(TRUE))
+  builder_project_manifest_writes$queue <- queue
+  dispatch_builder_project_manifest_write()
+  invisible(TRUE)
+}
+
+dispatch_builder_project_manifest_write <- function() {
+  state <- builder_project_manifest_writes
+  if (isTRUE(state$active) || !length(state$queue)) {
+    return(invisible(FALSE))
   }
-  poll <- function() {
-    if (isTRUE(tryCatch(process$is_alive(), error = function(e) FALSE))) {
-      later::later(poll, delay = 0.05)
-      return(invisible(TRUE))
-    }
-    written <- tryCatch(process$get_result(), error = identity)
+  request <- state$queue[[1L]]
+  state$queue <- state$queue[-1L]
+  state$active <- TRUE
+  deliver <- function(written) {
+    on.exit(
+      {
+        state$active <- FALSE
+        dispatch_builder_project_manifest_write()
+      },
+      add = TRUE
+    )
     if (!builder_session_closed()) {
       if (
         !inherits(written, "condition") &&
@@ -2021,11 +2272,71 @@ start_builder_project_manifest_write <- function(
           envir = .builder_project_artifact_closure_cache
         )
       }
-      shiny::withReactiveDomain(session, shiny::isolate(complete(written)))
-    } else if (is.function(on_closed)) {
-      on_closed()
+      shiny::withReactiveDomain(
+        session,
+        shiny::isolate(request$complete(written))
+      )
+    } else if (is.function(request$on_closed)) {
+      request$on_closed()
     }
     invisible(TRUE)
+  }
+  deliver_later <- function(value) {
+    later::later(function() deliver(value), delay = 0)
+    invisible(TRUE)
+  }
+  current <- isolate(builder_project())
+  if (
+    !is.list(current) ||
+      !identical(current$root, request$project$root) ||
+      !identical(
+        current$manifest$project$id %||% NULL,
+        request$project$manifest$project$id %||% NULL
+      )
+  ) {
+    return(deliver_later(simpleError(
+      "The Project changed before this save could run. Save again."
+    )))
+  }
+  manifest <- if (is.function(request$manifest)) {
+    tryCatch(request$manifest(current), error = identity)
+  } else if (identical(request$manifest, request$project$manifest)) {
+    current$manifest
+  } else {
+    request$manifest
+  }
+  if (inherits(manifest, "condition")) {
+    return(deliver_later(manifest))
+  }
+  process <- tryCatch(
+    builder_project_write_process(
+      manifest,
+      current$root,
+      current$manifest$project$revision,
+      builder_project_worker_runtime_files(),
+      builder_source_utf8,
+      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
+      worker = builder_project_writer,
+      entries = request$entries,
+      context = request$context,
+      artifact_record = request$artifact_record,
+      configuration_cache = if (is.null(request$entries)) {
+        list()
+      } else {
+        as.list(builder_configuration_identity_cache)
+      }
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    return(deliver_later(process))
+  }
+  poll <- function() {
+    if (isTRUE(tryCatch(process$is_alive(), error = function(e) FALSE))) {
+      later::later(poll, delay = 0.05)
+      return(invisible(TRUE))
+    }
+    deliver(tryCatch(process$get_result(), error = identity))
   }
   later::later(poll, delay = 0.05)
   invisible(TRUE)
@@ -2129,10 +2440,10 @@ save_builder_project_state <- function(
         live_entries
       )
       if (!identical(merged, live_entries)) {
-        sets(merged)
+        builder_project_update_entries(merged)
       }
     } else if (entries_changed) {
-      sets(built$entries)
+      builder_project_update_entries(built$entries)
     }
     project$manifest <- written$manifest
     project$path <- written$path
@@ -2172,7 +2483,8 @@ save_builder_project_state <- function(
         checked_entries,
         isolate(builder_project_artifacts()),
         project$root,
-        builder_configuration_identity_cache
+        builder_configuration_identity_cache,
+        verification_cache = builder_checkpoint_verification_cache
       )
       reusable <- length(checked_entries) - length(required_entries)
       source_sync <- isolate(builder_project_source_sync())
@@ -2405,29 +2717,15 @@ start_builder_project_table_asset_save <- function(
   generation <- as.double(isolate(builder_project_table_asset_generation())) + 1
   builder_project_table_asset_generation(generation)
   process <- tryCatch(
-    callr::r_bg(
-      function(jobs, root, runtime_files, source_utf8) {
-        runtime <- new.env(parent = baseenv())
-        runtime$`%||%` <- function(left, right) {
-          if (is.null(left)) right else left
-        }
-        for (runtime_file in runtime_files) {
-          source_utf8(runtime_file, runtime)
-        }
-        runtime$builder_project_stage_attachment_jobs(jobs, root)
+    builder_project_worker_task_call(
+      builder_project_writer,
+      function(runtime_for, args) {
+        runtime_for(FALSE)$builder_project_stage_attachment_jobs(
+          args$jobs,
+          args$root
+        )
       },
-      args = list(
-        jobs = jobs,
-        root = signature$root,
-        runtime_files = c(
-          builder_project_open_runtime_files(),
-          file.path(dirname(builder_project_source_runtime_file()), "extras.R")
-        ),
-        source_utf8 = builder_source_utf8
-      ),
-      supervise = TRUE,
-      stdout = "|",
-      stderr = "|"
+      list(jobs = jobs, root = signature$root)
     ),
     error = identity
   )
@@ -2625,7 +2923,8 @@ output$project_status <- renderUI({
   builder_project_status_ui(
     if (is.null(project)) NULL else list(name = project$name),
     phase = builder_project_phase(),
-    source_sync = builder_project_source_sync()
+    source_sync = builder_project_source_sync(),
+    crb = builder_project_crb_queue_status()
   )
 })
 
@@ -2920,7 +3219,79 @@ session$onSessionEnded(function() {
   }
   builder_project_crb_jobs(list())
   builder_project_crb_task(NULL)
+  # A running manifest transaction finishes before the writer ends; copies
+  # were cancelled above and need no grace.
+  builder_project_worker_close(builder_project_copier, kill = TRUE)
+  builder_project_worker_close(builder_project_writer)
 })
+
+## An explicit Save with nothing to write or start: no unsaved change, no
+## queued copy, write, attachment or CRB, and every checked dataset already
+## has its CRB. Such a Save reports "Saved" without a manifest transaction.
+builder_project_save_is_noop <- function() {
+  project <- isolate(builder_project())
+  if (
+    is.null(project) ||
+      !identical(isolate(builder_current_project_phase()), "clean") ||
+      isTRUE(isolate(builder_spatial_drafts_dirty())) ||
+      builder_project_manifest_write_pending() ||
+      length(isolate(builder_project_source_queue())) > 0L ||
+      !is.null(isolate(builder_project_source_process())) ||
+      !is.null(isolate(builder_project_table_asset_process())) ||
+      !is.null(isolate(builder_project_crb_task())) ||
+      length(isolate(builder_project_crb_jobs())) > 0L ||
+      isolate(builder_project_source_sync())$status %in%
+        c("syncing", "cancelling", "failed")
+  ) {
+    return(FALSE)
+  }
+  checked <- isolate(checked_dataset_ids())
+  states <- isolate(dataset_checkpoint_states())
+  if (
+    any(vapply(
+      states[intersect(names(states), checked)],
+      function(state) !isTRUE(state$crb_ready),
+      logical(1)
+    ))
+  ) {
+    return(FALSE)
+  }
+  entries <- isolate(sets())
+  attachment_jobs <- tryCatch(
+    builder_project_attachment_jobs(entries, project$root),
+    error = function(error) NULL
+  )
+  if (is.null(attachment_jobs)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    builder_project_save_unchanged(
+      project$manifest,
+      entries,
+      builder_project_manifest_context(),
+      attachment_jobs
+    ),
+    error = function(error) FALSE
+  ))
+}
+
+report_builder_project_unchanged_save <- function() {
+  checked <- intersect(
+    isolate(checked_dataset_ids()),
+    vapply(isolate(sets()), `[[`, character(1), "id")
+  )
+  session$sendCustomMessage(
+    "builder_project_save_result",
+    list(
+      checked = length(checked),
+      reusable = length(checked),
+      source_syncing = FALSE,
+      completed = 0L,
+      total = 0L
+    )
+  )
+  invisible(TRUE)
+}
 
 observeEvent(input$save_builder_project, {
   if (is.null(isolate(builder_project()))) {
@@ -2932,14 +3303,27 @@ observeEvent(input$save_builder_project, {
     if (!builder_operation_allowed("save_project")) {
       return()
     }
+    if (builder_project_save_is_noop()) {
+      removeNotification("builder-project-save-error")
+      return(report_builder_project_unchanged_save())
+    }
     request_builder_project_save(show_actions = TRUE, materialize = TRUE)
   }
 })
 
-request_builder_project_open <- function() {
+request_builder_project_open <- function(confirmed = FALSE) {
   if (!builder_operation_allowed("open_project")) {
     return(invisible(FALSE))
   }
+  if (!isTRUE(confirmed) && builder_project_open_needs_confirmation()) {
+    # Ask before the picker, so choosing a project and its datasets is not
+    # followed by a question that throws those choices away.
+    builder_project_open_actions(NULL)
+    builder_project_open_discard_confirmed(FALSE)
+    shiny::showModal(builder_project_open_discard_dialog(), session = session)
+    return(invisible(FALSE))
+  }
+  builder_project_open_discard_confirmed(isTRUE(confirmed))
   previous_phase <- isolate(builder_project_operation_phase())
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
@@ -2952,6 +3336,7 @@ request_builder_project_open <- function() {
           return()
         }
         if (identical(choice$status, "cancelled")) {
+          builder_project_open_discard_confirmed(FALSE)
           return()
         }
         if (!identical(choice$status, "selected")) {
@@ -3009,6 +3394,7 @@ observeEvent(
     }
     shiny::removeModal()
     builder_project_restore(NULL)
+    builder_project_open_discard_confirmed(FALSE)
     invalidate_builder_project_open(kill = TRUE)
   },
   ignoreInit = TRUE
@@ -3104,6 +3490,8 @@ observeEvent(
   {
     builder_project_restore(NULL)
     builder_project_open_actions(NULL)
+    builder_project_open_wait(NULL)
+    builder_project_open_discard_confirmed(FALSE)
     shiny::removeModal()
   },
   ignoreInit = TRUE
@@ -3216,6 +3604,86 @@ finish_builder_project_restore <- function() {
   invisible(TRUE)
 }
 
+builder_project_open_worker_ready <- function(need_worker = TRUE) {
+  current_protocol <- isolate(protocol())
+  protocol_ready <- is.null(current_protocol) ||
+    isTRUE(tryCatch(
+      builder_protocol_is_quiescent(current_protocol),
+      error = function(error) FALSE
+    ))
+  worker_ready <- !isTRUE(need_worker) ||
+    (isTRUE(isolate(worker_available())) &&
+      !is.null(isolate(worker())) &&
+      !is.null(current_protocol))
+  list(protocol = protocol_ready, worker = worker_ready)
+}
+
+## The dataset choices dialog again, with the choices the user made.
+show_builder_project_restore_choices <- function(actions = NULL) {
+  pending <- isolate(builder_project_restore())
+  if (is.null(pending)) {
+    shiny::removeModal()
+    return(invisible(FALSE))
+  }
+  shiny::showModal(
+    builder_project_restore_dialog(
+      builder_project_manifest_with_restore_actions(pending$manifest, actions)
+    ),
+    session = session
+  )
+  invisible(TRUE)
+}
+
+## Waits for the background worker with a spinner instead of a toast asking
+## the user to retry, then completes the open with the same choices.
+wait_for_builder_project_open_worker <- function(actions, ready) {
+  token <- as.double(isolate(builder_project_open_generation())) +
+    stats::runif(1L)
+  builder_project_open_wait(list(token = token, actions = actions))
+  shiny::showModal(
+    builder_project_open_wait_dialog(
+      if (!isTRUE(ready$protocol)) {
+        "The worker is finishing its current task. The project opens next."
+      } else {
+        "The worker is starting. The project opens as soon as it is ready."
+      }
+    ),
+    session = session
+  )
+  check <- function() {
+    if (builder_session_closed()) {
+      return(invisible(FALSE))
+    }
+    shiny::withReactiveDomain(session, shiny::isolate({
+      wait <- builder_project_open_wait()
+      if (!is.list(wait) || !identical(wait$token, token)) {
+        return(invisible(FALSE))
+      }
+      if (is.null(builder_project_restore())) {
+        builder_project_open_wait(NULL)
+        return(invisible(FALSE))
+      }
+      state <- builder_project_open_worker_ready()
+      if (!isTRUE(state$protocol) || !isTRUE(state$worker)) {
+        later::later(check, delay = 0.25)
+        return(invisible(TRUE))
+      }
+      builder_project_open_wait(NULL)
+      completed <- complete_builder_project_open(wait$actions)
+      if (
+        identical(completed, FALSE) &&
+          !is.null(builder_project_restore()) &&
+          is.null(builder_project_open_wait())
+      ) {
+        show_builder_project_restore_choices(wait$actions)
+      }
+      invisible(TRUE)
+    }))
+  }
+  later::later(check, delay = 0.25)
+  invisible("waiting")
+}
+
 complete_builder_project_open <- function(actions = NULL) {
   pending <- isolate(builder_project_restore())
   operation <- isolate(builder_project_operation_phase())
@@ -3223,7 +3691,7 @@ complete_builder_project_open <- function(actions = NULL) {
     is.null(pending) ||
       !operation %in% c("idle", "save_failed", "conflict")
   ) {
-    return()
+    return(invisible(FALSE))
   }
   manifest <- pending$manifest
   root <- pending$root
@@ -3252,7 +3720,7 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   records <- builder_project_record_map(manifest)
   if (is.null(actions)) {
@@ -3274,7 +3742,7 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   reusable_entries <- prepared$reusable_entries
   pending_entries <- prepared$pending_entries
@@ -3302,30 +3770,13 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   current_protocol <- isolate(protocol())
-  protocol_ready <- is.null(current_protocol) ||
-    isTRUE(tryCatch(
-      builder_protocol_is_quiescent(current_protocol),
-      error = function(error) FALSE
-    ))
-  worker_ready <- !length(pending_entries) ||
-    (isTRUE(isolate(worker_available())) &&
-      !is.null(isolate(worker())) &&
-      !is.null(current_protocol))
-  if (!protocol_ready || !worker_ready) {
+  ready <- builder_project_open_worker_ready(length(pending_entries) > 0L)
+  if (!isTRUE(ready$protocol) || !isTRUE(ready$worker)) {
     builder_project_operation_phase(operation)
-    showNotification(
-      if (!protocol_ready) {
-        "The background worker is still busy. Wait for it, then open the Project again."
-      } else {
-        "The background worker is not ready. Wait for it, then confirm the dataset choices again."
-      },
-      type = "warning",
-      duration = 8
-    )
-    return()
+    return(wait_for_builder_project_open_worker(actions, ready))
   }
   next_protocol <- if (is.null(current_protocol)) {
     NULL
@@ -3333,6 +3784,9 @@ complete_builder_project_open <- function(actions = NULL) {
     builder_request_protocol(current_protocol$epoch)
   }
   invalidate_builder_project_source_sync()
+  # Opening replaces the workspace, so its optional CRB builds stop here
+  # instead of holding Open back.
+  cancel_builder_project_crb_queue()
   reset_builder_project_crb_pipeline()
   protocol(next_protocol)
   store(next_store)
@@ -3360,6 +3814,8 @@ complete_builder_project_open <- function(actions = NULL) {
   restore_builder_project_preferences(manifest)
   builder_project_restore(NULL)
   builder_project_open_actions(NULL)
+  builder_project_open_wait(NULL)
+  builder_project_open_discard_confirmed(FALSE)
   shiny::removeModal()
   restore_total <- length(pending_entries)
   if (!restore_total) {
@@ -3370,7 +3826,7 @@ complete_builder_project_open <- function(actions = NULL) {
     ))
     builder_project_operation_phase("idle")
     restore_builder_project_last_ui_after_flush(manifest$last_ui)
-    return()
+    return(invisible(TRUE))
   }
   builder_project_restore_progress(list(
     mode = "restoring",
@@ -3442,7 +3898,10 @@ observeEvent(input$confirm_builder_project_open, {
   actions <- lapply(records, function(record) {
     input[[paste0("project_restore_", record$id)]] %||% "skip"
   })
-  if (builder_project_open_needs_confirmation()) {
+  if (
+    builder_project_open_needs_confirmation() &&
+      !isTRUE(isolate(builder_project_open_discard_confirmed()))
+  ) {
     builder_project_open_actions(actions)
     shiny::showModal(builder_project_open_discard_dialog(), session = session)
     return()
@@ -3454,15 +3913,30 @@ observeEvent(input$confirm_discard_builder_project_open, {
   pending <- isolate(builder_project_restore())
   actions <- isolate(builder_project_open_actions())
   if (is.null(pending) || is.null(actions)) {
+    # Confirmed before the picker.
+    shiny::removeModal()
+    request_builder_project_open(confirmed = TRUE)
     return()
   }
+  builder_project_open_discard_confirmed(TRUE)
   complete_builder_project_open(actions)
 })
 
 observeEvent(input$cancel_discard_builder_project_open, {
+  actions <- isolate(builder_project_open_actions())
   builder_project_open_actions(NULL)
-  builder_project_restore(NULL)
-  shiny::removeModal()
+  if (is.null(isolate(builder_project_restore())) || is.null(actions)) {
+    shiny::removeModal()
+    return()
+  }
+  # Keep the project and the dataset choices: back to the choices dialog.
+  show_builder_project_restore_choices(actions)
+})
+
+observeEvent(input$cancel_builder_project_open_wait, {
+  wait <- isolate(builder_project_open_wait())
+  builder_project_open_wait(NULL)
+  show_builder_project_restore_choices(if (is.list(wait)) wait$actions)
 })
 
 observe({

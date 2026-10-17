@@ -952,7 +952,18 @@ test_that("source progress records stay compact while final results remain compl
   progress <- readRDS(progress_path)
 
   expect_length(results, 3L)
-  expect_identical(names(progress), c("completed", "total", "failed", "last"))
+  expect_identical(
+    names(progress),
+    c(
+      "completed",
+      "total",
+      "failed",
+      "bytes_done",
+      "bytes_total",
+      "current",
+      "last"
+    )
+  )
   expect_false("results" %in% names(progress))
   expect_identical(progress$completed, 3L)
 })
@@ -1371,7 +1382,7 @@ test_that("project table asset save has an asynchronous stale-result guard", {
   )
 
   expect_match(source, "builder_project_table_asset_generation", fixed = TRUE)
-  expect_match(source, "callr::r_bg(", fixed = TRUE)
+  expect_match(source, "builder_project_worker_task_call(", fixed = TRUE)
   expect_match(source, "builder_project_attachment_jobs", fixed = TRUE)
   expect_match(source, "builder_project_table_save_signature", fixed = TRUE)
   expect_match(source, "process$get_result()", fixed = TRUE)
@@ -1860,7 +1871,7 @@ test_that("source synchronization warns on close without locking the workspace",
   expect_false(capabilities$page_inert)
 })
 
-test_that("project server uses a dedicated callr source copy process", {
+test_that("project server uses a dedicated source copy worker", {
   path <- builder_test_inst_path(
     "builder",
     "server",
@@ -1869,7 +1880,7 @@ test_that("project server uses a dedicated callr source copy process", {
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   expect_match(source, "request_builder_project_source_sync", fixed = TRUE)
-  expect_match(source, "callr::r_bg", fixed = TRUE)
+  expect_match(source, "builder_project_copier,", fixed = TRUE)
   expect_match(source, "later::later", fixed = TRUE)
   expect_match(source, "shiny::withReactiveDomain(session, {", fixed = TRUE)
   expect_match(source, "builder_project_apply_source_results", fixed = TRUE)
@@ -1894,7 +1905,11 @@ test_that("source sync keeps queued jobs until its worker starts", {
   )[[1L]]
   block <- substr(source, start, finish - 1L)
 
-  spawn <- regexpr("callr::r_bg(", block, fixed = TRUE)[[1L]]
+  spawn <- regexpr(
+    "builder_project_worker_task_call(",
+    block,
+    fixed = TRUE
+  )[[1L]]
   dequeue <- regexpr(
     "builder_project_source_queue(queued)",
     block,
@@ -3547,13 +3562,11 @@ test_that("background CRB generation permits editing but protects project bounda
   expect_true(capabilities$check_dataset)
   expect_true(capabilities$navigate_workflow)
   expect_true(capabilities$save_project)
-  expect_false(capabilities$open_project)
+  ## Opening a Project cancels its optional CRB builds instead of waiting.
+  expect_true(capabilities$open_project)
   expect_null(capabilities$prepare_crbs)
   expect_true(capabilities$warn_before_unload)
-  expect_identical(
-    runtime$builder_activity_reason(activity, "open_project"),
-    "Wait for the current Project CRB to finish."
-  )
+  expect_null(runtime$builder_activity_reason(activity, "open_project"))
 })
 
 test_that("project autosave waits for both import queues to drain", {
@@ -6979,7 +6992,7 @@ test_that("project open clears all cross-project runtime caches", {
   expect_match(source, "reset_builder_project_crb_pipeline()", fixed = TRUE)
 })
 
-test_that("source sync context is bound to project identity and revision", {
+test_that("source sync context is bound to project identity, not revision", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   project_a <- list(
@@ -7005,11 +7018,18 @@ test_that("source sync context is bound to project identity and revision", {
     project_b,
     generation = 4L
   ))
+  ## Saves during a copy commit new revisions; the copy stays current and is
+  ## merged into the latest manifest.
   project_a$manifest$project$revision <- 4L
-  expect_false(runtime$builder_project_source_context_matches(
+  expect_true(runtime$builder_project_source_context_matches(
     context,
     project_a,
     generation = 4L
+  ))
+  expect_false(runtime$builder_project_source_context_matches(
+    context,
+    project_a,
+    generation = 5L
   ))
   expect_false(runtime$builder_project_source_context_matches(
     context,
@@ -7024,7 +7044,7 @@ test_that("source sync context is bound to project identity and revision", {
     ),
     collapse = "\n"
   )
-  expect_match(server, "queued[[job$id]] <- job", fixed = TRUE)
+  expect_match(server, "builder_project_source_queue_add(", fixed = TRUE)
   expect_false(grepl("if (!job$id %in% active)", server, fixed = TRUE))
 })
 

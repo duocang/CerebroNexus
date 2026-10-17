@@ -832,17 +832,38 @@
     if (status !== "syncing") return;
     var completed = Number(message.completed || 0);
     var total = Number(message.total || 0);
+    var bytesDone = Number(message.bytes_done || 0);
+    var bytesTotal = Number(message.bytes_total || 0);
     var elements = builderOperationElements();
     if (elements.card) {
       elements.card.classList.add("is-result");
       elements.card.classList.remove("is-success", "is-error", "has-actions");
     }
     setBuilderOperationActions([]);
+    var detail = "Keep this page open.";
+    if (bytesTotal > 0) {
+      detail = formatBuilderProjectBytes(Math.min(bytesDone, bytesTotal)) +
+        " of " + formatBuilderProjectBytes(bytesTotal) + " saved";
+      if (total > 1) detail += " · file " + Math.min(completed + 1, total) + " of " + total;
+    } else if (total > 0) {
+      detail = completed + " of " + total + " files saved";
+    }
     setBuilderOperationCopy(
       "Saving dataset sources",
       "Keep this page open until saving finishes.",
-      total > 0 ? completed + " of " + total + " files saved" : "Keep this page open."
+      detail
     );
+  }
+
+  function formatBuilderProjectBytes(bytes) {
+    var units = ["bytes", "KB", "MB", "GB", "TB"];
+    var value = Math.max(0, Number(bytes) || 0);
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return (unit === 0 ? Math.round(value) : value.toFixed(1)) + " " + units[unit];
   }
 
   var builderProjectSaveBackground = false;

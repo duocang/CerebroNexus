@@ -2,6 +2,9 @@
 
 .builder_async <- new.env(parent = emptyenv())
 .builder_async$n <- 2L
+## Long jobs get their own slots so they never starve the short pool above.
+## Project CRB generation runs a full dataset build per job.
+.builder_async$pools <- list(crb = 1L)
 .builder_async$memory <- 64L
 .builder_async$tasks <- list()
 .builder_async$started <- FALSE
@@ -121,14 +124,32 @@ builder_async_schedule <- function() {
     return(invisible(FALSE))
   }
   active <- builder_async_active()
-  running <- sum(vapply(
-    active,
-    function(task) task$state %in% c("running", "cancelling"),
-    logical(1)
-  ))
+  pool_of <- function(task) {
+    if (is.null(task$pool)) "short" else task$pool
+  }
+  pool_size <- function(pool) {
+    if (identical(pool, "short")) {
+      return(.builder_async$n)
+    }
+    size <- .builder_async$pools[[pool]]
+    if (is.null(size)) 1L else as.integer(size)
+  }
+  starting <- list()
   queued <- Filter(function(task) identical(task$state, "queued"), active)
-  slots <- max(0L, .builder_async$n - running)
-  for (task in head(queued, slots)) {
+  for (pool in unique(vapply(queued, pool_of, character(1)))) {
+    running <- sum(vapply(
+      active,
+      function(task) {
+        identical(pool_of(task), pool) &&
+          task$state %in% c("running", "cancelling")
+      },
+      logical(1)
+    ))
+    in_pool <- Filter(function(task) identical(pool_of(task), pool), queued)
+    slots <- max(0L, pool_size(pool) - running)
+    starting <- c(starting, head(in_pool, slots))
+  }
+  for (task in starting) {
     process <- tryCatch(
       .builder_async$spawn(
         builder_async_evaluate,
@@ -162,7 +183,15 @@ builder_async_schedule <- function() {
   invisible(TRUE)
 }
 
-builder_async_submit <- function(.expr, .args = list()) {
+builder_async_submit <- function(.expr, .args = list(), .pool = "short") {
+  if (
+    !is.character(.pool) ||
+      length(.pool) != 1L ||
+      is.na(.pool) ||
+      (!identical(.pool, "short") && is.null(.builder_async$pools[[.pool]]))
+  ) {
+    stop("Unknown Builder background pool.", call. = FALSE)
+  }
   .builder_async$tasks <- Filter(
     function(task) !task$state %in% c("cancelled", "delivered"),
     .builder_async$tasks
@@ -187,6 +216,7 @@ builder_async_submit <- function(.expr, .args = list()) {
   task$cancel_started <- NULL
   task$cancel_deadline <- NULL
   task$cancel_error <- NULL
+  task$pool <- .pool
   class(task) <- "builder_async_task"
   .builder_async$tasks[[length(.builder_async$tasks) + 1L]] <- task
   .builder_async$started <- TRUE

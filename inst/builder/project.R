@@ -132,11 +132,12 @@ builder_activity_capabilities <- function(activity) {
   manifest_busy <- activity$project_phase %in% c("autosaving", "registering")
   mutable <- connected && !isTRUE(activity$build_locked) && !project_busy
   stable <- mutable && !importing
+  # Optional CRB builds do not hold Open back: opening a Project cancels
+  # them when it replaces the workspace.
   open_safe <- connected &&
     !isTRUE(activity$build_locked) &&
     !importing &&
     !isTRUE(activity$source_syncing) &&
-    !isTRUE(activity$crb_generating) &&
     !activity$project_phase %in%
       c("choosing", "saving", "autosaving", "opening", "restoring", "registering")
   list(
@@ -222,9 +223,6 @@ builder_activity_reason <- function(activity, operation) {
   }
   if (isTRUE(activity$source_syncing)) {
     return("Wait for the current Project source files to finish saving.")
-  }
-  if (isTRUE(activity$crb_generating)) {
-    return("Wait for the current Project CRB to finish.")
   }
   switch(
     operation,
@@ -349,6 +347,68 @@ builder_project_live_dirty <- function(
     }
   }
   FALSE
+}
+
+## Whether an explicit Save has nothing to write: the manifest is current
+## schema without pending migration, every live dataset's source is saved,
+## the Project settings and last view match, and no attachment needs staging.
+## The server adds the session checks (clean phase, nothing queued).
+builder_project_save_unchanged <- function(
+  manifest,
+  entries,
+  context,
+  attachment_jobs = list()
+) {
+  if (
+    !is.list(manifest) ||
+      !is.list(manifest$datasets) ||
+      length(attachment_jobs) ||
+      !identical(
+        suppressWarnings(as.integer(manifest$schema_version %||% NA_integer_)),
+        .builder_project_schema_version
+      ) ||
+      !is.null(manifest$migrated_from_schema) ||
+      (is.list(manifest$pending_build) &&
+        !identical(manifest$pending_build$status %||% NULL, "running"))
+  ) {
+    return(FALSE)
+  }
+  records <- stats::setNames(
+    manifest$datasets,
+    vapply(
+      manifest$datasets,
+      function(record) as.character(record$id %||% ""),
+      character(1)
+    )
+  )
+  saved <- vapply(
+    entries %||% list(),
+    function(entry) {
+      record <- records[[as.character(entry$id %||% "")]] %||% NULL
+      configuration <- record$configuration %||% list()
+      is.list(record) &&
+        !.builder_project_text(configuration$payload %||% NULL) &&
+        !.builder_project_text(configuration$legacy_payload %||% NULL) &&
+        (identical(entry$load_state %||% "loaded", "artifact_ready") ||
+          identical(record$source$status %||% NULL, "ready"))
+    },
+    logical(1)
+  )
+  same <- function(left, right) {
+    canonical <- function(value) {
+      jsonlite::toJSON(
+        value %||% list(),
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
+      )
+    }
+    identical(as.character(canonical(left)), as.character(canonical(right)))
+  }
+  all(saved) &&
+    same(context$configuration, manifest$configuration) &&
+    same(context$last_ui, manifest$last_ui)
 }
 
 builder_project_retain_check_marks <- function(
@@ -1408,12 +1468,346 @@ builder_project_publish_verified_file <- function(part, target, md5, message) {
   fingerprint
 }
 
-builder_project_copy_source_job <- function(job) {
+## Incremental MD5 so a streamed copy is hashed while its bytes pass through.
+## Uses openssl's digest state when that package is installed; NULL means
+## the caller hashes the finished file once with tools::md5sum().
+.builder_project_md5_stream <- function() {
+  if (!requireNamespace("openssl", quietly = TRUE)) {
+    return(NULL)
+  }
+  namespace <- getNamespace("openssl")
+  functions <- lapply(
+    c(init = "md_init", feed = "md_feed", final = "md_final"),
+    function(name) {
+      get0(name, envir = namespace, mode = "function", inherits = FALSE)
+    }
+  )
+  if (!all(vapply(functions, is.function, logical(1)))) {
+    return(NULL)
+  }
+  state <- tryCatch(functions$init("md5"), error = function(error) NULL)
+  if (is.null(state)) {
+    return(NULL)
+  }
+  list(
+    feed = function(bytes) functions$feed(state, bytes),
+    final = function() {
+      tolower(paste(as.character(functions$final(state)), collapse = ""))
+    }
+  )
+}
+
+## MD5 of a file, read in chunks so `progress(bytes)` can report as it goes.
+builder_project_stream_md5 <- function(
+  path,
+  progress = NULL,
+  buffer_bytes = 16L * 1024L^2
+) {
+  stream <- .builder_project_md5_stream()
+  if (is.null(stream)) {
+    md5 <- unname(tolower(as.character(tools::md5sum(path))))
+    if (is.function(progress)) {
+      progress(suppressWarnings(as.double(file.info(path)$size[[1L]])))
+    }
+    return(md5)
+  }
+  input <- file(path, open = "rb")
+  on.exit(close(input), add = TRUE)
+  done <- 0
+  repeat {
+    bytes <- readBin(input, what = "raw", n = as.integer(buffer_bytes))
+    if (!length(bytes)) {
+      break
+    }
+    stream$feed(bytes)
+    done <- done + length(bytes)
+    if (is.function(progress)) {
+      progress(done)
+    }
+  }
+  stream$final()
+}
+
+## Copies a file to a new destination, hashing while streaming and reporting
+## `progress(bytes)`. Same contract as builder_copy_file_verified() in io.R.
+builder_project_stream_copy <- function(
+  source,
+  destination,
+  expected_md5 = NULL,
+  progress = NULL,
+  buffer_bytes = 16L * 1024L^2
+) {
+  if (
+    !.builder_project_text(source) ||
+      !file.exists(source) ||
+      dir.exists(source) ||
+      !.builder_project_text(destination) ||
+      file.exists(destination)
+  ) {
+    stop(
+      "A verified copy requires one file and a new destination.",
+      call. = FALSE
+    )
+  }
+  expected_md5 <- if (is.null(expected_md5)) NULL else tolower(expected_md5)
+  if (
+    !is.null(expected_md5) &&
+      (length(expected_md5) != 1L ||
+        !grepl("^[[:xdigit:]]{32}$", expected_md5))
+  ) {
+    stop("The expected file MD5 is invalid.", call. = FALSE)
+  }
+  expected_bytes <- suppressWarnings(as.double(file.info(source)$size[[1L]]))
+  input <- output <- NULL
+  complete <- FALSE
+  on.exit(
+    {
+      if (!is.null(input)) {
+        try(close(input), silent = TRUE)
+      }
+      if (!is.null(output)) {
+        try(close(output), silent = TRUE)
+      }
+      if (!complete) unlink(destination, force = TRUE)
+    },
+    add = TRUE
+  )
+  if (
+    identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
+      file.exists("/bin/cp")
+  ) {
+    # APFS clones share blocks; only the verification read remains.
+    status <- suppressWarnings(system2(
+      "/bin/cp",
+      c("-c", "--", shQuote(source), shQuote(destination)),
+      stdout = FALSE,
+      stderr = FALSE
+    ))
+    if (isTRUE(status == 0L) && file.exists(destination)) {
+      cloned <- suppressWarnings(as.double(file.info(destination)$size[[1L]]))
+      actual_md5 <- builder_project_stream_md5(destination, progress = progress)
+      if (
+        !is.finite(expected_bytes) ||
+          !identical(cloned, expected_bytes) ||
+          !grepl("^[[:xdigit:]]{32}$", actual_md5) ||
+          (!is.null(expected_md5) && !identical(actual_md5, expected_md5))
+      ) {
+        stop("The cloned file could not be verified.", call. = FALSE)
+      }
+      complete <- TRUE
+      return(list(path = destination, bytes = cloned, md5 = actual_md5))
+    }
+    unlink(destination, force = TRUE)
+  }
+  stream <- .builder_project_md5_stream()
+  input <- file(source, open = "rb")
+  output <- file(destination, open = "wb")
+  copied <- 0
+  repeat {
+    bytes <- readBin(input, what = "raw", n = as.integer(buffer_bytes))
+    if (!length(bytes)) {
+      break
+    }
+    writeBin(bytes, output)
+    if (!is.null(stream)) {
+      stream$feed(bytes)
+    }
+    copied <- copied + length(bytes)
+    if (is.function(progress)) {
+      progress(copied)
+    }
+  }
+  close(input)
+  close(output)
+  input <- output <- NULL
+  if (
+    !is.finite(expected_bytes) || !identical(as.double(copied), expected_bytes)
+  ) {
+    stop(
+      "The source file ended before the verified copy completed.",
+      call. = FALSE
+    )
+  }
+  actual_md5 <- if (is.null(stream)) {
+    unname(tolower(as.character(tools::md5sum(destination))))
+  } else {
+    stream$final()
+  }
+  if (!is.null(expected_md5) && !identical(actual_md5, expected_md5)) {
+    stop("The copied file does not match its saved MD5.", call. = FALSE)
+  }
+  complete <- TRUE
+  list(path = destination, bytes = as.double(copied), md5 = actual_md5)
+}
+
+## Whether a source path is the Builder's own retained session copy (under
+## `<session root>/session-sources/`, without links), which a Save may move
+## into the Project instead of copying.
+builder_project_session_owned_source <- function(path, session_root) {
+  if (
+    !.builder_project_text(path) ||
+      !.builder_project_text(session_root) ||
+      !dir.exists(session_root) ||
+      !file.exists(path) ||
+      dir.exists(path)
+  ) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      rebased <- .builder_project_rebase_lexical_path(path, session_root)
+      source_root <- file.path(rebased$root, "session-sources")
+      dir.exists(source_root) &&
+        !nzchar(Sys.readlink(source_root)) &&
+        startsWith(rebased$path, paste0(source_root, "/")) &&
+        !.builder_project_path_has_link_within(rebased$path, rebased$root)
+    },
+    error = function(error) FALSE
+  ))
+}
+
+## Live entries that still point at a session copy moved into the Project
+## now point at its Project blob.
+builder_project_relocate_moved_sources <- function(entries, results) {
+  moved <- Filter(
+    function(result) {
+      identical(result$status, "ready") &&
+        .builder_project_text(result$moved_from %||% NULL) &&
+        .builder_project_text(result$path %||% NULL)
+    },
+    results %||% list()
+  )
+  if (!length(moved)) {
+    return(entries)
+  }
+  from <- vapply(moved, function(result) {
+    normalizePath(result$moved_from, winslash = "/", mustWork = FALSE)
+  }, character(1))
+  lapply(entries, function(entry) {
+    path <- entry$path %||% NULL
+    if (!.builder_project_text(path)) {
+      return(entry)
+    }
+    index <- match(normalizePath(path, winslash = "/", mustWork = FALSE), from)
+    if (!is.na(index) && !file.exists(path)) {
+      entry$path <- normalizePath(moved[[index]]$path, winslash = "/", mustWork = TRUE)
+    }
+    entry
+  })
+}
+
+## Fingerprints of sources this process published or verified, keyed by path
+## and stat identity. A warm copier keeps it between calls, so a job queued
+## again for an already-published blob is skipped without re-reading it.
+.builder_project_source_verification_cache <- new.env(parent = emptyenv())
+
+## The content-addressed target of a job whose source MD5 is known, when it
+## already exists with that content.
+builder_project_verified_source_target <- function(
+  job,
+  verification_cache = .builder_project_source_verification_cache
+) {
+  md5 <- builder_project_recorded_fingerprint_md5(list(
+    md5 = job$source_md5 %||% NULL
+  ))
+  if (
+    !.builder_project_text(md5) ||
+      !builder_project_content_addressed_source(job$relative, job$id) ||
+      !.builder_project_text(job$target) ||
+      !file.exists(job$target) ||
+      dir.exists(job$target)
+  ) {
+    return(NULL)
+  }
+  fingerprint <- builder_project_cached_verified_fingerprint(
+    job$target,
+    verification_cache
+  )
+  if (is.null(fingerprint)) {
+    fingerprint <- builder_project_file_fingerprint(job$target, content = TRUE)
+    cache_key <- builder_project_verification_cache_key(
+      job$target,
+      fingerprint,
+      verification_cache
+    )
+    if (.builder_project_text(cache_key) && is.list(fingerprint)) {
+      assign(cache_key, fingerprint, envir = verification_cache)
+    }
+  }
+  if (
+    !is.list(fingerprint) ||
+      !identical(tolower(as.character(fingerprint$md5 %||% "")), md5)
+  ) {
+    return(NULL)
+  }
+  fingerprint
+}
+
+## Identifies the content a source job would publish, so a job already
+## running (or queued) for the same dataset and bytes is not copied twice.
+builder_project_source_job_key <- function(job) {
+  paste(
+    as.character(job$id %||% ""),
+    tolower(as.character(job$source_md5 %||% "")),
+    as.character(job$source %||% ""),
+    as.character(job$relative %||% ""),
+    sep = "\r"
+  )
+}
+
+## Adds jobs to the queue, keyed by dataset. A job identical to one already
+## running is dropped: the running copy's result is merged into the latest
+## manifest when it finishes.
+builder_project_source_queue_add <- function(queued, jobs, running = list()) {
+  running_keys <- vapply(
+    running %||% list(),
+    builder_project_source_job_key,
+    character(1)
+  )
+  for (job in jobs %||% list()) {
+    if (builder_project_source_job_key(job) %in% running_keys) {
+      queued[[job$id]] <- NULL
+      next
+    }
+    queued[[job$id]] <- job
+  }
+  queued
+}
+
+builder_project_copy_source_job <- function(job, progress = NULL) {
+  moved <- NULL
   fail <- function(message) {
+    if (is.list(moved) && file.exists(job$part) && !file.exists(job$source)) {
+      # Never discard the session copy: put it back where the entry expects.
+      suppressWarnings(file.rename(job$part, job$source))
+    }
     if (is.character(job$part) && length(job$part) == 1L) {
       unlink(job$part, force = TRUE)
     }
-    list(id = job$id, status = "failed", error = message)
+    list(
+      id = job$id,
+      status = "failed",
+      error = message,
+      planned = planned
+    )
+  }
+  planned <- if (is.list(job)) job$relative %||% NULL else NULL
+  verified <- if (is.list(job)) {
+    tryCatch(
+      builder_project_verified_source_target(job),
+      error = function(error) NULL
+    )
+  } else {
+    NULL
+  }
+  if (is.list(verified)) {
+    return(list(
+      id = job$id,
+      status = "ready",
+      path = job$target,
+      fingerprint = verified,
+      planned = planned
+    ))
   }
   if (
     !is.list(job) ||
@@ -1428,28 +1822,37 @@ builder_project_copy_source_job <- function(job) {
     return(fail("The Project source directory could not be created."))
   }
   unlink(job$part, force = TRUE)
-  before <- builder_project_file_metadata(job$source)
-  copied <- tryCatch(
-    builder_copy_file_verified(
-      job$source,
-      job$part,
-      expected_md5 = job$source_md5 %||% NULL
-    ),
-    error = identity
-  )
-  after <- builder_project_file_metadata(job$source)
-  if (
-    inherits(copied, "condition") ||
-      !builder_project_fingerprint_metadata_matches(before, after) ||
-      !builder_project_fingerprint_stat_matches(before, after)
-  ) {
-    return(fail(
-      if (inherits(copied, "condition")) {
-        conditionMessage(copied)
-      } else {
-        "The dataset source changed while it was copied."
-      }
-    ))
+  moved <- builder_project_move_session_source(job, progress)
+  if (is.list(moved) && identical(moved$status, "failed")) {
+    return(fail(moved$error))
+  }
+  if (is.list(moved)) {
+    copied <- moved
+  } else {
+    before <- builder_project_file_metadata(job$source)
+    copied <- tryCatch(
+      builder_project_stream_copy(
+        job$source,
+        job$part,
+        expected_md5 = job$source_md5 %||% NULL,
+        progress = progress
+      ),
+      error = identity
+    )
+    after <- builder_project_file_metadata(job$source)
+    if (
+      inherits(copied, "condition") ||
+        !builder_project_fingerprint_metadata_matches(before, after) ||
+        !builder_project_fingerprint_stat_matches(before, after)
+    ) {
+      return(fail(
+        if (inherits(copied, "condition")) {
+          conditionMessage(copied)
+        } else {
+          "The dataset source changed while it was copied."
+        }
+      ))
+    }
   }
   source_md5 <- copied$md5
   job$relative <- paste(
@@ -1483,45 +1886,165 @@ builder_project_copy_source_job <- function(job) {
   if (inherits(fingerprint, "condition")) {
     return(fail(conditionMessage(fingerprint)))
   }
+  cache_key <- builder_project_verification_cache_key(
+    job$target,
+    fingerprint,
+    .builder_project_source_verification_cache
+  )
+  if (.builder_project_text(cache_key)) {
+    assign(cache_key, fingerprint, envir = .builder_project_source_verification_cache)
+  }
   list(
     id = job$id,
     status = "ready",
     path = job$target,
-    fingerprint = fingerprint
+    fingerprint = fingerprint,
+    planned = planned,
+    moved_from = if (is.list(moved)) job$source else NULL
   )
 }
 
-builder_project_copy_source_jobs <- function(jobs, progress_path = NULL) {
+## Moves the Builder's own session copy into the Project (same volume) instead
+## of copying it and deleting the session copy later. Only content-addressed
+## jobs qualify, so a later Save finds the blob even if the move outlives the
+## entry that pointed at the session copy. Returns NULL to fall back to a
+## copy, a "failed" result, or the copy-shaped result with the verified MD5.
+builder_project_move_session_source <- function(job, progress = NULL) {
+  md5 <- builder_project_recorded_fingerprint_md5(list(
+    md5 = job$source_md5 %||% NULL
+  ))
+  if (
+    !isTRUE(job$session_owned) ||
+      !.builder_project_text(md5) ||
+      !builder_project_content_addressed_source(job$relative, job$id)
+  ) {
+    return(NULL)
+  }
+  before <- builder_project_file_metadata(job$source)
+  if (
+    is.null(before) ||
+      !isTRUE(suppressWarnings(file.rename(job$source, job$part)))
+  ) {
+    return(NULL)
+  }
+  restore <- function(message) {
+    restored <- isTRUE(suppressWarnings(file.rename(job$part, job$source)))
+    list(
+      status = "failed",
+      error = if (restored) {
+        message
+      } else {
+        paste(message, "The session copy is at:", job$part)
+      }
+    )
+  }
+  staged <- builder_project_file_metadata(job$part)
+  if (
+    !builder_project_fingerprint_metadata_matches(before, staged) ||
+      !identical(before$file_id %||% NULL, staged$file_id %||% NULL)
+  ) {
+    return(restore("The dataset source changed while it was moved."))
+  }
+  # The bytes were never rewritten, but a new immutable blob is still
+  # checked against its recorded MD5 (one read, reported as progress).
+  actual <- tryCatch(
+    builder_project_stream_md5(job$part, progress = progress),
+    error = identity
+  )
+  after <- builder_project_file_metadata(job$part)
+  if (
+    inherits(actual, "condition") ||
+      !builder_project_fingerprint_metadata_matches(staged, after)
+  ) {
+    return(restore("The dataset source changed while it was verified."))
+  }
+  if (!identical(actual, md5)) {
+    return(restore("The moved file does not match its saved MD5."))
+  }
+  list(
+    status = "moved",
+    path = job$part,
+    bytes = as.double(after$bytes),
+    md5 = actual
+  )
+}
+
+builder_project_copy_source_jobs <- function(
+  jobs,
+  progress_path = NULL,
+  progress_interval = 0.25
+) {
   results <- vector("list", length(jobs))
   failed <- 0L
+  sizes <- vapply(
+    jobs,
+    function(job) {
+      size <- suppressWarnings(as.double(file.info(job$source %||% "")$size[[1L]]))
+      if (is.finite(size)) size else 0
+    },
+    numeric(1)
+  )
+  bytes_total <- sum(sizes)
+  bytes_finished <- 0
+  last_written <- -Inf
+  write_progress <- function(completed, bytes_done, current = NULL, last = NULL) {
+    if (!.builder_project_text(progress_path)) {
+      return(invisible(FALSE))
+    }
+    temporary <- paste0(progress_path, ".tmp")
+    saveRDS(
+      list(
+        completed = completed,
+        total = length(jobs),
+        failed = failed,
+        bytes_done = min(bytes_total, bytes_done),
+        bytes_total = bytes_total,
+        current = current,
+        last = last
+      ),
+      temporary,
+      version = 3L
+    )
+    moved <- try(fs::file_move(temporary, progress_path), silent = TRUE)
+    if (inherits(moved, "try-error")) {
+      unlink(temporary, force = TRUE)
+    }
+    last_written <<- as.numeric(Sys.time())
+    invisible(TRUE)
+  }
   for (index in seq_along(jobs)) {
-    results[[index]] <- builder_project_copy_source_job(jobs[[index]])
-    failed <- failed + as.integer(identical(results[[index]]$status, "failed"))
-    if (.builder_project_text(progress_path)) {
-      temporary <- paste0(progress_path, ".tmp")
-      saveRDS(
-        list(
-          completed = index,
-          total = length(jobs),
-          failed = failed,
-          last = results[[index]][intersect(
-            c("id", "status", "error"),
-            names(results[[index]])
-          )]
-        ),
-        temporary,
-        version = 3L
-      )
-      moved <- try(fs::file_move(temporary, progress_path), silent = TRUE)
-      if (inherits(moved, "try-error")) {
-        unlink(temporary, force = TRUE)
+    job <- jobs[[index]]
+    current <- as.character(job$filename %||% basename(job$source %||% ""))
+    progress <- function(bytes) {
+      now <- as.numeric(Sys.time())
+      if (now - last_written >= progress_interval) {
+        write_progress(index - 1L, bytes_finished + bytes, current)
       }
     }
+    results[[index]] <- builder_project_copy_source_job(job, progress = progress)
+    failed <- failed + as.integer(identical(results[[index]]$status, "failed"))
+    bytes_finished <- bytes_finished + sizes[[index]]
+    write_progress(
+      index,
+      bytes_finished,
+      last = results[[index]][intersect(
+        c("id", "status", "error"),
+        names(results[[index]])
+      )]
+    )
   }
   results
 }
 
-builder_project_apply_source_results <- function(manifest, results, root) {
+## `only_pending = TRUE` merges a finished copy into a manifest written after
+## the copy started: a result is applied only to a record still waiting for
+## that same planned source, never over a newer source choice.
+builder_project_apply_source_results <- function(
+  manifest,
+  results,
+  root,
+  only_pending = FALSE
+) {
   if (!is.list(manifest) || !is.list(manifest$datasets)) {
     stop("A Builder project manifest is required.", call. = FALSE)
   }
@@ -1533,6 +2056,17 @@ builder_project_apply_source_results <- function(manifest, results, root) {
   manifest$datasets <- lapply(manifest$datasets, function(record) {
     result <- result_map[[record$id]] %||% NULL
     if (is.null(result)) {
+      return(record)
+    }
+    if (
+      isTRUE(only_pending) &&
+        (!identical(record$source$status %||% NULL, "pending") ||
+          (!is.null(result$planned) &&
+            !identical(
+              as.character(record$source$path %||% ""),
+              as.character(result$planned)
+            )))
+    ) {
       return(record)
     }
     source <- record$source %||% list(kind = "managed")
@@ -1629,9 +2163,12 @@ builder_project_source_context_matches <- function(
     builder_project_source_context(project, generation),
     error = function(error) NULL
   )
+  # The revision is deliberately not compared: autosave, Save and CRB
+  # registration commit new revisions while a copy runs, and its results are
+  # merged into whichever manifest is current when it finishes.
   is.list(current) &&
     all(vapply(
-      c("generation", "project_id", "root", "path", "revision"),
+      c("generation", "project_id", "root", "path"),
       function(field) identical(context[[field]], current[[field]]),
       logical(1)
     ))
@@ -4935,18 +5472,45 @@ builder_project_store_artifact_bundle <- function(
       stop("The artifact staging folder could not be created.", call. = FALSE)
     }
     primary_target <- file.path(staging, basename(built))
-    stage_file <- function(source, target) {
+    # A promoted file keeps its identity when renamed on the same volume. If
+    # its size, modification time and file id are unchanged, the bytes hashed
+    # above are the staged bytes and need no second read.
+    renamed_md5 <- character()
+    stage_file <- function(source, target, fingerprint) {
       moved <- isTRUE(promote) && isTRUE(file.rename(source, target))
       if (moved) {
         promoted[[length(promoted) + 1L]] <<- list(
           source = source,
           staged = target
         )
+        staged <- builder_project_file_metadata(target)
+        if (
+          is.list(fingerprint) &&
+            builder_project_fingerprint_metadata_matches(fingerprint, staged) &&
+            identical(fingerprint$stat_version %||% NULL, 1L) &&
+            identical(staged$stat_version %||% NULL, 1L) &&
+            .builder_project_text(fingerprint$file_id %||% NULL) &&
+            identical(fingerprint$file_id, staged$file_id) &&
+            .builder_project_text(fingerprint$md5 %||% NULL)
+        ) {
+          renamed_md5[[target]] <<- as.character(fingerprint$md5)
+        }
         return(TRUE)
       }
       builder_project_copy_file(source, target)
     }
-    if (!stage_file(built, primary_target)) {
+    # Only MD5s this process computed are reused; release MD5s are still
+    # checked against the staged bytes.
+    hashed_here <- function(source, fingerprint) {
+      if (isTRUE(source$preverified)) NULL else fingerprint
+    }
+    if (
+      !stage_file(
+        built,
+        primary_target,
+        hashed_here(primary_source, primary_fingerprint)
+      )
+    ) {
       stop("The dataset artifact could not be staged.", call. = FALSE)
     }
     for (index in seq_along(members)) {
@@ -4961,7 +5525,13 @@ builder_project_store_artifact_bundle <- function(
       ) {
         stop("An artifact member folder could not be staged.", call. = FALSE)
       }
-      if (!stage_file(members[[index]]$source, member_target)) {
+      if (
+        !stage_file(
+          members[[index]]$source,
+          member_target,
+          hashed_here(member_sources[[index]], member_fingerprints[[index]])
+        )
+      ) {
         stop("An artifact member could not be staged.", call. = FALSE)
       }
     }
@@ -4979,7 +5549,13 @@ builder_project_store_artifact_bundle <- function(
       primary_fingerprint$md5,
       vapply(member_fingerprints, `[[`, character(1), "md5")
     )
-    staged_md5 <- unname(as.character(tools::md5sum(staged_paths)))
+    staged_md5 <- unname(renamed_md5[staged_paths])
+    unverified <- is.na(staged_md5)
+    if (any(unverified)) {
+      staged_md5[unverified] <- unname(as.character(
+        tools::md5sum(staged_paths[unverified])
+      ))
+    }
     if (!identical(staged_md5, expected)) {
       stop(
         "The artifact generation could not be committed safely.",
@@ -5299,13 +5875,18 @@ builder_project_entries_requiring_crb <- function(
   entries,
   artifacts,
   root,
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   Filter(
     function(entry) {
       artifact <- artifacts[[entry$id]] %||% NULL
       !is.list(artifact) ||
-        !builder_project_artifact_available(artifact, root) ||
+        !builder_project_artifact_available(
+          artifact,
+          root,
+          verification_cache = verification_cache
+        ) ||
         !builder_project_artifact_matches_entry(
           artifact,
           entry,
@@ -5591,13 +6172,15 @@ builder_project_entries_for_build <- function(
   entries,
   artifacts,
   root,
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   required <- builder_project_entries_requiring_crb(
     entries,
     artifacts,
     root,
-    identity_cache
+    identity_cache,
+    verification_cache = verification_cache
   )
   required_ids <- vapply(required, `[[`, character(1), "id")
   lapply(entries, function(entry) {
@@ -6875,6 +7458,128 @@ builder_project_manifest_with_artifact <- function(
   manifest
 }
 
+## The body of one manifest transaction. `runtime_for(full)` returns the
+## Builder runtime; `full = TRUE` adds the app bundle and package files that
+## artifact closure checks need.
+builder_project_write_task <- function(runtime_for, args) {
+  manifest <- args$manifest
+  root <- args$root
+  entries <- args$entries
+  context <- args$context
+  artifact_record <- args$artifact_record
+  needs_artifacts <- !is.null(artifact_record) ||
+    any(vapply(
+      manifest$datasets,
+      function(record) is.list(record$artifact),
+      logical(1)
+    )) ||
+    any(vapply(
+      entries,
+      function(entry) is.list(entry$project_artifact),
+      logical(1)
+    )) ||
+    any(vapply(context$artifacts, is.list, logical(1)))
+  runtime <- runtime_for(needs_artifacts)
+  if (
+    needs_artifacts &&
+      !is.function(runtime$.builder_app_capture_spatial_molecule_identity)
+  ) {
+    stop("The project artifact verification runtime is unavailable.")
+  }
+  cache <- list2env(args$configuration_cache, parent = emptyenv())
+  built <- if (!is.null(entries)) {
+    runtime$builder_project_build_manifest(
+      entries,
+      list(root = root, manifest = manifest),
+      context,
+      cache
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(artifact_record)) {
+    manifest <- runtime$builder_project_manifest_with_artifact(
+      manifest,
+      root,
+      artifact_record$id,
+      artifact_record$artifact
+    )
+    if (!is.list(manifest)) {
+      stop("The dataset cache no longer matches this project.")
+    }
+  }
+  written <- runtime$builder_project_write(
+    if (is.null(built)) manifest else built$manifest,
+    root,
+    args$expected_revision
+  )
+  written$built <- built
+  written$configuration_cache <- as.list(cache)
+  # The transaction already inspected these CRBs in this worker. Carry the
+  # content-keyed closure results back so status rendering need not read them
+  # again. Artifact availability still checks every file before using them.
+  written$artifact_closure_cache <- as.list(
+    runtime$.builder_project_artifact_closure_cache
+  )
+  written
+}
+
+## Functions sent to a worker must not carry the Builder environment along.
+builder_project_portable_function <- function(func) {
+  func <- utils::removeSource(func)
+  environment(func) <- globalenv()
+  func
+}
+
+## Runs `task(runtime_for, args)` inside a Project worker process. The loaded
+## runtime is kept in the worker's global environment, so a warm worker only
+## sources the Builder files on its first call; the full runtime (package, app
+## bundle) is sourced only when a task asks for it, in the original order.
+builder_project_worker_run <- function(
+  task,
+  args,
+  runtime_files,
+  full_runtime_files,
+  source_utf8
+) {
+  load_runtime <- function(files) {
+    runtime <- new.env(parent = globalenv())
+    runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+    for (path in files) {
+      source_utf8(path, runtime)
+    }
+    runtime
+  }
+  state <- get0(
+    ".builder_project_worker_state",
+    envir = globalenv(),
+    inherits = FALSE
+  )
+  if (
+    !is.list(state) ||
+      !identical(state$runtime_files, runtime_files) ||
+      !identical(state$full_runtime_files, full_runtime_files)
+  ) {
+    state <- list(
+      runtime_files = runtime_files,
+      full_runtime_files = full_runtime_files,
+      runtime = NULL,
+      full = FALSE
+    )
+  }
+  runtime_for <- function(full = FALSE) {
+    if (isTRUE(full) && !isTRUE(state$full)) {
+      state$runtime <<- load_runtime(full_runtime_files)
+      state$full <<- TRUE
+    } else if (is.null(state$runtime)) {
+      state$runtime <<- load_runtime(runtime_files)
+    }
+    assign(".builder_project_worker_state", state, envir = globalenv())
+    state$runtime
+  }
+  task(runtime_for, args)
+}
+
 builder_project_write_process <- function(
   manifest,
   root,
@@ -6885,85 +7590,35 @@ builder_project_write_process <- function(
   entries = NULL,
   context = NULL,
   configuration_cache = list(),
-  artifact_record = NULL
+  artifact_record = NULL,
+  full_runtime_files = runtime_files,
+  worker = NULL
 ) {
-  .spawn(
-    function(
-      manifest,
-      root,
-      expected_revision,
-      runtime_files,
-      source_utf8,
-      entries,
-      context,
-      configuration_cache,
-      artifact_record
-    ) {
-      runtime <- new.env(parent = globalenv())
-      runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
-      for (path in runtime_files) {
-        source_utf8(path, runtime)
-      }
-      has_artifacts <- !is.null(artifact_record) ||
-        any(vapply(
-          manifest$datasets %||% list(),
-          function(record) is.list(record$artifact),
-          logical(1)
-        ))
-      if (
-        has_artifacts &&
-          !is.function(runtime$.builder_app_capture_spatial_molecule_identity)
-      ) {
-        stop("The project artifact verification runtime is unavailable.")
-      }
-      cache <- list2env(configuration_cache, parent = emptyenv())
-      built <- if (!is.null(entries)) {
-        runtime$builder_project_build_manifest(
-          entries,
-          list(root = root, manifest = manifest),
-          context,
-          cache
-        )
-      } else {
-        NULL
-      }
-      if (!is.null(artifact_record)) {
-        manifest <- runtime$builder_project_manifest_with_artifact(
-          manifest,
-          root,
-          artifact_record$id,
-          artifact_record$artifact
-        )
-        if (!is.list(manifest)) {
-          stop("The dataset cache no longer matches this project.")
-        }
-      }
-      written <- runtime$builder_project_write(
-        if (is.null(built)) manifest else built$manifest,
-        root,
-        expected_revision
-      )
-      written$built <- built
-      written$configuration_cache <- as.list(cache)
-      # The transaction already inspected these CRBs in this worker. Carry the
-      # content-keyed closure results back so status rendering need not read them
-      # again. Artifact availability still checks every file before using them.
-      written$artifact_closure_cache <- as.list(
-        runtime$.builder_project_artifact_closure_cache
-      )
-      written
-    },
+  call_args <- list(
+    task = builder_project_portable_function(builder_project_write_task),
     args = list(
       manifest = manifest,
       root = root,
       expected_revision = expected_revision,
-      runtime_files = runtime_files,
-      source_utf8 = source_utf8,
       entries = entries,
       context = context,
       configuration_cache = configuration_cache,
       artifact_record = artifact_record
     ),
+    runtime_files = runtime_files,
+    full_runtime_files = full_runtime_files,
+    source_utf8 = source_utf8
+  )
+  if (!is.null(worker)) {
+    return(builder_project_worker_call(
+      worker,
+      builder_project_worker_run,
+      call_args
+    ))
+  }
+  .spawn(
+    builder_project_worker_run,
+    args = call_args,
     # Once a transaction starts, closing the browser must not kill it between
     # backup and commit. The existing manifest lock/revision checks still apply.
     supervise = FALSE,
@@ -6971,6 +7626,298 @@ builder_project_write_process <- function(
     stdout = "|",
     stderr = "|"
   )
+}
+
+## Warm Project worker --------------------------------------------------------
+## One long-lived R session runs Project transactions in submission order. A
+## call returns a handle with the callr process methods the Builder polls
+## (is_alive, get_result, kill, kill_tree, wait), so callers keep their own
+## stale-result and cancellation logic. A crashed or killed session is replaced
+## on the next call. The session is started without process cleanup: when the
+## Builder exits, the worker finishes its current transaction and then ends at
+## the end of its input.
+builder_project_worker_new <- function(
+  name = "project",
+  .start = function() {
+    callr::r_session$new(
+      options = callr::r_session_options(extra = list(cleanup = FALSE)),
+      wait = FALSE
+    )
+  }
+) {
+  worker <- new.env(parent = emptyenv())
+  worker$name <- name
+  worker$start <- .start
+  worker$session <- NULL
+  worker$ready <- FALSE
+  worker$current <- NULL
+  worker$queue <- list()
+  worker$closing <- FALSE
+  worker$starts <- 0L
+  worker
+}
+
+.builder_project_worker_session_alive <- function(session) {
+  !is.null(session) &&
+    isTRUE(tryCatch(session$is_alive(), error = function(error) FALSE))
+}
+
+.builder_project_worker_finish <- function(handle, result = NULL, error = NULL) {
+  handle$state <- if (is.null(error)) "completed" else "failed"
+  handle$result <- result
+  handle$error <- error
+  if (identical(handle$worker$current, handle)) {
+    handle$worker$current <- NULL
+  }
+  invisible(handle)
+}
+
+.builder_project_worker_drop_session <- function(worker, kill = TRUE) {
+  session <- worker$session
+  worker$session <- NULL
+  worker$ready <- FALSE
+  if (!is.null(session) && isTRUE(kill)) {
+    try(session$kill_tree(), silent = TRUE)
+    try(session$kill(), silent = TRUE)
+  }
+  invisible(TRUE)
+}
+
+.builder_project_worker_error <- function(error) {
+  parent <- error
+  while (inherits(parent, "callr_error") && !is.null(parent$parent)) {
+    parent <- parent$parent
+  }
+  simpleError(conditionMessage(parent))
+}
+
+## Advances the worker without blocking: consumes the session start message,
+## collects a finished call and starts the next queued call.
+builder_project_worker_pump <- function(worker) {
+  repeat {
+    session <- worker$session
+    current <- worker$current
+    if (!is.null(current) && identical(current$state, "running")) {
+      if (!.builder_project_worker_session_alive(session)) {
+        .builder_project_worker_drop_session(worker, kill = FALSE)
+        .builder_project_worker_finish(
+          current,
+          error = simpleError("The Project worker stopped unexpectedly.")
+        )
+        next
+      }
+      ready <- tryCatch(
+        identical(session$poll_process(0L), "ready"),
+        error = function(error) FALSE
+      )
+      if (!ready) {
+        return(invisible(FALSE))
+      }
+      message <- tryCatch(session$read(), error = identity)
+      if (inherits(message, "condition")) {
+        .builder_project_worker_drop_session(worker)
+        .builder_project_worker_finish(
+          current,
+          error = .builder_project_worker_error(message)
+        )
+        next
+      }
+      code <- suppressWarnings(as.integer(message$code %||% NA_integer_))
+      if (is.na(code)) {
+        return(invisible(FALSE))
+      }
+      if (code >= 500L) {
+        .builder_project_worker_drop_session(worker)
+        .builder_project_worker_finish(
+          current,
+          error = simpleError("The Project worker stopped unexpectedly.")
+        )
+        next
+      }
+      if (!identical(code, 200L)) {
+        # Progress and output messages; keep waiting for the result.
+        next
+      }
+      if (!is.null(message$error)) {
+        .builder_project_worker_finish(
+          current,
+          error = .builder_project_worker_error(message$error)
+        )
+      } else {
+        .builder_project_worker_finish(current, result = message$result)
+      }
+      next
+    }
+    if (!is.null(session) && !isTRUE(worker$ready)) {
+      if (!.builder_project_worker_session_alive(session)) {
+        .builder_project_worker_drop_session(worker, kill = FALSE)
+        if (length(worker$queue)) {
+          failed <- worker$queue[[1L]]
+          worker$queue <- worker$queue[-1L]
+          .builder_project_worker_finish(
+            failed,
+            error = simpleError("The Project worker could not be started.")
+          )
+        }
+        next
+      }
+      ready <- tryCatch(
+        identical(session$poll_process(0L), "ready"),
+        error = function(error) FALSE
+      )
+      if (!ready) {
+        return(invisible(FALSE))
+      }
+      message <- tryCatch(session$read(), error = identity)
+      if (
+        !inherits(message, "condition") &&
+          identical(as.integer(message$code %||% NA_integer_), 201L)
+      ) {
+        worker$ready <- TRUE
+      }
+      next
+    }
+    if (!length(worker$queue)) {
+      if (isTRUE(worker$closing) && !is.null(session)) {
+        try(session$close(), silent = TRUE)
+        worker$session <- NULL
+        worker$ready <- FALSE
+      }
+      return(invisible(TRUE))
+    }
+    if (is.null(session)) {
+      started <- tryCatch(worker$start(), error = identity)
+      if (inherits(started, "condition")) {
+        failed <- worker$queue[[1L]]
+        worker$queue <- worker$queue[-1L]
+        .builder_project_worker_finish(
+          failed,
+          error = .builder_project_worker_error(started)
+        )
+        next
+      }
+      worker$session <- started
+      worker$ready <- FALSE
+      worker$starts <- worker$starts + 1L
+      next
+    }
+    handle <- worker$queue[[1L]]
+    worker$queue <- worker$queue[-1L]
+    called <- tryCatch(
+      {
+        session$call(handle$func, handle$args)
+        TRUE
+      },
+      error = identity
+    )
+    if (inherits(called, "condition")) {
+      .builder_project_worker_drop_session(worker)
+      .builder_project_worker_finish(
+        handle,
+        error = .builder_project_worker_error(called)
+      )
+      next
+    }
+    handle$state <- "running"
+    worker$current <- handle
+  }
+}
+
+builder_project_worker_call <- function(worker, func, args = list()) {
+  if (!is.environment(worker) || !is.function(func)) {
+    stop("A Project worker call requires a worker and a function.", call. = FALSE)
+  }
+  # Calls are self-contained: never serialize the caller's environment.
+  func <- builder_project_portable_function(func)
+  handle <- new.env(parent = emptyenv())
+  handle$worker <- worker
+  handle$func <- func
+  handle$args <- args
+  handle$state <- "queued"
+  handle$result <- NULL
+  handle$error <- NULL
+  handle$is_alive <- function() {
+    builder_project_worker_pump(worker)
+    handle$state %in% c("queued", "running")
+  }
+  handle$get_result <- function() {
+    builder_project_worker_pump(worker)
+    if (identical(handle$state, "failed")) {
+      stop(handle$error)
+    }
+    if (!identical(handle$state, "completed")) {
+      stop("The Project worker call has not finished.", call. = FALSE)
+    }
+    handle$result
+  }
+  handle$kill <- function() {
+    if (identical(handle$state, "queued")) {
+      worker$queue <- Filter(
+        function(candidate) !identical(candidate, handle),
+        worker$queue
+      )
+    } else if (
+      identical(handle$state, "running") &&
+        identical(worker$current, handle)
+    ) {
+      .builder_project_worker_drop_session(worker)
+    }
+    if (handle$state %in% c("queued", "running")) {
+      .builder_project_worker_finish(
+        handle,
+        error = simpleError("The Project worker call was cancelled.")
+      )
+    }
+    builder_project_worker_pump(worker)
+    invisible(TRUE)
+  }
+  handle$kill_tree <- handle$kill
+  handle$wait <- function(timeout = -1) {
+    deadline <- if (timeout < 0) Inf else Sys.time() + timeout / 1000
+    while (isTRUE(handle$is_alive()) && Sys.time() < deadline) {
+      session <- worker$session
+      if (!is.null(session)) {
+        try(session$poll_process(50L), silent = TRUE)
+      } else {
+        Sys.sleep(0.01)
+      }
+    }
+    invisible(handle)
+  }
+  class(handle) <- "builder_project_worker_call"
+  worker$queue[[length(worker$queue) + 1L]] <- handle
+  builder_project_worker_pump(worker)
+  handle
+}
+
+builder_project_worker_busy <- function(worker) {
+  is.environment(worker) &&
+    (!is.null(worker$current) || length(worker$queue) > 0L)
+}
+
+## Ends the worker once its queued transactions finish; `kill = TRUE` stops it
+## immediately (only for work that is safe to interrupt).
+builder_project_worker_close <- function(worker, kill = FALSE) {
+  if (!is.environment(worker)) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(kill)) {
+    for (handle in c(worker$queue, list(worker$current))) {
+      if (is.environment(handle)) {
+        .builder_project_worker_finish(
+          handle,
+          error = simpleError("The Project worker was stopped.")
+        )
+      }
+    }
+    worker$queue <- list()
+    worker$current <- NULL
+    .builder_project_worker_drop_session(worker)
+    return(invisible(TRUE))
+  }
+  worker$closing <- TRUE
+  builder_project_worker_pump(worker)
+  invisible(TRUE)
 }
 
 builder_project_write <- function(
@@ -7337,6 +8284,29 @@ builder_project_artifact_entry <- function(
   }
   entry$project_artifact <- artifact
   entry
+}
+
+## The opened manifest with the user's dataset choices as the defaults, so
+## the choices dialog can be shown again without losing them.
+builder_project_manifest_with_restore_actions <- function(manifest, actions) {
+  if (!is.list(actions) || !length(actions)) {
+    return(manifest)
+  }
+  manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
+    status <- record$runtime_restore_status %||% NULL
+    action <- actions[[as.character(record$id %||% "")]] %||% NULL
+    if (
+      is.list(status) &&
+        is.character(action) &&
+        length(action) == 1L &&
+        action %in% c(status$actions %||% character(), "skip")
+    ) {
+      status$default_action <- action
+      record$runtime_restore_status <- status
+    }
+    record
+  })
+  manifest
 }
 
 builder_project_prepare_open_selection <- function(manifest, root, actions) {
