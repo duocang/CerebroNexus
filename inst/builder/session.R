@@ -863,7 +863,8 @@ builder_session_build <- function(
               registry,
               auth_material = auth_material,
               objects = objects,
-              on_progress = .builder_build_progress_callback(progress_path)
+              on_progress = .builder_build_progress_callback(progress_path),
+              check_cancel = .builder_build_cancel_callback(progress_path)
             )
             builder_build_check_cancel(progress_path)
             if (

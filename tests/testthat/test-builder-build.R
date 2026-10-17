@@ -228,6 +228,115 @@ test_that("build execution reuses the worker's loaded object", {
   expect_true(result$publishable)
 })
 
+builder_build_two_dataset_plan <- function(analyses = character()) {
+  plan <- builder_build_test_plan(analyses)
+  second <- plan$items[[1L]]
+  second$id <- "dataset-b"
+  second$name <- "Dataset B"
+  second$filename <- "dataset-b.crb"
+  plan$items <- list(plan$items[[1L]], second)
+  plan$dataset_order <- c("dataset-a", "dataset-b")
+  plan
+}
+
+test_that("Stop is honoured between datasets, not only at phase changes", {
+  stage <- withr::local_tempdir()
+  progress <- file.path(stage, "progress.rds")
+  calls <- character()
+  hooks <- builder_build_test_hooks()
+  hooks$prepare <- function(object, item) {
+    calls <<- c(calls, paste0("prepare:", item$id))
+    object
+  }
+  hooks$export <- function(object, item, path) {
+    calls <<- c(calls, paste0("export:", item$id))
+    saveRDS(list(ok = TRUE), path)
+    if (identical(item$id, "dataset-a")) {
+      builder_build_request_cancel(progress)
+    }
+    path
+  }
+
+  expect_error(
+    builder_execute_plan(
+      builder_build_two_dataset_plan(),
+      stage,
+      snapshots = list(
+        `dataset-a` = list(id = "snapshot-a"),
+        `dataset-b` = list(id = "snapshot-b")
+      ),
+      hooks = hooks,
+      on_progress = .builder_build_progress_callback(progress),
+      check_cancel = .builder_build_cancel_callback(progress)
+    ),
+    class = "builder_build_cancelled"
+  )
+  expect_identical(calls, c("prepare:dataset-a", "export:dataset-a"))
+})
+
+test_that("Stop interrupts the analysis loop and is not reported as a failure", {
+  stage <- withr::local_tempdir()
+  progress <- file.path(stage, "progress.rds")
+  steps <- character()
+  hooks <- builder_build_test_hooks()
+  hooks$run_analyses <- function(object, item, on_progress = function(...) NULL) {
+    for (step in item$analyses) {
+      on_progress(step)
+      steps <<- c(steps, step)
+      builder_build_request_cancel(progress)
+    }
+    list(object = object, completed = item$analyses, failed = character())
+  }
+  hooks$export <- function(object, item, path) {
+    stop("export must not run after Stop")
+  }
+
+  expect_error(
+    builder_execute_plan(
+      builder_build_test_plan(c("marker_genes", "enriched_pathways")),
+      stage,
+      snapshots = list(`dataset-a` = list(id = "snapshot-a")),
+      hooks = hooks,
+      check_cancel = .builder_build_cancel_callback(progress)
+    ),
+    "Build stopped by the user",
+    class = "builder_build_cancelled"
+  )
+  expect_identical(steps, "marker_genes")
+})
+
+test_that("a cancel raised inside a hook is not wrapped as a dataset failure", {
+  stage <- withr::local_tempdir()
+  hooks <- builder_build_test_hooks()
+  hooks$export <- function(object, item, path) {
+    stop(structure(
+      list(message = "Build stopped by the user.", call = NULL),
+      class = c("builder_build_cancelled", "error", "condition")
+    ))
+  }
+
+  expect_error(
+    builder_execute_plan(
+      builder_build_test_plan(),
+      stage,
+      snapshots = list(`dataset-a` = list(id = "snapshot-a")),
+      hooks = hooks
+    ),
+    class = "builder_build_cancelled"
+  )
+})
+
+test_that("default analysis hook forwards step progress for cancellation", {
+  hook <- eval(body(builder_build_hooks)[[2L]]$run_analyses)
+  expect_true("on_progress" %in% names(formals(hook)))
+  expect_true(.builder_build_hook_accepts(hook, "on_progress"))
+  expect_false(.builder_build_hook_accepts(
+    function(object, item) NULL,
+    "on_progress"
+  ))
+  expect_null(.builder_build_cancel_callback(NULL))
+})
+
 test_that("build execution releases working objects before CRB verification", {
   stage <- withr::local_tempdir()
   hooks <- builder_build_test_hooks()

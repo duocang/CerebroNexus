@@ -922,6 +922,12 @@ observe({
   if (is.null(current_protocol)) {
     return()
   }
+  if (identical(isolate(worker())$state %||% NULL, "starting")) {
+    # A cancel restarted the worker in the background; dispatch requeued
+    # work once startup marks it available.
+    worker_available()
+    return()
+  }
   dispatched <- builder_protocol_dispatch(current_protocol)
   if (is.null(dispatched$request)) {
     return()
@@ -2439,11 +2445,58 @@ observeEvent(
         busy_note(
           "Stopping after the current step. No output will be published…"
         )
+        schedule_builder_build_stop_fallback(pending$request_id)
       }
     }
   },
   ignoreInit = TRUE
 )
+
+builder_build_stop_grace_ms <- function() {
+  value <- suppressWarnings(as.numeric(getOption(
+    "CerebroNexus.builder.build_stop_grace_ms",
+    10000
+  ))[1L])
+  if (!is.finite(value) || value < 0) 10000 else value
+}
+
+## The worker only sees the cancel marker between steps; one long marker or
+## export call can run for minutes. If the Build is still pending after the
+## grace period, kill the worker and settle the Build as stopped.
+schedule_builder_build_stop_fallback <- function(request_id) {
+  later::later(
+    function() {
+      if (builder_session_closed()) {
+        return(invisible(FALSE))
+      }
+      shiny::withReactiveDomain(session, shiny::isolate({
+        current_protocol <- protocol()
+        pending <- current_protocol$pending
+        current_worker <- worker()
+        if (
+          !is.list(pending) ||
+            !identical(pending$kind, "build") ||
+            !identical(pending$request_id, request_id) ||
+            is.null(current_worker)
+        ) {
+          return(invisible(FALSE))
+        }
+        busy_note("Stopping the background worker…")
+        restart_worker_protocol(
+          current_worker,
+          current_protocol,
+          "Build stopped by the user. The staged output was not published.",
+          grace_ms = 0L,
+          async = TRUE,
+          notify = FALSE
+        )
+        invisible(TRUE)
+      }))
+    },
+    delay = builder_build_stop_grace_ms() / 1000
+  )
+  invisible(TRUE)
+}
 
 consume_transport_retained <- function(payload) {
   if (

@@ -659,7 +659,8 @@ test_that("session binds successful App results to the dispatched build id", {
       registry,
       auth_material = NULL,
       objects = list(),
-      on_progress = NULL
+      on_progress = NULL,
+      check_cancel = NULL
     ) {
       expect_true(is.function(on_progress))
       list(state = "success", publishable = TRUE, stage = stage)
@@ -720,7 +721,8 @@ test_that("worker preloads only fresh objects that are already resident", {
       registry,
       auth_material = NULL,
       objects = list(),
-      on_progress = NULL
+      on_progress = NULL,
+      check_cancel = NULL
     ) {
       expect_identical(names(registry), c("resident", "cold"))
       expect_identical(names(objects), "resident")

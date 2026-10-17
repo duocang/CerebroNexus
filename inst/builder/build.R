@@ -151,6 +151,26 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
   )
 }
 
+.builder_build_cancel_callback <- function(path) {
+  if (is.null(path)) {
+    return(NULL)
+  }
+  function() builder_build_check_cancel(path)
+}
+
+# Hooks wrap their own errors as dataset failures; a Stop must still unwind.
+.builder_build_raise_cancel <- function(value) {
+  if (inherits(value, "builder_build_cancelled")) {
+    stop(value)
+  }
+  value
+}
+
+.builder_build_hook_accepts <- function(hook, argument) {
+  arguments <- names(formals(hook))
+  argument %in% arguments || "..." %in% arguments
+}
+
 .builder_build_progress_callback <- function(path) {
   function(phase) {
     if (is.null(path)) {
@@ -1558,10 +1578,15 @@ builder_build_hooks <- function() {
   list(
     open_snapshot = builder_open_snapshot,
     prepare = .builder_build_prepare,
-    run_analyses = function(object, item) {
+    run_analyses = function(object, item, on_progress = function(...) NULL) {
       settings <- item
       settings$groups <- item$included_groups
-      builder_run_analyses(object, item$analyses, settings)
+      builder_run_analyses(
+        object,
+        item$analyses,
+        settings,
+        on_progress = on_progress
+      )
     },
     export = .builder_build_export,
     attach_extras = .builder_build_attach_extras,
@@ -1578,7 +1603,8 @@ builder_execute_plan <- function(
   hooks = builder_build_hooks(),
   auth_material = NULL,
   objects = list(),
-  on_progress = NULL
+  on_progress = NULL,
+  check_cancel = NULL
 ) {
   on.exit(auth_material <- NULL, add = TRUE)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
@@ -1653,6 +1679,14 @@ builder_execute_plan <- function(
     }
     invisible(NULL)
   }
+  # Checked between datasets and between hooks so Stop does not wait for
+  # every remaining dataset to finish loading, analysing and exporting.
+  cancel_point <- function() {
+    if (is.function(check_cancel)) {
+      check_cancel()
+    }
+    invisible(NULL)
+  }
   report_progress("datasets")
 
   result <- list(
@@ -1676,6 +1710,7 @@ builder_execute_plan <- function(
     vapply(plan$items, `[[`, character(1L), "id")
   )
   for (item in plan$items) {
+    cancel_point()
     reused <- item$reused_artifact %||% NULL
     if (is.list(reused)) {
       if (
@@ -1776,9 +1811,10 @@ builder_execute_plan <- function(
             member_identity
         }
       }
-      verified <- tryCatch(hooks$verify(target, item), error = function(error) {
-        error
-      })
+      verified <- .builder_build_raise_cancel(tryCatch(
+        hooks$verify(target, item),
+        error = function(error) error
+      ))
       if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
         message <- if (inherits(verified, "condition")) {
           conditionMessage(verified)
@@ -1820,10 +1856,12 @@ builder_execute_plan <- function(
     object <- if (!is.null(object)) {
       object
     } else {
-      tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
-        error
-      })
+      .builder_build_raise_cancel(tryCatch(
+        hooks$open_snapshot(snapshot),
+        error = function(error) error
+      ))
     }
+    cancel_point()
     if (inherits(object, "condition")) {
       return(.builder_build_failure(paste0(
         item$name,
@@ -1831,20 +1869,31 @@ builder_execute_plan <- function(
         conditionMessage(object)
       )))
     }
-    object <- tryCatch(hooks$prepare(object, item), error = function(error) {
-      error
-    })
-    if (inherits(object, "condition")) {
-      return(.builder_build_failure(paste0(
-        item$name,
-        ": ",
-        conditionMessage(object)
-      )))
-    }
-    analyses <- tryCatch(
-      hooks$run_analyses(object, item),
+    object <- .builder_build_raise_cancel(tryCatch(
+      hooks$prepare(object, item),
       error = function(error) error
-    )
+    ))
+    cancel_point()
+    if (inherits(object, "condition")) {
+      return(.builder_build_failure(paste0(
+        item$name,
+        ": ",
+        conditionMessage(object)
+      )))
+    }
+    analyses <- .builder_build_raise_cancel(tryCatch(
+      if (.builder_build_hook_accepts(hooks$run_analyses, "on_progress")) {
+        hooks$run_analyses(
+          object,
+          item,
+          on_progress = function(...) cancel_point()
+        )
+      } else {
+        hooks$run_analyses(object, item)
+      },
+      error = function(error) error
+    ))
+    cancel_point()
     if (inherits(analyses, "condition")) {
       return(.builder_build_failure(paste0(
         item$name,
@@ -1900,6 +1949,8 @@ builder_execute_plan <- function(
       ),
       error = function(error) error
     )
+    .builder_build_raise_cancel(exported)
+    cancel_point()
     if (inherits(exported, "condition")) {
       failure <- .builder_build_failure(paste0(
         item$name,
@@ -1920,10 +1971,10 @@ builder_execute_plan <- function(
         "A build artifact was written outside the assigned stage."
       ))
     }
-    extras <- tryCatch(
+    extras <- .builder_build_raise_cancel(tryCatch(
       hooks$attach_extras(exported, object, item),
       error = function(error) error
-    )
+    ))
     if (inherits(extras, "condition")) {
       return(.builder_build_failure(paste0(
         item$name,
@@ -1941,9 +1992,10 @@ builder_execute_plan <- function(
     analyses <- NULL
     extras <- NULL
     invisible(gc(FALSE))
-    verified <- tryCatch(hooks$verify(exported, item), error = function(error) {
-      error
-    })
+    verified <- .builder_build_raise_cancel(tryCatch(
+      hooks$verify(exported, item),
+      error = function(error) error
+    ))
     if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
       message <- if (inherits(verified, "condition")) {
         conditionMessage(verified)

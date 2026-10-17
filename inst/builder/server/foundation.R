@@ -837,7 +837,8 @@ apply_protocol_recovery <- function(
   recovered_worker,
   reason,
   retry_persistent,
-  error = NULL
+  error = NULL,
+  notify = TRUE
 ) {
   recovered <- try(
     builder_protocol_recover(
@@ -945,23 +946,39 @@ apply_protocol_recovery <- function(
       paste(discarded, "obsolete preview request(s) were discarded")
     }
   )
-  add_error(paste0(
-    "The background worker restarted from immutable snapshots.",
-    if (length(detail)) {
-      paste0(" ", paste(detail, collapse = "; "), ".")
-    } else {
-      ""
-    }
-  ))
+  if (isTRUE(notify)) {
+    add_error(paste0(
+      "The background worker restarted from immutable snapshots.",
+      if (length(detail)) {
+        paste0(" ", paste(detail, collapse = "; "), ".")
+      } else {
+        ""
+      }
+    ))
+  }
   invisible(TRUE)
 }
 
+## `async = TRUE` is for user-requested stops: the worker is killed without
+## waiting for an interrupt (which callr cannot deliver on Windows) and the
+## replacement boots in the background, so the page stays responsive.
 restart_worker_protocol <- function(
   current_worker,
   current_protocol,
-  reason
+  reason,
+  grace_ms = 5000L,
+  async = FALSE,
+  notify = TRUE
 ) {
-  restarted <- try(builder_worker_restart(current_worker), silent = TRUE)
+  restarted <- try(
+    builder_worker_restart(
+      current_worker,
+      grace_ms = grace_ms,
+      .async = isTRUE(async),
+      verify_tree = !isTRUE(async)
+    ),
+    silent = TRUE
+  )
   typed_failure <- inherits(restarted, "builder_worker_restart_failed") ||
     (is.list(restarted) && identical(restarted$event, "restart_failed"))
   if (inherits(restarted, "try-error") || typed_failure) {
@@ -986,12 +1003,36 @@ restart_worker_protocol <- function(
       error = restart_error
     ))
   }
-  apply_protocol_recovery(
+  recovered <- apply_protocol_recovery(
     current_protocol,
     restarted,
     reason,
-    retry_persistent = TRUE
+    retry_persistent = TRUE,
+    notify = notify
   )
+  if (isTRUE(async) && identical(restarted$state, "starting")) {
+    ## The dispatcher holds requeued work until poll_builder_worker_startup
+    ## reports the replacement ready.
+    worker_available(FALSE)
+    session$sendCustomMessage(
+      "builder_worker_status",
+      list(
+        state = "starting",
+        title = "Restarting background workspace…",
+        detail = "Stopping the cancelled task…"
+      )
+    )
+    later::later(
+      function() {
+        shiny::withReactiveDomain(
+          builder_lifecycle_session,
+          poll_builder_worker_startup()
+        )
+      },
+      delay = 0.1
+    )
+  }
+  recovered
 }
 
 start_builder_worker <- function() {

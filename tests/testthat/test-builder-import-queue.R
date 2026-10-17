@@ -476,3 +476,83 @@ test_that("loading datasets block Configure with a user-facing reason", {
     fixed = TRUE
   ))
 })
+
+builder_import_queue_restart_stub <- function(app_env, server_env, calls) {
+  server_env$restart_worker_protocol <- function(
+    current_worker,
+    current_protocol,
+    reason,
+    grace_ms = 5000L,
+    async = FALSE,
+    notify = TRUE
+  ) {
+    calls$items[[length(calls$items) + 1L]] <- list(
+      reason = reason,
+      grace_ms = grace_ms,
+      async = async,
+      notify = notify
+    )
+    recovered <- app_env$builder_protocol_recover(
+      current_protocol,
+      epoch = "worker-restarted",
+      reason = reason
+    )
+    server_env$protocol(recovered$protocol)
+    server_env$worker(list(epoch = "worker-restarted", state = "starting"))
+    server_env$worker_available(FALSE)
+    invisible(TRUE)
+  }
+}
+
+test_that("a Build that ignores Stop is ended after the grace period", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  withr::local_options(CerebroNexus.builder.build_stop_grace_ms = 0)
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this import queue test.")
+  }
+  app_env$builder_session_poll <- function(worker, ...) {
+    list(worker = worker, event = NULL, result = NULL)
+  }
+
+  shiny::testServer(app_env$server, {
+    calls <- new.env(parent = emptyenv())
+    calls$items <- list()
+    builder_import_queue_restart_stub(
+      app_env,
+      environment(schedule_builder_build_stop_fallback),
+      calls
+    )
+    worker(list(epoch = "worker-build-stop", state = "ready"))
+    current <- app_env$builder_request_protocol("worker-build-stop")
+    current <- app_env$builder_enqueue(
+      current,
+      app_env$builder_command(
+        kind = "build",
+        dataset = "session",
+        payload = list(kind = "build", progress_path = tempfile())
+      )
+    )
+    dispatched <- app_env$builder_protocol_dispatch(current)
+    protocol(dispatched$protocol)
+    request_id <- dispatched$request$request_id
+
+    schedule_builder_build_stop_fallback("another-request")
+    later::run_now(1)
+    expect_length(calls$items, 0L)
+
+    schedule_builder_build_stop_fallback(request_id)
+    later::run_now(1)
+    expect_length(calls$items, 1L)
+    expect_match(
+      calls$items[[1L]]$reason,
+      "^Build stopped by the user"
+    )
+    expect_identical(calls$items[[1L]]$grace_ms, 0L)
+    expect_true(calls$items[[1L]]$async)
+    expect_false(calls$items[[1L]]$notify)
+  })
+})

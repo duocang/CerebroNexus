@@ -1771,7 +1771,12 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 }
 
 #' Stop a worker, confirm process death, then clean verified orphan artifacts.
-builder_worker_stop <- function(worker, grace_ms = 5000L) {
+#'
+#' `verify_tree = FALSE` skips the ps descendant scan, which opens every
+#' process on the machine and can take tens of seconds on Windows. processx
+#' marks the worker's descendants itself, so `kill_tree()` still reaches them;
+#' user-requested stops use this to keep the Shiny process responsive.
+builder_worker_stop <- function(worker, grace_ms = 5000L, verify_tree = TRUE) {
   .builder_worker_assert(worker)
   grace_ms <- .builder_worker_grace_ms(grace_ms)
   graceful_deadline <- Sys.time() + grace_ms / 1000
@@ -1810,7 +1815,11 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
     ))
   }
 
-  tree <- .builder_worker_tree_handles(worker$process)
+  tree <- if (isTRUE(verify_tree)) {
+    .builder_worker_tree_handles(worker$process)
+  } else {
+    list(handles = list(), error = NULL)
+  }
   if (!is.null(tree$error)) {
     worker$ready <- FALSE
     worker$cleanup_safe <- FALSE
@@ -1828,7 +1837,9 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
   tree_verified <- TRUE
 
   state <- .builder_worker_session_state(worker$process)
-  if (identical(worker$state, "starting")) {
+  if (!isTRUE(verify_tree)) {
+    try(worker$process$kill_tree(), silent = TRUE)
+  } else if (identical(worker$state, "starting")) {
     try(worker$process$kill_tree(), silent = TRUE)
     .builder_worker_kill_handles(handles)
   } else if (identical(state, "idle")) {
@@ -1893,7 +1904,7 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
     logical(1)
   ))
   if (isTRUE(alive) || known_alive) {
-    if (isTRUE(alive)) {
+    if (isTRUE(alive) && isTRUE(verify_tree)) {
       refreshed <- .builder_worker_refresh_tree(worker$process, handles)
       handles <- refreshed$handles
       if (!is.null(refreshed$error)) {
@@ -1905,6 +1916,8 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
           tree_verified <- FALSE
         }
       }
+    }
+    if (isTRUE(alive)) {
       try(worker$process$kill_tree(), silent = TRUE)
     }
     .builder_worker_kill_handles(handles)
@@ -1980,9 +1993,18 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
 }
 
 #' Recreate a worker from the same main-owned snapshot registry.
-builder_worker_restart <- function(worker) {
+builder_worker_restart <- function(
+  worker,
+  grace_ms = 5000L,
+  .async = FALSE,
+  verify_tree = TRUE
+) {
   .builder_worker_assert(worker)
-  stopped <- builder_worker_stop(worker)
+  stopped <- builder_worker_stop(
+    worker,
+    grace_ms = grace_ms,
+    verify_tree = verify_tree
+  )
   if (!isTRUE(stopped$stopped) && !isTRUE(stopped$restart_allowed)) {
     return(.builder_worker_restart_failure(
       stopped$worker,
@@ -1993,7 +2015,8 @@ builder_worker_restart <- function(worker) {
   restarted <- builder_worker_start(
     builder_dir = stopped$worker$builder_dir,
     snapshot_root = stopped$worker$snapshot_root,
-    snapshot_registry = stopped$worker$snapshot_registry
+    snapshot_registry = stopped$worker$snapshot_registry,
+    .async = .async
   )
   if (!is.null(restarted$error)) {
     return(.builder_worker_restart_failure(

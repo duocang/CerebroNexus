@@ -1299,6 +1299,48 @@ if (builder_lifecycle_api_available) {
     expect_true(.builder_snapshot_owned(fixture$snapshot))
   })
 
+  test_that("a busy worker restarts without waiting for its call", {
+    skip_if_not_installed("callr")
+    fixture <- builder_worker_fixture()
+    withr::defer(.builder_snapshot_release(fixture$snapshot))
+    worker <- builder_worker_start(
+      builder_profile_inst_path("builder"),
+      snapshot_root = fixture$root,
+      snapshot_registry = fixture$registry
+    )
+    withr::defer(try(worker$process$close(), silent = TRUE))
+    worker$process$call(function() {
+      repeat {
+        Sys.sleep(0.05)
+      }
+    })
+
+    started <- Sys.time()
+    restarted <- builder_worker_restart(
+      worker,
+      grace_ms = 0L,
+      .async = TRUE,
+      verify_tree = FALSE
+    )
+    withr::defer(try(restarted$process$kill_tree(), silent = TRUE))
+    elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+
+    expect_false(worker$process$is_alive())
+    expect_identical(restarted$state, "starting")
+    expect_lt(elapsed, 10)
+    deadline <- Sys.time() + 30
+    repeat {
+      startup <- builder_worker_poll_startup(restarted, timeout = 100L)
+      restarted <- startup$worker
+      if (!identical(startup$state, "starting") || Sys.time() > deadline) {
+        break
+      }
+    }
+    expect_identical(startup$state, "ready")
+    expect_equal(builder_worker_cell_count(restarted, "dataset-a"), 80L)
+    expect_true(.builder_snapshot_owned(fixture$snapshot))
+  })
+
   test_that("worker snapshots keep only one decoded dataset resident", {
     skip_if_not_installed("callr")
     root <- withr::local_tempdir()
