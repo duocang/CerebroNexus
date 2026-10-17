@@ -178,8 +178,8 @@
 #' sets, coarser for small ones so that a bin holds about three cells), the
 #' velocity averaged per bin that holds at least `min_cells` cells, and every
 #' average drawn from the mean cell position as a shaft plus two barbs. Lengths are scaled so that
-#' a typical (95th percentile) arrow spans about one bin, as in
-#' `scv.pl.velocity_embedding_grid`.
+#' a typical (95th percentile) arrow spans one and a half bins, long enough to
+#' show between the cells the Viewer draws over the trajectory.
 #'
 #' @keywords internal
 #' @noRd
@@ -223,8 +223,8 @@
   speed <- speed[keep]
 
   cell_size <- min(diff(range(xy[, 1L])), diff(range(xy[, 2L]))) / n_grid
-  scale <- cell_size / unname(stats::quantile(speed, 0.95))
-  length_out <- pmin(speed * scale, 1.5 * cell_size)
+  scale <- 1.5 * cell_size / unname(stats::quantile(speed, 0.95))
+  length_out <- pmin(speed * scale, 2.5 * cell_size)
   direction <- field / speed
   tip <- tail + direction * length_out
   head_length <- 0.3 * length_out
