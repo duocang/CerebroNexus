@@ -6131,6 +6131,17 @@ viewerTrekkerExternalImage <- function() {
   )
 }
 
+## The Trekker background shared by the Trekker page and Linked views: a
+## configured external image wins over the image embedded in the Trekker slot.
+viewerTrekkerBackground <- function(tk) {
+  external <- viewerTrekkerExternalImage()
+  list(
+    external = external,
+    uri = external$uri %||% tk[["histology_image", exact = TRUE]],
+    bounds = external$bounds %||% tk[["histology_image_bounds", exact = TRUE]]
+  )
+}
+
 centerOfGroups <- function(coordinates, df, n_dimensions, group) {
   ## Guard against a missing grouping column: callers occasionally pass a
   ## group that isn't present in df (e.g. a metadata column dropped for a

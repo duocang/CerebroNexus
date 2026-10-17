@@ -192,9 +192,9 @@ observe({
     color <- rep(0, length(keys))
   }
   alignment <- tk$histology_alignment %||% list()
-  external_histology <- viewerTrekkerExternalImage()
-  image_preset <- if (is.list(external_histology$preset)) {
-    external_histology$preset
+  background <- viewerTrekkerBackground(tk)
+  image_preset <- if (is.list(background$external$preset)) {
+    background$external$preset
   } else {
     list(
       # Match Spatial and Linked views: saved alignment supplies geometry only.
@@ -208,8 +208,6 @@ observe({
       rotation = alignment$rotation %||% 0
     )
   }
-  background_image <- external_histology$uri %||% tk$histology_image
-  image_bounds <- external_histology$bounds %||% tk$histology_image_bounds
   spatial_panel <- list(
     id = "trekker",
     label = if (identical(view, "morph")) "UMAP → Spatial" else "Spatial",
@@ -217,8 +215,8 @@ observe({
     x = as.numeric(tk$x),
     y = as.numeric(tk$y),
     spatial = TRUE,
-    background_image = background_image,
-    image_bounds = as.list(image_bounds),
+    background_image = background$uri,
+    image_bounds = as.list(background$bounds),
     image_preset = image_preset
   )
   if (identical(view, "morph")) {

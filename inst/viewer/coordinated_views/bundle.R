@@ -1292,9 +1292,9 @@ cv_build_trekker <- function(crb, cells, md) {
   )
   alignment <- tk[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
-  external_histology <- viewerTrekkerExternalImage()
-  histology <- external_histology$uri %||%
-    tk[["histology_image", exact = TRUE]]
+  background <- viewerTrekkerBackground(tk)
+  external_histology <- background$external
+  histology <- background$uri
   if (
     is.character(histology) &&
       length(histology) == 1L &&
@@ -1315,24 +1315,12 @@ cv_build_trekker <- function(crb, cells, md) {
       centre <- if (length(finite_y)) finite_y[[1L]] else 0
       yr <- c(centre - 0.5, centre + 0.5)
     }
-    bounds <- external_histology$bounds %||%
-      tk[["histology_image_bounds", exact = TRUE]]
-    required_bounds <- c("xmin", "xmax", "ymin", "ymax")
-    valid_bounds <- !is.null(bounds) &&
-      !is.null(names(bounds)) &&
-      all(required_bounds %in% names(bounds))
-    if (valid_bounds) {
-      bounds <- suppressWarnings(as.numeric(bounds[required_bounds]))
-      valid_bounds <- length(bounds) == 4L &&
-        !anyNA(bounds) &&
-        all(is.finite(bounds)) &&
-        bounds[[1L]] < bounds[[2L]] &&
-        bounds[[3L]] < bounds[[4L]]
-    }
-    if (!valid_bounds) {
-      bounds <- c(xr[[1L]], xr[[2L]], yr[[1L]], yr[[2L]])
-    }
-    names(bounds) <- required_bounds
+    bounds <- cv_viewport_bounds(background$bounds) %||% list(
+      xmin = xr[[1L]],
+      xmax = xr[[2L]],
+      ymin = yr[[1L]],
+      ymax = yr[[2L]]
+    )
     source <- if (is.list(alignment)) {
       as.character(alignment[["source"]] %||% character())
     } else {
@@ -1360,7 +1348,7 @@ cv_build_trekker <- function(crb, cells, md) {
       },
       label = label,
       uri = histology,
-      bounds = as.list(bounds),
+      bounds = bounds,
       viewport = cv_viewport_bounds(external_histology$viewport_bounds),
       preset = preset,
       coord_span = c(diff(xr), diff(yr))
