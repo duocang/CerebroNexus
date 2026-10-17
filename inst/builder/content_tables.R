@@ -901,6 +901,11 @@
   )
 }
 
+## Trajectory methods whose payload is a cell-aligned `meta` (DR_1, DR_2,
+## pseudotime, state) plus `edges`: monocle2, and what scanpy / scVelo files
+## carry (PAGA, velocity, diffusion pseudotime).
+.builder_trajectory_methods <- c("monocle2", "paga", "scvelo", "pseudotime")
+
 .builder_table_monocle2 <- function(payload, expected_cells) {
   diagnostics <- character()
   if (!.builder_table_plain_list(payload)) {
@@ -1100,7 +1105,7 @@
     summaries <- list()
     for (entry_index in seq_along(entries)) {
       name <- entry_names[[entry_index]]
-      summary <- if (identical(method, "monocle2")) {
+      summary <- if (method %in% .builder_trajectory_methods) {
         .builder_table_monocle2(entries[[entry_index]], expected_cells)
       } else {
         list(
@@ -1151,7 +1156,8 @@ builder_trajectory_catalog <- function(trajectory) {
     for (entry_index in seq_along(entries)) {
       name <- names(entries)[[entry_index]]
       summary <- entries[[entry_index]]
-      supported <- isTRUE(summary$supported) && identical(method, "monocle2")
+      supported <- isTRUE(summary$supported) &&
+        method %in% .builder_trajectory_methods
       valid <- isTRUE(summary$valid)
       selectable <- supported && valid
       catalog[[length(catalog) + 1L]] <- list(

@@ -136,7 +136,7 @@ test_that("an exported .crb from the converted object matches the direct convers
 
 builder_e2e_source_runtime(local = globalenv())
 
-build_through_builder <- function(path, id) {
+build_through_builder <- function(path, id, configure = identity) {
   inspected_object <- quiet(builder_read_object(path))$object
   record <- list(
     id = id,
@@ -151,6 +151,7 @@ build_through_builder <- function(path, id) {
     available_bytes = 2^40
   )
   entry$snapshot <- snapshot
+  entry <- configure(entry)
   plan <- builder_freeze_plan(list(entry), file.path(root, "release"), make_app = FALSE)
   expect_null(plan$error)
   stage <- file.path(root, "stage")
@@ -175,4 +176,36 @@ test_that("a spatial AnnData file builds a spatial section through the Builder",
   skip_if_not_installed("qs2")
   built <- build_through_builder(fixture("small_spatial.h5ad"), "h5ad_spatial")
   expect_true(length(built$crb$spatial) >= 1L)
+})
+
+test_that("scanpy / scVelo trajectories are offered and built by the Builder", {
+  skip_if_not_installed("qs2")
+  inspected_trajectories <- quiet(builder_read_object(
+    fixture("small_trajectory.h5ad")
+  ))$object@misc$trajectories
+  built <- build_through_builder(
+    fixture("small_trajectory.h5ad"), "h5ad_trajectory",
+    configure = function(entry) {
+      ## what the Configure page records when the user keeps these trajectories
+      entry$settings$included_trajectories <- list(
+        scvelo = names(inspected_trajectories$scvelo)[1L],
+        paga = names(inspected_trajectories$paga)[1L]
+      )
+      entry$settings$default_trajectory <- list(
+        method = "scvelo",
+        name = names(inspected_trajectories$scvelo)[1L]
+      )
+      entry
+    }
+  )
+  methods <- built$crb$getMethodsForTrajectories()
+  expect_true(all(c("paga", "scvelo") %in% methods))
+  expect_true(length(built$crb$getNamesOfTrajectories("scvelo")) >= 1L)
+})
+
+test_that("a scirpy repertoire is offered and built by the Builder", {
+  skip_if_not_installed("qs2")
+  built <- build_through_builder(fixture("small_airr.h5ad"), "h5ad_airr")
+  expect_true(length(built$crb$immune_repertoire) >= 1L ||
+    length(built$crb$getImmuneRepertoire()) >= 1L)
 })

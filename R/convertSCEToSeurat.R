@@ -120,6 +120,9 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
 
   carried <- as.list(object@metadata)
   carried$spatial_images <- NULL
+  if (is.list(carried$trajectories)) {
+    carried$trajectories <- .finiteTrajectories(carried$trajectories)
+  }
   carried <- carried[nzchar(names(carried) %||% character(length(carried)))]
   result@misc <- utils::modifyList(result@misc, carried)
 
@@ -132,4 +135,29 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     )
   }
   result
+}
+
+## The Builder checks every trajectory strictly; scVelo leaves pseudotime
+## undefined for some cells, which the Viewer leaves out when it draws. Keep the
+## cells with finite coordinates and pseudotime, and drop a trajectory that has
+## none.
+.finiteTrajectories <- function(trajectories) {
+  trim <- function(payload) {
+    meta <- payload[["meta"]]
+    needed <- c("DR_1", "DR_2", "pseudotime")
+    if (is.data.frame(meta) && all(needed %in% colnames(meta))) {
+      keep <- stats::complete.cases(meta[, needed, drop = FALSE]) &
+        is.finite(meta[["DR_1"]]) & is.finite(meta[["DR_2"]]) &
+        is.finite(meta[["pseudotime"]])
+      payload[["meta"]] <- meta[keep, , drop = FALSE]
+    }
+    payload
+  }
+  result <- lapply(trajectories, function(method) {
+    kept <- lapply(method, trim)
+    kept[vapply(kept, function(p) {
+      !is.data.frame(p[["meta"]]) || nrow(p[["meta"]]) > 0L
+    }, logical(1))]
+  })
+  result[lengths(result) > 0L]
 }
