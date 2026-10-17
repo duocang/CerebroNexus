@@ -10,19 +10,13 @@ output[["preferences_options"]] <- renderUI({
       role = "switch", `aria-describedby` = paste0(id, "_help")
     )$allTags()
     div(
-      class = "cerebro-preference", title = help,
+      class = "cerebro-preference", title = help, `data-help` = help,
       control,
       tags$span(id = paste0(id, "_help"), class = "sr-only", help)
     )
   }
   tagList(
-    div(
-      class = "cerebro-preferences-heading",
-      tags$span("Preferences"),
-      tags$span(id = "cerebro-renderer-status", class = "cerebro-renderer-status",
-        tabindex = "0", role = "status", `aria-live` = "polite",
-        title = "Automatic GPU acceleration when supported; otherwise Canvas.", "Auto")
-    ),
+    div(class = "cerebro-preferences-heading", "Preferences"),
     preference(
       "webgl_checkbox",
       "GPU acceleration", TRUE,

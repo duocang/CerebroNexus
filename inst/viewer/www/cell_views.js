@@ -1922,9 +1922,12 @@
     reportRendererStatus();
   }
 
+  // The active backends are appended to the GPU acceleration tooltip so the
+  // switch explains what is currently drawing without a separate badge.
   function reportRendererStatus() {
-    var badge = document.getElementById('cerebro-renderer-status');
-    if (!badge) return;
+    var checkbox = document.getElementById('webgl_checkbox');
+    var row = checkbox && checkbox.closest('.cerebro-preference');
+    if (!row) return;
     var backends = [];
     panels.forEach(function (p) {
       if (!p.spaceId || !p.canvas.offsetParent ||
@@ -1947,15 +1950,11 @@
         });
       });
     }
-    var label = backends.length > 1 ? 'Mixed' : backends[0] || (gpuAcceleration ? 'Auto' : 'Off');
-    var detail = backends.length ? 'Current plots: ' + backends.join(', ') + '.'
-      : 'No active plot.';
-    var title = detail + (gpuAcceleration
-      ? ' GPU acceleration is on. Small or unsupported cell views may use Canvas.'
-      : ' GPU acceleration is off. Cell views use Canvas.');
-    if (badge.textContent !== label) badge.textContent = label;
-    if (badge.title !== title) badge.title = title;
-    badge.dataset.backend = label;
+    var title = (row.dataset.help || '') + (backends.length
+      ? ' Current plots: ' + backends.join(', ') + '.' : '');
+    if (row.title !== title) row.title = title;
+    var help = document.getElementById('webgl_checkbox_help');
+    if (help && help.textContent !== title) help.textContent = title;
   }
 
   function attachUnderlay(p) {
