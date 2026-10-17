@@ -513,12 +513,20 @@ process_native_dataset_files <- function(paths) {
 }
 
 observeEvent(input$builder_choose_dataset_files, {
+  picker_idle <- function() {
+    session$sendCustomMessage(
+      "builder_dataset_picker_state",
+      list(active = FALSE)
+    )
+  }
   if (dataset_mutations_locked()) {
+    picker_idle()
     return()
   }
   builder_schedule_native_picker(
     "dataset_files",
     key = "dataset-files",
+    on_finally = picker_idle,
     on_result = function(choice) {
       if (identical(choice$status, "cancelled")) {
         return(invisible(FALSE))

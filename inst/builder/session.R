@@ -122,10 +122,7 @@ builder_session_example <- function(
               progress = progress
             )
           }
-          backends <- list(
-            bpcells = requireNamespace("BPCells", quietly = TRUE),
-            h5 = requireNamespace("HDF5Array", quietly = TRUE)
-          )
+          backends <- builder_backend_capabilities()
           value$backend_capabilities <- list(
             build = backends,
             viewer = backends
@@ -219,10 +216,7 @@ builder_session_load <- function(
               progress = progress
             )
           }
-          backends <- list(
-            bpcells = requireNamespace("BPCells", quietly = TRUE),
-            h5 = requireNamespace("HDF5Array", quietly = TRUE)
-          )
+          backends <- builder_backend_capabilities()
           value$backend_capabilities <- list(
             build = backends,
             viewer = backends

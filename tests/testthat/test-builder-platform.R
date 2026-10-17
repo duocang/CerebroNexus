@@ -182,6 +182,107 @@ test_that("unavailable optional readers suggest usable formats", {
   )
 })
 
+test_that("per-file format checks reuse one reader probe", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(builder_profile_inst_path("builder", "io.R"), envir = runtime)
+  probes <- 0L
+  probe <- function(formats) {
+    probes <<- probes + 1L
+    runtime$builder_format_capabilities(
+      formats,
+      .require_namespace = function(package) !identical(package, "qs")
+    )
+  }
+  first <- runtime$builder_cached_format_capabilities(.probe = probe)
+  second <- runtime$builder_cached_format_capabilities(.probe = probe)
+  expect_identical(probes, 1L)
+  expect_identical(first, second)
+  expect_false(runtime$builder_path_format_capability("a.qs")$available)
+  expect_true(runtime$builder_path_format_capability("a.qs2")$available)
+  expect_identical(
+    vapply(runtime$builder_available_formats(), `[[`, character(1), "id"),
+    c("rds", "qs2")
+  )
+  expect_identical(probes, 1L)
+
+  # A changed format table is probed again rather than served stale.
+  changed <- runtime$builder_formats
+  changed[[1L]]$label <- "RDS changed"
+  runtime$builder_cached_format_capabilities(changed, .probe = probe)
+  expect_identical(probes, 2L)
+})
+
+test_that("on-disk backend flags are probed once without loading packages", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(builder_profile_inst_path("builder", "loading.R"), envir = runtime)
+  probed <- character()
+  installed <- function(package) {
+    probed <<- c(probed, package)
+    identical(package, "HDF5Array")
+  }
+  first <- runtime$builder_backend_capabilities(.installed = installed)
+  second <- runtime$builder_backend_capabilities(.installed = installed)
+  expect_identical(first, list(bpcells = FALSE, h5 = TRUE))
+  expect_identical(second, first)
+  expect_identical(probed, c("BPCells", "HDF5Array"))
+
+  session <- paste(
+    readLines(builder_profile_inst_path("builder", "session.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl('requireNamespace("BPCells"', session, fixed = TRUE))
+  expect_false(grepl('requireNamespace("HDF5Array"', session, fixed = TRUE))
+  expect_identical(
+    lengths(regmatches(
+      session,
+      gregexpr("backends <- builder_backend_capabilities()", session, fixed = TRUE)
+    )),
+    2L
+  )
+})
+
+test_that("the dataset picker reports its busy state to the page", {
+  imports <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "imports.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  observer <- regmatches(
+    imports,
+    regexpr(
+      "observeEvent\\(input\\$builder_choose_dataset_files, \\{[\\s\\S]*?\\n\\}\\)",
+      imports,
+      perl = TRUE
+    )
+  )
+  expect_match(observer, '"builder_dataset_picker_state"', fixed = TRUE)
+  expect_match(observer, "on_finally = picker_idle", fixed = TRUE)
+  expect_match(
+    observer,
+    "if (dataset_mutations_locked()) {\n    picker_idle()",
+    fixed = TRUE
+  )
+
+  js <- paste(
+    readLines(builder_profile_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(js, '"builder_dataset_picker_state"', fixed = TRUE)
+  expect_match(js, 'label.textContent = "Opening file dialog…";', fixed = TRUE)
+  expect_match(
+    js,
+    "if (datasetMutationsLocked || datasetPickerOpening) return;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    'datasetPickerOpening && control.matches(".builder-add-datasets")',
+    fixed = TRUE
+  )
+})
+
 test_that("all server-filesystem buttons use the native picker boundary", {
   builder_root <- dirname(.builder_io_source_path)
   server_root <- file.path(builder_root, "server")

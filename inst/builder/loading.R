@@ -395,6 +395,25 @@ builder_import_auto_focus <- function(current_id, active_id, new_id) {
   new_id
 }
 
+## On-disk layer backends reported with every load. Probed once per process
+## with system.file(): loading HDF5Array or BPCells on every import only to
+## report a flag costs seconds of namespace loading.
+.builder_backend_capability_cache <- new.env(parent = emptyenv())
+
+builder_backend_capabilities <- function(
+  .installed = function(package) nzchar(system.file(package = package))
+) {
+  cached <- .builder_backend_capability_cache$value
+  if (is.null(cached)) {
+    cached <- list(
+      bpcells = isTRUE(.installed("BPCells")),
+      h5 = isTRUE(.installed("HDF5Array"))
+    )
+    .builder_backend_capability_cache$value <- cached
+  }
+  cached
+}
+
 ## -- Private worker-to-app progress records --------------------------------
 
 .builder_import_progress_token <- function(id) {

@@ -88,29 +88,44 @@ test_that("background project writes preserve revision conflicts and retry", {
 test_that("WSL picker paths preserve spaces and reject failed translation", {
   builder_repo_source("io.R", local = environment())
   selected <- c("C:\\Data space\\sample.rds", "D:\\研究\\builder-project.json")
+  calls <- 0L
   converted <- builder_wsl_picker_paths(
     selected,
     .run = function(command, args, ...) {
-      expect_identical(command, "wslpath")
-      expect_identical(args[[1]], "-u")
+      calls <<- calls + 1L
+      # One shell converts every path, each as its own argument.
+      expect_identical(command, "sh")
+      expect_identical(args[[1]], "-c")
+      expect_match(args[[2]], 'wslpath -u "$path"', fixed = TRUE)
+      paths <- args[-(1:3)]
+      expect_identical(paths, selected)
       list(
         status = 0L,
         stdout = paste0(
           "/mnt/",
-          tolower(substr(args[[2]], 1, 1)),
-          gsub("\\", "/", substring(args[[2]], 3), fixed = TRUE),
-          "\n"
+          tolower(substr(paths, 1, 1)),
+          gsub("\\", "/", substring(paths, 3), fixed = TRUE),
+          "\n",
+          collapse = ""
         )
       )
     }
   )
+  expect_identical(calls, 1L)
   expect_identical(
     converted,
     c("/mnt/c/Data space/sample.rds", "/mnt/d/研究/builder-project.json")
   )
+  expect_identical(builder_wsl_picker_paths(character()), character())
   expect_error(
     builder_wsl_picker_paths(selected, .run = function(...) {
       list(status = 1L, stdout = "")
+    }),
+    "Cannot access"
+  )
+  expect_error(
+    builder_wsl_picker_paths(selected, .run = function(...) {
+      list(status = 0L, stdout = "/mnt/c/only-one\n")
     }),
     "Cannot access"
   )

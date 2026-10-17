@@ -641,23 +641,36 @@ builder_is_wsl <- function() {
   nzchar(Sys.getenv("WSL_DISTRO_NAME")) || nzchar(Sys.getenv("WSL_INTEROP"))
 }
 
+## wslpath converts one path per invocation; a single shell converts every
+## selected path so a multi-file pick starts one process instead of one each.
 builder_wsl_picker_paths <- function(paths, .run = processx::run) {
-  vapply(
-    paths,
-    function(path) {
-      result <- .run("wslpath", c("-u", path), error_on_status = FALSE)
-      converted <- trimws(result$stdout %||% "")
-      if (!identical(result$status, 0L) || !nzchar(converted)) {
-        stop(
-          "Cannot access the selected Windows path. Choose another location.",
-          call. = FALSE
-        )
-      }
-      converted
-    },
-    character(1),
-    USE.NAMES = FALSE
+  paths <- as.character(paths)
+  if (!length(paths)) {
+    return(character())
+  }
+  result <- .run(
+    "sh",
+    c(
+      "-c",
+      'for path in "$@"; do wslpath -u "$path" || exit 1; done',
+      "sh",
+      paths
+    ),
+    error_on_status = FALSE
   )
+  converted <- strsplit(result$stdout %||% "", "\n", fixed = TRUE)[[1L]]
+  converted <- trimws(converted)
+  if (
+    !identical(result$status, 0L) ||
+      length(converted) != length(paths) ||
+      any(!nzchar(converted))
+  ) {
+    stop(
+      "Cannot access the selected Windows path. Choose another location.",
+      call. = FALSE
+    )
+  }
+  converted
 }
 
 builder_native_picker_spec <- function(
@@ -1184,15 +1197,32 @@ builder_format_capabilities <- function(
   capabilities
 }
 
+## Reader availability cannot change without reinstalling packages, so the
+## per-file checks share one probe per process.
+.builder_format_capability_cache <- new.env(parent = emptyenv())
+
+## The probe is keyed by the format table so a changed table re-probes.
+builder_cached_format_capabilities <- function(
+  formats = builder_formats,
+  .probe = builder_format_capabilities
+) {
+  cache <- .builder_format_capability_cache
+  if (is.null(cache$value) || !identical(cache$formats, formats)) {
+    cache$value <- .probe(formats)
+    cache$formats <- formats
+  }
+  cache$value
+}
+
 builder_available_formats <- function(
-  capabilities = builder_format_capabilities()
+  capabilities = builder_cached_format_capabilities()
 ) {
   Filter(function(format) isTRUE(format$available), capabilities)
 }
 
 builder_path_format_capability <- function(
   path,
-  capabilities = builder_format_capabilities()
+  capabilities = builder_cached_format_capabilities()
 ) {
   extension <- tolower(tools::file_ext(path %||% ""))
   matches <- Filter(
