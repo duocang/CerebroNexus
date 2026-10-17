@@ -1097,6 +1097,35 @@ if (builder_lifecycle_api_available) {
     )
   }
 
+  # On Windows bin/R.exe is a launcher that starts Rterm.exe through cmd.exe,
+  # so killing its pid leaves the sleeping Rterm.exe behind. Start Rterm.exe
+  # directly so the recorded pid is the process that has to die.
+  .builder_test_sleeper_binary <- function() {
+    file.path(
+      R.home("bin"),
+      if (.Platform$OS.type == "windows") "Rterm.exe" else "R"
+    )
+  }
+
+  # Registered before the child exists: kills whatever pid the file names
+  # when the test ends, even when an expectation or the pid wait fails.
+  .builder_defer_kill_pid_file <- function(path, envir = parent.frame()) {
+    withr::defer(
+      {
+        pid <- if (file.exists(path)) {
+          suppressWarnings(as.integer(readLines(path, warn = FALSE)[1L]))
+        } else {
+          NA_integer_
+        }
+        if (length(pid) == 1L && !is.na(pid) && .builder_test_pid_alive(pid)) {
+          try(tools::pskill(pid, signal = 9L), silent = TRUE)
+        }
+        unlink(path, force = TRUE)
+      },
+      envir = envir
+    )
+  }
+
   .builder_wait_for_pid_file <- function(path, timeout = 10) {
     deadline <- Sys.time() + timeout
     repeat {
@@ -1898,7 +1927,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
     skip_if_not_installed("ps")
     root <- withr::local_tempdir()
     pid_file <- tempfile("builder-orphan-child-pid-")
-    withr::defer(unlink(pid_file, force = TRUE))
+    .builder_defer_kill_pid_file(pid_file)
     registered <- builder_snapshot_seurat(
       SeuratObject::pbmc_small,
       file.path(root, "dataset-registered"),
@@ -1915,11 +1944,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
       snapshot_registry = list("dataset-a" = registered)
     )
     worker$process$call(
-      function(path) {
-        r_binary <- file.path(
-          R.home("bin"),
-          if (.Platform$OS.type == "windows") "R.exe" else "R"
-        )
+      function(path, r_binary) {
         child <- processx::process$new(
           r_binary,
           c("--vanilla", "--slave", "-e", "repeat { Sys.sleep(1) }"),
@@ -1929,7 +1954,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
         writeLines(as.character(child$get_pid()), path)
         quit(save = "no", status = 17L, runLast = FALSE)
       },
-      args = list(path = pid_file)
+      args = list(path = pid_file, r_binary = .builder_test_sleeper_binary())
     )
     child_pid <- .builder_wait_for_pid_file(pid_file)
     child_handle <- ps::ps_handle(child_pid)
@@ -1986,7 +2011,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
     skip_if_not_installed("ps")
     root <- withr::local_tempdir()
     pid_file <- tempfile("builder-child-pid-")
-    withr::defer(unlink(pid_file, force = TRUE))
+    .builder_defer_kill_pid_file(pid_file)
     orphan <- builder_snapshot_seurat(
       SeuratObject::pbmc_small,
       file.path(root, "dataset-orphan"),
@@ -1999,11 +2024,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
     )
     parent_process <- worker$process
     worker$process$call(
-      function(path) {
-        r_binary <- file.path(
-          R.home("bin"),
-          if (.Platform$OS.type == "windows") "R.exe" else "R"
-        )
+      function(path, r_binary) {
         child <- processx::process$new(
           r_binary,
           c("--vanilla", "--slave", "-e", "repeat { Sys.sleep(1) }"),
@@ -2017,7 +2038,7 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
           Sys.sleep(0.05)
         }
       },
-      args = list(path = pid_file)
+      args = list(path = pid_file, r_binary = .builder_test_sleeper_binary())
     )
     child_pid <- .builder_wait_for_pid_file(pid_file)
     withr::defer({
