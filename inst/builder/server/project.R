@@ -711,15 +711,49 @@ builder_project_worker_task_call <- function(worker, task, args) {
 }
 
 ## Load the worker runtimes as soon as a Project is active, so the first Save
-## does not wait for an R session to start and source the Builder.
-builder_project_prewarm_workers <- function() {
+## does not wait for an R session to start and source the Builder. The writer
+## also checks each newly active Project once (see
+## builder_project_writer_warmup_task), keyed by Project and worker start so a
+## restarted worker is readied again.
+builder_project_prewarm_workers <- function(project = isolate(builder_project())) {
   if (
     builder_session_closed() ||
       !isTRUE(getOption("CerebroNexus.builder.project_worker_prewarm", TRUE))
   ) {
     return(invisible(FALSE))
   }
-  for (worker in list(builder_project_writer, builder_project_copier)) {
+  writer <- builder_project_writer
+  warm_key <- if (is.list(project) && builder_has_text(project$root %||% "")) {
+    paste(project$root, project$manifest$project$id %||% "", sep = "::")
+  } else {
+    NULL
+  }
+  if (
+    !is.null(warm_key) &&
+      !builder_project_worker_busy(writer) &&
+      !identical(writer$warmed_for, list(warm_key, writer$starts))
+  ) {
+    warmed <- try(
+      builder_project_worker_task_call(
+        writer,
+        builder_project_writer_warmup_task,
+        list(root = project$root)
+      ),
+      silent = TRUE
+    )
+    if (!inherits(warmed, "try-error")) {
+      writer$warmed_for <- list(warm_key, writer$starts)
+      # The worker only advances when polled; keep it moving through the
+      # session start and the warm-up so it is done before the first Save.
+      poll <- function() {
+        if (isTRUE(tryCatch(warmed$is_alive(), error = function(e) FALSE))) {
+          later::later(poll, delay = 0.1)
+        }
+      }
+      later::later(poll, delay = 0.1)
+    }
+  }
+  for (worker in list(writer, builder_project_copier)) {
     if (is.null(worker$session) && !builder_project_worker_busy(worker)) {
       try(
         builder_project_worker_task_call(
@@ -2904,7 +2938,19 @@ request_builder_project_save <- function(
   if (isTRUE(show_actions)) {
     after <- function(ok) {
       if (isTRUE(ok)) {
-        queue_builder_project_crbs(isolate(checked_dataset_ids()))
+        # Queuing CRBs freezes a plan and checks free disk space on the main
+        # thread (over a second on Windows). Let the flush that ends "Saving
+        # project…" reach the browser first.
+        later::later(
+          function() {
+            if (!builder_session_closed()) {
+              shiny::withReactiveDomain(builder_lifecycle_session, {
+                queue_builder_project_crbs(isolate(checked_dataset_ids()))
+              })
+            }
+          },
+          delay = 0.05
+        )
       }
       if (is.function(completion)) {
         completion(isTRUE(ok))

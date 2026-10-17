@@ -924,3 +924,201 @@ test_that("Open waits for a busy worker instead of asking to confirm again", {
     fixed = TRUE
   )
 })
+
+builder_responsiveness_project <- function(runtime, root, ids = c("ds1", "ds2")) {
+  manifest <- runtime$builder_project_new_manifest(root, "Warm writes")
+  manifest$datasets <- lapply(ids, function(id) {
+    runtime$builder_project_dataset_record(
+      list(
+        id = id,
+        revision = 1L,
+        settings = list(name = id, overview_point_size = 3),
+        acknowledgements = character(),
+        spatial_drafts = list()
+      ),
+      source = list(
+        kind = "missing",
+        path = NULL,
+        fingerprint = list(md5 = strrep("a", 32L))
+      ),
+      root = root
+    )
+  })
+  manifest
+}
+
+test_that("configuration digests are memoized by the value they hash", {
+  runtime <- builder_responsiveness_runtime()
+  entry <- list(
+    id = "ds1",
+    revision = 1L,
+    settings = list(name = "First", overview_point_size = 3),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  memo <- new.env(parent = emptyenv())
+  plain <- runtime$builder_project_configuration_digest(entry, memo = NULL)
+
+  expect_identical(
+    runtime$builder_project_configuration_digest(entry, memo = memo),
+    plain
+  )
+  expect_length(ls(memo), 1L)
+
+  ## The second call is answered from the memo, not by serializing again.
+  assign(ls(memo), "memoized", envir = memo)
+  expect_identical(
+    runtime$builder_project_configuration_digest(entry, memo = memo),
+    "memoized"
+  )
+
+  ## Any change to the hashed value is a different key.
+  entry$settings$name <- "Renamed"
+  renamed <- runtime$builder_project_configuration_digest(entry, memo = memo)
+  expect_false(identical(renamed, "memoized"))
+  expect_identical(
+    renamed,
+    runtime$builder_project_configuration_digest(entry, memo = NULL)
+  )
+})
+
+test_that("a warm writer verifies unchanged sidecars once across Saves", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  manifest <- builder_responsiveness_project(runtime, root)
+  cache <- new.env(parent = emptyenv())
+  first <- runtime$builder_project_write(
+    manifest,
+    root,
+    verification_cache = cache
+  )
+
+  reads <- new.env(parent = emptyenv())
+  reads$n <- 0L
+  read_configuration <- runtime$builder_project_read_configuration_file
+  runtime$builder_project_read_configuration_file <- function(...) {
+    reads$n <- reads$n + 1L
+    read_configuration(...)
+  }
+  second <- runtime$builder_project_write(
+    first$manifest,
+    root,
+    expected_revision = first$manifest$project$revision,
+    verification_cache = cache
+  )
+  expect_identical(
+    second$manifest$project$revision,
+    first$manifest$project$revision + 1L
+  )
+  expect_identical(reads$n, 0L)
+
+  ## Without the shared cache every integrity pass reads every sidecar.
+  runtime$builder_project_write(
+    second$manifest,
+    root,
+    expected_revision = second$manifest$project$revision
+  )
+  expect_gt(reads$n, 0L)
+
+  ## A rewritten sidecar has a new stat identity and is read and rejected.
+  config <- file.path(root, second$manifest$datasets[[1L]]$configuration$path)
+  bytes <- readBin(config, "raw", file.size(config))
+  text <- rawToChar(bytes)
+  writeBin(charToRaw(sub("\"ds1\"", "\"dsX\"", text, fixed = TRUE)), config)
+  reads$n <- 0L
+  expect_error(
+    runtime$builder_project_write(
+      second$manifest,
+      root,
+      expected_revision = second$manifest$project$revision + 1L,
+      verification_cache = cache
+    ),
+    "incomplete|integrity"
+  )
+  expect_gt(reads$n, 0L)
+})
+
+test_that("the writer warm-up compiles the write path and fills the cache", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  runtime$builder_project_write(builder_responsiveness_project(runtime, root), root)
+  cache <- runtime$builder_project_write_verification_cache()
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  compiled <- function(name) {
+    any(grepl(
+      "<bytecode",
+      utils::capture.output(print(get(name, envir = runtime))),
+      fixed = TRUE
+    ))
+  }
+  expect_false(compiled("builder_project_write"))
+
+  expect_true(runtime$builder_project_writer_warmup_task(
+    function(full) runtime,
+    list(root = root)
+  ))
+  expect_true(compiled("builder_project_write"))
+  expect_true(compiled("builder_project_build_manifest"))
+  expect_gt(length(ls(cache, all.names = TRUE)), 0L)
+
+  ## A folder without a Project is left for the Save to report.
+  expect_false(runtime$builder_project_writer_warmup_task(
+    function(full) runtime,
+    list(root = withr::local_tempdir())
+  ))
+})
+
+test_that("each newly active Project readies the writer once", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    withr::local_options(CerebroNexus.builder.project_worker_prewarm = TRUE)
+    server_env <- environment(builder_project_prewarm_workers)
+    calls <- new.env(parent = emptyenv())
+    calls$warmups <- list()
+    server_env$builder_project_worker_task_call <- function(worker, task, args) {
+      if (!is.null(args$root)) {
+        calls$warmups[[length(calls$warmups) + 1L]] <- args$root
+      }
+      list(is_alive = function() FALSE)
+    }
+    project <- function(root, id) {
+      list(root = root, manifest = list(project = list(id = id)))
+    }
+
+    builder_project_prewarm_workers(project("C:/p1", "a"))
+    builder_project_prewarm_workers(project("C:/p1", "a"))
+    expect_identical(calls$warmups, list("C:/p1"))
+
+    ## A restarted writer lost its caches; ready it again.
+    builder_project_writer$starts <- builder_project_writer$starts + 1L
+    builder_project_prewarm_workers(project("C:/p1", "a"))
+    builder_project_prewarm_workers(project("C:/p2", "b"))
+    expect_identical(calls$warmups, list("C:/p1", "C:/p1", "C:/p2"))
+    builder_project_prewarm_workers(NULL)
+    expect_length(calls$warmups, 3L)
+  })
+})
+
+test_that("a manual Save queues CRBs only after its result is shown", {
+  source <- paste(
+    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  start <- regexpr(
+    "request_builder_project_save <- function(",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  end <- regexpr("output$project_status <-", source, fixed = TRUE)[[1L]]
+  save <- substr(source, start, end - 1L)
+  deferred <- regexpr("later::later(", save, fixed = TRUE)[[1L]]
+  queued <- regexpr(
+    "queue_builder_project_crbs(isolate(checked_dataset_ids()))",
+    save,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(deferred, 0L)
+  expect_gt(queued, deferred)
+})

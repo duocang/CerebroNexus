@@ -1072,6 +1072,25 @@ builder_project_verification_cache_key <- function(
   )))
 }
 
+## Stat-keyed verification results (managed file MD5s, configuration sidecar
+## checks) kept between Project transactions. Sidecars are immutable and
+## content-addressed, and a key covers path, size, mtime, ctime and file id,
+## so any rewrite misses it. A warm Project writer therefore checks an
+## unchanged Project with a few stat calls instead of re-reading and
+## re-hashing every sidecar on every Save.
+.builder_project_write_verification_cache <- new.env(parent = emptyenv())
+
+builder_project_write_verification_cache <- function(
+  cache = .builder_project_write_verification_cache,
+  limit = 4096L
+) {
+  keys <- ls(cache, all.names = TRUE)
+  if (length(keys) > limit) {
+    rm(list = keys, envir = cache)
+  }
+  cache
+}
+
 builder_project_cached_verified_fingerprint <- function(
   path,
   verification_cache
@@ -3263,8 +3282,39 @@ builder_project_verify_configuration <- function(
   revision,
   digest,
   fingerprint = NULL,
-  contract_version = .builder_project_configuration_contract_version
+  contract_version = .builder_project_configuration_contract_version,
+  verification_cache = NULL
 ) {
+  cache_key <- NULL
+  if (is.environment(verification_cache)) {
+    stat_key <- builder_project_verification_cache_key(
+      path,
+      builder_project_file_metadata(path),
+      verification_cache
+    )
+    if (.builder_project_text(stat_key)) {
+      cache_key <- paste(
+        "configuration-verify",
+        stat_key,
+        as.character(dataset_id),
+        .builder_project_stored_integer(revision %||% 0L, 0L),
+        as.character(digest %||% ""),
+        as.character(contract_version),
+        sep = "::"
+      )
+      cached <- get0(cache_key, envir = verification_cache, inherits = FALSE)
+      if (
+        is.list(cached) &&
+          (!is.list(fingerprint) ||
+            builder_project_content_fingerprint_matches(
+              fingerprint,
+              cached$fingerprint
+            ))
+      ) {
+        return(cached)
+      }
+    }
+  }
   loaded <- builder_project_read_configuration_file(path, fingerprint = TRUE)
   current <- loaded$fingerprint
   if (
@@ -3318,19 +3368,24 @@ builder_project_verify_configuration <- function(
       call. = FALSE
     )
   }
-  list(
+  verified <- list(
     config = config,
     fingerprint = current,
     digest = if (legacy_fallback) as.character(digest) else actual_digest,
     contract_version = contract_version,
     legacy_runtime_fallback = isTRUE(legacy_fallback)
   )
+  if (.builder_project_text(cache_key)) {
+    assign(cache_key, verified, envir = verification_cache)
+  }
+  verified
 }
 
 builder_project_write_dataset_config <- function(
   entry,
   root,
   expected_digest = NULL,
+  verification_cache = NULL,
   .write = function(payload, path) {
     connection <- file(path, open = "wb")
     on.exit(close(connection), add = TRUE)
@@ -3386,7 +3441,8 @@ builder_project_write_dataset_config <- function(
       config$id,
       config$revision,
       expected_digest,
-      expected_fingerprint
+      expected_fingerprint,
+      verification_cache = verification_cache
     )
     return(list(
       schema_version = .builder_project_config_schema_version,
@@ -3437,7 +3493,8 @@ builder_project_write_dataset_config <- function(
     config$id,
     config$revision,
     expected_digest,
-    staged_fingerprint
+    staged_fingerprint,
+    verification_cache = verification_cache
   )
   list(
     schema_version = .builder_project_config_schema_version,
@@ -4739,19 +4796,43 @@ builder_project_configuration_digest_v2 <- function(entry) {
 ## cross-version byte format. Contract v3 hashes the canonical UTF-8 JSON bytes
 ## themselves, so a Project saved by one R runtime opens identically in
 ## another.
-builder_project_configuration_digest <- function(entry) {
+builder_project_configuration_digest <- function(
+  entry,
+  memo = .builder_project_configuration_digest_memo
+) {
   value <- builder_project_configuration_digest_value(entry, 3L)
+  # serializeJSON() dominates a Save (tens of ms per dataset, several times
+  # per dataset and transaction). The digest is a pure function of `value`,
+  # so key it by the much cheaper in-process R serialization of that value.
+  key <- if (is.environment(memo)) {
+    digest::digest(value, algo = "md5")
+  } else {
+    NULL
+  }
+  cached <- if (is.null(key)) NULL else get0(key, envir = memo, inherits = FALSE)
+  if (.builder_project_text(cached %||% NULL)) {
+    return(cached)
+  }
   canonical <- jsonlite::serializeJSON(
     value,
     digits = NA,
     pretty = FALSE
   )
-  unclass(as.character(digest::digest(
+  result <- unclass(as.character(digest::digest(
     charToRaw(enc2utf8(canonical)),
     algo = "md5",
     serialize = FALSE
   )))
+  if (!is.null(key)) {
+    if (length(ls(memo, all.names = TRUE)) >= 512L) {
+      rm(list = ls(memo, all.names = TRUE), envir = memo)
+    }
+    assign(key, result, envir = memo)
+  }
+  result
 }
+
+.builder_project_configuration_digest_memo <- new.env(parent = emptyenv())
 
 builder_project_configuration_digest_for_contract <- function(
   entry,
@@ -4880,7 +4961,8 @@ builder_project_dataset_record <- function(
   order = 1L,
   payload_entry = entry,
   root,
-  configuration_digest = NULL
+  configuration_digest = NULL,
+  verification_cache = NULL
 ) {
   profile <- entry$profile %||% list()
   spatial <- entry$dataset_profile$content$spatial %||%
@@ -4890,7 +4972,8 @@ builder_project_dataset_record <- function(
   descriptor <- builder_project_write_dataset_config(
     payload_entry,
     root,
-    expected_digest = configuration_digest
+    expected_digest = configuration_digest,
+    verification_cache = verification_cache
   )
   digest <- as.character(descriptor$digest %||% "")
   if (!.builder_project_text(digest)) {
@@ -7270,7 +7353,8 @@ builder_project_build_manifest <- function(
   entries,
   project,
   context,
-  cache = NULL
+  cache = NULL,
+  verification_cache = NULL
 ) {
   manifest <- project$manifest
   if (
@@ -7371,7 +7455,8 @@ builder_project_build_manifest <- function(
       order = index,
       payload_entry = configuration_entry,
       root = project$root,
-      configuration_digest = current_digest
+      configuration_digest = current_digest,
+      verification_cache = verification_cache
     )
   }
   retained_ids <- vapply(records, `[[`, character(1), "id")
@@ -7487,12 +7572,14 @@ builder_project_write_task <- function(runtime_for, args) {
     stop("The project artifact verification runtime is unavailable.")
   }
   cache <- list2env(args$configuration_cache, parent = emptyenv())
+  verification_cache <- runtime$builder_project_write_verification_cache()
   built <- if (!is.null(entries)) {
     runtime$builder_project_build_manifest(
       entries,
       list(root = root, manifest = manifest),
       context,
-      cache
+      cache,
+      verification_cache = verification_cache
     )
   } else {
     NULL
@@ -7511,7 +7598,8 @@ builder_project_write_task <- function(runtime_for, args) {
   written <- runtime$builder_project_write(
     if (is.null(built)) manifest else built$manifest,
     root,
-    args$expected_revision
+    args$expected_revision,
+    verification_cache = verification_cache
   )
   written$built <- built
   written$configuration_cache <- as.list(cache)
@@ -7522,6 +7610,46 @@ builder_project_write_task <- function(runtime_for, args) {
     runtime$.builder_project_artifact_closure_cache
   )
   written
+}
+
+## Readies a warm Project writer for the Project just opened or created: loads
+## the full runtime and runs the integrity pass every Save repeats. The first
+## Save then finds the code compiled and the unchanged sidecars already in the
+## stat-keyed verification cache, instead of paying for both while the
+## workspace is locked. Read-only; any failure is left for the Save to report.
+builder_project_writer_warmup_task <- function(runtime_for, args) {
+  runtime <- runtime_for(TRUE)
+  # A freshly sourced function is byte-compiled the first time it runs, which
+  # was about half a second of the first Save. Compile the Project functions
+  # now (about two seconds, all of the write path) instead.
+  names <- ls(runtime, pattern = "^[.]?builder_project", all.names = TRUE)
+  for (name in names) {
+    value <- get(name, envir = runtime, inherits = FALSE)
+    if (is.function(value) && !is.primitive(value)) {
+      compiled <- tryCatch(compiler::cmpfun(value), error = function(error) NULL)
+      if (is.function(compiled)) {
+        assign(name, compiled, envir = runtime)
+      }
+    }
+  }
+  manifest <- tryCatch(
+    runtime$builder_project_read(
+      runtime$builder_project_manifest_path(args$root)
+    ),
+    error = function(error) NULL
+  )
+  if (!is.list(manifest)) {
+    return(FALSE)
+  }
+  status <- tryCatch(
+    runtime$builder_project_manifest_integrity(
+      manifest,
+      args$root,
+      verification_cache = runtime$builder_project_write_verification_cache()
+    ),
+    error = function(error) NULL
+  )
+  isTRUE(status$valid)
 }
 
 ## Functions sent to a worker must not carry the Builder environment along.
@@ -7926,7 +8054,8 @@ builder_project_write <- function(
   expected_revision = NULL,
   .move = file.rename,
   .write_json = jsonlite::write_json,
-  .after_commit = function(path) invisible(path)
+  .after_commit = function(path) invisible(path),
+  verification_cache = new.env(parent = emptyenv())
 ) {
   root <- builder_project_normalize_root(root)
   manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
@@ -7948,7 +8077,6 @@ builder_project_write <- function(
       call. = FALSE
     )
   }
-  verification_cache <- new.env(parent = emptyenv())
   if (!is.null(disk)) {
     tryCatch(
       builder_project_assert_manifest_integrity(
