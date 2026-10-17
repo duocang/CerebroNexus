@@ -1523,6 +1523,38 @@ builder_coordinator_runtime_previous <- function() {
   }
 }
 
+# A fresh coordinator byte-compiles each function the first time it runs:
+# seconds of a Build's Verify and Publish steps. While it waits for its job it
+# compiles the release, App and path-contract functions those steps run, one
+# per call so an arriving job never waits behind it. Other functions are left
+# to the JIT so an idle process does not compete with the worker for CPU.
+# `pending = NULL` starts the queue; returns the names still to compile.
+builder_coordinator_compile_ahead <- function(runtime, pending = NULL) {
+  if (is.null(pending)) {
+    names <- ls(runtime, all.names = TRUE)
+    release <- grepl(
+      paste0(
+        "^[.]?builder_(coordinator|release|app|publish|verify|auth)|",
+        "^[.](canonical|resolveNative|normalizeExisting|readNative|pathWithin|",
+        "absolutePath|composeAbsolute|nativ|lexical|builderRandom)"
+      ),
+      names
+    )
+    return(names[release])
+  }
+  if (!length(pending)) {
+    return(character())
+  }
+  value <- get0(pending[[1L]], envir = runtime, inherits = FALSE)
+  if (is.function(value) && !is.primitive(value)) {
+    compiled <- tryCatch(compiler::cmpfun(value), error = function(error) NULL)
+    if (is.function(compiled)) {
+      assign(pending[[1L]], compiled, envir = runtime)
+    }
+  }
+  pending[-1L]
+}
+
 # Runs in the coordinator process: load and hash the runtime, then wait for
 # the job. Self-contained; callr evaluates it in a fresh global environment.
 builder_coordinator_process_main <- function(
@@ -1536,7 +1568,8 @@ builder_coordinator_process_main <- function(
   parent_pid,
   idle_seconds,
   runtime_identity,
-  source_utf8
+  source_utf8,
+  compile_ahead = NULL
 ) {
   runtime <- new.env(parent = globalenv())
   runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
@@ -1589,6 +1622,11 @@ builder_coordinator_process_main <- function(
   )
   deadline <- Sys.time() + idle_seconds
   checked_parent <- Sys.time()
+  pending_compile <- if (is.function(compile_ahead)) {
+    compile_ahead(runtime)
+  } else {
+    character()
+  }
   while (!file.exists(inbox)) {
     if (Sys.time() > deadline) {
       return(list(idle = TRUE))
@@ -1602,6 +1640,10 @@ builder_coordinator_process_main <- function(
       if (!isTRUE(alive)) {
         return(list(idle = TRUE))
       }
+    }
+    if (length(pending_compile)) {
+      pending_compile <- compile_ahead(runtime, pending_compile)
+      next
     }
     Sys.sleep(0.05)
   }
@@ -1623,6 +1665,9 @@ builder_coordinator_spawn <- function(kind) {
   runtime_files <- builder_release_runtime_files()
   package_runtime <- builder_release_package_runtime(runtime_files$root)
   execution <- builder_release_execution_runtime(hash = FALSE)
+  # Sent to the process; it must not carry this session's environment along.
+  compile_ahead <- builder_coordinator_compile_ahead
+  environment(compile_ahead) <- globalenv()
   inbox <- tempfile(
     paste0(kind, "-inbox-"),
     tmpdir = builder_coordinator_private_dir(),
@@ -1641,7 +1686,8 @@ builder_coordinator_spawn <- function(kind) {
       parent_pid = Sys.getpid(),
       idle_seconds = builder_coordinator_idle_seconds(),
       runtime_identity = builder_runtime_file_identity,
-      source_utf8 = builder_source_utf8
+      source_utf8 = builder_source_utf8,
+      compile_ahead = compile_ahead
     ),
     # Preparation transfers release ownership to this process before it exits
     # and must not be killed with it; settlement is supervised.

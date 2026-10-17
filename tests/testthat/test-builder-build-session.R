@@ -325,6 +325,49 @@ test_that("a coordinator refuses a job if its runtime changed after loading", {
   expect_false(file.exists(inbox))
 })
 
+test_that("an idle coordinator compiles the release functions ahead", {
+  app_env <- builder_build_session_app()
+  compile_ahead <- NULL
+  process_main <- NULL
+  shiny::testServer(app_env$server, {
+    compile_ahead <<- builder_coordinator_compile_ahead
+    process_main <<- builder_coordinator_process_main
+  })
+  runtime <- new.env(parent = globalenv())
+  runtime$zz_helper <- function(x) x + 1
+  runtime$builder_release_identity <- function(x) x * 2
+  runtime$.canonicalTargetPath <- function(path) path
+  runtime$value <- 3
+  compiled <- function(name) {
+    any(grepl(
+      "<bytecode",
+      utils::capture.output(print(get(name, envir = runtime))),
+      fixed = TRUE
+    ))
+  }
+
+  pending <- compile_ahead(runtime)
+  expect_identical(
+    pending,
+    c(".canonicalTargetPath", "builder_release_identity")
+  )
+  pending <- compile_ahead(runtime, pending)
+  expect_true(compiled(".canonicalTargetPath"))
+  expect_false(compiled("builder_release_identity"))
+  pending <- compile_ahead(runtime, pending)
+  expect_length(pending, 0L)
+  expect_true(compiled("builder_release_identity"))
+  expect_false(compiled("zz_helper"))
+  expect_identical(runtime$builder_release_identity(2), 4)
+  expect_identical(runtime$value, 3)
+  expect_identical(compile_ahead(runtime, character()), character())
+
+  ## The process compiles only while no job is waiting, one function at a time.
+  main <- paste(deparse(process_main), collapse = "
+")
+  expect_match(main, "pending_compile <- compile_ahead(runtime, pending_compile)", fixed = TRUE)
+})
+
 builder_build_session_source <- function(...) {
   paste(
     readLines(builder_profile_inst_path("builder", ...), warn = FALSE),
