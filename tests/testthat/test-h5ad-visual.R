@@ -259,3 +259,39 @@ test_that("images of several libraries are not guessed onto one unsplit entry", 
   )
   expect_length(export$spatial$spatial$histology_images, 0L)
 })
+
+## ---------------------------------------------------------------------------
+## writing it back
+## ---------------------------------------------------------------------------
+
+test_that("exportToH5ad writes spatial coordinates and tissue images back", {
+  skip_if_not_installed("png")
+  crb <- quiet(convertH5adToCerebro(
+    fixture("small_visium.h5ad"), withr::local_tempdir(),
+    groups = c("library_id", "layer"), viewer_binary = "never", verbose = FALSE
+  ))
+  out <- file.path(withr::local_tempdir(), "visium_back.h5ad")
+  quiet(exportToH5ad(crb, out))
+  back <- read_h5ad(out)
+  source <- read_h5ad(fixture("small_visium.h5ad"))
+
+  ## coordinates: every cell, same values, same order as the file it came from
+  expect_identical(colnames(back), colnames(source))
+  expect_equal(
+    unname(SingleCellExperiment::reducedDim(back, "spatial")),
+    unname(SingleCellExperiment::reducedDim(source, "spatial"))
+  )
+
+  ## images: one per library, same extent in spot space and same pixels
+  expect_identical(names(back@metadata$spatial_images), c("section1", "section2"))
+  for (library in c("section1", "section2")) {
+    a <- back@metadata$spatial_images[[library]]
+    b <- source@metadata$spatial_images[[library]]
+    expect_identical(names(a), names(b))
+    label <- names(b)[[1L]]
+    expect_equal(a[[label]]$histology_image_bounds, b[[label]]$histology_image_bounds, tolerance = 1e-6)
+    expect_equal(decode_png(a[[label]]$histology_image), decode_png(b[[label]]$histology_image), tolerance = 1 / 255 + 1e-6)
+  }
+  ## scanpy needs the spot diameter to draw a spatial plot
+  expect_true(rhdf5::h5read(out, "uns/spatial/section1/scalefactors/spot_diameter_fullres") > 0)
+})

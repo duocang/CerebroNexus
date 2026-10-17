@@ -42,6 +42,8 @@ The mapping is:
   \item projections become \code{obsm}: \code{UMAP} is \code{X_umap},
     \code{TSNE} is \code{X_tsne}, \code{PCA} is \code{X_pca}, others
     \code{X_<name>}.
+  \item spatial coordinates and tissue images become \code{obsm["spatial"]}
+    and \code{uns["spatial"]}.
   \item marker gene tables are stored as data frames under
     \code{uns["cerebro"]["marker_genes"]}, which \code{\link{readH5adAsSCE}}
     reads back.
@@ -49,7 +51,12 @@ The mapping is:
 Missing values in a grouping variable are the explicit \code{"N/A"} level
 that Cerebro gives them on export, so they arrive in \code{obs} as that
 category rather than as \code{NaN}.
-Immune repertoire, HLA typing, spatial data, trees, trajectories, enriched
+Spatial sections become \code{obsm["spatial"]} (full-resolution pixel
+coordinates, \code{NaN} for cells outside every section) and, per section,
+\code{uns["spatial"][<library>]} with its tissue images and scale factors, so
+scanpy and squidpy can draw them; the spot diameter scanpy wants is estimated
+from the spot spacing.
+Immune repertoire, HLA typing, trees, trajectories, enriched
 pathways and extra material have no AnnData counterpart and are not
 exported; a message names what was left out. The file is written to a
 private temporary file and moved into place only when complete.

@@ -285,6 +285,131 @@
   }
 }
 
+#' A single number as a true scalar dataset, which is how scanpy stores
+#' scale factors and what its plotting code expects (a length-1 vector breaks
+#' it).
+#' @keywords internal
+#' @noRd
+.h5adPutScalar <- function(file, path, value) {
+  handle <- rhdf5::H5Fopen(file)
+  on.exit(rhdf5::H5Fclose(handle), add = TRUE)
+  space <- rhdf5::H5Screate("H5S_SCALAR")
+  on.exit(rhdf5::H5Sclose(space), add = TRUE, after = FALSE)
+  dataset <- rhdf5::H5Dcreate(handle, path, "H5T_NATIVE_DOUBLE", space)
+  on.exit(rhdf5::H5Dclose(dataset), add = TRUE, after = FALSE)
+  rhdf5::H5Dwrite(dataset, as.double(value))
+  invisible(NULL)
+}
+
+#' Spatial coordinates into obsm["spatial"] and tissue images into
+#' uns["spatial"][<library>], as scanpy and squidpy keep them.
+#'
+#' Sections become libraries (the part of "spatial [name]" in brackets); cells
+#' outside every section get NaN coordinates. An image is written with the
+#' scale factor that maps full-resolution pixels onto it (width divided by the
+#' right edge of its bounds). scanpy also wants the spot diameter; Cerebro does
+#' not record it, so it is estimated as 55/100 of the median distance to the
+#' nearest neighbouring spot, the Visium geometry.
+#' @return Character vector of what could not be written.
+#' @keywords internal
+#' @noRd
+.h5adPutSpatial <- function(stage, object, cells) {
+  notes <- character()
+  coordinates <- matrix(NA_real_, nrow = length(cells), ncol = 2L)
+  libraries <- list()
+  for (name in names(object$spatial)) {
+    section <- tryCatch(object$getSpatialData(name, FALSE), error = function(e) NULL)
+    frame <- section$coordinates
+    if (!is.data.frame(frame) || !all(c("x", "y") %in% names(frame)) || is.null(rownames(frame))) {
+      notes <- c(notes, paste0("spatial section ", name))
+      next
+    }
+    index <- match(rownames(frame), cells)
+    keep <- !is.na(index)
+    coordinates[index[keep], ] <- as.matrix(frame[keep, c("x", "y"), drop = FALSE])
+    library <- if (startsWith(name, "spatial [") && endsWith(name, "]")) {
+      substr(name, nchar("spatial [") + 1L, nchar(name) - 1L)
+    } else {
+      name
+    }
+    libraries[[library]] <- list(
+      coordinates = coordinates[index[keep], , drop = FALSE],
+      images = section$histology_images
+    )
+  }
+  if (!length(libraries)) {
+    return(notes)
+  }
+  .h5adPutArray(stage, "obsm/spatial", t(coordinates))
+
+  .h5adPutGroup(stage, "uns/spatial", "dict", "0.1.0")
+  for (library in names(libraries)) {
+    base <- paste0("uns/spatial/", gsub("/", "_", library, fixed = TRUE))
+    .h5adPutGroup(stage, base, "dict", "0.1.0")
+    .h5adPutGroup(stage, paste0(base, "/images"), "dict", "0.1.0")
+    .h5adPutGroup(stage, paste0(base, "/scalefactors"), "dict", "0.1.0")
+    spots <- libraries[[library]]$coordinates
+    if (nrow(spots) > 1L) {
+      nearest <- vapply(
+        seq_len(min(nrow(spots), 2000L)),
+        function(i) {
+          d <- sqrt((spots[, 1L] - spots[i, 1L])^2 + (spots[, 2L] - spots[i, 2L])^2)
+          min(d[-i])
+        },
+        numeric(1)
+      )
+      .h5adPutScalar(
+        stage,
+        paste0(base, "/scalefactors/spot_diameter_fullres"),
+        0.55 * stats::median(nearest)
+      )
+    }
+    images <- libraries[[library]]$images
+    if (!length(images) || !requireNamespace("png", quietly = TRUE) ||
+        !requireNamespace("base64enc", quietly = TRUE)) {
+      next
+    }
+    for (label in intersect(c("hires", "lowres"), names(images))) {
+      entry <- images[[label]]
+      array <- tryCatch(
+        png::readPNG(base64enc::base64decode(sub("^data:image/png;base64,", "", entry$histology_image))),
+        error = function(e) NULL
+      )
+      right <- entry$histology_image_bounds[["xmax"]]
+      if (is.null(array) || length(dim(array)) != 3L || !is.finite(right) || right <= 0) {
+        notes <- c(notes, paste0("tissue image ", library, "/", label))
+        next
+      }
+      array <- array[, , seq_len(min(3L, dim(array)[[3L]])), drop = FALSE]
+      ## HDF5 holds (height, width, channel) row-major; rhdf5 reverses dimensions
+      path <- paste0(base, "/images/", label)
+      stored <- aperm(array, c(3L, 2L, 1L))
+      storage.mode(stored) <- "double"
+      stored <- round(stored * 255)
+      rhdf5::h5createDataset(
+        stage,
+        path,
+        dims = dim(stored),
+        H5type = "H5T_NATIVE_UINT8",
+        level = 4L,
+        chunk = pmin(dim(stored), c(dim(stored)[[1L]], 256L, 256L))
+      )
+      rhdf5::h5write(stored, stage, path)
+      .h5adPutAttrs(
+        stage,
+        path,
+        scalars = list(`encoding-type` = "array", `encoding-version` = "0.2.0")
+      )
+      .h5adPutScalar(
+        stage,
+        paste0(base, "/scalefactors/tissue_", label, "_scalef"),
+        dim(array)[[2L]] / right
+      )
+    }
+  }
+  notes
+}
+
 #' Export a Cerebro file to AnnData (h5ad)
 #'
 #' @description
@@ -311,6 +436,8 @@
 #'   \item projections become \code{obsm}: \code{UMAP} is \code{X_umap},
 #'     \code{TSNE} is \code{X_tsne}, \code{PCA} is \code{X_pca}, others
 #'     \code{X_<name>}.
+#'   \item spatial coordinates and tissue images become \code{obsm["spatial"]}
+#'     and \code{uns["spatial"]}.
 #'   \item marker gene tables are stored as data frames under
 #'     \code{uns["cerebro"]["marker_genes"]}, which \code{\link{readH5adAsSCE}}
 #'     reads back.
@@ -318,7 +445,12 @@
 #' Missing values in a grouping variable are the explicit \code{"N/A"} level
 #' that Cerebro gives them on export, so they arrive in \code{obs} as that
 #' category rather than as \code{NaN}.
-#' Immune repertoire, HLA typing, spatial data, trees, trajectories, enriched
+#' Spatial sections become \code{obsm["spatial"]} (full-resolution pixel
+#' coordinates, \code{NaN} for cells outside every section) and, per section,
+#' \code{uns["spatial"][<library>]} with its tissue images and scale factors, so
+#' scanpy and squidpy can draw them; the spot diameter scanpy wants is estimated
+#' from the spot spacing.
+#' Immune repertoire, HLA typing, trees, trajectories, enriched
 #' pathways and extra material have no AnnData counterpart and are not
 #' exported; a message names what was left out. The file is written to a
 #' private temporary file and moved into place only when complete.
@@ -460,6 +592,11 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
     colors[is.na(colors)] <- "#898989"
     .h5adPutStrings(stage, paste0("uns/", group, "_colors"), colors)
   }
+  spatial_notes <- if (length(object$spatial)) {
+    .h5adPutSpatial(stage, object, cells)
+  } else {
+    character()
+  }
   methods_with_markers <- object$getMethodsForMarkerGenes()
   if (length(methods_with_markers)) {
     .h5adPutGroup(stage, "uns/cerebro", "dict", "0.1.0")
@@ -486,13 +623,12 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   left_out <- c(
     if (has(tryCatch(object$getImmuneRepertoire(), error = function(e) NULL))) "immune repertoire",
     if (has(object$hla_typing)) "HLA typing",
-    if (has(object$spatial)) "spatial data",
     if (length(object$trees)) "trees",
     if (length(object$trajectories)) "trajectories",
     if (length(object$enriched_pathways)) "enriched pathways",
     if (length(object$extra_material)) "extra material"
   )
-  left_out <- c(left_out, skipped)
+  left_out <- c(left_out, skipped, spatial_notes)
   if (length(left_out)) {
     message("[INFO] Not exported to h5ad: ", paste(left_out, collapse = "; "), ".")
   }

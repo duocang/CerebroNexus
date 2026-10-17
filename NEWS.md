@@ -1,5 +1,22 @@
 # CerebroNexus 5.0.0
 
+## Input formats
+
+- Reads SingleCellExperiment (`convertSCEToCerebro()`, `exportFromSCE()`) and
+  AnnData (`convertH5adToCerebro()`, `readH5adAsSCE()`; `.h5ad` and `.h5mu`)
+  natively, without Python, through the same export core as Seurat. The `.crb`
+  is the hub: Seurat, SCE and h5ad convert to each other through it, and
+  `exportToH5ad()` writes a `.crb` back as `.h5ad`.
+- From AnnData it also carries scanpy marker tables and category colours,
+  Visium tissue images, spatial sections, scirpy TCR/BCR repertoires and
+  scanpy / scVelo trajectories. `exportToH5ad()` writes spatial coordinates and
+  tissue images back so scanpy and squidpy can draw them.
+- The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
+  files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
+  offers PAGA, scVelo and pseudotime trajectories next to monocle2. Tissue
+  images and multi-section splits of AnnData sources are not carried through the
+  Builder; use `convertH5adToCerebro()` for those.
+
 ## Builder
 
 - Add `launchCerebroBuilder()` for importing data, configuring content, saving
