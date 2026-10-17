@@ -6,20 +6,16 @@ output[["expression_projection_additional_parameters_UI"]] <- renderUI({
   appearance <- isolate(current_scatter_defaults())
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "expression_projection_point_size",
       label = "Point size",
-      min = preferences[["cell_point_size"]][["min"]],
-      max = preferences[["cell_point_size"]][["max"]],
-      step = preferences[["cell_point_size"]][["step"]],
+      limits = preferences[["cell_point_size"]],
       value = appearance$point_size
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "expression_projection_point_opacity",
       label = "Point opacity",
-      min = preferences[["cell_point_opacity"]][["min"]],
-      max = preferences[["cell_point_opacity"]][["max"]],
-      step = preferences[["cell_point_opacity"]][["step"]],
+      limits = preferences[["cell_point_opacity"]],
       value = appearance$point_opacity
     )
   )
@@ -36,18 +32,10 @@ output[["expression_projection_data_parameters_UI"]] <- renderUI({
       value = identical(current_page_display_defaults("gene")$plotting_order,
                         "Highest expression on top")
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "expression_projection_percentage_cells_to_show",
       label = "Show % of cells",
-      min = preferences[["cell_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["cell_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["cell_percentage_cells_to_show"]][[
-        "step"
-      ]],
+      limits = preferences[["cell_percentage_cells_to_show"]],
       value = appearance$percentage_cells_to_show
     )
   )

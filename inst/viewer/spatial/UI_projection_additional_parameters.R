@@ -27,20 +27,17 @@ output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   }
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "spatial_projection_point_size",
       label = "Point size",
-      min = preferences[["cell_point_size"]][["min"]],
-      max = preferences[["cell_point_size"]][["max"]],
-      step = preferences[["cell_point_size"]][["step"]],
+      limits = preferences[["cell_point_size"]],
       value = appearance$point_size
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "spatial_projection_point_opacity",
       label = "Point opacity",
+      limits = preferences[["cell_point_opacity"]],
       min = 0,
-      max = preferences[["cell_point_opacity"]][["max"]],
-      step = preferences[["cell_point_opacity"]][["step"]],
       value = appearance$point_opacity
     )
   )
@@ -50,18 +47,10 @@ output[["spatial_projection_data_parameters_UI"]] <- renderUI({
   appearance <- current_spatial_scatter_defaults()
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "spatial_projection_percentage_cells_to_show",
       label = "Show % of observations",
-      min = preferences[["cell_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["cell_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["cell_percentage_cells_to_show"]][[
-        "step"
-      ]],
+      limits = preferences[["cell_percentage_cells_to_show"]],
       value = appearance$percentage_cells_to_show
     )
   )

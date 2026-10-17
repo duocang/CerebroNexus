@@ -710,6 +710,24 @@ viewerPublishChanged <- function(state, value) {
   invisible(value)
 }
 
+## A slider bounded by one preference's min/max/step limits.
+viewerLimitedSlider <- function(
+  inputId,
+  label,
+  limits,
+  value,
+  min = limits[["min"]]
+) {
+  sliderInput(
+    inputId,
+    label = label,
+    min = min,
+    max = limits[["max"]],
+    step = limits[["step"]],
+    value = value
+  )
+}
+
 viewerOutputTab <- function(ids) {
   prefixes <- c(
     overview_ = "overview",
