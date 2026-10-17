@@ -374,6 +374,67 @@ test_that("CRB publication owns descriptor-backed spatial molecule sidecars", {
   })
 })
 
+test_that("a needs-decision result keeps finished CRBs for the retry", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    retention <- file.path(root, "retained")
+    dir.create(retention)
+    plan <- builder_crb_coordinator_plan(target, c("first.crb", "second.crb"))
+    plan$items[[1L]]$expression_backend <- "h5"
+    plan$items[[1L]]$sidecars <- "first.h5"
+    handle <- builder_coordinator_prepare(plan, "needs-decision-retry")
+    crb <- file.path(handle$stage, "first.crb")
+    saveRDS(list(dataset = "first"), crb)
+    writeBin(charToRaw("h5 bytes"), file.path(handle$stage, "first.h5"))
+    spatial <- file.path(handle$stage, "first.spatial")
+    dir.create(spatial)
+    writeBin(charToRaw("molecules"), file.path(spatial, "0001.qs2"))
+    crb_md5 <- unname(tools::md5sum(crb))
+    value <- builder_crb_coordinator_result(handle, c(`dataset-1` = crb))
+    value$state <- "needs_decision"
+    value$publishable <- FALSE
+    value$verifications[[1L]]$spatial_molecule_backend <- list(
+      type = "directory",
+      location = "first.spatial"
+    )
+    value$verifications[[1L]]$spatial_molecule_path <- spatial
+
+    failed <- value
+    failed$state <- "failure"
+    expect_identical(
+      builder_coordinator_retain_partial(handle, failed, retention),
+      list()
+    )
+    retained <- builder_coordinator_retain_partial(handle, value, retention)
+    settled <- builder_coordinator_settle(handle, value)
+
+    expect_true(settled$ok)
+    expect_false(dir.exists(handle$stage))
+    expect_identical(names(retained), "dataset-1")
+    record <- retained[["dataset-1"]]
+    expect_true(file.exists(record$path))
+    expect_true(startsWith(record$path, normalizePath(retention, winslash = "/")))
+    expect_identical(record$fingerprint$md5, crb_md5)
+    expect_identical(
+      sort(vapply(record$members, `[[`, character(1), "target")),
+      c("first.h5", "first.spatial/0001.qs2")
+    )
+    for (member in record$members) {
+      expect_identical(
+        member$fingerprint$md5,
+        unname(tools::md5sum(member$resolved_path))
+      )
+    }
+    expect_identical(record$verification$path, record$path)
+    expect_identical(
+      record$verification$spatial_molecule_path,
+      file.path(dirname(record$path), "first.spatial")
+    )
+  })
+})
+
 test_that("publication reuses verified spatial sidecar metadata", {
   local({
     builder_task9_source()

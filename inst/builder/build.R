@@ -34,6 +34,113 @@ builder_build_queue_note <- function(plan) {
   paste0(paste(parts, collapse = " · "), "…")
 }
 
+## Session reuse records ----------------------------------------------------
+## After a published build, the coordinator's release identity already holds
+## the MD5 of every CRB and sidecar, so recording them for the next build
+## needs no hashing on the Shiny process.
+
+builder_build_retention_root <- function(root = tempdir()) {
+  path <- file.path(root, "builder-reuse")
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, mode = "0700", showWarnings = FALSE)
+  }
+  if (!dir.exists(path)) {
+    return(NULL)
+  }
+  normalizePath(path, winslash = "/", mustWork = TRUE)
+}
+
+.builder_build_published_reuse_record <- function(item, value, prefix) {
+  root <- value$release$target %||% ""
+  entries <- value$release$identity$entries %||% list()
+  verification <- value$verifications[[item$id]] %||% NULL
+  built <- value$built[[item$id]] %||% ""
+  if (
+    !.builder_build_text(root) ||
+      !length(entries) ||
+      !is.list(verification) ||
+      !.builder_build_text(built) ||
+      !identical(basename(built), item$filename)
+  ) {
+    return(NULL)
+  }
+  files <- entries[vapply(
+    entries,
+    function(entry) identical(entry$type, "file"),
+    logical(1)
+  )]
+  file_paths <- vapply(files, function(entry) entry$path %||% "", "")
+  primary_index <- match(paste0(prefix, item$filename), file_paths)
+  primary <- if (is.na(primary_index)) NULL else files[[primary_index]]
+  if (!is.list(primary) || !.builder_build_text(primary$md5 %||% "")) {
+    return(NULL)
+  }
+  companions <- c(
+    item$sidecars %||% character(),
+    verification$spatial_molecule_backend$location %||% character()
+  )
+  relative <- substring(file_paths, nchar(prefix) + 1L)
+  selected <- startsWith(file_paths, prefix) &
+    vapply(
+      relative,
+      function(path) {
+        any(path == companions | startsWith(path, paste0(companions, "/")))
+      },
+      logical(1)
+    )
+  if (length(companions) && !any(selected)) {
+    return(NULL)
+  }
+  fingerprint <- function(entry) {
+    list(md5 = tolower(entry$md5), size = as.double(entry$size))
+  }
+  list(
+    path = file.path(root, primary$path),
+    fingerprint = fingerprint(primary),
+    members = lapply(unname(which(selected)), function(index) {
+      list(
+        resolved_path = file.path(root, files[[index]]$path),
+        target = relative[[index]],
+        fingerprint = fingerprint(files[[index]])
+      )
+    }),
+    verification = verification
+  )
+}
+
+builder_build_reuse_records <- function(plan, value) {
+  if (!inherits(plan, "builder_build_plan") || !is.list(value)) {
+    return(list())
+  }
+  items <- plan$items %||% list()
+  names(items) <- vapply(items, `[[`, character(1), "id")
+  records <- if (identical(value$state, "needs_decision")) {
+    value$retained_artifacts %||% list()
+  } else if (
+    identical(value$state, "success") &&
+      isTRUE(value$published)
+  ) {
+    prefix <- if (isTRUE(plan$make_app)) "cerebro_app/private-data/" else ""
+    Filter(
+      Negate(is.null),
+      lapply(items, .builder_build_published_reuse_record, value, prefix)
+    )
+  } else {
+    list()
+  }
+  records <- records[intersect(names(records), names(items))]
+  Filter(
+    function(entry) !is.null(entry$key),
+    lapply(names(records), function(id) {
+      list(
+        id = id,
+        key = builder_plan_reuse_key(items[[id]]),
+        record = records[[id]]
+      )
+    })
+  )
+}
+
 .builder_build_progress_phases <- c(
   "datasets",
   "viewer",

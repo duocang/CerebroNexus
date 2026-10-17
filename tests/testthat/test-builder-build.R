@@ -1656,6 +1656,84 @@ test_that("reused artifacts hash the staged copy without a source pre-scan", {
   )
 })
 
+test_that("published and retained CRBs become session reuse records", {
+  runtime <- environment(builder_build_reuse_records)
+  had_key <- exists("builder_plan_reuse_key", envir = runtime, inherits = FALSE)
+  assign(
+    "builder_plan_reuse_key",
+    function(item) paste0(item$id, "::key"),
+    envir = runtime
+  )
+  withr::defer(
+    if (!had_key) rm("builder_plan_reuse_key", envir = runtime)
+  )
+  plan <- builder_build_two_dataset_plan()
+  plan$make_app <- TRUE
+  plan$items[[1L]]$sidecars <- "dataset-a.h5"
+  release <- "C:/out/CerebroNexus_viewer_abc123"
+  file_entry <- function(path, md5, size = 10) {
+    list(path = path, type = "file", size = size, md5 = md5)
+  }
+  value <- list(
+    state = "success",
+    published = TRUE,
+    built = c(
+      `dataset-a` = file.path(release, "cerebro_app/private-data/dataset-a.crb"),
+      `dataset-b` = file.path(release, "cerebro_app/private-data/dataset-b.crb")
+    ),
+    verifications = list(
+      `dataset-a` = list(valid = TRUE, path = "a"),
+      `dataset-b` = list(valid = TRUE, path = "b")
+    ),
+    release = list(
+      target = release,
+      identity = list(entries = list(
+        list(path = "cerebro_app", type = "directory", size = 0, md5 = NA),
+        file_entry("cerebro_app/app.R", strrep("0", 32L)),
+        file_entry("cerebro_app/private-data/dataset-a.crb", strrep("A", 32L)),
+        file_entry("cerebro_app/private-data/dataset-a.h5", strrep("b", 32L)),
+        file_entry("cerebro_app/private-data/dataset-b.crb", strrep("c", 32L))
+      ))
+    )
+  )
+
+  records <- builder_build_reuse_records(plan, value)
+
+  expect_identical(
+    vapply(records, `[[`, character(1), "key"),
+    c("dataset-a::key", "dataset-b::key")
+  )
+  first <- records[[1L]]$record
+  expect_identical(
+    first$path,
+    file.path(release, "cerebro_app/private-data/dataset-a.crb")
+  )
+  expect_identical(first$fingerprint, list(md5 = strrep("a", 32L), size = 10))
+  expect_identical(length(first$members), 1L)
+  expect_identical(first$members[[1L]]$target, "dataset-a.h5")
+  expect_identical(first$members[[1L]]$fingerprint$md5, strrep("b", 32L))
+  expect_identical(first$verification, list(valid = TRUE, path = "a"))
+  expect_identical(records[[2L]]$record$members, list())
+
+  # A missing sidecar identity is not recorded as reusable.
+  value$release$identity$entries[[4L]] <- NULL
+  expect_identical(
+    vapply(builder_build_reuse_records(plan, value), `[[`, "", "id"),
+    "dataset-b"
+  )
+
+  retained <- list(
+    state = "needs_decision",
+    retained_artifacts = list(`dataset-b` = list(path = "kept.crb"))
+  )
+  kept <- builder_build_reuse_records(plan, retained)
+  expect_identical(kept[[1L]]$record$path, "kept.crb")
+  expect_identical(
+    builder_build_reuse_records(plan, list(state = "failure")),
+    list()
+  )
+})
+
 test_that("read-back rejects a Viewer page-gate mismatch", {
   crb <- tempfile(fileext = ".crb")
   on.exit(unlink(crb), add = TRUE)

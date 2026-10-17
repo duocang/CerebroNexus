@@ -1521,7 +1521,8 @@ builder_start_release_preparation_process <- function(plan, build_id) {
 builder_start_release_settlement_process <- function(
   release,
   value,
-  progress_path = NULL
+  progress_path = NULL,
+  retention_root = builder_build_retention_root()
 ) {
   runtime_files <- builder_release_runtime_files()
   package_runtime <- builder_release_package_runtime(runtime_files$root)
@@ -1538,7 +1539,8 @@ builder_start_release_settlement_process <- function(
       runtime_identity,
       runtime_assert,
       source_utf8,
-      progress_path
+      progress_path,
+      retention_root
     ) {
       runtime <- new.env(parent = globalenv())
       runtime$`%||%` <- function(left, right) {
@@ -1657,6 +1659,19 @@ builder_start_release_settlement_process <- function(
       ) {
         report_progress("verify")
       }
+      if (is.list(value) && identical(value$state, "needs_decision")) {
+        retained <- tryCatch(
+          runtime$builder_coordinator_retain_partial(
+            handle,
+            value,
+            retention_root
+          ),
+          error = function(error) list()
+        )
+        if (length(retained)) {
+          value$retained_artifacts <- retained
+        }
+      }
       runtime$builder_coordinator_settle(
         handle,
         value,
@@ -1676,7 +1691,8 @@ builder_start_release_settlement_process <- function(
       runtime_identity = builder_runtime_file_identity,
       runtime_assert = builder_runtime_assert_identity,
       source_utf8 = builder_source_utf8,
-      progress_path = progress_path
+      progress_path = progress_path,
+      retention_root = retention_root
     ),
     supervise = TRUE,
     stdout = "|",

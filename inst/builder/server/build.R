@@ -157,10 +157,43 @@ build_stage_status_projection <- reactive({
   )
 })
 
+builder_build_reuse_state <- new.env(parent = emptyenv())
+builder_build_reuse_state$plan <- NULL
+
+## Record verified CRBs for the next build in this session. A failed build
+## forgets entries it tried to reuse, so a stale cache cannot fail twice.
+builder_build_record_reuse <- function(value) {
+  plan <- builder_build_reuse_state$plan
+  if (is.null(plan) || !is.list(value) || is.null(value$state)) {
+    return(invisible(FALSE))
+  }
+  builder_build_reuse_state$plan <- NULL
+  cache <- builder_session_reuse_cache
+  if (value$state %in% c("failure", "recovery_required")) {
+    reused <- vapply(
+      plan$items,
+      function(item) is.list(item$reused_artifact),
+      logical(1)
+    )
+    ids <- vapply(plan$items, `[[`, character(1), "id")
+    builder_plan_reuse_forget(cache, ids[reused])
+    return(invisible(FALSE))
+  }
+  records <- tryCatch(
+    builder_build_reuse_records(plan, value),
+    error = function(error) list()
+  )
+  for (entry in records) {
+    builder_plan_reuse_store(cache, entry$key, entry$record)
+  }
+  invisible(length(records) > 0L)
+}
+
 observeEvent(
   result(),
   {
     value <- result()
+    builder_build_record_reuse(value)
     if (
       is.list(value) &&
         (identical(value$state, "failure") ||
@@ -385,6 +418,13 @@ enqueue_build_plan <- function(
   }
   if (exists("builder_project_capture_build_plan", mode = "function")) {
     builder_project_capture_build_plan(plan)
+  }
+  builder_build_reuse_state$plan <- if (
+    is.environment(builder_session_reuse_cache_for_build())
+  ) {
+    plan
+  } else {
+    NULL
   }
   build_flow(list(stage = "building", plan = NULL))
   auth_accounts_state(builder_auth_empty_accounts())

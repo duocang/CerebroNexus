@@ -349,6 +349,104 @@ test_that("repeated preflight does not rehash unchanged Spatial images", {
   })
 })
 
+test_that("session reuse repackages the Viewer without rebuilding unchanged CRBs", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+    .builder_plan_source_snapshot_identity <- function(entry) {
+      list(
+        available = TRUE,
+        snapshot = list(object_md5 = strrep("a", 32L)),
+        source = list(type = "example", fingerprint = "example:task-6:v1"),
+        object_md5 = strrep("a", 32L)
+      )
+    }
+    cache <- new.env(parent = emptyenv())
+    entry <- builder_task6_entry()
+    freeze <- function(entry, options = list()) {
+      builder_freeze_plan(
+        list(entry),
+        tempdir(),
+        make_app = TRUE,
+        app_options = options,
+        reuse_cache = cache
+      )
+    }
+
+    first <- freeze(entry)
+    expect_null(first$error)
+    expect_null(first$items[[1L]]$reused_artifact)
+    key <- builder_plan_reuse_key(first$items[[1L]])
+    expect_match(key, "^dataset-a::[[:xdigit:]]{32}$")
+
+    crb <- withr::local_tempfile(fileext = ".crb")
+    writeBin(charToRaw("verified CRB"), crb)
+    stored <- builder_plan_reuse_store(
+      cache,
+      key,
+      list(
+        path = crb,
+        fingerprint = list(md5 = unname(tools::md5sum(crb)), size = 12),
+        members = list(),
+        verification = list(valid = TRUE, path = crb)
+      )
+    )
+    expect_true(stored)
+
+    # App-only and Viewer-only changes keep the CRB.
+    entry$settings$overview_point_size <- 9
+    second <- freeze(entry, list(welcome_message = "Hello again"))
+    reused <- second$items[[1L]]$reused_artifact
+    expect_identical(reused$path, crb)
+    expect_identical(builder_plan_reuse_key(second$items[[1L]]), key)
+
+    # A CRB-affecting setting misses the cache.
+    changed <- entry
+    changed$settings$name <- "Renamed dataset"
+    third <- freeze(changed)
+    expect_null(third$items[[1L]]$reused_artifact)
+
+    # A modified file is never offered and is evicted.
+    connection <- file(crb, open = "ab")
+    writeBin(as.raw(0L), connection)
+    close(connection)
+    fourth <- freeze(entry)
+    expect_null(fourth$items[[1L]]$reused_artifact)
+    expect_false(exists(key, envir = cache, inherits = FALSE))
+
+    # No snapshot identity, no key.
+    .builder_plan_source_snapshot_identity <- function(entry) {
+      list(available = FALSE, snapshot = NULL, source = list())
+    }
+    expect_null(builder_plan_reuse_key(freeze(entry)$items[[1L]]))
+  })
+})
+
+test_that("session reuse keeps one record per dataset", {
+  local({
+    builder_repo_source("plan.R")
+    cache <- new.env(parent = emptyenv())
+    root <- withr::local_tempdir()
+    files <- file.path(root, c("one.crb", "two.crb"))
+    writeLines("one", files[[1L]])
+    writeLines("two", files[[2L]])
+    record <- function(path) {
+      list(
+        path = path,
+        fingerprint = list(md5 = unname(tools::md5sum(path))),
+        members = list()
+      )
+    }
+    expect_true(builder_plan_reuse_store(cache, "ds::one", record(files[[1L]])))
+    expect_true(builder_plan_reuse_store(cache, "ds::two", record(files[[2L]])))
+    expect_identical(ls(cache), "ds::two")
+    expect_false(builder_plan_reuse_store(cache, "ds::bad", list(path = NA)))
+    expect_true(builder_plan_reuse_forget(cache, "ds"))
+    expect_identical(ls(cache), character())
+  })
+})
+
 test_that("reusable CRBs refresh Spatial images from Project configuration", {
   local({
     builder_repo_source("preview.R")
