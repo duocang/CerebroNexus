@@ -75,8 +75,54 @@ builder_project_build_entries <- function(entries) {
     entries,
     isolate(builder_project_artifacts()),
     project$root,
-    builder_configuration_identity_cache
+    builder_configuration_identity_cache,
+    verification_cache = builder_checkpoint_verification_cache
   )
+}
+
+## Applies entries returned by a Project write or source copy. Unlike sets(),
+## which clears every per-dataset cache, only the entries that changed are
+## evicted, so the derived state of untouched datasets is reused.
+builder_project_update_entries <- function(entries) {
+  current_state <- isolate(store())
+  updated <- tryCatch(
+    builder_reduce_state(
+      current_state,
+      list(type = "replace_all", datasets = entries),
+      trusted = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(updated, "condition")) {
+    sets(entries)
+    return(invisible(TRUE))
+  }
+  entry_ids <- function(values) {
+    vapply(values, function(entry) as.character(entry$id), character(1))
+  }
+  previous <- current_state$datasets %||% list()
+  previous_ids <- entry_ids(previous)
+  next_ids <- entry_ids(updated$datasets)
+  changed <- next_ids[!vapply(
+    seq_along(updated$datasets),
+    function(index) {
+      position <- match(next_ids[[index]], previous_ids)
+      !is.na(position) &&
+        identical(updated$datasets[[index]], previous[[position]])
+    },
+    logical(1)
+  )]
+  if (!length(changed) && identical(next_ids, previous_ids)) {
+    return(invisible(FALSE))
+  }
+  kept <- setdiff(intersect(next_ids, previous_ids), changed)
+  builder_dataset_state_cache_retain(builder_dataset_state_cache, kept)
+  builder_project_configuration_cache_retain_datasets(
+    builder_configuration_identity_cache,
+    kept
+  )
+  store(updated)
+  invisible(TRUE)
 }
 
 builder_project_record_map <- function(manifest) {
@@ -1974,7 +2020,7 @@ builder_project_poll_source_sync <- function() {
         !inherits(committed, "condition") &&
           !identical(committed$entries, live_entries)
       ) {
-        sets(committed$entries)
+        builder_project_update_entries(committed$entries)
       }
     }
     builder_project_source_sync(list(
@@ -2369,10 +2415,10 @@ save_builder_project_state <- function(
         live_entries
       )
       if (!identical(merged, live_entries)) {
-        sets(merged)
+        builder_project_update_entries(merged)
       }
     } else if (entries_changed) {
-      sets(built$entries)
+      builder_project_update_entries(built$entries)
     }
     project$manifest <- written$manifest
     project$path <- written$path
@@ -2412,7 +2458,8 @@ save_builder_project_state <- function(
         checked_entries,
         isolate(builder_project_artifacts()),
         project$root,
-        builder_configuration_identity_cache
+        builder_configuration_identity_cache,
+        verification_cache = builder_checkpoint_verification_cache
       )
       reusable <- length(checked_entries) - length(required_entries)
       source_sync <- isolate(builder_project_source_sync())

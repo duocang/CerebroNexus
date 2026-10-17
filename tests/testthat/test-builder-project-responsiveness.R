@@ -502,3 +502,106 @@ test_that("a promoted CRB is not hashed again after its rename", {
   )
   expect_true(any(grepl("/.artifact-", gsub("\\\\", "/", hashed), fixed = TRUE)))
 })
+
+test_that("Project writes replace only the datasets they changed", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    entry <- function(id, name) {
+      list(
+        id = id,
+        revision = 1L,
+        settings = list(name = name),
+        profile = list(extras = list())
+      )
+    }
+    sets(list(entry("ds1", "One"), entry("ds2", "Two")))
+    initial <- isolate(store())$datasets
+    for (id in c("ds1", "ds2")) {
+      assign(paste0(id, "::1::loaded"), id, envir = builder_dataset_state_cache)
+      assign(
+        paste0(id, "::1::live"),
+        id,
+        envir = builder_configuration_identity_cache
+      )
+    }
+    before <- isolate(store())
+    expect_false(builder_project_update_entries(initial))
+    expect_identical(isolate(store()), before)
+
+    saved <- initial
+    saved[[2L]]$path <- "sources/ds2/source.rds"
+    expect_true(builder_project_update_entries(saved))
+    expect_identical(
+      isolate(store())$datasets[[2L]]$path,
+      "sources/ds2/source.rds"
+    )
+    expect_identical(isolate(store())$datasets[[1L]], initial[[1L]])
+    ## The untouched dataset keeps its derived state; the saved one is redone.
+    expect_true(exists("ds1::1::loaded", envir = builder_dataset_state_cache))
+    expect_false(exists("ds2::1::loaded", envir = builder_dataset_state_cache))
+    expect_true(exists(
+      "ds1::1::live",
+      envir = builder_configuration_identity_cache
+    ))
+    expect_false(exists(
+      "ds2::1::live",
+      envir = builder_configuration_identity_cache
+    ))
+
+    ## A removed dataset is dropped from the caches too.
+    expect_true(builder_project_update_entries(list(isolate(store())$datasets[[2L]])))
+    expect_false(exists("ds1::1::loaded", envir = builder_dataset_state_cache))
+  })
+})
+
+test_that("CRB availability checks reuse verified content by stat identity", {
+  runtime <- builder_responsiveness_runtime()
+  root <- normalizePath(withr::local_tempdir(), winslash = "/")
+  path <- file.path(root, "artifacts", "ds1", "dataset.crb")
+  dir.create(dirname(path), recursive = TRUE)
+  writeBin(charToRaw("crb-bytes"), path)
+  entry <- list(id = "ds1", revision = 1L, settings = list(name = "One"))
+  fingerprint <- runtime$builder_project_file_fingerprint(path, content = TRUE)
+  ## A Project copied from another machine: same bytes, different file id.
+  fingerprint$file_id <- "0:0"
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    bundle_contract_version = 1L,
+    path = "artifacts/ds1/dataset.crb",
+    fingerprint = fingerprint,
+    members = list(),
+    built_from_configuration = runtime$builder_project_artifact_configuration_digest(entry),
+    plan_item = list(artifact_identity = list(spatial_sections = character()))
+  )
+  hashed <- 0L
+  real_md5sum <- tools::md5sum
+  testthat::local_mocked_bindings(
+    md5sum = function(files) {
+      hashed <<- hashed + length(files)
+      real_md5sum(files)
+    },
+    .package = "tools"
+  )
+  cache <- new.env(parent = emptyenv())
+  for (attempt in 1:3) {
+    expect_length(
+      runtime$builder_project_entries_requiring_crb(
+        list(entry),
+        list(ds1 = artifact),
+        root,
+        verification_cache = cache
+      ),
+      0L
+    )
+  }
+  expect_identical(hashed, 1L)
+  runtime$builder_project_entries_requiring_crb(
+    list(entry),
+    list(ds1 = artifact),
+    root
+  )
+  expect_identical(hashed, 2L)
+})

@@ -5521,13 +5521,18 @@ builder_project_entries_requiring_crb <- function(
   entries,
   artifacts,
   root,
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   Filter(
     function(entry) {
       artifact <- artifacts[[entry$id]] %||% NULL
       !is.list(artifact) ||
-        !builder_project_artifact_available(artifact, root) ||
+        !builder_project_artifact_available(
+          artifact,
+          root,
+          verification_cache = verification_cache
+        ) ||
         !builder_project_artifact_matches_entry(
           artifact,
           entry,
@@ -5813,13 +5818,15 @@ builder_project_entries_for_build <- function(
   entries,
   artifacts,
   root,
-  identity_cache = NULL
+  identity_cache = NULL,
+  verification_cache = NULL
 ) {
   required <- builder_project_entries_requiring_crb(
     entries,
     artifacts,
     root,
-    identity_cache
+    identity_cache,
+    verification_cache = verification_cache
   )
   required_ids <- vapply(required, `[[`, character(1), "id")
   lapply(entries, function(entry) {
