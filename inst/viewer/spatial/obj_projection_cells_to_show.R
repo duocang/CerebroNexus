@@ -7,9 +7,7 @@ observe({
   controls <- spatial_projection_controls()
   req(controls)
   sampling <- controls[c("projection", "percentage_cells_to_show")]
-  if (!identical(isolate(spatial_projection_sampling()), sampling)) {
-    spatial_projection_sampling(sampling)
-  }
+  viewerPublishChanged(spatial_projection_sampling, sampling)
 }, priority = 950)
 
 spatial_projection_cell_index <- reactive({
@@ -132,9 +130,7 @@ observe({
     spatial_projection_cells_to_show_current(),
     error = function(error) NULL
   )
-  if (!identical(isolate(spatial_projection_cells_state()), value)) {
-    spatial_projection_cells_state(value)
-  }
+  viewerPublishChanged(spatial_projection_cells_state, value)
 }, priority = 900)
 spatial_projection_cells_to_show <- reactive({
   value <- spatial_projection_cells_state()

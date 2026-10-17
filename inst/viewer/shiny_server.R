@@ -429,9 +429,7 @@ server <- function(input, output, session) {
   current_scatter_percentage <- reactiveVal(100)
   observe({
     percentage <- current_scatter_defaults()$percentage_cells_to_show
-    if (!identical(isolate(current_scatter_percentage()), percentage)) {
-      current_scatter_percentage(percentage)
-    }
+    viewerPublishChanged(current_scatter_percentage, percentage)
   }, priority = 1000)
   current_spatial_scatter_defaults <- reactive({
     viewerScatterDefaults(Cerebro.options,

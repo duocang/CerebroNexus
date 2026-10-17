@@ -153,9 +153,7 @@ observe({
     expression_selected_genes_current(),
     error = function(error) expression_selection_unavailable
   )
-  if (!identical(isolate(expression_selected_genes_state()), value)) {
-    expression_selected_genes_state(value)
-  }
+  viewerPublishChanged(expression_selected_genes_state, value)
 }, priority = 200)
 expression_selected_genes <- reactive({
   value <- expression_selected_genes_state()

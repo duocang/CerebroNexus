@@ -701,6 +701,15 @@ viewerMemoOne <- function() {
   }
 }
 
+## Write a reactiveVal only when its value changes, so dependants do not re-run
+## for an identical value.
+viewerPublishChanged <- function(state, value) {
+  if (!identical(shiny::isolate(state()), value)) {
+    state(value)
+  }
+  invisible(value)
+}
+
 viewerOutputTab <- function(ids) {
   prefixes <- c(
     overview_ = "overview",

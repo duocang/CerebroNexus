@@ -40,9 +40,7 @@ observe({
   parameters <- spatial_projection_parameters_plot()
   model <- parameters[c("roi_mode", "roi_backgrounds", "background_identity",
                          "background_descriptor", "projection")]
-  if (!identical(isolate(spatial_background_edit_model()), model)) {
-    spatial_background_edit_model(model)
-  }
+  viewerPublishChanged(spatial_background_edit_model, model)
 }, priority = 900)
 spatial_background_edit_target <- reactive({
   parameters <- spatial_background_edit_model()

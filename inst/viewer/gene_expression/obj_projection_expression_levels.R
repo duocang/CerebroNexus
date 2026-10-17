@@ -228,9 +228,7 @@ observe({
     expressionProjectionPaintedCurrent(),
     error = function(error) FALSE
   ))
-  if (!identical(isolate(expression_projection_summary_ready_state()), ready)) {
-    expression_projection_summary_ready_state(ready)
-  }
+  viewerPublishChanged(expression_projection_summary_ready_state, ready)
 }, priority = 100)
 expression_projection_summary_ready <- reactive({
   expression_projection_summary_ready_state()

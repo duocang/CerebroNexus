@@ -156,9 +156,7 @@ observe(
         defaults$percentage_cells_to_show
       ))
     )
-    if (!identical(isolate(spatial_projection_controls()), controls)) {
-      spatial_projection_controls(controls)
-    }
+    viewerPublishChanged(spatial_projection_controls, controls)
   },
   priority = 1000
 )
@@ -543,9 +541,7 @@ observe({
     spatial_projection_parameters_plot_current(),
     error = function(error) NULL
   )
-  if (!identical(isolate(spatial_projection_parameters_state()), value)) {
-    spatial_projection_parameters_state(value)
-  }
+  viewerPublishChanged(spatial_projection_parameters_state, value)
 }, priority = 900)
 spatial_projection_parameters_plot <- reactive({
   value <- spatial_projection_parameters_state()
