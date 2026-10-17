@@ -308,19 +308,31 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   } else {
     NULL
   }
+  projection_names <- tryCatch(
+    data_set()$availableProjections(),
+    error = function(error) character()
+  )
+  projection_resources <- Filter(
+    is.list,
+    lapply(stats::setNames(projection_names, projection_names), function(name) {
+      tryCatch(viewerProjectionAsset(name), error = function(error) NULL)
+    })
+  )
   supplement <- tryCatch(
     {
       value <- cv_build_compact_supplement(
         data_set(),
         primary,
         viewerProjectionFirstFrameCache(),
-        include_clone = wants_clone && is.null(clone_spec)
+        include_clone = wants_clone && is.null(clone_spec),
+        projection_resources = projection_resources
       )
       if (is.null(value)) {
         value <- cv_build_progressive_supplement(
           data_set(),
           primary,
-          include_clone = wants_clone && is.null(clone_spec)
+          include_clone = wants_clone && is.null(clone_spec),
+          projection_resources = projection_resources
         )
       }
       value

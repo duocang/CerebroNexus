@@ -9333,18 +9333,63 @@
         deferredLinkedSupplements.push({ buffer: buffer });
         return;
       }
-      extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
-      var metric = CBViewState.telemetry.transport(
-        extra.transport_profile,
-        {bytes: buffer.byteLength, decodeMs: decodedAt - started},
-        false,
-        Date.now()
-      );
-      if (extra.progressive_complete === false && D.progressive) {
-        pendingCloneSupplement = { extra: extra, metric: metric };
+      var finish = function () {
+        if (!linkedSupplementFresh(extra)) return;
+        if (D !== linkedBundle) {
+          deferredLinkedSupplements.push({ buffer: buffer });
+          return;
+        }
+        extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
+        var metric = CBViewState.telemetry.transport(
+          extra.transport_profile,
+          {bytes: buffer.byteLength, decodeMs: decodedAt - started},
+          false,
+          Date.now()
+        );
+        if (extra.progressive_complete === false && D.progressive) {
+          pendingCloneSupplement = { extra: extra, metric: metric };
+          return;
+        }
+        applyHydratedSupplement(extra, metric);
+      };
+      // Projections the Viewer Pack serves arrive as descriptors; fetch them
+      // (shared HTTP cache) before merging. Any failure takes the full bundle.
+      var resourced = Object.keys(extra.projections || {}).filter(function (name) {
+        var projection = extra.projections[name];
+        return projection && projection.projection_resource &&
+          projection.projection_resource.url;
+      });
+      if (!resourced.length) {
+        finish();
         return;
       }
-      applyHydratedSupplement(extra, metric);
+      var bundle = linkedBundle;
+      Promise.all(resourced.map(function (name) {
+        var projection = extra.projections[name];
+        return fetchValidatedProjectionResource(
+          projection.projection_resource,
+          { dataset_identity: linkedBundleResourceIdentity(bundle) },
+          bundle.n
+        ).then(function (result) {
+          var coordinates = result.coordinates;
+          projection.x = coordinates.x;
+          projection.y = coordinates.y;
+          if (coordinates.z) projection.z = coordinates.z;
+          if (coordinates.xRange) projection.xRange = coordinates.xRange;
+          if (coordinates.yRange) projection.yRange = coordinates.yRange;
+          delete projection.projection_resource;
+        });
+      })).then(function () {
+        try {
+          finish();
+        } catch (error) {
+          requestWireFallback(D && D.dataset_id, D && configFingerprint());
+        }
+      }, function () {
+        if (linkedSupplementFresh(extra)) {
+          requestWireFallback(bundle.dataset_id, configFingerprint());
+        }
+      });
     } catch (error) {
       requestWireFallback(D && D.dataset_id, D && configFingerprint());
     }

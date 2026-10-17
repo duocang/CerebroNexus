@@ -2196,11 +2196,39 @@ cv_build_deferred_metadata <- function(crb, md, primary) {
 ## the already-loaded thin first-frame metadata and the Viewer Pack's canonical
 ## immune index, so the supplement never materialises barcodes, per-cell strings,
 ## or metadata codes merely to discard them before transport.
+## Supplement projections that the Viewer Pack serves as static resources are
+## sent as descriptors: the browser fetches and caches them over HTTP instead of
+## receiving every coordinate in one websocket message, and R builds no arrays
+## for them. Returns the projections in `names` order.
+cv_supplement_projections <- function(
+  names,
+  projection_resources,
+  n,
+  build,
+  first_projections = NULL
+) {
+  resourced <- list()
+  for (name in intersect(names, names(projection_resources))) {
+    entry <- cv_resource_projection(
+      list(name = name, descriptor = projection_resources[[name]]),
+      first_projections[[name]],
+      n
+    )
+    if (length(entry)) {
+      resourced[[name]] <- entry[[1L]]
+    }
+  }
+  built <- build(setdiff(names, names(resourced)))
+  projections <- c(built, resourced)
+  projections[intersect(names, names(projections))]
+}
+
 cv_build_compact_supplement <- function(
   crb,
   primary,
   first_frame,
-  include_clone = TRUE
+  include_clone = TRUE,
+  projection_resources = list()
 ) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   valid <- is.list(pack) &&
@@ -2248,13 +2276,21 @@ cv_build_compact_supplement <- function(
     cat_extra = metadata$cat_extra,
     fields = metadata$fields,
     cat_skipped = metadata$cat_skipped,
-    projections = cv_build_projections(
-      crb,
-      seq_len(primary$n),
+    projections = cv_supplement_projections(
       setdiff(projection_names, names(primary$projections)),
-      first_frame$projections,
-      canonical_projections = first_frame$canonical_projections,
-      aligned_cache = first_frame$aligned_projections
+      projection_resources,
+      primary$n,
+      function(names) {
+        cv_build_projections(
+          crb,
+          seq_len(primary$n),
+          names,
+          first_frame$projections,
+          canonical_projections = first_frame$canonical_projections,
+          aligned_cache = first_frame$aligned_projections
+        )
+      },
+      first_frame$projections
     ),
     spaces = if (is.null(clone)) list() else list(clone$space),
     clone = if (is.null(clone)) NULL else clone$bundle,
@@ -2268,7 +2304,8 @@ cv_build_compact_supplement <- function(
 cv_build_progressive_supplement <- function(
   crb,
   primary,
-  include_clone = TRUE
+  include_clone = TRUE,
+  projection_resources = list()
 ) {
   md <- cv_canonical_metadata(crb$getMetaData())
   if (is.null(md) || !identical(as.integer(nrow(md)), as.integer(primary$n))) {
@@ -2308,10 +2345,11 @@ cv_build_progressive_supplement <- function(
     cat_extra = metadata$cat_extra,
     fields = metadata$fields,
     cat_skipped = metadata$cat_skipped,
-    projections = cv_build_projections(
-      crb,
-      cells,
-      setdiff(projection_names, names(primary$projections))
+    projections = cv_supplement_projections(
+      setdiff(projection_names, names(primary$projections)),
+      projection_resources,
+      primary$n,
+      function(names) cv_build_projections(crb, cells, names)
     ),
     spaces = spaces,
     clone = if (is.null(clone)) NULL else clone$bundle,

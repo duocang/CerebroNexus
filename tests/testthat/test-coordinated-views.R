@@ -2602,3 +2602,27 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   expect_length(cv_env$cv_spatial_one(crb,cells,"fov",FALSE,"A")$images,1)
   expect_length(cv_env$cv_spatial_one(crb,cells,"fov",FALSE,"B")$images,0)
 })
+
+test_that("supplement projections served by the Viewer Pack are sent as descriptors", {
+  built_names <- NULL
+  build <- function(names) {
+    built_names <<- names
+    stats::setNames(
+      lapply(names, function(name) list(ndim = 2L, x = I(c(1, 2)), y = I(c(3, 4)))),
+      names
+    )
+  }
+  descriptor <- list(url = "tsne.bin", cells = 2L, dimensions = 2L)
+  projections <- cv_env$cv_supplement_projections(
+    c("pca", "tsne", "umap3d"),
+    list(tsne = descriptor, umap3d = list(url = "bad", cells = 5L, dimensions = 2L)),
+    2L,
+    build
+  )
+  ## Valid resources are not built; invalid ones fall back to arrays.
+  expect_identical(built_names, c("pca", "umap3d"))
+  expect_identical(names(projections), c("pca", "tsne", "umap3d"))
+  expect_identical(projections$tsne$projection_resource, descriptor)
+  expect_null(projections$tsne$x)
+  expect_identical(projections$pca$x, I(c(1, 2)))
+})
