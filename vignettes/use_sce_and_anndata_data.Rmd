@@ -1,0 +1,99 @@
+---
+title: "Use SingleCellExperiment and AnnData data"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    self_contained: yes
+    mode: selfcontained
+vignette: >
+  %\VignetteIndexEntry{Use SingleCellExperiment and AnnData data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# Overview
+
+Cerebro does not need a Seurat object. A `.crb` file is the common format, and
+three kinds of input lead to it:
+
+| You have | Convert with |
+|---|---|
+| Seurat object (`.rds`, `.qs2`) | `convertSeuratToCerebro()` |
+| SingleCellExperiment (`.rds`, `.qs2`) | `convertSCEToCerebro()` |
+| AnnData / scanpy file (`.h5ad`), MuData (`.h5mu`) | `convertH5adToCerebro()` |
+
+Because `.crb` is the hub, the formats also convert into each other: a Seurat
+object can be written as `.h5ad` for scanpy, an `.h5ad` file can be turned into
+a SingleCellExperiment, and so on. AnnData files are read natively with
+`rhdf5`; no Python is needed.
+
+# From an AnnData file
+
+```{r h5ad}
+library(CerebroNexus)
+
+crb <- convertH5adToCerebro(
+  "pbmc.h5ad",
+  result_dir = "cerebro",
+  groups = c("louvain", "sample"),
+  organism = "Human"
+)
+```
+
+This takes what scanpy stored, not only the matrix:
+
+* the embeddings in `obsm` (`X_umap`, `X_pca`, ...) as projections;
+* the ranked marker genes from `sc.tl.rank_genes_groups`;
+* scanpy's category colours (`uns["<column>_colors"]`);
+* Visium coordinates and tissue images (`obsm["spatial"]`, `uns["spatial"]`),
+  one spatial section per library;
+* scirpy TCR/BCR tables (`airr` argument) and PAGA / scVelo / pseudotime
+  trajectories.
+
+Use `use_raw = TRUE` for `adata.raw`, `modality =` to pick one modality of an
+`.h5mu` file, and `gene_names =` to name genes by a `var` column when the index
+holds Ensembl IDs.
+
+# From a SingleCellExperiment
+
+```{r sce}
+crb <- convertSCEToCerebro(
+  "sce.rds",
+  result_dir = "cerebro",
+  assay = "logcounts",
+  groups = c("cluster", "sample")
+)
+```
+
+# Back to scanpy
+
+```{r back}
+exportToH5ad("cerebro/cerebro_pbmc.crb", "pbmc_back.h5ad")
+```
+
+```python
+import anndata as ad
+adata = ad.read_h5ad("pbmc_back.h5ad")
+```
+
+Expression, cell metadata, projections, marker genes, category colours and, for
+spatial data, coordinates and tissue images are written. A message lists what
+`.h5ad` has no place for (immune repertoire, trajectories, trees, ...).
+
+# In the Builder
+
+`launchCerebroBuilder()` accepts `.h5ad`, `.h5mu` and SingleCellExperiment
+`.rds` / `.qs2` files like Seurat ones, and offers PAGA, scVelo and pseudotime
+trajectories next to monocle2. Tissue images and the split of several tissue
+sections are not carried through the Builder; use `convertH5adToCerebro()` for
+those.

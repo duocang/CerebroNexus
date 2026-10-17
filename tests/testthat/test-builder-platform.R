@@ -113,7 +113,7 @@ test_that("every native picker has one typed selection contract", {
 test_that("browser upload accept lists share backend format contracts", {
   expect_identical(
     builder_file_accept(builder_dataset_extensions()),
-    ".rds,.qs2,.qs"
+    ".rds,.qs2,.qs,.h5ad,.h5mu"
   )
   expect_identical(
     builder_file_accept(builder_table_extensions()),
@@ -137,7 +137,7 @@ test_that("unavailable optional readers suggest usable formats", {
 
   expect_identical(
     vapply(available, `[[`, character(1), "id"),
-    c("rds", "qs2")
+    c("rds", "qs2", "h5ad", "h5mu")
   )
   expect_identical(
     vapply(unavailable, `[[`, character(1), "id"),
