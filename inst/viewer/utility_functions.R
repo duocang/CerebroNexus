@@ -6000,7 +6000,7 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
     session$userData$cerebro_private_image_md5 <- new.env(parent = emptyenv())
   }
   md5_cache <- session$userData$cerebro_private_image_md5
-  md5_key <- paste(path, bytes, format(modified, digits = 17), sep = "")
+  md5_key <- paste(path, bytes, format(modified, digits = 17), sep = "\r")
   md5 <- get0(md5_key, envir = md5_cache, inherits = FALSE)
   if (is.null(md5)) {
     md5 <- tryCatch(

@@ -63,7 +63,7 @@ source(
         normalizePath(path, winslash = "/", mustWork = FALSE),
         info$size,
         format(as.numeric(info$mtime), digits = 17),
-        sep = ""
+        sep = "\r"
       )
       cached <- .viewer_file_md5_cache[[key]]
       if (!is.null(cached)) {
