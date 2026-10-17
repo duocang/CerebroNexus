@@ -42,7 +42,7 @@ spatial_projection_scene <- reactive({
     spatial_metadata_facet(
       metadata,
       rownames(record[["coordinates"]]) %||% character(),
-      c("sample", "sample_id", "orig.ident")
+      spatial_sample_fields
     )
   })
   sample_values <- unique(unlist(
@@ -55,7 +55,7 @@ spatial_projection_scene <- reactive({
   ))
   metadata_cols <- setdiff(
     metadata_cols,
-    unique(c(sample_fields, "sample", "sample_id", "orig.ident"))
+    unique(c(sample_fields, spatial_sample_fields))
   )
   default_sample <- if (length(sample_values)) sample_values[[1L]] else ""
   requested_sample <- input[["spatial_projection_sample"]]
@@ -90,7 +90,7 @@ spatial_projection_scene <- reactive({
     current_sample <- spatial_metadata_facet(
       metadata,
       current_cells,
-      c("sample", "sample_id", "orig.ident")
+      spatial_sample_fields
     )
     current_cells <- names(current_sample$by_cell)[
       !is.na(current_sample$by_cell) &
@@ -100,7 +100,7 @@ spatial_projection_scene <- reactive({
   roi_values <- spatial_metadata_facet(
     metadata,
     current_cells,
-    c("sample_roi", "roi", "roi_id", "region_of_interest")
+    spatial_roi_fields
   )$values
   requested_roi <- input[["spatial_projection_roi"]]
   selected_roi <- if (dataset_changed) {
@@ -309,7 +309,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     current_sample <- spatial_metadata_facet(
       getMetaData(),
       current_cells,
-      c("sample", "sample_id", "orig.ident")
+      spatial_sample_fields
     )
     current_cells <- names(current_sample$by_cell)[
       !is.na(current_sample$by_cell) &
@@ -319,7 +319,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   roi_values <- spatial_metadata_facet(
     getMetaData(),
     current_cells,
-    c("sample_roi", "roi", "roi_id", "region_of_interest")
+    spatial_roi_fields
   )$values
   selected_roi <- input[["spatial_projection_roi"]] %||%
     spatial_default_roi_selection(roi_values)

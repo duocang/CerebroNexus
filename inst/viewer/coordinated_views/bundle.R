@@ -1201,7 +1201,7 @@ cv_build_spatial <- function(crb, cells) {
     built[[length(built) + 1L]] <- scene
     rois <- spatial_metadata_facet(
       metadata, rownames(sd$coordinates),
-      c("sample_roi", "roi", "roi_id", "region_of_interest")
+      spatial_roi_fields
     )$values
     if (length(rois) > 1L) {
       for (roi in rois) {

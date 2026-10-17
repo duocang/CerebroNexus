@@ -67,11 +67,11 @@ spatial_projection_cells_to_show_current <- reactive({
   for (scope in list(
     list(
       value = spatial_projection_selected_sample(),
-      fields = c("sample", "sample_id", "orig.ident")
+      fields = spatial_sample_fields
     ),
     list(
       value = spatial_roi_value(input[["spatial_projection_roi"]] %||% ""),
-      fields = c("sample_roi", "roi", "roi_id", "region_of_interest")
+      fields = spatial_roi_fields
     )
   )) {
     selected <- scope$value %||% ""

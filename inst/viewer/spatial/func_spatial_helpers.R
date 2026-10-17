@@ -10,6 +10,11 @@
 ## only the host packages need to be installed, not CerebroNexus itself.
 ##----------------------------------------------------------------------------##
 
+## Metadata columns naming a cell's sample and its region of interest, in order
+## of preference.
+spatial_sample_fields <- c("sample", "sample_id", "orig.ident")
+spatial_roi_fields <- c("sample_roi", "roi", "roi_id", "region_of_interest")
+
 spatial_dataset_name <- function(crb_files, selected) {
   if (
     is.null(crb_files) ||
@@ -705,7 +710,7 @@ spatial_roi_transform_context <- function(
   roi <- spatial_metadata_facet(
     metadata,
     cells,
-    c("sample_roi", "roi", "roi_id", "region_of_interest")
+    spatial_roi_fields
   )
   scoped_cells <- cells
   if (
@@ -717,7 +722,7 @@ spatial_roi_transform_context <- function(
     sample <- spatial_metadata_facet(
       metadata,
       cells,
-      c("sample", "sample_id", "orig.ident")
+      spatial_sample_fields
     )
     scoped_cells <- names(sample$by_cell)[
       !is.na(sample$by_cell) & sample$by_cell == sample_value
