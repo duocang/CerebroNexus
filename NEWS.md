@@ -54,6 +54,14 @@
   CSR `X` is used without a transpose. `obs`, `var`, `layers`, `obsm` and
   scanpy's `rank_genes_groups` become metadata, assays, projections and marker
   genes, and `convertSCEToCerebro()` now also accepts a `.h5ad` path.
+- Adds `exportToH5ad()`, the reverse of `convertH5adToCerebro()`: a `.crb` (or
+  Cerebro object) is written as an `.h5ad` that anndata and scanpy open as it is,
+  natively with rhdf5. With it `.crb` is the hub between Seurat, SingleCellExperiment
+  and AnnData: `X`, `obs` (categorical, bool and nullable columns), `obsm` and
+  marker tables are exported under any expression backend, and `readH5adAsSCE()`
+  reads the marker tables back. Content AnnData has no place for (immune
+  repertoire, HLA typing, spatial data, trees, trajectories, pathways) is named
+  in a message instead of being dropped silently.
 - Streams delayed-matrix exports without whole-matrix dense realization, and
   bounds external enrichment request time and error handling.
 

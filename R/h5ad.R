@@ -377,6 +377,36 @@
   markers
 }
 
+#' Marker tables that exportToH5ad() stores under uns["cerebro"]["marker_genes"],
+#' so a Cerebro -> h5ad -> Cerebro trip keeps them.
+#' @keywords internal
+#' @noRd
+.h5adReadCerebroMarkers <- function(ctx) {
+  root <- "uns/cerebro/marker_genes"
+  if (!.h5adHas(ctx, root)) {
+    return(list())
+  }
+  markers <- list()
+  for (method in .h5adChildren(ctx, root)) {
+    method_path <- paste0(root, "/", method)
+    for (table in .h5adChildren(ctx, method_path)) {
+      frame <- tryCatch(
+        {
+          raw <- .h5adReadDataFrame(ctx, paste0(method_path, "/", table))
+          frame <- .h5adAsFrame(raw)
+          rownames(frame) <- NULL
+          frame
+        },
+        error = function(e) NULL
+      )
+      if (is.data.frame(frame) && nrow(frame)) {
+        markers[[method]][[table]] <- frame
+      }
+    }
+  }
+  markers
+}
+
 #' Read an h5ad file as a SingleCellExperiment
 #'
 #' @description
@@ -400,7 +430,8 @@
 #'     \code{"UMAP"}).
 #'   \item scanpy's \code{uns["rank_genes_groups"]} results become
 #'     \code{metadata(sce)$marker_genes}, one table per \code{groupby}
-#'     variable.
+#'     variable; marker tables written by \code{\link{exportToH5ad}} under
+#'     \code{uns["cerebro"]["marker_genes"]} are read back as they were.
 #' }
 #' Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 #' is used as it is, because the CSR of cells x genes is the CSC of genes x
@@ -507,7 +538,7 @@ readH5adAsSCE <- function(file, use_raw = FALSE, verbose = FALSE) {
     rowData = row_data,
     reducedDims = .h5adReadObsm(ctx, cells, verbose)
   )
-  markers <- .h5adReadRankGenes(ctx)
+  markers <- c(.h5adReadRankGenes(ctx), .h5adReadCerebroMarkers(ctx))
   if (length(markers)) {
     sce@metadata$marker_genes <- markers
   }

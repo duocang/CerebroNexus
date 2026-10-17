@@ -41,7 +41,8 @@ The mapping is:
     \code{"UMAP"}).
   \item scanpy's \code{uns["rank_genes_groups"]} results become
     \code{metadata(sce)$marker_genes}, one table per \code{groupby}
-    variable.
+    variable; marker tables written by \code{\link{exportToH5ad}} under
+    \code{uns["cerebro"]["marker_genes"]} are read back as they were.
 }
 Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 is used as it is, because the CSR of cells x genes is the CSC of genes x
