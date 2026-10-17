@@ -1313,7 +1313,7 @@ test_that("project table asset save has an asynchronous stale-result guard", {
   )
 
   expect_match(source, "builder_project_table_asset_generation", fixed = TRUE)
-  expect_match(source, "callr::r_bg(", fixed = TRUE)
+  expect_match(source, "builder_project_worker_task_call(", fixed = TRUE)
   expect_match(source, "builder_project_attachment_jobs", fixed = TRUE)
   expect_match(source, "builder_project_table_save_signature", fixed = TRUE)
   expect_match(source, "process$get_result()", fixed = TRUE)
@@ -1802,7 +1802,7 @@ test_that("source synchronization warns on close without locking the workspace",
   expect_false(capabilities$page_inert)
 })
 
-test_that("project server uses a dedicated callr source copy process", {
+test_that("project server uses a dedicated source copy worker", {
   path <- builder_test_inst_path(
     "builder",
     "server",
@@ -1811,7 +1811,7 @@ test_that("project server uses a dedicated callr source copy process", {
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   expect_match(source, "request_builder_project_source_sync", fixed = TRUE)
-  expect_match(source, "callr::r_bg", fixed = TRUE)
+  expect_match(source, "builder_project_copier,", fixed = TRUE)
   expect_match(source, "later::later", fixed = TRUE)
   expect_match(source, "shiny::withReactiveDomain(session, {", fixed = TRUE)
   expect_match(source, "builder_project_apply_source_results", fixed = TRUE)
@@ -1836,7 +1836,11 @@ test_that("source sync keeps queued jobs until its worker starts", {
   )[[1L]]
   block <- substr(source, start, finish - 1L)
 
-  spawn <- regexpr("callr::r_bg(", block, fixed = TRUE)[[1L]]
+  spawn <- regexpr(
+    "builder_project_worker_task_call(",
+    block,
+    fixed = TRUE
+  )[[1L]]
   dequeue <- regexpr(
     "builder_project_source_queue(queued)",
     block,

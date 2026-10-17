@@ -6866,6 +6866,128 @@ builder_project_manifest_with_artifact <- function(
   manifest
 }
 
+## The body of one manifest transaction. `runtime_for(full)` returns the
+## Builder runtime; `full = TRUE` adds the app bundle and package files that
+## artifact closure checks need.
+builder_project_write_task <- function(runtime_for, args) {
+  manifest <- args$manifest
+  root <- args$root
+  entries <- args$entries
+  context <- args$context
+  artifact_record <- args$artifact_record
+  needs_artifacts <- !is.null(artifact_record) ||
+    any(vapply(
+      manifest$datasets,
+      function(record) is.list(record$artifact),
+      logical(1)
+    )) ||
+    any(vapply(
+      entries,
+      function(entry) is.list(entry$project_artifact),
+      logical(1)
+    )) ||
+    any(vapply(context$artifacts, is.list, logical(1)))
+  runtime <- runtime_for(needs_artifacts)
+  if (
+    needs_artifacts &&
+      !is.function(runtime$.builder_app_capture_spatial_molecule_identity)
+  ) {
+    stop("The project artifact verification runtime is unavailable.")
+  }
+  cache <- list2env(args$configuration_cache, parent = emptyenv())
+  built <- if (!is.null(entries)) {
+    runtime$builder_project_build_manifest(
+      entries,
+      list(root = root, manifest = manifest),
+      context,
+      cache
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(artifact_record)) {
+    manifest <- runtime$builder_project_manifest_with_artifact(
+      manifest,
+      root,
+      artifact_record$id,
+      artifact_record$artifact
+    )
+    if (!is.list(manifest)) {
+      stop("The dataset cache no longer matches this project.")
+    }
+  }
+  written <- runtime$builder_project_write(
+    if (is.null(built)) manifest else built$manifest,
+    root,
+    args$expected_revision
+  )
+  written$built <- built
+  written$configuration_cache <- as.list(cache)
+  # The transaction already inspected these CRBs in this worker. Carry the
+  # content-keyed closure results back so status rendering need not read them
+  # again. Artifact availability still checks every file before using them.
+  written$artifact_closure_cache <- as.list(
+    runtime$.builder_project_artifact_closure_cache
+  )
+  written
+}
+
+## Functions sent to a worker must not carry the Builder environment along.
+builder_project_portable_function <- function(func) {
+  func <- utils::removeSource(func)
+  environment(func) <- globalenv()
+  func
+}
+
+## Runs `task(runtime_for, args)` inside a Project worker process. The loaded
+## runtime is kept in the worker's global environment, so a warm worker only
+## sources the Builder files on its first call; the full runtime (package, app
+## bundle) is sourced only when a task asks for it, in the original order.
+builder_project_worker_run <- function(
+  task,
+  args,
+  runtime_files,
+  full_runtime_files,
+  source_utf8
+) {
+  load_runtime <- function(files) {
+    runtime <- new.env(parent = globalenv())
+    runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+    for (path in files) {
+      source_utf8(path, runtime)
+    }
+    runtime
+  }
+  state <- get0(
+    ".builder_project_worker_state",
+    envir = globalenv(),
+    inherits = FALSE
+  )
+  if (
+    !is.list(state) ||
+      !identical(state$runtime_files, runtime_files) ||
+      !identical(state$full_runtime_files, full_runtime_files)
+  ) {
+    state <- list(
+      runtime_files = runtime_files,
+      full_runtime_files = full_runtime_files,
+      runtime = NULL,
+      full = FALSE
+    )
+  }
+  runtime_for <- function(full = FALSE) {
+    if (isTRUE(full) && !isTRUE(state$full)) {
+      state$runtime <<- load_runtime(full_runtime_files)
+      state$full <<- TRUE
+    } else if (is.null(state$runtime)) {
+      state$runtime <<- load_runtime(runtime_files)
+    }
+    assign(".builder_project_worker_state", state, envir = globalenv())
+    state$runtime
+  }
+  task(runtime_for, args)
+}
+
 builder_project_write_process <- function(
   manifest,
   root,
@@ -6876,85 +6998,35 @@ builder_project_write_process <- function(
   entries = NULL,
   context = NULL,
   configuration_cache = list(),
-  artifact_record = NULL
+  artifact_record = NULL,
+  full_runtime_files = runtime_files,
+  worker = NULL
 ) {
-  .spawn(
-    function(
-      manifest,
-      root,
-      expected_revision,
-      runtime_files,
-      source_utf8,
-      entries,
-      context,
-      configuration_cache,
-      artifact_record
-    ) {
-      runtime <- new.env(parent = globalenv())
-      runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
-      for (path in runtime_files) {
-        source_utf8(path, runtime)
-      }
-      has_artifacts <- !is.null(artifact_record) ||
-        any(vapply(
-          manifest$datasets %||% list(),
-          function(record) is.list(record$artifact),
-          logical(1)
-        ))
-      if (
-        has_artifacts &&
-          !is.function(runtime$.builder_app_capture_spatial_molecule_identity)
-      ) {
-        stop("The project artifact verification runtime is unavailable.")
-      }
-      cache <- list2env(configuration_cache, parent = emptyenv())
-      built <- if (!is.null(entries)) {
-        runtime$builder_project_build_manifest(
-          entries,
-          list(root = root, manifest = manifest),
-          context,
-          cache
-        )
-      } else {
-        NULL
-      }
-      if (!is.null(artifact_record)) {
-        manifest <- runtime$builder_project_manifest_with_artifact(
-          manifest,
-          root,
-          artifact_record$id,
-          artifact_record$artifact
-        )
-        if (!is.list(manifest)) {
-          stop("The dataset cache no longer matches this project.")
-        }
-      }
-      written <- runtime$builder_project_write(
-        if (is.null(built)) manifest else built$manifest,
-        root,
-        expected_revision
-      )
-      written$built <- built
-      written$configuration_cache <- as.list(cache)
-      # The transaction already inspected these CRBs in this worker. Carry the
-      # content-keyed closure results back so status rendering need not read them
-      # again. Artifact availability still checks every file before using them.
-      written$artifact_closure_cache <- as.list(
-        runtime$.builder_project_artifact_closure_cache
-      )
-      written
-    },
+  call_args <- list(
+    task = builder_project_portable_function(builder_project_write_task),
     args = list(
       manifest = manifest,
       root = root,
       expected_revision = expected_revision,
-      runtime_files = runtime_files,
-      source_utf8 = source_utf8,
       entries = entries,
       context = context,
       configuration_cache = configuration_cache,
       artifact_record = artifact_record
     ),
+    runtime_files = runtime_files,
+    full_runtime_files = full_runtime_files,
+    source_utf8 = source_utf8
+  )
+  if (!is.null(worker)) {
+    return(builder_project_worker_call(
+      worker,
+      builder_project_worker_run,
+      call_args
+    ))
+  }
+  .spawn(
+    builder_project_worker_run,
+    args = call_args,
     # Once a transaction starts, closing the browser must not kill it between
     # backup and commit. The existing manifest lock/revision checks still apply.
     supervise = FALSE,
@@ -6962,6 +7034,298 @@ builder_project_write_process <- function(
     stdout = "|",
     stderr = "|"
   )
+}
+
+## Warm Project worker --------------------------------------------------------
+## One long-lived R session runs Project transactions in submission order. A
+## call returns a handle with the callr process methods the Builder polls
+## (is_alive, get_result, kill, kill_tree, wait), so callers keep their own
+## stale-result and cancellation logic. A crashed or killed session is replaced
+## on the next call. The session is started without process cleanup: when the
+## Builder exits, the worker finishes its current transaction and then ends at
+## the end of its input.
+builder_project_worker_new <- function(
+  name = "project",
+  .start = function() {
+    callr::r_session$new(
+      options = callr::r_session_options(extra = list(cleanup = FALSE)),
+      wait = FALSE
+    )
+  }
+) {
+  worker <- new.env(parent = emptyenv())
+  worker$name <- name
+  worker$start <- .start
+  worker$session <- NULL
+  worker$ready <- FALSE
+  worker$current <- NULL
+  worker$queue <- list()
+  worker$closing <- FALSE
+  worker$starts <- 0L
+  worker
+}
+
+.builder_project_worker_session_alive <- function(session) {
+  !is.null(session) &&
+    isTRUE(tryCatch(session$is_alive(), error = function(error) FALSE))
+}
+
+.builder_project_worker_finish <- function(handle, result = NULL, error = NULL) {
+  handle$state <- if (is.null(error)) "completed" else "failed"
+  handle$result <- result
+  handle$error <- error
+  if (identical(handle$worker$current, handle)) {
+    handle$worker$current <- NULL
+  }
+  invisible(handle)
+}
+
+.builder_project_worker_drop_session <- function(worker, kill = TRUE) {
+  session <- worker$session
+  worker$session <- NULL
+  worker$ready <- FALSE
+  if (!is.null(session) && isTRUE(kill)) {
+    try(session$kill_tree(), silent = TRUE)
+    try(session$kill(), silent = TRUE)
+  }
+  invisible(TRUE)
+}
+
+.builder_project_worker_error <- function(error) {
+  parent <- error
+  while (inherits(parent, "callr_error") && !is.null(parent$parent)) {
+    parent <- parent$parent
+  }
+  simpleError(conditionMessage(parent))
+}
+
+## Advances the worker without blocking: consumes the session start message,
+## collects a finished call and starts the next queued call.
+builder_project_worker_pump <- function(worker) {
+  repeat {
+    session <- worker$session
+    current <- worker$current
+    if (!is.null(current) && identical(current$state, "running")) {
+      if (!.builder_project_worker_session_alive(session)) {
+        .builder_project_worker_drop_session(worker, kill = FALSE)
+        .builder_project_worker_finish(
+          current,
+          error = simpleError("The Project worker stopped unexpectedly.")
+        )
+        next
+      }
+      ready <- tryCatch(
+        identical(session$poll_process(0L), "ready"),
+        error = function(error) FALSE
+      )
+      if (!ready) {
+        return(invisible(FALSE))
+      }
+      message <- tryCatch(session$read(), error = identity)
+      if (inherits(message, "condition")) {
+        .builder_project_worker_drop_session(worker)
+        .builder_project_worker_finish(
+          current,
+          error = .builder_project_worker_error(message)
+        )
+        next
+      }
+      code <- suppressWarnings(as.integer(message$code %||% NA_integer_))
+      if (is.na(code)) {
+        return(invisible(FALSE))
+      }
+      if (code >= 500L) {
+        .builder_project_worker_drop_session(worker)
+        .builder_project_worker_finish(
+          current,
+          error = simpleError("The Project worker stopped unexpectedly.")
+        )
+        next
+      }
+      if (!identical(code, 200L)) {
+        # Progress and output messages; keep waiting for the result.
+        next
+      }
+      if (!is.null(message$error)) {
+        .builder_project_worker_finish(
+          current,
+          error = .builder_project_worker_error(message$error)
+        )
+      } else {
+        .builder_project_worker_finish(current, result = message$result)
+      }
+      next
+    }
+    if (!is.null(session) && !isTRUE(worker$ready)) {
+      if (!.builder_project_worker_session_alive(session)) {
+        .builder_project_worker_drop_session(worker, kill = FALSE)
+        if (length(worker$queue)) {
+          failed <- worker$queue[[1L]]
+          worker$queue <- worker$queue[-1L]
+          .builder_project_worker_finish(
+            failed,
+            error = simpleError("The Project worker could not be started.")
+          )
+        }
+        next
+      }
+      ready <- tryCatch(
+        identical(session$poll_process(0L), "ready"),
+        error = function(error) FALSE
+      )
+      if (!ready) {
+        return(invisible(FALSE))
+      }
+      message <- tryCatch(session$read(), error = identity)
+      if (
+        !inherits(message, "condition") &&
+          identical(as.integer(message$code %||% NA_integer_), 201L)
+      ) {
+        worker$ready <- TRUE
+      }
+      next
+    }
+    if (!length(worker$queue)) {
+      if (isTRUE(worker$closing) && !is.null(session)) {
+        try(session$close(), silent = TRUE)
+        worker$session <- NULL
+        worker$ready <- FALSE
+      }
+      return(invisible(TRUE))
+    }
+    if (is.null(session)) {
+      started <- tryCatch(worker$start(), error = identity)
+      if (inherits(started, "condition")) {
+        failed <- worker$queue[[1L]]
+        worker$queue <- worker$queue[-1L]
+        .builder_project_worker_finish(
+          failed,
+          error = .builder_project_worker_error(started)
+        )
+        next
+      }
+      worker$session <- started
+      worker$ready <- FALSE
+      worker$starts <- worker$starts + 1L
+      next
+    }
+    handle <- worker$queue[[1L]]
+    worker$queue <- worker$queue[-1L]
+    called <- tryCatch(
+      {
+        session$call(handle$func, handle$args)
+        TRUE
+      },
+      error = identity
+    )
+    if (inherits(called, "condition")) {
+      .builder_project_worker_drop_session(worker)
+      .builder_project_worker_finish(
+        handle,
+        error = .builder_project_worker_error(called)
+      )
+      next
+    }
+    handle$state <- "running"
+    worker$current <- handle
+  }
+}
+
+builder_project_worker_call <- function(worker, func, args = list()) {
+  if (!is.environment(worker) || !is.function(func)) {
+    stop("A Project worker call requires a worker and a function.", call. = FALSE)
+  }
+  # Calls are self-contained: never serialize the caller's environment.
+  func <- builder_project_portable_function(func)
+  handle <- new.env(parent = emptyenv())
+  handle$worker <- worker
+  handle$func <- func
+  handle$args <- args
+  handle$state <- "queued"
+  handle$result <- NULL
+  handle$error <- NULL
+  handle$is_alive <- function() {
+    builder_project_worker_pump(worker)
+    handle$state %in% c("queued", "running")
+  }
+  handle$get_result <- function() {
+    builder_project_worker_pump(worker)
+    if (identical(handle$state, "failed")) {
+      stop(handle$error)
+    }
+    if (!identical(handle$state, "completed")) {
+      stop("The Project worker call has not finished.", call. = FALSE)
+    }
+    handle$result
+  }
+  handle$kill <- function() {
+    if (identical(handle$state, "queued")) {
+      worker$queue <- Filter(
+        function(candidate) !identical(candidate, handle),
+        worker$queue
+      )
+    } else if (
+      identical(handle$state, "running") &&
+        identical(worker$current, handle)
+    ) {
+      .builder_project_worker_drop_session(worker)
+    }
+    if (handle$state %in% c("queued", "running")) {
+      .builder_project_worker_finish(
+        handle,
+        error = simpleError("The Project worker call was cancelled.")
+      )
+    }
+    builder_project_worker_pump(worker)
+    invisible(TRUE)
+  }
+  handle$kill_tree <- handle$kill
+  handle$wait <- function(timeout = -1) {
+    deadline <- if (timeout < 0) Inf else Sys.time() + timeout / 1000
+    while (isTRUE(handle$is_alive()) && Sys.time() < deadline) {
+      session <- worker$session
+      if (!is.null(session)) {
+        try(session$poll_process(50L), silent = TRUE)
+      } else {
+        Sys.sleep(0.01)
+      }
+    }
+    invisible(handle)
+  }
+  class(handle) <- "builder_project_worker_call"
+  worker$queue[[length(worker$queue) + 1L]] <- handle
+  builder_project_worker_pump(worker)
+  handle
+}
+
+builder_project_worker_busy <- function(worker) {
+  is.environment(worker) &&
+    (!is.null(worker$current) || length(worker$queue) > 0L)
+}
+
+## Ends the worker once its queued transactions finish; `kill = TRUE` stops it
+## immediately (only for work that is safe to interrupt).
+builder_project_worker_close <- function(worker, kill = FALSE) {
+  if (!is.environment(worker)) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(kill)) {
+    for (handle in c(worker$queue, list(worker$current))) {
+      if (is.environment(handle)) {
+        .builder_project_worker_finish(
+          handle,
+          error = simpleError("The Project worker was stopped.")
+        )
+      }
+    }
+    worker$queue <- list()
+    worker$current <- NULL
+    .builder_project_worker_drop_session(worker)
+    return(invisible(TRUE))
+  }
+  worker$closing <- TRUE
+  builder_project_worker_pump(worker)
+  invisible(TRUE)
 }
 
 builder_project_write <- function(

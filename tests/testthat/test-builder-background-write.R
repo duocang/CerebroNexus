@@ -268,3 +268,153 @@ test_that("background Save restores display settings and reuses unchanged config
   )
   expect_equal(second$manifest$project$revision, 2L)
 })
+
+test_that("a warm Project worker runs successive writes in one session", {
+  runtime <- new.env(parent = globalenv())
+  builder_repo_source("prerequisite.R", local = runtime)
+  files <- vapply(
+    c("core/bundle_path_contract.R", "io.R", "project.R", "extras.R"),
+    function(path) normalizePath(builder_test_inst_path("builder", path)),
+    character(1)
+  )
+  for (path in files) {
+    runtime$builder_source_utf8(path, runtime)
+  }
+  worker <- runtime$builder_project_worker_new("writer")
+  withr::defer(runtime$builder_project_worker_close(worker, kill = TRUE))
+  root <- withr::local_tempdir()
+  manifest <- runtime$builder_project_new_manifest(root, "Warm transaction")
+  write <- function(value, revision) {
+    process <- runtime$builder_project_write_process(
+      value,
+      root,
+      revision,
+      files,
+      runtime$builder_source_utf8,
+      worker = worker
+    )
+    expect_s3_class(process, "builder_project_worker_call")
+    process$wait(30000)
+    expect_false(process$is_alive())
+    process$get_result()
+  }
+  first <- write(manifest, 0L)
+  expect_equal(first$manifest$project$revision, 1L)
+  ## The worker error is the transaction's own message, not a callr wrapper.
+  conflict <- tryCatch(write(manifest, 0L), error = identity)
+  expect_s3_class(conflict, "error")
+  expect_identical(
+    conflict$message,
+    "This project was updated by another Builder window. Reopen it before saving."
+  )
+  second <- write(first$manifest, 1L)
+  expect_equal(second$manifest$project$revision, 2L)
+  expect_identical(worker$starts, 1L)
+
+  ## A cancelled call kills only that session; the next call starts another.
+  slow <- runtime$builder_project_worker_call(
+    worker,
+    function() {
+      Sys.sleep(30)
+      TRUE
+    }
+  )
+  deadline <- Sys.time() + 10
+  while (!identical(slow$state, "running") && Sys.time() < deadline) {
+    slow$is_alive()
+    Sys.sleep(0.02)
+  }
+  slow$kill_tree()
+  expect_false(slow$is_alive())
+  expect_error(slow$get_result(), "cancelled")
+  third <- write(second$manifest, 2L)
+  expect_equal(third$manifest$project$revision, 3L)
+  expect_identical(worker$starts, 2L)
+
+  runtime$builder_project_worker_close(worker)
+  expect_null(worker$session)
+})
+
+test_that("Project workers source the artifact runtime only when asked", {
+  runtime <- new.env(parent = globalenv())
+  builder_repo_source("prerequisite.R", local = runtime)
+  builder_repo_source("project.R", local = runtime)
+  dir <- withr::local_tempdir()
+  base <- file.path(dir, "base.R")
+  full_file <- file.path(dir, "full.R")
+  writeLines("base_loads <- (if (exists('base_loads')) base_loads else 0) + 1", base)
+  writeLines(
+    c(
+      "base_loads <- -1",
+      ".builder_app_capture_spatial_molecule_identity <- function(path) NULL"
+    ),
+    full_file
+  )
+  worker <- runtime$builder_project_worker_new("probe")
+  withr::defer(runtime$builder_project_worker_close(worker, kill = TRUE))
+  probe <- function(load_full) {
+    handle <- runtime$builder_project_worker_call(
+      worker,
+      runtime$builder_project_worker_run,
+      list(
+        task = runtime$builder_project_portable_function(
+          function(runtime_for, args) {
+            value <- runtime_for(args$full)
+            list(
+              base_loads = value$base_loads,
+              artifacts = is.function(
+                value$.builder_app_capture_spatial_molecule_identity
+              )
+            )
+          }
+        ),
+        args = list(full = load_full),
+        runtime_files = base,
+        full_runtime_files = full_file,
+        source_utf8 = runtime$builder_source_utf8
+      )
+    )
+    handle$wait(30000)
+    handle$get_result()
+  }
+  expect_identical(probe(FALSE), list(base_loads = 1, artifacts = FALSE))
+  ## The base runtime stays loaded between calls.
+  expect_identical(probe(FALSE), list(base_loads = 1, artifacts = FALSE))
+  expect_identical(probe(TRUE), list(base_loads = -1, artifacts = TRUE))
+  ## Once loaded, the full runtime serves later calls too.
+  expect_identical(probe(FALSE), list(base_loads = -1, artifacts = TRUE))
+  expect_identical(worker$starts, 1L)
+
+  task <- local({
+    large_session_value <- raw(2e6)
+    function(runtime_for, args) TRUE
+  })
+  portable <- runtime$builder_project_portable_function(task)
+  expect_identical(environment(portable), globalenv())
+  expect_lt(length(serialize(portable, NULL)), 50000L)
+})
+
+test_that("the project server writes and copies through warm workers", {
+  source <- paste(
+    readLines(
+      builder_test_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_false(grepl("callr::r_bg(", source, fixed = TRUE))
+  expect_match(source, "worker = builder_project_writer,", fixed = TRUE)
+  expect_match(
+    source,
+    "builder_project_worker_close(builder_project_writer)",
+    fixed = TRUE
+  )
+  base <- regmatches(
+    source,
+    regexpr(
+      "builder_project_worker_runtime_files <- function[^\n]*\n(.|\n)*?\n}\n",
+      source
+    )
+  )
+  expect_match(base, "if (isTRUE(full))", fixed = TRUE)
+})

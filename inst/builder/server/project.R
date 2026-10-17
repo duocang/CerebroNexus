@@ -611,6 +611,93 @@ builder_project_registration_runtime_files <- function() {
   normalizePath(files, winslash = "/", mustWork = TRUE)
 }
 
+## Warm Project workers. Manifest writes and attachment staging share one
+## session so their transactions stay ordered; source copies run in their own
+## session so a long copy never delays a manifest write.
+builder_project_writer <- builder_project_worker_new("writer")
+builder_project_copier <- builder_project_worker_new("copier")
+
+builder_project_worker_runtime_files <- function(full = FALSE) {
+  project <- builder_project_source_runtime_file()
+  builder_dir <- dirname(project)
+  files <- if (isTRUE(full)) {
+    c(
+      builder_project_package_runtime_files(builder_dir),
+      file.path(builder_dir, "core", "bundle_path_contract.R"),
+      file.path(builder_dir, "io.R"),
+      project,
+      file.path(builder_dir, "app_bundle", c("contract.R", "backend.R", "topology.R")),
+      file.path(builder_dir, "extras.R")
+    )
+  } else {
+    c(
+      file.path(builder_dir, "core", "bundle_path_contract.R"),
+      file.path(builder_dir, "io.R"),
+      project,
+      file.path(builder_dir, "extras.R")
+    )
+  }
+  if (any(!file.exists(files))) {
+    stop("The Builder Project worker runtime could not be found.", call. = FALSE)
+  }
+  normalizePath(files, winslash = "/", mustWork = TRUE)
+}
+
+builder_project_worker_task_call <- function(worker, task, args) {
+  builder_project_worker_call(
+    worker,
+    builder_project_worker_run,
+    list(
+      task = builder_project_portable_function(task),
+      args = args,
+      runtime_files = builder_project_worker_runtime_files(),
+      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
+      source_utf8 = builder_source_utf8
+    )
+  )
+}
+
+## Load the worker runtimes as soon as a Project is active, so the first Save
+## does not wait for an R session to start and source the Builder.
+builder_project_prewarm_workers <- function() {
+  if (
+    builder_session_closed() ||
+      !isTRUE(getOption("CerebroNexus.builder.project_worker_prewarm", TRUE))
+  ) {
+    return(invisible(FALSE))
+  }
+  for (worker in list(builder_project_writer, builder_project_copier)) {
+    if (is.null(worker$session) && !builder_project_worker_busy(worker)) {
+      try(
+        builder_project_worker_task_call(
+          worker,
+          function(runtime_for, args) {
+            runtime_for(FALSE)
+            TRUE
+          },
+          list()
+        ),
+        silent = TRUE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+observe({
+  if (is.null(builder_project())) {
+    return()
+  }
+  later::later(
+    function() {
+      if (!builder_session_closed()) {
+        builder_project_prewarm_workers()
+      }
+    },
+    delay = 0.5
+  )
+})
+
 reset_builder_project_crb_pipeline <- function() {
   if (!is.null(isolate(builder_project_crb_task()))) {
     stop("Wait for the current Project CRB to finish.", call. = FALSE)
@@ -1593,26 +1680,15 @@ builder_project_start_source_sync <- function() {
   )
   builder_project_source_progress(progress_path)
   process <- tryCatch(
-    callr::r_bg(
-      function(jobs, progress_path, runtime_files, source_utf8) {
-        runtime <- new.env(parent = globalenv())
-        runtime$`%||%` <- function(left, right) {
-          if (is.null(left)) right else left
-        }
-        for (runtime_file in runtime_files) {
-          source_utf8(runtime_file, runtime)
-        }
-        runtime$builder_project_copy_source_jobs(jobs, progress_path)
+    builder_project_worker_task_call(
+      builder_project_copier,
+      function(runtime_for, args) {
+        runtime_for(FALSE)$builder_project_copy_source_jobs(
+          args$jobs,
+          args$progress_path
+        )
       },
-      args = list(
-        jobs = unname(jobs),
-        progress_path = progress_path,
-        runtime_files = builder_project_open_runtime_files(),
-        source_utf8 = builder_source_utf8
-      ),
-      supervise = TRUE,
-      stdout = "|",
-      stderr = "|"
+      list(jobs = unname(jobs), progress_path = progress_path)
     ),
     error = identity
   )
@@ -1970,17 +2046,10 @@ start_builder_project_manifest_write <- function(
       manifest,
       project$root,
       project$manifest$project$revision,
-      c(
-        builder_project_package_runtime_files(dirname(builder_project_source_runtime_file())),
-        builder_project_open_runtime_files(include_server_paths = TRUE),
-        file.path(
-          dirname(builder_project_source_runtime_file()),
-          "app_bundle",
-          c("contract.R", "backend.R", "topology.R")
-        ),
-        file.path(dirname(builder_project_source_runtime_file()), "extras.R")
-      ),
+      builder_project_worker_runtime_files(),
       builder_source_utf8,
+      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
+      worker = builder_project_writer,
       entries = entries,
       context = context,
       artifact_record = artifact_record,
@@ -2405,29 +2474,15 @@ start_builder_project_table_asset_save <- function(
   generation <- as.double(isolate(builder_project_table_asset_generation())) + 1
   builder_project_table_asset_generation(generation)
   process <- tryCatch(
-    callr::r_bg(
-      function(jobs, root, runtime_files, source_utf8) {
-        runtime <- new.env(parent = baseenv())
-        runtime$`%||%` <- function(left, right) {
-          if (is.null(left)) right else left
-        }
-        for (runtime_file in runtime_files) {
-          source_utf8(runtime_file, runtime)
-        }
-        runtime$builder_project_stage_attachment_jobs(jobs, root)
+    builder_project_worker_task_call(
+      builder_project_writer,
+      function(runtime_for, args) {
+        runtime_for(FALSE)$builder_project_stage_attachment_jobs(
+          args$jobs,
+          args$root
+        )
       },
-      args = list(
-        jobs = jobs,
-        root = signature$root,
-        runtime_files = c(
-          builder_project_open_runtime_files(),
-          file.path(dirname(builder_project_source_runtime_file()), "extras.R")
-        ),
-        source_utf8 = builder_source_utf8
-      ),
-      supervise = TRUE,
-      stdout = "|",
-      stderr = "|"
+      list(jobs = jobs, root = signature$root)
     ),
     error = identity
   )
@@ -2920,6 +2975,10 @@ session$onSessionEnded(function() {
   }
   builder_project_crb_jobs(list())
   builder_project_crb_task(NULL)
+  # A running manifest transaction finishes before the writer ends; copies
+  # were cancelled above and need no grace.
+  builder_project_worker_close(builder_project_copier, kill = TRUE)
+  builder_project_worker_close(builder_project_writer)
 })
 
 observeEvent(input$save_builder_project, {
