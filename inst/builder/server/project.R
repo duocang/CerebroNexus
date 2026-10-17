@@ -730,7 +730,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
   }
   source_status <- isolate(builder_project_source_sync())$status %||% "idle"
   if (
-    identical(isolate(builder_project_operation_phase()), "saving") ||
+    isolate(builder_project_operation_phase()) %in%
+      c("saving", "autosaving") ||
       source_status %in% c("syncing", "cancelling") ||
       !is.null(isolate(builder_project_table_asset_process()))
   ) {
@@ -1824,7 +1825,11 @@ builder_project_poll_source_sync <- function() {
           "One or more dataset sources could not be saved to the Project."
         )
       }
-      finish_builder_project_save_request(failed == 0L, save_waiter$after)
+      finish_builder_project_save_request(
+        failed == 0L,
+        save_waiter$after,
+        only_when_idle = TRUE
+      )
     }
     if (length(isolate(builder_project_source_queue()))) {
       builder_project_start_source_sync()
@@ -2042,7 +2047,7 @@ save_builder_project_state <- function(
   }
   if (
     isTRUE(manage_lifecycle) &&
-      identical(isolate(builder_project_operation_phase()), "saving")
+      isolate(builder_project_operation_phase()) %in% c("saving", "autosaving")
   ) {
     return(invisible(FALSE))
   }
@@ -2090,6 +2095,7 @@ save_builder_project_state <- function(
       project$root
     )
   }
+  live_base <- isolate(sets())
   context <- builder_project_manifest_context(last_ui)
   built <- NULL
   apply_written <- function(written) {
@@ -2113,7 +2119,19 @@ save_builder_project_state <- function(
         envir = builder_configuration_identity_cache
       )
     }
-    if (entries_changed) {
+    live_entries <- isolate(sets())
+    if (!identical(live_entries, live_base)) {
+      # Background saves leave the workspace editable; keep edits made while
+      # the manifest was being written instead of restoring the old entries.
+      merged <- builder_project_merge_saved_entries(
+        live_base,
+        built$entries,
+        live_entries
+      )
+      if (!identical(merged, live_entries)) {
+        sets(merged)
+      }
+    } else if (entries_changed) {
       sets(built$entries)
     }
     project$manifest <- written$manifest
@@ -2233,8 +2251,19 @@ save_builder_project_state <- function(
   apply_written(written)
 }
 
-finish_builder_project_save_request <- function(ok, after = NULL) {
-  if (isTRUE(ok)) {
+finish_builder_project_save_request <- function(
+  ok,
+  after = NULL,
+  only_when_idle = FALSE
+) {
+  if (
+    isTRUE(only_when_idle) &&
+      !identical(isolate(builder_project_operation_phase()), "idle")
+  ) {
+    # The save already released the workspace and another project operation
+    # now owns the phase; only report the outcome to the caller.
+    NULL
+  } else if (isTRUE(ok)) {
     builder_project_operation_phase("idle")
   } else {
     message <- isolate(builder_project_last_save_error()) %||% ""
@@ -2260,6 +2289,24 @@ complete_builder_project_save_request <- function(
   table_asset_results = NULL
 ) {
   if (isTRUE(show_actions)) {
+    previous_waiter <- isolate(builder_project_source_save_waiter())
+    previous_after <- if (is.list(previous_waiter)) {
+      previous_waiter$after
+    } else {
+      NULL
+    }
+    if (is.function(previous_after)) {
+      # An earlier Save is still waiting for its source copy; keep its
+      # follow-up (CRB queueing) instead of dropping it.
+      current_after <- after
+      after <- function(ok) {
+        previous_after(ok)
+        if (is.function(current_after)) {
+          current_after(ok)
+        }
+        invisible(isTRUE(ok))
+      }
+    }
     builder_project_source_save_waiter(list(
       waiting = FALSE,
       after = after
@@ -2273,8 +2320,11 @@ complete_builder_project_save_request <- function(
         isTRUE(show_actions) &&
         identical(source_progress$status %||% NULL, "syncing")
     ) {
+      # The manifest is committed. Release the workspace now and let the
+      # source copy report through source_syncing; only the follow-up waits.
       source_waiter$waiting <- TRUE
       builder_project_source_save_waiter(source_waiter)
+      builder_project_operation_phase("idle")
       return(invisible(TRUE))
     }
     if (isTRUE(show_actions)) {
@@ -2507,6 +2557,11 @@ start_builder_project_save_request <- function(
             after
           )
         } else if (length(prepared$jobs)) {
+          if (identical(builder_project_operation_phase(), "autosaving")) {
+            # Attachment staging rejects concurrent edits, so this rarer
+            # autosave keeps the ordinary save lock.
+            builder_project_operation_phase("saving")
+          }
           start_builder_project_table_asset_save(
             prepared$jobs,
             prepared$signature,
@@ -2534,12 +2589,17 @@ request_builder_project_save <- function(
   show_actions = FALSE,
   materialize = TRUE,
   notify = TRUE,
-  after = NULL
+  after = NULL,
+  background = FALSE
 ) {
-  if (identical(isolate(builder_project_operation_phase()), "saving")) {
+  if (
+    isolate(builder_project_operation_phase()) %in% c("saving", "autosaving")
+  ) {
     return(invisible(FALSE))
   }
-  builder_project_operation_phase("saving")
+  builder_project_operation_phase(
+    if (isTRUE(background)) "autosaving" else "saving"
+  )
   completion <- after
   if (isTRUE(show_actions)) {
     after <- function(ok) {
@@ -2594,6 +2654,7 @@ observe({
     show_actions = FALSE,
     materialize = FALSE,
     notify = FALSE,
+    background = TRUE,
     after = function(ok) {
       if (!isTRUE(ok)) {
         showNotification(
@@ -3674,21 +3735,45 @@ observe({
         }
         invisible(isTRUE(saved) && !builder_has_text(registration_error))
       }
-      saved <- if (save_required) {
-        save_builder_project_state(
+      if (!save_required) {
+        return(finish_registration(TRUE))
+      }
+      # A Save may have released the workspace while its source copy still
+      # runs; writing the manifest now would orphan that copy's results.
+      save_registration <- function() {
+        if (builder_session_closed()) {
+          return(invisible(FALSE))
+        }
+        source_status <- isolate(builder_project_source_sync())$status %||%
+          "idle"
+        if (
+          source_status %in% c("syncing", "cancelling") ||
+            !is.null(isolate(builder_project_source_process()))
+        ) {
+          later::later(
+            function() {
+              shiny::withReactiveDomain(
+                session,
+                shiny::isolate(save_registration())
+              )
+            },
+            delay = 0.2
+          )
+          return(invisible(TRUE))
+        }
+        saved <- save_builder_project_state(
           show_actions = FALSE,
           materialize = FALSE,
           notify = FALSE,
           manage_lifecycle = FALSE,
           on_complete = finish_registration
         )
-      } else {
-        TRUE
+        if (identical(saved, "pending")) {
+          return(invisible(TRUE))
+        }
+        finish_registration(saved)
       }
-      if (identical(saved, "pending")) {
-        return(invisible(TRUE))
-      }
-      finish_registration(saved)
+      save_registration()
     },
     on_rejected = fail_registration
   )

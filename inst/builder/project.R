@@ -40,6 +40,7 @@ builder_project_legacy_qs_datasets <- function(entries) {
   "dirty",
   "choosing",
   "saving",
+  "autosaving",
   "opening",
   "restoring",
   "registering",
@@ -124,7 +125,11 @@ builder_activity_capabilities <- function(activity) {
   connected <- identical(activity$connection, "connected")
   importing <- activity$client_imports > 0L || isTRUE(activity$server_imports)
   project_busy <- activity$project_phase %in%
-    c("choosing", "saving", "opening", "restoring", "registering", "conflict")
+    c("choosing", "saving", "opening", "restoring", "conflict")
+  # Autosave and reusable-CRB registration write the manifest in the
+  # background and merge concurrent edits, so they only hold back other
+  # manifest writers (Save, Open, Build) rather than the whole workspace.
+  manifest_busy <- activity$project_phase %in% c("autosaving", "registering")
   mutable <- connected && !isTRUE(activity$build_locked) && !project_busy
   stable <- mutable && !importing
   open_safe <- connected &&
@@ -133,7 +138,7 @@ builder_activity_capabilities <- function(activity) {
     !isTRUE(activity$source_syncing) &&
     !isTRUE(activity$crb_generating) &&
     !activity$project_phase %in%
-      c("choosing", "saving", "opening", "restoring", "registering")
+      c("choosing", "saving", "autosaving", "opening", "restoring", "registering")
   list(
     select_dataset = connected &&
       !identical(activity$project_phase, "choosing"),
@@ -155,7 +160,7 @@ builder_activity_capabilities <- function(activity) {
       (connected &&
         !isTRUE(activity$build_locked) &&
         activity$project_phase %in% c("saving", "registering")),
-    build = stable,
+    build = stable && !manifest_busy,
     page_inert = connected &&
       activity$project_phase %in%
         c("choosing", "opening"),
@@ -170,6 +175,7 @@ builder_activity_capabilities <- function(activity) {
           "dirty",
           "choosing",
           "saving",
+          "autosaving",
           "opening",
           "restoring",
           "registering",
@@ -205,7 +211,7 @@ builder_activity_reason <- function(activity, operation) {
   if (identical(activity$project_phase, "choosing")) {
     return("Choose a project folder before continuing.")
   }
-  if (activity$project_phase %in% c("saving", "registering")) {
+  if (activity$project_phase %in% c("saving", "autosaving", "registering")) {
     return("Wait for the project operation to finish.")
   }
   if (activity$project_phase %in% c("opening", "restoring")) {
@@ -239,6 +245,42 @@ builder_project_abandoned_entries <- function(
     return(character())
   }
   setdiff(names(pending), c(live_ids, import_ids))
+}
+
+## A background manifest write returns entries derived from `base`, the live
+## entries when the write started. Entries the user left alone take the saved
+## version; entries edited, added or removed meanwhile keep their live state
+## and leave the project dirty for the next save.
+builder_project_merge_saved_entries <- function(base, saved, live) {
+  if (identical(live, base)) {
+    return(saved)
+  }
+  entry_ids <- function(entries) {
+    vapply(
+      entries,
+      function(entry) as.character(entry$id %||% ""),
+      character(1)
+    )
+  }
+  base_ids <- entry_ids(base)
+  saved_ids <- entry_ids(saved)
+  merged <- lapply(live, function(entry) {
+    id <- as.character(entry$id %||% "")
+    base_index <- match(id, base_ids)
+    saved_index <- match(id, saved_ids)
+    if (
+      nzchar(id) &&
+        !is.na(base_index) &&
+        !is.na(saved_index) &&
+        identical(entry, base[[base_index]])
+    ) {
+      saved[[saved_index]]
+    } else {
+      entry
+    }
+  })
+  names(merged) <- names(live)
+  merged
 }
 
 builder_project_live_dirty <- function(

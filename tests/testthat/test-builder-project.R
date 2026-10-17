@@ -3323,6 +3323,158 @@ test_that("project lifecycle capabilities lock only conflicting operations", {
   expect_false(save_capabilities$save_project)
 })
 
+test_that("background manifest writes keep the workspace editable", {
+  runtime <- builder_project_test_runtime()
+  for (phase in c("autosaving", "registering")) {
+    activity <- runtime$builder_activity_state(
+      project_phase = phase,
+      has_project = TRUE,
+      has_datasets = TRUE
+    )
+    capabilities <- runtime$builder_activity_capabilities(activity)
+
+    expect_true(capabilities$add_dataset, info = phase)
+    expect_true(capabilities$edit_dataset, info = phase)
+    expect_true(capabilities$mutate_datasets, info = phase)
+    expect_true(capabilities$check_dataset, info = phase)
+    expect_true(capabilities$navigate_workflow, info = phase)
+    expect_false(capabilities$page_inert, info = phase)
+    expect_true(capabilities$warn_before_unload, info = phase)
+    ## Other manifest writers still wait for the background write.
+    expect_false(capabilities$save_project, info = phase)
+    expect_false(capabilities$open_project, info = phase)
+    expect_false(capabilities$build, info = phase)
+    expect_identical(
+      runtime$builder_activity_reason(activity, "save_project"),
+      "Wait for the project operation to finish."
+    )
+  }
+})
+
+test_that("background saves merge edits made while the manifest was written", {
+  runtime <- builder_project_test_runtime()
+  entry <- function(id, name, saved = FALSE) {
+    list(
+      id = id,
+      settings = list(name = name),
+      project_source = if (saved) paste0("sources/", id) else NULL
+    )
+  }
+  base <- list(entry("ds1", "One"), entry("ds2", "Two"))
+  saved <- list(entry("ds1", "One", TRUE), entry("ds2", "Two", TRUE))
+
+  expect_identical(
+    runtime$builder_project_merge_saved_entries(base, saved, base),
+    saved
+  )
+
+  live <- list(entry("ds2", "Renamed"), entry("ds1", "One"), entry("ds3", "New"))
+  merged <- runtime$builder_project_merge_saved_entries(base, saved, live)
+
+  expect_identical(
+    vapply(merged, `[[`, character(1), "id"),
+    c("ds2", "ds1", "ds3")
+  )
+  expect_identical(merged[[1L]], live[[1L]])
+  expect_identical(merged[[2L]], saved[[1L]])
+  expect_identical(merged[[3L]], live[[3L]])
+
+  removed <- runtime$builder_project_merge_saved_entries(
+    base,
+    saved,
+    list(entry("ds2", "Two"))
+  )
+  expect_identical(removed, list(saved[[2L]]))
+})
+
+test_that("Save releases the workspace once the manifest commits", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_test_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this save test.")
+  }
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(complete_builder_project_save_request)
+    server_env$save_builder_project_state <- function(..., on_complete) {
+      on_complete(TRUE)
+      invisible("pending")
+    }
+    calls <- new.env(parent = emptyenv())
+    calls$ok <- logical()
+    after <- function(ok) {
+      calls$ok <- c(calls$ok, ok)
+      invisible(ok)
+    }
+    builder_project_source_sync(list(
+      status = "syncing",
+      completed = 0L,
+      total = 2L,
+      failed = 0L
+    ))
+    builder_project_operation_phase("saving")
+
+    complete_builder_project_save_request(show_actions = TRUE, after = after)
+
+    expect_identical(isolate(builder_project_operation_phase()), "idle")
+    waiter <- isolate(builder_project_source_save_waiter())
+    expect_true(waiter$waiting)
+    expect_length(calls$ok, 0L)
+
+    ## A second Save while the first copy runs keeps the first follow-up.
+    builder_project_operation_phase("saving")
+    complete_builder_project_save_request(show_actions = TRUE, after = after)
+    expect_identical(isolate(builder_project_operation_phase()), "idle")
+    waiter <- isolate(builder_project_source_save_waiter())
+
+    ## The late source result reports to the caller without taking over the
+    ## phase of a newer project operation.
+    builder_project_operation_phase("autosaving")
+    finish_builder_project_save_request(
+      FALSE,
+      waiter$after,
+      only_when_idle = TRUE
+    )
+    expect_identical(isolate(builder_project_operation_phase()), "autosaving")
+    expect_identical(calls$ok, c(FALSE, FALSE))
+
+    builder_project_operation_phase("idle")
+    finish_builder_project_save_request(TRUE, NULL, only_when_idle = TRUE)
+    expect_identical(isolate(builder_project_operation_phase()), "idle")
+  })
+})
+
+test_that("autosave runs as a background manifest write", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_test_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this autosave test.")
+  }
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(request_builder_project_save)
+    started <- new.env(parent = emptyenv())
+    server_env$start_builder_project_save_request <- function(...) {
+      started$args <- list(...)
+      invisible(TRUE)
+    }
+
+    expect_true(request_builder_project_save(
+      show_actions = FALSE,
+      materialize = FALSE,
+      notify = FALSE,
+      background = TRUE
+    ))
+    expect_identical(isolate(builder_project_operation_phase()), "autosaving")
+    expect_false(request_builder_project_save(show_actions = TRUE))
+    expect_identical(isolate(builder_project_operation_phase()), "autosaving")
+  })
+})
+
 test_that("background CRB generation permits editing but protects project boundaries", {
   runtime <- builder_project_test_runtime()
   activity <- runtime$builder_activity_state(
@@ -5277,7 +5429,15 @@ test_that("Save starts optional CRB work only after checked settings persist", {
   expect_match(project, "builder_project_source_save_waiter", fixed = TRUE)
   expect_match(
     project,
-    "finish_builder_project_save_request(failed == 0L, save_waiter$after)",
+    paste(
+      "finish_builder_project_save_request(",
+      "        failed == 0L,",
+      "        save_waiter$after,",
+      "        only_when_idle = TRUE",
+      "      )",
+      sep = "
+"
+    ),
     fixed = TRUE
   )
   expect_false(grepl("Project save incomplete", browser, fixed = TRUE))
