@@ -371,7 +371,7 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = FALSE,
     flipY = FALSE,
     rotation = 0,
-    opacity = 0.6
+    opacity = 0.5
   )
   keys <- list(dataset, spatial_name, image_label)
   if (
@@ -414,8 +414,7 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = isTRUE(setting[["flip_x"]]),
     flipY = isTRUE(setting[["flip_y"]]),
     rotation = number("rotation", defaults$rotation),
-    # Alignment presets do not override the Viewer display default.
-    opacity = defaults$opacity
+    opacity = number("image_opacity", defaults$opacity, 0, 1)
   )
 }
 
@@ -443,7 +442,10 @@ spatialEmbeddedImagePreset <- function(preset, alignment) {
   if (!is.null(alignment[["flip_y"]])) {
     preset$flipY <- isTRUE(alignment[["flip_y"]])
   }
-  # Keep the Viewer opacity default; saved alignment only supplies geometry.
+  opacity <- number("image_opacity", preset$opacity)
+  if (opacity >= 0 && opacity <= 1) {
+    preset$opacity <- opacity
+  }
   # Existing embedded CRBs store transformed pixels and their final bounds.
   # Retain master's relative-edit drawing contract to avoid applying the saved
   # calibration twice; external images use spatialImagePreset() instead.

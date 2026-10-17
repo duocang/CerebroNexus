@@ -163,7 +163,7 @@ when that CRB has exactly one spatial entry.}
 may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
 \code{scale_y}, \code{offset_x}, \code{offset_y}, and \code{rotation}.
 \code{image_opacity} may additionally set the initial image opacity from
-0 through 1.
+0 through 1 (default 0.5).
 A leaf may target an embedded or external image available under that exact
 dataset and spatial entry. The image label must exist in the union of the
 CRB's embedded images and this call's \code{spatial_images}; unknown

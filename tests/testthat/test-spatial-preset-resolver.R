@@ -169,7 +169,7 @@ test_that("embedded images expose canonical labels and normalize singular legacy
       flipX = TRUE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.6,
+      opacity = 0.7,
       geometryBaked = TRUE
     )
   )
@@ -197,7 +197,7 @@ test_that("one preset resolver owns every image setting and default", {
       flipX = FALSE,
       flipY = TRUE,
       rotation = 0,
-      opacity = 0.6
+      opacity = 0.8
     )
   )
   expect_identical(
@@ -210,7 +210,7 @@ test_that("one preset resolver owns every image setting and default", {
       flipX = FALSE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.6
+      opacity = 0.5
     )
   )
   expect_identical(
@@ -396,7 +396,7 @@ test_that("copy preset formatter emits exact canonical image settings", {
       offset_x = 2,
       offset_y = -3,
       rotation = 90,
-      image_opacity = 0.6
+      image_opacity = 0.5
     )
   )
   expect_false(grepl("spatial_images_offset_x", code, fixed = TRUE))
@@ -444,7 +444,7 @@ test_that("embedded image presets retain already-applied calibration", {
 })
 
 
-test_that("saved image opacities cannot override the Viewer display default", {
+test_that("configured image opacity sets the initial opacity of every image", {
   for (saved_opacity in c(0, 0.2, 0.8, 1)) {
     options <- spatial_options
     options$spatial_image_settings$Atlas$sliceA$`H&E`$image_opacity <- saved_opacity
@@ -455,11 +455,29 @@ test_that("saved image opacities cannot override the Viewer display default", {
     embedded <- spatial_background_preset(
       options, "Atlas", "sliceA",
       list(source = "embedded", key = "H&E", label = "H&E",
-           alignment = list(image_opacity = saved_opacity, rotation = 35))
+           alignment = list(rotation = 35))
     )
-    expect_equal(external$opacity, 0.6)
-    expect_equal(embedded$opacity, 0.6)
+    expect_equal(external$opacity, saved_opacity)
+    expect_equal(embedded$opacity, saved_opacity)
     expect_equal(external$offsetX, 11)
     expect_equal(embedded$rotation, 35)
   }
+
+  ## An embedded image's saved alignment can carry its own opacity, like its
+  ## geometry; out-of-range values fall back.
+  embedded <- spatial_background_preset(
+    NULL, NULL, NULL,
+    list(source = "embedded", key = "H&E", label = "H&E",
+         alignment = list(image_opacity = 0.9))
+  )
+  expect_equal(embedded$opacity, 0.9)
+  embedded <- spatial_background_preset(
+    NULL, NULL, NULL,
+    list(source = "embedded", key = "H&E", label = "H&E",
+         alignment = list(image_opacity = 1.5))
+  )
+  expect_equal(embedded$opacity, 0.5)
+  options <- spatial_options
+  options$spatial_image_settings$Atlas$sliceA$`H&E`$image_opacity <- 1.5
+  expect_equal(spatialImagePreset(options, "Atlas", "sliceA", "H&E")$opacity, 0.5)
 })
