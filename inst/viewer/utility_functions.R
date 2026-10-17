@@ -5907,6 +5907,65 @@ viewerImageMime <- function(path) {
 # Serve trusted image bytes through a session-scoped route. Filesystem paths and
 # Base64 payloads never enter the browser response model.
 
+## Embedded Spatial images are data URIs carried inside every frame (tens of MB
+## for large images). Decode each once per session into a private file and send
+## its URL instead; the browser fetches and caches it once. Formats the private
+## image route does not serve keep their data URI.
+viewerEmbeddedImageUrl <- function(data_uri, session = NULL) {
+  if (is.null(session)) {
+    session <- get0("session", envir = parent.frame(), inherits = TRUE)
+  }
+  if (
+    !is.character(data_uri) ||
+      length(data_uri) != 1L ||
+      is.na(data_uri) ||
+      is.null(session) ||
+      !is.environment(session$userData)
+  ) {
+    return(data_uri)
+  }
+  header <- regmatches(
+    substr(data_uri, 1L, 40L),
+    regexec("^data:image/(png|jpeg|jpg);base64,", substr(data_uri, 1L, 40L))
+  )[[1L]]
+  if (!length(header)) {
+    return(data_uri)
+  }
+  if (is.null(session$userData$cerebro_embedded_image_urls)) {
+    session$userData$cerebro_embedded_image_urls <- new.env(parent = emptyenv())
+  }
+  cache <- session$userData$cerebro_embedded_image_urls
+  key <- rlang::hash(data_uri)
+  url <- get0(key, envir = cache, inherits = FALSE)
+  if (!is.null(url)) {
+    return(url)
+  }
+  file <- tempfile(
+    "cerebro-embedded-",
+    fileext = if (identical(header[[2L]], "png")) ".png" else ".jpg"
+  )
+  written <- tryCatch(
+    {
+      writeBin(
+        base64enc::base64decode(substring(data_uri, nchar(header[[1L]]) + 1L)),
+        file
+      )
+      TRUE
+    },
+    error = function(error) FALSE
+  )
+  url <- if (written) viewerPrivateImageUrl(file, session = session) else NULL
+  if (is.null(url)) {
+    unlink(file)
+    return(data_uri)
+  }
+  assign(key, url, envir = cache)
+  if (is.function(session$onSessionEnded)) {
+    session$onSessionEnded(function() unlink(file))
+  }
+  url
+}
+
 viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (is.null(session)) {
     session <- get0("session", envir = parent.frame(), inherits = TRUE)

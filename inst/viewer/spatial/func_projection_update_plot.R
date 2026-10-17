@@ -101,7 +101,10 @@ spatial_background_render_payload <- function(
     )
   }
   if (!is.null(descriptor) && identical(descriptor$source, "embedded")) {
-    image_data <- descriptor$image
+    image_data <- viewerEmbeddedImageUrl(
+      descriptor$image,
+      session = shiny::getDefaultReactiveDomain()
+    )
     bounds <- descriptor$bounds
     if (is.null(bounds)) {
       x_range <- range(coordinates[[1]], na.rm = TRUE)

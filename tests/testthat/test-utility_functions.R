@@ -1073,3 +1073,31 @@ test_that("single-entry memos recompute only for a different key", {
   expect_identical(memo(list("a", 2), compute), 2L)
   expect_identical(memo(list("a", 1), compute), 3L)
 })
+
+test_that("embedded Spatial images are served once per session by URL", {
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), env)
+  registered <- 0L
+  ended <- list()
+  mock <- list(
+    userData = new.env(),
+    registerDataObj = function(name, data, filter) {
+      registered <<- registered + 1L
+      paste0("session/", name)
+    },
+    onSessionEnded = function(callback) ended[[length(ended) + 1L]] <<- callback
+  )
+  png <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+  )
+  url <- env$viewerEmbeddedImageUrl(png, session = mock)
+  expect_match(url, "^session/cerebro-image-")
+  expect_identical(env$viewerEmbeddedImageUrl(png, session = mock), url)
+  expect_identical(registered, 1L)
+  ## Other formats keep their data URI.
+  svg <- "data:image/svg+xml;base64,PHN2Zy8+"
+  expect_identical(env$viewerEmbeddedImageUrl(svg, session = mock), svg)
+  expect_identical(env$viewerEmbeddedImageUrl(png, session = NULL), png)
+  expect_length(ended, 1L)
+})
