@@ -196,7 +196,8 @@ builder_freeze_plan <- function(
   dataset_state_cache = NULL,
   review_identity = NULL,
   file_verification_cache = NULL,
-  reuse_cache = NULL
+  reuse_cache = NULL,
+  verification_cache = NULL
 ) {
   if (
     !exists(
@@ -930,6 +931,22 @@ builder_freeze_plan <- function(
     }
     return(builder_plan_error(message, code))
   }
+  items <- lapply(items, function(item) {
+    reused <- item$reused_artifact
+    verification <- if (is.list(reused)) {
+      builder_plan_verification_lookup(
+        verification_cache,
+        reused$fingerprint$md5 %||% NULL,
+        item
+      )
+    } else {
+      NULL
+    }
+    if (is.list(verification)) {
+      item$reused_artifact$verification <- verification
+    }
+    item
+  })
 
   filenames <- vapply(items, `[[`, "", "filename")
   if (anyDuplicated(tolower(filenames))) {
@@ -1277,4 +1294,67 @@ builder_plan_reuse_lookup <- function(cache, key) {
     return(NULL)
   }
   record
+}
+
+## A reused CRB whose exact bytes (MD5) were already read back against the same
+## expectation earlier in this session does not need the deep read-back again:
+## the copy into the stage re-checks those bytes.
+
+.builder_plan_verification_fields <- c(
+  "name",
+  "filename",
+  "sidecars",
+  "expression_backend",
+  "artifact_identity",
+  "spatial_coordinate_transforms",
+  "trekker_alignment"
+)
+
+builder_plan_verification_key <- function(md5, item) {
+  if (
+    !builder_has_text(md5 %||% "") ||
+      !grepl("^[[:xdigit:]]{32}$", md5) ||
+      !is.list(item)
+  ) {
+    return(NULL)
+  }
+  value <- item[intersect(.builder_plan_verification_fields, names(item))]
+  value$visible_pages <- item$viewer_page_expectations$visible_conditional %||%
+    character()
+  key <- tryCatch(
+    digest::digest(
+      serialize(value, NULL, version = 3L),
+      algo = "md5",
+      serialize = FALSE
+    ),
+    error = function(error) NULL
+  )
+  if (is.null(key)) NULL else paste(tolower(md5), key, sep = "::")
+}
+
+builder_plan_verification_store <- function(cache, md5, item, verification) {
+  key <- builder_plan_verification_key(md5, item)
+  if (
+    !is.environment(cache) ||
+      is.null(key) ||
+      !is.list(verification) ||
+      !isTRUE(verification$valid) ||
+      .builder_plan_has_reference(verification)
+  ) {
+    return(invisible(FALSE))
+  }
+  if (length(ls(cache, all.names = TRUE)) >= .builder_plan_reuse_limit) {
+    rm(list = ls(cache, all.names = TRUE), envir = cache)
+  }
+  assign(key, verification, envir = cache)
+  invisible(TRUE)
+}
+
+builder_plan_verification_lookup <- function(cache, md5, item) {
+  key <- builder_plan_verification_key(md5, item)
+  if (!is.environment(cache) || is.null(key)) {
+    return(NULL)
+  }
+  value <- get0(key, envir = cache, inherits = FALSE)
+  if (is.list(value)) value else NULL
 }

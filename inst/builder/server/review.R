@@ -246,14 +246,17 @@ freeze_plan_for_output <- function(
     app_auth = builder_auth_summary(login_enabled, parsed_auth$accounts),
     dataset_state_cache = builder_dataset_state_cache,
     file_verification_cache = builder_spatial_image_verification_cache,
-    reuse_cache = builder_session_reuse_cache_for_build()
+    reuse_cache = builder_session_reuse_cache_for_build(),
+    verification_cache = builder_session_verification_cache
   )
 }
 
 ## Verified CRBs from this session's earlier builds. An open Project reuses
 ## its own registered artifacts instead, and its post-build registration
-## only accepts those.
+## only accepts those. Read-back results are keyed by CRB MD5 and apply to
+## both kinds of reuse.
 builder_session_reuse_cache <- new.env(parent = emptyenv())
+builder_session_verification_cache <- new.env(parent = emptyenv())
 
 builder_session_reuse_cache_for_build <- function() {
   project_open <- exists("builder_project", inherits = TRUE) &&

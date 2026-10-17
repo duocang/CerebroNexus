@@ -1712,7 +1712,9 @@ test_that("published and retained CRBs become session reuse records", {
   expect_identical(length(first$members), 1L)
   expect_identical(first$members[[1L]]$target, "dataset-a.h5")
   expect_identical(first$members[[1L]]$fingerprint$md5, strrep("b", 32L))
-  expect_identical(first$verification, list(valid = TRUE, path = "a"))
+  expect_null(first$verification)
+  expect_identical(records[[1L]]$md5, strrep("a", 32L))
+  expect_identical(records[[1L]]$verification, list(valid = TRUE, path = "a"))
   expect_identical(records[[2L]]$record$members, list())
 
   # A missing sidecar identity is not recorded as reusable.
@@ -1732,6 +1734,160 @@ test_that("published and retained CRBs become session reuse records", {
     builder_build_reuse_records(plan, list(state = "failure")),
     list()
   )
+})
+
+builder_build_reuse_plan <- function(source, verification = NULL) {
+  item <- list(
+    id = "ds1",
+    name = "Dataset",
+    filename = "ds1.crb",
+    expression_backend = "embedded",
+    sidecars = character(),
+    private_assets = "ds1.crb",
+    reused_artifact = list(
+      path = source,
+      fingerprint = list(md5 = unname(tools::md5sum(source))),
+      members = list(),
+      verification = verification
+    ),
+    images = list()
+  )
+  structure(
+    list(
+      items = list(item),
+      make_app = FALSE,
+      app_auth = list(enabled = FALSE)
+    ),
+    class = c("builder_build_plan", "list")
+  )
+}
+
+test_that("a reused CRB already read back in this session is not reopened", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source.crb")
+  writeBin(charToRaw("artifact"), source)
+  deep <- 0L
+  noop <- function(...) NULL
+  hooks <- list(
+    open_snapshot = noop,
+    prepare = noop,
+    run_analyses = noop,
+    export = noop,
+    attach_extras = noop,
+    verify = function(path, item) {
+      deep <<- deep + 1L
+      list(valid = TRUE, path = path, source = "deep")
+    }
+  )
+  earlier <- list(
+    valid = TRUE,
+    path = "C:/old-release/cerebro_app/private-data/ds1.crb",
+    file_fingerprint = list(size = 1),
+    bundle_preflight = list(
+      backend = list(type = "embedded"),
+      spatial_backend = NULL,
+      dataset_info = list(label = "Dataset", path = "C:/old-stage/ds1.crb")
+    )
+  )
+
+  stage <- file.path(root, "stage-1")
+  dir.create(stage)
+  result <- builder_execute_plan(
+    builder_build_reuse_plan(source, earlier),
+    stage,
+    snapshots = list(),
+    hooks = hooks
+  )
+  staged <- file.path(normalizePath(stage, winslash = "/"), "ds1.crb")
+  verification <- result$verifications$ds1
+  expect_identical(result$state, "success")
+  expect_identical(deep, 0L)
+  expect_identical(verification$path, staged)
+  expect_identical(verification$bundle_preflight$dataset_info$path, staged)
+  expect_identical(
+    verification$file_fingerprint$path,
+    normalizePath(staged, winslash = "/")
+  )
+
+  # Without a recorded read-back the copy is verified in full.
+  stage <- file.path(root, "stage-2")
+  dir.create(stage)
+  result <- builder_execute_plan(
+    builder_build_reuse_plan(source),
+    stage,
+    snapshots = list(),
+    hooks = hooks
+  )
+  expect_identical(deep, 1L)
+  expect_identical(result$verifications$ds1$source, "deep")
+
+  # A recorded read-back whose sidecar is missing falls back to the full one.
+  stage <- file.path(root, "stage-3")
+  dir.create(stage)
+  plan <- builder_build_reuse_plan(source, earlier)
+  plan$items[[1L]]$expression_backend <- "h5"
+  plan$items[[1L]]$sidecars <- "ds1.h5"
+  result <- builder_execute_plan(plan, stage, snapshots = list(), hooks = hooks)
+  expect_identical(deep, 2L)
+  expect_identical(result$verifications$ds1$source, "deep")
+})
+
+test_that("the worker seeds copied App data from request identities", {
+  app_dir <- withr::local_tempdir()
+  private <- file.path(app_dir, "private-data")
+  dir.create(private)
+  writeLines("crb bytes", file.path(private, "ds1.crb"))
+  writeLines("h5 bytes", file.path(private, "ds1.h5"))
+  writeLines("template", file.path(app_dir, "app.R"))
+  md5 <- function(name) unname(tools::md5sum(file.path(private, name)))
+  portable <- function(name, md5_value = md5(name)) {
+    list(
+      path = paste0("private-data/", name),
+      type = "file",
+      size = as.double(file.size(file.path(private, name))),
+      md5 = md5_value
+    )
+  }
+  request <- list(content_identities = list(
+    `private-data/ds1.crb` = list(
+      crb = portable("ds1.crb"),
+      backend = list(
+        type = "h5",
+        entries = list(`private-data/ds1.h5` = portable("ds1.h5"))
+      ),
+      spatial_molecules = list(type = "none", entries = list())
+    )
+  ))
+  hashed <- character()
+  counting <- function(path) {
+    hashed <<- c(hashed, basename(path))
+    tools::md5sum(path)
+  }
+
+  seeded <- .builder_app_tree_identity(
+    app_dir,
+    .digest_file = counting,
+    .previous = .builder_build_app_tree_seed(app_dir, request)
+  )
+  full <- .builder_app_tree_identity(app_dir)
+
+  expect_identical(hashed, "app.R")
+  expect_identical(
+    .builder_app_tree_summary(seeded),
+    .builder_app_tree_summary(full)
+  )
+
+  # A copy that differs from its input is reported with the input MD5, so the
+  # coordinator's own full read rejects it.
+  request$content_identities[[1L]]$crb$md5 <- strrep("0", 32L)
+  wrong <- .builder_app_tree_identity(
+    app_dir,
+    .previous = .builder_build_app_tree_seed(app_dir, request)
+  )
+  expect_false(identical(
+    .builder_app_tree_summary(wrong),
+    .builder_app_tree_summary(full)
+  ))
 })
 
 test_that("read-back rejects a Viewer page-gate mismatch", {

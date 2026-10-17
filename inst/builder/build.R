@@ -129,15 +129,90 @@ builder_build_reuse_records <- function(plan, value) {
     list()
   }
   records <- records[intersect(names(records), names(items))]
-  Filter(
-    function(entry) !is.null(entry$key),
-    lapply(names(records), function(id) {
-      list(
-        id = id,
-        key = builder_plan_reuse_key(items[[id]]),
-        record = records[[id]]
-      )
-    })
+  lapply(names(records), function(id) {
+    record <- records[[id]]
+    verification <- record$verification
+    record$verification <- NULL
+    list(
+      id = id,
+      key = builder_plan_reuse_key(items[[id]]),
+      record = record,
+      md5 = record$fingerprint$md5 %||% NULL,
+      verification = verification
+    )
+  })
+}
+
+## The deep read-back opens and hydrates the whole CRB. A reused CRB whose
+## copy matched an MD5 already read back against the same expectation in this
+## session takes that verification, rebased onto the staged copy, after a
+## cheap check that its sidecars are where the record says.
+.builder_build_reused_verification <- function(verification, target, item) {
+  if (
+    !is.list(verification) ||
+      !isTRUE(verification$valid) ||
+      !.builder_build_text(verification$path %||% "")
+  ) {
+    return(NULL)
+  }
+  tryCatch(
+    {
+      if (item$expression_backend %in% c("bpcells", "h5")) {
+        .builder_build_sidecar_path(
+          target,
+          item,
+          if (identical(item$expression_backend, "bpcells")) {
+            "directory"
+          } else {
+            "file"
+          }
+        )
+      } else if (length(item$sidecars)) {
+        stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+      }
+      directory <- dirname(target)
+      rebase <- function(path) {
+        if (.builder_build_text(path %||% "")) {
+          file.path(directory, basename(path))
+        } else {
+          path
+        }
+      }
+      spatial <- verification$spatial_molecule_backend %||% NULL
+      if (!is.null(spatial)) {
+        spatial_path <- file.path(directory, spatial$location)
+        if (
+          !dir.exists(spatial_path) ||
+            nzchar(Sys.readlink(spatial_path)) ||
+            !.builder_build_path_within(spatial_path, directory)
+        ) {
+          stop("The reused CRB spatial sidecar is missing.", call. = FALSE)
+        }
+        verification$spatial_molecule_path <- normalizePath(
+          spatial_path,
+          winslash = "/",
+          mustWork = TRUE
+        )
+      }
+      verification$path <- target
+      verification$file_fingerprint <- .builder_build_runtime_function(
+        ".bundlePreflightFingerprint"
+      )(target)
+      preflight <- verification$bundle_preflight
+      if (is.list(preflight)) {
+        if (is.list(preflight$spatial_backend)) {
+          preflight$spatial_backend$root <- rebase(
+            preflight$spatial_backend$root
+          )
+        }
+        if (is.list(preflight$dataset_info)) {
+          preflight$dataset_info$path <- target
+        }
+        verification$bundle_preflight <- preflight
+      }
+      verification
+    },
+    error = function(error) NULL
   )
 }
 
@@ -1681,6 +1756,49 @@ builder_verify_crb <- function(
   list(images = images, settings = settings)
 }
 
+## The worker's App tree identity is a diagnostic the coordinator compares with
+## its own full read of the same tree, and the coordinator separately checks
+## every private-data copy against the inputs it hashes itself. Seeding the
+## copied CRB and sidecar entries from the request's input MD5s therefore
+## skips a whole re-read of the data here without weakening either check: a
+## bad copy still fails publication.
+.builder_build_app_tree_seed <- function(app_dir, request) {
+  entries <- list()
+  for (content in request$content_identities %||% list()) {
+    expected_files <- Filter(
+      function(entry) is.list(entry) && identical(entry$type, "file"),
+      c(
+        list(content$crb),
+        unname(content$backend$entries %||% list()),
+        unname(content$spatial_molecules$entries %||% list())
+      )
+    )
+    for (expected in expected_files) {
+      fingerprint <- tryCatch(
+        .builder_app_file_fingerprint(fs::file_info(
+          file.path(app_dir, expected$path),
+          fail = TRUE,
+          follow = FALSE
+        )),
+        error = function(error) NULL
+      )
+      if (
+        !is.list(fingerprint) ||
+          !identical(fingerprint$type, "file") ||
+          !identical(fingerprint$size, as.double(expected$size))
+      ) {
+        next
+      }
+      entries[[expected$path]] <- c(
+        list(path = expected$path),
+        fingerprint,
+        list(md5 = tolower(expected$md5))
+      )
+    }
+  }
+  list(entries = entries)
+}
+
 builder_build_hooks <- function() {
   list(
     open_snapshot = builder_open_snapshot,
@@ -1918,10 +2036,17 @@ builder_execute_plan <- function(
             member_identity
         }
       }
-      verified <- .builder_build_raise_cancel(tryCatch(
-        hooks$verify(target, item),
-        error = function(error) error
-      ))
+      verified <- .builder_build_reused_verification(
+        reused$verification %||% NULL,
+        target,
+        item
+      )
+      if (is.null(verified)) {
+        verified <- .builder_build_raise_cancel(tryCatch(
+          hooks$verify(target, item),
+          error = function(error) error
+        ))
+      }
       if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
         message <- if (inherits(verified, "condition")) {
           conditionMessage(verified)
@@ -2231,7 +2356,10 @@ builder_execute_plan <- function(
       NULL
     }
     app_tree_identity <- tryCatch(
-      .builder_app_tree_summary(.builder_app_tree_identity(app_dir)),
+      .builder_app_tree_summary(.builder_app_tree_identity(
+        app_dir,
+        .previous = .builder_build_app_tree_seed(app_dir, request)
+      )),
       error = identity
     )
     if (

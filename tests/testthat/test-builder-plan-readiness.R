@@ -399,7 +399,37 @@ test_that("session reuse repackages the Viewer without rebuilding unchanged CRBs
     second <- freeze(entry, list(welcome_message = "Hello again"))
     reused <- second$items[[1L]]$reused_artifact
     expect_identical(reused$path, crb)
+    expect_null(reused$verification)
     expect_identical(builder_plan_reuse_key(second$items[[1L]]), key)
+
+    # A read-back recorded for those exact bytes travels with the reuse.
+    verifications <- new.env(parent = emptyenv())
+    md5 <- unname(tools::md5sum(crb))
+    expect_true(builder_plan_verification_store(
+      verifications,
+      md5,
+      first$items[[1L]],
+      list(valid = TRUE, path = crb)
+    ))
+    verified <- builder_freeze_plan(
+      list(entry),
+      tempdir(),
+      make_app = TRUE,
+      reuse_cache = cache,
+      verification_cache = verifications
+    )
+    expect_identical(
+      verified$items[[1L]]$reused_artifact$verification,
+      list(valid = TRUE, path = crb)
+    )
+    expect_null(builder_plan_verification_lookup(
+      verifications,
+      strrep("f", 32L),
+      first$items[[1L]]
+    ))
+    renamed <- first$items[[1L]]
+    renamed$name <- "Other label"
+    expect_null(builder_plan_verification_lookup(verifications, md5, renamed))
 
     # A CRB-affecting setting misses the cache.
     changed <- entry

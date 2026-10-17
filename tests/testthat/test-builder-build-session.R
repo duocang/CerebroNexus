@@ -75,7 +75,7 @@ test_that("a published Build records its CRBs for the next Build", {
 
   shiny::testServer(app_env$server, {
     session$flushReact()
-    builder_build_reuse_state$plan <- plan
+    builder_build_remember_plan(plan)
     result(value)
     session$flushReact()
 
@@ -91,7 +91,7 @@ test_that("a published Build records its CRBs for the next Build", {
     # A failed Build that reused a cached CRB forgets that entry.
     failed_plan <- plan
     failed_plan$items[[1L]]$reused_artifact <- list(path = record$path)
-    builder_build_reuse_state$plan <- failed_plan
+    builder_build_remember_plan(failed_plan)
     result(app_env$builder_result_failure("The reusable CRB could not be staged."))
     session$flushReact()
     remaining <- ls(builder_session_reuse_cache)
@@ -102,7 +102,7 @@ test_that("a published Build records its CRBs for the next Build", {
     # analysis are retained and offered to the retry.
     kept <- file.path(release, "kept-a.crb")
     writeLines("kept", kept)
-    builder_build_reuse_state$plan <- plan
+    builder_build_remember_plan(plan)
     result(app_env$.builder_result(
       "needs_decision",
       "Dataset B: analysis `marker_genes` failed.",
