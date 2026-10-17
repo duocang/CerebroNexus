@@ -573,6 +573,14 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     file.path(
       system.file("viewer", package = "CerebroNexus"),
       "spatial",
+      "func_spatial_helpers.R"
+    ),
+    envir = renderer
+  )
+  sys.source(
+    file.path(
+      system.file("viewer", package = "CerebroNexus"),
+      "spatial",
       "func_projection_update_plot.R"
     ),
     envir = renderer
@@ -715,6 +723,7 @@ test_that("external spatial images are streamed from session-private files", {
 test_that("spatial first frames replace only exact flat geometry with an asset", {
   renderer <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
+  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), envir = renderer)
   sys.source(
     viewer_test_path("spatial", "func_projection_update_plot.R"),
     envir = renderer
