@@ -436,6 +436,30 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
 
   ## uns: marker tables, readable by readH5adAsSCE()
   .h5adPutGroup(stage, "uns", "dict", "0.1.0")
+
+  ## category colours, as scanpy keeps them: uns[<column>_colors], one per level
+  ## in the order of the categories written to obs
+  stored_colors <- tryCatch(
+    object$getTechnicalInfo()$group_colors,
+    error = function(e) NULL
+  )
+  for (group in intersect(names(stored_colors), names(columns))) {
+    values <- columns[[group]]
+    is_categorical <- is.factor(values) ||
+      (is.character(values) &&
+        (anyNA(values) || length(unique(values)) <= length(values) / 2))
+    if (!is_categorical || !group %in% obs_written) {
+      next
+    }
+    group_levels <- if (is.factor(values)) {
+      levels(values)
+    } else {
+      levels(factor(as.character(values)))
+    }
+    colors <- unname(stored_colors[[group]][group_levels])
+    colors[is.na(colors)] <- "#898989"
+    .h5adPutStrings(stage, paste0("uns/", group, "_colors"), colors)
+  }
   methods_with_markers <- object$getMethodsForMarkerGenes()
   if (length(methods_with_markers)) {
     .h5adPutGroup(stage, "uns/cerebro", "dict", "0.1.0")

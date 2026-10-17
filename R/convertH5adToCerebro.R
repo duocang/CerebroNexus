@@ -56,6 +56,8 @@
 #' @param spatial_split_by \code{obs} column dividing \code{obsm["spatial"]} into
 #'   one section per level (e.g. the tissue sections of a MERFISH data set); see
 #'   \code{\link{exportFromSCE}}.
+#' @param spatial_images Which Visium tissue images to embed (\code{"auto"},
+#'   a vector of labels, or \code{FALSE}); see \code{\link{readH5adAsSCE}}.
 #' @param marker_file,marker_method Optional marker table, as in
 #'   \code{\link{convertSCEToCerebro}}. When given, it replaces the marker
 #'   results taken from scanpy.
@@ -63,6 +65,17 @@
 #' @return The path of the written \code{.crb}, invisibly.
 #'
 #' @details
+#' Category colours (\code{uns["<column>_colors"]}) are kept as the groups' default
+#' colours in the Viewer. Visium tissue images are embedded and drawn behind the
+#' spots; when a file has the images of several libraries (\code{obs["library_id"]})
+#' each library becomes one section with its own image. The Viewer's Spatial plot
+#' has the y axis pointing up, so a Visium image, stored with row 0 on top, needs
+#' the vertical flip to line up with the spots: build the app with
+#' \code{createShinyApp(..., spatial_image_settings = list(<dataset label> =
+#' list(spatial = list(hires = list(flip_y = TRUE)))))}. As for Seurat Visium
+#' objects, the coordinates are the file's, so the whole picture is then the
+#' mirror image (top to bottom) of the slide as drawn by scanpy.
+#'
 #' scanpy's \code{rank_genes_groups} results, if present, are exported as
 #' marker genes. Embeddings in \code{obsm} (\code{X_umap}, \code{X_tsne},
 #' \code{X_pca}, ...) become the projections; PCA is dropped when a non-PCA
@@ -112,7 +125,8 @@ convertH5adToCerebro <- function(
   marker_method = "Diff. Expression",
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
-  spatial_split_by = NULL
+  spatial_split_by = NULL,
+  spatial_images = "auto"
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
@@ -135,6 +149,7 @@ convertH5adToCerebro <- function(
     gene_names = gene_names,
     airr = airr,
     airr_sample = airr_sample,
+    spatial_images = spatial_images,
     verbose = verbose
   )
 

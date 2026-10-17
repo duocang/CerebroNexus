@@ -116,6 +116,16 @@ The export is written by the same format-independent core as
 private stage and published together, and \code{object@metadata} entries
 (trees, markers, pathways, immune repertoire, HLA typing, extra material, ...)
 are read with the same keys as \code{object@misc} on the Seurat side.
+Two entries are specific to this route. \code{metadata(object)$group_colors}, a
+list named by grouping variable of named colour vectors (level to
+\code{"#RRGGBB"}), becomes the groups' default colours in the Viewer.
+\code{metadata(object)$spatial_images}, a list named by library of images
+(each \code{list(histology_image = <base64 data URI>,
+histology_image_bounds = c(xmin, xmax, ymin, ymax))}), is drawn behind the
+spatial coordinates: the single library's images go to the single spatial
+entry, and with \code{spatial_split_by} each section takes the images of the
+library named like its level. Both are filled in by
+\code{\link{readH5adAsSCE}} from scanpy's \code{uns}.
 }
 \examples{
 pbmc <- readRDS(system.file("extdata/examples/pbmc_SCE.rds",

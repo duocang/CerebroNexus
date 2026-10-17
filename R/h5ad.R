@@ -595,6 +595,19 @@
 #'     \code{velocity_*} entries of \code{obsm} are not embeddings and are
 #'     not added to \code{reducedDims}. Gene-level velocity (\code{layers}
 #'     \code{velocity}) and the directed PAGA transitions are not used.
+#'   \item scanpy's category colours (\code{uns["<column>_colors"]}) become
+#'     \code{metadata(sce)$group_colors}, a named vector (level to colour) per
+#'     categorical column, and are applied as the default colours of those
+#'     groups in the Viewer. A column is used only when it has one valid colour
+#'     for each of its levels.
+#'   \item Visium tissue images in \code{uns["spatial"][<library_id>]["images"]}
+#'     become \code{metadata(sce)$spatial_images}, one entry per library,
+#'     each with its image as an embedded PNG and its extent in spot-coordinate
+#'     space: spot coordinates (\code{obsm["spatial"]}) are full-resolution
+#'     pixels and an image is the full-resolution picture scaled by its
+#'     \code{tissue_*_scalef}, so it covers \code{[0, width/scale]} by
+#'     \code{[0, height/scale]}. The image keeps its own orientation (row 0 on
+#'     top); flip it for display in the Spatial tab, as for Seurat objects.
 #' }
 #' Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 #' is used as it is, because the CSR of cells x genes is the CSC of genes x
@@ -610,6 +623,10 @@
 #' @param modality For a MuData file (\code{.h5mu}), the modality to read, e.g.
 #'   \code{"gex"}. Optional when the file has one modality or one obviously
 #'   expression-like name (\code{rna}, \code{gex}).
+#' @param spatial_images Which Visium tissue images to embed: \code{"auto"}
+#'   (default; \code{hires} when present, otherwise \code{lowres}), a character
+#'   vector of image labels (\code{"hires"}, \code{"lowres"},
+#'   \code{"fullres"}), or \code{FALSE} for none. Needs the \pkg{png} package.
 #' @param gene_names Name of a \code{var} column to use as the gene names, e.g.
 #'   \code{"feature_name"} (CELLxGENE) or \code{"gene_symbols"}. By default the
 #'   \code{var} index is used, except when it is made of Ensembl IDs and such a
@@ -647,6 +664,7 @@ readH5adAsSCE <- function(
   gene_names = NULL,
   airr = "auto",
   airr_sample = NULL,
+  spatial_images = "auto",
   verbose = FALSE
 ) {
   .h5adRequire()
@@ -798,6 +816,14 @@ readH5adAsSCE <- function(
   trajectories <- .h5adReadTrajectories(ctx, obs, embeddings, verbose)
   if (length(trajectories)) {
     sce@metadata$trajectories <- trajectories
+  }
+  colors <- .h5adReadColors(ctx, obs$columns)
+  if (length(colors)) {
+    sce@metadata$group_colors <- colors
+  }
+  images <- .h5adReadSpatialImages(ctx, spatial_images, verbose)
+  if (length(images)) {
+    sce@metadata$spatial_images <- images
   }
   sce
 }

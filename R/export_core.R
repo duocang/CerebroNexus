@@ -1166,6 +1166,25 @@
     export$addTrekker(misc$trekker)
   }
 
+  ## Default colours for groups, e.g. scanpy's uns[<column>_colors]: a list named
+  ## by grouping variable, each a named vector (level -> "#RRGGBB"). The Viewer
+  ## uses them as the starting colours; only exported groups are kept.
+  if (is.list(misc$group_colors) && length(misc$group_colors)) {
+    kept <- Filter(
+      function(colors) {
+        is.character(colors) &&
+          !is.null(names(colors)) &&
+          length(colors) > 0L &&
+          !anyNA(colors) &&
+          all(grepl("^#[0-9A-Fa-f]{6}$", colors))
+      },
+      misc$group_colors[intersect(names(misc$group_colors), groups)]
+    )
+    if (length(kept)) {
+      export$addTechnicalInfo("group_colors", kept)
+    }
+  }
+
   invisible(export)
 }
 
@@ -1261,7 +1280,9 @@
 #' `split` (a vector named by cell) the cells are divided into one entry per
 #' level, which is how several tissue sections kept in one coordinate frame are
 #' shown as separate sections. Same record the Seurat route builds for a spatial
-#' reduction.
+#' reduction. `images` holds tissue images per library (see
+#' .h5adReadSpatialImages): the single library's images go to an unsplit entry,
+#' and with `split` each section takes the images of the library of that name.
 #' @keywords internal
 #' @noRd
 .exportAddSpatialFromEmbeddings <- function(
@@ -1271,9 +1292,10 @@
   assay,
   layer,
   split = NULL,
+  images = NULL,
   verbose = FALSE
 ) {
-  add_entry <- function(entry_name, source_name, embedding) {
+  add_entry <- function(entry_name, source_name, embedding, entry_images = NULL) {
     spatial_data <- tryCatch(
       {
         cells <- intersect(rownames(embedding), colnames(expression_data))
@@ -1320,6 +1342,9 @@
     if (is.null(spatial_data)) {
       return(invisible(NULL))
     }
+    if (length(entry_images)) {
+      spatial_data$histology_images <- entry_images
+    }
     export$addSpatialData(entry_name, spatial_data)
     if (verbose) {
       message(
@@ -1337,7 +1362,24 @@
   for (image_name in names(embeddings)) {
     embedding <- embeddings[[image_name]]
     if (is.null(split)) {
-      add_entry(image_name, image_name, embedding)
+      ## one library's images belong to the one entry; several libraries need
+      ## `split` to tell which section each belongs to
+      if (length(images) > 1L) {
+        message(
+          "[INFO] The file has tissue images for ",
+          length(images),
+          " libraries; they are not attached to the single `",
+          image_name,
+          "` entry. Split the sections (spatial_split_by = \"library_id\") ",
+          "to show each on its own image."
+        )
+      }
+      add_entry(
+        image_name,
+        image_name,
+        embedding,
+        if (length(images) == 1L) images[[1L]]
+      )
       next
     }
     section <- as.character(split[rownames(embedding)])
@@ -1353,7 +1395,8 @@
       add_entry(
         paste0(image_name, " [", level, "]"),
         image_name,
-        embedding[!is.na(section) & section == level, , drop = FALSE]
+        embedding[!is.na(section) & section == level, , drop = FALSE],
+        images[[level]]
       )
     }
   }

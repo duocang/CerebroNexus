@@ -66,6 +66,14 @@
   A marker file whose `cluster` column holds the values of one grouping variable
   is stored as one table for that variable, with the Viewer's per-group filter.
   A missing reduction now says how to add one.
+- Brings what a scanpy/squidpy file shows along. scanpy's category colours
+  (`uns[<column>_colors]`) become the groups' default colours in the Viewer (stored in
+  the `.crb`, below build-time `colors` and the user's own picks, and written back by
+  `exportToH5ad()`); Visium tissue images (`uns["spatial"]`) are embedded behind the
+  spots with their extent derived from the scale factors, `spatial_images =` chooses
+  hires/lowres, and a file with several libraries becomes one section per library.
+  Build the app with `spatial_image_settings = ... flip_y = TRUE` for the image to
+  line up with the spots (as for Seurat Visium objects).
 - Adds `exportToH5ad()`, the reverse of `convertH5adToCerebro()`: a `.crb` (or
   Cerebro object) is written as an `.h5ad` that anndata and scanpy open as it is,
   natively with rhdf5. With it `.crb` is the hub between Seurat, SingleCellExperiment

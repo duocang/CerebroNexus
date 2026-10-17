@@ -11,6 +11,7 @@ readH5adAsSCE(
   gene_names = NULL,
   airr = "auto",
   airr_sample = NULL,
+  spatial_images = "auto",
   verbose = FALSE
 )
 }
@@ -44,6 +45,11 @@ modality.}
 which keys the immune repertoire. By default \code{orig.ident},
 \code{sample}, \code{Sample} or \code{sample_id} is used if present, else
 all cells are one sample (\code{"Sample_1"}).}
+
+\item{spatial_images}{Which Visium tissue images to embed: \code{"auto"}
+(default; \code{hires} when present, otherwise \code{lowres}), a character
+vector of image labels (\code{"hires"}, \code{"lowres"},
+\code{"fullres"}), or \code{FALSE} for none. Needs the \pkg{png} package.}
 
 \item{verbose}{Print what was skipped.}
 }
@@ -98,6 +104,19 @@ The mapping is:
     \code{velocity_*} entries of \code{obsm} are not embeddings and are
     not added to \code{reducedDims}. Gene-level velocity (\code{layers}
     \code{velocity}) and the directed PAGA transitions are not used.
+  \item scanpy's category colours (\code{uns["<column>_colors"]}) become
+    \code{metadata(sce)$group_colors}, a named vector (level to colour) per
+    categorical column, and are applied as the default colours of those
+    groups in the Viewer. A column is used only when it has one valid colour
+    for each of its levels.
+  \item Visium tissue images in \code{uns["spatial"][<library_id>]["images"]}
+    become \code{metadata(sce)$spatial_images}, one entry per library,
+    each with its image as an embedded PNG and its extent in spot-coordinate
+    space: spot coordinates (\code{obsm["spatial"]}) are full-resolution
+    pixels and an image is the full-resolution picture scaled by its
+    \code{tissue_*_scalef}, so it covers \code{[0, width/scale]} by
+    \code{[0, height/scale]}. The image keeps its own orientation (row 0 on
+    top); flip it for display in the Spatial tab, as for Seurat objects.
 }
 Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 is used as it is, because the CSR of cells x genes is the CSC of genes x

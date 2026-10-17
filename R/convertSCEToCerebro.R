@@ -226,6 +226,21 @@ convertSCEToCerebro <- function(
 
   sce <- .sceEnsureQcColumns(sce, nUMI, nGene, assay, verbose)
 
+  ## Tissue images of several Visium libraries each belong to their own section
+  ## (scanpy/squidpy name them in obs["library_id"]): split by it unless told
+  ## otherwise, or the images cannot be shown on their sections.
+  if (
+    is.null(spatial_split_by) &&
+      length(sce@metadata$spatial_images) > 1L &&
+      "library_id" %in% names(SummarizedExperiment::colData(sce))
+  ) {
+    spatial_split_by <- "library_id"
+    message(
+      "[INFO] Several tissue-image libraries: using spatial_split_by = ",
+      "\"library_id\"."
+    )
+  }
+
   # Same preparation as the Seurat route ---------------------------------------
   validated <- .convertValidateGroups(
     SummarizedExperiment::colData(sce),

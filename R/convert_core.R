@@ -192,7 +192,12 @@
 
     # Preflight every effective rename before changing metadata or misc. This
     # keeps the in-memory Seurat object intact if any later mapping conflicts.
-    keyed_misc <- c("trees", "most_expressed_genes", "mean_expression")
+    keyed_misc <- c(
+      "trees",
+      "most_expressed_genes",
+      "mean_expression",
+      "group_colors"
+    )
     for (old_name in valid_names) {
       new_name <- groups_naming[[old_name]]
       if (identical(old_name, new_name)) {

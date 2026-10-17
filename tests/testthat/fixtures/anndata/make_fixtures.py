@@ -6,6 +6,7 @@ as the Python ecosystem produces it (not a hand-written imitation):
     python -m venv .venv && .venv/Scripts/pip install anndata scanpy
     .venv/Scripts/python make_fixtures.py          # small_csr / csc / dense
     .venv/Scripts/python make_fixtures.py extra    # small_ensembl / spatial / mudata
+    .venv/Scripts/python make_fixtures.py visium   # small_visium (needs R's SpatialExperiment)
     .venv/Scripts/pip install awkward
     .venv/Scripts/python make_fixtures.py airr     # small_airr (h5mu, h5ad) / small_awkward
 
@@ -54,7 +55,7 @@ def build():
     a.obsm["X_single"] = rng.normal(size=(n_obs, 1))          # 1 column: must be skipped
     return a
 
-import sys
+import sys, os
 which = sys.argv[1] if len(sys.argv) > 1 else "base"
 
 if which == "base":
@@ -210,5 +211,48 @@ if which == "trajectory":
     q = build()
     q.obs["dpt_pseudotime"] = np.linspace(0, 1, n_obs)
     q.write_h5ad(here / "small_pseudotime.h5ad")
+
+if which == "visium":
+    # Two Visium sections laid out like scanpy.read_visium + squidpy's concatenation:
+    # obsm["spatial"] is (column, row) in full-resolution pixels, and
+    # uns["spatial"][<library>] holds the tissue images and their scale factors.
+    # Source: the tiny real 10x example shipped with R's SpatialExperiment (50 spots,
+    # 50 genes, a 600 x 576 low-res image). Images are shrunk 4x to keep the fixture
+    # small, with the scale factor shrunk the same, so the extent stays 11287 px wide.
+    # Section 1 also gets a synthetic uint8 "hires" (2x the low-res), as CELLxGENE and
+    # squidpy store theirs; section 2 keeps only "lowres".
+    import json, glob, scipy.io as sio, matplotlib.image as mimg
+    root = glob.glob(os.path.expanduser("~/AppData/Local/R/win-library/*/SpatialExperiment/extdata/10xVisium"))[0]
+    sections = {}
+    for lib in ("section1", "section2"):
+        d = os.path.join(root, lib, "outs")
+        mat = sio.mmread(os.path.join(d, "raw_feature_bc_matrix", "matrix.mtx")).T.tocsr().astype("float32")
+        barcodes = [l.strip() for l in open(os.path.join(d, "raw_feature_bc_matrix", "barcodes.tsv"))]
+        genes = [l.split("	")[1] for l in open(os.path.join(d, "raw_feature_bc_matrix", "features.tsv"))]
+        pos = pd.read_csv(os.path.join(d, "spatial", "tissue_positions_list.csv"), header=None, index_col="barcode",
+                          names=["barcode", "in_tissue", "array_row", "array_col", "pxl_row", "pxl_col"])
+        # section 2 lists one barcode without a position: keep the positioned spots only
+        keep = [i for i, b in enumerate(barcodes) if b in pos.index]
+        mat, barcodes = mat[keep], [barcodes[i] for i in keep]
+        pos = pos.loc[barcodes]
+        sf = json.load(open(os.path.join(d, "spatial", "scalefactors_json.json")))
+        low = mimg.imread(os.path.join(d, "spatial", "tissue_lowres_image.png"))[::4, ::4, :3].astype("float32")
+        a = ad.AnnData(X=mat, obs=pos[["in_tissue", "array_row", "array_col"]].astype("int64"),
+                       var=pd.DataFrame(index=genes))
+        a.var_names_make_unique()
+        a.obsm["spatial"] = pos[["pxl_col", "pxl_row"]].to_numpy().astype("int64")
+        scale = sf["tissue_lowres_scalef"] / 4
+        images = {"lowres": np.ascontiguousarray(low)}
+        factors = {"tissue_lowres_scalef": scale, "spot_diameter_fullres": sf["spot_diameter_fullres"],
+                   "fiducial_diameter_fullres": sf["fiducial_diameter_fullres"]}
+        if lib == "section1":
+            images["hires"] = np.kron(np.round(low * 255).astype("uint8"), np.ones((2, 2, 1), dtype="uint8"))
+            factors["tissue_hires_scalef"] = scale * 2
+        a.uns["spatial"] = {lib: {"images": images, "scalefactors": factors, "metadata": {"source_image_path": lib}}}
+        sections[lib] = a
+    v = ad.concat(sections, label="library_id", uns_merge="unique", index_unique="-")
+    v.obs["library_id"] = pd.Categorical(v.obs["library_id"])
+    v.obs["layer"] = pd.Categorical(["L1" if int(r) % 2 == 0 else "L2" for r in v.obs["array_row"]])
+    v.write_h5ad(here / "small_visium.h5ad", compression="gzip")
 
 for f in sorted(here.glob("*.h5*")): print(f.name, f.stat().st_size, "bytes")
