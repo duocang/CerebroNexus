@@ -166,9 +166,11 @@ trajectory_projection_sent <- reactiveVal(FALSE)
 ## the established R construction path below.
 trajectory_static_first_frame <- reactive({
   req(trajectory_selection_ok())
+  color_variable <- input[["trajectory_point_color"]]
+  groups <- getGroups()
   if (
     !isTRUE(input[["coordviews_wire_supported"]]) ||
-      !identical(input[["trajectory_point_color"]], "state") ||
+      !(identical(color_variable, "state") || isTRUE(color_variable %in% groups)) ||
       !isTRUE(all.equal(
         as.numeric(trajectory_projection_appearance$percentage_cells_to_show),
         100
@@ -176,7 +178,6 @@ trajectory_static_first_frame <- reactive({
   ) {
     return(NULL)
   }
-  groups <- getGroups()
   filters <- lapply(groups, function(group) {
     input[[paste0("trajectory_projection_group_filter_", group)]]
   })
@@ -202,10 +203,28 @@ trajectory_static_first_frame <- reactive({
   ) {
     return(NULL)
   }
-  levels <- as.character(resource$state$levels)
+  if (identical(color_variable, "state")) {
+    levels <- as.character(resource$state$levels)
+  } else {
+    ## A metadata group (e.g. the default main group) is coloured from its
+    ## canonical Viewer Pack codes, mapped to the trajectory rows by the frame's
+    ## canonical subset in the browser. Other geometries have no such mapping.
+    if (!identical(as.character(resource$geometry_kind), "canonical_projection")) {
+      return(NULL)
+    }
+    group_resource <- viewerMetadataCodesAsset(
+      color_variable,
+      getGroupLevels(color_variable)
+    )
+    if (is.null(group_resource)) {
+      return(NULL)
+    }
+    resource$group <- group_resource
+    levels <- as.character(group_resource$levels)
+  }
   colors <- stats::setNames(cerebro_group_colors(length(levels)), levels)
-  if ("state" %in% groups) {
-    configured <- reactive_group_colors("state")
+  if (color_variable %in% groups) {
+    configured <- reactive_group_colors(color_variable)
     if (all(levels %in% names(configured))) {
       colors <- configured[levels]
     }
@@ -220,6 +239,7 @@ trajectory_static_first_frame <- reactive({
   }
   list(
     resource = resource,
+    color_variable = color_variable,
     levels = levels,
     colors = colors,
     hover = isTRUE(preferences[["show_hover_info_in_projections"]]),
@@ -303,7 +323,7 @@ observe({
     }
     meta <- list(
       color_type = "categorical",
-      color_variable = "state",
+      color_variable = static_frame$color_variable,
       traces = as.list(static_frame$levels),
       appearance = list(
         group_labels = isTRUE(trajectory_projection_appearance$group_labels),

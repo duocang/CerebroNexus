@@ -17,7 +17,18 @@ test_that("trajectory static frames fall back when filters or resources change",
         state = list(url = "state", levels = c("start", "end")),
         subset = list(url = "index")
       )
-      viewerTrajectoryFrameAsset <- function(method, name) resource
+      viewerTrajectoryFrameAsset <- function(method, name) {
+        if (isTRUE(input$canonical)) {
+          return(c(resource, list(geometry_kind = "canonical_projection")))
+        }
+        resource
+      }
+      getGroupLevels <- function(group) c("A", "B")
+      reactive_group_colors <- function(group) c(A = "#111111", B = "#222222")
+      viewerMetadataCodesAsset <- function(name, levels) {
+        if (!isTRUE(input$codes)) return(NULL)
+        list(url = "codes", cells = 4L, levels = I(levels))
+      }
       viewerPackCurrent <- function() NULL
       edges <- data.frame(
         source_dim_1 = 0,
@@ -78,6 +89,16 @@ test_that("trajectory static frames fall back when filters or resources change",
       expect_null(trajectory_static_first_frame())
       trajectory_projection_appearance$percentage_cells_to_show <- 100
       expect_identical(trajectory_static_first_frame()$resource, resource)
+      ## A metadata group on a canonical frame uses its Viewer Pack codes.
+      session$setInputs(trajectory_point_color = "group", canonical = TRUE)
+      expect_null(trajectory_static_first_frame())
+      session$setInputs(codes = TRUE)
+      frame <- trajectory_static_first_frame()
+      expect_identical(frame$color_variable, "group")
+      expect_identical(frame$levels, c("A", "B"))
+      expect_identical(unname(frame$colors), c("#111111", "#222222"))
+      expect_identical(frame$resource$group$url, "codes")
+      expect_identical(frame$resource$state, resource$state)
     }
   )
 })

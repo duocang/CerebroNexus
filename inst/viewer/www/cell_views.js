@@ -7482,6 +7482,14 @@
     var projection = resource && resource.projection;
     var subset = resource && resource.subset;
     var state = resource && resource.state;
+    // Optional colouring by a metadata group: canonical codes for every cell,
+    // mapped to the trajectory rows through the canonical subset below.
+    var group = resource && resource.group || null;
+    if (group && (geometryKind !== 'canonical_projection' || !group.url ||
+        group.protocol !== 'canonical-metadata-codes-v1' ||
+        Number(group.cells) !== Number(resource.canonical_cells))) {
+      throw new Error('Trajectory group resource mismatch');
+    }
     if (!window.CBViewState.resourceDescriptor.validate(resource, {
           protocol: 'trajectory-frame-v1', cells: expectedCells,
           identity: identity
@@ -7506,7 +7514,26 @@
     } else {
       throw new Error('Trajectory geometry kind mismatch');
     }
-    return {projection: projection, subset: subset, state: state};
+    return {projection: projection, subset: subset, state: state, group: group};
+  }
+  function materializeCanonicalCodes(values, subset, expectedCells) {
+    if (subset.kind === 'identity') {
+      if (values.length !== expectedCells) {
+        throw new Error('Canonical code identity mismatch');
+      }
+      return values;
+    }
+    var out = new values.constructor(expectedCells), next = 0;
+    window.CBViewState.canonicalMapping.forEachIndex(
+      {kind: subset.kind, canonicalCells: values.length, cells: expectedCells},
+      subset.indices,
+      function (canonicalIndex) {
+        if (next >= expectedCells) throw new Error('Canonical code overflow');
+        out[next++] = values[canonicalIndex];
+      }
+    );
+    if (next !== expectedCells) throw new Error('Canonical code count mismatch');
+    return out;
   }
   function hydrateSingleProjectionResource(message) {
     var data = message && message.data || {};
@@ -7520,7 +7547,9 @@
     }
     var resource = frame ? frame.projection : data.projection_resource;
     var subsetResource = frame ? frame.subset : data.projection_subset_resource;
-    var groupResource = frame ? frame.state : data.categorical_resource;
+    var canonicalGroup = frame && frame.group;
+    var groupResource = frame
+      ? (canonicalGroup || frame.state) : data.categorical_resource;
     if ((!resource || !resource.url) &&
         (!groupResource || !groupResource.url)) {
       return Promise.resolve(message);
@@ -7537,7 +7566,8 @@
     var groupsPromise = groupResource && groupResource.url
       ? (groupResource.protocol === 'canonical-metadata-codes-v1'
         ? fetchValidatedMetadataCodesResource(
-          groupResource, data.n, message && message.dataset_identity
+          groupResource, canonicalGroup ? groupResource.cells : data.n,
+          message && message.dataset_identity
         )
         : fetchCategoricalResource(groupResource, data.n))
       : Promise.resolve(null);
@@ -7562,7 +7592,13 @@
         if (coordinates.xRange) data.x_range = coordinates.xRange;
         if (coordinates.yRange) data.y_range = coordinates.yRange;
       }
-      if (groupResult) data.canonical_group = groupResult.values;
+      if (groupResult) {
+        data.canonical_group = canonicalGroup
+          ? materializeCanonicalCodes(
+            groupResult.values, subsetResult, Number(data.n)
+          )
+          : groupResult.values;
+      }
       delete data.projection_resource;
       delete data.projection_subset_resource;
       delete data.categorical_resource;
