@@ -908,7 +908,8 @@ test_that("empty spatial selection returns before million-cell plot data", {
     selection <- shiny::isolate(spatial_projection_selected_cells())
     expect_identical(calls$plot_data, 1L)
     expect_identical(selection$selection_key, "cell-1")
-    expect_identical(selection$identifier, "1-2")
+    ## A complete stable ID needs no coordinate identifier.
+    expect_null(selection$identifier)
   })
 })
 

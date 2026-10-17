@@ -376,7 +376,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   app$wait_for_js(
     paste0(
       "(window.Shiny?.shinyapp?.$inputValues?",
-      ".expression_projection_persistent_selection?.x?.length || 0) > 0"
+      ".expression_projection_persistent_selection?.ids?.length || 0) > 0"
     ),
     timeout = 60000
   )

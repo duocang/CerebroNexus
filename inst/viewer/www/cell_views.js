@@ -3228,8 +3228,13 @@
     }
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
       if (singleActive) {
+        // Stable IDs identify the selection on their own. Send coordinates
+        // only as the fallback key when some selected cell has no ID.
         var sp = spaceById[singleSpaceIds[0]], x = [], y = [];
-        if (arr && sp) sel.forEach(function (i) {
+        var needCoordinates = arr && arr.some(function (id) {
+          return id == null || id === '';
+        });
+        if (needCoordinates && sp) sel.forEach(function (i) {
           x.push(sp.x[i]); y.push(sp.y[i]);
         });
         // Large specialist views paint before their stable cell IDs arrive.

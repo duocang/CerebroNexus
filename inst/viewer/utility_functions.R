@@ -5339,7 +5339,21 @@ viewerPersistentSelection <- function(selection, dataset_context) {
   ) {
     return(NULL)
   }
-  if (is.null(selection) || !length(selection[["x"]])) {
+  if (is.null(selection)) {
+    return(NULL)
+  }
+  ## Stable cell IDs identify a selection on their own. Coordinate identifiers
+  ## are only the fallback for cells without one; formatting them for every
+  ## selected cell took seconds for large selections.
+  ids <- as.character(unlist(selection[["ids"]], use.names = FALSE))
+  complete_ids <- length(ids) &&
+    !anyNA(ids) &&
+    all(nzchar(ids)) &&
+    (!length(selection[["x"]]) || length(ids) == length(selection[["x"]]))
+  if (complete_ids) {
+    return(data.frame(selection_key = ids, stringsAsFactors = FALSE))
+  }
+  if (!length(selection[["x"]])) {
     return(NULL)
   }
   x <- as.numeric(selection[["x"]])
