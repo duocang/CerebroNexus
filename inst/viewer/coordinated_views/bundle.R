@@ -292,6 +292,8 @@ cv_alignment_appearance <- function(alignment) {
   )
 }
 
+## A named xmin/xmax/ymin/ymax rectangle, or NULL unless finite and ordered.
+## Validates both image bounds and viewports.
 cv_viewport_bounds <- function(value) {
   required <- c("xmin", "xmax", "ymin", "ymax")
   if (
@@ -371,63 +373,12 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE, roi_value = N
   }
   labels <- names(configured)
   root <- Cerebro.options[["cerebro_root"]]
-  normalize_bounds <- function(value) {
-    required <- c("xmin", "xmax", "ymin", "ymax")
-    if (
-      is.null(value) ||
-        is.null(names(value)) ||
-        !all(required %in% names(value))
-    ) {
-      return(NULL)
-    }
-    numbers <- suppressWarnings(as.numeric(unlist(
-      value[required],
-      use.names = FALSE
-    )))
-    if (
-      length(numbers) != 4L ||
-        anyNA(numbers) ||
-        any(!is.finite(numbers)) ||
-        numbers[[1L]] >= numbers[[2L]] ||
-        numbers[[3L]] >= numbers[[4L]]
-    ) {
-      return(NULL)
-    }
-    stats::setNames(as.list(numbers), required)
-  }
   out <- list()
-  image_mime <- function(image_path) {
-    if (!isTRUE(file_test("-f", image_path))) {
-      return(NULL)
-    }
-    ext <- tolower(tools::file_ext(image_path))
-    if (!(ext %in% c("png", "jpg", "jpeg"))) {
-      return(NULL)
-    }
-    bytes <- tryCatch(
-      readBin(image_path, what = "raw", n = 8L),
-      error = function(error) raw()
-    )
-    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
-    if (identical(ext, "png") && identical(bytes, png_magic)) {
-      return("image/png")
-    }
-    if (
-      ext %in%
-        c("jpg", "jpeg") &&
-        length(bytes) >= length(jpeg_magic) &&
-        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
-    ) {
-      return("image/jpeg")
-    }
-    NULL
-  }
   for (i in seq_along(configured)) {
     descriptor <- configured[[i]]
     path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
     bounds <- if (is.list(descriptor)) {
-      normalize_bounds(descriptor[["bounds"]])
+      cv_viewport_bounds(descriptor[["bounds"]])
     } else {
       NULL
     }
@@ -435,7 +386,7 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE, roi_value = N
     if (is.null(img_path)) {
       next
     }
-    mime <- image_mime(img_path)
+    mime <- viewerImageMime(img_path)
     if (is.null(mime)) {
       next
     }
@@ -453,7 +404,7 @@ cv_external_images <- function(spatial_name = NULL, defer = FALSE, roi_value = N
       label = label,
       bounds = bounds,
       viewport = if (is.list(descriptor)) {
-        normalize_bounds(descriptor$viewport_bounds)
+        cv_viewport_bounds(descriptor$viewport_bounds)
       } else {
         NULL
       },
