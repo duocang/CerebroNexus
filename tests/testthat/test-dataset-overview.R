@@ -1,6 +1,6 @@
 overview_helpers <- new.env(parent = globalenv())
-sys.source(test_path("../../inst/viewer/core/dataset_overview.R"), overview_helpers)
-sys.source(test_path("../../inst/viewer/load_data/overview_ui.R"), overview_helpers)
+sys.source(viewer_test_path("core", "dataset_overview.R"), overview_helpers)
+sys.source(viewer_test_path("load_data", "overview_ui.R"), overview_helpers)
 
 overview_fixture <- function() {
   list(getExperiment = function() list(description = "  ", source = NA_character_),
