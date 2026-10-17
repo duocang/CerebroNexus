@@ -40,6 +40,10 @@ test_that("legacy objects use their full registered content", {
   expect_false(viewerLinkedViewsAvailable(object = object))
   object$getImmuneRepertoire <- function() list(sample = data.frame(clone = "a"))
   expect_true(viewerLinkedViewsAvailable(object = object))
+  ## A file-backed repertoire answers from its backend summary.
+  object$immune_repertoire_backend <- list(type = "bpcells-file", samples = "s1")
+  object$getImmuneRepertoire <- function() stop("repertoire was hydrated")
+  expect_true(viewerLinkedViewsAvailable(object = object))
 })
 
 test_that("dataset changes update the gate and leave an unavailable Linked page", {

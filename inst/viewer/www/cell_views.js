@@ -1262,6 +1262,8 @@
     if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
+    // Embedded images already carry their saved calibration in the pixels.
+    state = imageRenderState(cimg, state);
     var tlData = [b.xmin, b.ymax];
     var trData = [b.xmax, b.ymax];
     var blData = [b.xmin, b.ymin];
@@ -5130,7 +5132,8 @@
     var salvaged = q.salv_2 + q.salv_3;
     return '<b>Confidently positioned ≠ exactly one location.</b> The ' +
       fmt(q.n_1) + ' imported nuclei = native single-location ' + fmt(q.o_1) +
-      ' + vendor-salvaged from 2 (' + q.salv_2 + ') + from 3 (' + q.salv_3 + '), i.e. <b>' + salvaged +
+      ' + vendor-salvaged from 2 (' + esc(q.salv_2) + ') + from 3 (' + esc(q.salv_3) +
+      '), i.e. <b>' + esc(salvaged) +
       ' (' + (salvaged / q.n_1 * 100).toFixed(2) + '%)</b> are upstream-salvaged multi-location nuclei. ' +
       'The label must be <code>vendor_confidently_positioned</code>.';
   }
@@ -5149,7 +5152,7 @@
 
   function trekkerRangeFlag(q) {
     return '<b>The vendor\'s own demo crosses the vendor\'s own reference line.</b> ' +
-      'The 2+ location rate ' + q.pct_2plus + '% > the manual\'s suggested <20%. The app should only show ' +
+      'The 2+ location rate ' + esc(q.pct_2plus) + '% &gt; the manual\'s suggested &lt;20%. The app should only show ' +
       '"below vendor reference range" and must not adjudicate sample usability for the user.';
   }
 
@@ -5158,7 +5161,7 @@
       var link = linkable
         ? '<td><a href="#" class="tk-link" data-g="' + esc(r.gene) + '">Show in plot →</a></td>'
         : '';
-      return '<tr><td class="num tk-muted">' + r.rank + '</td>' +
+      return '<tr><td class="num tk-muted">' + esc(r.rank) + '</td>' +
         '<td style="font-weight:600">' + esc(r.gene) + '</td><td class="num">' + r.I.toFixed(4) + '</td>' +
         link + '</tr>';
     }).join('');

@@ -54,7 +54,7 @@ viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
       logical(1)
     ))) return(TRUE)
     if (length(read(object$getTrekker())) > 0L) return(TRUE)
-    return(length(read(object$getImmuneRepertoire())) > 0L)
+    return(isTRUE(read(viewerImmuneRepertoireSummary(object))$available))
   }
   if (!is.list(info)) return(NULL)
   extra <- list(
@@ -552,11 +552,14 @@ spatialRoiPivots <- function(coordinates, roi_values, degrees = 0) {
   rois <- rois[!is.na(rois) & nzchar(rois)]
   pivots <- lapply(rois, function(roi) {
     selected <- !is.na(roi_values) & as.character(roi_values) == roi
+    ## Index columns explicitly: vapply over a matrix iterates its cells.
+    block <- coordinates[selected, 1:2, drop = FALSE]
     pivot <- vapply(
-      coordinates[selected, 1:2, drop = FALSE],
-      function(values) mean(range(values, na.rm = TRUE)),
+      1:2,
+      function(column) mean(range(block[, column], na.rm = TRUE)),
       numeric(1)
     )
+    names(pivot) <- colnames(block)
     if (any(!is.finite(pivot))) NULL else pivot
   })
   valid <- !vapply(pivots, is.null, logical(1))
@@ -4962,7 +4965,11 @@ getImmuneRepertoire <- function() {
 }
 
 getImmuneRepertoireSummary <- function() {
-  ds <- data_set()
+  viewerImmuneRepertoireSummary(data_set())
+}
+
+## File-backed repertoires describe themselves without reading every sample.
+viewerImmuneRepertoireSummary <- function(ds) {
   if (is.null(ds)) {
     return(list(available = FALSE, samples = character(), chains = character()))
   }

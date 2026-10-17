@@ -15,10 +15,11 @@ spatial_projection_selection_dataset <- reactiveVal(
   isolate(spatial_projection_dataset())
 )
 
-output[["spatial_projection_main_parameters_UI"]] <- renderUI({
+## Sample, FOV and ROI choices depend on each other, so this reactive follows
+## those inputs. Only the small scene output below rebuilds from it; the plot
+## type and gene pickers rebuild for a new dataset, never for a scene change.
+spatial_projection_scene <- reactive({
   req(data_set())
-  ## Hidden outputs are suspended below. Sidebar changes must not rebuild the
-  ## mounted plot-type selector and reset Feature/RGB to ImageDimPlot.
   req(length(availableSpatial()) > 0)
   dataset <- spatial_projection_dataset()
   previous_dataset <- isolate(spatial_projection_selection_dataset())
@@ -130,40 +131,87 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   if (!selected_split %in% c(spatial_split_none_value, split_columns)) {
     selected_split <- spatial_split_none_value
   }
+  list(
+    dataset_changed = dataset_changed,
+    colour_groups = colour_groups,
+    sample_values = sample_values,
+    selected_sample = selected_sample,
+    spatial_choices = spatial_choices,
+    current_spatial = current_spatial,
+    roi_values = roi_values,
+    selected_roi = selected_roi,
+    split_choices = c("None" = spatial_split_none_value, split_columns),
+    selected_split = selected_split
+  )
+})
+
+output[["spatial_projection_scene_UI"]] <- renderUI({
+  scene <- spatial_projection_scene()
   tagList(
-    if (length(sample_values) > 1L) {
+    if (length(scene$sample_values) > 1L) {
       selectInput(
         "spatial_projection_sample",
         label = "Sample",
-        choices = stats::setNames(sample_values, sample_values),
-        selected = selected_sample
+        choices = stats::setNames(scene$sample_values, scene$sample_values),
+        selected = scene$selected_sample
       )
     },
     selectInput(
       "spatial_projection_to_display",
       label = "FOV / section",
-      choices = spatial_choices,
-      selected = current_spatial
+      choices = scene$spatial_choices,
+      selected = scene$current_spatial
     ),
-    if (length(roi_values)) {
+    if (length(scene$roi_values)) {
       selectizeInput(
         "spatial_projection_roi",
         label = "ROI",
         choices = c(
           "All ROIs" = "__all__",
-          if (length(roi_values) > 1L) {
+          if (length(scene$roi_values) > 1L) {
             c("Separate ROIs" = "__separate__")
           },
-          stats::setNames(roi_values, roi_values)
+          stats::setNames(scene$roi_values, scene$roi_values)
         ),
-        selected = selected_roi
+        selected = scene$selected_roi
       )
-    },
+    }
+  )
+})
+
+## Split-by choices follow the selected scene; update them in place so the
+## surrounding controls keep their state.
+observe({
+  req(identical(input[["sidebar"]], "spatial"))
+  scene <- spatial_projection_scene()
+  updateSelectizeInput(
+    session,
+    "spatial_projection_split_by",
+    choices = scene$split_choices,
+    selected = scene$selected_split
+  )
+})
+
+output[["spatial_projection_main_parameters_UI"]] <- renderUI({
+  req(data_set())
+  ## Hidden outputs are suspended below. Scene changes must not rebuild the
+  ## mounted plot-type selector and reset Feature/RGB to ImageDimPlot.
+  req(length(availableSpatial()) > 0)
+  spatial_projection_dataset()
+  colour_groups <- viewerColourGroupChoices()
+  scene <- isolate(spatial_projection_scene())
+  plot_type <- if (scene$dataset_changed) {
+    "ImageDimPlot"
+  } else {
+    isolate(input[["spatial_projection_plot_type"]]) %||% "ImageDimPlot"
+  }
+  tagList(
+    uiOutput("spatial_projection_scene_UI"),
     selectInput(
       "spatial_projection_plot_type",
       label = "Plot type",
       choices = c("ImageDimPlot", "ImageFeaturePlot", "Co-expression (RGB)"),
-      selected = "ImageDimPlot"
+      selected = plot_type
     ),
     conditionalPanel(
       condition = "input.spatial_projection_plot_type == 'ImageDimPlot'",
@@ -178,8 +226,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         selectizeInput(
           "spatial_projection_split_by",
           label = "Split by",
-          choices = c("None" = spatial_split_none_value, split_columns),
-          selected = selected_split
+          choices = scene$split_choices,
+          selected = scene$selected_split
         )
       )
     ),
@@ -456,6 +504,11 @@ lapply(
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",
+  suspendWhenHidden = TRUE
+)
+outputOptions(
+  output,
+  "spatial_projection_scene_UI",
   suspendWhenHidden = TRUE
 )
 outputOptions(

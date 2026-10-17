@@ -1009,6 +1009,9 @@
     var fadingOut = false;
     var installed = false;
     var completion = null;
+    var viewTimer = null;
+    // A page that never reports readiness must not leave the workspace inert.
+    var VIEW_READY_TIMEOUT_MS = 20000;
 
     function workspaceBusy(busy) {
       var content = document.getElementById("main-content");
@@ -1089,7 +1092,8 @@
       var context = window.CerebroDatasetContext;
       if (context && !context.acceptsProgress(message)) return;
       begin(message.label, message.detail);
-      var awaitingView = message.done && !message.failed && !pageReady();
+      var awaitingView = message.done && !message.failed &&
+        !message.viewTimedOut && !pageReady();
       // File-load stages are not an end-to-end percentage. Reserve the last
       // part for the painted page instead of displaying 100% while waiting.
       var percent = message.done && !awaitingView ? 100 :
@@ -1107,9 +1111,16 @@
           completion = message;
           overlay.querySelector(".cerebro-dataset-loading-detail").textContent =
             "Preparing the current view…";
+          window.clearTimeout(viewTimer);
+          viewTimer = window.setTimeout(function () {
+            if (completion !== message) return;
+            completion = null;
+            update(Object.assign({}, message, { viewTimedOut: true }));
+          }, VIEW_READY_TIMEOUT_MS);
           return;
         }
         completion = null;
+        window.clearTimeout(viewTimer);
         window.clearInterval(elapsedTimer);
         var hide = function () {
           overlay.hidden = true;

@@ -528,7 +528,7 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
     file.path(
       system.file("viewer", package = "CerebroNexus"),
       "spatial",
-      "func_projection_update_plot.R"
+      "func_spatial_helpers.R"
     ),
     envir = renderer
   )
@@ -972,7 +972,7 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     )
     session$flushReact()
     main_html <- as.character(
-      output$spatial_projection_main_parameters_UI$html
+      output$spatial_projection_scene_UI$html
     )
     background_html <- as.character(
       output$spatial_projection_background_selector_UI$html
@@ -983,6 +983,24 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     expect_false(grepl("embedded::H&amp;E", background_html, fixed = TRUE))
     expect_false(grepl("external::DAPI", background_html, fixed = TRUE))
     expect_identical(getSpatialData("sliceB")$coordinates$x, 101:102)
+
+    ## Switching FOV updates only the scene selectors; the plot type and gene
+    ## pickers stay mounted.
+    controls_html <- as.character(
+      output$spatial_projection_main_parameters_UI$html
+    )
+    session$setInputs(spatial_projection_plot_type = "ImageFeaturePlot")
+    session$setInputs(spatial_projection_to_display = "sliceA")
+    session$flushReact()
+    expect_identical(
+      as.character(output$spatial_projection_main_parameters_UI$html),
+      controls_html
+    )
+    expect_match(
+      as.character(output$spatial_projection_scene_UI$html),
+      'value="sliceA" selected',
+      fixed = TRUE
+    )
   })
 })
 
@@ -1400,5 +1418,21 @@ test_that("molecule overlays accept one gene and cap browser points", {
   expect_identical(
     spatial_molecule_overlay(molecules, "Gene1", scoped = TRUE),
     list()
+  )
+
+  ## Molecules without a gene label are dropped, not returned as NA rows.
+  molecules$data$gene[[2L]] <- NA_character_
+  overlay <- spatial_molecule_overlay(molecules, "Gene1")
+  expect_identical(overlay$x, c(1, 3, 4))
+})
+
+test_that("ROI pivots use column centres for matrix and data frame input", {
+  coordinates <- cbind(x = c(0, 10, 100, 120), y = c(0, 20, 200, 240))
+  rois <- c("A", "A", "B", "B")
+  expected <- list(A = c(x = 5, y = 10), B = c(x = 110, y = 220))
+  expect_identical(spatialRoiPivots(coordinates, rois), expected)
+  expect_identical(
+    spatialRoiPivots(as.data.frame(coordinates), rois),
+    expected
   )
 })

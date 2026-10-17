@@ -1,67 +1,6 @@
 ##----------------------------------------------------------------------------##
 ## Function that updates projections.
 ##----------------------------------------------------------------------------##
-## Defense in depth at the file-read boundary: require both an exact allowlist
-## match and canonical containment, including after resolving symbolic links.
-authorized_spatial_image_path <- function(
-  background_image,
-  allowlist,
-  cerebro_root
-) {
-  if (
-    !is.character(background_image) ||
-      length(background_image) != 1L ||
-      is.na(background_image) ||
-      !is.character(allowlist) ||
-      !(background_image %in% allowlist) ||
-      !is.character(cerebro_root) ||
-      length(cerebro_root) != 1L ||
-      is.na(cerebro_root)
-  ) {
-    return(NULL)
-  }
-
-  canonicalize <- function(path) {
-    tryCatch(
-      suppressWarnings(
-        normalizePath(path, winslash = "/", mustWork = TRUE)
-      ),
-      error = function(error) NULL
-    )
-  }
-  image_path <- canonicalize(file.path(cerebro_root, background_image))
-  trusted_roots <- lapply(
-    c("spatial-assets", "extdata"),
-    function(root) canonicalize(file.path(cerebro_root, root))
-  )
-  trusted_roots <- Filter(Negate(is.null), trusted_roots)
-  if (length(trusted_roots) == 0L || is.null(image_path)) {
-    return(NULL)
-  }
-
-  if (.Platform$OS.type == "windows") {
-    trusted_roots <- lapply(trusted_roots, tolower)
-    image_path_comparison <- tolower(image_path)
-  } else {
-    image_path_comparison <- image_path
-  }
-  inside_trusted_root <- any(vapply(
-    trusted_roots,
-    function(root) {
-      startsWith(
-        image_path_comparison,
-        paste0(sub("/+$", "", root), "/")
-      )
-    },
-    logical(1)
-  ))
-  if (!inside_trusted_root) {
-    return(NULL)
-  }
-
-  image_path
-}
-
 spatial_background_render_payload <- function(
   descriptor,
   allowlist,

@@ -387,7 +387,7 @@ test_that("optional Spatial selectors retain their reset choices", {
     collapse = "\n"
   )
 
-  expect_match(controls, "length(sample_values) > 1L", fixed = TRUE)
+  expect_match(controls, "length(scene$sample_values) > 1L", fixed = TRUE)
   expect_false(grepl('"All samples"', controls, fixed = TRUE))
   expect_match(controls, "spatial_split_columns(", fixed = TRUE)
   expect_match(controls, 'class = "spatial-image-dim-controls"', fixed = TRUE)
