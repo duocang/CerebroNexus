@@ -84,11 +84,7 @@ spatial_projection_scene <- reactive({
     current_spatial <- spatial_names[[1L]]
   }
   current_sd <- spatial_records[[current_spatial]]
-  spatial_choices <- spatial_scene_choices(
-    spatial_names,
-    spatial_records[spatial_names],
-    metadata
-  )
+  spatial_choices <- stats::setNames(spatial_names, spatial_names)
   current_cells <- rownames(current_sd[["coordinates"]]) %||% character()
   if (nzchar(selected_sample)) {
     current_sample <- spatial_metadata_facet(

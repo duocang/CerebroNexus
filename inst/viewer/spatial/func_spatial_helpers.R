@@ -800,10 +800,6 @@ spatial_split_columns <- function(
   )]
 }
 
-spatial_scene_choices <- function(spatial_names, spatial_data, metadata) {
-  stats::setNames(spatial_names, spatial_names)
-}
-
 spatial_default_roi_selection <- function(roi_values) {
   roi_values <- unique(as.character(roi_values %||% character()))
   roi_values <- roi_values[!is.na(roi_values) & nzchar(roi_values)]
@@ -819,10 +815,6 @@ spatial_default_roi_selection <- function(roi_values) {
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
 ## is a descriptor so its display label is never confused with a filesystem
 ## path, and descriptor bounds survive all the way to the renderer.
-
-spatial_background_key <- function(source, label) {
-  paste0(source, "::", label)
-}
 
 spatial_background_display_label <- function(label) {
   stripped <- sub(
