@@ -909,9 +909,7 @@
     var percentage = Number(space.builder_percentage_cells);
     if (!isFinite(percentage) || percentage >= 100) return null;
     if (!space._pctMask || space._pctMask.length !== D.n) {
-      space._pctMask = new Uint8Array(D.n);
-      for (var j = 0; j < D.n; j++)
-        space._pctMask[j] = (Math.imul(j + 1, 2654435761) >>> 0) / 4294967296 < percentage / 100 ? 1 : 0;
+      space._pctMask = percentageMask(D.n, percentage);
     }
     return space._pctMask;
   }
@@ -953,16 +951,16 @@
   }
   // Legend-visible AND filter-active — the single gate every render/hit-test uses.
   function shown(i, p) { return visible(i, p) && activeCell(i, p); }
-  // Stable per-cell subsample: the same subset persists across redraws/toggles
-  // (deterministic hash), so lowering "% of cells" never reshuffles the view.
+  // Stable per-cell value in [0, 1): the same subset persists across
+  // redraws/toggles, so lowering "% of cells" never reshuffles the view.
+  function cellHash(i) { return (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296; }
+  function percentageMask(n, percentage) {
+    var mask = new Uint8Array(n), thr = percentage / 100;
+    for (var i = 0; i < n; i++) mask[i] = cellHash(i) < thr ? 1 : 0;
+    return mask;
+  }
   function rebuildPctMask() {
-    if (!D || pctShow >= 100) { pctMask = null; return; }
-    var n = D.n, thr = pctShow / 100;
-    pctMask = new Uint8Array(n);
-    for (var i = 0; i < n; i++) {
-      var h = (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296;
-      pctMask[i] = h < thr ? 1 : 0;
-    }
+    pctMask = (!D || pctShow >= 100) ? null : percentageMask(D.n, pctShow);
   }
   // After a filter / subsample change: drop now-inactive cells from the current
   // selection, then redraw. Keeps the coordinated selection consistent.
@@ -5333,8 +5331,7 @@
         count[b] = (count[b] || 0) + 1;
         x[i] = count[b] - 1;
         // stable per-cell jitter fills the band strip (0.1 .. 0.9 within band b)
-        var h = (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296;
-        y[i] = b + 0.1 + h * 0.8;
+        y[i] = b + 0.1 + cellHash(i) * 0.8;
       }
       sp._axisSpec = {
         xlab: 'cells in tier  (width ∝ count) →',
