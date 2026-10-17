@@ -894,7 +894,18 @@ test_that("source progress records stay compact while final results remain compl
   progress <- readRDS(progress_path)
 
   expect_length(results, 3L)
-  expect_identical(names(progress), c("completed", "total", "failed", "last"))
+  expect_identical(
+    names(progress),
+    c(
+      "completed",
+      "total",
+      "failed",
+      "bytes_done",
+      "bytes_total",
+      "current",
+      "last"
+    )
+  )
   expect_false("results" %in% names(progress))
   expect_identical(progress$completed, 3L)
 })
