@@ -1509,18 +1509,30 @@ if (builder_lifecycle_api_available) {
     )
     worker$process$close()
 
+    started <- Sys.time()
     polled <- builder_worker_poll(worker, timeout = 0)
-    withr::defer(try(polled$worker$process$close(), silent = TRUE))
+    elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+    withr::defer(try(polled$worker$process$kill_tree(), silent = TRUE))
 
     expect_identical(polled$event, "restarted")
-    expect_true(polled$worker$ready)
-    expect_equal(
-      builder_worker_cell_count(polled$worker, "dataset-a"),
-      80L
-    )
+    # The replacement re-sources its runtime in the background.
+    expect_identical(polled$worker$state, "starting")
+    expect_false(polled$worker$ready)
+    expect_lt(elapsed, 10)
+    restarted <- polled$worker
+    deadline <- Sys.time() + 60
+    repeat {
+      startup <- builder_worker_poll_startup(restarted, timeout = 100L)
+      restarted <- startup$worker
+      if (!identical(startup$state, "starting") || Sys.time() > deadline) {
+        break
+      }
+    }
+    expect_identical(startup$state, "ready")
+    expect_equal(builder_worker_cell_count(restarted, "dataset-a"), 80L)
   })
 
-  test_that("poll returns a typed event when snapshot restore fails", {
+  test_that("a background restart reports a failed snapshot restore", {
     skip_if_not_installed("callr")
     root <- withr::local_tempdir()
     snapshot <- builder_snapshot_seurat(
@@ -1537,16 +1549,26 @@ if (builder_lifecycle_api_available) {
     worker$process$close()
 
     polled <- builder_worker_poll(worker, timeout = 0)
+    withr::defer(try(polled$worker$process$kill_tree(), silent = TRUE))
 
-    expect_identical(polled$event, "restart_failed")
+    expect_identical(polled$event, "restarted")
+    expect_null(polled$result)
+    restarted <- polled$worker
+    deadline <- Sys.time() + 60
+    repeat {
+      startup <- builder_worker_poll_startup(restarted, timeout = 100L)
+      restarted <- startup$worker
+      if (!identical(startup$state, "starting") || Sys.time() > deadline) {
+        break
+      }
+    }
+    expect_identical(startup$state, "failed")
     expect_match(
-      polled$error,
+      startup$error,
       "snapshot is no longer owned",
       ignore.case = TRUE
     )
-    expect_null(polled$result)
-    expect_false(polled$worker$ready)
-    expect_false(polled$worker$process$is_alive())
+    expect_false(restarted$ready)
   })
 
   test_that("a callr read failure is one completed typed error", {
@@ -2307,4 +2329,122 @@ test_that("worker tree inspection rejects a child that exits during lookup", {
   expect_length(tree$handles, 0L)
   expect_match(tree$error, "could not be inspected", fixed = TRUE)
   expect_identical(calls, 2L)
+})
+
+test_that("worker tree inspection finds marked descendants without a ppid scan", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("ps")
+  skip_if_not(ps::ps_is_supported())
+  process <- callr::r_session$new()
+  withr::defer(try(process$kill_tree(), silent = TRUE))
+  marker <- .builder_worker_tree_marker(process)
+  expect_match(marker, "^PS[0-9A-Za-z]+_[0-9]+$")
+  process$call(function() {
+    child <- processx::process$new(
+      file.path(R.home("bin"), "Rscript"),
+      c("-e", "Sys.sleep(60)")
+    )
+    Sys.sleep(60)
+  })
+  deadline <- Sys.time() + 20
+  repeat {
+    named <- vapply(
+      ps::ps_find_tree(marker),
+      function(handle) tolower(ps::ps_name(handle)),
+      character(1)
+    )
+    if (sum(grepl("^r(term|script)", named)) >= 2L || Sys.time() > deadline) {
+      break
+    }
+    Sys.sleep(0.1)
+  }
+  # ps_children() opens every process on the machine (~40 s on Windows); the
+  # marker scan must be the only descendant lookup for a processx worker.
+  testthat::local_mocked_bindings(
+    ps_children = function(...) stop("unexpected machine-wide ppid scan"),
+    .package = "ps"
+  )
+  started <- Sys.time()
+  tree <- .builder_worker_tree_handles(process)
+  elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+
+  expect_null(tree$error)
+  expect_lt(elapsed, 5)
+  pids <- vapply(tree$handles, ps::ps_pid, integer(1))
+  expect_identical(pids[[1L]], process$get_pid())
+  expect_false(anyDuplicated(pids) > 0L)
+  expect_gte(length(pids), 2L)
+  expect_false(Sys.getpid() %in% pids)
+})
+
+test_that("a process without a processx marker keeps the ppid lookup", {
+  expect_null(.builder_worker_tree_marker(list(get_pid = function() 1L)))
+  private <- new.env()
+  private$tree_id <- "not a marker"
+  enclosure <- new.env()
+  enclosure$private <- private
+  process <- new.env()
+  process$.__enclos_env__ <- enclosure
+  expect_null(.builder_worker_tree_marker(process))
+  private$tree_id <- "PS18d40778f47b_1792237909"
+  expect_identical(
+    .builder_worker_tree_marker(process),
+    "PS18d40778f47b_1792237909"
+  )
+})
+
+test_that("a verified stop of a busy worker settles in seconds", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("ps")
+  skip_if_not(ps::ps_is_supported())
+  root <- withr::local_tempdir()
+  process <- callr::r_session$new()
+  withr::defer(try(process$kill_tree(), silent = TRUE))
+  process$call(function() {
+    processx::process$new(
+      file.path(R.home("bin"), "Rscript"),
+      c("-e", "Sys.sleep(60)")
+    )
+    Sys.sleep(60)
+  })
+  Sys.sleep(1)
+  marker <- .builder_worker_tree_marker(process)
+  worker <- structure(
+    list(
+      process = process,
+      state = "ready",
+      snapshot_root = root,
+      snapshot_registry = list()
+    ),
+    class = c("builder_worker", "list")
+  )
+
+  started <- Sys.time()
+  stopped <- builder_worker_stop(worker, grace_ms = 500L)
+  elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+
+  expect_true(stopped$stopped)
+  expect_true(stopped$tree_verified)
+  expect_lt(elapsed, 15)
+  expect_false(process$is_alive())
+  alive <- vapply(
+    ps::ps_find_tree(marker),
+    function(handle) isTRUE(ps::ps_is_running(handle)),
+    logical(1)
+  )
+  expect_false(any(alive))
+})
+
+test_that("worker setup trusts registered snapshots without rehashing", {
+  worker <- paste(readLines(builder_worker_path, warn = FALSE), collapse = "\n")
+  expect_match(
+    worker,
+    "if (!.builder_snapshot_owned(snapshot, verify_content = FALSE)) {",
+    fixed = TRUE
+  )
+  expect_match(
+    worker,
+    "restarted <- builder_worker_restart(worker, .async = TRUE)",
+    fixed = TRUE
+  )
 })

@@ -2636,12 +2636,18 @@ observe({
   }
   worker(got$worker)
   if (identical(got$event, "restarted")) {
-    apply_protocol_recovery(
+    recovered <- apply_protocol_recovery(
       current_protocol,
       got$worker,
       "The background worker stopped before returning its result.",
       retry_persistent = TRUE
     )
+    if (
+      isTRUE(recovered) &&
+        identical(got$worker$state %||% NULL, "starting")
+    ) {
+      await_restarted_worker("Reopening datasets from their snapshots…")
+    }
     return()
   }
   if (identical(got$event, "restart_failed")) {

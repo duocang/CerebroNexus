@@ -1344,9 +1344,12 @@ builder_worker_start <- function(
     objects <- new.env(parent = emptyenv())
     snapshots <- new.env(parent = emptyenv())
     snapshot_cache <- new.env(parent = emptyenv())
+    # Stat and owner-marker checks reject replaced or foreign snapshots; a
+    # full-content MD5 of every registered snapshot would delay each
+    # (re)start by the total size of the session's datasets.
     for (id in names(registry)) {
       snapshot <- registry[[id]]
-      if (!.builder_snapshot_owned(snapshot)) {
+      if (!.builder_snapshot_owned(snapshot, verify_content = FALSE)) {
         stop("A registered Builder snapshot is no longer owned.")
       }
       assign(id, snapshot, envir = snapshots)
@@ -1681,7 +1684,20 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
       error = "The background worker process tree could not be inspected."
     ))
   }
-  descendants <- try(ps::ps_children(parent, recursive = TRUE), silent = TRUE)
+  # processx tags the worker and every descendant that inherits its environment
+  # with a private marker. One marker scan costs ~10 ms, whereas
+  # ps_children() opens a handle on every process on the machine to read its
+  # parent (~40 s with ~650 processes on Windows). A marker match, not a PID,
+  # identifies each member, and ps re-checks the creation time.
+  marker <- .builder_worker_tree_marker(process)
+  descendants <- try(
+    if (is.null(marker)) {
+      ps::ps_children(parent, recursive = TRUE)
+    } else {
+      ps::ps_find_tree(marker)
+    },
+    silent = TRUE
+  )
   if (inherits(descendants, "try-error")) {
     return(list(
       handles = list(),
@@ -1691,7 +1707,31 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
       )
     ))
   }
-  list(handles = c(list(parent), descendants), error = NULL)
+  list(
+    handles = .builder_worker_merge_tree_handles(list(parent), descendants),
+    error = NULL
+  )
+}
+
+## The processx process-tree marker (an environment variable name inherited by
+## every child), or NULL for a process that was not started by processx.
+.builder_worker_tree_marker <- function(process) {
+  private <- tryCatch(
+    process$.__enclos_env__$private,
+    error = function(error) NULL
+  )
+  marker <- if (is.environment(private)) {
+    get0("tree_id", envir = private, inherits = FALSE)
+  } else {
+    NULL
+  }
+  if (
+    !.builder_worker_scalar_text(marker) ||
+      !grepl("^PS[0-9A-Za-z]+_[0-9]+$", marker)
+  ) {
+    return(NULL)
+  }
+  marker
 }
 
 .builder_worker_handle_alive <- function(handle) {
@@ -1772,10 +1812,10 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 
 #' Stop a worker, confirm process death, then clean verified orphan artifacts.
 #'
-#' `verify_tree = FALSE` skips the ps descendant scan, which opens every
-#' process on the machine and can take tens of seconds on Windows. processx
-#' marks the worker's descendants itself, so `kill_tree()` still reaches them;
-#' user-requested stops use this to keep the Shiny process responsive.
+#' `verify_tree = TRUE` lets an idle or busy worker unwind first and confirms
+#' every marked descendant is gone before orphan cleanup. `verify_tree = FALSE`
+#' kills the marked tree at once without waiting for an interrupt (which callr
+#' cannot deliver on Windows); user-requested stops use it.
 builder_worker_stop <- function(worker, grace_ms = 5000L, verify_tree = TRUE) {
   .builder_worker_assert(worker)
   grace_ms <- .builder_worker_grace_ms(grace_ms)
@@ -2112,8 +2152,10 @@ builder_worker_release_snapshot <- function(
   worker
 }
 
+## The replacement starts in the background (state "starting"); callers poll
+## builder_worker_poll_startup() before dispatching to it.
 .builder_worker_poll_restart <- function(worker) {
-  restarted <- builder_worker_restart(worker)
+  restarted <- builder_worker_restart(worker, .async = TRUE)
   if (inherits(restarted, "builder_worker_restart_failed")) {
     return(restarted)
   }

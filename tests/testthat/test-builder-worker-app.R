@@ -2922,3 +2922,44 @@ test_that("Build failures expose phase and diagnostic identity", {
   expect_match(html, "Diagnostic log", fixed = TRUE)
   expect_match(html, "settlement-build-42", fixed = TRUE)
 })
+
+test_that("crash-recovery restarts boot the replacement in the background", {
+  lines <- builder_app_lines()
+  restart <- builder_app_block(
+    lines,
+    "restart_worker_protocol <- function(",
+    "await_restarted_worker <- function("
+  )
+  expect_match(restart, ".async = TRUE,", fixed = TRUE)
+  expect_match(restart, "verify_tree = !isTRUE(async)", fixed = TRUE)
+  expect_match(
+    restart,
+    'isTRUE(recovered) && identical(restarted$state, "starting")',
+    fixed = TRUE
+  )
+  expect_match(restart, "await_restarted_worker(", fixed = TRUE)
+
+  poller <- builder_app_block(
+    lines,
+    'if (identical(got$event, "restarted")) {',
+    'if (identical(got$event, "restart_failed")) {'
+  )
+  expect_match(
+    poller,
+    'identical(got$worker$state %||% NULL, "starting")',
+    fixed = TRUE
+  )
+  expect_match(poller, "await_restarted_worker(", fixed = TRUE)
+
+  startup <- builder_app_block(
+    lines,
+    "poll_builder_worker_startup <- function() {",
+    "worker_available(TRUE)"
+  )
+  expect_match(
+    startup,
+    "!builder_protocol_is_quiescent(current_protocol)",
+    fixed = TRUE
+  )
+  expect_match(startup, "retry_persistent = FALSE", fixed = TRUE)
+})
