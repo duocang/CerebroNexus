@@ -129,15 +129,22 @@ tab_gene_expression <- tabItem(
       var target = document.getElementById('expression_summary_gate');
       if (!target || target.dataset.observed) return;
       target.dataset.observed = 'true';
+      // The observer reports the initial state before Shiny has connected;
+      // keep the latest state and publish it once the input API exists.
+      var visible = null;
+      function publish() {
+        if (visible === null || !window.Shiny ||
+            typeof Shiny.setInputValue !== 'function') return;
+        Shiny.setInputValue('expression_summary_viewport_request', visible);
+      }
       var observer = new IntersectionObserver(function (entries) {
-        Shiny.setInputValue(
-          'expression_summary_viewport_request',
-          entries.some(function (entry) {
-            return entry.isIntersecting && entry.intersectionRatio >= 0.25;
-          })
-        );
+        visible = entries.some(function (entry) {
+          return entry.isIntersecting && entry.intersectionRatio >= 0.25;
+        });
+        publish();
       }, {threshold: 0.25});
       observer.observe(target);
+      if (window.jQuery) window.jQuery(document).on('shiny:connected', publish);
     })();
     "
   )) #,
