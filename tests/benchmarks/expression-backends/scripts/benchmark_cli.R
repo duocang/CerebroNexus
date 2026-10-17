@@ -772,7 +772,7 @@ if (identical(command, "inspect")) {
     # The frozen plan has the actual prefix nnz; the initial estimate uses a
     # source-wide average and may underestimate an unusually dense prefix.
     exact_plan <- readRDS(query_plan_path)
-    exact_peak_mb <- 1024 + exact_plan$nnz * 64 / 2^20
+    exact_peak_mb <- 1024 + exact_plan$nnz * BENCH_EMBEDDED_BYTES_PER_NNZ / 2^20
     if (
       exact_peak_mb > tier$memory_budget_mb ||
         exact_plan$nnz > .Machine$integer.max

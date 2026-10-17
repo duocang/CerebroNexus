@@ -297,3 +297,18 @@ test_that("resource checker accepts an unlimited R vector heap", {
   expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
   expect_true(file.exists(output_path))
 })
+
+test_that("embedded estimate admits human 500k on a 128 GB host with headroom", {
+  skip_unless_bench_resources()
+  source(bench_resources, local = TRUE)
+  # Source density and a 99% Scale budget of about 118 GiB on a 128 GB host.
+  got <- bench_assess_resources(
+    data.frame(source = "human", nnz_per_cell = 4112, source_bytes = 14.2e9),
+    data.frame(source = "human", n_cells = 500000),
+    memory_mb = 118 * 1024, vector_limit_mb = Inf, free_disk_bytes = 1e12,
+    memory_fraction = 1
+  )
+  expect_true(got$safe)
+  # Still at least 10% above the measured 97.2 GiB peak RSS at this tier.
+  expect_gt(got$estimated_peak_mb / 1024, 97.2 * 1.1)
+})

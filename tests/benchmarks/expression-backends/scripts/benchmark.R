@@ -1986,13 +1986,19 @@ bench_scale_memory_budget <- function(available_bytes, vector_limit_mb = Inf) {
   min(floor(available_bytes * 0.99), vector_limit_mb * 2^20)
 }
 
+# Embedded export memory: 1 GiB fixed plus this many bytes per nonzero. Measured
+# peak RSS was 52.6-57 bytes per nonzero from 50k cells up on both public
+# sources, so 58 keeps at least 10% headroom over every measured peak. A rare
+# underestimate in Scale is caught by the cgroup OOM handling as a resource skip.
+BENCH_EMBEDDED_BYTES_PER_NNZ <- 58
+
 bench_assess_resources <- function(
   inventory,
   plan,
   memory_mb,
   vector_limit_mb,
   free_disk_bytes,
-  bytes_per_nnz = 64,
+  bytes_per_nnz = BENCH_EMBEDDED_BYTES_PER_NNZ,
   fixed_memory_mb = 1024,
   memory_fraction = 0.70,
   disk_fraction = 0.80
