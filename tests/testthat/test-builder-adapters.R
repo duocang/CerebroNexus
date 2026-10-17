@@ -918,3 +918,129 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   expect_true(any(startsWith(state$remaining, "builder-build-stage-")))
   expect_length(worker$snapshot_registry, 0L)
 })
+
+.builder_local_worker_globals <- function(values, envir = parent.frame()) {
+  names <- c(names(values), ".builder_object_ledger")
+  prior <- lapply(names, function(name) {
+    if (exists(name, envir = globalenv(), inherits = FALSE)) {
+      list(present = TRUE, value = get(name, envir = globalenv()))
+    } else {
+      list(present = FALSE)
+    }
+  })
+  names(prior) <- names
+  withr::defer(
+    for (name in names) {
+      if (prior[[name]]$present) {
+        assign(name, prior[[name]]$value, envir = globalenv())
+      } else if (exists(name, envir = globalenv(), inherits = FALSE)) {
+        rm(list = name, envir = globalenv())
+      }
+    },
+    envir = envir
+  )
+  if (exists(".builder_object_ledger", envir = globalenv(), inherits = FALSE)) {
+    rm(list = ".builder_object_ledger", envir = globalenv())
+  }
+  for (name in names(values)) {
+    assign(name, values[[name]], envir = globalenv())
+  }
+  invisible(TRUE)
+}
+
+test_that("worker objects are evicted least-recently-used within the budget", {
+  objects <- new.env(parent = emptyenv())
+  mb <- 1024^2
+  .builder_local_worker_globals(list(
+    .builder_objects = objects,
+    .builder_object_budget = 20 * mb
+  ))
+  for (id in c("a", "b", "c")) {
+    value <- numeric(1024^2)
+    assign(id, value, envir = objects)
+    .builder_worker_touch_object(id, value)
+  }
+  # 3 x 8 MB exceeds 20 MB: the least recently used object goes first.
+  .builder_worker_touch_object("a")
+  evicted <- .builder_worker_evict_objects(keep = "a", reserve_bytes = 0)
+  expect_identical(evicted, "b")
+  expect_setequal(ls(objects), c("a", "c"))
+
+  # Making room for a decode releases more, but never the kept object.
+  evicted <- .builder_worker_evict_objects(keep = "a", reserve_bytes = 30 * mb)
+  expect_identical(evicted, "c")
+  expect_identical(ls(objects), "a")
+
+  # A dataset dropped elsewhere is forgotten by the ledger.
+  rm("a", envir = objects)
+  expect_length(.builder_worker_evict_objects(reserve_bytes = 0), 0L)
+  expect_length(.builder_worker_object_ledger()$bytes, 0L)
+})
+
+test_that("a zero budget keeps only the dataset in use", {
+  objects <- new.env(parent = emptyenv())
+  .builder_local_worker_globals(list(
+    .builder_objects = objects,
+    .builder_object_budget = 0
+  ))
+  for (id in c("a", "b")) {
+    assign(id, id, envir = objects)
+    .builder_worker_touch_object(id, id)
+  }
+  expect_identical(.builder_worker_evict_objects(keep = "b"), "a")
+  expect_identical(.builder_worker_evict_objects(), "b")
+})
+
+test_that("revisiting a resident dataset neither reopens nor rehashes it", {
+  root <- withr::local_tempdir()
+  objects <- new.env(parent = emptyenv())
+  snapshots <- new.env(parent = emptyenv())
+  .builder_local_worker_globals(list(
+    .builder_objects = objects,
+    .builder_snapshots = snapshots,
+    .builder_snapshot_root = root,
+    .builder_object_budget = 2^40
+  ))
+  for (id in c("a", "b")) {
+    path <- file.path(root, paste0(id, ".rds"))
+    saveRDS(SeuratObject::pbmc_small, path)
+    .builder_register_adapter(builder_seurat_file_adapter(path), id)
+  }
+  expect_setequal(ls(objects), c("a", "b"))
+
+  digests <- 0L
+  testthat::local_mocked_bindings(
+    md5sum = function(files) {
+      digests <<- digests + 1L
+      stop("unexpected content hash")
+    },
+    .package = "tools"
+  )
+  expect_s4_class(.builder_worker_object("a"), "Seurat")
+  expect_s4_class(.builder_worker_object("b"), "Seurat")
+  expect_identical(digests, 0L)
+
+  # An evicted dataset reopens from its own snapshot by stat and marker only.
+  rm("a", envir = objects)
+  expect_s4_class(.builder_worker_object("a"), "Seurat")
+  expect_identical(digests, 0L)
+  expect_setequal(ls(objects), c("a", "b"))
+  # The public reopen still verifies content.
+  expect_error(builder_open_snapshot(get("a", envir = snapshots)))
+  expect_identical(digests, 1L)
+})
+
+test_that("releasing an owned snapshot does not rehash its content", {
+  root <- withr::local_tempdir()
+  snapshot <- builder_snapshot_seurat(
+    SeuratObject::pbmc_small,
+    file.path(root, "release.snapshot"),
+    available_bytes = 2^40
+  )
+  testthat::local_mocked_bindings(
+    md5sum = function(files) stop("unexpected content hash"),
+    .package = "tools"
+  )
+  expect_true(.builder_snapshot_release(snapshot))
+  expect_false(dir.exists(snapshot$path))
+})

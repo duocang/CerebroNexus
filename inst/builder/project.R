@@ -2055,9 +2055,18 @@ builder_project_load_retained_source <- function(
       fileext = ".part"
     )
     on.exit(unlink(part, force = TRUE), add = TRUE)
-    copied <- .copy(source$source, part)
-    if (!isTRUE(copied) || !file.rename(part, target)) {
-      stop("The uploaded dataset source could not be retained.", call. = FALSE)
+    # A browser upload's temporary file belongs to Builder: on the same
+    # volume it is moved instead of copied. A user's own file is never moved.
+    moved <- isTRUE(source$transport_owned) &&
+      isTRUE(suppressWarnings(file.rename(source$source, target)))
+    if (!moved) {
+      copied <- .copy(source$source, part)
+      if (!isTRUE(copied) || !file.rename(part, target)) {
+        stop(
+          "The uploaded dataset source could not be retained.",
+          call. = FALSE
+        )
+      }
     }
   }
   target <- normalizePath(target, winslash = "/", mustWork = TRUE)

@@ -647,6 +647,14 @@ ui <- shiny::bootstrapPage(
             builder_dataset_extensions(available_only = TRUE)
           ),
           hidden = "hidden"
+        ),
+        # Shiny reports upload progress into this bar; builder.js mirrors it
+        # into the client import queue row.
+        tags$div(
+          id = "dataset_files_progress",
+          class = "shiny-file-input-progress builder-upload-transport-progress",
+          hidden = "hidden",
+          tags$div(class = "progress-bar")
         )
       )
     ),

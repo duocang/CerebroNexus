@@ -38,6 +38,8 @@
   var clientImportFailures = [];
   var activeClientImport = null;
   var uploadConnectionReady = true;
+  var datasetPickerOpening = false;
+  var datasetPickerTimer = null;
   var importSyncPending = false;
   var serverImportGate = false;
   var clientImportHandlersRegistered = false;
@@ -900,8 +902,9 @@
       );
       var retryQueueLocked =
         control.matches(".builder-retry-import") && clientImportQueue.length > 0;
+      var pickerLocked = datasetPickerOpening && control.matches(".builder-add-datasets");
       var controlLocked = datasetMutationsLocked ||
-        (activityLocked && !restoreControl) || retryQueueLocked;
+        (activityLocked && !restoreControl) || retryQueueLocked || pickerLocked;
       if ("disabled" in control) control.disabled = controlLocked;
       control.setAttribute(
         "aria-disabled",
@@ -1773,8 +1776,38 @@
     picker.click();
   }
 
+  // The native dialog is a separate process that can take seconds to appear;
+  // keep the add buttons busy until the server reports it closed.
+  function setDatasetPickerOpening(active) {
+    datasetPickerOpening = Boolean(active);
+    window.clearTimeout(datasetPickerTimer);
+    datasetPickerTimer = null;
+    if (datasetPickerOpening) {
+      datasetPickerTimer = window.setTimeout(function () {
+        setDatasetPickerOpening(false);
+      }, 300000);
+    }
+    document.querySelectorAll(".builder-add-datasets").forEach(function (control) {
+      control.setAttribute("aria-busy", datasetPickerOpening ? "true" : "false");
+      control.classList.toggle("is-picker-opening", datasetPickerOpening);
+      var label = control.querySelector(".builder-add-label");
+      if (!label) return;
+      if (datasetPickerOpening) {
+        if (!label.dataset.idleLabel) label.dataset.idleLabel = label.textContent;
+        label.textContent = "Opening file dialog…";
+      } else if (label.dataset.idleLabel) {
+        label.textContent = label.dataset.idleLabel;
+        delete label.dataset.idleLabel;
+      }
+    });
+    applyDatasetMutationLock();
+  }
+
   function addDatasetFiles() {
-    if (datasetMutationsLocked || !activityCapability("add_dataset")) return;
+    if (datasetMutationsLocked || datasetPickerOpening) return;
+    if (!activityCapability("add_dataset")) return;
+    setDatasetPickerOpening(true);
+    scheduleStatusAnnouncement("Opening file dialog…");
     send("builder_choose_dataset_files", { nonce: Date.now() });
   }
 
@@ -1815,13 +1848,57 @@
     if (entry.state === "unknown") return "Import state could not be restored";
     if (entry.state === "awaiting_dispatch") return "Preparing upload…";
     if (entry.state === "awaiting_upload") return "Waiting to upload…";
-    if (entry.state === "dispatching" || entry.state === "uploading") return "Uploading…";
+    var uploadPercent = typeof entry.uploadPercent === "number" ? entry.uploadPercent : null;
+    if (
+      entry.state === "dispatching" ||
+      entry.state === "uploading" ||
+      (entry.state === "awaiting_accept" && uploadPercent !== null && uploadPercent < 100)
+    ) {
+      return uploadPercent === null ? "Uploading…" : "Uploading… " + String(uploadPercent) + "%";
+    }
     if (entry.state === "awaiting_accept") return "Waiting for the server…";
     if (entry.state === "error" || entry.state === "rejected") {
       return entry.error || "Could not start this import";
     }
     return "Waiting · " + String(index + 1) + " in queue" +
       (entry.duplicateHint ? " · Possible duplicate" : "");
+  }
+
+  // Shiny reports transfer progress by resizing the hidden
+  // `#dataset_files_progress .progress-bar`; mirror it into the queue row.
+  function clientUploadPercent(bar) {
+    var width = bar && bar.style ? String(bar.style.width || "") : "";
+    var match = /^(\d+(?:\.\d+)?)%$/.exec(width.trim());
+    if (!match) return null;
+    return Math.max(0, Math.min(100, Math.round(Number(match[1]))));
+  }
+
+  function handleClientUploadProgress(percent) {
+    var entry = activeClientImport;
+    if (!entry || entry.kind !== "file" || entry.serverId) return;
+    if (!["uploading", "awaiting_accept"].includes(entry.state)) return;
+    if (percent === null || entry.uploadPercent === percent) return;
+    entry.uploadPercent = percent;
+    var container = document.getElementById("ds_client_import_queue");
+    if (!container) return;
+    var rows = container.querySelectorAll(".ds--client-upload");
+    for (var index = 0; index < rows.length; index += 1) {
+      if (rows[index].dataset.clientImportId !== entry.clientId) continue;
+      var status = rows[index].querySelector(".builder-import-status");
+      if (status) {
+        status.textContent = clientQueueStatus(entry, clientImportQueue.indexOf(entry));
+      }
+    }
+  }
+
+  function observeClientUploadProgress() {
+    var bar = document.querySelector("#dataset_files_progress .progress-bar");
+    if (!bar || bar.dataset.uploadProgressBound === "true") return;
+    if (typeof MutationObserver !== "function") return;
+    bar.dataset.uploadProgressBound = "true";
+    new MutationObserver(function () {
+      handleClientUploadProgress(clientUploadPercent(bar));
+    }).observe(bar, { attributes: true, attributeFilter: ["style"] });
   }
 
   function applyClientImportQueueLock(roots) {
@@ -1926,6 +2003,7 @@
       return;
     }
     entry.state = "uploading";
+    entry.uploadPercent = 0;
     try {
       var transfer = new DataTransfer();
       transfer.items.add(entry.file);
@@ -5323,7 +5401,16 @@
     );
     window.Shiny.addCustomMessageHandler(
       "builder_dataset_picker_fallback",
-      openDatasetPicker
+      function (message) {
+        setDatasetPickerOpening(false);
+        openDatasetPicker(message);
+      }
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_picker_state",
+      function (message) {
+        setDatasetPickerOpening(Boolean(message && message.active));
+      }
     );
     window.Shiny.addCustomMessageHandler(
       "builder_import_scheduler_state",
@@ -5417,6 +5504,7 @@
     if (feedback) feedback.remove();
     builderConnectionReady = false;
     uploadConnectionReady = false;
+    setDatasetPickerOpening(false);
     importSyncPending = true;
     clientImportQueue.forEach(function (entry) {
       entry.stateBeforePause = entry.state;
@@ -5447,6 +5535,7 @@
     setupProjectRestoreEvents();
     registerBuildDialogHandler();
     registerClientImportHandlers();
+    observeClientUploadProgress();
     registerViewerGroupHandler();
     registerViewerContentHandlers();
 

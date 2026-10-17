@@ -301,6 +301,87 @@ if (builder_protocol_api_available) {
     )
   })
 
+  test_that("preview queries overtake queued loads of other datasets", {
+    protocol <- builder_request_protocol(epoch = "worker-1")
+    protocol <- builder_enqueue(protocol, builder_command("load", "b"))
+    dispatched <- builder_protocol_dispatch(protocol)
+    protocol <- dispatched$protocol
+    for (id in c("c", "d", "e")) {
+      protocol <- builder_enqueue(protocol, builder_command("load", id))
+    }
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("projection_previews", "a", 1L, slot = "gallery")
+    )
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "a", 2L, slot = "projection")
+    )
+
+    # The running load stays pending; the queries jump the queued loads but
+    # keep their own FIFO order.
+    expect_identical(protocol$pending$id, "load:b")
+    expect_identical(
+      builder_pending_ids(protocol),
+      c(
+        "projection_previews:a:gallery:1",
+        "preview:a:projection:2",
+        "load:c",
+        "load:d",
+        "load:e"
+      )
+    )
+    persistent <- Filter(
+      function(request) isTRUE(request$persistent),
+      protocol$queue
+    )
+    expect_identical(
+      vapply(persistent, `[[`, integer(1), "persistent_sequence"),
+      2:4
+    )
+
+    protocol <- builder_protocol_complete(
+      protocol,
+      builder_worker_response(dispatched$request, list())
+    )$protocol
+    protocol <- builder_protocol_acknowledge(
+      protocol,
+      dispatched$request$request_id
+    )
+    expect_identical(
+      builder_protocol_dispatch(protocol)$request$id,
+      "projection_previews:a:gallery:1"
+    )
+  })
+
+  test_that("queries never overtake their own load or other commands", {
+    protocol <- builder_request_protocol(epoch = "worker-1")
+    protocol <- builder_enqueue(protocol, builder_command("load", "a"))
+    protocol <- builder_enqueue(protocol, builder_command("settings", "b"))
+    protocol <- builder_enqueue(protocol, builder_command("load", "c"))
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "b", 1L, slot = "projection")
+    )
+    protocol <- builder_enqueue(protocol, builder_command("load", "d"))
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "d", 1L, slot = "projection")
+    )
+
+    expect_identical(
+      builder_pending_ids(protocol),
+      c(
+        "load:a",
+        "settings:b",
+        "preview:b:projection:1",
+        "load:c",
+        "load:d",
+        "preview:d:projection:1"
+      )
+    )
+  })
+
   test_that("query replacement never crosses dataset or logical slot", {
     protocol <- builder_request_protocol(epoch = "worker-1")
     protocol <- builder_enqueue(
@@ -1341,13 +1422,14 @@ if (builder_lifecycle_api_available) {
     expect_true(.builder_snapshot_owned(fixture$snapshot))
   })
 
-  test_that("worker snapshots keep only one decoded dataset resident", {
+  test_that("a zero object budget keeps one decoded dataset resident", {
     skip_if_not_installed("callr")
     root <- withr::local_tempdir()
     worker <- builder_worker_start(
       builder_profile_inst_path("builder"),
       snapshot_root = root,
-      snapshot_registry = list()
+      snapshot_registry = list(),
+      .object_budget = 0
     )
     withr::defer(try(builder_worker_stop(worker), silent = TRUE))
 
@@ -1377,6 +1459,84 @@ if (builder_lifecycle_api_available) {
     expect_identical(residency$registered, paste0("dataset-", letters[1:3]))
     expect_identical(residency$reopened, 80L)
     expect_identical(residency$resident_after_reopen, "dataset-a")
+  })
+
+  test_that("an object budget keeps recently used datasets resident", {
+    skip_if_not_installed("callr")
+    root <- withr::local_tempdir()
+    worker <- builder_worker_start(
+      builder_profile_inst_path("builder"),
+      snapshot_root = root,
+      snapshot_registry = list(),
+      .object_budget = 2^40
+    )
+    withr::defer(try(builder_worker_stop(worker), silent = TRUE))
+
+    residency <- worker$process$run(
+      function(object) {
+        ids <- paste0("dataset-", letters[1:3])
+        for (index in seq_along(ids)) {
+          object@project.name <- ids[[index]]
+          .builder_register_adapter(
+            builder_example_adapter(ids[[index]], object),
+            ids[[index]]
+          )
+        }
+        counter <- new.env(parent = emptyenv())
+        counter$opened <- 0L
+        original <- get(".builder_open_snapshot", envir = globalenv())
+        assign(
+          ".builder_open_snapshot",
+          function(...) {
+            counter$opened <- counter$opened + 1L
+            original(...)
+          },
+          envir = globalenv()
+        )
+        on.exit(assign(".builder_open_snapshot", original, envir = globalenv()))
+        objects <- get(".builder_objects", envir = globalenv())
+        first <- as.integer(ncol(.builder_worker_object(ids[[1L]])))
+        second <- as.integer(ncol(.builder_worker_object(ids[[2L]])))
+        resident <- ls(objects, all.names = TRUE)
+        rm(list = ids[[1L]], envir = objects)
+        reopened <- as.integer(ncol(.builder_worker_object(ids[[1L]])))
+        list(
+          budget = get(".builder_object_budget", envir = globalenv()),
+          resident = resident,
+          cells = c(first, second, reopened),
+          opened = counter$opened
+        )
+      },
+      args = list(object = SeuratObject::pbmc_small)
+    )
+
+    expect_identical(residency$budget, 2^40)
+    expect_identical(residency$resident, paste0("dataset-", letters[1:3]))
+    expect_identical(residency$cells, c(80L, 80L, 80L))
+    # Only the evicted dataset was reopened from its snapshot.
+    expect_identical(residency$opened, 1L)
+  })
+
+  test_that("the worker object budget defaults to a quarter of memory", {
+    expect_identical(builder_worker_object_budget(0), 0)
+    expect_identical(builder_worker_object_budget(5e9), 5e9)
+    expect_identical(
+      builder_worker_object_budget(NULL, .total_memory = function() 16e9),
+      4e9
+    )
+    expect_identical(
+      builder_worker_object_budget(-1, .total_memory = function() 16e9),
+      4e9
+    )
+    expect_identical(
+      builder_worker_object_budget(
+        NULL,
+        .total_memory = function() stop("unavailable")
+      ),
+      2 * 1024^3
+    )
+    withr::local_options(CerebroNexus.builder.worker_object_budget = 123)
+    expect_identical(builder_worker_object_budget(), 123)
   })
 
   test_that("restart removes only verified unregistered snapshot artifacts", {
@@ -1509,18 +1669,30 @@ if (builder_lifecycle_api_available) {
     )
     worker$process$close()
 
+    started <- Sys.time()
     polled <- builder_worker_poll(worker, timeout = 0)
-    withr::defer(try(polled$worker$process$close(), silent = TRUE))
+    elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+    withr::defer(try(polled$worker$process$kill_tree(), silent = TRUE))
 
     expect_identical(polled$event, "restarted")
-    expect_true(polled$worker$ready)
-    expect_equal(
-      builder_worker_cell_count(polled$worker, "dataset-a"),
-      80L
-    )
+    # The replacement re-sources its runtime in the background.
+    expect_identical(polled$worker$state, "starting")
+    expect_false(polled$worker$ready)
+    expect_lt(elapsed, 10)
+    restarted <- polled$worker
+    deadline <- Sys.time() + 60
+    repeat {
+      startup <- builder_worker_poll_startup(restarted, timeout = 100L)
+      restarted <- startup$worker
+      if (!identical(startup$state, "starting") || Sys.time() > deadline) {
+        break
+      }
+    }
+    expect_identical(startup$state, "ready")
+    expect_equal(builder_worker_cell_count(restarted, "dataset-a"), 80L)
   })
 
-  test_that("poll returns a typed event when snapshot restore fails", {
+  test_that("a background restart reports a failed snapshot restore", {
     skip_if_not_installed("callr")
     root <- withr::local_tempdir()
     snapshot <- builder_snapshot_seurat(
@@ -1537,16 +1709,26 @@ if (builder_lifecycle_api_available) {
     worker$process$close()
 
     polled <- builder_worker_poll(worker, timeout = 0)
+    withr::defer(try(polled$worker$process$kill_tree(), silent = TRUE))
 
-    expect_identical(polled$event, "restart_failed")
+    expect_identical(polled$event, "restarted")
+    expect_null(polled$result)
+    restarted <- polled$worker
+    deadline <- Sys.time() + 60
+    repeat {
+      startup <- builder_worker_poll_startup(restarted, timeout = 100L)
+      restarted <- startup$worker
+      if (!identical(startup$state, "starting") || Sys.time() > deadline) {
+        break
+      }
+    }
+    expect_identical(startup$state, "failed")
     expect_match(
-      polled$error,
+      startup$error,
       "snapshot is no longer owned",
       ignore.case = TRUE
     )
-    expect_null(polled$result)
-    expect_false(polled$worker$ready)
-    expect_false(polled$worker$process$is_alive())
+    expect_false(restarted$ready)
   })
 
   test_that("a callr read failure is one completed typed error", {
@@ -2307,4 +2489,122 @@ test_that("worker tree inspection rejects a child that exits during lookup", {
   expect_length(tree$handles, 0L)
   expect_match(tree$error, "could not be inspected", fixed = TRUE)
   expect_identical(calls, 2L)
+})
+
+test_that("worker tree inspection finds marked descendants without a ppid scan", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("ps")
+  skip_if_not(ps::ps_is_supported())
+  process <- callr::r_session$new()
+  withr::defer(try(process$kill_tree(), silent = TRUE))
+  marker <- .builder_worker_tree_marker(process)
+  expect_match(marker, "^PS[0-9A-Za-z]+_[0-9]+$")
+  process$call(function() {
+    child <- processx::process$new(
+      file.path(R.home("bin"), "Rscript"),
+      c("-e", "Sys.sleep(60)")
+    )
+    Sys.sleep(60)
+  })
+  deadline <- Sys.time() + 20
+  repeat {
+    named <- vapply(
+      ps::ps_find_tree(marker),
+      function(handle) tolower(ps::ps_name(handle)),
+      character(1)
+    )
+    if (sum(grepl("^r(term|script)", named)) >= 2L || Sys.time() > deadline) {
+      break
+    }
+    Sys.sleep(0.1)
+  }
+  # ps_children() opens every process on the machine (~40 s on Windows); the
+  # marker scan must be the only descendant lookup for a processx worker.
+  testthat::local_mocked_bindings(
+    ps_children = function(...) stop("unexpected machine-wide ppid scan"),
+    .package = "ps"
+  )
+  started <- Sys.time()
+  tree <- .builder_worker_tree_handles(process)
+  elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+
+  expect_null(tree$error)
+  expect_lt(elapsed, 5)
+  pids <- vapply(tree$handles, ps::ps_pid, integer(1))
+  expect_identical(pids[[1L]], process$get_pid())
+  expect_false(anyDuplicated(pids) > 0L)
+  expect_gte(length(pids), 2L)
+  expect_false(Sys.getpid() %in% pids)
+})
+
+test_that("a process without a processx marker keeps the ppid lookup", {
+  expect_null(.builder_worker_tree_marker(list(get_pid = function() 1L)))
+  private <- new.env()
+  private$tree_id <- "not a marker"
+  enclosure <- new.env()
+  enclosure$private <- private
+  process <- new.env()
+  process$.__enclos_env__ <- enclosure
+  expect_null(.builder_worker_tree_marker(process))
+  private$tree_id <- "PS18d40778f47b_1792237909"
+  expect_identical(
+    .builder_worker_tree_marker(process),
+    "PS18d40778f47b_1792237909"
+  )
+})
+
+test_that("a verified stop of a busy worker settles in seconds", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("ps")
+  skip_if_not(ps::ps_is_supported())
+  root <- withr::local_tempdir()
+  process <- callr::r_session$new()
+  withr::defer(try(process$kill_tree(), silent = TRUE))
+  process$call(function() {
+    processx::process$new(
+      file.path(R.home("bin"), "Rscript"),
+      c("-e", "Sys.sleep(60)")
+    )
+    Sys.sleep(60)
+  })
+  Sys.sleep(1)
+  marker <- .builder_worker_tree_marker(process)
+  worker <- structure(
+    list(
+      process = process,
+      state = "ready",
+      snapshot_root = root,
+      snapshot_registry = list()
+    ),
+    class = c("builder_worker", "list")
+  )
+
+  started <- Sys.time()
+  stopped <- builder_worker_stop(worker, grace_ms = 500L)
+  elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+
+  expect_true(stopped$stopped)
+  expect_true(stopped$tree_verified)
+  expect_lt(elapsed, 15)
+  expect_false(process$is_alive())
+  alive <- vapply(
+    ps::ps_find_tree(marker),
+    function(handle) isTRUE(ps::ps_is_running(handle)),
+    logical(1)
+  )
+  expect_false(any(alive))
+})
+
+test_that("worker setup trusts registered snapshots without rehashing", {
+  worker <- paste(readLines(builder_worker_path, warn = FALSE), collapse = "\n")
+  expect_match(
+    worker,
+    "if (!.builder_snapshot_owned(snapshot, verify_content = FALSE)) {",
+    fixed = TRUE
+  )
+  expect_match(
+    worker,
+    "restarted <- builder_worker_restart(worker, .async = TRUE)",
+    fixed = TRUE
+  )
 })

@@ -78,6 +78,80 @@ test_that("Builder MD5 identities retain their existing byte-level format", {
   expect_identical(readBin(destination, "raw", n = 10L), bytes)
 })
 
+test_that("a verified copy hashes while copying instead of rereading", {
+  builder_repo_source("io.R", local = environment())
+  skip_if(is.null(.builder_md5_stream()))
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  bytes <- as.raw(sample(0:255, 300000L, replace = TRUE))
+  writeBin(bytes, source)
+  expected <- unname(tools::md5sum(source))
+  progress <- list()
+  testthat::local_mocked_bindings(
+    md5sum = function(files) stop("the copy must not be reread"),
+    .package = "tools"
+  )
+
+  result <- builder_copy_file_verified(
+    source,
+    file.path(root, "copy"),
+    expected_md5 = expected,
+    buffer_bytes = 65536L,
+    on_progress = function(done, total) {
+      progress[[length(progress) + 1L]] <<- c(done, total)
+    }
+  )
+
+  expect_identical(result$md5, expected)
+  expect_identical(result$bytes, 300000)
+  expect_identical(readBin(result$path, "raw", n = 400000L), bytes)
+  expect_length(progress, 5L)
+  expect_identical(progress[[5L]], c(300000, 300000))
+  expect_true(all(diff(vapply(progress, `[[`, numeric(1), 1L)) > 0))
+  expect_error(
+    builder_copy_file_verified(
+      source,
+      file.path(root, "mismatch"),
+      expected_md5 = strrep("0", 32L)
+    ),
+    "does not match"
+  )
+  expect_false(file.exists(file.path(root, "mismatch")))
+})
+
+test_that("a verified copy falls back to hashing the file", {
+  builder_repo_source("io.R", local = environment())
+  .builder_md5_stream <- function() NULL
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  writeBin(charToRaw("abc"), source)
+  result <- builder_copy_file_verified(source, file.path(root, "copy"))
+  expect_identical(result$md5, "900150983cd24fb0d6963f7d28e17f72")
+})
+
+test_that("only files under the session temp folder count as owned uploads", {
+  builder_repo_source("io.R", local = environment())
+  temp_root <- withr::local_tempdir()
+  other <- withr::local_tempdir()
+  upload_dir <- file.path(temp_root, "shiny-upload")
+  dir.create(upload_dir)
+  upload <- file.path(upload_dir, "0.qs2")
+  outside <- file.path(other, "dataset.qs2")
+  writeBin(charToRaw("x"), upload)
+  writeBin(charToRaw("x"), outside)
+
+  expect_true(builder_upload_transport_owned(upload, temp_root = temp_root))
+  expect_false(builder_upload_transport_owned(outside, temp_root = temp_root))
+  expect_false(builder_upload_transport_owned(upload_dir, temp_root = temp_root))
+  expect_false(builder_upload_transport_owned(
+    file.path(upload_dir, "missing.qs2"),
+    temp_root = temp_root
+  ))
+  expect_false(builder_upload_transport_owned(temp_root, temp_root = temp_root))
+  expect_false(builder_upload_transport_owned(NA_character_))
+  expect_false(builder_upload_transport_owned(c(upload, upload)))
+})
+
 test_that("export spatial projections use shared x and y axis semantics", {
   expect_true(exists(".spx_export_projection_coordinates", mode = "function"))
   if (!exists(".spx_export_projection_coordinates", mode = "function")) {

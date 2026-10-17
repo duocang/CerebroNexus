@@ -959,9 +959,10 @@ apply_protocol_recovery <- function(
   invisible(TRUE)
 }
 
-## `async = TRUE` is for user-requested stops: the worker is killed without
-## waiting for an interrupt (which callr cannot deliver on Windows) and the
-## replacement boots in the background, so the page stays responsive.
+## The replacement always boots in the background so the page stays
+## responsive while the worker re-sources its runtime. `async = TRUE` is for
+## user-requested stops: the old worker is killed without waiting for an
+## interrupt (which callr cannot deliver on Windows).
 restart_worker_protocol <- function(
   current_worker,
   current_protocol,
@@ -974,7 +975,7 @@ restart_worker_protocol <- function(
     builder_worker_restart(
       current_worker,
       grace_ms = grace_ms,
-      .async = isTRUE(async),
+      .async = TRUE,
       verify_tree = !isTRUE(async)
     ),
     silent = TRUE
@@ -1010,29 +1011,40 @@ restart_worker_protocol <- function(
     retry_persistent = TRUE,
     notify = notify
   )
-  if (isTRUE(async) && identical(restarted$state, "starting")) {
-    ## The dispatcher holds requeued work until poll_builder_worker_startup
-    ## reports the replacement ready.
-    worker_available(FALSE)
-    session$sendCustomMessage(
-      "builder_worker_status",
-      list(
-        state = "starting",
-        title = "Restarting background workspace…",
-        detail = "Stopping the cancelled task…"
-      )
-    )
-    later::later(
-      function() {
-        shiny::withReactiveDomain(
-          builder_lifecycle_session,
-          poll_builder_worker_startup()
-        )
-      },
-      delay = 0.1
+  if (isTRUE(recovered) && identical(restarted$state, "starting")) {
+    await_restarted_worker(
+      if (isTRUE(async)) {
+        "Stopping the cancelled task…"
+      } else {
+        "Reopening datasets from their snapshots…"
+      }
     )
   }
   recovered
+}
+
+## The dispatcher holds requeued work until poll_builder_worker_startup
+## reports a background-started replacement ready.
+await_restarted_worker <- function(detail) {
+  worker_available(FALSE)
+  session$sendCustomMessage(
+    "builder_worker_status",
+    list(
+      state = "starting",
+      title = "Restarting background workspace…",
+      detail = detail
+    )
+  )
+  later::later(
+    function() {
+      shiny::withReactiveDomain(
+        builder_lifecycle_session,
+        poll_builder_worker_startup()
+      )
+    },
+    delay = 0.1
+  )
+  invisible(TRUE)
 }
 
 start_builder_worker <- function() {
@@ -1207,7 +1219,23 @@ poll_builder_worker_startup <- function() {
     return(invisible(TRUE))
   }
   if (identical(startup$state, "failed")) {
-    add_error(startup$error)
+    current_protocol <- shiny::isolate(protocol())
+    if (
+      !is.null(current_protocol) &&
+        !builder_protocol_is_quiescent(current_protocol)
+    ) {
+      ## A background restart failed after requeueing work: terminate it the
+      ## same way a synchronous restart failure would.
+      apply_protocol_recovery(
+        current_protocol,
+        startup$worker,
+        "The background worker could not restart.",
+        retry_persistent = FALSE,
+        error = startup$error
+      )
+    } else {
+      add_error(startup$error)
+    }
     session$sendCustomMessage(
       "builder_worker_status",
       list(
