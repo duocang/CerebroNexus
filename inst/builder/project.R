@@ -1468,6 +1468,234 @@ builder_project_publish_verified_file <- function(part, target, md5, message) {
   fingerprint
 }
 
+## Incremental MD5 so a streamed copy is hashed while its bytes pass through.
+## Uses openssl's digest state when that package is installed; NULL means
+## the caller hashes the finished file once with tools::md5sum().
+.builder_project_md5_stream <- function() {
+  if (!requireNamespace("openssl", quietly = TRUE)) {
+    return(NULL)
+  }
+  namespace <- getNamespace("openssl")
+  functions <- lapply(
+    c(init = "md_init", feed = "md_feed", final = "md_final"),
+    function(name) {
+      get0(name, envir = namespace, mode = "function", inherits = FALSE)
+    }
+  )
+  if (!all(vapply(functions, is.function, logical(1)))) {
+    return(NULL)
+  }
+  state <- tryCatch(functions$init("md5"), error = function(error) NULL)
+  if (is.null(state)) {
+    return(NULL)
+  }
+  list(
+    feed = function(bytes) functions$feed(state, bytes),
+    final = function() {
+      tolower(paste(as.character(functions$final(state)), collapse = ""))
+    }
+  )
+}
+
+## MD5 of a file, read in chunks so `progress(bytes)` can report as it goes.
+builder_project_stream_md5 <- function(
+  path,
+  progress = NULL,
+  buffer_bytes = 16L * 1024L^2
+) {
+  stream <- .builder_project_md5_stream()
+  if (is.null(stream)) {
+    md5 <- unname(tolower(as.character(tools::md5sum(path))))
+    if (is.function(progress)) {
+      progress(suppressWarnings(as.double(file.info(path)$size[[1L]])))
+    }
+    return(md5)
+  }
+  input <- file(path, open = "rb")
+  on.exit(close(input), add = TRUE)
+  done <- 0
+  repeat {
+    bytes <- readBin(input, what = "raw", n = as.integer(buffer_bytes))
+    if (!length(bytes)) {
+      break
+    }
+    stream$feed(bytes)
+    done <- done + length(bytes)
+    if (is.function(progress)) {
+      progress(done)
+    }
+  }
+  stream$final()
+}
+
+## Copies a file to a new destination, hashing while streaming and reporting
+## `progress(bytes)`. Same contract as builder_copy_file_verified() in io.R.
+builder_project_stream_copy <- function(
+  source,
+  destination,
+  expected_md5 = NULL,
+  progress = NULL,
+  buffer_bytes = 16L * 1024L^2
+) {
+  if (
+    !.builder_project_text(source) ||
+      !file.exists(source) ||
+      dir.exists(source) ||
+      !.builder_project_text(destination) ||
+      file.exists(destination)
+  ) {
+    stop(
+      "A verified copy requires one file and a new destination.",
+      call. = FALSE
+    )
+  }
+  expected_md5 <- if (is.null(expected_md5)) NULL else tolower(expected_md5)
+  if (
+    !is.null(expected_md5) &&
+      (length(expected_md5) != 1L ||
+        !grepl("^[[:xdigit:]]{32}$", expected_md5))
+  ) {
+    stop("The expected file MD5 is invalid.", call. = FALSE)
+  }
+  expected_bytes <- suppressWarnings(as.double(file.info(source)$size[[1L]]))
+  input <- output <- NULL
+  complete <- FALSE
+  on.exit(
+    {
+      if (!is.null(input)) {
+        try(close(input), silent = TRUE)
+      }
+      if (!is.null(output)) {
+        try(close(output), silent = TRUE)
+      }
+      if (!complete) unlink(destination, force = TRUE)
+    },
+    add = TRUE
+  )
+  if (
+    identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
+      file.exists("/bin/cp")
+  ) {
+    # APFS clones share blocks; only the verification read remains.
+    status <- suppressWarnings(system2(
+      "/bin/cp",
+      c("-c", "--", shQuote(source), shQuote(destination)),
+      stdout = FALSE,
+      stderr = FALSE
+    ))
+    if (isTRUE(status == 0L) && file.exists(destination)) {
+      cloned <- suppressWarnings(as.double(file.info(destination)$size[[1L]]))
+      actual_md5 <- builder_project_stream_md5(destination, progress = progress)
+      if (
+        !is.finite(expected_bytes) ||
+          !identical(cloned, expected_bytes) ||
+          !grepl("^[[:xdigit:]]{32}$", actual_md5) ||
+          (!is.null(expected_md5) && !identical(actual_md5, expected_md5))
+      ) {
+        stop("The cloned file could not be verified.", call. = FALSE)
+      }
+      complete <- TRUE
+      return(list(path = destination, bytes = cloned, md5 = actual_md5))
+    }
+    unlink(destination, force = TRUE)
+  }
+  stream <- .builder_project_md5_stream()
+  input <- file(source, open = "rb")
+  output <- file(destination, open = "wb")
+  copied <- 0
+  repeat {
+    bytes <- readBin(input, what = "raw", n = as.integer(buffer_bytes))
+    if (!length(bytes)) {
+      break
+    }
+    writeBin(bytes, output)
+    if (!is.null(stream)) {
+      stream$feed(bytes)
+    }
+    copied <- copied + length(bytes)
+    if (is.function(progress)) {
+      progress(copied)
+    }
+  }
+  close(input)
+  close(output)
+  input <- output <- NULL
+  if (
+    !is.finite(expected_bytes) || !identical(as.double(copied), expected_bytes)
+  ) {
+    stop(
+      "The source file ended before the verified copy completed.",
+      call. = FALSE
+    )
+  }
+  actual_md5 <- if (is.null(stream)) {
+    unname(tolower(as.character(tools::md5sum(destination))))
+  } else {
+    stream$final()
+  }
+  if (!is.null(expected_md5) && !identical(actual_md5, expected_md5)) {
+    stop("The copied file does not match its saved MD5.", call. = FALSE)
+  }
+  complete <- TRUE
+  list(path = destination, bytes = as.double(copied), md5 = actual_md5)
+}
+
+## Whether a source path is the Builder's own retained session copy (under
+## `<session root>/session-sources/`, without links), which a Save may move
+## into the Project instead of copying.
+builder_project_session_owned_source <- function(path, session_root) {
+  if (
+    !.builder_project_text(path) ||
+      !.builder_project_text(session_root) ||
+      !dir.exists(session_root) ||
+      !file.exists(path) ||
+      dir.exists(path)
+  ) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      rebased <- .builder_project_rebase_lexical_path(path, session_root)
+      source_root <- file.path(rebased$root, "session-sources")
+      dir.exists(source_root) &&
+        !nzchar(Sys.readlink(source_root)) &&
+        startsWith(rebased$path, paste0(source_root, "/")) &&
+        !.builder_project_path_has_link_within(rebased$path, rebased$root)
+    },
+    error = function(error) FALSE
+  ))
+}
+
+## Live entries that still point at a session copy moved into the Project
+## now point at its Project blob.
+builder_project_relocate_moved_sources <- function(entries, results) {
+  moved <- Filter(
+    function(result) {
+      identical(result$status, "ready") &&
+        .builder_project_text(result$moved_from %||% NULL) &&
+        .builder_project_text(result$path %||% NULL)
+    },
+    results %||% list()
+  )
+  if (!length(moved)) {
+    return(entries)
+  }
+  from <- vapply(moved, function(result) {
+    normalizePath(result$moved_from, winslash = "/", mustWork = FALSE)
+  }, character(1))
+  lapply(entries, function(entry) {
+    path <- entry$path %||% NULL
+    if (!.builder_project_text(path)) {
+      return(entry)
+    }
+    index <- match(normalizePath(path, winslash = "/", mustWork = FALSE), from)
+    if (!is.na(index) && !file.exists(path)) {
+      entry$path <- normalizePath(moved[[index]]$path, winslash = "/", mustWork = TRUE)
+    }
+    entry
+  })
+}
+
 ## Fingerprints of sources this process published or verified, keyed by path
 ## and stat identity. A warm copier keeps it between calls, so a job queued
 ## again for an already-published blob is skipped without re-reading it.
@@ -1546,8 +1774,13 @@ builder_project_source_queue_add <- function(queued, jobs, running = list()) {
   queued
 }
 
-builder_project_copy_source_job <- function(job) {
+builder_project_copy_source_job <- function(job, progress = NULL) {
+  moved <- NULL
   fail <- function(message) {
+    if (is.list(moved) && file.exists(job$part) && !file.exists(job$source)) {
+      # Never discard the session copy: put it back where the entry expects.
+      suppressWarnings(file.rename(job$part, job$source))
+    }
     if (is.character(job$part) && length(job$part) == 1L) {
       unlink(job$part, force = TRUE)
     }
@@ -1589,28 +1822,37 @@ builder_project_copy_source_job <- function(job) {
     return(fail("The Project source directory could not be created."))
   }
   unlink(job$part, force = TRUE)
-  before <- builder_project_file_metadata(job$source)
-  copied <- tryCatch(
-    builder_copy_file_verified(
-      job$source,
-      job$part,
-      expected_md5 = job$source_md5 %||% NULL
-    ),
-    error = identity
-  )
-  after <- builder_project_file_metadata(job$source)
-  if (
-    inherits(copied, "condition") ||
-      !builder_project_fingerprint_metadata_matches(before, after) ||
-      !builder_project_fingerprint_stat_matches(before, after)
-  ) {
-    return(fail(
-      if (inherits(copied, "condition")) {
-        conditionMessage(copied)
-      } else {
-        "The dataset source changed while it was copied."
-      }
-    ))
+  moved <- builder_project_move_session_source(job, progress)
+  if (is.list(moved) && identical(moved$status, "failed")) {
+    return(fail(moved$error))
+  }
+  if (is.list(moved)) {
+    copied <- moved
+  } else {
+    before <- builder_project_file_metadata(job$source)
+    copied <- tryCatch(
+      builder_project_stream_copy(
+        job$source,
+        job$part,
+        expected_md5 = job$source_md5 %||% NULL,
+        progress = progress
+      ),
+      error = identity
+    )
+    after <- builder_project_file_metadata(job$source)
+    if (
+      inherits(copied, "condition") ||
+        !builder_project_fingerprint_metadata_matches(before, after) ||
+        !builder_project_fingerprint_stat_matches(before, after)
+    ) {
+      return(fail(
+        if (inherits(copied, "condition")) {
+          conditionMessage(copied)
+        } else {
+          "The dataset source changed while it was copied."
+        }
+      ))
+    }
   }
   source_md5 <- copied$md5
   job$relative <- paste(
@@ -1657,36 +1899,139 @@ builder_project_copy_source_job <- function(job) {
     status = "ready",
     path = job$target,
     fingerprint = fingerprint,
-    planned = planned
+    planned = planned,
+    moved_from = if (is.list(moved)) job$source else NULL
   )
 }
 
-builder_project_copy_source_jobs <- function(jobs, progress_path = NULL) {
+## Moves the Builder's own session copy into the Project (same volume) instead
+## of copying it and deleting the session copy later. Only content-addressed
+## jobs qualify, so a later Save finds the blob even if the move outlives the
+## entry that pointed at the session copy. Returns NULL to fall back to a
+## copy, a "failed" result, or the copy-shaped result with the verified MD5.
+builder_project_move_session_source <- function(job, progress = NULL) {
+  md5 <- builder_project_recorded_fingerprint_md5(list(
+    md5 = job$source_md5 %||% NULL
+  ))
+  if (
+    !isTRUE(job$session_owned) ||
+      !.builder_project_text(md5) ||
+      !builder_project_content_addressed_source(job$relative, job$id)
+  ) {
+    return(NULL)
+  }
+  before <- builder_project_file_metadata(job$source)
+  if (
+    is.null(before) ||
+      !isTRUE(suppressWarnings(file.rename(job$source, job$part)))
+  ) {
+    return(NULL)
+  }
+  restore <- function(message) {
+    restored <- isTRUE(suppressWarnings(file.rename(job$part, job$source)))
+    list(
+      status = "failed",
+      error = if (restored) {
+        message
+      } else {
+        paste(message, "The session copy is at:", job$part)
+      }
+    )
+  }
+  staged <- builder_project_file_metadata(job$part)
+  if (
+    !builder_project_fingerprint_metadata_matches(before, staged) ||
+      !identical(before$file_id %||% NULL, staged$file_id %||% NULL)
+  ) {
+    return(restore("The dataset source changed while it was moved."))
+  }
+  # The bytes were never rewritten, but a new immutable blob is still
+  # checked against its recorded MD5 (one read, reported as progress).
+  actual <- tryCatch(
+    builder_project_stream_md5(job$part, progress = progress),
+    error = identity
+  )
+  after <- builder_project_file_metadata(job$part)
+  if (
+    inherits(actual, "condition") ||
+      !builder_project_fingerprint_metadata_matches(staged, after)
+  ) {
+    return(restore("The dataset source changed while it was verified."))
+  }
+  if (!identical(actual, md5)) {
+    return(restore("The moved file does not match its saved MD5."))
+  }
+  list(
+    status = "moved",
+    path = job$part,
+    bytes = as.double(after$bytes),
+    md5 = actual
+  )
+}
+
+builder_project_copy_source_jobs <- function(
+  jobs,
+  progress_path = NULL,
+  progress_interval = 0.25
+) {
   results <- vector("list", length(jobs))
   failed <- 0L
+  sizes <- vapply(
+    jobs,
+    function(job) {
+      size <- suppressWarnings(as.double(file.info(job$source %||% "")$size[[1L]]))
+      if (is.finite(size)) size else 0
+    },
+    numeric(1)
+  )
+  bytes_total <- sum(sizes)
+  bytes_finished <- 0
+  last_written <- -Inf
+  write_progress <- function(completed, bytes_done, current = NULL, last = NULL) {
+    if (!.builder_project_text(progress_path)) {
+      return(invisible(FALSE))
+    }
+    temporary <- paste0(progress_path, ".tmp")
+    saveRDS(
+      list(
+        completed = completed,
+        total = length(jobs),
+        failed = failed,
+        bytes_done = min(bytes_total, bytes_done),
+        bytes_total = bytes_total,
+        current = current,
+        last = last
+      ),
+      temporary,
+      version = 3L
+    )
+    moved <- try(fs::file_move(temporary, progress_path), silent = TRUE)
+    if (inherits(moved, "try-error")) {
+      unlink(temporary, force = TRUE)
+    }
+    last_written <<- as.numeric(Sys.time())
+    invisible(TRUE)
+  }
   for (index in seq_along(jobs)) {
-    results[[index]] <- builder_project_copy_source_job(jobs[[index]])
-    failed <- failed + as.integer(identical(results[[index]]$status, "failed"))
-    if (.builder_project_text(progress_path)) {
-      temporary <- paste0(progress_path, ".tmp")
-      saveRDS(
-        list(
-          completed = index,
-          total = length(jobs),
-          failed = failed,
-          last = results[[index]][intersect(
-            c("id", "status", "error"),
-            names(results[[index]])
-          )]
-        ),
-        temporary,
-        version = 3L
-      )
-      moved <- try(fs::file_move(temporary, progress_path), silent = TRUE)
-      if (inherits(moved, "try-error")) {
-        unlink(temporary, force = TRUE)
+    job <- jobs[[index]]
+    current <- as.character(job$filename %||% basename(job$source %||% ""))
+    progress <- function(bytes) {
+      now <- as.numeric(Sys.time())
+      if (now - last_written >= progress_interval) {
+        write_progress(index - 1L, bytes_finished + bytes, current)
       }
     }
+    results[[index]] <- builder_project_copy_source_job(job, progress = progress)
+    failed <- failed + as.integer(identical(results[[index]]$status, "failed"))
+    bytes_finished <- bytes_finished + sizes[[index]]
+    write_progress(
+      index,
+      bytes_finished,
+      last = results[[index]][intersect(
+        c("id", "status", "error"),
+        names(results[[index]])
+      )]
+    )
   }
   results
 }

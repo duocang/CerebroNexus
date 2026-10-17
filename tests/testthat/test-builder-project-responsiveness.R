@@ -605,3 +605,166 @@ test_that("CRB availability checks reuse verified content by stat identity", {
   )
   expect_identical(hashed, 2L)
 })
+
+builder_responsiveness_session_source <- function(root, bytes = 300000L) {
+  session_root <- file.path(root, "session")
+  source <- file.path(session_root, "session-sources", "ds1", "source.rds")
+  dir.create(dirname(source), recursive = TRUE)
+  writeBin(as.raw(sample.int(255L, bytes, replace = TRUE)), source)
+  list(
+    session_root = normalizePath(session_root, winslash = "/"),
+    source = normalizePath(source, winslash = "/"),
+    md5 = unname(tools::md5sum(source))
+  )
+}
+
+test_that("a Save moves the Builder's own session copy instead of copying it", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  dir.create(project)
+  session <- builder_responsiveness_session_source(root)
+  entry <- list(
+    id = "ds1",
+    path = session$source,
+    filename = "sample.rds",
+    snapshot = list(
+      source_fingerprint = paste0("builder-snapshot-v2:", session$md5)
+    )
+  )
+  expect_true(runtime$builder_project_session_owned_source(
+    session$source,
+    session$session_root
+  ))
+  outside <- file.path(root, "upload.rds")
+  writeBin(charToRaw("upload"), outside)
+  expect_false(runtime$builder_project_session_owned_source(
+    outside,
+    session$session_root
+  ))
+
+  job <- runtime$builder_project_source_job(entry, project)
+  job$session_owned <- TRUE
+  file_id <- runtime$builder_project_file_metadata(session$source)$file_id
+  seen <- numeric()
+  result <- runtime$builder_project_copy_source_job(
+    job,
+    progress = function(bytes) seen <<- c(seen, bytes)
+  )
+  expect_identical(result$status, "ready")
+  expect_identical(result$moved_from, session$source)
+  expect_false(file.exists(session$source))
+  expect_identical(unname(tools::md5sum(result$path)), session$md5)
+  expect_identical(result$fingerprint$md5, session$md5)
+  ## Same file, not a copy.
+  expect_identical(result$fingerprint$file_id, file_id)
+  expect_identical(max(seen), 300000)
+
+  ## Live entries still pointing at the moved session copy follow it.
+  relocated <- runtime$builder_project_relocate_moved_sources(
+    list(entry, list(id = "ds2", path = outside)),
+    list(result)
+  )
+  expect_identical(
+    relocated[[1L]]$path,
+    normalizePath(result$path, winslash = "/")
+  )
+  expect_identical(relocated[[2L]]$path, outside)
+})
+
+test_that("a moved session copy that fails verification goes back", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  dir.create(project)
+  session <- builder_responsiveness_session_source(root, bytes = 1000L)
+  wrong <- strrep("0", 32)
+  entry <- list(
+    id = "ds1",
+    path = session$source,
+    filename = "sample.rds",
+    snapshot = list(source_fingerprint = paste0("builder-snapshot-v2:", wrong))
+  )
+  job <- runtime$builder_project_source_job(entry, project)
+  job$session_owned <- TRUE
+  result <- runtime$builder_project_copy_source_job(job)
+  expect_identical(result$status, "failed")
+  expect_true(file.exists(session$source))
+  expect_identical(unname(tools::md5sum(session$source)), session$md5)
+  expect_false(file.exists(job$part))
+  expect_false(file.exists(job$target))
+})
+
+test_that("other sources are streamed with byte progress and one hash pass", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  dir.create(project)
+  session <- builder_responsiveness_session_source(root, bytes = 250000L)
+  entry <- list(id = "ds1", path = session$source, filename = "sample.rds")
+  jobs <- list(runtime$builder_project_source_job(entry, project))
+  progress_path <- file.path(root, "progress.rds")
+  for (streaming in c(TRUE, FALSE)) {
+    if (!streaming) {
+      ## Without openssl the copy falls back to one md5sum of the result.
+      runtime$.builder_project_md5_stream <- function() NULL
+    }
+    results <- runtime$builder_project_copy_source_jobs(jobs, progress_path)
+    expect_identical(results[[1L]]$status, "ready", info = streaming)
+    expect_null(results[[1L]]$moved_from, info = streaming)
+    expect_true(file.exists(session$source), info = streaming)
+    expect_identical(results[[1L]]$fingerprint$md5, session$md5, info = streaming)
+    progress <- readRDS(progress_path)
+    expect_identical(progress$bytes_total, 250000, info = streaming)
+    expect_identical(progress$bytes_done, 250000, info = streaming)
+    expect_identical(progress$completed, 1L, info = streaming)
+    unlink(file.path(project, "sources"), recursive = TRUE)
+  }
+
+  copied <- withr::local_tempfile()
+  seen <- numeric()
+  value <- runtime$builder_project_stream_copy(
+    session$source,
+    copied,
+    expected_md5 = session$md5,
+    progress = function(bytes) seen <<- c(seen, bytes),
+    buffer_bytes = 65536L
+  )
+  expect_identical(value$md5, session$md5)
+  expect_true(length(seen) >= 4L)
+  expect_error(
+    runtime$builder_project_stream_copy(
+      session$source,
+      withr::local_tempfile(),
+      expected_md5 = strrep("0", 32)
+    ),
+    "does not match"
+  )
+})
+
+test_that("the source copy reports bytes instead of file counts", {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+  sys.source(builder_test_inst_path("builder", "ui", "project.R"), envir = runtime)
+  for (name in c("tags", "tagList", "actionButton")) {
+    assign(name, getExportedValue("shiny", name), envir = runtime)
+  }
+  sys.source(builder_test_inst_path("builder", "extras.R"), envir = runtime)
+  html <- as.character(runtime$builder_project_status_ui(
+    list(name = "P"),
+    phase = "clean",
+    source_sync = list(
+      status = "syncing",
+      completed = 0L,
+      total = 1L,
+      bytes_done = 1.5 * 1024^3,
+      bytes_total = 4 * 1024^3
+    )
+  ))
+  expect_match(html, "Saving source files · 1.5 GB of 4", fixed = TRUE)
+  browser <- paste(
+    readLines(builder_test_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(browser, "message.bytes_total", fixed = TRUE)
+})

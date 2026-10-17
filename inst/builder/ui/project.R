@@ -40,12 +40,22 @@ builder_project_status_ui <- function(
   label <- if (cancelling) {
     "Stopping file copy…"
   } else if (syncing) {
-    paste0(
-      "Saving source files · ",
-      source_sync$completed %||% 0L,
-      " of ",
-      source_sync$total %||% 0L
-    )
+    bytes_total <- suppressWarnings(as.double(source_sync$bytes_total %||% 0))
+    if (isTRUE(bytes_total > 0) && exists("builder_file_human_size", mode = "function")) {
+      paste0(
+        "Saving source files · ",
+        builder_file_human_size(source_sync$bytes_done %||% 0),
+        " of ",
+        builder_file_human_size(bytes_total)
+      )
+    } else {
+      paste0(
+        "Saving source files · ",
+        source_sync$completed %||% 0L,
+        " of ",
+        source_sync$total %||% 0L
+      )
+    }
   } else if (sync_failed) {
     "Some source files could not be saved"
   } else if (crb_building) {

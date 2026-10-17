@@ -541,6 +541,8 @@ observe({
       completed = as.integer(progress$completed %||% 0L),
       total = as.integer(progress$total %||% 0L),
       failed = as.integer(progress$failed %||% 0L),
+      bytes_done = as.double(progress$bytes_done %||% 0),
+      bytes_total = as.double(progress$bytes_total %||% 0),
       error = progress$error %||% NULL
     )
   )
@@ -1884,7 +1886,10 @@ builder_project_poll_source_sync <- function() {
         status = "syncing",
         completed = as.integer(progress$completed %||% 0L),
         total = as.integer(progress$total %||% 0L),
-        failed = as.integer(progress$failed %||% 0L)
+        failed = as.integer(progress$failed %||% 0L),
+        bytes_done = as.double(progress$bytes_done %||% 0),
+        bytes_total = as.double(progress$bytes_total %||% 0),
+        current = progress$current %||% NULL
       ))
     }
   }
@@ -1959,6 +1964,13 @@ builder_project_poll_source_sync <- function() {
         error = conditionMessage(results)
       )
     })
+  }
+  # Session copies moved into the Project no longer exist at their old path;
+  # repoint live entries now, whatever happens to the results write.
+  live_entries <- isolate(sets())
+  relocated <- builder_project_relocate_moved_sources(live_entries, results)
+  if (!identical(relocated, live_entries)) {
+    builder_project_update_entries(relocated)
   }
   finish <- function(written) {
     run_is_current <- builder_project_source_context_matches(
@@ -2081,6 +2093,16 @@ request_builder_project_source_sync <- function(jobs) {
     list()
   }
   # A job identical to the running copy waits for that copy instead.
+  # The Builder's own session copies may be moved into the Project instead
+  # of copied, when both are on the same volume.
+  session_root <- isolate(worker())$snapshot_root %||% NULL
+  jobs <- lapply(jobs, function(job) {
+    job$session_owned <- builder_project_session_owned_source(
+      job$source,
+      session_root
+    )
+    job
+  })
   queued <- builder_project_source_queue_add(
     isolate(builder_project_source_queue()),
     jobs,
