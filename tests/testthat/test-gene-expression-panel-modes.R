@@ -306,6 +306,21 @@ viewer_show_expression_summary <- function(app) {
   )
 }
 
+## Wait for summary content. A repaint (e.g. switching to RGB) can resize the
+## projection after the summary was scrolled into view and push it out again,
+## where it intentionally stops updating; keep it in view while waiting.
+viewer_wait_expression_summary <- function(app, condition) {
+  app$wait_for_js(
+    paste0(
+      "(() => {document.getElementById('expression_summary_gate')",
+      "?.scrollIntoView();",
+      "const text=document.getElementById('expression_by_group')?.innerText||'';",
+      "return (", condition, ");})()"
+    ),
+    timeout = 60000
+  )
+}
+
 test_that("gene expression panels follow gene, selection, and display mode", {
   skip_if_not_installed("shinytest2")
   inst_dir <- viewer_app_test_path()
@@ -428,14 +443,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     timeout = 20000
   )
   ## The box selection above scrolled the projection into view.
-  viewer_show_expression_summary(app)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('expression_by_group')?.innerText",
-      ".includes('MS4A1')"
-    ),
-    timeout = 60000
-  )
+  viewer_wait_expression_summary(app, "text.includes('MS4A1')")
   panel_text <- app$get_js(
     "document.getElementById('expression_by_group').innerText"
   )
@@ -453,15 +461,9 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   viewer_set_selectize(app, "expression_rgb_gene_r", "MS4A1")
   viewer_set_selectize(app, "expression_rgb_gene_g", "CD3D")
   viewer_set_selectize(app, "expression_rgb_gene_b", "")
-  viewer_show_expression_summary(app)
-  app$wait_for_js(
-    paste0(
-      "(() => {const text=document.getElementById(",
-      "'expression_by_group')?.innerText || '';",
-      "return text.includes('R · MS4A1') && ",
-      "text.includes('G · CD3D') && !text.includes('B ·');})()"
-    ),
-    timeout = 60000
-  )
+  viewer_wait_expression_summary(app, paste0(
+    "text.includes('R · MS4A1') && text.includes('G · CD3D') && ",
+    "!text.includes('B ·')"
+  ))
   expect_length(app$get_js("genePanelErrors"), 0L)
 })
