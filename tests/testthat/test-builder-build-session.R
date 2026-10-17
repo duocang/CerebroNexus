@@ -357,3 +357,103 @@ test_that("the Build progress panel does not depend on page_inert", {
   expect_match(css, ".builder-operation-overlay.is-nonmodal {", fixed = TRUE)
 })
 
+test_that("a successful App build offers Open App and the same folder", {
+  app_env <- builder_build_session_app()
+  value <- app_env$builder_result_success(
+    published = TRUE,
+    built = c(a = "C:/out/CerebroNexus_viewer_abc123/cerebro_app/private-data/a.crb"),
+    app_dir = "C:/out/CerebroNexus_viewer_abc123/cerebro_app",
+    app_verified = TRUE,
+    release = list(target = "C:/out/CerebroNexus_viewer_abc123")
+  )
+  card <- as.character(app_env$builder_build_status_ui(value))
+  expect_match(card, 'id="open_app"', fixed = TRUE)
+  expect_match(card, "Open App", fixed = TRUE)
+
+  model <- app_env$builder_build_stage_status_model(
+    flow = list(stage = "idle", plan = NULL),
+    protocol = NULL,
+    note = NULL,
+    result = value,
+    last_output_parent = "C:/out"
+  )
+  actions <- as.character(app_env$builder_build_stage_primary_action_ui(model))
+  expect_match(actions, 'id="build_same_folder"', fixed = TRUE)
+  expect_match(actions, 'title="C:/out"', fixed = TRUE)
+  expect_match(actions, "Build again", fixed = TRUE)
+
+  failed <- app_env$builder_build_stage_status_model(
+    flow = list(stage = "idle", plan = NULL),
+    protocol = NULL,
+    note = NULL,
+    result = app_env$builder_result_failure("Nope."),
+    last_output_parent = "C:/out"
+  )
+  retry <- as.character(app_env$builder_build_stage_primary_action_ui(failed))
+  expect_false(grepl("build_same_folder", retry, fixed = TRUE))
+  crb_only <- app_env$builder_result_success(
+    published = TRUE,
+    built = c(a = "C:/out/CerebroNexus_crb_abc123/a.crb"),
+    release = list(target = "C:/out/CerebroNexus_crb_abc123")
+  )
+  expect_false(grepl(
+    "open_app",
+    as.character(app_env$builder_build_status_ui(crb_only)),
+    fixed = TRUE
+  ))
+})
+
+test_that("mode and starting dataset do not re-render the options form", {
+  app_env <- builder_build_session_app()
+  form <- as.character(app_env$builder_build_options_ui(
+    app_env$builder_build_options(make_app = TRUE),
+    app_settings = shiny::uiOutput("build_app_settings")
+  ))
+  expect_match(form, 'id="build_app_settings"', fixed = TRUE)
+  expect_false(grepl("Welcome message", form, fixed = TRUE))
+  settings <- as.character(app_env$builder_build_app_settings_ui(
+    app_env$builder_build_options(make_app = TRUE),
+    dataset_choices = c(A = "a", B = "b")
+  ))
+  expect_match(settings, "Welcome message", fixed = TRUE)
+  expect_match(settings, 'id="build_initial_dataset"', fixed = TRUE)
+
+  lines <- strsplit(builder_build_session_source("server", "build.R"), "\n")[[1L]]
+  first <- grep("output$build_output_options <- renderUI({", lines, fixed = TRUE)
+  last <- grep("output$build_app_settings <- renderUI({", lines, fixed = TRUE)
+  form_block <- paste(lines[first:(last - 1L)], collapse = "\n")
+  expect_match(form_block, "isolate(build_mode())", fixed = TRUE)
+  expect_false(grepl("build_mode()", gsub("isolate(build_mode())", "", form_block, fixed = TRUE), fixed = TRUE))
+  expect_false(grepl("[^(]build_initial_dataset()", form_block))
+  expect_match(
+    builder_build_session_source("server", "build.R"),
+    'updateSelectInput(\n      session,\n      "build_initial_page"',
+    fixed = TRUE
+  )
+})
+
+test_that("missing login accounts are requested in place before a Build", {
+  app_env <- builder_build_session_app()
+  shiny::testServer(app_env$server, {
+    session$flushReact()
+    build_mode(TRUE)
+    auth_enabled(TRUE)
+    auth_accounts(app_env$builder_auth_empty_accounts())
+    stage_before <- workflow()$stage
+    expect_true(builder_build_accounts_missing())
+    expect_false(builder_build_recovery_ready())
+    # The plan does not depend on passwords: no trip back to Review.
+    expect_identical(workflow()$stage, stage_before)
+    expect_identical(build_flow()$stage, "idle")
+
+    accounts <- app_env$builder_auth_validate_payload(
+      TRUE,
+      list(list(id = "auth-account-1", username = "ana", password = "long-enough-1"))
+    )$accounts
+    auth_accounts(accounts)
+    expect_false(builder_build_accounts_missing())
+    auth_enabled(FALSE)
+    auth_accounts(app_env$builder_auth_empty_accounts())
+    expect_false(builder_build_accounts_missing())
+  })
+})

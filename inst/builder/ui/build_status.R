@@ -135,7 +135,8 @@ builder_build_options_ui <- function(
     available = TRUE
   ),
   auth_controls = NULL,
-  controls_disabled = FALSE
+  controls_disabled = FALSE,
+  app_settings = NULL
 ) {
   stopifnot(
     inherits(options, "builder_build_options"),
@@ -150,32 +151,6 @@ builder_build_options_ui <- function(
   div <- tags$div
   h3 <- tags$h3
   p <- tags$p
-  span <- tags$span
-  selected_dataset <- options$initial_dataset
-  if (
-    length(dataset_choices) &&
-      (is.null(selected_dataset) || !selected_dataset %in% dataset_choices)
-  ) {
-    selected_dataset <- unname(dataset_choices[[1L]])
-  }
-  selected_page <- options$app$initial_page
-  if (!selected_page %in% initial_page_choices) {
-    selected_page <- unname(initial_page_choices[[1L]])
-  }
-  auth_available <- isTRUE(auth$available)
-  require_login <- shiny::checkboxInput(
-    "build_require_login",
-    NULL,
-    isTRUE(auth$enabled)
-  )
-  if (!auth_available) {
-    require_login <- htmltools::tagQuery(require_login)$find("input")$addAttrs(
-      disabled = "disabled"
-    )$allTags()
-  }
-  if (is.null(auth_controls)) {
-    auth_controls <- builder_build_auth_controls_ui(auth)
-  }
   output_mode <- shiny::radioButtons(
     "build_output_mode",
     label = tags$span(class = "visually-hidden", "Output format"),
@@ -251,105 +226,162 @@ builder_build_options_ui <- function(
         )
       }
     ),
-    if (isTRUE(options$make_app)) {
-      tags$section(
-        class = "builder-stage-section builder-app-settings",
+    if (!is.null(app_settings)) {
+      app_settings
+    } else if (isTRUE(options$make_app)) {
+      builder_build_app_settings_ui(
+        options,
+        initial_page_choices = initial_page_choices,
+        dataset_choices = dataset_choices,
+        auth = auth,
+        auth_controls = auth_controls
+      )
+    }
+  )
+}
+
+## The Viewer App section renders separately from the output-mode radio, so
+## switching mode or starting dataset does not re-render (and unfocus) the
+## control the user is on.
+builder_build_app_settings_ui <- function(
+  options,
+  initial_page_choices = c("Data info" = "data_info"),
+  dataset_choices = character(),
+  auth = list(
+    enabled = FALSE,
+    account_count = 0L,
+    error = NULL,
+    available = TRUE
+  ),
+  auth_controls = NULL
+) {
+  stopifnot(inherits(options, "builder_build_options"))
+  tags <- htmltools::tags
+  div <- tags$div
+  h3 <- tags$h3
+  p <- tags$p
+  span <- tags$span
+  selected_dataset <- options$initial_dataset
+  if (
+    length(dataset_choices) &&
+      (is.null(selected_dataset) || !selected_dataset %in% dataset_choices)
+  ) {
+    selected_dataset <- unname(dataset_choices[[1L]])
+  }
+  selected_page <- options$app$initial_page
+  if (!selected_page %in% initial_page_choices) {
+    selected_page <- unname(initial_page_choices[[1L]])
+  }
+  auth_available <- isTRUE(auth$available)
+  require_login <- shiny::checkboxInput(
+    "build_require_login",
+    NULL,
+    isTRUE(auth$enabled)
+  )
+  if (!auth_available) {
+    require_login <- htmltools::tagQuery(require_login)$find("input")$addAttrs(
+      disabled = "disabled"
+    )$allTags()
+  }
+  if (is.null(auth_controls)) {
+    auth_controls <- builder_build_auth_controls_ui(auth)
+  }
+  tags$section(
+    class = "builder-stage-section builder-app-settings",
+    div(
+      class = "builder-app-settings-head",
+      h3("Viewer App"),
+      p("Choose what visitors see when the app opens.")
+    ),
+    tags$section(
+      class = "builder-app-settings-group",
+      p(class = "builder-app-settings-label", "Opening view"),
+      div(
+        class = "builder-app-opening-fields",
         div(
-          class = "builder-app-settings-head",
-          h3("Viewer App"),
-          p("Choose what visitors see when the app opens.")
-        ),
-        tags$section(
-          class = "builder-app-settings-group",
-          p(class = "builder-app-settings-label", "Opening view"),
-          div(
-            class = "builder-app-opening-fields",
-            div(
-              class = "builder-app-field builder-app-field--wide",
-              shiny::textInput(
-                "build_welcome_message",
-                "Welcome message",
-                options$app$welcome_message
-              )
-            ),
-            if (length(dataset_choices)) {
-              div(
-                class = "builder-app-field builder-app-field--dataset",
-                shiny::selectInput(
-                  "build_initial_dataset",
-                  "Starting dataset",
-                  choices = dataset_choices,
-                  selected = selected_dataset
-                )
-              )
-            },
-            div(
-              class = "builder-app-field",
-              shiny::selectInput(
-                "build_initial_page",
-                "Starting page",
-                choices = initial_page_choices,
-                selected = selected_page
-              )
-            )
+          class = "builder-app-field builder-app-field--wide",
+          shiny::textInput(
+            "build_welcome_message",
+            "Welcome message",
+            options$app$welcome_message
           )
         ),
-        tags$section(
-          class = "builder-app-settings-group",
-          p(class = "builder-app-settings-label", "Access"),
+        if (length(dataset_choices)) {
           div(
-            class = "builder-app-toggle",
-            tags$label(
-              class = "builder-app-toggle-copy",
-              `for` = "build_show_upload_ui",
-              tags$strong("Allow visitor uploads"),
-              span("Visitors can open their own compatible data.")
-            ),
-            shiny::checkboxInput(
-              "build_show_upload_ui",
-              NULL,
-              options$app$show_upload_ui
+            class = "builder-app-field builder-app-field--dataset",
+            shiny::selectInput(
+              "build_initial_dataset",
+              "Starting dataset",
+              choices = dataset_choices,
+              selected = selected_dataset
             )
-          ),
-          div(
-            class = "builder-app-toggle",
-            tags$label(
-              class = "builder-app-toggle-copy",
-              `for` = "build_require_login",
-              tags$strong("Require login"),
-              span("Restrict access to configured accounts.")
-            ),
-            require_login
-          )
-        ),
-        if (!auth_available) {
-          p(
-            class = "hint builder-auth-dependency",
-            auth$reason %||%
-              "Login is unavailable. Install the required R package, then restart Builder."
           )
         },
-        auth_controls,
-        tags$details(
-          class = "builder-app-connection-settings",
-          tags$summary(
-            span("Connection settings"),
-            span(class = "builder-app-connection-summary", "Host · Port")
-          ),
-          div(
-            class = "builder-app-network-fields",
-            shiny::textInput("build_host", "Host", options$app$host),
-            shiny::numericInput(
-              "build_port",
-              "Port",
-              options$app$port,
-              min = 1,
-              max = 65535
-            )
+        div(
+          class = "builder-app-field",
+          shiny::selectInput(
+            "build_initial_page",
+            "Starting page",
+            choices = initial_page_choices,
+            selected = selected_page
           )
         )
       )
-    }
+    ),
+    tags$section(
+      class = "builder-app-settings-group",
+      p(class = "builder-app-settings-label", "Access"),
+      div(
+        class = "builder-app-toggle",
+        tags$label(
+          class = "builder-app-toggle-copy",
+          `for` = "build_show_upload_ui",
+          tags$strong("Allow visitor uploads"),
+          span("Visitors can open their own compatible data.")
+        ),
+        shiny::checkboxInput(
+          "build_show_upload_ui",
+          NULL,
+          options$app$show_upload_ui
+        )
+      ),
+      div(
+        class = "builder-app-toggle",
+        tags$label(
+          class = "builder-app-toggle-copy",
+          `for` = "build_require_login",
+          tags$strong("Require login"),
+          span("Restrict access to configured accounts.")
+        ),
+        require_login
+      )
+    ),
+    if (!auth_available) {
+      p(
+        class = "hint builder-auth-dependency",
+        auth$reason %||%
+          "Login is unavailable. Install the required R package, then restart Builder."
+      )
+    },
+    auth_controls,
+    tags$details(
+      class = "builder-app-connection-settings",
+      tags$summary(
+        span("Connection settings"),
+        span(class = "builder-app-connection-summary", "Host · Port")
+      ),
+      div(
+        class = "builder-app-network-fields",
+        shiny::textInput("build_host", "Host", options$app$host),
+        shiny::numericInput(
+          "build_port",
+          "Port",
+          options$app$port,
+          min = 1,
+          max = 65535
+        )
+      )
+    )
   )
 }
 
@@ -867,7 +899,8 @@ builder_build_stage_status_model <- function(
   protocol,
   note,
   result,
-  finalizing = FALSE
+  finalizing = FALSE,
+  last_output_parent = NULL
 ) {
   flow_valid <-
     is.list(flow) &&
@@ -932,6 +965,11 @@ builder_build_stage_status_model <- function(
       flow_valid &&
       identical(flow_stage, "idle") &&
       protocol_ready,
+    last_output_parent = if (builder_stage_has_text(last_output_parent %||% "")) {
+      last_output_parent
+    } else {
+      NULL
+    },
     result_model = if (is.null(result)) {
       NULL
     } else {
@@ -1151,7 +1189,20 @@ builder_build_stage_primary_action_ui <- function(
   if (!identical(model$state, "ready") && !isTRUE(repeatable)) {
     return(NULL)
   }
-  actionButton(
+  same_folder <- if (
+    identical(model$state, "result") &&
+      identical(model$result_model$type, "success") &&
+      builder_stage_has_text(model$last_output_parent %||% "")
+  ) {
+    actionButton(
+      "build_same_folder",
+      "Build again to same folder",
+      class = "btn",
+      title = model$last_output_parent,
+      disabled = isTRUE(controls_disabled)
+    )
+  }
+  primary <- actionButton(
     "build",
     if (isTRUE(repeatable)) {
       if (identical(model$result_model$type, "failure")) {
@@ -1166,6 +1217,7 @@ builder_build_stage_primary_action_ui <- function(
     disabled = isTRUE(controls_disabled) ||
       (!isTRUE(repeatable) && !isTRUE(model$can_build))
   )
+  if (is.null(same_folder)) primary else tagList(same_folder, primary)
 }
 
 builder_build_stage_status_body_ui <- function(model) {
@@ -1487,6 +1539,9 @@ builder_build_status_ui <- function(model) {
     ) {
       div(
         class = "builder-result-actions",
+        if (!is.null(model$app_dir)) {
+          actionButton("open_app", "Open App", class = "btn btn-primary")
+        },
         if (!is.null(model$release_dir)) {
           actionButton(
             "reveal_folder",

@@ -5334,6 +5334,12 @@
     }
     window.__builderHandleAuthStatus = handleAuthStatus;
     window.Shiny.addCustomMessageHandler("builder_auth_status", handleAuthStatus);
+    // Build and Retry ask for login accounts in place instead of sending the
+    // user back to Review.
+    window.Shiny.addCustomMessageHandler("builder_open_auth_dialog", function (message) {
+      if (!message || message.open !== true || authEditor.open) return;
+      openAuthDialog(document.getElementById("build"));
+    });
     window.Shiny.addCustomMessageHandler("builder_auth_reset", function (message) {
       if (!message || message.reset !== true) return;
       setAuthSaving(false);

@@ -770,7 +770,14 @@ test_that("Build status projection keeps one stable typed host", {
 
   expect_named(
     idle,
-    c("state", "message", "pipeline_state", "can_build", "result_model"),
+    c(
+      "state",
+      "message",
+      "pipeline_state",
+      "can_build",
+      "last_output_parent",
+      "result_model"
+    ),
     ignore.order = FALSE
   )
   expect_identical(idle$state, "ready")
