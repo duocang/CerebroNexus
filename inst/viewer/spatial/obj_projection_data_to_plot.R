@@ -6,7 +6,7 @@
 ## (about a second for a million cells), so share one result.
 spatial_projection_roi_context_memo <- viewerMemoOne()
 spatial_projection_roi_context <- function(spatial_name, rotation_angle) {
-  sample_value <- input[["spatial_projection_sample"]] %||% ""
+  sample_value <- spatial_projection_selected_sample()
   spatial_projection_roi_context_memo(
     list(data_set(), spatial_name, sample_value, rotation_angle),
     function() {
@@ -21,10 +21,10 @@ spatial_projection_roi_context <- function(spatial_name, rotation_angle) {
 }
 
 spatial_projection_full_ranges <- reactive({
-  spatial_name <- input[["spatial_projection_to_display"]]
-  req(spatial_name %in% availableSpatial())
+  ## Follow the resolved parameters: the FOV control may not have bound yet.
   parameters <- spatial_projection_parameters_plot()
-  req(identical(parameters[["projection"]], spatial_name))
+  spatial_name <- parameters[["projection"]]
+  req(spatial_name %in% availableSpatial())
 
   dataset <- viewer_current_dataset_key()
   rotation_angle <- spatialPlotRotation(
@@ -81,13 +81,13 @@ spatial_projection_group_hulls <- reactive({
   }
   coordinates <- spatial_projection_coordinates()
   dataset <- viewer_current_dataset_key()
-  spatial_name <- input[["spatial_projection_to_display"]]
+  parameters <- spatial_projection_parameters_plot()
+  spatial_name <- parameters[["projection"]]
   rotation_angle <- spatialPlotRotation(
     Cerebro.options,
     dataset,
     spatial_name
   )
-  parameters <- spatial_projection_parameters_plot()
   if (parameters[["roi_mode"]] %in% c("single", "separate")) {
     roi_context <- spatial_projection_roi_context(spatial_name, rotation_angle)
     coordinates <- rotateSpatialCoordinatesByRoi(

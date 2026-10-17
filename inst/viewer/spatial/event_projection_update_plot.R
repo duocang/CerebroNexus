@@ -4,6 +4,7 @@
 
 spatial_projection_render_context <- reactiveVal(NULL)
 spatial_projection_render_request_seen <- reactiveVal(NULL)
+spatial_projection_last_render <- NULL
 
 observe({
   render_request <- input[["spatial_projection_render_request"]]
@@ -38,6 +39,16 @@ observe({
     data,
     viewerDatasetContextEqual(data$dataset_context, current_context)
   )
+  ## The raw value read for a new request keeps this observer subscribed to
+  ## it; later re-evaluations with an unchanged frame must not resend it.
+  if (
+    !dataset_changed &&
+      !render_requested &&
+      identical(data, spatial_projection_last_render)
+  ) {
+    return()
+  }
+  spatial_projection_last_render <<- data
 
   if (dataset_changed || render_requested) {
     withProgress(message = 'Updating spatial plot...', value = 0.5, {

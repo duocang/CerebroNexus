@@ -378,3 +378,27 @@ test_that("Spatial image controls seed and reset presets, synchronize values and
     expect_null(spatial_preset_code())
   })
 })
+
+test_that("Spatial controls binding their defaults do not repeat the first frame", {
+  shiny::testServer(spatial_flow_server, {
+    session$setInputs(background = TRUE)
+    session$setInputs(spatial_projection_render_request = 1)
+    expect_identical(scope$frames, 1L)
+    ## Before the selector binds, the frame already uses its default image.
+    expect_identical(
+      spatial_projection_parameters_plot()$background_image,
+      "embedded::tissue"
+    )
+    session$setInputs(
+      spatial_projection_to_display = "slice",
+      spatial_projection_plot_type = "ImageDimPlot",
+      spatial_projection_point_color = "group",
+      spatial_projection_background_image = "embedded::tissue"
+    )
+    expect_identical(scope$frames, 1L)
+    ## A bound, cleared selector is an explicit request to hide the image.
+    session$setInputs(spatial_projection_background_image = NULL)
+    expect_identical(spatial_projection_parameters_plot()$background_image, "none")
+    expect_identical(scope$frames, 2L)
+  })
+})

@@ -53,7 +53,7 @@ spatial_projection_cell_index <- reactive({
   as.integer(index)
 })
 
-spatial_projection_cells_to_show <- reactive({
+spatial_projection_cells_to_show_current <- reactive({
   controls <- spatial_projection_sampling()
   req(controls, controls$percentage_cells_to_show)
   groups <- getGroups()
@@ -68,7 +68,7 @@ spatial_projection_cells_to_show <- reactive({
   frame_metadata <- viewerProjectionFirstFrameMetadata()
   for (scope in list(
     list(
-      value = input[["spatial_projection_sample"]],
+      value = spatial_projection_selected_sample(),
       fields = c("sample", "sample_id", "orig.ident")
     ),
     list(
@@ -114,4 +114,30 @@ spatial_projection_cells_to_show <- reactive({
     index <- sample(index, ceiling(length(index) * percentage / 100))
   }
   index
+})
+
+## Group filter and ROI controls bind after the first frame, usually keeping
+## every cell. Publish the cells on change only, so binding does not rebuild
+## the million-cell frame downstream.
+spatial_projection_cells_state <- reactiveVal(NULL)
+observe({
+  ## Off the Spatial page, keep the last cells; returning re-evaluates.
+  if (
+    "sidebar" %in% isolate(names(input)) &&
+      !identical(input[["sidebar"]], "spatial")
+  ) {
+    return()
+  }
+  value <- tryCatch(
+    spatial_projection_cells_to_show_current(),
+    error = function(error) NULL
+  )
+  if (!identical(isolate(spatial_projection_cells_state()), value)) {
+    spatial_projection_cells_state(value)
+  }
+}, priority = 900)
+spatial_projection_cells_to_show <- reactive({
+  value <- spatial_projection_cells_state()
+  req(!is.null(value))
+  value
 })

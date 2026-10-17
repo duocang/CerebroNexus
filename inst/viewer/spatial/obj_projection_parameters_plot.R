@@ -44,6 +44,50 @@ observeEvent(
 ## bindings with those values are a no-op instead of causing a second 1M frame.
 spatial_projection_controls <- reactiveVal(NULL)
 
+## Until a renderUI control has bound, frames must use the value that control
+## will bind with; otherwise its binding invalidates the first million-cell
+## frame. Bound inputs keep their value even when it is NULL (a cleared
+## multi-select), so presence in `input` separates "not yet bound" from "none".
+spatial_input_bound <- function(id) id %in% isolate(names(input))
+
+## The sample and FOV the main controls select by default (see
+## UI_projection_main_parameters.R): the first sample when there are several,
+## and the first section showing it.
+spatial_projection_scene_memo <- viewerMemoOne()
+spatial_projection_scene_defaults <- function() {
+  spatial_projection_scene_memo(list(data_set()), function() {
+    spatial_names <- availableSpatial()
+    metadata <- getMetaData()
+    facets <- lapply(spatial_names, function(name) {
+      record <- tryCatch(getSpatialData(name), error = function(error) list())
+      spatial_metadata_facet(
+        metadata,
+        rownames(record[["coordinates"]]) %||% character(),
+        c("sample", "sample_id", "orig.ident")
+      )$values
+    })
+    samples <- unique(unlist(facets, use.names = FALSE))
+    sample <- if (length(samples) > 1L) samples[[1L]] else ""
+    shown <- if (length(samples)) {
+      spatial_names[vapply(facets, function(values) samples[[1L]] %in% values, logical(1))]
+    } else {
+      spatial_names
+    }
+    list(
+      sample = sample,
+      projection = if (length(shown)) shown[[1L]] else spatial_names[1L]
+    )
+  })
+}
+
+spatial_projection_selected_sample <- function() {
+  value <- input[["spatial_projection_sample"]]
+  if (is.null(value) && !spatial_input_bound("spatial_projection_sample")) {
+    return(spatial_projection_scene_defaults()$sample)
+  }
+  value %||% ""
+}
+
 observe(
   {
     req(input[["spatial_projection_render_request"]])
@@ -52,6 +96,9 @@ observe(
 
     defaults <- current_spatial_scatter_defaults()
     projection <- input[["spatial_projection_to_display"]]
+    if (is.null(projection) || !(projection %in% spatial_names)) {
+      projection <- spatial_projection_scene_defaults()$projection
+    }
     if (is.null(projection) || !(projection %in% spatial_names)) {
       projection <- spatial_names[[1L]]
     }
@@ -71,7 +118,13 @@ observe(
     color_variable <- input[["spatial_projection_point_color"]]
     if (is.null(color_variable) || !(color_variable %in% color_choices)) {
       req(length(color_choices) > 0L)
-      color_variable <- color_choices[[1L]]
+      ## The Colour by control selects the main group by default.
+      default_color <- viewerColourGroupChoices()$selected
+      color_variable <- if (isTRUE(default_color %in% color_choices)) {
+        default_color
+      } else {
+        color_choices[[1L]]
+      }
     }
 
     value_or_default <- function(value, default) {
@@ -85,10 +138,11 @@ observe(
       projection = as.character(projection[[1L]]),
       plot_type = as.character(plot_type[[1L]]),
       color_variable = as.character(color_variable[[1L]]),
-      feature_to_display = input[["spatial_projection_feature_to_display"]],
-      coexpr_r = input[["spatial_projection_coexpr_r"]],
-      coexpr_g = input[["spatial_projection_coexpr_g"]],
-      coexpr_b = input[["spatial_projection_coexpr_b"]],
+      ## Gene selectors bind as "" when empty; treat not-yet-bound the same.
+      feature_to_display = input[["spatial_projection_feature_to_display"]] %||% "",
+      coexpr_r = input[["spatial_projection_coexpr_r"]] %||% "",
+      coexpr_g = input[["spatial_projection_coexpr_g"]] %||% "",
+      coexpr_b = input[["spatial_projection_coexpr_b"]] %||% "",
       point_size = as.numeric(value_or_default(
         isolate(input[["spatial_projection_point_size"]]),
         defaults$point_size
@@ -198,7 +252,7 @@ observeEvent(
 )
 
 spatial_projection_facet_memo <- viewerMemoOne()
-spatial_projection_parameters_plot <- reactive({
+spatial_projection_parameters_plot_current <- reactive({
   controls <- spatial_projection_controls()
   req(
     controls,
@@ -246,7 +300,7 @@ spatial_projection_parameters_plot <- reactive({
   n_dimensions <- ncol(spatial_data$coordinates)
   spatial_name <- controls$projection
   dataset <- viewer_current_dataset_key()
-  selected_sample <- input[["spatial_projection_sample"]] %||% ""
+  selected_sample <- spatial_projection_selected_sample()
   ## Facets match every barcode against the metadata. They depend only on the
   ## section and sample, so colour or feature changes reuse them.
   roi_facet <- spatial_projection_facet_memo(
@@ -331,10 +385,17 @@ spatial_projection_parameters_plot <- reactive({
       spatial_name,
       separate_roi_values
     )
-    selections <- spatial_roi_background_selections(
-      groups,
-      input[["spatial_projection_roi_background_images"]]
-    )
+    selected_tokens <- input[["spatial_projection_roi_background_images"]]
+    if (
+      is.null(selected_tokens) &&
+        !spatial_input_bound("spatial_projection_roi_background_images")
+    ) {
+      ## The picker starts with each ROI's first image.
+      selected_tokens <- unname(vapply(groups, function(group) {
+        unname(group$tokens[[1L]])
+      }, character(1)))
+    }
+    selections <- spatial_roi_background_selections(groups, selected_tokens)
     roi_backgrounds <- Map(
       function(group, selected) {
         descriptor <- resolve_spatial_background(
@@ -387,8 +448,17 @@ spatial_projection_parameters_plot <- reactive({
       embedded_images,
       configured_background_images
     )
+    background_input <- input[["spatial_projection_background_image"]]
+    if (
+      is.null(background_input) &&
+        !spatial_input_bound("spatial_projection_background_image") &&
+        length(background_choices)
+    ) {
+      ## The selector starts with the first image of the scope.
+      background_input <- unname(background_choices[[1L]])
+    }
     background_image <- normalize_spatial_background_choice(
-      input[["spatial_projection_background_image"]],
+      background_input,
       background_choices
     )
     background_descriptor <- resolve_spatial_background(
@@ -462,6 +532,25 @@ spatial_projection_parameters_plot <- reactive({
     hover_info = preferences[["show_hover_info_in_projections"]]
   )
   return(parameters)
+})
+
+## Controls re-bind (first visit, re-rendered selectors) with the values the
+## parameters above already used. Recomputing would still rebuild the
+## million-cell frame downstream, so publish the parameters on change only.
+spatial_projection_parameters_state <- reactiveVal(NULL)
+observe({
+  value <- tryCatch(
+    spatial_projection_parameters_plot_current(),
+    error = function(error) NULL
+  )
+  if (!identical(isolate(spatial_projection_parameters_state()), value)) {
+    spatial_projection_parameters_state(value)
+  }
+}, priority = 900)
+spatial_projection_parameters_plot <- reactive({
+  value <- spatial_projection_parameters_state()
+  req(value)
+  value
 })
 
 ##

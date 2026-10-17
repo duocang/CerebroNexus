@@ -1343,6 +1343,9 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
     viewerPackCurrent <- function() NULL
     viewerPackSpatialIndex <- function(...) NULL
     viewerProjectionFirstFrameMetadata <- function() metadata
+    spatial_projection_selected_sample <- function() {
+      input$spatial_projection_sample %||% ""
+    }
     spatial_projection_controls <- reactive(list(
       projection = input$spatial_projection_to_display,
       percentage_cells_to_show = input$spatial_projection_percentage_cells_to_show
