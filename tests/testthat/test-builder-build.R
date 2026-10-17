@@ -589,6 +589,74 @@ test_that("build progress records reject unsupported phases", {
   )
 })
 
+test_that("build progress names the dataset and step in progress", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, ".build-progress-detail.rds")
+  callback <- .builder_build_progress_callback(path)
+  reported <- list()
+  on_progress <- function(phase, detail = NULL) {
+    reported[[length(reported) + 1L]] <<- c(
+      list(phase = phase),
+      builder_build_progress_detail({
+        callback(phase, detail)
+        path
+      })
+    )
+  }
+  plan <- builder_build_two_dataset_plan("marker_genes")
+  hooks <- builder_build_test_hooks()
+  hooks$run_analyses <- function(object, item, on_progress = NULL) {
+    on_progress("Marker genes")
+    list(object = object, completed = item$analyses, failed = character())
+  }
+
+  result <- builder_execute_plan(
+    plan,
+    withr::local_tempdir(),
+    snapshots = list(`dataset-a` = list(), `dataset-b` = list()),
+    hooks = hooks,
+    on_progress = on_progress
+  )
+
+  expect_identical(result$state, "success")
+  steps <- vapply(
+    reported,
+    function(value) {
+      paste(
+        value$dataset_index %||% "-",
+        value$dataset_count %||% "-",
+        value$step_label %||% value$phase,
+        sep = "|"
+      )
+    },
+    character(1)
+  )
+  expect_identical(
+    steps,
+    c(
+      "-|-|datasets",
+      "1|2|Opening dataset",
+      "1|2|Preparing dataset",
+      "1|2|Marker genes",
+      "1|2|Writing CRB",
+      "1|2|Verifying CRB",
+      "2|2|Opening dataset",
+      "2|2|Preparing dataset",
+      "2|2|Marker genes",
+      "2|2|Writing CRB",
+      "2|2|Verifying CRB"
+    )
+  )
+  last <- reported[[length(reported)]]
+  expect_identical(last$dataset_name, "Dataset B")
+  expect_true(is.numeric(last$started_at))
+  expect_identical(builder_build_progress_read(path), "datasets")
+
+  # Settlement still writes bare phases, which read back without detail.
+  expect_true(builder_build_progress_write(path, "publish"))
+  expect_identical(builder_build_progress_detail(path), list(phase = "publish"))
+})
+
 test_that("terminal progress preserves a missed Viewer phase", {
   root <- withr::local_tempdir()
   path <- file.path(root, ".build-progress-test.rds")
@@ -1654,6 +1722,240 @@ test_that("reused artifacts hash the staged copy without a source pre-scan", {
       )
     ))
   )
+})
+
+test_that("published and retained CRBs become session reuse records", {
+  runtime <- environment(builder_build_reuse_records)
+  had_key <- exists("builder_plan_reuse_key", envir = runtime, inherits = FALSE)
+  assign(
+    "builder_plan_reuse_key",
+    function(item) paste0(item$id, "::key"),
+    envir = runtime
+  )
+  withr::defer(
+    if (!had_key) rm("builder_plan_reuse_key", envir = runtime)
+  )
+  plan <- builder_build_two_dataset_plan()
+  plan$make_app <- TRUE
+  plan$items[[1L]]$sidecars <- "dataset-a.h5"
+  release <- "C:/out/CerebroNexus_viewer_abc123"
+  file_entry <- function(path, md5, size = 10) {
+    list(path = path, type = "file", size = size, md5 = md5)
+  }
+  value <- list(
+    state = "success",
+    published = TRUE,
+    built = c(
+      `dataset-a` = file.path(release, "cerebro_app/private-data/dataset-a.crb"),
+      `dataset-b` = file.path(release, "cerebro_app/private-data/dataset-b.crb")
+    ),
+    verifications = list(
+      `dataset-a` = list(valid = TRUE, path = "a"),
+      `dataset-b` = list(valid = TRUE, path = "b")
+    ),
+    release = list(
+      target = release,
+      identity = list(entries = list(
+        list(path = "cerebro_app", type = "directory", size = 0, md5 = NA),
+        file_entry("cerebro_app/app.R", strrep("0", 32L)),
+        file_entry("cerebro_app/private-data/dataset-a.crb", strrep("A", 32L)),
+        file_entry("cerebro_app/private-data/dataset-a.h5", strrep("b", 32L)),
+        file_entry("cerebro_app/private-data/dataset-b.crb", strrep("c", 32L))
+      ))
+    )
+  )
+
+  records <- builder_build_reuse_records(plan, value)
+
+  expect_identical(
+    vapply(records, `[[`, character(1), "key"),
+    c("dataset-a::key", "dataset-b::key")
+  )
+  first <- records[[1L]]$record
+  expect_identical(
+    first$path,
+    file.path(release, "cerebro_app/private-data/dataset-a.crb")
+  )
+  expect_identical(first$fingerprint, list(md5 = strrep("a", 32L), size = 10))
+  expect_identical(length(first$members), 1L)
+  expect_identical(first$members[[1L]]$target, "dataset-a.h5")
+  expect_identical(first$members[[1L]]$fingerprint$md5, strrep("b", 32L))
+  expect_null(first$verification)
+  expect_identical(records[[1L]]$md5, strrep("a", 32L))
+  expect_identical(records[[1L]]$verification, list(valid = TRUE, path = "a"))
+  expect_identical(records[[2L]]$record$members, list())
+
+  # A missing sidecar identity is not recorded as reusable.
+  value$release$identity$entries[[4L]] <- NULL
+  expect_identical(
+    vapply(builder_build_reuse_records(plan, value), `[[`, "", "id"),
+    "dataset-b"
+  )
+
+  retained <- list(
+    state = "needs_decision",
+    retained_artifacts = list(`dataset-b` = list(path = "kept.crb"))
+  )
+  kept <- builder_build_reuse_records(plan, retained)
+  expect_identical(kept[[1L]]$record$path, "kept.crb")
+  expect_identical(
+    builder_build_reuse_records(plan, list(state = "failure")),
+    list()
+  )
+})
+
+builder_build_reuse_plan <- function(source, verification = NULL) {
+  item <- list(
+    id = "ds1",
+    name = "Dataset",
+    filename = "ds1.crb",
+    expression_backend = "embedded",
+    sidecars = character(),
+    private_assets = "ds1.crb",
+    reused_artifact = list(
+      path = source,
+      fingerprint = list(md5 = unname(tools::md5sum(source))),
+      members = list(),
+      verification = verification
+    ),
+    images = list()
+  )
+  structure(
+    list(
+      items = list(item),
+      make_app = FALSE,
+      app_auth = list(enabled = FALSE)
+    ),
+    class = c("builder_build_plan", "list")
+  )
+}
+
+test_that("a reused CRB already read back in this session is not reopened", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source.crb")
+  writeBin(charToRaw("artifact"), source)
+  deep <- 0L
+  noop <- function(...) NULL
+  hooks <- list(
+    open_snapshot = noop,
+    prepare = noop,
+    run_analyses = noop,
+    export = noop,
+    attach_extras = noop,
+    verify = function(path, item) {
+      deep <<- deep + 1L
+      list(valid = TRUE, path = path, source = "deep")
+    }
+  )
+  earlier <- list(
+    valid = TRUE,
+    path = "C:/old-release/cerebro_app/private-data/ds1.crb",
+    file_fingerprint = list(size = 1),
+    bundle_preflight = list(
+      backend = list(type = "embedded"),
+      spatial_backend = NULL,
+      dataset_info = list(label = "Dataset", path = "C:/old-stage/ds1.crb")
+    )
+  )
+
+  stage <- file.path(root, "stage-1")
+  dir.create(stage)
+  result <- builder_execute_plan(
+    builder_build_reuse_plan(source, earlier),
+    stage,
+    snapshots = list(),
+    hooks = hooks
+  )
+  staged <- file.path(normalizePath(stage, winslash = "/"), "ds1.crb")
+  verification <- result$verifications$ds1
+  expect_identical(result$state, "success")
+  expect_identical(deep, 0L)
+  expect_identical(verification$path, staged)
+  expect_identical(verification$bundle_preflight$dataset_info$path, staged)
+  expect_identical(
+    verification$file_fingerprint$path,
+    normalizePath(staged, winslash = "/")
+  )
+
+  # Without a recorded read-back the copy is verified in full.
+  stage <- file.path(root, "stage-2")
+  dir.create(stage)
+  result <- builder_execute_plan(
+    builder_build_reuse_plan(source),
+    stage,
+    snapshots = list(),
+    hooks = hooks
+  )
+  expect_identical(deep, 1L)
+  expect_identical(result$verifications$ds1$source, "deep")
+
+  # A recorded read-back whose sidecar is missing falls back to the full one.
+  stage <- file.path(root, "stage-3")
+  dir.create(stage)
+  plan <- builder_build_reuse_plan(source, earlier)
+  plan$items[[1L]]$expression_backend <- "h5"
+  plan$items[[1L]]$sidecars <- "ds1.h5"
+  result <- builder_execute_plan(plan, stage, snapshots = list(), hooks = hooks)
+  expect_identical(deep, 2L)
+  expect_identical(result$verifications$ds1$source, "deep")
+})
+
+test_that("the worker seeds copied App data from request identities", {
+  app_dir <- withr::local_tempdir()
+  private <- file.path(app_dir, "private-data")
+  dir.create(private)
+  writeLines("crb bytes", file.path(private, "ds1.crb"))
+  writeLines("h5 bytes", file.path(private, "ds1.h5"))
+  writeLines("template", file.path(app_dir, "app.R"))
+  md5 <- function(name) unname(tools::md5sum(file.path(private, name)))
+  portable <- function(name, md5_value = md5(name)) {
+    list(
+      path = paste0("private-data/", name),
+      type = "file",
+      size = as.double(file.size(file.path(private, name))),
+      md5 = md5_value
+    )
+  }
+  request <- list(content_identities = list(
+    `private-data/ds1.crb` = list(
+      crb = portable("ds1.crb"),
+      backend = list(
+        type = "h5",
+        entries = list(`private-data/ds1.h5` = portable("ds1.h5"))
+      ),
+      spatial_molecules = list(type = "none", entries = list())
+    )
+  ))
+  hashed <- character()
+  counting <- function(path) {
+    hashed <<- c(hashed, basename(path))
+    tools::md5sum(path)
+  }
+
+  seeded <- .builder_app_tree_identity(
+    app_dir,
+    .digest_file = counting,
+    .previous = .builder_build_app_tree_seed(app_dir, request)
+  )
+  full <- .builder_app_tree_identity(app_dir)
+
+  expect_identical(hashed, "app.R")
+  expect_identical(
+    .builder_app_tree_summary(seeded),
+    .builder_app_tree_summary(full)
+  )
+
+  # A copy that differs from its input is reported with the input MD5, so the
+  # coordinator's own full read rejects it.
+  request$content_identities[[1L]]$crb$md5 <- strrep("0", 32L)
+  wrong <- .builder_app_tree_identity(
+    app_dir,
+    .previous = .builder_build_app_tree_seed(app_dir, request)
+  )
+  expect_false(identical(
+    .builder_app_tree_summary(wrong),
+    .builder_app_tree_summary(full)
+  ))
 })
 
 test_that("read-back rejects a Viewer page-gate mismatch", {

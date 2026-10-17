@@ -2901,15 +2901,17 @@ test_that("Build recovery actions preserve confirmation only when safe", {
       ignore.case = TRUE
     )
 
+    # Missing login accounts are asked for in place; the reviewed plan, the
+    # output and the result stay.
     set_case(restart_failure, auth_missing = TRUE)
     restart_succeeds <- TRUE
     click_action("restart_worker")
-    expect_identical(workflow()$stage, "configure")
-    expect_null(selected_output())
-    expect_null(result())
+    expect_identical(workflow()$stage, "build")
+    expect_identical(selected_output(), recovery_output)
+    expect_s3_class(result(), "builder_result")
     expect_match(
       tail(notifications, 1L),
-      "Re-enter login accounts and review the plan before retrying.",
+      "Enter the login accounts for this build, then build again.",
       fixed = TRUE
     )
 
@@ -2963,12 +2965,12 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     set_case(decision, auth_missing = TRUE)
     click_action("retry_failed_analysis")
     expect_length(enqueued, 0L)
-    expect_identical(workflow()$stage, "configure")
-    expect_null(selected_output())
-    expect_null(result())
+    expect_identical(workflow()$stage, "build")
+    expect_identical(selected_output(), recovery_output)
+    expect_identical(result(), decision)
     expect_match(
       tail(notifications, 1L),
-      "Re-enter login accounts and review the plan before retrying.",
+      "Enter the login accounts for this build, then build again.",
       fixed = TRUE
     )
 

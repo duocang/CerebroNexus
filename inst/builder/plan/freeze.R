@@ -195,7 +195,9 @@ builder_freeze_plan <- function(
   ),
   dataset_state_cache = NULL,
   review_identity = NULL,
-  file_verification_cache = NULL
+  file_verification_cache = NULL,
+  reuse_cache = NULL,
+  verification_cache = NULL
 ) {
   if (
     !exists(
@@ -895,6 +897,17 @@ builder_freeze_plan <- function(
       if (!is.null(settings$recommendations)) {
         item$recommendations <- settings$recommendations
       }
+      reusable <- builder_plan_reuse_lookup(
+        reuse_cache,
+        builder_plan_reuse_key(item)
+      )
+      if (!is.null(reusable)) {
+        item$reused_artifact <- list(
+          path = reusable$path,
+          fingerprint = reusable$fingerprint,
+          members = reusable$members
+        )
+      }
       item
     }),
     error = function(error) error
@@ -918,6 +931,22 @@ builder_freeze_plan <- function(
     }
     return(builder_plan_error(message, code))
   }
+  items <- lapply(items, function(item) {
+    reused <- item$reused_artifact
+    verification <- if (is.list(reused)) {
+      builder_plan_verification_lookup(
+        verification_cache,
+        reused$fingerprint$md5 %||% NULL,
+        item
+      )
+    } else {
+      NULL
+    }
+    if (is.list(verification)) {
+      item$reused_artifact$verification <- verification
+    }
+    item
+  })
 
   filenames <- vapply(items, `[[`, "", "filename")
   if (anyDuplicated(tolower(filenames))) {
@@ -1111,4 +1140,221 @@ builder_make_plan <- function(
     app_options = app_options,
     app_auth = app_auth
   )
+}
+
+## Session reuse of verified CRBs --------------------------------------------
+## Without an open Project, consecutive builds used to rebuild every dataset
+## even when only App options (welcome text, login, starting page) changed.
+## The Shiny session keeps the last verified CRB per dataset, keyed by the
+## frozen item minus Viewer-only presentation fields, and BuildPlan routes a
+## matching item through the reused-artifact copy path.
+
+.builder_plan_reuse_viewer_fields <- c(
+  "initial_projections",
+  "viewer_display",
+  "overview_point_size",
+  "overview_point_opacity",
+  "overview_percentage_cells_to_show",
+  "spatial_percentage_cells_to_show",
+  "spatial_point_appearance",
+  "spatial_roi_settings"
+)
+
+.builder_plan_reuse_limit <- 64L
+
+builder_plan_reuse_key <- function(item) {
+  if (!is.list(item) || !builder_has_text(item$id %||% "")) {
+    return(NULL)
+  }
+  snapshot <- item$source_snapshot_identity %||% list()
+  object_md5 <- snapshot$object_md5 %||% snapshot$snapshot$object_md5 %||% ""
+  if (
+    !isTRUE(snapshot$available) ||
+      !builder_has_text(object_md5) ||
+      !grepl("^[[:xdigit:]]{32}$", object_md5)
+  ) {
+    return(NULL)
+  }
+  value <- item
+  value[c(
+    .builder_plan_reuse_viewer_fields,
+    "reused_artifact",
+    "source_snapshot_identity",
+    "estimated_runtime",
+    "estimated_disk_bytes"
+  )] <- NULL
+  value$images <- lapply(value$images %||% list(), function(section) {
+    lapply(section, function(record) {
+      if (is.list(record)) {
+        record[c("point_opacity", "point_size")] <- NULL
+      }
+      record
+    })
+  })
+  value$source_identity <- list(
+    object_md5 = tolower(object_md5),
+    source = snapshot$source %||% NULL
+  )
+  key <- tryCatch(
+    digest::digest(
+      serialize(value, NULL, version = 3L),
+      algo = "md5",
+      serialize = FALSE
+    ),
+    error = function(error) NULL
+  )
+  if (is.null(key)) NULL else paste(item$id, key, sep = "::")
+}
+
+.builder_plan_reuse_file_stat <- function(paths) {
+  info <- tryCatch(
+    file.info(paths, extra_cols = FALSE),
+    error = function(error) NULL
+  )
+  if (
+    !is.data.frame(info) ||
+      nrow(info) != length(paths) ||
+      anyNA(info$size) ||
+      any(info$isdir %in% TRUE)
+  ) {
+    return(NULL)
+  }
+  list(
+    size = as.double(info$size),
+    mtime = as.double(info$mtime)
+  )
+}
+
+.builder_plan_reuse_paths <- function(record) {
+  c(
+    record$path,
+    vapply(
+      record$members %||% list(),
+      function(member) as.character(member$resolved_path %||% NA_character_),
+      character(1)
+    )
+  )
+}
+
+builder_plan_reuse_store <- function(cache, key, record) {
+  if (!is.environment(cache) || !builder_has_text(key %||% "")) {
+    return(invisible(FALSE))
+  }
+  paths <- .builder_plan_reuse_paths(record)
+  stats <- if (anyNA(paths)) NULL else .builder_plan_reuse_file_stat(paths)
+  if (
+    is.null(stats) ||
+      !builder_has_text(record$fingerprint$md5 %||% "") ||
+      .builder_plan_has_reference(record)
+  ) {
+    return(invisible(FALSE))
+  }
+  dataset_prefix <- paste0(sub("::.*$", "", key), "::")
+  keys <- ls(cache, all.names = TRUE)
+  stale <- keys[startsWith(keys, dataset_prefix) & keys != key]
+  if (length(stale)) {
+    rm(list = stale, envir = cache)
+  }
+  if (length(setdiff(keys, stale)) >= .builder_plan_reuse_limit) {
+    rm(list = ls(cache, all.names = TRUE), envir = cache)
+  }
+  record$stats <- stats
+  assign(key, record, envir = cache)
+  invisible(TRUE)
+}
+
+builder_plan_reuse_forget <- function(cache, dataset_ids = NULL) {
+  if (!is.environment(cache)) {
+    return(invisible(FALSE))
+  }
+  keys <- ls(cache, all.names = TRUE)
+  if (!is.null(dataset_ids)) {
+    keys <- keys[sub("::.*$", "", keys) %in% as.character(dataset_ids)]
+  }
+  if (length(keys)) {
+    rm(list = keys, envir = cache)
+  }
+  invisible(length(keys) > 0L)
+}
+
+# A cached CRB is offered only while every file keeps the size and timestamp
+# recorded when it was verified; the reuse copy still checks its MD5.
+builder_plan_reuse_lookup <- function(cache, key) {
+  if (!is.environment(cache) || !builder_has_text(key %||% "")) {
+    return(NULL)
+  }
+  record <- get0(key, envir = cache, inherits = FALSE)
+  if (!is.list(record)) {
+    return(NULL)
+  }
+  paths <- .builder_plan_reuse_paths(record)
+  current <- if (anyNA(paths)) NULL else .builder_plan_reuse_file_stat(paths)
+  if (is.null(current) || !identical(current, record$stats)) {
+    rm(list = key, envir = cache)
+    return(NULL)
+  }
+  record
+}
+
+## A reused CRB whose exact bytes (MD5) were already read back against the same
+## expectation earlier in this session does not need the deep read-back again:
+## the copy into the stage re-checks those bytes.
+
+.builder_plan_verification_fields <- c(
+  "name",
+  "filename",
+  "sidecars",
+  "expression_backend",
+  "artifact_identity",
+  "spatial_coordinate_transforms",
+  "trekker_alignment"
+)
+
+builder_plan_verification_key <- function(md5, item) {
+  if (
+    !builder_has_text(md5 %||% "") ||
+      !grepl("^[[:xdigit:]]{32}$", md5) ||
+      !is.list(item)
+  ) {
+    return(NULL)
+  }
+  value <- item[intersect(.builder_plan_verification_fields, names(item))]
+  value$visible_pages <- item$viewer_page_expectations$visible_conditional %||%
+    character()
+  key <- tryCatch(
+    digest::digest(
+      serialize(value, NULL, version = 3L),
+      algo = "md5",
+      serialize = FALSE
+    ),
+    error = function(error) NULL
+  )
+  if (is.null(key)) NULL else paste(tolower(md5), key, sep = "::")
+}
+
+builder_plan_verification_store <- function(cache, md5, item, verification) {
+  key <- builder_plan_verification_key(md5, item)
+  if (
+    !is.environment(cache) ||
+      is.null(key) ||
+      !is.list(verification) ||
+      !isTRUE(verification$valid) ||
+      .builder_plan_has_reference(verification)
+  ) {
+    return(invisible(FALSE))
+  }
+  if (length(ls(cache, all.names = TRUE)) >= .builder_plan_reuse_limit) {
+    rm(list = ls(cache, all.names = TRUE), envir = cache)
+  }
+  assign(key, verification, envir = cache)
+  invisible(TRUE)
+}
+
+builder_plan_verification_lookup <- function(cache, md5, item) {
+  key <- builder_plan_verification_key(md5, item)
+  if (!is.environment(cache) || is.null(key)) {
+    return(NULL)
+  }
+  value <- get0(key, envir = cache, inherits = FALSE)
+  if (is.list(value)) value else NULL
 }

@@ -36,7 +36,16 @@ builder_release_runtime_files <- function() {
   )
 }
 
-builder_runtime_file_identity <- function(paths, .md5 = tools::md5sum) {
+## `.previous` is an earlier list(identity, stats) of the same runtime: files
+## whose size and modification time are unchanged keep their MD5, so a Build
+## hashes the ~250 runtime files once per session instead of once per
+## process. `.stats` (an environment) receives the stats for the next call.
+builder_runtime_file_identity <- function(
+  paths,
+  .md5 = tools::md5sum,
+  .previous = NULL,
+  .stats = NULL
+) {
   paths <- if (is.null(paths)) character() else paths
   paths <- as.character(paths)
   if (!length(paths) || anyNA(paths) || any(!nzchar(paths))) {
@@ -56,8 +65,62 @@ builder_runtime_file_identity <- function(paths, .md5 = tools::md5sum) {
     stop("The Builder runtime file set is incomplete.", call. = FALSE)
   }
   before <- file.info(paths)[, c("size", "mtime"), drop = FALSE]
-  digests <- unname(as.character(.md5(paths)))
+  digests <- rep(NA_character_, length(paths))
+  previous_files <- if (is.list(.previous)) .previous$identity$files else NULL
+  previous_stats <- if (is.list(.previous)) .previous$stats else NULL
+  if (
+    is.list(previous_files) &&
+      is.list(previous_stats) &&
+      is.character(previous_stats$paths)
+  ) {
+    previous_paths <- vapply(
+      previous_files,
+      function(file) {
+        if (is.character(file$path) && length(file$path) == 1L) {
+          file$path
+        } else {
+          NA_character_
+        }
+      },
+      character(1)
+    )
+    file_index <- match(paths, previous_paths)
+    stat_index <- match(paths, previous_stats$paths)
+    unchanged <- !is.na(file_index) &
+      !is.na(stat_index) &
+      as.double(before$size) ==
+        as.double(previous_stats$size)[stat_index] &
+      as.double(before$mtime) ==
+        as.double(previous_stats$mtime)[stat_index]
+    unchanged[is.na(unchanged)] <- FALSE
+    for (index in which(unchanged)) {
+      previous <- previous_files[[file_index[[index]]]]
+      if (
+        is.character(previous$md5) &&
+          length(previous$md5) == 1L &&
+          grepl("^[[:xdigit:]]{32}$", previous$md5) &&
+          identical(as.double(previous$bytes), as.double(before$size[[index]]))
+      ) {
+        digests[[index]] <- previous$md5
+      }
+    }
+  }
+  missing <- is.na(digests)
+  if (any(missing)) {
+    digests[missing] <- unname(as.character(.md5(paths[missing])))
+  }
   after <- file.info(paths)[, c("size", "mtime"), drop = FALSE]
+  if (is.environment(.stats)) {
+    assign(
+      "stats",
+      list(
+        paths = paths,
+        size = as.double(after$size),
+        mtime = as.double(after$mtime)
+      ),
+      envir = .stats
+    )
+  }
   stable <- identical(
     suppressWarnings(as.double(before$size)),
     suppressWarnings(as.double(after$size))
@@ -1974,6 +2037,151 @@ builder_coordinator_publish <- function(
 builder_coordinator_abort <- function(handle) {
   handle <- .builder_coordinator_handle(handle)
   builder_abort_release(handle)
+}
+
+.builder_coordinator_stage_files <- function(root, relative) {
+  path <- file.path(root, relative)
+  if (.builder_release_link(path) || !.pathWithin(path, root)) {
+    stop("A retained build artifact is unsafe.", call. = FALSE)
+  }
+  if (!dir.exists(path)) {
+    if (!file.exists(path)) {
+      stop("A retained build artifact is missing.", call. = FALSE)
+    }
+    return(relative)
+  }
+  children <- list.files(
+    path,
+    all.files = TRUE,
+    recursive = TRUE,
+    no.. = TRUE
+  )
+  file.path(relative, children)
+}
+
+# A needs-decision result discards the stage, including every dataset that
+# already succeeded. Before the abort, move (or copy across volumes) those
+# verified CRBs and their sidecars into a session-owned directory so a retry
+# reuses them instead of rebuilding.
+builder_coordinator_retain_partial <- function(
+  handle,
+  build_result,
+  retention_root,
+  .move = file.rename,
+  .copy = file.copy
+) {
+  handle <- .builder_coordinator_handle(handle)
+  if (
+    !is.list(build_result) ||
+      !identical(build_result$state, "needs_decision") ||
+      !.builder_release_text(retention_root) ||
+      !dir.exists(retention_root) ||
+      .builder_release_link(retention_root)
+  ) {
+    return(list())
+  }
+  built <- build_result$built %||% character()
+  if (!length(built) || is.null(names(built))) {
+    return(list())
+  }
+  items <- handle$report_plan$items %||% list()
+  names(items) <- vapply(
+    items,
+    function(item) as.character(item$id %||% ""),
+    character(1)
+  )
+  stage <- .canonicalTargetPath(handle$stage)
+  retained <- list()
+  for (id in names(built)) {
+    item <- items[[id]]
+    path <- built[[id]]
+    verification <- build_result$verifications[[id]] %||% NULL
+    if (
+      !is.list(item) ||
+        !is.list(verification) ||
+        !isTRUE(verification$valid) ||
+        !.builder_release_text(path) ||
+        !.pathWithin(path, stage) ||
+        !identical(dirname(.canonicalTargetPath(path)), stage) ||
+        !identical(basename(path), item$filename)
+    ) {
+      next
+    }
+    record <- tryCatch(
+      {
+        spatial <- verification$spatial_molecule_backend$location %||%
+          character()
+        relative <- unique(c(
+          item$filename,
+          unlist(
+            lapply(
+              c(item$sidecars %||% character(), spatial),
+              function(name) .builder_coordinator_stage_files(stage, name)
+            ),
+            use.names = FALSE
+          )
+        ))
+        destination <- file.path(
+          retention_root,
+          paste0(
+            "r-",
+            substr(gsub("[^A-Za-z0-9]", "", handle$build_id), 1L, 24L),
+            "-",
+            length(retained) + 1L
+          )
+        )
+        if (
+          .builder_release_exists(destination) ||
+            !dir.create(destination, mode = "0700")
+        ) {
+          stop("The retention directory could not be created.", call. = FALSE)
+        }
+        files <- lapply(relative, function(name) {
+          source <- file.path(stage, name)
+          target <- file.path(destination, name)
+          dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+          moved <- isTRUE(suppressWarnings(.move(source, target))) ||
+            isTRUE(.copy(source, target, overwrite = FALSE))
+          if (!moved || !file.exists(target) || dir.exists(target)) {
+            stop("A retained build artifact could not be moved.", call. = FALSE)
+          }
+          list(
+            target = name,
+            resolved_path = normalizePath(
+              target,
+              winslash = "/",
+              mustWork = TRUE
+            ),
+            fingerprint = list(
+              md5 = .builder_release_payload_md5(target),
+              size = as.double(file.size(target))
+            )
+          )
+        })
+        primary <- files[[1L]]
+        verification$path <- primary$resolved_path
+        if (.builder_release_text(verification$spatial_molecule_path)) {
+          verification$spatial_molecule_path <- file.path(
+            dirname(primary$resolved_path),
+            basename(verification$spatial_molecule_path)
+          )
+        }
+        list(
+          path = primary$resolved_path,
+          fingerprint = primary$fingerprint,
+          members = lapply(files[-1L], function(member) {
+            member[c("resolved_path", "target", "fingerprint")]
+          }),
+          verification = verification
+        )
+      },
+      error = function(error) NULL
+    )
+    if (is.list(record)) {
+      retained[[id]] <- record
+    }
+  }
+  retained
 }
 
 builder_coordinator_claim <- function(handle, pid = Sys.getpid()) {

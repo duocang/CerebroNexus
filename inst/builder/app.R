@@ -726,6 +726,7 @@ ui <- shiny::bootstrapPage(
           id = "builder-build-progress",
           class = "builder-build-progress",
           hidden = "hidden",
+          builder_build_progress_detail_ui("builder-build-progress-detail"),
           tags$ol(
             class = "builder-build-progress-steps",
             tags$li(`data-build-phase` = "preflight", "Check release"),

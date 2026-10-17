@@ -1475,145 +1475,294 @@ builder_release_execution_runtime <- function(hash = TRUE) {
   )
 }
 
-# Hashes and release preflight run in a trusted coordinator process, separate
-# from both Shiny and the data worker. Ownership transfers before it exits.
-builder_start_release_preparation_process <- function(plan, build_id) {
+## -- coordinator processes ---------------------------------------------------
+## Hashes, release preflight and settlement run in trusted coordinator
+## processes, separate from both Shiny and the data worker. Each one used to
+## start cold (library(CerebroNexus) alone is ~5 s from an installed package)
+## and hash all ~250 runtime files again. A process is now started ahead of
+## need: it loads and hashes the runtime while the user picks a folder or the
+## worker builds, then waits for its one job in a private inbox file. Runtime
+## MD5s are reused while file size and modification time are unchanged. Each
+## process still runs exactly one preparation or settlement, and first checks
+## that the code it loaded is still the runtime on disk.
+
+builder_coordinator_process_state <- new.env(parent = emptyenv())
+builder_coordinator_process_state$warm <- list()
+
+builder_coordinator_idle_seconds <- function() {
+  value <- suppressWarnings(as.numeric(getOption(
+    "CerebroNexus.builder.coordinator_idle_seconds",
+    900
+  ))[1L])
+  if (!is.finite(value) || value <= 0) 900 else value
+}
+
+builder_coordinator_private_dir <- function() {
+  path <- file.path(tempdir(), "builder-coordinator")
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, mode = "0700", showWarnings = FALSE)
+  }
+  normalizePath(path, winslash = "/", mustWork = TRUE)
+}
+
+builder_coordinator_runtime_cache_path <- function() {
+  file.path(builder_coordinator_private_dir(), "runtime-identity.rds")
+}
+
+builder_coordinator_runtime_previous <- function() {
+  path <- builder_coordinator_runtime_cache_path()
+  value <- if (file.exists(path)) {
+    tryCatch(readRDS(path), error = function(error) NULL)
+  } else {
+    NULL
+  }
+  if (is.list(value) && is.list(value$identity) && is.list(value$stats)) {
+    value
+  } else {
+    NULL
+  }
+}
+
+# Runs in the coordinator process: load and hash the runtime, then wait for
+# the job. Self-contained; callr evaluates it in a fresh global environment.
+builder_coordinator_process_main <- function(
+  inbox,
+  runtime_files,
+  package_files,
+  package_source,
+  execution_files,
+  previous,
+  cache_path,
+  parent_pid,
+  idle_seconds,
+  runtime_identity,
+  source_utf8
+) {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
+  stats <- new.env(parent = emptyenv())
+  loaded_identity <- runtime_identity(
+    execution_files,
+    .previous = previous,
+    .stats = stats
+  )
+  if (is.null(package_source) || !length(package_files)) {
+    suppressPackageStartupMessages(library(CerebroNexus))
+  } else {
+    Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
+    for (path in package_files) {
+      source_utf8(path, envir = runtime)
+    }
+  }
+  for (name in setdiff(names(runtime_files), "root")) {
+    source_utf8(runtime_files[[name]], envir = runtime)
+  }
+  if (!is.null(package_source) && length(package_files)) {
+    validator <- get0(
+      ".viewerAuthValidateDatabase",
+      envir = runtime,
+      inherits = FALSE
+    )
+    verify_pair <- get0(
+      "builder_auth_verify_database_pair",
+      envir = runtime,
+      inherits = FALSE
+    )
+    if (!is.function(validator) || !is.function(verify_pair)) {
+      stop("The source-tree authentication runtime is incomplete.")
+    }
+    verify_formals <- formals(verify_pair)
+    verify_formals$.validate <- quote(.viewerAuthValidateDatabase)
+    formals(verify_pair) <- verify_formals
+    assign("builder_auth_verify_database_pair", verify_pair, envir = runtime)
+  }
+  loaded <- list(identity = loaded_identity, stats = stats$stats)
+  try(
+    {
+      temporary <- tempfile(".runtime-", tmpdir = dirname(cache_path))
+      saveRDS(loaded, temporary, version = 2)
+      if (!file.rename(temporary, cache_path)) {
+        unlink(temporary, force = TRUE)
+      }
+    },
+    silent = TRUE
+  )
+  deadline <- Sys.time() + idle_seconds
+  checked_parent <- Sys.time()
+  while (!file.exists(inbox)) {
+    if (Sys.time() > deadline) {
+      return(list(idle = TRUE))
+    }
+    if (as.numeric(Sys.time() - checked_parent, units = "secs") > 2) {
+      checked_parent <- Sys.time()
+      alive <- tryCatch(
+        ps::pid_exists(parent_pid),
+        error = function(error) TRUE
+      )
+      if (!isTRUE(alive)) {
+        return(list(idle = TRUE))
+      }
+    }
+    Sys.sleep(0.05)
+  }
+  job <- readRDS(inbox)
+  unlink(inbox, force = TRUE)
+  # The loaded code must still be the runtime on disk.
+  current <- runtime_identity(execution_files, .previous = loaded)
+  if (!identical(current, loaded$identity)) {
+    stop(
+      "The Builder runtime changed while its coordinator was starting. ",
+      "Nothing was published; try again.",
+      call. = FALSE
+    )
+  }
+  job$run(runtime, loaded$identity, job$args)
+}
+
+builder_coordinator_spawn <- function(kind) {
   runtime_files <- builder_release_runtime_files()
   package_runtime <- builder_release_package_runtime(runtime_files$root)
   execution <- builder_release_execution_runtime(hash = FALSE)
-  callr::r_bg(
-    function(
-      plan,
-      build_id,
-      files,
-      runtime_files,
-      package_files,
-      package_source,
-      parent_pid,
-      source_utf8
-    ) {
-      runtime <- new.env(parent = globalenv())
-      runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
-      if (!length(package_files)) {
-        suppressPackageStartupMessages(library(CerebroNexus))
-      } else {
-        Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
-      }
-      for (path in package_files) {
-        source_utf8(path, runtime)
-      }
-      for (name in setdiff(names(runtime_files), "root")) {
-        source_utf8(runtime_files[[name]], runtime)
-      }
-      identity <- runtime$builder_runtime_file_identity(files)
-      handle <- runtime$builder_coordinator_prepare(plan, build_id)
+  inbox <- tempfile(
+    paste0(kind, "-inbox-"),
+    tmpdir = builder_coordinator_private_dir(),
+    fileext = ".rds"
+  )
+  process <- callr::r_bg(
+    builder_coordinator_process_main,
+    args = list(
+      inbox = inbox,
+      runtime_files = runtime_files,
+      package_files = package_runtime$files,
+      package_source = package_runtime$source_root,
+      execution_files = execution$files,
+      previous = builder_coordinator_runtime_previous(),
+      cache_path = builder_coordinator_runtime_cache_path(),
+      parent_pid = Sys.getpid(),
+      idle_seconds = builder_coordinator_idle_seconds(),
+      runtime_identity = builder_runtime_file_identity,
+      source_utf8 = builder_source_utf8
+    ),
+    # Preparation transfers release ownership to this process before it exits
+    # and must not be killed with it; settlement is supervised.
+    supervise = identical(kind, "settlement"),
+    cleanup = !identical(kind, "preparation"),
+    stdout = "|",
+    stderr = "|"
+  )
+  list(kind = kind, process = process, inbox = inbox, files = execution$files)
+}
+
+builder_coordinator_warm <- function(kind) {
+  warm <- builder_coordinator_process_state$warm[[kind]]
+  alive <- is.list(warm) &&
+    isTRUE(tryCatch(warm$process$is_alive(), error = function(error) FALSE))
+  if (!alive) {
+    warm <- tryCatch(
+      builder_coordinator_spawn(kind),
+      error = function(error) NULL
+    )
+    builder_coordinator_process_state$warm[[kind]] <- warm
+  }
+  invisible(warm)
+}
+
+builder_prewarm_release_processes <- function(
+  kinds = c("preparation", "settlement")
+) {
+  for (kind in kinds) {
+    builder_coordinator_warm(kind)
+  }
+  invisible(TRUE)
+}
+
+builder_coordinator_stop_warm <- function() {
+  for (warm in builder_coordinator_process_state$warm) {
+    if (is.list(warm)) {
+      try(warm$process$kill(), silent = TRUE)
+    }
+  }
+  builder_coordinator_process_state$warm <- list()
+  invisible(TRUE)
+}
+
+session$onSessionEnded(builder_coordinator_stop_warm)
+
+builder_coordinator_submit <- function(kind, run, args) {
+  warm <- builder_coordinator_warm(kind)
+  if (!is.list(warm)) {
+    stop("The release coordinator could not be started.", call. = FALSE)
+  }
+  builder_coordinator_process_state$warm[[kind]] <- NULL
+  environment(run) <- globalenv()
+  temporary <- tempfile(".job-", tmpdir = dirname(warm$inbox))
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  saveRDS(list(run = run, args = args), temporary, version = 2)
+  Sys.chmod(temporary, mode = "0600")
+  if (!file.rename(temporary, warm$inbox)) {
+    try(warm$process$kill(), silent = TRUE)
+    stop("The release coordinator job could not be delivered.", call. = FALSE)
+  }
+  warm$process
+}
+
+builder_start_release_preparation_process <- function(plan, build_id) {
+  process <- builder_coordinator_submit(
+    "preparation",
+    function(runtime, identity, args) {
+      handle <- runtime$builder_coordinator_prepare(args$plan, args$build_id)
       transferred <- FALSE
       on.exit(
         if (!transferred) {
           try(runtime$builder_coordinator_abort(handle), silent = TRUE)
         }
       )
-      handle <- runtime$builder_coordinator_claim(handle, parent_pid)
+      handle <- runtime$builder_coordinator_claim(handle, args$parent_pid)
       transferred <- TRUE
       list(
-        runtime = list(files = files, identity = identity),
+        runtime = list(files = args$files, identity = identity),
         coordinator = handle
       )
     },
-    args = list(
+    list(
       plan = plan,
       build_id = build_id,
-      files = execution$files,
-      runtime_files = runtime_files,
-      package_files = package_runtime$files,
-      package_source = package_runtime$source_root,
-      parent_pid = Sys.getpid(),
-      source_utf8 = builder_source_utf8
-    ),
-    supervise = FALSE,
-    cleanup = FALSE,
-    stdout = "|",
-    stderr = "|"
+      files = builder_release_execution_runtime(hash = FALSE)$files,
+      parent_pid = Sys.getpid()
+    )
   )
+  # Settlement loads while the worker builds.
+  builder_coordinator_warm("settlement")
+  process
 }
 
 builder_start_release_settlement_process <- function(
   release,
   value,
-  progress_path = NULL
+  progress_path = NULL,
+  retention_root = builder_build_retention_root()
 ) {
-  runtime_files <- builder_release_runtime_files()
-  package_runtime <- builder_release_package_runtime(runtime_files$root)
-  callr::r_bg(
-    function(
-      handle,
-      value,
-      runtime_files,
-      package_source,
-      package_files,
-      execution_files,
-      expected_runtime_identity,
-      worker_runtime_identity,
-      runtime_identity,
-      runtime_assert,
-      source_utf8,
-      progress_path
-    ) {
-      runtime <- new.env(parent = globalenv())
-      runtime$`%||%` <- function(left, right) {
-        if (is.null(left)) right else left
-      }
+  builder_coordinator_submit(
+    "settlement",
+    function(runtime, loaded_identity, args) {
+      value <- args$value
       successful_build <- is.list(value) &&
         identical(value$state, "success") &&
         isTRUE(value$publishable)
       if (successful_build) {
-        runtime_assert(
-          expected_runtime_identity,
-          worker_runtime_identity,
+        runtime$builder_runtime_assert_identity(
+          args$expected_runtime_identity,
+          args$worker_runtime_identity,
           context = "worker completion"
         )
-        current_runtime_identity <- runtime_identity(execution_files)
-        runtime_assert(
-          expected_runtime_identity,
-          current_runtime_identity,
+        runtime$builder_runtime_assert_identity(
+          args$expected_runtime_identity,
+          loaded_identity,
           context = "parent verification"
         )
       }
-      if (is.null(package_source)) {
-        suppressPackageStartupMessages(library(CerebroNexus))
-      } else {
-        Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
-        for (path in package_files) {
-          source_utf8(path, envir = runtime)
-        }
-      }
-      for (name in setdiff(names(runtime_files), "root")) {
-        source_utf8(runtime_files[[name]], envir = runtime)
-      }
-      if (!is.null(package_source)) {
-        validator <- get0(
-          ".viewerAuthValidateDatabase",
-          envir = runtime,
-          inherits = FALSE
-        )
-        verify_pair <- get0(
-          "builder_auth_verify_database_pair",
-          envir = runtime,
-          inherits = FALSE
-        )
-        if (!is.function(validator) || !is.function(verify_pair)) {
-          stop("The source-tree authentication runtime is incomplete.")
-        }
-        verify_formals <- formals(verify_pair)
-        verify_formals$.validate <- quote(.viewerAuthValidateDatabase)
-        formals(verify_pair) <- verify_formals
-        assign(
-          "builder_auth_verify_database_pair",
-          verify_pair,
-          envir = runtime
-        )
-      }
-      handle <- runtime$builder_coordinator_claim(handle)
+      progress_path <- args$progress_path
+      handle <- runtime$builder_coordinator_claim(args$handle)
       report_progress <- function(phase) {
         if (
           !is.character(progress_path) ||
@@ -1669,12 +1818,21 @@ builder_start_release_settlement_process <- function(
           .on_progress = report_progress
         )
       }
-      if (
-        is.list(value) &&
-          identical(value$state, "success") &&
-          isTRUE(value$publishable)
-      ) {
+      if (successful_build) {
         report_progress("verify")
+      }
+      if (is.list(value) && identical(value$state, "needs_decision")) {
+        retained <- tryCatch(
+          runtime$builder_coordinator_retain_partial(
+            handle,
+            value,
+            args$retention_root
+          ),
+          error = function(error) list()
+        )
+        if (length(retained)) {
+          value$retained_artifacts <- retained
+        }
       }
       runtime$builder_coordinator_settle(
         handle,
@@ -1683,23 +1841,14 @@ builder_start_release_settlement_process <- function(
         .abort = abort_with_diagnostics
       )
     },
-    args = list(
+    list(
       handle = release$handle,
       value = value,
-      runtime_files = runtime_files,
-      package_source = package_runtime$source_root,
-      package_files = package_runtime$files,
-      execution_files = release$runtime_files,
       expected_runtime_identity = release$runtime_identity,
       worker_runtime_identity = value$runtime_identity %||% NULL,
-      runtime_identity = builder_runtime_file_identity,
-      runtime_assert = builder_runtime_assert_identity,
-      source_utf8 = builder_source_utf8,
-      progress_path = progress_path
-    ),
-    supervise = TRUE,
-    stdout = "|",
-    stderr = "|"
+      progress_path = progress_path,
+      retention_root = retention_root
+    )
   )
 }
 

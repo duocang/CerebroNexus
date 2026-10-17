@@ -174,6 +174,22 @@
   animation: builder-operation-backdrop-in .18s ease-out both;
 }
 .builder-operation-overlay[aria-hidden="false"] { display: flex; }
+/* Build progress as a status card when the page stays usable. */
+.builder-operation-overlay.is-nonmodal {
+  inset: auto var(--space-5) var(--space-5) auto;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.builder-operation-overlay.is-nonmodal .builder-operation-overlay-card {
+  width: min(calc(100vw - 2 * var(--space-5)), 26rem);
+  max-width: 26rem;
+  padding: var(--space-4) var(--space-5);
+  pointer-events: auto;
+}
+/* The step summary and live line are enough in a corner card. */
+.builder-operation-overlay.is-nonmodal .builder-build-progress-steps { display: none; }
 body.modal-open .modal-backdrop { z-index: 2010; }
 body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-operation-overlay-card {
@@ -264,6 +280,26 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   font-size: .75rem;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
+  white-space: nowrap;
+}
+.builder-build-progress-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .15rem .65rem;
+  align-items: baseline;
+  margin: 0;
+  color: var(--c-text);
+  font-size: .86rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.builder-build-progress-detail[hidden] { display: none; }
+.builder-build-progress-text { min-width: 0; overflow-wrap: anywhere; }
+.builder-build-progress-elapsed {
+  color: var(--c-text-muted);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   white-space: nowrap;
 }
 .builder-operation-overlay-detail {

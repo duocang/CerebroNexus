@@ -123,6 +123,8 @@
   var buildStatusScrollPhase = 0;
   var buildStatusFocusToken = 0;
   var buildOperationActive = false;
+  var buildOperationFocusHeld = false;
+  var buildProgressState = { active: false, text: "", anchor: null, timer: null };
   var buildOperationRestoreFocus = null;
   var buildOperationFocusToken = 0;
   var projectOpenOperationActive = false;
@@ -1134,8 +1136,13 @@
     }
     var operationOverlayOpen = pageInert &&
       builderActivityState.busy_modal !== true;
-    var nextBuildOperationActive = pageInert &&
+    // The Build progress panel does not depend on page_inert: when the
+    // server stops making the page inert during a Build, the same panel
+    // stays up as a non-modal status card and the workspace stays usable.
+    var nextBuildOperationActive = builderConnectionReady &&
       builderActivityState.busy_title === "Building output";
+    var buildPanelNonModal = nextBuildOperationActive && !pageInert &&
+      !builderProjectSaveResultOpen;
     var nextProjectOpenOperationActive = operationOverlayOpen &&
       (builderActivityState.phase === "opening" || builderActivityState.phase === "restoring") &&
       !builderProjectSaveResultOpen;
@@ -1147,15 +1154,18 @@
     document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
       var overlayOpen = operationOverlayOpen || builderProjectSaveResultOpen;
+      var modalOpen = overlayOpen && !buildPanelNonModal;
       overlay.setAttribute(
         "aria-hidden",
-        overlayOpen ? "false" : "true"
+        overlayOpen || buildPanelNonModal ? "false" : "true"
       );
-      overlay.setAttribute("role", overlayOpen ? "dialog" : "status");
-      if (overlayOpen) overlay.setAttribute("aria-modal", "true");
+      overlay.classList.toggle("is-nonmodal", buildPanelNonModal);
+      overlay.setAttribute("role", modalOpen ? "dialog" : "status");
+      if (modalOpen) overlay.setAttribute("aria-modal", "true");
       else overlay.removeAttribute("aria-modal");
     }
-    if (nextBuildOperationActive && !buildOperationActive) {
+    if (nextBuildOperationActive && !buildOperationFocusHeld && !buildPanelNonModal) {
+      buildOperationFocusHeld = true;
       beginBuildOperationFocus(overlay);
     }
     var shell = document.querySelector(".builder-shell");
@@ -1255,12 +1265,79 @@
     projectOpenOperationActive = nextProjectOpenOperationActive;
     var priorBuildOperationActive = buildOperationActive;
     buildOperationActive = nextBuildOperationActive;
+    setBuildProgressClock(buildOperationActive);
     if (!buildOperationActive) buildStopPending = false;
     if (priorBuildOperationActive && !buildOperationActive) {
-      restoreBuildOperationFocus();
+      // A non-modal panel never took focus, so it gives nothing back.
+      if (buildOperationFocusHeld) restoreBuildOperationFocus();
+      buildOperationFocusHeld = false;
     }
     applyDatasetMutationLock(roots);
     applyProjectSourceLoadState();
+  }
+
+  function formatBuildElapsed(milliseconds) {
+    var total = Math.max(0, Math.floor(milliseconds / 1000));
+    var hours = Math.floor(total / 3600);
+    var minutes = Math.floor((total % 3600) / 60);
+    var seconds = total % 60;
+    function pad(value) { return (value < 10 ? "0" : "") + value; }
+    return (hours ? hours + ":" + pad(minutes) : String(minutes)) +
+      ":" + pad(seconds) + " elapsed";
+  }
+
+  // "Dataset i/N · name · step" from the server plus a clock the browser runs
+  // itself, so the panel moves every second without a server round trip.
+  function renderBuildProgressDetail() {
+    var running = buildProgressState.active && buildProgressState.anchor !== null;
+    var elapsed = running
+      ? formatBuildElapsed(Date.now() - buildProgressState.anchor)
+      : "";
+    var text = buildProgressState.active ? buildProgressState.text : "";
+    document.querySelectorAll("[data-build-progress-detail]").forEach(function (node) {
+      var label = node.querySelector(".builder-build-progress-text");
+      var clock = node.querySelector(".builder-build-progress-elapsed");
+      node.hidden = !(text || elapsed);
+      if (label && label.textContent !== text) label.textContent = text;
+      if (clock && clock.textContent !== elapsed) clock.textContent = elapsed;
+    });
+  }
+
+  function setBuildProgressClock(active) {
+    active = Boolean(active);
+    if (active && buildProgressState.anchor === null) {
+      buildProgressState.anchor = Date.now();
+    }
+    if (!active) {
+      buildProgressState.anchor = null;
+      buildProgressState.text = "";
+    }
+    buildProgressState.active = active;
+    if (active && buildProgressState.timer === null) {
+      buildProgressState.timer = window.setInterval(renderBuildProgressDetail, 1000);
+    } else if (!active && buildProgressState.timer !== null) {
+      window.clearInterval(buildProgressState.timer);
+      buildProgressState.timer = null;
+    }
+    renderBuildProgressDetail();
+  }
+
+  function handleBuildProgress(message) {
+    if (!message || message.active !== true) {
+      buildProgressState.text = "";
+      renderBuildProgressDetail();
+      return;
+    }
+    buildProgressState.text = typeof message.text === "string" ? message.text : "";
+    var elapsed = Number(message.elapsed_seconds);
+    if (Number.isFinite(elapsed) && elapsed >= 0) {
+      // After a reload the worker's start time is earlier than this page's.
+      var implied = Date.now() - elapsed * 1000;
+      if (buildProgressState.anchor === null || implied < buildProgressState.anchor) {
+        buildProgressState.anchor = implied;
+      }
+    }
+    renderBuildProgressDetail();
   }
 
   function beginBuildOperationFocus(overlay) {
@@ -5184,6 +5261,7 @@
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_copy_text", copyTextToClipboard);
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
+    window.Shiny.addCustomMessageHandler("builder_build_progress", handleBuildProgress);
     window.Shiny.addCustomMessageHandler(
       "builder_dataset_rail_patch",
       reconcileDatasetRail
@@ -5355,6 +5433,12 @@
     }
     window.__builderHandleAuthStatus = handleAuthStatus;
     window.Shiny.addCustomMessageHandler("builder_auth_status", handleAuthStatus);
+    // Build and Retry ask for login accounts in place instead of sending the
+    // user back to Review.
+    window.Shiny.addCustomMessageHandler("builder_open_auth_dialog", function (message) {
+      if (!message || message.open !== true || authEditor.open) return;
+      openAuthDialog(document.getElementById("build"));
+    });
     window.Shiny.addCustomMessageHandler("builder_auth_reset", function (message) {
       if (!message || message.reset !== true) return;
       setAuthSaving(false);

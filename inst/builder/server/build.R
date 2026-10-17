@@ -47,54 +47,84 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+build_options_dataset_choices <- function(snapshot) {
+  items <- snapshot$items %||% list()
+  stats::setNames(
+    vapply(items, `[[`, character(1), "id"),
+    vapply(items, `[[`, character(1), "name")
+  )
+}
+
+build_options_selected_dataset <- function(dataset_choices) {
+  selected <- isolate(build_initial_dataset())
+  if (
+    (is.null(selected) || !selected %in% dataset_choices) &&
+      length(dataset_choices)
+  ) {
+    selected <- unname(dataset_choices[[1L]])
+  }
+  selected
+}
+
+build_options_page_choices <- function(snapshot, dataset) {
+  items <- snapshot$items %||% list()
+  index <- match(dataset, vapply(items, `[[`, character(1), "id"))
+  expectations <- if (length(index) == 1L && !is.na(index)) {
+    items[[index]]$viewer_page_expectations %||% list()
+  } else {
+    list()
+  }
+  builder_review_initial_page_choices(expectations)
+}
+
+build_options_current <- function(make_app, initial_dataset) {
+  options <- isolate(review_options())
+  builder_build_options(
+    make_app = isTRUE(make_app),
+    welcome_message = options$welcome_message,
+    initial_page = options$initial_page,
+    point_size = options$point_size,
+    variable_to_compare = options$variable_to_compare,
+    host = options$host,
+    port = options$port,
+    max_request_size = options$max_request_size,
+    display_mode = options$display_mode,
+    launch_browser = FALSE,
+    show_upload_ui = options$show_upload_ui,
+    initial_dataset = initial_dataset
+  )
+}
+
+build_options_auth_summary <- function() {
+  list(
+    enabled = isTRUE(isolate(auth_enabled())),
+    account_count = as.integer(length(isolate(auth_accounts()))),
+    error = isolate(auth_validation())$error %||% NULL,
+    available = isTRUE(auth_capability()$available)
+  )
+}
+
 output$build_output_options <- renderUI({
   req(identical(workflow()$stage, "build"))
   snapshot <- workflow()$review_snapshot
   auth <- auth_capability()
   # Activity messages update the existing controls in place. Re-rendering this
   # form for each background checkpoint update loses in-flight edits and focus.
+  # Output mode and starting dataset do not re-render it either: the Viewer
+  # App section has its own output and the page list updates in place.
   controls_disabled <- isolate(builder_mutations_locked(
     build_flow(),
     protocol()
   ))
-  items <- snapshot$items %||% list()
-  dataset_choices <- stats::setNames(
-    vapply(items, `[[`, character(1), "id"),
-    vapply(items, `[[`, character(1), "name")
-  )
-  selected_dataset <- build_initial_dataset()
-  if (is.null(selected_dataset) && length(dataset_choices)) {
-    selected_dataset <- unname(dataset_choices[[1L]])
-  }
-  selected_index <- match(selected_dataset, unname(dataset_choices))
-  page_expectations <- if (
-    length(selected_index) == 1L && !is.na(selected_index)
-  ) {
-    items[[selected_index]]$viewer_page_expectations %||% list()
-  } else {
-    list()
-  }
+  dataset_choices <- build_options_dataset_choices(snapshot)
   builder_build_options_ui(
-    builder_build_options(
-      make_app = isTRUE(build_mode()),
-      welcome_message = isolate(review_options()$welcome_message),
-      initial_page = isolate(review_options()$initial_page),
-      point_size = isolate(review_options()$point_size),
-      variable_to_compare = isolate(review_options()$variable_to_compare),
-      host = isolate(review_options()$host),
-      port = isolate(review_options()$port),
-      max_request_size = isolate(review_options()$max_request_size),
-      display_mode = isolate(review_options()$display_mode),
-      launch_browser = FALSE,
-      show_upload_ui = isolate(review_options()$show_upload_ui),
-      initial_dataset = selected_dataset
+    build_options_current(
+      isolate(build_mode()),
+      build_options_selected_dataset(dataset_choices)
     ),
     app_available = isTRUE(app_capability$available),
     app_reason = app_capability$reason,
     app_required = isTRUE(snapshot$make_app),
-    initial_page_choices = builder_review_initial_page_choices(
-      page_expectations
-    ),
     dataset_choices = dataset_choices,
     auth = list(
       enabled = isTRUE(isolate(auth_enabled())),
@@ -103,9 +133,44 @@ output$build_output_options <- renderUI({
       available = isTRUE(auth$available)
     ),
     auth_controls = uiOutput("build_auth_controls"),
-    controls_disabled = controls_disabled
+    controls_disabled = controls_disabled,
+    app_settings = uiOutput("build_app_settings")
   )
 })
+
+output$build_app_settings <- renderUI({
+  req(identical(workflow()$stage, "build"), isTRUE(build_mode()))
+  snapshot <- isolate(workflow())$review_snapshot
+  dataset_choices <- build_options_dataset_choices(snapshot)
+  selected <- build_options_selected_dataset(dataset_choices)
+  builder_build_app_settings_ui(
+    build_options_current(TRUE, selected),
+    initial_page_choices = build_options_page_choices(snapshot, selected),
+    dataset_choices = dataset_choices,
+    auth = build_options_auth_summary(),
+    auth_controls = uiOutput("build_auth_controls")
+  )
+})
+
+observeEvent(
+  build_initial_dataset(),
+  {
+    snapshot <- isolate(workflow())$review_snapshot
+    choices <- build_options_page_choices(snapshot, build_initial_dataset())
+    selected <- isolate(input$build_initial_page) %||%
+      isolate(review_options()$initial_page)
+    if (!isTRUE(selected %in% choices)) {
+      selected <- unname(choices[[1L]])
+    }
+    updateSelectInput(
+      session,
+      "build_initial_page",
+      choices = choices,
+      selected = selected
+    )
+  },
+  ignoreInit = TRUE
+)
 
 output$build_auth_controls <- renderUI({
   req(identical(workflow()$stage, "build"), isTRUE(build_mode()))
@@ -153,14 +218,66 @@ build_stage_status_projection <- reactive({
       busy_note()
     },
     result = result(),
-    finalizing = finalizing
+    finalizing = finalizing,
+    last_output_parent = builder_build_last_parent()
   )
 })
+
+builder_build_reuse_state <- new.env(parent = emptyenv())
+builder_build_reuse_state$plan <- NULL
+
+builder_build_remember_plan <- function(plan) {
+  builder_build_reuse_state$plan <- plan
+  builder_build_reuse_state$record_artifacts <- is.environment(
+    builder_session_reuse_cache_for_build()
+  )
+  invisible(plan)
+}
+
+## Record verified CRBs for the next build in this session. A failed build
+## forgets entries it tried to reuse, so a stale cache cannot fail twice.
+builder_build_record_reuse <- function(value) {
+  plan <- builder_build_reuse_state$plan
+  if (is.null(plan) || !is.list(value) || is.null(value$state)) {
+    return(invisible(FALSE))
+  }
+  builder_build_reuse_state$plan <- NULL
+  cache <- builder_session_reuse_cache
+  if (value$state %in% c("failure", "recovery_required")) {
+    reused <- vapply(
+      plan$items,
+      function(item) is.list(item$reused_artifact),
+      logical(1)
+    )
+    ids <- vapply(plan$items, `[[`, character(1), "id")
+    builder_plan_reuse_forget(cache, ids[reused])
+    return(invisible(FALSE))
+  }
+  records <- tryCatch(
+    builder_build_reuse_records(plan, value),
+    error = function(error) list()
+  )
+  items <- plan$items
+  names(items) <- vapply(items, `[[`, character(1), "id")
+  for (entry in records) {
+    if (isTRUE(builder_build_reuse_state$record_artifacts)) {
+      builder_plan_reuse_store(cache, entry$key, entry$record)
+    }
+    builder_plan_verification_store(
+      builder_session_verification_cache,
+      entry$md5,
+      items[[entry$id]],
+      entry$verification
+    )
+  }
+  invisible(length(records) > 0L)
+}
 
 observeEvent(
   result(),
   {
     value <- result()
+    builder_build_record_reuse(value)
     if (
       is.list(value) &&
         (identical(value$state, "failure") ||
@@ -192,6 +309,68 @@ output$build_stage_footer <- renderUI({
     build_stage_status_projection(),
     controls_disabled = builder_build_controls_locked(build_flow())
   )
+})
+
+## Dataset/step progress written by the worker (and phases written by the
+## settlement process) for the Build progress panel.
+builder_build_progress_path <- reactive({
+  pending <- protocol()$pending
+  path <- if (is.list(pending) && identical(pending$kind, "build")) {
+    pending$payload$progress_path %||% NULL
+  } else {
+    NULL
+  }
+  if (is.null(path)) {
+    context <- release_settlement_context()
+    if (is.list(context)) {
+      path <- context$progress_path %||% NULL
+    }
+  }
+  if (builder_has_text(path %||% "")) path else NULL
+})
+
+builder_build_progress_sent <- new.env(parent = emptyenv())
+builder_build_progress_sent$message <- NULL
+
+builder_send_build_progress <- function(message) {
+  if (identical(message, builder_build_progress_sent$message)) {
+    return(invisible(FALSE))
+  }
+  builder_build_progress_sent$message <- message
+  session$sendCustomMessage("builder_build_progress", message)
+  invisible(TRUE)
+}
+
+observe({
+  path <- builder_build_progress_path()
+  if (is.null(path)) {
+    if (!is.null(builder_build_progress_sent$message)) {
+      builder_send_build_progress(list(active = FALSE))
+    }
+    return()
+  }
+  invalidateLater(750)
+  detail <- tryCatch(
+    builder_build_progress_detail(path),
+    error = function(error) NULL
+  )
+  if (is.null(detail)) {
+    return()
+  }
+  message <- builder_build_progress_message(detail)
+  # The browser runs the clock; resend only when the step changes.
+  sent <- builder_build_progress_sent$message
+  if (
+    is.list(sent) &&
+      identical(sent[c("active", "phase", "text")], message[c(
+        "active",
+        "phase",
+        "text"
+      )])
+  ) {
+    return()
+  }
+  builder_send_build_progress(message)
 })
 
 observe({
@@ -251,21 +430,34 @@ builder_build_recovery_needs_fresh_review <- function(message) {
   invisible(FALSE)
 }
 
+## Login passwords are never kept between builds. Check them before the
+## folder picker or a retry starts, and ask for them in place: the plan does
+## not depend on the passwords, so there is nothing to review again.
+builder_build_accounts_missing <- function() {
+  if (!isTRUE(isolate(build_mode())) || !isTRUE(isolate(auth_enabled()))) {
+    return(FALSE)
+  }
+  accounts <- isolate(auth_accounts())
+  parsed <- builder_auth_validate_payload(TRUE, accounts)
+  !isTRUE(parsed$ok) ||
+    !length(parsed$accounts) ||
+    !identical(length(parsed$accounts), length(accounts))
+}
+
+builder_build_request_accounts <- function() {
+  session$sendCustomMessage("builder_open_auth_dialog", list(open = TRUE))
+  showNotification(
+    "Enter the login accounts for this build, then build again.",
+    type = "message",
+    duration = 6
+  )
+  invisible(FALSE)
+}
+
 builder_build_recovery_ready <- function() {
   state <- isolate(workflow())
-  auth_required <- isTRUE(isolate(build_mode())) &&
-    isTRUE(isolate(auth_enabled()))
-  if (auth_required) {
-    parsed <- builder_auth_validate_payload(TRUE, isolate(auth_accounts()))
-    expected <- length(isolate(auth_accounts()))
-    if (
-      !isTRUE(parsed$ok) ||
-        !identical(as.integer(length(parsed$accounts)), as.integer(expected))
-    ) {
-      return(builder_build_recovery_needs_fresh_review(
-        "Re-enter login accounts and review the plan before retrying."
-      ))
-    }
+  if (builder_build_accounts_missing()) {
+    return(builder_build_request_accounts())
   }
   reviewed <- state$review_snapshot
   live <- isolate(current_review_snapshot())
@@ -386,6 +578,7 @@ enqueue_build_plan <- function(
   if (exists("builder_project_capture_build_plan", mode = "function")) {
     builder_project_capture_build_plan(plan)
   }
+  builder_build_remember_plan(plan)
   build_flow(list(stage = "building", plan = NULL))
   auth_accounts_state(builder_auth_empty_accounts())
   auth_validation(list(
@@ -493,6 +686,8 @@ builder_new_release_target <- function(
   stop("A unique release directory could not be allocated.", call. = FALSE)
 }
 
+builder_build_last_parent <- reactiveVal(NULL)
+
 start_builder_new_release <- function(parent) {
   request <- builder_build_output_preflight(parent)
   if (!isTRUE(request$ok)) {
@@ -501,6 +696,7 @@ start_builder_new_release <- function(parent) {
       call. = FALSE
     )
   }
+  builder_build_last_parent(request$path)
   target <- builder_new_release_target(
     request$path,
     make_app = isTRUE(request$make_app)
@@ -648,6 +844,11 @@ start_confirmed_build <- function(select_output = FALSE) {
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return(invisible(FALSE))
   }
+  if (builder_build_accounts_missing()) {
+    return(builder_build_request_accounts())
+  }
+  # The release coordinator loads its runtime while the user picks a folder.
+  try(builder_prewarm_release_processes("preparation"), silent = TRUE)
   if (isTRUE(select_output)) {
     choose_build_folder()
     return(invisible(TRUE))
@@ -666,6 +867,40 @@ retry_confirmed_build <- function() {
   }
   start_confirmed_build()
 }
+
+## A new release directory in the parent folder chosen last time, without
+## the folder picker.
+observeEvent(input$build_same_folder, {
+  parent <- isolate(builder_build_last_parent())
+  if (
+    !builder_has_text(parent %||% "") ||
+      builder_build_controls_locked(isolate(build_flow())) ||
+      (exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+        !isTRUE(builder_operation_allowed("build")))
+  ) {
+    return()
+  }
+  if (builder_build_accounts_missing()) {
+    builder_build_request_accounts()
+    return()
+  }
+  try(builder_prewarm_release_processes("preparation"), silent = TRUE)
+  tryCatch(
+    start_builder_new_release(parent),
+    error = function(error) {
+      build_flow(list(stage = "idle", plan = NULL))
+      showNotification(
+        paste0(
+          "The previous output folder could not be used: ",
+          conditionMessage(error),
+          " Choose a folder instead."
+        ),
+        type = "error",
+        duration = 10
+      )
+    }
+  )
+})
 
 observeEvent(input$build, {
   current <- isolate(result())

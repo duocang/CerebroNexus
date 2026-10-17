@@ -34,6 +34,188 @@ builder_build_queue_note <- function(plan) {
   paste0(paste(parts, collapse = " · "), "…")
 }
 
+## Session reuse records ----------------------------------------------------
+## After a published build, the coordinator's release identity already holds
+## the MD5 of every CRB and sidecar, so recording them for the next build
+## needs no hashing on the Shiny process.
+
+builder_build_retention_root <- function(root = tempdir()) {
+  path <- file.path(root, "builder-reuse")
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, mode = "0700", showWarnings = FALSE)
+  }
+  if (!dir.exists(path)) {
+    return(NULL)
+  }
+  normalizePath(path, winslash = "/", mustWork = TRUE)
+}
+
+.builder_build_published_reuse_record <- function(item, value, prefix) {
+  root <- value$release$target %||% ""
+  entries <- value$release$identity$entries %||% list()
+  verification <- value$verifications[[item$id]] %||% NULL
+  built <- value$built[[item$id]] %||% ""
+  if (
+    !.builder_build_text(root) ||
+      !length(entries) ||
+      !is.list(verification) ||
+      !.builder_build_text(built) ||
+      !identical(basename(built), item$filename)
+  ) {
+    return(NULL)
+  }
+  files <- entries[vapply(
+    entries,
+    function(entry) identical(entry$type, "file"),
+    logical(1)
+  )]
+  file_paths <- vapply(files, function(entry) entry$path %||% "", "")
+  primary_index <- match(paste0(prefix, item$filename), file_paths)
+  primary <- if (is.na(primary_index)) NULL else files[[primary_index]]
+  if (!is.list(primary) || !.builder_build_text(primary$md5 %||% "")) {
+    return(NULL)
+  }
+  companions <- c(
+    item$sidecars %||% character(),
+    verification$spatial_molecule_backend$location %||% character()
+  )
+  relative <- substring(file_paths, nchar(prefix) + 1L)
+  selected <- startsWith(file_paths, prefix) &
+    vapply(
+      relative,
+      function(path) {
+        any(path == companions | startsWith(path, paste0(companions, "/")))
+      },
+      logical(1)
+    )
+  if (length(companions) && !any(selected)) {
+    return(NULL)
+  }
+  fingerprint <- function(entry) {
+    list(md5 = tolower(entry$md5), size = as.double(entry$size))
+  }
+  list(
+    path = file.path(root, primary$path),
+    fingerprint = fingerprint(primary),
+    members = lapply(unname(which(selected)), function(index) {
+      list(
+        resolved_path = file.path(root, files[[index]]$path),
+        target = relative[[index]],
+        fingerprint = fingerprint(files[[index]])
+      )
+    }),
+    verification = verification
+  )
+}
+
+builder_build_reuse_records <- function(plan, value) {
+  if (!inherits(plan, "builder_build_plan") || !is.list(value)) {
+    return(list())
+  }
+  items <- plan$items %||% list()
+  names(items) <- vapply(items, `[[`, character(1), "id")
+  records <- if (identical(value$state, "needs_decision")) {
+    value$retained_artifacts %||% list()
+  } else if (
+    identical(value$state, "success") &&
+      isTRUE(value$published)
+  ) {
+    prefix <- if (isTRUE(plan$make_app)) "cerebro_app/private-data/" else ""
+    Filter(
+      Negate(is.null),
+      lapply(items, .builder_build_published_reuse_record, value, prefix)
+    )
+  } else {
+    list()
+  }
+  records <- records[intersect(names(records), names(items))]
+  lapply(names(records), function(id) {
+    record <- records[[id]]
+    verification <- record$verification
+    record$verification <- NULL
+    list(
+      id = id,
+      key = builder_plan_reuse_key(items[[id]]),
+      record = record,
+      md5 = record$fingerprint$md5 %||% NULL,
+      verification = verification
+    )
+  })
+}
+
+## The deep read-back opens and hydrates the whole CRB. A reused CRB whose
+## copy matched an MD5 already read back against the same expectation in this
+## session takes that verification, rebased onto the staged copy, after a
+## cheap check that its sidecars are where the record says.
+.builder_build_reused_verification <- function(verification, target, item) {
+  if (
+    !is.list(verification) ||
+      !isTRUE(verification$valid) ||
+      !.builder_build_text(verification$path %||% "")
+  ) {
+    return(NULL)
+  }
+  tryCatch(
+    {
+      if (item$expression_backend %in% c("bpcells", "h5")) {
+        .builder_build_sidecar_path(
+          target,
+          item,
+          if (identical(item$expression_backend, "bpcells")) {
+            "directory"
+          } else {
+            "file"
+          }
+        )
+      } else if (length(item$sidecars)) {
+        stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+      }
+      directory <- dirname(target)
+      rebase <- function(path) {
+        if (.builder_build_text(path %||% "")) {
+          file.path(directory, basename(path))
+        } else {
+          path
+        }
+      }
+      spatial <- verification$spatial_molecule_backend %||% NULL
+      if (!is.null(spatial)) {
+        spatial_path <- file.path(directory, spatial$location)
+        if (
+          !dir.exists(spatial_path) ||
+            nzchar(Sys.readlink(spatial_path)) ||
+            !.builder_build_path_within(spatial_path, directory)
+        ) {
+          stop("The reused CRB spatial sidecar is missing.", call. = FALSE)
+        }
+        verification$spatial_molecule_path <- normalizePath(
+          spatial_path,
+          winslash = "/",
+          mustWork = TRUE
+        )
+      }
+      verification$path <- target
+      verification$file_fingerprint <- .builder_build_runtime_function(
+        ".bundlePreflightFingerprint"
+      )(target)
+      preflight <- verification$bundle_preflight
+      if (is.list(preflight)) {
+        if (is.list(preflight$spatial_backend)) {
+          preflight$spatial_backend$root <- rebase(
+            preflight$spatial_backend$root
+          )
+        }
+        if (is.list(preflight$dataset_info)) {
+          preflight$dataset_info$path <- target
+        }
+        verification$bundle_preflight <- preflight
+      }
+      verification
+    },
+    error = function(error) NULL
+  )
+}
+
 .builder_build_progress_phases <- c(
   "datasets",
   "viewer",
@@ -63,14 +245,59 @@ builder_build_progress_note <- function(plan, phase) {
   )
 }
 
-builder_build_progress_write <- function(path, phase) {
+## Progress records are either a bare phase (settlement) or a detail record
+## naming the dataset and step, so the overlay can say what is running.
+.builder_build_progress_detail_fields <- c(
+  "dataset_index",
+  "dataset_count",
+  "dataset_name",
+  "step_label",
+  "started_at"
+)
+
+.builder_build_progress_record <- function(phase, detail = NULL) {
+  if (!is.list(detail) || !length(detail)) {
+    return(phase)
+  }
+  text <- function(value) {
+    if (.builder_build_text(value)) substr(value, 1L, 200L) else NULL
+  }
+  count <- function(value) {
+    value <- suppressWarnings(as.integer(value))
+    if (length(value) == 1L && !is.na(value) && value >= 0L) value else NULL
+  }
+  started <- suppressWarnings(as.numeric(detail$started_at))
+  record <- list(
+    schema_version = 1L,
+    phase = phase,
+    dataset_index = count(detail$dataset_index),
+    dataset_count = count(detail$dataset_count),
+    dataset_name = text(detail$dataset_name),
+    step_label = text(detail$step_label),
+    started_at = if (length(started) == 1L && is.finite(started)) {
+      started
+    } else {
+      NULL
+    }
+  )
+  Filter(Negate(is.null), record)
+}
+
+builder_build_progress_write <- function(path, phase, detail = NULL) {
   phase <- .builder_build_progress_phase(phase)
   if (!.builder_build_text(path) || !dir.exists(dirname(path))) {
     return(FALSE)
   }
   temporary <- tempfile(".progress-", tmpdir = dirname(path))
   on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  saved <- try(saveRDS(phase, temporary, version = 2), silent = TRUE)
+  saved <- try(
+    saveRDS(
+      .builder_build_progress_record(phase, detail),
+      temporary,
+      version = 2
+    ),
+    silent = TRUE
+  )
   if (inherits(saved, "try-error")) {
     return(FALSE)
   }
@@ -86,13 +313,31 @@ builder_build_progress_write <- function(path, phase) {
   moved
 }
 
-builder_build_progress_read <- function(path) {
+builder_build_progress_detail <- function(path) {
   if (!.builder_build_text(path) || !file.exists(path)) {
     return(NULL)
   }
-  phase <- try(readRDS(path), silent = TRUE)
-  checked <- try(.builder_build_progress_phase(phase), silent = TRUE)
-  if (inherits(checked, "try-error")) NULL else checked
+  record <- try(readRDS(path), silent = TRUE)
+  detailed <- is.list(record) && identical(record$schema_version, 1L)
+  phase <- try(
+    .builder_build_progress_phase(if (detailed) record$phase else record),
+    silent = TRUE
+  )
+  if (inherits(phase, "try-error")) {
+    return(NULL)
+  }
+  if (!detailed) {
+    return(list(phase = phase))
+  }
+  value <- .builder_build_progress_record(
+    phase,
+    record[intersect(names(record), .builder_build_progress_detail_fields)]
+  )
+  if (is.list(value)) value else list(phase = phase)
+}
+
+builder_build_progress_read <- function(path) {
+  builder_build_progress_detail(path)$phase
 }
 
 builder_build_progress_remove <- function(path) {
@@ -172,12 +417,16 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
 }
 
 .builder_build_progress_callback <- function(path) {
-  function(phase) {
+  started_at <- as.numeric(Sys.time())
+  function(phase, detail = NULL) {
     if (is.null(path)) {
       return(invisible(FALSE))
     }
     builder_build_check_cancel(path)
-    invisible(builder_build_progress_write(path, phase))
+    if (is.list(detail)) {
+      detail$started_at <- started_at
+    }
+    invisible(builder_build_progress_write(path, phase, detail))
   }
 }
 
@@ -1574,6 +1823,49 @@ builder_verify_crb <- function(
   list(images = images, settings = settings)
 }
 
+## The worker's App tree identity is a diagnostic the coordinator compares with
+## its own full read of the same tree, and the coordinator separately checks
+## every private-data copy against the inputs it hashes itself. Seeding the
+## copied CRB and sidecar entries from the request's input MD5s therefore
+## skips a whole re-read of the data here without weakening either check: a
+## bad copy still fails publication.
+.builder_build_app_tree_seed <- function(app_dir, request) {
+  entries <- list()
+  for (content in request$content_identities %||% list()) {
+    expected_files <- Filter(
+      function(entry) is.list(entry) && identical(entry$type, "file"),
+      c(
+        list(content$crb),
+        unname(content$backend$entries %||% list()),
+        unname(content$spatial_molecules$entries %||% list())
+      )
+    )
+    for (expected in expected_files) {
+      fingerprint <- tryCatch(
+        .builder_app_file_fingerprint(fs::file_info(
+          file.path(app_dir, expected$path),
+          fail = TRUE,
+          follow = FALSE
+        )),
+        error = function(error) NULL
+      )
+      if (
+        !is.list(fingerprint) ||
+          !identical(fingerprint$type, "file") ||
+          !identical(fingerprint$size, as.double(expected$size))
+      ) {
+        next
+      }
+      entries[[expected$path]] <- c(
+        list(path = expected$path),
+        fingerprint,
+        list(md5 = tolower(expected$md5))
+      )
+    }
+  }
+  list(entries = entries)
+}
+
 builder_build_hooks <- function() {
   list(
     open_snapshot = builder_open_snapshot,
@@ -1668,14 +1960,42 @@ builder_execute_plan <- function(
   if (!all(vapply(hooks[required_hooks], is.function, logical(1)))) {
     stop("Build execution hooks are incomplete.", call. = FALSE)
   }
-  report_progress <- function(phase) {
+  report_progress <- function(phase, detail = NULL) {
     if (is.function(on_progress)) {
-      progress_result <- try(on_progress(phase), silent = TRUE)
+      progress_result <- try(
+        if (is.null(detail)) {
+          on_progress(phase)
+        } else {
+          on_progress(phase, detail)
+        },
+        silent = TRUE
+      )
       if (
         inherits(attr(progress_result, "condition"), "builder_build_cancelled")
       ) {
         stop(attr(progress_result, "condition"))
       }
+    }
+    invisible(NULL)
+  }
+  # Dataset/step detail for the overlay; only for callbacks that take it, so
+  # a phase-only callback still sees each phase once.
+  detail_progress <- is.function(on_progress) &&
+    .builder_build_hook_accepts(on_progress, "detail")
+  item_count <- length(plan$items)
+  item_index <- 0L
+  item_name <- NULL
+  report_step <- function(label) {
+    if (isTRUE(detail_progress)) {
+      report_progress(
+        "datasets",
+        list(
+          dataset_index = item_index,
+          dataset_count = item_count,
+          dataset_name = item_name,
+          step_label = label
+        )
+      )
     }
     invisible(NULL)
   }
@@ -1711,8 +2031,11 @@ builder_execute_plan <- function(
   )
   for (item in plan$items) {
     cancel_point()
+    item_index <- item_index + 1L
+    item_name <- item$name %||% item$id
     reused <- item$reused_artifact %||% NULL
     if (is.list(reused)) {
+      report_step("Reusing CRB")
       if (
         !.builder_build_safe_relative(item$filename) ||
           !is.character(reused$path) ||
@@ -1811,10 +2134,17 @@ builder_execute_plan <- function(
             member_identity
         }
       }
-      verified <- .builder_build_raise_cancel(tryCatch(
-        hooks$verify(target, item),
-        error = function(error) error
-      ))
+      verified <- .builder_build_reused_verification(
+        reused$verification %||% NULL,
+        target,
+        item
+      )
+      if (is.null(verified)) {
+        verified <- .builder_build_raise_cancel(tryCatch(
+          hooks$verify(target, item),
+          error = function(error) error
+        ))
+      }
       if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
         message <- if (inherits(verified, "condition")) {
           conditionMessage(verified)
@@ -1853,6 +2183,9 @@ builder_execute_plan <- function(
         "."
       )))
     }
+    if (is.null(object)) {
+      report_step("Opening dataset")
+    }
     object <- if (!is.null(object)) {
       object
     } else {
@@ -1869,6 +2202,7 @@ builder_execute_plan <- function(
         conditionMessage(object)
       )))
     }
+    report_step("Preparing dataset")
     object <- .builder_build_raise_cancel(tryCatch(
       hooks$prepare(object, item),
       error = function(error) error
@@ -1886,7 +2220,12 @@ builder_execute_plan <- function(
         hooks$run_analyses(
           object,
           item,
-          on_progress = function(...) cancel_point()
+          on_progress = function(label = NULL, ...) {
+            cancel_point()
+            if (.builder_build_text(label)) {
+              report_step(label)
+            }
+          }
         )
       } else {
         hooks$run_analyses(object, item)
@@ -1932,6 +2271,7 @@ builder_execute_plan <- function(
         "A build artifact target is outside the assigned stage."
       ))
     }
+    report_step("Writing CRB")
     export_diagnostics <- NULL
     exported <- tryCatch(
       withCallingHandlers(
@@ -1992,6 +2332,7 @@ builder_execute_plan <- function(
     analyses <- NULL
     extras <- NULL
     invisible(gc(FALSE))
+    report_step("Verifying CRB")
     verified <- .builder_build_raise_cancel(tryCatch(
       hooks$verify(exported, item),
       error = function(error) error
@@ -2124,7 +2465,10 @@ builder_execute_plan <- function(
       NULL
     }
     app_tree_identity <- tryCatch(
-      .builder_app_tree_summary(.builder_app_tree_identity(app_dir)),
+      .builder_app_tree_summary(.builder_app_tree_identity(
+        app_dir,
+        .previous = .builder_build_app_tree_seed(app_dir, request)
+      )),
       error = identity
     )
     if (
