@@ -681,15 +681,42 @@ remove_pending_import <- function(id) {
       identical(request$dataset, id) &&
       identical(request$kind, "load")
   }
-  running <- belongs(current_protocol$pending) ||
+  in_flight <- belongs(current_protocol$pending)
+  running <- in_flight ||
     any(vapply(current_protocol$awaiting_ack, belongs, logical(1)))
   if (running) {
+    if (isTRUE(entry$cancelling)) {
+      return(invisible(TRUE))
+    }
     uploads <- isolate(pending_uploads())
     if (!is.null(uploads[[id]])) {
       uploads[[id]]$visible <- FALSE
       pending_uploads(uploads)
     }
     cancelled_loads(unique(c(cancelled_loads(), id)))
+    if (in_flight) {
+      # Show "Cancelling…" first; the worker restart then runs after this
+      # flush so the click answers before the worker is stopped.
+      imports(builder_import_mark_cancelling(isolate(imports()), id))
+      request_id <- current_protocol$pending$request_id
+      session$onFlushed(
+        function() {
+          later::later(
+            function() {
+              if (!builder_session_closed()) {
+                shiny::withReactiveDomain(
+                  session,
+                  shiny::isolate(cancel_running_import(id, request_id))
+                )
+              }
+            },
+            delay = 0
+          )
+        },
+        once = TRUE
+      )
+      return(invisible(TRUE))
+    }
     forget_import(id)
     return(invisible(TRUE))
   }
@@ -729,6 +756,52 @@ remove_pending_import <- function(id) {
     )
     release_pending_source(request$payload)
   }))
+  invisible(TRUE)
+}
+
+## Stop the worker that is still reading or inspecting a cancelled import.
+## Without this the hidden load keeps the worker busy, and every later
+## import, preview and Build queues behind it until it finishes.
+cancel_running_import <- function(id, request_id) {
+  current_protocol <- protocol()
+  pending <- current_protocol$pending
+  current_worker <- worker()
+  if (
+    is.null(current_worker) ||
+      !is.list(pending) ||
+      !identical(pending$request_id, request_id)
+  ) {
+    # The load finished meanwhile; its result path drops cancelled loads.
+    forget_import(id)
+    return(invisible(FALSE))
+  }
+  restart_worker_protocol(
+    current_worker,
+    current_protocol,
+    "The import was cancelled.",
+    grace_ms = 0L,
+    async = TRUE,
+    notify = FALSE
+  )
+  recovered <- protocol()
+  forgotten <- if (is.null(recovered)) {
+    NULL
+  } else {
+    try(
+      builder_protocol_forget_dataset(
+        recovered,
+        id,
+        reason = "upload_cancelled"
+      ),
+      silent = TRUE
+    )
+  }
+  if (is.list(forgotten) && !inherits(forgotten, "try-error")) {
+    # Recovery requeued the cancelled load; drop it before it dispatches.
+    protocol(forgotten$protocol)
+  }
+  release_pending_source(pending$payload)
+  forget_import(id)
   invisible(TRUE)
 }
 

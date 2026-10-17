@@ -257,7 +257,11 @@ builder_import_transition <- function(
     entry$started_at_ms <- as.numeric(Sys.time()) * 1000
   }
   entry$load_state <- state
-  entry$progress_label <- unname(.builder_import_labels[[state]])
+  entry$progress_label <- if (isTRUE(entry$cancelling)) {
+    .builder_import_cancelling_label
+  } else {
+    unname(.builder_import_labels[[state]])
+  }
   if (identical(state, "error")) {
     private <- unlist(entry$source[c("staged_path", "path")], use.names = FALSE)
     entry$error <- builder_import_public_error(error, private)
@@ -274,6 +278,22 @@ builder_import_transition <- function(
   } else {
     entry$error <- NULL
   }
+  queue$entries[[id]] <- entry
+  queue$revision <- as.integer(queue$revision) + 1L
+  queue
+}
+
+.builder_import_cancelling_label <- "Cancelling…"
+
+#' Mark an in-flight import as stopping while its worker is restarted.
+builder_import_mark_cancelling <- function(queue, id) {
+  .builder_import_queue_assert(queue)
+  entry <- queue$entries[[id]]
+  if (is.null(entry) || isTRUE(entry$cancelling)) {
+    return(queue)
+  }
+  entry$cancelling <- TRUE
+  entry$progress_label <- .builder_import_cancelling_label
   queue$entries[[id]] <- entry
   queue$revision <- as.integer(queue$revision) + 1L
   queue

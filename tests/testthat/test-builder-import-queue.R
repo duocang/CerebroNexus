@@ -504,6 +504,68 @@ builder_import_queue_restart_stub <- function(app_env, server_env, calls) {
   }
 }
 
+test_that("cancelling a running import restarts the busy worker", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this import queue test.")
+  }
+  app_env$builder_session_example <- function(...) invisible(TRUE)
+  app_env$builder_session_poll <- function(worker, ...) {
+    list(worker = worker, event = NULL, result = NULL)
+  }
+
+  shiny::testServer(app_env$server, {
+    calls <- new.env(parent = emptyenv())
+    calls$items <- list()
+    builder_import_queue_restart_stub(
+      app_env,
+      environment(remove_pending_import),
+      calls
+    )
+    worker(list(epoch = "worker-cancel", state = "ready"))
+    worker_available(TRUE)
+    protocol(app_env$builder_request_protocol("worker-cancel"))
+    expect_true(start_load(
+      "example",
+      "complete_viewer_data",
+      "Complete Viewer data"
+    ))
+    session$flushReact()
+    expect_identical(isolate(protocol())$pending$dataset, "ds1")
+
+    expect_true(remove_pending_import("ds1"))
+    entry <- app_env$builder_import_find(isolate(imports()), "ds1")
+    expect_true(entry$cancelling)
+    expect_identical(entry$progress_label, "Cancelling…")
+    expect_length(calls$items, 0L)
+    ## A second click while stopping does not queue another restart.
+    expect_true(remove_pending_import("ds1"))
+
+    session$flushReact()
+    rail_html <- paste(
+      vapply(last_import_rail_patch()$rows, `[[`, character(1), "html"),
+      collapse = " "
+    )
+    expect_match(rail_html, "Cancelling…", fixed = TRUE)
+    later::run_now(1)
+
+    expect_length(calls$items, 1L)
+    expect_identical(calls$items[[1L]]$reason, "The import was cancelled.")
+    expect_identical(calls$items[[1L]]$grace_ms, 0L)
+    expect_true(calls$items[[1L]]$async)
+    expect_false(calls$items[[1L]]$notify)
+    expect_null(app_env$builder_import_find(isolate(imports()), "ds1"))
+    recovered <- isolate(protocol())
+    expect_null(recovered$pending)
+    expect_length(recovered$queue, 0L)
+    expect_false("ds1" %in% isolate(cancelled_loads()))
+  })
+})
+
 test_that("a Build that ignores Stop is ended after the grace period", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

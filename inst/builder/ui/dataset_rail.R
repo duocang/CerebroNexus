@@ -665,6 +665,7 @@ builder_import_rail_row_model <- function(entry, index, current = NULL) {
     },
     load_state = entry$load_state,
     progress_label = entry$progress_label,
+    cancelling = isTRUE(entry$cancelling),
     error = entry$error,
     started_at_ms = suppressWarnings(as.numeric(entry$started_at_ms)),
     import_elapsed_ms = suppressWarnings(as.numeric(entry$import_elapsed_ms)),
@@ -681,6 +682,7 @@ builder_import_rail_row_fingerprint <- function(model) {
       "detail",
       "load_state",
       "progress_label",
+      "cancelling",
       "error",
       "started_at_ms",
       "import_elapsed_ms",
@@ -789,8 +791,12 @@ builder_import_rail_row_ui <- function(model) {
             "builder-remove-import"
           ),
           `data-import-id` = model$id,
+          disabled = if (isTRUE(model$cancelling)) NA else NULL,
+          `aria-busy` = if (isTRUE(model$cancelling)) "true" else NULL,
           `aria-label` = if (failed) {
             paste("Remove failed import", model$label)
+          } else if (isTRUE(model$cancelling)) {
+            paste("Cancelling import", model$label)
           } else if (running) {
             paste("Cancel active import", model$label)
           } else {
@@ -798,6 +804,8 @@ builder_import_rail_row_ui <- function(model) {
           },
           if (failed) {
             "Remove"
+          } else if (isTRUE(model$cancelling)) {
+            "Cancelling…"
           } else if (running) {
             "Cancel"
           } else {
