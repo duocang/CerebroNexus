@@ -103,8 +103,6 @@ source(
   value
 }
 source(file.path(Cerebro.options[["cerebro_root"]], "viewer/core/dataset_overview.R"), local = TRUE)
-.overview_file <- file.path(Cerebro.options[["cerebro_root"]], "viewer/dataset_overviews.rds")
-.saved_overviews <- if (file.exists(.overview_file)) readRDS(.overview_file) else list()
 .crb_launch_state <- new.env(parent = emptyenv())
 .crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
 if (!is.list(.crb_launch_state$prototypes)) {
@@ -354,10 +352,7 @@ server <- function(input, output, session) {
       NULL
     }
     info <- viewerDatasetInfo(catalog, target)
-    saved_overview <- if (!is.null(info)) {
-      info$overview %||% viewerSavedOverview(.saved_overviews, info$path)
-    } else NULL
-    viewerOverviewTruncated(saved_overview) || viewerDatasetLoadRequired(
+    viewerOverviewTruncated(info$overview) || viewerDatasetLoadRequired(
       isolate(input[["sidebar"]]),
       info,
       initial_tab,
@@ -812,9 +807,6 @@ server <- function(input, output, session) {
     if (!is.null(info)) {
       info$label <- viewerDatasetLabel(available_crb_files$files, selected,
                                        available_crb_files$labels)
-      if (is.null(info$overview)) {
-        info$overview <- viewerSavedOverview(.saved_overviews, info$path)
-      }
       # Legacy summaries retained only ten categories. Rebuild those once from
       # metadata rather than misrepresenting the remainder as one category.
       if (viewerOverviewTruncated(info$overview)) {

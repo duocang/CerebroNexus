@@ -46,13 +46,3 @@ viewerOverviewTruncated <- function(overview) {
       isTRUE(length(summary$counts) < summary$levels))
   }, logical(1)))
 }
-
-viewerSavedOverview <- function(entries, path) {
-  entry <- entries[[path]]
-  if (!is.list(entry)) return(NULL)
-  stamp <- file.info(path)
-  if (!nrow(stamp) || is.na(stamp$size) ||
-      !identical(as.numeric(stamp$size), entry$size) ||
-      !identical(as.numeric(stamp$mtime), entry$mtime)) return(NULL)
-  entry$overview
-}

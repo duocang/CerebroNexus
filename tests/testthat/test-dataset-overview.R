@@ -79,17 +79,6 @@ test_that("explicit sample column works without name heuristics", {
   expect_identical(result$description, "Study description")
 })
 
-test_that("existing app summaries are rejected after data file changes", {
-  path <- tempfile()
-  on.exit(unlink(path))
-  writeLines("first", path)
-  stamp <- file.info(path)
-  entries <- setNames(list(list(size = as.numeric(stamp$size), mtime = as.numeric(stamp$mtime), overview = list(genes = 3L))), path)
-  expect_equal(overview_helpers$viewerSavedOverview(entries, path)$genes, 3L)
-  writeLines("different data", path)
-  expect_null(overview_helpers$viewerSavedOverview(entries, path))
-})
-
 test_that("thin CRB summaries obtain gene counts from matrix headers", {
   skip_if_not_installed("BPCells")
   root <- withr::local_tempdir()

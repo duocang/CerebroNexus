@@ -154,7 +154,6 @@ test_that("catalog Data info decides loading with the request and loads once", {
         a.crb = list(path = "a.crb", cells = 3),
         b.crb = list(path = "b.crb", cells = 4)
       ))
-      .saved_overviews <- list()
       .cerebro_cell_view_aux_pending <- new.env()
       initial_tab <- NULL
       initial_page_applied <- reactiveVal(TRUE)
