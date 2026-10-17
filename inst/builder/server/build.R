@@ -762,6 +762,8 @@ start_confirmed_build <- function(select_output = FALSE) {
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return(invisible(FALSE))
   }
+  # The release coordinator loads its runtime while the user picks a folder.
+  try(builder_prewarm_release_processes("preparation"), silent = TRUE)
   if (isTRUE(select_output)) {
     choose_build_folder()
     return(invisible(TRUE))

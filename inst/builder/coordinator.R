@@ -36,7 +36,16 @@ builder_release_runtime_files <- function() {
   )
 }
 
-builder_runtime_file_identity <- function(paths, .md5 = tools::md5sum) {
+## `.previous` is an earlier list(identity, stats) of the same runtime: files
+## whose size and modification time are unchanged keep their MD5, so a Build
+## hashes the ~250 runtime files once per session instead of once per
+## process. `.stats` (an environment) receives the stats for the next call.
+builder_runtime_file_identity <- function(
+  paths,
+  .md5 = tools::md5sum,
+  .previous = NULL,
+  .stats = NULL
+) {
   paths <- if (is.null(paths)) character() else paths
   paths <- as.character(paths)
   if (!length(paths) || anyNA(paths) || any(!nzchar(paths))) {
@@ -56,8 +65,62 @@ builder_runtime_file_identity <- function(paths, .md5 = tools::md5sum) {
     stop("The Builder runtime file set is incomplete.", call. = FALSE)
   }
   before <- file.info(paths)[, c("size", "mtime"), drop = FALSE]
-  digests <- unname(as.character(.md5(paths)))
+  digests <- rep(NA_character_, length(paths))
+  previous_files <- if (is.list(.previous)) .previous$identity$files else NULL
+  previous_stats <- if (is.list(.previous)) .previous$stats else NULL
+  if (
+    is.list(previous_files) &&
+      is.list(previous_stats) &&
+      is.character(previous_stats$paths)
+  ) {
+    previous_paths <- vapply(
+      previous_files,
+      function(file) {
+        if (is.character(file$path) && length(file$path) == 1L) {
+          file$path
+        } else {
+          NA_character_
+        }
+      },
+      character(1)
+    )
+    file_index <- match(paths, previous_paths)
+    stat_index <- match(paths, previous_stats$paths)
+    unchanged <- !is.na(file_index) &
+      !is.na(stat_index) &
+      as.double(before$size) ==
+        as.double(previous_stats$size)[stat_index] &
+      as.double(before$mtime) ==
+        as.double(previous_stats$mtime)[stat_index]
+    unchanged[is.na(unchanged)] <- FALSE
+    for (index in which(unchanged)) {
+      previous <- previous_files[[file_index[[index]]]]
+      if (
+        is.character(previous$md5) &&
+          length(previous$md5) == 1L &&
+          grepl("^[[:xdigit:]]{32}$", previous$md5) &&
+          identical(as.double(previous$bytes), as.double(before$size[[index]]))
+      ) {
+        digests[[index]] <- previous$md5
+      }
+    }
+  }
+  missing <- is.na(digests)
+  if (any(missing)) {
+    digests[missing] <- unname(as.character(.md5(paths[missing])))
+  }
   after <- file.info(paths)[, c("size", "mtime"), drop = FALSE]
+  if (is.environment(.stats)) {
+    assign(
+      "stats",
+      list(
+        paths = paths,
+        size = as.double(after$size),
+        mtime = as.double(after$mtime)
+      ),
+      envir = .stats
+    )
+  }
   stable <- identical(
     suppressWarnings(as.double(before$size)),
     suppressWarnings(as.double(after$size))

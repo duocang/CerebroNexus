@@ -177,3 +177,150 @@ test_that("the Build panel shows dataset, step and elapsed time", {
     expect_identical(builder_build_progress_sent$message, list(active = FALSE))
   })
 })
+
+test_that("runtime identity reuses MD5s of files whose stats are unchanged", {
+  app_env <- builder_build_session_app()
+  root <- withr::local_tempdir()
+  files <- file.path(root, c("a.R", "b.R"))
+  writeLines("a <- 1", files[[1L]])
+  writeLines("b <- 2", files[[2L]])
+  stats <- new.env(parent = emptyenv())
+  first <- app_env$builder_runtime_file_identity(files, .stats = stats)
+  previous <- list(identity = first, stats = stats$stats)
+  hashed <- character()
+  counting <- function(paths) {
+    hashed <<- c(hashed, basename(paths))
+    tools::md5sum(paths)
+  }
+
+  again <- app_env$builder_runtime_file_identity(
+    files,
+    .md5 = counting,
+    .previous = previous
+  )
+  expect_identical(again, first)
+  expect_identical(hashed, character())
+
+  writeLines("b <- 3 # changed", files[[2L]])
+  changed <- app_env$builder_runtime_file_identity(
+    files,
+    .md5 = counting,
+    .previous = previous
+  )
+  expect_identical(hashed, "b.R")
+  expect_identical(changed, app_env$builder_runtime_file_identity(files))
+  expect_false(identical(changed, first))
+})
+
+test_that("a prewarmed coordinator runs the release preparation", {
+  app_env <- builder_build_session_app()
+  target <- file.path(withr::local_tempdir(), "release")
+  plan <- structure(
+    list(
+      revision = 1L,
+      readiness = "ready",
+      out_dir = target,
+      overwrite = FALSE,
+      targets = file.path(target, "dataset.crb"),
+      output_release = list(targets = file.path(target, "dataset.crb")),
+      make_app = FALSE,
+      app_contract_version = 0L,
+      dataset_order = "dataset-1",
+      items = list(list(
+        id = "dataset-1",
+        name = "Dataset 1",
+        filename = "dataset.crb",
+        organism = "hg",
+        analyses = character(),
+        included_groups = character(),
+        included_projections = character(),
+        metadata_policy = list(included = character()),
+        expression_backend = "embedded",
+        sidecars = character(),
+        viewer_page_expectations = list(visible_conditional = character())
+      )),
+      manifest = list(),
+      acknowledgements = list(),
+      viewer_bundle_assets = character(),
+      private_assets = "dataset.crb",
+      app_options = list(enabled = FALSE),
+      app_auth = list(enabled = FALSE, account_count = 0L, timeout_minutes = 15L)
+    ),
+    class = c("builder_build_plan", "list")
+  )
+  shiny::testServer(app_env$server, {
+    on.exit(builder_coordinator_stop_warm(), add = TRUE)
+    builder_prewarm_release_processes("preparation")
+    warm <- builder_coordinator_process_state$warm$preparation
+    expect_true(warm$process$is_alive())
+
+    process <- builder_start_release_preparation_process(plan, "prewarmed")
+    expect_identical(process$get_pid(), warm$process$get_pid())
+    expect_null(builder_coordinator_process_state$warm$preparation)
+    # Settlement loads while the worker would build.
+    expect_true(builder_coordinator_process_state$warm$settlement$process$is_alive())
+    process$wait(120000)
+    prepared <- process$get_result()
+    on.exit(app_env$builder_coordinator_abort(prepared$coordinator), add = TRUE)
+    expect_identical(prepared$coordinator$pid, as.integer(Sys.getpid()))
+    expect_true(dir.exists(prepared$coordinator$stage))
+    expect_identical(
+      prepared$runtime$identity,
+      app_env$builder_runtime_file_identity(prepared$runtime$files)
+    )
+    cached <- builder_coordinator_runtime_previous()
+    expect_identical(cached$identity, prepared$runtime$identity)
+  })
+})
+
+test_that("a coordinator refuses a job if its runtime changed after loading", {
+  app_env <- builder_build_session_app()
+  root <- withr::local_tempdir()
+  runtime_file <- file.path(root, "runtime.R")
+  writeLines("loaded_marker <- TRUE", runtime_file)
+  inbox <- file.path(root, "inbox.rds")
+  saveRDS(
+    list(
+      run = function(runtime, identity, args) list(ran = TRUE),
+      args = list()
+    ),
+    inbox
+  )
+  calls <- 0L
+  identity <- function(paths, .previous = NULL, .stats = NULL) {
+    calls <<- calls + 1L
+    list(schema_version = 1L, files = list(list(path = "x", md5 = calls)))
+  }
+  process_main <- NULL
+  shiny::testServer(app_env$server, {
+    process_main <<- builder_coordinator_process_main
+  })
+  main <- function(runtime_identity) {
+    process_main(
+      inbox = inbox,
+      runtime_files = list(root = root, marker = runtime_file),
+      package_files = character(),
+      package_source = NULL,
+      execution_files = runtime_file,
+      previous = NULL,
+      cache_path = file.path(root, "runtime-identity.rds"),
+      parent_pid = Sys.getpid(),
+      idle_seconds = 5,
+      runtime_identity = runtime_identity,
+      source_utf8 = app_env$builder_source_utf8
+    )
+  }
+
+  expect_error(main(identity), "runtime changed while its coordinator")
+  saveRDS(
+    list(run = function(runtime, identity, args) {
+      list(ran = isTRUE(runtime$loaded_marker))
+    }, args = list()),
+    inbox
+  )
+  stable <- function(paths, .previous = NULL, .stats = NULL) {
+    list(schema_version = 1L, files = list(list(path = "x", md5 = "same")))
+  }
+  expect_identical(main(stable), list(ran = TRUE))
+  expect_false(file.exists(inbox))
+})
