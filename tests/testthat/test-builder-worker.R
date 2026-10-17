@@ -301,6 +301,87 @@ if (builder_protocol_api_available) {
     )
   })
 
+  test_that("preview queries overtake queued loads of other datasets", {
+    protocol <- builder_request_protocol(epoch = "worker-1")
+    protocol <- builder_enqueue(protocol, builder_command("load", "b"))
+    dispatched <- builder_protocol_dispatch(protocol)
+    protocol <- dispatched$protocol
+    for (id in c("c", "d", "e")) {
+      protocol <- builder_enqueue(protocol, builder_command("load", id))
+    }
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("projection_previews", "a", 1L, slot = "gallery")
+    )
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "a", 2L, slot = "projection")
+    )
+
+    # The running load stays pending; the queries jump the queued loads but
+    # keep their own FIFO order.
+    expect_identical(protocol$pending$id, "load:b")
+    expect_identical(
+      builder_pending_ids(protocol),
+      c(
+        "projection_previews:a:gallery:1",
+        "preview:a:projection:2",
+        "load:c",
+        "load:d",
+        "load:e"
+      )
+    )
+    persistent <- Filter(
+      function(request) isTRUE(request$persistent),
+      protocol$queue
+    )
+    expect_identical(
+      vapply(persistent, `[[`, integer(1), "persistent_sequence"),
+      2:4
+    )
+
+    protocol <- builder_protocol_complete(
+      protocol,
+      builder_worker_response(dispatched$request, list())
+    )$protocol
+    protocol <- builder_protocol_acknowledge(
+      protocol,
+      dispatched$request$request_id
+    )
+    expect_identical(
+      builder_protocol_dispatch(protocol)$request$id,
+      "projection_previews:a:gallery:1"
+    )
+  })
+
+  test_that("queries never overtake their own load or other commands", {
+    protocol <- builder_request_protocol(epoch = "worker-1")
+    protocol <- builder_enqueue(protocol, builder_command("load", "a"))
+    protocol <- builder_enqueue(protocol, builder_command("settings", "b"))
+    protocol <- builder_enqueue(protocol, builder_command("load", "c"))
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "b", 1L, slot = "projection")
+    )
+    protocol <- builder_enqueue(protocol, builder_command("load", "d"))
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query("preview", "d", 1L, slot = "projection")
+    )
+
+    expect_identical(
+      builder_pending_ids(protocol),
+      c(
+        "load:a",
+        "settings:b",
+        "preview:b:projection:1",
+        "load:c",
+        "load:d",
+        "preview:d:projection:1"
+      )
+    )
+  })
+
   test_that("query replacement never crosses dataset or logical slot", {
     protocol <- builder_request_protocol(epoch = "worker-1")
     protocol <- builder_enqueue(

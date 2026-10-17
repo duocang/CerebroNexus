@@ -342,8 +342,29 @@ builder_enqueue <- function(protocol, request) {
     protocol$latest_generation[[key]] <- request$generation
     protocol$latest_dataset[[key]] <- request$dataset
   }
-  protocol$queue <- c(protocol$queue, list(request))
+  position <- length(protocol$queue)
+  if (!isTRUE(request$persistent)) {
+    while (
+      position > 0L &&
+        .builder_protocol_query_passes(protocol$queue[[position]], request)
+    ) {
+      position <- position - 1L
+    }
+  }
+  protocol$queue <- append(protocol$queue, list(request), after = position)
   protocol
+}
+
+## A replaceable query reads an already-open dataset in well under a second,
+## while each queued load can decode a multi-GB file. Let the query overtake
+## the trailing run of queued (never running) loads of other datasets so a
+## preview does not wait behind every file chosen in one picker. Any other
+## persistent command keeps its FIFO position relative to queries.
+.builder_protocol_query_passes <- function(queued, request) {
+  isTRUE(queued$persistent) &&
+    !isTRUE(queued$barrier) &&
+    identical(queued$kind, "load") &&
+    !identical(queued$dataset, request$dataset)
 }
 
 #' List queued request ids in dispatch order.
