@@ -2026,7 +2026,10 @@ builder_worker_register_snapshot <- function(worker, id, snapshot) {
   if (!.builder_worker_scalar_text(id)) {
     stop("A dataset id is required for snapshot registration.", call. = FALSE)
   }
-  if (!isTRUE(.builder_snapshot_owned(snapshot))) {
+  # The worker hashed object.rds while writing it; repeating the full-file
+  # MD5 here would block the Shiny process for every load. Stat and owner
+  # marker checks still reject replaced or foreign snapshots.
+  if (!isTRUE(.builder_snapshot_owned(snapshot, verify_content = FALSE))) {
     stop(
       "The worker did not return an owned immutable snapshot.",
       call. = FALSE

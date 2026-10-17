@@ -1198,6 +1198,51 @@ if (builder_lifecycle_api_available) {
     )
   })
 
+  test_that("main registry trusts the worker MD5 instead of rehashing", {
+    fixture <- builder_worker_fixture()
+    withr::defer({
+      .builder_snapshot_release(fixture$snapshot)
+      unlink(fixture$root, recursive = TRUE, force = TRUE)
+    })
+    worker <- structure(
+      list(
+        snapshot_root = fixture$root,
+        snapshot_registry = list(),
+        snapshot_cache = list()
+      ),
+      class = "builder_worker"
+    )
+    digests <- 0L
+    testthat::local_mocked_bindings(
+      md5sum = function(files) {
+        digests <<- digests + 1L
+        stats::setNames(rep(strrep("0", 32L), length(files)), files)
+      },
+      .package = "tools"
+    )
+
+    registered <- builder_worker_register_snapshot(
+      worker,
+      "dataset-a",
+      fixture$snapshot
+    )
+
+    expect_identical(digests, 0L)
+    expect_identical(
+      registered$snapshot_registry[["dataset-a"]],
+      fixture$snapshot
+    )
+
+    marker <- .builder_snapshot_marker_path(fixture$snapshot$path)
+    changed <- readRDS(marker)
+    changed$owner_token <- paste0(changed$owner_token, "-other")
+    saveRDS(changed, marker)
+    expect_error(
+      builder_worker_register_snapshot(worker, "dataset-a", fixture$snapshot),
+      "owned immutable snapshot"
+    )
+  })
+
   test_that("main registry rejects an owned snapshot from another root", {
     skip_if_not_installed("callr")
     foreign <- builder_worker_fixture()
