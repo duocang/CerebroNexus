@@ -121,6 +121,7 @@
   var buildStatusScrollPhase = 0;
   var buildStatusFocusToken = 0;
   var buildOperationActive = false;
+  var buildOperationFocusHeld = false;
   var buildProgressState = { active: false, text: "", anchor: null, timer: null };
   var buildOperationRestoreFocus = null;
   var buildOperationFocusToken = 0;
@@ -1111,8 +1112,13 @@
     }
     var operationOverlayOpen = pageInert &&
       builderActivityState.busy_modal !== true;
-    var nextBuildOperationActive = pageInert &&
+    // The Build progress panel does not depend on page_inert: when the
+    // server stops making the page inert during a Build, the same panel
+    // stays up as a non-modal status card and the workspace stays usable.
+    var nextBuildOperationActive = builderConnectionReady &&
       builderActivityState.busy_title === "Building output";
+    var buildPanelNonModal = nextBuildOperationActive && !pageInert &&
+      !builderProjectSaveResultOpen;
     var nextProjectOpenOperationActive = operationOverlayOpen &&
       (builderActivityState.phase === "opening" || builderActivityState.phase === "restoring") &&
       !builderProjectSaveResultOpen;
@@ -1124,15 +1130,18 @@
     document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
       var overlayOpen = operationOverlayOpen || builderProjectSaveResultOpen;
+      var modalOpen = overlayOpen && !buildPanelNonModal;
       overlay.setAttribute(
         "aria-hidden",
-        overlayOpen ? "false" : "true"
+        overlayOpen || buildPanelNonModal ? "false" : "true"
       );
-      overlay.setAttribute("role", overlayOpen ? "dialog" : "status");
-      if (overlayOpen) overlay.setAttribute("aria-modal", "true");
+      overlay.classList.toggle("is-nonmodal", buildPanelNonModal);
+      overlay.setAttribute("role", modalOpen ? "dialog" : "status");
+      if (modalOpen) overlay.setAttribute("aria-modal", "true");
       else overlay.removeAttribute("aria-modal");
     }
-    if (nextBuildOperationActive && !buildOperationActive) {
+    if (nextBuildOperationActive && !buildOperationFocusHeld && !buildPanelNonModal) {
+      buildOperationFocusHeld = true;
       beginBuildOperationFocus(overlay);
     }
     var shell = document.querySelector(".builder-shell");
@@ -1235,7 +1244,9 @@
     setBuildProgressClock(buildOperationActive);
     if (!buildOperationActive) buildStopPending = false;
     if (priorBuildOperationActive && !buildOperationActive) {
-      restoreBuildOperationFocus();
+      // A non-modal panel never took focus, so it gives nothing back.
+      if (buildOperationFocusHeld) restoreBuildOperationFocus();
+      buildOperationFocusHeld = false;
     }
     applyDatasetMutationLock(roots);
     applyProjectSourceLoadState();

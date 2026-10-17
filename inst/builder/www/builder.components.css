@@ -174,6 +174,22 @@
   animation: builder-operation-backdrop-in .18s ease-out both;
 }
 .builder-operation-overlay[aria-hidden="false"] { display: flex; }
+/* Build progress as a status card when the page stays usable. */
+.builder-operation-overlay.is-nonmodal {
+  inset: auto var(--space-5) var(--space-5) auto;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.builder-operation-overlay.is-nonmodal .builder-operation-overlay-card {
+  width: min(calc(100vw - 2 * var(--space-5)), 26rem);
+  max-width: 26rem;
+  padding: var(--space-4) var(--space-5);
+  pointer-events: auto;
+}
+/* The step summary and live line are enough in a corner card. */
+.builder-operation-overlay.is-nonmodal .builder-build-progress-steps { display: none; }
 body.modal-open .modal-backdrop { z-index: 2010; }
 body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-operation-overlay-card {

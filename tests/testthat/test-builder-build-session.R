@@ -324,3 +324,36 @@ test_that("a coordinator refuses a job if its runtime changed after loading", {
   expect_identical(main(stable), list(ran = TRUE))
   expect_false(file.exists(inbox))
 })
+
+builder_build_session_source <- function(...) {
+  paste(
+    readLines(builder_profile_inst_path("builder", ...), warn = FALSE),
+    collapse = "\n"
+  )
+}
+
+test_that("the Build progress panel does not depend on page_inert", {
+  javascript <- builder_build_session_source("www", "builder.js")
+  activation <- regmatches(
+    javascript,
+    regexpr(
+      "var nextBuildOperationActive = [^;]+;",
+      javascript
+    )
+  )
+  expect_length(activation, 1L)
+  expect_false(grepl("pageInert", activation, fixed = TRUE))
+  expect_match(
+    javascript,
+    'overlay.classList.toggle("is-nonmodal", buildPanelNonModal);',
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "!buildOperationFocusHeld && !buildPanelNonModal",
+    fixed = TRUE
+  )
+  css <- builder_build_session_source("www", "builder.components.css")
+  expect_match(css, ".builder-operation-overlay.is-nonmodal {", fixed = TRUE)
+})
+
